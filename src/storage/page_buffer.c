@@ -234,6 +234,8 @@ typedef enum
 /* flag for asynchronous flush request */
 #define PGBUF_BCB_ASYNC_FLUSH_REQ           ((int) 0x02000000)
 
+#define PGBUF_BCB_FLUSH_NOT_NEEDED	    ((int) 0x01000000)
+
 /* add all flags here */
 #define PGBUF_BCB_FLAGS_MASK \
   (PGBUF_BCB_DIRTY_FLAG \
@@ -242,18 +244,37 @@ typedef enum
    | PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG \
    | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG \
    | PGBUF_BCB_TO_VACUUM_FLAG \
-   | PGBUF_BCB_ASYNC_FLUSH_REQ)
+   | PGBUF_BCB_ASYNC_FLUSH_REQ \
+   | PGBUF_BCB_FLUSH_NOT_NEEDED)
 
-/* add flags that invalidate a victim candidate here */
-/* 1. dirty bcb's cannot be victimized.
- * 2. bcb's that are in the process of being flushed cannot be victimized. flush must succeed!
- * 3. bcb's that are already assigned as victims are not valid victim candidates.
- */
-#define PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK \
-  (PGBUF_BCB_DIRTY_FLAG \
-   | PGBUF_BCB_FLUSHING_TO_DISK_FLAG \
-   | PGBUF_BCB_VICTIM_DIRECT_FLAG \
-   | PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG)
+static bool
+pgbuf_bcb_flag_is_invalid_victim (int flag)
+{
+  int invalid_flag = 0;		// = VICTIMIZING | PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_FLUSHING_TO_DISK_FLAG;
+
+  // Reason's for being an invalid victim:
+  //
+  //  1. BCB is already being victimized
+  //  2. BCB's page must be flushed to disk and is either dirty or in process of being flushed
+  //
+  // When the transaction server runs on remote storage, only the first condition of invalidation applies for
+  // permanent data pages. In any other cases, both conditions apply. The former case is marked by the
+  // PGBUF_BCB_FLUSH_NOT_NEEDED flag.
+  //
+  constexpr int FLAG_BCB_IS_BEING_VICTIMIZED = PGBUF_BCB_VICTIM_DIRECT_FLAG | PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG;
+  constexpr int FLAG_BCB_IS_DIRTY_OR_BEING_FLUSHED = PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_FLUSHING_TO_DISK_FLAG;
+
+  if (flag & PGBUF_BCB_FLUSH_NOT_NEEDED)
+    {
+      // TODO: temporarily avoid victimizing BCB's flagged with FLAG_BCB_IS_DIRTY_OR_BEING_FLUSHED, even if flush is
+      //       not required. First we need to get rid of all cases that flush permanent data pages to disk.
+      return (flag & (FLAG_BCB_IS_BEING_VICTIMIZED | PGBUF_BCB_FLUSHING_TO_DISK_FLAG)) != 0;
+    }
+  else
+    {
+      return (flag & (FLAG_BCB_IS_BEING_VICTIMIZED | FLAG_BCB_IS_DIRTY_OR_BEING_FLUSHED)) != 0;
+    }
+}
 
 /* bcb has no flag initially and is in invalid zone */
 #define PGBUF_BCB_INIT_FLAGS PGBUF_INVALID_ZONE
@@ -1200,6 +1221,7 @@ STATIC_INLINE PGBUF_ZONE pgbuf_bcb_get_zone (const PGBUF_BCB * bcb) __attribute_
 STATIC_INLINE int pgbuf_bcb_get_lru_index (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_dirty (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+static bool pgbuf_bcb_is_dirty_and_needs_flushing (PGBUF_BCB * bcb);
 STATIC_INLINE bool pgbuf_bcb_mark_is_flushing (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_flushing (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
@@ -3223,7 +3245,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
       for (bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].bottom;
 	   bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) && i > 0; bufptr = bufptr->prev_BCB, i--)
 	{
-	  if (pgbuf_bcb_is_dirty (bufptr))
+	  if (pgbuf_bcb_is_dirty_and_needs_flushing (bufptr))
 	    {
 	      /* save victim candidate information temporarily. */
 	      pgbuf_Pool.victim_cand_list[victim_cand_count].bufptr = bufptr;
@@ -7806,6 +7828,10 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	      pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
 	    }
 	}
+      else if (is_tran_server_with_remote_storage ())
+	{
+	  bufptr->flags |= PGBUF_BCB_FLUSH_NOT_NEEDED;
+	}
 
 #if !defined (NDEBUG)
       /* perm volume */
@@ -8687,7 +8713,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       return NULL;
     }
 
-  if (!pgbuf_bcb_is_dirty (lru_list->bottom) && lru_list->victim_hint != lru_list->bottom)
+  if (!pgbuf_bcb_is_dirty_and_needs_flushing (lru_list->bottom) && lru_list->victim_hint != lru_list->bottom)
     {
       /* update hint to bottom. sometimes it may be out of sync. */
       assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
@@ -8775,7 +8801,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		}
 #endif /* SERVER_MODE */
 
-	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty (lru_list->bottom)
+	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty_and_needs_flushing (lru_list->bottom)
 		  && pgbuf_is_page_flush_daemon_available ())
 		{
 		  /* new bottom is dirty... make sure that flush will wake up */
@@ -14375,7 +14401,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
    * is PGBUF_BCB_FLUSHING_TO_DISK_FLAG (because flush also calls this). */
   assert (!pgbuf_bcb_is_direct_victim (bcb));
   assert (!pgbuf_bcb_is_invalid_direct_victim (bcb));
-  assert (!pgbuf_bcb_is_dirty (bcb));
+  assert (!pgbuf_bcb_is_dirty_and_needs_flushing (bcb));
   assert (!pgbuf_is_bcb_fixed_by_any (bcb, true));
 
   PGBUF_BCB_CHECK_OWN (bcb);
@@ -14435,7 +14461,7 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
   bool not_empty = false;
   /* invalidation flag for direct victim assignment: any flag invalidating victim candidates, except is flushing flag */
-  int invalidate_flag = (PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK & (~PGBUF_BCB_FLUSHING_TO_DISK_FLAG));
+  int invalidate_flag = PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_VICTIM_DIRECT_FLAG | PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG;
 
   /* consume all flushed bcbs queue */
   while (pgbuf_Pool.flushed_bcbs->consume (bcb_flushed))
@@ -14754,8 +14780,8 @@ pgbuf_bcb_update_flags (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int set_flags,
     {
       /* bcb is in lru zone that can be victimized. some flags invalidate the victimization candidacy of a bcb;
        * therefore we need to check if the bcb status regarding victimization is changed. */
-      bool is_old_invalid_victim_candidate = (old_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK) != 0;
-      bool is_new_invalid_victim_candidate = (new_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK) != 0;
+      bool is_old_invalid_victim_candidate = pgbuf_bcb_flag_is_invalid_victim (old_flags);
+      bool is_new_invalid_victim_candidate = pgbuf_bcb_flag_is_invalid_victim (new_flags);
       PGBUF_LRU_LIST *lru_list;
 
       lru_list = pgbuf_lru_list_from_bcb (bcb);
@@ -14852,7 +14878,7 @@ pgbuf_bcb_change_zone (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int new_lru_idx
 
   /* was bcb a valid victim candidate (we only consider flags, not fix counters or zone)? note that this is still true
    * after the change of zone. */
-  is_valid_victim_candidate = (old_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK) == 0;
+  is_valid_victim_candidate = !pgbuf_bcb_flag_is_invalid_victim (old_flags);
 
   if (old_flags & PGBUF_LRU_ZONE_MASK)
     {
@@ -14958,6 +14984,22 @@ pgbuf_bcb_is_dirty (const PGBUF_BCB * bcb)
   return (bcb->flags & PGBUF_BCB_DIRTY_FLAG) != 0;
 }
 
+static bool
+pgbuf_bcb_is_dirty_and_needs_flushing (PGBUF_BCB * bcb)
+{
+  if (!pgbuf_bcb_is_dirty (bcb))
+    {
+      return false;
+    }
+
+  if (bcb->flags & PGBUF_BCB_FLUSH_NOT_NEEDED)
+    {
+      return false;
+    }
+
+  return true;
+}
+
 /*
  * pgbuf_bcb_set_dirty () - set dirty flag to bcb
  *
@@ -14987,10 +15029,21 @@ pgbuf_bcb_set_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, 1);
   assert (pgbuf_Pool.monitor.dirties_cnt >= 0 && pgbuf_Pool.monitor.dirties_cnt <= pgbuf_Pool.num_buffers);
 
-  if (PGBUF_GET_ZONE (old_flags) == PGBUF_LRU_3_ZONE && (old_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK) == 0)
+  if (PGBUF_GET_ZONE (old_flags) == PGBUF_LRU_3_ZONE)
     {
-      /* invalidate victim */
-      pgbuf_lru_remove_victim_candidate (thread_p, pgbuf_lru_list_from_bcb (bcb), bcb);
+      // If BCB was a valid victim and now it is not, invalidate the victim
+
+      if ((old_flags & PGBUF_BCB_FLUSH_NOT_NEEDED) != 0)
+	{
+	  // Even if dirty flag is set, bcb is still a valid victim
+	  return;
+	}
+
+      if (!pgbuf_bcb_flag_is_invalid_victim (old_flags))
+	{
+	  // The BCB was previously a valid victim.
+	  pgbuf_lru_remove_victim_candidate (thread_p, pgbuf_lru_list_from_bcb (bcb), bcb);
+	}
     }
 }
 
@@ -15158,7 +15211,7 @@ pgbuf_bcb_is_to_vacuum (const PGBUF_BCB * bcb)
 STATIC_INLINE bool
 pgbuf_bcb_avoid_victim (const PGBUF_BCB * bcb)
 {
-  return (bcb->flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK) != 0;
+  return pgbuf_bcb_flag_is_invalid_victim (bcb->flags);
 }
 
 /*
