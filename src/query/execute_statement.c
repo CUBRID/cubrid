@@ -182,10 +182,12 @@ static void init_compile_context (PARSER_CONTEXT * parser);
 
 static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
 
-static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
-static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
+static int get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VALUE * encrypt_val);
+static int get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher, DB_VALUE * decrypt_val);
+static int shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time);
+static int reverse_shake_4_decrypt (char *confused, char *passwd);
 #ifndef NDEBUG
-void ciper_func_test ();
+void ciper_func_test (PARSER_CONTEXT * parser);
 #endif
 
 /*
@@ -18024,9 +18026,14 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
 
-      error = get_dblink_password_encrypt (pwd, &passwd);
+      error = get_dblink_password_encrypt (parser, pwd, &passwd);
       if (error != NO_ERROR)
 	{
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERRORf (parser, statement, "Failed to encryption password. error=%d", error);
+	    }
+
 	  goto end;
 	}
     }
@@ -18091,7 +18098,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
 
 #ifndef NDEBUG
-  //ciper_func_test ();
+  //ciper_func_test (parser);
 #endif
 
   cnt = 0;
@@ -18144,8 +18151,15 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
       goto error_end;
     }
 
-  error = get_dblink_password_decrypt (db_get_string (&pwd_val), &(out_val[2]));
-  if (error == NO_ERROR)
+  error = get_dblink_password_decrypt (parser, db_get_string (&pwd_val), &(out_val[2]));
+  if (error != NO_ERROR)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_ERRORf (parser, NULL, "Failed to decryption password. error=%d", error);
+	}
+    }
+  else
     {
       // cci:CUBRID:<host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]
       const char *dblink_url_fmt_prop = "cci:CUBRID:%s:%d:%s:::?%s";
@@ -18182,8 +18196,6 @@ error_end:
   return error;
 }
 
-static int shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time);
-static int reverse_shake_4_decrypt (char *confused, char *passwd);
 
 #define DBLINK_PASSWORD_MAX_LENGTH      (128)
 #define DBLINK_PASSWORD_CONFUSED_LENGTH (12)	// include 4(int) + 1(unsigned char) + 3(parity)
@@ -18192,7 +18204,7 @@ static int reverse_shake_4_decrypt (char *confused, char *passwd);
 #define DBLINK_PASSWORD_MAX_BUFSIZE  ((int)(DBLINK_PASSWORD_CIPHER_LENGTH * 1.4) + DBLINK_PASSWORD_PAD_LENGTH)
 
 static int
-get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
+get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VALUE * encrypt_val)
 {
   int err, length, buf_size;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
@@ -18208,7 +18220,10 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
     }
 
   if (strlen (passwd) > DBLINK_PASSWORD_MAX_LENGTH)
-    return -1;
+    {
+      PT_ERRORf (parser, NULL, "Password length exceeds %d.", DBLINK_PASSWORD_MAX_LENGTH);
+      return ER_FAILED;
+    }
 
   length = shake_4_encrypt (passwd, confused, &check_time);
   passwd = confused;
@@ -18240,7 +18255,7 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
 }
 
 static int
-get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
+get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher, DB_VALUE * decrypt_val)
 {
   int err, length, new_length;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
@@ -18255,6 +18270,7 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
   length = strlen (passwd_cipher);
   if (length > DBLINK_PASSWORD_MAX_BUFSIZE)
     {
+      PT_ERRORf (parser, NULL, "Encrypted password length exceeds %d.", DBLINK_PASSWORD_MAX_BUFSIZE);
       return ER_FAILED;
     }
 
@@ -18266,7 +18282,12 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
       if (err == NO_ERROR)
 	{
 	  newpwd[new_length] = '\0';	// Do NOT omit this line.
-	  reverse_shake_4_decrypt (newpwd, cipher);
+	  err = reverse_shake_4_decrypt (newpwd, cipher);
+	  if (err != NO_ERROR)
+	    {
+	      PT_ERROR (parser, NULL, "The parity of the encrypted password does not match.");
+	      return err;
+	    }
 	  err = db_make_string_copy (decrypt_val, cipher);
 	}
     }
@@ -18360,7 +18381,6 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
 
   if (p[pwdlen] != parity)
     {
-      printf ("Parity mismatch.\n");
       return ER_FAILED;
     }
 
@@ -18368,7 +18388,6 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
     {
       if (p[pwdlen] != parity)
 	{
-	  printf ("Parity mismatch.\n");
 	  return ER_FAILED;
 	}
     }
@@ -18378,7 +18397,7 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
 
 #ifndef NDEBUG
 void
-ciper_func_test ()
+ciper_func_test (PARSER_CONTEXT * parser)
 {
   int err, i, loop;
   char buf1[1024], buf2[1024];
@@ -18420,7 +18439,7 @@ ciper_func_test ()
       db_make_null (&encrypt_val);
       db_make_null (&decrypt_val);
 
-      err = get_dblink_password_encrypt (buf1, &encrypt_val);
+      err = get_dblink_password_encrypt (parser, buf1, &encrypt_val);
       if (err != NO_ERROR)
 	printf ("xxx 1 [%s]\n", tmp);
       else
@@ -18429,7 +18448,7 @@ ciper_func_test ()
 	  printf ("<%s>\n", tmp);
 	  printf ("[%s]\n", pt);
 
-	  err = get_dblink_password_decrypt (pt, &decrypt_val);
+	  err = get_dblink_password_decrypt (parser, pt, &decrypt_val);
 	  if (err != NO_ERROR)
 	    printf ("xxx 2 [%s]\n", tmp);
 	  else
