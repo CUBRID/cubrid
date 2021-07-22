@@ -7756,6 +7756,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   bufptr->vpid = *vpid;
   assert (!pgbuf_bcb_avoid_victim (bufptr));
   bufptr->latch_mode = PGBUF_NO_LATCH;
+  // Clear previous flags
   pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ	/* todo: why this?? */
 			  | PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_FLUSH_NOT_NEEDED);
   pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
@@ -7831,6 +7832,8 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	}
       else if (is_tran_server_with_remote_storage ())
 	{
+	  // Permanent data pages on transaction servers with remote storage don't have to be flushed to disk when
+	  // they're dirty. Mark this by PGBUF_BCB_FLUSH_NOT_NEEDED flag
 	  bufptr->flags |= PGBUF_BCB_FLUSH_NOT_NEEDED;
 	}
 
@@ -14990,14 +14993,17 @@ pgbuf_bcb_is_dirty_and_needs_flushing (PGBUF_BCB * bcb)
 {
   if (!pgbuf_bcb_is_dirty (bcb))
     {
+      // is not dirty
       return false;
     }
 
   if (bcb->flags & PGBUF_BCB_FLUSH_NOT_NEEDED)
     {
+      // does not need flushing
       return false;
     }
 
+  // is dirty and needs flushing
   return true;
 }
 
@@ -15032,17 +15038,17 @@ pgbuf_bcb_set_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 
   if (PGBUF_GET_ZONE (old_flags) == PGBUF_LRU_3_ZONE)
     {
-      // If BCB was a valid victim and now it is not, invalidate the victim
+      // When a page is made dirty, if the page needs flushing, it may become an invalid victim.
 
-      if ((old_flags & PGBUF_BCB_FLUSH_NOT_NEEDED) != 0)
+      if (old_flags & PGBUF_BCB_FLUSH_NOT_NEEDED)
 	{
-	  // Even if dirty flag is set, bcb is still a valid victim
+	  // The page does not need flushing, therefore making it dirty does not invalidate it for victimization
 	  return;
 	}
 
       if (!pgbuf_bcb_flag_is_invalid_victim (old_flags))
 	{
-	  // The BCB was previously a valid victim.
+	  // The BCB was previously a valid victim and now it isn't
 	  pgbuf_lru_remove_victim_candidate (thread_p, pgbuf_lru_list_from_bcb (bcb), bcb);
 	}
     }
