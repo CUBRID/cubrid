@@ -21,6 +21,7 @@
 
 typedef enum
 {
+  UNKNOWN,
   SERVER_TYPE_TRANSACTION,
   SERVER_TYPE_PAGE,
 } SERVER_TYPE;
@@ -28,7 +29,7 @@ typedef enum
 int init_server_type (const char *db_name);
 void finalize_server_type ();
 SERVER_TYPE get_server_type ();
-
+void set_server_type (SERVER_TYPE type);
 bool is_tran_server_with_remote_storage ();
 
-#endif
+#endif // _SERVER_TYPE_H_
