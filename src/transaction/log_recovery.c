@@ -49,10 +49,6 @@
 #include "thread_manager.hpp"
 #include "util_func.h"
 
-#include <sstream>
-#include <vector>
-#include <locale>
-
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
 				const LOG_LSA * rcv_lsa_ptr, LOG_TDES * tdes, LOG_ZIP * undo_unzip_ptr);
@@ -1023,7 +1019,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   // TODO: fork here based on whether perf is desired or not
   // *INDENT-OFF*
   std::unique_ptr<log_recovery_redo_perf_stat_base>
-      log_recovery_redo_perf_stat_smart_ptr { new log_recovery_redo_perf_stat<false>() };
+      log_recovery_redo_perf_stat_smart_ptr { new log_recovery_redo_perf_stat<true>() };
   // *INDENT-ON*
   log_recovery_redo_perf_stat_ptr = log_recovery_redo_perf_stat_smart_ptr.get ();
 

@@ -24,6 +24,13 @@
 
 #include <sstream>
 
+//
+// wrapping of cubperf basic functionality to allow one-point forking between actual
+//    performance monitoring and 'nop's
+//
+// implemented specifically for log recovery redo purposes
+//
+
 enum PERF_STAT_RECOVERY_ID : cubperf::stat_id
 {
   PERF_STAT_ID_FETCH_PAGE,
@@ -55,6 +62,8 @@ class log_recovery_redo_perf_stat_base
     virtual void log () const = 0;
 };
 
+
+//
 // default declaration/implementation, defaults to nop's
 //
 template <bool TDoMeasurePerf>
@@ -65,17 +74,12 @@ class log_recovery_redo_perf_stat : public log_recovery_redo_perf_stat_base
     ~log_recovery_redo_perf_stat () override = default;
 
   public:
-    void time_and_increment (cubperf::stat_id a_stat_id) const override
-    {
-      // nop
-    }
-
-    void log () const override
-    {
-      // nop
-    }
+    void time_and_increment (cubperf::stat_id a_stat_id) const override;
+    void log () const override;
 };
 
+
+//
 // active explicit declaration/specialization
 //
 template <>
@@ -122,6 +126,7 @@ class log_recovery_redo_perf_stat<true> : public log_recovery_redo_perf_stat_bas
   public:
     void time_and_increment (cubperf::stat_id a_stat_id) const override
     {
+      // TODO:
       // time_and_increment - const member function of member variable
       //                      that modifies non-const member variable `m_values`
       //                      passed by address
@@ -152,6 +157,30 @@ class log_recovery_redo_perf_stat<true> : public log_recovery_redo_perf_stat_bas
     const cubperf::statset_definition m_definition;
     cubperf::statset *m_values;
 };
+
+
+//
+// template & inline implementations
+//
+
+template <bool TDoMeasurePerf>
+void
+log_recovery_redo_perf_stat<TDoMeasurePerf>::time_and_increment (cubperf::stat_id a_stat_id) const
+{
+  // nop
+}
+
+template <bool TDoMeasurePerf>
+void
+log_recovery_redo_perf_stat<TDoMeasurePerf>::log () const
+{
+  // nop
+}
+
+
+//
+// globals
+//
 
 extern log_recovery_redo_perf_stat_base *log_recovery_redo_perf_stat_ptr;
 
