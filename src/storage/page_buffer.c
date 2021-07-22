@@ -7915,7 +7915,9 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
-	  FILEIO_PAGE_RESERVED prv = reinterpret_cast < FILEIO_PAGE * >(io_page)->prv;
+	  // *INDENT-OFF*
+	  FILEIO_PAGE_RESERVED prv = reinterpret_cast<FILEIO_PAGE *> (io_page)->prv;
+	  // *INDENT-ON*
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d LSA=%lld|%d\n",
 			 prv.volid, prv.pageid, LSA_AS_ARGS (&prv.lsa));
 	}
