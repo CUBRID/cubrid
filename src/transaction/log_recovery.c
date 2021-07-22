@@ -941,7 +941,7 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
   return false;
 }
 
-log_recovery_redo_perf_stat *log_recovery_redo_perf_stat_ptr;
+log_recovery_redo_perf_stat *log_recovery_redo_perf_stat_ptr = nullptr;
 
 /*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
@@ -1005,6 +1005,24 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 #endif
   // *INDENT-ON*
 
+  const auto time_start = std::chrono::system_clock::now ();
+
+  // statistics data initialize
+  //
+  // *INDENT-OFF*
+  std::unique_ptr<log_recovery_redo_perf_stat>
+      log_recovery_redo_perf_stat_uptr { new log_recovery_redo_perf_stat() };
+   scope_exit <std::function<void (void)>> perf_stat_ptr_nullify (
+    [] ()
+      {
+        if (log_recovery_redo_perf_stat_ptr != nullptr)
+          {
+            log_recovery_redo_perf_stat_ptr = nullptr;
+          }
+      });
+  // *INDENT-ON*
+  log_recovery_redo_perf_stat_ptr = log_recovery_redo_perf_stat_uptr.get ();
+
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.
    *
@@ -1013,15 +1031,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
    * during the log_recovery_undo phase
    */
   lsa = context.get_start_redo_lsa ();
-
-  // statistics data initialize
-  //
-  // TODO: fork here based on whether perf is desired or not
-  // *INDENT-OFF*
-  std::unique_ptr<log_recovery_redo_perf_stat>
-      log_recovery_redo_perf_stat_uptr { new log_recovery_redo_perf_stat() };
-  // *INDENT-ON*
-  log_recovery_redo_perf_stat_ptr = log_recovery_redo_perf_stat_uptr.get ();
 
   /* Defense for illegal start_redolsa */
   if ((lsa.offset + (int) sizeof (LOG_RECORD_HEADER)) >= LOGAREA_SIZE)
@@ -1667,12 +1676,23 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   log_zip_free (redo_unzip_ptr);
 
 #if defined(SERVER_MODE)
-  if (parallel_recovery_redo != nullptr)
-    {
-      parallel_recovery_redo->set_adding_finished ();
-      parallel_recovery_redo->wait_for_termination_and_stop_execution ();
-      log_recovery_redo_perf_stat_ptr->time_and_increment (PERF_STAT_ID_WAIT_FOR_PARALLEL);
-    }
+  {
+    const auto time_end_main = std::chrono::system_clock::now ();
+    const auto time_dur_main_ms = std::chrono::duration_cast < std::chrono::milliseconds > (time_end_main - time_start);
+    if (parallel_recovery_redo != nullptr)
+      {
+	parallel_recovery_redo->set_adding_finished ();
+	parallel_recovery_redo->wait_for_termination_and_stop_execution ();
+	log_recovery_redo_perf_stat_ptr->time_and_increment (PERF_STAT_ID_WAIT_FOR_PARALLEL);
+      }
+    const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
+    const auto time_end_async = std::chrono::system_clock::now ();
+    const auto time_dur_async_ms =
+      std::chrono::duration_cast < std::chrono::milliseconds > (time_end_async - time_start);
+    er_log_debug (ARG_FILE_LINE, "recovery_parallel_count= %2d    main= %6lld    async= %6lld (ms)\n",
+		  log_recovery_redo_parallel_count, (long long) time_dur_main_ms.count (),
+		  (long long) time_dur_async_ms.count ());
+  }
 #endif
   LOG_CS_ENTER (thread_p);
 
