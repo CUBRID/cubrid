@@ -49,6 +49,12 @@ class log_recovery_redo_perf_stat
 {
   public:
     inline log_recovery_redo_perf_stat ()
+      : log_recovery_redo_perf_stat ((pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO)
+				     == PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO)
+    {
+    }
+
+    inline log_recovery_redo_perf_stat (bool a_do_record)
       : m_definition
     {
       cubperf::stat_definition (PERF_STAT_ID_FETCH_PAGE, cubperf::stat_definition::COUNTER_AND_TIMER,
@@ -72,8 +78,7 @@ class log_recovery_redo_perf_stat
     }
     , m_values { nullptr }
     {
-      if ( (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO)
-	   == PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO )
+      if (a_do_record)
 	{
 	  m_values = m_definition.create_statset ();
 	}
@@ -130,7 +135,5 @@ class log_recovery_redo_perf_stat
     const cubperf::statset_definition m_definition;
     cubperf::statset *m_values;
 };
-
-extern log_recovery_redo_perf_stat *log_recovery_redo_perf_stat_ptr;
 
 #endif // _LOG_RECOVERY_REDO_PERF_HPP_
