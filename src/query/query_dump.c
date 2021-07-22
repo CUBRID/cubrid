@@ -807,7 +807,7 @@ qdump_print_list_id (QFILE_LIST_ID * list_id_p)
       return false;
     }
 
-  fprintf (foutput, ")(tuple_cnt:%d)", list_id_p->tuple_cnt);
+  fprintf (foutput, ")(tuple_cnt:%lld)", (long long) list_id_p->tuple_cnt);
   return true;
 }
 

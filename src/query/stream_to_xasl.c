@@ -5518,7 +5518,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 	}
     }
 
-  ptr = or_unpack_int (ptr, &aggregate->accumulator.curr_cnt);
+  ptr = or_unpack_int64 (ptr, &aggregate->accumulator.curr_cnt);
 
   /* next */
   ptr = or_unpack_int (ptr, &offset);

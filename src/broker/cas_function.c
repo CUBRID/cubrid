@@ -80,9 +80,7 @@ extern int jsp_send_destroy_request_all ();
 
 /* functions implemented in transaction_cl.c */
 extern void tran_set_query_timeout (int);
-#ifndef LIBCAS_FOR_JSP
 extern bool tran_is_in_libcas (void);
-#endif /* !LIBCAS_FOR_JSP */
 #endif
 
 static void update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ERROR_INFO * err_info_p);
