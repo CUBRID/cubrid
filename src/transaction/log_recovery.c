@@ -941,7 +941,7 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
   return false;
 }
 
-log_recovery_redo_perf_stat_base* log_recovery_redo_perf_stat_ptr;
+log_recovery_redo_perf_stat *log_recovery_redo_perf_stat_ptr;
 
 /*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
@@ -1018,10 +1018,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   //
   // TODO: fork here based on whether perf is desired or not
   // *INDENT-OFF*
-  std::unique_ptr<log_recovery_redo_perf_stat_base>
-      log_recovery_redo_perf_stat_smart_ptr { new log_recovery_redo_perf_stat<true>() };
+  std::unique_ptr<log_recovery_redo_perf_stat>
+      log_recovery_redo_perf_stat_uptr { new log_recovery_redo_perf_stat() };
   // *INDENT-ON*
-  log_recovery_redo_perf_stat_ptr = log_recovery_redo_perf_stat_smart_ptr.get ();
+  log_recovery_redo_perf_stat_ptr = log_recovery_redo_perf_stat_uptr.get ();
 
   /* Defense for illegal start_redolsa */
   if ((lsa.offset + (int) sizeof (LOG_RECORD_HEADER)) >= LOGAREA_SIZE)

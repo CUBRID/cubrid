@@ -21,6 +21,7 @@
 
 #include "error_manager.h"
 #include "perf.hpp"
+#include "perf_monitor.h"
 
 #include <sstream>
 
@@ -46,47 +47,10 @@ enum PERF_STAT_RECOVERY_ID : cubperf::stat_id
   PERF_STAT_ID_FINALIZE,
 };
 
-class log_recovery_redo_perf_stat_base
+class log_recovery_redo_perf_stat
 {
   public:
-    log_recovery_redo_perf_stat_base () = default;
-    log_recovery_redo_perf_stat_base (const log_recovery_redo_perf_stat_base &) = delete;
-    log_recovery_redo_perf_stat_base (log_recovery_redo_perf_stat_base &&) = delete;
-
-    virtual ~log_recovery_redo_perf_stat_base () = default;
-
-    log_recovery_redo_perf_stat_base &operator = (const log_recovery_redo_perf_stat_base &) = delete;
-    log_recovery_redo_perf_stat_base &operator = (log_recovery_redo_perf_stat_base &&) = delete;
-
-    virtual void time_and_increment (cubperf::stat_id a_stat_id) const = 0;
-    virtual void log () const = 0;
-};
-
-
-//
-// default declaration/implementation, defaults to nop's
-//
-template <bool TDoMeasurePerf>
-class log_recovery_redo_perf_stat : public log_recovery_redo_perf_stat_base
-{
-  public:
-    log_recovery_redo_perf_stat () = default;
-    ~log_recovery_redo_perf_stat () override = default;
-
-  public:
-    void time_and_increment (cubperf::stat_id a_stat_id) const override;
-    void log () const override;
-};
-
-
-//
-// active explicit declaration/specialization
-//
-template <>
-class log_recovery_redo_perf_stat<true> : public log_recovery_redo_perf_stat_base
-{
-  public:
-    log_recovery_redo_perf_stat ()
+    inline log_recovery_redo_perf_stat ()
       : m_definition
     {
       cubperf::stat_definition (PERF_STAT_ID_FETCH_PAGE, cubperf::stat_definition::COUNTER_AND_TIMER,
@@ -110,11 +74,19 @@ class log_recovery_redo_perf_stat<true> : public log_recovery_redo_perf_stat_bas
       cubperf::stat_definition (PERF_STAT_ID_FINALIZE, cubperf::stat_definition::COUNTER_AND_TIMER,
 				"Counter finalize", "Timer finalize"),
     }
+    , m_values { nullptr }
     {
-      m_values = m_definition.create_statset ();
+      if ( (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO)
+	   == PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO )
+	{
+	  m_values = m_definition.create_statset ();
+	}
     }
 
-    ~log_recovery_redo_perf_stat () override
+    log_recovery_redo_perf_stat (const log_recovery_redo_perf_stat &) = delete;
+    log_recovery_redo_perf_stat (log_recovery_redo_perf_stat &&) = delete;
+
+    inline ~log_recovery_redo_perf_stat ()
     {
       if (m_values != nullptr)
 	{
@@ -123,30 +95,39 @@ class log_recovery_redo_perf_stat<true> : public log_recovery_redo_perf_stat_bas
 	}
     }
 
+    log_recovery_redo_perf_stat &operator = (const log_recovery_redo_perf_stat &) = delete;
+    log_recovery_redo_perf_stat &operator = (log_recovery_redo_perf_stat &&) = delete;
+
   public:
-    void time_and_increment (cubperf::stat_id a_stat_id) const override
+    inline void time_and_increment (cubperf::stat_id a_stat_id) const
     {
-      m_definition.time_and_increment (*m_values, a_stat_id);
+      if (m_values != nullptr)
+	{
+	  m_definition.time_and_increment (*m_values, a_stat_id);
+	}
     }
 
-    void log () const override
+    inline void log () const
     {
-      std::vector < cubperf::stat_value > perf_stat_results;
-      perf_stat_results.resize (m_definition.get_value_count (), 0LL);
-      m_definition.get_stat_values_with_converted_timers<std::chrono::microseconds> (
-	      *m_values, perf_stat_results.data ());
-
-      std::stringstream perf_stat_ss;
-      perf_stat_ss << "Log Recovery Redo statistics:" << std::endl;
-      for (std::size_t perf_stat_idx = 0
-				       ; perf_stat_idx < m_definition.get_value_count (); ++perf_stat_idx)
+      if (m_values != nullptr)
 	{
-	  perf_stat_ss.imbue (std::locale (""));
-	  perf_stat_ss << '\t' << m_definition.get_value_name (perf_stat_idx)
-		       << " μs: " << perf_stat_results[perf_stat_idx] << std::endl;
+	  std::vector < cubperf::stat_value > perf_stat_results;
+	  perf_stat_results.resize (m_definition.get_value_count (), 0LL);
+	  m_definition.get_stat_values_with_converted_timers<std::chrono::microseconds> (
+		  *m_values, perf_stat_results.data ());
+
+	  std::stringstream perf_stat_ss;
+	  perf_stat_ss << "Log Recovery Redo statistics:" << std::endl;
+	  for (std::size_t perf_stat_idx = 0
+					   ; perf_stat_idx < m_definition.get_value_count (); ++perf_stat_idx)
+	    {
+	      perf_stat_ss.imbue (std::locale (""));
+	      perf_stat_ss << '\t' << m_definition.get_value_name (perf_stat_idx)
+			   << " μs: " << perf_stat_results[perf_stat_idx] << std::endl;
+	    }
+	  const std::string perf_stat_str = perf_stat_ss.str ();
+	  _er_log_debug (ARG_FILE_LINE, perf_stat_str.c_str ());
 	}
-      const std::string perf_stat_str = perf_stat_ss.str ();
-      _er_log_debug (ARG_FILE_LINE, perf_stat_str.c_str ());
     }
 
   private:
@@ -154,30 +135,6 @@ class log_recovery_redo_perf_stat<true> : public log_recovery_redo_perf_stat_bas
     cubperf::statset *m_values;
 };
 
-
-//
-// template & inline implementations
-//
-
-template <bool TDoMeasurePerf>
-void
-log_recovery_redo_perf_stat<TDoMeasurePerf>::time_and_increment (cubperf::stat_id a_stat_id) const
-{
-  // nop
-}
-
-template <bool TDoMeasurePerf>
-void
-log_recovery_redo_perf_stat<TDoMeasurePerf>::log () const
-{
-  // nop
-}
-
-
-//
-// globals
-//
-
-extern log_recovery_redo_perf_stat_base *log_recovery_redo_perf_stat_ptr;
+extern log_recovery_redo_perf_stat *log_recovery_redo_perf_stat_ptr;
 
 #endif // _LOG_RECOVERY_REDO_PERF_HPP_
