@@ -126,10 +126,6 @@ class log_recovery_redo_perf_stat<true> : public log_recovery_redo_perf_stat_bas
   public:
     void time_and_increment (cubperf::stat_id a_stat_id) const override
     {
-      // TODO:
-      // time_and_increment - const member function of member variable
-      //                      that modifies non-const member variable `m_values`
-      //                      passed by address
       m_definition.time_and_increment (*m_values, a_stat_id);
     }
 
