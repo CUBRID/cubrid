@@ -1107,7 +1107,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	  /* both the page id and the offsset might have changed; page id is changed at the end of the loop */
 	  log_pgptr_reader.set_lsa_and_fetch_page (lsa);
 	  log_recovery_redo_perf_stat_ptr->time_and_increment (PERF_STAT_ID_FETCH_PAGE);
-	  log_recovery_redo_perf_stat_ptr->time_and_increment (PERF_STAT_ID_MEASURE_OVERHEAD);
 
 	  {
 	    /* Pointer to log record */
