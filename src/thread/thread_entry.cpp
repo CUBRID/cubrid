@@ -77,7 +77,7 @@ namespace cubthread
   entry::entry ()
   // public:
     : index (-1)
-    , type (TT_WORKER)
+    , type (TT_MASTER)
     , emulate_tid ()
     , client_id (-1)
     , tran_index (NULL_TRAN_INDEX)
