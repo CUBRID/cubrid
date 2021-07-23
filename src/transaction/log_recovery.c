@@ -983,10 +983,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   bool is_mvcc_op = false;
   const bool force_each_log_page_fetch = false;
 
-  //assert (pstat_Global.n_watchers == 0);
-  //++pstat_Global.n_watchers;
-  //prm_set_bool_value (PRM_ID_STATS_ON, true);
-
   /* depending on compilation mode and on a system parameter, initialize the
    * infrastructure for parallel log recovery;
    * if infrastructure is not initialized dependent code below works sequentially
@@ -1013,12 +1009,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   //(void) getc (stdin);
   //fprintf (stdout, "\n");
   const auto time_start = std::chrono::system_clock::now ();
-  const auto time_start = std::chrono::system_clock::now ();
 
   // statistics data initialize
   //
   log_recovery_redo_perf_stat rcv_redo_perf_stat;
-
 
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.
@@ -1322,12 +1316,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
 		if (!log_recovery_needs_skip_logical_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
 		  {
-		    //PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_READ_LOG);
+	            rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
 		    log_rv_redo_record (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &rcv,
 					&rcv_lsa, 0, nullptr, *redo_unzip_ptr);
 		    /* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
 		     * will be reallocated downstream if needed */
-		    //PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH_SYNC);
+		    rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 		  }
 	      }
 	      break;
