@@ -121,7 +121,6 @@ class log_recovery_redo_perf_stat
 	  perf_stat_ss << "Log Recovery Redo statistics:" << std::endl;
 	  for (std::size_t perf_stat_idx = 0; perf_stat_idx < m_definition.get_value_count (); ++perf_stat_idx)
 	    {
-	      perf_stat_ss.imbue (std::locale (""));
 	      perf_stat_ss << '\t' << m_definition.get_value_name (perf_stat_idx)
 			   << " μs: " << perf_stat_results[perf_stat_idx] << std::endl;
 	    }
