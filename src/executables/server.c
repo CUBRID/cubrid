@@ -48,8 +48,10 @@
 #include "environment_variable.h"
 #include "boot_sr.h"
 #include "system_parameter.h"
+#include "server_type.hpp"
 #include "perf_monitor.h"
 #include "util_func.h"
+#include "util_support.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* !defined (WINDOWS) */
@@ -58,6 +60,8 @@
 #include "log_impl.h"
 #endif /* !defined (WINDOWS) */
 
+
+static int argument_handler (int argc, char **argv);
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name);
 #else /* WINDOWS */
@@ -305,6 +309,66 @@ abort_handler (int signo, siginfo_t * siginfo, void *dummyp)
 #endif /* !NDEBUG */
 #endif /* WINDOWS */
 
+static int
+argument_handler (int argc, char **argv)
+{
+  constexpr char *SERVER_TYPE_LONG = "type";
+  constexpr char SERVER_TYPE_SHORT = 't';
+
+  GETOPT_LONG server_options_map[] = {
+    {SERVER_TYPE_LONG, 1, 0, SERVER_TYPE_SHORT},
+    {nullptr, 0, 0, 0}
+  };
+
+  constexpr int SHORT_OPTIONS_BUFSIZE = 64;
+  char short_options_buffer[SHORT_OPTIONS_BUFSIZE];
+
+  utility_make_getopt_optstring (server_options_map, short_options_buffer);
+  while (true)
+    {
+      int option_index = 0;
+      int option_key = getopt_long (argc, argv, short_options_buffer, server_options_map, &option_index);
+      if (option_key == -1)
+	{
+	  break;
+	}
+      switch (option_key)
+	{
+	case SERVER_TYPE_SHORT:
+	  // *INDENT-ON*
+	  if (std::strcmp (optarg, "transaction") == 0)
+	    {
+	      set_server_type (SERVER_TYPE_TRANSACTION);
+	    }
+	  else if (std::strcmp (optarg, "page") == 0)
+	    {
+	      set_server_type (SERVER_TYPE_PAGE);
+	    }
+          // *INDENT-OFF*
+          else
+            {
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 0);	// error that the type is not valid
+              return ER_INVALID_SERVER_TYPE_ARGUMENT;
+            }
+          break;
+        default:
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1, optarg);	// invalid server option
+          return ER_INVALID_SERVER_OPTION;
+        }
+    }
+  if (argc - optind == 1)
+    {
+      database_name = argv[optind];
+    }
+  else
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * main(): server's main function
  *
@@ -347,7 +411,11 @@ main (int argc, char **argv)
     binary_name = basename (argv[0]);
     (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
     /* save database name */
-    database_name = argv[1];
+    ret_val = argument_handler (argc, argv);
+    if (ret_val != NO_ERROR)
+      {
+	return ret_val;
+      }
 
 #if !defined(WINDOWS)
     hb_set_exec_path (executable_path);

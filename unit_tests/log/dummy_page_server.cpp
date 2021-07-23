@@ -19,6 +19,8 @@
 #include "log_replication.hpp"
 #include "page_server.hpp"
 
+PSTAT_GLOBAL pstat_Global;
+
 cublog::replicator replicator_GL (NULL_LSA);
 page_server ps_Gl;
 

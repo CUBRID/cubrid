@@ -14038,6 +14038,30 @@ exit_on_error:
   return ret;
 }
 
+// btree_root_update_stats () - update stats in the b-tree root page header
+//
+// !! root_page must be a valid unique index b-tree root page
+// !! caller must manage the logging
+void
+btree_root_update_stats (THREAD_ENTRY * thread_p, PAGE_PTR root_page, const log_unique_stats & stats)
+{
+  assert (root_page != NULL);
+  (void) pgbuf_check_page_ptype (thread_p, root_page, PAGE_BTREE);
+
+  BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, root_page);
+  assert (root_header != NULL);
+
+  assert (BTREE_IS_UNIQUE (root_header->unique_pk));
+  assert (root_header->num_nulls != -1);
+
+  /* update header information */
+  root_header->num_nulls = stats.num_nulls;
+  root_header->num_oids = stats.num_oids;
+  root_header->num_keys = stats.num_keys;
+
+  pgbuf_set_dirty (thread_p, root_page, DONT_FREE);
+}
+
 /*
  * btree_reflect_global_unique_statistics () - reflects the global statistical information into btree header
  *   return: NO_ERROR
@@ -14048,92 +14072,51 @@ exit_on_error:
  *	 already logged at commit stage.
  */
 int
-btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info,
-					bool only_active_tran)
+btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info)
 {
-  VPID root_vpid;
-  PAGE_PTR root = NULL;
-  BTREE_ROOT_HEADER *root_header = NULL;
-  int ret = NO_ERROR;
-  LOG_LSA *page_lsa = NULL;
+  assert (unique_stat_info != NULL);
 
-  /* check if unique_stat_info is NULL */
-  if (unique_stat_info == NULL)
+  // Fix root page
+  VPID root_vpid = {
+    unique_stat_info->btid.root_pageid,
+    unique_stat_info->btid.vfid.volid
+  };
+  PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (root_page == NULL)
     {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  /* fix the root page */
-  root_vpid.pageid = unique_stat_info->btid.root_pageid;
-  root_vpid.volid = unique_stat_info->btid.vfid.volid;
-  root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (root == NULL)
-    {
+      int ret;
       ASSERT_ERROR_AND_SET (ret);
-      goto exit;
+      return ret;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+  // Update stats
+  btree_root_update_stats (thread_p, root_page, unique_stat_info->unique_stats);
 
-  /* read the root information */
-  root_header = btree_get_root_header (thread_p, root);
-  if (root_header == NULL)
+  // If the page LSA is less than the stats LSA, also update the page LSA. If page suffered other more recent changes,
+  // the lsa must be left untouched.
+  log_lsa page_lsa = *pgbuf_get_lsa (root_page);
+  if (page_lsa < unique_stat_info->last_log_lsa)
     {
-      assert (false);
-      ret = ER_FAILED;
-      goto exit;
-    }
-
-  if (root_header->num_nulls != -1)
-    {
-      assert_release (BTREE_IS_UNIQUE (root_header->unique_pk));
-
-      if (!only_active_tran || logtb_is_current_active (thread_p))
+      if (pgbuf_set_lsa (thread_p, root_page, &unique_stat_info->last_log_lsa) == NULL)
 	{
-	  /* update header information */
-	  root_header->num_nulls = unique_stat_info->unique_stats.num_nulls;
-	  root_header->num_oids = unique_stat_info->unique_stats.num_oids;
-	  root_header->num_keys = unique_stat_info->unique_stats.num_keys;
-
-	  page_lsa = pgbuf_get_lsa (root);
-	  /* update the page's LSA to the last global unique statistics change that was made at commit, only if it is
-	   * newer than the last change recorded in the page's LSA. */
-	  if (LSA_LT (page_lsa, &unique_stat_info->last_log_lsa))
-	    {
-	      if (pgbuf_set_lsa (thread_p, root, &unique_stat_info->last_log_lsa) == NULL)
-		{
-		  assert (false);
-		  ret = ER_FAILED;
-		  goto exit;
-		}
-	    }
-
-	  /* set the root page as dirty page */
-	  pgbuf_set_dirty (thread_p, root, DONT_FREE);
-
-	  if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS) == true)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "Reflect unique statistics to index (%d, %d|%d):"
-			     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", unique_stat_info->btid.root_pageid,
-			     unique_stat_info->btid.vfid.volid, unique_stat_info->btid.vfid.fileid,
-			     unique_stat_info->unique_stats.num_nulls, unique_stat_info->unique_stats.num_oids,
-			     unique_stat_info->unique_stats.num_keys,
-			     (long long int) unique_stat_info->last_log_lsa.pageid,
-			     (int) unique_stat_info->last_log_lsa.offset);
-	    }
+	  assert (false);
 	}
     }
+  pgbuf_unfix (thread_p, root_page);
 
-exit:
-
-  if (root != NULL)
+  if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS) == true)
     {
-      pgbuf_unfix_and_init (thread_p, root);
+      _er_log_debug (ARG_FILE_LINE,
+		     "Reflect unique statistics to index (%d, %d|%d):"
+		     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", unique_stat_info->btid.root_pageid,
+		     unique_stat_info->btid.vfid.volid, unique_stat_info->btid.vfid.fileid,
+		     unique_stat_info->unique_stats.num_nulls, unique_stat_info->unique_stats.num_oids,
+		     unique_stat_info->unique_stats.num_keys,
+		     (long long int) unique_stat_info->last_log_lsa.pageid,
+		     (int) unique_stat_info->last_log_lsa.offset);
     }
 
-  return ret;
+  return NO_ERROR;
 }
 
 /*
@@ -16923,38 +16906,19 @@ btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid
 int
 btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
-  char *datap;
-  int num_nulls, num_oids, num_keys;
+  log_unique_stats stats;
   BTID btid;
 
-  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+  btree_rv_data_get_btid_and_stats (*recv, btid, stats);
 
-  /* unpack the root statistics */
-  datap = (char *) recv->data;
-
-  OR_GET_BTID (datap, &btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-
-  num_keys = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_oids = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_nulls = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  if (logtb_tran_update_unique_stats (thread_p, &btid, num_keys, num_oids, num_nulls, false) != NO_ERROR)
+  if (logtb_tran_update_unique_stats (thread_p, &btid, stats.num_keys, stats.num_oids, stats.num_nulls, false)
+      != NO_ERROR)
     {
-      goto error;
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   return NO_ERROR;
-
-error:
-  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-
-  return ER_GENERIC_ERROR;
 }
 
 /*
@@ -22357,26 +22321,10 @@ error:
 int
 btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
-  char *datap;
-  int num_nulls, num_oids, num_keys;
+  log_unique_stats stats;
   BTID btid;
 
-  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
-
-  /* unpack the root statistics */
-  datap = (char *) recv->data;
-
-  OR_GET_BTID (datap, &btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-
-  num_nulls = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_oids = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_keys = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
+  btree_rv_data_get_btid_and_stats (*recv, btid, stats);
 
   /* Because this log record is logical, it will be processed even if the B-tree was deleted. If the B-tree was deleted
    * then skip update of unique statistics in global hash. */
@@ -22394,9 +22342,11 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV
       /* This should not happen */
       assert (disk_is_page_sector_reserved (thread_p, btid.vfid.volid, btid.root_pageid) == DISK_VALID);
     }
-  if (logtb_update_global_unique_stats_by_delta (thread_p, &btid, -num_oids, -num_nulls, -num_keys, false) != NO_ERROR)
+  if (logtb_update_global_unique_stats_by_delta (thread_p, &btid, -stats.num_oids, -stats.num_nulls, -stats.num_keys,
+						 false) != NO_ERROR)
     {
-      goto error;
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
@@ -22404,16 +22354,12 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV
       _er_log_debug (ARG_FILE_LINE,
 		     "Recover undo unique statistics for index (%d, %d|%d): "
 		     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", btid.root_pageid, btid.vfid.volid, btid.vfid.fileid,
-		     num_nulls, num_oids, num_keys, (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
+		     stats.num_nulls, stats.num_oids, stats.num_keys,
+		     (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
 		     (int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.offset);
     }
 
   return NO_ERROR;
-
-error:
-  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-
-  return ER_GENERIC_ERROR;
 }
 
 /*
@@ -22426,30 +22372,16 @@ error:
 int
 btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
-  char *datap;
-  int num_nulls, num_oids, num_keys;
+  log_unique_stats stats;
   BTID btid;
 
-  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+  btree_rv_data_get_btid_and_stats (*recv, btid, stats);
 
-  /* unpack the root statistics */
-  datap = (char *) recv->data;
-
-  OR_GET_BTID (datap, &btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-
-  num_nulls = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_oids = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_keys = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  if (logtb_rv_update_global_unique_stats_by_abs (thread_p, &btid, num_oids, num_nulls, num_keys) != NO_ERROR)
+  if (logtb_rv_update_global_unique_stats_by_abs (thread_p, &btid, stats.num_oids, stats.num_nulls, stats.num_keys)
+      != NO_ERROR)
     {
-      goto error;
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
@@ -22457,16 +22389,29 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV
       _er_log_debug (ARG_FILE_LINE,
 		     "Recover redo unique statistics for index (%d, %d|%d): "
 		     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", btid.root_pageid, btid.vfid.volid, btid.vfid.fileid,
-		     num_nulls, num_oids, num_keys, (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
+		     stats.num_nulls, stats.num_oids, stats.num_keys,
+		     (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
 		     (int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.offset);
     }
 
   return NO_ERROR;
+}
 
-error:
-  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+void
+btree_rv_data_get_btid_and_stats (const LOG_RCV & rcv, BTID & btid, log_unique_stats & stats)
+{
+  assert (rcv.length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
 
-  return ER_GENERIC_ERROR;
+  const char *datap = rcv.data;
+  OR_GET_BTID (datap, &btid);
+  datap += OR_BTID_ALIGNED_SIZE;
+  stats.num_keys = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+  stats.num_oids = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+  stats.num_nulls = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+  assert ((datap - rcv.data) == (size_t) rcv.length);
 }
 
 /*

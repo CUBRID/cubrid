@@ -5207,7 +5207,7 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
     }
   ptr = or_pack_int (ptr, offset);
 
-  ptr = or_pack_int (ptr, aggregate->accumulator.curr_cnt);
+  ptr = or_pack_int64 (ptr, aggregate->accumulator.curr_cnt);
 
   offset = xts_save_aggregate_type (aggregate->next);
   if (offset == ER_FAILED)

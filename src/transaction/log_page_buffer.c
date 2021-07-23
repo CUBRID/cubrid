@@ -156,10 +156,18 @@ static int rv;
 #define LOGPB_IS_FIRST_PHYSICAL_PAGE(pageid) (logpb_to_physical_pageid(pageid) == 1)
 
 /* ARCHIVE LOG PAGES */
-#define LOGPB_IS_ARCHIVE_PAGE(pageid) \
-  ((pageid) != LOGPB_HEADER_PAGE_ID && (pageid) < LOGPB_NEXT_ARCHIVE_PAGE_ID)
-#define LOGPB_AT_NEXT_ARCHIVE_PAGE_ID(pageid) \
-  (logpb_to_physical_pageid(pageid) == log_Gl.hdr.nxarv_phy_pageid)
+inline bool
+LOGPB_IS_ARCHIVE_PAGE (LOG_PAGEID pageid)
+{
+  assert (!is_tran_server_with_remote_storage ());
+  return pageid != LOGPB_HEADER_PAGE_ID && pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID;
+}
+
+inline bool
+LOGPB_AT_NEXT_ARCHIVE_PAGE_ID (LOG_PAGEID pageid)
+{
+  return logpb_to_physical_pageid (pageid) == log_Gl.hdr.nxarv_phy_pageid;
+}
 
 #define ARV_PAGE_INFO_TABLE_SIZE    256
 
@@ -3061,6 +3069,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   FILEIO_WRITE_MODE write_mode;
 
   assert (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING));
+  assert (!is_tran_server_with_remote_storage ());
 
   if (log_Gl.bg_archive_info.vdes == NULL_VOLDES || flush_info->num_toflush <= 1)
     {
@@ -5868,6 +5877,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (!is_tran_server_with_remote_storage ());
 
 #if defined(SERVER_MODE)
   log_wakeup_remove_log_archive_daemon ();
@@ -6207,6 +6217,8 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   char *catmsg;
   int deleted_count = 0;
 
+  assert (!is_tran_server_with_remote_storage ());
+
   if (log_max_archives == INT_MAX)
     {
       return 0;			/* none is deleted */
@@ -6365,6 +6377,8 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   int last_deleted_arv_num;
   int min_arv_required_for_vacuum;
   LOG_PAGEID vacuum_first_pageid;
+
+  assert (!is_tran_server_with_remote_storage ());
 
   if (!vacuum_is_safe_to_remove_archives ())
     {
@@ -6537,6 +6551,8 @@ logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first, int last
   int i;
   bool append_log_info = false;
   int deleted_count = 0;
+
+  assert (!is_tran_server_with_remote_storage ());
 
   /* Decache any archive remaining in the log_Gl.archive. */
   logpb_decache_archive_info (thread_p);
@@ -10851,6 +10867,7 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
   BACKGROUND_ARCHIVING_INFO *bg_arv_info;
 
   assert (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING));
+  assert (!is_tran_server_with_remote_storage ());
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;

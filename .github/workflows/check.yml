@@ -145,7 +145,10 @@ jobs:
               continue
             fi
 
+            set +e
             ext=$(expr $f : ".*\(\..*\)")
+            set -e
+
             case $ext in
             .c|.h|.cpp|.hpp|.C|.H|.CPP|.HPP) true;; # only these formats are checked.
             *) continue ;; # skip others
