@@ -24,6 +24,7 @@
 #include "log_lsa.hpp"
 #include "log_reader.hpp"
 #include "log_record.hpp"
+#include "log_recovery_redo_perf.hpp"
 #include "thread_entry_task.hpp"
 #include "perf_monitor_trackers.hpp"
 
@@ -102,6 +103,8 @@ namespace cublog
        *    effective calling of the redo function
        */
       perfmon_counter_timer_tracker m_perfmon_redo_sync;
+
+      log_recovery_redo_perf_stat m_rcv_redo_perf_stat;
   };
 }
 

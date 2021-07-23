@@ -28,7 +28,7 @@
 
 #include <string>
 
-static SERVER_TYPE g_server_type = SERVER_TYPE_TRANSACTION;
+static SERVER_TYPE g_server_type = UNKNOWN;
 #if !defined(NDEBUG)
 static bool g_server_type_initialized = false;
 #endif
@@ -52,7 +52,15 @@ SERVER_TYPE get_server_type ()
 int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
-  g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+  if (g_server_type == UNKNOWN)
+    {
+      g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+      //if no parameter value is provided use transaction as the default type
+      if (g_server_type == UNKNOWN)
+	{
+	  g_server_type = SERVER_TYPE_TRANSACTION;
+	}
+    }
 #if !defined(NDEBUG)
   g_server_type_initialized = true;
 #endif
@@ -102,6 +110,11 @@ bool is_tran_server_with_remote_storage ()
       return ats_Gl.uses_remote_storage ();
     }
   return false;
+}
+
+void set_server_type (SERVER_TYPE type)
+{
+  g_server_type = type;
 }
 
 #else // !SERVER_MODE = SA_MODE

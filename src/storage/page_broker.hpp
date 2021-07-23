@@ -128,8 +128,8 @@ page_broker<PageT>::wait_for_page (typename map_type<PageT>::key id)
 
   auto result = m_received_pages[id];
 
-  m_requested_page_id_count[id]--;
-  if (m_requested_page_id_count[id] == 0)
+  assert (m_requested_page_id_count[id] > 0);
+  if (--m_requested_page_id_count[id] == 0)
     {
       m_requested_page_id_count.erase (id);
       m_received_pages.erase (id);
