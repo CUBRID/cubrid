@@ -466,7 +466,7 @@ namespace cubperf
     , m_values (new generic_value<IsAtomic>[m_value_count])
     , m_timept (clock::now ())
   {
-    //
+    std::fill (m_values, m_values + m_value_count, 0LL);
   }
 
   template<bool IsAtomic>
