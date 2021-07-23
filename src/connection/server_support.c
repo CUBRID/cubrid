@@ -70,6 +70,7 @@
 #include "page_server.hpp"
 #include "jsp_sr.h"
 #include "show_scan.h"
+#include "server_type.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -1311,6 +1312,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 {
   CSS_CONN_ENTRY *conn;
   int status = NO_ERROR;
+  char buffer[name_length + 1];
 
   if (server_name == NULL || port_id <= 0)
     {
@@ -1363,7 +1365,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   css_Server_connection_socket = INVALID_SOCKET;
 
-  conn = css_connect_to_master_server (port_id, server_name, name_length);
+  buffer[0] = (char) get_server_type ();
+  strcpy (buffer + 1, server_name);
+  conn = css_connect_to_master_server (port_id, buffer, name_length + 1);
   if (conn != NULL)
     {
       /* insert conn into active conn list */
