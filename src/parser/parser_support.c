@@ -3007,6 +3007,10 @@ pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
+      if (node->info.query.limit)
+	{
+	  return true;
+	}
       has_inst_orderby_num |= pt_has_inst_or_orderby_num_in_where (parser, node->info.query.q.union_.arg1);
       has_inst_orderby_num |= pt_has_inst_or_orderby_num_in_where (parser, node->info.query.q.union_.arg2);
       break;
