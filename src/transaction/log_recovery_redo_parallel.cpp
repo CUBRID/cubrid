@@ -156,6 +156,8 @@ namespace cublog
 
   redo_parallel::redo_job_queue::redo_job_queue (const unsigned a_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa)
     : m_task_count { a_task_count }
+    , m_pre_produce_circ_queue { 10 * ONE_M }
+    , m_pre_produce_finished { false }
     , m_produce_vec { a_task_count }
     , m_produce_mutex_vec { a_task_count }
 //    : m_produce (new vpid_ux_redo_job_deque_map_t ())
@@ -173,24 +175,13 @@ namespace cublog
 
     if (m_monitor_minimum_log_lsa)
       {
-	m_empty_vec.resize (a_task_count, true);
+	// last one is for the pre-produce queue
+	m_empty_vec.resize (1 + a_task_count, true);
       }
 
-    assert (m_task_count < 256);
-    m_data_volume_count = 100;
-    //const int32_t data_page_size = db_io_page_size();
-    m_page_count_per_data_volume = DB_INT16_MAX + 10; // DB_INT32_MAX % data_page_size + 1;
-    m_task_index_vec.resize (m_data_volume_count * m_page_count_per_data_volume);
-    for (short vol_idx = 0; vol_idx < m_data_volume_count; ++vol_idx)
-      {
-	for (int page_idx = 0; page_idx < m_page_count_per_data_volume; ++page_idx)
-	  {
-	    const vpid vol_page_id { page_idx, vol_idx };
-	    const int32_t hash_value = m_vpid_hash (vol_page_id);
-	    m_task_index_vec[vol_idx * m_page_count_per_data_volume + page_idx]
-	      = (unsigned char) (hash_value % m_task_count);
-	  }
-      }
+    auto job_push_func =
+	    std::bind (&redo_parallel::redo_job_queue::do_push_pre_produce, std::ref (*this));
+    m_pre_produce_thr = std::thread (job_push_func);
   }
 
   redo_parallel::redo_job_queue::~redo_job_queue ()
@@ -208,39 +199,67 @@ namespace cublog
 
 //    delete m_consume;
 //    m_consume = nullptr;
+    m_pre_produce_thr.join ();
+  }
+
+  void
+  redo_parallel::redo_job_queue::do_push_pre_produce ()
+  {
+    redo_job_base *job { nullptr };
+    while (true)
+      {
+	if (m_pre_produce_circ_queue.consume (job))
+	  {
+	    const vpid &job_vpid = job->get_vpid ();
+
+	    const int32_t vpid_hash = m_vpid_hash (job_vpid);
+	    const std::size_t vec_idx = vpid_hash % m_task_count;
+
+	    std::mutex &mtx = m_produce_mutex_vec[vec_idx];
+	    std::lock_guard<std::mutex> lockg (mtx);
+
+	    redo_job_vector *jobs = m_produce_vec[vec_idx];
+	    if (jobs->empty ())
+	      {
+		// will be empty no more
+		set_non_empty_at (vec_idx);
+	      }
+
+	    jobs->push_back (std::unique_ptr<redo_job_base> { job });
+	  }
+	else
+	  {
+	    if (m_pre_produce_finished)
+	      {
+		assert (m_pre_produce_circ_queue.is_empty ());
+		m_adding_finished.store (true);
+		set_empty_at (m_empty_vec.size () - 1);
+		break;
+	      }
+	  }
+      }
   }
 
   void
   redo_parallel::redo_job_queue::push_job (redo_job_base *a_job)
   {
-    const vpid &job_vpid = a_job->get_vpid ();
-    assert (job_vpid.volid < m_data_volume_count);
-    assert (job_vpid.pageid < m_page_count_per_data_volume);
-    const std::size_t vec_idx = m_task_index_vec[job_vpid.volid * m_page_count_per_data_volume + job_vpid.pageid];
-    std::mutex &mtx = m_produce_mutex_vec[vec_idx];
-
-    std::lock_guard<std::mutex> lockg (mtx);
-
-    redo_job_vector *jobs = m_produce_vec[vec_idx];
-    if (jobs->empty ())
+    if (m_pre_produce_circ_queue.is_empty ())
       {
-	// will be empty no more
-	set_non_empty_at (vec_idx);
+	set_non_empty_at (m_empty_vec.size () - 1);
       }
-
-    jobs->push_back (std::unique_ptr<redo_job_base> { a_job });
+    m_pre_produce_circ_queue.force_produce (a_job);
   }
 
   void
   redo_parallel::redo_job_queue::set_adding_finished ()
   {
-    m_adding_finished.store (true);
+    m_pre_produce_finished.store (true);
   }
 
   bool
   redo_parallel::redo_job_queue::get_adding_finished () const
   {
-    return m_adding_finished.load ();
+    return m_pre_produce_finished.load ();
   }
 
   redo_parallel::redo_job_queue::redo_job_vector *
@@ -529,6 +548,7 @@ namespace cublog
   redo_parallel::redo_job_queue::assert_idle () const
   {
     assert (m_task_count == m_produce_vec.size ());
+    assert (m_pre_produce_circ_queue.is_empty ());
     for (const auto &jobs : m_produce_vec)
       {
 	assert (jobs != nullptr);

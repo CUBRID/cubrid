@@ -23,6 +23,7 @@
 #include "log_replication.hpp"
 
 #include "log_recovery_redo_perf.hpp"
+#include "lockfree_circular_queue.hpp"
 
 #if defined(SERVER_MODE)
 #include "thread_manager.hpp"
@@ -171,8 +172,10 @@ namespace cublog
 	  using vpid_set = std::set<VPID>;
 	  using log_lsa_set = std::set<log_lsa>;
 	  using log_lsa_vpid_map_t = std::map<log_lsa, vpid>;
+	  using job_circ_queue_t = lockfree::circular_queue<redo_job_base *>;
 
 	public:
+	  redo_job_queue () = delete;
 	  redo_job_queue (const unsigned m_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa);
 	  ~redo_job_queue ();
 
@@ -217,6 +220,8 @@ namespace cublog
 	  void set_empty_at (unsigned a_index);
 
 	private:
+	  void do_push_pre_produce ();
+
 	  void assert_idle () const;
 
 	  /* swap internal queues and notify if both are empty
@@ -246,6 +251,15 @@ namespace cublog
 
 	private:
 	  const unsigned m_task_count;
+
+	  /* jobs are first added to a pre-produce queue
+	   * an internal thread then distributes them to the
+	   * produce vector from where they are picked up by their respective threads
+	   */
+	  job_circ_queue_t m_pre_produce_circ_queue;
+	  std::thread m_pre_produce_thr;
+	  std::atomic_bool m_pre_produce_finished;
+
 	  std::vector<redo_job_vector *> m_produce_vec;
 	  std::hash<VPID> m_vpid_hash;
 	  std::vector<std::mutex> m_produce_mutex_vec;
@@ -276,11 +290,6 @@ namespace cublog
 //	   */
 	  const bool m_monitor_minimum_log_lsa;
 	  minimum_log_lsa_monitor *m_minimum_log_lsa;
-
-	  // for debugging
-	  short m_data_volume_count;
-	  int32_t m_page_count_per_data_volume;
-	  std::vector<unsigned char> m_task_index_vec;
       };
 
       /* maintain a bookkeeping of tasks that are still performing work;
