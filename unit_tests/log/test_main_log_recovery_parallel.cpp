@@ -85,7 +85,8 @@ void execute_test (const log_recovery_test_config &a_test_config,
 	}
       else
 	{
-	  log_redo_parallel.add (std::move (job));
+	  // ownership of raw pointer goes to the callee
+	  log_redo_parallel.add (job.release ());
 	}
     }
 
@@ -231,7 +232,8 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
 	}
       else
 	{
-	  log_redo_parallel.add (std::move (job));
+	  // ownership of raw pointer goes to the callee
+	  log_redo_parallel.add (job.release ());
 	  at_least_one_page_update = true;
 	}
     }

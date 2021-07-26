@@ -211,9 +211,9 @@ namespace cublog
   }
 
   void
-  redo_parallel::redo_job_queue::push_job (ux_redo_job_base &&job)
+  redo_parallel::redo_job_queue::push_job (redo_job_base *a_job)
   {
-    const vpid &job_vpid = job->get_vpid ();
+    const vpid &job_vpid = a_job->get_vpid ();
     assert (job_vpid.volid < m_data_volume_count);
     assert (job_vpid.pageid < m_page_count_per_data_volume);
     const std::size_t vec_idx = m_task_index_vec[job_vpid.volid * m_page_count_per_data_volume + job_vpid.pageid];
@@ -228,7 +228,7 @@ namespace cublog
 	set_non_empty_at (vec_idx);
       }
 
-    jobs->push_back (std::move (job));
+    jobs->push_back (std::unique_ptr<redo_job_base> { a_job });
   }
 
   void
@@ -761,12 +761,12 @@ namespace cublog
   }
 
   void
-  redo_parallel::add (std::unique_ptr<redo_job_base> &&job)
+  redo_parallel::add (redo_job_base *a_job)
   {
     assert (false == m_waited_for_termination);
     assert (false == m_job_queue.get_adding_finished ());
 
-    m_job_queue.push_job (std::move (job));
+    m_job_queue.push_job (a_job);
   }
 
   void

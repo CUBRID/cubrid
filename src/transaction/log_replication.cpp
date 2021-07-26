@@ -299,8 +299,9 @@ namespace cublog
     // Create a job or apply the change immediately
     if (m_parallel_replication_redo)
       {
-	auto job = std::make_unique<redo_job_btree_stats> (root_vpid, rec_lsa, stats);
-	m_parallel_replication_redo->add (std::move (job));
+	redo_job_btree_stats *job = new redo_job_btree_stats (root_vpid, rec_lsa, stats);
+	// ownership of raw pointer goes to the callee
+	m_parallel_replication_redo->add (job);
       }
     else
       {
@@ -350,11 +351,10 @@ namespace cublog
 	// dispatch a job; the time difference will be calculated when the job is actually
 	// picked up for completion by a task; this will give an accurate estimate of the actual
 	// delay between log generation on the page server and log recovery on the page server
-	std::unique_ptr<cublog::redo_job_replication_delay_impl> replication_delay_job
-	{
-	  new cublog::redo_job_replication_delay_impl (m_redo_lsa, start_time_msec)
-	};
-	m_parallel_replication_redo->add (std::move (replication_delay_job));
+	cublog::redo_job_replication_delay_impl *replication_delay_job =
+		new cublog::redo_job_replication_delay_impl (m_redo_lsa, start_time_msec);
+	// ownership of raw pointer goes to the callee
+	m_parallel_replication_redo->add (replication_delay_job);
       }
     else
       {
