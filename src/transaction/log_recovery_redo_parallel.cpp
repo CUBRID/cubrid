@@ -164,8 +164,6 @@ namespace cublog
     , m_adding_finished { false }
     , m_monitor_minimum_log_lsa { a_minimum_log_lsa != nullptr }
     , m_minimum_log_lsa { a_minimum_log_lsa }
-    , m_time_tracker PERF_UTIME_TRACKER_INITIALIZER
-    , m_thread_entry { &cubthread::get_entry () }
   {
     for (auto &entry : m_produce_vec)
       {
@@ -215,28 +213,22 @@ namespace cublog
   void
   redo_parallel::redo_job_queue::push_job (ux_redo_job_base &&job)
   {
-    //PERF_UTIME_TRACKER_START (m_thread_entry, &m_time_tracker);
-
     const vpid &job_vpid = job->get_vpid ();
     assert (job_vpid.volid < m_data_volume_count);
     assert (job_vpid.pageid < m_page_count_per_data_volume);
     const std::size_t vec_idx = m_task_index_vec[job_vpid.volid * m_page_count_per_data_volume + job_vpid.pageid];
     std::mutex &mtx = m_produce_mutex_vec[vec_idx];
-    //PERF_UTIME_TRACKER_TIME_AND_RESTART (m_thread_entry, &m_time_tracker, PSTAT_RV_MAIN_REDO_PAR_QUEUE_HASH);
 
     std::lock_guard<std::mutex> lockg (mtx);
-    //PERF_UTIME_TRACKER_TIME_AND_RESTART (m_thread_entry, &m_time_tracker, PSTAT_RV_MAIN_REDO_PAR_QUEUE_MUTEX_ACQ);
 
     redo_job_vector *jobs = m_produce_vec[vec_idx];
     if (jobs->empty ())
       {
 	// will be empty no more
 	set_non_empty_at (vec_idx);
-	//PERF_UTIME_TRACKER_TIME_AND_RESTART (m_thread_entry, &m_time_tracker, PSTAT_RV_MAIN_REDO_PAR_QUEUE_SET_NON_EMPTY);
       }
 
     jobs->push_back (std::move (job));
-    //PERF_UTIME_TRACKER_TIME (m_thread_entry, &m_time_tracker, PSTAT_RV_MAIN_REDO_PAR_QUEUE_PUSH);
   }
 
   void

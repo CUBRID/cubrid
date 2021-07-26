@@ -278,8 +278,6 @@ namespace cublog
 	  minimum_log_lsa_monitor *m_minimum_log_lsa;
 
 	  // for debugging
-	  PERF_UTIME_TRACKER m_time_tracker;
-	  THREAD_ENTRY *m_thread_entry;
 	  short m_data_volume_count;
 	  int32_t m_page_count_per_data_volume;
 	  std::vector<unsigned char> m_task_index_vec;
