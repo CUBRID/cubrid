@@ -6258,13 +6258,11 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
       /*
-       * The mq_push_paths will convert the expression as CNF. if subquery is
-       * in the expression, it may be copied several times. To avoid repeatedly
-       * convert the expressions in subqueries and improve performance, we
-       * put mq_push_paths as post function.
+       * mq_push_paths : pushing paths (including predicate push)
+       * mq_translate_local : view pushing (view merging)
+       * mq_push_paths should be invoked in pre-order. mq_translate_local should be in post-order.
        */
-      node = parser_walk_tree (parser, node, NULL, NULL, mq_push_paths, NULL);
-      node = parser_walk_tree (parser, node, NULL, NULL, mq_translate_local, NULL);
+      node = parser_walk_tree (parser, node, mq_push_paths, NULL, mq_translate_local, NULL);
 
       mq_bump_order_dep_corr_lvl (parser, node);
 
