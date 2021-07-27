@@ -420,7 +420,36 @@ namespace cublog
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
 
     private:
-      const log_lsa *m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
+      const log_lsa *const m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
+      const LOG_RECTYPE m_log_rtype;
+      const log_reader::fetch_mode m_log_reader_page_fetch_mode;
+  };
+
+
+  class reusable_redo_job_impl final : public redo_parallel::redo_job_base
+  {
+    public:
+      /*
+       *  force_each_page_fetch: force fetch log pages each time regardless of other internal
+       *                        conditions; needed to be enabled when job is dispatched in
+       *                        page server recovery context
+       */
+      reusable_redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const log_lsa *a_end_redo_lsa,
+			      LOG_RECTYPE a_log_rtype, bool force_each_page_fetch);
+
+      reusable_redo_job_impl (reusable_redo_job_impl const &) = delete;
+      reusable_redo_job_impl (reusable_redo_job_impl &&) = delete;
+
+      ~reusable_redo_job_impl () override = default;
+
+      reusable_redo_job_impl &operator = (reusable_redo_job_impl const &) = delete;
+      reusable_redo_job_impl &operator = (reusable_redo_job_impl &&) = delete;
+
+      int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
+
+    private:
+      const log_lsa *const m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
       const LOG_RECTYPE m_log_rtype;
       const log_reader::fetch_mode m_log_reader_page_fetch_mode;
   };
@@ -533,8 +562,8 @@ log_rv_redo_record_sync_or_dispatch_async (
     {
       // dispatch async
       // ownership of raw pointer goes to the callee
-      cublog::redo_job_impl<T> *job =
-	      new cublog::redo_job_impl<T> (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch);
+      cublog::reusable_redo_job_impl *job =
+	      new cublog::reusable_redo_job_impl (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch);
       a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_NEW_FOR_ASYNC);
       parallel_recovery_redo->add (job);
       a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
