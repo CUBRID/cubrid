@@ -156,7 +156,7 @@ namespace cublog
 
   redo_parallel::redo_job_queue::redo_job_queue (const unsigned a_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa)
     : m_task_count { a_task_count }
-    , m_pre_produce_circ_queue { 10 * ONE_M }
+    , m_pre_produce_circ_queue { 50 * ONE_M }
     , m_pre_produce_finished { false }
     , m_produce_vec { a_task_count }
     , m_produce_mutex_vec { a_task_count }
@@ -229,7 +229,7 @@ namespace cublog
 	  }
 	else
 	  {
-	    if (m_pre_produce_finished)
+	    if (m_pre_produce_finished.load())
 	      {
 		assert (m_pre_produce_circ_queue.is_empty ());
 		m_adding_finished.store (true);
@@ -247,7 +247,8 @@ namespace cublog
       {
 	set_non_empty_at (m_empty_vec.size () - 1);
       }
-    m_pre_produce_circ_queue.force_produce (a_job);
+    const bool produced = m_pre_produce_circ_queue.produce (a_job);
+    assert (produced);
   }
 
   void
