@@ -58,7 +58,7 @@ class log_recovery_redo_perf_stat
       : m_definition
     {
       cubperf::stat_definition (PERF_STAT_ID_FETCH_PAGE, cubperf::stat_definition::COUNTER_AND_TIMER,
-				"Counter fetch_page", "Timer fetch_page"),
+				"Counter fetch_page", "Timer fetch_page (μs)"),
       cubperf::stat_definition (PERF_STAT_ID_READ_LOG, cubperf::stat_definition::COUNTER_AND_TIMER,
 				"Counter read_log", "Timer read_log"),
       cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH, cubperf::stat_definition::COUNTER_AND_TIMER,
@@ -122,7 +122,7 @@ class log_recovery_redo_perf_stat
 	  for (std::size_t perf_stat_idx = 0; perf_stat_idx < m_definition.get_value_count (); ++perf_stat_idx)
 	    {
 	      perf_stat_ss << '\t' << m_definition.get_value_name (perf_stat_idx)
-			   << " μs: " << perf_stat_results[perf_stat_idx] << std::endl;
+			   << ": " << perf_stat_results[perf_stat_idx] << std::endl;
 	    }
 	  const std::string perf_stat_str = perf_stat_ss.str ();
 	  _er_log_debug (ARG_FILE_LINE, perf_stat_str.c_str ());
