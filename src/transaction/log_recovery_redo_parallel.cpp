@@ -234,6 +234,7 @@ namespace cublog
 		assert (m_pre_produce_circ_queue.is_empty ());
 		m_adding_finished.store (true);
 		set_empty_at (m_empty_vec.size () - 1);
+		std::this_thread::sleep_for (std::chrono::microseconds (1));
 		break;
 	      }
 	  }

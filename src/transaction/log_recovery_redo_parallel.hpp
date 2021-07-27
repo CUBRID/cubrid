@@ -535,6 +535,7 @@ log_rv_redo_record_sync_or_dispatch_async (
       // ownership of raw pointer goes to the callee
       cublog::redo_job_impl<T> *job =
 	      new cublog::redo_job_impl<T> (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch);
+      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_NEW_FOR_ASYNC);
       parallel_recovery_redo->add (job);
       a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
     }
