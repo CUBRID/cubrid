@@ -3198,6 +3198,14 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   for (term = statement->info.query.q.select.where; term; term = term->next)
     {
+      /* check for on_cond term */
+      assert (term->node_type == PT_EXPR || term->node_type == PT_VALUE);
+      if ((term->node_type == PT_EXPR && term->info.expr.location > 0)
+	  || (term->node_type == PT_VALUE && term->info.expr.location > 0))
+	{
+	  continue;		/* do not copy-push on_cond-term */
+	}
+
       /* check for nullable-term */
       if (term->node_type == PT_EXPR)
 	{
