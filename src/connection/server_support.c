@@ -1365,7 +1365,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   css_Server_connection_socket = INVALID_SOCKET;
 
-  buffer[0] = (char) get_server_type ();
+  buffer[0] = (char) (get_server_type () + '0');
   strcpy (buffer + 1, server_name);
   conn = css_connect_to_master_server (port_id, buffer, name_length + 1);
   if (conn != NULL)

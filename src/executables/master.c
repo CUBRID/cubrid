@@ -81,7 +81,7 @@ static void css_reject_client_request (CSS_CONN_ENTRY * conn, unsigned short rid
 static void css_reject_server_request (CSS_CONN_ENTRY * conn, int reason);
 static void css_accept_server_request (CSS_CONN_ENTRY * conn, int reason);
 static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, const char *server_name,
-				    int server_name_length);
+				    int server_name_length, SERVER_TYPE type);
 static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry,
 				    const char *server_name, int server_name_length);
 static int receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & dbname, SERVER_TYPE & type);
@@ -324,7 +324,8 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
  *   server_name_length(in)
  */
 static void
-css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, const char *server_name, int server_name_length)
+css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, const char *server_name, int server_name_length,
+			SERVER_TYPE type)
 {
   char *datagram;
   int datagram_length;
@@ -354,6 +355,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, const char *s
 		{
 		  server_name += length;
 		  entry->version_string = (char *) malloc (strlen (server_name) + 1);
+		  entry->server_type = type;
 		  if (entry->version_string != NULL)
 		    {
 		      strcpy (entry->version_string, server_name);
@@ -469,10 +471,11 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS)
     {
       entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor);
-      entry->server_type = type;
       name_length = server_name.length ();
+
       if (entry != NULL)
 	{
+	  entry->server_type = type;
 	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server that was auto-started */
@@ -496,7 +499,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 
 #else /* ! WINDOWS */
 	  /* accept a request from a new server */
-	  css_accept_new_request (conn, rid, server_name.c_str (), name_length);
+	  css_accept_new_request (conn, rid, server_name.c_str (), name_length, type);
 #endif /* ! WINDOWS */
 	}
     }
@@ -531,10 +534,11 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
   if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS && !server_name.empty ())
     {
       entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor);
-      entry->server_type = type;
       name_length = server_name.length ();
+
       if (entry != NULL)
 	{
+	  entry->server_type = type;
 	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server */
@@ -567,6 +571,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	      if (entry != NULL)
 		{
 		  entry->port_id = ntohl (buffer);
+		  entry->server_type = type;
 		  length = (int) server_name.length () + 1;
 		  /* read server version_string, env_var, pid */
 		  if (length < server_name_length)
