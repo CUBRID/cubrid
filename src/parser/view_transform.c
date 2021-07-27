@@ -213,7 +213,6 @@ static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 			       FIND_ID_TYPE type);
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 					      PT_NODE * new_query, FIND_ID_INFO * infop);
-static int mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec);
 static PT_NODE *mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 						   PT_NODE * query_spec);
 static PT_NODE *mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement);
@@ -3292,7 +3291,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
  *   statement(in):
  *   spec(in):
  */
-static int
+int
 mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec)
 {
   PT_NODE *derived_table;
@@ -4630,10 +4629,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	      return NULL;
 	    }
 	}
-      else if (from->info.spec.derived_table_type == PT_IS_SUBQUERY)
-	{
-	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
-	}
 
       while (from->next)
 	{
@@ -4646,10 +4641,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	  if (is_union_translation != 0)
 	    {
 	      from->next = mq_rewrite_vclass_spec_as_derived (parser, select_statement, from->next, NULL);
-	    }
-	  else if (from->next->info.spec.derived_table_type == PT_IS_SUBQUERY)
-	    {
-	      (void) mq_copypush_sargable_terms (parser, select_statement, from->next);
 	    }
 	  from = from->next;
 	}
@@ -4672,11 +4663,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	      select_statement->info.query.q.select.from =
 		mq_rewrite_vclass_spec_as_derived (parser, select_statement, from, NULL);
 	    }
-	}
-
-      if (is_union_translation == false && from && from->info.spec.derived_table_type == PT_IS_SUBQUERY)
-	{
-	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
 	}
     }
 
