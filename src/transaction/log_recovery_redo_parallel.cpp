@@ -159,8 +159,10 @@ namespace cublog
 
   redo_parallel::redo_job_queue::redo_job_queue (const unsigned a_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa)
     : m_task_count { a_task_count }
+#if defined (USE_LOCKFREE_QUEUE)
     , m_pre_produce_circ_queue { 50 * ONE_M }
     , m_pre_produce_finished { false }
+#endif
     , m_produce_vec { a_task_count }
     , m_produce_mutex_vec { a_task_count }
 //    : m_produce (new vpid_ux_redo_job_deque_map_t ())
@@ -179,13 +181,19 @@ namespace cublog
 
     if (m_monitor_minimum_log_lsa)
       {
-	// last one is for the pre-produce queue
-	m_empty_vec.resize (1 + a_task_count, true);
+#if defined (USE_LOCKFREE_QUEUE)
+	// the extra one (last) is for the pre-produce queue
+	m_empty_vec.resize (a_task_count + 1, true);
+#else
+	m_empty_vec.resize (a_task_count, true);
+#endif
       }
 
+#if defined (USE_LOCKFREE_QUEUE)
     auto job_push_func =
 	    std::bind (&redo_parallel::redo_job_queue::do_push_pre_produce, std::ref (*this));
     m_pre_produce_thr = std::thread (job_push_func);
+#endif
   }
 
   redo_parallel::redo_job_queue::~redo_job_queue ()
@@ -203,9 +211,13 @@ namespace cublog
 
 //    delete m_consume;
 //    m_consume = nullptr;
+
+#if defined (USE_LOCKFREE_QUEUE)
     m_pre_produce_thr.join ();
+#endif
   }
 
+#if defined (USE_LOCKFREE_QUEUE)
   void
   redo_parallel::redo_job_queue::do_push_pre_produce ()
   {
@@ -247,28 +259,55 @@ namespace cublog
 	  }
       }
   }
+#endif
 
   void
   redo_parallel::redo_job_queue::push_job (redo_job_base *a_job)
   {
+#if defined (USE_LOCKFREE_QUEUE)
     if (m_pre_produce_circ_queue.is_empty ())
       {
 	set_non_empty_at (m_empty_vec.size () - 1);
       }
     const bool produced = m_pre_produce_circ_queue.produce (a_job);
     assert (produced);
+#else
+    const vpid &job_vpid = a_job->get_vpid ();
+    const std::size_t vpid_hash = m_vpid_hash (job_vpid);
+    const std::size_t vec_idx = vpid_hash % m_task_count;
+
+    std::mutex &mtx = m_produce_mutex_vec[vec_idx];
+    std::lock_guard<std::mutex> lockg (mtx);
+
+    redo_job_vector_t *jobs = m_produce_vec[vec_idx];
+    if (jobs->empty ())
+      {
+	// will be empty no more
+	set_non_empty_at (vec_idx);
+      }
+
+    jobs->push_back (a_job);
+#endif
   }
 
   void
   redo_parallel::redo_job_queue::set_adding_finished ()
   {
+#if defined (USE_LOCKFREE_QUEUE)
     m_pre_produce_finished.store (true);
+#else
+    m_adding_finished.store (true);
+#endif
   }
 
   bool
   redo_parallel::redo_job_queue::get_adding_finished () const
   {
+#if defined (USE_LOCKFREE_QUEUE)
     return m_pre_produce_finished.load ();
+#else
+    return m_adding_finished.load ();
+#endif
   }
 
   bool
@@ -558,7 +597,9 @@ namespace cublog
   redo_parallel::redo_job_queue::assert_idle () const
   {
     assert (m_task_count == m_produce_vec.size ());
+#if defined (USE_LOCKFREE_QUEUE)
     assert (m_pre_produce_circ_queue.is_empty ());
+#endif
     for (const auto &jobs : m_produce_vec)
       {
 	assert (jobs != nullptr);
