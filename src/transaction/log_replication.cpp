@@ -108,12 +108,16 @@ namespace cublog
     const int replication_parallel
       = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
     assert (replication_parallel >= 0);
+    cublog::reusable_jobs_stack reusable_jobs;
     if (replication_parallel > 0)
       {
 	m_minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
 	// no need to reset with start redo lsa
 
-	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel, m_minimum_log_lsa.get ()));
+	assert ("reusable jobs not initialized" == nullptr);
+
+	m_parallel_replication_redo.reset (
+		new cublog::redo_parallel (replication_parallel, &reusable_jobs, m_minimum_log_lsa.get ()));
       }
 
     // Create the daemon
@@ -334,8 +338,9 @@ namespace cublog
       }
     else
       {
-	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
-	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, true, m_rcv_redo_perf_stat);
+	assert ("reusable jobs not implemented for replication" == nullptr);
+//	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
+//	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, true, m_rcv_redo_perf_stat);
       }
   }
 

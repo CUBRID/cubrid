@@ -989,6 +989,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
    */
   LOG_CS_EXIT (thread_p);
   // *INDENT-OFF*
+  cublog::reusable_jobs_stack reusable_jobs;
   std::unique_ptr<cublog::redo_parallel> parallel_recovery_redo;
 #if defined(SERVER_MODE)
   {
@@ -996,8 +997,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     assert (log_recovery_redo_parallel_count >= 0);
     if (log_recovery_redo_parallel_count > 0)
       {
+        reusable_jobs.initialize(ONE_M, &context.get_end_redo_lsa (), force_each_log_page_fetch);
 	parallel_recovery_redo.reset (
-	      new cublog::redo_parallel (log_recovery_redo_parallel_count, nullptr));
+	      new cublog::redo_parallel (log_recovery_redo_parallel_count, &reusable_jobs, nullptr));
       }
   }
 #endif
@@ -1187,8 +1189,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
                 // *INDENT-OFF*
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_UNDOREDO>
 		  (thread_p, log_pgptr_reader, log_rec_mvcc_undoredo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch,
-		   rcv_redo_perf_stat);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
+		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
 		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }
@@ -1211,8 +1213,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_UNDOREDO>
 		  (thread_p, log_pgptr_reader, log_rec_undoredo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch,
-		   rcv_redo_perf_stat);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
+		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
 		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }
@@ -1248,8 +1250,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
                 // *INDENT-OFF*
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_REDO>
 		  (thread_p, log_pgptr_reader, log_rec_mvcc_redo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch,
-		   rcv_redo_perf_stat);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
+		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
 		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }
@@ -1276,8 +1278,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_REDO>
 		  (thread_p, log_pgptr_reader, log_rec_redo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch,
-		   rcv_redo_perf_stat);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
+		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
 		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }
@@ -1316,7 +1318,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
 		if (!log_recovery_needs_skip_logical_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
 		  {
-	            rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+		    rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
 		    log_rv_redo_record (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &rcv,
 					&rcv_lsa, 0, nullptr, *redo_unzip_ptr);
 		    /* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
@@ -1342,8 +1344,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_RUN_POSTPONE>
 		  (thread_p, log_pgptr_reader, log_rec_run_posp, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch,
-		   rcv_redo_perf_stat);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
+		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
 		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }
@@ -1364,8 +1366,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_COMPENSATE>
 		  (thread_p, log_pgptr_reader, log_rec_compensate, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch,
-		   rcv_redo_perf_stat);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
+		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
 		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }

@@ -169,7 +169,7 @@ namespace cublog
   {
     for (auto &entry : m_produce_vec)
       {
-	entry = new redo_job_vector ();
+	entry = new redo_job_vector_t ();
 	entry->reserve (1000000);
       }
 
@@ -218,14 +218,14 @@ namespace cublog
 	    std::mutex &mtx = m_produce_mutex_vec[vec_idx];
 	    std::lock_guard<std::mutex> lockg (mtx);
 
-	    redo_job_vector *jobs = m_produce_vec[vec_idx];
+	    redo_job_vector_t *jobs = m_produce_vec[vec_idx];
 	    if (jobs->empty ())
 	      {
 		// will be empty no more
 		set_non_empty_at (vec_idx);
 	      }
 
-	    jobs->push_back (std::unique_ptr<redo_job_base> { job });
+	    jobs->push_back (job);
 	  }
 	else
 	  {
@@ -234,8 +234,11 @@ namespace cublog
 		assert (m_pre_produce_circ_queue.is_empty ());
 		m_adding_finished.store (true);
 		set_empty_at (m_empty_vec.size () - 1);
-		std::this_thread::sleep_for (std::chrono::microseconds (1));
 		break;
+	      }
+	    else
+	      {
+		std::this_thread::yield ();
 	      }
 	  }
       }
@@ -264,14 +267,14 @@ namespace cublog
     return m_pre_produce_finished.load ();
   }
 
-  redo_parallel::redo_job_queue::redo_job_vector *
+  redo_parallel::redo_job_queue::redo_job_vector_t *
   redo_parallel::redo_job_queue::pop_jobs (unsigned a_task_idx, bool &out_adding_finished)
   {
     out_adding_finished = false;
 
     std::mutex &mtx = m_produce_mutex_vec[a_task_idx];
     std::lock_guard<std::mutex> lockg (mtx);
-    redo_job_vector *jobs = m_produce_vec[a_task_idx];
+    redo_job_vector_t *jobs = m_produce_vec[a_task_idx];
     if (jobs->empty ())
       {
 	out_adding_finished = m_adding_finished.load ();
@@ -280,7 +283,7 @@ namespace cublog
       }
     else
       {
-	m_produce_vec[a_task_idx] = new redo_job_vector ();
+	m_produce_vec[a_task_idx] = new redo_job_vector_t ();
 	m_produce_vec[a_task_idx]->reserve (1000000);
 	//_er_log_debug (ARG_FILE_LINE, "pop_jobs [%d] %d", a_task_idx, jobs->size());
 	return jobs;
@@ -661,7 +664,7 @@ namespace cublog
 
     public:
       redo_task (unsigned a_task_idx, redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
-		 , redo_parallel::redo_job_queue &a_queue);
+		 , redo_parallel::redo_job_queue &a_queue, reusable_jobs_stack *a_reusable_jobs);
       redo_task (const redo_task &) = delete;
       redo_task (redo_task &&) = delete;
 
@@ -676,6 +679,7 @@ namespace cublog
       const unsigned m_task_idx;
       redo_parallel::task_active_state_bookkeeping &m_task_state_bookkeeping;
       redo_parallel::redo_job_queue &m_queue;
+      reusable_jobs_stack *m_reusable_jobs;
 
       log_reader m_log_pgptr_reader;
       LOG_ZIP m_undo_unzip_support;
@@ -690,10 +694,12 @@ namespace cublog
 
   redo_parallel::redo_task::redo_task (unsigned a_task_idx
 				       , redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
-				       , redo_parallel::redo_job_queue &a_queue)
+				       , redo_parallel::redo_job_queue &a_queue
+				       , reusable_jobs_stack *a_reusable_jobs)
     : m_task_idx { a_task_idx }
     , m_task_state_bookkeeping (task_state_bookkeeping)
     , m_queue (a_queue)
+    , m_reusable_jobs { a_reusable_jobs }
   {
     // important to set this at this moment and not when execution begins
     // to circumvent race conditions where all tasks haven't yet started work
@@ -718,7 +724,7 @@ namespace cublog
     for (; !finished ;)
       {
 	bool adding_finished = false;
-	redo_job_queue::redo_job_vector *jobs = m_queue.pop_jobs (m_task_idx, adding_finished);
+	redo_job_queue::redo_job_vector_t *jobs = m_queue.pop_jobs (m_task_idx, adding_finished);
 
 	if (jobs == nullptr && adding_finished)
 	  {
@@ -750,7 +756,11 @@ namespace cublog
 	      }
 	  }
 
-	delete jobs;
+	if (jobs != nullptr)
+	  {
+	    m_reusable_jobs->push (*jobs);
+	    delete jobs;
+	  }
       }
 
     m_task_state_bookkeeping.set_inactive ();
@@ -760,7 +770,8 @@ namespace cublog
    * redo_parallel - definition
    *********************************************************************/
 
-  redo_parallel::redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa)
+  redo_parallel::redo_parallel (unsigned a_worker_count, reusable_jobs_stack *a_reusable_jobs,
+				minimum_log_lsa_monitor *a_minimum_log_lsa)
     : m_task_count { a_worker_count }
     , m_worker_pool (nullptr)
     , m_job_queue { a_worker_count, a_minimum_log_lsa }
@@ -772,7 +783,7 @@ namespace cublog
     m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
 
     do_init_worker_pool ();
-    do_init_tasks ();
+    do_init_tasks (a_reusable_jobs);
   }
 
   redo_parallel::~redo_parallel ()
@@ -849,7 +860,7 @@ namespace cublog
   }
 
   void
-  redo_parallel::do_init_tasks ()
+  redo_parallel::do_init_tasks (reusable_jobs_stack *a_reusable_jobs)
   {
     assert (m_task_count > 0);
     assert (m_worker_pool != nullptr);
@@ -857,7 +868,7 @@ namespace cublog
     for (unsigned task_idx = 0; task_idx < m_task_count; ++task_idx)
       {
 	// NOTE: task ownership goes to the worker pool
-	auto task = new redo_task (task_idx, m_task_state_bookkeeping, m_job_queue);
+	auto task = new redo_task (task_idx, m_task_state_bookkeeping, m_job_queue, a_reusable_jobs);
 	m_worker_pool->execute (task);
       }
   }
@@ -866,19 +877,25 @@ namespace cublog
    * reusable_redo_job_impl - definition
    *********************************************************************/
 
-  reusable_redo_job_impl::reusable_redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const log_lsa *a_end_redo_lsa,
-      LOG_RECTYPE a_log_rtype, bool force_each_page_fetch)
-    : redo_parallel::redo_job_base (a_vpid, a_rcv_lsa)
-    , m_end_redo_lsa (a_end_redo_lsa)
-    , m_log_rtype (a_log_rtype)
+  reusable_redo_job_impl::reusable_redo_job_impl (const log_lsa *a_end_redo_lsa, bool force_each_page_fetch)
+    : redo_parallel::redo_job_base (VPID_INITIALIZER, NULL_LSA)
+    , m_end_redo_lsa { a_end_redo_lsa }
     , m_log_reader_page_fetch_mode (force_each_page_fetch
 				    ? log_reader::fetch_mode::FORCE
 				    : log_reader::fetch_mode::NORMAL)
+    , m_log_rtype { LOG_SMALLER_LOGREC_TYPE }
   {
   }
 
-  int  reusable_redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-					LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
+  void reusable_redo_job_impl::reset (VPID a_vpid, const log_lsa &a_rcv_lsa, LOG_RECTYPE a_log_rtype)
+  {
+    m_vpid = a_vpid;
+    m_log_lsa = a_rcv_lsa;
+    m_log_rtype = a_log_rtype;
+  }
+
+  int reusable_redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+				       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
   {
     /* perf data for processing log redo asynchronously, enabled:
      *  - during log crash recovery
@@ -955,5 +972,68 @@ namespace cublog
       }
 
     return NO_ERROR;
+  }
+
+  /*********************************************************************
+   * reusable_jobs_stack - definition
+   *********************************************************************/
+
+  reusable_jobs_stack::reusable_jobs_stack ()
+    : m_stack_size { 0 }
+  {
+  }
+
+  void reusable_jobs_stack::initialize (std::size_t a_stack_size, const log_lsa *a_end_redo_lsa,
+					bool force_each_page_fetch)
+  {
+    m_stack_size = a_stack_size;
+    for (std::size_t idx = 0; idx < m_stack_size; ++idx)
+      {
+	redo_parallel::redo_job_base *job = new reusable_redo_job_impl (a_end_redo_lsa, force_each_page_fetch);
+	m_stack.push (job);
+      }
+  }
+
+  reusable_jobs_stack::~reusable_jobs_stack ()
+  {
+    assert (m_stack.size () == m_stack_size);
+    for (std::size_t idx = 0; idx < m_stack_size; ++idx)
+      {
+	redo_parallel::redo_job_base *const job = m_stack.top ();
+	m_stack.pop ();
+	delete job;
+      }
+  }
+
+  redo_parallel::redo_job_base *reusable_jobs_stack::pop ()
+  {
+    std::lock_guard<std::mutex> stack_lockg { m_stack_mutex };
+    if (m_stack.empty ())
+      {
+	return nullptr;
+      }
+    redo_parallel::redo_job_base *const job = m_stack.top ();
+    m_stack.pop ();
+    return job;
+  }
+
+  void reusable_jobs_stack::push (redo_parallel::redo_job_base *a_job)
+  {
+    std::lock_guard<std::mutex> stack_lockg { m_stack_mutex };
+    m_stack.push (a_job);
+  }
+
+  void reusable_jobs_stack::push (std::vector<redo_parallel::redo_job_base *> &a_jobs)
+  {
+    if (!a_jobs.empty ())
+      {
+	std::lock_guard<std::mutex> stack_lockg { m_stack_mutex };
+	for (auto &job: a_jobs)
+	  {
+	    m_stack.push (job);
+	  }
+	// clear leaves the capacity unchanged
+	a_jobs.clear ();
+      }
   }
 }
