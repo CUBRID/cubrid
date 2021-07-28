@@ -23,6 +23,9 @@
 
 namespace cublog
 {
+  // TODO: reserve size configurable based on expected load of recovery
+  static constexpr size_t QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE = 1000000;
+
   /*********************************************************************
    * minimum_log_lsa_monitor - definition
    *********************************************************************/
@@ -167,10 +170,11 @@ namespace cublog
     , m_monitor_minimum_log_lsa { a_minimum_log_lsa != nullptr }
     , m_minimum_log_lsa { a_minimum_log_lsa }
   {
-    for (auto &entry : m_produce_vec)
+    for (auto &jobs_vec : m_produce_vec)
       {
-	entry = new redo_job_vector_t ();
-	entry->reserve (1000000);
+	jobs_vec = new redo_job_vector_t ();
+	jobs_vec->reserve (QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE);
+	assert (jobs_vec->capacity () == QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE);
       }
 
     if (m_monitor_minimum_log_lsa)
@@ -267,26 +271,27 @@ namespace cublog
     return m_pre_produce_finished.load ();
   }
 
-  redo_parallel::redo_job_queue::redo_job_vector_t *
-  redo_parallel::redo_job_queue::pop_jobs (unsigned a_task_idx, bool &out_adding_finished)
+  bool
+  redo_parallel::redo_job_queue::pop_jobs (unsigned a_task_idx,
+      redo_parallel::redo_job_queue::redo_job_vector_t *&in_out_jobs,
+      bool &out_adding_finished)
   {
     out_adding_finished = false;
 
     std::mutex &mtx = m_produce_mutex_vec[a_task_idx];
     std::lock_guard<std::mutex> lockg (mtx);
-    redo_job_vector_t *jobs = m_produce_vec[a_task_idx];
-    if (jobs->empty ())
+    redo_job_vector_t *jobs_to_consume = m_produce_vec[a_task_idx];
+    if (jobs_to_consume->empty ())
       {
 	out_adding_finished = m_adding_finished.load ();
 	// avoid replacing empty container with new empty container
-	return nullptr;
+	return false;
       }
     else
       {
-	m_produce_vec[a_task_idx] = new redo_job_vector_t ();
-	m_produce_vec[a_task_idx]->reserve (1000000);
-	//_er_log_debug (ARG_FILE_LINE, "pop_jobs [%d] %d", a_task_idx, jobs->size());
-	return jobs;
+	m_produce_vec[a_task_idx] = in_out_jobs;
+	in_out_jobs = jobs_to_consume;
+	return true;
       }
 
 //    std::lock_guard<std::mutex> consume_lockg (m_consume_mutex);
@@ -721,19 +726,25 @@ namespace cublog
   {
     bool finished = false;
 
+    redo_job_queue::redo_job_vector_t *jobs_vec =
+	    new redo_parallel::redo_job_queue::redo_job_vector_t ();
+    // according to spec, reserved size survives clearing of the vector
+    // which should help to only allocate/reserve once
+    jobs_vec->reserve (QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE);
+    assert (jobs_vec->capacity () == QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE);
+
     for (; !finished ;)
       {
 	bool adding_finished = false;
-	redo_job_queue::redo_job_vector_t *jobs = m_queue.pop_jobs (m_task_idx, adding_finished);
-
-	if (jobs == nullptr && adding_finished)
+	const bool jobs_popped = m_queue.pop_jobs (m_task_idx, jobs_vec, adding_finished);
+	if (!jobs_popped && adding_finished)
 	  {
 	    m_queue.set_empty_at (m_task_idx);
 	    finished = true;
 	  }
 	else
 	  {
-	    if (jobs == nullptr)
+	    if (!jobs_popped)
 	      {
 		// TODO: if needed, check if requested to finish ourselves
 
@@ -745,23 +756,25 @@ namespace cublog
 	      }
 	    else
 	      {
-		assert (!jobs->empty ());
+		assert (!jobs_vec->empty ());
 		THREAD_ENTRY *const thread_entry = &context;
-		for (auto &job : *jobs)
+		for (auto &job : *jobs_vec)
 		  {
 		    job->execute (thread_entry, m_log_pgptr_reader, m_undo_unzip_support, m_redo_unzip_support);
 		  }
 
 		//m_queue.notify_job_deque_finished (jobs);
+
+		m_reusable_jobs->push (*jobs_vec);
+		assert (jobs_vec->empty ());
+		assert (jobs_vec->capacity () == QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE);
 	      }
 	  }
-
-	if (jobs != nullptr)
-	  {
-	    m_reusable_jobs->push (*jobs);
-	    delete jobs;
-	  }
       }
+
+    assert (jobs_vec != nullptr);
+    assert (jobs_vec->empty ());
+    delete jobs_vec;
 
     m_task_state_bookkeeping.set_inactive ();
   }

@@ -206,7 +206,7 @@ namespace cublog
 	   * flag set to true signals to the callers that no more data is expected
 	   * and, therefore, they can also terminate
 	   */
-	  redo_job_vector_t *pop_jobs (unsigned a_task_idx, bool &out_adding_finished);
+	  bool pop_jobs (unsigned a_task_idx, redo_job_vector_t *&in_out_jobs, bool &out_adding_finished);
 
 	  void notify_job_deque_finished (const ux_redo_job_deque &a_job_deque);
 
@@ -487,7 +487,7 @@ namespace cublog
       reusable_jobs_stack &operator = (reusable_jobs_stack &&) = delete;
 
       void initialize (std::size_t a_stack_size, const log_lsa *a_end_redo_lsa,
-			 bool force_each_page_fetch);
+		       bool force_each_page_fetch);
 
       redo_parallel::redo_job_base *pop ();
 
@@ -619,13 +619,13 @@ log_rv_redo_record_sync_or_dispatch_async (
 	      cublog::reusable_redo_job_impl *const job = dynamic_cast<cublog::reusable_redo_job_impl *> (job_base);
 	      job->reset (rcv_vpid, rcv_lsa, log_rtype);
 	      parallel_recovery_redo->add (job);
-              a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
+	      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
 	      break;
 	    }
 	  else
 	    {
 	      std::this_thread::sleep_for (std::chrono::microseconds (1));
-              a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_BUSY_WAIT);
+	      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_BUSY_WAIT);
 	    }
 	}
     }
