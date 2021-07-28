@@ -988,6 +988,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
    * if infrastructure is not initialized dependent code below works sequentially
    */
   LOG_CS_EXIT (thread_p);
+
+  const auto time_start_setting_up = std::chrono::system_clock::now ();
+
   // *INDENT-OFF*
   cublog::reusable_jobs_stack reusable_jobs;
   std::unique_ptr<cublog::redo_parallel> parallel_recovery_redo;
@@ -1005,6 +1008,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   }
 #endif
   // *INDENT-ON*
+
+  const auto time_end_setting_up = std::chrono::system_clock::now ();
+  const auto time_dur_setting_up_ms =
+    std::chrono::duration_cast < std::chrono::milliseconds > (time_end_setting_up - time_start_setting_up);
+  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo_perf:    setting_up= %6d (ms)\n",
+		 (long long) time_dur_setting_up_ms.count ());
 
   // prompt after threads/tasks are started but before any work is done
   //fprintf (stdout, "START recovery_redo (any key)? ");
@@ -1691,10 +1700,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     const auto time_end_async = std::chrono::system_clock::now ();
     const auto time_dur_async_ms =
       std::chrono::duration_cast < std::chrono::milliseconds > (time_end_async - time_start);
-    er_log_debug (ARG_FILE_LINE, "recovery_parallel_count= %2d    reusable_jobs= %6d    main= %6lld    async= %6lld (ms)\n",
-		  log_recovery_redo_parallel_count, reusable_jobs.size (),
-		  (long long) time_dur_main_ms.count (),
-		  (long long) time_dur_async_ms.count ());
+    _er_log_debug (ARG_FILE_LINE,
+		   "log_recovery_redo_perf:  recovery_parallel_count= %2d  reusable_jobs= %6d  main= %6lld  async= %6lld (ms)\n",
+		   log_recovery_redo_parallel_count, reusable_jobs.size (), (long long) time_dur_main_ms.count (),
+		   (long long) time_dur_async_ms.count ());
   }
 #endif
   LOG_CS_ENTER (thread_p);
