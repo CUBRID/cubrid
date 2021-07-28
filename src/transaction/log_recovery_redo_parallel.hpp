@@ -619,18 +619,15 @@ log_rv_redo_record_sync_or_dispatch_async (
 	      cublog::reusable_redo_job_impl *const job = dynamic_cast<cublog::reusable_redo_job_impl *> (job_base);
 	      job->reset (rcv_vpid, rcv_lsa, log_rtype);
 	      parallel_recovery_redo->add (job);
+              a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
 	      break;
 	    }
 	  else
 	    {
 	      std::this_thread::sleep_for (std::chrono::microseconds (1));
+              a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_BUSY_WAIT);
 	    }
 	}
-//      cublog::reusable_redo_job_impl *job =
-//	      new cublog::reusable_redo_job_impl (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch);
-//      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_NEW_FOR_ASYNC);
-//      parallel_recovery_redo->add (job);
-//      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
     }
 #else // !SERVER_MODE = SA_MODE
   log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
