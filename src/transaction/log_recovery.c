@@ -1690,8 +1690,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     const auto time_end_async = std::chrono::system_clock::now ();
     const auto time_dur_async_ms =
       std::chrono::duration_cast < std::chrono::milliseconds > (time_end_async - time_start);
-    er_log_debug (ARG_FILE_LINE, "recovery_parallel_count= %2d    main= %6lld    async= %6lld (ms)\n",
-		  log_recovery_redo_parallel_count, (long long) time_dur_main_ms.count (),
+    er_log_debug (ARG_FILE_LINE, "recovery_parallel_count= %2d    reusable_jobs= %6d    main= %6lld    async= %6lld (ms)\n",
+		  log_recovery_redo_parallel_count, reusable_jobs.size (),
+		  (long long) time_dur_main_ms.count (),
 		  (long long) time_dur_async_ms.count ());
   }
 #endif

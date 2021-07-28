@@ -500,9 +500,12 @@ namespace cublog
       void initialize (std::size_t a_stack_size, const log_lsa *a_end_redo_lsa,
 		       bool force_each_page_fetch);
 
-      redo_parallel::redo_job_base *pop ();
+      std::size_t size () const
+      {
+        return m_stack_size;
+      }
 
-      void push (redo_parallel::redo_job_base *a_job);
+      redo_parallel::redo_job_base *pop ();
       void push (std::vector<redo_parallel::redo_job_base *> &a_jobs);
 
     private:

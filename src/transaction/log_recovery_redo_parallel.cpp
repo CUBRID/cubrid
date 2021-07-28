@@ -1071,12 +1071,6 @@ namespace cublog
     return job;
   }
 
-  void reusable_jobs_stack::push (redo_parallel::redo_job_base *a_job)
-  {
-    std::lock_guard<std::mutex> stack_lockg { m_stack_mutex };
-    m_stack.push (a_job);
-  }
-
   void reusable_jobs_stack::push (std::vector<redo_parallel::redo_job_base *> &a_jobs)
   {
     if (!a_jobs.empty ())
