@@ -24,7 +24,7 @@
 
 #include "log_recovery_redo_perf.hpp"
 
-#define USE_LOCKFREE_QUEUE
+//#define USE_LOCKFREE_QUEUE
 
 #if defined (USE_LOCKFREE_QUEUE)
 #include "lockfree_circular_queue.hpp"
@@ -45,6 +45,9 @@
 namespace cublog
 {
 #if defined (SERVER_MODE)
+  // TODO: make reserve size configurable based on expected load of recovery
+  static constexpr size_t PARALLEL_RECOVERY_REDO_TUNING_JOB_VECTOR_RESERVE_SIZE = ONE_M;
+  static constexpr size_t PARALLEL_RECOVERY_REDO_TUNING_REUSABLE_JOBS_STACK_SIZE = 100 * ONE_K;
 
   // forward
   class reusable_jobs_stack;

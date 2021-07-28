@@ -23,9 +23,6 @@
 
 namespace cublog
 {
-  // TODO: reserve size configurable based on expected load of recovery
-  static constexpr size_t QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE = 1000000;
-
   /*********************************************************************
    * minimum_log_lsa_monitor - definition
    *********************************************************************/
@@ -175,8 +172,7 @@ namespace cublog
     for (auto &jobs_vec : m_produce_vec)
       {
 	jobs_vec = new redo_job_vector_t ();
-	jobs_vec->reserve (QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE);
-	assert (jobs_vec->capacity () == QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE);
+	jobs_vec->reserve (PARALLEL_RECOVERY_REDO_TUNING_JOB_VECTOR_RESERVE_SIZE);
       }
 
     if (m_monitor_minimum_log_lsa)
@@ -771,8 +767,7 @@ namespace cublog
 	    new redo_parallel::redo_job_queue::redo_job_vector_t ();
     // according to spec, reserved size survives clearing of the vector
     // which should help to only allocate/reserve once
-    jobs_vec->reserve (QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE);
-    assert (jobs_vec->capacity () == QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE);
+    jobs_vec->reserve (PARALLEL_RECOVERY_REDO_TUNING_JOB_VECTOR_RESERVE_SIZE);
 
     for (; !finished ;)
       {
@@ -808,7 +803,6 @@ namespace cublog
 
 		m_reusable_jobs->push (*jobs_vec);
 		assert (jobs_vec->empty ());
-		assert (jobs_vec->capacity () == QUEUE_INTERNAL_JOB_VECTOR_RESERVE_SIZE);
 	      }
 	  }
       }
