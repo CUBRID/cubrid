@@ -345,7 +345,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, const char *s
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (datagram_conn, false, server_name, server_fd, READ_WRITE, 0,
+	  css_add_request_to_socket_queue (datagram_conn, false, server_name, server_fd, READ_WRITE, 0, type,
 					   &css_Master_socket_anchor);
 	  length = (int) strlen (server_name) + 1;
 	  if (length < server_name_length)
@@ -440,7 +440,9 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
 
   if (css_receive_data (conn, rid, &buffer, &name_length, -1) == NO_ERRORS)
     {
-      type = static_cast < SERVER_TYPE > ((int) buffer[0] - '0');
+      // *INDENT-OFF*
+      type = static_cast<SERVER_TYPE> ((int) buffer[0] - '0');
+      // *INDENT-ON*
       dbname = buffer + 1;
 
       _er_log_debug (ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
@@ -494,7 +496,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (conn, false, server_name.c_str (), conn->fd, READ_WRITE, 0,
+	  css_add_request_to_socket_queue (conn, false, server_name.c_str (), conn->fd, READ_WRITE, 0, type,
 					   &css_Master_socket_anchor);
 
 #else /* ! WINDOWS */
@@ -565,7 +567,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	      css_Active_server_count++;
 #endif
 	      entry =
-		css_add_request_to_socket_queue (conn, false, server_name.c_str (), conn->fd, READ_WRITE, 0,
+		css_add_request_to_socket_queue (conn, false, server_name.c_str (), conn->fd, READ_WRITE, 0, type,
 						 &css_Master_socket_anchor);
 	      /* store this for later */
 	      if (entry != NULL)
@@ -773,7 +775,7 @@ css_process_new_connection (SOCKET fd)
       switch (function_code)
 	{
 	case INFO_REQUEST:	/* request for information */
-	  css_add_request_to_socket_queue (conn, true, NULL, fd, READ_WRITE, 0, &css_Master_socket_anchor);
+	  css_add_request_to_socket_queue (conn, true, NULL, fd, READ_WRITE, 0, UNKNOWN, &css_Master_socket_anchor);
 	  break;
 	case DATA_REQUEST:	/* request from a remote client */
 	  css_send_to_existing_server (conn, rid, SERVER_START_NEW_CLIENT);
@@ -1247,10 +1249,10 @@ main (int argc, char **argv)
 #endif
 
   conn = css_make_conn (css_Master_socket_fd[0]);
-  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0], READ_WRITE, 0,
+  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0], READ_WRITE, 0, UNKNOWN,
 				   &css_Master_socket_anchor);
   conn = css_make_conn (css_Master_socket_fd[1]);
-  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1], READ_WRITE, 0,
+  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1], READ_WRITE, 0, UNKNOWN,
 				   &css_Master_socket_anchor);
   css_master_loop ();
   css_master_cleanup (SIGINT);
@@ -1353,7 +1355,7 @@ css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_
  */
 SOCKET_QUEUE_ENTRY *
 css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, const char *name_p, SOCKET fd, int fd_type,
-				 int pid, SOCKET_QUEUE_ENTRY ** anchor_p)
+				 int pid, SERVER_TYPE type, SOCKET_QUEUE_ENTRY ** anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;
 
@@ -1392,6 +1394,7 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, const char
   p->fd_type = fd_type;
   p->queue_p = 0;
   p->info_p = info_p;
+  p->server_type = type;
   p->error_p = FALSE;
   p->pid = pid;
   p->db_error = 0;
