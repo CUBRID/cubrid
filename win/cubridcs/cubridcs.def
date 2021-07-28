@@ -393,10 +393,10 @@ EXPORTS
     envvar_logdir_file
     envvar_tmpdir_file
     envvar_libdir_file
-    _er_log_debug
     er_clear
     er_final
     er_init
+    er_log_debug
     er_set
     getopt
     getopt_long

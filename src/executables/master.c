@@ -438,19 +438,18 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
   int name_length;
   char *buffer = NULL;
 
-  if (css_receive_data (conn, rid, &buffer, &name_length, -1) == NO_ERRORS)
+  int exit_code = css_receive_data (conn, rid, &buffer, &name_length, -1);
+  if (exit_code == NO_ERRORS)
     {
       // *INDENT-OFF*
       type = static_cast<SERVER_TYPE> ((int) buffer[0] - '0');
       // *INDENT-ON*
-      dbname = buffer + 1;
+      dbname = std::string (buffer + 1, name_length - 1);
 
-      _er_log_debug (ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
-		     dbname.c_str (), type == SERVER_TYPE_PAGE ? "page" : "transaction");
-
-      return NO_ERRORS;
+      er_log_debug (ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
+		    dbname.c_str (), type == SERVER_TYPE_PAGE ? "page" : "transaction");
     }
-  return -1;
+  return exit_code;
 }
 
 /*
@@ -464,7 +463,6 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
 static void
 css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 {
-  int name_length;
   std::string server_name;
   SERVER_TYPE type;
   SOCKET_QUEUE_ENTRY *entry;
@@ -473,7 +471,6 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS)
     {
       entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor);
-      name_length = server_name.length ();
 
       if (entry != NULL)
 	{
@@ -481,7 +478,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server that was auto-started */
-	      css_accept_old_request (conn, rid, entry, server_name.c_str (), name_length);
+	      css_accept_old_request (conn, rid, entry, server_name.c_str (), server_name.length ());
 	    }
 	  else
 	    {
@@ -501,7 +498,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 
 #else /* ! WINDOWS */
 	  /* accept a request from a new server */
-	  css_accept_new_request (conn, rid, server_name.c_str (), name_length, type);
+	  css_accept_new_request (conn, rid, server_name.c_str (), server_name.length (), type);
 #endif /* ! WINDOWS */
 	}
     }
@@ -525,18 +522,16 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 static void
 css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 {
-  int name_length;
   std::string server_name;
   SERVER_TYPE type;
   SOCKET_QUEUE_ENTRY *entry;
   int buffer;
-  int server_name_length, length;
+  int length;
 
   /* read server name */
   if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS && !server_name.empty ())
     {
       entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor);
-      name_length = server_name.length ();
 
       if (entry != NULL)
 	{
@@ -544,7 +539,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server */
-	      css_accept_old_request (conn, rid, entry, server_name.c_str (), name_length);
+	      css_accept_old_request (conn, rid, entry, server_name.c_str (), server_name.length ());
 	    }
 	  else
 	    {
@@ -555,12 +550,9 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	}
       else
 	{
-	  /* save length info */
-	  server_name_length = name_length;
-
 	  /* accept but make it send us a port id */
 	  css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED_NEW);
-	  name_length = sizeof (buffer);
+	  int name_length = sizeof (buffer);
 	  if (css_net_recv (conn->fd, (char *) &buffer, &name_length, -1) == NO_ERRORS)
 	    {
 #if defined(DEBUG)
@@ -576,7 +568,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 		  entry->server_type = type;
 		  length = (int) server_name.length () + 1;
 		  /* read server version_string, env_var, pid */
-		  if (length < server_name_length)
+		  if (length < server_name.length ())
 		    {
 		      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor);
 		      if (entry != NULL)

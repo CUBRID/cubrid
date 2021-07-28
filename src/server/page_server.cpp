@@ -75,7 +75,6 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 
 void page_server::disconnect_active_tran_server ()
 {
-  //add null check
   er_log_debug (ARG_FILE_LINE, "Page server disconnected from active transaction server with channel id: %s.\n",
 		m_active_tran_server_conn->get_underlying_channel_id ());
   m_active_tran_server_conn.reset (nullptr);

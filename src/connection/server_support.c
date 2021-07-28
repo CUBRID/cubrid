@@ -1312,7 +1312,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 {
   CSS_CONN_ENTRY *conn;
   int status = NO_ERROR;
-  char buffer[name_length + 1];
+  std::string buffer;
 
   if (server_name == NULL || port_id <= 0)
     {
@@ -1365,9 +1365,14 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   css_Server_connection_socket = INVALID_SOCKET;
 
-  buffer[0] = (char) (get_server_type () + '0');
-  strcpy (buffer + 1, server_name);
-  conn = css_connect_to_master_server (port_id, buffer, name_length + 1);
+  /*
+   * The packing of the server name and type is done by setting the first
+   * character to the numer related to the server type enum value, the rest of the
+   * buffer space is used to copy the server name.
+   */
+  buffer = (char) (get_server_type () + '0');
+  buffer += server_name;
+  conn = css_connect_to_master_server (port_id, buffer.c_str (), name_length + 1);
   if (conn != NULL)
     {
       /* insert conn into active conn list */

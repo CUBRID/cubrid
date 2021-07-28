@@ -18,6 +18,7 @@
 
 #ifndef _SERVER_TYPE_H_
 #define _SERVER_TYPE_H_
+
 #include "server_type_enum.hpp"
 
 int init_server_type (const char *db_name);
