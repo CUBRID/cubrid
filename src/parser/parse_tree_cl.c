@@ -11441,7 +11441,6 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_RANGE:
       if (parser->custom_print & PT_CONVERT_RANGE)
 	{
-	  bool multiple_element = false;
 	  PT_STRING_BLOCK sb;
 	  sb.length = 0;
 	  sb.size = 1024;
@@ -11460,19 +11459,18 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
 	    {
 	      strcat_with_realloc (&sb, "(");
-	      multiple_element = true;
 	    }
 
 	  for (t = p->info.expr.arg2; t; t = t->or_next)
 	    {
-	      if (!p->info.expr.paren_type && multiple_element)
+	      if (!p->info.expr.paren_type)
 		{
 		  strcat_with_realloc (&sb, "(");
 		}
 
 	      pt_print_range_op (parser, &sb, t, r4);
 
-	      if (!p->info.expr.paren_type && multiple_element)
+	      if (!p->info.expr.paren_type)
 		{
 		  strcat_with_realloc (&sb, ")");
 		}
