@@ -1382,7 +1382,10 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * we know that the system was running in the even of crashes
        */
       log_Gl.hdr.is_shutdown = false;
-      logpb_flush_header (thread_p);
+      if (!is_tran_server_with_remote_storage ())
+	{
+	  logpb_flush_header (thread_p);
+	}
     }
   log_Gl.rcv_phase = LOG_RESTARTED;
 
@@ -1777,7 +1780,10 @@ log_final (THREAD_ENTRY * thread_p)
       (void) logpb_checkpoint (thread_p);
     }
 
-  logpb_flush_header (thread_p);
+  if (!is_tran_server_with_remote_storage ())
+    {
+      logpb_flush_header (thread_p);
+    }
 
   /* Undefine page buffer pool and transaction table */
   logpb_finalize_pool (thread_p);
