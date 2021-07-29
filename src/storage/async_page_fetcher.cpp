@@ -18,11 +18,12 @@
 
 #include "async_page_fetcher.hpp"
 
-#include "log_impl.h"
+#include "log_lsa.hpp"
+#include "log_reader.hpp"
 #include "log_replication.hpp"
-#include "thread_manager.hpp"
 #include "page_buffer.h"
 #include "page_server.hpp"
+#include "thread_manager.hpp"
 
 namespace cublog
 {

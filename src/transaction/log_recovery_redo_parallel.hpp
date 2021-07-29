@@ -19,9 +19,9 @@
 #ifndef _LOG_RECOVERY_REDO_PARALLEL_HPP_
 #define _LOG_RECOVERY_REDO_PARALLEL_HPP_
 
+#include "log_reader.hpp"
 #include "log_recovery_redo.hpp"
 #include "log_replication.hpp"
-
 #include "log_recovery_redo_perf.hpp"
 
 #if defined(SERVER_MODE)
@@ -446,7 +446,6 @@ namespace cublog
   class redo_parallel final { };
 #endif /* SERVER_MODE */
 }
-
 
 /*
  * log_rv_redo_record_sync_or_dispatch_async - execute a redo record synchronously or
