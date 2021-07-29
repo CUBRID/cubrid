@@ -1773,6 +1773,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
   css_gettimeofday (&start_time, NULL);
 #endif /* CUBRID_DEBUG */
 
+  assert (!is_tran_server_with_remote_storage ());
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   if (log_Gl.loghdr_pgptr == NULL)
@@ -4312,7 +4313,10 @@ logpb_force_flush_header_and_pages (THREAD_ENTRY * thread_p)
 {
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
-  logpb_flush_header (thread_p);
+  if (!is_tran_server_with_remote_storage ())
+    {
+      logpb_flush_header (thread_p);
+    }
   LOG_CS_EXIT (thread_p);
 }
 
