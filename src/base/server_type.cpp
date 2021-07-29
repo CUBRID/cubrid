@@ -96,7 +96,6 @@ void finalize_server_type ()
     }
   else if (get_server_type() == SERVER_TYPE_PAGE)
     {
-      assert (get_server_type () == SERVER_TYPE_PAGE);
       ps_Gl.disconnect_active_tran_server ();
     }
 }
