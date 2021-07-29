@@ -3611,6 +3611,120 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 }
 
 /*
+ * mq_rewrite_dblink_as_derived -
+ *   return: rewritten select statement with dblink table
+ *   parser(in):
+ *   query(in):
+ *
+ * Note: returned result depends on global schema state.
+ * It was qo_rewrite_query_as_derived and moved to here to be public.
+ */
+PT_NODE *
+mq_rewrite_dblink_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  PT_NODE *new_query = NULL, *derived = NULL;
+  PT_NODE *range = NULL, *spec = NULL, *temp, *node = NULL;
+  PT_NODE **head;
+  int i = 0;
+
+  /* set line number to range name */
+  range = pt_name (parser, "_dbl");
+  if (range == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      goto exit_on_error;
+    }
+
+  /* construct new spec We are now copying the query and updating the spec_id references */
+  spec = parser_new_node (parser, PT_SPEC);
+  if (spec == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      goto exit_on_error;
+    }
+
+  derived = query;
+  derived = mq_reset_ids_in_statement (parser, derived);
+
+  spec->info.spec.derived_table = derived;
+  spec->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
+  spec->info.spec.range_var = range;
+  spec->info.spec.id = (UINTPTR) spec;
+  range->info.name.spec_id = (UINTPTR) spec;
+
+  new_query = parser_new_node (parser, PT_SELECT);
+  if (new_query == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      goto exit_on_error;
+    }
+
+  new_query->info.query.q.select.from = spec;
+
+  temp = derived->info.dblink_table.cols;
+  head = &new_query->info.query.q.select.list;
+
+  while (temp)
+    {
+
+      /* we have the original name */
+      node = pt_name (parser, temp->info.attr_def.attr_name->info.name.original);
+
+      if (node == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  goto exit_on_error;
+	}
+      /* set line, column number */
+      node->line_number = temp->line_number;
+      node->column_number = temp->column_number;
+
+      node->info.name.meta_class = PT_NORMAL;
+      node->info.name.resolved = range->info.name.original;
+      node->info.name.spec_id = spec->info.spec.id;
+      node->type_enum = temp->type_enum;
+      node->data_type = parser_copy_tree (parser, temp->data_type);
+      spec->info.spec.as_attr_list = parser_append_node (node, spec->info.spec.as_attr_list);
+
+      *head = parser_copy_tree (parser, node);
+
+      head = &((*head)->next);
+
+      temp = temp->next;
+    }
+
+  /* move query id # */
+  new_query->info.query.id = query->info.query.id;
+  new_query->flag.recompile = query->flag.recompile;
+
+  return new_query;
+
+exit_on_error:
+
+  if (node != NULL)
+    {
+      parser_free_node (parser, node);
+    }
+  if (new_query != NULL)
+    {
+      parser_free_node (parser, new_query);
+    }
+  if (derived != NULL)
+    {
+      parser_free_node (parser, derived);
+    }
+  if (spec != NULL)
+    {
+      parser_free_node (parser, spec);
+    }
+  if (range != NULL)
+    {
+      parser_free_node (parser, range);
+    }
+  return NULL;
+}
+
+/*
  * mq_rewrite_query_as_derived () -
  *   return: rewritten select statement with derived table subquery
  *   parser(in):

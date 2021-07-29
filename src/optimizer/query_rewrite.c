@@ -6704,6 +6704,37 @@ qo_move_on_clause_of_explicit_join_to_where_clause (PARSER_CONTEXT * parser, PT_
 }
 
 /*
+ * qo_rewrite_dblink_as_subquery () - rewrite dblink as a subquery
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   node(in): possible dblink query
+ */
+static void
+qo_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *spec, *derived;
+  PT_NODE *derived_table;
+
+  for (spec = node->info.query.q.select.from; spec; spec = spec->next)
+    {
+      if ((derived_table = spec->info.spec.derived_table)
+	  && spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE
+	  && node->info.query.is_subquery != PT_IS_DBLINK_SUBQUERY)
+	{
+	  derived = mq_rewrite_dblink_as_derived (parser, derived_table);
+	  if (derived == NULL)
+	    {
+	      break;
+	    }
+	  /* for avoiding endless recursive call, set the is_subquery flag */
+	  derived->info.query.is_subquery = PT_IS_DBLINK_SUBQUERY;
+	  spec->info.spec.derived_table = derived;
+	  spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
+	}
+    }
+}
+
+/*
  * qo_optimize_queries () - checks all subqueries for rewrite optimizations
  *   return: PT_NODE *
  *   parser(in): parser environment
@@ -7359,6 +7390,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	{
 	  call_auto_parameterize = true;
 	}
+
+      /* for the optimization of the query includes dblink
+       * it is better to be written to a subquery */
+      qo_rewrite_dblink_as_subquery (parser, node);
     }
 
   /* auto-parameterize convert value in expression to host variable (input marker) */
