@@ -7769,19 +7769,23 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
     }
 
-  fprintf (fp, " time: %d, fetch: %lld, ioread: %lld", TO_MSEC (scan_id->scan_stats.elapsed_scan),
-	   (long long int) scan_id->scan_stats.num_fetches, (long long int) scan_id->scan_stats.num_ioreads);
+  fprintf (fp, " time: %d, fetch: %llu, ioread: %llu", TO_MSEC (scan_id->scan_stats.elapsed_scan),
+	   (unsigned long long int) scan_id->scan_stats.num_fetches,
+	   (unsigned long long int) scan_id->scan_stats.num_ioreads);
 
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
     case S_LIST_SCAN:
-      fprintf (fp, ", readrows: %d, rows: %d)", scan_id->scan_stats.read_rows, scan_id->scan_stats.qualified_rows);
+      fprintf (fp, ", readrows: %llu, rows: %llu)", (unsigned long long int) scan_id->scan_stats.read_rows,
+	       (unsigned long long int) scan_id->scan_stats.qualified_rows);
       break;
 
     case S_INDX_SCAN:
-      fprintf (fp, ", readkeys: %d, filteredkeys: %d, rows: %d", scan_id->scan_stats.read_keys,
-	       scan_id->scan_stats.qualified_keys, scan_id->scan_stats.key_qualified_rows);
+      fprintf (fp, ", readkeys: %llu, filteredkeys: %llu, rows: %llu",
+	       (unsigned long long int) scan_id->scan_stats.read_keys,
+	       (unsigned long long int) scan_id->scan_stats.qualified_keys,
+	       (unsigned long long int) scan_id->scan_stats.key_qualified_rows);
 
       if (scan_id->scan_stats.covered_index == true)
 	{
@@ -7806,8 +7810,8 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 
       if (scan_id->scan_stats.covered_index == false)
 	{
-	  fprintf (fp, " (lookup time: %d, rows: %d)", TO_MSEC (scan_id->scan_stats.elapsed_lookup),
-		   scan_id->scan_stats.data_qualified_rows);
+	  fprintf (fp, " (lookup time: %d, rows: %llu)", TO_MSEC (scan_id->scan_stats.elapsed_lookup),
+		   (unsigned long long int) scan_id->scan_stats.data_qualified_rows);
 	}
       break;
 

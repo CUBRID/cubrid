@@ -1044,7 +1044,9 @@ static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID *
 					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again);
 static int pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page);
 static int pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page);
+#if defined (SERVER_MODE)
 static void pgbuf_request_data_page_from_page_server (const VPID * vpid);
+#endif // SERVER_MODE
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
 static int pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
@@ -1864,7 +1866,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.fix_req_cnt, 1);
 
-  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
+  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH) && fetch_mode != RECOVERY_PAGE)
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
       /* Suppress errors if fetch mode is OLD_PAGE_IF_IN_BUFFER. */
@@ -7900,6 +7902,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
     {
       pgbuf_request_data_page_from_page_server (vpid);
       auto data_page = ats_Gl.get_data_page_broker ().wait_for_page (*vpid);
+
       if (read_from_local)
 	{
 	  // *INDENT-OFF*
@@ -7909,6 +7912,15 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	}
 
       std::memcpy (io_page, data_page->c_str (), db_io_page_size ());
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+	{
+	  // *INDENT-OFF*
+	  FILEIO_PAGE_RESERVED prv = reinterpret_cast<FILEIO_PAGE *> (io_page)->prv;
+	  // *INDENT-ON*
+	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d LSA=%lld|%d\n",
+			 prv.volid, prv.pageid, LSA_AS_ARGS (&prv.lsa));
+	}
     }
   return NO_ERROR;
 #else // !SERVER_MODE = SA_MODE
@@ -7941,6 +7953,7 @@ pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
 /*
  * pgbuf_request_data_page_from_page_server () - Sends a request for a page to Page Server.
  *   return: void
@@ -7948,34 +7961,34 @@ pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_
 static void
 pgbuf_request_data_page_from_page_server (const VPID * vpid)
 {
-#if defined (SERVER_MODE)
+  assert (get_server_type () == SERVER_TYPE_TRANSACTION);
+
   // *INDENT-OFF*
   /* Send a request to Page Server for the Page. */
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+  auto entry_state = ats_Gl.get_data_page_broker ().register_entry (*vpid);
+  assert (entry_state == page_broker_register_entry_state::ADDED);
+
+  cubpacking::packer pac;
+  size_t size = 0;
+
+  size += cublog::lsa_utils::get_packed_size (pac, size);
+  size += vpid_utils::get_packed_size (pac, size);
+  std::unique_ptr<char[]> buffer (new char[size]);
+
+  pac.set_buffer (buffer.get (), size);
+  vpid_utils::pack (pac, *vpid);
+  LOG_LSA lsa = pgbuf_Pool.get_highest_evicted_lsa ();
+  cublog::lsa_utils::pack (pac, lsa);
+
+  std::string message (buffer.get (), size);
+  ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
     {
-      cubpacking::packer pac;
-      size_t size = 0;
-
-      size += cublog::lsa_utils::get_packed_size (pac, size);
-      size += vpid_utils::get_packed_size (pac, size);
-      std::unique_ptr<char[]> buffer (new char[size]);
-
-      pac.set_buffer (buffer.get (), size);
-      vpid_utils::pack (pac, *vpid);
-      LOG_LSA lsa = pgbuf_Pool.get_highest_evicted_lsa ();
-      cublog::lsa_utils::pack (pac, lsa);
-
-      std::string message (buffer.get (), size);
-      ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-        {
-          _er_log_debug (ARG_FILE_LINE, "Sent request for Page to Page Server. pageid: %ld volid: %d\n", vpid->pageid,
-                      vpid->volid);
-	}
+      _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sent request for Page to Page Server. VPID: %d|%d\n", VPID_AS_ARGS (vpid));
     }
   // *INDENT-ON*
-#endif // SERVER_MODE
 }
+#endif // SERVER_MODE
 
 /*
  * pgbuf_victimize_bcb () - Victimize given buffer page

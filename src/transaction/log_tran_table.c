@@ -5032,7 +5032,7 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
       /* reflect only if some changes were logged */
       if (!LSA_ISNULL (&stats->last_log_lsa))
 	{
-	  error = btree_reflect_global_unique_statistics (thread_p, stats, false);
+	  error = btree_reflect_global_unique_statistics (thread_p, stats);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();

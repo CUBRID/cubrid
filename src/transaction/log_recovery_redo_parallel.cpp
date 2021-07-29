@@ -729,22 +729,4 @@ namespace cublog
 	m_worker_pool->execute (task);
       }
   }
-
-  /*********************************************************************
-   * redo_job_replication_delay_impl - definition
-   *********************************************************************/
-
-  redo_job_replication_delay_impl::redo_job_replication_delay_impl (
-	  const log_lsa &a_rcv_lsa, time_msec_t a_start_time_msec)
-    : redo_parallel::redo_job_base (SENTINEL_VPID, a_rcv_lsa)
-    , m_start_time_msec (a_start_time_msec)
-  {
-  }
-
-  int  redo_job_replication_delay_impl::execute (THREAD_ENTRY *thread_p, log_reader &,
-      LOG_ZIP &, LOG_ZIP &)
-  {
-    const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec);
-    return res;
-  }
 }

@@ -28,7 +28,7 @@
 
 #include <string>
 
-static SERVER_TYPE g_server_type = SERVER_TYPE_TRANSACTION;
+static SERVER_TYPE g_server_type = SERVER_TYPE_UNKNOWN;
 #if !defined(NDEBUG)
 static bool g_server_type_initialized = false;
 #endif
@@ -36,6 +36,11 @@ static bool g_server_type_initialized = false;
 SERVER_TYPE get_server_type ()
 {
   return g_server_type;
+}
+
+void set_server_type (SERVER_TYPE type)
+{
+  g_server_type = type;
 }
 
 // SERVER_MODE & SA_MODE have completely different behaviors.
@@ -52,7 +57,15 @@ SERVER_TYPE get_server_type ()
 int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
-  g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+  if (g_server_type == SERVER_TYPE_UNKNOWN)
+    {
+      g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+      //if no parameter value is provided use transaction as the default type
+      if (g_server_type == SERVER_TYPE_UNKNOWN)
+	{
+	  g_server_type = SERVER_TYPE_TRANSACTION;
+	}
+    }
 #if !defined(NDEBUG)
   g_server_type_initialized = true;
 #endif

@@ -1699,6 +1699,9 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   sysprm_load_and_init (boot_Db_full_name, NULL, SYSPRM_LOAD_ALL);
 #endif /* SERVER_MODE */
 
+  // Server is considered a transaction server when creating the database
+  set_server_type (SERVER_TYPE_TRANSACTION);
+
   /* If the server is already restarted, shutdown the server */
   if (BO_IS_SERVER_RESTARTED ())
     {

@@ -246,7 +246,6 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
   {-1, NULL}
 };
 
-
 static const char **Argv;
 static int ha_mode_in_common;
 
@@ -1130,7 +1129,7 @@ are_all_services_stopped (unsigned int sleep_time, bool check_win_service)
 
 /*
  * check_all_services_status - check all service status and compare with
-			      expected_status, if not meet return false.
+                              expected_status, if not meet return false.
  *
  * return:
  *

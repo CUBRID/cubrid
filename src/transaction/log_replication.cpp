@@ -18,10 +18,13 @@
 
 #include "log_replication.hpp"
 
+#include "btree_load.h"
 #include "log_impl.h"
 #include "log_recovery.h"
 #include "log_recovery_redo.hpp"
 #include "log_recovery_redo_parallel.hpp"
+#include "object_representation.h"
+#include "page_buffer.h"
 #include "recovery.h"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
@@ -34,9 +37,65 @@
 
 namespace cublog
 {
+  /*********************************************************************
+   * replication delay calculation - declaration
+   *********************************************************************/
+  static int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);
+
+  /* job implementation that performs log replication delay calculation
+   * using log records that register creation time
+   */
+  class redo_job_replication_delay_impl final : public redo_parallel::redo_job_base
+  {
+      /* sentinel VPID value needed for the internal mechanics of the parallel log recovery/replication
+       * internally, such a VPID is needed to maintain absolute order of the processing
+       * of the log records with respect to their order in the global log record
+       */
+      static constexpr vpid SENTINEL_VPID = { -2, -2 };
+
+    public:
+      redo_job_replication_delay_impl (const log_lsa &a_rcv_lsa, time_msec_t a_start_time_msec);
+
+      redo_job_replication_delay_impl (redo_job_replication_delay_impl const &) = delete;
+      redo_job_replication_delay_impl (redo_job_replication_delay_impl &&) = delete;
+
+      ~redo_job_replication_delay_impl () override = default;
+
+      redo_job_replication_delay_impl &operator = (redo_job_replication_delay_impl const &) = delete;
+      redo_job_replication_delay_impl &operator = (redo_job_replication_delay_impl &&) = delete;
+
+      int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
+
+    private:
+      const time_msec_t m_start_time_msec;
+  };
+
+  /*********************************************************************
+   * replication b-tree unique statistics - declaration
+   *********************************************************************/
+
+  // replicate_btree_stats does redo record simulation
+  static void replicate_btree_stats (cubthread::entry &thread_entry, const VPID &root_vpid,
+				     const log_unique_stats &stats, const log_lsa &record_lsa);
+
+  // a job for replication b-tree stats update
+  class redo_job_btree_stats : public redo_parallel::redo_job_base
+  {
+    public:
+      redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, const log_unique_stats &stats);
+
+      int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader, LOG_ZIP &undo_unzip_support,
+		   LOG_ZIP &redo_unzip_support) override;
+
+    private:
+      log_unique_stats m_stats;
+  };
+
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
+    , m_rcv_redo_perf_stat { false }
   {
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
@@ -119,7 +178,7 @@ namespace cublog
       }
     else
       {
-	// nothing needs to be done in the synchronous execution scenarion
+	// nothing needs to be done in the synchronous execution scenario
 	// the default/internal implementation of the retire functor used to delete the task
 	// itself; this is now handled by the instantiating entity
       }
@@ -210,6 +269,47 @@ namespace cublog
 
   template <typename T>
   void
+  replicator::read_and_redo_btree_stats (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa,
+					 const T &log_rec)
+  {
+    //
+    // Recovery redo does not apply b-tree stats directly into the b-tree root page. But while replicating on the page
+    // server, we have to update the statistics directly into the root page, because it may be fetched by a transaction
+    // server and stats have to be up-to-date at all times.
+    //
+    // To redo the change directly into the root page, we need to simulate having a redo job on the page and we need
+    // the page VPID. The VPID is obtained from the redo data of the log record. Therefore, the redo data must be read
+    // first, then a special job is created with all required information.
+    //
+
+    // Get redo data and read it
+    LOG_RCV rcv;
+    rcv.length = log_rv_get_log_rec_redo_length<T> (log_rec);
+    if (log_rv_get_log_rec_redo_data (&thread_entry, m_reader, log_rec, rcv, rectype, m_undo_unzip, m_redo_unzip)
+	!= NO_ERROR)
+      {
+	logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "replicator::read_and_redo_btree_stats");
+	return;
+      }
+    BTID btid;
+    log_unique_stats stats;
+    btree_rv_data_get_btid_and_stats (rcv, btid, stats);
+    VPID root_vpid = { btid.root_pageid, btid.vfid.volid };
+
+    // Create a job or apply the change immediately
+    if (m_parallel_replication_redo)
+      {
+	auto job = std::make_unique<redo_job_btree_stats> (root_vpid, rec_lsa, stats);
+	m_parallel_replication_redo->add (std::move (job));
+      }
+    else
+      {
+	replicate_btree_stats (thread_entry, root_vpid, stats, rec_lsa);
+      }
+  }
+
+  template <typename T>
+  void
   replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa)
   {
     m_reader.advance_when_does_not_fit (sizeof (T));
@@ -224,9 +324,18 @@ namespace cublog
 	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
       }
 
-    log_rv_redo_record_sync_or_dispatch_async (
-	    &thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
-	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, true);
+    // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
+    // proceed.
+    LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (log_rec).rcvindex;
+    if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
+      {
+	read_and_redo_btree_stats (thread_entry, rectype, rec_lsa, log_rec);
+      }
+    else
+      {
+	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
+	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, true, m_rcv_redo_perf_stat);
+      }
   }
 
   template <typename T>
@@ -240,7 +349,7 @@ namespace cublog
       {
 	// dispatch a job; the time difference will be calculated when the job is actually
 	// picked up for completion by a task; this will give an accurate estimate of the actual
-	// delay between log genearation on the page server and log recovery on the page server
+	// delay between log generation on the page server and log recovery on the page server
 	std::unique_ptr<cublog::redo_job_replication_delay_impl> replication_delay_job
 	{
 	  new cublog::redo_job_replication_delay_impl (m_redo_lsa, start_time_msec)
@@ -294,6 +403,24 @@ namespace cublog
       }
   }
 
+  /*********************************************************************
+   * redo_job_replication_delay_impl - definition
+   *********************************************************************/
+
+  redo_job_replication_delay_impl::redo_job_replication_delay_impl (
+	  const log_lsa &a_rcv_lsa, time_msec_t a_start_time_msec)
+    : redo_parallel::redo_job_base (SENTINEL_VPID, a_rcv_lsa)
+    , m_start_time_msec (a_start_time_msec)
+  {
+  }
+
+  int
+  redo_job_replication_delay_impl::execute (THREAD_ENTRY *thread_p, log_reader &, LOG_ZIP &, LOG_ZIP &)
+  {
+    const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec);
+    return res;
+  }
+
   /* log_rpl_calculate_replication_delay - calculate delay based on a given start time value
    *        and the current time and log to the perfmon infrastructure; all calculations are
    *        done in milliseconds as that is the relevant scale needed
@@ -327,6 +454,39 @@ namespace cublog
 		      a_start_time_msec);
 	return ER_FAILED;
       }
+  }
+
+  /*********************************************************************
+   * replication b-tree unique statistics - declaration
+   *********************************************************************/
+
+  void
+  replicate_btree_stats (cubthread::entry &thread_entry, const VPID &root_vpid, const log_unique_stats &stats,
+			 const log_lsa &record_lsa)
+  {
+    PAGE_PTR root_page = log_rv_redo_fix_page (&thread_entry, &root_vpid, RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT);
+    if (root_page == nullptr)
+      {
+	logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "cublog::replicate_btree_stats");
+	return;
+      }
+
+    btree_root_update_stats (&thread_entry, root_page, stats);
+    pgbuf_set_lsa (&thread_entry, root_page, &record_lsa);
+    pgbuf_set_dirty_and_free (&thread_entry, root_page);
+  }
+
+  redo_job_btree_stats::redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, const log_unique_stats &stats)
+    : redo_parallel::redo_job_base (vpid, record_lsa)
+    , m_stats (stats)
+  {
+  }
+
+  int
+  redo_job_btree_stats::execute (THREAD_ENTRY *thread_p, log_reader &, LOG_ZIP &, LOG_ZIP &)
+  {
+    replicate_btree_stats (*thread_p, get_vpid (), m_stats, get_log_lsa ());
+    return NO_ERROR;
   }
 
 } // namespace cublog
