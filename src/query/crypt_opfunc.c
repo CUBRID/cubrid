@@ -50,6 +50,7 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 #include "base64.h"
+#include "tde.h"
 
 #include <openssl/evp.h>
 #include <openssl/sha.h>
@@ -701,11 +702,10 @@ crypt_generate_random_bytes (char *dest, int length)
 
 // 
 // *INDENT-OFF*
-#define DBLINK_MASTER_KEY_SIZE (32)
 static struct
 {
   unsigned char nonce[16];              // See TDE_DK_NONCE_LENGTH in tde.h
-  unsigned char master_key[DBLINK_MASTER_KEY_SIZE+1];         // See TDE_MASTER_KEY_LENGTH in tde.h
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH];
 } evp_cipher = { {0, }, {0, } };  // Do not omit the this initialization settings.
 // *INDENT-ON*
 
@@ -717,7 +717,11 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
   if (is_init_done == 0)
     {
       memset (evp_cipher.nonce, 0x07, sizeof (evp_cipher.nonce));
+#if !defined(CS_MODE)
+      memcpy (evp_cipher.master_key, tde_Cipher.data_keys.log_key, TDE_MASTER_KEY_LENGTH);
+#else
       sprintf ((char *) evp_cipher.master_key, "%s", "CUBRIDcubrid");
+#endif
       is_init_done = 1;
     }
 
@@ -752,15 +756,16 @@ crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *ciph
   int len, cipher_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
-  unsigned char master_key[DBLINK_MASTER_KEY_SIZE + 1] = { 0, };	// Do NOT omit this initialize.
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   unsigned char *key;
 
-  err = init_dblink_cipher (&ctx, &cipher_type, ((mk && *mk) ? ((mk[13] & 0x01) == 0x00) : true));
+  assert (mk);
+  err = init_dblink_cipher (&ctx, &cipher_type, (*mk) ? ((mk[13] & 0x01) == 0x00) : true);
   if (err != NO_ERROR)
     {
       return err;
     }
-  if (mk && *mk)
+  if (mk[0] == 0x00)
     {
       key = evp_cipher.master_key;
     }
@@ -810,16 +815,17 @@ crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char
   int len, str_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
-  unsigned char master_key[DBLINK_MASTER_KEY_SIZE + 1] = { 0, };	// Do NOT omit this initialize.
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   unsigned char *key;
 
-  err = init_dblink_cipher (&ctx, &cipher_type, ((mk && *mk) ? ((mk[13] & 0x01) == 0x00) : true));
+  assert (mk);
+  err = init_dblink_cipher (&ctx, &cipher_type, (*mk) ? ((mk[13] & 0x01) == 0x00) : true);
   if (err != NO_ERROR)
     {
       return err;
     }
 
-  if (mk && *mk)
+  if (mk[0] == 0x00)
     {
       key = evp_cipher.master_key;
     }
@@ -882,6 +888,7 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
   int hextable_mod = (int) strlen (hextable);
   unsigned char *enc_ptr = NULL;
   int enc_len = 0;
+  unsigned char empty_str[4] = { 0x00, };
 
   assert (src != NULL && dest != NULL);
 
@@ -890,6 +897,32 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
     {
       db_private_free (NULL, enc_ptr);
       return err;
+    }
+
+  // remove '\n' character
+  char *p, *t;
+  p = (char *) enc_ptr;
+  while (*p && (*p != '\n'))
+    {
+      p++;
+    }
+
+  for (t = p; *p; p++)
+    {
+      if (*p == '\n')
+	{
+	  enc_len--;
+	  continue;
+	}
+
+      *t = *p;
+      t++;
+    }
+  *t = 0x00;
+
+  if (!pk)
+    {
+      pk = empty_str;
     }
 
   assert (dest_len >= (enc_len + 4));
@@ -924,10 +957,16 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
   /* Adjust the length so that it is a multiple of 4. */
   dest_len >>= 2;
   dest_len <<= 2;
+
+  dest_len -= 2;
+  even = 0;
   for (i = enc_len + pk_len; i < dest_len; i++)
     {
       dest[i] = hextable[rand () % hextable_mod];
+      even += (dest[i] + i);
     }
+  dest[i++] = ((even >> 8) % 26) + 'A';
+  dest[i++] = (even % 26) + 'a';
   dest[i] = '\0';
 
   return NO_ERROR;
@@ -938,6 +977,7 @@ crypt_dblink_str_to_bin (const char *src, int src_len, char *dest, int *dest_len
 {
   int i, err, pk_len, idx, odd, even;
   unsigned char *dec_ptr = NULL;
+  char *src_bk = (char *) src;
 
   assert (src && dest && pk && dest_len);
   assert (src_len >= 6);
@@ -983,5 +1023,22 @@ crypt_dblink_str_to_bin (const char *src, int src_len, char *dest, int *dest_len
     }
 
   db_private_free (NULL, dec_ptr);
+
+  if (err == NO_ERROR)
+    {
+      // check validation 
+      even = 0;
+      src += src_len;
+      for (i = src - src_bk; src_bk[i + 2]; i++)
+	{
+	  even += (src_bk[i] + i);
+	}
+
+      if ((src_bk[i] != (((even >> 8) % 26) + 'A')) || (src_bk[i + 1] != ((even % 26) + 'a')))
+	{
+	  err = ER_FAILED;
+	}
+    }
+
   return err;
 }
