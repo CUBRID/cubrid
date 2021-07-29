@@ -3709,10 +3709,6 @@ exit_on_error:
     {
       parser_free_node (parser, new_query);
     }
-  if (derived != NULL)
-    {
-      parser_free_node (parser, derived);
-    }
   if (spec != NULL)
     {
       parser_free_node (parser, spec);
