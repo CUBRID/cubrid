@@ -435,16 +435,16 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
 static int
 receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & dbname, SERVER_TYPE & type)
 {
-  int name_length;
+  int buffer_length;
   char *buffer = NULL;
 
-  int exit_code = css_receive_data (conn, rid, &buffer, &name_length, -1);
+  int exit_code = css_receive_data (conn, rid, &buffer, &buffer_length, -1);
   if (exit_code == NO_ERRORS)
     {
       // *INDENT-OFF*
-      type = static_cast<SERVER_TYPE> ((int) buffer[0] - '0');
+      type = static_cast<SERVER_TYPE> (buffer[0] - '0');
       // *INDENT-ON*
-      dbname = std::string (buffer + 1, name_length - 1);
+      dbname = std::string (buffer + 1, buffer_length - 1);
 
       er_log_debug (ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
 		    dbname.c_str (), type == SERVER_TYPE_PAGE ? "page" : "transaction");
@@ -552,8 +552,8 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	{
 	  /* accept but make it send us a port id */
 	  css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED_NEW);
-	  int name_length = sizeof (buffer);
-	  if (css_net_recv (conn->fd, (char *) &buffer, &name_length, -1) == NO_ERRORS)
+	  int buffer_length = sizeof (buffer);
+	  if (css_net_recv (conn->fd, (char *) &buffer, &buffer_length, -1) == NO_ERRORS)
 	    {
 #if defined(DEBUG)
 	      css_Active_server_count++;
@@ -566,7 +566,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 		{
 		  entry->port_id = ntohl (buffer);
 		  entry->server_type = type;
-		  length = (int) server_name.length () + 1;
+		  length = (int) strlen (server_name.c_str ()) + 1;
 		  /* read server version_string, env_var, pid */
 		  if (length < server_name.length ())
 		    {

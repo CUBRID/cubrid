@@ -1371,7 +1371,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
    * buffer space is used to copy the server name.
    */
   buffer = (char) (get_server_type () + '0');
-  buffer += server_name;
+  buffer.append (server_name, name_length);
   conn = css_connect_to_master_server (port_id, buffer.c_str (), name_length + 1);
   if (conn != NULL)
     {
