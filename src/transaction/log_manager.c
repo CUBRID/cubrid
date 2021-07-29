@@ -199,6 +199,7 @@ static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname
 static int log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				    const char *prefix_logname, bool ismedia_crash, BO_RESTART_ARG * r_args,
 				    bool init_emergency);
+static void log_unmount_active_file (THREAD_ENTRY * thread_p);
 #if defined(SERVER_MODE)
 static int log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 #endif /* SERVER_MODE */
@@ -985,6 +986,20 @@ log_set_no_logging (void)
   return error_code;
 }
 
+void
+log_unmount_active_file (THREAD_ENTRY * thread_p)
+{
+  if (is_tran_server_with_remote_storage ())
+    {
+      assert (log_Gl.append.vdes == NULL_VOLDES);
+    }
+  else
+    {
+      fileio_dismount (thread_p, log_Gl.append.vdes);
+      log_Gl.append.vdes = NULL_VOLDES;
+    }
+}
+
 /*
  * log_initialize - Initialize the log manager
  *
@@ -1109,8 +1124,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
 
   /* Mount the active log and read the log header */
-  log_Gl.append.vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
-  if (log_Gl.append.vdes == NULL_VOLDES)
+  if (!is_tran_server_with_remote_storage ())
+    {
+      log_Gl.append.vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
+    }
+  if (log_Gl.append.vdes == NULL_VOLDES && !is_tran_server_with_remote_storage ())
     {
       if (ismedia_crash != false)
 	{
@@ -1194,7 +1212,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * page size
        */
       logpb_finalize_pool (thread_p);
-      fileio_dismount (thread_p, log_Gl.append.vdes);
+      log_unmount_active_file (thread_p);
       log_Gl.append.vdes = NULL_VOLDES;
 
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
@@ -1311,6 +1329,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
+      assert (!is_tran_server_with_remote_storage ());
       if (fileio_map_mounted (thread_p, (bool (*)(THREAD_ENTRY *, VOLID, void *)) log_verify_dbcreation,
 			      &log_Gl.hdr.db_creation) != true)
 	{
@@ -1472,6 +1491,7 @@ error:
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
+      assert (!is_tran_server_with_remote_storage ());
       fileio_dismount (thread_p, log_Gl.append.vdes);
     }
 
@@ -1800,8 +1820,7 @@ log_final (THREAD_ENTRY * thread_p)
     }
 
   /* Dismount the active log volume */
-  fileio_dismount (thread_p, log_Gl.append.vdes);
-  log_Gl.append.vdes = NULL_VOLDES;
+  log_unmount_active_file (thread_p);
 
   free_and_init (log_Gl.loghdr_pgptr);
 
