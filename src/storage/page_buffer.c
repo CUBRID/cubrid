@@ -247,7 +247,7 @@ typedef enum
    | PGBUF_BCB_ASYNC_FLUSH_REQ \
    | PGBUF_BCB_FLUSH_NOT_NEEDED)
 
-static bool
+static inline bool
 pgbuf_bcb_flag_is_invalid_victim (int flag)
 {
   int invalid_flag = 0;		// = VICTIMIZING | PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_FLUSHING_TO_DISK_FLAG;
@@ -1221,7 +1221,7 @@ STATIC_INLINE PGBUF_ZONE pgbuf_bcb_get_zone (const PGBUF_BCB * bcb) __attribute_
 STATIC_INLINE int pgbuf_bcb_get_lru_index (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_dirty (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
-static bool pgbuf_bcb_is_dirty_and_needs_flushing (PGBUF_BCB * bcb);
+static inline bool pgbuf_bcb_is_dirty_and_needs_flushing (PGBUF_BCB * bcb);
 STATIC_INLINE bool pgbuf_bcb_mark_is_flushing (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_flushing (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
