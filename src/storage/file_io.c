@@ -89,7 +89,9 @@
 #include "vacuum.h"
 #endif /* SERVER_MODE */
 #include "crypt_opfunc.h"
+#if !defined (CS_MODE)
 #include "server_type.hpp"
+#endif
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -6498,6 +6500,7 @@ fileio_find_next_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
 VOLID
 fileio_find_previous_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
 {
+#if !defined (CS_MODE)
   if (is_tran_server_with_remote_storage ())
     {
       // volumes are always assigned successively
@@ -6506,6 +6509,7 @@ fileio_find_previous_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
     }
   else
     {
+#endif // !CS_MODE
       FILEIO_VOLUME_INFO *vol_info_p;
       APPLY_ARG arg = { 0 };
 
@@ -6525,7 +6529,9 @@ fileio_find_previous_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
 	}
 
       return NULL_VOLID;
+#if !defined (CS_MODE)
     }
+#endif // !CS_MODE
 }
 
 VOLID
