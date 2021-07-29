@@ -987,6 +987,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
    * if infrastructure is not initialized dependent code below works sequentially
    */
   LOG_CS_EXIT (thread_p);
+
+  const auto time_start_setting_up = std::chrono::system_clock::now ();
+
   // *INDENT-OFF*
   std::unique_ptr<cublog::redo_parallel> parallel_recovery_redo;
 #if defined(SERVER_MODE)
@@ -1001,6 +1004,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   }
 #endif
   // *INDENT-ON*
+
+  const auto time_end_setting_up = std::chrono::system_clock::now ();
+  const auto time_dur_setting_up_ms =
+    std::chrono::duration_cast < std::chrono::milliseconds > (time_end_setting_up - time_start_setting_up);
+  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo_perf:    setting_up= %6d (ms)\n",
+		 (long long) time_dur_setting_up_ms.count ());
 
   const auto time_start = std::chrono::system_clock::now ();
 
@@ -1670,19 +1679,22 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   {
     const auto time_end_main = std::chrono::system_clock::now ();
     const auto time_dur_main_ms = std::chrono::duration_cast < std::chrono::milliseconds > (time_end_main - time_start);
+
     if (parallel_recovery_redo != nullptr)
       {
 	parallel_recovery_redo->set_adding_finished ();
 	parallel_recovery_redo->wait_for_termination_and_stop_execution ();
 	rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_WAIT_FOR_PARALLEL);
       }
+
     const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
     const auto time_end_async = std::chrono::system_clock::now ();
     const auto time_dur_async_ms =
       std::chrono::duration_cast < std::chrono::milliseconds > (time_end_async - time_start);
-    er_log_debug (ARG_FILE_LINE, "recovery_parallel_count= %2d    main= %6lld    async= %6lld (ms)\n",
-		  log_recovery_redo_parallel_count, (long long) time_dur_main_ms.count (),
-		  (long long) time_dur_async_ms.count ());
+    _er_log_debug (ARG_FILE_LINE,
+		   "log_recovery_redo_perf:  recovery_parallel_count= %2d  main= %6lld  async= %6lld (ms)\n",
+		   log_recovery_redo_parallel_count, (long long) time_dur_main_ms.count (),
+		   (long long) time_dur_async_ms.count ());
   }
 #endif
   LOG_CS_ENTER (thread_p);
