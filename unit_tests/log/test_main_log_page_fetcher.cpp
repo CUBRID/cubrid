@@ -138,18 +138,17 @@ void test_env::on_receive_log_page (LOG_PAGEID page_id, const LOG_PAGE *log_page
   else
     {
       REQUIRE (error_code != NO_ERROR);
-      REQUIRE (log_page == nullptr);
     }
   g_log_page_fetcher_test_data.page_ids_requested[page_id].is_page_received = true;
-  delete log_page;
 }
 
-int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode)
+int
+logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *log_lsa, LOG_CS_ACCESS_MODE, LOG_PAGE *log_pgptr)
 {
-  std::unique_lock<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
-  if (g_log_page_fetcher_test_data.page_ids_requested[lsa.pageid].require_log_page_valid)
+  if (g_log_page_fetcher_test_data.page_ids_requested[log_lsa->pageid].require_log_page_valid)
     {
-      m_lsa = lsa;
+      log_pgptr->hdr.logical_pageid = log_lsa->pageid;
+      log_pgptr->hdr.offset = log_lsa->offset;
       return NO_ERROR;
     }
   else
@@ -158,23 +157,12 @@ int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_pag
     }
 }
 
-const log_page *log_reader::get_page () const
+void
+logpb_fatal_error (THREAD_ENTRY *, bool, const char *, const int, const char *, ...)
 {
-  std::unique_lock<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
-  if (g_log_page_fetcher_test_data.page_ids_requested[m_lsa.pageid].require_log_page_valid)
-    {
-      auto logpage = new log_page ();
-      logpage->hdr.logical_pageid = m_lsa.pageid;
-      return logpage;
-    }
-  else
-    {
-      return nullptr;
-    }
+  // todo: don't do fatal error on failed fetch log page
+  // assert (false);
 }
-
-// Mock some of the functionality
-log_reader::log_reader () = default; // needed by log_page_fetch_task::execute
 
 PAGE_PTR
 pgbuf_fix_debug (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
