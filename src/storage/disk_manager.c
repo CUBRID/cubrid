@@ -59,6 +59,7 @@
 #include "fault_injection.h"
 #include "vacuum.h"
 #include "dbtype.h"
+#include "server_type.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
@@ -518,7 +519,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 #define fault_inject_random_crash()
 #endif /* RELEASE */
 
-  int vdes;			/* Volume descriptor */
+  int vdes = NULL_VOLDES;	/* Volume descriptor */
   DISK_VOLUME_HEADER *vhdr;	/* Pointer to volume header */
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr;		/* Address of logging data */
@@ -569,13 +570,17 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   logpb_force_flush_pages (thread_p);
   fault_inject_random_crash ();
 
-  /* create and initialize the volume. recovery information is initialized in every page. */
-  vdes = fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages, vol_purpose == DB_PERMANENT_DATA_PURPOSE,
-			false, false, IO_PAGESIZE, kbytes_to_be_written_per_sec, false);
-  if (vdes == NULL_VOLDES)
+  if (!(is_tran_server_with_remote_storage () && ext_info->voltype == DB_PERMANENT_VOLTYPE))
     {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
+      /* create and initialize the volume. recovery information is initialized in every page. */
+      vdes =
+	fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages, vol_purpose == DB_PERMANENT_DATA_PURPOSE,
+		       false, false, IO_PAGESIZE, kbytes_to_be_written_per_sec, false);
+      if (vdes == NULL_VOLDES)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
     }
   /* from now on, if error occurs, we need to go to exit */
   fault_inject_random_crash ();
@@ -772,12 +777,15 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   fault_inject_random_crash ();
 
-  /* Flush all pages that were formatted. This is not needed, but it is done for security reasons to identify the volume
-   * in case of a system crash. Note that the identification may not be possible during media crashes */
-  (void) pgbuf_flush_all (thread_p, volid);
-  (void) fileio_synchronize (thread_p, vdes, vol_fullname, FILEIO_SYNC_ALSO_FLUSH_DWB);
+  if (!is_tran_server_with_remote_storage ())
+    {
+      /* Flush all pages that were formatted. This is not needed, but it is done for security reasons to identify the volume
+       * in case of a system crash. Note that the identification may not be possible during media crashes */
+      (void) pgbuf_flush_all (thread_p, volid);
+      (void) fileio_synchronize (thread_p, vdes, vol_fullname, FILEIO_SYNC_ALSO_FLUSH_DWB);
 
-  fault_inject_random_crash ();
+      fault_inject_random_crash ();
+    }
 
   /* todo: temporary is not logged because code should avoid it. this complicated system that uses page buffer should
    * not be necessary. with the exception of file manager and disk manager, who already manage to skip logging on
@@ -2227,12 +2235,15 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
       goto exit;
     }
 
-  if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
+  if (!is_tran_server_with_remote_storage ())
     {
-      if (logpb_add_volume (NULL, volid, extinfo->name, DB_PERMANENT_DATA_PURPOSE) == NULL_VOLID)
+      if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto exit;
+	  if (logpb_add_volume (NULL, volid, extinfo->name, DB_PERMANENT_DATA_PURPOSE) == NULL_VOLID)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
 	}
     }
 

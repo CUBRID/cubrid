@@ -6193,7 +6193,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 {
   assert (log_check_system_op_is_started (thread_p));
 
-  if (voltype == DB_PERMANENT_VOLTYPE)
+  if (voltype == DB_PERMANENT_VOLTYPE && !is_tran_server_with_remote_storage ())
     {
       BOOT_DB_PARM saved_boot_db_parm = *boot_Db_parm;
 
