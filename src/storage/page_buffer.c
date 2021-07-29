@@ -234,7 +234,7 @@ typedef enum
 /* flag for asynchronous flush request */
 #define PGBUF_BCB_ASYNC_FLUSH_REQ           ((int) 0x02000000)
 
-#define PGBUF_BCB_FLUSH_NOT_NEEDED	    ((int) 0x01000000)
+#define PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG	    ((int) 0x01000000)
 
 /* add all flags here */
 #define PGBUF_BCB_FLAGS_MASK \
@@ -245,7 +245,7 @@ typedef enum
    | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG \
    | PGBUF_BCB_TO_VACUUM_FLAG \
    | PGBUF_BCB_ASYNC_FLUSH_REQ \
-   | PGBUF_BCB_FLUSH_NOT_NEEDED)
+   | PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG)
 
 static inline bool
 pgbuf_bcb_flag_is_invalid_victim (int flag)
@@ -264,7 +264,7 @@ pgbuf_bcb_flag_is_invalid_victim (int flag)
   constexpr int FLAG_BCB_IS_BEING_VICTIMIZED = PGBUF_BCB_VICTIM_DIRECT_FLAG | PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG;
   constexpr int FLAG_BCB_IS_DIRTY_OR_BEING_FLUSHED = PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_FLUSHING_TO_DISK_FLAG;
 
-  if (flag & PGBUF_BCB_FLUSH_NOT_NEEDED)
+  if (flag & PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG)
     {
       // TODO: temporarily avoid victimizing BCB's flagged with FLAG_BCB_IS_DIRTY_OR_BEING_FLUSHED, even if flush is
       //       not required. First we need to get rid of all cases that flush permanent data pages to disk.
@@ -7758,7 +7758,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   bufptr->latch_mode = PGBUF_NO_LATCH;
   // Clear previous flags
   pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ	/* todo: why this?? */
-			  | PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_FLUSH_NOT_NEEDED);
+			  | PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG);
   pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
@@ -7834,7 +7834,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	{
 	  // Permanent data pages on transaction servers with remote storage don't have to be flushed to disk when
 	  // they're dirty. Mark this by PGBUF_BCB_FLUSH_NOT_NEEDED flag
-	  bufptr->flags |= PGBUF_BCB_FLUSH_NOT_NEEDED;
+	  bufptr->flags |= PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG;
 	}
 
 #if !defined (NDEBUG)
@@ -14997,7 +14997,7 @@ pgbuf_bcb_is_dirty_and_needs_flushing (PGBUF_BCB * bcb)
       return false;
     }
 
-  if (bcb->flags & PGBUF_BCB_FLUSH_NOT_NEEDED)
+  if (bcb->flags & PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG)
     {
       // does not need flushing
       return false;
@@ -15040,7 +15040,7 @@ pgbuf_bcb_set_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
     {
       // When a page is made dirty, if the page needs flushing, it may become an invalid victim.
 
-      if (old_flags & PGBUF_BCB_FLUSH_NOT_NEEDED)
+      if (old_flags & PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG)
 	{
 	  // The page does not need flushing, therefore making it dirty does not invalidate it for victimization
 	  return;
