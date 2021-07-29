@@ -767,7 +767,8 @@ css_process_new_connection (SOCKET fd)
       switch (function_code)
 	{
 	case INFO_REQUEST:	/* request for information */
-	  css_add_request_to_socket_queue (conn, true, NULL, fd, READ_WRITE, 0, UNKNOWN, &css_Master_socket_anchor);
+	  css_add_request_to_socket_queue (conn, true, NULL, fd, READ_WRITE, 0, SERVER_TYPE_UNKNOWN,
+					   &css_Master_socket_anchor);
 	  break;
 	case DATA_REQUEST:	/* request from a remote client */
 	  css_send_to_existing_server (conn, rid, SERVER_START_NEW_CLIENT);
@@ -1241,10 +1242,10 @@ main (int argc, char **argv)
 #endif
 
   conn = css_make_conn (css_Master_socket_fd[0]);
-  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0], READ_WRITE, 0, UNKNOWN,
+  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0], READ_WRITE, 0, SERVER_TYPE_UNKNOWN,
 				   &css_Master_socket_anchor);
   conn = css_make_conn (css_Master_socket_fd[1]);
-  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1], READ_WRITE, 0, UNKNOWN,
+  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1], READ_WRITE, 0, SERVER_TYPE_UNKNOWN,
 				   &css_Master_socket_anchor);
   css_master_loop ();
   css_master_cleanup (SIGINT);
