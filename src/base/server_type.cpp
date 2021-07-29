@@ -103,6 +103,10 @@ void finalize_server_type ()
     {
       ps_Gl.disconnect_active_tran_server ();
     }
+  else
+    {
+      assert (get_server_type () == SERVER_TYPE_UNKNOWN);
+    }
 }
 
 bool is_tran_server_with_remote_storage ()
