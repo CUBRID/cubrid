@@ -398,6 +398,13 @@ namespace cublog
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
 
     private:
+      template <typename T>
+      inline void
+      read_record_and_redo (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+			    const VPID &rcv_vpid, const log_lsa &rcv_lsa,
+			    LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
+
+    private:
       // by design pointer is guaranteed to outlive this instance
       const log_lsa *const m_end_redo_lsa;
       const log_reader::fetch_mode m_log_reader_page_fetch_mode;

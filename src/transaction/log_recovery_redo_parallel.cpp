@@ -709,72 +709,41 @@ namespace cublog
     perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_ASYNC };
 
     const auto &rcv_lsa = get_log_lsa ();
-    const int err_set_lsa_and_fetch_page
-      = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, m_log_reader_page_fetch_mode);
-    if (err_set_lsa_and_fetch_page != NO_ERROR)
+    const int err_fetch = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, m_log_reader_page_fetch_mode);
+    if (err_fetch != NO_ERROR)
       {
-	return err_set_lsa_and_fetch_page;
+	return err_fetch;
       }
     log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
     const auto &rcv_vpid = get_vpid ();
     switch (m_log_rtype)
       {
       case LOG_REDO_DATA:
-      {
-	log_pgptr_reader.advance_when_does_not_fit (sizeof (log_rec_redo));
-	const log_rec_redo log_rec = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_redo> ();
-	log_rv_redo_record_sync<log_rec_redo> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa,
-					       m_end_redo_lsa, m_log_rtype,
-					       undo_unzip_support, redo_unzip_support);
+	read_record_and_redo<log_rec_redo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
+					    undo_unzip_support, redo_unzip_support);
 	break;
-      }
       case LOG_MVCC_REDO_DATA:
-      {
-	log_pgptr_reader.advance_when_does_not_fit (sizeof (log_rec_mvcc_redo));
-	const log_rec_mvcc_redo log_rec = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_mvcc_redo> ();
-	log_rv_redo_record_sync<log_rec_mvcc_redo> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa,
-	    m_end_redo_lsa, m_log_rtype,
+	read_record_and_redo<log_rec_mvcc_redo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
 	    undo_unzip_support, redo_unzip_support);
 	break;
-      }
       case LOG_UNDOREDO_DATA:
       case LOG_DIFF_UNDOREDO_DATA:
-      {
-	log_pgptr_reader.advance_when_does_not_fit (sizeof (log_rec_undoredo));
-	const log_rec_undoredo log_rec = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_undoredo> ();
-	log_rv_redo_record_sync<log_rec_undoredo> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa,
-	    m_end_redo_lsa, m_log_rtype,
-	    undo_unzip_support, redo_unzip_support);
+	read_record_and_redo<log_rec_undoredo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
+						undo_unzip_support, redo_unzip_support);
 	break;
-      }
       case LOG_MVCC_UNDOREDO_DATA:
       case LOG_MVCC_DIFF_UNDOREDO_DATA:
-      {
-	log_pgptr_reader.advance_when_does_not_fit (sizeof (log_rec_mvcc_undoredo));
-	const log_rec_mvcc_undoredo log_rec = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_mvcc_undoredo> ();
-	log_rv_redo_record_sync<log_rec_mvcc_undoredo> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa,
-	    m_end_redo_lsa, m_log_rtype,
+	read_record_and_redo<log_rec_mvcc_undoredo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
 	    undo_unzip_support, redo_unzip_support);
 	break;
-      }
       case LOG_RUN_POSTPONE:
-      {
-	log_pgptr_reader.advance_when_does_not_fit (sizeof (log_rec_run_postpone));
-	const log_rec_run_postpone log_rec = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_run_postpone> ();
-	log_rv_redo_record_sync<log_rec_run_postpone> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa,
-	    m_end_redo_lsa, m_log_rtype,
+	read_record_and_redo<log_rec_run_postpone> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
 	    undo_unzip_support, redo_unzip_support);
 	break;
-      }
       case LOG_COMPENSATE:
-      {
-	log_pgptr_reader.advance_when_does_not_fit (sizeof (log_rec_compensate));
-	const log_rec_compensate log_rec = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_compensate> ();
-	log_rv_redo_record_sync<log_rec_compensate> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa,
-	    m_end_redo_lsa, m_log_rtype,
+	read_record_and_redo<log_rec_compensate> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
 	    undo_unzip_support, redo_unzip_support);
 	break;
-      }
       default:
 	assert (false);
 	break;
@@ -783,6 +752,16 @@ namespace cublog
     return NO_ERROR;
   }
 
-
-
+  template <typename T>
+  inline void
+  redo_job_impl::read_record_and_redo (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+				       const VPID &rcv_vpid, const log_lsa &rcv_lsa,
+				       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
+  {
+    log_pgptr_reader.advance_when_does_not_fit (sizeof (T));
+    const T log_rec = log_pgptr_reader.reinterpret_copy_and_add_align<T> ();
+    log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa,
+				m_end_redo_lsa, m_log_rtype,
+				undo_unzip_support, redo_unzip_support);
+  }
 }
