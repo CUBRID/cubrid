@@ -184,8 +184,7 @@ static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, boo
 
 static int get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VALUE * encrypt_val,
 					bool is_parser);
-static int get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher, DB_VALUE * decrypt_val,
-					bool is_parser);
+static int get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher, DB_VALUE * decrypt_val);
 static int shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time);
 static int reverse_shake_4_decrypt (char *confused, char *passwd);
 #ifndef NDEBUG
@@ -18039,7 +18038,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error = get_dblink_password_decrypt (parser, pwd, &tmp_passwd, true);
+  error = get_dblink_password_decrypt (parser, pwd, &tmp_passwd);
   if (error != NO_ERROR)
     {
       goto end;
@@ -18169,7 +18168,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
       goto error_end;
     }
 
-  error = get_dblink_password_decrypt (parser, db_get_string (&pwd_val), &(out_val[2]), false);
+  error = get_dblink_password_decrypt (parser, db_get_string (&pwd_val), &(out_val[2]));
   if (error != NO_ERROR)
     {
       if (!pt_has_error (parser))
@@ -18266,7 +18265,7 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
     }
   else if (length == max_len)
     {				// A encrypted key from the pure key.      
-      err = get_dblink_password_decrypt (parser, passwd, &val, true);
+      err = get_dblink_password_decrypt (parser, passwd, &val);
       if (err == NO_ERROR)
 	{
 	  strcpy (cipher_buf, passwd);
@@ -18338,7 +18337,7 @@ get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VAL
 }
 
 static int
-get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher, DB_VALUE * decrypt_val, bool is_parser)
+get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher, DB_VALUE * decrypt_val)
 {
   int err, length, new_length;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
@@ -18583,7 +18582,7 @@ ciper_func_test (PARSER_CONTEXT * parser)
 	  goto clean_db_value;
 	}
 
-      err = get_dblink_password_decrypt (parser, cipher, &decrypt_val[0], true);
+      err = get_dblink_password_decrypt (parser, cipher, &decrypt_val[0]);
       if (err != NO_ERROR)
 	{
 	  printf ("ERR(3) [%s]\n", cipher);
@@ -18617,7 +18616,7 @@ ciper_func_test (PARSER_CONTEXT * parser)
 	  goto clean_db_value;
 	}
 
-      err = get_dblink_password_decrypt (parser, pt2, &decrypt_val[1], true);
+      err = get_dblink_password_decrypt (parser, pt2, &decrypt_val[1]);
       if (err != NO_ERROR)
 	{
 	  printf ("ERR(7) [%s]\n", pt2);
