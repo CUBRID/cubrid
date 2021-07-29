@@ -1147,7 +1147,6 @@ typedef enum
 
   PT_DERIVED_JSON_TABLE,	// json table spec derivation
   PT_DERIVED_DBLINK_TABLE,	// dblink table spec derivation
-  PT_IS_DBLINK_SUBQUERY,	// for dblink subquery optimization
   // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 

@@ -4963,6 +4963,44 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int
   return statement;
 }
 
+/*
+ * mq_rewrite_dblink_as_subquery () - rewrite dblink as a subquery
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   node(in): possible dblink query
+ */
+static PT_NODE *
+mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *walk)
+{
+  PT_NODE *spec, *derived = NULL;
+  PT_NODE *derived_table;
+
+  if (node->node_type != PT_SELECT)
+    {
+      return node;
+    }
+
+  for (spec = node->info.query.q.select.from; spec; spec = spec->next)
+    {
+      if ((derived_table = spec->info.spec.derived_table)
+	  && spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	{
+	  derived = mq_rewrite_dblink_as_derived (parser, derived_table);
+	  if (derived == NULL)
+	    {
+	      break;
+	    }
+
+	  derived->info.query.is_subquery = PT_IS_SUBQUERY;
+	  spec->info.spec.derived_table = derived;
+	  spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
+	}
+    }
+
+  *walk = PT_STOP_WALK;
+
+  return node;
+}
 
 /*
  * mq_translate_local() - recursively expands each query against a view or
@@ -5009,7 +5047,6 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
 	      aggregate_rewrote_as_derived = true;
 	    }
 	}
-
       break;
 
     case PT_UPDATE:
@@ -6512,6 +6549,10 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (node)
 	{
+	  /* for the optimization of the query includes dblink
+	   * it is better to be written to a subquery */
+	  node = parser_walk_tree (parser, node, NULL, NULL, mq_rewrite_dblink_as_subquery, NULL);
+
 	  /* mq_optimize works for queries only. Queries generated for update, insert or delete will go thru this path
 	   * when mq_translate is called, so will still get this optimization step applied. */
 	  node = mq_optimize (parser, node);
