@@ -127,7 +127,7 @@ namespace cublog
 
       /* add new work job
        */
-      void add (std::unique_ptr<redo_job_base> &&job);
+      void add (redo_job_base *job);
 
       /* mandatory to explicitly call this after all data have been added
        */
@@ -173,7 +173,7 @@ namespace cublog
 	  redo_job_queue &operator= (redo_job_queue const &) = delete;
 	  redo_job_queue &operator= (redo_job_queue &&) = delete;
 
-	  void push_job (ux_redo_job_base &&job);
+	  void push_job (redo_job_base *a_job);
 
 	  /* to be called after all known entries have been added
 	   * part of a mechanism to signal to the consumers, together with
@@ -473,12 +473,11 @@ log_rv_redo_record_sync_or_dispatch_async (
   else
     {
       // dispatch async
-      std::unique_ptr<cublog::redo_job_impl> job
-      {
-	new cublog::redo_job_impl (end_redo_lsa, force_each_log_page_fetch)
-      };
+      cublog::redo_job_impl *job =
+	      new cublog::redo_job_impl (end_redo_lsa, force_each_log_page_fetch);
       job->reset (rcv_vpid, rcv_lsa, log_rtype);
-      parallel_recovery_redo->add (std::move (job));
+      // ownership of raw pointer goes to the callee
+      parallel_recovery_redo->add (job);
       a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
     }
 #else // !SERVER_MODE = SA_MODE

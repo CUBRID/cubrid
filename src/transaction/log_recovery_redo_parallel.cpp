@@ -175,14 +175,14 @@ namespace cublog
   }
 
   void
-  redo_parallel::redo_job_queue::push_job (ux_redo_job_base &&job)
+  redo_parallel::redo_job_queue::push_job (redo_job_base *a_job)
   {
     std::lock_guard<std::mutex> lockg (m_produce_queue_mutex);
     if (m_minimum_log_lsa != nullptr && m_produce_queue->empty ())
       {
-	m_minimum_log_lsa->set_for_produce (job->get_log_lsa ());
+	m_minimum_log_lsa->set_for_produce (a_job->get_log_lsa ());
       }
-    m_produce_queue->push_back (std::move (job));
+    m_produce_queue->push_back (ux_redo_job_base { a_job });
     m_queues_empty = false;
   }
 
@@ -595,12 +595,12 @@ namespace cublog
   }
 
   void
-  redo_parallel::add (std::unique_ptr<redo_job_base> &&job)
+  redo_parallel::add (redo_job_base *a_job)
   {
     assert (false == m_waited_for_termination);
     assert (false == m_job_queue.get_adding_finished ());
 
-    m_job_queue.push_job (std::move (job));
+    m_job_queue.push_job (a_job);
   }
 
   void
