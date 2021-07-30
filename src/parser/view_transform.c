@@ -3612,14 +3612,11 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 /*
  * mq_rewrite_dblink_as_derived -
- *   return: rewritten select statement with dblink table
- *   parser(in):
- *   query(in):
- *
- * Note: returned result depends on global schema state.
- * It was qo_rewrite_query_as_derived and moved to here to be public.
+ *   return: rewritten dblink as a derived table (like a subquery)
+ *   parser(in): 
+ *   query(in): it should be a spec node with dblink
  */
-PT_NODE *
+static PT_NODE *
 mq_rewrite_dblink_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   PT_NODE *new_query = NULL, *derived = NULL;
