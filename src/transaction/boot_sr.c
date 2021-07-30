@@ -6229,7 +6229,8 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
       heap_flush (thread_p, boot_Db_parm_oid);
       fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
     }
-  else
+
+  if (voltype == DB_TEMPORARY_VOLTYPE)
     {
       if (boot_Temp_info.temp_nvols < 0 || (boot_Temp_info.temp_nvols == 0 && volid != LOG_MAX_DBVOLID)
 	  || (boot_Temp_info.temp_nvols > 0 && boot_Temp_info.temp_last_volid - 1 != volid))
