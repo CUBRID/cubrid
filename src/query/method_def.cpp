@@ -33,7 +33,7 @@ method_sig_node::pack (cubpacking::packer &serializator) const
       serializator.pack_int (method_arg_pos[i]);
     }
 
-  if (method_type != METHOD_IS_JAVA_SP)
+  if (method_type != METHOD_TYPE_JAVA_SP)
     {
       serializator.pack_c_string (class_name, strlen (class_name));
     }
@@ -67,7 +67,7 @@ method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t 
       size += serializator.get_packed_int_size (size); /* method_sig->method_arg_pos[i] */
     }
 
-  if (method_type != METHOD_IS_JAVA_SP)
+  if (method_type != METHOD_TYPE_JAVA_SP)
     {
       size += serializator.get_packed_c_string_size (class_name, strlen (class_name), size);
     }
@@ -104,7 +104,7 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
       deserializator.unpack_int (method_arg_pos[n]);
     }
 
-  if (method_type != METHOD_IS_JAVA_SP)
+  if (method_type != METHOD_TYPE_JAVA_SP)
     {
       class_name = nullptr;
       cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
@@ -131,7 +131,7 @@ method_sig_node::freemem ()
   db_private_free_and_init (NULL, method_name);
   db_private_free_and_init (NULL, method_arg_pos);
 
-  if (method_type != METHOD_IS_JAVA_SP && class_name)
+  if (method_type != METHOD_TYPE_JAVA_SP && class_name)
     {
       db_private_free_and_init (NULL, class_name);
     }

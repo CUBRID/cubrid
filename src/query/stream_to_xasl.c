@@ -2438,7 +2438,7 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
       ptr = or_unpack_int (ptr, &(method_sig->method_arg_pos[n]));
     }
 
-  if (method_sig->method_type == METHOD_IS_JAVA_SP)
+  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
     {
       method_sig->arg_info.arg_mode = (int *) stx_alloc_struct (thread_p, sizeof (int) * method_sig->num_method_args);
       if (method_sig->arg_info.arg_mode == NULL)

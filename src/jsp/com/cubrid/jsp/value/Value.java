@@ -56,6 +56,10 @@ public abstract class Value {
         this.mode = mode;
     }
 
+    public void setMode(int mode) {
+        this.mode = mode;
+    }
+
     public int getMode() {
         return mode;
     }
@@ -318,5 +322,9 @@ public abstract class Value {
 
     public int getDbType() {
         return dbType;
+    }
+
+    public void setDbType(int type) {
+        dbType = type;
     }
 }

@@ -22,8 +22,10 @@
 
 #ident "$Id$"
 
-#include "query_method.h"
+#include "query_method.hpp"
 
+#include <unordered_map>
+#include <deque>
 #include <vector>
 
 #include "authenticate.h"	/* AU_ENABLE, AU_DISABLE */
@@ -43,10 +45,27 @@
 #include "packer.hpp"		/* packing_packer */
 #endif
 
+// *INDENT-OFF*
+static std::unordered_map <UINT64, std::vector<DB_VALUE>> runtime_args;
+static std::vector<DB_VALUE> runtime_argument_base;
+// *INDENT-ON*
+
+struct method_server_conn_info
+{
+  unsigned int rc;
+  char *host;
+  char *server_name;
+};
+
 /* FIXME: duplicated function implementation; The following three functions are ported from the client cursor (cursor.c) */
-static bool method_has_set_vobjs (DB_SET * set);
-static int method_fixup_set_vobjs (DB_VALUE * value_p);
-static int method_fixup_vobjs (DB_VALUE * value_p);
+static bool method_has_set_vobjs (DB_SET *set);
+static int method_fixup_set_vobjs (DB_VALUE *value_p);
+static int method_fixup_vobjs (DB_VALUE *value_p);
+
+#if defined (CS_MODE)
+static int method_callback_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &conn_info);
+static int method_callback_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn_info);
+#endif
 
 /*
  * method_send_value_to_server () - Send an error indication to the server
@@ -56,7 +75,7 @@ static int method_fixup_vobjs (DB_VALUE * value_p);
  *   server_name(in)    : server name
  */
 int
-method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p, DB_VALUE & value)
+method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p, DB_VALUE &value)
 {
   packing_packer packer;
   cubmem::extensible_block ext_blk;
@@ -83,42 +102,208 @@ method_send_error_to_server (unsigned int rc, char *host_p, char *server_name, i
   int code = METHOD_ERROR;
   packer.set_buffer_and_pack_all (ext_blk, code, error_id);
 
-  return net_client_send_data (host_p, rc, (char *) ext_blk.get_ptr (), packer.get_current_size ());
+  return net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
 }
 
 /*
- * method_invoke_for_server () -
- *   return: int
- *   rc(in)     :
- *   host(in)   :
- *   server_name(in)    :
- *   args (in)        : objects & arguments DB_VALUEs
- *   method_sig_list(in): Method signatures
+ * method_dispatch () - Dispatch method protocol from the server
+ *   return:
+ *   rc(in)     : enquiry return code
+ *   host(in)   : host name
+ *   server_name(in)    : server name
+ *   methoddata (in)    : data buffer
+ *   methoddata_size (in) : data buffer size
  */
 int
-method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, std::vector < DB_VALUE > &args,
-			  method_sig_list * method_sig_list_p)
+method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddata, int methoddata_size)
 {
-  int error = NO_ERROR;
-  DB_VALUE result;
+  using dispatch_function_type = std::function<int (packing_unpacker &, method_server_conn_info &)>;
 
-  for (METHOD_SIG * meth_sig_p = method_sig_list_p->method_sig; meth_sig_p; meth_sig_p = meth_sig_p->next)
+  int error = NO_ERROR;
+
+#if defined (CS_MODE)
+  packing_unpacker unpacker (methoddata, (size_t) methoddata_size);
+  method_server_conn_info conn_info {rc, host, server_name};
+
+  int method_dispatch_code;
+  unpacker.unpack_int (method_dispatch_code);
+
+  dispatch_function_type dispatch_function;
+  switch (method_dispatch_code)
     {
-      error = method_invoke (result, args, meth_sig_p);
-      if (error == NO_ERROR)
-	{
-	  /* send a result value to server */
-	  method_send_value_to_server (rc, host_p, server_name_p, result);
-	  pr_clear_value (&result);
-	}
-      else
-	{
-	  break;
-	}
+    case METHOD_CALLBACK_ARG_PREPARE:
+      dispatch_function = method_callback_prepare_arguments;
+      break;
+    case METHOD_CALLBACK_INVOKE:
+      dispatch_function = method_callback_invoke_builtin;
+      break;
+    case METHOD_CALLBACK_END:
+      /*
+      int previous_arg_count = runtime_argument_base.size();
+      for (int i = 0; i < previous_arg_count; i++)
+        {
+          db_value_clear (&runtime_argument_base[i]);
+        }
+      runtime_argument_base.clear ();
+      */
+      break;
+    default:
+      assert (false);
+      break;
     }
+
+  // call dispatch function
+  error = dispatch_function (unpacker, conn_info);
+#endif
 
   return error;
 }
+
+#if defined (CS_MODE)
+static int
+method_callback_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &conn_info)
+{
+  UINT64 id;
+  unpacker.unpack_bigint (id);
+
+  int arg_count;
+  unpacker.unpack_int (arg_count);
+
+  // reset previous arguments
+  auto search = runtime_args.find (id);
+  if (search != runtime_args.end())
+    {
+      std::vector<DB_VALUE> &prev_args = search->second;
+      int prev_args_count = prev_args.size();
+      for (int i = 0; i < prev_args_count; i++)
+	{
+	  db_value_clear (&prev_args[i]);
+	}
+      runtime_args.erase (search);
+    }
+
+  // new arguments
+  std::vector<DB_VALUE> arguments;
+  arguments.resize (arg_count);
+  for (int i = 0; i < arg_count; i++)
+    {
+      unpacker.unpack_db_value (arguments[i]);
+      method_fixup_vobjs (&arguments[i]);
+    }
+  runtime_args.insert ({id, arguments});
+  return NO_ERROR;
+}
+
+static int
+method_callback_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn_info)
+{
+  int error = NO_ERROR;
+  UINT64 id;
+  unpacker.unpack_bigint (id);
+
+  METHOD_SIG sig;
+  sig.unpack (unpacker);
+
+  DB_VALUE result;
+  db_make_null (&result);
+
+  // reset previous arguments
+  auto search = runtime_args.find (id);
+  if (search != runtime_args.end())
+    {
+      std::vector<DB_VALUE> &args = search->second;
+      error = method_invoke (result, args, &sig);
+      if (error == NO_ERROR)
+	{
+	  /* send a result value to server */
+	  method_send_value_to_server (conn_info.rc, conn_info.host, conn_info.server_name, result);
+	}
+      db_value_clear (&result);
+    }
+  else
+    {
+      error = ER_GENERIC_ERROR;
+    }
+
+  sig.freemem ();
+  return error;
+}
+#endif
+
+#if 0
+case METHOD_NESTED_QUERY_PREPARE:
+{
+  /* === read === */
+
+  // query_id
+  QUERY_ID qid;
+
+  std::uint64_t qid_temp;
+  unpacker.unpack_bigint (qid_temp);
+  qid = (QUERY_ID) qid_temp;
+
+  // sql_stmt
+  std::string sql_stmt;
+  unpacker.unpack_string (sql_stmt);
+
+  // flag
+  int flag;
+  unpacker.unpack_int (flag);
+
+  // Find handler from Statement Handler Cache
+
+  if (true)		// not found in statement handler cache
+    {
+      NESTED_QUERY_HANDLE handler;
+
+      DB_SESSION *session = db_open_buffer (sql_stmt.data ());
+      if (!session)
+	{
+	  return er_errid ();
+	}
+
+      int stmt_id = db_compile_statement (session);
+      if (stmt_id < 0)
+	{
+	  // TODO : error handling
+	}
+      else
+	{
+	  int num_markers = get_num_markers (sql_stmt.data ());
+	  char stmt_type = db_get_statement_type (session, stmt_id);
+
+	  handler.num_markers = num_markers;
+	  handler.stmt_type = stmt_type;
+	  handler.is_prepared = true;
+	}
+
+      /* prepare resultset */
+    }
+  else
+    {
+
+    }
+}
+break;
+case METHOD_NESTED_QUERY_EXECUTE:
+{
+  // bind values
+  // set host variables
+  // generated keys
+  // n = db_execute_and_keep_statement (session, stmt_id, &result);
+
+  // db_push_values (session, count,) error = db_execute_and_keep_statement (session, stmt_id, &result);
+}
+break;
+
+default:
+assert (false);
+break;
+}
+return error;
+}
+
+#endif
 
 /*
  * method_invoke () -
@@ -129,30 +314,29 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, st
  */
 // *INDENT-OFF*
 int
-method_invoke (DB_VALUE & result, std::vector < DB_VALUE > &args, method_sig_node * meth_sig_p)
+method_invoke (DB_VALUE & result, std::vector <DB_VALUE> &args, method_sig_node * meth_sig_p)
 // *INDENT-ON*
 {
   int error = NO_ERROR;
   int turn_on_auth = 1;
 
   assert (meth_sig_p != NULL);
-  // assert (meth_sig_p->method_type == METHOD_IS_CLASS_METHOD || meth_sig_p->method_type == METHOD_IS_INSTANCE_METHOD);
+  assert (meth_sig_p->method_type == METHOD_TYPE_CLASS_METHOD || meth_sig_p->method_type == METHOD_TYPE_INSTANCE_METHOD);
 
   /* The first position # is for the object ID */
   int num_args = meth_sig_p->num_method_args + 1;
 
   // *INDENT-OFF*
-  std::vector <DB_VALUE *> arg_val_p (num_args + 1, NULL); /* + 1 for C method */      
+  std::vector <DB_VALUE *> arg_val_p (num_args + 1, NULL); /* + 1 for C method */
   // *INDENT-ON*
   for (int i = 0; i < num_args; ++i)
     {
       int pos = meth_sig_p->method_arg_pos[i];
       arg_val_p[i] = &args[pos];
-      method_fixup_vobjs (arg_val_p[i]);
     }
 
   db_make_null (&result);
-  if (meth_sig_p->method_type != METHOD_IS_JAVA_SP)
+  if (meth_sig_p->method_type == METHOD_TYPE_INSTANCE_METHOD || meth_sig_p->method_type == METHOD_TYPE_CLASS_METHOD)
     {
       /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is
        * NULL. */
@@ -181,19 +365,16 @@ method_invoke (DB_VALUE & result, std::vector < DB_VALUE > &args, method_sig_nod
     }
   else
     {
-      /* java stored procedure call */
-      turn_on_auth = 0;
-      AU_ENABLE (turn_on_auth);
-      db_disable_modification ();
-      error = jsp_call_from_server (&result, &arg_val_p[0], meth_sig_p->method_name, meth_sig_p->num_method_args);
-      db_enable_modification ();
-      AU_DISABLE (turn_on_auth);
+      /* java stored procedure is not handled here anymore */
+      assert (false);
+      error = ER_GENERIC_ERROR;
     }
 
   /* error handling */
   if (error != NO_ERROR)
     {
       pr_clear_value (&result);
+      error = ER_FAILED;
     }
   else if (DB_VALUE_TYPE (&result) == DB_TYPE_ERROR)
     {
@@ -214,7 +395,7 @@ method_invoke (DB_VALUE & result, std::vector < DB_VALUE > &args, method_sig_nod
  *   set (in): set/sequence db_value
  */
 static bool
-method_has_set_vobjs (DB_SET * set)
+method_has_set_vobjs (DB_SET *set)
 {
   int i, size;
   DB_VALUE element;
@@ -247,7 +428,7 @@ method_has_set_vobjs (DB_SET * set)
  *   value_p (in/out): a db_value
  */
 static int
-method_fixup_set_vobjs (DB_VALUE * value_p)
+method_fixup_set_vobjs (DB_VALUE *value_p)
 {
   DB_TYPE type;
   int rc, i, size;
@@ -344,7 +525,7 @@ method_fixup_set_vobjs (DB_VALUE * value_p)
  *       if value_p is a set/seq then do same fixups on its elements
  */
 static int
-method_fixup_vobjs (DB_VALUE * value_p)
+method_fixup_vobjs (DB_VALUE *value_p)
 {
   DB_OBJECT *obj;
   int rc;

@@ -23,6 +23,8 @@
 #ifndef _METHOD_DEF_H_
 #define _METHOD_DEF_H_
 
+#include <string>
+
 #include "packer.hpp"
 
 typedef enum
@@ -32,19 +34,25 @@ typedef enum
   METHOD_ERROR
 } METHOD_CALL_STATUS;
 
-typedef enum
-{
-  METHOD_REQ_REGISTER = 1,
-  METHOD_REQ_INVOKE,
-  METHOD_REQ_CLEANUP
-} METHOD_REQUEST;
-
 enum METHOD_TYPE
 {
-  METHOD_IS_NONE = 0,
-  METHOD_IS_INSTANCE_METHOD = 1,
-  METHOD_IS_CLASS_METHOD = 2,
-  METHOD_IS_JAVA_SP = 3
+  METHOD_TYPE_NONE = 0,
+  METHOD_TYPE_INSTANCE_METHOD,
+  METHOD_TYPE_CLASS_METHOD,
+  METHOD_TYPE_JAVA_SP
+};
+
+enum METHOD_CALLBACK_CODE
+{
+  METHOD_CALLBACK_ARG_PREPARE,
+  METHOD_CALLBACK_INVOKE,
+  METHOD_CALLBACK_END,
+
+  /* TODO at CBRD-23961 */
+  METHOD_CALLBACK_DB_PARAMETER,
+  METHOD_CALLBACK_NESTED_QUERY_PREPARE,
+  METHOD_CALLBACK_NESTED_QUERY_EXECUTE,
+  METHOD_CALLBACK_NESTED_QUERY_END
 };
 
 typedef struct method_arg_info METHOD_ARG_INFO;
@@ -95,5 +103,19 @@ struct method_sig_list
   method_sig_list () = default;
 };
 typedef struct method_sig_list METHOD_SIG_LIST;
+
+struct nested_query_handler
+{
+  std::string sql_stmt;
+  char flag;
+  int stmt_no;
+  STATEMENT_ID stmt_id;		/* compiled stmt number */
+  CUBRID_STMT_TYPE stmt_type;	/* statement type */
+  DB_SESSION *session;
+  bool is_prepared;
+  int num_markers;         /* # of input markers */
+  DB_QUERY_RESULT *result; /* result column descriptor */
+};
+typedef struct nested_query_handler METHOD_NESTED_QUERY_HANDLE;
 
 #endif // _METHOD_DEF_H_

@@ -3780,12 +3780,12 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  (*tail)->class_name = (char *) dt->info.data_type.entity->info.name.original;
 		}
 
-	      (*tail)->method_type = PT_IS_CLASS_METHOD (node) ? METHOD_IS_CLASS_METHOD : METHOD_IS_INSTANCE_METHOD;
+	      (*tail)->method_type = PT_IS_CLASS_METHOD (node) ? METHOD_TYPE_CLASS_METHOD : METHOD_TYPE_INSTANCE_METHOD;
 	    }
 	  else if (PT_IS_JAVA_SP (node))
 	    {
 	      (*tail)->class_name = NULL;
-	      (*tail)->method_type = METHOD_IS_JAVA_SP;
+	      (*tail)->method_type = METHOD_TYPE_JAVA_SP;
 
 	      int num_args = (*tail)->num_method_args;
 	      (*tail)->arg_info.arg_mode = regu_int_array_alloc (num_args);

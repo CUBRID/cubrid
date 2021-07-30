@@ -5517,7 +5517,7 @@ xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
       ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
     }
 
-  if (method_sig->method_type == METHOD_IS_JAVA_SP)
+  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
     {
       for (n = 0; n < method_sig->num_method_args; n++)
 	{
@@ -7239,7 +7239,7 @@ xts_sizeof_method_sig (const METHOD_SIG * method_sig)
 	   + (OR_INT_SIZE * (method_sig->num_method_args + 1))	/* method_arg_pos */
 	   + PTR_SIZE);		/* next */
 
-  if (method_sig->method_type == METHOD_IS_JAVA_SP)
+  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
     {
       size += ((method_sig->num_method_args * OR_INT_SIZE)	/* arg_mode */
 	       + (method_sig->num_method_args * OR_INT_SIZE)	/* arg_type */
