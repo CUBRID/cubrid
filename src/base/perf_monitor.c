@@ -1911,6 +1911,7 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
   switch (thread_p->type)
     {
     case TT_WORKER:
+    case TT_RECOVERY:
       return PERF_MODULE_USER;
     case TT_VACUUM_WORKER:
     case TT_VACUUM_MASTER:
