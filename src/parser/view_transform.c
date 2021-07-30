@@ -3206,22 +3206,6 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  continue;		/* do not copy-push on_cond-term */
 	}
 
-      /* check for nullable-term */
-      if (term->node_type == PT_EXPR)
-	{
-	  save_next = term->next;
-	  term->next = NULL;	/* cut-off link */
-
-	  nullable_cnt = 0;	/* init */
-	  (void) parser_walk_tree (parser, term, NULL, NULL, qo_check_nullable_expr, &nullable_cnt);
-
-	  term->next = save_next;	/* restore link */
-
-	  if (nullable_cnt)
-	    {
-	      continue;		/* do not copy-push nullable-term */
-	    }
-	}
       if (pt_sargable_term (parser, term, infop) && PT_PUSHABLE_TERM (infop))
 	{
 	  /* copy term */
