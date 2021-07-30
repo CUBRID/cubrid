@@ -59,6 +59,7 @@
 #include "fault_injection.h"
 #include "vacuum.h"
 #include "dbtype.h"
+#include "scope_exit.hpp"
 #include "server_type.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
@@ -567,7 +568,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   fault_inject_random_crash ();
 
   /* this log must be flushed. */
-  logpb_force_flush_pages (thread_p);
+  logpb_force_flush_pages (thread_p);	//todo
   fault_inject_random_crash ();
 
   if (!(is_tran_server_with_remote_storage () && ext_info->voltype == DB_PERMANENT_VOLTYPE))
@@ -4137,62 +4138,62 @@ DISK_ISVALID
 disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID volid, PAGEID pageid, bool debug_crash)
 {
   PAGE_PTR page_volheader = NULL;
-  DISK_VOLUME_HEADER *volheader;
-  DISK_ISVALID isvalid = DISK_VALID;
-  SECTID sectid;
-  bool old_check_interrupt;
-  int old_wait_msecs;
+  DISK_VOLUME_HEADER *volheader = NULL;
 
-  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
+  bool old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
+  int old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
-  if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
+  auto exit_routine =
+    [&thread_p, &debug_crash, &page_volheader, &old_check_interrupt, &old_wait_msecs] (DISK_ISVALID isvalid) {
+    assert (isvalid != DISK_INVALID || !debug_crash);
+    if (isvalid == DISK_ERROR)
+      {
+	ASSERT_ERROR ();
+      }
+
+    xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+    (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
+    if (page_volheader)
+      {
+	pgbuf_unfix (thread_p, page_volheader);
+      }
+    return isvalid;
+  };
+
+  if (!is_tran_server_with_remote_storage () && fileio_get_volume_descriptor (volid) == NULL_VOLDES)
     {
-      /* invalid */
-      assert (!debug_crash);
-      isvalid = DISK_INVALID;
-      goto exit;
+      return exit_routine (DISK_INVALID);
+    }
+
+  if (pageid < 0)
+    {
+      return exit_routine (DISK_INVALID);
     }
 
   if (pageid == DISK_VOLHEADER_PAGE)
     {
       /* valid */
-      isvalid = DISK_VALID;
-      goto exit;
+      return exit_routine (DISK_VALID);
     }
 
   if (disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &page_volheader, &volheader) != NO_ERROR)
     {
-      ASSERT_ERROR ();
-      isvalid = DISK_ERROR;
-      goto exit;
+      return exit_routine (DISK_ERROR);
     }
 
   if (pageid <= volheader->sys_lastpage)
     {
-      isvalid = DISK_VALID;
-      goto exit;
+      return exit_routine (DISK_VALID);
     }
   if (pageid > DISK_SECTS_NPAGES (volheader->nsect_total))
     {
-      assert (!debug_crash);
-      isvalid = DISK_INVALID;
-      goto exit;
+      return exit_routine (DISK_INVALID);
     }
 
-  sectid = SECTOR_FROM_PAGEID (pageid);
-  isvalid = disk_is_sector_reserved (thread_p, volheader, sectid, debug_crash);
+  SECTID sectid = SECTOR_FROM_PAGEID (pageid);
+  DISK_ISVALID isvalid = disk_is_sector_reserved (thread_p, volheader, sectid, debug_crash);
 
-exit:
-  xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
-  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
-
-  if (page_volheader)
-    {
-      pgbuf_unfix (thread_p, page_volheader);
-    }
-
-  return isvalid;
+  return exit_routine (isvalid);
 }
 
 /*
