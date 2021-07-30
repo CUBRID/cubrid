@@ -1983,17 +1983,20 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
-  /* expand volume */
-  error_code = fileio_expand_to (thread_p, volid, volume_new_npages, voltype);
-  if (error_code != NO_ERROR)
+  if (!(is_tran_server_with_remote_storage () && voltype == DB_PERMANENT_VOLTYPE))
     {
-      // important note - we just committed volume expansion; we cannot afford any failures here
-      // caller won't update cache!!
-      assert (false);
-      return error_code;
-    }
+      /* expand volume */
+      error_code = fileio_expand_to (thread_p, volid, volume_new_npages, voltype);
+      if (error_code != NO_ERROR)
+	{
+	  // important note - we just committed volume expansion; we cannot afford any failures here
+	  // caller won't update cache!!
+	  assert (false);
+	  return error_code;
+	}
 
-  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
+      FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
+    }
 
   *nsect_extended_out = nsect_extend;
 
