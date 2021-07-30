@@ -567,9 +567,12 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     }
   fault_inject_random_crash ();
 
-  /* this log must be flushed. */
-  logpb_force_flush_pages (thread_p);	//todo
-  fault_inject_random_crash ();
+  if (!is_tran_server_with_remote_storage ())
+    {
+      /* this log must be flushed. */
+      logpb_force_flush_pages (thread_p);
+      fault_inject_random_crash ();
+    }
 
   if (!(is_tran_server_with_remote_storage () && ext_info->voltype == DB_PERMANENT_VOLTYPE))
     {
