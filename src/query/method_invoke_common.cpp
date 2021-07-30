@@ -18,6 +18,8 @@
 
 #include "method_invoke_common.hpp"
 
+#include <algorithm> /* std::for_each */
+
 #include "object_representation.h"	/* OR_ */
 
 #if defined (SERVER_MODE)
@@ -111,7 +113,7 @@ namespace cubmethod
       case METHOD_TYPE_INSTANCE_METHOD:
       case METHOD_TYPE_CLASS_METHOD:
       {
-	for_each (args.begin (), args.end (),[&serializator] (DB_VALUE & value)
+	std::for_each (args.begin (), args.end (),[&serializator] (DB_VALUE & value)
 	{
 	  serializator.pack_db_value (value);
 	});
@@ -120,7 +122,7 @@ namespace cubmethod
       case METHOD_TYPE_JAVA_SP:
       {
 	dbvalue_java dbvalue_wrapper;
-	for_each (args.begin (), args.end (),[&serializator, &dbvalue_wrapper] (DB_VALUE & value)
+	std::for_each (args.begin (), args.end (),[&serializator, &dbvalue_wrapper] (DB_VALUE & value)
 	{
 	  dbvalue_wrapper.value = &value;
 	  dbvalue_wrapper.pack (serializator);
@@ -149,8 +151,8 @@ namespace cubmethod
       case METHOD_TYPE_INSTANCE_METHOD:
       case METHOD_TYPE_CLASS_METHOD:
       {
-	for_each (args.begin (), args.end (),
-		  [&size, &serializator] (DB_VALUE & value)
+	std::for_each (args.begin (), args.end (),
+		       [&size, &serializator] (DB_VALUE & value)
 	{
 	  size += serializator.get_packed_db_value_size (value, size);	// DB_VALUEs
 	});
@@ -159,8 +161,8 @@ namespace cubmethod
       case METHOD_TYPE_JAVA_SP:
       {
 	dbvalue_java dbvalue_wrapper;
-	for_each (args.begin (), args.end (),
-		  [&size, &serializator, &dbvalue_wrapper] (DB_VALUE & value)
+	std::for_each (args.begin (), args.end (),
+		       [&size, &serializator, &dbvalue_wrapper] (DB_VALUE & value)
 	{
 	  dbvalue_wrapper.value = &value;
 	  size += dbvalue_wrapper.get_packed_size (serializator, size); /* value */
