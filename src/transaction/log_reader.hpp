@@ -137,32 +137,6 @@ inline void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t len
 #include "log_impl.h"
 #include "thread_manager.hpp"
 
-template <typename T>
-const typename std::remove_reference<T>::type *log_reader::reinterpret_cptr () const
-{
-  using rem_ref_t = typename std::remove_reference<T>::type;
-  const rem_ref_t *p = reinterpret_cast<const rem_ref_t *> (get_cptr ());
-  return p;
-}
-
-template <typename T>
-T log_reader::reinterpret_copy_and_add_align ()
-{
-  T data;
-  constexpr auto size_of_t = sizeof (T);
-  memcpy (&data, get_cptr (), size_of_t);
-  add_align (size_of_t);
-  // compiler's NRVO will hopefully kick in here and optimize this away
-  return data;
-}
-
-template <typename T>
-void log_reader::add_align ()
-{
-  const int type_size = sizeof (T);
-  add_align (type_size);
-}
-
 log_reader::log_reader ()
 {
   m_page = reinterpret_cast<log_page *> (PTR_ALIGN (m_area_buffer, MAX_ALIGNMENT));
@@ -278,6 +252,32 @@ int log_reader::fetch_page_force_use (THREAD_ENTRY *const thread_p)
     }
 
   return NO_ERROR;
+}
+
+template <typename T>
+const typename std::remove_reference<T>::type *log_reader::reinterpret_cptr () const
+{
+  using rem_ref_t = typename std::remove_reference<T>::type;
+  const rem_ref_t *p = reinterpret_cast<const rem_ref_t *> (get_cptr ());
+  return p;
+}
+
+template <typename T>
+T log_reader::reinterpret_copy_and_add_align ()
+{
+  T data;
+  constexpr auto size_of_t = sizeof (T);
+  memcpy (&data, get_cptr (), size_of_t);
+  add_align (size_of_t);
+  // compiler's NRVO will hopefully kick in here and optimize this away
+  return data;
+}
+
+template <typename T>
+void log_reader::add_align ()
+{
+  const int type_size = sizeof (T);
+  add_align (type_size);
 }
 
 void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr)

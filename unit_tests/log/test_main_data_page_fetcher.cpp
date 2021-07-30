@@ -179,6 +179,7 @@ delete_page (PAGE_PTR page_ptr)
 int
 logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *, LOG_CS_ACCESS_MODE, LOG_PAGE *)
 {
+  assert (false);
   return NO_ERROR;
 }
 
