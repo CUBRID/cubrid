@@ -6193,7 +6193,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 {
   assert (log_check_system_op_is_started (thread_p));
 
-  if (voltype == DB_PERMANENT_VOLTYPE && !is_tran_server_with_remote_storage ())
+  if (voltype == DB_PERMANENT_VOLTYPE)
     {
       BOOT_DB_PARM saved_boot_db_parm = *boot_Db_parm;
 
@@ -6224,13 +6224,16 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 	  return error_code;
 	}
 
-      /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to
-       * mount every known volume during restart; that may not be possible during media crash though. */
-      heap_flush (thread_p, boot_Db_parm_oid);
-      fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
+      if (!is_tran_server_with_remote_storage ())
+	{
+	  /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to
+	   * mount every known volume during restart; that may not be possible during media crash though. */
+	  heap_flush (thread_p, boot_Db_parm_oid);
+	  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL,
+			      FILEIO_SYNC_ALSO_FLUSH_DWB);
+	}
     }
-
-  if (voltype == DB_TEMPORARY_VOLTYPE)
+  else
     {
       if (boot_Temp_info.temp_nvols < 0 || (boot_Temp_info.temp_nvols == 0 && volid != LOG_MAX_DBVOLID)
 	  || (boot_Temp_info.temp_nvols > 0 && boot_Temp_info.temp_last_volid - 1 != volid))
