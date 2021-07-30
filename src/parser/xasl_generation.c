@@ -3817,25 +3817,25 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 			  set_get_element (param_set, i, &temp);
 			  DB_OBJECT *arg_mop_p = db_get_object (&temp);
 			  if (arg_mop_p)
-			  {
-			  if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
 			    {
-			      (*tail)->arg_info.arg_mode[i] = db_get_int (&mode);
-			    }
+			      if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
+				{
+				  (*tail)->arg_info.arg_mode[i] = db_get_int (&mode);
+				}
 
-			  if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
-			    {
-			      (*tail)->arg_info.arg_type[i] = db_get_int (&arg_type);
-			    }
+			      if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
+				{
+				  (*tail)->arg_info.arg_type[i] = db_get_int (&arg_type);
+				}
 
-			  pr_clear_value (&mode);
-			  pr_clear_value (&arg_type);
-			  pr_clear_value (&temp);
-			  }
+			      pr_clear_value (&mode);
+			      pr_clear_value (&arg_type);
+			      pr_clear_value (&temp);
+			    }
 			  else
-			  {
-				break;
-			  }
+			    {
+			      break;
+			    }
 			}
 		      pr_clear_value (&args);
 		    }
