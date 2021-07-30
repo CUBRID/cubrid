@@ -3641,7 +3641,6 @@ mq_rewrite_dblink_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
     }
 
   derived = query;
-  derived = mq_reset_ids_in_statement (parser, derived);
 
   spec->info.spec.derived_table = derived;
   spec->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
