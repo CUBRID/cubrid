@@ -96,5 +96,4 @@ extern PT_NODE *mq_reset_ids_in_methods (PARSER_CONTEXT * parser, PT_NODE * stat
 extern PT_NODE *mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel);
 
 extern PT_NODE *mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query);
-
 #endif /* _VIEW_TRANSFORM_H_ */
