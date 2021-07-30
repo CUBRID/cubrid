@@ -137,18 +137,9 @@ method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddat
     case METHOD_CALLBACK_INVOKE:
       dispatch_function = method_callback_invoke_builtin;
       break;
-    case METHOD_CALLBACK_END:
-      /*
-      int previous_arg_count = runtime_argument_base.size();
-      for (int i = 0; i < previous_arg_count; i++)
-        {
-          db_value_clear (&runtime_argument_base[i]);
-        }
-      runtime_argument_base.clear ();
-      */
-      break;
     default:
-      assert (false);
+      assert (false); // the other callbacks are disabled now
+      return ER_FAILED;
       break;
     }
 
@@ -228,81 +219,6 @@ method_callback_invoke_builtin (packing_unpacker &unpacker, method_server_conn_i
   sig.freemem ();
   return error;
 }
-#endif
-
-#if 0
-case METHOD_NESTED_QUERY_PREPARE:
-{
-  /* === read === */
-
-  // query_id
-  QUERY_ID qid;
-
-  std::uint64_t qid_temp;
-  unpacker.unpack_bigint (qid_temp);
-  qid = (QUERY_ID) qid_temp;
-
-  // sql_stmt
-  std::string sql_stmt;
-  unpacker.unpack_string (sql_stmt);
-
-  // flag
-  int flag;
-  unpacker.unpack_int (flag);
-
-  // Find handler from Statement Handler Cache
-
-  if (true)		// not found in statement handler cache
-    {
-      NESTED_QUERY_HANDLE handler;
-
-      DB_SESSION *session = db_open_buffer (sql_stmt.data ());
-      if (!session)
-	{
-	  return er_errid ();
-	}
-
-      int stmt_id = db_compile_statement (session);
-      if (stmt_id < 0)
-	{
-	  // TODO : error handling
-	}
-      else
-	{
-	  int num_markers = get_num_markers (sql_stmt.data ());
-	  char stmt_type = db_get_statement_type (session, stmt_id);
-
-	  handler.num_markers = num_markers;
-	  handler.stmt_type = stmt_type;
-	  handler.is_prepared = true;
-	}
-
-      /* prepare resultset */
-    }
-  else
-    {
-
-    }
-}
-break;
-case METHOD_NESTED_QUERY_EXECUTE:
-{
-  // bind values
-  // set host variables
-  // generated keys
-  // n = db_execute_and_keep_statement (session, stmt_id, &result);
-
-  // db_push_values (session, count,) error = db_execute_and_keep_statement (session, stmt_id, &result);
-}
-break;
-
-default:
-assert (false);
-break;
-}
-return error;
-}
-
 #endif
 
 /*

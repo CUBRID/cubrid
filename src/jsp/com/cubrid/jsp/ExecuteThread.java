@@ -37,9 +37,9 @@ import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
-import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
+import cubrid.jdbc.driver.CUBRIDConnectionDefault;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -73,7 +73,7 @@ public class ExecuteThread extends Thread {
 
     private long id;
     private Socket client;
-    private CUBRIDServerSideConnection connection = null;
+    private CUBRIDConnectionDefault connection = null;
     private String threadName = null;
 
     private DataInputStream input;
@@ -90,8 +90,6 @@ public class ExecuteThread extends Thread {
     private AtomicInteger status = new AtomicInteger(ExecuteThreadStatus.IDLE.getValue());
 
     private Value[] arguments = null;
-    private Map<Long, StoredProcedure> procedureMap = new HashMap<Long, StoredProcedure>();
-
     private StoredProcedure storedProcedure = null;
 
     ExecuteThread(Socket client) throws IOException {
@@ -131,8 +129,7 @@ public class ExecuteThread extends Thread {
     }
 
     public void setJdbcConnection(Connection con) {
-        this.connection = (CUBRIDServerSideConnection) con;
-        this.connection.setThread(this);
+        this.connection = (CUBRIDConnectionDefault) con;
     }
 
     public Connection getJdbcConnection() {

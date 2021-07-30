@@ -1873,7 +1873,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			      }
 			  }
-
 #if defined(CS_MODE)
 			if (need_to_reset == true)
 			  {

@@ -8,6 +8,5 @@
     </configurations>
     <dependencies>
         <dependency org="cubrid" name="cubrid-jdbc" rev="latest.integration" conf="runtime->default"/>
-        <!-- <dependency org="io.netty" name="netty-all" rev="4.0.30.Final"/> -->
     </dependencies>
 </ivy-module>

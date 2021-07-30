@@ -12,19 +12,11 @@
         <!-- from CUBRID artifactory -->
         <ibiblio name="cubrid-artifactory" m2compatible="true" root="http://maven.cubrid.org/"/>
 
-        <!-- from Maven central repository -->
-        <ibiblio name="maven-central" m2compatible="true" root="https://repo.maven.apache.org/maven2/"/>
-        <ibiblio name="maven-central2" m2compatible="true" root="https://repo1.maven.apache.org/maven2/"/>
-
         <chain name="cubrid-javasp-chain" returnFirst="true">
             <resolver ref="cubrid-jdbc-submodule"/>
             <resolver ref="cubrid-artifactory"/>
         </chain>
     </resolvers>
-    <modules>
-        <module organisation="cubrid" name="cubrid-jdbc" resolver="cubrid-javasp-chain"/>
-        <!-- <module organisation="io.netty" name="netty-all" resolver="maven-central"/> -->
-    </modules>
     <latest-strategies>
         <latest-revision name="cub-latest-revision"/>
     </latest-strategies>
