@@ -114,7 +114,7 @@ public class CUBRIDServerSideConnection implements Connection {
             packer.packString (sql);
             packer.packInt (flag);
 
-            thread.sendCommand(packer.getBuffer());
+            // thread.sendCommand(packer.getBuffer());
             } catch (Exception e) {
                 return false;
             }
