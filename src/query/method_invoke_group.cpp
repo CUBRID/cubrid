@@ -241,6 +241,9 @@ namespace cubmethod
     // set executing thread entry
     m_thread_p = thread_p;
 
+    // connect socket for java sp
+    connect ();
+
     return error;
   }
 
