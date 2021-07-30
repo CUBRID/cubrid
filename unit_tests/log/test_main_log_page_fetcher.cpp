@@ -145,6 +145,7 @@ void test_env::on_receive_log_page (LOG_PAGEID page_id, const LOG_PAGE *log_page
 int
 logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *log_lsa, LOG_CS_ACCESS_MODE, LOG_PAGE *log_pgptr)
 {
+  std::unique_lock<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
   if (g_log_page_fetcher_test_data.page_ids_requested[log_lsa->pageid].require_log_page_valid)
     {
       log_pgptr->hdr.logical_pageid = log_lsa->pageid;
