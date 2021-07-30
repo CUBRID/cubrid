@@ -38,6 +38,10 @@
 namespace cublog
 {
 #if defined(SERVER_MODE)
+  static constexpr size_t PARALLEL_RECOVERY_REDO_TUNING_REUSABLE_JOBS_STACK_SIZE = 100 * ONE_K;
+
+  // forward declaration
+  class reusable_jobs_stack;
 
   /* minimum_log_lsa_monitor - utility to support calculation of a minimum
    *       lsa out of a set of, concurrently (or not), advacing ones; not
@@ -97,6 +101,7 @@ namespace cublog
       std::condition_variable m_wait_for_target_value_cv;
   };
 
+
   /* a class to handle infrastructure for parallel log recovery/replication RAII-style;
    * usage:
    *  - instantiate an object of this class with the desired number of background workers
@@ -115,7 +120,8 @@ namespace cublog
     public:
       /* - worker_count: the number of parallel tasks to spin that consume jobs
        */
-      redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa);
+      redo_parallel (unsigned a_worker_count, reusable_jobs_stack *a_reusable_jobs,
+		     minimum_log_lsa_monitor *a_minimum_log_lsa);
 
       redo_parallel (const redo_parallel &) = delete;
       redo_parallel (redo_parallel &&) = delete;
@@ -150,7 +156,7 @@ namespace cublog
 
     private:
       void do_init_worker_pool ();
-      void do_init_tasks ();
+      void do_init_tasks (reusable_jobs_stack *a_reusable_jobs);
 
     private:
       /* rynchronizes prod/cons of log entries in n-prod - m-cons fashion
@@ -413,11 +419,43 @@ namespace cublog
   };
 
 
+  /* a preallocated pool of jobs
+   */
+  class reusable_jobs_stack final
+  {
+    public:
+      reusable_jobs_stack ();
+      reusable_jobs_stack (const reusable_jobs_stack &) = delete;
+      reusable_jobs_stack (reusable_jobs_stack &&) = delete;
+
+      ~reusable_jobs_stack ();
+
+      reusable_jobs_stack &operator = (const reusable_jobs_stack &) = delete;
+      reusable_jobs_stack &operator = (reusable_jobs_stack &&) = delete;
+
+      void initialize (std::size_t a_stack_size, const log_lsa *a_end_redo_lsa,
+		       bool force_each_page_fetch);
+
+      std::size_t size () const
+      {
+	return m_stack_size;
+      }
+
+      redo_parallel::redo_job_base *pop ();
+      void push (std::vector<redo_parallel::redo_job_base *> &a_jobs);
+
+    private:
+      std::size_t m_stack_size;
+      std::stack<redo_parallel::redo_job_base *> m_stack;
+      std::mutex m_stack_mutex;
+  };
+
 #else /* SERVER_MODE */
   /* dummy implementations for SA mode
    */
   class minimum_log_lsa_monitor final { };
   class redo_parallel final { };
+  class reusable_jobs_stack final { };
 #endif /* SERVER_MODE */
 }
 
@@ -451,6 +489,7 @@ log_rv_redo_record_sync_or_dispatch_async (
 	const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
 	LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support,
 	std::unique_ptr<cublog::redo_parallel> &parallel_recovery_redo,
+	cublog::reusable_jobs_stack &a_reusable_jobs,
 	bool force_each_log_page_fetch, log_recovery_redo_perf_stat &a_rcv_redo_perf_stat)
 {
   const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
@@ -473,12 +512,25 @@ log_rv_redo_record_sync_or_dispatch_async (
   else
     {
       // dispatch async
-      cublog::redo_job_impl *job =
-	      new cublog::redo_job_impl (end_redo_lsa, force_each_log_page_fetch);
-      job->reset (rcv_vpid, rcv_lsa, log_rtype);
-      // ownership of raw pointer goes to the callee
-      parallel_recovery_redo->add (job);
-      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
+      while (true)
+	{
+	  cublog::redo_parallel::redo_job_base *const job_base = a_reusable_jobs.pop ();
+	  if (job_base != nullptr)
+	    {
+	      cublog::redo_job_impl *const job = dynamic_cast<cublog::redo_job_impl *> (job_base);
+	      job->reset (rcv_vpid, rcv_lsa, log_rtype);
+	      // it is the callee's responsibility to return the pointer back to the reusable
+	      // job stack after processing it
+	      parallel_recovery_redo->add (job);
+	      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
+	      break;
+	    }
+	  else
+	    {
+	      std::this_thread::sleep_for (std::chrono::microseconds (1));
+	      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_BUSY_WAIT);
+	    }
+	}
     }
 #else // !SERVER_MODE = SA_MODE
   log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
