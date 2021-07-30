@@ -73,6 +73,7 @@
 #include "message_catalog.h"
 #include "dbi.h"
 #include "util_func.h"
+#include "system_parameter.h"
 
 static void css_master_error (const char *error_string);
 static int css_master_timeout (void);
@@ -446,8 +447,8 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
       // *INDENT-ON*
       dbname = std::string (buffer + 1, buffer_length - 1);
 
-      er_log_debug (ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
-		    dbname.c_str (), type == SERVER_TYPE_PAGE ? "page" : "transaction");
+	  MASTER_ER_LOG_DEBUG(ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
+		  dbname.c_str(), type == SERVER_TYPE_PAGE ? "page" : "transaction");
     }
   return exit_code;
 }
