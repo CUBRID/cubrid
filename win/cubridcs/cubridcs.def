@@ -396,7 +396,6 @@ EXPORTS
     er_clear
     er_final
     er_init
-    er_log_debug
     er_set
     getopt
     getopt_long
@@ -475,6 +474,7 @@ EXPORTS
     tz_create_session_tzid_for_timestamp
     tz_create_timestamptz
     tz_utc_datetimetz_to_local
+    _er_log_debug
 ;
 ; utility functions
 ;
