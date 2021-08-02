@@ -83,6 +83,7 @@
 #include "xasl_cache.h"
 #include "elo.h"
 #include "transaction_transient.hpp"
+#include "method_invoke_group.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -10189,4 +10190,77 @@ void
 ssession_stop_attached_threads (void *session)
 {
   session_stop_attached_threads (session);
+}
+
+void
+smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  method_sig_list sig_list;
+  sig_list.unpack (unpacker);
+
+  int arg_cnt = 0;
+  unpacker.unpack_int (arg_cnt);
+
+  /* *INDENT-OFF* */
+  std::vector<DB_VALUE> args (arg_cnt);
+  /* *INDENT-ON* */
+  for (int i = 0; i < arg_cnt; i++)
+    {
+      unpacker.unpack_db_value (args[i]);
+    }
+
+  /* *INDENT-OFF* */
+  cubmethod::method_invoke_group method_group (&sig_list);
+  /* *INDENT-ON* */
+
+  method_group.begin (thread_p);
+
+  int error_code = method_group.prepare (args);
+  if (error_code != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  /* *INDENT-OFF* */
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  /* *INDENT-ON* */
+
+  DB_VALUE *ret_value;
+
+  char *reply_data = NULL;
+  int reply_data_size = 0;
+
+  error_code = method_group.execute ();
+  if (error_code == NO_ERROR)
+    {
+      ret_value = &method_group.get_return_value (0);
+      packer.set_buffer_and_pack_all (eb, *ret_value);
+
+      reply_data = eb.get_ptr ();
+      reply_data_size = (int) packer.get_current_size ();
+    }
+  else
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  for (int i = 0; i < arg_cnt; i++)
+    {
+      db_value_clear (&args[i]);
+    }
+  method_group.end ();
+
+  sig_list.freemem ();
+
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = or_pack_int (reply, reply_data_size);
+  ptr = or_pack_int (ptr, error_code);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
+				     reply_data_size);
 }

@@ -32,6 +32,8 @@
 
 #include <stdio.h>
 
+#include <vector>
+
 #include "dbtype_def.h"
 #include "lob_locator.hpp"
 #include "replication.h"
@@ -49,6 +51,7 @@
 #include "parse_tree.h"
 #include "load_common.hpp"
 #include "timezone_lib_common.h"
+#include "method_def.hpp"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -439,4 +442,8 @@ extern int loaddb_fetch_status (load_status & status);
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
 extern int loaddb_update_stats ();
+
+extern int method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE * >&args,
+					 DB_VALUE & result);
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */

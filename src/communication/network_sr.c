@@ -901,6 +901,9 @@ net_server_init (void)
   req_p->processing_function = svacuum_dump;
   req_p->name = "NET_SERVER_VACUUM_DUMP";
 
+  req_p = &net_Requests[NET_SERVER_METHOD_FOLD_CONSTANTS];
+  req_p->processing_function = smethod_invoke_fold_constants;
+  req_p->name = "NET_SERVER_METHOD_FOLD_CONSTANTS";
 }
 
 #if defined(CUBRID_DEBUG)
