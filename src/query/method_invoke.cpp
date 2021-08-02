@@ -168,37 +168,39 @@ namespace cubmethod
 	/* read size of buffer to allocate and data */
 	cubmem::extensible_block blk;
 	error_code = alloc_response (blk);
+
+	if (error_code == NO_ERROR)
+	  {
+	    if (start_code == SP_CODE_INTERNAL_JDBC)
+	      {
+		error_code = callback_dispatch (blk);
+	      }
+	    else if (start_code == SP_CODE_RESULT || start_code == SP_CODE_ERROR)
+	      {
+		switch (start_code)
+		  {
+		  case SP_CODE_RESULT:
+		  {
+		    error_code = receive_result (blk, returnval);
+		    break;
+		  }
+		  case SP_CODE_ERROR:
+		  {
+		    error_code = receive_error (blk);
+		    db_make_null (&returnval);
+		    break;
+		  }
+		  }
+	      }
+	    else
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
+			start_code);
+		error_code = ER_SP_NETWORK_ERROR;
+	      }
+	  }
 	if (error_code != NO_ERROR)
 	  {
-	    assert (false);
-	  }
-
-	if (start_code == SP_CODE_INTERNAL_JDBC)
-	  {
-	    callback_dispatch (blk);
-	  }
-	else if (start_code == SP_CODE_RESULT || start_code == SP_CODE_ERROR)
-	  {
-	    switch (start_code)
-	      {
-	      case SP_CODE_RESULT:
-	      {
-		error_code = receive_result (blk, returnval);
-		break;
-	      }
-	      case SP_CODE_ERROR:
-	      {
-		error_code = receive_error (blk);
-		db_make_null (&returnval);
-		break;
-	      }
-	      }
-	  }
-	else
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-		    start_code);
-	    error_code = ER_SP_NETWORK_ERROR;
 	    break;
 	  }
       }
@@ -244,6 +246,9 @@ namespace cubmethod
     db_make_null (&returnval);
     value_unpacker.value = &returnval;
     value_unpacker.unpack (unpacker);
+
+
+    // TODO: OUT ARGUMENTS
 #endif
     return error_code;
   }

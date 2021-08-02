@@ -37,16 +37,8 @@ namespace cubscan
 
     }
 
-    scanner::~scanner ()
-    {
-      if (m_method_group)
-	{
-	  delete m_method_group;
-	  m_method_group = nullptr;
-	}
-    }
-
-    int scanner::init (cubthread::entry *thread_p, METHOD_SIG_LIST *sig_list, qfile_list_id *list_id)
+    int
+    scanner::init (cubthread::entry *thread_p, METHOD_SIG_LIST *sig_list, qfile_list_id *list_id)
     {
       // check initialized
       if (m_thread_p != thread_p)
@@ -86,11 +78,31 @@ namespace cubscan
 	      return ER_FAILED;
 	    }
 	}
-
       return NO_ERROR;
     }
 
-    int scanner::open ()
+    void
+    scanner::clear (bool is_final)
+    {
+      close_value_array ();
+      for (DB_VALUE &value : m_arg_vector)
+	{
+	  db_value_clear (&value);
+	}
+
+      if (is_final)
+	{
+	  m_method_group->end ();
+	  if (m_method_group != nullptr)
+	    {
+	      delete m_method_group;
+	      m_method_group = nullptr;
+	    }
+	}
+    }
+
+    int
+    scanner::open ()
     {
       int error = NO_ERROR;
       error = qfile_open_list_scan (m_list_id, &m_scan_id);
@@ -101,19 +113,19 @@ namespace cubscan
       return error;
     }
 
-    int scanner::close ()
+    int
+    scanner::close ()
     {
       int error = NO_ERROR;
 
-      close_value_array ();
+      clear (false);
       qfile_close_scan (m_thread_p, &m_scan_id);
-
-      m_method_group->end ();
 
       return error;
     }
 
-    SCAN_CODE scanner::next_scan (val_list_node &vl)
+    SCAN_CODE
+    scanner::next_scan (val_list_node &vl)
     {
       SCAN_CODE scan_code = S_SUCCESS;
 
@@ -164,7 +176,8 @@ namespace cubscan
       return NO_ERROR;
     }
 
-    void scanner::next_value_array (val_list_node &vl)
+    void
+    scanner::next_value_array (val_list_node &vl)
     {
       qproc_db_value_list *dbval_list = m_dbval_list;
 
@@ -180,7 +193,8 @@ namespace cubscan
       vl.valp = m_dbval_list;
     }
 
-    SCAN_CODE scanner::get_single_tuple ()
+    SCAN_CODE
+    scanner::get_single_tuple ()
     {
       QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
       SCAN_CODE scan_code = qfile_scan_list_next (m_thread_p, &m_scan_id, &tuple_record, PEEK);

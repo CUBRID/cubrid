@@ -216,6 +216,17 @@ namespace cubmethod
       }
       break;
 
+      case DB_TYPE_OID:
+      {
+	serializator.pack_int (sizeof (OID));
+	OID *oid = db_get_oid (&v);
+	serializator.pack_oid (*oid);
+
+	// not supported yet
+	// assert (false);
+      }
+      break;
+
       case DB_TYPE_OBJECT:
       {
 #if !defined (SERVER_MODE)
@@ -225,7 +236,7 @@ namespace cubmethod
 	  {
 	    oid = WS_OID (mop);
 	  }
-	serializator.pack_int (sizeof (int) * 3);
+	serializator.pack_int (sizeof (OID));
 	serializator.pack_oid (*oid);
 #else
 	// TODO: Implement a way to pack DB_TYPE_OBJECT value on Server
@@ -337,6 +348,13 @@ namespace cubmethod
 	// NOTE: This type was not implemented at the previous version
 	assert (false);
 	break;
+
+      case DB_TYPE_OID:
+      {
+	size += serializator.get_packed_int_size (size); /* size */
+	size += serializator.get_packed_oid_size (size);
+      }
+      break;
 
       case DB_TYPE_OBJECT:
 #if !defined (SERVER_MODE)
@@ -666,6 +684,14 @@ namespace cubmethod
 	  {
 	    db_make_sequence (v, set);
 	  }
+      }
+      break;
+
+      case DB_TYPE_OID:
+      {
+	OID oid;
+	deserializator.unpack_oid (oid);
+	db_make_oid (v, &oid);
       }
       break;
 

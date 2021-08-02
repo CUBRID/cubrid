@@ -61,6 +61,8 @@ struct method_arg_info
   int *arg_mode; /* IN, OUT, INOUT */
   int *arg_type; /* DB_TYPE */
   int result_type; /* DB_TYPE */
+
+  method_arg_info () = default;
 };
 
 typedef struct method_sig_node METHOD_SIG;

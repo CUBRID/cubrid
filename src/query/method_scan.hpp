@@ -55,23 +55,25 @@ namespace cubscan
     class scanner
     {
       public:
+
 	scanner ();
-	~scanner ();
+
+	int init (cubthread::entry *thread_p, method_sig_list *sig_list, qfile_list_id *list_id);
+	void clear (bool is_final);
 
 //////////////////////////////////////////////////////////////////////////
 // Main SCAN routines
 //////////////////////////////////////////////////////////////////////////
 
-	int init (cubthread::entry *thread_p, method_sig_list *sig_list, qfile_list_id *list_id);
 	int open ();
 	SCAN_CODE next_scan (val_list_node &vl);
 	int close ();
 
-      protected:
-
 //////////////////////////////////////////////////////////////////////////
 // Value array scanning declarations
 //////////////////////////////////////////////////////////////////////////
+
+      protected:
 
 	int open_value_array ();
 	void next_value_array (val_list_node &vl);

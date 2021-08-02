@@ -113,14 +113,27 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
     }
   else
     {
-      for (int i = 0; i < num_method_args; i++)
+      if (num_method_args > 0)
 	{
-	  deserializator.unpack_int (arg_info.arg_mode[i]);
+	  arg_info.arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info.arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+
+	  for (int i = 0; i < num_method_args; i++)
+	    {
+	      deserializator.unpack_int (arg_info.arg_mode[i]);
+	    }
+
+	  for (int i = 0; i < num_method_args; i++)
+	    {
+	      deserializator.unpack_int (arg_info.arg_type[i]);
+	    }
 	}
-      for (int i = 0; i < num_method_args; i++)
+      else
 	{
-	  deserializator.unpack_int (arg_info.arg_type[i]);
+	  arg_info.arg_mode = nullptr;
+	  arg_info.arg_type = nullptr;
 	}
+
       deserializator.unpack_int (arg_info.result_type);
     }
 }
