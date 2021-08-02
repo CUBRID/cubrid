@@ -215,7 +215,6 @@ static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE *
 					      PT_NODE * new_query, FIND_ID_INFO * infop);
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 					      PT_NODE * new_query, FIND_ID_INFO * infop);
-static int mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec);
 static PT_NODE *mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 						   PT_NODE * query_spec);
 static PT_NODE *mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement);
@@ -3305,6 +3304,14 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   for (term = statement->info.query.q.select.where; term; term = term->next)
     {
+      /* check for on_cond term */
+      assert (term->node_type == PT_EXPR || term->node_type == PT_VALUE);
+      if ((term->node_type == PT_EXPR && term->info.expr.location > 0)
+	  || (term->node_type == PT_VALUE && term->info.value.location > 0))
+	{
+	  continue;		/* do not copy-push on_cond-term */
+	}
+
       /* check for nullable-term */
       if (term->node_type == PT_EXPR)
 	{
@@ -3398,10 +3405,10 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
  *   statement(in):
  *   spec(in):
  */
-static int
+int
 mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec)
 {
-  PT_NODE *derived_table;
+  PT_NODE *derived_table, *sub;
   int push_cnt = 0;		/* init */
   FIND_ID_INFO info;
 
@@ -3409,7 +3416,8 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
       /* never do copy-push optimization for a hierarchical query */
       && statement->info.query.q.select.connect_by == NULL
       && (derived_table = spec->info.spec.derived_table)
-      && !PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY))
+      && !PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY)
+      && PT_IS_QUERY (derived_table) && (spec->info.spec.derived_table_type == PT_IS_SUBQUERY))
     {
       info.type = FIND_ID_INLINE_VIEW;	/* inline view */
       /* init input section */
@@ -3418,14 +3426,14 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
       info.in.attr_list = spec->info.spec.as_attr_list;
       info.in.query_list = derived_table;
 
-      if (PT_IS_QUERY (derived_table) && (spec->info.spec.derived_table_type == PT_IS_SUBQUERY))
+      sub = derived_table->info.query.q.select.from->info.spec.derived_table;
+      if (sub && sub->node_type == PT_DBLINK_TABLE)
+	{
+	  push_cnt = mq_copypush_sargable_terms_dblink (parser, statement, spec, derived_table, &info);
+	}
+      else
 	{
 	  push_cnt = mq_copypush_sargable_terms_helper (parser, statement, spec, derived_table, &info);
-	}
-      else if (derived_table->node_type == PT_DBLINK_TABLE)
-	{
-	  assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
-	  push_cnt = mq_copypush_sargable_terms_dblink (parser, statement, spec, derived_table, &info);
 	}
     }
 
@@ -4850,11 +4858,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	      return NULL;
 	    }
 	}
-      else if (from->info.spec.derived_table_type == PT_IS_SUBQUERY
-	       || from->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-	{
-	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
-	}
 
       while (from->next)
 	{
@@ -4867,11 +4870,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	  if (is_union_translation != 0)
 	    {
 	      from->next = mq_rewrite_vclass_spec_as_derived (parser, select_statement, from->next, NULL);
-	    }
-	  else if (from->next->info.spec.derived_table_type == PT_IS_SUBQUERY
-		   || from->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-	    {
-	      (void) mq_copypush_sargable_terms (parser, select_statement, from->next);
 	    }
 	  from = from->next;
 	}
@@ -4894,13 +4892,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	      select_statement->info.query.q.select.from =
 		mq_rewrite_vclass_spec_as_derived (parser, select_statement, from, NULL);
 	    }
-	}
-
-      if (is_union_translation == false && from
-	  && (from->info.spec.derived_table_type == PT_IS_SUBQUERY
-	      || from->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE))
-	{
-	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
 	}
     }
 
