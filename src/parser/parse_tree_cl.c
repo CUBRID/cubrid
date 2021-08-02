@@ -18342,9 +18342,10 @@ pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
       PT_APPLY_WALK (parser, p->info.dblink_table.user, arg);
       PT_APPLY_WALK (parser, p->info.dblink_table.pwd, arg);
       PT_APPLY_WALK (parser, p->info.dblink_table.qstr, arg);
+      PT_APPLY_WALK (parser, p->info.dblink_table.pushed_pred, arg);
+      PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
     }
 
-  PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
   return p;
 }
 
