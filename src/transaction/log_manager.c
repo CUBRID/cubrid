@@ -10214,6 +10214,36 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
   return error_code;
 }
 
+static cubthread::daemon *cdc_Producer_daemon = NULL;
+
+void cdc_producer_daemon_init()
+{
+  assert (cdc_Producer_daemon == NULL);
+  
+  cubthread::looper looper = cubthread::looper (cdc_get_interval);
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (cdc_log_producer_execute);
+
+  cdc_Producer_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc_log_producer"); 
+}
+
+#if defined (SERVER_MODE)
+static void
+cdc_log_producer_execute (cubthread::entry & thread_ref)
+{
+  if (!BO_IS_SERVER_RESTARTED ())
+  {
+    return;
+  }
+  
+  cdc_log_producer (&thread_ref);
+}
+#endif
+
+void cdc_log_producer (THREAD_ENTRY *thread_p)
+{
+
+}
+
 //
 // log critical section
 //
