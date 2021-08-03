@@ -138,21 +138,18 @@ void test_env::on_receive_log_page (LOG_PAGEID page_id, const LOG_PAGE *log_page
   else
     {
       REQUIRE (error_code != NO_ERROR);
-      // pointer is never null, internally owned pointer from the caller
-      //REQUIRE (log_page == nullptr);
     }
   g_log_page_fetcher_test_data.page_ids_requested[page_id].is_page_received = true;
-  // do not delete page, it is an internally owned pointer from the caller
 }
 
 int
-logpb_fetch_page (THREAD_ENTRY *thread_p, const LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE access_mode,
-		  LOG_PAGE *log_pgptr)
+logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *log_lsa, LOG_CS_ACCESS_MODE, LOG_PAGE *log_pgptr)
 {
-  std::lock_guard<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
-  if (g_log_page_fetcher_test_data.page_ids_requested[req_lsa->pageid].require_log_page_valid)
+  std::unique_lock<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
+  if (g_log_page_fetcher_test_data.page_ids_requested[log_lsa->pageid].require_log_page_valid)
     {
-      log_pgptr->hdr.logical_pageid = req_lsa->pageid;
+      log_pgptr->hdr.logical_pageid = log_lsa->pageid;
+      log_pgptr->hdr.offset = log_lsa->offset;
       return NO_ERROR;
     }
   else
@@ -162,9 +159,10 @@ logpb_fetch_page (THREAD_ENTRY *thread_p, const LOG_LSA *req_lsa, LOG_CS_ACCESS_
 }
 
 void
-logpb_fatal_error (THREAD_ENTRY *thread_p, bool log_exit, const char *file_name, const int lineno, const char *fmt,
-		   ...)
+logpb_fatal_error (THREAD_ENTRY *, bool, const char *, const int, const char *, ...)
 {
+  // todo: don't do fatal error on failed fetch log page
+  // assert (false);
 }
 
 PAGE_PTR

@@ -176,19 +176,15 @@ delete_page (PAGE_PTR page_ptr)
   delete io_page;
 }
 
-// Mock some of the functionality
-
 int
-logpb_fetch_page (THREAD_ENTRY *thread_p, const LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE access_mode,
-		  LOG_PAGE *log_pgptr)
+logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *, LOG_CS_ACCESS_MODE, LOG_PAGE *)
 {
   assert (false);
-  return 0;
+  return NO_ERROR;
 }
 
 void
-logpb_fatal_error (THREAD_ENTRY *thread_p, bool log_exit, const char *file_name, const int lineno, const char *fmt,
-		   ...)
+logpb_fatal_error (THREAD_ENTRY *, bool, const char *, const int, const char *, ...)
 {
   assert (false);
 }
