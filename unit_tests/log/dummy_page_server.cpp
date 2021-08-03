@@ -26,6 +26,7 @@ page_server ps_Gl;
 
 namespace cublog
 {
+  class reusable_jobs_stack {};
   class redo_parallel {};
   class minimum_log_lsa_monitor {};
 
