@@ -119,7 +119,7 @@ class log_reader final
   private:
     inline const char *get_cptr () const;
 
-    inline int fetch_page_force_use (THREAD_ENTRY *const thread_p);
+    inline int fetch_page (THREAD_ENTRY *const thread_p);
 
   private:
     log_lsa m_lsa = NULL_LSA;
@@ -155,7 +155,7 @@ int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_pag
   if (do_fetch_page)
     {
       THREAD_ENTRY *thread_p = &cubthread::get_entry ();
-      return fetch_page_force_use (thread_p);
+      return fetch_page (thread_p);
     }
   return NO_ERROR;
 }
@@ -229,7 +229,7 @@ int log_reader::skip (size_t size)
 	      fetch_lsa.pageid = m_lsa.pageid;
 	      fetch_lsa.offset = LOG_PAGESIZE;
 
-	      if (const auto err_fetch_page = fetch_page_force_use (thread_p) != NO_ERROR)
+	      if (const auto err_fetch_page = fetch_page (thread_p) != NO_ERROR)
 		{
 		  return err_fetch_page;
 		}
@@ -249,7 +249,7 @@ int log_reader::skip (size_t size)
   return NO_ERROR;
 }
 
-int log_reader::fetch_page_force_use (THREAD_ENTRY *const thread_p)
+int log_reader::fetch_page (THREAD_ENTRY *const thread_p)
 {
   if (logpb_fetch_page (thread_p, &m_lsa, m_cs_access, m_page) != NO_ERROR)
     {
