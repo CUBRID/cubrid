@@ -447,8 +447,8 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
       // *INDENT-ON*
       dbname = std::string (buffer + 1, buffer_length - 1);
 
-	  MASTER_ER_LOG_DEBUG(ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
-		  dbname.c_str(), type == SERVER_TYPE_PAGE ? "page" : "transaction");
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
+			   dbname.c_str (), type == SERVER_TYPE_PAGE ? "page" : "transaction");
     }
   return exit_code;
 }
@@ -527,7 +527,6 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
   SERVER_TYPE type;
   SOCKET_QUEUE_ENTRY *entry;
   int buffer;
-  int length;
 
   /* read server name */
   if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS && !server_name.empty ())
@@ -567,7 +566,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 		{
 		  entry->port_id = ntohl (buffer);
 		  entry->server_type = type;
-		  length = (int) strlen (server_name.c_str ()) + 1;
+		  int length = (int) strlen (server_name.c_str ()) + 1;
 		  /* read server version_string, env_var, pid */
 		  if (length < server_name.length ())
 		    {
