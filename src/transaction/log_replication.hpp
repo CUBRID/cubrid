@@ -88,7 +88,7 @@ namespace cublog
       mutable std::mutex m_redo_lsa_mutex;
       mutable std::condition_variable m_redo_lsa_condvar;
 
-      log_reader m_reader;
+      log_reader m_reader { LOG_CS_SAFE_READER };
       LOG_ZIP m_undo_unzip;
       LOG_ZIP m_redo_unzip;
 
