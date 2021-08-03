@@ -36,7 +36,7 @@ namespace cubmethod
 // Method Group to invoke together
 //////////////////////////////////////////////////////////////////////////
   method_invoke_group::method_invoke_group (method_sig_list *sig_list)
-    : m_id ((int64_t) this)
+    : m_id ((int64_t) this), m_argument_vector (nullptr)
   {
     assert (sig_list && sig_list->num_methods > 0);
 
@@ -152,6 +152,9 @@ namespace cubmethod
   method_invoke_group::prepare (std::vector <DB_VALUE> &arg_base)
   {
     int error = NO_ERROR;
+
+    m_argument_vector = &arg_base;
+
 #if defined (SERVER_MODE)
     packing_packer packer;
     cubmem::extensible_block eb;
@@ -212,7 +215,7 @@ namespace cubmethod
     return error;
   }
 
-  int method_invoke_group::execute ()
+  int method_invoke_group::execute (std::vector <DB_VALUE> &arg_base)
   {
     int error = NO_ERROR;
 
@@ -224,7 +227,7 @@ namespace cubmethod
 	    break;
 	  }
 
-	error = m_method_vector[i]->get_return (m_thread_p, m_result_vector[i]);
+	error = m_method_vector[i]->get_return (m_thread_p, arg_base, m_result_vector[i]);
 	if (error != NO_ERROR)
 	  {
 	    break;

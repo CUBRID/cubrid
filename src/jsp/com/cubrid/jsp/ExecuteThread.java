@@ -50,9 +50,7 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ExecuteThread extends Thread {
@@ -128,8 +126,9 @@ public class ExecuteThread extends Thread {
         charSet = null;
     }
 
-    public void setJdbcConnection(Connection con) {
+    public void setJdbcConnection(Connection con) throws IOException {
         this.connection = (CUBRIDConnectionDefault) con;
+        sendCommand(null);
     }
 
     public Connection getJdbcConnection() {
@@ -383,8 +382,10 @@ public class ExecuteThread extends Thread {
 
     public void sendCommand(ByteBuffer buffer) throws IOException {
         output.writeInt(REQ_CODE_INTERNAL_JDBC);
-        output.writeInt(buffer.position());
-        output.write(buffer.array(), 0, buffer.position());
+        if (buffer != null) {
+            output.writeInt(buffer.position());
+            output.write(buffer.array(), 0, buffer.position());
+        }
         output.flush();
     }
 

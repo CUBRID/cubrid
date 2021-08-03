@@ -137,7 +137,7 @@ namespace cubscan
 	  scan_code = S_ERROR;
 	}
 
-      if (scan_code == S_SUCCESS && m_method_group->execute () != NO_ERROR)
+      if (scan_code == S_SUCCESS && m_method_group->execute (m_arg_vector) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
 	}

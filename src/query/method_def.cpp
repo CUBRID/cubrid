@@ -20,6 +20,15 @@
 
 #include "memory_private_allocator.hpp"
 
+method_sig_node::method_sig_node ()
+{
+  next = nullptr;
+  method_name = nullptr;
+  method_type = METHOD_TYPE_NONE;
+  num_method_args = 0;
+  method_arg_pos = nullptr;
+}
+
 void
 method_sig_node::pack (cubpacking::packer &serializator) const
 {
@@ -141,8 +150,15 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
 void
 method_sig_node::freemem ()
 {
-  db_private_free_and_init (NULL, method_name);
-  db_private_free_and_init (NULL, method_arg_pos);
+  if (method_name != nullptr)
+    {
+      db_private_free_and_init (NULL, method_name);
+    }
+
+  if (method_arg_pos != nullptr)
+    {
+      db_private_free_and_init (NULL, method_arg_pos);
+    }
 
   if (method_type != METHOD_TYPE_JAVA_SP && class_name)
     {

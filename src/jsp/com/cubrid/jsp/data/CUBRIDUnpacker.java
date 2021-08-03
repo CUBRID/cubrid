@@ -120,8 +120,7 @@ public class CUBRIDUnpacker {
         return len;
     }
 
-    public Value unpackValue(int paramSize, int paramType)
-            throws TypeMismatchException {
+    public Value unpackValue(int paramSize, int paramType) throws TypeMismatchException {
         Value arg = null;
         switch (paramType) {
             case DBType.DB_SHORT:
@@ -199,6 +198,8 @@ public class CUBRIDUnpacker {
                     arg = new SetValue(unpackSetValue(nCol));
                 }
                 break;
+
+            case DBType.DB_OID:
             case DBType.DB_OBJECT:
                 {
                     int page = unpackInt();

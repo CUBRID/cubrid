@@ -124,6 +124,9 @@ static int jsp_receive_error (cubmem::extensible_block & blk, const SP_ARGS * sp
 static int jsp_execute_stored_procedure (const SP_ARGS * args);
 static int jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const char *name);
 
+static int jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, method_sig_list & sig_list);
+static int *jsp_make_method_arglist (PARSER_CONTEXT * parser, PT_NODE * node_list);
+
 extern bool ssl_client;
 
 /*
@@ -435,6 +438,118 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* create another DB_VALUE of the new instance for the label_table */
 	  ins_value = db_value_copy (&ret_value);
+	  error = pt_associate_label_with_value_check_reference (into_label, ins_value);
+	}
+    }
+
+  db_value_clear (&ret_value);
+  return error;
+}
+
+int
+jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  PT_NODE *method;
+  const char *method_name;
+  if (!statement || !(method = statement->info.method_call.method_name) || method->node_type != PT_NAME
+      || !(method_name = method->info.name.original))
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return er_errid ();
+    }
+
+  DB_VALUE ret_value;
+  db_make_null (&ret_value);
+
+  std::vector < DB_VALUE * >args;
+  PT_NODE *vc = statement->info.method_call.arg_list;
+  while (vc)
+    {
+      DB_VALUE *db_value;
+      bool to_break = false;
+
+      /*
+       * Don't clone host vars; they may actually be acting as output variables (e.g., a character array that is
+       * intended to receive bytes from the method), and cloning will ensure that the results never make it to the
+       * expected area.  Since pt_evaluate_tree() always clones its db_values we must not use pt_evaluate_tree() to
+       * extract the db_value from a host variable; instead extract it ourselves. */
+      if (PT_IS_CONST (vc))
+	{
+	  db_value = pt_value_to_db (parser, vc);
+	}
+      else
+	{
+	  db_value = (DB_VALUE *) calloc (1, sizeof (DB_VALUE));
+	  if (db_value == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE));
+	      return er_errid ();
+	    }
+
+	  /* must call pt_evaluate_tree */
+	  pt_evaluate_tree (parser, vc, db_value, 1);
+	  if (pt_has_error (parser))
+	    {
+	      /* to maintain the list to free all the allocated */
+	      to_break = true;
+	    }
+	}
+
+      args.push_back (db_value);
+      vc = vc->next;
+
+      if (to_break)
+	{
+	  break;
+	}
+    }
+
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error = er_errid ();
+    }
+  else
+    {
+      /* call sp */
+      method_sig_list sig_list;
+
+      sig_list.method_sig = nullptr;
+      sig_list.num_methods = 0;
+
+      error = jsp_make_method_sig_list (parser, statement, sig_list);
+      if (error == NO_ERROR)
+	{
+	  error = method_invoke_fold_constants (sig_list, args, ret_value);
+	}
+      sig_list.freemem ();
+      // error = jsp_do_call_stored_procedure (&ret_value, value_list, proc);
+    }
+
+  vc = statement->info.method_call.arg_list;
+  for (int i = 0; i < args.size () && vc; i++)
+    {
+      if (!PT_IS_CONST (vc))
+	{
+	  db_value_clear (args[i]);
+	  free_and_init (args[i]);
+	}
+      vc = vc->next;
+    }
+
+  vc = statement->info.method_call.arg_list;
+  if (error == NO_ERROR)
+    {
+      /* Save the method result. */
+      statement->etc = (void *) db_value_copy (&ret_value);
+      PT_NODE *into = statement->info.method_call.to_return_var;
+
+      const char *into_label;
+      if (into != NULL && into->node_type == PT_NAME && (into_label = into->info.name.original) != NULL)
+	{
+	  /* create another DB_VALUE of the new instance for the label_table */
+	  DB_VALUE *ins_value = db_value_copy (&ret_value);
 	  error = pt_associate_label_with_value_check_reference (into_label, ins_value);
 	}
     }
@@ -1721,7 +1836,7 @@ end:
   call_cnt--;
   if (error != NO_ERROR || is_prepare_call[call_cnt])
     {
-      jsp_send_destroy_request (sock_fd);
+      // jsp_send_destroy_request (sock_fd);
       jsp_disconnect_server (sock_fd);
       sock_fds[call_cnt] = INVALID_SOCKET;
     }
@@ -1970,4 +2085,222 @@ void
 jsp_srv_handle_free (int h_id)
 {
   libcas_srv_handle_free (h_id);
+}
+
+/*
+ * jsp_make_method_sig_list () - converts a parse expression tree list of
+ *                            method calls to method signature list
+ *   return: A NULL return indicates a (memory) error occurred
+ *   parser(in):
+ *   node_list(in): should be parse method nodes
+ *   subquery_as_attr_list(in):
+ */
+static int
+jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_list & sig_list)
+{
+  int error = NO_ERROR;
+  DB_VALUE method, param_cnt_val, mode, arg_type, temp, result_type;
+
+  int sig_num_args = pt_length_of_list (node->info.method_call.arg_list);
+  std::vector < int >sig_arg_mode;
+  std::vector < int >sig_arg_type;
+  int sig_result_type;
+
+  METHOD_SIG *sig = nullptr;
+
+  {
+    char *parsed_method_name = (char *) node->info.method_call.method_name->info.name.original;
+    DB_OBJECT *mop_p = jsp_find_stored_procedure (parsed_method_name);
+    if (mop_p)
+      {
+	/* check java stored prcedure target */
+	error = db_get (mop_p, SP_ATTR_TARGET, &method);
+	if (error != NO_ERROR)
+	  {
+	    goto end;
+	  }
+
+	/* check arg count */
+	error = db_get (mop_p, SP_ATTR_ARG_COUNT, &param_cnt_val);
+	if (error != NO_ERROR)
+	  {
+	    goto end;
+	  }
+
+	int param_cnt = db_get_int (&param_cnt_val);
+	if (sig_num_args != param_cnt)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, param_cnt, sig_num_args);
+	    error = er_errid ();
+	    goto end;
+	  }
+
+	DB_VALUE args;
+	/* arg_mode, arg_type */
+	error = db_get (mop_p, SP_ATTR_ARGS, &args);
+	if (error != NO_ERROR)
+	  {
+	    goto end;
+	  }
+
+	DB_SET *param_set = db_get_set (&args);
+	for (int i = 0; i < sig_num_args; i++)
+	  {
+	    set_get_element (param_set, i, &temp);
+	    DB_OBJECT *arg_mop_p = db_get_object (&temp);
+	    if (arg_mop_p)
+	      {
+		if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
+		  {
+		    sig_arg_mode.push_back (db_get_int (&mode));
+		  }
+
+		if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
+		  {
+		    sig_arg_type.push_back (db_get_int (&arg_type));
+		  }
+
+		pr_clear_value (&mode);
+		pr_clear_value (&arg_type);
+		pr_clear_value (&temp);
+	      }
+	  }
+	pr_clear_value (&args);
+
+	/* result type */
+	error = db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type);
+	if (error != NO_ERROR)
+	  {
+	    goto end;
+	  }
+	sig_result_type = db_get_int (&result_type);
+      }
+    else
+      {
+	error = er_errid ();
+	goto end;
+      }
+
+    sig = sig_list.method_sig = (METHOD_SIG *) db_private_alloc (NULL, sizeof (METHOD_SIG));
+    if (sig)
+      {
+	sig->next = nullptr;
+	sig->num_method_args = sig_num_args;
+	sig->method_type = METHOD_TYPE_JAVA_SP;
+
+	const char *method_name = db_get_string (&method);
+	int method_name_len = db_get_string_size (&method);
+
+	sig->method_name = (char *) db_private_alloc (NULL, method_name_len + 1);
+	if (!sig->method_name)
+	  {
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
+	  }
+
+	memcpy (sig->method_name, method_name, method_name_len);
+	sig->method_name[method_name_len] = 0;
+
+
+	sig->method_arg_pos = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
+	if (!sig->method_arg_pos)
+	  {
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
+	  }
+
+	for (int i = 0; i < sig_num_args + 1; i++)
+	  {
+	    sig->method_arg_pos[i] = i;
+	  }
+
+
+	sig->arg_info.arg_mode = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
+	if (!sig->arg_info.arg_mode)
+	  {
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
+	  }
+
+	sig->arg_info.arg_type = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
+	if (!sig->arg_info.arg_type)
+	  {
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
+	  }
+
+	for (int i = 0; i < sig_num_args; i++)
+	  {
+	    sig->arg_info.arg_mode[i] = sig_arg_mode[i];
+	    sig->arg_info.arg_type[i] = sig_arg_type[i];
+	  }
+
+	sig->arg_info.result_type = sig_result_type;
+
+	sig_list.num_methods = 1;
+      }
+    else
+      {
+	error = ER_OUT_OF_VIRTUAL_MEMORY;
+	goto end;
+      }
+  }
+
+end:
+
+  if (error != NO_ERROR)
+    {
+      if (sig)
+	{
+	  sig->freemem ();
+	}
+      sig_list.method_sig = nullptr;
+      sig_list.num_methods = 0;
+    }
+
+  pr_clear_value (&method);
+  pr_clear_value (&param_cnt_val);
+  pr_clear_value (&result_type);
+
+  return error;
+}
+
+/*
+ * pt_to_method_arglist () - converts a parse expression tree list of
+ *                           method call arguments to method argument array
+ *   return: A NULL on error occurred
+ *   parser(in):
+ *   target(in):
+ *   node_list(in): should be parse name nodes
+ *   subquery_as_attr_list(in):
+ */
+static int *
+jsp_make_method_arglist (PARSER_CONTEXT * parser, PT_NODE * node_list)
+{
+  int *arg_list = NULL;
+  int i = 0;
+  int num_args = pt_length_of_list (node_list);
+  PT_NODE *node;
+
+  arg_list = (int *) db_private_alloc (NULL, num_args * sizeof (int));
+  if (!arg_list)
+    {
+      return NULL;
+    }
+
+  for (node = node_list; node != NULL; node = node->next)
+    {
+      arg_list[i] = i;
+      i++;
+      /*
+         arg_list[i] = pt_find_attribute (parser, node, subquery_as_attr_list);
+         if (arg_list[i] == -1)
+         {
+         return NULL;
+         }
+         i++;
+       */
+    }
+
+  return arg_list;
 }

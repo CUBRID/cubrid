@@ -10228,16 +10228,32 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   cubmem::extensible_block eb;
   /* *INDENT-ON* */
 
-  DB_VALUE *ret_value;
-
   char *reply_data = NULL;
   int reply_data_size = 0;
 
-  error_code = method_group.execute ();
+  error_code = method_group.execute (args);
   if (error_code == NO_ERROR)
     {
-      ret_value = &method_group.get_return_value (0);
-      packer.set_buffer_and_pack_all (eb, *ret_value);
+      DB_VALUE & ret_value = method_group.get_return_value (0);
+
+      int total_size = packer.get_packed_db_value_size (ret_value, 0);
+      total_size += packer.get_packed_int_size (total_size);
+    for (DB_VALUE & value:args)
+	{
+	  total_size += packer.get_packed_db_value_size (value, total_size);
+	}
+
+      eb.extend_to (total_size);
+      packer.set_buffer (eb.get_ptr (), total_size);
+
+      packer.pack_db_value (ret_value);
+      packer.pack_int (args.size ());
+    for (DB_VALUE & value:args)
+	{
+	  packer.pack_db_value (value);	// DB_VALUEs
+	}
+
+      // packer.set_buffer_and_pack_all (eb, *ret_value);
 
       reply_data = eb.get_ptr ();
       reply_data_size = (int) packer.get_current_size ();
@@ -10251,6 +10267,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     {
       db_value_clear (&args[i]);
     }
+
   method_group.end ();
 
   sig_list.freemem ();

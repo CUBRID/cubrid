@@ -10469,7 +10469,21 @@ for (DB_VALUE * &value:args)
     }
 
   packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+
   unpacker.unpack_db_value (result);
+
+  int arg_size = 0;
+  unpacker.unpack_int (arg_size);
+
+  DB_VALUE temp;
+  for (int i = 0; i < arg_size; i++)
+    {
+      unpacker.unpack_db_value (temp);
+
+      db_value_clear (args[i]);
+      db_value_clone (&temp, args[i]);
+      db_value_clear (&temp);
+    }
 
   free_and_init (data_reply);
 

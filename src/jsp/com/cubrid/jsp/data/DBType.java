@@ -47,6 +47,7 @@ public class DBType {
     public static final int DB_MONETARY = 13;
     public static final int DB_SHORT = 18;
     public static final int DB_NUMERIC = 22;
+    public static final int DB_OID = 20;
     public static final int DB_CHAR = 25;
     public static final int DB_RESULTSET = 28;
     public static final int DB_BIGINT = 31;

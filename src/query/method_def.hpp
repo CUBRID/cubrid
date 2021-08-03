@@ -87,7 +87,7 @@ struct method_sig_node
 
   void freemem ();
 
-  method_sig_node () = default;
+  method_sig_node ();
 };
 
 struct method_sig_list

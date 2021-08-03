@@ -339,9 +339,11 @@ namespace cubmethod
       case DB_TYPE_NCHAR:
       case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
+      {
 	size += serializator.get_packed_int_size (size); /* dummy size */
 	size += serializator.get_packed_c_string_size (db_get_string (value), db_get_string_size (value), size);
-	break;
+      }
+      break;
 
       case DB_TYPE_BIT:
       case DB_TYPE_VARBIT:
