@@ -973,9 +973,7 @@ static void
 log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
-  log_reader log_pgptr_reader
-  {
-  LOG_CS_SAFE_READER};
+  log_reader log_pgptr_reader (LOG_CS_SAFE_READER);
 
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
