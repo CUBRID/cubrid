@@ -16,15 +16,14 @@
  *
  */
 
-#ifndef _SERVER_TYPE_H_
-#define _SERVER_TYPE_H_
+#ifndef _SERVER_TYPE_ENUM_H_
+#define _SERVER_TYPE_ENUM_H_
 
-#include "server_type_enum.hpp"
+typedef enum
+{
+  SERVER_TYPE_UNKNOWN,
+  SERVER_TYPE_TRANSACTION,
+  SERVER_TYPE_PAGE,
+} SERVER_TYPE;
 
-int init_server_type (const char *db_name);
-void finalize_server_type ();
-SERVER_TYPE get_server_type ();
-void set_server_type (SERVER_TYPE type);
-bool is_tran_server_with_remote_storage ();
-
-#endif // _SERVER_TYPE_H_
+#endif // _SERVER_TYPE_ENUM_H_

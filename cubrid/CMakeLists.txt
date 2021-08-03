@@ -166,6 +166,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/server_type.hpp
+  ${BASE_DIR}/server_type_enum.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/semaphore.hpp
   )

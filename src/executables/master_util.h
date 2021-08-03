@@ -28,6 +28,7 @@
 #ident "$Id$"
 
 #include "connection_defs.h"
+#include "server_type_enum.hpp"
 
 #if defined(WINDOWS)
 #define SLEEP_SEC(X)                    Sleep((X) * 1000)
@@ -87,6 +88,7 @@ struct socket_queue_entry
   CSS_CONN_ENTRY *conn_ptr;
   int port_id;
   int ha_mode;
+  SERVER_TYPE server_type;
   struct socket_queue_entry *next;
 };
 
