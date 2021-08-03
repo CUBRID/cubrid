@@ -10236,24 +10236,38 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     {
       DB_VALUE & ret_value = method_group.get_return_value (0);
 
-      int total_size = packer.get_packed_db_value_size (ret_value, 0);
-      total_size += packer.get_packed_int_size (total_size);
-    for (DB_VALUE & value:args)
+      method_sig_node *sig = sig_list.method_sig;
+
+      std::vector < DB_VALUE * >out_args;
+      for (int i = 0; i < sig->num_method_args; i++)
 	{
-	  total_size += packer.get_packed_db_value_size (value, total_size);
+	  if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
+	    {
+	      continue;
+	    }
+
+	  int pos = sig->method_arg_pos[i];
+	  DB_VALUE & val = args[pos];
+	  out_args.push_back (&val);
+	}
+
+      int total_size = packer.get_packed_db_value_size (ret_value, 0);
+      // output parameters
+      total_size += packer.get_packed_int_size (total_size);	// num_out_args
+    for (DB_VALUE * value:out_args)
+	{
+	  total_size += packer.get_packed_db_value_size (*value, total_size);
 	}
 
       eb.extend_to (total_size);
       packer.set_buffer (eb.get_ptr (), total_size);
 
       packer.pack_db_value (ret_value);
-      packer.pack_int (args.size ());
-    for (DB_VALUE & value:args)
+      packer.pack_int (out_args.size ());
+    for (DB_VALUE * value:out_args)
 	{
-	  packer.pack_db_value (value);	// DB_VALUEs
+	  packer.pack_db_value (*value);	// DB_VALUEs
 	}
-
-      // packer.set_buffer_and_pack_all (eb, *ret_value);
 
       reply_data = eb.get_ptr ();
       reply_data_size = (int) packer.get_current_size ();

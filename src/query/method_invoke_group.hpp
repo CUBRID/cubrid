@@ -81,6 +81,7 @@ namespace cubmethod
       int execute (std::vector <DB_VALUE> &arg_base);
       int reset ();
       int end ();
+
       DB_VALUE &get_return_value (int index);
 
       int get_num_methods () const;

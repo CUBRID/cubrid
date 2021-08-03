@@ -10475,13 +10475,20 @@ for (DB_VALUE * &value:args)
   int arg_size = 0;
   unpacker.unpack_int (arg_size);
 
+  method_sig_node *sig = sig_list.method_sig;
   DB_VALUE temp;
-  for (int i = 0; i < arg_size; i++)
+  for (int i = 0; i < sig->num_method_args; i++)
     {
+      if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
+	{
+	  continue;
+	}
+
+      int pos = sig->method_arg_pos[i];
       unpacker.unpack_db_value (temp);
 
-      db_value_clear (args[i]);
-      db_value_clone (&temp, args[i]);
+      db_value_clear (args[pos]);
+      db_value_clone (&temp, args[pos]);
       db_value_clear (&temp);
     }
 
