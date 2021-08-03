@@ -20,6 +20,7 @@
 
 #include "btree_load.h"
 #include "log_impl.h"
+#include "log_reader.hpp"
 #include "log_recovery.h"
 #include "log_recovery_redo.hpp"
 #include "log_recovery_redo_parallel.hpp"

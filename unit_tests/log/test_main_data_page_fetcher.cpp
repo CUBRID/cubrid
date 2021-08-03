@@ -176,19 +176,17 @@ delete_page (PAGE_PTR page_ptr)
   delete io_page;
 }
 
-// Mock some of the functionality
-log_reader::log_reader () = default; // needed by log_page_fetch_task::execute
-
 int
-log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode)
+logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *, LOG_CS_ACCESS_MODE, LOG_PAGE *)
 {
+  assert (false);
   return NO_ERROR;
 }
 
-const log_page *
-log_reader::get_page () const
+void
+logpb_fatal_error (THREAD_ENTRY *, bool, const char *, const int, const char *, ...)
 {
-  return nullptr;
+  assert (false);
 }
 
 PAGE_PTR

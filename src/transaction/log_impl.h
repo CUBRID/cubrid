@@ -53,7 +53,6 @@
 #if defined (SERVER_MODE)
 #include "log_prior_recv.hpp"
 #endif // SERVER_MODE
-#include "log_reader.hpp"
 #include "log_storage.hpp"
 #include "mvcc.h"
 #include "mvcc_table.hpp"
