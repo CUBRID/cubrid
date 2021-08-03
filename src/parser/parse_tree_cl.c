@@ -4409,6 +4409,10 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node, bool do_one)
 	    {
 	      do_rewrite = true;	/* give up */
 	    }
+	  else if (node->info.query.order_by && node->info.query.limit)
+	    {
+	      do_rewrite = true;
+	    }
 	  else
 	    {
 	      for (col = list; col && do_rewrite != true; col = col->next)
@@ -18342,9 +18346,10 @@ pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
       PT_APPLY_WALK (parser, p->info.dblink_table.user, arg);
       PT_APPLY_WALK (parser, p->info.dblink_table.pwd, arg);
       PT_APPLY_WALK (parser, p->info.dblink_table.qstr, arg);
+      PT_APPLY_WALK (parser, p->info.dblink_table.pushed_pred, arg);
+      PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
     }
 
-  PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
   return p;
 }
 

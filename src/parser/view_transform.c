@@ -215,7 +215,6 @@ static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE *
 					      PT_NODE * new_query, FIND_ID_INFO * infop);
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 					      PT_NODE * new_query, FIND_ID_INFO * infop);
-static int mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec);
 static PT_NODE *mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 						   PT_NODE * query_spec);
 static PT_NODE *mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement);
@@ -3279,7 +3278,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *temp;
   int nullable_cnt;		/* nullable terms count */
   PT_NODE *save_next;
-  bool is_afterjoinable;
+  bool is_afterjoinable, has_derived_table_inst;
 
   /* init */
   push_term_list = NULL;
@@ -3287,6 +3286,13 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   push_correlated_cnt = 0;
 
   copy_cnt = -1;
+
+  /* check inst num in derived table. can not push predicate into subquery having inst num */
+  has_derived_table_inst = pt_has_inst_or_orderby_num_in_where (parser, new_query);
+  if (has_derived_table_inst)
+    {
+      return 0;
+    }
 
   if (PT_IS_QUERY (new_query)
       && (pt_has_analytic (parser, new_query) || PT_SELECT_INFO_IS_FLAGED (new_query, PT_SELECT_INFO_COLS_SCHEMA)
@@ -3298,6 +3304,14 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   for (term = statement->info.query.q.select.where; term; term = term->next)
     {
+      /* check for on_cond term */
+      assert (term->node_type == PT_EXPR || term->node_type == PT_VALUE);
+      if ((term->node_type == PT_EXPR && term->info.expr.location > 0)
+	  || (term->node_type == PT_VALUE && term->info.value.location > 0))
+	{
+	  continue;		/* do not copy-push on_cond-term */
+	}
+
       /* check for nullable-term */
       if (term->node_type == PT_EXPR)
 	{
@@ -3391,10 +3405,10 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
  *   statement(in):
  *   spec(in):
  */
-static int
+int
 mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec)
 {
-  PT_NODE *derived_table;
+  PT_NODE *derived_table, *sub;
   int push_cnt = 0;		/* init */
   FIND_ID_INFO info;
 
@@ -3402,7 +3416,8 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
       /* never do copy-push optimization for a hierarchical query */
       && statement->info.query.q.select.connect_by == NULL
       && (derived_table = spec->info.spec.derived_table)
-      && !PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY))
+      && !PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY)
+      && PT_IS_QUERY (derived_table) && (spec->info.spec.derived_table_type == PT_IS_SUBQUERY))
     {
       info.type = FIND_ID_INLINE_VIEW;	/* inline view */
       /* init input section */
@@ -3411,14 +3426,14 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
       info.in.attr_list = spec->info.spec.as_attr_list;
       info.in.query_list = derived_table;
 
-      if (PT_IS_QUERY (derived_table) && (spec->info.spec.derived_table_type == PT_IS_SUBQUERY))
+      sub = derived_table->info.query.q.select.from->info.spec.derived_table;
+      if (sub && sub->node_type == PT_DBLINK_TABLE)
+	{
+	  push_cnt = mq_copypush_sargable_terms_dblink (parser, statement, spec, derived_table, &info);
+	}
+      else
 	{
 	  push_cnt = mq_copypush_sargable_terms_helper (parser, statement, spec, derived_table, &info);
-	}
-      else if (derived_table->node_type == PT_DBLINK_TABLE)
-	{
-	  assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
-	  push_cnt = mq_copypush_sargable_terms_dblink (parser, statement, spec, derived_table, &info);
 	}
     }
 
@@ -3608,6 +3623,112 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
   spec->info.spec.derived_table = new_query;
 
   return spec;
+}
+
+/*
+ * mq_rewrite_dblink_as_derived -
+ *   return: rewritten dblink as a derived table (like a subquery)
+ *   parser(in): 
+ *   query(in): it should be a spec node with dblink
+ */
+static PT_NODE *
+mq_rewrite_dblink_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  PT_NODE *new_query = NULL, *derived = NULL;
+  PT_NODE *range = NULL, *spec = NULL, *temp, *node = NULL;
+  PT_NODE **head;
+  int i = 0;
+
+  /* set line number to range name */
+  range = pt_name (parser, "_dbl");
+  if (range == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      goto exit_on_error;
+    }
+
+  /* construct new spec We are now copying the query and updating the spec_id references */
+  spec = parser_new_node (parser, PT_SPEC);
+  if (spec == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      goto exit_on_error;
+    }
+
+  derived = query;
+
+  spec->info.spec.derived_table = derived;
+  spec->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
+  spec->info.spec.range_var = range;
+  spec->info.spec.id = (UINTPTR) spec;
+  range->info.name.spec_id = (UINTPTR) spec;
+
+  new_query = parser_new_node (parser, PT_SELECT);
+  if (new_query == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      goto exit_on_error;
+    }
+
+  new_query->info.query.q.select.from = spec;
+
+  temp = derived->info.dblink_table.cols;
+  head = &new_query->info.query.q.select.list;
+
+  while (temp)
+    {
+
+      /* we have the original name */
+      node = pt_name (parser, temp->info.attr_def.attr_name->info.name.original);
+
+      if (node == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  goto exit_on_error;
+	}
+      /* set line, column number */
+      node->line_number = temp->line_number;
+      node->column_number = temp->column_number;
+
+      node->info.name.meta_class = PT_NORMAL;
+      node->info.name.resolved = range->info.name.original;
+      node->info.name.spec_id = spec->info.spec.id;
+      node->type_enum = temp->type_enum;
+      node->data_type = parser_copy_tree (parser, temp->data_type);
+      spec->info.spec.as_attr_list = parser_append_node (node, spec->info.spec.as_attr_list);
+
+      *head = parser_copy_tree (parser, node);
+
+      head = &((*head)->next);
+
+      temp = temp->next;
+    }
+
+  /* move query id # */
+  new_query->info.query.id = query->info.query.id;
+  new_query->flag.recompile = query->flag.recompile;
+
+  return new_query;
+
+exit_on_error:
+
+  if (node != NULL)
+    {
+      parser_free_node (parser, node);
+    }
+  if (new_query != NULL)
+    {
+      parser_free_node (parser, new_query);
+    }
+  if (spec != NULL)
+    {
+      parser_free_node (parser, spec);
+    }
+  if (range != NULL)
+    {
+      parser_free_node (parser, range);
+    }
+  return NULL;
 }
 
 /*
@@ -4737,11 +4858,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	      return NULL;
 	    }
 	}
-      else if (from->info.spec.derived_table_type == PT_IS_SUBQUERY
-	       || from->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-	{
-	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
-	}
 
       while (from->next)
 	{
@@ -4754,11 +4870,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	  if (is_union_translation != 0)
 	    {
 	      from->next = mq_rewrite_vclass_spec_as_derived (parser, select_statement, from->next, NULL);
-	    }
-	  else if (from->next->info.spec.derived_table_type == PT_IS_SUBQUERY
-		   || from->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-	    {
-	      (void) mq_copypush_sargable_terms (parser, select_statement, from->next);
 	    }
 	  from = from->next;
 	}
@@ -4781,13 +4892,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	      select_statement->info.query.q.select.from =
 		mq_rewrite_vclass_spec_as_derived (parser, select_statement, from, NULL);
 	    }
-	}
-
-      if (is_union_translation == false && from
-	  && (from->info.spec.derived_table_type == PT_IS_SUBQUERY
-	      || from->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE))
-	{
-	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
 	}
     }
 
@@ -4849,6 +4953,44 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int
   return statement;
 }
 
+/*
+ * mq_rewrite_dblink_as_subquery () - rewrite dblink as a subquery
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   node(in): possible dblink query
+ */
+static PT_NODE *
+mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *walk)
+{
+  PT_NODE *spec, *derived = NULL;
+  PT_NODE *derived_table;
+
+  if (node->node_type != PT_SELECT)
+    {
+      return node;
+    }
+
+  for (spec = node->info.query.q.select.from; spec; spec = spec->next)
+    {
+      if ((derived_table = spec->info.spec.derived_table)
+	  && spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	{
+	  derived = mq_rewrite_dblink_as_derived (parser, derived_table);
+	  if (derived == NULL)
+	    {
+	      break;
+	    }
+
+	  derived->info.query.is_subquery = PT_IS_SUBQUERY;
+	  spec->info.spec.derived_table = derived;
+	  spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
+	}
+    }
+
+  *walk = PT_STOP_WALK;
+
+  return node;
+}
 
 /*
  * mq_translate_local() - recursively expands each query against a view or
@@ -4895,7 +5037,6 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
 	      aggregate_rewrote_as_derived = true;
 	    }
 	}
-
       break;
 
     case PT_UPDATE:
@@ -6398,6 +6539,10 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (node)
 	{
+	  /* for the optimization of the query includes dblink
+	   * it is better to be written to a subquery */
+	  node = parser_walk_tree (parser, node, NULL, NULL, mq_rewrite_dblink_as_subquery, NULL);
+
 	  /* mq_optimize works for queries only. Queries generated for update, insert or delete will go thru this path
 	   * when mq_translate is called, so will still get this optimization step applied. */
 	  node = mq_optimize (parser, node);
