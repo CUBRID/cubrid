@@ -38,7 +38,7 @@
 namespace cublog
 {
 #if defined(SERVER_MODE)
-  static constexpr size_t PARALLEL_RECOVERY_REDO_TUNING_REUSABLE_JOBS_STACK_SIZE = 100 * ONE_K;
+  static constexpr size_t PARALLEL_REDO_REUSABLE_JOBS_STACK_SIZE = 100 * ONE_K;
 
   // forward declaration
   class reusable_jobs_stack;
@@ -100,7 +100,6 @@ namespace cublog
 
       std::condition_variable m_wait_for_target_value_cv;
   };
-
 
   /* a class to handle infrastructure for parallel log recovery/replication RAII-style;
    * usage:
@@ -459,7 +458,7 @@ namespace cublog
       /* used to wait for jobs to be available on the push stack
        * in case no jobs are found on the pop stack
        */
-      std::condition_variable_any m_jobs_available_on_push_stack_cv;
+      std::condition_variable m_jobs_available_on_push_stack_cv;
   };
 
 #else /* SERVER_MODE */
@@ -523,20 +522,16 @@ log_rv_redo_record_sync_or_dispatch_async (
   else
     {
       // dispatch async
-      while (true)
-	{
-	  cublog::redo_parallel::redo_job_base *const job_base = a_reusable_jobs.blocking_pop ();
-	  assert (job_base != nullptr);
-	  cublog::redo_job_impl *const job = dynamic_cast<cublog::redo_job_impl *> (job_base);
-	  a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE);
+      cublog::redo_parallel::redo_job_base *const job_base = a_reusable_jobs.blocking_pop ();
+      assert (job_base != nullptr);
+      cublog::redo_job_impl *const job = dynamic_cast<cublog::redo_job_impl *> (job_base);
+      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE);
 
-	  job->reinitialize (rcv_vpid, rcv_lsa, log_rtype);
-	  // it is the callee's responsibility to return the pointer back to the reusable
-	  // job stack after having processed it
-	  parallel_recovery_redo->add (job);
-	  a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
-	  break;
-	}
+      job->reinitialize (rcv_vpid, rcv_lsa, log_rtype);
+      // it is the callee's responsibility to return the pointer back to the reusable
+      // job stack after having processed it
+      parallel_recovery_redo->add (job);
+      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
     }
 #else // !SERVER_MODE = SA_MODE
   log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,

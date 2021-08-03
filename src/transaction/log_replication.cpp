@@ -116,9 +116,9 @@ namespace cublog
 	m_minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
 	// no need to reset with start redo lsa
 
-	const bool force_each_log_page_fetch { true };
+	const bool force_each_log_page_fetch = true;
 	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
-	m_reusable_jobs->initialize (cublog::PARALLEL_RECOVERY_REDO_TUNING_REUSABLE_JOBS_STACK_SIZE,
+	m_reusable_jobs->initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_STACK_SIZE,
 				     nullptr, force_each_log_page_fetch);
 	m_parallel_replication_redo.reset (new cublog::redo_parallel (
 	    replication_parallel, m_minimum_log_lsa.get ()));

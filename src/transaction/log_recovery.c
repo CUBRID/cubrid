@@ -987,22 +987,22 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
    * if infrastructure is not initialized dependent code below works sequentially
    */
   LOG_CS_EXIT (thread_p);
-  // *INDENT-OFF*
   cublog::reusable_jobs_stack reusable_jobs;
+  // *INDENT-OFF*
   std::unique_ptr<cublog::redo_parallel> parallel_recovery_redo;
+  // *INDENT-ON*
 #if defined(SERVER_MODE)
   {
     const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
     assert (log_recovery_redo_parallel_count >= 0);
     if (log_recovery_redo_parallel_count > 0)
       {
-        reusable_jobs.initialize(cublog::PARALLEL_RECOVERY_REDO_TUNING_REUSABLE_JOBS_STACK_SIZE,
-                                 &context.get_end_redo_lsa (), force_each_log_page_fetch);
+	reusable_jobs.initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_STACK_SIZE,
+				  &context.get_end_redo_lsa (), force_each_log_page_fetch);
 	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, nullptr));
       }
   }
 #endif
-  // *INDENT-ON*
 
   const auto time_start = std::chrono::system_clock::now ();
 

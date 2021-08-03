@@ -839,27 +839,17 @@ namespace cublog
       }
     else
       {
-	while (true)
-	  {
-	    {
-	      std::lock_guard<std::mutex> stack_lockg { m_mutex };
-	      m_pop_stack.swap (m_push_stack);
-	    }
-	    if (!m_pop_stack.empty ())
-	      {
-		redo_parallel::redo_job_base *const pop_job = m_pop_stack.top ();
-		m_pop_stack.pop ();
-		return pop_job;
-	      }
-	    else
-	      {
-		std::unique_lock<std::mutex> ulock { m_mutex };
-		m_jobs_available_on_push_stack_cv.wait (ulock, [this] ()
-		{
-		  return !m_push_stack.empty ();
-		});
-	      }
-	  }
+        std::unique_lock<std::mutex> ulock { m_mutex };
+        m_jobs_available_on_push_stack_cv.wait (ulock, [this] ()
+        {
+            return !m_push_stack.empty ();
+          });
+
+        m_pop_stack.swap (m_push_stack);
+
+        redo_parallel::redo_job_base *const pop_job = m_pop_stack.top ();
+        m_pop_stack.pop ();
+        return pop_job;
       }
 
     assert ("unreachable state reached" == nullptr);
