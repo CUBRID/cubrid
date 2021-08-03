@@ -336,7 +336,7 @@ static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, voi
 /*for CDC */
 static int log_reader_initialize ();
 static int cdc_log_producer (THREAD_ENTRY * thread_p);
-static int get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, void *logs, RECDES * recdes,
+static int get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * recdes,
 				LOG_LSA lsa, unsigned int rcvindex, bool is_redo);
 static int get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * process_lsa, int *length,
 				 char **data, bool is_redo);
@@ -349,7 +349,7 @@ static int make_ddl (char *supplement_data, int trid, const char *user, LOG_INFO
 static int make_dcl (time_t at_time, int trid, char *user, int type, LOG_INFO_ENTRY * dcl_entry);
 static int make_timer (time_t at_time, int trid, char *user, LOG_INFO_ENTRY * timer_entry);
 static int find_tran_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA lsa, int trid, char **user);
-static int compare_data (const db_value * new_value, const db_value * cmpdata);
+static int compare_record (const db_value * new_value, const db_value * cmpdata);
 static int put_data (const db_value * new_value, char **ptr);
 
 
@@ -10648,6 +10648,17 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 
   bool is_diff = false;
 
+  LOG_RCVINDEX rcvindex;
+  int redo_length;
+  int undo_length;
+  char *redo_data = NULL;
+  char *undo_data = NULL;
+
+  bool is_redo_alloced = false;
+  bool is_undo_alloced = false;
+
+  int error_code = NO_ERROR;
+
   /*Get UNDO RECDES from undo lsa */
   if (undo_lsa != NULL)
     {
@@ -10660,10 +10671,9 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	{
 	  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
-	  if (logpb_fetch_page (thread_p, undo_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	  if ((error_code = logpb_fetch_page (thread_p, undo_lsa, LOG_CS_SAFE_READER, log_page_p)) != NO_ERROR)
 	    {
-	      assert (false);
-	      goto error;
+	      goto end;
 	    }
 	}
 
@@ -10678,43 +10688,74 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	case LOG_SUPPLEMENTAL_INFO:
 	  {
 	    LOG_REC_SUPPLEMENT *supplement = NULL;
-	    int length = 0;
-	    char *data = NULL;
 
 	    supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa.offset);
-	    length = supplement->length;
+	    undo_length = supplement->length;
 
 	    LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
 	    /* Data in supplemental log has RECDES.data format, and this RECDES.data can be zipped */
 
-	    data = (char *) (log_page_p->area + process_lsa.offset);
-
-	    if (ZIP_CHECK (length))
+	    if (ZIP_CHECK (undo_length))
 	      {
-		length = (int) GET_ZIP_LEN (length);
+		undo_length = (int) GET_ZIP_LEN (undo_length);
 		is_zipped_undo = true;
 	      }
 
-	    if (is_zipped_undo && length != 0)
+	    if (process_lsa.offset + undo_length < (int) LOGAREA_SIZE)
+	      {
+		undo_data = (char *) (log_page_p->area + process_lsa.offset);
+	      }
+	    else
+	      {
+		undo_data = (char *) malloc (undo_length);
+		if (undo_data == NULL)
+		  {
+		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
+
+		logpb_copy_from_log (thread_p, undo_data, undo_length, &process_lsa, log_page_p);
+		is_undo_alloced = true;
+	      }
+
+	    if (is_zipped_undo && undo_length != 0)
 	      {
 		undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
 		if (undo_zip_ptr == NULL)
 		  {
-		    return ER_OUT_OF_VIRTUAL_MEMORY;
+		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
 		  }
 
-		is_unzipped_undo = log_unzip (undo_zip_ptr, length, data);
+		is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, undo_data);
+		if (is_unzipped_undo != true)
+		  {
+		    error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
+		    goto end;
+		  }
 	      }
 
 	    if (is_zipped_undo && is_unzipped_undo)
 	      {
-		length = (int) undo_zip_ptr->data_length;
-		data = undo_zip_ptr->log_data;
+		undo_length = (int) undo_zip_ptr->data_length;
+
+		if (undo_data != NULL)
+		  {
+		    free_and_init (undo_data);
+		  }
+
+		undo_data = undo_zip_ptr->log_data;
 	      }
 
-	    undo_recdes->length = length;
-	    undo_recdes->data = (char *) malloc (length);
-	    memcpy (undo_recdes->data, (char *) data, length);
+	    undo_recdes->length = undo_length;
+	    undo_recdes->data = (char *) malloc (undo_length);
+	    if (undo_recdes->data == NULL)
+	      {
+		error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		goto end;
+	      }
+
+	    memcpy (undo_recdes->data, (char *) undo_data, undo_length);
 
 	    break;
 	  }
@@ -10722,9 +10763,6 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	case LOG_MVCC_UNDOREDO_DATA:
 	  {
 	    LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
-	    LOG_RCVINDEX rcvindex;
-	    int undo_length;
-	    char *data = NULL;
 
 	    mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = mvcc_undoredo->undoredo.data.rcvindex;
@@ -10734,13 +10772,29 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	      {
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
 
-		data = (char *) (log_page_p->area + process_lsa.offset);
-
 		if (ZIP_CHECK (undo_length))
 		  {
 		    undo_length = (int) GET_ZIP_LEN (undo_length);
 		    is_zipped_undo = true;
 		  }
+
+		if (process_lsa.offset + undo_length < (int) LOGAREA_SIZE)
+		  {
+		    undo_data = (char *) (log_page_p->area + process_lsa.offset);
+		  }
+		else
+		  {
+		    undo_data = (char *) malloc (undo_length);
+		    if (undo_data == NULL)
+		      {
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
+		      }
+
+		    logpb_copy_from_log (thread_p, undo_data, undo_length, &process_lsa, log_page_p);
+		    is_undo_alloced = true;
+		  }
+
 
 		if (is_zipped_undo && undo_length != 0)
 		  {
@@ -10750,20 +10804,35 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 			return ER_OUT_OF_VIRTUAL_MEMORY;
 		      }
 
-		    is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, data);
+		    is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, undo_data);
+		    if (is_unzipped_undo != true)
+		      {
+			error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
+			goto end;
+		      }
 		  }
 
 		if (is_zipped_undo && is_unzipped_undo)
 		  {
 		    undo_length = (int) undo_zip_ptr->data_length;
-		    data = undo_zip_ptr->log_data;
+		    if (is_undo_alloced)
+		      {
+			free_and_init (undo_data);
+		      }
+
+		    undo_data = undo_zip_ptr->log_data;
 		  }
 
-		undo_recdes->type = *(INT16 *) data;
+		undo_recdes->type = *(INT16 *) undo_data;
 		undo_recdes->length = undo_length - sizeof (INT16);
 		undo_recdes->data = (char *) malloc (undo_recdes->length);
+		if (undo_recdes->data == NULL)
+		  {
+		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
 
-		memcpy (undo_recdes->data, (char *) data + sizeof (undo_recdes->type), undo_recdes->length);
+		memcpy (undo_recdes->data, (char *) undo_data + sizeof (undo_recdes->type), undo_recdes->length);
 
 	      }
 
@@ -10773,9 +10842,6 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	case LOG_UNDOREDO_DATA:
 	  {
 	    LOG_REC_UNDOREDO *undoredo = NULL;
-	    LOG_RCVINDEX rcvindex;
-	    int undo_length;
-	    char *data = NULL;
 
 	    undoredo = (LOG_REC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = undoredo->data.rcvindex;
@@ -10785,12 +10851,27 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	      {
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
 
-		data = (char *) (log_page_p->area + process_lsa.offset);
-
 		if (ZIP_CHECK (undo_length))
 		  {
 		    undo_length = (int) GET_ZIP_LEN (undo_length);
 		    is_zipped_undo = true;
+		  }
+
+		if (process_lsa.offset + undo_length < (int) LOGAREA_SIZE)
+		  {
+		    undo_data = (char *) (log_page_p->area + process_lsa.offset);
+		  }
+		else
+		  {
+		    undo_data = (char *) malloc (undo_length);
+		    if (undo_data == NULL)
+		      {
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
+		      }
+
+		    logpb_copy_from_log (thread_p, undo_data, undo_length, &process_lsa, log_page_p);
+		    is_undo_alloced = true;
 		  }
 
 		if (is_zipped_undo && undo_length != 0)
@@ -10801,19 +10882,35 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 			return ER_OUT_OF_VIRTUAL_MEMORY;
 		      }
 
-		    is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, data);
+		    is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, undo_data);
+		    if (is_unzipped_undo != true)
+		      {
+			error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
+			goto end;
+		      }
 		  }
 
 		if (is_zipped_undo && is_unzipped_undo)
 		  {
 		    undo_length = (int) undo_zip_ptr->data_length;
-		    data = undo_zip_ptr->log_data;
+		    if (is_undo_alloced)
+		      {
+			free_and_init (undo_data);
+		      }
+
+		    undo_data = undo_zip_ptr->log_data;
 		  }
 
-		undo_recdes->type = *(INT16 *) data;
+		undo_recdes->type = *(INT16 *) undo_data;
 		undo_recdes->length = undo_length - sizeof (INT16);
 		undo_recdes->data = (char *) malloc (undo_recdes->length);
-		memcpy (undo_recdes->data, (char *) data + sizeof (undo_recdes->type), undo_recdes->length);
+		if (undo_recdes->data == NULL)
+		  {
+		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
+
+		memcpy (undo_recdes->data, (char *) undo_data + sizeof (undo_recdes->type), undo_recdes->length);
 
 	      }
 
@@ -10822,9 +10919,6 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	case LOG_UNDO_DATA:
 	  {
 	    LOG_REC_UNDO *undo = NULL;
-	    LOG_RCVINDEX rcvindex;
-	    int undo_length;
-	    char *data = NULL;
 
 	    undo = (LOG_REC_UNDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = undo->data.rcvindex;
@@ -10833,49 +10927,38 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	    if (rcvindex == RVOVF_PAGE_UPDATE)
 	      {
 		/* GET OVF UNDO IMAGE */
-		LOG_READ_ADD_ALIGN (thread_p, sizeof (*undo), &process_lsa, log_page_p);
-
-		data = (char *) (log_page_p->area + process_lsa.offset);
-
-		if (ZIP_CHECK (undo_length))
+		if ((error_code =
+		     get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex, false)) != NO_ERROR)
 		  {
-		    undo_length = (int) GET_ZIP_LEN (undo_length);
-		    is_zipped_undo = true;
+		    goto end;
 		  }
-
-		if (is_zipped_undo && undo_length != 0)
-		  {
-		    undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
-		    if (undo_zip_ptr == NULL)
-		      {
-			return ER_OUT_OF_VIRTUAL_MEMORY;
-		      }
-
-		    is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, data);
-		  }
-
-		if (is_zipped_undo && is_unzipped_undo)
-		  {
-		    undo_length = (int) undo_zip_ptr->data_length;
-		    data = undo_zip_ptr->log_data;
-		  }
-
-		undo_recdes->type = *(INT16 *) data;
-		undo_recdes->length = undo_length;
-		undo_recdes->data = (char *) malloc (undo_length);
-		memcpy (undo_recdes->data, (char *) data + sizeof (undo_recdes->type), undo_length);
 
 	      }
 	    else if (rcvindex == RVHF_MVCC_UPDATE_OVERFLOW)
 	      {
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (*undo), &process_lsa, log_page_p);
 
-		data = (char *) (log_page_p->area + process_lsa.offset);
-
 		if (ZIP_CHECK (undo_length))
 		  {
 		    undo_length = (int) GET_ZIP_LEN (undo_length);
 		    is_zipped_undo = true;
+		  }
+
+		if (process_lsa.offset + undo_length < (int) LOGAREA_SIZE)
+		  {
+		    undo_data = (char *) (log_page_p->area + process_lsa.offset);
+		  }
+		else
+		  {
+		    undo_data = (char *) malloc (undo_length);
+		    if (undo_data == NULL)
+		      {
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
+		      }
+
+		    logpb_copy_from_log (thread_p, undo_data, undo_length, &process_lsa, log_page_p);
+		    is_undo_alloced = true;
 		  }
 
 		if (is_zipped_undo && undo_length != 0)
@@ -10883,84 +10966,72 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		    undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
 		    if (undo_zip_ptr == NULL)
 		      {
-			return ER_OUT_OF_VIRTUAL_MEMORY;
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
 		      }
 
-		    is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, data);
+		    is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, undo_data);
+		    if (is_unzipped_undo != true)
+		      {
+			error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
+			goto end;
+		      }
 		  }
 
 		if (is_zipped_undo && is_unzipped_undo)
 		  {
 		    undo_length = (int) undo_zip_ptr->data_length;
-		    data = undo_zip_ptr->log_data;
+		    if (is_undo_alloced)
+		      {
+			free_and_init (undo_data);
+		      }
+		    undo_data = undo_zip_ptr->log_data;
 		  }
 
-		undo_recdes->type = *(INT16 *) data;
+		undo_recdes->type = *(INT16 *) undo_data;
 		undo_recdes->length = undo_length - sizeof (INT16);
 		undo_recdes->data = (char *) malloc (undo_recdes->length);
-		memcpy (undo_recdes->data, (char *) data + sizeof (undo_recdes->type), undo_recdes->length);
+		if (undo_recdes->data == NULL)
+		  {
+		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
 
-
+		memcpy (undo_recdes->data, (char *) undo_data + sizeof (undo_recdes->type), undo_recdes->length);
 	      }
 
 	    break;
-
 	  }
 
 	case LOG_REDO_DATA:
 	  {
 	    LOG_REC_REDO *redo = NULL;
 	    LOG_RCVINDEX rcvindex;
-	    int redo_length;
-	    char *data = NULL;
 
 	    redo = (LOG_REC_REDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = redo->data.rcvindex;
-	    redo_length = redo->length;
 
 	    if (rcvindex == RVOVF_PAGE_UPDATE)
 	      {
 		/* GET OVF UNDO IMAGE */
-		LOG_READ_ADD_ALIGN (thread_p, sizeof (*redo), &process_lsa, log_page_p);
-
-		data = (char *) (log_page_p->area + process_lsa.offset);
-
-		if (ZIP_CHECK (redo_length))
+		if ((error_code =
+		     get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex, false)) != NO_ERROR)
 		  {
-		    redo_length = (int) GET_ZIP_LEN (redo_length);
-		    is_zipped_undo = true;
+		    goto end;
 		  }
-
-		if (is_zipped_undo && redo_length != 0)
-		  {
-		    undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
-		    if (undo_zip_ptr == NULL)
-		      {
-			return ER_OUT_OF_VIRTUAL_MEMORY;
-		      }
-
-		    is_unzipped_undo = log_unzip (undo_zip_ptr, redo_length, data);
-		  }
-
-		if (is_zipped_undo && is_unzipped_undo)
-		  {
-		    redo_length = (int) undo_zip_ptr->data_length;
-		    data = undo_zip_ptr->log_data;
-		  }
-
-		redo_recdes->type = *(INT16 *) data;
-		redo_recdes->length = redo_length;
-		memcpy (redo_recdes->data, (char *) data + sizeof (redo_recdes->type), redo_length);
-
 	      }
 
 	    break;
-
 	  }
 
 	default:
 	  break;
+	}
 
+      if (is_undo_alloced)
+	{
+	  free_and_init (undo_data);
+	  is_undo_alloced = false;
 	}
     }
 
@@ -10986,8 +11057,8 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 
 	      if (logpb_fetch_page (thread_p, redo_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 		{
-		  assert (false);
-		  return -1;
+		  error_code = ER_FAILED;
+		  goto end;
 		}
 	    }
 	}
@@ -11005,13 +11076,6 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	  {
 	    LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
 	    LOG_RCVINDEX rcvindex;
-	    int redo_length;
-	    int undo_length;
-	    char *redo_data = NULL;
-	    char *undo_data = NULL;
-
-	    bool is_redo_alloced = false;
-	    bool is_undo_alloced = false;
 
 	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
 
@@ -11046,7 +11110,8 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		    redo_data = (char *) malloc (redo_length);
 		    if (redo_data == NULL)
 		      {
-			return ER_OUT_OF_VIRTUAL_MEMORY;
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
 		      }
 
 		    logpb_copy_from_log (thread_p, redo_data, redo_length, &process_lsa, log_page_p);
@@ -11058,10 +11123,16 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		    redo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
 		    if (redo_zip_ptr == NULL)
 		      {
-			return ER_OUT_OF_VIRTUAL_MEMORY;
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
 		      }
 
 		    is_unzipped_redo = log_unzip (redo_zip_ptr, redo_length, redo_data);
+		    if (is_unzipped_redo != true)
+		      {
+			error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
+			goto end;
+		      }
 		  }
 
 		if (is_zipped_redo && is_unzipped_redo)
@@ -11079,13 +11150,18 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		redo_recdes->type = *(INT16 *) redo_data;
 		redo_recdes->length = redo_length - sizeof (INT16);
 		redo_recdes->data = (char *) malloc (redo_recdes->length);
+		if (redo_recdes->data == NULL)
+		  {
+		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
 
 		memcpy (redo_recdes->data, (char *) redo_data + sizeof (redo_recdes->type), redo_recdes->length);
 
 		/* SET MVCC to NON-MVCC */
-		if (or_mvcc_get_header (redo_recdes, &mvcc_rec_header) != NO_ERROR)
+		if ((error_code = or_mvcc_get_header (redo_recdes, &mvcc_rec_header)) != NO_ERROR)
 		  {
-		    return ER_FAILED;
+		    goto end;
 		  }
 
 		MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
@@ -11102,7 +11178,6 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-
 		    if (process_lsa.offset + undo_length < (int) LOGAREA_SIZE)
 		      {
 			undo_data = (char *) (log_page_p->area + process_lsa.offset);
@@ -11112,7 +11187,8 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 			undo_data = (char *) malloc (undo_length);
 			if (undo_data == NULL)
 			  {
-			    return ER_OUT_OF_VIRTUAL_MEMORY;
+			    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			    goto end;
 			  }
 
 			logpb_copy_from_log (thread_p, undo_data, undo_length, &process_lsa, log_page_p);
@@ -11130,13 +11206,15 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 			undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
 			if (undo_zip_ptr == NULL)
 			  {
-			    return ER_OUT_OF_VIRTUAL_MEMORY;
+			    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			    goto end;
 			  }
 
 			is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, undo_data);
 			if (is_unzipped_undo != true)
 			  {
-			    return ER_IO_LZ4_DECOMPRESS_FAIL;
+			    error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
+			    goto end;
 			  }
 		      }
 
@@ -11171,7 +11249,8 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		    redo_data = (char *) malloc (redo_length);
 		    if (redo_data == NULL)
 		      {
-			return ER_OUT_OF_VIRTUAL_MEMORY;
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
 		      }
 
 		    logpb_copy_from_log (thread_p, redo_data, redo_length, &process_lsa, log_page_p);
@@ -11183,13 +11262,15 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		    redo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
 		    if (redo_zip_ptr == NULL)
 		      {
-			return ER_OUT_OF_VIRTUAL_MEMORY;
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
 		      }
 
 		    is_unzipped_redo = log_unzip (redo_zip_ptr, redo_length, redo_data);
 		    if (is_unzipped_redo != true)
 		      {
-			return ER_IO_LZ4_DECOMPRESS_FAIL;
+			error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
+			goto end;
 		      }
 		  }
 
@@ -11214,6 +11295,11 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		redo_recdes->type = *(INT16 *) redo_data;
 		redo_recdes->length = redo_length - sizeof (INT16);
 		redo_recdes->data = (char *) malloc (redo_recdes->length);
+		if (redo_recdes->data == NULL)
+		  {
+		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
 
 		memcpy (redo_recdes->data, (char *) redo_data + sizeof (redo_recdes->type), redo_recdes->length);
 
@@ -11235,14 +11321,6 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	case LOG_DIFF_UNDOREDO_DATA:
 	  {
 	    LOG_REC_UNDOREDO *undoredo = NULL;
-	    LOG_RCVINDEX rcvindex;
-	    int redo_length;
-	    int undo_length;
-	    char *undo_data = NULL;
-	    char *redo_data = NULL;
-
-	    bool is_undo_alloced = false;
-	    bool is_redo_alloced = false;
 
 	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
 
@@ -11308,6 +11386,12 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		redo_recdes->type = *(INT16 *) redo_data;
 		redo_recdes->length = redo_length - sizeof (INT16);
 		redo_recdes->data = (char *) malloc (redo_recdes->length);
+		if (redo_recdes->data == NULL)
+		  {
+		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
+
 		memcpy (redo_recdes->data, (char *) redo_data + sizeof (redo_recdes->type), redo_recdes->length);
 
 		if (redo_data != NULL)
@@ -11327,6 +11411,10 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
+		    if (undo_data != NULL)
+		      {
+			free_and_init (undo_data);
+		      }
 
 		    if (process_lsa.offset + undo_length < (int) LOGAREA_SIZE)
 		      {
@@ -11337,7 +11425,8 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 			undo_data = (char *) malloc (undo_length);
 			if (undo_data == NULL)
 			  {
-			    return ER_OUT_OF_VIRTUAL_MEMORY;
+			    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			    goto end;
 			  }
 
 			logpb_copy_from_log (thread_p, undo_data, undo_length, &process_lsa, log_page_p);
@@ -11355,13 +11444,15 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 			undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
 			if (undo_zip_ptr == NULL)
 			  {
-			    return ER_OUT_OF_VIRTUAL_MEMORY;
+			    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			    goto end;
 			  }
 
 			is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, undo_data);
 			if (is_unzipped_undo != true)
 			  {
-			    return ER_IO_LZ4_DECOMPRESS_FAIL;
+			    error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
+			    goto end;
 			  }
 		      }
 
@@ -11396,7 +11487,8 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		    redo_data = (char *) malloc (redo_length);
 		    if (redo_data == NULL)
 		      {
-			return ER_OUT_OF_VIRTUAL_MEMORY;
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
 		      }
 
 		    logpb_copy_from_log (thread_p, redo_data, redo_length, &process_lsa, log_page_p);
@@ -11408,13 +11500,15 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		    redo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
 		    if (redo_zip_ptr == NULL)
 		      {
-			return ER_OUT_OF_VIRTUAL_MEMORY;
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
 		      }
 
 		    is_unzipped_redo = log_unzip (redo_zip_ptr, redo_length, redo_data);
 		    if (is_unzipped_redo != true)
 		      {
-			return ER_IO_LZ4_DECOMPRESS_FAIL;
+			error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
+			goto end;
 		      }
 		  }
 
@@ -11440,6 +11534,11 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 		redo_recdes->length = redo_length - sizeof (INT16);
 		redo_recdes->data = (char *) malloc (redo_recdes->length);
 
+		if (redo_recdes->data == NULL)
+		  {
+		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
 		memcpy (redo_recdes->data, (char *) redo_data + sizeof (redo_recdes->type), redo_recdes->length);
 
 		if (redo_data != NULL)
@@ -11459,52 +11558,40 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	  {
 	    LOG_REC_REDO *redo = NULL;
 	    LOG_RCVINDEX rcvindex;
-	    int redo_length;
-	    char *data = NULL;
 
 	    redo = (LOG_REC_REDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = redo->data.rcvindex;
-	    redo_length = redo->length;
 
-	    if (rcvindex == RVOVF_NEWPAGE_INSERT)
+	    if (rcvindex == RVOVF_NEWPAGE_INSERT || rcvindex == RVOVF_PAGE_UPDATE)
 	      {
 		/* GET OVF REDO IMAGE */
-		LOG_READ_ADD_ALIGN (thread_p, sizeof (*redo), &process_lsa, log_page_p);
-
-		data = (char *) (log_page_p->area + process_lsa.offset);
-
-		if (ZIP_CHECK (redo_length))
+		if ((error_code =
+		     get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex, true)) != NO_ERROR)
 		  {
-		    redo_length = (int) GET_ZIP_LEN (redo_length);
-		    is_zipped_redo = true;
+		    goto end;
 		  }
-
-		if (is_zipped_redo && redo_length != 0)
-		  {
-		    redo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
-		    if (redo_zip_ptr == NULL)
-		      {
-			return ER_OUT_OF_VIRTUAL_MEMORY;
-		      }
-
-		    is_unzipped_redo = log_unzip (redo_zip_ptr, redo_length, data);
-		  }
-
-		if (is_zipped_redo && is_unzipped_redo)
-		  {
-		    redo_length = (int) redo_zip_ptr->data_length;
-		    data = redo_zip_ptr->log_data;
-		  }
-
-		redo_recdes->type = *(INT16 *) data;
-		redo_recdes->length = redo_length;
-		redo_recdes->data = (char *) malloc (redo_length);
-		memcpy (redo_recdes->data, (char *) data + sizeof (redo_recdes->type), redo_length);
-
 	      }
 
 	    break;
 
+	  }
+	case LOG_UNDO_DATA:
+	  {
+	    LOG_REC_UNDO *undo = NULL;
+	    LOG_RCVINDEX rcvindex;
+
+	    undo = (LOG_REC_UNDO *) (log_page_p->area + process_lsa.offset);
+	    rcvindex = undo->data.rcvindex;
+
+	    if (rcvindex == RVOVF_PAGE_UPDATE)
+	      {
+		if ((error_code =
+		     get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex, true)) != NO_ERROR)
+		  {
+		    goto end;
+		  }
+	      }
+	    break;
 	  }
 	default:
 	  break;
@@ -11512,13 +11599,7 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	}
     }
 
-  if (undo_zip_ptr != NULL)
-    {
-      log_zip_free (undo_zip_ptr);
-    }
-
-  return NO_ERROR;
-error:
+end:
   if (undo_zip_ptr != NULL)
     {
       log_zip_free (undo_zip_ptr);
@@ -11528,6 +11609,18 @@ error:
     {
       log_zip_free (redo_zip_ptr);
     }
+
+  if (redo_data != NULL)
+    {
+      free_and_init (redo_data);
+    }
+
+  if (undo_data != NULL)
+    {
+      free_and_init (undo_data);
+    }
+
+  return error_code;
 }
 
 static int
@@ -11545,6 +11638,8 @@ get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
   bool is_unzipped = false;
 
   bool is_alloced = false;
+
+  int error_code = NO_ERROR;
 
   process_lsa->offset = process_lsa->offset + DB_SIZEOF (LOG_RECORD_HEADER);
 
@@ -11577,7 +11672,8 @@ get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
       data = (char *) malloc (length);
       if (data == NULL)
 	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       logpb_copy_from_log (thread_p, data, length, process_lsa, log_page_p);
@@ -11589,7 +11685,8 @@ get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
       zip_ptr = log_zip_alloc (IO_PAGESIZE);
       if (zip_ptr == NULL)
 	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       is_unzipped = log_unzip (zip_ptr, length, data);
@@ -11611,11 +11708,13 @@ get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
   *outdata = (char *) malloc (length);
   if (*outdata == NULL)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
     }
 
   memcpy (*outdata, (char *) data, length);
 
+end:
   if (data != NULL)
     {
       free_and_init (data);
@@ -11625,11 +11724,13 @@ get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
     {
       log_zip_free (zip_ptr);
     }
+
+  return error_code;
 }
 
 static int
-get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
-		     void *logs, RECDES * recdes, LOG_LSA lsa, unsigned int rcvindex, bool is_redo)
+get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * recdes, LOG_LSA lsa,
+		     unsigned int rcvindex, bool is_redo)
 {
   LOG_LSA current_lsa;
   LOG_LSA prev_lsa;
@@ -11647,7 +11748,7 @@ get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
   int copyed_len;
   int area_len;
   int area_offset;
-  int error = NO_ERROR;
+  int error_code = NO_ERROR;
   int length = 0;
 
   LSA_COPY (&current_lsa, &lsa);
@@ -11666,7 +11767,8 @@ get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 	{
 	  if (logpb_fetch_page (thread_p, &current_lsa, LOG_CS_SAFE_READER, current_log_page) != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      error_code = ER_FAILED;
+	      goto end;
 	    }
 	}
     }
@@ -11684,23 +11786,17 @@ get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 	      if (ovf_list_data == NULL)
 		{
 		  /* malloc failed */
-		  while (ovf_list_head)
-		    {
-		      ovf_list_data = ovf_list_head;
-		      ovf_list_head = ovf_list_head->next;
-		      free_and_init (ovf_list_data->data);
-		      free_and_init (ovf_list_data);
-		    }
-		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto end;
 		}
 
 	      memset (ovf_list_data, 0, DB_SIZEOF (OVF_PAGE_LIST));
 
-	      error =
+	      error_code =
 		get_ovfdata_from_log (thread_p, current_log_page,
 				      &current_lsa, &ovf_list_data->length, &ovf_list_data->data, is_redo);
 
-	      if (error == NO_ERROR && ovf_list_data->data)
+	      if (error_code == NO_ERROR && ovf_list_data->data)
 		{
 		  /* add to linked-list */
 		  if (ovf_list_head == NULL)
@@ -11722,6 +11818,8 @@ get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 		      free_and_init (ovf_list_data->data);
 		    }
 		  free_and_init (ovf_list_data);
+
+		  goto end;
 		}
 	    }
 
@@ -11735,23 +11833,17 @@ get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 	  if (ovf_list_data == NULL)
 	    {
 	      /* malloc failed */
-	      while (ovf_list_head)
-		{
-		  ovf_list_data = ovf_list_head;
-		  ovf_list_head = ovf_list_head->next;
-		  free_and_init (ovf_list_data->data);
-		  free_and_init (ovf_list_data);
-		}
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto end;
 	    }
 
 	  memset (ovf_list_data, 0, DB_SIZEOF (OVF_PAGE_LIST));
 
-	  error =
+	  error_code =
 	    get_ovfdata_from_log (thread_p, current_log_page, &current_lsa,
 				  &ovf_list_data->length, &ovf_list_data->data, is_redo);
 
-	  if (error == NO_ERROR && ovf_list_data->data)
+	  if (error_code == NO_ERROR && ovf_list_data->data)
 	    {
 	      /* add to linked-list */
 	      if (ovf_list_head == NULL)
@@ -11773,6 +11865,8 @@ get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 		  free_and_init (ovf_list_data->data);
 		}
 	      free_and_init (ovf_list_data);
+
+	      goto end;
 	    }
 	}
 
@@ -11796,15 +11890,8 @@ get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
   if (recdes->data == NULL)
     {
       /* malloc failed: clear linked-list */
-      while (ovf_list_head)
-	{
-	  ovf_list_data = ovf_list_head;
-	  ovf_list_head = ovf_list_head->next;
-	  free_and_init (ovf_list_data->data);
-	  free_and_init (ovf_list_data);
-	}
-
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
     }
 
   /* make record description */
@@ -11833,7 +11920,16 @@ get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 
   recdes->length = length;
 
-  return error;
+end:
+  while (ovf_list_head)
+    {
+      ovf_list_data = ovf_list_head;
+      ovf_list_head = ovf_list_head->next;
+      free_and_init (ovf_list_data->data);
+      free_and_init (ovf_list_data);
+    }
+
+  return error_code;
 
 }
 
@@ -11852,7 +11948,7 @@ find_pk (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int 
   OR_INDEX *index = NULL;
   OR_ATTRIBUTE *index_att = NULL;
   int idx_incache = -1;
-  int has_pk = -1;
+  int has_pk = 0;
   int *pk_attr;
   int num_idx_att = 0;
   *num_attr = 0;
@@ -11863,7 +11959,7 @@ find_pk (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int 
       index = rep->indexes + i;
       if (index->type == BTREE_PRIMARY_KEY)
 	{
-	  has_pk = 0;
+	  has_pk = 1;
 	  /*reference : qexec_execute_build_indexes() */
 	  if (index->func_index_info == NULL)
 	    {
@@ -11880,6 +11976,7 @@ find_pk (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int 
 #if !defined (NDEBUG)		//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "In finding PK, pk_attr alloc failed ");
 #endif
+	      return ER_FAILED;
 	    }
 	  for (int j = 0; j < num_idx_att; j++)
 	    {
@@ -11925,7 +12022,8 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
   int *cond_col_idx = NULL;
   char **cond_col_data = NULL;
   int *cond_col_data_len = NULL;
-  int ret;
+
+  int error_code = NO_ERROR;
 
   OR_CLASSREP *rep = NULL;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -11937,22 +12035,22 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 
   int record_length = 0;
 
-  if (heap_attrinfo_start (thread_p, &classoid, -1, NULL, &attr_info) != NO_ERROR)
+  if ((error_code = heap_attrinfo_start (thread_p, &classoid, -1, NULL, &attr_info)) != NO_ERROR)
     {
 #if !defined (NDEBUG)		//JOOHOK
       _er_log_debug (ARG_FILE_LINE, "IN making DML, heap_attrinfo_start failed");
 #endif
-      return -1;
+      goto end;
     }
 
   if (undo_recdes != NULL)
     {
-      if (heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, &attr_info) != NO_ERROR)
+      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, &attr_info)) != NO_ERROR)
 	{
 #if !defined (NDEBUG)		//JOOHOK
 	  _er_log_debug (ARG_FILE_LINE, "while reading undo_recdes values, heap_attrinfo_read_dbvalues failed");
 #endif
-	  return -1;
+	  goto end;
 	}
 
       old_values = (DB_VALUE *) malloc (sizeof (DB_VALUE) * attr_info.num_values);
@@ -11961,7 +12059,8 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 #if !defined (NDEBUG)		//JOOHOK
 	  _er_log_debug (ARG_FILE_LINE, "old values alloc failed");
 #endif
-	  return -1;
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       for (i = 0; i < attr_info.num_values; i++)
@@ -11976,12 +12075,12 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 
   if (redo_recdes != NULL)
     {
-      if (heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, NULL, &attr_info) != NO_ERROR)
+      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, NULL, &attr_info)) != NO_ERROR)
 	{
 #if !defined (NDEBUG)		//JOOHOK
 	  _er_log_debug (ARG_FILE_LINE, "while reading redo_recdes values, heap_attrinfo_read_dbvalues failed");
 #endif
-	  return -1;
+	  goto end;
 	}
 
 #if !defined(NDEBUG) && 1	//JOOHOK
@@ -11993,7 +12092,8 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 #if !defined (NDEBUG)		//JOOHOK
 	  _er_log_debug (ARG_FILE_LINE, "new values alloc failed");
 #endif
-	  return -1;
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       for (i = 0; i < attr_info.num_values; i++)
@@ -12019,6 +12119,12 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 
       /*for dml type == insert, it does not need to find PK info */
       has_pk = find_pk (thread_p, classoid, repid, &num_pk_attr, &pk_attr_index);
+      if (has_pk < 0)
+	{
+	  error_code = ER_FAILED;
+	  goto end;
+	}
+
 #if !defined(NDEBUG) && 0	//JOOHOK
       for (int i = 0; i < num_pk_attr; i++)
 	{
@@ -12028,7 +12134,7 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
     }
   else
     {
-      has_pk = -1;
+      has_pk = 0;
     }
 
   if (record_length > 0)
@@ -12062,9 +12168,9 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 #if !defined(NDEBUG) && 0	//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "changed column[%d] : ", i);
 #endif
-	      if (put_data (&new_values[i], &ptr) != NO_ERROR)
+	      if ((error_code = put_data (&new_values[i], &ptr)) != NO_ERROR)
 		{
-		  return -1;
+		  goto end;
 		}
 	      // TODO variables related to 'DB_VALUE' should be modified
 	    }
@@ -12075,13 +12181,16 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 	  /*update */
 	  ptr = or_pack_int (ptr, dml_type);
 	  ptr = or_pack_int64 (ptr, b_classoid);
-	  length += OR_INT_SIZE + OR_BIGINT_SIZE;
 	  for (i = 0; i < attr_info.num_values; i++)
 	    {
-	      if ((compare_data (&new_values[i], &old_values[i])) > 0)
+	      if ((error_code = compare_record (&new_values[i], &old_values[i])) > 0)
 		{
 		  // TODO variables related to 'DB_VALUE' should be modified
 		  changed_col_idx[cnt++] = i;
+		}
+	      else if (error_code < 0)
+		{
+		  goto end;
 		}
 	    }
 	  num_change_col = cnt;
@@ -12092,7 +12201,6 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 	  for (i = 0; i < num_change_col; i++)
 	    {
 	      ptr = or_pack_int (ptr, changed_col_idx[i]);
-	      length += OR_INT_SIZE;
 	    }
 
 	  for (i = 0; i < num_change_col; i++)
@@ -12100,22 +12208,24 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 #if !defined(NDEBUG) && 0	//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "changed column[%d] : ", changed_col_idx[i]);
 #endif
-	      length += put_data (&new_values[changed_col_idx[i]], &ptr);
+	      if (put_data (&new_values[changed_col_idx[i]], &ptr) != NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		  goto end;
+		}
 	    }
 
-	  if (has_pk == 0)
+	  if (has_pk == 1)
 	    {
 	      num_cond_col = num_pk_attr;
 	      cond_col_idx = pk_attr_index;
 	      ptr = or_pack_int (ptr, num_cond_col);
-	      length += OR_INT_SIZE;
 #if !defined(NDEBUG) && 1	//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "Number of cond column: %d\n", num_cond_col);
 #endif
 	      for (i = 0; i < num_cond_col; i++)
 		{
 		  ptr = or_pack_int (ptr, cond_col_idx[i]);
-		  length += OR_INT_SIZE;
 		}
 
 	      for (i = 0; i < num_cond_col; i++)
@@ -12123,7 +12233,11 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 #if !defined(NDEBUG) && 0	//JOOHOK
 		  _er_log_debug (ARG_FILE_LINE, "cond column[%d] : ", cond_col_idx[i]);
 #endif
-		  length += put_data (&old_values[cond_col_idx[i]], &ptr);
+		  if (put_data (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
+		    {
+		      error_code = ER_FAILED;
+		      goto end;
+		    }
 		}
 	    }
 	  else
@@ -12136,14 +12250,17 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 	      for (i = 0; i < num_cond_col; i++)
 		{
 		  ptr = or_pack_int (ptr, i);
-		  length += OR_INT_SIZE;
 		}
 	      for (i = 0; i < num_cond_col; i++)
 		{
 #if !defined(NDEBUG) && 0	//JOOHOK
 		  _er_log_debug (ARG_FILE_LINE, "cond column[%d] : ", i);
 #endif
-		  length += put_data (&old_values[i], &ptr);
+		  if (put_data (&old_values[i], &ptr) != NO_ERROR)
+		    {
+		      error_code = ER_FAILED;
+		      goto end;
+		    }
 		}
 	    }
 	  break;
@@ -12152,20 +12269,17 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 	  ptr = or_pack_int (ptr, dml_type);
 	  ptr = or_pack_int64 (ptr, b_classoid);
 	  ptr = or_pack_int (ptr, num_change_col);
-	  length += OR_INT_SIZE + OR_BIGINT_SIZE;
-	  if (has_pk == 0)
+	  if (has_pk == 1)
 	    {
 	      num_cond_col = num_pk_attr;
 	      cond_col_idx = pk_attr_index;
 	      ptr = or_pack_int (ptr, num_cond_col);
-	      length += OR_INT_SIZE;
 #if !defined(NDEBUG) && 1	//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "Number of cond column: %d\n", num_cond_col);
 #endif
 	      for (i = 0; i < num_cond_col; i++)
 		{
 		  ptr = or_pack_int (ptr, cond_col_idx[i]);
-		  length += OR_INT_SIZE;
 		}
 
 	      for (i = 0; i < num_cond_col; i++)
@@ -12173,7 +12287,11 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 #if !defined(NDEBUG) && 0	//JOOHOK
 		  _er_log_debug (ARG_FILE_LINE, "cond column[%d] : ", cond_col_idx[i]);
 #endif
-		  length += put_data (&old_values[cond_col_idx[i]], &ptr);
+		  if (put_data (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
+		    {
+		      error_code = ER_FAILED;
+		      goto end;
+		    }
 		}
 	    }
 	  else
@@ -12193,7 +12311,11 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 #if !defined(NDEBUG) && 0	//JOOHOK
 		  _er_log_debug (ARG_FILE_LINE, "cond column[%d] : ", i);
 #endif
-		  length += put_data (&old_values[i], &ptr);
+		  if (put_data (&old_values[i], &ptr) != NO_ERROR)
+		    {
+		      error_code = ER_FAILED;
+		      goto end;
+		    }
 		}
 	    }
 	  break;
@@ -12205,7 +12327,8 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
       dml_entry->log_info = (char *) malloc (dml_entry->length);
       if (dml_entry->log_info == NULL)
 	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
@@ -12223,7 +12346,19 @@ end:
       free_and_init (cond_col_idx);
     }
 
+  if (old_values != NULL)
+    {
+      free_and_init (old_values);
+    }
+
+  if (new_values != NULL)
+    {
+      free_and_init (new_values);
+    }
+
   heap_attrinfo_end (thread_p, &attr_info);
+
+  return error_code;
 }
 
 #if 0
@@ -12483,7 +12618,6 @@ find_tran_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_ls
 #if !defined(NDEBUG)		//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "In finding tran user , log page fetch failed ");
 #endif
-	      assert (false);
 	      return ER_FAILED;
 	      // JOOHOK:
 	    }
@@ -12492,12 +12626,12 @@ find_tran_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_ls
       LSA_COPY (&process_lsa, &forw_lsa);
     }
 
-  return -1;
+  return ER_FAILED;
   // JOOHOK: error code
 }
 
 static int
-compare_data (const db_value * new_value, const db_value * cmpdata)
+compare_record (const db_value * new_value, const db_value * cmpdata)
 {
   /* return 1 if different */
   /* return 0 if same */
@@ -12509,11 +12643,11 @@ compare_data (const db_value * new_value, const db_value * cmpdata)
   int func_type = 0;
   if (DB_IS_NULL (new_value))
     {
-      return -1;		/*error */
+      return ER_FAILED;		/*error */
     }
   if (DB_IS_NULL (cmpdata))
     {
-      return -1;		/* error */
+      return ER_FAILED;		/* error */
     }
   switch (DB_VALUE_TYPE (new_value))
     {
@@ -12750,7 +12884,7 @@ put_data (const db_value * new_value, char **data_ptr)
 #if !defined(NDEBUG)		//JOOHOK
       _er_log_debug (ARG_FILE_LINE, "while putting data, new value is null");
 #endif
-      return 0;			/*error */
+      return ER_FAILED;		/*error */
     }
 
   /*JOOHOK : all the types */

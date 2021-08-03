@@ -840,7 +840,6 @@ extern int log_Infos_length;
 
 /* *INDENT-OFF* */
 extern lockfree::circular_queue < LOG_INFO_ENTRY* > *log_info_queue;
-extern std::unordered_map<TRANID, char *> tran_users;
 /* *INDENT-ON* */
 
 #define MAX_LOG_INFO_QUEUE_ENTRY  1024
