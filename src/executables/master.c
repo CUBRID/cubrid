@@ -73,6 +73,7 @@
 #include "message_catalog.h"
 #include "dbi.h"
 #include "util_func.h"
+#include "system_parameter.h"
 
 static void css_master_error (const char *error_string);
 static int css_master_timeout (void);
@@ -80,10 +81,11 @@ static int css_master_init (int cport, SOCKET * clientfd);
 static void css_reject_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason);
 static void css_reject_server_request (CSS_CONN_ENTRY * conn, int reason);
 static void css_accept_server_request (CSS_CONN_ENTRY * conn, int reason);
-static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_name,
-				    int server_name_length);
+static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, const char *server_name,
+				    int server_name_length, SERVER_TYPE type);
 static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry,
-				    char *server_name, int server_name_length);
+				    const char *server_name, int server_name_length);
+static int receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & dbname, SERVER_TYPE & type);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
 static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid,
@@ -323,7 +325,8 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
  *   server_name_length(in)
  */
 static void
-css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_name, int server_name_length)
+css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, const char *server_name, int server_name_length,
+			SERVER_TYPE type)
 {
   char *datagram;
   int datagram_length;
@@ -343,7 +346,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (datagram_conn, false, server_name, server_fd, READ_WRITE, 0,
+	  css_add_request_to_socket_queue (datagram_conn, false, server_name, server_fd, READ_WRITE, 0, type,
 					   &css_Master_socket_anchor);
 	  length = (int) strlen (server_name) + 1;
 	  if (length < server_name_length)
@@ -353,6 +356,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_
 		{
 		  server_name += length;
 		  entry->version_string = (char *) malloc (strlen (server_name) + 1);
+		  entry->server_type = type;
 		  if (entry->version_string != NULL)
 		    {
 		      strcpy (entry->version_string, server_name);
@@ -392,7 +396,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_
  *   server_name_length(in)
  */
 static void
-css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry, char *server_name,
+css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry, const char *server_name,
 			int server_name_length)
 {
   char *datagram;
@@ -429,6 +433,26 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
     }
 }
 
+static int
+receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & dbname, SERVER_TYPE & type)
+{
+  int buffer_length;
+  char *buffer = NULL;
+
+  int exit_code = css_receive_data (conn, rid, &buffer, &buffer_length, -1);
+  if (exit_code == NO_ERRORS)
+    {
+      // *INDENT-OFF*
+      type = static_cast<SERVER_TYPE> (buffer[0] - '0');
+      // *INDENT-ON*
+      dbname = std::string (buffer + 1, buffer_length - 1);
+
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
+			   dbname.c_str (), type == SERVER_TYPE_PAGE ? "page" : "transaction");
+    }
+  return exit_code;
+}
+
 /*
  * css_register_new_server() - register a new server by reading the server name
  *   return: none
@@ -440,20 +464,22 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
 static void
 css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 {
-  int name_length;
-  char *server_name = NULL;
+  std::string server_name;
+  SERVER_TYPE type;
   SOCKET_QUEUE_ENTRY *entry;
 
   /* read server name */
-  if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS)
+  if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS)
     {
-      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor);
+
       if (entry != NULL)
 	{
+	  entry->server_type = type;
 	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server that was auto-started */
-	      css_accept_old_request (conn, rid, entry, server_name, name_length);
+	      css_accept_old_request (conn, rid, entry, server_name.c_str (), server_name.length ());
 	    }
 	  else
 	    {
@@ -468,18 +494,14 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (conn, false, server_name, conn->fd, READ_WRITE, 0,
+	  css_add_request_to_socket_queue (conn, false, server_name.c_str (), conn->fd, READ_WRITE, 0, type,
 					   &css_Master_socket_anchor);
 
 #else /* ! WINDOWS */
 	  /* accept a request from a new server */
-	  css_accept_new_request (conn, rid, server_name, name_length);
+	  css_accept_new_request (conn, rid, server_name.c_str (), server_name.length (), type);
 #endif /* ! WINDOWS */
 	}
-    }
-  if (server_name != NULL)
-    {
-      free_and_init (server_name);
     }
 
 #if !defined(WINDOWS)
@@ -501,22 +523,23 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 static void
 css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 {
-  int name_length;
-  char *server_name = NULL;
+  std::string server_name;
+  SERVER_TYPE type;
   SOCKET_QUEUE_ENTRY *entry;
   int buffer;
-  int server_name_length, length;
 
   /* read server name */
-  if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
+  if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS && !server_name.empty ())
     {
-      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor);
+
       if (entry != NULL)
 	{
+	  entry->server_type = type;
 	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server */
-	      css_accept_old_request (conn, rid, entry, server_name, name_length);
+	      css_accept_old_request (conn, rid, entry, server_name.c_str (), server_name.length ());
 	    }
 	  else
 	    {
@@ -527,34 +550,32 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	}
       else
 	{
-	  /* save length info */
-	  server_name_length = name_length;
-
 	  /* accept but make it send us a port id */
 	  css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED_NEW);
-	  name_length = sizeof (buffer);
-	  if (css_net_recv (conn->fd, (char *) &buffer, &name_length, -1) == NO_ERRORS)
+	  int buffer_length = sizeof (buffer);
+	  if (css_net_recv (conn->fd, (char *) &buffer, &buffer_length, -1) == NO_ERRORS)
 	    {
 #if defined(DEBUG)
 	      css_Active_server_count++;
 #endif
 	      entry =
-		css_add_request_to_socket_queue (conn, false, server_name, conn->fd, READ_WRITE, 0,
+		css_add_request_to_socket_queue (conn, false, server_name.c_str (), conn->fd, READ_WRITE, 0, type,
 						 &css_Master_socket_anchor);
 	      /* store this for later */
 	      if (entry != NULL)
 		{
 		  entry->port_id = ntohl (buffer);
-		  length = (int) strlen (server_name) + 1;
+		  entry->server_type = type;
+		  int length = (int) strlen (server_name.c_str ()) + 1;
 		  /* read server version_string, env_var, pid */
-		  if (length < server_name_length)
+		  if (length < server_name.length ())
 		    {
-		      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+		      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor);
 		      if (entry != NULL)
 			{
-			  char *recv_data;
+			  const char *recv_data;
 
-			  recv_data = server_name + length;
+			  recv_data = server_name.c_str () + length;
 			  entry->version_string = (char *) malloc (strlen (recv_data) + 1);
 			  if (entry->version_string != NULL)
 			    {
@@ -589,10 +610,6 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
   else
     {
       css_free_conn (conn);
-    }
-  if (server_name != NULL)
-    {
-      free_and_init (server_name);
     }
 }
 
@@ -750,7 +767,8 @@ css_process_new_connection (SOCKET fd)
       switch (function_code)
 	{
 	case INFO_REQUEST:	/* request for information */
-	  css_add_request_to_socket_queue (conn, true, NULL, fd, READ_WRITE, 0, &css_Master_socket_anchor);
+	  css_add_request_to_socket_queue (conn, true, NULL, fd, READ_WRITE, 0, SERVER_TYPE_UNKNOWN,
+					   &css_Master_socket_anchor);
 	  break;
 	case DATA_REQUEST:	/* request from a remote client */
 	  css_send_to_existing_server (conn, rid, SERVER_START_NEW_CLIENT);
@@ -1224,10 +1242,10 @@ main (int argc, char **argv)
 #endif
 
   conn = css_make_conn (css_Master_socket_fd[0]);
-  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0], READ_WRITE, 0,
+  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0], READ_WRITE, 0, SERVER_TYPE_UNKNOWN,
 				   &css_Master_socket_anchor);
   conn = css_make_conn (css_Master_socket_fd[1]);
-  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1], READ_WRITE, 0,
+  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1], READ_WRITE, 0, SERVER_TYPE_UNKNOWN,
 				   &css_Master_socket_anchor);
   css_master_loop ();
   css_master_cleanup (SIGINT);
@@ -1329,8 +1347,8 @@ css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_
  *   anchor_p(out):
  */
 SOCKET_QUEUE_ENTRY *
-css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name_p, SOCKET fd, int fd_type, int pid,
-				 SOCKET_QUEUE_ENTRY ** anchor_p)
+css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, const char *name_p, SOCKET fd, int fd_type,
+				 int pid, SERVER_TYPE type, SOCKET_QUEUE_ENTRY ** anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;
 
@@ -1369,6 +1387,7 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name
   p->fd_type = fd_type;
   p->queue_p = 0;
   p->info_p = info_p;
+  p->server_type = type;
   p->error_p = FALSE;
   p->pid = pid;
   p->db_error = 0;
@@ -1386,7 +1405,7 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name
  *   anchor_p(in):
  */
 SOCKET_QUEUE_ENTRY *
-css_return_entry_of_server (char *name_p, SOCKET_QUEUE_ENTRY * anchor_p)
+css_return_entry_of_server (const char *name_p, SOCKET_QUEUE_ENTRY * anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;
 

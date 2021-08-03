@@ -723,7 +723,7 @@ namespace cublog
       redo_parallel::redo_job_queue &m_queue;
       reusable_jobs_stack *m_reusable_jobs;
 
-      log_reader m_log_pgptr_reader;
+      log_reader m_log_pgptr_reader { LOG_CS_SAFE_READER };
       LOG_ZIP m_undo_unzip_support;
       LOG_ZIP m_redo_unzip_support;
   };

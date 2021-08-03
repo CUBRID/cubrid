@@ -61,7 +61,7 @@ namespace cublog
   void log_page_fetch_task::execute (context_type &context)
   {
     log_lsa loglsa {m_logpageid, 0};
-    log_reader logreader;
+    log_reader logreader { LOG_CS_SAFE_READER };
 
     int err = logreader.set_lsa_and_fetch_page (loglsa);
     m_callback (logreader.get_page (), err);

@@ -1531,6 +1531,8 @@ logpb_fetch_header_from_file (THREAD_ENTRY * thread_p, const char *db_fullname, 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (log_pgptr != NULL);
 
+  assert (!is_tran_server_with_remote_storage ());
+
   error_code = logpb_initialize_log_names (thread_p, db_fullname, logpath, prefix_logname);
   if (error_code != NO_ERROR)
     {
@@ -2371,6 +2373,8 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
   assert (pageid != NULL_PAGEID);
   assert (num_pages > 0);
 
+  assert (!is_tran_server_with_remote_storage ());
+
   logpb_log ("called logpb_read_page_from_active_log with pageid = %lld and num_pages = %d\n", (long long int) pageid,
 	     num_pages);
 
@@ -2486,6 +2490,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   /* we allow writing page as long as they do not belong to archive area */
   assert (logical_pageid == LOGPB_HEADER_PAGE_ID
 	  || (!LOGPB_IS_ARCHIVE_PAGE (logical_pageid) && logical_pageid <= LOGPB_LAST_ACTIVE_PAGE_ID));
+  assert (!is_tran_server_with_remote_storage ());
 
   logpb_log ("called logpb_write_page_to_disk for logical_pageid = %lld\n", (long long int) logical_pageid);
 
@@ -2980,6 +2985,8 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
   LOG_PAGE *log_pgptr = NULL;
   LOG_PAGE *enc_pgptr = NULL;
 
+  assert (!is_tran_server_with_remote_storage ());
+
   enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, MAX_ALIGNMENT);
 
 #if !defined (CS_MODE)
@@ -3442,6 +3449,7 @@ logpb_write_append_pages_to_disk (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (!is_tran_server_with_remote_storage ());
 
   logpb_log ("called logpb_write_append_pages_to_disk\n");
 
@@ -4783,6 +4791,7 @@ logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
   long long int f, t;
 
   assert (LOG_CS_OWN (thread_p));
+  assert (!is_tran_server_with_remote_storage ());
 
   arv_num = logpb_get_archive_num_from_info_table (thread_p, pageid);
 
@@ -5417,6 +5426,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
   char format_string[64];
 
   assert (LOG_CS_OWN (thread_p));
+  assert (!is_tran_server_with_remote_storage ());
 
   logpb_log ("called logpb_fetch_from_archive for pageid = %lld\n", (long long int) pageid);
 
