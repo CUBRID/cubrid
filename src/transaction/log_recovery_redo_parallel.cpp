@@ -874,21 +874,4 @@ namespace cublog
     }
     m_jobs_available_on_push_stack_cv.notify_one ();
   }
-
-//  void reusable_jobs_stack::push (std::vector<redo_parallel::redo_job_base *> &a_jobs)
-//  {
-//    if (!a_jobs.empty ())
-//      {
-//	{
-//	  std::lock_guard<std::mutex> stack_lockg { m_mutex };
-//	  for (auto &job: a_jobs)
-//	    {
-//	      m_push_stack.push (job);
-//	    }
-//	  // clear leaves the capacity of a vector unchanged
-//	  a_jobs.clear ();
-//	}
-//	m_jobs_available_on_push_stack_cv.notify_one ();
-//      }
-//  }
 }

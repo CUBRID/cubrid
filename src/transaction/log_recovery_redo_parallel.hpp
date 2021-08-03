@@ -444,8 +444,6 @@ namespace cublog
 
       redo_parallel::redo_job_base *blocking_pop ();
       void push (redo_parallel::redo_job_base *a_job);
-      // TODO: push function signature will change to the one below after further refactoring
-      //void push (std::vector<redo_parallel::redo_job_base *> &a_jobs);
 
     private:
       std::size_t m_stack_size;
