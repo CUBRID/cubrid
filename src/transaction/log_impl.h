@@ -58,6 +58,7 @@
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
 #include "tde.h"
+#include "lockfree_circular_queue.hpp"
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -758,6 +759,94 @@ typedef struct log_logging_stat
   /* async commit request count */
   unsigned long async_commit_request_count;
 } LOG_LOGGING_STAT;
+
+/*for CDC interface */
+typedef struct log_info_entry
+{
+  LOG_LSA start_lsa;
+  int length;
+  char *log_info;
+} LOG_INFO_ENTRY;
+
+typedef struct temporary_log_buffer
+{
+  int pageid;
+  LOG_PAGE *log_page_p;
+  char log_page[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+} TEMPORARY_LOG_BUFFER;
+
+typedef struct log_reader_info
+{
+  pthread_t log_reader_th;
+
+  pthread_mutex_t shutdown_mutex;
+  pthread_mutex_t configuration_mutex;
+
+  int shutdown;			/*log reader thread exit condition */
+  LOG_LSA next_lsa;
+
+  LOG_LSA lsa_to_process;
+
+  /*configuration */
+  int num_user;
+  char **user;
+  int num_class;
+  UINT64 *class_oids;
+  int all_in_cond;
+  int max_log_item;
+  int extraction_timeout;
+} LOG_READER_INFO;
+
+/* will be moved to new file for CDC */
+struct ovf_page_list
+{
+  char *rec_type;
+  char *data;
+  int length;
+  struct ovf_page_list *next;
+};
+typedef ovf_page_list OVF_PAGE_LIST;
+
+enum dataitem_type
+{
+  DDL = 0,
+  DML,
+  DCL,
+  TIMER
+};
+
+enum dcl_type
+{
+  COMMIT = 0,
+  ABORT
+};
+
+enum dml_type
+{
+  INSERT = 0,
+  UPDATE,
+  DELETE,
+  TRUNCATE
+};
+
+typedef enum dataitem_type DATAITEM_TYPE;
+typedef enum dcl_type DCL_TYPE;
+typedef enum dml_type DML_TYPE;
+
+extern LOG_READER_INFO log_Reader_info;
+
+extern char *log_Infos;
+extern int log_Infos_length;
+
+/* *INDENT-OFF* */
+extern lockfree::circular_queue < LOG_INFO_ENTRY* > *log_info_queue;
+extern std::unordered_map<TRANID, char *> tran_users;
+/* *INDENT-ON* */
+
+#define MAX_LOG_INFO_QUEUE_ENTRY  1024
+#define MAX_LOG_INFO_QUEUE_SIZE   32 * 1024 * 1024 /*32 MB*/
+#define MAX_TRAN_USER_TABLE       4000
+/*Data structure for CDC interface end */
 
 // todo - move to manager
 enum log_cs_access_mode
