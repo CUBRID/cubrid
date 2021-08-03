@@ -122,8 +122,7 @@ class ut_page final
     const VPID &get_vpid () const;
 
     ux_ut_redo_job_impl generate_changes (ut_database &a_database_recovery,
-					  ut_database_values_generator &a_db_global_values,
-					  cublog::reusable_jobs_stack &a_reusable_jobs);
+					  ut_database_values_generator &a_db_global_values);
     void apply_changes (ux_ut_redo_job_impl &&a_job);
 
     void require_equal (const ut_page &that) const;
@@ -155,8 +154,7 @@ class ut_volume final
     short get_volid () const;
 
     ux_ut_redo_job_impl generate_changes (ut_database &a_database_recovery,
-					  ut_database_values_generator &a_db_global_values,
-					  cublog::reusable_jobs_stack &a_reusable_jobs);
+					  ut_database_values_generator &a_db_global_values);
     void apply_changes (ux_ut_redo_job_impl &&a_job);
 
     void require_equal (const ut_volume &that) const;
@@ -192,8 +190,7 @@ class ut_database final
 
   public:
     ux_ut_redo_job_impl generate_changes (ut_database &a_database_recovery,
-					  ut_database_values_generator &a_db_global_values,
-					  cublog::reusable_jobs_stack &a_reusable_jobs);
+					  ut_database_values_generator &a_db_global_values);
     void apply_changes (ux_ut_redo_job_impl &&a_job);
 
     void require_equal (const ut_database &that) const;

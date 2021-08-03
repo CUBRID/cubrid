@@ -139,7 +139,7 @@ const VPID &ut_page::get_vpid () const
 }
 
 ux_ut_redo_job_impl ut_page::generate_changes (ut_database &a_database_recovery,
-    ut_database_values_generator &a_db_global_values, cublog::reusable_jobs_stack &a_reusable_jobs)
+    ut_database_values_generator &a_db_global_values)
 {
   const log_lsa log_lsa_v = a_db_global_values.increment_and_get_lsa_log ();
   const double millis = a_db_global_values.rand_duration_in_millis ();
@@ -151,12 +151,11 @@ ux_ut_redo_job_impl ut_page::generate_changes (ut_database &a_database_recovery,
   };
   m_entries.push_front (std::move (job_to_append));
 
-  cublog::redo_parallel::redo_job_base *reusable_job_to_return_base = a_reusable_jobs.blocking_pop ();
-  ut_redo_job_impl *reusable_job_to_return = dynamic_cast<ut_redo_job_impl *> (reusable_job_to_return_base);
-  REQUIRE (reusable_job_to_return->is_page_modification ());
-  reusable_job_to_return->reinitialize (m_vpid, log_lsa_v, millis);
-
-  ux_ut_redo_job_impl job_to_return { reusable_job_to_return };
+  ux_ut_redo_job_impl job_to_return
+  {
+    new ut_redo_job_impl (a_database_recovery, ut_redo_job_impl::job_type::ALTER_PAGE,
+			  log_lsa_v, m_vpid, millis)
+  };
   return job_to_return;
 }
 
@@ -201,7 +200,7 @@ short ut_volume::get_volid () const
 }
 
 ux_ut_redo_job_impl ut_volume::generate_changes (ut_database &a_database_recovery,
-    ut_database_values_generator &a_db_global_values, cublog::reusable_jobs_stack &a_reusable_jobs)
+    ut_database_values_generator &a_db_global_values)
 {
   auto add_or_update_page = ut_database_values_generator::add_or_update::ADD;
   if (m_pages.size () > 0)
@@ -214,7 +213,7 @@ ux_ut_redo_job_impl ut_volume::generate_changes (ut_database &a_database_recover
       // invoke existing pages to generate changes
       const int page_index = a_db_global_values.rand_index_of_entity_to_update (m_pages.size ());
       const auto &page = m_pages.at (page_index);
-      return page->generate_changes (a_database_recovery, a_db_global_values, a_reusable_jobs);
+      return page->generate_changes (a_database_recovery, a_db_global_values);
     }
   else
     {
@@ -299,7 +298,7 @@ ut_database::ut_database (const ut_database_config &a_database_config)
 }
 
 ux_ut_redo_job_impl ut_database::generate_changes (ut_database &a_database_recovery,
-    ut_database_values_generator &a_db_global_values, cublog::reusable_jobs_stack &a_reusable_jobs)
+    ut_database_values_generator &a_db_global_values)
 {
   //const int update_or_add_volume = rand_update_or_add_volume();
   auto add_or_update_volume = ut_database_values_generator::add_or_update::ADD;
@@ -313,7 +312,7 @@ ux_ut_redo_job_impl ut_database::generate_changes (ut_database &a_database_recov
       // invoke existing volume to generate changes
       const int vol_index = a_db_global_values.rand_index_of_entity_to_update (m_volumes.size ());
       const auto &vol = m_volumes.at (vol_index);
-      return vol->generate_changes (a_database_recovery, a_db_global_values, a_reusable_jobs);
+      return vol->generate_changes (a_database_recovery, a_db_global_values);
     }
   else
     {

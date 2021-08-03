@@ -24,29 +24,11 @@
 #include <limits>
 
 ut_redo_job_impl::ut_redo_job_impl (ut_database &a_database_recovery, job_type a_job_type,
-				    cublog::reusable_jobs_stack *a_reusable_job_stack)
-  : cublog::redo_parallel::redo_job_base (VPID_INITIALIZER, NULL_LSA)
-  , m_database_recovery (a_database_recovery)
-  , m_reusable_job_stack { a_reusable_job_stack }
-  , m_job_type (a_job_type), m_millis (0.0)
-{
-}
-
-ut_redo_job_impl::ut_redo_job_impl (ut_database &a_database_recovery, job_type a_job_type,
 				    const log_lsa &a_log_lsa_id, VPID a_vpid, double a_millis)
   : cublog::redo_parallel::redo_job_base (a_vpid, a_log_lsa_id)
   , m_database_recovery (a_database_recovery)
-  , m_reusable_job_stack { nullptr }
   , m_job_type (a_job_type), m_millis (a_millis)
 {
-}
-
-void ut_redo_job_impl::reinitialize (VPID a_vpid, const log_lsa &a_log_lsa, double a_millis)
-{
-  assert (m_reusable_job_stack != nullptr);
-
-  redo_job_base::reinitialize (a_vpid, a_log_lsa);
-  m_millis = a_millis;
 }
 
 int ut_redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
@@ -66,17 +48,7 @@ int ut_redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_rea
 
 void ut_redo_job_impl::retire ()
 {
-  if (m_reusable_job_stack != nullptr)
-    {
-      assert (!is_volume_creation ());
-      assert (!is_page_creation ());
-      assert (is_page_modification ());
-      m_reusable_job_stack->push (this);
-    }
-  else
-    {
-      assert ("should not be called" == nullptr);
-    }
+  delete this;
 }
 
 template <typename T_FLOATING>

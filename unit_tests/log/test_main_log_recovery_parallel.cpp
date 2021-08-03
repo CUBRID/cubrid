@@ -29,9 +29,6 @@ struct log_recovery_test_config
   /* the number of redo jobs to generate */
   const size_t redo_job_count;
 
-  /* the number of reusable jobs to initialize in the internal stack */
-  const size_t reusable_job_count;
-
   /* useful in debugging to print helper messages/progress */
   bool verbose;
 };
@@ -75,19 +72,12 @@ void execute_test (const log_recovery_test_config &a_test_config,
 
   cublog::minimum_log_lsa_monitor minimum_log_lsa;
 
-  cublog::reusable_jobs_stack reusable_jobs;
-  auto create_ut_job_ftor = [&db_recovery, &reusable_jobs] ()
-  {
-    return new ut_redo_job_impl (*db_recovery, ut_redo_job_impl::job_type::ALTER_PAGE, &reusable_jobs);
-  };
-  reusable_jobs.initialize (a_test_config.reusable_job_count, create_ut_job_ftor);
-
   cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, &minimum_log_lsa);
 
   ut_database_values_generator global_values{ a_database_config };
   for (size_t idx = 0u; idx < a_test_config.redo_job_count; ++idx)
     {
-      ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values, reusable_jobs);
+      ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
 
       if (job->is_volume_creation () || job->is_page_creation ())
 	{
@@ -150,7 +140,6 @@ TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci]")
 		  {
 		    parallel_count, // parallel_count
 		    job_count, // redo_job_count
-		    job_count / parallel_count, // reusable_job_count
 		    false, // verbose
 		  };
 
@@ -192,7 +181,6 @@ TEST_CASE ("log recovery parallel test: stress test", "[long]")
 		  {
 		    parallel_count, // std::thread::hardware_concurrency (), // parallel_count
 		    job_count, // redo_job_count
-		    job_count / parallel_count, // reusable_job_count
 		    false, // verbose
 		  };
 
@@ -226,13 +214,6 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
 
   cublog::minimum_log_lsa_monitor minimum_log_lsa;
 
-  cublog::reusable_jobs_stack reusable_jobs;
-  auto create_ut_job_ftor = [&db_recovery, &reusable_jobs] ()
-  {
-    return new ut_redo_job_impl (*db_recovery, ut_redo_job_impl::job_type::ALTER_PAGE, &reusable_jobs);
-  };
-  reusable_jobs.initialize (1, create_ut_job_ftor);
-
   cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), &minimum_log_lsa);
 
   REQUIRE (log_redo_parallel.is_idle ());
@@ -243,7 +224,7 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
   log_lsa single_supplied_lsa;
   for (bool at_least_one_page_update = false; !at_least_one_page_update; )
     {
-      ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values, reusable_jobs);
+      ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
       single_supplied_lsa = job->get_log_lsa ();
 
       if (job->is_volume_creation () || job->is_page_creation ())

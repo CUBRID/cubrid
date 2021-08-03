@@ -47,12 +47,8 @@ class ut_redo_job_impl final : public cublog::redo_parallel::redo_job_base
     };
 
   public:
-    // standalone ctor
     ut_redo_job_impl (ut_database &a_database_recovery, job_type a_job_type,
 		      const log_lsa &a_log_lsa_id, VPID a_vpid, double a_millis);
-    // ctor to be used with a subsequent call to 'reinitialize'
-    ut_redo_job_impl (ut_database &a_database_recovery, job_type a_job_type,
-		      cublog::reusable_jobs_stack *a_reusable_job_stack);
 
     ut_redo_job_impl (ut_redo_job_impl const &) = delete;
     ut_redo_job_impl (ut_redo_job_impl &&) = delete;
@@ -61,8 +57,6 @@ class ut_redo_job_impl final : public cublog::redo_parallel::redo_job_base
 
     ut_redo_job_impl &operator = (ut_redo_job_impl const &) = delete;
     ut_redo_job_impl &operator = (ut_redo_job_impl &&) = delete;
-
-    void reinitialize (VPID a_vpid, const log_lsa &a_log_lsa, double a_millis);
 
     int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 		 LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
@@ -83,7 +77,6 @@ class ut_redo_job_impl final : public cublog::redo_parallel::redo_job_base
 
   private:
     ut_database &m_database_recovery;
-    cublog::reusable_jobs_stack *const m_reusable_job_stack;
 
     const job_type m_job_type;
 
