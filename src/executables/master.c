@@ -90,8 +90,7 @@ static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
 static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid,
 					    CSS_SERVER_REQUEST request);
-static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request,
-					 SERVER_TYPE type);
+static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request);
 static void css_process_new_connection (SOCKET fd);
 static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
 static int css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
@@ -352,7 +351,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, const char *s
 	  length = (int) strlen (server_name) + 1;
 	  if (length < server_name_length)
 	    {
-	      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor, SERVER_TYPE_ANY);
+	      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor, type);
 	      if (entry != NULL)
 		{
 		  server_name += length;
@@ -472,7 +471,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   /* read server name */
   if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS)
     {
-      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, SERVER_TYPE_ANY);
+      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
 
       if (entry != NULL)
 	{
@@ -532,7 +531,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
   /* read server name */
   if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS && !server_name.empty ())
     {
-      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, SERVER_TYPE_ANY);
+      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
 
       if (entry != NULL)
 	{
@@ -571,8 +570,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 		  /* read server version_string, env_var, pid */
 		  if (length < server_name.length ())
 		    {
-		      entry =
-			css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, SERVER_TYPE_ANY);
+		      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
 		      if (entry != NULL)
 			{
 			  const char *recv_data;
@@ -651,7 +649,7 @@ css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned sho
  *   to the server.
  */
 static void
-css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request, SERVER_TYPE type)
+css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request)
 {
   SOCKET_QUEUE_ENTRY *temp;
   char *server_name = NULL;
@@ -661,7 +659,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
     {
       server_name[name_length] = 0;
       temp = css_return_entry_of_server (server_name, css_Master_socket_anchor, SERVER_TYPE_ANY);
-      if (temp != NULL && (type == SERVER_TYPE_ANY || temp->server_type == type)
+      if (temp != NULL
 #if !defined(WINDOWS)
 	  && (temp->ha_mode == false || hb_is_deactivation_started () == false)
 #endif /* !WINDOWS */
@@ -773,7 +771,7 @@ css_process_new_connection (SOCKET fd)
 					   &css_Master_socket_anchor);
 	  break;
 	case DATA_REQUEST:	/* request from a remote client */
-	  css_send_to_existing_server (conn, rid, SERVER_START_NEW_CLIENT, SERVER_TYPE_ANY);
+	  css_send_to_existing_server (conn, rid, SERVER_START_NEW_CLIENT);
 	  break;
 	case SERVER_REQUEST:	/* request from a new server */
 	  css_register_new_server (conn, rid);
@@ -783,7 +781,7 @@ css_process_new_connection (SOCKET fd)
 	  css_register_new_server2 (conn, rid);
 	  break;
 	case CMD_SERVER_SERVER_CONNECT:
-	  css_send_to_existing_server (conn, rid, SERVER_SERVER_CONNECT, SERVER_TYPE_ANY);
+	  css_send_to_existing_server (conn, rid, SERVER_SERVER_CONNECT);
 	  break;
 	default:
 	  css_free_conn (conn);
