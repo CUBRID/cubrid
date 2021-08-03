@@ -5347,13 +5347,16 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
     {
       HEAP_OPERATION_CONTEXT update_context;
 
-      or_class_tde_algorithm (recdes, &tde_algo);
-      if (tde_algo != TDE_ALGORITHM_NONE && !tde_Cipher.is_loaded)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
-	  error_code = ER_TDE_CIPHER_IS_NOT_LOADED;
-	  goto error;
-	}
+      if (!OID_IS_ROOTOID (oid))
+      {
+        or_class_tde_algorithm (recdes, &tde_algo);
+        if (tde_algo != TDE_ALGORITHM_NONE && !tde_Cipher.is_loaded)
+          {
+            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+            error_code = ER_TDE_CIPHER_IS_NOT_LOADED;
+            goto error;
+          }
+      }
 
       /*
        * A CLASS: classes do not have any indices...however, the classname
