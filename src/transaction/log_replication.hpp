@@ -41,6 +41,7 @@ namespace cubthread
 namespace cublog
 {
   // addind this here allows to include the corresponding header only in the source
+  class reusable_jobs_stack;
   class minimum_log_lsa_monitor;
   class redo_parallel;
 }
@@ -92,6 +93,7 @@ namespace cublog
       LOG_ZIP m_undo_unzip;
       LOG_ZIP m_redo_unzip;
 
+      std::unique_ptr<cublog::reusable_jobs_stack> m_reusable_jobs;
       std::unique_ptr<cublog::minimum_log_lsa_monitor> m_minimum_log_lsa;
       std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
 

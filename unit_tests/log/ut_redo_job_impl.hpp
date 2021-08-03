@@ -60,6 +60,7 @@ class ut_redo_job_impl final : public cublog::redo_parallel::redo_job_base
 
     int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 		 LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
+    void retire () override;
 
     void require_equal (const ut_redo_job_impl &that) const;
 
@@ -79,7 +80,7 @@ class ut_redo_job_impl final : public cublog::redo_parallel::redo_job_base
 
     const job_type m_job_type;
 
-    const double m_millis;
+    double m_millis;
 };
 
 #endif // ! _UT_REDO_JOB_IMPL_H_

@@ -26,8 +26,8 @@
 ut_redo_job_impl::ut_redo_job_impl (ut_database &a_database_recovery, job_type a_job_type,
 				    const log_lsa &a_log_lsa_id, VPID a_vpid, double a_millis)
   : cublog::redo_parallel::redo_job_base (a_vpid, a_log_lsa_id)
-  , m_database_recovery (a_database_recovery), m_job_type (a_job_type)
-  , m_millis (a_millis)
+  , m_database_recovery (a_database_recovery)
+  , m_job_type (a_job_type), m_millis (a_millis)
 {
 }
 
@@ -44,6 +44,11 @@ int ut_redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_rea
   m_database_recovery.apply_changes (std::move (my_clone));
 
   return NO_ERROR;
+}
+
+void ut_redo_job_impl::retire ()
+{
+  delete this;
 }
 
 template <typename T_FLOATING>

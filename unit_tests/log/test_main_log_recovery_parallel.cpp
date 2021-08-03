@@ -67,11 +67,12 @@ void execute_test (const log_recovery_test_config &a_test_config,
 		<< std::endl;
     }
 
-  cublog::minimum_log_lsa_monitor minimum_log_lsa;
-  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, &minimum_log_lsa);
-
   ux_ut_database db_online { new ut_database (a_database_config) };
   ux_ut_database db_recovery { new ut_database (a_database_config) };
+
+  cublog::minimum_log_lsa_monitor minimum_log_lsa;
+
+  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, &minimum_log_lsa);
 
   ut_database_values_generator global_values{ a_database_config };
   for (size_t idx = 0u; idx < a_test_config.redo_job_count; ++idx)
@@ -85,7 +86,8 @@ void execute_test (const log_recovery_test_config &a_test_config,
 	}
       else
 	{
-	  log_redo_parallel.add (std::move (job));
+	  // ownership of released raw pointer goes to the callee
+	  log_redo_parallel.add (job.release ());
 	}
     }
 
@@ -201,12 +203,6 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
   srand (time (nullptr));
   initialize_thread_infrastructure ();
 
-  cublog::minimum_log_lsa_monitor minimum_log_lsa;
-  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), &minimum_log_lsa);
-
-  REQUIRE (log_redo_parallel.is_idle ());
-  REQUIRE (minimum_log_lsa.get () == MAX_LSA);
-
   const ut_database_config database_config =
   {
     42, // max_volume_count_per_database
@@ -215,6 +211,13 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
   };
   ux_ut_database db_online { new ut_database (database_config) };
   ux_ut_database db_recovery { new ut_database (database_config) };
+
+  cublog::minimum_log_lsa_monitor minimum_log_lsa;
+
+  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), &minimum_log_lsa);
+
+  REQUIRE (log_redo_parallel.is_idle ());
+  REQUIRE (minimum_log_lsa.get () == MAX_LSA);
 
   ut_database_values_generator global_values{ database_config };
 
@@ -231,7 +234,8 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
 	}
       else
 	{
-	  log_redo_parallel.add (std::move (job));
+	  // ownership of released raw pointer goes to the callee
+	  log_redo_parallel.add (job.release ());
 	  at_least_one_page_update = true;
 	}
     }
