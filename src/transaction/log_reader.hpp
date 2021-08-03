@@ -22,6 +22,7 @@
 #include "log_storage.hpp"
 
 #include "log_lsa.hpp"
+#include "log_impl.h"
 
 #include <type_traits>
 
@@ -35,7 +36,7 @@
 class log_reader final
 {
   public:
-    inline log_reader ();
+    inline log_reader (LOG_CS_ACCESS_MODE cs_access);
     log_reader (log_reader const & ) = delete;
     log_reader (log_reader && ) = delete;
 
@@ -118,25 +119,30 @@ class log_reader final
   private:
     inline const char *get_cptr () const;
 
-    inline int fetch_page_force_use (THREAD_ENTRY *const thread_p);
+    inline int fetch_page (THREAD_ENTRY *const thread_p);
 
   private:
     log_lsa m_lsa = NULL_LSA;
-    log_page *m_page;
+    LOG_CS_ACCESS_MODE m_cs_access = LOG_CS_FORCE_USE;
+    log_page *m_page = nullptr;
     char m_area_buffer[IO_MAX_PAGE_SIZE + DOUBLE_ALIGNMENT];
 };
 
-inline void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
-inline void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
+inline void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr,
+			    LOG_CS_ACCESS_MODE cs_access_mode = LOG_CS_FORCE_USE);
+inline void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr,
+				LOG_CS_ACCESS_MODE cs_access_mode = LOG_CS_FORCE_USE);
 inline void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
-    LOG_PAGE *log_pgptr);
+    LOG_PAGE *log_pgptr, LOG_CS_ACCESS_MODE cs_access_mode = LOG_CS_FORCE_USE);
 
 /* implementation
  */
-#include "log_impl.h"
 #include "thread_manager.hpp"
 
-log_reader::log_reader ()
+#include <cstring>
+
+log_reader::log_reader (LOG_CS_ACCESS_MODE cs_access)
+  : m_cs_access (cs_access)
 {
   m_page = reinterpret_cast<log_page *> (PTR_ALIGN (m_area_buffer, MAX_ALIGNMENT));
 }
@@ -148,7 +154,7 @@ int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_pag
   if (do_fetch_page)
     {
       THREAD_ENTRY *thread_p = &cubthread::get_entry ();
-      return fetch_page_force_use (thread_p);
+      return fetch_page (thread_p);
     }
   return NO_ERROR;
 }
@@ -222,7 +228,7 @@ int log_reader::skip (size_t size)
 	      fetch_lsa.pageid = m_lsa.pageid;
 	      fetch_lsa.offset = LOG_PAGESIZE;
 
-	      if (const auto err_fetch_page = fetch_page_force_use (thread_p) != NO_ERROR)
+	      if (const auto err_fetch_page = fetch_page (thread_p) != NO_ERROR)
 		{
 		  return err_fetch_page;
 		}
@@ -242,9 +248,9 @@ int log_reader::skip (size_t size)
   return NO_ERROR;
 }
 
-int log_reader::fetch_page_force_use (THREAD_ENTRY *const thread_p)
+int log_reader::fetch_page (THREAD_ENTRY *const thread_p)
 {
-  if (logpb_fetch_page (thread_p, &m_lsa, LOG_CS_FORCE_USE, m_page) != NO_ERROR)
+  if (logpb_fetch_page (thread_p, &m_lsa, m_cs_access, m_page) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_reader::fetch_page");
       return ER_FAILED;
@@ -266,7 +272,7 @@ T log_reader::reinterpret_copy_and_add_align ()
 {
   T data;
   constexpr auto size_of_t = sizeof (T);
-  memcpy (&data, get_cptr(), size_of_t);
+  std::memcpy (&data, get_cptr (), size_of_t);
   add_align (size_of_t);
   // compiler's NRVO will hopefully kick in here and optimize this away
   return data;
@@ -279,14 +285,14 @@ void log_reader::add_align ()
   add_align (type_size);
 }
 
-void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
+void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr, LOG_CS_ACCESS_MODE cs_access_mode)
 {
   lsa->offset = DB_ALIGN (lsa->offset, DOUBLE_ALIGNMENT);
   while (lsa->offset >= (int) LOGAREA_SIZE)
     {
       assert (log_pgptr != NULL);
       lsa->pageid++;
-      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+      if (logpb_fetch_page (thread_p, lsa, cs_access_mode, log_pgptr) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ALIGN");
 	}
@@ -295,19 +301,21 @@ void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
     }
 }
 
-void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
+void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr,
+			 LOG_CS_ACCESS_MODE cs_access_mode)
 {
   lsa->offset += add;
-  LOG_READ_ALIGN (thread_p, lsa, log_pgptr);
+  LOG_READ_ALIGN (thread_p, lsa, log_pgptr, cs_access_mode);
 }
 
-void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
+void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa, LOG_PAGE *log_pgptr,
+				       LOG_CS_ACCESS_MODE cs_access_mode)
 {
-  if (lsa->offset + static_cast < int > (length) >= static_cast < int > (LOGAREA_SIZE))
+  if (lsa->offset + static_cast<int> (length) >= static_cast<int> (LOGAREA_SIZE))
     {
       assert (log_pgptr != NULL);
       lsa->pageid++;
-      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+      if (logpb_fetch_page (thread_p, lsa, cs_access_mode, log_pgptr) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ADVANCE_WHEN_DOESNT_FIT");
 	}
