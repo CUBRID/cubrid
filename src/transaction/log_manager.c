@@ -321,6 +321,9 @@ static cubthread::daemon *log_Check_ha_delay_info_daemon = NULL;
 
 static cubthread::daemon *log_Flush_daemon = NULL;
 static std::atomic_bool log_Flush_has_been_requested = {false};
+
+static cubthread::daemon *cdc_log_Producer_daemon = NULL;
+static cubthread::daemon *cdc_Thread_checker_daemon = NULL;
 // *INDENT-ON*
 
 static void log_daemons_init ();
@@ -10214,19 +10217,23 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
   return error_code;
 }
 
-static cubthread::daemon *cdc_Producer_daemon = NULL;
-
-void cdc_producer_daemon_init()
+#if defined (SERVER_MODE)
+static void 
+cdc_thread_checker (THREAD_ENTRY * thread_p)
 {
-  assert (cdc_Producer_daemon == NULL);
-  
-  cubthread::looper looper = cubthread::looper (cdc_get_interval);
-  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (cdc_log_producer_execute);
-
-  cdc_Producer_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc_log_producer"); 
+  if (LSA_LE (&log_Reader_info.next_lsa, log_Gl.append.get_nxio_lsa()))
+  {
+    //pthread_cond_signal (&lsa_cond);
+  }
 }
 
-#if defined (SERVER_MODE)
+static void 
+cdc_log_producer (THREAD_ENTRY *thread_p)
+{
+
+}
+
+/* *INDENT-OFF* */
 static void
 cdc_log_producer_execute (cubthread::entry & thread_ref)
 {
@@ -10237,12 +10244,101 @@ cdc_log_producer_execute (cubthread::entry & thread_ref)
   
   cdc_log_producer (&thread_ref);
 }
-#endif
 
-void cdc_log_producer (THREAD_ENTRY *thread_p)
+static void
+cdc_thread_checker_execute (cubthread::entry & thread_ref)
+{
+  if (!BO_IS_SERVER_RESTARTED ())
+  {
+    return;
+  }
+  
+  cdc_thread_checker (&thread_ref);
+}
+/* *INDENT-ON* */
+
+/* *INDENT-OFF* */
+void
+cdc_log_producer_interval (bool & is_timed_wait, cubthread::delta_time & period)
 {
 
+  int cdc_log_producer_interval_sec = 0; /* for future fix to decrease server load */
+
+  if (cdc_log_producer_interval_sec > 0)
+    {
+      // if cdc_log_producer_interval_sec > 0 (zero) then loop for fixed interval
+      is_timed_wait = true;
+      period = std::chrono::seconds (cdc_log_producer_interval_sec);
+    }
+  else
+    {
+      // infinite wait, while loops executes in cdc_log_producer() and will be woken up by client  
+      is_timed_wait = false;
+    }
 }
+/* *INDENT-ON* */
+
+void 
+cdc_log_producer_daemon_init()
+{
+  assert (cdc_log_Producer_daemon == NULL);
+  
+  /* *INDENT-OFF* */
+  cubthread::looper looper = cubthread::looper (cdc_log_producer_interval);
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (cdc_log_producer_execute);
+
+  cdc_log_Producer_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc_log_producer"); 
+  /* *INDENT-ON* */
+}
+
+void 
+cdc_thread_checker_daemon_init()
+{
+  assert (cdc_Thread_checker_daemon == NULL);
+
+  /* *INDENT-OFF* */
+  cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (cdc_thread_checker_execute);
+
+  cdc_Thread_checker_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc_thread_checker"); 
+  /* *INDENT-ON* */
+}
+
+void 
+cdc_daemons_init()
+{
+  cdc_log_producer_daemon_init ();
+  cdc_thread_checker_daemon_init ();
+}
+
+void 
+cdc_daemons_destroy()
+{
+  /* *INDENT-OFF* */
+  cubthread::get_manager ()->destroy_daemon (cdc_log_Producer_daemon);
+  cubthread::get_manager ()->destroy_daemon (cdc_Thread_checker_daemon);
+  /* *INDENT-ON* */
+}
+
+void 
+cdc_wakeup_log_producer()
+{
+  if (cdc_log_Producer_daemon != NULL)
+  {
+    cdc_log_Producer_daemon->wakeup();
+  }
+}
+
+void 
+cdc_wakeup_thread_checker()
+{
+  if (cdc_Thread_checker_daemon != NULL)
+  {
+    cdc_Thread_checker_daemon->wakeup();
+  }
+}
+
+#endif 
 
 //
 // log critical section
