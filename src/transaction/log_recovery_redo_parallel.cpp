@@ -792,21 +792,7 @@ namespace cublog
     m_stack_size = a_stack_size;
     for (std::size_t idx = 0; idx < m_stack_size; ++idx)
       {
-	redo_parallel::redo_job_base *job = new redo_job_impl (a_end_redo_lsa, force_each_page_fetch, this);
-	m_pop_stack.push (job);
-      }
-  }
-
-  void reusable_jobs_stack::initialize (std::size_t a_stack_size,
-					std::function<redo_parallel::redo_job_base * ()> a_job_factory)
-  {
-    assert (m_pop_stack.empty ());
-    assert (m_push_stack.empty ());
-
-    m_stack_size = a_stack_size;
-    for (std::size_t idx = 0; idx < m_stack_size; ++idx)
-      {
-	redo_parallel::redo_job_base *job = a_job_factory ();
+	redo_job_impl *job = new redo_job_impl (a_end_redo_lsa, force_each_page_fetch, this);
 	m_pop_stack.push (job);
       }
   }
@@ -817,23 +803,23 @@ namespace cublog
 
     while (!m_push_stack.empty ())
       {
-	redo_parallel::redo_job_base *const push_job = m_push_stack.top ();
+	redo_job_impl *const push_job = m_push_stack.top ();
 	m_push_stack.pop ();
 	delete push_job;
       }
     while (!m_pop_stack.empty ())
       {
-	redo_parallel::redo_job_base *const pop_job = m_pop_stack.top ();
+	redo_job_impl *const pop_job = m_pop_stack.top ();
 	m_pop_stack.pop ();
 	delete pop_job;
       }
   }
 
-  redo_parallel::redo_job_base *reusable_jobs_stack::blocking_pop ()
+  redo_job_impl *reusable_jobs_stack::blocking_pop ()
   {
     if (!m_pop_stack.empty ())
       {
-	redo_parallel::redo_job_base *const pop_job = m_pop_stack.top ();
+	redo_job_impl *const pop_job = m_pop_stack.top ();
 	m_pop_stack.pop ();
 	return pop_job;
       }
@@ -847,7 +833,7 @@ namespace cublog
 
         m_pop_stack.swap (m_push_stack);
 
-        redo_parallel::redo_job_base *const pop_job = m_pop_stack.top ();
+        redo_job_impl *const pop_job = m_pop_stack.top ();
         m_pop_stack.pop ();
         return pop_job;
       }
@@ -856,7 +842,7 @@ namespace cublog
     return nullptr;
   }
 
-  void reusable_jobs_stack::push (redo_parallel::redo_job_base *a_job)
+  void reusable_jobs_stack::push (redo_job_impl *a_job)
   {
     {
       std::lock_guard<std::mutex> stack_lockg { m_mutex };

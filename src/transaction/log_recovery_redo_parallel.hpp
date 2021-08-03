@@ -432,17 +432,14 @@ namespace cublog
 
       void initialize (std::size_t a_stack_size, const log_lsa *a_end_redo_lsa,
 		       bool force_each_page_fetch);
-      /* used for unit testing */
-      void initialize (std::size_t a_stack_size,
-		       std::function<redo_parallel::redo_job_base * ()> a_job_factory);
 
       std::size_t size () const
       {
 	return m_stack_size;
       }
 
-      redo_parallel::redo_job_base *blocking_pop ();
-      void push (redo_parallel::redo_job_base *a_job);
+      redo_job_impl *blocking_pop ();
+      void push (redo_job_impl *a_job);
 
     private:
       std::size_t m_stack_size;
@@ -450,10 +447,10 @@ namespace cublog
       /* pop is done, unsynchronized, from this stack
        * if empty, it is re-filled, synchronized, from the push stack
        */
-      std::stack<redo_parallel::redo_job_base *> m_pop_stack;
+      std::stack<redo_job_impl *> m_pop_stack;
       /* push happens, synchronized, on this stack
        */
-      std::stack<redo_parallel::redo_job_base *> m_push_stack;
+      std::stack<redo_job_impl *> m_push_stack;
       std::mutex m_mutex;
       /* used to wait for jobs to be available on the push stack
        * in case no jobs are found on the pop stack
@@ -522,9 +519,8 @@ log_rv_redo_record_sync_or_dispatch_async (
   else
     {
       // dispatch async
-      cublog::redo_parallel::redo_job_base *const job_base = a_reusable_jobs.blocking_pop ();
-      assert (job_base != nullptr);
-      cublog::redo_job_impl *const job = dynamic_cast<cublog::redo_job_impl *> (job_base);
+      cublog::redo_job_impl *const job = a_reusable_jobs.blocking_pop ();
+      assert (job != nullptr);
       a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE);
 
       job->reinitialize (rcv_vpid, rcv_lsa, log_rtype);
