@@ -5521,12 +5521,15 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 		      if (info_spec.appears && !info.nullable)
 			{
 			  rewrite_again = true;
-			  spec->info.spec.join_type = PT_JOIN_INNER;
+			  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
+			    {
+			      spec->info.spec.join_type = PT_JOIN_INNER;
 
-			  locate_info.start = spec->info.spec.location;
-			  locate_info.end = locate_info.start;
-			  (void) parser_walk_tree (parser, node->info.query.q.select.where, qo_reset_location,
-						   &locate_info, NULL, NULL);
+			      locate_info.start = spec->info.spec.location;
+			      locate_info.end = locate_info.start;
+			      (void) parser_walk_tree (parser, node->info.query.q.select.where, qo_reset_location,
+						       &locate_info, NULL, NULL);
+			    }
 
 			  /* rewrite the following connected right outer join to inner join */
 			  for (ns = spec->next;	/* traverse next spec */
