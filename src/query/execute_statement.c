@@ -18472,6 +18472,11 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
   p++;
   p += (*p + 1);
 
+  if(strlen((char*)p) < pwdlen)
+    {
+        return ER_FAILED;
+    }
+
   if (pwdlen > 0)
     {
       shift %= pwdlen;
