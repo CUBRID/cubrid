@@ -5474,7 +5474,7 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   PT_NODE *spec, *prev_spec, *expr, *ns, *save_next;
   SPEC_ID_INFO info, info_spec;
   RESET_LOCATION_INFO locate_info;
-  bool rewrite_again;
+  bool rewrite_again, is_outer_joined;
 
   if (node->node_type != PT_SELECT)
     {
@@ -5495,20 +5495,11 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       prev_spec = NULL;
       for (spec = node->info.query.q.select.from; spec; prev_spec = spec, spec = spec->next)
 	{
-	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
-	      || (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && prev_spec))
+	  /* check outer join spec. */
+	  is_outer_joined = mq_is_outer_join_spec (parser, spec);
+	  if (is_outer_joined)
 	    {
-	      if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
-		{
-		  info.id = info_spec.id = spec->info.spec.id;
-		}
-	      else
-		{
-		  info.id = info_spec.id = prev_spec->info.spec.id;
-		}
-
-	      info_spec.appears = false;
-	      info.nullable = false;
+	      info.id = info_spec.id = spec->info.spec.id;
 
 	      /* search where list */
 	      for (expr = node->info.query.q.select.where; expr; expr = expr->next)
@@ -5516,6 +5507,9 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 		  if (expr->node_type == PT_EXPR && expr->info.expr.location == 0 && expr->info.expr.op != PT_IS_NULL
 		      && expr->or_next == NULL && expr->info.expr.op != PT_AND && expr->info.expr.op != PT_OR)
 		    {
+		      info_spec.appears = false;
+		      info.nullable = false;
+
 		      save_next = expr->next;
 		      expr->next = NULL;
 		      (void) parser_walk_tree (parser, expr, NULL, NULL, qo_check_nullable_expr_with_spec, &info);
