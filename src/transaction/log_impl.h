@@ -777,15 +777,7 @@ typedef struct temporary_log_buffer
 
 typedef struct log_reader_info
 {
-  pthread_t log_reader_th;
-
-  pthread_mutex_t shutdown_mutex;
-  pthread_mutex_t configuration_mutex;
-
-  int shutdown;			/*log reader thread exit condition */
-  LOG_LSA next_lsa;
-
-  LOG_LSA lsa_to_process;
+  LOG_LSA next_lsa; /* next LSA to process */
 
   /*configuration */
   int num_user;
