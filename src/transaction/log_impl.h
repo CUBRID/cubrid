@@ -777,7 +777,7 @@ typedef struct temporary_log_buffer
 
 typedef struct log_reader_info
 {
-  LOG_LSA next_lsa; /* next LSA to process */
+  LOG_LSA next_lsa;		/* next LSA to process */
 
   /*configuration */
   int num_user;
@@ -835,7 +835,7 @@ extern lockfree::circular_queue < LOG_INFO_ENTRY* > *log_info_queue;
 /* *INDENT-ON* */
 
 #define MAX_LOG_INFO_QUEUE_ENTRY  1024
-#define MAX_LOG_INFO_QUEUE_SIZE   32 * 1024 * 1024 /*32 MB*/
+#define MAX_LOG_INFO_QUEUE_SIZE   32 * 1024 * 1024	/*32 MB */
 #define MAX_TRAN_USER_TABLE       4000
 /*Data structure for CDC interface end */
 

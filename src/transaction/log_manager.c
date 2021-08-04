@@ -191,7 +191,7 @@ typedef struct overflow_first_part OVERFLOW_FIRST_PART;
 char *log_Infos = NULL;
 int log_Infos_length = 0;
 
-/* *INDENT_OFF* */
+/* *INDENT-OFF* */
 static std::unordered_map <TRANID, char *> tran_users; /*to clear when log producer ends suddenly */
 /* *INDENT-ON* * /
 
@@ -12172,7 +12172,7 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 	      cond_col_idx = pk_attr_index;
 	      ptr = or_pack_int (ptr, num_cond_col);
 
-              for (i = 0; i < num_cond_col; i++)
+	      for (i = 0; i < num_cond_col; i++)
 		{
 		  ptr = or_pack_int (ptr, cond_col_idx[i]);
 		}
@@ -12191,12 +12191,12 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 	      num_cond_col = attr_info.num_values;
 	      ptr = or_pack_int (ptr, num_cond_col);
 
-              for (i = 0; i < num_cond_col; i++)
+	      for (i = 0; i < num_cond_col; i++)
 		{
 		  ptr = or_pack_int (ptr, i);
 		}
 
-              for (i = 0; i < num_cond_col; i++)
+	      for (i = 0; i < num_cond_col; i++)
 		{
 		  if (put_data (&old_values[i], &ptr) != NO_ERROR)
 		    {
@@ -12448,7 +12448,7 @@ static int
 make_timer (time_t at_time, int trid, char *user, LOG_INFO_ENTRY * timer_entry)
 {
   DATAITEM_TYPE dataitem_type = TIMER;
-  
+
   char *ptr, *start_ptr;
   int length = 0;
   length = (OR_INT_SIZE + OR_INT_SIZE + or_packed_string_length (user, NULL) + OR_INT_SIZE + OR_BIGINT_SIZE);
