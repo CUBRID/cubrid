@@ -24865,7 +24865,7 @@ connect_item
           {{
                 container_2 ctn;
 
-                if( pt_check_hostname($3) == false )
+                if( pt_check_hostname($3->info.name.original) == false )
                   {
                         PT_NODE* node = pt_top(this_parser);     
                         PT_ERROR (this_parser, node, "Incorrect hostname format");
