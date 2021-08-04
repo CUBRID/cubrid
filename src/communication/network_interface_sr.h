@@ -185,6 +185,7 @@ extern void srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 extern void srepl_log_get_append_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
 /* external storage supports */
 extern void ses_posix_write_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ses_posix_read_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -238,4 +239,11 @@ extern void sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *re
 extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (void *session);
+
+/*for CDC*/
+extern void scdc_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_get_logitem (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

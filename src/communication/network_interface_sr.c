@@ -83,6 +83,7 @@
 #include "xasl_cache.h"
 #include "elo.h"
 #include "transaction_transient.hpp"
+#include "log_manager.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -8019,6 +8020,8 @@ slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   return;
 }
 
+
+
 /*
  * sboot_compact_db -
  *
@@ -10222,4 +10225,192 @@ void
 ssession_stop_attached_threads (void *session)
 {
   session_stop_attached_threads (session);
+}
+
+void
+scdc_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  LOG_LSA start_lsa;
+  time_t input_time;
+  uint64_t b_start_lsa;
+  int error;
+
+  ptr = or_unpack_int64 (request, &input_time);
+
+  error = cdc_get_lsa (thread_p, input_time, &start_lsa);
+
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_log_lsa (ptr, &start_lsa);
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
+}
+
+void
+scdc_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int error;
+  int max_log_item, time_out, all_in_cond, num_user, num_class;
+  uint64_t *classoids = NULL;
+  char **user = NULL;
+  int user_len = 0;
+
+  char *dummy_user = NULL;
+  int timeout;
+
+  ptr = or_unpack_int (request, &max_log_item);
+  ptr = or_unpack_int (ptr, &timeout);
+  ptr = or_unpack_int (ptr, &all_in_cond);
+  ptr = or_unpack_int (ptr, &num_user);
+
+  if (num_user > 0)
+    {
+      user = (char **) malloc (sizeof (char *) * num_user);
+      if (user == NULL)
+	{
+          error = ER_OUT_OF_VIRTUAL_MEMORY;
+          goto end;
+	}
+      for (int i = 0; i < num_user; i++)
+	{
+	  ptr = or_unpack_string (ptr, &dummy_user);
+	  user_len = strlen (dummy_user);
+	  user[i] = (char *) malloc (user_len + 1);
+	  if (user[i] == NULL)
+	    {
+              free (user);
+              error = ER_OUT_OF_VIRTUAL_MEMORY;
+              goto end;
+	    }
+	  memcpy (user[i], dummy_user, user_len);
+	  db_private_free_and_init (NULL, dummy_user);
+	  user[i][user_len] = '\0';
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &num_class);
+
+  if (num_class > 0)
+    {
+      classoids = (uint64_t *) malloc (sizeof (uint64_t) * num_class);
+      if (classoids == NULL)
+	{
+          if (num_user > 0)
+          {
+            for (int i = 0; i < num_user; i++)
+            {
+              free (user[i]);
+            }
+
+            free (user);
+          }
+
+          error = ER_OUT_OF_VIRTUAL_MEMORY;
+          goto end;
+	}
+      for (int i = 0; i < num_class; i++)
+	{
+	  ptr = or_unpack_int64 (ptr, (INT64 *) & classoids[i]);
+	}
+    }
+
+  error =
+    cdc_set_configuration (max_log_item, timeout, all_in_cond, user, num_user, classoids, num_class);
+
+end:
+
+  ptr = or_pack_int (reply, error);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
+}
+
+void
+scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  /*total size of reply message is decided after log_item has been returned */
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  LOG_LSA start_lsa;
+  UINT64 b_start_lsa;
+  int total_length;
+  char *log_info_list;
+  int error;
+  int num_log_info;
+
+  int rc;
+  
+  if (server_comm_buf.is_sent == false)
+  {
+    LSA_COPY (&start_lsa, &server_comm_buf.start_lsa);
+    num_log_info = server_comm_buf.num_log_Infos;
+    total_length = server_comm_buf.log_Info_length;
+  }
+  else
+  {
+    or_unpack_log_lsa (request, &start_lsa);
+    error = cdc_get_logitem_info (thread_p, &start_lsa, &total_length, &num_log_info);
+  }
+  ptr = or_pack_int (reply, error);
+
+  ptr = or_pack_log_lsa (ptr, &start_lsa);	/*pack_int64 */
+  ptr = or_pack_int (ptr, num_log_info);
+  ptr = or_pack_int (ptr, total_length);
+
+
+  rc = css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  if (rc != NO_ERROR)
+  {
+    /*start lsa, total length, num_log_info wil be resent */
+    server_comm_buf.is_sent = false;
+    return;
+  }
+  server_comm_buf.is_sent = true;
+
+  return;
+}
+
+void
+scdc_get_logitem (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int rc; 
+  rc = css_send_data_to_client (thread_p->conn_entry, rid, server_comm_buf.log_Infos, server_comm_buf.log_Info_length);
+  if (rc != NO_ERRORS)
+  {
+    server_comm_buf.is_sent = false; 
+    return; 
+  }
+  
+  free_and_init (server_comm_buf.log_Infos);
+
+  server_comm_buf.is_sent = true;
+  return;
+}
+
+void
+scdc_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int error;
+
+  error = cdc_finalize ();
+
+#if !defined(NDEBUG)		//JOOHOK2
+  _er_log_debug (ARG_FILE_LINE, "LOG_READER_FINALIZE ERROR CODE : %d", error);
+#endif
+
+  ptr = or_pack_int (reply, error);
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
 }

@@ -179,6 +179,8 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
+CDC_SERVER_COMM server_comm_buf;
+
 #define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
 #define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
@@ -305,6 +307,9 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
+
+static int get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t *time);
+static int get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t *time, LOG_LSA * start_lsa);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -10212,6 +10217,481 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 					       false);
 
   return error_code;
+}
+
+int
+cdc_get_lsa (THREAD_ENTRY * thread_p, time_t *time, LOG_LSA * start_lsa)
+{
+  /*
+   * 1. get volume list
+   * 2. get fpage from each volume 
+   * 3. get commit/abort/ha_dummy_server_state which contains time from fpage 
+   * */
+  int begin = log_Gl.hdr.last_deleted_arv_num;
+  int end = log_Gl.hdr.nxarv_num - 1;
+  char arv_name[PATH_MAX];
+  LOG_ARV_HEADER *arv_hdr;
+  int num_arvs = end - begin;
+
+  time_t active_start_time = 0;
+  time_t archive_start_time = 0;
+  int target_arv_num = -1;
+
+  LOG_LSA ret_lsa;
+  bool is_found = false;
+
+  int error = NO_ERROR;
+
+  /*
+   * 1. traverse from the latest log volume 
+   * 2. when num_arvs > 0, no logic to handle the active log volume 
+   * 3. check condition when i = begin while finding target_arv_num 
+   */
+
+  /*AT first, compare the time in active log volume. */
+  error = get_start_point_from_file (thread_p, -1, &ret_lsa, &active_start_time);
+  if (error == ER_FAILED)
+  {
+    return error;
+  }
+  else if (error == ER_CDC_LSA_NOT_FOUND)
+  {
+    /* rare case : can not find LOG that contains time information. */
+  }
+  else 
+  {
+    /* NO ERROR */
+    if (active_start_time <= *time)
+    {
+      //active
+      error = get_lsa_with_start_point (thread_p, time, &ret_lsa);
+      if (error == NO_ERROR)
+	{
+          LSA_COPY (start_lsa, &ret_lsa);
+          is_found = true;
+	}
+      else if (error == ER_CDC_LSA_NOT_FOUND)
+        {
+          /* input time is too big to find log, then returns latest log */
+          LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa();
+          LSA_COPY (start_lsa, &nxio_lsa);
+          *time = 0; /*can not know time of latest log */
+          is_found = true;
+        }
+    }  
+    else
+    {
+      /*if not found in active log volume, then traverse archives */
+      if (num_arvs > 0)
+	{
+          /*travers from the latest*/
+	  for (int i = end; i > begin; i--)
+	    {
+	      error = get_start_point_from_file (thread_p, i, &ret_lsa, &archive_start_time);
+              if(error != NO_ERROR)
+              {
+                return error; 
+              }
+
+              if (archive_start_time <= *time)
+		{
+		  target_arv_num = i;
+		}
+	    }
+
+	  if (target_arv_num == -1)
+	    {
+	      /*returns oldest LSA */
+              LSA_COPY (start_lsa, &ret_lsa);
+              *time = archive_start_time;
+              is_found = true; 
+              error = ER_CDC_LSA_NOT_FOUND; /*should be replaced*/
+	    }
+          else
+          {
+	    if ((error = get_lsa_with_start_point (thread_p, time, &ret_lsa)) != NO_ERROR)
+	      {
+                is_found = true;
+                LSA_COPY (start_lsa, &ret_lsa);
+	      }
+          }
+	}
+      else
+	{
+          /* num_arvs == 0, and active_start_time > input time 
+	   * returns oldest LSA in active log volume */
+          *time = active_start_time;
+          LSA_COPY (start_lsa, &ret_lsa);
+          is_found = true; 
+	}
+    }
+  }
+
+  if (is_found)
+  {
+    LSA_COPY (&log_Reader_info.start_lsa, start_lsa);
+    /*pthread_cond_signal () to cdc_log_producer and queue re-initialization */
+  }
+
+  return error; 
+}
+
+/*
+ * arv_num (in) : archive log volume number to traverse. If it is -1, then traverse active log volume. 
+ * ret_lsa (out) : lsa of the first log which contains time info 
+ * time (out) : time of the first log which contains time info  
+ */
+
+static int
+get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t *time)
+{
+  char arv_name[PATH_MAX];
+  LOG_ARV_HEADER *arv_hdr;
+  char hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_hdr_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+
+  LOG_PAGE *hdr_pgptr;
+  LOG_PAGE *log_pgptr;
+  LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;
+  int vdes;
+
+  LOG_LSA process_lsa;
+  LOG_LSA forw_lsa;
+
+  LOG_RECORD_HEADER *log_rec_header;
+  LOG_REC_DONETIME *donetime;
+  LOG_REC_HA_SERVER_STATE *dummy;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+  LOG_CS_ENTER_READ_MODE (thread_p);
+
+  if (arv_num == -1)
+    {
+      process_lsa.pageid = log_Gl.hdr.fpageid;
+      process_lsa.offset = 0;
+    }
+  else
+    {
+      LOG_ARCHIVE_CS_ENTER (thread_p);
+      aligned_hdr_pgbuf = PTR_ALIGN (hdr_pgbuf, MAX_ALIGNMENT);
+
+      hdr_pgptr = (LOG_PAGE *) aligned_hdr_pgbuf;
+
+      fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, arv_num);
+
+      if (fileio_is_volume_exist (arv_name) == true)
+	{
+	  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false);
+	  if (vdes != NULL_VOLDES)
+	    {
+	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, LOG_PAGESIZE) == NULL)
+		{
+		  fileio_dismount (thread_p, vdes);
+
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, 0LL, 0LL, arv_name);
+
+		  LOG_ARCHIVE_CS_EXIT (thread_p);
+
+		  return ER_FAILED;
+		}
+
+	      arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
+	      process_lsa.pageid = arv_hdr->fpageid;
+	      process_lsa.offset = 0;
+
+	      fileio_dismount (thread_p, vdes);
+	      LOG_ARCHIVE_CS_EXIT (thread_p);
+	    }
+	}
+    }
+
+  LOG_CS_EXIT (thread_p);
+
+  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_pgptr) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  while (!LSA_ISNULL (&process_lsa))
+    {
+      log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
+      LSA_COPY (&forw_lsa, &log_rec_header->forw_lsa);
+
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_pgptr);
+
+      if (log_rec_header->type == LOG_COMMIT || log_rec_header->type == LOG_ABORT)
+	{
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_pgptr);
+	  donetime = (LOG_REC_DONETIME *) (log_pgptr->area + process_lsa.offset);
+
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_pgptr);
+	  LSA_COPY (ret_lsa, &process_lsa);
+          
+          *time = donetime->at_time;
+	  return NO_ERROR;
+	}
+
+      if (log_rec_header->type == LOG_DUMMY_HA_SERVER_STATE)
+	{
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dummy), &process_lsa, log_pgptr);
+	  dummy = (LOG_REC_HA_SERVER_STATE *) (log_pgptr->area + process_lsa.offset);
+
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*dummy), &process_lsa, log_pgptr);
+	  LSA_COPY (ret_lsa, &process_lsa);
+          *time = dummy->at_time;
+	  return NO_ERROR;
+	}
+
+      if (process_lsa.pageid != forw_lsa.pageid)
+	{
+	  if (LSA_ISNULL (&forw_lsa))
+	    {
+	      return ER_FAILED;
+	    }
+
+	  if (logpb_fetch_page (thread_p, &forw_lsa, LOG_CS_SAFE_READER, log_pgptr) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      LSA_COPY (&process_lsa, &forw_lsa);
+    }
+
+  return ER_CDC_LSA_NOT_FOUND;
+}
+
+/*
+ * time (in/out) : Time to compare (in) and actual time of log for start_lsa (out)
+ * start_lsa (in/out) : start point (in) and lsa of LOG which is found (out)  
+ */ 
+
+static int
+get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t *time, LOG_LSA * start_lsa)
+{
+  LOG_LSA process_lsa;
+
+  LOG_RECORD_HEADER *log_rec_header;
+  LOG_PAGE *log_page_p = NULL;
+  char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+
+  LOG_REC_DONETIME *donetime;
+  LOG_REC_HA_SERVER_STATE *dummy;
+  time_t at_time;
+
+  LOG_LSA forw_lsa;
+
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_page_p->hdr.logical_pageid = NULL_PAGEID;
+  log_page_p->hdr.offset = NULL_OFFSET;
+  bool is_active = false;
+
+  int error = NO_ERROR; 
+
+  if (LSA_ISNULL (start_lsa))
+    {
+      is_active = true;
+    }
+
+  LSA_COPY (&process_lsa, start_lsa);
+
+  /*fetch log page */
+  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  while (!LSA_ISNULL (&process_lsa))
+    {
+      log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
+      LSA_COPY (&forw_lsa, &log_rec_header->forw_lsa);
+
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
+
+      if (log_rec_header->type == LOG_COMMIT || log_rec_header->type == LOG_ABORT)
+	{
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
+	  donetime = (LOG_REC_DONETIME *) (log_page_p->area + process_lsa.offset);
+	  if (donetime->at_time >= *time)
+	    {
+              *time = donetime->at_time;
+	      LSA_COPY (start_lsa, &log_rec_header->forw_lsa);
+	      return NO_ERROR;
+	    }
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
+	}
+
+      if (log_rec_header->type == LOG_DUMMY_HA_SERVER_STATE)
+	{
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dummy), &process_lsa, log_page_p);
+	  dummy = (LOG_REC_HA_SERVER_STATE *) (log_page_p->area + process_lsa.offset);
+
+	  if (dummy->at_time >= *time)
+	    {
+              *time = dummy->at_time;
+	      LSA_COPY (start_lsa, &log_rec_header->forw_lsa);
+              return NO_ERROR;
+	    }
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*dummy), &process_lsa, log_page_p);
+	}
+
+      if (process_lsa.pageid != forw_lsa.pageid)
+	{
+	  if (LSA_ISNULL (&forw_lsa))
+	    {
+	      return ER_FAILED;
+	    }
+
+	  if (logpb_fetch_page (thread_p, &forw_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+
+      LSA_COPY (&process_lsa, &forw_lsa);
+    }
+
+  return ER_FAILED;
+}
+
+/*consumer in other PR when PR related to THREAD handling is merged */
+int
+cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_length, int *num_log_info)
+{
+  int rv;
+#if 0 
+  struct timeval cur;
+  struct timespec timeout;
+  int status;
+
+  char *log_infos = NULL;
+  LOG_INFO_ENTRY *consume;
+
+  assert (!LSA_ISNULL (start_lsa));
+
+  *num_log_info = 0;
+  *total_length = 0;
+
+  gettimeofday (&cur, NULL);
+  timeout.tv_sec = cur.tv_sec + log_Reader_info.extraction_timeout;
+  timeout.tv_nsec = cur.tv_usec * 1000;
+
+  if (log_info_queue->is_empty ())
+  {
+    status = pthread_cond_timedwait (consume_cv, &mutex, timeout);
+    if (status == ETIMEDOUT)
+    {
+      return ER_CDC_EXTRACTION_TIMEOUT;
+    } 
+  }
+
+  while (log_info_queue->is_empty () == false && (*num_log_info < log_Reader_info.max_log_item))
+    {
+      /* *INDENT-OFF* */
+      log_info_queue->consume (consume);
+      /* *INDENT-ON* */
+      if (LSA_GE (&consume->start_lsa, start_lsa))
+	{
+	  log_infos = (char *) realloc (log_infos, *total_length + consume->length + MAX_ALIGNMENT);
+
+	  memcpy (PTR_ALIGN (log_infos + *total_length, MAX_ALIGNMENT), PTR_ALIGN (consume->log_info, MAX_ALIGNMENT),
+		  consume->length);
+
+	  *total_length =
+	    (PTR_ALIGN (log_infos + *total_length, MAX_ALIGNMENT) + consume->length) - PTR_ALIGN (log_infos,
+												  MAX_ALIGNMENT);
+
+	  (*num_log_info)++;
+
+	  LSA_COPY (start_lsa, &consume->start_lsa);
+
+	  if (consume->log_info != NULL)
+	    {
+	      free (consume->log_info);
+	    }
+
+	  if (consume != NULL)
+	    {
+	      free (consume);
+	    }
+	}
+
+      server_comm_buf.log_Infos = log_infos;
+      server_comm_buf.log_Infos_length = *total_length;
+    }
+  #endif
+  return NO_ERROR;
+}
+
+int
+cdc_finalize ()
+{
+  int i = 0;
+
+  if (log_Reader_info.num_user > 0)
+    {
+      for (i = 0; i < log_Reader_info.num_user; i++)
+	{
+	  free (log_Reader_info.user[i]);
+	}
+    }
+  if (log_Reader_info.num_class > 0)
+    {
+      free (log_Reader_info.class_oids);
+    }
+
+  for (auto iter:tran_users)
+    {
+      /*std::unordered_map<TRANID, char *> tran_users */
+      free (iter.second);
+    }
+
+  while (!log_info_queue->is_empty())
+  {
+    LOG_INFO_ENTRY *tmp; 
+    log_info_queue->consume(tmp);
+
+    if (tmp->log_info != NULL)
+    {
+      free (tmp->log_info);
+    }
+
+    if (tmp != NULL)
+    {
+      free (tmp);
+    }
+  }
+
+  delete log_info_queue;
+
+  return NO_ERROR;
+}
+
+int
+cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user,int num_user, uint64_t * classoids, int num_class)
+{
+  log_Reader_info.extraction_timeout = timeout;
+  log_Reader_info.num_user = num_user;
+  log_Reader_info.user = user;
+  log_Reader_info.num_class = num_class;
+  log_Reader_info.class_oids = classoids;
+  log_Reader_info.all_in_cond = all_in_cond;
+  log_Reader_info.max_log_item = max_log_item;
+
+  return NO_ERROR;
+}
+
+int
+cdc_initialize ()
+{
+  /*log_Reader_info initialization*/
+
+  /*communication buffer from server to client initialization */
+  server_comm_buf.log_Infos = NULL;
+  server_comm_buf.log_Info_length = 0;
+  server_comm_buf.num_log_Infos = 0;
+  LSA_SET_NULL(&server_comm_buf.start_lsa);
+  server_comm_buf.is_sent = true;
 }
 
 //

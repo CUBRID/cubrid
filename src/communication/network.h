@@ -248,6 +248,14 @@ enum net_server_request
   NET_SERVER_LD_UPDATE_STATS,
 
   NET_SERVER_VACUUM_DUMP,
+
+  /*FOR CDC */
+  NET_SERVER_CDC_SET_CONFIGURATION,
+  NET_SERVER_CDC_GET_LSA,
+  NET_SERVER_CDC_GET_LOGITEM_INFO,
+  NET_SERVER_CDC_GET_LOGITEM,
+  NET_SERVER_CDC_FINALIZE,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
