@@ -16,6 +16,10 @@
  *
  */
 
+/*
+ * method_invoke_group.hpp - conversion from string to DB_VALUE
+ */
+
 #ifndef _METHOD_INVOKE_GROUP_HPP_
 #define _METHOD_INVOKE_GROUP_HPP_
 
