@@ -947,7 +947,7 @@ log_rv_get_min_trantable_tranid ()
   TRANID min_tranid = NULL_TRANID;
   for (int tran_index = 1; tran_index < log_Gl.trantable.num_total_indices; ++tran_index)
     {
-      TRANID tranid = log_Gl.trantable.all_tdes[tran_index]->trid;
+      const TRANID tranid = log_Gl.trantable.all_tdes[tran_index]->trid;
       if (tranid != NULL_TRANID)
 	{
 	  if (min_tranid == NULL_TRANID || min_tranid > tranid)
@@ -1000,7 +1000,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_mvcc_op = false;
   const bool force_each_log_page_fetch = false;
-  TRANID min_trantable_tranid = log_rv_get_min_trantable_tranid ();
+  const TRANID min_trantable_tranid = log_rv_get_min_trantable_tranid ();
 
   /* depending on compilation mode and on a system parameter, initialize the
    * infrastructure for parallel log recovery;
