@@ -10252,22 +10252,29 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	}
 
       int total_size = packer.get_packed_db_value_size (ret_value, 0);
-      // output parameters
-      total_size += packer.get_packed_int_size (total_size);	// num_out_args
-    for (DB_VALUE * value:out_args)
+      total_size += packer.get_packed_int_size (total_size);
+    /* *INDENT-OFF* */
+    for (DB_VALUE *value : out_args)
 	{
 	  total_size += packer.get_packed_db_value_size (*value, total_size);
 	}
+    /* *INDENT-ON* */
 
       eb.extend_to (total_size);
       packer.set_buffer (eb.get_ptr (), total_size);
 
+      /* result */
       packer.pack_db_value (ret_value);
+
+      /* output parameters */
       packer.pack_int (out_args.size ());
-    for (DB_VALUE * value:out_args)
+
+    /* *INDENT-OFF* */
+    for (DB_VALUE *value : out_args)
 	{
 	  packer.pack_db_value (*value);	// DB_VALUEs
 	}
+    /* *INDENT-ON* */
 
       reply_data = eb.get_ptr ();
       reply_data_size = (int) packer.get_current_size ();
@@ -10277,13 +10284,13 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
       return_error_to_client (thread_p, rid);
     }
 
+  // clear
   for (int i = 0; i < arg_cnt; i++)
     {
       db_value_clear (&args[i]);
     }
 
   method_group.end ();
-
   sig_list.freemem ();
 
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;

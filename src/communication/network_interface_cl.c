@@ -10433,20 +10433,25 @@ method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE
   int total_size = sig_list.get_packed_size (packer, 0);
   total_size += packer.get_packed_int_size (total_size);
 
-for (DB_VALUE * &value:args)
+  /* *INDENT-OFF* */
+  for (DB_VALUE *&value : args)
     {
       total_size += packer.get_packed_db_value_size (*value, total_size);
     }
+  /* *INDENT-ON* */
 
   eb.extend_to (total_size);
   packer.set_buffer (eb.get_ptr (), total_size);
 
   sig_list.pack (packer);
   packer.pack_int (args.size ());
-for (DB_VALUE * &value:args)
+
+  /* *INDENT-OFF* */
+  for (DB_VALUE *&value : args)
     {
       packer.pack_db_value (*value);	// DB_VALUEs
     }
+  /* *INDENT-ON* */
 
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -10470,8 +10475,10 @@ for (DB_VALUE * &value:args)
 
   packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
 
+  /* result */
   unpacker.unpack_db_value (result);
 
+  /* output parameters */
   int arg_size = 0;
   unpacker.unpack_int (arg_size);
 
