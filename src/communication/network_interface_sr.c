@@ -10274,8 +10274,8 @@ scdc_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       user = (char **) malloc (sizeof (char *) * num_user);
       if (user == NULL)
 	{
-          error = ER_OUT_OF_VIRTUAL_MEMORY;
-          goto end;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
       for (int i = 0; i < num_user; i++)
 	{
@@ -10284,9 +10284,9 @@ scdc_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 	  user[i] = (char *) malloc (user_len + 1);
 	  if (user[i] == NULL)
 	    {
-              free (user);
-              error = ER_OUT_OF_VIRTUAL_MEMORY;
-              goto end;
+	      free (user);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto end;
 	    }
 	  memcpy (user[i], dummy_user, user_len);
 	  db_private_free_and_init (NULL, dummy_user);
@@ -10301,18 +10301,18 @@ scdc_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       classoids = (uint64_t *) malloc (sizeof (uint64_t) * num_class);
       if (classoids == NULL)
 	{
-          if (num_user > 0)
-          {
-            for (int i = 0; i < num_user; i++)
-            {
-              free (user[i]);
-            }
+	  if (num_user > 0)
+	    {
+	      for (int i = 0; i < num_user; i++)
+		{
+		  free (user[i]);
+		}
 
-            free (user);
-          }
+	      free (user);
+	    }
 
-          error = ER_OUT_OF_VIRTUAL_MEMORY;
-          goto end;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
       for (int i = 0; i < num_class; i++)
 	{
@@ -10320,8 +10320,7 @@ scdc_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 	}
     }
 
-  error =
-    cdc_set_configuration (max_log_item, timeout, all_in_cond, user, num_user, classoids, num_class);
+  error = cdc_set_configuration (max_log_item, timeout, all_in_cond, user, num_user, classoids, num_class);
 
 end:
 
@@ -10347,18 +10346,18 @@ scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   int num_log_info;
 
   int rc;
-  
+
   if (server_comm_buf.is_sent == false)
-  {
-    LSA_COPY (&start_lsa, &server_comm_buf.start_lsa);
-    num_log_info = server_comm_buf.num_log_Infos;
-    total_length = server_comm_buf.log_Info_length;
-  }
+    {
+      LSA_COPY (&start_lsa, &server_comm_buf.start_lsa);
+      num_log_info = server_comm_buf.num_log_Infos;
+      total_length = server_comm_buf.log_Info_length;
+    }
   else
-  {
-    or_unpack_log_lsa (request, &start_lsa);
-    error = cdc_get_logitem_info (thread_p, &start_lsa, &total_length, &num_log_info);
-  }
+    {
+      or_unpack_log_lsa (request, &start_lsa);
+      error = cdc_get_logitem_info (thread_p, &start_lsa, &total_length, &num_log_info);
+    }
   ptr = or_pack_int (reply, error);
 
   ptr = or_pack_log_lsa (ptr, &start_lsa);	/*pack_int64 */
@@ -10368,11 +10367,11 @@ scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   rc = css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   if (rc != NO_ERROR)
-  {
-    /*start lsa, total length, num_log_info wil be resent */
-    server_comm_buf.is_sent = false;
-    return;
-  }
+    {
+      /*start lsa, total length, num_log_info wil be resent */
+      server_comm_buf.is_sent = false;
+      return;
+    }
   server_comm_buf.is_sent = true;
 
   return;
@@ -10381,14 +10380,14 @@ scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 void
 scdc_get_logitem (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int rc; 
+  int rc;
   rc = css_send_data_to_client (thread_p->conn_entry, rid, server_comm_buf.log_Infos, server_comm_buf.log_Info_length);
   if (rc != NO_ERRORS)
-  {
-    server_comm_buf.is_sent = false; 
-    return; 
-  }
-  
+    {
+      server_comm_buf.is_sent = false;
+      return;
+    }
+
   free_and_init (server_comm_buf.log_Infos);
 
   server_comm_buf.is_sent = true;

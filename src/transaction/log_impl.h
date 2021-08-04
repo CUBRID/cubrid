@@ -543,8 +543,6 @@ struct log_tdes
 
   log_postpone_cache m_log_postpone_cache;
 
-  bool has_supplemental_log; /* checks if supplemental log has been appended withing the transaction */
-
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 
@@ -765,14 +763,14 @@ typedef struct log_logging_stat
 /*for CDC interface */
 typedef struct cdc_server_comm
 {
-  char * log_Infos;
+  char *log_Infos;
   int log_Info_length;
   int num_log_Infos;
   LOG_LSA start_lsa;
   bool is_sent;
 } CDC_SERVER_COMM;
 
-extern CDC_SERVER_COMM server_comm_buf; 
+extern CDC_SERVER_COMM server_comm_buf;
 
 // todo - move to manager
 enum log_cs_access_mode

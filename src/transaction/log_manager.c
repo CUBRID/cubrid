@@ -308,8 +308,8 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 
-static int get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t *time);
-static int get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t *time, LOG_LSA * start_lsa);
+static int get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time);
+static int get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -10220,7 +10220,7 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 }
 
 int
-cdc_get_lsa (THREAD_ENTRY * thread_p, time_t *time, LOG_LSA * start_lsa)
+cdc_get_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 {
   /*
    * 1. get volume list
@@ -10251,89 +10251,89 @@ cdc_get_lsa (THREAD_ENTRY * thread_p, time_t *time, LOG_LSA * start_lsa)
   /*AT first, compare the time in active log volume. */
   error = get_start_point_from_file (thread_p, -1, &ret_lsa, &active_start_time);
   if (error == ER_FAILED)
-  {
-    return error;
-  }
+    {
+      return error;
+    }
   else if (error == ER_CDC_LSA_NOT_FOUND)
-  {
-    /* rare case : can not find LOG that contains time information. */
-  }
-  else 
-  {
-    /* NO ERROR */
-    if (active_start_time <= *time)
     {
-      //active
-      error = get_lsa_with_start_point (thread_p, time, &ret_lsa);
-      if (error == NO_ERROR)
-	{
-          LSA_COPY (start_lsa, &ret_lsa);
-          is_found = true;
-	}
-      else if (error == ER_CDC_LSA_NOT_FOUND)
-        {
-          /* input time is too big to find log, then returns latest log */
-          LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa();
-          LSA_COPY (start_lsa, &nxio_lsa);
-          *time = 0; /*can not know time of latest log */
-          is_found = true;
-        }
-    }  
-    else
+      /* rare case : can not find LOG that contains time information. */
+    }
+  else
     {
-      /*if not found in active log volume, then traverse archives */
-      if (num_arvs > 0)
+      /* NO ERROR */
+      if (active_start_time <= *time)
 	{
-          /*travers from the latest*/
-	  for (int i = end; i > begin; i--)
+	  //active
+	  error = get_lsa_with_start_point (thread_p, time, &ret_lsa);
+	  if (error == NO_ERROR)
 	    {
-	      error = get_start_point_from_file (thread_p, i, &ret_lsa, &archive_start_time);
-              if(error != NO_ERROR)
-              {
-                return error; 
-              }
-
-              if (archive_start_time <= *time)
-		{
-		  target_arv_num = i;
-		}
+	      LSA_COPY (start_lsa, &ret_lsa);
+	      is_found = true;
 	    }
-
-	  if (target_arv_num == -1)
+	  else if (error == ER_CDC_LSA_NOT_FOUND)
 	    {
-	      /*returns oldest LSA */
-              LSA_COPY (start_lsa, &ret_lsa);
-              *time = archive_start_time;
-              is_found = true; 
-              error = ER_CDC_LSA_NOT_FOUND; /*should be replaced*/
+	      /* input time is too big to find log, then returns latest log */
+	      LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+	      LSA_COPY (start_lsa, &nxio_lsa);
+	      *time = 0;	/*can not know time of latest log */
+	      is_found = true;
 	    }
-          else
-          {
-	    if ((error = get_lsa_with_start_point (thread_p, time, &ret_lsa)) != NO_ERROR)
-	      {
-                is_found = true;
-                LSA_COPY (start_lsa, &ret_lsa);
-	      }
-          }
 	}
       else
 	{
-          /* num_arvs == 0, and active_start_time > input time 
-	   * returns oldest LSA in active log volume */
-          *time = active_start_time;
-          LSA_COPY (start_lsa, &ret_lsa);
-          is_found = true; 
+	  /*if not found in active log volume, then traverse archives */
+	  if (num_arvs > 0)
+	    {
+	      /*travers from the latest */
+	      for (int i = end; i > begin; i--)
+		{
+		  error = get_start_point_from_file (thread_p, i, &ret_lsa, &archive_start_time);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+
+		  if (archive_start_time <= *time)
+		    {
+		      target_arv_num = i;
+		    }
+		}
+
+	      if (target_arv_num == -1)
+		{
+		  /*returns oldest LSA */
+		  LSA_COPY (start_lsa, &ret_lsa);
+		  *time = archive_start_time;
+		  is_found = true;
+		  error = ER_CDC_LSA_NOT_FOUND;	/*should be replaced */
+		}
+	      else
+		{
+		  if ((error = get_lsa_with_start_point (thread_p, time, &ret_lsa)) != NO_ERROR)
+		    {
+		      is_found = true;
+		      LSA_COPY (start_lsa, &ret_lsa);
+		    }
+		}
+	    }
+	  else
+	    {
+	      /* num_arvs == 0, and active_start_time > input time 
+	       * returns oldest LSA in active log volume */
+	      *time = active_start_time;
+	      LSA_COPY (start_lsa, &ret_lsa);
+	      is_found = true;
+	    }
 	}
     }
-  }
 
   if (is_found)
-  {
-    LSA_COPY (&log_Reader_info.start_lsa, start_lsa);
-    /*pthread_cond_signal () to cdc_log_producer and queue re-initialization */
-  }
+    {
+      LSA_COPY (&log_Reader_info.start_lsa, start_lsa);
+      /*pthread_cond_signal () to cdc_log_producer and queue re-initialization */
+    }
 
-  return error; 
+  return error;
 }
 
 /*
@@ -10343,7 +10343,7 @@ cdc_get_lsa (THREAD_ENTRY * thread_p, time_t *time, LOG_LSA * start_lsa)
  */
 
 static int
-get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t *time)
+get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time)
 {
   char arv_name[PATH_MAX];
   LOG_ARV_HEADER *arv_hdr;
@@ -10427,8 +10427,8 @@ get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_l
 
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_pgptr);
 	  LSA_COPY (ret_lsa, &process_lsa);
-          
-          *time = donetime->at_time;
+
+	  *time = donetime->at_time;
 	  return NO_ERROR;
 	}
 
@@ -10439,7 +10439,7 @@ get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_l
 
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*dummy), &process_lsa, log_pgptr);
 	  LSA_COPY (ret_lsa, &process_lsa);
-          *time = dummy->at_time;
+	  *time = dummy->at_time;
 	  return NO_ERROR;
 	}
 
@@ -10464,10 +10464,10 @@ get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_l
 /*
  * time (in/out) : Time to compare (in) and actual time of log for start_lsa (out)
  * start_lsa (in/out) : start point (in) and lsa of LOG which is found (out)  
- */ 
+ */
 
 static int
-get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t *time, LOG_LSA * start_lsa)
+get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 {
   LOG_LSA process_lsa;
 
@@ -10486,7 +10486,7 @@ get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t *time, LOG_LSA * start
   log_page_p->hdr.offset = NULL_OFFSET;
   bool is_active = false;
 
-  int error = NO_ERROR; 
+  int error = NO_ERROR;
 
   if (LSA_ISNULL (start_lsa))
     {
@@ -10514,7 +10514,7 @@ get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t *time, LOG_LSA * start
 	  donetime = (LOG_REC_DONETIME *) (log_page_p->area + process_lsa.offset);
 	  if (donetime->at_time >= *time)
 	    {
-              *time = donetime->at_time;
+	      *time = donetime->at_time;
 	      LSA_COPY (start_lsa, &log_rec_header->forw_lsa);
 	      return NO_ERROR;
 	    }
@@ -10528,9 +10528,9 @@ get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t *time, LOG_LSA * start
 
 	  if (dummy->at_time >= *time)
 	    {
-              *time = dummy->at_time;
+	      *time = dummy->at_time;
 	      LSA_COPY (start_lsa, &log_rec_header->forw_lsa);
-              return NO_ERROR;
+	      return NO_ERROR;
 	    }
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*dummy), &process_lsa, log_page_p);
 	}
@@ -10559,7 +10559,7 @@ int
 cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_length, int *num_log_info)
 {
   int rv;
-#if 0 
+#if 0
   struct timeval cur;
   struct timespec timeout;
   int status;
@@ -10577,13 +10577,13 @@ cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_l
   timeout.tv_nsec = cur.tv_usec * 1000;
 
   if (log_info_queue->is_empty ())
-  {
-    status = pthread_cond_timedwait (consume_cv, &mutex, timeout);
-    if (status == ETIMEDOUT)
     {
-      return ER_CDC_EXTRACTION_TIMEOUT;
-    } 
-  }
+      status = pthread_cond_timedwait (consume_cv, &mutex, timeout);
+      if (status == ETIMEDOUT)
+	{
+	  return ER_CDC_EXTRACTION_TIMEOUT;
+	}
+    }
 
   while (log_info_queue->is_empty () == false && (*num_log_info < log_Reader_info.max_log_item))
     {
@@ -10619,7 +10619,7 @@ cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_l
       server_comm_buf.log_Infos = log_infos;
       server_comm_buf.log_Infos_length = *total_length;
     }
-  #endif
+#endif
   return NO_ERROR;
 }
 
@@ -10640,27 +10640,27 @@ cdc_finalize ()
       free (log_Reader_info.class_oids);
     }
 
-  for (auto iter:tran_users)
+for (auto iter:tran_users)
     {
       /*std::unordered_map<TRANID, char *> tran_users */
       free (iter.second);
     }
 
-  while (!log_info_queue->is_empty())
-  {
-    LOG_INFO_ENTRY *tmp; 
-    log_info_queue->consume(tmp);
-
-    if (tmp->log_info != NULL)
+  while (!log_info_queue->is_empty ())
     {
-      free (tmp->log_info);
-    }
+      LOG_INFO_ENTRY *tmp;
+      log_info_queue->consume (tmp);
 
-    if (tmp != NULL)
-    {
-      free (tmp);
+      if (tmp->log_info != NULL)
+	{
+	  free (tmp->log_info);
+	}
+
+      if (tmp != NULL)
+	{
+	  free (tmp);
+	}
     }
-  }
 
   delete log_info_queue;
 
@@ -10668,7 +10668,8 @@ cdc_finalize ()
 }
 
 int
-cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user,int num_user, uint64_t * classoids, int num_class)
+cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user, uint64_t * classoids,
+		       int num_class)
 {
   log_Reader_info.extraction_timeout = timeout;
   log_Reader_info.num_user = num_user;
@@ -10684,13 +10685,13 @@ cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **us
 int
 cdc_initialize ()
 {
-  /*log_Reader_info initialization*/
+  /*log_Reader_info initialization */
 
   /*communication buffer from server to client initialization */
   server_comm_buf.log_Infos = NULL;
   server_comm_buf.log_Info_length = 0;
   server_comm_buf.num_log_Infos = 0;
-  LSA_SET_NULL(&server_comm_buf.start_lsa);
+  LSA_SET_NULL (&server_comm_buf.start_lsa);
   server_comm_buf.is_sent = true;
 }
 
