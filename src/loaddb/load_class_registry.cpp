@@ -23,6 +23,7 @@
 #include "load_class_registry.hpp"
 
 #include <algorithm>
+#include <iterator>
 
 namespace cubload
 {

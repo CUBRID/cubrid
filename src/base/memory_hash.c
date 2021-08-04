@@ -98,7 +98,6 @@ static unsigned int mht_3str_pseudo_key (const void *key, int key_size, const un
 static unsigned int mht_4str_pseudo_key (const void *key, int key_size);
 static unsigned int mht_5str_pseudo_key (const void *key, int key_size);
 
-static unsigned int mht_calculate_htsize (unsigned int ht_size);
 static int mht_rehash (MHT_TABLE * ht);
 
 static const void *mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
@@ -826,7 +825,7 @@ static const unsigned int mht_Primes[NPRIMES] = {
   20507, 21313, 22123, 23131, 24133, 25147, 26153, 27179, 28181, 29123
 };
 
-static unsigned int
+unsigned int
 mht_calculate_htsize (unsigned int ht_size)
 {
   int left, right, middle;	/* indices for binary search */
@@ -980,14 +979,12 @@ mht_create (const char *name, int est_size, unsigned int (*hash_func) (const voi
  */
 MHT_HLS_TABLE *
 mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const void *key, unsigned int ht_size),
-	    int (*cmp_func) (const void *key1, const void *key2))
+		int (*cmp_func) (const void *key1, const void *key2))
 {
   MHT_HLS_TABLE *ht;
-  HENTRY_HLS_PTR *hvector;		/* Entries of hash table */
+  HENTRY_HLS_PTR *hvector;	/* Entries of hash table */
   unsigned int ht_estsize;
   size_t size;
-
-  assert (hash_func != NULL && cmp_func != NULL);
 
   /* Get a good number of entries for hash table */
   if (est_size <= 0)
@@ -1237,8 +1234,8 @@ mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *a
 int
 mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args), void *func_args)
 {
-  HENTRY_HLS_PTR *hvector;		/* Entries of hash table */
-  HENTRY_HLS_PTR hentry;		/* A hash table entry. linked list */
+  HENTRY_HLS_PTR *hvector;	/* Entries of hash table */
+  HENTRY_HLS_PTR hentry;	/* A hash table entry. linked list */
   HENTRY_HLS_PTR next_hentry = NULL;	/* Next element in linked list */
   unsigned int i, error_code;
 
@@ -1367,11 +1364,10 @@ mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const in
  */
 int
 mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, const int print_id_opt,
-	      int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args),
-	      void *func_args)
+	      int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args), void *func_args)
 {
-  HENTRY_HLS_PTR *hvector;		/* Entries of hash table */
-  HENTRY_HLS_PTR hentry;		/* A hash table entry. linked list */
+  HENTRY_HLS_PTR *hvector;	/* Entries of hash table */
+  HENTRY_HLS_PTR hentry;	/* A hash table entry. linked list */
   unsigned int i;
   int cont = TRUE;
 
@@ -1537,8 +1533,7 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 }
 
 /*
- * mht_get_hls - Find the next data associated with the key; Search the entry next
- *            to the last result
+ * mht_get_hls - Find the data associated with the key;
  *   return: the data associated with the key, or NULL if not found
  *   ht(in):
  *   key(in):
@@ -1549,7 +1544,7 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 void *
 mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 {
-  unsigned int hash;
+  unsigned int hash, hash_idx;
   HENTRY_HLS_PTR hentry;
 
   assert (ht != NULL && key != NULL);
@@ -1557,22 +1552,59 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
   /*
    * Hash the key and make sure that the return value is between 0 and size of hash table
    */
-  hash = (*ht->hash_func) (key, ht->size);
+  hash = *((unsigned int *) key);
   if (hash >= ht->size)
     {
-      hash %= ht->size;
+      hash_idx = hash % ht->size;
+    }
+  else
+    {
+      hash_idx = hash;
     }
 
-  /* In HASH LIST SCAN, key comparison is performed in executor. */
-  hentry = ht->table[hash];
-
-  if (hentry != NULL)
+  /* In HASH LIST SCAN, only hash key comparison is performed. */
+  for (hentry = ht->table[hash_idx]; hentry != NULL; hentry = hentry->next)
     {
-      if (last != NULL)
+      if (hentry->key == hash)
 	{
 	  *((HENTRY_HLS_PTR *) last) = hentry;
+	  return hentry->data;
 	}
-      return hentry->data;
+    }
+  return NULL;
+}
+
+/*
+ * mht_get_next_hls - Search the entry next to the last result
+ *   return: the data associated with the key, or NULL if not found
+ *   ht(in):
+ *   key(in):
+ *   last(in/out):
+ *
+ * NOTE: This call does not affect the LRU list.
+ */
+void *
+mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
+{
+  unsigned int hash;
+  HENTRY_HLS_PTR hentry;
+
+  assert (ht != NULL && key != NULL && last != NULL);
+
+  if ((*(HENTRY_HLS_PTR *) last)->next == NULL)
+    {
+      return NULL;
+    }
+  /* Hash the key and make sure that the return value is between 0 and size of hash table */
+  hash = *((unsigned int *) key);
+
+  for (hentry = (*(HENTRY_HLS_PTR *) last)->next; hentry != NULL; hentry = hentry->next)
+    {
+      if (hentry->key == hash)
+	{
+	  *((HENTRY_HLS_PTR *) last) = hentry;
+	  return hentry->data;
+	}
     }
   return NULL;
 }
@@ -2272,7 +2304,7 @@ mht_count (const MHT_TABLE * ht)
  * Note:
  */
 unsigned int
-mht_get_hash_number (const int ht_size, const DB_VALUE * val)
+mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 {
   unsigned int hashcode = 0;
   int i, len;
@@ -2571,11 +2603,8 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_O
 
   assert (ht != NULL && key != NULL);
 
-  /*
-   * Hash the key and make sure that the return value is between 0 and size
-   * of hash table
-   */
-  hash = (*ht->hash_func) (key, ht->size);
+  /* Hash the key and make sure that the return value is between 0 and size of hash table. */
+  hash = *((unsigned int *) key);
   if (hash >= ht->size)
     {
       hash %= ht->size;
@@ -2598,6 +2627,7 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_O
     }
 
   hentry->data = data;
+  hentry->key = *((unsigned int *) key);
 
   /* To input in order, use the tail node. */
   if (ht->table[hash] == NULL)
