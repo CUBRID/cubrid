@@ -17,7 +17,7 @@
  */
 
 /*
- * method_invoke_group.hpp - a facade class to process stored procedure
+ * method_invoke_group.hpp
  */
 
 #ifndef _METHOD_INVOKE_GROUP_HPP_

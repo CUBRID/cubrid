@@ -106,18 +106,4 @@ struct method_sig_list
 };
 typedef struct method_sig_list METHOD_SIG_LIST;
 
-struct nested_query_handler
-{
-  std::string sql_stmt;
-  char flag;
-  int stmt_no;
-  STATEMENT_ID stmt_id;		/* compiled stmt number */
-  CUBRID_STMT_TYPE stmt_type;	/* statement type */
-  DB_SESSION *session;
-  bool is_prepared;
-  int num_markers;         /* # of input markers */
-  DB_QUERY_RESULT *result; /* result column descriptor */
-};
-typedef struct nested_query_handler METHOD_NESTED_QUERY_HANDLE;
-
 #endif // _METHOD_DEF_H_
