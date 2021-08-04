@@ -577,9 +577,9 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   if (!(is_tran_server_with_remote_storage () && ext_info->voltype == DB_PERMANENT_VOLTYPE))
     {
       /* create and initialize the volume. recovery information is initialized in every page. */
-      vdes =
-	fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages, vol_purpose == DB_PERMANENT_DATA_PURPOSE,
-		       false, false, IO_PAGESIZE, kbytes_to_be_written_per_sec, false);
+      vdes = fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages,
+			    vol_purpose == DB_PERMANENT_DATA_PURPOSE, false, false, IO_PAGESIZE,
+			    kbytes_to_be_written_per_sec, false);
       if (vdes == NULL_VOLDES)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -4151,12 +4151,6 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
 
   auto exit_routine =
     [&thread_p, &debug_crash, &page_volheader, &old_check_interrupt, &old_wait_msecs] (DISK_ISVALID isvalid) {
-    assert (isvalid != DISK_INVALID || !debug_crash);
-    if (isvalid == DISK_ERROR)
-      {
-	ASSERT_ERROR ();
-      }
-
     xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
     (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
     if (page_volheader)
@@ -4168,11 +4162,13 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
 
   if (!is_tran_server_with_remote_storage () && fileio_get_volume_descriptor (volid) == NULL_VOLDES)
     {
+      assert (!debug_crash);
       return exit_routine (DISK_INVALID);
     }
 
   if (pageid < 0)
     {
+      assert (!debug_crash);
       return exit_routine (DISK_INVALID);
     }
 
@@ -4184,6 +4180,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
 
   if (disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &page_volheader, &volheader) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return exit_routine (DISK_ERROR);
     }
 
@@ -4193,12 +4190,20 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
     }
   if (pageid > DISK_SECTS_NPAGES (volheader->nsect_total))
     {
+      assert (!debug_crash);
       return exit_routine (DISK_INVALID);
     }
 
   SECTID sectid = SECTOR_FROM_PAGEID (pageid);
   DISK_ISVALID isvalid = disk_is_sector_reserved (thread_p, volheader, sectid, debug_crash);
-
+  if (isvalid == DISK_INVALID)
+    {
+      assert (!debug_crash);
+    }
+  else if (isvalid == DISK_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
   return exit_routine (isvalid);
 }
 
