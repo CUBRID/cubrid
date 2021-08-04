@@ -275,6 +275,11 @@ extern int db_Disable_modifications;
 
 #define MAX_NUM_EXEC_QUERY_HISTORY                      100
 
+/*CDC defines*/
+#define MAX_CDC_LOG_INFO_QUEUE_ENTRY  2048
+#define MAX_CDC_LOG_INFO_QUEUE_SIZE   32 * 1024 * 1024	/*32 MB */
+#define MAX_CDC_TRAN_USER_TABLE       4000
+
 enum log_flush
 { LOG_DONT_NEED_FLUSH, LOG_NEED_FLUSH };
 typedef enum log_flush LOG_FLUSH;
@@ -761,21 +766,25 @@ typedef struct log_logging_stat
 } LOG_LOGGING_STAT;
 
 /*for CDC interface */
-typedef struct log_info_entry
+
+typedef struct cdc_loginfo_entry CDC_LOGINFO_ENTRY;
+struct cdc_loginfo_entry
 {
   LOG_LSA start_lsa;
   int length;
   char *log_info;
-} LOG_INFO_ENTRY;
+};
 
-typedef struct temporary_log_buffer
+typedef struct cdc_temp_logbuf CDC_TEMP_LOGBUF;
+struct cdc_temp_logbuf
 {
   int pageid;
   LOG_PAGE *log_page_p;
   char log_page[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-} TEMPORARY_LOG_BUFFER;
+};
 
-typedef struct log_reader_info
+typedef struct cdc_global_info CDC_GLOBAL_INFO;
+struct cdc_global_info
 {
   LOG_LSA next_lsa;		/* next LSA to process */
 
@@ -787,9 +796,10 @@ typedef struct log_reader_info
   int all_in_cond;
   int max_log_item;
   int extraction_timeout;
-} LOG_READER_INFO;
+};
 
 /* will be moved to new file for CDC */
+typedef ovf_page_list OVF_PAGE_LIST;
 struct ovf_page_list
 {
   char *rec_type;
@@ -797,9 +807,9 @@ struct ovf_page_list
   int length;
   struct ovf_page_list *next;
 };
-typedef ovf_page_list OVF_PAGE_LIST;
 
-enum dataitem_type
+typedef enum cdc_dataitem_type CDC_DATAITEM_TYPE;
+enum cdc_dataitem_type
 {
   DDL = 0,
   DML,
@@ -807,13 +817,15 @@ enum dataitem_type
   TIMER
 };
 
-enum dcl_type
+typedef enum cdc_dcl_type CDC_DCL_TYPE;
+enum cdc_dcl_type
 {
   COMMIT = 0,
   ABORT
 };
 
-enum dml_type
+typedef enum cdc_dml_type CDC_DML_TYPE;
+enum cdc_dml_type
 {
   INSERT = 0,
   UPDATE,
@@ -821,22 +833,6 @@ enum dml_type
   TRUNCATE
 };
 
-typedef enum dataitem_type DATAITEM_TYPE;
-typedef enum dcl_type DCL_TYPE;
-typedef enum dml_type DML_TYPE;
-
-extern LOG_READER_INFO log_Reader_info;
-
-extern char *log_Infos;
-extern int log_Infos_length;
-
-/* *INDENT-OFF* */
-extern lockfree::circular_queue < LOG_INFO_ENTRY* > *log_info_queue;
-/* *INDENT-ON* */
-
-#define MAX_LOG_INFO_QUEUE_ENTRY  1024
-#define MAX_LOG_INFO_QUEUE_SIZE   32 * 1024 * 1024	/*32 MB */
-#define MAX_TRAN_USER_TABLE       4000
 /*Data structure for CDC interface end */
 
 // todo - move to manager
@@ -867,6 +863,16 @@ extern char log_Name_bkupinfo[];
 extern char log_Name_volinfo[];
 extern char log_Name_bg_archive[];
 extern char log_Name_removed_archive[];
+
+/*CDC global variables */
+extern CDC_GLOBAL_INFO cdc_Gl;
+
+extern char *log_Infos;
+extern int log_Infos_length;
+
+/* *INDENT-OFF* */
+extern lockfree::circular_queue<CDC_LOGINFO_ENTRY *> *cdc_loginfo_queue;
+/* *INDENT-ON* */
 
 /* logging */
 #if defined (SA_MODE)

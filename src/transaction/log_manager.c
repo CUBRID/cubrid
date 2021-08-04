@@ -188,11 +188,8 @@ struct overflow_rest_part
 typedef struct overflow_rest_part OVERFLOW_REST_PART;
 typedef struct overflow_first_part OVERFLOW_FIRST_PART;
 
-char *log_Infos = NULL;
-int log_Infos_length = 0;
-
 /* *INDENT-OFF* */
-static std::unordered_map <TRANID, char *> tran_users; /*to clear when log producer ends suddenly */
+static std::unordered_map <TRANID, char *> cdc_tran_user; /*to clear when log producer ends suddenly */
 /* *INDENT-ON* * /
 
 /* CDC end */
@@ -334,23 +331,22 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 
 /*for CDC */
-static int log_reader_initialize ();
 static int cdc_log_producer (THREAD_ENTRY * thread_p);
-static int get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * recdes,
-				LOG_LSA lsa, unsigned int rcvindex, bool is_redo);
-static int get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * process_lsa, int *length,
-				 char **data, bool is_redo);
-static int log_reader_get_recdes (THREAD_ENTRY * thread_p, TEMPORARY_LOG_BUFFER * temp_logbuf, LOG_LSA * undo_lsa,
-				  RECDES * undo_recdes, LOG_LSA * redo_lsa, RECDES * redo_recdes);
-static int find_pk (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id);
-static int make_dml (THREAD_ENTRY * thread_p, int trid, char *user, int dml_type, OID classoid, RECDES * undo_recdes,
-		     RECDES * redo_recdes, LOG_INFO_ENTRY * dml_entry);
-static int make_ddl (char *supplement_data, int trid, const char *user, LOG_INFO_ENTRY * ddl_entry);
-static int make_dcl (time_t at_time, int trid, char *user, int type, LOG_INFO_ENTRY * dcl_entry);
-static int make_timer (time_t at_time, int trid, char *user, LOG_INFO_ENTRY * timer_entry);
-static int find_tran_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA lsa, int trid, char **user);
-static int compare_record (const db_value * new_value, const db_value * cmpdata);
-static int put_data (const db_value * new_value, char **ptr);
+static int cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * recdes,
+				    LOG_LSA lsa, unsigned int rcvindex, bool is_redo);
+static int cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * process_lsa, int *length,
+				     char **data, bool is_redo);
+static int cdc_get_recdes (THREAD_ENTRY * thread_p, CDC_TEMP_LOGBUF * temp_logbuf, LOG_LSA * undo_lsa,
+			   RECDES * undo_recdes, LOG_LSA * redo_lsa, RECDES * redo_recdes);
+static int cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id);
+static int cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, int dml_type, OID classoid,
+				 RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry);
+static int cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOGINFO_ENTRY * ddl_entry);
+static int cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int type, CDC_LOGINFO_ENTRY * dcl_entry);
+static int cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY * timer_entry);
+static int cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA lsa, int trid, char **user);
+static int cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpdata);
+static int cdc_put_value_to_loginfo (const db_value * new_value, char **ptr);
 
 
 #if defined(SERVER_MODE)
@@ -10278,17 +10274,17 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   /* *INDENT-ON* */
   char *tran_user;
 
-  LOG_INFO_ENTRY *log_info_entry;
+  CDC_LOGINFO_ENTRY *log_info_entry;
 
   /*temp_logbuf consists of 2 entry, every time fetching new page, page will be stored in temp_logbuf[pageid%2] */
-  TEMPORARY_LOG_BUFFER *temp_logbuf = NULL;
+  CDC_TEMP_LOGBUF *temp_logbuf = NULL;
   int tmpbuf_index = 0;
 
   int trid;
 
   LOG_RECTYPE log_type;
 
-  temp_logbuf = (TEMPORARY_LOG_BUFFER *) malloc (2 * sizeof (TEMPORARY_LOG_BUFFER));
+  temp_logbuf = (CDC_TEMP_LOGBUF *) malloc (2 * sizeof (CDC_TEMP_LOGBUF));
   if (temp_logbuf == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -10299,7 +10295,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   temp_logbuf[1].log_page_p = (LOG_PAGE *) PTR_ALIGN (temp_logbuf[1].log_page, MAX_ALIGNMENT);
   temp_logbuf[1].pageid = -1;
 
-  LSA_COPY (&cur_log_rec_lsa, &log_Reader_info.next_lsa);	/*lsa_to_process will be defined when get_lsa or get_log_item protocol is called */
+  LSA_COPY (&cur_log_rec_lsa, &cdc_Gl.next_lsa);	/*lsa_to_process will be defined when get_lsa or get_log_item protocol is called */
   LSA_COPY (&process_lsa, &cur_log_rec_lsa);
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -10314,7 +10310,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   temp_logbuf[tmpbuf_index].pageid = process_lsa.pageid;
   memcpy (temp_logbuf[tmpbuf_index].log_page_p, log_page_p, LOG_PAGESIZE);
 
-  log_info_entry = (LOG_INFO_ENTRY *) malloc (sizeof (LOG_INFO_ENTRY));
+  log_info_entry = (CDC_LOGINFO_ENTRY *) malloc (sizeof (CDC_LOGINFO_ENTRY));
   if (log_info_entry == NULL)
     {
 
@@ -10365,12 +10361,12 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
 	  donetime = (LOG_REC_DONETIME *) (log_page_p->area + process_lsa.offset);
 
-	  if (tran_users.count (trid) == 0)
+	  if (cdc_tran_user.count (trid) == 0)
 	    {
-	      if (find_tran_user
+	      if (cdc_find_user
 		  (thread_p, temp_logbuf[tmpbuf_index].log_page_p, cur_log_rec_lsa, trid, &tran_user) == NO_ERROR)
 		{
-		  tran_users.insert (std::make_pair (trid, tran_user));
+		  cdc_tran_user.insert (std::make_pair (trid, tran_user));
 		}
 	      else
 		{
@@ -10381,7 +10377,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	  else
 	    {
               /* *INDENT-OFF* */
-              tran_user = tran_users.at (trid);
+              tran_user = cdc_tran_user.at (trid);
               /* *INDENT-ON* */
 	    }
 
@@ -10391,7 +10387,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 			 log_to_string (log_type), donetime->at_time, LSA_AS_ARGS (&cur_log_rec_lsa));
 #endif
 
-	  if (make_dcl (donetime->at_time, trid, tran_user, log_type, log_info_entry) != NO_ERROR)
+	  if (cdc_make_dcl_loginfo (donetime->at_time, trid, tran_user, log_type, log_info_entry) != NO_ERROR)
 	    {
 
 #if !defined(NDEBUG)		//JOOHOK
@@ -10399,7 +10395,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 #endif
 	    }
 
-	  tran_users.erase (trid);
+	  cdc_tran_user.erase (trid);
 
 	  break;
 
@@ -10417,7 +10413,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
 	  ha_dummy = (LOG_REC_HA_SERVER_STATE *) (log_page_p->area + process_lsa.offset);
 
-	  if (make_timer (ha_dummy->at_time, trid, NULL, log_info_entry) != NO_ERROR)
+	  if (cdc_make_timer_loginfo (ha_dummy->at_time, trid, NULL, log_info_entry) != NO_ERROR)
 	    {
 #if !defined(NDEBUG)		//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "make timer failed ");
@@ -10460,13 +10456,13 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
 	  if (supplement->rec_type != LOG_SUPPLEMENT_TRAN_USER)
 	    {
-	      if (tran_users.count (trid) == 0)
+	      if (cdc_tran_user.count (trid) == 0)
 		{
 		  /* JOOHOK : error handling when user not found */
-		  if (find_tran_user
+		  if (cdc_find_user
 		      (thread_p, temp_logbuf[tmpbuf_index].log_page_p, cur_log_rec_lsa, trid, &tran_user) == NO_ERROR)
 		    {
-		      tran_users.insert (std::make_pair (trid, tran_user));
+		      cdc_tran_user.insert (std::make_pair (trid, tran_user));
 		    }
 		  else
 		    {
@@ -10476,14 +10472,14 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 		}
 	      else
 		{
-		  tran_user = tran_users.at (trid);
+		  tran_user = cdc_tran_user.at (trid);
 		}
 	    }
 
 	  switch (supplement->rec_type)
 	    {
 	    case LOG_SUPPLEMENT_TRAN_USER:
-	      if (tran_users.count (trid) != 0)
+	      if (cdc_tran_user.count (trid) != 0)
 		{
 		  break;
 		}
@@ -10501,7 +10497,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 		  memcpy (tran_user, supplement_data, supplement_length);
 		  tran_user[supplement_length] = '\0';
 
-		  tran_users.insert (std::make_pair (trid, tran_user));
+		  cdc_tran_user.insert (std::make_pair (trid, tran_user));
 
 		  break;
 		}
@@ -10509,28 +10505,29 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      memcpy (&classoid, supplement_data, sizeof (OID));
 	      memcpy (&redo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
-	      log_reader_get_recdes (thread_p, temp_logbuf, NULL, NULL, &redo_lsa, &redo_recdes);
+	      cdc_get_recdes (thread_p, temp_logbuf, NULL, NULL, &redo_lsa, &redo_recdes);
 
-	      make_dml (thread_p, trid, tran_user, INSERT, classoid, NULL, &redo_recdes, log_info_entry);
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user, INSERT, classoid, NULL, &redo_recdes, log_info_entry);
 	      break;
 	    case LOG_SUPPLEMENT_UPDATE:
 	      memcpy (&classoid, supplement_data, sizeof (OID));
 	      memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 	      memcpy (&redo_lsa, supplement_data + sizeof (OID) + sizeof (LOG_LSA), sizeof (LOG_LSA));
 
-	      log_reader_get_recdes (thread_p, temp_logbuf, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes);
-	      make_dml (thread_p, trid, tran_user, UPDATE, classoid, &undo_recdes, &redo_recdes, log_info_entry);
+	      cdc_get_recdes (thread_p, temp_logbuf, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes);
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user, UPDATE, classoid, &undo_recdes, &redo_recdes,
+				    log_info_entry);
 	      break;
 	    case LOG_SUPPLEMENT_DELETE:
 	      memcpy (&classoid, supplement_data, sizeof (OID));
 	      memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
-	      log_reader_get_recdes (thread_p, temp_logbuf, &undo_lsa, &undo_recdes, NULL, NULL);
-	      make_dml (thread_p, trid, tran_user, DELETE, classoid, &undo_recdes, NULL, log_info_entry);
+	      cdc_get_recdes (thread_p, temp_logbuf, &undo_lsa, &undo_recdes, NULL, NULL);
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user, DELETE, classoid, &undo_recdes, NULL, log_info_entry);
 
 	      break;
 	    case LOG_SUPPLEMENT_DDL:
-	      if (make_ddl (supplement_data, trid, tran_user, log_info_entry) != NO_ERROR)
+	      if (cdc_make_ddl_loginfo (supplement_data, trid, tran_user, log_info_entry) != NO_ERROR)
 		{
 #if !defined(NDEBUG)		//JOOHOK
 		  _er_log_debug (ARG_FILE_LINE, "make DDL  failed ");
@@ -10550,9 +10547,9 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
       /*will be replaced with conditional variable */
 #if 0
-      while (log_info_queue->is_full () || LSA_LE (&log_Gl.append.prev_lsa, &next_log_rec_lsa))
+      while (cdc_loginfo_queue->is_full () || LSA_LE (&log_Gl.append.prev_lsa, &next_log_rec_lsa))
 	{
-	  if (log_info_queue->is_full ())
+	  if (cdc_loginfo_queue->is_full ())
 	    {
 #if !defined (NDEBUG)		//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "LOG_INFO_QUEUE IS FULL ");
@@ -10570,15 +10567,15 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	}
 #endif
 
-      /*when refined log info is queued, update log_Reader_info */
+      /*when refined log info is queued, update cdc_Gl */
       if (log_info_entry->length != 0)
 	{
 	  LSA_COPY (&log_info_entry->start_lsa, &next_log_rec_lsa);
           /* *INDENT-OFF* */
-	  log_info_queue->produce (log_info_entry);
+	  cdc_loginfo_queue->produce (log_info_entry);
           /* *INDENT-ON* */
 
-	  log_info_entry = (LOG_INFO_ENTRY *) malloc (sizeof (LOG_INFO_ENTRY));
+	  log_info_entry = (CDC_LOGINFO_ENTRY *) malloc (sizeof (CDC_LOGINFO_ENTRY));
 	  if (log_info_entry == NULL)
 	    {
 #if !defined (NDEBUG)		//JOOHOK
@@ -10607,11 +10604,11 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
       LSA_COPY (&process_lsa, &next_log_rec_lsa);
       LSA_COPY (&cur_log_rec_lsa, &next_log_rec_lsa);
-      LSA_COPY (&log_Reader_info.next_lsa, &next_log_rec_lsa);
+      LSA_COPY (&cdc_Gl.next_lsa, &next_log_rec_lsa);
     }
 
   /* *INDENT-OFF* */
-  for (auto iter:tran_users)
+  for (auto iter:cdc_tran_user)
     {
       free (iter.second);
     }
@@ -10621,9 +10618,9 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 }
 
 static int
-log_reader_get_recdes (THREAD_ENTRY * thread_p,
-		       TEMPORARY_LOG_BUFFER * temp_logbuf, LOG_LSA * undo_lsa,
-		       RECDES * undo_recdes, LOG_LSA * redo_lsa, RECDES * redo_recdes)
+cdc_get_recdes (THREAD_ENTRY * thread_p,
+		CDC_TEMP_LOGBUF * temp_logbuf, LOG_LSA * undo_lsa,
+		RECDES * undo_recdes, LOG_LSA * redo_lsa, RECDES * redo_recdes)
 {
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
   int tmpbuf_index;
@@ -10923,7 +10920,8 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	      {
 		/* GET OVF UNDO IMAGE */
 		if ((error_code =
-		     get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex, false)) != NO_ERROR)
+		     cdc_get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex,
+					      false)) != NO_ERROR)
 		  {
 		    goto end;
 		  }
@@ -11010,7 +11008,8 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	      {
 		/* GET OVF UNDO IMAGE */
 		if ((error_code =
-		     get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex, false)) != NO_ERROR)
+		     cdc_get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex,
+					      false)) != NO_ERROR)
 		  {
 		    goto end;
 		  }
@@ -11561,7 +11560,8 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	      {
 		/* GET OVF REDO IMAGE */
 		if ((error_code =
-		     get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex, true)) != NO_ERROR)
+		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex,
+					      true)) != NO_ERROR)
 		  {
 		    goto end;
 		  }
@@ -11581,7 +11581,8 @@ log_reader_get_recdes (THREAD_ENTRY * thread_p,
 	    if (rcvindex == RVOVF_PAGE_UPDATE)
 	      {
 		if ((error_code =
-		     get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex, true)) != NO_ERROR)
+		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex,
+					      true)) != NO_ERROR)
 		  {
 		    goto end;
 		  }
@@ -11619,8 +11620,8 @@ end:
 }
 
 static int
-get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
-		      LOG_LSA * process_lsa, int *outlength, char **outdata, bool is_redo)
+cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
+			  LOG_LSA * process_lsa, int *outlength, char **outdata, bool is_redo)
 {
   LOG_REC_REDO *redo = NULL;
   LOG_REC_UNDO *undo = NULL;
@@ -11724,8 +11725,8 @@ end:
 }
 
 static int
-get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * recdes, LOG_LSA lsa,
-		     unsigned int rcvindex, bool is_redo)
+cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * recdes, LOG_LSA lsa,
+			 unsigned int rcvindex, bool is_redo)
 {
   LOG_LSA current_lsa;
   LOG_LSA prev_lsa;
@@ -11788,8 +11789,8 @@ get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * re
 	      memset (ovf_list_data, 0, DB_SIZEOF (OVF_PAGE_LIST));
 
 	      error_code =
-		get_ovfdata_from_log (thread_p, current_log_page,
-				      &current_lsa, &ovf_list_data->length, &ovf_list_data->data, is_redo);
+		cdc_get_ovfdata_from_log (thread_p, current_log_page,
+					  &current_lsa, &ovf_list_data->length, &ovf_list_data->data, is_redo);
 
 	      if (error_code == NO_ERROR && ovf_list_data->data)
 		{
@@ -11835,8 +11836,8 @@ get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * re
 	  memset (ovf_list_data, 0, DB_SIZEOF (OVF_PAGE_LIST));
 
 	  error_code =
-	    get_ovfdata_from_log (thread_p, current_log_page, &current_lsa,
-				  &ovf_list_data->length, &ovf_list_data->data, is_redo);
+	    cdc_get_ovfdata_from_log (thread_p, current_log_page, &current_lsa,
+				      &ovf_list_data->length, &ovf_list_data->data, is_redo);
 
 	  if (error_code == NO_ERROR && ovf_list_data->data)
 	    {
@@ -11929,7 +11930,7 @@ end:
 }
 
 static int
-find_pk (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id)
+cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id)
 {
   /*1. if PK exists, return 0 with PK column id(pk_attr_id) and number of columns(num_attr) 
    *2. if PK does not exist, return -1 
@@ -11984,8 +11985,8 @@ find_pk (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int 
 }
 
 static int
-make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
-	  OID classoid, RECDES * undo_recdes, RECDES * redo_recdes, LOG_INFO_ENTRY * dml_entry)
+cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
+		      OID classoid, RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry)
 {
   /*this is for constructing dml data item */
   int has_pk;
@@ -12078,7 +12079,7 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
       record_length += redo_recdes->length;
     }
 
-  if (log_Reader_info.all_in_cond && dml_type != INSERT)
+  if (cdc_Gl.all_in_cond && dml_type != INSERT)
     {
       if (redo_recdes != NULL)
 	{
@@ -12090,7 +12091,7 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 	}
 
       /*for dml type == insert, it does not need to find PK info */
-      has_pk = find_pk (thread_p, classoid, repid, &num_pk_attr, &pk_attr_index);
+      has_pk = cdc_find_primary_key (thread_p, classoid, repid, &num_pk_attr, &pk_attr_index);
       if (has_pk < 0)
 	{
 	  error_code = ER_FAILED;
@@ -12127,7 +12128,7 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 
 	  for (i = 0; i < num_change_col; i++)
 	    {
-	      if ((error_code = put_data (&new_values[i], &ptr)) != NO_ERROR)
+	      if ((error_code = cdc_put_value_to_loginfo (&new_values[i], &ptr)) != NO_ERROR)
 		{
 		  goto end;
 		}
@@ -12141,7 +12142,7 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 	  ptr = or_pack_int64 (ptr, b_classoid);
 	  for (i = 0; i < attr_info.num_values; i++)
 	    {
-	      if ((error_code = compare_record (&new_values[i], &old_values[i])) > 0)
+	      if ((error_code = cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i])) > 0)
 		{
 		  changed_col_idx[cnt++] = i;
 		}
@@ -12159,7 +12160,7 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 
 	  for (i = 0; i < num_change_col; i++)
 	    {
-	      if (put_data (&new_values[changed_col_idx[i]], &ptr) != NO_ERROR)
+	      if (cdc_put_value_to_loginfo (&new_values[changed_col_idx[i]], &ptr) != NO_ERROR)
 		{
 		  error_code = ER_FAILED;
 		  goto end;
@@ -12179,7 +12180,7 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 
 	      for (i = 0; i < num_cond_col; i++)
 		{
-		  if (put_data (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
+		  if (cdc_put_value_to_loginfo (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
 		    {
 		      error_code = ER_FAILED;
 		      goto end;
@@ -12198,7 +12199,7 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 
 	      for (i = 0; i < num_cond_col; i++)
 		{
-		  if (put_data (&old_values[i], &ptr) != NO_ERROR)
+		  if (cdc_put_value_to_loginfo (&old_values[i], &ptr) != NO_ERROR)
 		    {
 		      error_code = ER_FAILED;
 		      goto end;
@@ -12223,7 +12224,7 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 
 	      for (i = 0; i < num_cond_col; i++)
 		{
-		  if (put_data (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
+		  if (cdc_put_value_to_loginfo (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
 		    {
 		      error_code = ER_FAILED;
 		      goto end;
@@ -12241,7 +12242,7 @@ make_dml (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
 
 	      for (i = 0; i < num_cond_col; i++)
 		{
-		  if (put_data (&old_values[i], &ptr) != NO_ERROR)
+		  if (cdc_put_value_to_loginfo (&old_values[i], &ptr) != NO_ERROR)
 		    {
 		      error_code = ER_FAILED;
 		      goto end;
@@ -12293,7 +12294,7 @@ end:
 
 #if 0
 static int
-make_ddl (char *supplement_data, int trid, const char *user, LOG_INFO_ENTRY * ddl_entry)
+cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOGINFO_ENTRY * ddl_entry)
 {
   /*|statement type | class OID | object OID | statement length | statement | */
 
@@ -12304,7 +12305,7 @@ make_ddl (char *supplement_data, int trid, const char *user, LOG_INFO_ENTRY * dd
   int statement_length;
   char *statement;
   /*ddl log info : TRID | user | data_item_type | ddl_type | object_type | OID | class OID | statement length | statement | 
-   * make_ddl construct log info from ddl_type to statement */
+   * cdc_make_ddl_loginfo construct log info from ddl_type to statement */
   int loginfo_length;
   int dataitem_type = 0;
 /* JOOHOK : DDL info as structure, not packed info  
@@ -12396,7 +12397,7 @@ make_ddl (char *supplement_data, int trid, const char *user, LOG_INFO_ENTRY * dd
 #endif
 
 static int
-make_dcl (time_t at_time, int trid, char *user, int log_type, LOG_INFO_ENTRY * dcl_entry)
+cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LOGINFO_ENTRY * dcl_entry)
 {
   DATAITEM_TYPE dataitem_type = DCL;
   DCL_TYPE dcl_type;
@@ -12445,7 +12446,7 @@ make_dcl (time_t at_time, int trid, char *user, int log_type, LOG_INFO_ENTRY * d
 }
 
 static int
-make_timer (time_t at_time, int trid, char *user, LOG_INFO_ENTRY * timer_entry)
+cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY * timer_entry)
 {
   DATAITEM_TYPE dataitem_type = TIMER;
 
@@ -12476,7 +12477,7 @@ make_timer (time_t at_time, int trid, char *user, LOG_INFO_ENTRY * timer_entry)
 }
 
 static int
-find_tran_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa, int trid, char **user)
+cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa, int trid, char **user)
 {
   /*find tran user at the end of the transaction  */
   LOG_PAGE *log_page_p = NULL;
@@ -12537,7 +12538,7 @@ find_tran_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_ls
 }
 
 static int
-compare_record (const db_value * new_value, const db_value * cmpdata)
+cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpdata)
 {
   /* return 1 if different */
   /* return 0 if same */
@@ -12765,7 +12766,7 @@ compare_record (const db_value * new_value, const db_value * cmpdata)
 }
 
 static int
-put_data (const db_value * new_value, char **data_ptr)
+cdc_put_value_to_loginfo (const db_value * new_value, char **data_ptr)
 {
   const char *src, *end;
   double d;
