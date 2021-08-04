@@ -59,6 +59,7 @@
 #include "fault_injection.h"
 #include "vacuum.h"
 #include "dbtype.h"
+#include "server_type.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
@@ -4914,7 +4915,7 @@ disk_stab_init (THREAD_ENTRY * thread_p, DISK_VOLUME_HEADER * volheader)
 	  log_append_redo_data2 (thread_p, RVDK_INITMAP, NULL, page_stab, NULL_OFFSET, sizeof (nsects_set),
 				 &nsects_set);
 	}
-      if (!LOG_ISRESTARTED ())
+      if (!LOG_ISRESTARTED () && !is_tran_server_with_remote_storage ())
 	{
 	  /* page buffer will invalidated and pages will not be flushed. */
 	  pgbuf_set_dirty (thread_p, page_stab, DONT_FREE);
