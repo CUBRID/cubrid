@@ -975,12 +975,13 @@ namespace cublog
       }
   }
 
-  redo_job_impl *reusable_jobs_stack::blocking_pop ()
+  redo_job_impl *reusable_jobs_stack::blocking_pop (log_recovery_redo_perf_stat &a_rcv_redo_perf_stat)
   {
     if (!m_pop_stack.empty ())
       {
 	redo_job_impl *const pop_job = m_pop_stack.top ();
 	m_pop_stack.pop ();
+        a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_DIRECT);
 	return pop_job;
       }
     else
@@ -998,6 +999,7 @@ namespace cublog
 
 	redo_job_impl *const pop_job = m_pop_stack.top ();
 	m_pop_stack.pop ();
+        a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_WAIT);
 	return pop_job;
       }
 

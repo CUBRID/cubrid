@@ -465,7 +465,7 @@ namespace cublog
 	return m_stack_size;
       }
 
-      redo_job_impl *blocking_pop ();
+      redo_job_impl *blocking_pop (log_recovery_redo_perf_stat &a_rcv_redo_perf_stat);
       void push (redo_job_impl *a_job);
 
     private:
@@ -546,9 +546,8 @@ log_rv_redo_record_sync_or_dispatch_async (
   else
     {
       // dispatch async
-      cublog::redo_job_impl *const job = a_reusable_jobs.blocking_pop ();
+      cublog::redo_job_impl *const job = a_reusable_jobs.blocking_pop (a_rcv_redo_perf_stat);
       assert (job != nullptr);
-      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE);
 
       job->reinitialize (rcv_vpid, rcv_lsa, log_rtype);
       // it is the callee's responsibility to return the pointer back to the reusable
