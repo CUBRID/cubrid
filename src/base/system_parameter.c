@@ -1894,8 +1894,8 @@ bool PRM_OPTIMIZER_ENABLE_MERGE_JOIN = false;
 static bool prm_optimizer_enable_merge_join_default = false;
 static unsigned int prm_optimizer_enable_merge_join_flag = 0;
 
-UINT64 PRM_MAX_HASH_LIST_SCAN_SIZE = 4 * 1024 * 1024;	/* 4 MB */
-static UINT64 prm_max_hash_list_scan_size_default = 4 * 1024 * 1024;	/* 4 MB */
+UINT64 PRM_MAX_HASH_LIST_SCAN_SIZE = 8 * 1024 * 1024;	/* 8 MB */
+static UINT64 prm_max_hash_list_scan_size_default = 8 * 1024 * 1024;	/* 8 MB */
 static UINT64 prm_max_hash_list_scan_size_lower = 0;	/* 0 */
 static UINT64 prm_max_hash_list_scan_size_upper = 128 * 1024 * 1024;	/* 128 MB */
 static unsigned int prm_max_hash_list_scan_size_flag = 0;
@@ -4490,7 +4490,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_READ_ONLY_MODE,
    PRM_NAME_READ_ONLY_MODE,
-   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_read_only_mode_flag,
    (void *) &prm_read_only_mode_default,

@@ -6737,7 +6737,7 @@ vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VPID_COPY (&page->next_page, (VPID *) rcv->data);
 
   /* Check recovery data is as expected */
-  assert (rcv->length = sizeof (VPID));
+  assert (rcv->length == sizeof (VPID));
 
   vacuum_er_log (VACUUM_ER_LOG_RECOVERY, "Set link for dropped files from page %d|%d to page %d|%d.",
 		 pgbuf_get_vpid_ptr (rcv->pgptr)->pageid, pgbuf_get_vpid_ptr (rcv->pgptr)->volid, page->next_page.volid,

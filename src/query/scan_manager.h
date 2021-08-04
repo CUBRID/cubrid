@@ -304,14 +304,14 @@ struct scan_stats
   UINT64 num_ioreads;
 
   /* for heap & list scan */
-  int read_rows;		/* # of rows read */
-  int qualified_rows;		/* # of rows qualified by data filter */
+  UINT64 read_rows;		/* # of rows read */
+  UINT64 qualified_rows;	/* # of rows qualified by data filter */
 
   /* for btree scan */
-  int read_keys;		/* # of keys read */
-  int qualified_keys;		/* # of keys qualified by key filter */
-  int key_qualified_rows;	/* # of rows qualified by key filter */
-  int data_qualified_rows;	/* # of rows qualified by data filter */
+  UINT64 read_keys;		/* # of keys read */
+  UINT64 qualified_keys;	/* # of keys qualified by key filter */
+  UINT64 key_qualified_rows;	/* # of rows qualified by key filter */
+  UINT64 data_qualified_rows;	/* # of rows qualified by data filter */
   struct timeval elapsed_lookup;
   bool covered_index;
   bool multi_range_opt;

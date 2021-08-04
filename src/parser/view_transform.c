@@ -213,7 +213,6 @@ static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 			       FIND_ID_TYPE type);
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 					      PT_NODE * new_query, FIND_ID_INFO * infop);
-static int mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec);
 static PT_NODE *mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 						   PT_NODE * query_spec);
 static PT_NODE *mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement);
@@ -431,7 +430,6 @@ mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
   /* if we reached this point, it's not outer joined */
   return false;
 }
-
 
 /*
  * mq_bump_corr_pre() -  Bump the correlation level of all matching
@@ -3180,7 +3178,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *temp;
   int nullable_cnt;		/* nullable terms count */
   PT_NODE *save_next;
-  bool is_afterjoinable;
+  bool is_outer_joined, has_derived_table_inst;
 
   /* init */
   push_term_list = NULL;
@@ -3188,6 +3186,13 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   push_correlated_cnt = 0;
 
   copy_cnt = -1;
+
+  /* check inst num in derived table. can not push predicate into subquery having inst num */
+  has_derived_table_inst = pt_has_inst_or_orderby_num_in_where (parser, new_query);
+  if (has_derived_table_inst)
+    {
+      return 0;
+    }
 
   if (PT_IS_QUERY (new_query)
       && (pt_has_analytic (parser, new_query) || PT_SELECT_INFO_IS_FLAGED (new_query, PT_SELECT_INFO_COLS_SCHEMA)
@@ -3197,10 +3202,21 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       return push_cnt;
     }
 
+  /* check outer join spec. */
+  is_outer_joined = mq_is_outer_join_spec (parser, spec);
+
   for (term = statement->info.query.q.select.where; term; term = term->next)
     {
-      /* check for nullable-term */
-      if (term->node_type == PT_EXPR)
+      /* check for on_cond term */
+      assert (term->node_type == PT_EXPR || term->node_type == PT_VALUE);
+      if ((term->node_type == PT_EXPR && term->info.expr.location > 0)
+	  || (term->node_type == PT_VALUE && term->info.value.location > 0))
+	{
+	  continue;		/* do not copy-push on_cond-term */
+	}
+
+      /* check for nullable-term of outer join spec */
+      if (is_outer_joined && term->node_type == PT_EXPR)
 	{
 	  save_next = term->next;
 	  term->next = NULL;	/* cut-off link */
@@ -3212,7 +3228,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	  if (nullable_cnt)
 	    {
-	      continue;		/* do not copy-push nullable-term */
+	      continue;		/* do not copy-push nullable-term of outer spec */
 	    }
 	}
       if (pt_sargable_term (parser, term, infop) && PT_PUSHABLE_TERM (infop))
@@ -3222,36 +3238,15 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  /* for term, mark as copy-pushed term */
 	  if (term->node_type == PT_EXPR)
 	    {
-	      /* check for after-join term */
-	      is_afterjoinable = false;	/* init */
-	      for (temp = spec; temp; temp = temp->next)
+	      if (copy_cnt == -1)	/* very the first time */
 		{
-		  if (temp->info.spec.join_type == PT_JOIN_LEFT_OUTER
-		      || temp->info.spec.join_type == PT_JOIN_RIGHT_OUTER
-		      || temp->info.spec.join_type == PT_JOIN_FULL_OUTER)
-		    {
-		      is_afterjoinable = true;
-		      break;
-		    }
+		  copy_cnt = pt_check_copypush_subquery (parser, new_query);
 		}
 
-	      if (is_afterjoinable)
+	      if (copy_cnt == 0)	/* not found not-pushable query */
 		{
-		  ;		/* may be after-join term. give up */
+		  PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
 		}
-	      else
-		{
-		  if (copy_cnt == -1)	/* very the first time */
-		    {
-		      copy_cnt = pt_check_copypush_subquery (parser, new_query);
-		    }
-
-		  if (copy_cnt == 0)	/* not found not-pushable query */
-		    {
-		      PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
-		    }
-		}
-
 	      PT_EXPR_INFO_CLEAR_FLAG (new_term, PT_EXPR_INFO_COPYPUSH);
 	    }
 	  push_term_list = parser_append_node (new_term, push_term_list);
@@ -3292,7 +3287,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
  *   statement(in):
  *   spec(in):
  */
-static int
+int
 mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec)
 {
   PT_NODE *derived_table;
@@ -4630,10 +4625,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	      return NULL;
 	    }
 	}
-      else if (from->info.spec.derived_table_type == PT_IS_SUBQUERY)
-	{
-	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
-	}
 
       while (from->next)
 	{
@@ -4646,10 +4637,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	  if (is_union_translation != 0)
 	    {
 	      from->next = mq_rewrite_vclass_spec_as_derived (parser, select_statement, from->next, NULL);
-	    }
-	  else if (from->next->info.spec.derived_table_type == PT_IS_SUBQUERY)
-	    {
-	      (void) mq_copypush_sargable_terms (parser, select_statement, from->next);
 	    }
 	  from = from->next;
 	}
@@ -4672,11 +4659,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	      select_statement->info.query.q.select.from =
 		mq_rewrite_vclass_spec_as_derived (parser, select_statement, from, NULL);
 	    }
-	}
-
-      if (is_union_translation == false && from && from->info.spec.derived_table_type == PT_IS_SUBQUERY)
-	{
-	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
 	}
     }
 
@@ -8865,12 +8847,6 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 		}
 	      else
 		{
-		  if (newspec->info.spec.entity_name == NULL)
-		    {
-		      newspec->info.spec.entity_name = spec->info.spec.entity_name;
-		      /* spec will be free later, we don't want the entity_name will be freed */
-		      spec->info.spec.entity_name = NULL;
-		    }
 		  newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
 		}
 
