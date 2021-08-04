@@ -141,7 +141,7 @@ const VPID &ut_page::get_vpid () const
 ux_ut_redo_job_impl ut_page::generate_changes (ut_database &a_database_recovery,
     ut_database_values_generator &a_db_global_values)
 {
-  const log_lsa log_lsa_v = a_db_global_values.increment_and_get_lsa_log (); // get a copy
+  const log_lsa log_lsa_v = a_db_global_values.increment_and_get_lsa_log ();
   const double millis = a_db_global_values.rand_duration_in_millis ();
 
   ux_ut_redo_job_impl job_to_append

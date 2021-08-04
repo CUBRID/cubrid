@@ -67,6 +67,7 @@ namespace cublog
 
       int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
+      void retire () override;
 
     private:
       const time_msec_t m_start_time_msec;
@@ -88,10 +89,15 @@ namespace cublog
 
       int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader, LOG_ZIP &undo_unzip_support,
 		   LOG_ZIP &redo_unzip_support) override;
+      void retire () override;
 
     private:
       log_unique_stats m_stats;
   };
+
+  /*********************************************************************
+   * replicator - definition
+   *********************************************************************/
 
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
@@ -109,16 +115,17 @@ namespace cublog
     const int replication_parallel
       = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
     assert (replication_parallel >= 0);
-    cublog::reusable_jobs_stack reusable_jobs;
     if (replication_parallel > 0)
       {
 	m_minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
 	// no need to reset with start redo lsa
 
-	assert ("reusable jobs not initialized" == nullptr);
-
-	m_parallel_replication_redo.reset (
-		new cublog::redo_parallel (replication_parallel, &reusable_jobs, m_minimum_log_lsa.get ()));
+	const bool force_each_log_page_fetch = true;
+	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
+	m_reusable_jobs->initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_STACK_SIZE,
+				     nullptr, force_each_log_page_fetch);
+	m_parallel_replication_redo.reset (new cublog::redo_parallel (
+	    replication_parallel, m_minimum_log_lsa.get ()));
       }
 
     // Create the daemon
@@ -339,9 +346,8 @@ namespace cublog
       }
     else
       {
-	assert ("reusable jobs not implemented for replication" == nullptr);
-//	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
-//	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, true, m_rcv_redo_perf_stat);
+	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
+	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, *m_reusable_jobs.get (), true, m_rcv_redo_perf_stat);
       }
   }
 
@@ -410,7 +416,7 @@ namespace cublog
   }
 
   /*********************************************************************
-   * redo_job_replication_delay_impl - definition
+   * replication delay calculation - definition
    *********************************************************************/
 
   redo_job_replication_delay_impl::redo_job_replication_delay_impl (
@@ -425,6 +431,12 @@ namespace cublog
   {
     const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec);
     return res;
+  }
+
+  void
+  redo_job_replication_delay_impl::retire ()
+  {
+    delete this;
   }
 
   /* log_rpl_calculate_replication_delay - calculate delay based on a given start time value
@@ -463,7 +475,7 @@ namespace cublog
   }
 
   /*********************************************************************
-   * replication b-tree unique statistics - declaration
+   * replication b-tree unique statistics - definition
    *********************************************************************/
 
   void
@@ -493,6 +505,12 @@ namespace cublog
   {
     replicate_btree_stats (*thread_p, get_vpid (), m_stats, get_log_lsa ());
     return NO_ERROR;
+  }
+
+  void
+  redo_job_btree_stats::retire ()
+  {
+    delete this;
   }
 
 } // namespace cublog
