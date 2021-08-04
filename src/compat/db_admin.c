@@ -951,7 +951,21 @@ db_restart_ex (const char *program, const char *db_name, const char *db_user, co
       db_set_preferred_hosts (preferred_hosts);
     }
 
+#if !defined(CS_MODE)
   return db_restart (program, false, db_name);
+#else
+  tde_Cipher.is_loaded = false;
+  if ((retval = db_restart (program, false, db_name)) == NO_ERROR)
+    {
+      // Even if tde_get_data_keys() fails, it is executed normally.
+      if (tde_get_data_keys () == NO_ERROR)
+	{
+	  tde_Cipher.is_loaded = true;
+	}
+    }
+
+  return retval;
+#endif
 }
 
 /*
@@ -964,6 +978,10 @@ int
 db_shutdown (void)
 {
   int error = NO_ERROR;
+
+#if defined(CS_MODE)
+  tde_Cipher.is_loaded = false;
+#endif
 
   error = boot_shutdown_client (true);
   db_Database_name[0] = '\0';

@@ -718,20 +718,25 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
     {
       memset (evp_cipher.nonce, 0x07, sizeof (evp_cipher.nonce));
 
+#if !defined(CS_MODE)
+      memcpy (evp_cipher.master_key, tde_Cipher.data_keys.log_key, TDE_MASTER_KEY_LENGTH);
+#endif
+      is_init_done = 1;
+    }
+
 #if defined(CS_MODE)
+  if (tde_Cipher.is_loaded == false)
+    {
       int err;
       extern int tde_get_data_keys ();	// declared in "network_interface_cl.c"
       if ((err = tde_get_data_keys ()) != NO_ERROR)
 	{
 	  return err;
 	}
-
       tde_Cipher.is_loaded = true;
-#endif
-
-      memcpy (evp_cipher.master_key, tde_Cipher.data_keys.log_key, TDE_MASTER_KEY_LENGTH);
-      is_init_done = 1;
     }
+  memcpy (evp_cipher.master_key, tde_Cipher.data_keys.log_key, TDE_MASTER_KEY_LENGTH);
+#endif
 
   if ((*ctx = EVP_CIPHER_CTX_new ()) == NULL)
     {

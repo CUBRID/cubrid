@@ -18308,7 +18308,7 @@ get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VAL
     }
   else
     {
-      if ((lt = localtime (&check_time.tv_sec)) == NULL)
+      if ((lt = localtime ((time_t *) & check_time.tv_sec)) == NULL)
 	{
 	  sprintf ((char *) private_key, "%08ld%06ld", check_time.tv_sec, check_time.tv_usec);
 	}
@@ -18472,9 +18472,9 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
   p++;
   p += (*p + 1);
 
-  if(strlen((char*)p) < pwdlen)
+  if (strlen ((char *) p) < pwdlen)
     {
-        return ER_FAILED;
+      return ER_FAILED;
     }
 
   if (pwdlen > 0)
