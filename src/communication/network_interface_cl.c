@@ -1840,7 +1840,7 @@ file_apply_tde_to_class_files (const OID * class_oid)
 #endif /* !CS_MODE */
 }
 
-#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+#if defined(UNSTABLE_TDE_FOR_REPLICATION_LOG) || defined(CS_MODE)
 /*
  * tde_get_data_keys -
  *

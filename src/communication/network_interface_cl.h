@@ -122,7 +122,7 @@ extern int heap_destroy (const HFID * hfid);
 extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid);
 extern int heap_reclaim_addresses (const HFID * hfid);
 extern int file_apply_tde_to_class_files (const OID * class_oid);
-#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+#if defined(UNSTABLE_TDE_FOR_REPLICATION_LOG) || defined(CS_MODE)
 extern int tde_get_data_keys ();
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 extern int tde_get_mk_file_path (char *mk_path);
