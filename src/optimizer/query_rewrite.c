@@ -7351,6 +7351,17 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	    {
 	      return node;	/* give up */
 	    }
+
+	  /* predicate push */
+	  spec = node->info.query.q.select.from;
+	  while (spec)
+	    {
+	      if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
+		{
+		  (void) mq_copypush_sargable_terms (parser, node, spec);
+		}
+	      spec = spec->next;
+	    }
 	}
 
       /* auto-parameterization is safe when it is done as the last step of rewrite optimization */
