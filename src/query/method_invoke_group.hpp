@@ -17,7 +17,7 @@
  */
 
 /*
- * method_invoke_group.hpp - conversion from string to DB_VALUE
+ * method_invoke_group.hpp - a facade class to process stored procedure
  */
 
 #ifndef _METHOD_INVOKE_GROUP_HPP_
