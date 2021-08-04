@@ -10218,17 +10218,17 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 }
 
 #if defined (SERVER_MODE)
-static void 
+static void
 cdc_thread_checker (THREAD_ENTRY * thread_p)
 {
-  if (LSA_LE (&log_Reader_info.next_lsa, log_Gl.append.get_nxio_lsa()))
-  {
-    //pthread_cond_signal (&lsa_cond);
-  }
+  if (LSA_LE (&log_Reader_info.next_lsa, log_Gl.append.get_nxio_lsa ()))
+    {
+      //pthread_cond_signal (&lsa_cond);
+    }
 }
 
-static void 
-cdc_log_producer (THREAD_ENTRY *thread_p)
+static void
+cdc_log_producer (THREAD_ENTRY * thread_p)
 {
 
 }
@@ -10278,11 +10278,11 @@ cdc_log_producer_interval (bool & is_timed_wait, cubthread::delta_time & period)
 }
 /* *INDENT-ON* */
 
-void 
-cdc_log_producer_daemon_init()
+void
+cdc_log_producer_daemon_init ()
 {
   assert (cdc_log_Producer_daemon == NULL);
-  
+
   /* *INDENT-OFF* */
   cubthread::looper looper = cubthread::looper (cdc_log_producer_interval);
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (cdc_log_producer_execute);
@@ -10291,8 +10291,8 @@ cdc_log_producer_daemon_init()
   /* *INDENT-ON* */
 }
 
-void 
-cdc_thread_checker_daemon_init()
+void
+cdc_thread_checker_daemon_init ()
 {
   assert (cdc_Thread_checker_daemon == NULL);
 
@@ -10304,15 +10304,15 @@ cdc_thread_checker_daemon_init()
   /* *INDENT-ON* */
 }
 
-void 
-cdc_daemons_init()
+void
+cdc_daemons_init ()
 {
   cdc_log_producer_daemon_init ();
   cdc_thread_checker_daemon_init ();
 }
 
-void 
-cdc_daemons_destroy()
+void
+cdc_daemons_destroy ()
 {
   /* *INDENT-OFF* */
   cubthread::get_manager ()->destroy_daemon (cdc_log_Producer_daemon);
@@ -10320,25 +10320,25 @@ cdc_daemons_destroy()
   /* *INDENT-ON* */
 }
 
-void 
-cdc_wakeup_log_producer()
+void
+cdc_wakeup_log_producer ()
 {
   if (cdc_log_Producer_daemon != NULL)
-  {
-    cdc_log_Producer_daemon->wakeup();
-  }
+    {
+      cdc_log_Producer_daemon->wakeup ();
+    }
 }
 
-void 
-cdc_wakeup_thread_checker()
+void
+cdc_wakeup_thread_checker ()
 {
   if (cdc_Thread_checker_daemon != NULL)
-  {
-    cdc_Thread_checker_daemon->wakeup();
-  }
+    {
+      cdc_Thread_checker_daemon->wakeup ();
+    }
 }
 
-#endif 
+#endif
 
 //
 // log critical section
