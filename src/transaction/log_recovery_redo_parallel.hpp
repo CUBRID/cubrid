@@ -40,8 +40,9 @@ namespace cublog
 {
 #if defined (SERVER_MODE)
   // TODO: make reserve size configurable based on expected load of recovery
-  static constexpr size_t PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE = ONE_M;
-  static constexpr size_t PARALLEL_REDO_REUSABLE_JOBS_COUNT = 100 * ONE_K;
+  static constexpr std::size_t PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE = ONE_M;
+  static constexpr std::size_t PARALLEL_REDO_REUSABLE_JOBS_COUNT = 100 * ONE_K;
+  static constexpr std::size_t PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_AT_COUNT = 100;
 
   // forward declaration
   class reusable_jobs_stack;
