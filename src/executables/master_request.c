@@ -64,7 +64,7 @@
 #define IS_MASTER_SOCKET_FD(FD)         \
       ((FD) == css_Master_socket_fd[0] || (FD) == css_Master_socket_fd[1])
 
-#define SERVER_FORMAT_STRING " Server %s (rel %s, pid %d)\n"
+#define SERVER_FORMAT_STRING " %s-Server %s (rel %s, pid %d)\n"
 #define HA_SERVER_FORMAT_STRING " HA-Server %s (rel %s, pid %d)\n"
 #define HA_COPYLOGDB_FORMAT_STRING " HA-copylogdb %s (rel %s, pid %d)\n"
 #define HA_APPLYLOGDB_FORMAT_STRING " HA-applylogdb %s (rel %s, pid %d)\n"
@@ -304,6 +304,7 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	  else
 	    {
 	      required_size += strlen (SERVER_FORMAT_STRING);
+	      required_size += strlen (temp->server_type == SERVER_TYPE_PAGE ? "Page" : "Transaction");
 	    }
 	  required_size += strlen (temp->name);
 	  if (temp->version_string != NULL)
@@ -342,7 +343,8 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	    }
 	  else
 	    {
-	      snprintf (buffer + strlen (buffer), required_size, SERVER_FORMAT_STRING, temp->name,
+	      snprintf (buffer + strlen (buffer), required_size, SERVER_FORMAT_STRING,
+			temp->server_type == SERVER_TYPE_PAGE ? "Page" : "Transaction", temp->name,
 			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 
 	    }
@@ -407,6 +409,7 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	      break;
 	    default:
 	      required_size += strlen (SERVER_FORMAT_STRING);
+	      required_size += strlen (temp->server_type == SERVER_TYPE_PAGE ? "Page" : "Transaction");
 	      break;
 	    }
 	  required_size += strlen (temp->name);
@@ -453,7 +456,8 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	      break;
 	    default:
-	      snprintf (buffer + strlen (buffer), required_size, SERVER_FORMAT_STRING, temp->name,
+	      snprintf (buffer + strlen (buffer), required_size, SERVER_FORMAT_STRING,
+			temp->server_type == SERVER_TYPE_PAGE ? "Page" : "Transaction", temp->name,
 			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	      break;
 	    }
