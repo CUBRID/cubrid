@@ -38,6 +38,7 @@
 #include "boot_sr.h"
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
+#include "server_type.hpp"
 
 
 #define DWB_SLOTS_HASH_SIZE		    1000
@@ -1157,6 +1158,7 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT6
   const int freelist_block_count = 2;
   const int freelist_block_size = DWB_SLOTS_FREE_LIST_SIZE;
 
+  assert (!is_tran_server_with_remote_storage ());
   assert (dwb_volume_name != NULL && current_position_with_flags != NULL);
 
   double_write_buffer_size = prm_get_integer_value (PRM_ID_DWB_SIZE);
@@ -2703,6 +2705,12 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 
   assert (p_dwb_slot != NULL && (io_page_p != NULL || (*p_dwb_slot)->io_page != NULL) && vpid != NULL);
 
+  if (is_tran_server_with_remote_storage ())
+    {
+      *p_dwb_slot = NULL;
+      return NO_ERROR;
+    }
+
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
@@ -3103,6 +3111,12 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 
   assert (dwb_Global.vdes == NULL_VOLDES);
 
+  if (is_tran_server_with_remote_storage ())
+    {
+      // No permanent data flushes, no double write buffer required.
+      return NO_ERROR;
+    }
+
   dwb_check_logging ();
 
   fileio_make_dwb_name (dwb_Volume_name, dwb_path_p, db_name_p);
@@ -3299,8 +3313,14 @@ int
 dwb_destroy (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
-  UINT64 current_position_with_flags;
 
+  if (is_tran_server_with_remote_storage ())
+    {
+      assert (dwb_Global.vdes == NULL_VOLDES);
+      return NO_ERROR;
+    }
+
+  UINT64 current_position_with_flags;
   error_code = dwb_starts_structure_modification (thread_p, &current_position_with_flags);
   if (error_code != NO_ERROR)
     {
