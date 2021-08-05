@@ -1473,15 +1473,15 @@ check_server (const char *type, const char *server_name)
 
       if (strcmp (type, CHECK_SERVER) == 0)
 	{
-	  if (strcmp (type, CHECK_SERVER) != 0 && strcmp (token, CHECK_HA_SERVER) != 0)
+	  if (strcmp (token, CHECK_PAGE_SERVER) != 0 && strcmp (token, CHECK_TRANSACTION_SERVER) != 0
+	      && strcmp (token, CHECK_HA_SERVER) != 0)
 	    {
 	      continue;
 	    }
 	}
       else
 	{
-	  if (strcmp (token, type) != 0 || strcmp (token, CHECK_PAGE_SERVER) != 0
-	      || strcmp (token, CHECK_TRANSACTION_SERVER) != 0)
+	  if (strcmp (token, type) != 0)
 	    {
 	      continue;
 	    }
