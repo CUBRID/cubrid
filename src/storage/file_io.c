@@ -89,6 +89,9 @@
 #include "vacuum.h"
 #endif /* SERVER_MODE */
 #include "crypt_opfunc.h"
+#if !defined (CS_MODE)
+#include "server_type.hpp"
+#endif
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -6497,25 +6500,38 @@ fileio_find_next_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
 VOLID
 fileio_find_previous_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
 {
-  FILEIO_VOLUME_INFO *vol_info_p;
-  APPLY_ARG arg = { 0 };
-
-  if (volid == NULL_VOLID)
+#if !defined (CS_MODE)
+  if (is_tran_server_with_remote_storage ())
     {
+      // volumes are always assigned successively
+      assert (volid > 0);
+      return volid - 1;
+    }
+  else
+    {
+#endif // !CS_MODE
+      FILEIO_VOLUME_INFO *vol_info_p;
+      APPLY_ARG arg = { 0 };
+
+      if (volid == NULL_VOLID)
+	{
+	  return NULL_VOLID;
+	}
+
+      FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
+
+      arg.vol_id = volid;
+      vol_info_p = fileio_reverse_traverse_permanent_volume (thread_p, fileio_is_volume_id_lt, &arg);
+      if (vol_info_p)
+	{
+	  assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);
+	  return vol_info_p->volid;
+	}
+
       return NULL_VOLID;
+#if !defined (CS_MODE)
     }
-
-  FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
-
-  arg.vol_id = volid;
-  vol_info_p = fileio_reverse_traverse_permanent_volume (thread_p, fileio_is_volume_id_lt, &arg);
-  if (vol_info_p)
-    {
-      assert (fileio_get_volume_descriptor (volid) != NULL_VOLDES);
-      return vol_info_p->volid;
-    }
-
-  return NULL_VOLID;
+#endif // !CS_MODE
 }
 
 VOLID

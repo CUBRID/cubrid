@@ -75,6 +75,7 @@ static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, O
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
 static void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
+static TRANID log_rv_get_min_trantable_tranid ();
 
 /*
  * CRASH RECOVERY PROCESS
@@ -940,6 +941,24 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
   return false;
 }
 
+TRANID
+log_rv_get_min_trantable_tranid ()
+{
+  TRANID min_tranid = NULL_TRANID;
+  for (int tran_index = 1; tran_index < log_Gl.trantable.num_total_indices; ++tran_index)
+    {
+      const TRANID tranid = log_Gl.trantable.all_tdes[tran_index]->trid;
+      if (tranid != NULL_TRANID)
+	{
+	  if (min_tranid == NULL_TRANID || min_tranid > tranid)
+	    {
+	      min_tranid = tranid;
+	    }
+	}
+    }
+  return min_tranid;
+}
+
 /*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
  *
@@ -981,6 +1000,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_mvcc_op = false;
   const bool force_each_log_page_fetch = false;
+  const TRANID min_trantable_tranid = log_rv_get_min_trantable_tranid ();
 
   /* depending on compilation mode and on a system parameter, initialize the
    * infrastructure for parallel log recovery;
@@ -1526,7 +1546,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	      {
 		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
 		bool free_tran = false;
-		const int tran_index = logtb_find_tran_index (thread_p, tran_id);
+		int tran_index = NULL_TRAN_INDEX;
+		if (min_trantable_tranid != NULL_TRANID && tran_id >= min_trantable_tranid)
+		  {
+		    tran_index = logtb_find_tran_index (thread_p, tran_id);
+		  }
 		LOG_TDES *tdes = nullptr;
 		if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
 		  {
