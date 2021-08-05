@@ -67,7 +67,7 @@ namespace cublog
 
       int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
-      void retire () override;
+      void retire (std::size_t a_task_idx) override;
 
     private:
       const time_msec_t m_start_time_msec;
@@ -89,7 +89,7 @@ namespace cublog
 
       int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader, LOG_ZIP &undo_unzip_support,
 		   LOG_ZIP &redo_unzip_support) override;
-      void retire () override;
+      void retire (std::size_t a_task_idx) override;
 
     private:
       log_unique_stats m_stats;
@@ -122,8 +122,8 @@ namespace cublog
 
 	const bool force_each_log_page_fetch = true;
 	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
-	m_reusable_jobs->initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_STACK_SIZE,
-				     nullptr, force_each_log_page_fetch);
+	m_reusable_jobs->initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_COUNT, replication_parallel,
+				     100, nullptr, force_each_log_page_fetch);
 	m_parallel_replication_redo.reset (new cublog::redo_parallel (
 	    replication_parallel, m_minimum_log_lsa.get ()));
       }
@@ -434,7 +434,7 @@ namespace cublog
   }
 
   void
-  redo_job_replication_delay_impl::retire ()
+  redo_job_replication_delay_impl::retire (std::size_t)
   {
     delete this;
   }
@@ -508,7 +508,7 @@ namespace cublog
   }
 
   void
-  redo_job_btree_stats::retire ()
+  redo_job_btree_stats::retire (std::size_t)
   {
     delete this;
   }

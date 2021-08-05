@@ -154,7 +154,8 @@ namespace cublog
    * redo_parallel::redo_job_queue - definition
    *********************************************************************/
 
-  redo_parallel::redo_job_queue::redo_job_queue (const std::size_t a_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa)
+  redo_parallel::redo_job_queue::redo_job_queue (const std::size_t a_task_count,
+      minimum_log_lsa_monitor *a_minimum_log_lsa)
     : m_task_count { a_task_count }
     , m_produce_vec { a_task_count }
     , m_produce_mutex_vec { a_task_count }
@@ -711,7 +712,7 @@ namespace cublog
 		for (auto &job : *jobs_vec)
 		  {
 		    job->execute (thread_entry, m_log_pgptr_reader, m_undo_unzip_support, m_redo_unzip_support);
-		    job->retire ();
+		    job->retire (m_task_idx);
 		  }
 
 		//m_queue.notify_job_deque_finished (jobs);
@@ -915,10 +916,10 @@ namespace cublog
     return NO_ERROR;
   }
 
-  void redo_job_impl::retire ()
+  void redo_job_impl::retire (std::size_t a_task_idx)
   {
     // return the job back to the pool of available reusable jobs
-    m_reusable_job_stack->push (this);
+    m_reusable_job_stack->push (a_task_idx, this);
   }
 
   template <typename T>
@@ -938,80 +939,117 @@ namespace cublog
    *********************************************************************/
 
   reusable_jobs_stack::reusable_jobs_stack ()
-    : m_stack_size { 0 }
+    : m_job_count { 0 }
+    , m_push_task_count { 0 }
+    , m_flush_push_at_count { 0 }
   {
   }
 
-  void reusable_jobs_stack::initialize (std::size_t a_stack_size, const log_lsa *a_end_redo_lsa,
-					bool force_each_page_fetch)
+  void reusable_jobs_stack::initialize (std::size_t a_job_count, std::size_t a_push_task_count,
+					std::size_t a_flush_push_at_count,
+					const log_lsa *a_end_redo_lsa, bool force_each_page_fetch)
   {
-    assert (m_pop_stack.empty ());
-    assert (m_push_stack.empty ());
+    assert (m_job_count == 0);
+    assert (m_push_task_count == 0);
+    assert (m_flush_push_at_count == 0);
 
-    m_stack_size = a_stack_size;
-    for (std::size_t idx = 0; idx < m_stack_size; ++idx)
+    assert (m_pop_jobs.empty ());
+
+    assert (m_per_task_push_jobs_vec.empty ());
+    assert (m_per_task_mtx_vec.empty ());
+
+    assert (a_job_count > 0);
+    assert (a_push_task_count > 0);
+
+    m_job_count = a_job_count;
+    m_push_task_count = a_push_task_count;
+    m_flush_push_at_count = a_flush_push_at_count;
+
+    for (std::size_t idx = 0; idx < m_job_count; ++idx)
       {
 	redo_job_impl *job = new redo_job_impl (a_end_redo_lsa, force_each_page_fetch, this);
-	m_pop_stack.push (job);
+	m_pop_jobs.push_back (job);
       }
+
+    m_per_task_push_jobs_vec.resize (m_push_task_count);
+    m_per_task_mtx_vec.resize (m_push_task_count);
   }
 
   reusable_jobs_stack::~reusable_jobs_stack ()
   {
-    assert ((m_pop_stack.size () + m_push_stack.size ()) == m_stack_size);
+    const std::size_t pop_size = m_pop_jobs.size ();
+    std::size_t push_size = 0;
+    for (auto &push_container: m_per_task_push_jobs_vec)
+      {
+	push_size += push_container.size ();
+      }
+    assert ((pop_size + push_size) == m_job_count);
 
-    while (!m_push_stack.empty ())
+    for (job_container_t &push_jobs: m_per_task_push_jobs_vec)
       {
-	redo_job_impl *const push_job = m_push_stack.top ();
-	m_push_stack.pop ();
-	delete push_job;
+	for (redo_job_impl *&job_ptr: push_jobs)
+	  {
+	    delete job_ptr;
+	  }
+	push_jobs.clear ();
       }
-    while (!m_pop_stack.empty ())
+
+    for (redo_job_impl *&job_ptr: m_pop_jobs)
       {
-	redo_job_impl *const pop_job = m_pop_stack.top ();
-	m_pop_stack.pop ();
-	delete pop_job;
+	delete job_ptr;
       }
+    m_pop_jobs.clear ();
   }
 
   redo_job_impl *reusable_jobs_stack::blocking_pop (log_recovery_redo_perf_stat &a_rcv_redo_perf_stat)
   {
-    if (!m_pop_stack.empty ())
+    int dummy = 0;
+    if (!m_pop_jobs.empty ())
       {
-	redo_job_impl *const pop_job = m_pop_stack.top ();
-	m_pop_stack.pop ();
-        a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_DIRECT);
+	redo_job_impl *const pop_job = m_pop_jobs.front ();
+	m_pop_jobs.pop_front ();
+	a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_DIRECT);
 	return pop_job;
       }
     else
       {
-	{
-	  std::unique_lock<std::mutex> ulock { m_mutex };
-	  m_jobs_available_on_push_stack_cv.wait (ulock, [this] ()
+	while (true)
 	  {
-	    return !m_push_stack.empty ();
-	  });
+	    std::size_t task_idx = 0;
+	    for (std::mutex &task_mtx: m_per_task_mtx_vec)
+	      {
+		std::lock_guard<std::mutex> lockg {task_mtx};
+		job_container_t &task_jobs = m_per_task_push_jobs_vec[task_idx];
+		m_pop_jobs.insert (m_pop_jobs.end(), task_jobs.cbegin (), task_jobs.cend ());
+		task_jobs.clear ();
+		++task_idx;
+	      }
 
-	  assert (m_pop_stack.empty ());
-	  m_pop_stack.swap (m_push_stack);
-	}
-
-	redo_job_impl *const pop_job = m_pop_stack.top ();
-	m_pop_stack.pop ();
-        a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_WAIT);
-	return pop_job;
+	    if (m_pop_jobs.empty ())
+	      {
+		std::this_thread::yield ();
+		a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_YIELD);
+	      }
+	    else
+	      {
+		redo_job_impl *const pop_job = m_pop_jobs.front ();
+		m_pop_jobs.pop_front ();
+		a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_WAIT);
+		return pop_job;
+	      }
+	  }
       }
 
     assert ("unreachable state reached" == nullptr);
     return nullptr;
   }
 
-  void reusable_jobs_stack::push (redo_job_impl *a_job)
+  void reusable_jobs_stack::push (std::size_t a_task_idx, redo_job_impl *a_job)
   {
-    {
-      std::lock_guard<std::mutex> stack_lockg { m_mutex };
-      m_push_stack.push (a_job);
-    }
-    m_jobs_available_on_push_stack_cv.notify_one ();
+    std::mutex &mtx = m_per_task_mtx_vec[a_task_idx];
+    std::lock_guard<std::mutex> lockg { mtx };
+
+    job_container_t &push_jobs = m_per_task_push_jobs_vec[a_task_idx];
+    push_jobs.push_back (a_job);
   }
 }

@@ -41,7 +41,7 @@ namespace cublog
 #if defined (SERVER_MODE)
   // TODO: make reserve size configurable based on expected load of recovery
   static constexpr size_t PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE = ONE_M;
-  static constexpr size_t PARALLEL_REDO_REUSABLE_JOBS_STACK_SIZE = 100 * ONE_K;
+  static constexpr size_t PARALLEL_REDO_REUSABLE_JOBS_COUNT = 100 * ONE_K;
 
   // forward declaration
   class reusable_jobs_stack;
@@ -390,7 +390,7 @@ namespace cublog
 
       virtual int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 			   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) = 0;
-      virtual void retire () = 0;
+      virtual void retire (std::size_t a_task_idx) = 0;
 
     private:
       VPID m_vpid;
@@ -424,7 +424,7 @@ namespace cublog
 
       int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
-      void retire () override;
+      void retire (std::size_t a_task_idx) override;
 
     private:
       template <typename T>
@@ -446,6 +446,8 @@ namespace cublog
    */
   class reusable_jobs_stack final
   {
+      using job_container_t = std::deque<redo_job_impl *>;
+
     public:
       reusable_jobs_stack ();
       reusable_jobs_stack (const reusable_jobs_stack &) = delete;
@@ -456,32 +458,41 @@ namespace cublog
       reusable_jobs_stack &operator = (const reusable_jobs_stack &) = delete;
       reusable_jobs_stack &operator = (reusable_jobs_stack &&) = delete;
 
-      void initialize (std::size_t a_stack_size, const log_lsa *a_end_redo_lsa,
-		       bool force_each_page_fetch);
+      void initialize (std::size_t a_job_count, std::size_t a_push_task_count,
+		       std::size_t a_flush_push_at_count,
+		       const log_lsa *a_end_redo_lsa, bool force_each_page_fetch);
 
       std::size_t size () const
       {
-	return m_stack_size;
+	return m_job_count;
       }
 
       redo_job_impl *blocking_pop (log_recovery_redo_perf_stat &a_rcv_redo_perf_stat);
-      void push (redo_job_impl *a_job);
+      void push (std::size_t a_task_idx, redo_job_impl *a_job);
 
     private:
-      std::size_t m_stack_size;
+      /* configuration, constants after initialization
+       */
+      std::size_t m_job_count;
+      std::size_t m_push_task_count;
+      std::size_t m_flush_push_at_count;
 
       /* pop is done, unsynchronized, from this stack
        * if empty, it is re-filled, synchronized, from the push stack
        */
-      std::stack<redo_job_impl *> m_pop_stack;
-      /* push happens, synchronized, on this stack
+      job_container_t m_pop_jobs;
+      /* synchronizes access from towards the push side, moving jobs back to
+       * the pop side
        */
-      std::stack<redo_job_impl *> m_push_stack;
-      std::mutex m_mutex;
+
+      /* each task (thread) pushes, unsynched on its own container from this vector
+       * at regular intervals, objects are further moved, synchronized, to the pop side
+       */
+      std::vector<job_container_t> m_per_task_push_jobs_vec;
+      std::deque<std::mutex> m_per_task_mtx_vec;
       /* used to wait for jobs to be available on the push stack
        * in case no jobs are found on the pop stack
        */
-      std::condition_variable m_jobs_available_on_push_stack_cv;
   };
 
 #else /* SERVER_MODE */

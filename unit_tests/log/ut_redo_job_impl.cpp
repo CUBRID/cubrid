@@ -45,7 +45,7 @@ int ut_redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_rea
   return NO_ERROR;
 }
 
-void ut_redo_job_impl::retire ()
+void ut_redo_job_impl::retire (std::size_t)
 {
   delete this;
 }
