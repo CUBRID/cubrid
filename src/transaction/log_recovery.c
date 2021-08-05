@@ -1726,7 +1726,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     const auto time_dur_async_ms =
       std::chrono::duration_cast < std::chrono::milliseconds > (time_end_async - time_start);
     _er_log_debug (ARG_FILE_LINE,
-		   "log_recovery_redo_perf:  parallel_count= %2d  reusable_jobs= %6d\n  flush_back_count= %4d"
+		   "log_recovery_redo_perf:  parallel_count= %2d  reusable_jobs= %6d  flush_back_count= %4d\n"
 		   "log_recovery_redo_perf:  main= %6lld  async= %6lld (ms)\n",
 		   log_recovery_redo_parallel_count, reusable_jobs.size (),
 		   cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT,
