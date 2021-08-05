@@ -1840,7 +1840,7 @@ file_apply_tde_to_class_files (const OID * class_oid)
 #endif /* !CS_MODE */
 }
 
-#if defined(UNSTABLE_TDE_FOR_REPLICATION_LOG) || defined(CS_MODE)
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 /*
  * tde_get_data_keys -
  *
@@ -1884,6 +1884,46 @@ tde_get_data_keys ()
 #endif /* !CS_MODE */
 }
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+
+
+int
+get_dblink_chpher_master_key ()
+{
+#if defined(CS_MODE)
+  TDE_DATA_KEY_SET data_keys;
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, area_size;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply, *area;
+
+  dblink_Cipher_key.is_loaded = false;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request2 (NET_SERVER_TDE_GET_DATA_KEYS, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error);
+      if (area_size > 0)
+	{
+	  ptr = or_unpack_stream (area, (char *) data_keys.perm_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_unpack_stream (ptr, (char *) data_keys.temp_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_unpack_stream (ptr, (char *) dblink_Cipher_key.master_key, TDE_DATA_KEY_LENGTH);
+	  dblink_Cipher_key.is_loaded = true;
+	}
+      free_and_init (area);
+    }
+
+  return error;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
 
 /*
  * tde_get_mk_file_path -

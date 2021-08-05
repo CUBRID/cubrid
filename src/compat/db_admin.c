@@ -911,6 +911,9 @@ db_restart (const char *program, int print_version, const char *volume)
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
+
+	  // Even if get_dblink_chpher_master_key() fails, it is executed normally.
+	  get_dblink_chpher_master_key ();
 	}
     }
 
@@ -951,21 +954,7 @@ db_restart_ex (const char *program, const char *db_name, const char *db_user, co
       db_set_preferred_hosts (preferred_hosts);
     }
 
-#if !defined(CS_MODE)
   return db_restart (program, false, db_name);
-#else
-  tde_Cipher.is_loaded = false;
-  if ((retval = db_restart (program, false, db_name)) == NO_ERROR)
-    {
-      // Even if tde_get_data_keys() fails, it is executed normally.
-      if (tde_get_data_keys () == NO_ERROR)
-	{
-	  tde_Cipher.is_loaded = true;
-	}
-    }
-
-  return retval;
-#endif
 }
 
 /*
@@ -980,7 +969,7 @@ db_shutdown (void)
   int error = NO_ERROR;
 
 #if defined(CS_MODE)
-  tde_Cipher.is_loaded = false;
+  dblink_Cipher_key.is_loaded = false;
 #endif
 
   error = boot_shutdown_client (true);

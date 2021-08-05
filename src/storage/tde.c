@@ -65,12 +65,13 @@
   } while (0)
 #define restore_signals(old_mask) sigprocmask(SIG_SETMASK, &(old_mask), NULL)
 
-/* *INDENT-OFF* */
-TDE_CIPHER tde_Cipher = 
-    { false, {{0x00,}, {0x00,}, {0x00,}}, 0 }; /* global var for TDE Module */
-/* *INDENT-ON* */
+#if defined(CS_MODE)
+DBLINK_CHPHER_KEY dblink_Cipher_key = { false, {0x00,}
+};
+#endif
 
 #if !defined(CS_MODE)
+TDE_CIPHER tde_Cipher;		/* global var for TDE Module */
 
 static OID tde_Keyinfo_oid = OID_INITIALIZER;	/* Location of keys */
 static HFID tde_Keyinfo_hfid = HFID_INITIALIZER;

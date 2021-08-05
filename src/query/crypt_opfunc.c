@@ -725,17 +725,17 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
     }
 
 #if defined(CS_MODE)
-  if (tde_Cipher.is_loaded == false)
+  if (dblink_Cipher_key.is_loaded == false)
     {
       int err;
-      extern int tde_get_data_keys ();	// declared in "network_interface_cl.c"
-      if ((err = tde_get_data_keys ()) != NO_ERROR)
+      extern int get_dblink_chpher_master_key ();	// declared in "network_interface_cl.c"
+      if ((err = get_dblink_chpher_master_key ()) != NO_ERROR)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
 	  return err;
 	}
-      tde_Cipher.is_loaded = true;
     }
-  memcpy (evp_cipher.master_key, tde_Cipher.data_keys.log_key, TDE_MASTER_KEY_LENGTH);
+  memcpy (evp_cipher.master_key, dblink_Cipher_key.master_key, TDE_MASTER_KEY_LENGTH);
 #endif
 
   if ((*ctx = EVP_CIPHER_CTX_new ()) == NULL)

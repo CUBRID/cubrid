@@ -101,21 +101,14 @@ typedef struct tde_mk_file_item
 #endif /* CS_MODE */
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
-/*
- * TDE Cipher, the core object on memory, which is loaded at restart 
- * and used everywhere encryption or decription is requested.
- *
- * Note: Now TDE for replication log is disabled,
- * so CS_MODE version tde_cipher is not needed.
- */
-typedef struct tde_cipher
+#if defined(CS_MODE)
+typedef struct dblink_cipher
 {
   bool is_loaded;
-  TDE_DATA_KEY_SET data_keys;	/* data keys decrypted from tde keyinfo heap, which is constant */
-  int64_t temp_write_counter;	/* used as nonce for temp file page, it has to be dealt atomically */
-} TDE_CIPHER;
-
-extern TDE_CIPHER tde_Cipher;	/* global var for TDE Module */
+  unsigned char master_key[TDE_DATA_KEY_LENGTH];
+} DBLINK_CHPHER_KEY;
+extern DBLINK_CHPHER_KEY dblink_Cipher_key;
+#endif
 
 #if !defined(CS_MODE)
 
@@ -151,6 +144,22 @@ extern TDE_CIPHER tde_Cipher;	/* global var for TDE Module */
    || (rcvindex) == RVREPL_DATA_UPDATE_END \
    || (rcvindex) == RVBT_ONLINE_INDEX_UNDO_TRAN_INSERT \
    || (rcvindex) == RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE)
+
+/*
+ * TDE Cipher, the core object on memory, which is loaded at restart 
+ * and used everywhere encryption or decription is requested.
+ *
+ * Note: Now TDE for replication log is disabled,
+ * so CS_MODE version tde_cipher is not needed.
+ */
+typedef struct tde_cipher
+{
+  bool is_loaded;
+  TDE_DATA_KEY_SET data_keys;	/* data keys decrypted from tde keyinfo heap, which is constant */
+  int64_t temp_write_counter;	/* used as nonce for temp file page, it has to be dealt atomically */
+} TDE_CIPHER;
+
+extern TDE_CIPHER tde_Cipher;	/* global var for TDE Module */
 
 /*
  * TDE module stores key information with all the data keys encrypted and master key hashed.
