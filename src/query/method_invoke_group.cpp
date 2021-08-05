@@ -36,7 +36,7 @@ namespace cubmethod
 // Method Group to invoke together
 //////////////////////////////////////////////////////////////////////////
   method_invoke_group::method_invoke_group (method_sig_list *sig_list)
-    : m_id ((int64_t) this), m_argument_vector (nullptr)
+    : m_id ((int64_t) this)
   {
     assert (sig_list && sig_list->num_methods > 0);
 
@@ -152,8 +152,6 @@ namespace cubmethod
   method_invoke_group::prepare (std::vector <DB_VALUE> &arg_base)
   {
     int error = NO_ERROR;
-
-    m_argument_vector = &arg_base;
 
 #if defined (SERVER_MODE)
     packing_packer packer;

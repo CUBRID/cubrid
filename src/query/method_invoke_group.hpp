@@ -104,7 +104,6 @@ namespace cubmethod
       std::vector <METHOD_TYPE> m_kind_type;
       std::vector <method_invoke *> m_method_vector;
 
-      std::vector <DB_VALUE> *m_argument_vector;
       std::vector <DB_VALUE> m_result_vector;	/* placeholder for result value */
   };
 
