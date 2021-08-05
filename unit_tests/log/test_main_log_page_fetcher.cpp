@@ -21,7 +21,6 @@
 #include "catch2/catch.hpp"
 
 #include "async_page_fetcher.hpp"
-#include "fake_packable_object.hpp"
 #include "log_reader.hpp"
 #include "page_buffer.h"
 
@@ -144,40 +143,6 @@ void test_env::on_receive_log_page (LOG_PAGEID page_id, const LOG_PAGE *log_page
   g_log_page_fetcher_test_data.page_ids_requested[page_id].is_page_received = true;
 }
 
-// implementation of cubrid stuff require for linking
-log_global log_Gl;
-
-log_global::log_global ()
-  : m_prior_recver (std::make_unique<cublog::prior_recver> (prior_info))
-{
-}
-
-log_global::~log_global ()
-{
-}
-
-namespace cublog
-{
-  EXPAND_PACKABLE_OBJECT_EMPTY_DEF (meta);
-  EXPAND_PACKABLE_OBJECT_EMPTY_DEF (checkpoint_info);
-
-  prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
-    : m_prior_lsa_info (prior_lsa_info)
-  {
-  }
-  prior_recver::~prior_recver () = default;
-}
-
-mvcc_active_tran::mvcc_active_tran () = default;
-mvcc_active_tran::~mvcc_active_tran () = default;
-mvcc_trans_status::mvcc_trans_status () = default;
-mvcc_trans_status::~mvcc_trans_status () = default;
-mvcctable::mvcctable () = default;
-mvcctable::~mvcctable () = default;
-
-log_append_info::log_append_info () = default;
-log_prior_lsa_info::log_prior_lsa_info () = default;
-
 int
 logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *log_lsa, LOG_CS_ACCESS_MODE, LOG_PAGE *log_pgptr)
 {
@@ -192,11 +157,6 @@ logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *log_lsa, LOG_CS_ACCESS_MODE, LO
     {
       return ER_FAILED;
     }
-}
-
-void
-logpb_flush_pages (THREAD_ENTRY *thread_p, const LOG_LSA *flush_lsa)
-{
 }
 
 void
