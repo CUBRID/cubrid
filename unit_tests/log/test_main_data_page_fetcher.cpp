@@ -19,8 +19,10 @@
 #define CATCH_CONFIG_MAIN
 
 #include "catch2/catch.hpp"
+
 #include "async_page_fetcher.hpp"
 #include "dbtype_def.h"
+#include "fake_packable_object.hpp"
 #include "log_reader.hpp"
 #include "page_buffer.h"
 
@@ -175,6 +177,39 @@ delete_page (PAGE_PTR page_ptr)
   FILEIO_PAGE *io_page = reinterpret_cast<FILEIO_PAGE *> (page_ptr);
   delete io_page;
 }
+
+// implementation of cubrid stuff require for linking
+log_global log_Gl;
+
+log_global::log_global ()
+  : m_prior_recver (std::make_unique<cublog::prior_recver> (prior_info))
+{
+}
+
+log_global::~log_global ()
+{
+}
+
+namespace cublog
+{
+  EXPAND_PACKABLE_OBJECT_EMPTY_DEF (meta);
+
+  prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
+    : m_prior_lsa_info (prior_lsa_info)
+  {
+  }
+  prior_recver::~prior_recver () = default;
+}
+
+mvcc_active_tran::mvcc_active_tran () = default;
+mvcc_active_tran::~mvcc_active_tran () = default;
+mvcc_trans_status::mvcc_trans_status () = default;
+mvcc_trans_status::~mvcc_trans_status () = default;
+mvcctable::mvcctable () = default;
+mvcctable::~mvcctable () = default;
+
+log_append_info::log_append_info () = default;
+log_prior_lsa_info::log_prior_lsa_info () = default;
 
 int
 logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *, LOG_CS_ACCESS_MODE, LOG_PAGE *)
