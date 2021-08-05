@@ -8020,8 +8020,6 @@ slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   return;
 }
 
-
-
 /*
  * sboot_compact_db -
  *
@@ -10235,15 +10233,14 @@ scdc_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
   char *ptr;
   LOG_LSA start_lsa;
   time_t input_time;
-  uint64_t b_start_lsa;
   int error;
 
-  ptr = or_unpack_int64 (request, &input_time);
+  or_unpack_int64 (request, &input_time);
 
   error = cdc_get_lsa (thread_p, input_time, &start_lsa);
 
   ptr = or_pack_int (reply, error);
-  ptr = or_pack_log_lsa (ptr, &start_lsa);
+  or_pack_log_lsa (ptr, &start_lsa);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
@@ -10277,6 +10274,7 @@ scdc_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
+
       for (int i = 0; i < num_user; i++)
 	{
 	  ptr = or_unpack_string (ptr, &dummy_user);
