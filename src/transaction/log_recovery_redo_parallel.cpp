@@ -956,7 +956,6 @@ namespace cublog
     assert (m_pop_jobs.empty ());
 
     assert (m_per_task_push_jobs_vec.empty ());
-    assert (m_per_task_mtx_vec.empty ());
 
     assert (a_job_count > 0);
     assert (a_push_task_count > 0);
@@ -972,18 +971,18 @@ namespace cublog
       }
 
     m_per_task_push_jobs_vec.resize (m_push_task_count);
-    m_per_task_mtx_vec.resize (m_push_task_count);
   }
 
   reusable_jobs_stack::~reusable_jobs_stack ()
   {
     const std::size_t pop_size = m_pop_jobs.size ();
-    std::size_t push_size = 0;
+    const std::size_t push_size = m_push_jobs.size ();
+    std::size_t per_task_push_size = 0;
     for (auto &push_container: m_per_task_push_jobs_vec)
       {
-	push_size += push_container.size ();
+	per_task_push_size += push_container.size ();
       }
-    assert ((pop_size + push_size) == m_job_count);
+    assert ((pop_size + push_size + per_task_push_size) == m_job_count);
 
     for (job_container_t &push_jobs: m_per_task_push_jobs_vec)
       {
@@ -1013,31 +1012,20 @@ namespace cublog
       }
     else
       {
-	while (true)
+	{
+	  std::unique_lock<std::mutex> locku { m_push_mtx };
+	  m_push_jobs_available_cv.wait (locku, [this] ()
 	  {
-	    std::size_t task_idx = 0;
-	    for (std::mutex &task_mtx: m_per_task_mtx_vec)
-	      {
-		std::lock_guard<std::mutex> lockg {task_mtx};
-		job_container_t &task_jobs = m_per_task_push_jobs_vec[task_idx];
-		m_pop_jobs.insert (m_pop_jobs.end(), task_jobs.cbegin (), task_jobs.cend ());
-		task_jobs.clear ();
-		++task_idx;
-	      }
+	    return !m_push_jobs.empty ();
+	  });
 
-	    if (m_pop_jobs.empty ())
-	      {
-		std::this_thread::yield ();
-		a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_YIELD);
-	      }
-	    else
-	      {
-		redo_job_impl *const pop_job = m_pop_jobs.front ();
-		m_pop_jobs.pop_front ();
-		a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_WAIT);
-		return pop_job;
-	      }
-	  }
+	  m_pop_jobs.swap (m_push_jobs);
+	}
+
+	redo_job_impl *const pop_job = m_pop_jobs.front ();
+	m_pop_jobs.pop_front ();
+	a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_WAIT);
+	return pop_job;
       }
 
     assert ("unreachable state reached" == nullptr);
@@ -1046,10 +1034,18 @@ namespace cublog
 
   void reusable_jobs_stack::push (std::size_t a_task_idx, redo_job_impl *a_job)
   {
-    std::mutex &mtx = m_per_task_mtx_vec[a_task_idx];
-    std::lock_guard<std::mutex> lockg { mtx };
-
     job_container_t &push_jobs = m_per_task_push_jobs_vec[a_task_idx];
     push_jobs.push_back (a_job);
+
+    if (push_jobs.size () > m_flush_push_at_count)
+      {
+	{
+	  std::lock_guard<std::mutex> locku { m_push_mtx };
+	  m_push_jobs.insert (m_push_jobs.end (), push_jobs.cbegin (), push_jobs.cend ());
+	}
+	push_jobs.clear ();
+	m_push_jobs_available_cv.notify_one ();
+      }
+
   }
 }

@@ -485,11 +485,16 @@ namespace cublog
        * the pop side
        */
 
+      /*
+       */
+      job_container_t m_push_jobs;
+      std::mutex m_push_mtx;
+      std::condition_variable m_push_jobs_available_cv;
+
       /* each task (thread) pushes, unsynched on its own container from this vector
        * at regular intervals, objects are further moved, synchronized, to the pop side
        */
       std::vector<job_container_t> m_per_task_push_jobs_vec;
-      std::deque<std::mutex> m_per_task_mtx_vec;
       /* used to wait for jobs to be available on the push stack
        * in case no jobs are found on the pop stack
        */
