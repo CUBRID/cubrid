@@ -5471,7 +5471,7 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 static PT_NODE *
 qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *spec, *prev_spec, *expr, *ns, *save_next;
+  PT_NODE *spec, *expr, *ns, *save_next;
   SPEC_ID_INFO info, info_spec;
   RESET_LOCATION_INFO locate_info;
   bool rewrite_again, is_outer_joined;
@@ -5492,8 +5492,7 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     {
       rewrite_again = false;
       /* traverse spec list */
-      prev_spec = NULL;
-      for (spec = node->info.query.q.select.from; spec; prev_spec = spec, spec = spec->next)
+      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
 	{
 	  /* check outer join spec. */
 	  is_outer_joined = mq_is_outer_join_spec (parser, spec);
