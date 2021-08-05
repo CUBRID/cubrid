@@ -86,7 +86,6 @@ namespace cubmethod
       else
 	{
 	  unpacker.unpack_int (e);	/* er_errid */
-	  // er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, e, 0);
 	}
       return e;
     };

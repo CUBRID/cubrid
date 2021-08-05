@@ -81,7 +81,6 @@ namespace cubmethod
       int callback_dispatch (cubmem::extensible_block &blk);
 
       method_invoke_group *m_group;
-      bool m_first;
       SOCKET m_sock_fd = INVALID_SOCKET;
       method_sig_node *m_method_sig;
   };
