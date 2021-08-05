@@ -159,6 +159,11 @@ logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *log_lsa, LOG_CS_ACCESS_MODE, LO
 }
 
 void
+logpb_flush_pages (THREAD_ENTRY *thread_p, const LOG_LSA *flush_lsa)
+{
+}
+
+void
 logpb_fatal_error (THREAD_ENTRY *, bool, const char *, const int, const char *, ...)
 {
   // todo: don't do fatal error on failed fetch log page

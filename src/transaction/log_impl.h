@@ -812,7 +812,7 @@ extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p, const boo
 extern int logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p);
 extern void logpb_flush_pages_direct (THREAD_ENTRY * thread_p);
-extern void logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa);
+extern void logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa);
 extern void logpb_force_flush_pages (THREAD_ENTRY * thread_p);
 extern void logpb_force_flush_header_and_pages (THREAD_ENTRY * thread_p);
 extern void logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p);

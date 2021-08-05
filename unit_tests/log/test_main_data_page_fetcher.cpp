@@ -184,6 +184,12 @@ logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *, LOG_CS_ACCESS_MODE, LOG_PAGE 
 }
 
 void
+logpb_flush_pages (THREAD_ENTRY *thread_p, const LOG_LSA *flush_lsa)
+{
+  assert (false);
+}
+
+void
 logpb_fatal_error (THREAD_ENTRY *, bool, const char *, const int, const char *, ...)
 {
   assert (false);

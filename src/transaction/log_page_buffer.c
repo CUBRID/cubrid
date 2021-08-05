@@ -4182,7 +4182,7 @@ logpb_flush_pages_direct (THREAD_ENTRY * thread_p)
  *                O           O         : async & group commit, just return
  */
 void
-logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
+logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
 {
 #if !defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);
