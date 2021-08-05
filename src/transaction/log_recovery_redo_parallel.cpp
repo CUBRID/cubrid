@@ -154,7 +154,7 @@ namespace cublog
    * redo_parallel::redo_job_queue - definition
    *********************************************************************/
 
-  redo_parallel::redo_job_queue::redo_job_queue (const unsigned a_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa)
+  redo_parallel::redo_job_queue::redo_job_queue (const std::size_t a_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa)
     : m_task_count { a_task_count }
     , m_produce_vec { a_task_count }
     , m_produce_mutex_vec { a_task_count }
@@ -227,7 +227,7 @@ namespace cublog
   }
 
   bool
-  redo_parallel::redo_job_queue::pop_jobs (unsigned a_task_idx,
+  redo_parallel::redo_job_queue::pop_jobs (std::size_t a_task_idx,
       redo_parallel::redo_job_queue::redo_job_vector_t *&in_out_jobs,
       bool &out_adding_finished)
   {
@@ -529,7 +529,7 @@ namespace cublog
   }
 
   void
-  redo_parallel::redo_job_queue::set_empty_at (unsigned a_index)
+  redo_parallel::redo_job_queue::set_empty_at (std::size_t a_index)
   {
     if (m_monitor_minimum_log_lsa)
       {
@@ -540,7 +540,7 @@ namespace cublog
   }
 
   void
-  redo_parallel::redo_job_queue::set_non_empty_at (unsigned a_index)
+  redo_parallel::redo_job_queue::set_non_empty_at (std::size_t a_index)
   {
     if (m_monitor_minimum_log_lsa)
       {
@@ -622,7 +622,7 @@ namespace cublog
       static constexpr unsigned short WAIT_AND_CHECK_MILLIS = 5;
 
     public:
-      redo_task (unsigned a_task_idx, redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
+      redo_task (std::size_t a_task_idx, redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
 		 , redo_parallel::redo_job_queue &a_queue);
       redo_task (const redo_task &) = delete;
       redo_task (redo_task &&) = delete;
@@ -635,7 +635,7 @@ namespace cublog
       void execute (context_type &context);
 
     private:
-      const unsigned m_task_idx;
+      const std::size_t m_task_idx;
       redo_parallel::task_active_state_bookkeeping &m_task_state_bookkeeping;
       redo_parallel::redo_job_queue &m_queue;
 
@@ -650,7 +650,7 @@ namespace cublog
 
   constexpr unsigned short redo_parallel::redo_task::WAIT_AND_CHECK_MILLIS;
 
-  redo_parallel::redo_task::redo_task (unsigned a_task_idx
+  redo_parallel::redo_task::redo_task (std::size_t a_task_idx
 				       , redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
 				       , redo_parallel::redo_job_queue &a_queue)
     : m_task_idx { a_task_idx }
@@ -736,8 +736,7 @@ namespace cublog
    *********************************************************************/
 
   redo_parallel::redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa)
-    : m_task_count { a_worker_count }
-    , m_worker_pool (nullptr)
+    : m_worker_pool (nullptr)
     , m_job_queue { a_worker_count, a_minimum_log_lsa }
     , m_waited_for_termination (false)
   {
@@ -746,8 +745,8 @@ namespace cublog
     const thread_type tt = log_is_in_crash_recovery () ? TT_RECOVERY : TT_REPLICATION;
     m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
 
-    do_init_worker_pool ();
-    do_init_tasks ();
+    do_init_worker_pool (a_worker_count);
+    do_init_tasks (a_worker_count);
   }
 
   redo_parallel::~redo_parallel ()
@@ -810,26 +809,26 @@ namespace cublog
   }
 
   void
-  redo_parallel::do_init_worker_pool ()
+  redo_parallel::do_init_worker_pool (std::size_t a_task_count)
   {
-    assert (m_task_count > 0);
+    assert (a_task_count > 0);
     assert (m_worker_pool == nullptr);
 
     // NOTE: already initialized globally (probably during boot)
     cubthread::manager *thread_manager = cubthread::get_manager ();
 
-    m_worker_pool = thread_manager->create_worker_pool (m_task_count, m_task_count, "log_recovery_redo_thread_pool",
+    m_worker_pool = thread_manager->create_worker_pool (a_task_count, a_task_count, "log_recovery_redo_thread_pool",
 		    m_pool_context_manager.get (),
-		    m_task_count, false /*debug_logging*/);
+		    a_task_count, false /*debug_logging*/);
   }
 
   void
-  redo_parallel::do_init_tasks ()
+  redo_parallel::do_init_tasks (std::size_t a_task_count)
   {
-    assert (m_task_count > 0);
+    assert (a_task_count > 0);
     assert (m_worker_pool != nullptr);
 
-    for (unsigned task_idx = 0; task_idx < m_task_count; ++task_idx)
+    for (unsigned task_idx = 0; task_idx < a_task_count; ++task_idx)
       {
 	// NOTE: task ownership goes to the worker pool
 	auto task = new redo_task (task_idx, m_task_state_bookkeeping, m_job_queue);

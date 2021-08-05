@@ -157,8 +157,8 @@ namespace cublog
       void wait_for_termination_and_stop_execution ();
 
     private:
-      void do_init_worker_pool ();
-      void do_init_tasks ();
+      void do_init_worker_pool (std::size_t a_task_count);
+      void do_init_tasks (std::size_t a_task_count);
 
     private:
       /* rynchronizes prod/cons of log entries in n-prod - m-cons fashion
@@ -179,7 +179,7 @@ namespace cublog
 
 	public:
 	  redo_job_queue () = delete;
-	  redo_job_queue (const unsigned m_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa);
+	  redo_job_queue (const std::size_t m_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa);
 	  ~redo_job_queue ();
 
 	  redo_job_queue (redo_job_queue const &) = delete;
@@ -204,7 +204,7 @@ namespace cublog
 	   * flag set to true signals to the callers that no more data is expected
 	   * and, therefore, they can also terminate
 	   */
-	  bool pop_jobs (unsigned a_task_idx, redo_job_vector_t *&in_out_jobs, bool &out_adding_finished);
+	  bool pop_jobs (std::size_t a_task_idx, redo_job_vector_t *&in_out_jobs, bool &out_adding_finished);
 
 	  void notify_job_deque_finished (const redo_job_vector_t &a_job_deque);
 
@@ -220,7 +220,7 @@ namespace cublog
 	  // TODO: remove function, only used in unit tests
 	  bool is_idle () const;
 
-	  void set_empty_at (unsigned a_index);
+	  void set_empty_at (std::size_t a_index);
 
 	private:
 	  void assert_idle () const;
@@ -247,11 +247,11 @@ namespace cublog
 //		  const std::lock_guard<std::mutex> &a_in_progress_lockg,
 //		  const ux_redo_job_deque &a_job_deque);
 
-	  void set_non_empty_at (unsigned a_index);
+	  void set_non_empty_at (std::size_t a_index);
 //          void do_check_empty_and_notify(std::lock_guard<std::mutex> &a_empty_lockg);
 
 	private:
-	  const unsigned m_task_count;
+	  const std::size_t m_task_count;
 
 	  std::vector<redo_job_vector_t *> m_produce_vec;
 	  std::hash<VPID> m_vpid_hash;
@@ -323,7 +323,6 @@ namespace cublog
       };
 
     private:
-      const unsigned m_task_count;
       std::unique_ptr<cubthread::entry_manager> m_pool_context_manager;
 
       /* the workpool already has and internal bookkeeping and can also wait for the tasks to terminate;
