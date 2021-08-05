@@ -4295,7 +4295,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
 	}
 
       // *INDENT-OFF*
-      if (ats_Gl.is_page_server_connected ())
+      if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
 	{
 	  log_Gl.wait_flushed_lsa (*flush_lsa);
 	  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
