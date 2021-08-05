@@ -1022,7 +1022,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_COUNT, log_recovery_redo_parallel_count,
-				  cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_AT_COUNT,
+				  cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT,
 				  &context.get_end_redo_lsa (), force_each_log_page_fetch);
 	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, nullptr));
       }
@@ -1726,9 +1726,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     const auto time_dur_async_ms =
       std::chrono::duration_cast < std::chrono::milliseconds > (time_end_async - time_start);
     _er_log_debug (ARG_FILE_LINE,
-		   "log_recovery_redo_perf:  recovery_parallel_count= %2d  reusable_jobs= %6d  main= %6lld  async= %6lld (ms)\n",
-		   log_recovery_redo_parallel_count, reusable_jobs.size (), (long long) time_dur_main_ms.count (),
-		   (long long) time_dur_async_ms.count ());
+		   "log_recovery_redo_perf:  parallel_count= %2d  reusable_jobs= %6d\n  flush_back_count= %4d"
+		   "log_recovery_redo_perf:  main= %6lld  async= %6lld (ms)\n",
+		   log_recovery_redo_parallel_count, reusable_jobs.size (),
+		   cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT,
+		   (long long) time_dur_main_ms.count (), (long long) time_dur_async_ms.count ());
   }
 #endif
   LOG_CS_ENTER (thread_p);

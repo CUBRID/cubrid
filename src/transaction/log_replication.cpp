@@ -123,7 +123,7 @@ namespace cublog
 	const bool force_each_log_page_fetch = true;
 	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
 	m_reusable_jobs->initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_COUNT, replication_parallel,
-				     cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_AT_COUNT,
+				     cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT,
 				     nullptr, force_each_log_page_fetch);
 	m_parallel_replication_redo.reset (new cublog::redo_parallel (
 	    replication_parallel, m_minimum_log_lsa.get ()));
