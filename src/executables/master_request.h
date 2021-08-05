@@ -50,7 +50,8 @@ extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTR
 
 extern void css_master_cleanup (int sig);
 
-extern SOCKET_QUEUE_ENTRY *css_return_entry_of_server (const char *name_p, SOCKET_QUEUE_ENTRY * anchor_p);
+extern SOCKET_QUEUE_ENTRY *css_return_entry_of_server (const char *name_p, SOCKET_QUEUE_ENTRY * anchor_p,
+						       SERVER_TYPE type);
 
 
 extern SOCKET_QUEUE_ENTRY *css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, const char *name_p,

@@ -351,7 +351,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, const char *s
 	  length = (int) strlen (server_name) + 1;
 	  if (length < server_name_length)
 	    {
-	      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+	      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor, type);
 	      if (entry != NULL)
 		{
 		  server_name += length;
@@ -471,7 +471,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   /* read server name */
   if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS)
     {
-      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor);
+      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
 
       if (entry != NULL)
 	{
@@ -531,7 +531,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
   /* read server name */
   if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS && !server_name.empty ())
     {
-      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor);
+      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
 
       if (entry != NULL)
 	{
@@ -570,7 +570,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 		  /* read server version_string, env_var, pid */
 		  if (length < server_name.length ())
 		    {
-		      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor);
+		      entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
 		      if (entry != NULL)
 			{
 			  const char *recv_data;
@@ -658,7 +658,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
   if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
     {
       server_name[name_length] = 0;
-      temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+      temp = css_return_entry_of_server (server_name, css_Master_socket_anchor, SERVER_TYPE_ANY);
       if (temp != NULL
 #if !defined(WINDOWS)
 	  && (temp->ha_mode == false || hb_is_deactivation_started () == false)
@@ -694,7 +694,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 		    }
 		  else if (!temp->ha_mode)
 		    {
-		      temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+		      temp = css_return_entry_of_server (server_name, css_Master_socket_anchor, SERVER_TYPE_ANY);
 		      if (temp != NULL)
 			{
 			  css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
@@ -1405,7 +1405,7 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, const char
  *   anchor_p(in):
  */
 SOCKET_QUEUE_ENTRY *
-css_return_entry_of_server (const char *name_p, SOCKET_QUEUE_ENTRY * anchor_p)
+css_return_entry_of_server (const char *name_p, SOCKET_QUEUE_ENTRY * anchor_p, SERVER_TYPE type)
 {
   SOCKET_QUEUE_ENTRY *p;
 
@@ -1416,7 +1416,7 @@ css_return_entry_of_server (const char *name_p, SOCKET_QUEUE_ENTRY * anchor_p)
 
   for (p = anchor_p; p; p = p->next)
     {
-      if (p->name && strcmp (p->name, name_p) == 0)
+      if (p->name && strcmp (p->name, name_p) == 0 && (type == SERVER_TYPE_ANY || p->server_type == type))
 	{
 	  return p;
 	}
