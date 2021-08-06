@@ -287,7 +287,6 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
   int bufsize = 0, required_size;
   char *buffer = NULL;
   SOCKET_QUEUE_ENTRY *temp;
-  std::string server_type_str;
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
@@ -305,15 +304,7 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	  else
 	    {
 	      required_size += strlen (SERVER_FORMAT_STRING);
-	      if (temp->server_type == SERVER_TYPE_TRANSACTION)
-		{
-		  server_type_str = "Transaction";
-		}
-	      else if (temp->server_type == SERVER_TYPE_PAGE)
-		{
-		  server_type_str = "Page";
-		}
-	      required_size += server_type_str.length ();
+	      required_size += strlen (temp->server_type == SERVER_TYPE_PAGE ? "Page" : "Transaction");
 	    }
 	  required_size += strlen (temp->name);
 	  if (temp->version_string != NULL)
@@ -352,8 +343,9 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	    }
 	  else
 	    {
-	      snprintf (buffer + strlen (buffer), required_size, SERVER_FORMAT_STRING, server_type_str.c_str (),
-			temp->name, (temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
+	      snprintf (buffer + strlen (buffer), required_size, SERVER_FORMAT_STRING,
+			temp->server_type == SERVER_TYPE_PAGE ? "Page" : "Transaction", temp->name,
+			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 
 	    }
 	}
@@ -397,7 +389,6 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
   int bufsize = 0, required_size;
   char *buffer = NULL;
   SOCKET_QUEUE_ENTRY *temp;
-  std::string server_type_str;
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
@@ -418,15 +409,7 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	      break;
 	    default:
 	      required_size += strlen (SERVER_FORMAT_STRING);
-	      if (temp->server_type == SERVER_TYPE_TRANSACTION)
-		{
-		  server_type_str = "Transaction";
-		}
-	      else if (temp->server_type == SERVER_TYPE_PAGE)
-		{
-		  server_type_str = "Page";
-		}
-	      required_size += server_type_str.length ();
+	      required_size += strlen (temp->server_type == SERVER_TYPE_PAGE ? "Page" : "Transaction");
 	      break;
 	    }
 	  required_size += strlen (temp->name);
@@ -473,8 +456,9 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	      break;
 	    default:
-	      snprintf (buffer + strlen (buffer), required_size, SERVER_FORMAT_STRING, server_type_str.c_str (),
-			temp->name + 1, (temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
+	      snprintf (buffer + strlen (buffer), required_size, SERVER_FORMAT_STRING,
+			temp->server_type == SERVER_TYPE_PAGE ? "Page" : "Transaction", temp->name,
+			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	      break;
 	    }
 	}
