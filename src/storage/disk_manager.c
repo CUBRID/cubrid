@@ -59,6 +59,8 @@
 #include "fault_injection.h"
 #include "vacuum.h"
 #include "dbtype.h"
+#include "scope_exit.hpp"
+#include "server_type.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
@@ -518,7 +520,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 #define fault_inject_random_crash()
 #endif /* RELEASE */
 
-  int vdes;			/* Volume descriptor */
+  int vdes = NULL_VOLDES;	/* Volume descriptor */
   DISK_VOLUME_HEADER *vhdr;	/* Pointer to volume header */
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr;		/* Address of logging data */
@@ -565,17 +567,24 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     }
   fault_inject_random_crash ();
 
-  /* this log must be flushed. */
-  logpb_force_flush_pages (thread_p);
-  fault_inject_random_crash ();
-
-  /* create and initialize the volume. recovery information is initialized in every page. */
-  vdes = fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages, vol_purpose == DB_PERMANENT_DATA_PURPOSE,
-			false, false, IO_PAGESIZE, kbytes_to_be_written_per_sec, false);
-  if (vdes == NULL_VOLDES)
+  if (!is_tran_server_with_remote_storage ())
     {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
+      /* this log must be flushed. */
+      logpb_force_flush_pages (thread_p);
+      fault_inject_random_crash ();
+    }
+
+  if (!(is_tran_server_with_remote_storage () && ext_info->voltype == DB_PERMANENT_VOLTYPE))
+    {
+      /* create and initialize the volume. recovery information is initialized in every page. */
+      vdes = fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages,
+			    vol_purpose == DB_PERMANENT_DATA_PURPOSE, false, false, IO_PAGESIZE,
+			    kbytes_to_be_written_per_sec, false);
+      if (vdes == NULL_VOLDES)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
     }
   /* from now on, if error occurs, we need to go to exit */
   fault_inject_random_crash ();
@@ -772,12 +781,15 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   fault_inject_random_crash ();
 
-  /* Flush all pages that were formatted. This is not needed, but it is done for security reasons to identify the volume
-   * in case of a system crash. Note that the identification may not be possible during media crashes */
-  (void) pgbuf_flush_all (thread_p, volid);
-  (void) fileio_synchronize (thread_p, vdes, vol_fullname, FILEIO_SYNC_ALSO_FLUSH_DWB);
+  if (!is_tran_server_with_remote_storage ())
+    {
+      /* Flush all pages that were formatted. This is not needed, but it is done for security reasons to identify the volume
+       * in case of a system crash. Note that the identification may not be possible during media crashes */
+      (void) pgbuf_flush_all (thread_p, volid);
+      (void) fileio_synchronize (thread_p, vdes, vol_fullname, FILEIO_SYNC_ALSO_FLUSH_DWB);
 
-  fault_inject_random_crash ();
+      fault_inject_random_crash ();
+    }
 
   /* todo: temporary is not logged because code should avoid it. this complicated system that uses page buffer should
    * not be necessary. with the exception of file manager and disk manager, who already manage to skip logging on
@@ -1971,17 +1983,20 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
-  /* expand volume */
-  error_code = fileio_expand_to (thread_p, volid, volume_new_npages, voltype);
-  if (error_code != NO_ERROR)
+  if (!(is_tran_server_with_remote_storage () && voltype == DB_PERMANENT_VOLTYPE))
     {
-      // important note - we just committed volume expansion; we cannot afford any failures here
-      // caller won't update cache!!
-      assert (false);
-      return error_code;
-    }
+      /* expand volume */
+      error_code = fileio_expand_to (thread_p, volid, volume_new_npages, voltype);
+      if (error_code != NO_ERROR)
+	{
+	  // important note - we just committed volume expansion; we cannot afford any failures here
+	  // caller won't update cache!!
+	  assert (false);
+	  return error_code;
+	}
 
-  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
+      FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
+    }
 
   *nsect_extended_out = nsect_extend;
 
@@ -2227,12 +2242,15 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
       goto exit;
     }
 
-  if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
+  if (!is_tran_server_with_remote_storage ())
     {
-      if (logpb_add_volume (NULL, volid, extinfo->name, DB_PERMANENT_DATA_PURPOSE) == NULL_VOLID)
+      if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto exit;
+	  if (logpb_add_volume (NULL, volid, extinfo->name, DB_PERMANENT_DATA_PURPOSE) == NULL_VOLID)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
 	}
     }
 
@@ -4126,62 +4144,67 @@ DISK_ISVALID
 disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID volid, PAGEID pageid, bool debug_crash)
 {
   PAGE_PTR page_volheader = NULL;
-  DISK_VOLUME_HEADER *volheader;
-  DISK_ISVALID isvalid = DISK_VALID;
-  SECTID sectid;
-  bool old_check_interrupt;
-  int old_wait_msecs;
+  DISK_VOLUME_HEADER *volheader = NULL;
 
-  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
+  bool old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
+  int old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
-  if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
+  auto exit_routine =
+    [&thread_p, &debug_crash, &page_volheader, &old_check_interrupt, &old_wait_msecs] (DISK_ISVALID isvalid) {
+    xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+    (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
+    if (page_volheader)
+      {
+	pgbuf_unfix (thread_p, page_volheader);
+      }
+    return isvalid;
+  };
+
+  if (!is_tran_server_with_remote_storage () && fileio_get_volume_descriptor (volid) == NULL_VOLDES)
     {
-      /* invalid */
       assert (!debug_crash);
-      isvalid = DISK_INVALID;
-      goto exit;
+      return exit_routine (DISK_INVALID);
+    }
+
+  if (pageid < 0)
+    {
+      assert (!debug_crash);
+      return exit_routine (DISK_INVALID);
     }
 
   if (pageid == DISK_VOLHEADER_PAGE)
     {
       /* valid */
-      isvalid = DISK_VALID;
-      goto exit;
+      return exit_routine (DISK_VALID);
     }
 
   if (disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &page_volheader, &volheader) != NO_ERROR)
     {
       ASSERT_ERROR ();
-      isvalid = DISK_ERROR;
-      goto exit;
+      return exit_routine (DISK_ERROR);
     }
 
   if (pageid <= volheader->sys_lastpage)
     {
-      isvalid = DISK_VALID;
-      goto exit;
+      return exit_routine (DISK_VALID);
     }
   if (pageid > DISK_SECTS_NPAGES (volheader->nsect_total))
     {
       assert (!debug_crash);
-      isvalid = DISK_INVALID;
-      goto exit;
+      return exit_routine (DISK_INVALID);
     }
 
-  sectid = SECTOR_FROM_PAGEID (pageid);
-  isvalid = disk_is_sector_reserved (thread_p, volheader, sectid, debug_crash);
-
-exit:
-  xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
-  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
-
-  if (page_volheader)
+  SECTID sectid = SECTOR_FROM_PAGEID (pageid);
+  DISK_ISVALID isvalid = disk_is_sector_reserved (thread_p, volheader, sectid, debug_crash);
+  if (isvalid == DISK_INVALID)
     {
-      pgbuf_unfix (thread_p, page_volheader);
+      assert (!debug_crash);
     }
-
-  return isvalid;
+  else if (isvalid == DISK_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  return exit_routine (isvalid);
 }
 
 /*
