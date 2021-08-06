@@ -1223,7 +1223,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
 		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
-		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }
 	      break;
 
@@ -1247,7 +1246,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
 		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
-		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }
 	      break;
 
@@ -1284,7 +1282,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
 		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
-		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }
 	      break;
 
@@ -1312,7 +1309,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
 		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
-		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }
 	      break;
 
@@ -1354,7 +1350,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 					&rcv_lsa, 0, nullptr, *redo_unzip_ptr);
 		    /* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
 		     * will be reallocated downstream if needed */
-		    rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 		  }
 	      }
 	      break;
@@ -1378,7 +1373,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
 		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
-		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }
 	      break;
 
@@ -1400,7 +1394,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
 		   force_each_log_page_fetch, rcv_redo_perf_stat);
                 // *INDENT-ON*
-		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH);
 	      }
 	      break;
 

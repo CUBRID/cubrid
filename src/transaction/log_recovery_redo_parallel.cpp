@@ -1010,7 +1010,6 @@ namespace cublog
 
   redo_job_impl *reusable_jobs_stack::blocking_pop (log_recovery_redo_perf_stat &a_rcv_redo_perf_stat)
   {
-    int dummy = 0;
     if (!m_pop_jobs.empty ())
       {
 	redo_job_impl *const pop_job = m_pop_jobs.back ();
