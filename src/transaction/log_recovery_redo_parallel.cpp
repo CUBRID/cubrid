@@ -964,13 +964,21 @@ namespace cublog
     m_push_task_count = a_push_task_count;
     m_flush_push_at_count = a_flush_push_at_count;
 
+    m_pop_jobs.reserve(m_job_count);
     for (std::size_t idx = 0; idx < m_job_count; ++idx)
       {
 	redo_job_impl *job = new redo_job_impl (a_end_redo_lsa, force_each_page_fetch, this);
 	m_pop_jobs.push_back (job);
       }
 
+    m_push_jobs.reserve(m_job_count);
+
     m_per_task_push_jobs_vec.resize (m_push_task_count);
+    const std::size_t per_task_reserve_size = m_job_count / m_push_task_count * 2;
+    for (job_container_t &jobs: m_per_task_push_jobs_vec)
+      {
+        jobs.reserve(per_task_reserve_size);
+      }
   }
 
   reusable_jobs_stack::~reusable_jobs_stack ()
@@ -1005,8 +1013,8 @@ namespace cublog
     int dummy = 0;
     if (!m_pop_jobs.empty ())
       {
-	redo_job_impl *const pop_job = m_pop_jobs.front ();
-	m_pop_jobs.pop_front ();
+	redo_job_impl *const pop_job = m_pop_jobs.back ();
+	m_pop_jobs.pop_back ();
 	a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_DIRECT);
 	return pop_job;
       }
@@ -1022,8 +1030,8 @@ namespace cublog
 	  m_pop_jobs.swap (m_push_jobs);
 	}
 
-	redo_job_impl *const pop_job = m_pop_jobs.front ();
-	m_pop_jobs.pop_front ();
+	redo_job_impl *const pop_job = m_pop_jobs.back ();
+	m_pop_jobs.pop_back ();
 	a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE_WAIT);
 	return pop_job;
       }

@@ -447,7 +447,7 @@ namespace cublog
    */
   class reusable_jobs_stack final
   {
-      using job_container_t = std::deque<redo_job_impl *>;
+      using job_container_t = std::vector<redo_job_impl *>;
 
     public:
       reusable_jobs_stack ();
