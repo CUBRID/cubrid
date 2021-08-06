@@ -3426,8 +3426,8 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
       info.in.attr_list = spec->info.spec.as_attr_list;
       info.in.query_list = derived_table;
 
-      sub = derived_table->info.query.q.select.from->info.spec.derived_table;
-      if (sub && sub->node_type == PT_DBLINK_TABLE)
+      sub = derived_table->info.query.q.select.from;
+      if (sub && sub->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
 	  push_cnt = mq_copypush_sargable_terms_dblink (parser, statement, spec, derived_table, &info);
 	}
