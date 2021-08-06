@@ -34,6 +34,7 @@
 
 enum PERF_STAT_RECOVERY_ID : cubperf::stat_id
 {
+  PERF_STAT_ID_OVERHEAD,
   PERF_STAT_ID_FETCH_PAGE,
   PERF_STAT_ID_READ_LOG,
   PERF_STAT_ID_REDO_OR_PUSH,
@@ -59,6 +60,8 @@ class log_recovery_redo_perf_stat
     inline log_recovery_redo_perf_stat (bool a_do_record)
       : m_definition
     {
+      cubperf::stat_definition (PERF_STAT_ID_OVERHEAD, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter overhead", "Timer overhead (μs)"),
       cubperf::stat_definition (PERF_STAT_ID_FETCH_PAGE, cubperf::stat_definition::COUNTER_AND_TIMER,
 				"Counter fetch_page", "Timer fetch_page (μs)"),
       cubperf::stat_definition (PERF_STAT_ID_READ_LOG, cubperf::stat_definition::COUNTER_AND_TIMER,
