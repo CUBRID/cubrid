@@ -59,7 +59,26 @@ int init_server_type (const char *db_name)
   int er_code = NO_ERROR;
   if (g_server_type == SERVER_TYPE_UNKNOWN)
     {
-      g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+      SERVER_TYPE parameter_value = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+
+      if (parameter_value == SERVER_TYPE_SINGLE_NODE)
+	{
+	  if (g_server_type == SERVER_TYPE_UNKNOWN)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1,
+		      "Single node server must have type specified as argument");
+	      return ER_INVALID_SERVER_OPTION;
+	    }
+	  else if (parameter_value == SERVER_TYPE_TRANSACTION)
+	    {
+	      char page_hosts_new_value[22];
+
+	      sprintf (page_hosts_new_value, "localhost:%d", prm_get_master_port_id ());
+	      prm_set_string_value (PRM_ID_PAGE_SERVER_HOSTS, page_hosts_new_value);
+	      prm_set_bool_value (PRM_ID_REMOTE_STORAGE, true);
+	    }
+	}
+      g_server_type = parameter_value;
       //if no parameter value is provided use transaction as the default type
       if (g_server_type == SERVER_TYPE_UNKNOWN)
 	{
