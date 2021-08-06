@@ -18205,6 +18205,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
 error_end:
   AU_ENABLE (au_save);
 
+  pr_clear_value (&pwd_val);
   while (--cnt >= 0)
     {
       pr_clear_value (&(values[cnt]));
@@ -18639,7 +18640,7 @@ ciper_func_test (PARSER_CONTEXT * parser)
 	      gettimeofday (&startTime[1], NULL);
 
 	      db_make_null (&decrypt_val[0]);
-              pt2 = (char *) db_get_string (&encrypt_val[0]);
+	      pt2 = (char *) db_get_string (&encrypt_val[0]);
 	      get_dblink_password_decrypt (parser, pt2, &decrypt_val[0]);
 	      pr_clear_value (&decrypt_val[0]);
 

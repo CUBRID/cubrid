@@ -66,8 +66,9 @@
 #define restore_signals(old_mask) sigprocmask(SIG_SETMASK, &(old_mask), NULL)
 
 #if defined(CS_MODE)
-DBLINK_CHPHER_KEY dblink_Cipher_key = { false, {0x00,}
-};
+// *INDENT-OFF*
+DBLINK_CHPHER_KEY dblink_Cipher_key = {false, {0x00,}};
+// *INDENT-ON*
 #endif
 
 #if !defined(CS_MODE)

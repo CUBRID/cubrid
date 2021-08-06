@@ -730,8 +730,8 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
   if (dblink_Cipher_key.is_loaded == false)
     {
       int err;
-      extern int get_dblink_chpher_master_key ();	// declared in "network_interface_cl.c"
-      if ((err = get_dblink_chpher_master_key ()) != NO_ERROR)
+      extern int dblink_get_cipher_master_key ();	// declared in "network_interface_cl.c"
+      if ((err = dblink_get_cipher_master_key ()) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
 	  return err;

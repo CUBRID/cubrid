@@ -1887,7 +1887,7 @@ tde_get_data_keys ()
 
 
 int
-get_dblink_chpher_master_key ()
+dblink_get_cipher_master_key ()
 {
 #if defined(CS_MODE)
   TDE_DATA_KEY_SET data_keys;

@@ -912,8 +912,8 @@ db_restart (const char *program, int print_version, const char *volume)
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
 
-	  // Even if get_dblink_chpher_master_key() fails, it is executed normally.
-	  get_dblink_chpher_master_key ();
+	  // Even if dblink_get_cipher_master_key() fails, it is executed normally.
+	  dblink_get_cipher_master_key ();
 	}
     }
 
