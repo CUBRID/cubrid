@@ -63,6 +63,11 @@ namespace cublog
     log_lsa loglsa {m_logpageid, 0};
     log_reader logreader { LOG_CS_SAFE_READER };
 
+    if (m_logpageid == LOGPB_HEADER_PAGE_ID)
+      {
+	// Make sure log page header is updated
+	logpb_force_flush_header_and_pages (&cubthread::get_entry ());
+      }
     int err = logreader.set_lsa_and_fetch_page (loglsa);
     m_callback (logreader.get_page (), err);
   }
