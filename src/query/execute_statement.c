@@ -183,10 +183,10 @@ static void init_compile_context (PARSER_CONTEXT * parser);
 static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
 
 static int get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VALUE * encrypt_val,
-					bool is_parser);
+					bool is_external);
 static int get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher, DB_VALUE * decrypt_val);
-static int shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time);
-static int reverse_shake_4_decrypt (char *confused, char *passwd);
+static int shake_dblink_password (const char *passwd, char *confused, struct timeval *chk_time);
+static int reverse_shake_dblink_password (char *confused, int length, char *passwd);
 #ifndef NDEBUG
 void ciper_func_test (PARSER_CONTEXT * parser);
 #endif
@@ -18221,7 +18221,22 @@ error_end:
 #define DBLINK_PASSWORD_PAD_LENGTH      (40)	// include 2(length) + 2(mk) + 2(length) + 32(mk), Must be 4 or more
 #define DBLINK_PASSWORD_MAX_BUFSIZE  ((int)(DBLINK_PASSWORD_CIPHER_LENGTH / 3 * 4) + DBLINK_PASSWORD_PAD_LENGTH)
 
-
+/*
+ * pt_check_dblink_password ()  : Check the validity of the entered password.
+ *
+ * return		  : NO_ERROR or error code.
+ * parser(in)		  : Parser context.
+ * passwd(in)             : Password entered by user(or parser)
+ * cipher_buf(out)	  : Encrypted password
+ * ciper_buf_size(in)	  : Size of cipher_buf
+ * 
+ * Remark: 
+ *     Checks whether the entered password is a raw password or an encrypted password,
+ *     if it is a raw password, encrypt it.
+ *     The length of the raw password is shorter than DBLINK_PASSWORD_MAX_LENGTH.
+ *     If it is an encrypted password, it must have a specific length.
+ *     Even if there is no raw password, it will be returned as an encrypted password.
+ */
 int
 pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher_buf, int ciper_buf_size)
 {
@@ -18247,7 +18262,8 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 
   db_make_null (&val);
   if (length <= DBLINK_PASSWORD_MAX_LENGTH)
-    {				// The pure key entered by the user.
+    {
+      // The raw password entered by the user.
       err = get_dblink_password_encrypt (parser, passwd, &val, true);
       if (err == NO_ERROR)
 	{
@@ -18264,7 +18280,8 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 	}
     }
   else if (length == max_len)
-    {				// A encrypted key from the pure key.      
+    {
+      // A encrypted password from the raw password.      
       err = get_dblink_password_decrypt (parser, passwd, &val);
       if (err == NO_ERROR)
 	{
@@ -18276,8 +18293,21 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
   return err;
 }
 
+/*
+ * get_dblink_password_encrypt ()  : Generates an encrypted password.
+ *
+ * return		  : NO_ERROR or error code.
+ * parser(in)		  : Parser context.
+ * passwd(in)             : Raw password
+ * encrypt_val(out)	  : Encrypted password
+ * is_external(in)	  : If true, generate a key for the external interface,
+ *                          Otherwise, it generates a key to be stored internally.
+ * 
+ * Remark: 
+ *      
+ */
 static int
-get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VALUE * encrypt_val, bool is_parser)
+get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VALUE * encrypt_val, bool is_external)
 {
   int err, length, buf_size;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
@@ -18286,6 +18316,8 @@ get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VAL
   struct timeval check_time = { 0, 0 };
   struct tm *lt;
   char empty_str[4] = { 0x00, };
+
+  srand (time (NULL));
 
   db_make_null (encrypt_val);
   if (!passwd)
@@ -18299,10 +18331,10 @@ get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VAL
       return ER_FAILED;
     }
 
-  length = shake_4_encrypt (passwd, confused, &check_time);
+  length = shake_dblink_password (passwd, confused, &check_time);
   passwd = confused;
 
-  if (is_parser == false)
+  if (is_external == false)
     {
       private_key[0] = 0x00;
     }
@@ -18336,6 +18368,17 @@ get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VAL
   return err;
 }
 
+/*
+ * get_dblink_password_decrypt ()  : Decrypt the encrypted password to extract the raw password.
+ *
+ * return		  : NO_ERROR or error code.
+ * parser(in)		  : Parser context.
+ * passwd_cipher(in)      : Encrypted password
+ * decrypt_val(out)	  : Raw password
+ * 
+ * Remark: 
+ *      
+ */
 static int
 get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher, DB_VALUE * decrypt_val)
 {
@@ -18364,7 +18407,7 @@ get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher,
       if (err == NO_ERROR)
 	{
 	  newpwd[new_length] = '\0';	// Do NOT omit this line.
-	  err = reverse_shake_4_decrypt (newpwd, cipher);
+	  err = reverse_shake_dblink_password (newpwd, new_length, cipher);
 	  if (err != NO_ERROR)
 	    {
 	      PT_ERROR (parser, NULL, "The checksum of the encrypted password does not match.");
@@ -18377,15 +18420,29 @@ get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher,
   return err;
 }
 
+/*
+ * shake_dblink_password ()  : Transforms the input password to create a new one.
+ *
+ * return	       : length of newly created password.
+ * passwd(in)	       : Raw password.
+ * confused(out)       : Newly created password.
+ * chk_time(out)       : Time of creation of new password
+ * 
+ * Remark:  
+ *         Even if the same raw password is entered, a different password is always generated.
+ *         This is to make it difficult to guess the password from the outside. 
+ *         Newly created password is binary.     
+ *         <header part><garbage part><data part><checksum part>               
+ */
 static int
-shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time)
+shake_dblink_password (const char *passwd, char *confused, struct timeval *chk_time)
 {
   const char *tmpx = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%%^&*()_-+=;:[]{}(),./?<>";
   int i, pwdlen, start;
   int shift, safe;
   unsigned char *p;
   unsigned char checksum;
-  int tmpx_len = (int) strlen (tmpx);
+  int tmpx_len = 90;		/* strlen(tmpx) */
 
   p = (unsigned char *) confused;
   pwdlen = (int) strlen (passwd);
@@ -18423,11 +18480,13 @@ shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time)
 	  shift++;
 	}
 
+      // conceptual example) password --> ordpassw
       for (i = 0; i < pwdlen; i++)
 	{
 	  p[((i + shift) < pwdlen) ? (i + shift) : ((i + shift) - pwdlen)] = passwd[i];
 	}
 
+      // conceptual example) ordpassw --> pseqbttx
       shift = ((chk_time->tv_usec & 0x7A5A) % 127) + 1;
       for (i = 0; i < pwdlen; i++)
 	{
@@ -18457,8 +18516,19 @@ shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time)
   return pwdlen;
 }
 
+/*
+ * reverse_shake_dblink_password ()  : Extract the raw password from the re-created password.
+ *
+ * return	       : NO_ERROR or error code.
+ * confused(in)	       : Password created via shake_dblink_password(). This is binary.
+ * length(in)          : lelgth of "confused" 
+ * passwd(out)         : Raw password.
+ * 
+ * Remark: 
+ *      
+ */
 static int
-reverse_shake_4_decrypt (char *confused, char *passwd)
+reverse_shake_dblink_password (char *confused, int length, char *passwd)
 {
   int i, pwdlen;
   int shift;
@@ -18472,7 +18542,7 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
   p++;
   p += (*p + 1);
 
-  if (strlen ((char *) p) < pwdlen)
+  if (length < pwdlen)
     {
       return ER_FAILED;
     }
@@ -18484,6 +18554,7 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
 	{
 	  shift++;
 	}
+      // conceptual example) pseqbttx --> ordpassw 
       for (i = 0; i < pwdlen; i++)
 	{
 	  passwd[i] = p[((i + shift) < pwdlen) ? (i + shift) : ((i + shift) - pwdlen)];
@@ -18491,6 +18562,7 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
 
       memcpy (&shift, confused, sizeof (int));
       shift = ((shift & 0x7A5A) % 127) + 1;
+      // conceptual example) ordpassw --> password
       for (i = 0; i < pwdlen; i++)
 	{
 	  passwd[i] = ((passwd[i] - shift) >= 0) ? (passwd[i] - shift) : (passwd[i] - shift + 128);
@@ -18535,117 +18607,165 @@ ciper_func_test (PARSER_CONTEXT * parser)
   DB_VALUE decrypt_val[2];
 
   static int flag = 0;
+  static int time_spent_check = 0;
 
   printf ("START: ciper_func_test()\n");
   srand (time (NULL));
 
-  for (loop = 0; loop < 1000000; loop++)
+  if (time_spent_check)
+    {				// time check
+      struct timeval startTime[2], endTime[2];
+      double diffTime[2], sumTime = 0.0;
+
+      gettimeofday (&startTime[0], NULL);
+
+      for (loop = 0; loop < 1000000; loop++)
+	{
+	  len = (rand () % 7) + 7;
+	  for (i = 0; i < len; i++)
+	    {
+	      tmp[i] = tmpx[rand () % strlen (tmpx)];
+	    }
+	  tmp[i] = 0x00;
+	  pt = tmp;
+
+	  memset (buf2, 0x00, sizeof (buf2));
+	  sprintf ((char *) buf1, "%s", pt);
+
+	  db_make_null (&encrypt_val[0]);
+	  err = get_dblink_password_encrypt (parser, pt, &encrypt_val[0], false);
+	  if (err == NO_ERROR)
+	    {
+	      gettimeofday (&startTime[1], NULL);
+
+	      db_make_null (&decrypt_val[0]);
+              pt2 = (char *) db_get_string (&encrypt_val[0]);
+	      get_dblink_password_decrypt (parser, pt2, &decrypt_val[0]);
+	      pr_clear_value (&decrypt_val[0]);
+
+	      gettimeofday (&endTime[1], NULL);
+	      sumTime +=
+		(endTime[1].tv_sec - startTime[1].tv_sec) + ((endTime[1].tv_usec - startTime[1].tv_usec) / 1000000);
+	    }
+
+	  pr_clear_value (&encrypt_val[0]);
+	}
+
+      gettimeofday (&endTime[0], NULL);
+      diffTime[0] = (endTime[0].tv_sec - startTime[0].tv_sec) + ((endTime[0].tv_usec - startTime[0].tv_usec) / 1000000);
+      printf ("%.6f, %.6f\n", diffTime[0], sumTime);
+    }
+  else
     {
-      len = (rand () % 129);
-      //len = 128;
-      for (i = 0; i < len; i++)
+      for (loop = 0; loop < 1000000; loop++)
 	{
-	  tmp[i] = tmpx[rand () % strlen (tmpx)];
+	  len = (rand () % 129);
+	  //len = 128;
+	  for (i = 0; i < len; i++)
+	    {
+	      tmp[i] = tmpx[rand () % strlen (tmpx)];
+	    }
+	  tmp[i] = 0x00;
+
+	  if (flag)
+	    {
+	      sprintf (tmp, "love");
+	    }
+	  pt = tmp;
+
+	  memset (buf2, 0x00, sizeof (buf2));
+	  sprintf ((char *) buf1, "%s", pt);
+
+	retry_once:
+	  db_make_null (&encrypt_val[0]);
+	  db_make_null (&encrypt_val[1]);
+	  db_make_null (&decrypt_val[0]);
+	  db_make_null (&decrypt_val[1]);
+
+	  //printf ("KEY [%s]\n", tmp);
+	  err = pt_check_dblink_password (parser, buf1, cipher, sizeof (cipher));
+	  if (err != NO_ERROR)
+	    {
+	      printf ("ERR(1) [%s]\n", buf1);
+	      goto clean_db_value;
+	    }
+
+	  strcpy (buf2, cipher);
+	  cipher[0] = 0x00;
+
+	  err = pt_check_dblink_password (parser, buf2, cipher, sizeof (cipher));
+	  if (err != NO_ERROR)
+	    {
+	      printf ("ERR(2) [%s]\n", buf2);
+	      goto clean_db_value;
+	    }
+
+	  if (strcmp (buf2, cipher))
+	    {
+	      printf ("ERR(2) \n\t[%s]\t\t[%s]\n", buf2, cipher);
+	      goto clean_db_value;
+	    }
+
+	  err = get_dblink_password_decrypt (parser, cipher, &decrypt_val[0]);
+	  if (err != NO_ERROR)
+	    {
+	      printf ("ERR(3) [%s]\n", cipher);
+	      goto clean_db_value;
+	    }
+
+	  pt = (char *) db_get_string (&decrypt_val[0]);
+	  if (!pt)
+	    {
+	      printf ("ERR(4) [%s]\n", cipher);
+	      goto clean_db_value;
+	    }
+
+	  if (strcmp (pt, buf1))
+	    {
+	      printf ("ERR(4) \n\t[%s]\t\t[%s]\n", buf1, pt);
+	      goto clean_db_value;
+	    }
+
+	  err = get_dblink_password_encrypt (parser, pt, &encrypt_val[0], false);
+	  if (err != NO_ERROR)
+	    {
+	      printf ("ERR(5) [%s]\n", pt);
+	      goto clean_db_value;
+	    }
+
+	  pt2 = (char *) db_get_string (&encrypt_val[0]);
+	  if (!pt2 || !*pt2)
+	    {
+	      printf ("ERR(6) [%s]\n", pt);
+	      goto clean_db_value;
+	    }
+
+	  err = get_dblink_password_decrypt (parser, pt2, &decrypt_val[1]);
+	  if (err != NO_ERROR)
+	    {
+	      printf ("ERR(7) [%s]\n", pt2);
+	      goto clean_db_value;
+	    }
+
+	  pt3 = (char *) db_get_string (&decrypt_val[1]);
+	  if (!pt3)
+	    {
+	      printf ("ERR(8) [%s]\n", pt2);
+	      goto clean_db_value;
+	    }
+
+	  if (strcmp (pt3, buf1))
+	    {
+	      printf ("ERR(8) \n\t[%s]\t\t[%s]\n", buf1, PRIxFAST32);
+	      goto clean_db_value;
+	    }
+
+	clean_db_value:
+	  pr_clear_value (&encrypt_val[0]);
+	  pr_clear_value (&encrypt_val[1]);
+	  pr_clear_value (&decrypt_val[0]);
+	  pr_clear_value (&decrypt_val[1]);
 	}
-      tmp[i] = 0x00;
-
-      if (flag)
-	{
-	  sprintf (tmp, "love");
-	}
-      pt = tmp;
-
-      memset (buf2, 0x00, sizeof (buf2));
-      sprintf ((char *) buf1, "%s", pt);
-
-    retry_once:
-      db_make_null (&encrypt_val[0]);
-      db_make_null (&encrypt_val[1]);
-      db_make_null (&decrypt_val[0]);
-      db_make_null (&decrypt_val[1]);
-
-      err = pt_check_dblink_password (parser, buf1, cipher, sizeof (cipher));
-      if (err != NO_ERROR)
-	{
-	  printf ("ERR(1) [%s]\n", buf1);
-	  goto clean_db_value;
-	}
-
-      strcpy (buf2, cipher);
-      cipher[0] = 0x00;
-
-      err = pt_check_dblink_password (parser, buf2, cipher, sizeof (cipher));
-      if (err != NO_ERROR)
-	{
-	  printf ("ERR(2) [%s]\n", buf2);
-	  goto clean_db_value;
-	}
-
-      if (strcmp (buf2, cipher))
-	{
-	  printf ("ERR(2) \n\t[%s]\t\t[%s]\n", buf2, cipher);
-	  goto clean_db_value;
-	}
-
-      err = get_dblink_password_decrypt (parser, cipher, &decrypt_val[0]);
-      if (err != NO_ERROR)
-	{
-	  printf ("ERR(3) [%s]\n", cipher);
-	  goto clean_db_value;
-	}
-
-      pt = (char *) db_get_string (&decrypt_val[0]);
-      if (!pt)
-	{
-	  printf ("ERR(4) [%s]\n", cipher);
-	  goto clean_db_value;
-	}
-
-      if (strcmp (pt, buf1))
-	{
-	  printf ("ERR(4) \n\t[%s]\t\t[%s]\n", buf1, pt);
-	  goto clean_db_value;
-	}
-
-      err = get_dblink_password_encrypt (parser, pt, &encrypt_val[0], false);
-      if (err != NO_ERROR)
-	{
-	  printf ("ERR(5) [%s]\n", pt);
-	  goto clean_db_value;
-	}
-
-      pt2 = (char *) db_get_string (&encrypt_val[0]);
-      if (!pt2 || !*pt2)
-	{
-	  printf ("ERR(6) [%s]\n", pt);
-	  goto clean_db_value;
-	}
-
-      err = get_dblink_password_decrypt (parser, pt2, &decrypt_val[1]);
-      if (err != NO_ERROR)
-	{
-	  printf ("ERR(7) [%s]\n", pt2);
-	  goto clean_db_value;
-	}
-
-      pt3 = (char *) db_get_string (&decrypt_val[1]);
-      if (!pt3)
-	{
-	  printf ("ERR(8) [%s]\n", pt2);
-	  goto clean_db_value;
-	}
-
-      if (strcmp (pt3, buf1))
-	{
-	  printf ("ERR(8) \n\t[%s]\t\t[%s]\n", buf1, PRIxFAST32);
-	  goto clean_db_value;
-	}
-
-    clean_db_value:
-      pr_clear_value (&encrypt_val[0]);
-      pr_clear_value (&encrypt_val[1]);
-      pr_clear_value (&decrypt_val[0]);
-      pr_clear_value (&decrypt_val[1]);
     }
 
   printf ("END: ciper_func_test()\n");

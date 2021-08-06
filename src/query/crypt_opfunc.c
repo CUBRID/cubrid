@@ -720,6 +720,8 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
 
 #if !defined(CS_MODE)
       memcpy (evp_cipher.master_key, tde_Cipher.data_keys.log_key, TDE_MASTER_KEY_LENGTH);
+#else
+      memcpy (evp_cipher.master_key, dblink_Cipher_key.master_key, TDE_MASTER_KEY_LENGTH);
 #endif
       is_init_done = 1;
     }
@@ -734,8 +736,9 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
 	  return err;
 	}
+
+      memcpy (evp_cipher.master_key, dblink_Cipher_key.master_key, TDE_MASTER_KEY_LENGTH);
     }
-  memcpy (evp_cipher.master_key, dblink_Cipher_key.master_key, TDE_MASTER_KEY_LENGTH);
 #endif
 
   if ((*ctx = EVP_CIPHER_CTX_new ()) == NULL)
@@ -763,8 +766,21 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
   return NO_ERROR;
 }
 
+/*
+ * crypt_dblink_encrypt ()  : Converts binary encrypted by AES/ARIA to readable string data. 
+ *
+ * return	      : NO_ERROR or error code.
+ * str(in)	      : password string data(In fact, the binary data).
+ * str_len(in)        : length of "src"
+ * cipher_buffer(out) : Encrypted binary data (by AES/ARIA)
+ * pk(in)             : The private key(master key) used to create the encrypted binary 
+ * 
+ * Remark:  
+ *          If pk is an empty string, the internal master key is used and the AES algorithm is used.
+ *          Otherwise, it is selected between AES and ARIA algorithms according to the value of a specific location.                             
+ */
 int
-crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer, unsigned char *mk)
+crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer, unsigned char *pk)
 {
   int len, cipher_len, err;
   EVP_CIPHER_CTX *ctx;
@@ -772,19 +788,19 @@ crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *ciph
   unsigned char master_key[TDE_MASTER_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   unsigned char *key;
 
-  assert (mk);
-  err = init_dblink_cipher (&ctx, &cipher_type, (*mk) ? ((mk[13] & 0x01) == 0x00) : true);
+  assert (pk);
+  err = init_dblink_cipher (&ctx, &cipher_type, (*pk) ? ((pk[13] & 0x01) == 0x00) : true);
   if (err != NO_ERROR)
     {
       return err;
     }
-  if (mk[0] == 0x00)
+  if (pk[0] == 0x00)
     {
       key = evp_cipher.master_key;
     }
   else
     {
-      strcpy ((char *) master_key, (char *) mk);
+      strcpy ((char *) master_key, (char *) pk);
       key = master_key;
     }
 
@@ -822,8 +838,20 @@ exit:
   return err;
 }
 
+/*
+ * crypt_dblink_decrypt ()  : Decrypt the encrypted binary to extract the password string 
+ *
+ * return	      : NO_ERROR or error code.
+ * cipher(in)	      : Encrypted password data(binary).
+ * cipher_len(in)     : length of "cipher"
+ * str_buffer(out)    : Decrypted string data(In fact, the binary data).
+ * pk(in)             : Private key (master key) used for decryption
+ * 
+ * Remark:  
+ *                        
+ */
 int
-crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer, unsigned char *mk)
+crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer, unsigned char *pk)
 {
   int len, str_len, err;
   EVP_CIPHER_CTX *ctx;
@@ -831,20 +859,20 @@ crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char
   unsigned char master_key[TDE_MASTER_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   unsigned char *key;
 
-  assert (mk);
-  err = init_dblink_cipher (&ctx, &cipher_type, (*mk) ? ((mk[13] & 0x01) == 0x00) : true);
+  assert (pk);
+  err = init_dblink_cipher (&ctx, &cipher_type, (*pk) ? ((pk[13] & 0x01) == 0x00) : true);
   if (err != NO_ERROR)
     {
       return err;
     }
 
-  if (mk[0] == 0x00)
+  if (pk[0] == 0x00)
     {
       key = evp_cipher.master_key;
     }
   else
     {
-      strcpy ((char *) master_key, (char *) mk);
+      strcpy ((char *) master_key, (char *) pk);
       key = master_key;
     }
 
@@ -893,12 +921,28 @@ exit:
         )
 // *INDENT-ON*
 
+/*
+ * crypt_dblink_bin_to_str ()  : Converts binary encrypted by AES/ARIA to readable string data. 
+ *
+ * return	      : NO_ERROR or error code.
+ * src(in)	      : Encrypted binary data.
+ * src_len(in)        : length of "src"
+ * dest(out)          : Buffer to contain the final processed encrypted string
+ * dest_len(in)       : Size of "dest" buffer. 
+ * pk(in)             : The private key(master key) used to create the encrypted binary 
+ * tm(in)             : The value to be used to reorder the encrypted data  
+ * 
+ * Remark:  
+ *        The length of binary data encrypted with AES/ARIA is variable.
+ *        It includes additional information to make it a specific path encrypted string.
+ *                             
+ */
 int
 crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len, unsigned char *pk, long tm)
 {
   int err, i, pk_len, idx, even, odd;
   const char *hextable = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890";
-  int hextable_mod = (int) strlen (hextable);
+  int hextable_mod = 62;	/* strlen (hextable) */
   unsigned char *enc_ptr = NULL;
   int enc_len = 0;
   unsigned char empty_str[4] = { 0x00, };
@@ -985,6 +1029,21 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
   return NO_ERROR;
 }
 
+/*
+ * crypt_dblink_str_to_bin ()  : Extract the original encrypted binary 
+ *                                from the string created via crypt_dblink_bin_to_str().
+ *
+ * return	      : NO_ERROR or error code.
+ * src(in)	      : String created via crypt_dblink_bin_to_str().
+ * src_len(in)        : length of "src"
+ * dest(out)          : Buffer to contain the original encrypted binary.
+ * dest_len(in)       : Size of "dest" buffer. 
+ * pk(out)            : The private key(master key) used to create the encrypted binary 
+ * 
+ * Remark:  
+ *        
+ *                             
+ */
 int
 crypt_dblink_str_to_bin (const char *src, int src_len, char *dest, int *dest_len, unsigned char *pk)
 {
