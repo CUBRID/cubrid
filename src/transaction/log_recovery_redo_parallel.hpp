@@ -478,6 +478,8 @@ namespace cublog
       std::size_t m_push_task_count;
       std::size_t m_flush_push_at_count;
 
+      unsigned char *m_jobs_arr;
+
       /* pop is done, unsynchronized, from this stack
        * if empty, it is re-filled, synchronized, from the push stack
        */

@@ -942,6 +942,7 @@ namespace cublog
     : m_job_count { 0 }
     , m_push_task_count { 0 }
     , m_flush_push_at_count { 0 }
+    , m_jobs_arr { nullptr }
   {
   }
 
@@ -952,6 +953,8 @@ namespace cublog
     assert (m_job_count == 0);
     assert (m_push_task_count == 0);
     assert (m_flush_push_at_count == 0);
+
+    assert (m_jobs_arr == nullptr);
 
     assert (m_pop_jobs.empty ());
 
@@ -964,48 +967,45 @@ namespace cublog
     m_push_task_count = a_push_task_count;
     m_flush_push_at_count = a_flush_push_at_count;
 
-    m_pop_jobs.reserve(m_job_count);
+    m_jobs_arr = static_cast<unsigned char*> (malloc(sizeof (redo_job_impl) * m_job_count));
+
+    m_pop_jobs.reserve (m_job_count);
     for (std::size_t idx = 0; idx < m_job_count; ++idx)
       {
-	redo_job_impl *job = new redo_job_impl (a_end_redo_lsa, force_each_page_fetch, this);
+        redo_job_impl *const job = new (m_jobs_arr + sizeof(redo_job_impl) * idx)
+            redo_job_impl (a_end_redo_lsa, force_each_page_fetch, this);
 	m_pop_jobs.push_back (job);
       }
 
-    m_push_jobs.reserve(m_job_count);
+    m_push_jobs.reserve (m_job_count);
 
     m_per_task_push_jobs_vec.resize (m_push_task_count);
     const std::size_t per_task_reserve_size = m_job_count / m_push_task_count * 2;
     for (job_container_t &jobs: m_per_task_push_jobs_vec)
       {
-        jobs.reserve(per_task_reserve_size);
+	jobs.reserve (per_task_reserve_size);
       }
   }
 
   reusable_jobs_stack::~reusable_jobs_stack ()
   {
-    const std::size_t pop_size = m_pop_jobs.size ();
-    const std::size_t push_size = m_push_jobs.size ();
-    std::size_t per_task_push_size = 0;
-    for (auto &push_container: m_per_task_push_jobs_vec)
-      {
-	per_task_push_size += push_container.size ();
-      }
-    assert ((pop_size + push_size + per_task_push_size) == m_job_count);
+    // consistency check
+    assert ([this] ()
+    {
+      const std::size_t pop_size = m_pop_jobs.size ();
+      const std::size_t push_size = m_push_jobs.size ();
+      std::size_t per_task_push_size = 0;
+      for (auto &push_container: m_per_task_push_jobs_vec)
+	{
+	  per_task_push_size += push_container.size ();
+	}
+      assert ((pop_size + push_size + per_task_push_size) == m_job_count);
+      return true;
+    }
+    ());
 
-    for (job_container_t &push_jobs: m_per_task_push_jobs_vec)
-      {
-	for (redo_job_impl *&job_ptr: push_jobs)
-	  {
-	    delete job_ptr;
-	  }
-	push_jobs.clear ();
-      }
-
-    for (redo_job_impl *&job_ptr: m_pop_jobs)
-      {
-	delete job_ptr;
-      }
-    m_pop_jobs.clear ();
+    free (m_jobs_arr);
+    m_jobs_arr = nullptr;
   }
 
   redo_job_impl *reusable_jobs_stack::blocking_pop (log_recovery_redo_perf_stat &a_rcv_redo_perf_stat)
