@@ -1033,7 +1033,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   const auto time_end_setting_up = std::chrono::system_clock::now ();
   const auto time_dur_setting_up_ms =
     std::chrono::duration_cast < std::chrono::milliseconds > (time_end_setting_up - time_start_setting_up);
-  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo_perf:    setting_up= %6d (ms)\n",
+  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo_perf:  setting_up= %6d (ms)\n",
 		 (long long) time_dur_setting_up_ms.count ());
 
   // prompt after threads/tasks are started but before any work is done
