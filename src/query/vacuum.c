@@ -2998,8 +2998,11 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
       m_cursor.set_on_vacuum_data_start ();
     }
 
-  pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.first_page);
-  pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.last_page);
+  if (!is_tran_server_with_remote_storage ())
+    {
+      pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.first_page);
+      pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.last_page);
+    }
 
   m_cursor.force_data_update ();
   vacuum_er_log (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_JOBS, "Start searching jobs at " vacuum_job_cursor_print_format,
