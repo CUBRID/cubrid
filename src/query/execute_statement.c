@@ -18486,7 +18486,7 @@ ciper_func_test (PARSER_CONTEXT * parser, bool is_timecheck)
 	  tmp[i] = 0x00;
 
 	  db_make_null (&encrypt_val[0]);
-	  get_dblink_password_encrypt (pt, &encrypt_val[0], false);
+	  get_dblink_password_encrypt (tmp, &encrypt_val[0], false);
 	  strcpy (test_enc_pwd[loop], (char *) db_get_string (&encrypt_val[0]));
 	  pr_clear_value (&encrypt_val[0]);
 	}
@@ -18503,7 +18503,7 @@ ciper_func_test (PARSER_CONTEXT * parser, bool is_timecheck)
 
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
-      printf ("try=%d, time=(%ld.%06ld sec)", loop, elapsed_time.tv_sec, elapsed_time.tv_usec);
+      printf ("try=%d, time=%ld.%06ld sec\n", loop, elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
   else
     {
