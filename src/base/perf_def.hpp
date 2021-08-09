@@ -36,7 +36,7 @@
 namespace cubperf
 {
   // clocking
-  using clock = std::chrono::high_resolution_clock;   // default clock
+  using clock = std::chrono::steady_clock;   // default clock
   using time_point = clock::time_point;               // default time point
   using duration = clock::duration;                   // default duration
 
