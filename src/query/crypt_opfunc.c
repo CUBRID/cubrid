@@ -37,6 +37,7 @@
 #else
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/time.h>
 #endif
 
 #include "CRC.h"
@@ -1113,4 +1114,176 @@ crypt_dblink_str_to_bin (const char *src, int src_len, char *dest, int *dest_len
     }
 
   return err;
+}
+
+/*
+ * shake_dblink_password ()  : Transforms the input password to create a new one.
+ *
+ * return	       : length of newly created password.
+ * passwd(in)	       : Raw password.
+ * confused(out)       : Newly created password.
+ * confused_size(in)   : size of confused buffer.
+ * chk_time(out)       : Time of creation of new password
+ * 
+ * Remark:  
+ *         Even if the same raw password is entered, a different password is always generated.
+ *         This is to make it difficult to guess the password from the outside. 
+ *         Newly created password is binary.     
+ *         <header part><garbage part><data part><checksum part>               
+ */
+int
+shake_dblink_password (const char *passwd, char *confused, int confused_size, struct timeval *chk_time)
+{
+  const char *tmpx = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%%^&*()_-+=;:[]{}(),./?<>";
+  int i, pwdlen, start;
+  int shift, safe;
+  unsigned char *p;
+  unsigned char checksum;
+  int tmpx_len = 90;		/* strlen(tmpx) */
+
+  p = (unsigned char *) confused;
+  pwdlen = (int) strlen (passwd);
+
+  gettimeofday (chk_time, NULL);
+  shift = (chk_time->tv_usec & 0x7FFF);
+  memcpy (p, &shift, sizeof (int));
+  p += sizeof (int);
+  *p = (unsigned char) pwdlen;	// pwdlen is less than or equal to DBLINK_PASSWORD_MAX_LENGTH.
+  p++;
+
+  safe = pwdlen + 11;		/* 11? int + char + char + some safe */
+  start = 0;
+  if (confused_size > safe)
+    {
+      if ((start = (confused_size - safe) / 2) > 2)
+	{
+	  start = (chk_time->tv_usec >> 3) % start;
+	}
+    }
+  *p = (unsigned char) start;
+  p++;
+
+  for (i = 0; i < start; i++)
+    {
+      p[i] = tmpx[rand () % tmpx_len];
+    }
+  p += start;
+
+  if (pwdlen > 0)
+    {
+      shift %= pwdlen;
+      if (shift == 0)
+	{
+	  shift++;
+	}
+
+      // conceptual example) password --> ordpassw
+      for (i = 0; i < pwdlen; i++)
+	{
+	  p[((i + shift) < pwdlen) ? (i + shift) : ((i + shift) - pwdlen)] = passwd[i];
+	}
+
+      // conceptual example) ordpassw --> pseqbttx
+      shift = ((chk_time->tv_usec & 0x7A5A) % 127) + 1;
+      for (i = 0; i < pwdlen; i++)
+	{
+	  p[i] = ((p[i] + shift) < 128) ? (p[i] + shift) : (p[i] + shift - 128);
+	}
+
+      p += pwdlen;
+    }
+
+  pwdlen = p - ((unsigned char *) confused);
+  checksum = 0x7C;
+  p = (unsigned char *) confused;
+  for (i = 0; i < pwdlen; i++)
+    {
+      checksum += p[i];
+    }
+  p[pwdlen++] = checksum;
+
+  /* Adjust the length so that it is a multiple of 3.
+   * This is to prevent the '=' character from appearing in the base64 conversion result.  */
+  while (pwdlen % 3)
+    {
+      p[pwdlen++] = checksum;
+    }
+
+  p[pwdlen] = '\0';
+  return pwdlen;
+}
+
+/*
+ * reverse_shake_dblink_password ()  : Extract the raw password from the re-created password.
+ *
+ * return	       : NO_ERROR or error code.
+ * confused(in)	       : Password created via shake_dblink_password(). This is binary.
+ * length(in)          : lelgth of "confused" 
+ * passwd(out)         : Raw password.
+ * 
+ * Remark: 
+ *      
+ */
+int
+reverse_shake_dblink_password (char *confused, int length, char *passwd)
+{
+  int i, pwdlen;
+  int shift;
+  unsigned char *p;
+  unsigned char checksum;
+
+  p = (unsigned char *) confused;
+  memcpy (&shift, p, sizeof (int));
+  p += sizeof (int);
+  pwdlen = *p;
+  p++;
+  p += (*p + 1);
+
+  if (length < pwdlen)
+    {
+      return ER_FAILED;
+    }
+
+  if (pwdlen > 0)
+    {
+      shift %= pwdlen;
+      if (shift == 0)
+	{
+	  shift++;
+	}
+      // conceptual example) pseqbttx --> ordpassw 
+      for (i = 0; i < pwdlen; i++)
+	{
+	  passwd[i] = p[((i + shift) < pwdlen) ? (i + shift) : ((i + shift) - pwdlen)];
+	}
+
+      memcpy (&shift, confused, sizeof (int));
+      shift = ((shift & 0x7A5A) % 127) + 1;
+      // conceptual example) ordpassw --> password
+      for (i = 0; i < pwdlen; i++)
+	{
+	  passwd[i] = ((passwd[i] - shift) >= 0) ? (passwd[i] - shift) : (passwd[i] - shift + 128);
+	}
+    }
+  passwd[pwdlen] = '\0';
+  p += pwdlen;
+
+  pwdlen = p - ((unsigned char *) confused);
+  checksum = 0x7C;
+  p = (unsigned char *) confused;
+  for (i = 0; i < pwdlen; i++)
+    {
+      checksum += p[i];
+    }
+
+  do
+    {
+      if (p[pwdlen] != checksum)
+	{
+	  return ER_FAILED;
+	}
+    }
+  while (++pwdlen % 3);
+
+  return NO_ERROR;
 }

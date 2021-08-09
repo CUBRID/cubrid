@@ -59,6 +59,8 @@ extern int crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned
 extern int crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer,
 				 unsigned char *mk);
 
+extern int shake_dblink_password (const char *passwd, char *confused, int confused_size, struct timeval *chk_time);
+extern int reverse_shake_dblink_password (char *confused, int length, char *passwd);
 extern int crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len, unsigned char *pk, long tm);
 extern int crypt_dblink_str_to_bin (const char *src, int src_len, char *dest, int *dest_len, unsigned char *pk);
 
