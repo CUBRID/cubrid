@@ -1503,6 +1503,11 @@ spage_move_slots (SPAGE_SLOT * start_slot_p, int cnt, int move_offset)
 {
   SPAGE_SLOT *end_slot_p;
 
+  if (cnt == 0)
+    {
+      return;
+    }
+
   assert (cnt > 0);
   assert (move_offset != 0);
 
@@ -1569,7 +1574,7 @@ spage_shift_slot_down (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPAGE_SLOT
     }
   else
     {
-      spage_move_slots (slot_p, slot_p - (last_slot_p - 1), -1);
+      spage_move_slots (slot_p - 1, slot_p - last_slot_p, -1);
     }
 
   spage_set_slot (last_slot_p, SPAGE_EMPTY_OFFSET, 0, REC_UNKNOWN);
