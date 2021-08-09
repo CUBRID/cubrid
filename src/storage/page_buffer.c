@@ -13887,6 +13887,12 @@ pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
   assert (rcv->pgptr == NULL);
   assert (rcv->length == sizeof (VPID));
 
+  if (is_tran_server_with_remote_storage ())
+    {
+      // don't flush
+      return NO_ERROR;
+    }
+
   VPID_COPY (&vpid_to_flush, (VPID *) rcv->data);
   page_to_flush =
     pgbuf_fix (thread_p, &vpid_to_flush, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
