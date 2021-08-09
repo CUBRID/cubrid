@@ -19,6 +19,7 @@
 #define CATCH_CONFIG_MAIN
 
 #include "catch2/catch.hpp"
+
 #include "async_page_fetcher.hpp"
 #include "log_reader.hpp"
 #include "page_buffer.h"
@@ -156,6 +157,11 @@ logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *log_lsa, LOG_CS_ACCESS_MODE, LO
     {
       return ER_FAILED;
     }
+}
+
+void
+logpb_force_flush_header_and_pages (THREAD_ENTRY *thread_p)
+{
 }
 
 void
