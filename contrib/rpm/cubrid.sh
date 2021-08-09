@@ -25,14 +25,7 @@ elif [ -f /etc/os-release ];then
 fi
 
 case $OS in
-	fedoraproject)
-		if [ ! -h /lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
-			ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
-			ln -s /lib64/libform.so.6 $LIB/libform.so.5
-			ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
-		fi
-		;;
-	centos)
+	fedoraproject | centos | redhat)
 		if [ ! -h /lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
 			ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
 			ln -s /lib64/libform.so.6 $LIB/libform.so.5
