@@ -1071,7 +1071,14 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
     }
   else
     {
-      pgbuf_flush (thread_p, addr.pgptr, FREE);
+      if (is_tran_server_with_remote_storage ())
+	{
+	  pgbuf_unfix (thread_p, addr.pgptr);
+	}
+      else
+	{
+	  pgbuf_flush (thread_p, addr.pgptr, FREE);
+	}
     }
   addr.pgptr = NULL;
 
