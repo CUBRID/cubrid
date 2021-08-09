@@ -595,7 +595,7 @@ namespace cubschema
 	    return error;
 	  }
 
-	cnt_refers = db_get_int (&value);
+	cnt_refers = db_get_bigint (&value);
 
 	db_query_end (result);
 	db_close_session (session);
