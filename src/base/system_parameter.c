@@ -2372,7 +2372,7 @@ static unsigned int prm_page_server_host_flag = 0;
 int PRM_SERVER_TYPE = SERVER_TYPE_TRANSACTION;
 static int prm_server_type_default = SERVER_TYPE_TRANSACTION;
 static int prm_server_type_lower = SERVER_TYPE_TRANSACTION;
-static int prm_server_type_upper = SERVER_TYPE_PAGE;
+static int prm_server_type_upper = SERVER_TYPE_SINGLE_NODE;
 static unsigned int prm_server_type_flag = 0;
 
 bool PRM_ER_LOG_PRIOR_TRANSFER = false;
