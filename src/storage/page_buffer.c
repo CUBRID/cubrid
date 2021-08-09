@@ -266,9 +266,8 @@ pgbuf_bcb_flag_is_invalid_victim (int flag)
 
   if (flag & PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG)
     {
-      // TODO: temporarily avoid victimizing BCB's flagged with FLAG_BCB_IS_DIRTY_OR_BEING_FLUSHED, even if flush is
-      //       not required. First we need to get rid of all cases that flush permanent data pages to disk.
-      return (flag & (FLAG_BCB_IS_BEING_VICTIMIZED | PGBUF_BCB_FLUSHING_TO_DISK_FLAG)) != 0;
+      assert ((flag & PGBUF_BCB_FLUSHING_TO_DISK_FLAG) == 0);
+      return (flag & FLAG_BCB_IS_BEING_VICTIMIZED) != 0;
     }
   else
     {
@@ -2852,10 +2851,14 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
   /* bufptr->fcnt == 1 */
   /* Currently, bufptr->latch_mode is PGBUF_LATCH_WRITE */
-  if (pgbuf_bcb_safe_flush_force_lock (thread_p, bufptr, true) != NO_ERROR)
+
+  if (!is_tran_server_with_remote_storage ())
     {
-      ASSERT_ERROR ();
-      return ER_FAILED;
+      if (pgbuf_bcb_safe_flush_force_lock (thread_p, bufptr, true) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return ER_FAILED;
+	}
     }
 
   /* save the pageid of the page temporarily. */
@@ -2938,7 +2941,7 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
 	  continue;
 	}
 
-      if (pgbuf_bcb_is_dirty (bufptr))
+      if (!is_tran_server_with_remote_storage () && pgbuf_bcb_is_dirty (bufptr))
 	{
 	  temp_vpid = bufptr->vpid;
 	  if (pgbuf_bcb_safe_flush_force_lock (thread_p, bufptr, true) != NO_ERROR)
@@ -8206,6 +8209,7 @@ pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool
   int error_code = NO_ERROR;
 
   assert (bufptr->latch_mode != PGBUF_LATCH_FLUSH);
+  assert ((bufptr->flags & PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG) == 0);
 
   PGBUF_BCB_CHECK_OWN (bufptr);
   *locked = true;
@@ -10100,6 +10104,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
 
+  assert ((bufptr->flags & PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG) == 0);
 
   PGBUF_BCB_CHECK_OWN (bufptr);
 

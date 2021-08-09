@@ -19,6 +19,7 @@
 #define CATCH_CONFIG_MAIN
 
 #include "catch2/catch.hpp"
+
 #include "async_page_fetcher.hpp"
 #include "dbtype_def.h"
 #include "log_reader.hpp"
@@ -181,6 +182,12 @@ logpb_fetch_page (THREAD_ENTRY *, const LOG_LSA *, LOG_CS_ACCESS_MODE, LOG_PAGE 
 {
   assert (false);
   return NO_ERROR;
+}
+
+void
+logpb_force_flush_header_and_pages (THREAD_ENTRY *thread_p)
+{
+  assert (false);
 }
 
 void
