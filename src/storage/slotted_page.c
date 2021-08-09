@@ -1491,7 +1491,7 @@ spage_find_empty_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int record_leng
 }
 
 /*
- * spage_shift_slots() -
+ * spage_move_slots() -
  *   return:
  *
  *   start_slot_p(in): Pointer to slotted page pointer array
