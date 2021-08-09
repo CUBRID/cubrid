@@ -529,7 +529,7 @@ namespace cubschema
 	DB_VALUE value;
 	char select_query[DB_MAX_IDENTIFIER_LENGTH + 256] = { 0 };
 	constexpr int CNT_CATCLS_OBJECTS = 5;
-	int cnt_refers = CNT_CATCLS_OBJECTS + 1;
+	DB_BIGINT cnt_refers = CNT_CATCLS_OBJECTS + 1;
 
 	const char *class_name = db_get_class_name (m_mop);
 	if (class_name == NULL)
@@ -595,7 +595,7 @@ namespace cubschema
 	    return error;
 	  }
 
-	cnt_refers = db_get_int (&value);
+	cnt_refers = db_get_bigint (&value);
 
 	db_query_end (result);
 	db_close_session (session);
