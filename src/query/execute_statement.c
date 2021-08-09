@@ -18472,8 +18472,8 @@ ciper_func_test (PARSER_CONTEXT * parser, bool is_timecheck)
 
   if (is_timecheck)
     {				// time check
-      struct timeval startTime, endTime;
-      double diffTime;
+      TSC_TICKS start_tick, end_tick;
+      TSCTIMEVAL elapsed_time;
       char test_enc_pwd[10][256];
 
       for (loop = 0; loop < 10; loop++)
@@ -18491,7 +18491,7 @@ ciper_func_test (PARSER_CONTEXT * parser, bool is_timecheck)
 	  pr_clear_value (&encrypt_val[0]);
 	}
 
-      gettimeofday (&startTime, NULL);
+      tsc_getticks (&start_tick);
       for (loop = 0; loop < 1000000; loop++)
 	{
 	  pt = test_enc_pwd[loop % 10];
@@ -18501,9 +18501,9 @@ ciper_func_test (PARSER_CONTEXT * parser, bool is_timecheck)
 	  pr_clear_value (&decrypt_val[0]);
 	}
 
-      gettimeofday (&endTime, NULL);
-      diffTime = (endTime.tv_sec - startTime.tv_sec) + ((endTime.tv_usec - startTime.tv_usec) / 1000000);
-      printf ("try=%ld, time=%.6f\n", loop, diffTime);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
+      printf ("try=%d, time=(%ld.%06ld sec)", loop, elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
   else
     {
