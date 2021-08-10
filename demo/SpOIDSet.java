@@ -22,19 +22,17 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE 
  * USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
-import java.sql.CallableStatement;
+import cubrid.jdbc.driver.*;
+import cubrid.sql.*;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Types;
-
-import cubrid.jdbc.driver.*;
 import java.util.*;
 
-import cubrid.sql.*;
+
 
 public class SpOIDSet {
 
