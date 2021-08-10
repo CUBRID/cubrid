@@ -28,7 +28,6 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
-#include <vector>
 
 #include <cassert>
 
@@ -154,13 +153,11 @@ namespace cubperf
   {
     public:
       using stat_definition_init_list_t = std::initializer_list<stat_definition>;
-      using stat_definition_vec_t = std::vector<stat_definition>;
 
     public:
       // no default constructor
       statset_definition (void) = delete;
       statset_definition (stat_definition_init_list_t defs);
-      statset_definition (const stat_definition_vec_t &defs);
 
     private:
       template <typename TI>

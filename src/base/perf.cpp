@@ -24,8 +24,6 @@
 
 #include "error_manager.h"
 
-#include <stdexcept>
-
 #include <cstring>
 
 namespace cubperf
@@ -73,11 +71,6 @@ namespace cubperf
 
   statset_definition::statset_definition (statset_definition::stat_definition_init_list_t defs)
     : statset_definition (defs.size (), defs.begin (), defs.end ())
-  {
-  }
-
-  statset_definition::statset_definition (const statset_definition::stat_definition_vec_t &defs_vec)
-    : statset_definition (defs_vec.size (), defs_vec.cbegin (), defs_vec.cend ())
   {
   }
 

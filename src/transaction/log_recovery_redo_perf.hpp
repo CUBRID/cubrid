@@ -39,7 +39,7 @@ namespace cublog
   {
     public:
       inline log_recovery_redo_perf_stat_param (const char *a_title, bool a_do_record,
-	  const cubperf::statset_definition::stat_definition_vec_t &a_defs);
+	  const cubperf::statset_definition::stat_definition_init_list_t &a_defs);
 
       log_recovery_redo_perf_stat_param (const log_recovery_redo_perf_stat_param &) = delete;
       log_recovery_redo_perf_stat_param (log_recovery_redo_perf_stat_param &&) = delete;
@@ -144,7 +144,7 @@ namespace cublog
    *********************************************************************/
 
   log_recovery_redo_perf_stat_param::log_recovery_redo_perf_stat_param (const char *a_title,
-      bool a_do_record, const cubperf::statset_definition::stat_definition_vec_t &a_defs)
+      bool a_do_record, const cubperf::statset_definition::stat_definition_init_list_t &a_defs)
     : m_title { a_title }
     , m_definition { a_defs }
     , m_values { nullptr }
