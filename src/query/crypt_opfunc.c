@@ -801,6 +801,7 @@ crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *ciph
     }
   else
     {
+      assert ((int) strlen ((char *) pk) < TDE_MASTER_KEY_LENGTH);
       strcpy ((char *) master_key, (char *) pk);
       key = master_key;
     }
@@ -873,6 +874,7 @@ crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char
     }
   else
     {
+      assert ((int) strlen ((char *) pk) < TDE_MASTER_KEY_LENGTH);
       strcpy ((char *) master_key, (char *) pk);
       key = master_key;
     }
