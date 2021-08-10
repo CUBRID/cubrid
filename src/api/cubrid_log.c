@@ -109,7 +109,7 @@ int g_extraction_user_count = 0;
 FILE *g_trace_log;
 char g_trace_log_path[PATH_MAX + 1] = "./cubrid_tracelog.err";
 int g_trace_log_level = 0;
-int g_trace_log_filesize = 10 * 1024 * 1024;	/* 10 MB */
+int64_t g_trace_log_filesize = 10 * 1024 * 1024;	/* 10 MB */
 
 LOG_LSA g_next_lsa = LSA_INITIALIZER;
 
@@ -173,8 +173,8 @@ cubrid_log_set_extraction_timeout (int timeout)
 static void
 cubrid_log_set_tracelog_pointer (char buf[])
 {
-  int curr_size = 0;
-  int tracelog_size = 0;
+  int64_t curr_size = 0;
+  int64_t tracelog_size = 0;
 
   curr_size = ftell (g_trace_log);
   tracelog_size = strlen (buf);
@@ -214,7 +214,7 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
     {
       if (filesize == -1)
 	{
-	  filesize = 10 * 1024 * 1024;
+	  filesize = 10;
 	}
       else
 	{
@@ -1475,7 +1475,7 @@ cubrid_log_reset_globals (void)
 
   snprintf (g_trace_log_path, PATH_MAX + 1, "%s", "./");
   g_trace_log_level = 0;
-  g_trace_log_filesize = 10;
+  g_trace_log_filesize = 10 * 1024 * 1024;
 
   g_next_lsa = LSA_INITIALIZER;
 
