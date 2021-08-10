@@ -10220,7 +10220,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   int error_code = method_group.prepare (args);
   if (error_code != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   /* *INDENT-OFF* */
@@ -10281,7 +10281,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     }
   else
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   // clear
