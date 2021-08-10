@@ -25,8 +25,10 @@
 
 #include "perf_def.hpp"
 
+#include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include <cassert>
 
@@ -143,10 +145,26 @@ namespace cubperf
   class statset_definition
   {
     public:
+      using stat_definition_vec_t = std::vector<stat_definition>;
+
+    public:
       // no default constructor
       statset_definition (void) = delete;
       statset_definition (std::initializer_list<stat_definition> defs);
+      statset_definition (const stat_definition_vec_t &defs);
+
+    private:
+      template <typename TI>
+      statset_definition (std::size_t a_size, TI a_begin, TI a_end);
+
+    public:
+      statset_definition (const statset_definition &) = delete;
+      statset_definition (statset_definition &&) = delete;
+
       ~statset_definition (void);
+
+      statset_definition &operator = (const statset_definition &) = delete;
+      statset_definition &operator = (statset_definition &&) = delete;
 
       // create (construct) a non-atomic set of values
       statset *create_statset (void) const;
@@ -245,6 +263,48 @@ namespace cubperf
   //////////////////////////////////////////////////////////////////////////
   // statset_definition
   //////////////////////////////////////////////////////////////////////////
+
+  template <typename TI>
+  statset_definition::statset_definition (std::size_t a_size, TI a_begin, TI a_end)
+    : m_stat_count (a_size)
+    , m_value_count (0)
+    , m_stat_defs (nullptr)
+    , m_value_names (nullptr)
+  {
+    // copy definitions
+    m_stat_defs = new stat_definition[a_size];
+    std::size_t stat_index = 0;
+    for (TI it = a_begin; it != a_end; ++it)
+      {
+	auto &def_it = *it;
+	if (def_it.m_id != stat_index)
+	  {
+	    // statset_definition is bad; crash program
+	    throw std::runtime_error ("statset_definition is bad");
+	  }
+	m_stat_defs[stat_index] = def_it;  // copy definitions
+
+	// set offset and increment value count
+	m_stat_defs[stat_index].m_offset = m_value_count;
+	m_value_count += def_it.get_value_count ();
+
+	// increment index
+	stat_index++;
+      }
+
+    // names for all values
+    m_value_names = new std::string[m_value_count];
+    std::size_t value_index = 0;
+    for (stat_index = 0; stat_index < m_stat_count; stat_index++)
+      {
+	assert (value_index == m_stat_defs[stat_index].m_offset);
+	for (std::size_t def_name_index = 0; def_name_index < m_stat_defs[stat_index].get_value_count ();
+	     def_name_index++)
+	  {
+	    m_value_names[value_index++] = m_stat_defs[stat_index].m_names[def_name_index];
+	  }
+      }
+  }
 
   template <bool IsAtomic>
   void
