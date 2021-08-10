@@ -34,7 +34,35 @@ namespace cublog
 // implemented specifically for log recovery redo purposes
 //
 
-  enum PERF_STAT_RECOVERY_ID : cubperf::stat_id
+  /* parameterized class; not to be used directly
+   */
+  class log_recovery_redo_perf_stat_param
+  {
+    public:
+      inline log_recovery_redo_perf_stat_param (const char *a_title, bool a_do_record,
+	  const cubperf::statset_definition::stat_definition_vec_t &a_defs);
+
+      log_recovery_redo_perf_stat_param (const log_recovery_redo_perf_stat_param &) = delete;
+      log_recovery_redo_perf_stat_param (log_recovery_redo_perf_stat_param &&) = delete;
+
+      inline ~log_recovery_redo_perf_stat_param ();
+
+      log_recovery_redo_perf_stat_param &operator = (const log_recovery_redo_perf_stat_param &) = delete;
+      log_recovery_redo_perf_stat_param &operator = (log_recovery_redo_perf_stat_param &&) = delete;
+
+    public:
+      inline void time_and_increment (cubperf::stat_id a_stat_id) const;
+      inline void log () const;
+
+    private:
+      const char *const m_title;
+      const cubperf::statset_definition m_definition;
+      cubperf::statset *m_values;
+  };
+
+  /* used to evaluate log recovery redo performance on the main thread
+   */
+  enum : cubperf::stat_id
   {
     PERF_STAT_ID_FETCH_PAGE,
     PERF_STAT_ID_READ_LOG,
@@ -51,93 +79,182 @@ namespace cublog
   class log_recovery_redo_perf_stat
   {
     public:
-      inline log_recovery_redo_perf_stat ()
-	: log_recovery_redo_perf_stat ((pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO)
-				       == PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO)
-      {
-      }
-
-      inline log_recovery_redo_perf_stat (bool a_do_record)
-	: m_definition
-      {
-	cubperf::stat_definition (PERF_STAT_ID_FETCH_PAGE, cubperf::stat_definition::COUNTER_AND_TIMER,
-				  "Counter fetch_page", "Timer fetch_page (μs)"),
-	cubperf::stat_definition (PERF_STAT_ID_READ_LOG, cubperf::stat_definition::COUNTER_AND_TIMER,
-				  "Counter read_log", "Timer read_log (μs)"),
-	cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH, cubperf::stat_definition::COUNTER_AND_TIMER,
-				  "Counter redo_or_push", "Timer redo_or_push (μs)"),
-	cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_PREP, cubperf::stat_definition::COUNTER_AND_TIMER,
-				  "Counter redo_or_push_prep", "Timer redo_or_push_prep (μs)"),
-	cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_DO_SYNC, cubperf::stat_definition::COUNTER_AND_TIMER,
-				  "Counter redo_or_push_do_sync", "Timer redo_or_push_do_sync (μs)"),
-	cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE, cubperf::stat_definition::COUNTER_AND_TIMER,
-				  "Counter redo_or_push_pop_reusable", "Timer redo_or_push_pop_reusable (μs)"),
-	cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC, cubperf::stat_definition::COUNTER_AND_TIMER,
-				  "Counter redo_or_push_do_async", "Timer redo_or_push_do_async (μs)"),
-	cubperf::stat_definition (PERF_STAT_ID_COMMIT_ABORT, cubperf::stat_definition::COUNTER_AND_TIMER,
-				  "Counter commit_abort", "Timer commit_abort (μs)"),
-	cubperf::stat_definition (PERF_STAT_ID_WAIT_FOR_PARALLEL, cubperf::stat_definition::COUNTER_AND_TIMER,
-				  "Counter wait_for_parallel", "Timer wait_for_parallel (μs)"),
-	cubperf::stat_definition (PERF_STAT_ID_FINALIZE, cubperf::stat_definition::COUNTER_AND_TIMER,
-				  "Counter finalize", "Timer finalize (μs)"),
-      }
-      , m_values { nullptr }
-      {
-	if (a_do_record)
-	  {
-	    m_values = m_definition.create_statset ();
-	  }
-      }
+      inline log_recovery_redo_perf_stat ();
+      inline log_recovery_redo_perf_stat (bool a_do_record);
 
       log_recovery_redo_perf_stat (const log_recovery_redo_perf_stat &) = delete;
       log_recovery_redo_perf_stat (log_recovery_redo_perf_stat &&) = delete;
-
-      inline ~log_recovery_redo_perf_stat ()
-      {
-	if (m_values != nullptr)
-	  {
-	    delete m_values;
-	    m_values = nullptr;
-	  }
-      }
 
       log_recovery_redo_perf_stat &operator = (const log_recovery_redo_perf_stat &) = delete;
       log_recovery_redo_perf_stat &operator = (log_recovery_redo_perf_stat &&) = delete;
 
     public:
-      inline void time_and_increment (cubperf::stat_id a_stat_id) const
-      {
-	if (m_values != nullptr)
-	  {
-	    m_definition.time_and_increment (*m_values, a_stat_id);
-	  }
-      }
-
-      inline void log () const
-      {
-	if (m_values != nullptr)
-	  {
-	    std::vector < cubperf::stat_value > perf_stat_results;
-	    perf_stat_results.resize (m_definition.get_value_count (), 0LL);
-	    m_definition.get_stat_values_with_converted_timers<std::chrono::microseconds> (
-		    *m_values, perf_stat_results.data ());
-
-	    std::stringstream perf_stat_ss;
-	    perf_stat_ss << "Log Recovery Redo statistics:" << std::endl;
-	    for (std::size_t perf_stat_idx = 0; perf_stat_idx < m_definition.get_value_count (); ++perf_stat_idx)
-	      {
-		perf_stat_ss << '\t' << m_definition.get_value_name (perf_stat_idx)
-			     << ": " << perf_stat_results[perf_stat_idx] << std::endl;
-	      }
-	    const std::string perf_stat_str = perf_stat_ss.str ();
-	    _er_log_debug (ARG_FILE_LINE, perf_stat_str.c_str ());
-	  }
-      }
+      inline void time_and_increment (cubperf::stat_id a_stat_id) const;
+      inline void log () const;
 
     private:
-      const cubperf::statset_definition m_definition;
-      cubperf::statset *m_values;
+      log_recovery_redo_perf_stat_param m_;
   };
+
+  /* used to evaluate log recovery redo performance on the async (worker) threads
+   */
+  enum : cubperf::stat_id
+  {
+    PERF_STAT_ID_PARALLEL_POP,
+    PERF_STAT_ID_PARALLEL_SLEEP,
+    PERF_STAT_ID_PARALLEL_EXECUTE,
+    PERF_STAT_ID_PARALLEL_RETIRE,
+  };
+
+  class log_recovery_redo_parallel_perf_stat
+  {
+    public:
+      inline log_recovery_redo_parallel_perf_stat ();
+
+      log_recovery_redo_parallel_perf_stat (const log_recovery_redo_parallel_perf_stat &) = delete;
+      log_recovery_redo_parallel_perf_stat (log_recovery_redo_parallel_perf_stat &&) = delete;
+
+      log_recovery_redo_parallel_perf_stat &operator = (const log_recovery_redo_parallel_perf_stat &) = delete;
+      log_recovery_redo_parallel_perf_stat &operator = (log_recovery_redo_parallel_perf_stat &&) = delete;
+
+    public:
+      inline void time_and_increment (cubperf::stat_id a_stat_id) const;
+      inline void log () const;
+
+    private:
+      log_recovery_redo_perf_stat_param m_;
+  };
+
+  /*********************************************************************
+   * definitions
+   *********************************************************************/
+
+  log_recovery_redo_perf_stat_param::log_recovery_redo_perf_stat_param (const char *a_title,
+      bool a_do_record, const cubperf::statset_definition::stat_definition_vec_t &a_defs)
+    : m_title { a_title }
+    , m_definition { a_defs }
+    , m_values { nullptr }
+  {
+    assert (a_title != nullptr);
+    if (a_do_record)
+      {
+	m_values = m_definition.create_statset ();
+      }
+  }
+
+  log_recovery_redo_perf_stat_param::~log_recovery_redo_perf_stat_param ()
+  {
+    if (m_values != nullptr)
+      {
+	delete m_values;
+	m_values = nullptr;
+      }
+  }
+
+  void log_recovery_redo_perf_stat_param::time_and_increment (cubperf::stat_id a_stat_id) const
+  {
+    if (m_values != nullptr)
+      {
+	m_definition.time_and_increment (*m_values, a_stat_id);
+      }
+  }
+
+  void log_recovery_redo_perf_stat_param::log () const
+  {
+    if (m_values != nullptr)
+      {
+	std::vector < cubperf::stat_value > perf_stat_results;
+	perf_stat_results.resize (m_definition.get_value_count (), 0LL);
+	m_definition.get_stat_values_with_converted_timers<std::chrono::milliseconds> (
+		*m_values, perf_stat_results.data ());
+
+	std::stringstream perf_stat_ss;
+	perf_stat_ss << m_title << ":" << std::endl;
+	for (std::size_t perf_stat_idx = 0; perf_stat_idx < m_definition.get_value_count (); ++perf_stat_idx)
+	  {
+	    perf_stat_ss << '\t' << m_definition.get_value_name (perf_stat_idx)
+			 << ": " << perf_stat_results[perf_stat_idx] << std::endl;
+	  }
+	const std::string perf_stat_str = perf_stat_ss.str ();
+	_er_log_debug (ARG_FILE_LINE, perf_stat_str.c_str ());
+      }
+  }
+
+  log_recovery_redo_perf_stat::log_recovery_redo_perf_stat ()
+    : log_recovery_redo_perf_stat ((pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO_MAIN)
+				   == PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO_MAIN)
+  {
+  }
+
+  log_recovery_redo_perf_stat::log_recovery_redo_perf_stat (bool a_do_record)
+    : m_
+  {
+    "Log recovery redo main thread perf stats",
+    a_do_record,
+    {
+      cubperf::stat_definition (PERF_STAT_ID_FETCH_PAGE, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter fetch_page", "Timer fetch_page (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_READ_LOG, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter read_log", "Timer read_log (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter redo_or_push", "Timer redo_or_push (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_PREP, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter redo_or_push_prep", "Timer redo_or_push_prep (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_DO_SYNC, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter redo_or_push_do_sync", "Timer redo_or_push_do_sync (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter redo_or_push_pop_reusable", "Timer redo_or_push_pop_reusable (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter redo_or_push_do_async", "Timer redo_or_push_do_async (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_COMMIT_ABORT, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter commit_abort", "Timer commit_abort (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_WAIT_FOR_PARALLEL, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter wait_for_parallel", "Timer wait_for_parallel (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_FINALIZE, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter finalize", "Timer finalize (ms)"),
+    }
+  }
+  {}
+
+  void log_recovery_redo_perf_stat::time_and_increment (cubperf::stat_id a_stat_id) const
+  {
+    m_.time_and_increment (a_stat_id);
+  }
+
+  void log_recovery_redo_perf_stat::log () const
+  {
+    m_.log ();
+  }
+
+  log_recovery_redo_parallel_perf_stat::log_recovery_redo_parallel_perf_stat ()
+    : m_
+  {
+    "Log recovery redo worker thread perf stats",
+    ((pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO_ASYNC)
+        == PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO_ASYNC),
+    {
+      cubperf::stat_definition (PERF_STAT_ID_PARALLEL_POP, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter pop", "Timer pop (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_PARALLEL_SLEEP, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter sleep", "Timer sleep (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_PARALLEL_EXECUTE, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter execute", "Timer execute (ms)"),
+      cubperf::stat_definition (PERF_STAT_ID_PARALLEL_RETIRE, cubperf::stat_definition::COUNTER_AND_TIMER,
+				"Counter retire", "Timer retire (ms)"),
+    }
+  }
+  {}
+
+  void log_recovery_redo_parallel_perf_stat::time_and_increment (cubperf::stat_id a_stat_id) const
+  {
+    m_.time_and_increment (a_stat_id);
+  }
+
+  void log_recovery_redo_parallel_perf_stat::log () const
+  {
+    m_.log ();
+  }
+
 }
 
 #endif // _LOG_RECOVERY_REDO_PERF_HPP_

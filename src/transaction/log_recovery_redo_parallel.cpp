@@ -496,11 +496,15 @@ namespace cublog
 
       ~redo_task () override;
 
-      void execute (context_type &context);
+      void execute (context_type &context) override;
+      void retire () override;
+
+      void log_perf_stats () const;
 
     private:
       redo_parallel::task_active_state_bookkeeping &m_task_state_bookkeeping;
       redo_parallel::redo_job_queue &m_queue;
+      log_recovery_redo_parallel_perf_stat m_perf_stats;
 
       log_reader m_log_pgptr_reader { LOG_CS_SAFE_READER };
       LOG_ZIP m_undo_unzip_support;
@@ -542,6 +546,7 @@ namespace cublog
       {
 	bool adding_finished = false;
 	redo_parallel::redo_job_base *const job = m_queue.pop_job (adding_finished);
+	m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_POP);
 
 	if (job == nullptr && adding_finished)
 	  {
@@ -555,20 +560,33 @@ namespace cublog
 
 		// expecting more data, sleep and check again
 		std::this_thread::sleep_for (std::chrono::milliseconds (WAIT_AND_CHECK_MILLIS));
+		m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_SLEEP);
 	      }
 	    else
 	      {
 		THREAD_ENTRY *const thread_entry = &context;
 		job->execute (thread_entry, m_log_pgptr_reader, m_undo_unzip_support, m_redo_unzip_support);
+		m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_EXECUTE);
 
 		m_queue.notify_job_finished (job);
 
 		job->retire ();
+		m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_RETIRE);
 	      }
 	  }
       }
 
     m_task_state_bookkeeping.set_inactive ();
+  }
+
+  void redo_parallel::redo_task::retire ()
+  {
+    // avoid self destruct, will be deleted by owning class
+  }
+
+  void redo_parallel::redo_task::log_perf_stats () const
+  {
+    m_perf_stats.log ();
   }
 
   /*********************************************************************
@@ -672,8 +690,18 @@ namespace cublog
     for (unsigned task_idx = 0; task_idx < m_task_count; ++task_idx)
       {
 	// NOTE: task ownership goes to the worker pool
-	auto task = new redo_task (m_task_state_bookkeeping, m_job_queue);
+	redo_task *task = new redo_task (m_task_state_bookkeeping, m_job_queue);
+	m_redo_tasks.push_back (std::unique_ptr<redo_parallel::redo_task> { task });
 	m_worker_pool->execute (task);
+      }
+  }
+
+  void
+  redo_parallel::log_perf_stats () const
+  {
+    for (auto &redo_task: m_redo_tasks)
+      {
+	redo_task->log_perf_stats ();
       }
   }
 
@@ -710,7 +738,7 @@ namespace cublog
      * in both cases, it does include the part that effectively calls the redo function, so, for accurate
      * evaluation the part that effectively executes the redo function must be accounted for
      */
-    perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_ASYNC };
+    //perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_ASYNC };
 
     const auto &rcv_lsa = get_log_lsa ();
     const int err_fetch = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, m_log_reader_page_fetch_mode);
@@ -825,17 +853,17 @@ namespace cublog
       }
     else
       {
-        std::unique_lock<std::mutex> ulock { m_mutex };
-        m_jobs_available_on_push_stack_cv.wait (ulock, [this] ()
-        {
-            return !m_push_stack.empty ();
-          });
+	std::unique_lock<std::mutex> ulock { m_mutex };
+	m_jobs_available_on_push_stack_cv.wait (ulock, [this] ()
+	{
+	  return !m_push_stack.empty ();
+	});
 
-        m_pop_stack.swap (m_push_stack);
+	m_pop_stack.swap (m_push_stack);
 
-        redo_job_impl *const pop_job = m_pop_stack.top ();
-        m_pop_stack.pop ();
-        return pop_job;
+	redo_job_impl *const pop_job = m_pop_stack.top ();
+	m_pop_stack.pop ();
+	return pop_job;
       }
 
     assert ("unreachable state reached" == nullptr);

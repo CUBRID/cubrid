@@ -152,6 +152,8 @@ namespace cublog
        */
       void wait_for_termination_and_stop_execution ();
 
+      void log_perf_stats () const;
+
     private:
       void do_init_worker_pool ();
       void do_init_tasks ();
@@ -306,6 +308,7 @@ namespace cublog
       task_active_state_bookkeeping m_task_state_bookkeeping;
 
       cubthread::entry_workpool *m_worker_pool;
+      std::vector<std::unique_ptr<redo_task>> m_redo_tasks;
 
       redo_job_queue m_job_queue;
 

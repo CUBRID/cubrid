@@ -1745,6 +1745,12 @@ exit:
   // statistics data collect & report
   //
   rcv_redo_perf_stat.log ();
+#if defined(SERVER_MODE)
+  if (parallel_recovery_redo != nullptr)
+    {
+      parallel_recovery_redo->log_perf_stats ();
+    }
+#endif
 
   return;
 }
