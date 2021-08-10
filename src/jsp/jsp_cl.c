@@ -1565,8 +1565,8 @@ jsp_send_destroy_request (const SOCKET sockfd)
   char *request = OR_ALIGNED_BUF_START (a_request);
 
   or_pack_int (request, (int) SP_CODE_DESTROY);
-  int nbytes = jsp_writen (sockfd, request, (int) sizeof (int));
-  if (nbytes != (int) sizeof (int))
+  int nbytes = jsp_writen (sockfd, request, OR_INT_SIZE);
+  if (nbytes != OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, "destroy");
       return er_errid ();
@@ -1574,8 +1574,8 @@ jsp_send_destroy_request (const SOCKET sockfd)
 
   /* read request code */
   int code;
-  nbytes = jsp_readn (sockfd, (char *) &code, (int) sizeof (int));
-  if (nbytes != (int) sizeof (int))
+  nbytes = jsp_readn (sockfd, (char *) &code, OR_INT_SIZE);
+  if (nbytes != OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
       return er_errid ();
@@ -1618,8 +1618,8 @@ jsp_receive_response (const SOCKET sockfd, const SP_ARGS * sp_args)
   while (true)
     {
       /* read request command code */
-      nbytes = jsp_readn (sockfd, (char *) &command_code, (int) sizeof (int));
-      if (nbytes != (int) sizeof (int))
+      nbytes = jsp_readn (sockfd, (char *) &command_code, OR_INT_SIZE);
+      if (nbytes != OR_INT_SIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
 	  return ER_SP_NETWORK_ERROR;
@@ -1673,8 +1673,8 @@ static int
 jsp_alloc_response (const SOCKET sockfd, cubmem::extensible_block & blk)
 {
   int nbytes, res_size;
-  nbytes = jsp_readn (sockfd, (char *) &res_size, (int) sizeof (int));
-  if (nbytes != (int) sizeof (int))
+  nbytes = jsp_readn (sockfd, (char *) &res_size, OR_INT_SIZE);
+  if (nbytes != OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
       return ER_SP_NETWORK_ERROR;

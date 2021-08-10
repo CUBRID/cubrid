@@ -155,8 +155,8 @@ namespace cubmethod
     do
       {
 	int nbytes =
-		jsp_readn (m_group->get_socket(), (char *) &start_code, (int) sizeof (int));
-	if (nbytes != (int) sizeof (int))
+		jsp_readn (m_group->get_socket(), (char *) &start_code, OR_INT_SIZE);
+	if (nbytes != OR_INT_SIZE)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
 		    nbytes);
@@ -212,8 +212,8 @@ namespace cubmethod
   int method_invoke_java::alloc_response (cubmem::extensible_block &blk)
   {
     int nbytes, res_size;
-    nbytes = jsp_readn (m_group->get_socket(), (char *) &res_size, (int) sizeof (int));
-    if (nbytes != (int) sizeof (int))
+    nbytes = jsp_readn (m_group->get_socket(), (char *) &res_size, OR_INT_SIZE);
+    if (nbytes != OR_INT_SIZE)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
 		nbytes);
