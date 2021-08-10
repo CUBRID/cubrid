@@ -446,6 +446,15 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   return error;
 }
 
+/*
+ * jsp_call_stored_procedure_ng - call java stored procedure in constant folding
+ *   return: call jsp failed return error code
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *
+ * Note:
+ */
+
 int
 jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
