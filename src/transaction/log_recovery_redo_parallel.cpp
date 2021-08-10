@@ -697,9 +697,9 @@ namespace cublog
     for (unsigned task_idx = 0; task_idx < m_task_count; ++task_idx)
       {
 	// NOTE: task ownership goes to the worker pool
-	redo_task *task = new redo_task (m_task_state_bookkeeping, m_job_queue);
-	m_redo_tasks.push_back (std::unique_ptr<redo_parallel::redo_task> { task });
-	m_worker_pool->execute (task);
+	auto task = std::make_unique<redo_parallel::redo_task> (m_task_state_bookkeeping, m_job_queue);
+	m_worker_pool->execute (task.get());
+	m_redo_tasks.push_back (std::move (task));
       }
   }
 
