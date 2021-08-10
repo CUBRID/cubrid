@@ -185,7 +185,6 @@ static int spage_find_empty_slot (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int l
 				  int *space, PGSLOTID * slotid);
 static int spage_find_empty_slot_at (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int length, INT16 type,
 				     SPAGE_SLOT ** sptr);
-static void spage_move_slots (SPAGE_SLOT * start_slot_p, SPAGE_SLOT * end_slot_p, int offset);
 static void spage_shift_slot_up (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPAGE_SLOT * slot_p);
 static void spage_shift_slot_down (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPAGE_SLOT * slot_p);
 static int spage_add_new_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPAGE_HEADER * page_header_p,
@@ -1491,32 +1490,6 @@ spage_find_empty_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int record_leng
 }
 
 /*
- * spage_move_slots() -
- *   return:
- *
- *   start_slot_p(in): Pointer to slotted page pointer array
- *   end_slot_p(in): Pointer to slotted page pointer array
- *   offset(in): How much to move. Positive means go up in a slot page, and negative down.
- *
- *   Move [start_slot_p, end_slot_p) to the end_slot_p direction.
- */
-static void
-spage_move_slots (SPAGE_SLOT * start_slot_p, SPAGE_SLOT * end_slot_p, int offset)
-{
-  int cnt = (int) (start_slot_p - end_slot_p);
-
-  if (cnt == 0)
-    {
-      return;
-    }
-
-  assert (cnt > 0);
-  assert (offset != 0);
-
-  memmove (end_slot_p + 1 - offset, end_slot_p + 1, sizeof (SPAGE_SLOT) * cnt);
-}
-
-/*
  * spage_shift_slot_up() -
  *   return:
  *
@@ -1541,7 +1514,7 @@ spage_shift_slot_up (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPAGE_SLOT *
     }
   else
     {
-      spage_move_slots (slot_p, last_slot_p, 1);
+      memmove (last_slot_p, last_slot_p + 1, sizeof (SPAGE_SLOT) * (slot_p - last_slot_p));
     }
 
   spage_set_slot (slot_p, SPAGE_EMPTY_OFFSET, 0, REC_UNKNOWN);
@@ -1572,9 +1545,9 @@ spage_shift_slot_down (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPAGE_SLOT
     {
       spage_set_slot (slot_p, last_slot_p->offset_to_record, last_slot_p->record_length, last_slot_p->record_type);
     }
-  else
+  else if (page_header_p->num_slots > 1)
     {
-      spage_move_slots (slot_p - 1, last_slot_p - 1, -1);
+      memmove (last_slot_p + 1, last_slot_p, sizeof (SPAGE_SLOT) * (slot_p - last_slot_p));
     }
 
   spage_set_slot (last_slot_p, SPAGE_EMPTY_OFFSET, 0, REC_UNKNOWN);
