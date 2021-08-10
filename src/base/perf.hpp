@@ -103,7 +103,7 @@
 namespace cubperf
 {
   // stat_definition - defines one statistics entry in a set
-  class stat_definition
+  class stat_definition final
   {
     public:
 
@@ -116,7 +116,15 @@ namespace cubperf
       };
 
       // constructor
-      stat_definition (const stat_id id, type stat_type, const char *first_name, const char *second_name = NULL);
+      inline constexpr stat_definition (const stat_id id, type stat_type,
+					const char *first_name, const char *second_name = nullptr)
+	: m_id (id)
+	, m_type (stat_type)
+	, m_names { first_name, second_name }
+	, m_offset (0)
+      {
+      }
+
       // copy constructor
       stat_definition (const stat_definition &other);
 
@@ -145,12 +153,13 @@ namespace cubperf
   class statset_definition
   {
     public:
+      using stat_definition_init_list_t = std::initializer_list<stat_definition>;
       using stat_definition_vec_t = std::vector<stat_definition>;
 
     public:
       // no default constructor
       statset_definition (void) = delete;
-      statset_definition (std::initializer_list<stat_definition> defs);
+      statset_definition (stat_definition_init_list_t defs);
       statset_definition (const stat_definition_vec_t &defs);
 
     private:

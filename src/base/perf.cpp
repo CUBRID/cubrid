@@ -38,16 +38,6 @@ namespace cubperf
     // nothing
   }
 
-  stat_definition::stat_definition (const stat_id idref, type stat_type, const char *first_name,
-				    const char *second_name /* = NULL */)
-    : m_id (idref)
-    , m_type (stat_type)
-    , m_names { first_name, second_name }
-    , m_offset (0)
-  {
-    //
-  }
-
   stat_definition::stat_definition (const stat_definition &other)
     : m_id (other.m_id)
     , m_type (other.m_type)
@@ -81,7 +71,7 @@ namespace cubperf
   // statset_definition
   //////////////////////////////////////////////////////////////////////////
 
-  statset_definition::statset_definition (std::initializer_list<stat_definition> defs)
+  statset_definition::statset_definition (statset_definition::stat_definition_init_list_t defs)
     : statset_definition (defs.size (), defs.begin (), defs.end ())
   {
   }

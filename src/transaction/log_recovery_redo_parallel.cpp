@@ -500,6 +500,7 @@ namespace cublog
       void retire () override;
 
       void log_perf_stats () const;
+      void accumulate_perf_stats (cubperf::stat_value *a_output_stats, std::size_t a_output_stats_size) const;
 
     private:
       redo_parallel::task_active_state_bookkeeping &m_task_state_bookkeeping;
@@ -587,6 +588,12 @@ namespace cublog
   void redo_parallel::redo_task::log_perf_stats () const
   {
     m_perf_stats.log ();
+  }
+
+  void redo_parallel::redo_task::accumulate_perf_stats (
+	  cubperf::stat_value *a_output_stats, std::size_t a_output_stats_size) const
+  {
+    m_perf_stats.accumulate (a_output_stats, a_output_stats_size);
   }
 
   /*********************************************************************
@@ -699,10 +706,23 @@ namespace cublog
   void
   redo_parallel::log_perf_stats () const
   {
+    const cubperf::statset_definition definition
+    {
+      log_recovery_redo_parallel_perf_stat::m_stats_definition_init_list
+    };
+
+    std::vector < cubperf::stat_value > accum_perf_stat_results;
+    accum_perf_stat_results.resize (definition.get_value_count ());
+
     for (auto &redo_task: m_redo_tasks)
       {
+	redo_task->accumulate_perf_stats (accum_perf_stat_results.data (), accum_perf_stat_results.size ());
 	redo_task->log_perf_stats ();
       }
+
+    log_perf_stats_values_with_definition (definition,
+					   accum_perf_stat_results.data (),
+					   accum_perf_stat_results.size ());
   }
 
   /*********************************************************************
