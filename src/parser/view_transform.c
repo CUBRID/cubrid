@@ -3389,7 +3389,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 int
 mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec)
 {
-  PT_NODE *derived_table, *sub;
+  PT_NODE *derived_table;
   int push_cnt = 0;		/* init */
   FIND_ID_INFO info;
 
@@ -3397,8 +3397,7 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
       /* never do copy-push optimization for a hierarchical query */
       && statement->info.query.q.select.connect_by == NULL
       && (derived_table = spec->info.spec.derived_table)
-      && !PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY)
-      && PT_IS_QUERY (derived_table) && (spec->info.spec.derived_table_type == PT_IS_SUBQUERY))
+      && !PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY))
     {
       info.type = FIND_ID_INLINE_VIEW;	/* inline view */
       /* init input section */
@@ -3407,14 +3406,14 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
       info.in.attr_list = spec->info.spec.as_attr_list;
       info.in.query_list = derived_table;
 
-      sub = derived_table->info.query.q.select.from->info.spec.derived_table;
-      if (sub && sub->node_type == PT_DBLINK_TABLE)
-	{
-	  push_cnt = mq_copypush_sargable_terms_dblink (parser, statement, spec, derived_table, &info);
-	}
-      else
+      if (PT_IS_QUERY (derived_table) && (spec->info.spec.derived_table_type == PT_IS_SUBQUERY))
 	{
 	  push_cnt = mq_copypush_sargable_terms_helper (parser, statement, spec, derived_table, &info);
+	}
+      else if (derived_table->node_type == PT_DBLINK_TABLE)
+	{
+	  assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
+	  push_cnt = mq_copypush_sargable_terms_dblink (parser, statement, spec, derived_table, &info);
 	}
     }
 
