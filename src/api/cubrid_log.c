@@ -109,7 +109,7 @@ int g_extraction_user_count = 0;
 FILE *g_trace_log;
 char g_trace_log_path[PATH_MAX + 1] = "./cubrid_tracelog.err";
 int g_trace_log_level = 0;
-int g_trace_log_filesize = 10 * 1024 * 1024 ;	/* 10 MB */
+int g_trace_log_filesize = 10 * 1024 * 1024;	/* 10 MB */
 
 LOG_LSA g_next_lsa = LSA_INITIALIZER;
 
@@ -176,13 +176,13 @@ cubrid_log_set_tracelog_pointer (char buf[])
   int curr_size = 0;
   int tracelog_size = 0;
 
-  curr_size = ftell(g_trace_log);
-  tracelog_size = strlen(buf);
+  curr_size = ftell (g_trace_log);
+  tracelog_size = strlen (buf);
 
   if (curr_size + tracelog_size > g_trace_log_filesize)
-  {
-    fseek(g_trace_log, 0, SEEK_SET);
-  }
+    {
+      fseek (g_trace_log, 0, SEEK_SET);
+    }
 }
 
 /*
@@ -538,7 +538,7 @@ cubrid_log_error:
  *   dbname(in):
  */
 int
-cubrid_log_connect_server (char *host, int port, char *dbname, char * id, char * password)
+cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *password)
 {
   int err_code;
 
@@ -549,8 +549,8 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char * id, char *
       g_trace_log = fopen (g_trace_log_path, "a+");
       if (g_trace_log == NULL)
 	{
-          err_code = CUBRID_LOG_FAILED_CONNECT;
-          goto cubrid_log_error;
+	  err_code = CUBRID_LOG_FAILED_CONNECT;
+	  goto cubrid_log_error;
 	}
     }
 
@@ -776,9 +776,9 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 	  rc = CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM;
 	}
       else if (reply_code == ER_CDC_EXTRACTION_TIMEOUT)
-      {
-          CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_EXTRACTION_TIMEOUT, trace_errbuf);
-      }
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_EXTRACTION_TIMEOUT, trace_errbuf);
+	}
     }
 
   ptr = or_unpack_log_lsa (ptr, next_lsa);
@@ -1353,8 +1353,9 @@ cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
 
   for (i = 0; i < g_log_items_count; i++)	// if g_log_items_count == 0 then nothing to do
     {
-      if ((rc = cubrid_log_clear_data_item ((DATA_ITEM_TYPE) g_log_items[i].data_item_type, &g_log_items[i].data_item)) !=
-	  CUBRID_LOG_SUCCESS)
+      if ((rc =
+	   cubrid_log_clear_data_item ((DATA_ITEM_TYPE) g_log_items[i].data_item_type,
+				       &g_log_items[i].data_item)) != CUBRID_LOG_SUCCESS)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DEALLOC, trace_errbuf);
 	}
