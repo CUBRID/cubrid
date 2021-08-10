@@ -18043,9 +18043,13 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  PT_ERROR (parser, statement, "The checksum of the encrypted password does not match.");
 	}
-      else if (error == ER_DBLINK_PASSWORD_OVER_MAX_LENGTH2)
+      else if (error == ER_DBLINK_PASSWORD_INVALID_LENGTH)
 	{
-	  PT_ERROR (parser, statement, "Encrypted password length exceeds max size.");
+	  PT_ERROR (parser, statement, "Encrypted password length is incorrect.");
+	}
+      else if (!pt_has_error (parser))
+	{
+	  PT_ERRORf (parser, NULL, "Failed to decryption password. error=%d", error);
 	}
 
       goto end;
@@ -18182,9 +18186,9 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
 	{
 	  PT_ERROR (parser, NULL, "The checksum of the encrypted password does not match.");
 	}
-      else if (error == ER_DBLINK_PASSWORD_OVER_MAX_LENGTH2)
+      else if (error == ER_DBLINK_PASSWORD_INVALID_LENGTH)
 	{
-	  PT_ERROR (parser, NULL, "Encrypted password length exceeds max size.");
+	  PT_ERROR (parser, NULL, "Encrypted password length is incorrect.");
 	}
       else if (!pt_has_error (parser))
 	{
@@ -18292,10 +18296,10 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
       length = strlen (passwd);
     }
 
-  db_make_null (&val);
   if (length <= DBLINK_PASSWORD_MAX_LENGTH)
     {
       // The raw password entered by the user.
+      db_make_null (&val);
       err = get_dblink_password_encrypt (passwd, &val, true);
       if (err == NO_ERROR)
 	{
@@ -18307,21 +18311,17 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 	  else
 	    {
 	      strcpy (cipher_buf, str);
-	      err = NO_ERROR;
 	    }
 	}
+      pr_clear_value (&val);
     }
   else if (length == max_len)
     {
       // A encrypted password from the raw password.      
-      err = get_dblink_password_decrypt (passwd, &val);
-      if (err == NO_ERROR)
-	{
-	  strcpy (cipher_buf, passwd);
-	}
+      strcpy (cipher_buf, passwd);
+      err = NO_ERROR;
     }
 
-  pr_clear_value (&val);
   return err;
 }
 
@@ -18422,10 +18422,15 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
       return NO_ERROR;
     }
 
+  new_length = DBLINK_PASSWORD_MAX_BUFSIZE;
+  /* Adjust the length so that it is a multiple of 4. */
+  new_length >>= 2;
+  new_length <<= 2;
+
   length = strlen (passwd_cipher);
-  if (length > DBLINK_PASSWORD_MAX_BUFSIZE)
+  if (length != new_length)
     {
-      return ER_DBLINK_PASSWORD_OVER_MAX_LENGTH2;
+      return ER_DBLINK_PASSWORD_INVALID_LENGTH;
     }
 
   // hex string  to byte stream 

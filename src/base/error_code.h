@@ -1652,7 +1652,7 @@
 #define ER_DBLINK_UNSUPPORTED_TYPE                  -1290
 #define ER_DBLINK_INVALID_BIND_PARAM                -1291
 #define ER_DBLINK_PASSWORD_OVER_MAX_LENGTH          -1292
-#define ER_DBLINK_PASSWORD_OVER_MAX_LENGTH2         -1293
+#define ER_DBLINK_PASSWORD_INVALID_LENGTH           -1293
 #define ER_DBLINK_PASSWORD_CHECKSUM                 -1294
 
 #define ER_LAST_ERROR                               -1294
