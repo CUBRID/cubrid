@@ -491,7 +491,8 @@ static int pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info
 static int pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** build_attrs,
 				       PT_NODE ** probe_attrs, PT_NODE ** pred_without_HQ);
 
-static int pt_split_pred_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** pred_without_HQ, PT_NODE ** pred_with_HQ);
+static int pt_split_pred_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** pred_without_HQ,
+				 PT_NODE ** pred_with_HQ);
 
 static int pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, QO_XASL_INDEX_INFO * index_pred,
 			      PT_NODE * pred, PT_NODE ** pred_attrs, int **pred_offsets);
