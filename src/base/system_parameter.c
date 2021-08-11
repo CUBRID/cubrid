@@ -6446,7 +6446,8 @@ static KEYVAL tde_algorithm_words[] = {
 
 static KEYVAL server_type_words[] = {
   {"transaction", SERVER_TYPE_TRANSACTION},
-  {"page", SERVER_TYPE_PAGE}
+  {"page", SERVER_TYPE_PAGE},
+  {"single_node", SERVER_TYPE_SINGLE_NODE}
 };
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {

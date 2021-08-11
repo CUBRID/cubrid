@@ -218,7 +218,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
 		m_uses_remote_storage ? "remote" : "local");
 
   // failed to connect to any page server
-  assert (valid_connection_count > 0 || !m_uses_remote_storage);
+//  assert (valid_connection_count > 0 || !m_uses_remote_storage);
   return exit_code;
 }
 

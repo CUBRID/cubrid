@@ -57,26 +57,15 @@ void set_server_type (SERVER_TYPE type)
 int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
+  SERVER_TYPE parameter_value = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
   if (g_server_type == SERVER_TYPE_UNKNOWN)
     {
-      SERVER_TYPE parameter_value = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
 
       if (parameter_value == SERVER_TYPE_SINGLE_NODE)
 	{
-	  if (g_server_type == SERVER_TYPE_UNKNOWN)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1,
-		      "Single node server must have type specified as argument");
-	      return ER_INVALID_SERVER_OPTION;
-	    }
-	  else if (parameter_value == SERVER_TYPE_TRANSACTION)
-	    {
-	      char page_hosts_new_value[22];
-
-	      sprintf (page_hosts_new_value, "localhost:%d", prm_get_master_port_id ());
-	      prm_set_string_value (PRM_ID_PAGE_SERVER_HOSTS, page_hosts_new_value);
-	      prm_set_bool_value (PRM_ID_REMOTE_STORAGE, true);
-	    }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1,
+		  "Single node server must have type specified as argument");
+	  return ER_INVALID_SERVER_OPTION;
 	}
       g_server_type = parameter_value;
       //if no parameter value is provided use transaction as the default type
@@ -85,6 +74,8 @@ int init_server_type (const char *db_name)
 	  g_server_type = SERVER_TYPE_TRANSACTION;
 	}
     }
+
+  configure_single_node_server (parameter_value);
 #if !defined(NDEBUG)
   g_server_type_initialized = true;
 #endif
@@ -110,6 +101,21 @@ int init_server_type (const char *db_name)
       ASSERT_ERROR ();
     }
   return er_code;
+}
+
+void configure_single_node_server (SERVER_TYPE parameter_value)
+{
+  if (g_server_type != SERVER_TYPE_TRANSACTION || parameter_value != SERVER_TYPE_SINGLE_NODE)
+    {
+      return;
+    }
+
+  char *page_hosts_new_value;
+  page_hosts_new_value = (char *) malloc (22 * sizeof (char));
+
+  sprintf (page_hosts_new_value, "localhost:%d", prm_get_master_port_id ());
+  prm_set_string_value (PRM_ID_PAGE_SERVER_HOSTS, page_hosts_new_value);
+  prm_set_bool_value (PRM_ID_REMOTE_STORAGE, true);
 }
 
 void finalize_server_type ()
