@@ -1643,7 +1643,10 @@
 #define ER_SCALABILITY_DEV_RESERVED_ERROR19         -1282
 #define ER_SCALABILITY_DEV_RESERVED_ERROR20         -1283
 
-#define ER_LAST_ERROR                               -1284
+#define ER_CDC_LSA_NOT_FOUND                        -1284
+#define ER_CDC_EXTRACTION_TIMEOUT                   -1285
+
+#define ER_LAST_ERROR                               -1286
 
 /*
  * CAUTION!
