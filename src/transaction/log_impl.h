@@ -769,24 +769,21 @@ typedef struct log_logging_stat
 
 /*for CDC interface */
 
-typedef struct cdc_loginfo_entry CDC_LOGINFO_ENTRY;
-struct cdc_loginfo_entry
+typedef struct cdc_loginfo_entry
 {
   LOG_LSA start_lsa;
   int length;
   char *log_info;
-};
+} CDC_LOGINFO_ENTRY;
 
-typedef struct cdc_temp_logbuf CDC_TEMP_LOGBUF;
-struct cdc_temp_logbuf
+typedef struct cdc_temp_logbuf
 {
   int pageid;
   LOG_PAGE *log_page_p;
   char log_page[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-};
+} CDC_TEMP_LOGBUF;
 
-typedef struct cdc_global_info CDC_GLOBAL_INFO;
-struct cdc_global_info
+typedef struct cdc_global_info
 {
   LOG_LSA next_lsa;		/* next LSA to process */
 
@@ -798,44 +795,40 @@ struct cdc_global_info
   int all_in_cond;
   int max_log_item;
   int extraction_timeout;
-};
+} CDC_GLOBAL_INFO;
 
 /* will be moved to new file for CDC */
-typedef ovf_page_list OVF_PAGE_LIST;
-struct ovf_page_list
+typedef struct ovf_page_list
 {
   char *rec_type;
   char *data;
   int length;
   struct ovf_page_list *next;
-};
+} OVF_PAGE_LIST;
 
-typedef enum cdc_dataitem_type CDC_DATAITEM_TYPE;
-enum cdc_dataitem_type
+typedef enum cdc_dataitem_type
 {
   DDL = 0,
   DML,
   DCL,
   TIMER
-};
+} CDC_DATAITEM_TYPE;
 
-typedef enum cdc_dcl_type CDC_DCL_TYPE;
-enum cdc_dcl_type
+typedef enum cdc_dcl_type
 {
   COMMIT = 0,
   ABORT
-};
+} CDC_DCL_TYPE;
 
-typedef enum cdc_dml_type CDC_DML_TYPE;
-enum cdc_dml_type
+typedef enum cdc_dml_type
 {
   INSERT = 0,
   UPDATE,
   DELETE,
   TRUNCATE
-};
+} CDC_DML_TYPE;
 
-+typedef struct cdc_server_comm
+typedef struct cdc_server_comm
 {
   char *log_Infos;
   int log_Info_length;

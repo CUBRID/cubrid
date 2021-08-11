@@ -881,6 +881,8 @@ STATIC_INLINE int heap_copy_chain (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, 
 STATIC_INLINE int heap_get_last_vpid (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * last_vpid)
   __attribute__ ((ALWAYS_INLINE));
 
+STATIC_INLINE bool check_supplemental_log (THREAD_ENTRY * thread_p, OID * classoid) __attribute__ ((ALWAYS_INLINE));
+
 // *INDENT-OFF*
 static void heap_scancache_block_allocate (cubmem::block &b, size_t size);
 static void heap_scancache_block_deallocate (cubmem::block &b);
@@ -4158,6 +4160,28 @@ heap_copy_chain (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, HEAP_CHAIN * chain
   assert (recdes.length >= (int) sizeof (*chain));
   memcpy (chain, recdes.data, sizeof (*chain));
   return NO_ERROR;
+}
+
+/*
+ * check_supplemental_log () - check if appending supplemental log is available
+ *
+ * return	  : available or not
+ */
+STATIC_INLINE bool
+check_supplemental_log (THREAD_ENTRY * thread_p, OID * classoid)
+{
+  /* The value for PRM_ID_SUPPLEMENTAL_LOG is required to be greater than 0 if supplemental log is to be appended 
+   * no_supplemental_log is used to block duplicated supplemental logs. So this value should be false if supplemental log is to be appended 
+   */
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log
+      && !oid_is_system_class (classoid))
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
 }
 
 /*
@@ -20548,8 +20572,6 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   OID overflow_oid;
   int rc;
 
-  LOG_LSA undo_lsa;
-  bool is_supplement = false;
   LOG_TDES *tdes = NULL;
 
   /* check input */
@@ -20561,11 +20583,9 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   assert (context->overflow_page_watcher_p != NULL);
   assert (context->overflow_page_watcher_p->pgptr == NULL);
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log)
+  if (context->do_supplemental_log)
     {
-      is_supplement = true;
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      LSA_SET_NULL (&undo_lsa);
     }
 
   /* MVCC info is in overflow page, we only keep and OID in home */
@@ -20573,6 +20593,21 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
   /* reset overflow watcher rank */
   PGBUF_WATCHER_RESET_RANK (context->overflow_page_watcher_p, PGBUF_ORDERED_HEAP_OVERFLOW);
+
+  if (context->do_supplemental_log)
+    {
+      /* whether it is mvcc or not, undo image does not recorded in the log */
+      RECDES ovf_recdes = RECDES_INITIALIZER;
+      if ((rc =
+	   heap_get_bigone_content (thread_p, context->scan_cache_p, PEEK, &overflow_oid, &ovf_recdes)) != S_SUCCESS)
+	{
+	  return rc;
+	}
+
+      log_append_supplemental_undo_record (thread_p, &ovf_recdes);
+
+      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
+    }
 
   if (is_mvcc_op)
     {
@@ -20613,20 +20648,6 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       log_addr.pgptr = context->overflow_page_watcher_p->pgptr;
       log_addr.vfid = &context->hfid.vfid;
       log_addr.offset = overflow_oid.slotid;
-      if (is_supplement)
-	{
-	  RECDES ovf_recdes = RECDES_INITIALIZER;
-	  if ((rc =
-	       heap_get_bigone_content (thread_p, context->scan_cache_p, COPY, &overflow_oid,
-					&ovf_recdes)) != S_SUCCESS)
-	    {
-	      return rc;	/*supplemental log affects.. existing system..? */
-	    }
-
-	  log_append_supplemental_undo_record (thread_p, &ovf_recdes);
-/*SUPPLEMENT_DELETE UNDO LSA */
-	  LSA_COPY (&undo_lsa, &tdes->tail_lsa);
-	}
 
       heap_mvcc_log_delete (thread_p, &log_addr, RVHF_MVCC_DELETE_OVERFLOW);
 
@@ -20689,21 +20710,6 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	    }
 	}
 
-      if (is_supplement)
-	{
-	  RECDES ovf_recdes = RECDES_INITIALIZER;
-	  if ((rc =
-	       heap_get_bigone_content (thread_p, context->scan_cache_p, COPY, &overflow_oid,
-					&ovf_recdes)) != S_SUCCESS)
-	    {
-	      return rc;	/*supplemental log affects.. existing system..? */
-	    }
-
-	  log_append_supplemental_undo_record (thread_p, &ovf_recdes);
-/*SUPPLEMENT_DELETE UNDO LSA */
-	  LSA_COPY (&undo_lsa, &tdes->tail_lsa);
-	}
-
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 				&context->home_recdes, is_reusable, NULL);
@@ -20728,11 +20734,6 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       perfmon_inc_stat (thread_p, PSTAT_HEAP_BIG_DELETES);
     }
 
-  if (is_supplement)
-    {
-      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_DELETE, &context->class_oid, &undo_lsa, NULL);
-    }
-
   /* all ok */
   return NO_ERROR;
 }
@@ -20751,8 +20752,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   OID forward_oid;
   int rc;
 
-  LOG_LSA undo_lsa;
-  bool is_supplement = false;
   LOG_TDES *tdes = NULL;
 
   /* check input */
@@ -20763,11 +20762,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log)
+  if (context->do_supplemental_log)
     {
-      is_supplement = true;
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      LSA_SET_NULL (&undo_lsa);
     }
 
   /* get forward oid */
@@ -21085,12 +21082,13 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  forward_addr.pgptr = context->forward_page_watcher_p->pgptr;
 	  forward_addr.offset = forward_oid.slotid;
 
-	  if (is_supplement)
+	  if (context->do_supplemental_log)
 	    {
 	      /* relocation -> relocation case does not have any undo image to refer */
 	      log_append_supplemental_undo_record (thread_p, &new_forward_recdes);
-/*SUPPLEMENT_DELETE UNDO LSA */
-	      LSA_COPY (&undo_lsa, &tdes->tail_lsa);
+
+	      /* SUPPLEMENT_DELETE UNDO LSA */
+	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	    }
 
 	  heap_mvcc_log_delete (thread_p, &forward_addr, RVHF_MVCC_DELETE_REC_NEWHOME);
@@ -21134,9 +21132,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
 	  log_append_undoredo_recdes (thread_p, RVHF_DELETE, &forward_addr, &forward_recdes, NULL);
 /*SUPPLEMENT_DELETE UNDO LSA */
-	  if (is_supplement)
+	  if (context->do_supplemental_log)
 	    {
-	      LSA_COPY (&undo_lsa, &tdes->tail_lsa);
+	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	    }
 
 	  if (heap_is_reusable_oid (context->file_type))
@@ -21213,13 +21211,17 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * of the heap type (reusable OID or not) as the relocated record
        * should not be referenced anywhere in the database.
        */
-      heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, NULL);
-
-/*SUPPLEMENT_DELETE UNDO LSA */
-      if (is_supplement)
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&undo_lsa, &tdes->tail_lsa);
+	  /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
+	   * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
+	  heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
+				    &forward_recdes, true, &context->supp_undo_lsa);
+	}
+      else
+	{
+	  heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
+				    &forward_recdes, true, NULL);
 	}
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
@@ -21234,11 +21236,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_DELETES);
-    }
-
-  if (is_supplement)
-    {
-      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_DELETE, &context->class_oid, &undo_lsa, NULL);
     }
 
   /* all ok */
@@ -21257,8 +21254,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 {
   int error_code = NO_ERROR;
 
-  LOG_LSA undo_lsa;
-  bool is_supplement = false;
   LOG_TDES *tdes = NULL;
 
   /* check input */
@@ -21268,11 +21263,9 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log)
+  if (context->do_supplemental_log)
     {
-      is_supplement = true;
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      LSA_SET_NULL (&undo_lsa);
     }
 
   if (context->home_page_watcher_p->page_was_unfixed)
@@ -21482,21 +21475,16 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 		}
 	    }
 
-	  if (is_supplement)
-	    {
-	      log_append_supplemental_undo_record (thread_p, &built_recdes);
-	    }
-
 	  /* log relocation */
 	  rec_address.pgptr = context->home_page_watcher_p->pgptr;
 	  rec_address.vfid = &context->hfid.vfid;
 	  rec_address.offset = context->oid.slotid;
 	  heap_mvcc_log_home_change_on_delete (thread_p, &context->home_recdes, &forwarding_recdes, &rec_address);
 
-/*SUPPLEMENT_DELETE UNDO LSA (home -> relocation, bigone) , no DELETE operation from TRUNCATE */
-	  if (is_supplement)
+	  /* undo lsa for SUPPLEMENT_DELETE : when REC_HOME changes to REC_RELOCATION/BIGONE */
+	  if (context->do_supplemental_log)
 	    {
-	      LSA_COPY (&undo_lsa, &tdes->tail_lsa);
+	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	    }
 
 	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
@@ -21515,12 +21503,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  rec_address.pgptr = context->home_page_watcher_p->pgptr;
 	  rec_address.vfid = &context->hfid.vfid;
 	  rec_address.offset = context->oid.slotid;
-	  if (is_supplement)
-	    {
-	      log_append_supplemental_undo_record (thread_p, &built_recdes);
-/*SUPPLEMENT_DELETE UNDO LSA */
-	      LSA_COPY (&undo_lsa, &tdes->tail_lsa);
-	    }
 
 	  heap_mvcc_log_delete (thread_p, &rec_address, RVHF_MVCC_DELETE_REC_HOME);
 
@@ -21530,6 +21512,14 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  home_page_updated_recdes = &built_recdes;
 
 	  perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_MVCC_DELETES);
+
+	  /* undo lsa for SUPPLEMENT_DELETE : when REC_HOME is not changed  */
+	  if (context->do_supplemental_log)
+	    {
+	      log_append_supplemental_undo_record (thread_p, &built_recdes);
+	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
+	    }
+
 	}
 
       /* update home page and check operation result */
@@ -21550,14 +21540,18 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      /* log operation */
-      heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable, NULL);
-
-/*SUPPLEMENT_DELETE UNDO LSA */
-      if (is_supplement)
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&undo_lsa, &tdes->tail_lsa);
+	  /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
+	   * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
+	  heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
+				    &context->home_recdes, is_reusable, &context->supp_undo_lsa);
+	}
+      else
+	{
+	  /* log operation */
+	  heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
+				    &context->home_recdes, is_reusable, NULL);
 	}
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
@@ -21573,10 +21567,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       return error_code;
     }
 
-  if (is_supplement)
-    {
-      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_DELETE, &context->class_oid, &undo_lsa, NULL);
-    }
   /* all ok */
   return NO_ERROR;
 }
@@ -21692,8 +21682,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   RECDES new_home_recdes;
   VFID ovf_vfid;
 
-  LOG_LSA undo_lsa, redo_lsa;
-  bool is_supplement = false;
   LOG_TDES *tdes = NULL;
 
   assert (context != NULL);
@@ -21703,12 +21691,9 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->overflow_page_watcher_p != NULL);
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log)
+  if (context->do_supplemental_log)
     {
-      is_supplement = true;
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      LSA_SET_NULL (&undo_lsa);
-      LSA_SET_NULL (&redo_lsa);
     }
 
   /* read OID of overflow record */
@@ -21757,10 +21742,9 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       /* actual logging */
       log_append_undo_recdes2 (thread_p, RVHF_MVCC_UPDATE_OVERFLOW, &ovf_vfid, first_pgptr, -1, &ovf_recdes);
 
-/*SUPPLEMENT_UPDATE UNDO LSA */
-      if (is_supplement)
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&undo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	}
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
@@ -21770,10 +21754,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       /* set prev version lsa */
       or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
     }
-
-/* SUPPLEMENT_UPDATE UNDO LSA 
- * supplemental log for undo image when !is_mvcc_op , then get undo LSA 
- * */
 
   /* Proceed with the update. the new record is prepared and for mvcc it should have the prev version lsa set */
   if (heap_is_big_length (context->recdes_p->length))
@@ -21787,14 +21767,16 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  goto exit;
 	}
 
-/*SUPPLEMENT_UPDATE REDO LSA (mvcc), UNDO,REDO (non-mvcc) bigone to bigone */
-      if (is_supplement)
+      /* supplemental log for REC_BIGONE to REC_BIGONE case 
+       * 1. MVCC : redo lsa for SUPPLEMENT_UPDATE, undo lsa has been saved above
+       * 2. NON-MVCC : undo, redo lsa for SUPPLEMENT_UPDATE */
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 
 	  if (!is_mvcc_op)
 	    {
-	      LSA_COPY (&undo_lsa, &tdes->tail_lsa);
+	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	    }
 	}
 
@@ -21845,10 +21827,10 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  goto exit;
 	}
 
-/*SUPPLEMENT_UPDATE REDO LSA  bigone to relocation  */
-      if (is_supplement)
+      /* redo lsa for SUPPLEMENT_UPDATE : REC_BIGONE to REC_RELOCATION case */
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
 
       /* prepare record descriptor */
@@ -21874,10 +21856,10 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 				&context->oid, &context->home_recdes, &new_home_recdes,
 				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
 
-/*SUPPLEMENT_UPDATE REDO LSA  bigone to home */
-      if (is_supplement)
+      /* redo lsa for SUPPLEMENT_UPDATE : REC_BIGONE to REC_HOME case */
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
@@ -21897,11 +21879,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   perfmon_inc_stat (thread_p, PSTAT_HEAP_BIG_UPDATES);
 
   /* Fall through to exit. */
-
-  if (is_supplement)
-    {
-      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_UPDATE, &context->class_oid, &undo_lsa, &redo_lsa);
-    }
 
 exit:
   return error_code;
@@ -21930,8 +21907,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
   PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
 
-  LOG_LSA undo_lsa, redo_lsa;
-  bool is_supplement = false;
   LOG_TDES *tdes = NULL;
 
   assert (context != NULL);
@@ -21941,12 +21916,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log)
+  if (context->do_supplemental_log)
     {
-      is_supplement = true;
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      LSA_SET_NULL (&undo_lsa);
-      LSA_SET_NULL (&redo_lsa);
     }
 
   /* get forward oid */
@@ -22000,10 +21972,10 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  goto exit;
 	}
 
-/*SUPPLEMENT_UPDATE REDO LSA */
-      if (is_supplement)
+      /* redo lsa for SUPPLEMENT_UPDATE log : relocation to bigone */
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
 
       /* home record descriptor will be an overflow OID and will be placed in original home page */
@@ -22030,10 +22002,10 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       context->recdes_p->type = REC_NEWHOME;
       rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid, newhome_pg_watcher_p);
 
-/*SUPPLEMENT_UPDATE REDO LSA */
-      if (is_supplement)
+      /* redo lsa for SUPPLEMENT_UPDATE log : relocation to relocation */
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
 
       if (rc != NO_ERROR)
@@ -22097,10 +22069,10 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
-/*SUPPLEMENT_UPDATE REDO LSA (relocation to home) */
-      if (is_supplement)
+      /* redo lsa for SUPPLEMENT_UPDATE log : relocation to home */
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
 
       /* update home record */
@@ -22140,10 +22112,15 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
 				&forward_recdes, true, &prev_version_lsa);
 
-/*SUPPLEMENT_UPDATE UNDO LSA (relocation to home, relocation to bigone, relocation to relocation (!fit) */
-      if (is_supplement)
+      /* undo lsa for SUPPLEMENT_UPDATE log 
+       * case : 1. relocation to home
+       *        2. relocation to bigone
+       *        3. relocation to relocation (new forward recdes doesn't fit in existing forward page) */
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&undo_lsa, &tdes->tail_lsa);
+	  /* is_reusable is true when heap_log_delete_physical, so tdes->tail_lsa will points at postponed log 
+	   * So, it copies prev_version_lsa to supp_undo_lsa which indicates delete log */
+	  LSA_COPY (&context->supp_undo_lsa, &prev_version_lsa);
 	}
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
@@ -22167,11 +22144,11 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       heap_log_update_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
 				&forward_recdes, context->recdes_p, RVHF_UPDATE);
 
-/*SUPPLEMENT_UPDATE UNDO, REDO LSA (relocation to relocation (fits in existing page) */
-      if (is_supplement)
+      /* undo, redo lsa for SUPPLEMENT_UPDATE log : relocation to relocation (forward recdes fits in existing page) */
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&undo_lsa, &tdes->tail_lsa);
-	  LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
 
       LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
@@ -22230,10 +22207,6 @@ exit:
       pgbuf_ordered_unfix (thread_p, newhome_pg_watcher_p);
     }
 
-  if (is_supplement)
-    {
-      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_UPDATE, &context->class_oid, &undo_lsa, &redo_lsa);
-    }
   return rc;
 }
 
@@ -22255,8 +22228,6 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
   PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
 
-  LOG_LSA undo_lsa, redo_lsa;
-  bool is_supplement = false;
   LOG_TDES *tdes = NULL;
 
   assert (context != NULL);
@@ -22266,12 +22237,9 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log)
+  if (context->do_supplemental_log)
     {
-      is_supplement = true;
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      LSA_SET_NULL (&undo_lsa);
-      LSA_SET_NULL (&redo_lsa);
     }
 
   if (!HEAP_IS_UPDATE_INPLACE (context->update_in_place) && context->home_recdes.type == REC_ASSIGN_ADDRESS)
@@ -22320,10 +22288,10 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
-/*SUPPLEMENT_UPDATE REDO LSA */
-      if (is_supplement)
+      /* redo lsa for SUPPLEMENT_UPDATE : REC_HOME to REC_BIGONE case */
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
 
       /* forwarding record is REC_BIGONE */
@@ -22359,10 +22327,10 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       context->recdes_p->type = REC_NEWHOME;
       error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &forward_oid, newhome_pg_watcher_p);
 
-/*SUPPLEMENT_UPDATE REDO LSA */
-      if (is_supplement)
+      /* redo lsa for SUPPLEMENT_UPDATE : REC_HOME to REC_RELOCATION */
+      if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
 
       if (error_code != NO_ERROR)
@@ -22414,14 +22382,15 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 			    &context->home_recdes, home_page_updated_recdes_p, undo_rcvindex);
 
-/*SUPPLEMENT_UPDATE UNDO LSA and if REDO LSA is NULL , then append REDO LSA (update home to home) case)*/
-  if (is_supplement)
+  /* undo lsa for SUPPLEMENT_UPDATE : REC_HOME to REC_RELOCATION/BIGONE 
+   * if redo lsa is NULL , then append redo lsa :update REC_HOME to REC_HOME case */
+  if (context->do_supplemental_log)
     {
-      LSA_COPY (&undo_lsa, &tdes->tail_lsa);
+      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 
-      if (LSA_ISNULL (&redo_lsa))
+      if (LSA_ISNULL (&context->supp_redo_lsa))
 	{
-	  LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
     }
 
@@ -22465,11 +22434,6 @@ exit:
     {
       /* newhome_pg_watcher is used only locally; must be unfixed */
       pgbuf_ordered_unfix (thread_p, newhome_pg_watcher_p);
-    }
-
-  if (is_supplement)
-    {
-      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_UPDATE, &context->class_oid, &undo_lsa, &redo_lsa);
     }
 
   return error_code;
@@ -22694,8 +22658,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
 
-  LOG_LSA redo_lsa;
-  bool is_supplement = false;
   LOG_TDES *tdes = NULL;
 
   /* check required input */
@@ -22703,21 +22665,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   assert (context->type == HEAP_OPERATION_INSERT);
   assert (context->recdes_p != NULL);
   assert (!HFID_IS_NULL (&context->hfid));
-
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log)
-    {
-      is_supplement = true;
-      tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      LSA_SET_NULL (&redo_lsa);
-
-      if (!tdes->has_supplemental_log)
-	{
-	  const char *user = tdes->client.get_db_user ();
-	  int length = strlen (user);
-	  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, length, user);
-	  tdes->has_supplemental_log = true;
-	}
-    }
 
   context->time_track = &time_track;
   HEAP_PERF_START (thread_p, context);
@@ -22758,6 +22705,25 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 	}
     }
 
+  if (check_supplemental_log (thread_p, &context->class_oid))
+    {
+      tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      if (!tdes->has_supplemental_log)
+	{
+	  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+				       tdes->client.get_db_user ());
+	  tdes->has_supplemental_log = true;
+	}
+
+      context->do_supplemental_log = true;
+      LSA_SET_NULL (&context->supp_redo_lsa);
+    }
+  else
+    {
+      context->do_supplemental_log = false;
+    }
+
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_INSERT_START (&context->class_oid);
 #endif /* ENABLE_SYSTEMTAP */
@@ -22772,9 +22738,9 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
     }
 
 /*SUPPLEMENT_INSERT REDO LSA, INSERT REC_BIGONE  */
-  if (is_supplement && heap_is_big_length (context->recdes_p->length))
+  if (context->do_supplemental_log && heap_is_big_length (context->recdes_p->length))
     {
-      LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+      LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
     }
 
   if (context->is_bulk_op)
@@ -22820,10 +22786,11 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
     {
       heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
 				context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
-/*SUPPLEMENT_INSERT REDO LSA, INSERT REC_HOME, and no is_redistribute_op  */
-      if (is_supplement)
+
+      /* redo lsa for SUPPLEMENT_INSERT log */
+      if (context->do_supplemental_log && !heap_is_big_length (context->recdes_p->length))
 	{
-	  LSA_COPY (&redo_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
     }
 
@@ -22882,9 +22849,9 @@ error:
   CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
 
-  if (is_supplement)
+  if (context->do_supplemental_log)
     {
-      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &redo_lsa);
+      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
     }
 
   /* all ok */
@@ -23009,17 +22976,22 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log)
+  if (check_supplemental_log (thread_p, &context->class_oid))
     {
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (!tdes->has_supplemental_log)
 	{
-	  const char *user = tdes->client.get_db_user ();
-	  int length = strlen (user);
-	  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, length, user);
-
+	  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+				       tdes->client.get_db_user ());
 	  tdes->has_supplemental_log = true;
 	}
+
+      context->do_supplemental_log = true;
+      LSA_SET_NULL (&context->supp_undo_lsa);
+    }
+  else
+    {
+      context->do_supplemental_log = false;
     }
 
   /*
@@ -23065,6 +23037,11 @@ error:
 
   /* unfix pages */
   heap_unfix_watchers (thread_p, context);
+
+  if (context->do_supplemental_log)
+    {
+      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa, NULL);
+    }
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_DELETE_END (&context->class_oid, (rc != NO_ERROR));
@@ -23213,17 +23190,23 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log)
+  if (check_supplemental_log (thread_p, &context->class_oid))
     {
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (!tdes->has_supplemental_log)
 	{
-	  const char *user = tdes->client.get_db_user ();
-	  int length = strlen (user);
-	  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, length, user);
-
+	  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+				       tdes->client.get_db_user ());
 	  tdes->has_supplemental_log = true;
 	}
+
+      context->do_supplemental_log = true;
+      LSA_SET_NULL (&context->supp_undo_lsa);
+      LSA_SET_NULL (&context->supp_redo_lsa);
+    }
+  else
+    {
+      context->do_supplemental_log = false;
     }
 
   /*
@@ -23295,6 +23278,12 @@ exit:
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_UPDATE_END (&context->class_oid, (rc != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
+
+  if (context->do_supplemental_log)
+    {
+      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
+				   &context->supp_redo_lsa);
+    }
 
   return rc;
 }

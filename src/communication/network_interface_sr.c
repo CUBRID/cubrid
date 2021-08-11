@@ -10240,7 +10240,7 @@ scdc_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
 
   ptr = or_unpack_int64 (request, &input_time);
 
-  error = cdc_get_lsa (thread_p, input_time, &start_lsa);
+  error = cdc_get_lsa (thread_p, &input_time, &start_lsa);
 
   ptr = or_pack_int (reply, error);
   ptr = or_pack_log_lsa (ptr, &start_lsa);

@@ -1199,8 +1199,9 @@ typedef enum
   /* SELECT record info from tuple header instead of data */
   PT_HINT_SELECT_PAGE_INFO = 0x40000000,	/* 0100 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT page header information from heap file instead of record data */
-  PT_HINT_SELECT_KEY_INFO = 0x80000000	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
-    /* SELECT key information from index b-tree instead of table record data */
+  PT_HINT_SELECT_KEY_INFO = 0x80000000,	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
+  /* SELECT key information from index b-tree instead of table record data */
+  PT_HINT_NO_SUPPLEMENTAL_LOG = 0x100000000
 } PT_HINT_ENUM;
 
 /* Codes for error messages */

@@ -373,6 +373,7 @@ struct update_proc_node
   UPDATE_ASSIGNMENT *assigns;	/* assignments array */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
+  int no_supplemental_log;	/* no supplemental log */
   int num_orderby_keys;		/* no of keys for ORDER_BY */
   int num_assign_reev_classes;
   int num_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
@@ -394,6 +395,7 @@ struct insert_proc_node
   int has_uniques;		/* whether there are unique constraints */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
+  int no_supplemental_log;	/* no supplemental log */
   int do_replace;		/* duplicate tuples should be replaced */
   int pruning_type;		/* DB_CLASS_PARTITION_TYPE indicating the way in which pruning should be performed */
   int num_val_lists;		/* number of value lists in values clause */
@@ -408,6 +410,7 @@ struct delete_proc_node
   int num_classes;		/* total number of classes involved */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
+  int no_supplemental_log;	/* no supplemental log */
   int num_reev_classes;		/* no of classes involved in mvcc condition */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions */

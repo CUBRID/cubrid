@@ -190,7 +190,10 @@ typedef struct overflow_first_part OVERFLOW_FIRST_PART;
 
 /* *INDENT-OFF* */
 static std::unordered_map <TRANID, char *> cdc_tran_user; /*to clear when log producer ends suddenly */
-/* *INDENT-ON* * /
+lockfree::circular_queue <CDC_LOGINFO_ENTRY *> *cdc_loginfo_queue;
+CDC_SERVER_COMM server_comm_buf;
+/* *INDENT-ON* */
+CDC_GLOBAL_INFO cdc_Gl;
 
 /* CDC end */
 
@@ -202,8 +205,6 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
-
-CDC_SERVER_COMM server_comm_buf;
 
 #define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
@@ -341,18 +342,26 @@ static int cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_pag
 static int cdc_get_recdes (THREAD_ENTRY * thread_p, CDC_TEMP_LOGBUF * temp_logbuf, LOG_LSA * undo_lsa,
 			   RECDES * undo_recdes, LOG_LSA * redo_lsa, RECDES * redo_recdes);
 static int cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id);
-static int cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, int dml_type, OID classoid,
+static int cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type, OID classoid,
 				 RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry);
 static int cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOGINFO_ENTRY * ddl_entry);
-static int cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int type, CDC_LOGINFO_ENTRY * dcl_entry);
+static int cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LOGINFO_ENTRY * dcl_entry);
 static int cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY * timer_entry);
 static int cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA lsa, int trid, char **user);
 static int cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpdata);
 static int cdc_put_value_to_loginfo (const db_value * new_value, char **ptr);
 
-
 static int get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time);
 static int get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa);
+
+/*
+int cdc_get_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa);
+int cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user,
+				  uint64_t * classoids, int num_class);
+int cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_length, int *num_log_info);
+int cdc_initialize ();
+int cdc_finalize ();
+*/
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -4639,6 +4648,15 @@ log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool i
 static void
 log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
 {
+  if (tdes->has_supplemental_log)
+    {
+      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+				   tdes->client.get_db_user ());
+
+      tdes->has_supplemental_log = false;
+    }
+
+
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   log_append_repl_info_with_lock (thread_p, tdes, true);
@@ -4762,6 +4780,15 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
 static void
 log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
 {
+  if (tdes->has_supplemental_log)
+    {
+      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+				   tdes->client.get_db_user ());
+
+      tdes->has_supplemental_log = false;
+    }
+
+
   log_append_donetime_internal (thread_p, tdes, commit_lsa, LOG_COMMIT, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
 
@@ -4790,12 +4817,9 @@ log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 static void
 log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa)
 {
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+  if (tdes->has_supplemental_log)
     {
-      if (tdes->has_supplemental_log)
-	{
-	  tdes->has_supplemental_log = false;
-	}
+      tdes->has_supplemental_log = false;
     }
 
   log_append_donetime_internal (thread_p, tdes, abort_lsa, LOG_ABORT, LOG_PRIOR_LSA_WITHOUT_LOCK);
@@ -5109,19 +5133,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
       if (is_local_tran)
 	{
 	  LOG_LSA commit_lsa;
-
-	  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
-	    {
-	      if (tdes->has_supplemental_log)
-		{
-		  const char *user = tdes->client.get_db_user ();
-		  int length = strlen (user);
-
-		  log_append_supplemental_log (thread_p, LOG_SUPPLEMENTAL_TRAN_USER, length, user);
-
-		  tdes->has_supplemental_log = false;
-		}
-	    }
 
 	  /* To write unlock log before releasing locks for transactional consistencies. When a transaction(T2) which
 	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
@@ -12137,7 +12148,7 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 }
 
 static int
-cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dml_type,
+cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type,
 		      OID classoid, RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry)
 {
   /*this is for constructing dml data item */
@@ -12145,7 +12156,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, DML_TYPE dm
   int *pk_attr_index = NULL;	/*not attr_id, def_order array */
   int num_pk_attr;
 
-  DATAITEM_TYPE dataitem_type = DML;
+  CDC_DATAITEM_TYPE dataitem_type = DML;
   char *ptr, *start_ptr;
   char *dml_loginfo;
   uint64_t b_classoid = 0;
@@ -12444,10 +12455,10 @@ end:
   return error_code;
 }
 
-#if 0
 static int
 cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOGINFO_ENTRY * ddl_entry)
 {
+#if 0
   /*|statement type | class OID | object OID | statement length | statement | */
 
   char *ptr, *start_ptr;
@@ -12544,15 +12555,15 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
   ptr = or_pack_int (ptr, statement_length);
   ptr = or_pack_string (ptr, statement);
   ddl_entry->length = ptr - start_ptr;
+#endif 
   return NO_ERROR;
 }
-#endif
 
 static int
 cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LOGINFO_ENTRY * dcl_entry)
 {
-  DATAITEM_TYPE dataitem_type = DCL;
-  DCL_TYPE dcl_type;
+  CDC_DATAITEM_TYPE dataitem_type = DCL;
+  CDC_DCL_TYPE dcl_type;
   char *ptr, *start_ptr;
   int length = 0;
 
@@ -12600,7 +12611,7 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
 static int
 cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY * timer_entry)
 {
-  DATAITEM_TYPE dataitem_type = TIMER;
+  CDC_DATAITEM_TYPE dataitem_type = TIMER;
 
   char *ptr, *start_ptr;
   int length = 0;
@@ -12660,7 +12671,7 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
 	      data = (char *) log_page_p->area + process_lsa.offset;
 	      memcpy (*user, data, supplement->length);
-	      user[supplement->length] = '\0';
+	      *user[supplement->length] = '\0';
 	      return NO_ERROR;
 	    }
 	}
@@ -13144,7 +13155,8 @@ cdc_put_value_to_loginfo (const db_value * new_value, char **data_ptr)
 static void
 cdc_thread_checker (THREAD_ENTRY * thread_p)
 {
-  if (LSA_LE (&log_Reader_info.next_lsa, log_Gl.append.get_nxio_lsa ()))
+  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa();
+  if (LSA_LE (&cdc_Gl.next_lsa, &nxio_lsa))
     {
       //pthread_cond_signal (&lsa_cond);
     }
@@ -13367,7 +13379,7 @@ cdc_get_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 
   if (is_found)
     {
-      LSA_COPY (&log_Reader_info.start_lsa, start_lsa);
+      LSA_COPY (&cdc_Gl.next_lsa, start_lsa);
       /*pthread_cond_signal () to cdc_log_producer and queue re-initialization */
     }
 
@@ -13603,7 +13615,7 @@ cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_l
   int status;
 
   char *log_infos = NULL;
-  LOG_INFO_ENTRY *consume;
+  CDC_LOGINFO_ENTRY *consume;
 
   assert (!LSA_ISNULL (start_lsa));
 
@@ -13611,10 +13623,10 @@ cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_l
   *total_length = 0;
 
   gettimeofday (&cur, NULL);
-  timeout.tv_sec = cur.tv_sec + log_Reader_info.extraction_timeout;
+  timeout.tv_sec = cur.tv_sec + cdc_Gl.extraction_timeout;
   timeout.tv_nsec = cur.tv_usec * 1000;
 
-  if (log_info_queue->is_empty ())
+  if (cdc_loginfo_queue->is_empty ())
     {
       status = pthread_cond_timedwait (consume_cv, &mutex, timeout);
       if (status == ETIMEDOUT)
@@ -13623,10 +13635,10 @@ cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_l
 	}
     }
 
-  while (log_info_queue->is_empty () == false && (*num_log_info < log_Reader_info.max_log_item))
+  while (cdc_loginfo_queue->is_empty () == false && (*num_log_info < cdc_Gl.max_log_item))
     {
       /* *INDENT-OFF* */
-      log_info_queue->consume (consume);
+      cdc_loginfo_queue->consume (consume);
       /* *INDENT-ON* */
       if (LSA_GE (&consume->start_lsa, start_lsa))
 	{
@@ -13666,28 +13678,28 @@ cdc_finalize ()
 {
   int i = 0;
 
-  if (log_Reader_info.num_user > 0)
+  if (cdc_Gl.num_user > 0)
     {
-      for (i = 0; i < log_Reader_info.num_user; i++)
+      for (i = 0; i < cdc_Gl.num_user; i++)
 	{
-	  free (log_Reader_info.user[i]);
+	  free (cdc_Gl.user[i]);
 	}
     }
-  if (log_Reader_info.num_class > 0)
+  if (cdc_Gl.num_class > 0)
     {
-      free (log_Reader_info.class_oids);
+      free (cdc_Gl.class_oids);
     }
 
-for (auto iter:tran_users)
+for (auto iter:cdc_tran_user)
     {
-      /*std::unordered_map<TRANID, char *> tran_users */
+      /*std::unordered_map<TRANID, char *> cdc_tran_user */
       free (iter.second);
     }
 
-  while (!log_info_queue->is_empty ())
+  while (!cdc_loginfo_queue->is_empty ())
     {
-      LOG_INFO_ENTRY *tmp;
-      log_info_queue->consume (tmp);
+      CDC_LOGINFO_ENTRY *tmp;
+      cdc_loginfo_queue->consume (tmp);
 
       if (tmp->log_info != NULL)
 	{
@@ -13700,7 +13712,7 @@ for (auto iter:tran_users)
 	}
     }
 
-  delete log_info_queue;
+  delete cdc_loginfo_queue;
 
   return NO_ERROR;
 }
@@ -13709,13 +13721,13 @@ int
 cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user, uint64_t * classoids,
 		       int num_class)
 {
-  log_Reader_info.extraction_timeout = timeout;
-  log_Reader_info.num_user = num_user;
-  log_Reader_info.user = user;
-  log_Reader_info.num_class = num_class;
-  log_Reader_info.class_oids = classoids;
-  log_Reader_info.all_in_cond = all_in_cond;
-  log_Reader_info.max_log_item = max_log_item;
+  cdc_Gl.extraction_timeout = timeout;
+  cdc_Gl.num_user = num_user;
+  cdc_Gl.user = user;
+  cdc_Gl.num_class = num_class;
+  cdc_Gl.class_oids = classoids;
+  cdc_Gl.all_in_cond = all_in_cond;
+  cdc_Gl.max_log_item = max_log_item;
 
   return NO_ERROR;
 }
@@ -13723,7 +13735,7 @@ cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **us
 int
 cdc_initialize ()
 {
-  /*log_Reader_info initialization */
+  /*cdc_Gl initialization */
 
   /*communication buffer from server to client initialization */
   server_comm_buf.log_Infos = NULL;

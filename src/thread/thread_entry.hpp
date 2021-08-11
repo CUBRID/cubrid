@@ -274,6 +274,9 @@ namespace cubthread
       /* for lock free structures */
       lf_tran_entry *tran_entries[THREAD_TS_COUNT];
 
+      /* for supplemental log */
+      bool no_supplemental_log;
+
 #if !defined(NDEBUG)
       fi_test_item *fi_test_array;
 

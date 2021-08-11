@@ -4656,7 +4656,15 @@ do_redistribute_partitions_data (const char *classname, const char *keyname, cha
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size + 1);
 	  return ER_FAILED;
 	}
-      sprintf (query_buf, "UPDATE [%s] SET [%s]=[%s];", classname, keyname, keyname);
+
+      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+	{
+	  sprintf (query_buf, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ [%s] SET [%s]=[%s];", classname, keyname, keyname);
+	}
+      else
+	{
+	  sprintf (query_buf, "UPDATE [%s] SET [%s]=[%s];", classname, keyname, keyname);
+	}
 
       error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
       if (error >= 0)
