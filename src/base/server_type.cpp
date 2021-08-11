@@ -60,7 +60,6 @@ int init_server_type (const char *db_name)
   SERVER_TYPE parameter_value = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
   if (g_server_type == SERVER_TYPE_UNKNOWN)
     {
-
       if (parameter_value == SERVER_TYPE_SINGLE_NODE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1,
