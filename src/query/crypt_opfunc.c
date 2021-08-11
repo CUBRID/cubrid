@@ -706,7 +706,7 @@ crypt_generate_random_bytes (char *dest, int length)
 static struct
 {
   unsigned char nonce[16];              // See TDE_DK_NONCE_LENGTH in tde.h
-  unsigned char master_key[TDE_MASTER_KEY_LENGTH];
+  unsigned char master_key[TDE_DATA_KEY_LENGTH];
 } evp_cipher = { {0, }, {0, } };  // Do not omit the this initialization settings.
 // *INDENT-ON*
 
@@ -720,9 +720,9 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
       memset (evp_cipher.nonce, 0x07, sizeof (evp_cipher.nonce));
 
 #if !defined(CS_MODE)
-      memcpy (evp_cipher.master_key, tde_Cipher.data_keys.log_key, TDE_MASTER_KEY_LENGTH);
+      memcpy (evp_cipher.master_key, tde_Cipher.data_keys.log_key, TDE_DATA_KEY_LENGTH);
 #else
-      memcpy (evp_cipher.master_key, dblink_Cipher_key.master_key, TDE_MASTER_KEY_LENGTH);
+      memcpy (evp_cipher.master_key, dblink_Cipher_key.master_key, TDE_DATA_KEY_LENGTH);
 #endif
       is_init_done = 1;
     }
@@ -738,7 +738,7 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
 	  return err;
 	}
 
-      memcpy (evp_cipher.master_key, dblink_Cipher_key.master_key, TDE_MASTER_KEY_LENGTH);
+      memcpy (evp_cipher.master_key, dblink_Cipher_key.master_key, TDE_DATA_KEY_LENGTH);
     }
 #endif
 
@@ -786,7 +786,7 @@ crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *ciph
   int len, cipher_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
-  unsigned char master_key[TDE_MASTER_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+  unsigned char master_key[TDE_DATA_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   unsigned char *key;
 
   assert (pk);
@@ -801,7 +801,7 @@ crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *ciph
     }
   else
     {
-      assert ((int) strlen ((char *) pk) < TDE_MASTER_KEY_LENGTH);
+      assert ((int) strlen ((char *) pk) < TDE_DATA_KEY_LENGTH);
       strcpy ((char *) master_key, (char *) pk);
       key = master_key;
     }
@@ -858,7 +858,7 @@ crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char
   int len, str_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
-  unsigned char master_key[TDE_MASTER_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+  unsigned char master_key[TDE_DATA_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   unsigned char *key;
 
   assert (pk);
@@ -874,7 +874,7 @@ crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char
     }
   else
     {
-      assert ((int) strlen ((char *) pk) < TDE_MASTER_KEY_LENGTH);
+      assert ((int) strlen ((char *) pk) < TDE_DATA_KEY_LENGTH);
       strcpy ((char *) master_key, (char *) pk);
       key = master_key;
     }
