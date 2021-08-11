@@ -491,6 +491,8 @@ static int pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info
 static int pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** build_attrs,
 				       PT_NODE ** probe_attrs, PT_NODE ** pred_without_HQ);
 
+static int pt_split_pred_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** pred_without_HQ, PT_NODE ** pred_with_HQ);
+
 static int pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, QO_XASL_INDEX_INFO * index_pred,
 			      PT_NODE * pred, PT_NODE ** pred_attrs, int **pred_offsets);
 static int pt_get_pred_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred, PT_NODE ** pred_attrs);
@@ -656,7 +658,8 @@ static XASL_NODE *
 pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * select_xasl)
 {
   XASL_NODE *xasl, *xptr;
-  PT_NODE *from, *where, *if_part, *instnum_part, *build_attrs = NULL, *probe_attrs = NULL, *pred_without_HQ = NULL;
+  PT_NODE *from, *where, *if_part, *instnum_part, *build_attrs = NULL, *probe_attrs = NULL;
+  PT_NODE *pred_with_HQ = NULL, *pred_without_HQ = NULL;
   QPROC_DB_VALUE_LIST dblist1, dblist2;
   CONNECTBY_PROC_NODE *connect_by;
   int level, flag;
@@ -702,7 +705,13 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
       PT_NODE *save_where, *save_from;
 
       save_where = select_node->info.query.q.select.where;
-      select_node->info.query.q.select.where = select_node->info.query.q.select.connect_by;
+      where = select_node->info.query.q.select.connect_by;
+
+      /* Separate the predicate related to the HQ. */
+      /* pred_with_HQ is appended to if_pred instead of data filter. */
+      pt_split_pred_for_HQ (parser, where, &pred_without_HQ, &pred_with_HQ);
+
+      select_node->info.query.q.select.where = pred_without_HQ;
       save_from = select_node->info.query.q.select.from->next;
       select_node->info.query.q.select.from->next = NULL;
 
@@ -718,6 +727,19 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 	}
 
       connect_by->single_table_opt = true;
+
+      /* pred_with_HQ is appended to if_pred */
+      from = select_node->info.query.q.select.from;
+      where = pred_with_HQ;
+      while (from)
+	{
+	  pt_to_pred_terms (parser, where, from->info.spec.id, &xasl->if_pred);
+	  from = from->next;
+	}
+      pt_to_pred_terms (parser, where, 0, &xasl->if_pred);
+
+      parser_free_tree (parser, pred_without_HQ);
+      parser_free_tree (parser, pred_with_HQ);
     }
   else
     {
@@ -3007,6 +3029,51 @@ exit_on_error:
 }
 
 /*
+ * pt_split_pred_for_HQ () - Split the predicate into two lists without destroying
+ *      the original list for HQ
+ *   return:
+ *   parser(in):
+ *   pred(in):
+ *   pred_without_HQ(out):
+ *   pred_with_HQ(out):
+ */
+static int
+pt_split_pred_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** pred_without_HQ, PT_NODE ** pred_with_HQ)
+{
+  PT_NODE *node = NULL, *save_next = NULL;
+  bool is_hierarchical_op;
+
+  if (pred)
+    {
+      /* Traverse pred */
+      for (node = pred; node; node = node->next)
+	{
+	  /* save and cut-off node link */
+	  save_next = node->next;
+	  node->next = NULL;
+
+	  /* find Reserved words for HQ */
+	  is_hierarchical_op = false;
+	  parser_walk_tree (parser, node, pt_find_hq_op_except_prior, &is_hierarchical_op, NULL, NULL);;
+
+	  if (!is_hierarchical_op)
+	    {
+	      *pred_without_HQ = parser_append_node (parser_copy_tree (parser, node), *pred_without_HQ);
+	    }
+	  else
+	    {
+	      *pred_with_HQ = parser_append_node (parser_copy_tree (parser, node), *pred_with_HQ);
+	    }
+
+	  /* restore node link */
+	  node->next = save_next;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * pt_split_hash_attrs_for_HQ () - Split the attr_list into two lists without destroying
  *      the original list for HQ
  *   return:
@@ -3499,17 +3566,10 @@ pt_find_hq_op_except_prior (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 {
   bool *is_hierarchical_op = (bool *) arg;
 
-  if (node->node_type != PT_EXPR)
+  if (node->node_type == PT_EXPR && PT_CHECK_HQ_OP_EXCEPT_PRIOR (node->info.expr.op))
     {
+      *is_hierarchical_op = true;
       *continue_walk = PT_STOP_WALK;
-    }
-  else
-    {
-      if (PT_CHECK_HQ_OP_EXCEPT_PRIOR (node->info.expr.op))
-	{
-	  *is_hierarchical_op = true;
-	  *continue_walk = PT_STOP_WALK;
-	}
     }
 
   return node;
