@@ -1,3 +1,4 @@
+*.cscope
 
 ## Automake files
 Makefile

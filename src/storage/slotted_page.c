@@ -1515,9 +1515,9 @@ spage_shift_slot_up (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPAGE_SLOT *
   else
     {
       if (last_slot_p < slot_p)
-        {
-          memmove (last_slot_p, last_slot_p + 1, sizeof (SPAGE_SLOT) * (slot_p - last_slot_p));
-        }
+	{
+	  memmove (last_slot_p, last_slot_p + 1, sizeof (SPAGE_SLOT) * (slot_p - last_slot_p));
+	}
     }
 
   spage_set_slot (slot_p, SPAGE_EMPTY_OFFSET, 0, REC_UNKNOWN);
@@ -1551,9 +1551,9 @@ spage_shift_slot_down (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPAGE_SLOT
   else
     {
       if (last_slot_p < slot_p)
-        {
-          memmove (last_slot_p + 1, last_slot_p, sizeof (SPAGE_SLOT) * (slot_p - last_slot_p));
-        }
+	{
+	  memmove (last_slot_p + 1, last_slot_p, sizeof (SPAGE_SLOT) * (slot_p - last_slot_p));
+	}
     }
 
   spage_set_slot (last_slot_p, SPAGE_EMPTY_OFFSET, 0, REC_UNKNOWN);
