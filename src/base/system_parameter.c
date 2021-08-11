@@ -2348,6 +2348,8 @@ static unsigned int prm_ddl_audit_log_size_flag = 0;
 
 int PRM_SUPPLEMENTAL_LOG = 0;
 static int prm_supplemental_log_default = 0;
+static int prm_supplemental_log_lower = 0;
+static int prm_supplemental_log_upper = 2;
 static unsigned int prm_supplemental_log_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
@@ -6050,8 +6052,8 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_supplemental_log_flag,
    (void *) &prm_supplemental_log_default,
    (void *) &PRM_SUPPLEMENTAL_LOG,
-   (void *) NULL,
-   (void *) NULL,
+   (void *) &prm_supplemental_log_upper,
+   (void *) &prm_supplemental_log_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
