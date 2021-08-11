@@ -4650,8 +4650,8 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 {
   if (tdes->has_supplemental_log)
     {
-      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
-				   tdes->client.get_db_user ());
+      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+				    tdes->client.get_db_user ());
 
       tdes->has_supplemental_log = false;
     }
@@ -4782,8 +4782,8 @@ log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commi
 {
   if (tdes->has_supplemental_log)
     {
-      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
-				   tdes->client.get_db_user ());
+      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+				    tdes->client.get_db_user ());
 
       tdes->has_supplemental_log = false;
     }
@@ -4826,7 +4826,7 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
 }
 
 /*
- * log_append_supplemental_log - append supplemental log record 
+ * log_append_supplemental_info - append supplemental log record 
  *
  * return: nothing
  *
@@ -4835,22 +4835,36 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
  *   data (in) : supplemental data
  *   
  */
-
 void
-log_append_supplemental_log (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length, const void *data)
+log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length, const void *data)
 {
+  assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
+
   LOG_PRIOR_NODE *node;
   LOG_REC_SUPPLEMENT *supplement;
 
   LOG_TDES *tdes;
   int tran_index;
 
-  assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
+  LOG_ZIP *zip_undo = NULL;
+
+  if (length >= log_Zip_min_size_to_compress && log_Zip_support)
+    {
+      zip_undo = log_append_get_zip_undo (thread_p);
+      if (zip_undo == NULL)
+	{
+	  return;
+	}
+
+      log_zip (zip_undo, length, data);
+      length = zip_undo->data_length;
+      data = zip_undo->log_data;
+    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
 
-  /*supplement data will be stored at undo data */
+  /* supplement data will be stored at undo data */
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_SUPPLEMENTAL_INFO, RV_NOT_DEFINED, NULL, length, (char *) data, 0,
 				   NULL);
@@ -4871,7 +4885,10 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
 			     LOG_LSA * redo_lsa)
 {
   int size;
-  char data[OR_OID_SIZE + OR_LOG_LSA_SIZE + OR_LOG_LSA_SIZE];
+
+  /* sizeof (OID) = 8, sizeof (LOG_LSA) = 8, and data contains classoid and undo, redo lsa. 
+   * OR_OID_SIZE and OR_LOG_LSA_SIZE are not used here, because this function just copy the memory, not using OR_PUT_* function*/
+  char data[24];
 
   assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
 
@@ -4906,7 +4923,7 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
       break;
     }
 
-  log_append_supplemental_log (thread_p, rec_type, size, (void *) data);
+  log_append_supplemental_info (thread_p, rec_type, size, (void *) data);
 
   return NO_ERROR;
 }
@@ -4917,30 +4934,10 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
   assert (undo_recdes != NULL);
   assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
 
-  LOG_ZIP *zip_undo = NULL;
   int length = undo_recdes->length;
   void *data = undo_recdes->data;
-  int min_size_to_compress = 255;
 
-  if (length >= min_size_to_compress)
-    {
-      zip_undo = log_zip_alloc (IO_PAGESIZE);
-      if (zip_undo == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      log_zip (zip_undo, length, data);
-      length = zip_undo->data_length;
-      data = zip_undo->log_data;
-    }
-
-  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_UNDO_RECORD, length, data);
-
-  if (zip_undo != NULL)
-    {
-      log_zip_free (zip_undo);
-    }
+  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_UNDO_RECORD, length, data);
 
   return NO_ERROR;
 }
@@ -12555,7 +12552,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
   ptr = or_pack_int (ptr, statement_length);
   ptr = or_pack_string (ptr, statement);
   ddl_entry->length = ptr - start_ptr;
-#endif 
+#endif
   return NO_ERROR;
 }
 
@@ -13155,7 +13152,7 @@ cdc_put_value_to_loginfo (const db_value * new_value, char **data_ptr)
 static void
 cdc_thread_checker (THREAD_ENTRY * thread_p)
 {
-  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa();
+  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
   if (LSA_LE (&cdc_Gl.next_lsa, &nxio_lsa))
     {
       //pthread_cond_signal (&lsa_cond);

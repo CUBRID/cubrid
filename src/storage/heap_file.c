@@ -22711,8 +22711,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 
       if (!tdes->has_supplemental_log)
 	{
-	  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
-				       tdes->client.get_db_user ());
+	  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					tdes->client.get_db_user ());
 	  tdes->has_supplemental_log = true;
 	}
 
@@ -22981,8 +22981,8 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (!tdes->has_supplemental_log)
 	{
-	  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
-				       tdes->client.get_db_user ());
+	  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					tdes->client.get_db_user ());
 	  tdes->has_supplemental_log = true;
 	}
 
@@ -23195,8 +23195,8 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (!tdes->has_supplemental_log)
 	{
-	  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
-				       tdes->client.get_db_user ());
+	  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					tdes->client.get_db_user ());
 	  tdes->has_supplemental_log = true;
 	}
 

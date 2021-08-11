@@ -29,14 +29,14 @@
 #include "thread_manager.hpp"
 #include "vacuum.h"
 
-static bool log_Zip_support = false;
-static int log_Zip_min_size_to_compress = 255;
 #if !defined(SERVER_MODE)
 static LOG_ZIP *log_zip_undo = NULL;
 static LOG_ZIP *log_zip_redo = NULL;
 static char *log_data_ptr = NULL;
 static int log_data_length = 0;
 #endif
+bool log_Zip_support = false;
+int log_Zip_min_size_to_compress = 255;
 
 size_t
 LOG_PRIOR_LSA_LAST_APPEND_OFFSET ()
@@ -70,7 +70,6 @@ static void prior_lsa_append_data (int length);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
 static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
-static LOG_ZIP *log_append_get_zip_undo (THREAD_ENTRY *thread_p);
 static LOG_ZIP *log_append_get_zip_redo (THREAD_ENTRY *thread_p);
 static char *log_append_get_data_ptr (THREAD_ENTRY *thread_p);
 static bool log_append_realloc_data_ptr (THREAD_ENTRY *thread_p, int length);
@@ -1710,7 +1709,7 @@ prior_lsa_append_data (int length)
   log_prior_lsa_append_align ();
 }
 
-static LOG_ZIP *
+LOG_ZIP *
 log_append_get_zip_undo (THREAD_ENTRY *thread_p)
 {
 #if defined (SERVER_MODE)

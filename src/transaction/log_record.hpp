@@ -133,7 +133,9 @@ enum log_rectype
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
 
-  LOG_SUPPLEMENTAL_INFO,
+  LOG_SUPPLEMENTAL_INFO,        /* used for supplemental logs to support CDC interface.
+                                 * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
+                                 * or undo images that never retrieved from the log. */
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
@@ -408,15 +410,13 @@ struct log_rec_2pc_particp_ack
 typedef enum supplement_rec_type
 {
   LOG_SUPPLEMENT_TRAN_USER,
-  LOG_SUPPLEMENT_UNDO_RECORD, /*CONTAINS undo raw record */
+  LOG_SUPPLEMENT_UNDO_RECORD, /*Contains undo raw record that can not be retrieved from the logs */
   LOG_SUPPLEMENT_DDL,
-  /* CONTAINS LSA of logs which contain undo, redo raw record
+  /* Contains lsa of logs which contain undo, redo raw record (UPDATE, DELETE, INSERT)
    * | LOG_REC_HEADER | SUPPLEMENT_REC_TYPE | LENGTH | CLASS OID |  UNDO LSA (sizeof LOG_LSA) | REDO LSA | */
+  LOG_SUPPLEMENT_INSERT,
   LOG_SUPPLEMENT_UPDATE,
   LOG_SUPPLEMENT_DELETE,
-  LOG_SUPPLEMENT_INSERT,
-  LOG_SUPPLEMENT_CLASS_OID,
-  LOG_SUPPLEMENT_STATEMENT,
   LOG_SUPPLEMENT_LARGER_REC_TYPE,
 } SUPPLEMENT_REC_TYPE;
 
