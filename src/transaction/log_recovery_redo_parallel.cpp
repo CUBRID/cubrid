@@ -833,7 +833,7 @@ namespace cublog
 
   reusable_jobs_stack::~reusable_jobs_stack ()
   {
-    // consistency check
+    // consistency check that all job instances have been 'retuned to the source'
     assert ([this] ()
     {
       const std::size_t pop_size = m_pop_jobs.size ();
@@ -847,6 +847,23 @@ namespace cublog
       return true;
     }
     ());
+
+    // formally invoke dtor  on all in-place constructed objects
+    for (auto &job : m_pop_jobs)
+      {
+        job->~redo_job_impl();
+      }
+    for (auto &job : m_push_jobs)
+      {
+        job->~redo_job_impl();
+      }
+    for (auto &push_job_container: m_per_task_push_jobs_vec)
+      {
+        for (auto &job : push_job_container)
+          {
+            job->~redo_job_impl();
+          }
+      }
 
     free (m_jobs_arr);
     m_jobs_arr = nullptr;
