@@ -48,7 +48,6 @@
 #include "log_common_impl.h"
 #include "log_lsa.hpp"
 #include "log_postpone_cache.hpp"
-#include "log_reader.hpp"
 #include "log_storage.hpp"
 #include "mvcc.h"
 #include "mvcc_table.hpp"

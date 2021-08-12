@@ -37,7 +37,8 @@
 namespace cublog
 {
 #if defined(SERVER_MODE)
-  static constexpr size_t PARALLEL_REDO_REUSABLE_JOBS_STACK_SIZE = 100 * ONE_K;
+  static constexpr std::size_t PARALLEL_REDO_REUSABLE_JOBS_COUNT = ONE_M;
+  static constexpr std::size_t PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT = 100;
 
   // forward declaration
   class reusable_jobs_stack;
@@ -145,8 +146,8 @@ namespace cublog
       void wait_for_termination_and_stop_execution ();
 
     private:
-      void do_init_worker_pool ();
-      void do_init_tasks ();
+      void do_init_worker_pool (std::size_t a_task_count);
+      void do_init_tasks (std::size_t a_task_count);
 
     private:
       /* rynchronizes prod/cons of log entries in n-prod - m-cons fashion
@@ -280,7 +281,6 @@ namespace cublog
       };
 
     private:
-      const unsigned m_task_count;
       std::unique_ptr<cubthread::entry_manager> m_pool_context_manager;
 
       /* the workpool already has and internal bookkeeping and can also wait for the tasks to terminate;
@@ -348,7 +348,7 @@ namespace cublog
 
       virtual int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 			   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) = 0;
-      virtual void retire () = 0;
+      virtual void retire (std::size_t a_task_idx) = 0;
 
     private:
       VPID m_vpid;
@@ -381,7 +381,7 @@ namespace cublog
 
       int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
-      void retire () override;
+      void retire (std::size_t a_task_idx) override;
 
     private:
       template <typename T>
@@ -404,6 +404,8 @@ namespace cublog
    */
   class reusable_jobs_stack final
   {
+      using job_container_t = std::vector<redo_job_impl *>;
+
     public:
       reusable_jobs_stack ();
       reusable_jobs_stack (const reusable_jobs_stack &) = delete;
@@ -414,32 +416,45 @@ namespace cublog
       reusable_jobs_stack &operator = (const reusable_jobs_stack &) = delete;
       reusable_jobs_stack &operator = (reusable_jobs_stack &&) = delete;
 
-      void initialize (std::size_t a_stack_size, const log_lsa *a_end_redo_lsa,
-		       bool force_each_page_fetch);
+      void initialize (std::size_t a_job_count, std::size_t a_push_task_count,
+		       std::size_t a_flush_push_at_count,
+		       const log_lsa *a_end_redo_lsa, bool force_each_page_fetch);
 
       std::size_t size () const
       {
-	return m_stack_size;
+	return m_job_count;
       }
 
       redo_job_impl *blocking_pop ();
-      void push (redo_job_impl *a_job);
+      void push (std::size_t a_task_idx, redo_job_impl *a_job);
 
     private:
-      std::size_t m_stack_size;
+      /* configuration, constants after initialization
+       */
+      std::size_t m_job_count;
+      std::size_t m_push_task_count;
+      std::size_t m_flush_push_at_count;
 
-      /* pop is done, unsynchronized, from this stack
-       * if empty, it is re-filled, synchronized, from the push stack
+      /* support array for initializing jobs in-place
        */
-      std::stack<redo_job_impl *> m_pop_stack;
-      /* push happens, synchronized, on this stack
+      unsigned char *m_jobs_arr;
+
+      /* pop is done, unsynchronized, from this container
+       * if empty, it is re-filled, synchronized, from the push container
        */
-      std::stack<redo_job_impl *> m_push_stack;
-      std::mutex m_mutex;
-      /* used to wait for jobs to be available on the push stack
-       * in case no jobs are found on the pop stack
+      job_container_t m_pop_jobs;
+
+      /* from time to time, the worker tasks (threads) also push data into this
+       * container using the synchronization primitives below
        */
-      std::condition_variable m_jobs_available_on_push_stack_cv;
+      job_container_t m_push_jobs;
+      std::mutex m_push_mtx;
+      std::condition_variable m_push_jobs_available_cv;
+
+      /* each worker task (thread) pushes, unsynched on its own container from this vector
+       * at configurable intervals, objects are further moved, synchronized, to the push container
+       */
+      std::vector<job_container_t> m_per_task_push_jobs_vec;
   };
 
 #else /* SERVER_MODE */
@@ -486,7 +501,7 @@ log_rv_redo_record_sync_or_dispatch_async (
   const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
   // at this point, vpid can either be valid or not
 
-#if defined(SERVER_MODE)
+#if defined (SERVER_MODE)
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
   const bool need_sync_redo = log_rv_need_sync_redo (rcv_vpid, log_data.rcvindex);
   a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_PREP);

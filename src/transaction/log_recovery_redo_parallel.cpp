@@ -469,7 +469,7 @@ namespace cublog
       static constexpr unsigned short WAIT_AND_CHECK_MILLIS = 5;
 
     public:
-      redo_task (redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
+      redo_task (std::size_t a_task_idx, redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
 		 , redo_parallel::redo_job_queue &a_queue);
       redo_task (const redo_task &) = delete;
       redo_task (redo_task &&) = delete;
@@ -482,6 +482,7 @@ namespace cublog
       void execute (context_type &context);
 
     private:
+      const std::size_t m_task_idx;
       redo_parallel::task_active_state_bookkeeping &m_task_state_bookkeeping;
       redo_parallel::redo_job_queue &m_queue;
 
@@ -496,9 +497,11 @@ namespace cublog
 
   constexpr unsigned short redo_parallel::redo_task::WAIT_AND_CHECK_MILLIS;
 
-  redo_parallel::redo_task::redo_task (redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
+  redo_parallel::redo_task::redo_task (std::size_t a_task_idx
+				       , redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
 				       , redo_parallel::redo_job_queue &a_queue)
-    : m_task_state_bookkeeping (task_state_bookkeeping)
+    : m_task_idx { a_task_idx }
+    , m_task_state_bookkeeping (task_state_bookkeeping)
     , m_queue (a_queue)
   {
     // important to set this at this moment and not when execution begins
@@ -546,7 +549,7 @@ namespace cublog
 
 		m_queue.notify_job_finished (job);
 
-		job->retire ();
+		job->retire (m_task_idx);
 	      }
 	  }
       }
@@ -559,8 +562,7 @@ namespace cublog
    *********************************************************************/
 
   redo_parallel::redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa)
-    : m_task_count { a_worker_count }
-    , m_worker_pool (nullptr)
+    : m_worker_pool (nullptr)
     , m_job_queue { a_minimum_log_lsa }
     , m_waited_for_termination (false)
   {
@@ -569,8 +571,8 @@ namespace cublog
     const thread_type tt = TT_RECOVERY;
     m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
 
-    do_init_worker_pool ();
-    do_init_tasks ();
+    do_init_worker_pool (a_worker_count);
+    do_init_tasks (a_worker_count);
   }
 
   redo_parallel::~redo_parallel ()
@@ -624,29 +626,29 @@ namespace cublog
   }
 
   void
-  redo_parallel::do_init_worker_pool ()
+  redo_parallel::do_init_worker_pool (std::size_t a_task_count)
   {
-    assert (m_task_count > 0);
+    assert (a_task_count > 0);
     assert (m_worker_pool == nullptr);
 
     // NOTE: already initialized globally (probably during boot)
     cubthread::manager *thread_manager = cubthread::get_manager ();
 
-    m_worker_pool = thread_manager->create_worker_pool (m_task_count, m_task_count, "log_recovery_redo_thread_pool",
+    m_worker_pool = thread_manager->create_worker_pool (a_task_count, a_task_count, "log_recovery_redo_thread_pool",
 		    m_pool_context_manager.get (),
-		    m_task_count, false /*debug_logging*/);
+		    a_task_count, false /*debug_logging*/);
   }
 
   void
-  redo_parallel::do_init_tasks ()
+  redo_parallel::do_init_tasks (std::size_t a_task_count)
   {
-    assert (m_task_count > 0);
+    assert (a_task_count > 0);
     assert (m_worker_pool != nullptr);
 
-    for (unsigned task_idx = 0; task_idx < m_task_count; ++task_idx)
+    for (unsigned task_idx = 0; task_idx < a_task_count; ++task_idx)
       {
 	// NOTE: task ownership goes to the worker pool
-	auto task = new redo_task (m_task_state_bookkeeping, m_job_queue);
+	auto task = new redo_task (task_idx, m_task_state_bookkeeping, m_job_queue);
 	m_worker_pool->execute (task);
       }
   }
@@ -730,10 +732,10 @@ namespace cublog
     return NO_ERROR;
   }
 
-  void redo_job_impl::retire ()
+  void redo_job_impl::retire (std::size_t a_task_idx)
   {
     // return the job back to the pool of available reusable jobs
-    m_reusable_job_stack->push (this);
+    m_reusable_job_stack->push (a_task_idx, this);
   }
 
   template <typename T>
@@ -753,62 +755,116 @@ namespace cublog
    *********************************************************************/
 
   reusable_jobs_stack::reusable_jobs_stack ()
-    : m_stack_size { 0 }
+    : m_job_count { 0 }
+    , m_push_task_count { 0 }
+    , m_flush_push_at_count { 0 }
+    , m_jobs_arr { nullptr }
   {
   }
 
-  void reusable_jobs_stack::initialize (std::size_t a_stack_size, const log_lsa *a_end_redo_lsa,
-					bool force_each_page_fetch)
+  void reusable_jobs_stack::initialize (std::size_t a_job_count, std::size_t a_push_task_count,
+					std::size_t a_flush_push_at_count,
+					const log_lsa *a_end_redo_lsa, bool force_each_page_fetch)
   {
-    assert (m_pop_stack.empty ());
-    assert (m_push_stack.empty ());
+    assert (m_job_count == 0);
+    assert (m_push_task_count == 0);
+    assert (m_flush_push_at_count == 0);
 
-    m_stack_size = a_stack_size;
-    for (std::size_t idx = 0; idx < m_stack_size; ++idx)
+    assert (m_jobs_arr == nullptr);
+
+    assert (m_pop_jobs.empty ());
+    assert (m_push_jobs.empty ());
+
+    assert (m_per_task_push_jobs_vec.empty ());
+
+    assert (a_job_count > 0);
+    assert (a_push_task_count > 0);
+    assert (a_flush_push_at_count > 0);
+
+    m_job_count = a_job_count;
+    m_push_task_count = a_push_task_count;
+    m_flush_push_at_count = a_flush_push_at_count;
+
+    m_jobs_arr = static_cast<unsigned char *> (malloc (sizeof (redo_job_impl) * m_job_count));
+
+    m_pop_jobs.reserve (m_job_count);
+    for (std::size_t idx = 0; idx < m_job_count; ++idx)
       {
-	redo_job_impl *job = new redo_job_impl (a_end_redo_lsa, force_each_page_fetch, this);
-	m_pop_stack.push (job);
+	redo_job_impl *const job = new (m_jobs_arr + sizeof (redo_job_impl) * idx)
+	redo_job_impl (a_end_redo_lsa, force_each_page_fetch, this);
+	m_pop_jobs.push_back (job);
+      }
+
+    m_push_jobs.reserve (m_job_count);
+
+    m_per_task_push_jobs_vec.resize (m_push_task_count);
+    const std::size_t per_task_reserve_size = m_job_count / m_push_task_count * 2;
+    for (job_container_t &jobs: m_per_task_push_jobs_vec)
+      {
+	jobs.reserve (per_task_reserve_size);
       }
   }
 
   reusable_jobs_stack::~reusable_jobs_stack ()
   {
-    assert ((m_pop_stack.size () + m_push_stack.size ()) == m_stack_size);
+    // consistency check that all job instances have been 'retuned to the source'
+    assert ([this] ()
+    {
+      const std::size_t pop_size = m_pop_jobs.size ();
+      const std::size_t push_size = m_push_jobs.size ();
+      std::size_t per_task_push_size = 0;
+      for (auto &push_container: m_per_task_push_jobs_vec)
+	{
+	  per_task_push_size += push_container.size ();
+	}
+      assert ((pop_size + push_size + per_task_push_size) == m_job_count);
+      return true;
+    }
+    ());
 
-    while (!m_push_stack.empty ())
+    // formally invoke dtor  on all in-place constructed objects
+    for (auto &job : m_pop_jobs)
       {
-	redo_job_impl *const push_job = m_push_stack.top ();
-	m_push_stack.pop ();
-	delete push_job;
+	job->~redo_job_impl();
       }
-    while (!m_pop_stack.empty ())
+    for (auto &job : m_push_jobs)
       {
-	redo_job_impl *const pop_job = m_pop_stack.top ();
-	m_pop_stack.pop ();
-	delete pop_job;
+	job->~redo_job_impl();
       }
+    for (auto &push_job_container: m_per_task_push_jobs_vec)
+      {
+	for (auto &job : push_job_container)
+	  {
+	    job->~redo_job_impl();
+	  }
+      }
+
+    free (m_jobs_arr);
+    m_jobs_arr = nullptr;
   }
 
   redo_job_impl *reusable_jobs_stack::blocking_pop ()
   {
-    if (!m_pop_stack.empty ())
+    if (!m_pop_jobs.empty ())
       {
-	redo_job_impl *const pop_job = m_pop_stack.top ();
-	m_pop_stack.pop ();
+	redo_job_impl *const pop_job = m_pop_jobs.back ();
+	m_pop_jobs.pop_back ();
 	return pop_job;
       }
     else
       {
-	std::unique_lock<std::mutex> ulock { m_mutex };
-	m_jobs_available_on_push_stack_cv.wait (ulock, [this] ()
 	{
-	  return !m_push_stack.empty ();
-	});
+	  std::unique_lock<std::mutex> locku { m_push_mtx };
+	  m_push_jobs_available_cv.wait (locku, [this] ()
+	  {
+	    return !m_push_jobs.empty ();
+	  });
 
-	m_pop_stack.swap (m_push_stack);
+	  m_pop_jobs.swap (m_push_jobs);
+	}
 
-	redo_job_impl *const pop_job = m_pop_stack.top ();
-	m_pop_stack.pop ();
+	redo_job_impl *const pop_job = m_pop_jobs.back ();
+	m_pop_jobs.pop_back ();
 	return pop_job;
       }
 
@@ -816,12 +872,19 @@ namespace cublog
     return nullptr;
   }
 
-  void reusable_jobs_stack::push (redo_job_impl *a_job)
+  void reusable_jobs_stack::push (std::size_t a_task_idx, redo_job_impl *a_job)
   {
-    {
-      std::lock_guard<std::mutex> stack_lockg { m_mutex };
-      m_push_stack.push (a_job);
-    }
-    m_jobs_available_on_push_stack_cv.notify_one ();
+    job_container_t &push_jobs = m_per_task_push_jobs_vec[a_task_idx];
+    push_jobs.push_back (a_job);
+
+    if (push_jobs.size () > m_flush_push_at_count)
+      {
+	{
+	  std::lock_guard<std::mutex> locku { m_push_mtx };
+	  m_push_jobs.insert (m_push_jobs.end (), push_jobs.cbegin (), push_jobs.cend ());
+	}
+	push_jobs.clear ();
+	m_push_jobs_available_cv.notify_one ();
+      }
   }
 }

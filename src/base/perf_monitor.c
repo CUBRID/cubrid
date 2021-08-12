@@ -1916,7 +1916,6 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
     case TT_VACUUM_WORKER:
     case TT_VACUUM_MASTER:
       return PERF_MODULE_VACUUM;
-    case TT_RECOVERY:
     default:
       return PERF_MODULE_SYSTEM;
     }
