@@ -723,6 +723,8 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 
       if (xasl == NULL)
 	{
+	  parser_free_tree (parser, pred_without_HQ);
+	  parser_free_tree (parser, pred_with_HQ);
 	  PT_INTERNAL_ERROR (parser, "generate hq xasl");
 	  return NULL;
 	}
