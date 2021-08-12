@@ -135,8 +135,8 @@ extern "C"
   extern int cubrid_log_set_extraction_user (char **user_arr, int arr_size);
 
 /* API for the preparation step */
-  extern int cubrid_log_connect_server (char *host, int port, char *dbname);
-  extern int cubrid_log_find_lsa (time_t timestamp, uint64_t * lsa);
+  extern int cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *password);
+  extern int cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa);
 
 /* API for the extraction step */
   extern int cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_size);

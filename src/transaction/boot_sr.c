@@ -3119,6 +3119,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
+  cdc_daemons_destroy ();
 #endif
 
 #if defined (SA_MODE)

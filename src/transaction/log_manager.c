@@ -13610,7 +13610,7 @@ get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * star
 	{
 	  if (LSA_ISNULL (&forw_lsa))
 	    {
-	      return ER_FAILED;
+	      return ER_CDC_LSA_NOT_FOUND;
 	    }
 
 	  if (logpb_fetch_page (thread_p, &forw_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
@@ -13764,6 +13764,7 @@ cdc_initialize ()
   cdc_Server_comm.num_log_item = 0;
   LSA_SET_NULL (&cdc_Server_comm.next_lsa);
   cdc_Server_comm.is_sent = true;
+
 
   return NO_ERROR;
 }
