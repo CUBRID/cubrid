@@ -14764,7 +14764,7 @@ pt_analytic_to_metadomain (ANALYTIC_TYPE * func_p, PT_NODE * sort_list, ANALYTIC
 
       if (func_meta->key_size >= ANALYTIC_OPT_MAX_FUNCTIONS)
 	{
-	  /* no more space in index */
+	  /* no more space in  index */
 	  return false;
 	}
     }
