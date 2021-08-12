@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 process_file(){
   for fullpath in "$@"
   do
