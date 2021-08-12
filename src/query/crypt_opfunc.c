@@ -703,9 +703,12 @@ crypt_generate_random_bytes (char *dest, int length)
 
 // 
 // *INDENT-OFF*
+#if defined(CS_MODE)
+DBLINK_CHPHER_KEY dblink_Cipher_key = {false, {0x00,}};
+#endif
 static struct
 {
-  unsigned char nonce[16];              // See TDE_DK_NONCE_LENGTH in tde.h
+  unsigned char nonce[TDE_DK_NONCE_LENGTH]; // See TDE_DK_NONCE_LENGTH in tde.h
   unsigned char master_key[TDE_DATA_KEY_LENGTH];
 } evp_cipher = { {0, }, {0, } };  // Do not omit the this initialization settings.
 // *INDENT-ON*

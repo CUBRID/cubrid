@@ -65,12 +65,6 @@
   } while (0)
 #define restore_signals(old_mask) sigprocmask(SIG_SETMASK, &(old_mask), NULL)
 
-#if defined(CS_MODE)
-// *INDENT-OFF*
-DBLINK_CHPHER_KEY dblink_Cipher_key = {false, {0x00,}};
-// *INDENT-ON*
-#endif
-
 #if !defined(CS_MODE)
 TDE_CIPHER tde_Cipher;		/* global var for TDE Module */
 
