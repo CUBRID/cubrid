@@ -1291,23 +1291,14 @@ loop:
  *   server_name(in): name of server
  */
 int
-net_server_start (const char *server_name)
+net_server_start (const char *server_name, THREAD_ENTRY * thread_p)
 {
   int error = NO_ERROR;
   int name_length;
   char *packed_name;
   int r, status = 0;
   CHECK_ARGS check_coll_and_timezone = { true, true };
-  THREAD_ENTRY *thread_p = NULL;
 
-  if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
-      status = -1;
-      goto end;
-    }
-
-  cubthread::initialize (thread_p);
   cubthread::internal_tasks_worker_pool::initialize ();
   assert (thread_p == thread_get_thread_entry_info ());
 

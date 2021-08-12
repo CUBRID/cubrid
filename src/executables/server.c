@@ -46,6 +46,7 @@
 #include "connection_error.h"
 #include "network.h"
 #include "environment_variable.h"
+#include "internal_tasks_worker_pool.hpp"
 #include "boot_sr.h"
 #include "system_parameter.h"
 #include "server_type.hpp"
@@ -380,6 +381,7 @@ main (int argc, char **argv)
 {
   char *binary_name;
   int ret_val = 0;
+  THREAD_ENTRY *thread_p = nullptr;
 
 #if defined(WINDOWS)
   FreeConsole ();
@@ -401,10 +403,16 @@ main (int argc, char **argv)
   {				/* to make indent happy */
     if (argc < 2)
       {
-	PRINT_AND_LOG_ERR_MSG ("Usage: server databasename\n");
-	return 1;
+        PRINT_AND_LOG_ERR_MSG ("Usage: server databasename\n");
+        return 1;
       }
 
+    if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
+      {
+        PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
+        return 1;
+      }
+    cubthread::initialize (thread_p);
     fprintf (stdout, "\nThis may take a long time depending on the amount " "of recovery works to do.\n");
 
     /* save executable path */
@@ -414,7 +422,7 @@ main (int argc, char **argv)
     ret_val = argument_handler (argc, argv);
     if (ret_val != NO_ERROR)
       {
-	return ret_val;
+        return ret_val;
       }
 
 #if !defined(WINDOWS)
@@ -425,7 +433,7 @@ main (int argc, char **argv)
     setsid ();
 #endif
 
-    ret_val = net_server_start (database_name);
+    ret_val = net_server_start (database_name, thread_p);
 
   }
 #if defined(WINDOWS)
