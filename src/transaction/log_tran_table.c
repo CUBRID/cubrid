@@ -3541,19 +3541,15 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int 
   if (write_to_log)
     {
       /* log statistics */
-      char undo_rec_buf[3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE + MAX_ALIGNMENT];
-      char redo_rec_buf[3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE + MAX_ALIGNMENT];
-      RECDES undo_rec;
+      constexpr size_t data_size (OR_BTID_ALIGNED_SIZE + (3 * OR_INT_SIZE));
 
-      undo_rec.area_size = ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
-      undo_rec.data = PTR_ALIGN (undo_rec_buf, MAX_ALIGNMENT);
+      char buf[data_size + MAX_ALIGNMENT];
+      char *const data = PTR_ALIGN (buf, MAX_ALIGNMENT);
+      size_t data_written_size = 0;
 
-      btree_rv_data_pack_btid_and_stats(btid, -n_nulls, -n_oids, -n_keys, undo_rec);
+      btree_rv_data_pack_btid_and_stats (btid, -n_nulls, -n_oids, -n_keys, data, data_size, data_written_size);
 
-      /* redo has no use being updated */
-
-      log_append_undo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, NULL_OFFSET, undo_rec.length,
-			     undo_rec.data);
+      log_append_undo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, NULL_OFFSET, data_written_size, data);
     }
 
   return error;
@@ -4896,26 +4892,28 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
 
   if (log)
     {
-      RECDES undo_rec, redo_rec;
-      char undo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN];
-      char redo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN];
-
       /* although we don't change the btree header, we still need to log here the new values of statistics so that they
        * can be recovered at recover stage. For undo purposes we log the increments. */
-      undo_rec.data = NULL;
-      undo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
-      undo_rec.data = PTR_ALIGN (undo_rec_buf, BTREE_MAX_ALIGN);
 
-      btree_rv_data_pack_btid_and_stats (btid, null_delta, oid_delta, key_delta, undo_rec);
+      constexpr size_t data_size (OR_BTID_ALIGNED_SIZE + (3 * OR_INT_SIZE));
 
-      redo_rec.data = NULL;
-      redo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
-      redo_rec.data = PTR_ALIGN (redo_rec_buf, BTREE_MAX_ALIGN);
+      char undo_buf[data_size + BTREE_MAX_ALIGN];
+      char *const undo_data = PTR_ALIGN (undo_buf, BTREE_MAX_ALIGN);
+      size_t undo_data_written_size = 0;
 
-      btree_rv_data_pack_btid_and_stats (btid, num_nulls, num_oids, num_keys, redo_rec);
+      btree_rv_data_pack_btid_and_stats (btid, null_delta, oid_delta, key_delta, undo_data, data_size,
+					 undo_data_written_size);
 
-      log_append_undoredo_data2 (thread_p, RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL, NULL, HEADER, undo_rec.length,
-				 redo_rec.length, undo_rec.data, redo_rec.data);
+      char redo_buf[data_size + BTREE_MAX_ALIGN];
+      char *const redo_data = PTR_ALIGN (redo_buf, BTREE_MAX_ALIGN);
+      size_t redo_data_written_size = 0;
+
+      btree_rv_data_pack_btid_and_stats (btid, num_nulls, num_oids, num_keys, redo_data, data_size,
+					 redo_data_written_size);
+
+      log_append_undoredo_data2 (thread_p, RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL, NULL, HEADER,
+				 undo_data_written_size, redo_data_written_size, undo_data, redo_data);
+      //undo_rec.length, redo_rec.length, undo_rec.data, redo_rec.data);
       LSA_COPY (&stats->last_log_lsa, &tdes->tail_lsa);
     }
   else if (!LSA_ISNULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa))

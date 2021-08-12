@@ -22416,7 +22416,7 @@ btree_rv_data_unpack_btid_and_stats (const LOG_RCV & rcv, BTID & btid, log_uniqu
   datap += OR_INT_SIZE;
   stats.num_keys = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
-  assert ((datap - rcv.data) == (size_t) rcv.length);
+  assert ((datap - rcv.data) == rcv.length);
 }
 
 /*
@@ -22425,14 +22425,15 @@ btree_rv_data_unpack_btid_and_stats (const LOG_RCV & rcv, BTID & btid, log_uniqu
  * NOTE: keep pack/upack order consistent (same as unique stats struct order)
  */
 void
-btree_rv_data_pack_btid_and_stats (const BTID * btid, int nulls, int oids, int keys, RECDES & record_descriptor)
+btree_rv_data_pack_btid_and_stats (const BTID * btid, int nulls, int oids, int keys,
+				   char *data, size_t data_size, size_t & written_size)
 {
-  assert (record_descriptor.data != nullptr);
-  assert (record_descriptor.area_size >= ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE));
+  assert (data != nullptr);
+  assert (data_size >= ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE));
 
-  char *datap = record_descriptor.data;
+  written_size = 0U;
 
-  record_descriptor.length = 0;
+  char *datap = data;
 
   OR_PUT_BTID (datap, btid);
   datap += OR_BTID_ALIGNED_SIZE;
@@ -22446,7 +22447,7 @@ btree_rv_data_pack_btid_and_stats (const BTID * btid, int nulls, int oids, int k
   OR_PUT_INT (datap, keys);
   datap += OR_INT_SIZE;
 
-  record_descriptor.length = CAST_STRLEN (datap - record_descriptor.data);
+  written_size = datap - data;
 }
 
 /*
