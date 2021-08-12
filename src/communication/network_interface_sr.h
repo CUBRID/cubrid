@@ -241,8 +241,8 @@ extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, cha
 extern void ssession_stop_attached_threads (void *session);
 
 /*for CDC*/
-extern void scdc_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void scdc_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_initialize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_get_logitem (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

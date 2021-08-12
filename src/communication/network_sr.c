@@ -903,13 +903,13 @@ net_server_init (void)
   req_p->name = "NET_SERVER_VACUUM_DUMP";
 
   /*for CDC */
-  req_p = &net_Requests[NET_SERVER_CDC_SET_CONFIGURATION];
-  req_p->processing_function = scdc_set_configuration;
-  req_p->name = "NET_SERVER_CDC_SET_CONFIGURATION";
+  req_p = &net_Requests[NET_SERVER_CDC_INITIALIZE];
+  req_p->processing_function = scdc_initialize;
+  req_p->name = "NET_SERVER_CDC_INITIALIZE";
 
-  req_p = &net_Requests[NET_SERVER_CDC_GET_LSA];
-  req_p->processing_function = scdc_get_lsa;
-  req_p->name = "NET_SERVER_CDC_GET_LSA";
+  req_p = &net_Requests[NET_SERVER_CDC_FIND_LSA];
+  req_p->processing_function = scdc_find_lsa;
+  req_p->name = "NET_SERVER_CDC_FIND_LSA";
 
   req_p = &net_Requests[NET_SERVER_CDC_GET_LOGITEM_INFO];
   req_p->processing_function = scdc_get_logitem_info;

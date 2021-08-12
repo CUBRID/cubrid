@@ -191,7 +191,7 @@ typedef struct overflow_first_part OVERFLOW_FIRST_PART;
 /* *INDENT-OFF* */
 static std::unordered_map <TRANID, char *> cdc_tran_user; /*to clear when log producer ends suddenly */
 lockfree::circular_queue <CDC_LOGINFO_ENTRY *> *cdc_loginfo_queue;
-CDC_SERVER_COMM server_comm_buf;
+CDC_SERVER_COMM cdc_Server_comm;
 /* *INDENT-ON* */
 CDC_GLOBAL_INFO cdc_Gl;
 
@@ -10468,7 +10468,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
   tmpbuf_index = process_lsa.pageid % 2;
   temp_logbuf[tmpbuf_index].pageid = process_lsa.pageid;
-  memcpy (temp_logbuf[tmpbuf_index].log_page_p, log_page_p, LOG_PAGESIZE);
+  memcpy (temp_logbuf[tmpbuf_index].log_page_p, log_page_p, IO_MAX_PAGE_SIZE);
 
   log_info_entry = (CDC_LOGINFO_ENTRY *) malloc (sizeof (CDC_LOGINFO_ENTRY));
   if (log_info_entry == NULL)
@@ -10510,7 +10510,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	    {
 	      tmpbuf_index = (tmpbuf_index + 1) % 2;
 	      temp_logbuf[tmpbuf_index].pageid = process_lsa.pageid;
-	      memcpy (temp_logbuf[tmpbuf_index].log_page_p, log_page_p, LOG_PAGESIZE);
+	      memcpy (temp_logbuf[tmpbuf_index].log_page_p, log_page_p, IO_MAX_PAGE_SIZE);
 	    }
 
 	  if (tran_ignore.count (trid) != 0)
@@ -10568,7 +10568,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	    {
 	      tmpbuf_index = (tmpbuf_index + 1) % 2;
 	      temp_logbuf[tmpbuf_index].pageid = process_lsa.pageid;
-	      memcpy (temp_logbuf[tmpbuf_index].log_page_p, log_page_p, LOG_PAGESIZE);
+	      memcpy (temp_logbuf[tmpbuf_index].log_page_p, log_page_p, IO_MAX_PAGE_SIZE);
 	    }
 
 	  ha_dummy = (LOG_REC_HA_SERVER_STATE *) (log_page_p->area + process_lsa.offset);
@@ -10599,7 +10599,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	    {
 	      tmpbuf_index = (tmpbuf_index + 1) % 2;
 	      temp_logbuf[tmpbuf_index].pageid = process_lsa.pageid;
-	      memcpy (temp_logbuf[tmpbuf_index].log_page_p, log_page_p, LOG_PAGESIZE);
+	      memcpy (temp_logbuf[tmpbuf_index].log_page_p, log_page_p, IO_MAX_PAGE_SIZE);
 	    }
 
 	  if (tran_ignore.count (trid) != 0)
@@ -13267,7 +13267,7 @@ cdc_wakeup_thread_checker ()
 #endif
 
 int
-cdc_get_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
+cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 {
   /*
    * 1. get volume list
@@ -13297,18 +13297,14 @@ cdc_get_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 
   /*AT first, compare the time in active log volume. */
   error = get_start_point_from_file (thread_p, -1, &ret_lsa, &active_start_time);
-  if (error == ER_FAILED)
+  if (error == ER_FAILED || error == ER_LOG_READ)
     {
       return error;
-    }
-  else if (error == ER_CDC_LSA_NOT_FOUND)
-    {
-      /* rare case : can not find LOG that contains time information. */
     }
   else
     {
       /* NO ERROR */
-      if (active_start_time <= *time)
+      if (active_start_time != 0 && active_start_time <= *time)
 	{
 	  //active
 	  error = get_lsa_with_start_point (thread_p, time, &ret_lsa);
@@ -13322,13 +13318,13 @@ cdc_get_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 	      /* input time is too big to find log, then returns latest log */
 	      LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	      LSA_COPY (start_lsa, &nxio_lsa);
-	      *time = 0;	/*can not know time of latest log */
+	      *time = 0;	/* can not know time of latest log */
 	      is_found = true;
 	    }
 	}
       else
 	{
-	  /*if not found in active log volume, then traverse archives */
+	  /* if not found in active log volume, then traverse archives */
 	  if (num_arvs > 0)
 	    {
 	      /*travers from the latest */
@@ -13343,6 +13339,7 @@ cdc_get_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 		  if (archive_start_time <= *time)
 		    {
 		      target_arv_num = i;
+		      break;
 		    }
 		}
 
@@ -13352,7 +13349,7 @@ cdc_get_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 		  LSA_COPY (start_lsa, &ret_lsa);
 		  *time = archive_start_time;
 		  is_found = true;
-		  error = ER_CDC_LSA_NOT_FOUND;	/*should be replaced */
+		  error = ER_CDC_LSA_NOT_FOUND;	/* should be replaced : not found but returns */
 		}
 	      else
 		{
@@ -13367,9 +13364,23 @@ cdc_get_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 	    {
 	      /* num_arvs == 0, and active_start_time > input time 
 	       * returns oldest LSA in active log volume */
-	      *time = active_start_time;
-	      LSA_COPY (start_lsa, &ret_lsa);
-	      is_found = true;
+	      if (active_start_time != 0)
+		{
+		  *time = active_start_time;
+		  LSA_COPY (start_lsa, &ret_lsa);
+		  is_found = true;
+		  error = ER_CDC_LSA_NOT_FOUND;
+		}
+	      else
+		{
+		  /* num_arvs ==0 but no time info has been found in active log volume */
+		  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+		  LSA_COPY (start_lsa, &nxio_lsa);
+		  *time = 0;	/* can not know time of latest log */
+		  is_found = true;
+		  error = ER_CDC_LSA_NOT_FOUND;
+
+		}
 	    }
 	}
     }
@@ -13402,6 +13413,8 @@ get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_l
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;
   int vdes;
 
+  int error_code;
+
   LOG_LSA process_lsa;
   LOG_LSA forw_lsa;
 
@@ -13432,7 +13445,7 @@ get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_l
 	  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false);
 	  if (vdes != NULL_VOLDES)
 	    {
-	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, LOG_PAGESIZE) == NULL)
+	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, IO_MAX_PAGE_SIZE) == NULL)
 		{
 		  fileio_dismount (thread_p, vdes);
 
@@ -13440,10 +13453,21 @@ get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_l
 
 		  LOG_ARCHIVE_CS_EXIT (thread_p);
 
-		  return ER_FAILED;
+		  LOG_CS_EXIT (thread_p);
+
+		  return ER_LOG_READ;
 		}
 
 	      arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
+	      if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
+		{
+		  fileio_dismount (thread_p, vdes);
+		  LOG_ARCHIVE_CS_EXIT (thread_p);
+		  LOG_CS_EXIT (thread_p);
+
+		  return ER_LOG_READ;
+		}
+
 	      process_lsa.pageid = arv_hdr->fpageid;
 	      process_lsa.offset = 0;
 
@@ -13455,9 +13479,9 @@ get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_l
 
   LOG_CS_EXIT (thread_p);
 
-  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_pgptr) != NO_ERROR)
+  if ((error_code = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_pgptr)) != NO_ERROR)
     {
-      return ER_FAILED;
+      return error_code;
     }
 
   while (!LSA_ISNULL (&process_lsa))
@@ -13497,9 +13521,9 @@ get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_l
 	      return ER_FAILED;
 	    }
 
-	  if (logpb_fetch_page (thread_p, &forw_lsa, LOG_CS_SAFE_READER, log_pgptr) != NO_ERROR)
+	  if ((error_code = logpb_fetch_page (thread_p, &forw_lsa, LOG_CS_SAFE_READER, log_pgptr)) != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      return error_code;
 	    }
 	}
       LSA_COPY (&process_lsa, &forw_lsa);
@@ -13663,8 +13687,8 @@ cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_l
 	    }
 	}
 
-      server_comm_buf.log_Infos = log_infos;
-      server_comm_buf.log_Infos_length = *total_length;
+      cdc_Server_comm.log_items = log_infos;
+      cdc_Server_comm.total_length = *total_length;
     }
 #endif
   return NO_ERROR;
@@ -13675,23 +13699,25 @@ cdc_finalize ()
 {
   int i = 0;
 
-  if (cdc_Gl.num_user > 0)
+  if (cdc_Gl.num_extraction_user > 0)
     {
-      for (i = 0; i < cdc_Gl.num_user; i++)
+      for (i = 0; i < cdc_Gl.num_extraction_user; i++)
 	{
-	  free (cdc_Gl.user[i]);
+	  free (cdc_Gl.extraction_user[i]);
+	  free (cdc_Gl.extraction_user);
 	}
     }
-  if (cdc_Gl.num_class > 0)
+  if (cdc_Gl.num_extraction_class > 0)
     {
-      free (cdc_Gl.class_oids);
+      free (cdc_Gl.extraction_classoids);
     }
 
-for (auto iter:cdc_tran_user)
+/* *INDENT-OFF* */
+  for (auto iter:cdc_tran_user)
     {
-      /*std::unordered_map<TRANID, char *> cdc_tran_user */
       free (iter.second);
     }
+/* *INDENT-ON* */
 
   while (!cdc_loginfo_queue->is_empty ())
     {
@@ -13719,10 +13745,10 @@ cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **us
 		       int num_class)
 {
   cdc_Gl.extraction_timeout = timeout;
-  cdc_Gl.num_user = num_user;
-  cdc_Gl.user = user;
-  cdc_Gl.num_class = num_class;
-  cdc_Gl.class_oids = classoids;
+  cdc_Gl.num_extraction_user = num_user;
+  cdc_Gl.extraction_user = user;
+  cdc_Gl.num_extraction_class = num_class;
+  cdc_Gl.extraction_classoids = classoids;
   cdc_Gl.all_in_cond = all_in_cond;
   cdc_Gl.max_log_item = max_log_item;
 
@@ -13732,14 +13758,14 @@ cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **us
 int
 cdc_initialize ()
 {
-  /*cdc_Gl initialization */
-
   /*communication buffer from server to client initialization */
-  server_comm_buf.log_Infos = NULL;
-  server_comm_buf.log_Info_length = 0;
-  server_comm_buf.num_log_Infos = 0;
-  LSA_SET_NULL (&server_comm_buf.start_lsa);
-  server_comm_buf.is_sent = true;
+  cdc_Server_comm.log_items = NULL;
+  cdc_Server_comm.total_length = 0;
+  cdc_Server_comm.num_log_item = 0;
+  LSA_SET_NULL (&cdc_Server_comm.next_lsa);
+  cdc_Server_comm.is_sent = true;
+
+  return NO_ERROR;
 }
 
 //

@@ -10228,7 +10228,7 @@ ssession_stop_attached_threads (void *session)
 }
 
 void
-scdc_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -10240,7 +10240,7 @@ scdc_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
 
   ptr = or_unpack_int64 (request, &input_time);
 
-  error = cdc_get_lsa (thread_p, &input_time, &start_lsa);
+  error = cdc_find_lsa (thread_p, &input_time, &start_lsa);
 
   ptr = or_pack_int (reply, error);
   ptr = or_pack_log_lsa (ptr, &start_lsa);
@@ -10250,77 +10250,98 @@ scdc_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
 }
 
 void
-scdc_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+scdc_initialize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
   int error;
-  int max_log_item, time_out, all_in_cond, num_user, num_class;
-  uint64_t *classoids = NULL;
-  char **user = NULL;
-  int user_len = 0;
+  int max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class;
+  uint64_t *extraction_classoids = NULL;
+  char **extraction_user = NULL;
+  int extraction_user_len = 0;
 
   char *dummy_user = NULL;
   int timeout;
 
   ptr = or_unpack_int (request, &max_log_item);
-  ptr = or_unpack_int (ptr, &timeout);
+  ptr = or_unpack_int (ptr, &extraction_timeout);
   ptr = or_unpack_int (ptr, &all_in_cond);
-  ptr = or_unpack_int (ptr, &num_user);
+  ptr = or_unpack_int (ptr, &num_extraction_user);
 
-  if (num_user > 0)
+  if (num_extraction_user > 0)
     {
-      user = (char **) malloc (sizeof (char *) * num_user);
-      if (user == NULL)
+      extraction_user = (char **) malloc (sizeof (char *) * num_extraction_user);
+      if (extraction_user == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
-      for (int i = 0; i < num_user; i++)
+
+      for (int i = 0; i < num_extraction_user; i++)
 	{
 	  ptr = or_unpack_string (ptr, &dummy_user);
-	  user_len = strlen (dummy_user);
-	  user[i] = (char *) malloc (user_len + 1);
-	  if (user[i] == NULL)
+	  extraction_user_len = strlen (dummy_user);
+	  extraction_user[i] = (char *) malloc (extraction_user_len + 1);
+
+	  if (extraction_user[i] == NULL)
 	    {
-	      free (user);
+	      for (int j = 0; j <= i; j++)
+		{
+		  free (extraction_user[j]);
+		}
+	      free (extraction_user);
+	      db_private_free_and_init (NULL, dummy_user);
+
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto end;
 	    }
-	  memcpy (user[i], dummy_user, user_len);
+
+	  memcpy (extraction_user[i], dummy_user, extraction_user_len);
 	  db_private_free_and_init (NULL, dummy_user);
-	  user[i][user_len] = '\0';
+	  extraction_user[i][extraction_user_len] = '\0';
 	}
     }
 
-  ptr = or_unpack_int (ptr, &num_class);
+  ptr = or_unpack_int (ptr, &num_extraction_class);
 
-  if (num_class > 0)
+  if (num_extraction_class > 0)
     {
-      classoids = (uint64_t *) malloc (sizeof (uint64_t) * num_class);
-      if (classoids == NULL)
+      extraction_classoids = (uint64_t *) malloc (sizeof (uint64_t) * num_extraction_class);
+      if (extraction_classoids == NULL)
 	{
-	  if (num_user > 0)
+	  if (num_extraction_user > 0)
 	    {
-	      for (int i = 0; i < num_user; i++)
+	      for (int i = 0; i < num_extraction_user; i++)
 		{
-		  free (user[i]);
+		  free (extraction_user[i]);
 		}
 
-	      free (user);
+	      free (extraction_user);
 	    }
 
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
-      for (int i = 0; i < num_class; i++)
+      for (int i = 0; i < num_extraction_class; i++)
 	{
-	  ptr = or_unpack_int64 (ptr, (INT64 *) & classoids[i]);
+	  ptr = or_unpack_int64 (ptr, (INT64 *) & extraction_classoids[i]);
 	}
     }
 
-  error = cdc_set_configuration (max_log_item, timeout, all_in_cond, user, num_user, classoids, num_class);
+  error =
+    cdc_set_configuration (max_log_item, timeout, all_in_cond, extraction_user, num_extraction_user,
+			   extraction_classoids, num_extraction_class);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = cdc_initialize ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
 end:
 
@@ -10347,11 +10368,11 @@ scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   int rc;
 
-  if (server_comm_buf.is_sent == false)
+  if (cdc_Server_comm.is_sent == false)
     {
-      LSA_COPY (&start_lsa, &server_comm_buf.start_lsa);
-      num_log_info = server_comm_buf.num_log_Infos;
-      total_length = server_comm_buf.log_Info_length;
+      LSA_COPY (&start_lsa, &cdc_Server_comm.next_lsa);
+      num_log_info = cdc_Server_comm.num_log_item;
+      total_length = cdc_Server_comm.total_length;
     }
   else
     {
@@ -10369,10 +10390,10 @@ scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   if (rc != NO_ERROR)
     {
       /*start lsa, total length, num_log_info wil be resent */
-      server_comm_buf.is_sent = false;
+      cdc_Server_comm.is_sent = false;
       return;
     }
-  server_comm_buf.is_sent = true;
+  cdc_Server_comm.is_sent = true;
 
   return;
 }
@@ -10381,16 +10402,16 @@ void
 scdc_get_logitem (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int rc;
-  rc = css_send_data_to_client (thread_p->conn_entry, rid, server_comm_buf.log_Infos, server_comm_buf.log_Info_length);
+  rc = css_send_data_to_client (thread_p->conn_entry, rid, cdc_Server_comm.log_items, cdc_Server_comm.total_length);
   if (rc != NO_ERRORS)
     {
-      server_comm_buf.is_sent = false;
+      cdc_Server_comm.is_sent = false;
       return;
     }
 
-  free_and_init (server_comm_buf.log_Infos);
+  free_and_init (cdc_Server_comm.log_items);
 
-  server_comm_buf.is_sent = true;
+  cdc_Server_comm.is_sent = true;
   return;
 }
 
@@ -10403,10 +10424,6 @@ scdc_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   int error;
 
   error = cdc_finalize ();
-
-#if !defined(NDEBUG)		//JOOHOK2
-  _er_log_debug (ARG_FILE_LINE, "LOG_READER_FINALIZE ERROR CODE : %d", error);
-#endif
 
   ptr = or_pack_int (reply, error);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));

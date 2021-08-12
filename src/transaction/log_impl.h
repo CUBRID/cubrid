@@ -788,10 +788,10 @@ typedef struct cdc_global_info
   LOG_LSA next_lsa;		/* next LSA to process */
 
   /*configuration */
-  int num_user;
-  char **user;
-  int num_class;
-  UINT64 *class_oids;
+  int num_extraction_user;
+  char **extraction_user;
+  int num_extraction_class;
+  UINT64 *extraction_classoids;
   int all_in_cond;
   int max_log_item;
   int extraction_timeout;
@@ -830,11 +830,11 @@ typedef enum cdc_dml_type
 
 typedef struct cdc_server_comm
 {
-  char *log_Infos;
-  int log_Info_length;
-  int num_log_Infos;
-  LOG_LSA start_lsa;
-  bool is_sent;
+  char *log_items;		/* log item list. it is used as buffer to send to client */
+  int total_length;		/* total length of log_items */
+  int num_log_item;		/* how many log log item is stored in log_items (log item list) */
+  LOG_LSA next_lsa;		/* LSA to process for next step */
+  bool is_sent;			/* if is_sent is true, then trasferring log_items to client is done well */
 } CDC_SERVER_COMM;
 
 /*Data structure for CDC interface end */
@@ -871,13 +871,10 @@ extern char log_Name_removed_archive[];
 /*CDC global variables */
 extern CDC_GLOBAL_INFO cdc_Gl;
 
-extern char *log_Infos;
-extern int log_Infos_length;
-
 /* *INDENT-OFF* */
 extern lockfree::circular_queue<CDC_LOGINFO_ENTRY *> *cdc_loginfo_queue;
 /* *INDENT-ON* */
-extern CDC_SERVER_COMM server_comm_buf;
+extern CDC_SERVER_COMM cdc_Server_comm;
 
 /* logging */
 #if defined (SA_MODE)
