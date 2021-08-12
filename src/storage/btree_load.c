@@ -628,45 +628,6 @@ btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta, RECDES * 
 }
 
 /*
- * btree_rv_mvcc_save_increments () - Save unique_stats
- *   return:
- *   btid(in):
- *   max_key_len(in):
- *   null_delta(in):
- *   oid_delta(in):
- *   key_delta(in):
- *   recdes(in):
- *
- * Note: Copy the unique statistics to the data area provided.
- *
- * Note: This is a UTILITY routine, but not an actual recovery routine.
- */
-void
-btree_rv_mvcc_save_increments (const BTID * btid, int key_delta, int oid_delta, int null_delta, RECDES * recdes)
-{
-  char *datap;
-
-  assert (recdes != NULL && (recdes->area_size >= ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE)));
-
-  recdes->length = (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE;
-  datap = (char *) recdes->data;
-
-  OR_PUT_BTID (datap, btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-
-  OR_PUT_INT (datap, key_delta);
-  datap += OR_INT_SIZE;
-
-  OR_PUT_INT (datap, oid_delta);
-  datap += OR_INT_SIZE;
-
-  OR_PUT_INT (datap, null_delta);
-  datap += OR_INT_SIZE;
-
-  recdes->length = CAST_STRLEN (datap - recdes->data);
-}
-
-/*
  * btree_get_next_overflow_vpid () -
  *
  *   return:
