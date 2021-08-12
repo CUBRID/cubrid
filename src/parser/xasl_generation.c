@@ -712,7 +712,7 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
       /* pred_with_HQ is appended to if_pred instead of data filter. */
       pt_split_pred_for_HQ (parser, where, &pred_without_HQ, &pred_with_HQ);
 
-      select_node->info.query.q.select.where = pred_without_HQ;
+      select_node->info.query.q.select.where = pred_with_HQ ? pred_without_HQ : where;
       save_from = select_node->info.query.q.select.from->next;
       select_node->info.query.q.select.from->next = NULL;
 
