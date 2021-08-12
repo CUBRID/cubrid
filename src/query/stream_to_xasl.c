@@ -3654,7 +3654,6 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
   ptr = or_unpack_int (ptr, &insert_info->has_uniques);
   ptr = or_unpack_int (ptr, &insert_info->wait_msecs);
   ptr = or_unpack_int (ptr, &insert_info->no_logging);
-  ptr = or_unpack_int (ptr, &insert_info->no_supplemental_log);
   ptr = or_unpack_int (ptr, &insert_info->do_replace);
   ptr = or_unpack_int (ptr, &insert_info->pruning_type);
 

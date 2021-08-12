@@ -4011,8 +4011,6 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 
   ptr = or_pack_int (ptr, insert_info->no_logging);
 
-  ptr = or_pack_int (ptr, insert_info->no_supplemental_log);
-
   ptr = or_pack_int (ptr, insert_info->do_replace);
 
   ptr = or_pack_int (ptr, insert_info->pruning_type);
@@ -6177,7 +6175,6 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* has_uniques */
 	   + OR_INT_SIZE	/* wait_msecs */
 	   + OR_INT_SIZE	/* no_logging */
-	   + OR_INT_SIZE	/* no_supplemental_log */
 	   + OR_INT_SIZE	/* do_replace */
 	   + OR_INT_SIZE	/* needs pruning */
 	   + OR_INT_SIZE	/* num_val_lists */

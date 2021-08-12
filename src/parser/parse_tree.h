@@ -1194,14 +1194,15 @@ typedef enum
   PT_HINT_SKIP_UPDATE_NULL = 0x2000000,	/* 0010 0000 0000 0000 0000 0000 0000 */
   PT_HINT_NO_INDEX_LS = 0x4000000,	/* 0100 0000 0000 0000 0000 0000 0000 *//* enable loose index scan */
   PT_HINT_INDEX_LS = 0x8000000,	/* 1000 0000 0000 0000 0000 0000 0000 *//* disable loose index scan */
-  PT_HINT_QUERY_NO_CACHE = 0x10000000,	/* 0001 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache */
+  PT_HINT_NO_SUPPLEMENTAL_LOG = 0x10000000,	/* 0001 0000 0000 0000 0000 0000 0000 0000 0000 */
+  /* Used in DML (only for update, delete currently) to avoid adding DML supplemental logs that may be duplicated by DDL */
   PT_HINT_SELECT_RECORD_INFO = 0x20000000,	/* 0010 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT record info from tuple header instead of data */
   PT_HINT_SELECT_PAGE_INFO = 0x40000000,	/* 0100 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT page header information from heap file instead of record data */
   PT_HINT_SELECT_KEY_INFO = 0x80000000,	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT key information from index b-tree instead of table record data */
-  PT_HINT_NO_SUPPLEMENTAL_LOG = 0x100000000
+  PT_HINT_QUERY_NO_CACHE = 0x100000000	/* 0001 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache (unused) */
 } PT_HINT_ENUM;
 
 /* Codes for error messages */

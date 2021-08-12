@@ -510,23 +510,16 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
 		}
 	      break;
-	    case PT_HINT_NO_SUPPLEMENTAL_LOG:	/* no supplemental_log */
-	      if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_DELETE)
+	    case PT_HINT_NO_SUPPLEMENTAL_LOG:	/* statement-based replication */
+	      if (node->node_type == PT_DELETE)
 		{
 		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
 		}
-	      else if (node->node_type == PT_INSERT)
+	      else if (node->node_type == PT_UPDATE)
 		{
-		  node->info.insert.hint = (PT_HINT_ENUM) (node->info.insert.hint | hint_table[i].hint);
+		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
 		}
-
-	      hint_table[i].arg_list = NULL;
 	      break;
-
 	    default:
 	      break;
 	    }

@@ -12791,12 +12791,18 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 		  goto exit;
 		}
 
+	      /* No supplemental log for insert is appended due to DDL statement */
+	      thread_p->no_supplemental_log = true;
+
 	      /* make sure that pruning does not change the given class OID */
 	      COPY_OID (&cls_oid, class_oid);
 	      error =
 		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, &recdes, true, SINGLE_ROW_INSERT,
 				      &parent_scan_cache, &force_count, DB_PARTITIONED_CLASS, &pcontext, NULL,
 				      UPDATE_INPLACE_OLD_MVCCID, NULL, false, false);
+
+	      thread_p->no_supplemental_log = false;
+
 	      if (error != NO_ERROR)
 		{
 		  goto exit;

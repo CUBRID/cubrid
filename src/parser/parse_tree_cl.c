@@ -8508,7 +8508,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if (p->info.delete_.hint & PT_HINT_NO_SUPPLEMENTAL_LOG)
 	{
-	  q = pt_append_nulstring (parser, q, " NO_SUPPLEMENTAL_LOG");
+	  q = pt_append_nulstring (parser, q, " NO_SUPPLEMENTAL_LOG ");
 	}
 
       q = pt_append_nulstring (parser, q, " */");
@@ -12424,11 +12424,6 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_nulstring (parser, b, " USE_SBR");
 	}
 
-      if (p->info.insert.hint & PT_HINT_NO_SUPPLEMENTAL_LOG)
-	{
-	  b = pt_append_nulstring (parser, b, " NO_SUPPLEMENTAL_LOG");
-	}
-
       b = pt_append_nulstring (parser, b, " */ ");
     }
   b = pt_append_nulstring (parser, b, "into ");
@@ -14998,7 +14993,7 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if (p->info.update.hint & PT_HINT_NO_SUPPLEMENTAL_LOG)
 	{
-	  b = pt_append_nulstring (parser, b, " NO_SUPPLEMENTAL_LOG");
+	  b = pt_append_nulstring (parser, b, " NO_SUPPLEMENTAL_LOG ");
 	}
 
       b = pt_append_nulstring (parser, b, " */ ");

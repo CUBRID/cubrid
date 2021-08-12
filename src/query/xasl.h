@@ -395,7 +395,6 @@ struct insert_proc_node
   int has_uniques;		/* whether there are unique constraints */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
-  int no_supplemental_log;	/* no supplemental log */
   int do_replace;		/* duplicate tuples should be replaced */
   int pruning_type;		/* DB_CLASS_PARTITION_TYPE indicating the way in which pruning should be performed */
   int num_val_lists;		/* number of value lists in values clause */
