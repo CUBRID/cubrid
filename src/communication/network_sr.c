@@ -1291,7 +1291,7 @@ loop:
  *   server_name(in): name of server
  */
 int
-net_server_start (const char *server_name, THREAD_ENTRY * thread_p)
+net_server_start (THREAD_ENTRY * thread_p, const char *server_name)
 {
   int error = NO_ERROR;
   int name_length;

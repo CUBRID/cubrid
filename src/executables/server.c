@@ -46,11 +46,11 @@
 #include "connection_error.h"
 #include "network.h"
 #include "environment_variable.h"
-#include "internal_tasks_worker_pool.hpp"
 #include "boot_sr.h"
 #include "system_parameter.h"
 #include "server_type.hpp"
 #include "perf_monitor.h"
+#include "thread_manager.hpp"
 #include "util_func.h"
 #include "util_support.h"
 #if defined(WINDOWS)
@@ -433,7 +433,7 @@ main (int argc, char **argv)
     setsid ();
 #endif
 
-    ret_val = net_server_start (database_name, thread_p);
+    ret_val = net_server_start (thread_p, database_name);
 
   }
 #if defined(WINDOWS)

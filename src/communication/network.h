@@ -280,7 +280,7 @@ typedef enum
 } QUERY_SERVER_REQUEST;
 
 /* Server startup */
-extern int net_server_start (const char *name, THREAD_ENTRY * thread_p);
+extern int net_server_start (THREAD_ENTRY * thread_p, const char *server_name);
 extern const char *net_server_request_name (int request);
 
 #endif /* _NETWORK_H_ */
