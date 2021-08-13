@@ -83,6 +83,7 @@
 #include "xasl_cache.h"
 #include "elo.h"
 #include "transaction_transient.hpp"
+#include "method_invoke_group.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -10189,4 +10190,115 @@ void
 ssession_stop_attached_threads (void *session)
 {
   session_stop_attached_threads (session);
+}
+
+void
+smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  method_sig_list sig_list;
+  sig_list.unpack (unpacker);
+
+  int arg_cnt = 0;
+  unpacker.unpack_int (arg_cnt);
+
+  /* *INDENT-OFF* */
+  std::vector<DB_VALUE> args (arg_cnt);
+  /* *INDENT-ON* */
+  for (int i = 0; i < arg_cnt; i++)
+    {
+      unpacker.unpack_db_value (args[i]);
+    }
+
+  /* *INDENT-OFF* */
+  cubmethod::method_invoke_group method_group (&sig_list);
+  /* *INDENT-ON* */
+
+  method_group.begin (thread_p);
+
+  int error_code = method_group.prepare (args);
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  /* *INDENT-OFF* */
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  /* *INDENT-ON* */
+
+  char *reply_data = NULL;
+  int reply_data_size = 0;
+
+  error_code = method_group.execute (args);
+  if (error_code == NO_ERROR)
+    {
+      DB_VALUE & ret_value = method_group.get_return_value (0);
+
+      method_sig_node *sig = sig_list.method_sig;
+
+      std::vector < DB_VALUE * >out_args;
+      for (int i = 0; i < sig->num_method_args; i++)
+	{
+	  if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
+	    {
+	      continue;
+	    }
+
+	  int pos = sig->method_arg_pos[i];
+	  DB_VALUE & val = args[pos];
+	  out_args.push_back (&val);
+	}
+
+      int total_size = packer.get_packed_db_value_size (ret_value, 0);
+      total_size += packer.get_packed_int_size (total_size);
+    /* *INDENT-OFF* */
+    for (DB_VALUE *value : out_args)
+	{
+	  total_size += packer.get_packed_db_value_size (*value, total_size);
+	}
+    /* *INDENT-ON* */
+
+      eb.extend_to (total_size);
+      packer.set_buffer (eb.get_ptr (), total_size);
+
+      /* result */
+      packer.pack_db_value (ret_value);
+
+      /* output parameters */
+      packer.pack_int (out_args.size ());
+
+    /* *INDENT-OFF* */
+    for (DB_VALUE *value : out_args)
+	{
+	  packer.pack_db_value (*value);	// DB_VALUEs
+	}
+    /* *INDENT-ON* */
+
+      reply_data = eb.get_ptr ();
+      reply_data_size = (int) packer.get_current_size ();
+    }
+  else
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  // clear
+  for (int i = 0; i < arg_cnt; i++)
+    {
+      db_value_clear (&args[i]);
+    }
+
+  method_group.end ();
+  sig_list.freemem ();
+
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = or_pack_int (reply, reply_data_size);
+  ptr = or_pack_int (ptr, error_code);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
+				     reply_data_size);
 }

@@ -47,7 +47,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "boot_cl.h"
-#include "query_method.h"
+#include "query_method.hpp"
 #include "method_def.hpp"
 #include "release_string.h"
 #include "log_comm.h"
@@ -1859,29 +1859,13 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 #endif /* CS_MODE */
 			error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
 
-			packing_unpacker unpacker (methoddata, (size_t) methoddata_size);
-
-			int arg_count;
-			unpacker.unpack_int (arg_count);
-
-      // *INDENT-OFF*
-			std::vector<DB_VALUE> args (arg_count);
-      // *INDENT-ON*
-
-			for (int i = 0; i < arg_count; i++)
+			if (error == NO_ERROR)
 			  {
-			    unpacker.unpack_db_value (args[i]);
+			    COMPARE_AND_FREE_BUFFER (methoddata, reply);
+			    error = method_dispatch (rc, net_Server_host, net_Server_name, methoddata, methoddata_size);
+			    free_and_init (methoddata);
 			  }
 
-			METHOD_SIG_LIST sig_list;
-			sig_list.unpack (unpacker);
-
-			COMPARE_AND_FREE_BUFFER (methoddata, reply);
-			free_and_init (methoddata);
-
-			error = method_invoke_for_server (rc, net_Server_host, net_Server_name, args, &sig_list);
-
-			sig_list.freemem ();
 			if (error != NO_ERROR)
 			  {
 			    assert (er_errid () != NO_ERROR);
@@ -1891,10 +1875,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				error = ER_NET_SERVER_DATA_RECEIVE;
 				er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			      }
-			  }
-			else
-			  {
-			    error = NO_ERROR;
 			  }
 #if defined(CS_MODE)
 			if (need_to_reset == true)
@@ -1908,14 +1888,16 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		else
 		  {
 		    error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
-
 		    net_consume_expected_packets (rc, 1);
 		  }
 
 		if (error != NO_ERROR)
 		  {
 		    return_error_to_server (net_Server_host, rc);
+#if defined(CS_MODE)
+		    // NOTE: To avoid error -495, method_send_error_to_server should be called after return_error_to_server()
 		    method_send_error_to_server (rc, net_Server_host, net_Server_name, error);
+#endif
 		  }
 		css_queue_receive_data_buffer (rc, replybuf, replysize);
 	      }

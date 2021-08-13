@@ -4014,8 +4014,12 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* mvcc_select_lock_needed = false, fixed = true */
   scan_init_scan_id (scan_id, false, S_SELECT, true, grouped, single_fetch, join_dbval, val_list, vd);
 
-  scan_id->s.msid.init (thread_p, meth_sig_list, list_id);
-  return scan_id->s.msid.open ();
+  int error = scan_id->s.msid.init (thread_p, meth_sig_list, list_id);
+  if (error == NO_ERROR)
+    {
+      error = scan_id->s.msid.open ();
+    }
+  return error;
 }
 
 /*

@@ -20,6 +20,157 @@
 
 #include "memory_private_allocator.hpp"
 
+method_sig_node::method_sig_node ()
+{
+  next = nullptr;
+  method_name = nullptr;
+  method_type = METHOD_TYPE_NONE;
+  num_method_args = 0;
+  method_arg_pos = nullptr;
+}
+
+void
+method_sig_node::pack (cubpacking::packer &serializator) const
+{
+  serializator.pack_c_string (method_name, strlen (method_name));
+
+  serializator.pack_int (method_type);
+  serializator.pack_int (num_method_args);
+
+  for (int i = 0; i < num_method_args + 1; i++)
+    {
+      serializator.pack_int (method_arg_pos[i]);
+    }
+
+  if (method_type != METHOD_TYPE_JAVA_SP)
+    {
+      serializator.pack_c_string (class_name, strlen (class_name));
+    }
+  else
+    {
+      for (int i = 0; i < num_method_args; i++)
+	{
+	  serializator.pack_int (arg_info.arg_mode[i]);
+	}
+      for (int i = 0; i < num_method_args; i++)
+	{
+	  serializator.pack_int (arg_info.arg_type[i]);
+	}
+      serializator.pack_int (arg_info.result_type);
+    }
+}
+
+size_t
+method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+{
+  size_t size = serializator.get_packed_int_size (start_offset); /* num_methods */
+
+  size += serializator.get_packed_c_string_size (method_name, strlen (method_name), size);
+
+  /* method type and num_method_args */
+  size += serializator.get_packed_int_size (size);
+  size += serializator.get_packed_int_size (size);
+
+  for (int i = 0; i < num_method_args + 1; i++)
+    {
+      size += serializator.get_packed_int_size (size); /* method_sig->method_arg_pos[i] */
+    }
+
+  if (method_type != METHOD_TYPE_JAVA_SP)
+    {
+      size += serializator.get_packed_c_string_size (class_name, strlen (class_name), size);
+    }
+  else
+    {
+      for (int i = 0; i < num_method_args; i++)
+	{
+	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info.arg_mode[i] */
+	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info.arg_type[i] */
+	}
+      size += serializator.get_packed_int_size (size); /* method_sig->arg_info.result_type */
+    }
+
+  return size;
+}
+
+void
+method_sig_node::unpack (cubpacking::unpacker &deserializator)
+{
+  next = nullptr;
+
+  cubmem::extensible_block method_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+  deserializator.unpack_string_to_memblock (method_name_blk);
+  method_name = method_name_blk.release_ptr ();
+
+  int type;
+  deserializator.unpack_int (type);
+  method_type = static_cast<METHOD_TYPE> (type);
+  deserializator.unpack_int (num_method_args);
+
+  method_arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args + 1));
+  for (int n = 0; n < num_method_args + 1; n++)
+    {
+      deserializator.unpack_int (method_arg_pos[n]);
+    }
+
+  if (method_type != METHOD_TYPE_JAVA_SP)
+    {
+      class_name = nullptr;
+      cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+      deserializator.unpack_string_to_memblock (class_name_blk);
+      class_name = class_name_blk.release_ptr ();
+    }
+  else
+    {
+      if (num_method_args > 0)
+	{
+	  arg_info.arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info.arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+
+	  for (int i = 0; i < num_method_args; i++)
+	    {
+	      deserializator.unpack_int (arg_info.arg_mode[i]);
+	    }
+
+	  for (int i = 0; i < num_method_args; i++)
+	    {
+	      deserializator.unpack_int (arg_info.arg_type[i]);
+	    }
+	}
+      else
+	{
+	  arg_info.arg_mode = nullptr;
+	  arg_info.arg_type = nullptr;
+	}
+
+      deserializator.unpack_int (arg_info.result_type);
+    }
+}
+
+void
+method_sig_node::freemem ()
+{
+  if (method_name != nullptr)
+    {
+      db_private_free_and_init (NULL, method_name);
+    }
+
+  if (method_arg_pos != nullptr)
+    {
+      db_private_free_and_init (NULL, method_arg_pos);
+    }
+
+  if (method_type != METHOD_TYPE_JAVA_SP && class_name)
+    {
+      db_private_free_and_init (NULL, class_name);
+    }
+  else
+    {
+      db_private_free_and_init (NULL, arg_info.arg_mode);
+      db_private_free_and_init (NULL, arg_info.arg_type);
+    }
+}
+
 void
 method_sig_list::freemem ()
 {
@@ -28,12 +179,7 @@ method_sig_list::freemem ()
     {
       METHOD_SIG *next = sig->next;
 
-      db_private_free_and_init (NULL, sig->method_name);
-      if (sig->class_name)
-	{
-	  db_private_free_and_init (NULL, sig->class_name);
-	}
-      db_private_free_and_init (NULL, sig->method_arg_pos);
+      sig->freemem ();
       db_private_free_and_init (NULL, sig); /* itself */
 
       sig = next;
@@ -48,21 +194,7 @@ method_sig_list::pack (cubpacking::packer &serializator) const
   METHOD_SIG *sig_p = method_sig;
   while (sig_p)
     {
-      serializator.pack_c_string (sig_p->method_name, strlen (sig_p->method_name));
-
-      serializator.pack_int (sig_p->method_type);
-      serializator.pack_int (sig_p->num_method_args);
-
-      for (int i = 0; i < sig_p->num_method_args + 1; i++)
-	{
-	  serializator.pack_int (sig_p->method_arg_pos[i]);
-	}
-
-      if (sig_p->method_type != METHOD_IS_JAVA_SP)
-	{
-	  serializator.pack_c_string (sig_p->class_name, strlen (sig_p->class_name));
-	}
-
+      sig_p->pack (serializator);
       sig_p = sig_p->next;
     }
 }
@@ -75,22 +207,7 @@ method_sig_list::get_packed_size (cubpacking::packer &serializator, std::size_t 
   METHOD_SIG *sig_p = method_sig;
   while (sig_p)
     {
-      size += serializator.get_packed_c_string_size (sig_p->method_name, strlen (sig_p->method_name), size);
-
-      /* method type and num_method_args */
-      size += serializator.get_packed_int_size (size);
-      size += serializator.get_packed_int_size (size);
-
-      for (int i = 0; i < sig_p->num_method_args + 1; i++)
-	{
-	  size += serializator.get_packed_int_size (size); /* method_sig->method_arg_pos[i] */
-	}
-
-      if (sig_p->method_type != METHOD_IS_JAVA_SP)
-	{
-	  size += serializator.get_packed_c_string_size (sig_p->class_name, strlen (sig_p->class_name), size);
-	}
-
+      size += sig_p->get_packed_size (serializator, size);
       sig_p = sig_p->next;
     }
   return size;
@@ -99,8 +216,6 @@ method_sig_list::get_packed_size (cubpacking::packer &serializator, std::size_t 
 void
 method_sig_list::unpack (cubpacking::unpacker &deserializator)
 {
-  // assuming that METHOD_SIG_LIST is already allocated
-
   deserializator.unpack_int (num_methods);
 
   method_sig = nullptr;
@@ -110,36 +225,13 @@ method_sig_list::unpack (cubpacking::unpacker &deserializator)
       METHOD_SIG *method_sig_p = method_sig;
       for (int i = 0; i < num_methods; i++)
 	{
-	  method_sig_p->next = nullptr;
-
-	  cubmem::extensible_block method_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
-	  deserializator.unpack_string_to_memblock (method_name_blk);
-	  method_sig_p->method_name = method_name_blk.release_ptr ();
-
-	  int method_type;
-	  deserializator.unpack_int (method_type);
-	  method_sig_p->method_type = static_cast<METHOD_TYPE> (method_type);
-	  deserializator.unpack_int (method_sig_p->num_method_args);
-
-	  method_sig_p->method_arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * (method_sig_p->num_method_args + 1));
-	  for (int n = 0; n < method_sig->num_method_args + 1; n++)
-	    {
-	      deserializator.unpack_int (method_sig_p->method_arg_pos[n]);
-	    }
-
-	  method_sig_p->class_name = nullptr;
-	  if (method_sig_p->method_type != METHOD_IS_JAVA_SP)
-	    {
-	      cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
-	      deserializator.unpack_string_to_memblock (class_name_blk);
-	      method_sig_p->class_name = class_name_blk.release_ptr ();
-	    }
+	  method_sig_p->unpack (deserializator);
 
 	  if (i != num_methods - 1) /* last */
 	    {
 	      method_sig_p->next = (METHOD_SIG *) db_private_alloc (NULL, sizeof (METHOD_SIG));
-	      method_sig_p->next->next = nullptr;
 	    }
+
 	  method_sig_p = method_sig_p->next;
 	}
     }

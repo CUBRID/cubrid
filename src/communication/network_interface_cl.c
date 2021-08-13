@@ -28,6 +28,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include <algorithm>
+
 #include "porting.h"
 #include "network.h"
 #include "network_interface_cl.h"
@@ -10410,6 +10412,94 @@ loaddb_update_stats ()
     {
       or_unpack_int (reply, &rc);
     }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+
+int
+method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE * >&args, DB_VALUE & result)
+{
+#if defined(CS_MODE)
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+
+  packing_packer packer;
+  cubmem::extensible_block eb;
+
+  int total_size = sig_list.get_packed_size (packer, 0);
+  total_size += packer.get_packed_int_size (total_size);
+
+  /* *INDENT-OFF* */
+  for (DB_VALUE *&value : args)
+    {
+      total_size += packer.get_packed_db_value_size (*value, total_size);
+    }
+  /* *INDENT-ON* */
+
+  eb.extend_to (total_size);
+  packer.set_buffer (eb.get_ptr (), total_size);
+
+  sig_list.pack (packer);
+  packer.pack_int (args.size ());
+
+  /* *INDENT-OFF* */
+  for (DB_VALUE *&value : args)
+    {
+      packer.pack_db_value (*value);	// DB_VALUEs
+    }
+  /* *INDENT-ON* */
+
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error =
+    net_client_request2 (NET_SERVER_METHOD_FOLD_CONSTANTS, eb.get_ptr (), (int) packer.get_current_size (), reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  if (req_error != NO_ERROR)
+    {
+      return req_error;
+    }
+
+  char *ptr = or_unpack_int (reply, &data_reply_size);
+  int rc = ER_FAILED;
+  ptr = or_unpack_int (ptr, &rc);
+  if (rc != NO_ERROR)
+    {
+      free_and_init (data_reply);
+      return rc;
+    }
+
+  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+
+  /* result */
+  unpacker.unpack_db_value (result);
+
+  /* output parameters */
+  int arg_size = 0;
+  unpacker.unpack_int (arg_size);
+
+  method_sig_node *sig = sig_list.method_sig;
+  DB_VALUE temp;
+  for (int i = 0; i < sig->num_method_args; i++)
+    {
+      if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
+	{
+	  continue;
+	}
+
+      int pos = sig->method_arg_pos[i];
+      unpacker.unpack_db_value (temp);
+
+      db_value_clear (args[pos]);
+      db_value_clone (&temp, args[pos]);
+      db_value_clear (&temp);
+    }
+
+  free_and_init (data_reply);
 
   return rc;
 #else /* CS_MODE */

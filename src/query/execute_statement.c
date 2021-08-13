@@ -13767,7 +13767,7 @@ do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      return jsp_call_stored_procedure (parser, statement);
+      return jsp_call_stored_procedure_ng (parser, statement);
     }
 }
 

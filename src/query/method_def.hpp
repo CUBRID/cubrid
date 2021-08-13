@@ -23,6 +23,8 @@
 #ifndef _METHOD_DEF_H_
 #define _METHOD_DEF_H_
 
+#include <string>
+
 #include "packer.hpp"
 
 typedef enum
@@ -32,24 +34,36 @@ typedef enum
   METHOD_ERROR
 } METHOD_CALL_STATUS;
 
-typedef enum
+enum METHOD_TYPE
 {
-  METHOD_IS_NONE = 0,
-  METHOD_IS_INSTANCE_METHOD = 1,
-  METHOD_IS_CLASS_METHOD = 2,
-  METHOD_IS_JAVA_SP = 3
-} METHOD_TYPE;
+  METHOD_TYPE_NONE = 0,
+  METHOD_TYPE_INSTANCE_METHOD,
+  METHOD_TYPE_CLASS_METHOD,
+  METHOD_TYPE_JAVA_SP
+};
 
-#if 0
-/* this structure will be used at the next */
+enum METHOD_CALLBACK_CODE
+{
+  METHOD_CALLBACK_ARG_PREPARE,
+  METHOD_CALLBACK_INVOKE,
+  METHOD_CALLBACK_END,
+
+  /* TODO at CBRD-23961 */
+  METHOD_CALLBACK_DB_PARAMETER,
+  METHOD_CALLBACK_NESTED_QUERY_PREPARE,
+  METHOD_CALLBACK_NESTED_QUERY_EXECUTE,
+  METHOD_CALLBACK_NESTED_QUERY_END
+};
+
 typedef struct method_arg_info METHOD_ARG_INFO;
 struct method_arg_info
 {
   int *arg_mode; /* IN, OUT, INOUT */
   int *arg_type; /* DB_TYPE */
   int result_type; /* DB_TYPE */
+
+  method_arg_info () = default;
 };
-#endif
 
 typedef struct method_sig_node METHOD_SIG;
 struct method_sig_node
@@ -63,12 +77,17 @@ struct method_sig_node
 
   union
   {
-    char *class_name;		/* class for the method */
-    /* this structure will be used at the next subtask */
-    // METHOD_ARG_INFO arg_info;
+    char *class_name;		/* class name for the class method */
+    METHOD_ARG_INFO arg_info;  /* argument info for javasp's server-side calling */
   };
 
-  method_sig_node () = default;
+  void pack (cubpacking::packer &serializator) const;
+  void unpack (cubpacking::unpacker &deserializator);
+  size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
+
+  void freemem ();
+
+  method_sig_node ();
 };
 
 struct method_sig_list

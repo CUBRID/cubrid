@@ -232,7 +232,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/method_def.cpp
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
-  ${QUERY_DIR}/query_method.c
+  ${QUERY_DIR}/query_method.cpp
   ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
