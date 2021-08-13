@@ -363,7 +363,7 @@ namespace cubthread
 
 } // namespace cubthread
 
-void thread_initialize_manager(THREAD_ENTRY * thread_p);
+void thread_initialize_manager (THREAD_ENTRY *thread_p);
 
 //////////////////////////////////////////////////////////////////////////
 // alias functions to be used in C legacy code
