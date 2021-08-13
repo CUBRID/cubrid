@@ -22849,7 +22849,7 @@ error:
   CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
 
-  if (context->do_supplemental_log)
+  if (context->do_supplemental_log && LSA_ISNULL (&context->supp_redo_lsa))
     {
       log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
     }
