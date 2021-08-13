@@ -87,10 +87,6 @@ int init_server_type (const char *db_name)
 
       //if no parameter value is provided use transaction as the default type
       g_server_type = get_value_from_config (parameter_value);
-      if (g_server_type == SERVER_TYPE_UNKNOWN)
-	{
-	  g_server_type = SERVER_TYPE_TRANSACTION;
-	}
     }
 
   if (g_server_type == SERVER_TYPE_TRANSACTION || parameter_value == SINGLE_NODE)
