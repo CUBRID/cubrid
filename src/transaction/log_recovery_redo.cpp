@@ -44,3 +44,8 @@ vpid_lsa_consistency_check::cleanup ()
 vpid_lsa_consistency_check log_Gl_recovery_redo_consistency_check;
 #endif
 
+log_rv_redo_context::~log_rv_redo_context ()
+{
+  log_zip_free_data (m_undo_zip);
+  log_zip_free_data (m_redo_zip);
+}

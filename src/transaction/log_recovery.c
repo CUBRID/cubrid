@@ -441,7 +441,7 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
  */
 bool
 log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
-					  LOG_RCVINDEX rcvindex, const log_lsa & rcv_lsa, const LOG_LSA * end_redo_lsa)
+					  LOG_RCVINDEX rcvindex, const log_lsa & rcv_lsa, const LOG_LSA & end_redo_lsa)
 {
   assert (rcv.pgptr == nullptr);
 
@@ -467,7 +467,7 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
        * that the redo is not far from the end_redo_lsa (TODO: how to ensure this last bit?)
        */
       assert (rcv_page_ptr != nullptr);
-      assert (end_redo_lsa == nullptr || LSA_ISNULL (end_redo_lsa) || *rcv_page_ptr <= *end_redo_lsa);
+      assert (end_redo_lsa.is_null () || *rcv_page_ptr <= end_redo_lsa);
       if (rcv_lsa <= *rcv_page_ptr)
 	{
 	  /* already applied, make sure to unfix the page */
@@ -992,14 +992,17 @@ static void
 log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
-  log_reader log_pgptr_reader (LOG_CS_SAFE_READER);
+  log_rv_redo_context redo_context;
+  redo_context.m_end_redo_lsa = context.get_end_redo_lsa ();
+  redo_context.m_reader_fetch_page_mode = log_reader::fetch_mode::NORMAL;
+  log_zip_realloc_if_needed (redo_context.m_redo_zip, LOGAREA_SIZE);
+  log_zip_realloc_if_needed (redo_context.m_undo_zip, LOGAREA_SIZE);
 
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
   LOG_ZIP *undo_unzip_ptr = NULL;
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_mvcc_op = false;
-  const bool force_each_log_page_fetch = false;
   const TRANID min_trantable_tranid = log_rv_get_min_trantable_tranid ();
 
   /* depending on compilation mode and on a system parameter, initialize the
@@ -1018,8 +1021,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_COUNT, log_recovery_redo_parallel_count,
-				  cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT,
-				  &context.get_end_redo_lsa (), force_each_log_page_fetch);
+				  cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT);
 	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, nullptr));
       }
   }
@@ -1049,29 +1051,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
       lsa.offset = NULL_OFFSET;
     }
 
-  undo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE);
-  redo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE);
-
-  if (undo_unzip_ptr == NULL || redo_unzip_ptr == NULL)
-    {
-      if (undo_unzip_ptr)
-	{
-	  log_zip_free (undo_unzip_ptr);
-	}
-      if (redo_unzip_ptr)
-	{
-	  log_zip_free (redo_unzip_ptr);
-	}
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
-      return;
-    }
-
   while (!LSA_ISNULL (&lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
-      if (log_pgptr_reader.set_lsa_and_fetch_page (lsa) != NO_ERROR)
+      if (redo_context.m_reader.set_lsa_and_fetch_page (lsa) != NO_ERROR)
 	{
-	  if (lsa > context.get_end_redo_lsa ())
+	  if (lsa > redo_context.m_end_redo_lsa)
 	    {
 	      goto exit;
 	    }
@@ -1084,7 +1069,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	}
 
       /* Check all log records in this phase */
-      while (lsa.pageid == log_pgptr_reader.get_pageid ())
+      while (lsa.pageid == redo_context.m_reader.get_pageid ())
 	{
 	  /*
 	   * Do we want to stop the recovery redo process at this time ?
@@ -1102,11 +1087,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	   */
 	  if (lsa.offset == NULL_OFFSET)
 	    {
-	      lsa.offset = log_pgptr_reader.get_page_header ().offset;
+	      lsa.offset = redo_context.m_reader.get_page_header ().offset;
 	      if (lsa.offset == NULL_OFFSET)
 		{
 		  /* Continue with next pageid */
-		  const auto log_lsa_pageid = log_pgptr_reader.get_pageid ();
+		  const auto log_lsa_pageid = redo_context.m_reader.get_pageid ();
 		  if (logpb_is_page_in_archive (log_lsa_pageid))
 		    {
 		      lsa.pageid = log_lsa_pageid + 1;
@@ -1122,13 +1107,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	  LSA_COPY (&log_Gl.unique_stats_table.curr_rcv_rec_lsa, &lsa);
 
 	  /* both the page id and the offsset might have changed; page id is changed at the end of the loop */
-	  log_pgptr_reader.set_lsa_and_fetch_page (lsa);
+	  redo_context.m_reader.set_lsa_and_fetch_page (lsa);
 	  rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_FETCH_PAGE);
 
 	  {
 	    /* Pointer to log record */
 	    // *INDENT-OFF*
-	    const LOG_RECORD_HEADER *log_rec_header = log_pgptr_reader.reinterpret_cptr<LOG_RECORD_HEADER> ();
+	    const LOG_RECORD_HEADER *log_rec_header = redo_context.m_reader.reinterpret_cptr<LOG_RECORD_HEADER> ();
 	    // *INDENT-ON*
 
 	    tran_id = log_rec_header->trid;
@@ -1147,8 +1132,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	   * in an active page. Later, we try to modify it whenever is possible.
 	   */
 	  {
-	    const auto log_lsa_pageid = log_pgptr_reader.get_pageid ();
-	    const auto log_lsa_offset = log_pgptr_reader.get_offset ();
+	    const auto log_lsa_pageid = redo_context.m_reader.get_pageid ();
+	    const auto log_lsa_offset = redo_context.m_reader.get_offset ();
 	    if (LSA_ISNULL (&lsa) && logpb_is_page_in_archive (log_lsa_pageid))
 	      {
 		lsa.pageid = log_lsa_pageid + 1;
@@ -1171,23 +1156,34 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	      }
 	  }
 
+	  /* Read the log record information from log and then if redo is required apply it */
+
+	  const LOG_LSA rcv_lsa = redo_context.m_reader.get_lsa ();	/* Address of redo log record */
+	  /* skip log record header HEADER */
+	  redo_context.m_reader.add_align (sizeof (LOG_RECORD_HEADER));
+
+// *INDENT-OFF*
+#define BUILD_RECORD_INFO(TEMPLATE_TYPE) \
+  log_rv_redo_rec_info<TEMPLATE_TYPE> \
+    (rcv_lsa, log_rtype, redo_context.m_reader.reinterpret_copy_and_add_align<TEMPLATE_TYPE> ())
+#define INVOKE_REDO_RECORD(TEMPLATE_TYPE, record_info) \
+  log_rv_redo_record_sync_or_dispatch_async<TEMPLATE_TYPE> \
+    (thread_p, redo_context, record_info, parallel_recovery_redo, reusable_jobs, rcv_redo_perf_stat)
+// *INDENT-ON*
+
 	  switch (log_rtype)
 	    {
 	    case LOG_MVCC_UNDOREDO_DATA:
 	    case LOG_MVCC_DIFF_UNDOREDO_DATA:
 	      {
-		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
-
-		/* skip log record header HEADER */
-		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_MVCC_UNDOREDO));
+		redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_MVCC_UNDOREDO));
 
 		/* MVCC op undo/redo log record */
-		// *INDENT-OFF*
-		const LOG_REC_MVCC_UNDOREDO log_rec_mvcc_undoredo
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_MVCC_UNDOREDO> ();
+		const auto rec_info_mvcc_undoredo = BUILD_RECORD_INFO (LOG_REC_MVCC_UNDOREDO);
 
-		const MVCCID mvccid = log_rv_get_log_rec_mvccid<LOG_REC_MVCC_UNDOREDO> (log_rec_mvcc_undoredo);
+		// *INDENT-OFF*
+		const MVCCID mvccid =
+		  log_rv_get_log_rec_mvccid<LOG_REC_MVCC_UNDOREDO> (rec_info_mvcc_undoredo.m_logrec);
 		// *INDENT-ON*
 
 		/* Check if MVCC next ID must be updated */
@@ -1201,52 +1197,32 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
 
 		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
-                // *INDENT-OFF*
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_UNDOREDO>
-		  (thread_p, log_pgptr_reader, log_rec_mvcc_undoredo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
-		   force_each_log_page_fetch, rcv_redo_perf_stat);
-                // *INDENT-ON*
+		INVOKE_REDO_RECORD (LOG_REC_MVCC_UNDOREDO, rec_info_mvcc_undoredo);
 	      }
 	      break;
 
 	    case LOG_UNDOREDO_DATA:
 	    case LOG_DIFF_UNDOREDO_DATA:
 	      {
-		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
-
-		/* skip log record header HEADER */
-		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_UNDOREDO));
+		redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_UNDOREDO));
 
 		/* Get undoredo structure */
-		// *INDENT-OFF*
-		const LOG_REC_UNDOREDO log_rec_undoredo
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_UNDOREDO> ();
+		const auto rec_info_undoredo = BUILD_RECORD_INFO (LOG_REC_UNDOREDO);
 
-	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_UNDOREDO>
-		  (thread_p, log_pgptr_reader, log_rec_undoredo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
-		   force_each_log_page_fetch, rcv_redo_perf_stat);
-                // *INDENT-ON*
+		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+		INVOKE_REDO_RECORD (LOG_REC_UNDOREDO, rec_info_undoredo);
 	      }
 	      break;
 
 	    case LOG_MVCC_REDO_DATA:
 	      {
-		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
-
-		/* Get the DATA HEADER */
-		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_MVCC_REDO));
+		redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_MVCC_REDO));
 
 		/* MVCC op redo log record */
-		// *INDENT-OFF*
-		const LOG_REC_MVCC_REDO log_rec_mvcc_redo
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_MVCC_REDO> ();
+		const auto rec_info_mvcc_redo = BUILD_RECORD_INFO (LOG_REC_MVCC_REDO);
 
-		const MVCCID mvccid = log_rv_get_log_rec_mvccid<LOG_REC_MVCC_REDO> (log_rec_mvcc_redo);
+		// *INDENT-OFF*
+		const MVCCID mvccid = log_rv_get_log_rec_mvccid<LOG_REC_MVCC_REDO> (rec_info_mvcc_redo.m_logrec);
 		// *INDENT-ON*
 
 		/* Check if MVCC next ID must be updated */
@@ -1260,53 +1236,35 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		 * relevant for vacuum as vacuum only processes undo data */
 
 		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
-                // *INDENT-OFF*
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_REDO>
-		  (thread_p, log_pgptr_reader, log_rec_mvcc_redo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
-		   force_each_log_page_fetch, rcv_redo_perf_stat);
-                // *INDENT-ON*
+		INVOKE_REDO_RECORD (LOG_REC_MVCC_REDO, rec_info_mvcc_redo);
 	      }
 	      break;
 
 	    case LOG_REDO_DATA:
 	      {
-		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
+		redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_REDO));
 
-		/* Get the DATA HEADER */
-		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_REDO));
+		const auto rec_info_redo = BUILD_RECORD_INFO (LOG_REC_REDO);
 
-		// *INDENT-OFF*
-		const LOG_REC_REDO log_rec_redo
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_REDO> ();
-
-		if (log_rec_redo.data.rcvindex == RVVAC_COMPLETE)
+		if (rec_info_redo.m_logrec.data.rcvindex == RVVAC_COMPLETE)
 		  {
 		    /* Reset log header MVCC info */
 		    logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 		  }
 
-	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_REDO>
-		  (thread_p, log_pgptr_reader, log_rec_redo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
-		   force_each_log_page_fetch, rcv_redo_perf_stat);
-                // *INDENT-ON*
+		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+		INVOKE_REDO_RECORD (LOG_REC_REDO, rec_info_redo);
 	      }
 	      break;
 
 	    case LOG_DBEXTERN_REDO_DATA:
 	      {
 		LOG_RCV rcv;	// = LOG_RCV_INITIALIZER;  /* Recovery structure */
-		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
 
-		/* Get the DATA HEADER */
-		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_DBOUT_REDO));
+		redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_DBOUT_REDO));
 		/* A external redo log record */
 		// *INDENT-OFF*
-		const LOG_REC_DBOUT_REDO *dbout_redo = log_pgptr_reader.reinterpret_cptr<LOG_REC_DBOUT_REDO> ();
+		const LOG_REC_DBOUT_REDO *dbout_redo = redo_context.m_reader.reinterpret_cptr<LOG_REC_DBOUT_REDO> ();
 		// *INDENT-ON*
 
 		const LOG_RCVINDEX rcvindex = dbout_redo->rcvindex;	/* Recovery index function */
@@ -1316,7 +1274,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		rcv.length = dbout_redo->length;
 
 		/* GET AFTER DATA */
-		log_pgptr_reader.add_align (sizeof (LOG_REC_DBOUT_REDO));
+		redo_context.m_reader.add_align (sizeof (LOG_REC_DBOUT_REDO));
 
 #if !defined(NDEBUG)
 		if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
@@ -1330,7 +1288,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		if (!log_recovery_needs_skip_logical_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
 		  {
 		    rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
-		    log_rv_redo_record (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &rcv,
+		    log_rv_redo_record (thread_p, redo_context.m_reader, RV_fun[rcvindex].redofun, &rcv,
 					&rcv_lsa, 0, nullptr, *redo_unzip_ptr);
 		    /* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
 		     * will be reallocated downstream if needed */
@@ -1340,44 +1298,23 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
 	    case LOG_RUN_POSTPONE:
 	      {
-		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
-
-		/* Get the DATA HEADER */
-		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_RUN_POSTPONE));
+		redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_RUN_POSTPONE));
 		/* A run postpone action */
+		const auto rec_info_run_posp = BUILD_RECORD_INFO (LOG_REC_RUN_POSTPONE);
 
-		// *INDENT-OFF*
-		const LOG_REC_RUN_POSTPONE log_rec_run_posp
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_RUN_POSTPONE> ();
-
-	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_RUN_POSTPONE>
-		  (thread_p, log_pgptr_reader, log_rec_run_posp, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
-		   force_each_log_page_fetch, rcv_redo_perf_stat);
-                // *INDENT-ON*
+		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+		INVOKE_REDO_RECORD (LOG_REC_RUN_POSTPONE, rec_info_run_posp);
 	      }
 	      break;
 
 	    case LOG_COMPENSATE:
 	      {
-		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
+		redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_COMPENSATE));
 
-		/* Get the DATA HEADER */
-		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_COMPENSATE));
+		const auto rec_info_compensate = BUILD_RECORD_INFO (LOG_REC_COMPENSATE);
 
-		// *INDENT-OFF*
-		const LOG_REC_COMPENSATE log_rec_compensate
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_COMPENSATE> ();
-
-	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_COMPENSATE>
-		  (thread_p, log_pgptr_reader, log_rec_compensate, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
-		   force_each_log_page_fetch, rcv_redo_perf_stat);
-                // *INDENT-ON*
+		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+		INVOKE_REDO_RECORD (LOG_REC_COMPENSATE, rec_info_compensate);
 	      }
 	      break;
 
@@ -1399,22 +1336,19 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		 * acquired at the time of the crash
 		 */
 
-		/* Get the DATA HEADER */
-		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-
 		if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE)
 		  {
 		    /* The transaction was still prepared_to_commit state at the time of crash. So, read the global
 		     * transaction identifier and list of locks from the log record, and acquire all of the locks. */
 
-		    log_2pc_read_prepare (thread_p, LOG_2PC_OBTAIN_LOCKS, tdes, log_pgptr_reader);
+		    log_2pc_read_prepare (thread_p, LOG_2PC_OBTAIN_LOCKS, tdes, redo_context.m_reader);
 		  }
 		else
 		  {
 		    /* The transaction was not in prepared_to_commit state anymore at the time of crash. So, there is no
 		     * need to read the list of locks from the log record. Read only the global transaction from the log
 		     * record. */
-		    log_2pc_read_prepare (thread_p, LOG_2PC_DONT_OBTAIN_LOCKS, tdes, log_pgptr_reader);
+		    log_2pc_read_prepare (thread_p, LOG_2PC_DONT_OBTAIN_LOCKS, tdes, redo_context.m_reader);
 		  }
 	      }
 	      break;
@@ -1430,13 +1364,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		      {
 			/* The transaction was still alive at the time of crash. So, copy the coordinator information
 			 * from the log record to the transaction descriptor. */
-
-			/* Get the DATA HEADER */
-			log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-			log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_2PC_START));
+			redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_2PC_START));
 			/* Start 2PC commit log record */
 			// *INDENT-OFF*
-			const LOG_REC_2PC_START *start_2pc = log_pgptr_reader.reinterpret_cptr<LOG_REC_2PC_START> ();
+			const LOG_REC_2PC_START *start_2pc = redo_context.m_reader.reinterpret_cptr<LOG_REC_2PC_START> ();
 			// *INDENT-ON*
 
 			/*
@@ -1456,11 +1387,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 			    break;
 			  }
 
-			log_pgptr_reader.add_align (sizeof (LOG_REC_2PC_START));
-			log_pgptr_reader.align ();
+			redo_context.m_reader.add_align (sizeof (LOG_REC_2PC_START));
+			redo_context.m_reader.align ();
 
 			/* Read in the participants info. block from the log */
-			log_pgptr_reader.copy_from_log ((char *) block_particps_ids, particp_id_length * num_particps);
+			redo_context.m_reader.copy_from_log ((char *) block_particps_ids,
+							     particp_id_length * num_particps);
 
 			/* Initialize the coordinator information */
 			if (log_2pc_alloc_coord_info (tdes, num_particps, particp_id_length, block_particps_ids) ==
@@ -1519,14 +1451,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 #endif /* CUBRID_DEBUG */
 
 			/* The transaction was still alive at the time of crash. So, read the participant index from the
-			 * log record and set the acknowledgement flag of that participant. */
-
-			/* Get the DATA HEADER */
-			log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-			log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_2PC_PARTICP_ACK));
+			 * log record and set the acknowledgment flag of that participant. */
+			redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_2PC_PARTICP_ACK));
 			/* A 2PC participant ack */
 			// *INDENT-OFF*
-			const LOG_REC_2PC_PARTICP_ACK *received_ack = log_pgptr_reader.reinterpret_cptr<LOG_REC_2PC_PARTICP_ACK> ();
+			const LOG_REC_2PC_PARTICP_ACK *received_ack = redo_context.m_reader.reinterpret_cptr<LOG_REC_2PC_PARTICP_ACK> ();
 			// *INDENT-ON*
 
 			tdes->coord->ack_received[received_ack->particp_index] = true;
@@ -1556,10 +1485,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		if (context.is_restore_incomplete ())
 		  {
 		    /* Need to read the donetime record to find out if we need to stop the recovery at this point. */
-		    log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-		    log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_DONETIME));
+		    redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_DONETIME));
 		    // *INDENT-OFF*
-		    const LOG_REC_DONETIME *donetime = log_pgptr_reader.reinterpret_cptr<LOG_REC_DONETIME> ();
+		    const LOG_REC_DONETIME *donetime = redo_context.m_reader.reinterpret_cptr<LOG_REC_DONETIME> ();
 		    // *INDENT-ON*
 
 		    // stopat is provided in seconds
@@ -1596,14 +1524,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	      {
 		/* Must detect MVCC operations and recover vacuum data buffer. The found operation is not actually
 		 * redone/undone, but it has information that can be used for vacuum. */
-
-		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
-
-		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_MVCC_UNDO));
+		redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_MVCC_UNDO));
 		/* MVCC op undo log record */
 		// *INDENT-OFF*
-		const LOG_REC_MVCC_UNDO *mvcc_undo = log_pgptr_reader.reinterpret_cptr<LOG_REC_MVCC_UNDO> ();
+		const LOG_REC_MVCC_UNDO *mvcc_undo = redo_context.m_reader.reinterpret_cptr<LOG_REC_MVCC_UNDO> ();
 		// *INDENT-ON*
 		const MVCCID mvccid = mvcc_undo->mvccid;
 
@@ -1642,13 +1566,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
 	    case LOG_SYSOP_END:
 	      {
-		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
-
-		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_END));
+		redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_END));
 		/* Result of top system op */
 		// *INDENT-OFF*
-		const LOG_REC_SYSOP_END *sysop_end = log_pgptr_reader.reinterpret_cptr<LOG_REC_SYSOP_END> ();
+		const LOG_REC_SYSOP_END *sysop_end = redo_context.m_reader.reinterpret_cptr<LOG_REC_SYSOP_END> ();
 		// *INDENT-ON*
 
 		if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
@@ -1666,8 +1587,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 			    "log_recovery_redo: Unknown record type = %d (%s)... May be a system error", log_rtype,
 			    log_to_string (log_rtype));
 #endif /* CUBRID_DEBUG */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, log_pgptr_reader.get_pageid ());
-	      if (lsa == log_pgptr_reader.get_lsa ())
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, redo_context.m_reader.get_pageid ());
+	      if (lsa == redo_context.m_reader.get_lsa ())
 		{
 		  LSA_SET_NULL (&lsa);
 		}
@@ -1678,9 +1599,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	   * We can fix the lsa.pageid in the case of log_records without forward
 	   * address at this moment.
 	   */
-	  if (lsa.offset == NULL_OFFSET && lsa.pageid != NULL_PAGEID && lsa.pageid < log_pgptr_reader.get_pageid ())
+	  if (lsa.offset == NULL_OFFSET && lsa.pageid != NULL_PAGEID
+	      && lsa.pageid < redo_context.m_reader.get_pageid ())
 	    {
-	      lsa.pageid = log_pgptr_reader.get_pageid ();
+	      lsa.pageid = redo_context.m_reader.get_pageid ();
 	    }
 	}
     }
@@ -1690,6 +1612,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
 #if defined(SERVER_MODE)
   {
+    // *INDENT-OFF*
     const auto time_end_main = std::chrono::system_clock::now ();
     const auto time_dur_main_ms = std::chrono::duration_cast < std::chrono::milliseconds > (time_end_main - time_start);
     if (parallel_recovery_redo != nullptr)
@@ -1706,6 +1629,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		   "log_recovery_redo_perf: recovery_parallel_count= %2d  reusable_jobs= %6d  main= %6lld  async= %6lld (ms)\n",
 		   log_recovery_redo_parallel_count, reusable_jobs.size (), (long long) time_dur_main_ms.count (),
 		   (long long) time_dur_async_ms.count ());
+    // *INDENT-ON*
   }
 #endif
   LOG_CS_ENTER (thread_p);

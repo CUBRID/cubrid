@@ -506,6 +506,7 @@ namespace cublog
       log_reader m_log_pgptr_reader { LOG_CS_SAFE_READER };
       LOG_ZIP m_undo_unzip_support;
       LOG_ZIP m_redo_unzip_support;
+      log_rv_redo_context m_redo_context;
   };
 
   /*********************************************************************
@@ -562,7 +563,7 @@ namespace cublog
 	    else
 	      {
 		THREAD_ENTRY *const thread_entry = &context;
-		job->execute (thread_entry, m_log_pgptr_reader, m_undo_unzip_support, m_redo_unzip_support);
+		job->execute (thread_entry, m_redo_context);
 
 		m_queue.notify_job_finished (job);
 
@@ -683,13 +684,8 @@ namespace cublog
    * redo_job_impl - definition
    *********************************************************************/
 
-  redo_job_impl::redo_job_impl (const log_lsa *a_end_redo_lsa, bool force_each_page_fetch,
-				reusable_jobs_stack *a_reusable_job_stack)
+  redo_job_impl::redo_job_impl (reusable_jobs_stack *a_reusable_job_stack)
     : redo_parallel::redo_job_base (VPID_INITIALIZER, NULL_LSA)
-    , m_end_redo_lsa { a_end_redo_lsa }
-    , m_log_reader_page_fetch_mode (force_each_page_fetch
-				    ? log_reader::fetch_mode::FORCE
-				    : log_reader::fetch_mode::NORMAL)
     , m_reusable_job_stack { a_reusable_job_stack }
     , m_log_rtype { LOG_SMALLER_LOGREC_TYPE }
   {
@@ -703,8 +699,7 @@ namespace cublog
     m_log_rtype = a_log_rtype;
   }
 
-  int redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-			      LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
+  int redo_job_impl::execute (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context)
   {
     /* perf data for processing log redo asynchronously, enabled:
      *  - during log crash recovery
@@ -714,41 +709,34 @@ namespace cublog
      */
     perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_ASYNC };
 
-    const auto &rcv_lsa = get_log_lsa ();
-    const int err_fetch = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, m_log_reader_page_fetch_mode);
+    const int err_fetch =
+	    redo_context.m_reader.set_lsa_and_fetch_page (get_log_lsa (), redo_context.m_reader_fetch_page_mode);
     if (err_fetch != NO_ERROR)
       {
 	return err_fetch;
       }
-    log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-    const auto &rcv_vpid = get_vpid ();
+    redo_context.m_reader.add_align (sizeof (LOG_RECORD_HEADER));
     switch (m_log_rtype)
       {
       case LOG_REDO_DATA:
-	read_record_and_redo<log_rec_redo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
-					    undo_unzip_support, redo_unzip_support);
+	read_record_and_redo<log_rec_redo> (thread_p, redo_context);
 	break;
       case LOG_MVCC_REDO_DATA:
-	read_record_and_redo<log_rec_mvcc_redo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
-	    undo_unzip_support, redo_unzip_support);
+	read_record_and_redo<log_rec_mvcc_redo> (thread_p, redo_context);
 	break;
       case LOG_UNDOREDO_DATA:
       case LOG_DIFF_UNDOREDO_DATA:
-	read_record_and_redo<log_rec_undoredo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
-						undo_unzip_support, redo_unzip_support);
+	read_record_and_redo<log_rec_undoredo> (thread_p, redo_context);
 	break;
       case LOG_MVCC_UNDOREDO_DATA:
       case LOG_MVCC_DIFF_UNDOREDO_DATA:
-	read_record_and_redo<log_rec_mvcc_undoredo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
-	    undo_unzip_support, redo_unzip_support);
+	read_record_and_redo<log_rec_mvcc_undoredo> (thread_p, redo_context);
 	break;
       case LOG_RUN_POSTPONE:
-	read_record_and_redo<log_rec_run_postpone> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
-	    undo_unzip_support, redo_unzip_support);
+	read_record_and_redo<log_rec_run_postpone> (thread_p, redo_context);
 	break;
       case LOG_COMPENSATE:
-	read_record_and_redo<log_rec_compensate> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
-	    undo_unzip_support, redo_unzip_support);
+	read_record_and_redo<log_rec_compensate> (thread_p, redo_context);
 	break;
       default:
 	assert (false);
@@ -766,14 +754,12 @@ namespace cublog
 
   template <typename T>
   inline void
-  redo_job_impl::read_record_and_redo (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader, const VPID &rcv_vpid,
-				       const log_lsa &rcv_lsa, LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
+  redo_job_impl::read_record_and_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context)
   {
-    log_pgptr_reader.advance_when_does_not_fit (sizeof (T));
-    const T log_rec = log_pgptr_reader.reinterpret_copy_and_add_align<T> ();
-    log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa,
-				m_end_redo_lsa, m_log_rtype,
-				undo_unzip_support, redo_unzip_support);
+    redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
+    log_rv_redo_rec_info<T> record_info { get_log_lsa (), m_log_rtype, redo_context.m_reader.reinterpret_copy_and_add_align<T> () };
+
+    log_rv_redo_record_sync<T> (thread_p, redo_context, record_info, get_vpid ());
   }
 
   /*********************************************************************
@@ -789,8 +775,7 @@ namespace cublog
   }
 
   void reusable_jobs_stack::initialize (std::size_t a_job_count, std::size_t a_push_task_count,
-					std::size_t a_flush_push_at_count,
-					const log_lsa *a_end_redo_lsa, bool force_each_page_fetch)
+					std::size_t a_flush_push_at_count)
   {
     assert (m_job_count == 0);
     assert (m_push_task_count == 0);
@@ -817,7 +802,7 @@ namespace cublog
     for (std::size_t idx = 0; idx < m_job_count; ++idx)
       {
 	redo_job_impl *const job = new (m_jobs_arr + sizeof (redo_job_impl) * idx)
-	redo_job_impl (a_end_redo_lsa, force_each_page_fetch, this);
+	redo_job_impl (this);
 	m_pop_jobs.push_back (job);
       }
 
@@ -851,18 +836,18 @@ namespace cublog
     // formally invoke dtor  on all in-place constructed objects
     for (auto &job : m_pop_jobs)
       {
-        job->~redo_job_impl();
+	job->~redo_job_impl ();
       }
     for (auto &job : m_push_jobs)
       {
-        job->~redo_job_impl();
+	job->~redo_job_impl ();
       }
     for (auto &push_job_container: m_per_task_push_jobs_vec)
       {
-        for (auto &job : push_job_container)
-          {
-            job->~redo_job_impl();
-          }
+	for (auto &job : push_job_container)
+	  {
+	    job->~redo_job_impl ();
+	  }
       }
 
     free (m_jobs_arr);
