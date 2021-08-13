@@ -323,6 +323,8 @@ namespace cublog
   class redo_parallel::redo_job_base
   {
     public:
+      redo_job_base () = default;
+
       redo_job_base (VPID a_vpid, const log_lsa &a_log_lsa)
 	: m_vpid (a_vpid), m_log_lsa (a_log_lsa)
       {
@@ -365,8 +367,8 @@ namespace cublog
       virtual void retire (std::size_t a_task_idx) = 0;
 
     private:
-      VPID m_vpid;
-      log_lsa m_log_lsa;
+      VPID m_vpid = { NULL_PAGEID, NULL_VOLID };
+      log_lsa m_log_lsa = NULL_LSA;
   };
 
 
@@ -402,9 +404,9 @@ namespace cublog
 
     private:
       // by design pointer is guaranteed to outlive this instance
-      reusable_jobs_stack *const m_reusable_job_stack;
+      reusable_jobs_stack *m_reusable_job_stack = nullptr;
 
-      LOG_RECTYPE m_log_rtype;
+      LOG_RECTYPE m_log_rtype = LOG_SMALLER_LOGREC_TYPE;
   };
 
 

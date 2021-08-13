@@ -75,3 +75,7 @@ page_server::get_replicator ()
 {
   return replicator_GL;
 }
+
+log_rv_redo_context::~log_rv_redo_context ()
+{
+}
