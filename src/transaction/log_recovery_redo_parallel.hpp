@@ -327,7 +327,7 @@ namespace cublog
 	: m_vpid (a_vpid), m_log_lsa (a_log_lsa)
       {
       }
-      redo_job_base (redo_job_base const &) = delete;
+      redo_job_base (redo_job_base const &) = default;
       redo_job_base (redo_job_base &&) = delete;
 
       virtual ~redo_job_base () = default;
@@ -352,7 +352,7 @@ namespace cublog
 	return m_log_lsa;
       }
 
-      inline void reinitialize (VPID a_vpid, const log_lsa &a_log_lsa)
+      inline void set_record_info (VPID a_vpid, const log_lsa &a_log_lsa)
       {
 	assert (!VPID_ISNULL (&a_vpid));
 	m_vpid = a_vpid;
@@ -383,7 +383,7 @@ namespace cublog
        */
       redo_job_impl (reusable_jobs_stack *a_reusable_job_stack);
 
-      redo_job_impl (redo_job_impl const &) = delete;
+      redo_job_impl (redo_job_impl const &) = default;
       redo_job_impl (redo_job_impl &&) = delete;
 
       ~redo_job_impl () override = default;
@@ -391,7 +391,7 @@ namespace cublog
       redo_job_impl &operator = (redo_job_impl const &) = delete;
       redo_job_impl &operator = (redo_job_impl &&) = delete;
 
-      void reinitialize (VPID a_vpid, const log_lsa &a_rcv_lsa, LOG_RECTYPE a_log_rtype);
+      void set_record_info (VPID a_vpid, const log_lsa &a_rcv_lsa, LOG_RECTYPE a_log_rtype);
 
       int execute (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context) override;
       void retire (std::size_t a_task_idx) override;
@@ -429,7 +429,7 @@ namespace cublog
 
       std::size_t size () const
       {
-	return m_job_count;
+	return m_job_pool.size ();
       }
 
       redo_job_impl *blocking_pop ();
@@ -438,13 +438,11 @@ namespace cublog
     private:
       /* configuration, constants after initialization
        */
-      std::size_t m_job_count;
-      std::size_t m_push_task_count;
-      std::size_t m_flush_push_at_count;
+      std::size_t m_flush_push_at_count = 0;
 
       /* support array for initializing jobs in-place
        */
-      unsigned char *m_jobs_arr;
+      std::vector<redo_job_impl> m_job_pool;
 
       /* pop is done, unsynchronized, from this container
        * if empty, it is re-filled, synchronized, from the push container
@@ -524,7 +522,7 @@ log_rv_redo_record_sync_or_dispatch_async (
       assert (job != nullptr);
       a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE);
 
-      job->reinitialize (rcv_vpid, record_info.m_start_lsa, record_info.m_type);
+      job->set_record_info (rcv_vpid, record_info.m_start_lsa, record_info.m_type);
       // it is the callee's responsibility to return the pointer back to the reusable
       // job stack after having processed it
       parallel_recovery_redo->add (job);

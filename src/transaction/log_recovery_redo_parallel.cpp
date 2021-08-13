@@ -692,10 +692,10 @@ namespace cublog
     assert (a_reusable_job_stack != nullptr);
   }
 
-  void redo_job_impl::reinitialize (VPID a_vpid, const log_lsa &a_rcv_lsa, LOG_RECTYPE a_log_rtype)
+  void redo_job_impl::set_record_info (VPID a_vpid, const log_lsa &a_rcv_lsa, LOG_RECTYPE a_log_rtype)
   {
-    this->redo_job_base::reinitialize (a_vpid, a_rcv_lsa);
-    assert (a_log_rtype != LOG_SMALLER_LOGREC_TYPE && a_log_rtype != LOG_LARGER_LOGREC_TYPE);
+    this->redo_job_base::set_record_info (a_vpid, a_rcv_lsa);
+    assert (a_log_rtype > LOG_SMALLER_LOGREC_TYPE && a_log_rtype < LOG_LARGER_LOGREC_TYPE);
     m_log_rtype = a_log_rtype;
   }
 
@@ -767,21 +767,14 @@ namespace cublog
    *********************************************************************/
 
   reusable_jobs_stack::reusable_jobs_stack ()
-    : m_job_count { 0 }
-    , m_push_task_count { 0 }
-    , m_flush_push_at_count { 0 }
-    , m_jobs_arr { nullptr }
+    : m_flush_push_at_count { 0 }
   {
   }
 
   void reusable_jobs_stack::initialize (std::size_t a_job_count, std::size_t a_push_task_count,
 					std::size_t a_flush_push_at_count)
   {
-    assert (m_job_count == 0);
-    assert (m_push_task_count == 0);
     assert (m_flush_push_at_count == 0);
-
-    assert (m_jobs_arr == nullptr);
 
     assert (m_pop_jobs.empty ());
     assert (m_push_jobs.empty ());
@@ -792,33 +785,28 @@ namespace cublog
     assert (a_push_task_count > 0);
     assert (a_flush_push_at_count > 0);
 
-    m_job_count = a_job_count;
-    m_push_task_count = a_push_task_count;
     m_flush_push_at_count = a_flush_push_at_count;
 
-    m_jobs_arr = static_cast<unsigned char *> (malloc (sizeof (redo_job_impl) * m_job_count));
+    m_job_pool.resize (a_job_count, redo_job_impl (this));
 
-    m_pop_jobs.reserve (m_job_count);
-    for (std::size_t idx = 0; idx < m_job_count; ++idx)
+    m_pop_jobs.reserve (m_job_pool.size ());
+    for (std::size_t idx = 0; idx < m_job_pool.size (); ++idx)
       {
-	redo_job_impl *const job = new (m_jobs_arr + sizeof (redo_job_impl) * idx)
-	redo_job_impl (this);
-	m_pop_jobs.push_back (job);
+	m_pop_jobs.push_back (&m_job_pool[idx]);
       }
 
-    m_push_jobs.reserve (m_job_count);
+    m_push_jobs.reserve (m_job_pool.size ());
 
-    m_per_task_push_jobs_vec.resize (m_push_task_count);
-    const std::size_t per_task_reserve_size = m_job_count / m_push_task_count * 2;
+    m_per_task_push_jobs_vec.resize (a_push_task_count);
     for (job_container_t &jobs: m_per_task_push_jobs_vec)
       {
-	jobs.reserve (per_task_reserve_size);
+	jobs.reserve (m_flush_push_at_count);
       }
   }
 
   reusable_jobs_stack::~reusable_jobs_stack ()
   {
-    // consistency check that all job instances have been 'retuned to the source'
+    // consistency check that all job instances have been 'returned to the source'
     assert ([this] ()
     {
       const std::size_t pop_size = m_pop_jobs.size ();
@@ -828,7 +816,7 @@ namespace cublog
 	{
 	  per_task_push_size += push_container.size ();
 	}
-      assert ((pop_size + push_size + per_task_push_size) == m_job_count);
+      assert ((pop_size + push_size + per_task_push_size) == m_job_pool.size ());
       return true;
     }
     ());
@@ -849,9 +837,6 @@ namespace cublog
 	    job->~redo_job_impl ();
 	  }
       }
-
-    free (m_jobs_arr);
-    m_jobs_arr = nullptr;
   }
 
   redo_job_impl *reusable_jobs_stack::blocking_pop ()
