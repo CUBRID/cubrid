@@ -384,12 +384,12 @@ namespace cublog
       redo_job_impl (reusable_jobs_stack *a_reusable_job_stack);
 
       redo_job_impl (redo_job_impl const &) = default;
-      redo_job_impl (redo_job_impl &&) = delete;
+      redo_job_impl (redo_job_impl &&) = default;
 
       ~redo_job_impl () override = default;
 
-      redo_job_impl &operator = (redo_job_impl const &) = delete;
-      redo_job_impl &operator = (redo_job_impl &&) = delete;
+      redo_job_impl &operator = (redo_job_impl const &) = default;
+      redo_job_impl &operator = (redo_job_impl &&) = default;
 
       void set_record_info (VPID a_vpid, const log_lsa &a_rcv_lsa, LOG_RECTYPE a_log_rtype);
 
