@@ -2369,10 +2369,10 @@ char *PRM_PAGE_SERVER_HOST = NULL;
 static char *prm_page_server_host_default = "";
 static unsigned int prm_page_server_host_flag = 0;
 
-int PRM_SERVER_TYPE = SERVER_TYPE_TRANSACTION;
-static int prm_server_type_default = SERVER_TYPE_TRANSACTION;
-static int prm_server_type_lower = SERVER_TYPE_TRANSACTION;
-static int prm_server_type_upper = SERVER_TYPE_SINGLE_NODE;
+int PRM_SERVER_TYPE = TRANSACTION;
+static int prm_server_type_default = TRANSACTION;
+static int prm_server_type_lower = TRANSACTION;
+static int prm_server_type_upper = SINGLE_NODE;
 static unsigned int prm_server_type_flag = 0;
 
 bool PRM_ER_LOG_PRIOR_TRANSFER = false;
@@ -6445,9 +6445,9 @@ static KEYVAL tde_algorithm_words[] = {
 };
 
 static KEYVAL server_type_words[] = {
-  {"transaction", SERVER_TYPE_TRANSACTION},
-  {"page", SERVER_TYPE_PAGE},
-  {"single_node", SERVER_TYPE_SINGLE_NODE}
+  {"transaction", TRANSACTION},
+  {"page", PAGE},
+  {"single_node", SINGLE_NODE}
 };
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {

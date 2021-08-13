@@ -28,4 +28,10 @@ typedef enum
   SERVER_TYPE_SINGLE_NODE,
 } SERVER_TYPE;
 
+typedef enum
+{
+  TRANSACTION,
+  PAGE,
+  SINGLE_NODE,
+} SERVER_TYPE_CONFIG;
 #endif // _SERVER_TYPE_ENUM_H_

@@ -38,6 +38,24 @@ SERVER_TYPE get_server_type ()
   return g_server_type;
 }
 
+SERVER_TYPE get_value_from_config (SERVER_TYPE_CONFIG parameter_value)
+{
+  switch (parameter_value)
+    {
+    case TRANSACTION:
+      return SERVER_TYPE_TRANSACTION;
+      break;
+    case PAGE:
+      return SERVER_TYPE_PAGE;
+      break;
+    case SINGLE_NODE:
+      return SERVER_TYPE_SINGLE_NODE;
+      break;
+    default:
+      assert (false);
+    }
+}
+
 void set_server_type (SERVER_TYPE type)
 {
   g_server_type = type;
@@ -57,24 +75,28 @@ void set_server_type (SERVER_TYPE type)
 int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
-  SERVER_TYPE parameter_value = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+  SERVER_TYPE_CONFIG parameter_value = (SERVER_TYPE_CONFIG) prm_get_integer_value (PRM_ID_SERVER_TYPE);
   if (g_server_type == SERVER_TYPE_UNKNOWN)
     {
-      if (parameter_value == SERVER_TYPE_SINGLE_NODE)
+      if (parameter_value == SINGLE_NODE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1,
 		  "Single node server must have type specified as argument");
 	  return ER_INVALID_SERVER_OPTION;
 	}
-      g_server_type = parameter_value;
+
       //if no parameter value is provided use transaction as the default type
+      g_server_type = get_value_from_config (parameter_value);
       if (g_server_type == SERVER_TYPE_UNKNOWN)
 	{
 	  g_server_type = SERVER_TYPE_TRANSACTION;
 	}
     }
 
-  configure_single_node_server (parameter_value);
+  if (g_server_type == SERVER_TYPE_TRANSACTION || parameter_value == SINGLE_NODE)
+    {
+      setup_tran_server_params_on_single_node_config ();
+    }
 #if !defined(NDEBUG)
   g_server_type_initialized = true;
 #endif
@@ -102,15 +124,11 @@ int init_server_type (const char *db_name)
   return er_code;
 }
 
-void configure_single_node_server (SERVER_TYPE parameter_value)
+void setup_tran_server_params_on_single_node_config ()
 {
-  if (g_server_type != SERVER_TYPE_TRANSACTION || parameter_value != SERVER_TYPE_SINGLE_NODE)
-    {
-      return;
-    }
-
   char *page_hosts_new_value;
-  page_hosts_new_value = (char *) malloc (22 * sizeof (char));
+  constexpr size_t PAGE_HOSTS_BUFSIZE = 32;
+  page_hosts_new_value = (char *) malloc (PAGE_HOSTS_BUFSIZE);
 
   sprintf (page_hosts_new_value, "localhost:%d", prm_get_master_port_id ());
   prm_set_string_value (PRM_ID_PAGE_SERVER_HOSTS, page_hosts_new_value);
