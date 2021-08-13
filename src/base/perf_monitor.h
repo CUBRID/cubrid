@@ -640,7 +640,6 @@ typedef enum
   /* Redo recovery and replication statistics */
   PSTAT_REDO_REPL_DELAY,
   PSTAT_REDO_REPL_LOG_REDO_SYNC,
-  PSTAT_LOG_REDO_ASYNC, // TODO: remove this
   PSTAT_LOG_REDO_FUNC_EXEC,
 
   /* Complex statistics */
