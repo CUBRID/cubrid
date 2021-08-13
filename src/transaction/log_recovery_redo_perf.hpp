@@ -95,7 +95,7 @@ namespace cublog
   /* collect and log performance statistics based on a supplied definition
    *
    * Usage:
-   *  - define an definition initialization list
+   *  - define a definition initialization list
    *  - instantiate a stats set definition with the definition initialization list
    *  - instantiate this class with a definition
    */
@@ -108,7 +108,6 @@ namespace cublog
       inline perf_stats (do_not_record_t);
       inline perf_stats (bool a_do_record, const cubperf::statset_definition &a_definition);
 
-    public:
       perf_stats (const perf_stats &) = delete;
       perf_stats (perf_stats &&) = delete;
 
@@ -117,7 +116,6 @@ namespace cublog
       perf_stats &operator = (const perf_stats &) = delete;
       perf_stats &operator = (perf_stats &&) = delete;
 
-    public:
       inline void time_and_increment (cubperf::stat_id a_stat_id) const;
       inline void log (const char *a_title) const;
       inline void accumulate (cubperf::stat_value *a_output_stats, std::size_t a_output_stats_size) const;

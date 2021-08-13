@@ -145,11 +145,9 @@ namespace cubperf
       using stat_definition_init_list_t = std::initializer_list<stat_definition>;
 
     public:
-      // no default constructor
       statset_definition (void) = delete;
       statset_definition (stat_definition_init_list_t defs);
 
-    public:
       statset_definition (const statset_definition &) = delete;
       statset_definition (statset_definition &&) = delete;
 
