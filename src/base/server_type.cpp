@@ -38,18 +38,15 @@ SERVER_TYPE get_server_type ()
   return g_server_type;
 }
 
-SERVER_TYPE get_value_from_config (SERVER_TYPE_CONFIG parameter_value)
+SERVER_TYPE get_value_from_config (server_type_config parameter_value)
 {
   switch (parameter_value)
     {
-    case TRANSACTION:
+    case server_type_config::TRANSACTION:
       return SERVER_TYPE_TRANSACTION;
       break;
-    case PAGE:
+    case server_type_config::PAGE:
       return SERVER_TYPE_PAGE;
-      break;
-    case SINGLE_NODE:
-      return SERVER_TYPE_SINGLE_NODE;
       break;
     default:
       assert (false);
@@ -75,10 +72,10 @@ void set_server_type (SERVER_TYPE type)
 int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
-  SERVER_TYPE_CONFIG parameter_value = (SERVER_TYPE_CONFIG) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+  server_type_config parameter_value = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
   if (g_server_type == SERVER_TYPE_UNKNOWN)
     {
-      if (parameter_value == SINGLE_NODE)
+      if (parameter_value == server_type_config::SINGLE_NODE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1,
 		  "Single node server must have type specified as argument");
@@ -89,7 +86,7 @@ int init_server_type (const char *db_name)
       g_server_type = get_value_from_config (parameter_value);
     }
 
-  if (g_server_type == SERVER_TYPE_TRANSACTION || parameter_value == SINGLE_NODE)
+  if (g_server_type == SERVER_TYPE_TRANSACTION || parameter_value == server_type_config::SINGLE_NODE)
     {
       setup_tran_server_params_on_single_node_config ();
     }
@@ -124,7 +121,7 @@ void setup_tran_server_params_on_single_node_config ()
 {
   char *page_hosts_new_value;
   constexpr size_t PAGE_HOSTS_BUFSIZE = 32;
-  page_hosts_new_value = (char *) malloc (PAGE_HOSTS_BUFSIZE);
+  page_hosts_new_value = (char *) malloc (PAGE_HOSTS_BUFSIZE); // free is called by sysprm_final()
 
   sprintf (page_hosts_new_value, "localhost:%d", prm_get_master_port_id ());
   prm_set_string_value (PRM_ID_PAGE_SERVER_HOSTS, page_hosts_new_value);

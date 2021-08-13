@@ -24,7 +24,7 @@
 int init_server_type (const char *db_name);
 void finalize_server_type ();
 SERVER_TYPE get_server_type ();
-SERVER_TYPE get_value_from_config (SERVER_TYPE_CONFIG parameter_value);
+SERVER_TYPE get_value_from_config (server_type_config parameter_value);
 bool is_tran_server_with_remote_storage ();
 void set_server_type (SERVER_TYPE type);
 void setup_tran_server_params_on_single_node_config ();
