@@ -328,12 +328,12 @@ namespace cublog
       {
       }
       redo_job_base (redo_job_base const &) = default;
-      redo_job_base (redo_job_base &&) = delete;
+      redo_job_base (redo_job_base &&) = default;
 
       virtual ~redo_job_base () = default;
 
-      redo_job_base &operator = (redo_job_base const &) = delete;
-      redo_job_base &operator = (redo_job_base &&) = delete;
+      redo_job_base &operator = (redo_job_base const &) = default;
+      redo_job_base &operator = (redo_job_base &&) = default;
 
       /* log entries come in more than one flavor:
       *  - pertain to a certain vpid - aka: page update
