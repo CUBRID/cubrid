@@ -968,10 +968,6 @@ db_shutdown (void)
 {
   int error = NO_ERROR;
 
-#if defined(CS_MODE)
-  dblink_Cipher_key.is_loaded = false;
-#endif
-
   error = boot_shutdown_client (true);
   db_Database_name[0] = '\0';
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;

@@ -18343,7 +18343,7 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is
   int err, length, buf_size;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
   char confused[DBLINK_PASSWORD_CIPHER_LENGTH + 1] = { 0, };
-  unsigned char private_key[TDE_DATA_KEY_LENGTH];
+  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH];
   struct timeval check_time = { 0, 0 };
   struct tm *lt;
   char empty_str[4] = { 0x00, };
@@ -18414,7 +18414,7 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
 {
   int err, length, new_length;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
-  unsigned char private_key[TDE_DATA_KEY_LENGTH];
+  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH];
 
   db_make_null (decrypt_val);
   if (!passwd_cipher || !*passwd_cipher)

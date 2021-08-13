@@ -51,7 +51,6 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 #include "base64.h"
-#include "tde.h"
 
 #include <openssl/evp.h>
 #include <openssl/sha.h>
@@ -701,16 +700,15 @@ crypt_generate_random_bytes (char *dest, int length)
   return NO_ERROR;
 }
 
+
 // 
 // *INDENT-OFF*
-#if defined(CS_MODE)
-DBLINK_CHPHER_KEY dblink_Cipher_key = {false, {0x00,}};
-#endif
+DBLINK_CHPHER_KEY dblink_Cipher = {false, {0x00, }};
 static struct
 {
-  unsigned char nonce[TDE_DK_NONCE_LENGTH]; // See TDE_DK_NONCE_LENGTH in tde.h
-  unsigned char master_key[TDE_DATA_KEY_LENGTH];
-} evp_cipher = { {0, }, {0, } };  // Do not omit the this initialization settings.
+  unsigned char nonce[16];
+  unsigned char *crypt_key;
+} evp_cipher = { {0, }, dblink_Cipher.crypt_key };  // Do not omit the this initialization settings.
 // *INDENT-ON*
 
 static int
@@ -721,17 +719,11 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
   if (is_init_done == 0)
     {
       memset (evp_cipher.nonce, 0x07, sizeof (evp_cipher.nonce));
-
-#if !defined(CS_MODE)
-      memcpy (evp_cipher.master_key, tde_Cipher.data_keys.log_key, TDE_DATA_KEY_LENGTH);
-#else
-      memcpy (evp_cipher.master_key, dblink_Cipher_key.master_key, TDE_DATA_KEY_LENGTH);
-#endif
       is_init_done = 1;
     }
 
 #if defined(CS_MODE)
-  if (dblink_Cipher_key.is_loaded == false)
+  if (dblink_Cipher.is_loaded == false)
     {
       int err;
       extern int dblink_get_cipher_master_key ();	// declared in "network_interface_cl.c"
@@ -740,8 +732,6 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
 	  return err;
 	}
-
-      memcpy (evp_cipher.master_key, dblink_Cipher_key.master_key, TDE_DATA_KEY_LENGTH);
     }
 #endif
 
@@ -789,7 +779,7 @@ crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *ciph
   int len, cipher_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
-  unsigned char master_key[TDE_DATA_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   unsigned char *key;
 
   assert (pk);
@@ -800,13 +790,13 @@ crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *ciph
     }
   if (pk[0] == 0x00)
     {
-      key = evp_cipher.master_key;
+      key = evp_cipher.crypt_key;
     }
   else
     {
-      assert ((int) strlen ((char *) pk) < TDE_DATA_KEY_LENGTH);
-      strcpy ((char *) master_key, (char *) pk);
-      key = master_key;
+      assert ((int) strlen ((char *) pk) < DBLINK_CRYPT_KEY_LENGTH);
+      strcpy ((char *) crypt_key, (char *) pk);
+      key = crypt_key;
     }
 
   if (EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, evp_cipher.nonce) != 1)
@@ -861,7 +851,7 @@ crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char
   int len, str_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
-  unsigned char master_key[TDE_DATA_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   unsigned char *key;
 
   assert (pk);
@@ -873,13 +863,13 @@ crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char
 
   if (pk[0] == 0x00)
     {
-      key = evp_cipher.master_key;
+      key = evp_cipher.crypt_key;
     }
   else
     {
-      assert ((int) strlen ((char *) pk) < TDE_DATA_KEY_LENGTH);
-      strcpy ((char *) master_key, (char *) pk);
-      key = master_key;
+      assert ((int) strlen ((char *) pk) < DBLINK_CRYPT_KEY_LENGTH);
+      strcpy ((char *) crypt_key, (char *) pk);
+      key = crypt_key;
     }
 
   if (EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, evp_cipher.nonce) != 1)
@@ -1292,3 +1282,30 @@ reverse_shake_dblink_password (char *confused, int length, char *passwd)
 
   return NO_ERROR;
 }
+
+#if !defined(CS_MODE)
+/*
+ * dblink_get_encrypt_key () - Passing log key to support DBLINK.
+ *
+ * return               : length of copied or error code.
+ * key_buf (in)         : Copied log key
+ * key_buf_sz (in/out)  : size of key_buf
+ */
+int
+dblink_get_encrypt_key (unsigned char *key_buf, int key_buf_sz)
+{
+  if (!tde_Cipher.is_loaded)
+    {
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
+    }
+
+  if (key_buf_sz >= TDE_DATA_KEY_LENGTH)
+    {
+      memcpy (key_buf, tde_Cipher.data_keys.log_key, TDE_DATA_KEY_LENGTH);
+      return TDE_DATA_KEY_LENGTH;
+    }
+
+  memcpy (key_buf, tde_Cipher.data_keys.log_key, key_buf_sz);
+  return key_buf_sz;
+}
+#endif

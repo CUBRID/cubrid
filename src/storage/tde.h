@@ -101,15 +101,6 @@ typedef struct tde_mk_file_item
 #endif /* CS_MODE */
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
-#if defined(CS_MODE)
-typedef struct dblink_cipher
-{
-  bool is_loaded;
-  unsigned char master_key[TDE_DATA_KEY_LENGTH];
-} DBLINK_CHPHER_KEY;
-extern DBLINK_CHPHER_KEY dblink_Cipher_key;
-#endif
-
 #if !defined(CS_MODE)
 
 /* Is log record contains User Data */

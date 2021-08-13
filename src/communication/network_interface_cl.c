@@ -70,7 +70,7 @@
 #endif // SA_MODE
 #include "xasl.h"
 #include "lob_locator.hpp"
-
+#include "crypt_opfunc.h"
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
  */
@@ -1896,13 +1896,14 @@ dblink_get_cipher_master_key ()
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply, *area;
+  int length;
 
-  dblink_Cipher_key.is_loaded = false;
+  dblink_Cipher.is_loaded = false;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    net_client_request2 (NET_SERVER_TDE_GET_DATA_KEYS, NULL, 0, reply,
+    net_client_request2 (NET_SERVER_DBLINK_GET_CRYPT_KEY, NULL, 0, reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error)
     {
@@ -1910,16 +1911,37 @@ dblink_get_cipher_master_key ()
       ptr = or_unpack_int (ptr, &error);
       if (area_size > 0)
 	{
-	  ptr = or_unpack_stream (area, (char *) data_keys.perm_key, TDE_DATA_KEY_LENGTH);
-	  ptr = or_unpack_stream (ptr, (char *) data_keys.temp_key, TDE_DATA_KEY_LENGTH);
-	  ptr = or_unpack_stream (ptr, (char *) dblink_Cipher_key.master_key, TDE_DATA_KEY_LENGTH);
-	  dblink_Cipher_key.is_loaded = true;
+	  ptr = or_unpack_int (area, &length);
+	  ptr = or_unpack_stream (ptr, (char *) dblink_Cipher.crypt_key, length);
+	  if (length != sizeof (dblink_Cipher.crypt_key))
+	    {
+	      memset (dblink_Cipher.crypt_key + length, 0x00, sizeof (dblink_Cipher.crypt_key) - length);
+	    }
+	  dblink_Cipher.is_loaded = true;
 	}
       free_and_init (area);
     }
 
   return error;
 #else /* CS_MODE */
+  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH];
+  int length;
+
+  dblink_Cipher.is_loaded = false;
+
+  length = dblink_get_encrypt_key (crypt_key, sizeof (crypt_key));
+  if (length < 0)
+    {
+      return;
+    }
+
+  dblink_Cipher.is_loaded = true;
+  memcpy (dblink_Cipher.crypt_key, crypt_key, length);
+  if (length != sizeof (crypt_key))
+    {
+      memset (dblink_Cipher.crypt_key + length, 0x00, sizeof (dblink_Cipher.crypt_key) - length);
+    }
+
   return NO_ERROR;
 #endif /* !CS_MODE */
 }

@@ -64,4 +64,18 @@ extern int reverse_shake_dblink_password (char *confused, int length, char *pass
 extern int crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len, unsigned char *pk, long tm);
 extern int crypt_dblink_str_to_bin (const char *src, int src_len, char *dest, int *dest_len, unsigned char *pk);
 
+
+#include "tde.h"
+#define  DBLINK_CRYPT_KEY_LENGTH   TDE_DATA_KEY_LENGTH
+
+typedef struct dblink_cipher
+{
+  bool is_loaded;
+  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH];
+} DBLINK_CHPHER_KEY;
+extern DBLINK_CHPHER_KEY dblink_Cipher;
+
+#if !defined(CS_MODE)
+extern int dblink_get_encrypt_key (unsigned char *key_buf, int key_buf_sz);
+#endif
 #endif
