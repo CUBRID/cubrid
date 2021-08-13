@@ -486,7 +486,7 @@ namespace cublog
       static constexpr unsigned short WAIT_AND_CHECK_MILLIS = 5;
 
     public:
-      redo_task (redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
+      redo_task (std::size_t a_task_idx, redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
 		 , redo_parallel::redo_job_queue &a_queue);
       redo_task (const redo_task &) = delete;
       redo_task (redo_task &&) = delete;
@@ -503,9 +503,12 @@ namespace cublog
       void accumulate_perf_stats (cubperf::stat_value *a_output_stats, std::size_t a_output_stats_size) const;
 
     private:
+      const std::size_t m_task_idx;
       redo_parallel::task_active_state_bookkeeping &m_task_state_bookkeeping;
       redo_parallel::redo_job_queue &m_queue;
-      log_recovery_redo_parallel_perf_stat m_perf_stats;
+
+      cubperf::statset_definition m_perf_stats_definition;
+      perf_stats m_perf_stats;
 
       log_reader m_log_pgptr_reader { LOG_CS_SAFE_READER };
       LOG_ZIP m_undo_unzip_support;
@@ -518,10 +521,14 @@ namespace cublog
 
   constexpr unsigned short redo_parallel::redo_task::WAIT_AND_CHECK_MILLIS;
 
-  redo_parallel::redo_task::redo_task (redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
+  redo_parallel::redo_task::redo_task (std::size_t a_task_idx
+				       , redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
 				       , redo_parallel::redo_job_queue &a_queue)
-    : m_task_state_bookkeeping (task_state_bookkeeping)
+    : m_task_idx { a_task_idx }
+    , m_task_state_bookkeeping (task_state_bookkeeping)
     , m_queue (a_queue)
+    , m_perf_stats_definition { perf_stats_async_definition_init_list }
+    , m_perf_stats { perf_stats_is_active_for_async (), m_perf_stats_definition }
   {
     // important to set this at this moment and not when execution begins
     // to circumvent race conditions where all tasks haven't yet started work
@@ -587,7 +594,9 @@ namespace cublog
 
   void redo_parallel::redo_task::log_perf_stats () const
   {
-    m_perf_stats.log ();
+    std::stringstream ss;
+    ss << "Log recovery redo worker thread " << m_task_idx << " perf stats";
+    m_perf_stats.log (ss.str ().c_str ());
   }
 
   void redo_parallel::redo_task::accumulate_perf_stats (
@@ -696,9 +705,8 @@ namespace cublog
 
     for (unsigned task_idx = 0; task_idx < m_task_count; ++task_idx)
       {
-	// NOTE: task ownership goes to the worker pool
-	auto task = std::make_unique<redo_parallel::redo_task> (m_task_state_bookkeeping, m_job_queue);
-	m_worker_pool->execute (task.get());
+	auto task = std::make_unique<redo_parallel::redo_task> (task_idx, m_task_state_bookkeeping, m_job_queue);
+	m_worker_pool->execute (task.get ());
 	m_redo_tasks.push_back (std::move (task));
       }
   }
@@ -708,10 +716,10 @@ namespace cublog
   {
     const cubperf::statset_definition definition
     {
-      log_recovery_redo_parallel_perf_stat::m_stats_definition_init_list
+      perf_stats_async_definition_init_list
     };
 
-    std::vector < cubperf::stat_value > accum_perf_stat_results;
+    std::vector<cubperf::stat_value> accum_perf_stat_results;
     accum_perf_stat_results.resize (definition.get_value_count ());
 
     for (auto &redo_task: m_redo_tasks)
@@ -720,9 +728,18 @@ namespace cublog
 	redo_task->log_perf_stats ();
       }
 
-    log_perf_stats_values_with_definition (definition,
-					   accum_perf_stat_results.data (),
-					   accum_perf_stat_results.size ());
+    // average
+    const std::size_t task_count = m_redo_tasks.size ();
+    const std::size_t value_count = accum_perf_stat_results.size ();
+    std::vector<double> avg_perf_stat_results;
+    avg_perf_stat_results.resize (value_count, 0.0);
+    for (std::size_t idx = 0; idx < value_count; ++idx)
+      {
+	avg_perf_stat_results[idx] = static_cast<double> (accum_perf_stat_results[idx]) / task_count;
+      }
+
+    log_perf_stats_values_with_definition ("Log recovery redo worker threads averaged perf stats",
+					   definition, avg_perf_stat_results.data (), value_count);
   }
 
   /*********************************************************************

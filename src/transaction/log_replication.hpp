@@ -106,7 +106,9 @@ namespace cublog
        */
       perfmon_counter_timer_tracker m_perfmon_redo_sync;
 
-      log_recovery_redo_perf_stat m_rcv_redo_perf_stat;
+      /* does not record anything; needed just to please reused recovery infrastructure
+       */
+      perf_stats m_perf_stat_idle;
   };
 }
 

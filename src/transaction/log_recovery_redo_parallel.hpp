@@ -500,7 +500,7 @@ log_rv_redo_record_sync_or_dispatch_async (
 	LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support,
 	std::unique_ptr<cublog::redo_parallel> &parallel_recovery_redo,
 	cublog::reusable_jobs_stack &a_reusable_jobs,
-	bool force_each_log_page_fetch, cublog::log_recovery_redo_perf_stat &a_rcv_redo_perf_stat)
+	bool force_each_log_page_fetch, cublog::perf_stats &a_rcv_redo_perf_stat)
 {
   const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
   // at this point, vpid can either be valid or not

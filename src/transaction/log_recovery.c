@@ -1028,7 +1028,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
   // statistics data initialize
   //
-  cublog::log_recovery_redo_perf_stat rcv_redo_perf_stat;
+  cubperf::statset_definition rcv_redo_perf_stat_definition (cublog::perf_stats_main_definition_init_list);
+  cublog::perf_stats rcv_redo_perf_stat (cublog::perf_stats_is_active_for_main (), rcv_redo_perf_stat_definition);
 
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.
@@ -1744,7 +1745,7 @@ exit:
 
   // statistics data collect & report
   //
-  rcv_redo_perf_stat.log ();
+  rcv_redo_perf_stat.log ("Log recovery redo main thread perf stats");
 #if defined(SERVER_MODE)
   if (parallel_recovery_redo != nullptr)
     {
