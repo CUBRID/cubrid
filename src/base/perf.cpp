@@ -24,6 +24,8 @@
 
 #include "error_manager.h"
 
+#include <stdexcept>
+
 #include <cstring>
 
 namespace cubperf
@@ -70,8 +72,44 @@ namespace cubperf
   //////////////////////////////////////////////////////////////////////////
 
   statset_definition::statset_definition (statset_definition::stat_definition_init_list_t defs)
-    : statset_definition (defs.size (), defs.begin (), defs.end ())
+//    : statset_definition (defs.size (), defs.begin (), defs.end ())
+    : m_stat_count (defs.size ())
+    , m_value_count (0)
+    , m_stat_defs (nullptr)
+    , m_value_names (nullptr)
   {
+    // copy definitions
+    m_stat_defs = new stat_definition[defs.size ()];
+    std::size_t stat_index = 0;
+    for (auto &def_it : defs)
+      {
+	if (def_it.m_id != stat_index)
+	  {
+	    // statset_definition is bad; crash program
+	    throw std::runtime_error ("statset_definition is bad");
+	  }
+	m_stat_defs[stat_index] = def_it;  // copy definitions
+
+	// set offset and increment value count
+	m_stat_defs[stat_index].m_offset = m_value_count;
+	m_value_count += def_it.get_value_count ();
+
+	// increment index
+	stat_index++;
+      }
+
+    // names for all values
+    m_value_names = new std::string[m_value_count];
+    std::size_t value_index = 0;
+    for (stat_index = 0; stat_index < m_stat_count; stat_index++)
+      {
+	assert (value_index == m_stat_defs[stat_index].m_offset);
+	for (std::size_t def_name_index = 0; def_name_index < m_stat_defs[stat_index].get_value_count ();
+	     def_name_index++)
+	  {
+	    m_value_names[value_index++] = m_stat_defs[stat_index].m_names[def_name_index];
+	  }
+      }
   }
 
   statset_definition::~statset_definition (void)
