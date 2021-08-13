@@ -28,6 +28,9 @@
 
 #include <string>
 
+SERVER_TYPE get_value_from_config (server_type_config parameter_value);
+void setup_tran_server_params_on_single_node_config ();
+
 static SERVER_TYPE g_server_type = SERVER_TYPE_UNKNOWN;
 #if !defined(NDEBUG)
 static bool g_server_type_initialized = false;
