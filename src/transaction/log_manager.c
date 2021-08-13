@@ -353,6 +353,7 @@ static int cdc_put_value_to_loginfo (const db_value * new_value, char **ptr);
 
 static int get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time);
 static int get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa);
+static void cdc_reinitialize_queue (LOG_LSA * start_lsa);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -10438,25 +10439,41 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   CDC_LOGINFO_ENTRY *log_info_entry;
 
   /*temp_logbuf consists of 2 entry, every time fetching new page, page will be stored in temp_logbuf[pageid%2] */
-  CDC_TEMP_LOGBUF *temp_logbuf = NULL;
+  CDC_TEMP_LOGBUF temp_logbuf[2];
   int tmpbuf_index = 0;
 
   int trid;
 
   LOG_RECTYPE log_type;
 
-  if (LSA_ISNULL (&cdc_Gl.next_lsa))
+  pthread_mutex_lock (&cdc_Gl.next_lsa_lock);
+  while (!LSA_ISNULL (&cdc_Gl.next_lsa))
     {
-      pthread_mutex_lock (&cdc_Gl.lsa_init_lock);
-      pthread_cond_wait (&cdc_Gl.lsa_init_cond, &cdc_Gl.lsa_init_lock);
-      pthread_mutex_unlock (&cdc_Gl.lsa_init_lock);
+      pthread_cond_wait (&cdc_Gl.lsa_init_cond, &cdc_Gl.next_lsa_lock);
     }
+  pthread_mutex_unlock (&cdc_Gl.next_lsa_lock);
 
-  temp_logbuf = (CDC_TEMP_LOGBUF *) malloc (2 * sizeof (CDC_TEMP_LOGBUF));
-  if (temp_logbuf == NULL)
+  pthread_mutex_lock (&cdc_Gl.queue_lock);
+  while (cdc_Gl.is_queue_initialized == false)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      pthread_cond_wait (&cdc_Gl.queue_init_cond, &cdc_Gl.queue_lock);
     }
+  pthread_mutex_unlock (&cdc_Gl.queue_lock);
+
+  pthread_mutex_lock (&cdc_Gl.queue_lock);
+  while (cdc_Gl.queue_size < MAX_CDC_LOGINFO_QUEUE_SIZE)
+    {
+      pthread_cond_wait (&cdc_Gl.queue_consume_cond, &cdc_Gl.queue_lock);
+    }
+  pthread_mutex_unlock (&cdc_Gl.queue_lock);
+
+  pthread_mutex_lock (&cdc_Gl.is_finalize_lock);
+  if (cdc_Gl.is_finalize == true)
+    {
+      pthread_cond_signal (&cdc_Gl.finalize_cond);
+      goto end;
+    }
+  pthread_mutex_unlock (&cdc_Gl.is_finalize_lock);
 
   temp_logbuf[0].log_page_p = (LOG_PAGE *) PTR_ALIGN (temp_logbuf[0].log_page, MAX_ALIGNMENT);
   temp_logbuf[0].pageid = -1;
@@ -10471,7 +10488,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   /*fetch log page */
   if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
     {
-      return ER_FAILED;
+      goto end;
     }
 
   tmpbuf_index = process_lsa.pageid % 2;
@@ -10481,8 +10498,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   log_info_entry = (CDC_LOGINFO_ENTRY *) malloc (sizeof (CDC_LOGINFO_ENTRY));
   if (log_info_entry == NULL)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-      /*JOOHOK error handling : debug log + error message */
+      goto end;
     }
 
   log_info_entry->length = 0;
@@ -10543,7 +10559,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
 	  if (cdc_make_dcl_loginfo (donetime->at_time, trid, tran_user, log_type, log_info_entry) != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      goto end;
 	    }
 
 	  cdc_tran_user.erase (trid);
@@ -10566,9 +10582,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
 	  if (cdc_make_timer_loginfo (ha_dummy->at_time, trid, NULL, log_info_entry) != NO_ERROR)
 	    {
-#if !defined(NDEBUG)		//JOOHOK
-	      _er_log_debug (ARG_FILE_LINE, "make timer failed ");
-#endif
+	      goto end;
 	    }
 	  break;
 
@@ -10632,7 +10646,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      supplement_data = (char *) malloc (supplement_length);
 	      if (supplement_data == NULL)
 		{
-		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto end;
 		}
 
 	      logpb_copy_from_log (thread_p, supplement_data, supplement_length, &process_lsa, log_page_p);
@@ -10692,9 +10706,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 		  tran_user = (char *) malloc (supplement_length + 1);
 		  if (tran_user == NULL)
 		    {
-#if !defined(NDEBUG)		//JOOHOK
-		      _er_log_debug (ARG_FILE_LINE, "In supplement TRAN_USER, Tran usr alloc failed ");
-#endif
+		      goto end;
 		    }
 
 		  memcpy (tran_user, supplement_data, supplement_length);
@@ -10710,7 +10722,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
 	      if (cdc_get_recdes (thread_p, temp_logbuf, NULL, NULL, &redo_lsa, &redo_recdes) != NO_ERROR)
 		{
-		  break;
+		  goto end;
 		}
 
 	      cdc_make_dml_loginfo (thread_p, trid, tran_user, INSERT, classoid, NULL, &redo_recdes, log_info_entry);
@@ -10735,9 +10747,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	    case LOG_SUPPLEMENT_DDL:
 	      if (cdc_make_ddl_loginfo (supplement_data, trid, tran_user, log_info_entry) != NO_ERROR)
 		{
-#if !defined(NDEBUG)		//JOOHOK
-		  _er_log_debug (ARG_FILE_LINE, "make DDL  failed ");
-#endif
+		  goto end;
 		}
 
 	      break;
@@ -10751,31 +10761,16 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	  break;
 	}
 
-      /*will be replaced with conditional variable */
-#if 0
-      if (cdc_logInfo_queue->is_full ())
-	{
-	  pthread_mutex_lock (&cdc_Gl.loginfo_queue_lock);
-	  pthread_cond_wait (&cdc_Gl.loginfo_queue_cond, &cdc_Gl.loginfo_queue_lock);
-	  pthread_mutex_unlock (&cdc_Gl.loginfo_queue_lock);
-	}
-
-      if (!LSA_ISNULL (&next_log_rec_lsa))
-	{
-	  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
-
-	  if (LSA_LE (&nxio_lsa, &next_log_rec_lsa))
-	    {
-	      pthread_mutex_lock (&cdc_Gl.nxio_lsa_lock);
-	      pthread_cond_wait (&cdc_Gl.nxio_lsa_cond, &cdc_Gl.nxio_lsa_lock);
-	      pthread_mutex_unlock (&cdc_Gl.nxio_lsa_lock);
-	    }
-	}
-#endif
-
       /*when refined log info is queued, update cdc_Gl */
       if (log_info_entry->length != 0)
 	{
+	  pthread_mutex_lock (&cdc_Gl.queue_lock);
+	  while (!cdc_logInfo_queue->is_full ())
+	    {
+	      pthread_cond_wait (&cdc_Gl.queue_consume_cond, &cdc_Gl.queue_lock);
+	    }
+	  pthread_mutex_unlock (&cdc_Gl.queue_lock);
+
 	  LSA_COPY (&log_info_entry->start_lsa, &next_log_rec_lsa);
           /* *INDENT-OFF* */
 	  cdc_logInfo_queue->produce (log_info_entry);
@@ -10783,45 +10778,43 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
 	  LSA_COPY (&cdc_Gl.last_produced_lsa, &cur_log_rec_lsa);
 
-	  log_info_entry = (CDC_LOGINFO_ENTRY *) malloc (sizeof (CDC_LOGINFO_ENTRY));
-	  if (log_info_entry == NULL)
-	    {
-#if !defined (NDEBUG)		//JOOHOK
-	      _er_log_debug (ARG_FILE_LINE, "END of log reader thread : log_info_entry alloc failed ");
-#endif
-	    }
+	  LSA_COPY (&cdc_Gl.next_lsa, &next_log_rec_lsa);
 
-	  log_info_entry->length = 0;
-	  LSA_SET_NULL (&log_info_entry->start_lsa);
-	  log_info_entry->log_info = NULL;
+	  cdc_Gl.queue_size += log_info_entry->length;
+
+	  pthread_mutex_lock (&cdc_Gl.queue_lock);
+	  pthread_cond_signal (&cdc_Gl.queue_produce_cond);
+	  pthread_mutex_unlock (&cdc_Gl.queue_lock);
+
+	  goto end;
 	}
 
-      if (process_lsa.pageid != next_log_rec_lsa.pageid)
+      if (!LSA_ISNULL (&next_log_rec_lsa))
 	{
-	  if (LSA_ISNULL (&next_log_rec_lsa))
+	  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+	  pthread_mutex_lock (&cdc_Gl.next_lsa_lock);
+	  while (LSA_GE (&next_log_rec_lsa, &nxio_lsa))
 	    {
-	      /*condition wait */
-	      break;
+	      pthread_cond_wait (&cdc_Gl.nxio_lsa_cond, &cdc_Gl.next_lsa_lock);
 	    }
-
-	  if (logpb_fetch_page (thread_p, &next_log_rec_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
+	  pthread_mutex_unlock (&cdc_Gl.next_lsa_lock);
 	}
 
-      LSA_COPY (&process_lsa, &next_log_rec_lsa);
-
-      LSA_COPY (&cur_log_rec_lsa, &next_log_rec_lsa);
       LSA_COPY (&cdc_Gl.next_lsa, &next_log_rec_lsa);
+      LSA_COPY (&process_lsa, &next_log_rec_lsa);
+      LSA_COPY (&cur_log_rec_lsa, &next_log_rec_lsa);
+
+      pthread_mutex_lock (&cdc_Gl.is_finalize_lock);
+      if (cdc_Gl.is_finalize == true)
+	{
+	  pthread_cond_signal (&cdc_Gl.finalize_cond);
+	  goto end;
+	}
+      pthread_mutex_unlock (&cdc_Gl.is_finalize_lock);
+
     }
 
-  /* *INDENT-OFF* */
-  for (auto iter:cdc_tran_user)
-    {
-      free (iter.second);
-    }
-  /* *INDENT-ON* */
+end:
 
   return NO_ERROR;
 }
@@ -13183,9 +13176,9 @@ cdc_thread_checker (THREAD_ENTRY * thread_p)
   LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
   if (LSA_LE (&cdc_Gl.next_lsa, &nxio_lsa))
     {
-      pthread_mutex_lock (&cdc_Gl.nxio_lsa_lock);
+      pthread_mutex_lock (&cdc_Gl.next_lsa_lock);
       pthread_cond_signal (&cdc_Gl.nxio_lsa_cond);
-      pthread_mutex_unlock (&cdc_Gl.nxio_lsa_lock);
+      pthread_mutex_unlock (&cdc_Gl.next_lsa_lock);
     }
 }
 
@@ -13198,13 +13191,16 @@ cdc_log_producer_execute (cubthread::entry & thread_ref)
     return;
   }
  
-  pthread_mutex_init (&cdc_Gl.lsa_init_lock, NULL);
-  pthread_mutex_init (&cdc_Gl.loginfo_queue_lock, NULL);
-  pthread_mutex_init (&cdc_Gl.nxio_lsa_lock, NULL);
+  pthread_mutex_init (&cdc_Gl.next_lsa_lock, NULL);
+  pthread_mutex_init (&cdc_Gl.queue_lock, NULL);
+  pthread_mutex_init (&cdc_Gl.is_finalize_lock, NULL);
 
   pthread_cond_init (&cdc_Gl.lsa_init_cond, NULL);
-  pthread_cond_init (&cdc_Gl.loginfo_queue_cond, NULL);
+  pthread_cond_init (&cdc_Gl.queue_init_cond, NULL);
   pthread_cond_init (&cdc_Gl.nxio_lsa_cond, NULL);
+  pthread_cond_init (&cdc_Gl.queue_produce_cond, NULL);
+  pthread_cond_init (&cdc_Gl.queue_consume_cond, NULL);
+  pthread_cond_init (&cdc_Gl.finalize_cond, NULL);
 
   LSA_SET_NULL (&cdc_Gl.next_lsa);
 
@@ -13432,17 +13428,65 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
       /* pthread_cond_signal () to cdc_log_producer and queue re-initialization */
       if (cdc_Gl.is_queue_initialized == true)
 	{
-	  pthread_mutex_lock (&cdc_Gl.lsa_init_lock);
+	  pthread_mutex_lock (&cdc_Gl.next_lsa_lock);
 	  pthread_cond_signal (&cdc_Gl.lsa_init_cond);
-	  pthread_mutex_unlock (&cdc_Gl.lsa_init_lock);
+	  pthread_mutex_unlock (&cdc_Gl.next_lsa_lock);
 	}
       else
 	{
-	  /* queue init */
+	  cdc_reinitialize_queue (start_lsa);
 	}
     }
 
   return error;
+}
+
+static void
+cdc_reinitialize_queue (LOG_LSA * start_lsa)
+{
+  assert (cdc_logInfo_queue != NULL);
+  CDC_LOGINFO_ENTRY *consume;
+
+  if (LSA_LE (&cdc_Gl.last_consumed_lsa, start_lsa) && LSA_GT (&cdc_Gl.last_produced_lsa, start_lsa))
+    {
+      LOG_LSA next_consume_lsa = LSA_INITIALIZER;
+      LSA_COPY (&next_consume_lsa, &cdc_Gl.last_consumed_lsa);
+      while (LSA_LE (&next_consume_lsa, start_lsa))
+	{
+	  cdc_logInfo_queue->consume (consume);
+	  cdc_Gl.queue_size -= consume->length;
+	  LSA_COPY (&next_consume_lsa, &consume->start_lsa);
+
+	  if (consume->log_info != NULL)
+	    {
+	      free_and_init (consume->log_info);
+	    }
+	}
+    }
+  else
+    {
+      while (!cdc_logInfo_queue->is_empty ())
+	{
+	  cdc_logInfo_queue->consume (consume);
+
+	  if (consume->log_info != NULL)
+	    {
+	      free_and_init (consume->log_info);
+	    }
+	}
+      cdc_Gl.queue_size = 0;
+
+          /* *INDENT-OFF* */
+    delete cdc_logInfo_queue;
+    cdc_logInfo_queue = new lockfree::circular_queue <CDC_LOGINFO_ENTRY *> (MAX_CDC_LOGINFO_QUEUE_ENTRY);
+          /* *INDENT-ON* */
+    }
+
+  cdc_Gl.is_queue_initialized = true;
+
+  pthread_mutex_lock (&cdc_Gl.queue_lock);
+  pthread_cond_signal (&cdc_Gl.queue_init_cond);
+  pthread_mutex_unlock (&cdc_Gl.queue_lock);
 }
 
 /*
@@ -13681,33 +13725,34 @@ int
 cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_length, int *num_log_info)
 {
   int rv;
-#if 0
+
   struct timeval cur;
   struct timespec timeout;
   int status;
+
+  int begin = 0;
+  int end = 0;
 
   char *log_infos = NULL;
   CDC_LOGINFO_ENTRY *consume;
 
   assert (!LSA_ISNULL (start_lsa));
 
-  if (!LSA_EQ (start_lsa, &cdc_Gl.last_consumed_lsa))
+  if (cdc_Gl.is_queue_initialized == false)
     {
-      pthread_mutext_lock (&cdc_Gl.queue_init_mutex);
-      pthread_cond_wait ();
+      cdc_reinitialize_queue (start_lsa);
     }
-
 
   *num_log_info = 0;
   *total_length = 0;
 
-  gettimeofday (&cur, NULL);
-  timeout.tv_sec = cur.tv_sec + cdc_Gl.extraction_timeout;
-  timeout.tv_nsec = cur.tv_usec * 1000;
+  begin = (int) time (NULL);
+  timeout.tv_sec = begin + cdc_Gl.extraction_timeout;
+  timeout.tv_nsec = 0;
 
   if (cdc_logInfo_queue->is_empty ())
     {
-      status = pthread_cond_timedwait (consume_cv, &mutex, timeout);
+      status = pthread_cond_timedwait (&cdc_Gl.queue_produce_cond, &cdc_Gl.queue_lock, &timeout);
       if (status == ETIMEDOUT)
 	{
 	  return ER_CDC_EXTRACTION_TIMEOUT;
@@ -13732,7 +13777,10 @@ cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_l
 
 	  (*num_log_info)++;
 
+	  LSA_COPY (&cdc_Gl.last_consumed_lsa, &consume->start_lsa);
 	  LSA_COPY (start_lsa, &consume->start_lsa);
+
+	  cdc_Gl.queue_size -= consume->length;
 
 	  if (consume->log_info != NULL)
 	    {
@@ -13747,8 +13795,18 @@ cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_l
 
       cdc_Server_comm.log_items = log_infos;
       cdc_Server_comm.total_length = *total_length;
+
+      pthread_mutex_lock (&cdc_Gl.queue_lock);
+      pthread_cond_signal (&cdc_Gl.queue_consume_cond);
+      pthread_mutex_unlock (&cdc_Gl.queue_lock);
+
+      end = (int) time (NULL);
+      if ((end - begin) >= cdc_Gl.extraction_timeout)
+	{
+	  return ER_CDC_EXTRACTION_TIMEOUT;
+	}
     }
-#endif
+
   return NO_ERROR;
 }
 
@@ -13756,6 +13814,12 @@ int
 cdc_finalize ()
 {
   int i = 0;
+
+  cdc_Gl.is_finalize = true;
+
+  pthread_mutex_lock (&cdc_Gl.is_finalize_lock);
+  pthread_cond_wait (&cdc_Gl.finalize_cond, &cdc_Gl.is_finalize_lock);
+  pthread_mutex_unlock (&cdc_Gl.is_finalize_lock);
 
   if (cdc_Gl.num_extraction_user > 0)
     {
@@ -13793,7 +13857,14 @@ cdc_finalize ()
 	}
     }
 
+          /* *INDENT-OFF* */
   delete cdc_logInfo_queue;
+          /* *INDENT-ON* */
+  cdc_Gl.queue_size = 0;
+  cdc_Gl.is_queue_initialized = false;
+
+  LSA_SET_NULL (&cdc_Gl.last_produced_lsa);
+  LSA_SET_NULL (&cdc_Gl.last_consumed_lsa);
 
   return NO_ERROR;
 }
@@ -13825,14 +13896,21 @@ cdc_initialize ()
 
   LSA_SET_NULL (&cdc_Gl.next_lsa);
 
+  cdc_Gl.is_finalize = false;
+
   if (cdc_logInfo_queue == NULL)
     {
     /* *INDENT-OFF* */
     cdc_logInfo_queue = new lockfree::circular_queue <CDC_LOGINFO_ENTRY *> (MAX_CDC_LOGINFO_QUEUE_ENTRY);
     /* *INDENT-ON* */
       cdc_Gl.is_queue_initialized = true;
+      cdc_Gl.queue_size = 0;
       LSA_SET_NULL (&cdc_Gl.last_produced_lsa);
       LSA_SET_NULL (&cdc_Gl.last_consumed_lsa);
+
+      pthread_mutex_lock (&cdc_Gl.queue_lock);
+      pthread_cond_signal (&cdc_Gl.queue_init_cond);
+      pthread_mutex_unlock (&cdc_Gl.queue_lock);
     }
   else if (cdc_logInfo_queue != NULL)
     {

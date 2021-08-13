@@ -790,16 +790,24 @@ typedef struct cdc_global_info
   LOG_LSA last_produced_lsa;
   LOG_LSA last_consumed_lsa;
 
-  pthread_mutex_t lsa_init_lock;
+  pthread_mutex_t next_lsa_lock;
+  pthread_mutex_t queue_produce_lock;
+  pthread_mutex_t queue_consume_lock;
+  pthread_mutex_t queue_lock;
+
+  pthread_mutex_t is_finalize_lock;
+
   pthread_cond_t lsa_init_cond;
-
-  pthread_mutex_t loginfo_queue_lock;
-  pthread_cond_t loginfo_queue_cond;
-
-  pthread_mutex_t nxio_lsa_lock;
   pthread_cond_t nxio_lsa_cond;
+  pthread_cond_t queue_produce_cond;
+  pthread_cond_t queue_consume_cond;
+  pthread_cond_t finalize_cond;
+  pthread_cond_t queue_init_cond;
 
+  uint64_t queue_size;
   bool is_queue_initialized;
+
+  bool is_finalize;
 
   /*configuration */
   int num_extraction_user;
