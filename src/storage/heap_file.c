@@ -20038,6 +20038,12 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
       return ER_FAILED;
     }
 
+  /*SUPPLEMENT_INSERT REDO LSA, INSERT REC_BIGONE  */
+  if (context->do_supplemental_log)
+    {
+      LSA_COPY (&context->supp_redo_lsa, logtb_find_current_tran_lsa (thread_p));
+    }
+
   /* Add a map record to point to the record in overflow */
   /* NOTE: MVCC information is held in overflow record */
   heap_build_forwarding_recdes (&context->map_recdes, REC_BIGONE, &context->ovf_oid);
@@ -22735,12 +22741,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
     {
       rc = ER_FAILED;
       goto error;
-    }
-
-/*SUPPLEMENT_INSERT REDO LSA, INSERT REC_BIGONE  */
-  if (context->do_supplemental_log && heap_is_big_length (context->recdes_p->length))
-    {
-      LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
     }
 
   if (context->is_bulk_op)

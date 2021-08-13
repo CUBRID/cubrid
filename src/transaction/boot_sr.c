@@ -2498,6 +2498,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   dwb_daemons_init ();
 
   cdc_daemons_init ();
+  //cdc_wakeup_log_producer ();
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum

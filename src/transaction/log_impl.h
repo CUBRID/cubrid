@@ -276,8 +276,8 @@ extern int db_Disable_modifications;
 #define MAX_NUM_EXEC_QUERY_HISTORY                      100
 
 /*CDC defines*/
-#define MAX_CDC_LOG_INFO_QUEUE_ENTRY  2048
-#define MAX_CDC_LOG_INFO_QUEUE_SIZE   32 * 1024 * 1024	/*32 MB */
+#define MAX_CDC_LOGINFO_QUEUE_ENTRY  2048
+#define MAX_CDC_LOGINFO_QUEUE_SIZE   32 * 1024 * 1024	/*32 MB */
 #define MAX_CDC_TRAN_USER_TABLE       4000
 
 enum log_flush
@@ -787,6 +787,20 @@ typedef struct cdc_global_info
 {
   LOG_LSA next_lsa;		/* next LSA to process */
 
+  LOG_LSA last_produced_lsa;
+  LOG_LSA last_consumed_lsa;
+
+  pthread_mutex_t lsa_init_lock;
+  pthread_cond_t lsa_init_cond;
+
+  pthread_mutex_t loginfo_queue_lock;
+  pthread_cond_t loginfo_queue_cond;
+
+  pthread_mutex_t nxio_lsa_lock;
+  pthread_cond_t nxio_lsa_cond;
+
+  bool is_queue_initialized;
+
   /*configuration */
   int num_extraction_user;
   char **extraction_user;
@@ -872,7 +886,7 @@ extern char log_Name_removed_archive[];
 extern CDC_GLOBAL_INFO cdc_Gl;
 
 /* *INDENT-OFF* */
-extern lockfree::circular_queue<CDC_LOGINFO_ENTRY *> *cdc_loginfo_queue;
+extern lockfree::circular_queue<CDC_LOGINFO_ENTRY *> *cdc_logInfo_queue;
 /* *INDENT-ON* */
 extern CDC_SERVER_COMM cdc_Server_comm;
 
