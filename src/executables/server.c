@@ -412,7 +412,7 @@ main (int argc, char **argv)
         PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
         return 1;
       }
-    cubthread::initialize (thread_p);
+    thread_initialize_manager (thread_p);
     fprintf (stdout, "\nThis may take a long time depending on the amount " "of recovery works to do.\n");
 
     /* save executable path */
