@@ -874,8 +874,10 @@ typedef struct _ha_config
 #define PRINT_RESULT_SUCCESS    "success"
 #define PRINT_RESULT_FAIL       "fail"
 
-#define CHECK_SERVER            "Server"
-#define CHECK_HA_SERVER         "HA-Server"
+#define CHECK_SERVER              "Server"
+#define CHECK_HA_SERVER           "HA-Server"
+#define CHECK_PAGE_SERVER         "Page-Server"
+#define CHECK_TRANSACTION_SERVER  "Transaction-Server"
 
 #define COMMDB_SERVER_STOP      "-S"
 #define COMMDB_SERVER_STATUS    "-P"

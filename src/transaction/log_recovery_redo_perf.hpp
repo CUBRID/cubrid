@@ -39,7 +39,6 @@ namespace cublog
   {
     PERF_STAT_ID_FETCH_PAGE,
     PERF_STAT_ID_READ_LOG,
-    PERF_STAT_ID_REDO_OR_PUSH,
     PERF_STAT_ID_REDO_OR_PUSH_PREP,
     PERF_STAT_ID_REDO_OR_PUSH_DO_SYNC,
     PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE,
@@ -55,8 +54,6 @@ namespace cublog
 			      "Counter fetch_page", "Timer fetch_page (ms)"),
     cubperf::stat_definition (PERF_STAT_ID_READ_LOG, cubperf::stat_definition::COUNTER_AND_TIMER,
 			      "Counter read_log", "Timer read_log (ms)"),
-    cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH, cubperf::stat_definition::COUNTER_AND_TIMER,
-			      "Counter redo_or_push", "Timer redo_or_push (ms)"),
     cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_PREP, cubperf::stat_definition::COUNTER_AND_TIMER,
 			      "Counter redo_or_push_prep", "Timer redo_or_push_prep (ms)"),
     cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_DO_SYNC, cubperf::stat_definition::COUNTER_AND_TIMER,
