@@ -9,7 +9,8 @@ EXPORTS
 	util_log_write_errid
 	util_log_write_errstr
 	util_log_write_command
-    er_set
+    er_init
+	er_set
     getopt_long
     set_server_type
 
