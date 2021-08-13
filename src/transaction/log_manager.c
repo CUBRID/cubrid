@@ -4838,6 +4838,7 @@ log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_t
   int tran_index;
 
   LOG_ZIP *zip_undo = NULL;
+  bool is_zipped = false;
 
   if (length >= log_Zip_min_size_to_compress && log_Zip_support)
     {
@@ -4850,6 +4851,8 @@ log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_t
       log_zip (zip_undo, length, data);
       length = zip_undo->data_length;
       data = zip_undo->log_data;
+
+      is_zipped = true;
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -4866,7 +4869,14 @@ log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_t
 
   supplement = (LOG_REC_SUPPLEMENT *) node->data_header;
   supplement->rec_type = rec_type;
-  supplement->length = length;
+  if (is_zipped)
+    {
+      supplement->length = MAKE_ZIP_LEN (zip_undo->data_length);
+    }
+  else
+    {
+      supplement->length = length;
+    }
 
   prior_lsa_next_record (thread_p, node, tdes);
 }
@@ -11419,7 +11429,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 
 		    if (is_zipped_undo && is_unzipped_undo)
 		      {
-			undo_length = (int) undo_zip_ptr->data_length;
+//                      undo_length = (int) undo_zip_ptr->data_length;
 
 			if (is_undo_alloced)
 			  {
@@ -11640,7 +11650,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 
 		    if (is_zipped_undo && is_unzipped_undo)
 		      {
-			undo_length = (int) undo_zip_ptr->data_length;
+			//      undo_length = (int) undo_zip_ptr->data_length;
 
 			if (is_undo_alloced)
 			  {
@@ -12809,7 +12819,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
        * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
        * character and the second byte of the multibyte character.
        */
-      if (strcmp (db_get_string (new_value), db_get_string (cmpdata)))
+      if (strcmp (db_get_string (new_value), db_get_string (cmpdata)) == 0)
 	{
 	  return 0;
 	}
