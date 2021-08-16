@@ -171,10 +171,12 @@ namespace cublog
 	  using redo_job_vector_t = std::vector<redo_job_base *>;
 
 	private:
-	  //using vpid_ux_redo_job_deque_map_t = std::unordered_map<vpid, ux_redo_job_deque, std::hash<VPID>>;
-	  //using vpid_set = std::set<VPID>;
-	  //using log_lsa_set = std::set<log_lsa>;
-	  //using log_lsa_vpid_map_t = std::map<log_lsa, vpid>;
+	  /*
+	  using vpid_ux_redo_job_deque_map_t = std::unordered_map<vpid, ux_redo_job_deque, std::hash<VPID>>;
+	  using vpid_set = std::set<VPID>;
+	  using log_lsa_set = std::set<log_lsa>;
+	  using log_lsa_vpid_map_t = std::map<log_lsa, vpid>;
+	  */
 
 	public:
 	  redo_job_queue () = delete;
@@ -226,7 +228,9 @@ namespace cublog
 	  /* swap internal queues and notify if both are empty
 	   * assumes the consume queue is locked
 	   */
-//	  void do_swap_queues_if_needed (const std::lock_guard<std::mutex> &a_consume_lockg);
+	  /*
+	  void do_swap_queues_if_needed (const std::lock_guard<std::mutex> &a_consume_lockg);
+	  */
 
 	  /* find first job that can be consumed (ie: is not already marked
 	   * in the 'in progress vpids' set)
@@ -234,19 +238,25 @@ namespace cublog
 	   * NOTE: '*_locked_*' functions are supposed to be called from within locked
 	   * areas with respect to the resources they make use of
 	   */
-//	  ux_redo_job_deque do_locked_find_job_to_consume_and_mark_in_progress (
-//		  const std::lock_guard<std::mutex> &a_consume_lockg,
-//		  const std::lock_guard<std::mutex> &a_in_progress_lockg);
+	  /*
+	  ux_redo_job_deque do_locked_find_job_to_consume_and_mark_in_progress (
+	    const std::lock_guard<std::mutex> &a_consume_lockg,
+	    const std::lock_guard<std::mutex> &a_in_progress_lockg);
+	  */
 
 	  /* NOTE: '*_locked_*' functions are supposed to be called from within locked
 	   * areas with respect to the resources they make use of
 	   */
-//	  void do_locked_mark_job_deque_in_progress (
-//		  const std::lock_guard<std::mutex> &a_in_progress_lockg,
-//		  const ux_redo_job_deque &a_job_deque);
+	  /*
+	  void do_locked_mark_job_deque_in_progress (
+	    const std::lock_guard<std::mutex> &a_in_progress_lockg,
+	    const ux_redo_job_deque &a_job_deque);
+	  */
 
 	  void set_non_empty_at (std::size_t a_index);
-//          void do_check_empty_and_notify(std::lock_guard<std::mutex> &a_empty_lockg);
+	  /*
+	  void do_check_empty_and_notify(std::lock_guard<std::mutex> &a_empty_lockg);
+	  */
 
 	private:
 	  const std::size_t m_task_count;
@@ -255,8 +265,10 @@ namespace cublog
 	  std::hash<VPID> m_vpid_hash;
 	  std::vector<std::mutex> m_produce_mutex_vec;
 
-//	  std::map<unsigned, log_lsa> m_produce_index_to_min_lsa_map;
-//	  log_lsa_set m_produce_min_lsa_set;
+	  /*
+	  std::map<unsigned, log_lsa> m_produce_index_to_min_lsa_map;
+	  log_lsa_set m_produce_min_lsa_set;
+	  */
 
 	  /* NOTE: in the next variables, empty actually means 'finished'
 	   */
@@ -271,19 +283,23 @@ namespace cublog
 
 	  std::atomic_bool m_adding_finished;
 
-//	  /* bookkeeping for log entries currently in process of being applied, this
-//	   * mechanism guarantees ordering among entries with the same VPID;
-//	   */
-//	  vpid_set m_in_progress_vpids;
-//	  log_lsa_set m_in_progress_lsas;
-//	  mutable std::mutex m_in_progress_mutex;
-//	  /* signalled when the 'in progress' containers are empty
-//	   */
-//	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
+	  /* bookkeeping for log entries currently in process of being applied, this
+	   * mechanism guarantees ordering among entries with the same VPID;
+	   */
+	  /*
+	  vpid_set m_in_progress_vpids;
+	  log_lsa_set m_in_progress_lsas;
+	  mutable std::mutex m_in_progress_mutex;
+	  */
+	  /* signalled when the 'in progress' containers are empty
+	   */
+	  /*
+	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
+	  */
 
-//	  /* utility class to maintain a minimum log_lsa that is still
-//	   * to be processed (consumed); non-owning pointer, can be null
-//	   */
+	  /* utility class to maintain a minimum log_lsa that is still
+	   * to be processed (consumed); non-owning pointer, can be null
+	   */
 	  const bool m_monitor_minimum_log_lsa;
 	  minimum_log_lsa_monitor *m_minimum_log_lsa;
       };
