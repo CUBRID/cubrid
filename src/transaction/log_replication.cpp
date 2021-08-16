@@ -306,7 +306,7 @@ namespace cublog
       }
     BTID btid;
     log_unique_stats stats;
-    btree_rv_data_get_btid_and_stats (rcv, btid, stats);
+    btree_rv_data_unpack_btid_and_stats (rcv, btid, stats);
     VPID root_vpid = { btid.root_pageid, btid.vfid.volid };
 
     // Create a job or apply the change immediately

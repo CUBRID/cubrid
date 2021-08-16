@@ -16909,7 +16909,7 @@ btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
   log_unique_stats stats;
   BTID btid;
 
-  btree_rv_data_get_btid_and_stats (*recv, btid, stats);
+  btree_rv_data_unpack_btid_and_stats (*recv, btid, stats);
 
   if (logtb_tran_update_unique_stats (thread_p, &btid, stats.num_keys, stats.num_oids, stats.num_nulls, false)
       != NO_ERROR)
@@ -22324,7 +22324,7 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV
   log_unique_stats stats;
   BTID btid;
 
-  btree_rv_data_get_btid_and_stats (*recv, btid, stats);
+  btree_rv_data_unpack_btid_and_stats (*recv, btid, stats);
 
   /* Because this log record is logical, it will be processed even if the B-tree was deleted. If the B-tree was deleted
    * then skip update of unique statistics in global hash. */
@@ -22375,7 +22375,7 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV
   log_unique_stats stats;
   BTID btid;
 
-  btree_rv_data_get_btid_and_stats (*recv, btid, stats);
+  btree_rv_data_unpack_btid_and_stats (*recv, btid, stats);
 
   if (logtb_rv_update_global_unique_stats_by_abs (thread_p, &btid, stats.num_oids, stats.num_nulls, stats.num_keys)
       != NO_ERROR)
@@ -22397,21 +22397,57 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV
   return NO_ERROR;
 }
 
+/*
+ * btree_rv_data_unpack_btid_and_stats - unpack btree identifier and statistics
+ *
+ * NOTE: keep pack/upack order consistent (same as unique stats struct order)
+ */
 void
-btree_rv_data_get_btid_and_stats (const LOG_RCV & rcv, BTID & btid, log_unique_stats & stats)
+btree_rv_data_unpack_btid_and_stats (const LOG_RCV & rcv, BTID & btid, log_unique_stats & stats)
 {
   assert (rcv.length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
 
   const char *datap = rcv.data;
   OR_GET_BTID (datap, &btid);
   datap += OR_BTID_ALIGNED_SIZE;
-  stats.num_keys = OR_GET_INT (datap);
+  stats.num_nulls = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
   stats.num_oids = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
-  stats.num_nulls = OR_GET_INT (datap);
+  stats.num_keys = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
-  assert ((datap - rcv.data) == (size_t) rcv.length);
+  assert ((datap - rcv.data) == rcv.length);
+}
+
+/*
+ * btree_rv_data_pack_btid_and_stats - pack btree identifier and statistics
+ *
+ * NOTE: keep pack/upack order consistent (same as unique stats struct order)
+ */
+void
+btree_rv_data_pack_btid_and_stats (const BTID * btid, int nulls, int oids, int keys,
+				   char *data, size_t data_size, size_t & written_size)
+{
+  assert (data != nullptr);
+  assert (data_size >= ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE));
+
+  written_size = 0U;
+
+  char *datap = data;
+
+  OR_PUT_BTID (datap, btid);
+  datap += OR_BTID_ALIGNED_SIZE;
+
+  OR_PUT_INT (datap, nulls);
+  datap += OR_INT_SIZE;
+
+  OR_PUT_INT (datap, oids);
+  datap += OR_INT_SIZE;
+
+  OR_PUT_INT (datap, keys);
+  datap += OR_INT_SIZE;
+
+  written_size = datap - data;
 }
 
 /*
@@ -23665,8 +23701,9 @@ error:
  * args (in/out)	 : Arguments for internal function.
  */
 static int
-btree_record_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, RECDES * record,
-			      int after_key_offset, bool * stop, BTREE_PROCESS_OBJECT_FUNCTION * func, void *args)
+btree_record_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
+			      RECDES * record, int after_key_offset, bool * stop,
+			      BTREE_PROCESS_OBJECT_FUNCTION * func, void *args)
 {
   OR_BUF buffer;		/* Buffer used to process record data. */
   int error_code = NO_ERROR;	/* Error code. */
@@ -25718,8 +25755,8 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
  * args (in/out)   : BTREE_SCAN *
  */
 static int
-btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, char *object_ptr, OID * oid,
-			    OID * class_oid, BTREE_MVCC_INFO * mvcc_info, bool * stop, void *args)
+btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, char *object_ptr,
+			    OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info, bool * stop, void *args)
 {
   BTREE_SCAN *bts = (BTREE_SCAN *) args;
   BTREE_FIND_FK_OBJECT *find_fk_obj = NULL;
@@ -27602,8 +27639,8 @@ btree_key_insert_does_leaf_need_split (THREAD_ENTRY * thread_p, BTID_INT * btid_
  * leaf_record (in)    : Preallocated record descriptor used to read b-tree record.
  */
 static int
-btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf,
-					 bool * restart, BTREE_SEARCH_KEY_HELPER * search_key,
+btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+					 PAGE_PTR * leaf, bool * restart, BTREE_SEARCH_KEY_HELPER * search_key,
 					 BTREE_INSERT_HELPER * insert_helper, RECDES * leaf_record)
 {
   int error_code = NO_ERROR;	/* Error code. */
@@ -28073,9 +28110,9 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int
  */
 static int
 btree_key_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR leaf,
-				BTREE_SEARCH_KEY_HELPER * search_key, RECDES * leaf_record, LEAF_REC * leaf_record_info,
-				int offset_after_key, BTREE_INSERT_HELPER * insert_helper,
-				BTREE_OBJECT_INFO * first_object)
+				BTREE_SEARCH_KEY_HELPER * search_key, RECDES * leaf_record,
+				LEAF_REC * leaf_record_info, int offset_after_key,
+				BTREE_INSERT_HELPER * insert_helper, BTREE_OBJECT_INFO * first_object)
 {
   int error_code = NO_ERROR;
   int rv_redo_data_length = 0;
@@ -29555,8 +29592,8 @@ btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
 static int
 btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
 		       DB_VALUE * key, OR_BUF * buffered_key, int *unique, int op_type,
-		       btree_unique_stats * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo, const LOG_LSA * ref_lsa,
-		       BTREE_OBJECT_INFO * second_object_info, BTREE_OP_PURPOSE purpose)
+		       btree_unique_stats * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo,
+		       const LOG_LSA * ref_lsa, BTREE_OBJECT_INFO * second_object_info, BTREE_OP_PURPOSE purpose)
 {
   /* Structure used by internal functions. */
   BTREE_DELETE_HELPER delete_helper;
@@ -32141,10 +32178,11 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_
  * rv_redo_data (out)	 : If not NULL, outputs redo data recovery for leaf node changes.
  */
 static int
-btree_remove_delete_mvccid_unique_internal (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_DELETE_HELPER * helper,
-					    PAGE_PTR leaf_page, RECDES * leaf_record, BTREE_NODE_TYPE node_type,
-					    PAGE_PTR overflow_page, RECDES * overflow_record, int offset_to_object,
-					    char **rv_undo_data, char **rv_redo_data)
+btree_remove_delete_mvccid_unique_internal (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
+					    BTREE_DELETE_HELPER * helper, PAGE_PTR leaf_page, RECDES * leaf_record,
+					    BTREE_NODE_TYPE node_type, PAGE_PTR overflow_page,
+					    RECDES * overflow_record, int offset_to_object, char **rv_undo_data,
+					    char **rv_redo_data)
 {
   int error_code = NO_ERROR;
   BTREE_OBJECT_INFO first_object = BTREE_OBJECT_INFO_INITIALIZER;
@@ -32367,8 +32405,9 @@ btree_key_remove_delete_mvccid_non_unique (THREAD_ENTRY * thread_p, BTID_INT * b
  * replacing_object (in)	  : Object info for replacement.
  */
 static int
-btree_overflow_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_DELETE_HELPER * delete_helper,
-				      PAGE_PTR overflow_page, RECDES * overflow_record, int *offset_to_replaced_object,
+btree_overflow_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
+				      BTREE_DELETE_HELPER * delete_helper, PAGE_PTR overflow_page,
+				      RECDES * overflow_record, int *offset_to_replaced_object,
 				      BTREE_OBJECT_INFO * replacing_object)
 {
   /* Redo recovery data. */
