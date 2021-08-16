@@ -27,4 +27,10 @@ typedef enum
   SERVER_TYPE_ANY,
 } SERVER_TYPE;
 
+enum class server_type_config
+{
+  TRANSACTION,
+  PAGE,
+  SINGLE_NODE,
+};
 #endif // _SERVER_TYPE_ENUM_H_

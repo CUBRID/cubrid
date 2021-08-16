@@ -28,6 +28,9 @@
 
 #include <string>
 
+SERVER_TYPE get_value_from_config (server_type_config parameter_value);
+void setup_tran_server_params_on_single_node_config ();
+
 static SERVER_TYPE g_server_type = SERVER_TYPE_UNKNOWN;
 #if !defined(NDEBUG)
 static bool g_server_type_initialized = false;
@@ -36,6 +39,21 @@ static bool g_server_type_initialized = false;
 SERVER_TYPE get_server_type ()
 {
   return g_server_type;
+}
+
+SERVER_TYPE get_value_from_config (server_type_config parameter_value)
+{
+  switch (parameter_value)
+    {
+    case server_type_config::TRANSACTION:
+      return SERVER_TYPE_TRANSACTION;
+      break;
+    case server_type_config::PAGE:
+      return SERVER_TYPE_PAGE;
+      break;
+    default:
+      assert (false);
+    }
 }
 
 void set_server_type (SERVER_TYPE type)
@@ -57,14 +75,23 @@ void set_server_type (SERVER_TYPE type)
 int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
+  server_type_config parameter_value = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
   if (g_server_type == SERVER_TYPE_UNKNOWN)
     {
-      g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
-      //if no parameter value is provided use transaction as the default type
-      if (g_server_type == SERVER_TYPE_UNKNOWN)
+      if (parameter_value == server_type_config::SINGLE_NODE)
 	{
-	  g_server_type = SERVER_TYPE_TRANSACTION;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1,
+		  "Single node server must have type specified as argument");
+	  return ER_INVALID_SERVER_OPTION;
 	}
+
+      //if no parameter value is provided use transaction as the default type
+      g_server_type = get_value_from_config (parameter_value);
+    }
+
+  if (g_server_type == SERVER_TYPE_TRANSACTION || parameter_value == server_type_config::SINGLE_NODE)
+    {
+      setup_tran_server_params_on_single_node_config ();
     }
 #if !defined(NDEBUG)
   g_server_type_initialized = true;
@@ -93,13 +120,24 @@ int init_server_type (const char *db_name)
   return er_code;
 }
 
+void setup_tran_server_params_on_single_node_config ()
+{
+  char *page_hosts_new_value;
+  constexpr size_t PAGE_HOSTS_BUFSIZE = 32;
+  page_hosts_new_value = (char *) malloc (PAGE_HOSTS_BUFSIZE); // free is called by sysprm_final()
+
+  sprintf (page_hosts_new_value, "localhost:%d", prm_get_master_port_id ());
+  prm_set_string_value (PRM_ID_PAGE_SERVER_HOSTS, page_hosts_new_value);
+  prm_set_bool_value (PRM_ID_REMOTE_STORAGE, true);
+}
+
 void finalize_server_type ()
 {
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
       ats_Gl.disconnect_page_server ();
     }
-  else if (get_server_type() == SERVER_TYPE_PAGE)
+  else if (get_server_type () == SERVER_TYPE_PAGE)
     {
       ps_Gl.disconnect_active_tran_server ();
     }

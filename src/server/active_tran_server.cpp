@@ -216,9 +216,6 @@ active_tran_server::init_page_server_hosts (const char *db_name)
     }
   er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
 		m_uses_remote_storage ? "remote" : "local");
-
-  // failed to connect to any page server
-  assert (valid_connection_count > 0 || !m_uses_remote_storage);
   return exit_code;
 }
 
@@ -294,7 +291,7 @@ active_tran_server::disconnect_page_server ()
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
   er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
 
-  for (size_t i = 0; i < m_page_server_conn_vec.size(); i++)
+  for (size_t i = 0; i < m_page_server_conn_vec.size (); i++)
     {
       er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
 		    m_page_server_conn_vec[i]->get_underlying_channel_id ());

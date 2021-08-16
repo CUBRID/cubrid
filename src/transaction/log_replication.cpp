@@ -102,7 +102,7 @@ namespace cublog
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
-    , m_rcv_redo_perf_stat { false }
+    , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }
   {
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
@@ -122,7 +122,7 @@ namespace cublog
 
 	const bool force_each_log_page_fetch = true;
 	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
-        const int recovery_reusable_jobs_count = prm_get_integer_value(PRM_ID_RECOVERY_REUSABLE_JOBS_COUNT);
+	const int recovery_reusable_jobs_count = prm_get_integer_value (PRM_ID_RECOVERY_REUSABLE_JOBS_COUNT);
 	m_reusable_jobs->initialize (recovery_reusable_jobs_count, replication_parallel,
 				     cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT,
 				     nullptr, force_each_log_page_fetch);
@@ -307,7 +307,7 @@ namespace cublog
       }
     BTID btid;
     log_unique_stats stats;
-    btree_rv_data_get_btid_and_stats (rcv, btid, stats);
+    btree_rv_data_unpack_btid_and_stats (rcv, btid, stats);
     VPID root_vpid = { btid.root_pageid, btid.vfid.volid };
 
     // Create a job or apply the change immediately
@@ -349,7 +349,7 @@ namespace cublog
     else
       {
 	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
-	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, *m_reusable_jobs.get (), true, m_rcv_redo_perf_stat);
+	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, *m_reusable_jobs.get (), true, m_perf_stat_idle);
       }
   }
 

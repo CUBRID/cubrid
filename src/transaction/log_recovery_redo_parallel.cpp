@@ -653,12 +653,19 @@ namespace cublog
 
       ~redo_task () override;
 
-      void execute (context_type &context);
+      void execute (context_type &context) override;
+      void retire () override;
+
+      void log_perf_stats () const;
+      void accumulate_perf_stats (cubperf::stat_value *a_output_stats, std::size_t a_output_stats_size) const;
 
     private:
       const std::size_t m_task_idx;
       redo_parallel::task_active_state_bookkeeping &m_task_state_bookkeeping;
       redo_parallel::redo_job_queue &m_queue;
+
+      cubperf::statset_definition m_perf_stats_definition;
+      perf_stats m_perf_stats;
 
       log_reader m_log_pgptr_reader { LOG_CS_SAFE_READER };
       LOG_ZIP m_undo_unzip_support;
@@ -677,6 +684,8 @@ namespace cublog
     : m_task_idx { a_task_idx }
     , m_task_state_bookkeeping (task_state_bookkeeping)
     , m_queue (a_queue)
+    , m_perf_stats_definition { perf_stats_async_definition_init_list }
+    , m_perf_stats { perf_stats_is_active_for_async (), m_perf_stats_definition }
   {
     // important to set this at this moment and not when execution begins
     // to circumvent race conditions where all tasks haven't yet started work
@@ -724,6 +733,7 @@ namespace cublog
 
 		// expecting more data, sleep and check again
 		std::this_thread::sleep_for (std::chrono::milliseconds (WAIT_AND_CHECK_MILLIS));
+		m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_SLEEP);
 	      }
 	    else
 	      {
@@ -750,6 +760,24 @@ namespace cublog
     delete jobs_vec;
 
     m_task_state_bookkeeping.set_inactive ();
+  }
+
+  void redo_parallel::redo_task::retire ()
+  {
+    // avoid self destruct, will be deleted by owning class
+  }
+
+  void redo_parallel::redo_task::log_perf_stats () const
+  {
+    std::stringstream ss;
+    ss << "Log recovery redo worker thread " << m_task_idx << " perf stats";
+    m_perf_stats.log (ss.str ().c_str ());
+  }
+
+  void redo_parallel::redo_task::accumulate_perf_stats (
+	  cubperf::stat_value *a_output_stats, std::size_t a_output_stats_size) const
+  {
+    m_perf_stats.accumulate (a_output_stats, a_output_stats_size);
   }
 
   /*********************************************************************
@@ -851,10 +879,41 @@ namespace cublog
 
     for (unsigned task_idx = 0; task_idx < a_task_count; ++task_idx)
       {
-	// NOTE: task ownership goes to the worker pool
-	auto task = new redo_task (task_idx, m_task_state_bookkeeping, m_job_queue);
-	m_worker_pool->execute (task);
+	auto task = std::make_unique<redo_parallel::redo_task> (task_idx, m_task_state_bookkeeping, m_job_queue);
+	m_worker_pool->execute (task.get ());
+	m_redo_tasks.push_back (std::move (task));
       }
+  }
+
+  void
+  redo_parallel::log_perf_stats () const
+  {
+    const cubperf::statset_definition definition
+    {
+      perf_stats_async_definition_init_list
+    };
+
+    std::vector<cubperf::stat_value> accum_perf_stat_results;
+    accum_perf_stat_results.resize (definition.get_value_count ());
+
+    for (auto &redo_task: m_redo_tasks)
+      {
+	redo_task->accumulate_perf_stats (accum_perf_stat_results.data (), accum_perf_stat_results.size ());
+	redo_task->log_perf_stats ();
+      }
+
+    // average
+    const std::size_t task_count = m_redo_tasks.size ();
+    const std::size_t value_count = accum_perf_stat_results.size ();
+    std::vector<cubperf::stat_value> avg_perf_stat_results;
+    avg_perf_stat_results.resize (value_count, 0.0);
+    for (std::size_t idx = 0; idx < value_count; ++idx)
+      {
+	avg_perf_stat_results[idx] = accum_perf_stat_results[idx] / task_count;
+      }
+
+    log_perf_stats_values_with_definition ("Log recovery redo worker threads averaged perf stats",
+					   definition, avg_perf_stat_results.data (), value_count);
   }
 
   /*********************************************************************
@@ -890,7 +949,6 @@ namespace cublog
      * in both cases, it does include the part that effectively calls the redo function, so, for accurate
      * evaluation the part that effectively executes the redo function must be accounted for
      */
-    perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_ASYNC };
 
     const auto &rcv_lsa = get_log_lsa ();
     const int err_fetch = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, m_log_reader_page_fetch_mode);
@@ -1047,7 +1105,7 @@ namespace cublog
     m_jobs_arr = nullptr;
   }
 
-  redo_job_impl *reusable_jobs_stack::blocking_pop (log_recovery_redo_perf_stat &a_rcv_redo_perf_stat)
+  redo_job_impl *reusable_jobs_stack::blocking_pop (perf_stats &a_rcv_redo_perf_stat)
   {
     if (!m_pop_jobs.empty ())
       {
