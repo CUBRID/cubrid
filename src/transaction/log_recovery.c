@@ -3246,7 +3246,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
   // statistics data initialize
   //
-  log_recovery_redo_perf_stat rcv_redo_perf_stat;
+  cubperf::statset_definition rcv_redo_perf_stat_definition (cublog::perf_stats_main_definition_init_list);
+  cublog::perf_stats rcv_redo_perf_stat (cublog::perf_stats_is_active_for_main (), rcv_redo_perf_stat_definition);
 
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.
@@ -3375,7 +3376,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	  /* both the page id and the offsset might have changed; page id is changed at the end of the loop */
 	  log_pgptr_reader.set_lsa_and_fetch_page (lsa);
-	  rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_FETCH_PAGE);
+	  rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_FETCH_PAGE);
 
 	  {
 	    /* Pointer to log record */
@@ -3452,7 +3453,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		/* Save last MVCC operation LOG_LSA. */
 		LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
 
-		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
                 // *INDENT-OFF*
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_UNDOREDO>
 		  (thread_p, log_pgptr_reader, log_rec_mvcc_undoredo, rcv_lsa, end_redo_lsa, log_rtype,
@@ -3476,7 +3477,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		const LOG_REC_UNDOREDO log_rec_undoredo
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_UNDOREDO> ();
 
-	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+	        rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_UNDOREDO>
 		  (thread_p, log_pgptr_reader, log_rec_undoredo, rcv_lsa, end_redo_lsa, log_rtype,
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
@@ -3511,7 +3512,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		/* NOTE: do not update rcv_lsa on the global bookkeeping that is
 		 * relevant for vacuum as vacuum only processes undo data */
 
-		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
                 // *INDENT-OFF*
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_REDO>
 		  (thread_p, log_pgptr_reader, log_rec_mvcc_redo, rcv_lsa, end_redo_lsa, log_rtype,
@@ -3539,7 +3540,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 		  }
 
-	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+	        rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_REDO>
 		  (thread_p, log_pgptr_reader, log_rec_redo, rcv_lsa, end_redo_lsa, log_rtype,
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
@@ -3581,7 +3582,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		if (!log_recovery_needs_skip_logical_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
 		  {
-		    rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+		    rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
 		    log_rv_redo_record (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &rcv,
 					&rcv_lsa, 0, nullptr, *redo_unzip_ptr);
 		    /* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
@@ -3603,7 +3604,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		const LOG_REC_RUN_POSTPONE log_rec_run_posp
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_RUN_POSTPONE> ();
 
-	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+	        rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_RUN_POSTPONE>
 		  (thread_p, log_pgptr_reader, log_rec_run_posp, rcv_lsa, end_redo_lsa, log_rtype,
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
@@ -3624,7 +3625,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		const LOG_REC_COMPENSATE log_rec_compensate
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_COMPENSATE> ();
 
-	        rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+	        rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_COMPENSATE>
 		  (thread_p, log_pgptr_reader, log_rec_compensate, rcv_lsa, end_redo_lsa, log_rtype,
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, reusable_jobs,
@@ -3790,9 +3791,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
 	      {
-		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
+		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
 		assert (logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX);
-		rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_COMMIT_ABORT);
+		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_COMMIT_ABORT);
 	      }
 	      break;
 
@@ -3903,7 +3904,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
       {
 	parallel_recovery_redo->set_adding_finished ();
 	parallel_recovery_redo->wait_for_termination_and_stop_execution ();
-	rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_WAIT_FOR_PARALLEL);
+	rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_WAIT_FOR_PARALLEL);
       }
     const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
     const auto time_end_async = std::chrono::system_clock::now ();
@@ -3940,11 +3941,17 @@ exit:
   log_Gl_recovery_redo_consistency_check.cleanup ();
 #endif
 
-  rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_FINALIZE);
+  rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_FINALIZE);
 
   // statistics data collect & report
   //
-  rcv_redo_perf_stat.log ();
+  rcv_redo_perf_stat.log ("Log recovery redo main thread perf stats");
+#if defined(SERVER_MODE)
+  if (parallel_recovery_redo != nullptr)
+    {
+      parallel_recovery_redo->log_perf_stats ();
+    }
+#endif
 
   return;
 }
