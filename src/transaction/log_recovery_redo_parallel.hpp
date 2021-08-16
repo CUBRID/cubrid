@@ -143,7 +143,6 @@ namespace cublog
       /* wait until all data has been consumed internally; blocking call
        */
       void wait_for_idle ();
-      // TODO: rename to: wait_for_termination because that's the only context in which it is used
 
       /* check if all fed data has ben consumed internally; non-blocking call
        * NOTE: the nature of this function is 'volatile' - ie: what might be
@@ -188,7 +187,7 @@ namespace cublog
 	  redo_job_queue &operator= (redo_job_queue const &) = delete;
 	  redo_job_queue &operator= (redo_job_queue &&) = delete;
 
-	  void push_job (redo_job_base *job);
+	  void push_job (redo_parallel::redo_job_base *a_job);
 
 	  /* to be called after all known entries have been added
 	   * part of a mechanism to signal to the consumers, together with
@@ -217,7 +216,6 @@ namespace cublog
 	   * true at the moment the function is called is not necessarily true a moment
 	   * later; it can be useful only if the caller is aware of the execution context
 	   */
-	  // TODO: remove function, only used in unit tests
 	  bool is_idle () const;
 
 	  void set_empty_at (std::size_t a_index);
@@ -438,6 +436,7 @@ namespace cublog
       const log_lsa *const m_end_redo_lsa;
       const log_reader::fetch_mode m_log_reader_page_fetch_mode;
       reusable_jobs_stack *const m_reusable_job_stack;
+
       LOG_RECTYPE m_log_rtype;
   };
 
@@ -472,29 +471,26 @@ namespace cublog
       std::size_t m_push_task_count;
       std::size_t m_flush_push_at_count;
 
+      /* support array for initializing jobs in-place
+       */
       unsigned char *m_jobs_arr;
 
-      /* pop is done, unsynchronized, from this stack
-       * if empty, it is re-filled, synchronized, from the push stack
+      /* pop is done, unsynchronized, from this container
+       * if empty, it is re-filled, synchronized, from the push container
        */
       job_container_t m_pop_jobs;
-      /* synchronizes access from towards the push side, moving jobs back to
-       * the pop side
-       */
 
-      /*
+      /* from time to time, the worker tasks (threads) also push data into this
+       * container using the synchronization primitives below
        */
       job_container_t m_push_jobs;
       std::mutex m_push_mtx;
       std::condition_variable m_push_jobs_available_cv;
 
-      /* each task (thread) pushes, unsynched on its own container from this vector
-       * at regular intervals, objects are further moved, synchronized, to the pop side
+      /* each worker task (thread) pushes, unsynched on its own container from this vector
+       * at configurable intervals, objects are further moved, synchronized, to the push container
        */
       std::vector<job_container_t> m_per_task_push_jobs_vec;
-      /* used to wait for jobs to be available on the push stack
-       * in case no jobs are found on the pop stack
-       */
   };
 
 #else /* SERVER_MODE */

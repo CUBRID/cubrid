@@ -715,7 +715,7 @@ namespace cublog
 		    job->retire (m_task_idx);
 		  }
 
-		//m_queue.notify_job_deque_finished (jobs);
+		m_queue.notify_job_deque_finished (*jobs_vec);
 
 		// pointers still present in the vector are either:
 		//  - already passed on to the reusable job container
@@ -957,23 +957,25 @@ namespace cublog
     assert (m_jobs_arr == nullptr);
 
     assert (m_pop_jobs.empty ());
+    assert (m_push_jobs.empty ());
 
     assert (m_per_task_push_jobs_vec.empty ());
 
     assert (a_job_count > 0);
     assert (a_push_task_count > 0);
+    assert (a_flush_push_at_count > 0);
 
     m_job_count = a_job_count;
     m_push_task_count = a_push_task_count;
     m_flush_push_at_count = a_flush_push_at_count;
 
-    m_jobs_arr = static_cast<unsigned char*> (malloc(sizeof (redo_job_impl) * m_job_count));
+    m_jobs_arr = static_cast<unsigned char *> (malloc (sizeof (redo_job_impl) * m_job_count));
 
     m_pop_jobs.reserve (m_job_count);
     for (std::size_t idx = 0; idx < m_job_count; ++idx)
       {
-        redo_job_impl *const job = new (m_jobs_arr + sizeof(redo_job_impl) * idx)
-            redo_job_impl (a_end_redo_lsa, force_each_page_fetch, this);
+	redo_job_impl *const job = new (m_jobs_arr + sizeof (redo_job_impl) * idx)
+	redo_job_impl (a_end_redo_lsa, force_each_page_fetch, this);
 	m_pop_jobs.push_back (job);
       }
 
@@ -989,7 +991,7 @@ namespace cublog
 
   reusable_jobs_stack::~reusable_jobs_stack ()
   {
-    // consistency check
+    // consistency check that all job instances have been 'retuned to the source'
     assert ([this] ()
     {
       const std::size_t pop_size = m_pop_jobs.size ();
@@ -1003,6 +1005,23 @@ namespace cublog
       return true;
     }
     ());
+
+    // formally invoke dtor  on all in-place constructed objects
+    for (auto &job : m_pop_jobs)
+      {
+	job->~redo_job_impl ();
+      }
+    for (auto &job : m_push_jobs)
+      {
+	job->~redo_job_impl ();
+      }
+    for (auto &push_job_container: m_per_task_push_jobs_vec)
+      {
+	for (auto &job : push_job_container)
+	  {
+	    job->~redo_job_impl ();
+	  }
+      }
 
     free (m_jobs_arr);
     m_jobs_arr = nullptr;
@@ -1053,6 +1072,5 @@ namespace cublog
 	push_jobs.clear ();
 	m_push_jobs_available_cv.notify_one ();
       }
-
   }
 }
