@@ -569,7 +569,6 @@ PSTAT_METADATA pstat_Metadata[] = {
   /* Peek time in msec taken for the log to be transferred, processed an applied on the page server */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REDO_REPL_DELAY, "Redo_replication_delay_msec"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_REDO_REPL_LOG_REDO_SYNC, "Redo_replication_log_redo_sync"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_ASYNC, "Log_redo_async"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_FUNC_EXEC, "Log_redo_func_exec"),
 
   /* Array type statistics */
