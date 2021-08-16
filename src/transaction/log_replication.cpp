@@ -340,7 +340,6 @@ namespace cublog
       }
     else
       {
-
 	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_redo_context, record_info,
 	    m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
       }

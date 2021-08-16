@@ -1461,7 +1461,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 			redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_2PC_PARTICP_ACK));
 			/* A 2PC participant ack */
 			// *INDENT-OFF*
-			const LOG_REC_2PC_PARTICP_ACK *received_ack = redo_context.m_reader.reinterpret_cptr<LOG_REC_2PC_PARTICP_ACK> ();
+			const LOG_REC_2PC_PARTICP_ACK *received_ack =
+			  redo_context.m_reader.reinterpret_cptr<LOG_REC_2PC_PARTICP_ACK> ();
 			// *INDENT-ON*
 
 			tdes->coord->ack_received[received_ack->particp_index] = true;
