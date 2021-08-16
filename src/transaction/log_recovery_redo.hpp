@@ -451,8 +451,7 @@ int log_rv_get_log_rec_redo_data (THREAD_ENTRY *thread_p, log_rv_redo_context &r
 template <>
 inline int
 log_rv_get_log_rec_redo_data<LOG_REC_UNDOREDO> (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
-    const log_rv_redo_rec_info<LOG_REC_UNDOREDO> &record_info,
-    log_rcv &rcv)
+    const log_rv_redo_rec_info<LOG_REC_UNDOREDO> &record_info, log_rcv &rcv)
 {
   /* current log reader position is aligned at the undo data, redo data follows (aligned) the undo data
    */
@@ -475,8 +474,8 @@ log_rv_get_log_rec_redo_data<LOG_REC_UNDOREDO> (THREAD_ENTRY *thread_p, log_rv_r
 	}
       redo_context.m_reader.align ();
       return log_rv_get_unzip_and_diff_redo_log_data (thread_p, redo_context.m_reader, &rcv,
-	     redo_context.m_undo_zip.data_length,
-	     redo_context.m_undo_zip.log_data, redo_context.m_redo_zip);
+	     redo_context.m_undo_zip.data_length, redo_context.m_undo_zip.log_data,
+	     redo_context.m_redo_zip);
     }
   else
     {
@@ -499,19 +498,17 @@ log_rv_get_log_rec_redo_data<LOG_REC_UNDOREDO> (THREAD_ENTRY *thread_p, log_rv_r
 template <>
 inline int
 log_rv_get_log_rec_redo_data<LOG_REC_MVCC_UNDOREDO> (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
-    const log_rv_redo_rec_info<LOG_REC_MVCC_UNDOREDO> &record_info,
-    log_rcv &rcv)
+    const log_rv_redo_rec_info<LOG_REC_MVCC_UNDOREDO> &record_info, log_rcv &rcv)
 {
-  log_rv_redo_rec_info<LOG_REC_UNDOREDO> convert_record_info =
-  { record_info.m_start_lsa, record_info.m_type, record_info.m_logrec.undoredo };
+  log_rv_redo_rec_info<LOG_REC_UNDOREDO> convert_record_info (record_info.m_start_lsa, record_info.m_type,
+      record_info.m_logrec.undoredo);
   return log_rv_get_log_rec_redo_data<LOG_REC_UNDOREDO> (thread_p,  redo_context, convert_record_info, rcv);
 }
 
 template <>
 inline int
 log_rv_get_log_rec_redo_data<LOG_REC_MVCC_REDO> (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
-    const log_rv_redo_rec_info<LOG_REC_MVCC_REDO> &log_rec,
-    log_rcv &rcv)
+    const log_rv_redo_rec_info<LOG_REC_MVCC_REDO> &log_rec, log_rcv &rcv)
 {
   return log_rv_get_unzip_and_diff_redo_log_data (thread_p, redo_context.m_reader, &rcv, 0, nullptr,
 	 redo_context.m_redo_zip);
@@ -529,8 +526,7 @@ log_rv_get_log_rec_redo_data<LOG_REC_REDO> (THREAD_ENTRY *thread_p, log_rv_redo_
 template <>
 inline int
 log_rv_get_log_rec_redo_data<LOG_REC_RUN_POSTPONE> (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
-    const log_rv_redo_rec_info<LOG_REC_RUN_POSTPONE> &log_rec,
-    log_rcv &rcv)
+    const log_rv_redo_rec_info<LOG_REC_RUN_POSTPONE> &log_rec, log_rcv &rcv)
 {
   return log_rv_get_unzip_and_diff_redo_log_data (thread_p, redo_context.m_reader, &rcv, 0, nullptr,
 	 redo_context.m_redo_zip);
@@ -539,11 +535,10 @@ log_rv_get_log_rec_redo_data<LOG_REC_RUN_POSTPONE> (THREAD_ENTRY *thread_p, log_
 template <>
 inline int
 log_rv_get_log_rec_redo_data<LOG_REC_COMPENSATE> (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
-    const log_rv_redo_rec_info<LOG_REC_COMPENSATE> &log_rec,
-    log_rcv &rcv)
+    const log_rv_redo_rec_info<LOG_REC_COMPENSATE> &log_rec, log_rcv &rcv)
 {
   return log_rv_get_unzip_and_diff_redo_log_data (thread_p, redo_context.m_reader, &rcv, 0, nullptr,
-	 redo_context.m_undo_zip);
+	 redo_context.m_redo_zip);
 }
 
 #if !defined(NDEBUG)

@@ -494,8 +494,6 @@ namespace cublog
       redo_task &operator = (const redo_task &) = delete;
       redo_task &operator = (redo_task &&) = delete;
 
-      ~redo_task () override;
-
       void execute (context_type &context) override;
       void retire () override;
 
@@ -510,9 +508,6 @@ namespace cublog
       cubperf::statset_definition m_perf_stats_definition;
       perf_stats m_perf_stats;
 
-      log_reader m_log_pgptr_reader { LOG_CS_SAFE_READER };
-      LOG_ZIP m_undo_unzip_support;
-      LOG_ZIP m_redo_unzip_support;
       log_rv_redo_context m_redo_context;
   };
 
@@ -535,15 +530,6 @@ namespace cublog
     // to circumvent race conditions where all tasks haven't yet started work
     // while already bookkeeping is being checked
     m_task_state_bookkeeping.set_active ();
-
-    log_zip_realloc_if_needed (m_undo_unzip_support, LOGAREA_SIZE);
-    log_zip_realloc_if_needed (m_redo_unzip_support, LOGAREA_SIZE);
-  }
-
-  redo_parallel::redo_task::~redo_task ()
-  {
-    log_zip_free_data (m_undo_unzip_support);
-    log_zip_free_data (m_redo_unzip_support);
   }
 
   void
@@ -732,7 +718,7 @@ namespace cublog
     const std::size_t task_count = m_redo_tasks.size ();
     const std::size_t value_count = accum_perf_stat_results.size ();
     std::vector<cubperf::stat_value> avg_perf_stat_results;
-    avg_perf_stat_results.resize (value_count, 0.0);
+    avg_perf_stat_results.resize (value_count, 0);
     for (std::size_t idx = 0; idx < value_count; ++idx)
       {
 	avg_perf_stat_results[idx] = accum_perf_stat_results[idx] / task_count;
@@ -818,7 +804,8 @@ namespace cublog
   redo_job_impl::read_record_and_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context)
   {
     redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    log_rv_redo_rec_info<T> record_info { get_log_lsa (), m_log_rtype, redo_context.m_reader.reinterpret_copy_and_add_align<T> () };
+    log_rv_redo_rec_info<T> record_info (get_log_lsa (), m_log_rtype,
+					 redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
 
     log_rv_redo_record_sync<T> (thread_p, redo_context, record_info, get_vpid ());
   }
@@ -828,7 +815,6 @@ namespace cublog
    *********************************************************************/
 
   reusable_jobs_stack::reusable_jobs_stack ()
-    : m_flush_push_at_count { 0 }
   {
   }
 
