@@ -89,7 +89,7 @@ int init_server_type (const char *db_name)
       g_server_type = get_value_from_config (parameter_value);
     }
 
-  if (g_server_type == SERVER_TYPE_TRANSACTION || parameter_value == server_type_config::SINGLE_NODE)
+  if (g_server_type == SERVER_TYPE_TRANSACTION && parameter_value == server_type_config::SINGLE_NODE)
     {
       setup_tran_server_params_on_single_node_config ();
     }
@@ -137,7 +137,7 @@ void finalize_server_type ()
     {
       ats_Gl.disconnect_page_server ();
     }
-  else if (get_server_type() == SERVER_TYPE_PAGE)
+  else if (get_server_type () == SERVER_TYPE_PAGE)
     {
       ps_Gl.disconnect_active_tran_server ();
     }
