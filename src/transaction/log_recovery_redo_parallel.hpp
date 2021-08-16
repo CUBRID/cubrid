@@ -153,6 +153,8 @@ namespace cublog
        */
       void wait_for_termination_and_stop_execution ();
 
+      void log_perf_stats () const;
+
     private:
       void do_init_worker_pool (std::size_t a_task_count);
       void do_init_tasks (std::size_t a_task_count);
@@ -306,6 +308,7 @@ namespace cublog
       task_active_state_bookkeeping m_task_state_bookkeeping;
 
       cubthread::entry_workpool *m_worker_pool;
+      std::vector<std::unique_ptr<redo_task>> m_redo_tasks;
 
       redo_job_queue m_job_queue;
 
@@ -499,7 +502,7 @@ void
 log_rv_redo_record_sync_or_dispatch_async (
 	THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info,
 	std::unique_ptr<cublog::redo_parallel> &parallel_recovery_redo,
-	cublog::reusable_jobs_stack &a_reusable_jobs, log_recovery_redo_perf_stat &a_rcv_redo_perf_stat)
+	cublog::reusable_jobs_stack &a_reusable_jobs, cublog::perf_stats &a_rcv_redo_perf_stat)
 {
   const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (record_info.m_logrec);
   // at this point, vpid can either be valid or not
@@ -507,7 +510,7 @@ log_rv_redo_record_sync_or_dispatch_async (
 #if defined (SERVER_MODE)
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (record_info.m_logrec);
   const bool need_sync_redo = log_rv_need_sync_redo (rcv_vpid, log_data.rcvindex);
-  a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_PREP);
+  a_rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_REDO_OR_PUSH_PREP);
 
   // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
   // log redo asynchronously, or invoke synchronously
@@ -515,20 +518,20 @@ log_rv_redo_record_sync_or_dispatch_async (
     {
       // invoke sync
       log_rv_redo_record_sync<T> (thread_p, redo_context, record_info, rcv_vpid);
-      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_SYNC);
+      a_rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_REDO_OR_PUSH_DO_SYNC);
     }
   else
     {
       // dispatch async
       cublog::redo_job_impl *const job = a_reusable_jobs.blocking_pop ();
       assert (job != nullptr);
-      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE);
+      a_rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE);
 
       job->set_record_info (rcv_vpid, record_info.m_start_lsa, record_info.m_type);
       // it is the callee's responsibility to return the pointer back to the reusable
       // job stack after having processed it
       parallel_recovery_redo->add (job);
-      a_rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
+      a_rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
     }
 #else // !SERVER_MODE = SA_MODE
   log_rv_redo_record_sync<T> (thread_p, redo_context, record_info, rcv_vpid);

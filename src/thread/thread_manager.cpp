@@ -657,3 +657,8 @@ namespace cubthread
   }
 
 } // namespace cubthread
+
+void thread_initialize_manager (THREAD_ENTRY *thread_p)
+{
+  cubthread::initialize (thread_p);
+}

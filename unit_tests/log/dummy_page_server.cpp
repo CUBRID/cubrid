@@ -32,6 +32,7 @@ namespace cublog
 
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_perfmon_redo_sync{ PSTAT_REDO_REPL_LOG_REDO_SYNC }
+    , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }
   {
   }
 

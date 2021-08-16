@@ -100,7 +100,7 @@ namespace cublog
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
-    , m_rcv_redo_perf_stat { false }
+    , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }
   {
     log_zip_realloc_if_needed (m_redo_context.m_undo_zip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_context.m_redo_zip, LOGAREA_SIZE);
@@ -298,7 +298,7 @@ namespace cublog
       }
     BTID btid;
     log_unique_stats stats;
-    btree_rv_data_get_btid_and_stats (rcv, btid, stats);
+    btree_rv_data_unpack_btid_and_stats (rcv, btid, stats);
     VPID root_vpid = { btid.root_pageid, btid.vfid.volid };
 
     // Create a job or apply the change immediately
@@ -342,8 +342,7 @@ namespace cublog
       {
 
 	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_redo_context, record_info,
-	    m_parallel_replication_redo, *m_reusable_jobs.get (),
-	    m_rcv_redo_perf_stat);
+	    m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
       }
   }
 
