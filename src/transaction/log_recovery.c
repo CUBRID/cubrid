@@ -76,6 +76,7 @@ static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * 
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
 static void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
 static TRANID log_rv_get_min_trantable_tranid ();
+static void log_rv_init_redo_context (const log_recovery_context & context, log_rv_redo_context & redo_context);
 
 /*
  * CRASH RECOVERY PROCESS
@@ -959,6 +960,15 @@ log_rv_get_min_trantable_tranid ()
   return min_tranid;
 }
 
+void
+log_rv_init_redo_context (const log_recovery_context & context, log_rv_redo_context & redo_context)
+{
+  redo_context.m_end_redo_lsa = context.get_end_redo_lsa ();
+  redo_context.m_reader_fetch_page_mode = log_reader::fetch_mode::NORMAL;
+  log_zip_realloc_if_needed (redo_context.m_redo_zip, LOGAREA_SIZE);
+  log_zip_realloc_if_needed (redo_context.m_undo_zip, LOGAREA_SIZE);
+}
+
 /*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
  *
@@ -992,17 +1002,12 @@ static void
 log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
+
   log_rv_redo_context redo_context;
-  redo_context.m_end_redo_lsa = context.get_end_redo_lsa ();
-  redo_context.m_reader_fetch_page_mode = log_reader::fetch_mode::NORMAL;
-  log_zip_realloc_if_needed (redo_context.m_redo_zip, LOGAREA_SIZE);
-  log_zip_realloc_if_needed (redo_context.m_undo_zip, LOGAREA_SIZE);
+  log_rv_init_redo_context (context, redo_context);
 
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
-  LOG_ZIP *undo_unzip_ptr = NULL;
-  LOG_ZIP *redo_unzip_ptr = NULL;
-  bool is_mvcc_op = false;
   const TRANID min_trantable_tranid = log_rv_get_min_trantable_tranid ();
 
   /* depending on compilation mode and on a system parameter, initialize the
@@ -1289,7 +1294,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		  {
 		    rcv_redo_perf_stat.time_and_increment (PERF_STAT_ID_READ_LOG);
 		    log_rv_redo_record (thread_p, redo_context.m_reader, RV_fun[rcvindex].redofun, &rcv,
-					&rcv_lsa, 0, nullptr, *redo_unzip_ptr);
+					&rcv_lsa, 0, nullptr, redo_context.m_redo_zip);
 		    /* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
 		     * will be reallocated downstream if needed */
 		  }
@@ -1606,9 +1611,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    }
 	}
     }
-
-  log_zip_free (undo_unzip_ptr);
-  log_zip_free (redo_unzip_ptr);
 
 #if defined(SERVER_MODE)
   {
