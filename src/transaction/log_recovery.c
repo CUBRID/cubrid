@@ -1613,6 +1613,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	}
     }
 
+#undef BUILD_RECORD_INFO
+#undef INVOKE_REDO_RECORD
+
 #if defined(SERVER_MODE)
   {
     // *INDENT-OFF*
