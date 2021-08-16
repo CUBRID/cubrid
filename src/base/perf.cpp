@@ -71,7 +71,7 @@ namespace cubperf
   // statset_definition
   //////////////////////////////////////////////////////////////////////////
 
-  statset_definition::statset_definition (statset_definition::stat_definition_init_list_t defs)
+  statset_definition::statset_definition (statset_definition::init_list_t defs)
     : m_stat_count (defs.size ())
     , m_value_count (0)
     , m_stat_defs (nullptr)

@@ -48,7 +48,7 @@ namespace cublog
     PERF_STAT_ID_FINALIZE,
   };
 
-  static constexpr cubperf::statset_definition::stat_definition_init_list_t perf_stats_main_definition_init_list
+  static constexpr cubperf::statset_definition::init_list_t perf_stats_main_definition_init_list
   {
     cubperf::stat_definition (PERF_STAT_ID_FETCH_PAGE, cubperf::stat_definition::COUNTER_AND_TIMER,
 			      "Counter fetch_page", "Timer fetch_page (ms)"),
@@ -80,7 +80,7 @@ namespace cublog
     PERF_STAT_ID_PARALLEL_RETIRE,
   };
 
-  static constexpr cubperf::statset_definition::stat_definition_init_list_t perf_stats_async_definition_init_list
+  static constexpr cubperf::statset_definition::init_list_t perf_stats_async_definition_init_list
   {
     cubperf::stat_definition (PERF_STAT_ID_PARALLEL_POP, cubperf::stat_definition::COUNTER_AND_TIMER,
 			      "Counter pop", "Timer pop (ms)"),
@@ -125,9 +125,8 @@ namespace cublog
       cubperf::statset *m_stats_set;
   };
 
-  template <typename T_STAT_VALUE>
   inline void log_perf_stats_values_with_definition (const char *a_title, const cubperf::statset_definition &a_definition,
-      const T_STAT_VALUE *a_stats_values, std::size_t a_stats_values_size);
+      const cubperf::stat_value *a_stats_values, std::size_t a_stats_values_size);
 
   inline bool perf_stats_is_active_for_main ();
   inline bool perf_stats_is_active_for_async ();
@@ -138,7 +137,7 @@ namespace cublog
 
   perf_stats::perf_stats (do_not_record_t)
     : perf_stats { false, cubperf::statset_definition {
-      cubperf::statset_definition::stat_definition_init_list_t {} } }
+      cubperf::statset_definition::init_list_t {} } }
   {
   }
 
@@ -174,7 +173,7 @@ namespace cublog
   {
     if (m_stats_set != nullptr)
       {
-	std::vector < cubperf::stat_value > perf_stat_values;
+	std::vector<cubperf::stat_value> perf_stat_values;
 	perf_stat_values.resize (m_definition.get_value_count (), 0LL);
 	m_definition.get_stat_values_with_converted_timers<std::chrono::milliseconds> (
 		*m_stats_set, perf_stat_values.data ());
@@ -194,9 +193,9 @@ namespace cublog
       }
   }
 
-  template <typename T_STAT_VALUE> inline void log_perf_stats_values_with_definition (const char *a_title,
+  inline void log_perf_stats_values_with_definition (const char *a_title,
       const cubperf::statset_definition &a_definition,
-      const T_STAT_VALUE *a_stats_values, std::size_t a_stats_values_size)
+      const cubperf::stat_value *a_stats_values, std::size_t a_stats_values_size)
   {
     assert (a_title != nullptr);
     assert (a_stats_values != nullptr);

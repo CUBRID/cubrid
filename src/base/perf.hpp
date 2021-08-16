@@ -142,11 +142,11 @@ namespace cubperf
   class statset_definition final
   {
     public:
-      using stat_definition_init_list_t = std::initializer_list<stat_definition>;
+      using init_list_t = std::initializer_list<stat_definition>;
 
     public:
       statset_definition (void) = delete;
-      statset_definition (stat_definition_init_list_t defs);
+      statset_definition (init_list_t defs);
 
       statset_definition (const statset_definition &) = delete;
       statset_definition (statset_definition &&) = delete;

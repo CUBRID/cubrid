@@ -730,11 +730,11 @@ namespace cublog
     // average
     const std::size_t task_count = m_redo_tasks.size ();
     const std::size_t value_count = accum_perf_stat_results.size ();
-    std::vector<double> avg_perf_stat_results;
+    std::vector<cubperf::stat_value> avg_perf_stat_results;
     avg_perf_stat_results.resize (value_count, 0.0);
     for (std::size_t idx = 0; idx < value_count; ++idx)
       {
-	avg_perf_stat_results[idx] = static_cast<double> (accum_perf_stat_results[idx]) / task_count;
+	avg_perf_stat_results[idx] = accum_perf_stat_results[idx] / task_count;
       }
 
     log_perf_stats_values_with_definition ("Log recovery redo worker threads averaged perf stats",
