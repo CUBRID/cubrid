@@ -1932,7 +1932,7 @@ dblink_get_cipher_master_key ()
   length = dblink_get_encrypt_key (crypt_key, sizeof (crypt_key));
   if (length < 0)
     {
-      return;
+      return length;
     }
 
   dblink_Cipher.is_loaded = true;
