@@ -3702,6 +3702,29 @@ struct pt_coll_infer
 #endif				// c++
 };
 
+enum cdc_ddl_type
+{
+  CDC_CREATE,
+  CDC_ALTER,
+  CDC_DROP,
+  CDC_RENAME,
+  CDC_TRUNCATE,
+  CDC_TRUNCATE_CASCADE
+};
+typedef enum cdc_ddl_type CDC_DDL_TYPE;
+
+enum cdc_ddl_object_type
+{
+  CDC_TABLE,
+  CDC_INDEX,
+  CDC_SERIAL,
+  CDC_VIEW,
+  CDC_FUNCTION,
+  CDC_PROCEDURE,
+  CDC_TRIGGER
+};
+typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
+
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
 
 #ifdef __cplusplus

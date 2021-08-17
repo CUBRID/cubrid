@@ -902,6 +902,10 @@ net_server_init (void)
   req_p->processing_function = svacuum_dump;
   req_p->name = "NET_SERVER_VACUUM_DUMP";
 
+  req_p = &net_Requests[NET_SERVER_SUPPLEMENT_STMT];
+  req_p->processing_function = slog_supplement_statement;
+  req_p->name = "NET_SERVER_SUPPLEMENT_STMT";
+
   /*for CDC */
   req_p = &net_Requests[NET_SERVER_CDC_INITIALIZE];
   req_p->processing_function = scdc_initialize;

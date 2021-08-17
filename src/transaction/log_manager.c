@@ -355,6 +355,9 @@ static int get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_
 static int get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa);
 static void cdc_reinitialize_queue (LOG_LSA * start_lsa);
 
+static bool is_filtered_class (OID classoid);
+static bool is_filtered_user (char *user);
+
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
 static void log_abort_task_execute (cubthread::entry &thread_ref, LOG_TDES &tdes);
@@ -10557,6 +10560,11 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
               /* *INDENT-ON* */
 	    }
 
+	  if (!is_filtered_user (tran_user))
+	    {
+	      break;
+	    }
+
 	  if (cdc_make_dcl_loginfo (donetime->at_time, trid, tran_user, log_type, log_info_entry) != NO_ERROR)
 	    {
 	      goto end;
@@ -10691,6 +10699,11 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 		{
 		  tran_user = cdc_tran_user.at (trid);
 		}
+
+	      if (!is_filtered_user (tran_user))
+		{
+		  break;
+		}
 	    }
 
 	  switch (rec_type)
@@ -10718,6 +10731,11 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 		}
 	    case LOG_SUPPLEMENT_INSERT:
 	      memcpy (&classoid, supplement_data, sizeof (OID));
+	      if (!is_filtered_class (classoid))
+		{
+		  break;
+		}
+
 	      memcpy (&redo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
 	      if (cdc_get_recdes (thread_p, temp_logbuf, NULL, NULL, &redo_lsa, &redo_recdes) != NO_ERROR)
@@ -10729,6 +10747,10 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      break;
 	    case LOG_SUPPLEMENT_UPDATE:
 	      memcpy (&classoid, supplement_data, sizeof (OID));
+	      if (!is_filtered_class (classoid))
+		{
+		  break;
+		}
 	      memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 	      memcpy (&redo_lsa, supplement_data + sizeof (OID) + sizeof (LOG_LSA), sizeof (LOG_LSA));
 
@@ -10738,6 +10760,10 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      break;
 	    case LOG_SUPPLEMENT_DELETE:
 	      memcpy (&classoid, supplement_data, sizeof (OID));
+	      if (!is_filtered_class (classoid))
+		{
+		  break;
+		}
 	      memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
 	      cdc_get_recdes (thread_p, temp_logbuf, &undo_lsa, &undo_recdes, NULL, NULL);
@@ -12473,89 +12499,52 @@ end:
 static int
 cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOGINFO_ENTRY * ddl_entry)
 {
-#if 0
-  /*|statement type | class OID | object OID | statement length | statement | */
+  /* supplemental data : | ddl type | obj type | class OID | object OID | statement length | statement | */
 
   char *ptr, *start_ptr;
-  int log_type, ddl_type, object_type;
-  uint64_t class_oid, object_oid;
+  int ddl_type, object_type;
+  uint64_t b_classoid, b_objectoid;
   OID classoid;
+  OID oid;
   int statement_length;
   char *statement;
+
   /*ddl log info : TRID | user | data_item_type | ddl_type | object_type | OID | class OID | statement length | statement | 
    * cdc_make_ddl_loginfo construct log info from ddl_type to statement */
   int loginfo_length;
   int dataitem_type = 0;
-/* JOOHOK : DDL info as structure, not packed info  
- * packing -> memcpy or structure / 
- */
+
   ptr = PTR_ALIGN (supplement_data, MAX_ALIGNMENT);
-  ptr = or_unpack_int (ptr, &log_type);
-  ptr = or_unpack_int64 (ptr, (INT64 *) & class_oid);
-  memcpy (&classoid, &class_oid, sizeof (OID));
+
+  ptr = or_unpack_int (ptr, &ddl_type);
+  ptr = or_unpack_int (ptr, &object_type);
+  ptr = or_unpack_oid (ptr, &classoid);
+
   if (!OID_ISNULL (&classoid))
     {
       if (oid_is_system_class (&classoid) || !is_filtered_class (classoid))
 	{
-
-#if !defined(NDEBUG) && 0	//JOOHOK
-	  _er_log_debug (ARG_FILE_LINE, "System class or not extraction classes ");
-#endif
 	  return -1;
 	}
     }
-  ptr = or_unpack_int64 (ptr, (INT64 *) & object_oid);
+
+  ptr = or_unpack_oid (ptr, &oid);
   ptr = or_unpack_int (ptr, &statement_length);
   ptr = or_unpack_string_nocopy (ptr, &statement);
-  switch (log_type)
-    {
-    case CUBRID_STMT_CREATE_CLASS:
-      ddl_type = 0;
-      object_type = 0;
-      break;
-    case CUBRID_STMT_ALTER_CLASS:
-      ddl_type = 1;
-      object_type = 0;
-      break;
-    case CUBRID_STMT_DROP_CLASS:
-      ddl_type = 2;
-      object_type = 0;
-      break;
-    case CUBRID_STMT_RENAME_CLASS:
-      ddl_type = 3;
-      object_type = 0;
-      break;
-    case CUBRID_STMT_CREATE_INDEX:
-      ddl_type = 0;
-      object_type = 1;
-      break;
-    case CUBRID_STMT_ALTER_INDEX:
-      ddl_type = 1;
-      object_type = 1;
-      break;
-    case CUBRID_STMT_DROP_INDEX:
-      ddl_type = 2;
-      object_type = 1;
-      break;
-    }
 
-#if !defined(NDEBUG) && 1	//JOOHOK
-  _er_log_debug (ARG_FILE_LINE,
-		 "DDL type : %d, object type : %d, statement length : %d, statement : %s\n",
-		 ddl_type, object_type, statement_length, statement);
-#endif
+  memcpy (&b_classoid, &classoid, sizeof (OID));
+  memcpy (&b_objectoid, &oid, sizeof (OID));
+
   loginfo_length = (OR_INT_SIZE
 		    + OR_INT_SIZE
 		    + or_packed_string_length (user, NULL)
 		    + OR_INT_SIZE
 		    + OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE + OR_BIGINT_SIZE + OR_INT_SIZE + statement_length);
-  ddl_entry->log_info = (char *) malloc (loginfo_length * 2);
+
+  ddl_entry->log_info = (char *) malloc (loginfo_length + MAX_ALIGNMENT);
   if (ddl_entry->log_info == NULL)
     {
-#if !defined(NDEBUG) && 0	//JOOHOK
-      _er_log_debug (ARG_FILE_LINE, "ddl_entry alloc failed ");
-#endif
-      return -1;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   ptr = start_ptr = PTR_ALIGN (ddl_entry->log_info, MAX_ALIGNMENT);
@@ -12565,12 +12554,13 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
   ptr = or_pack_int (ptr, dataitem_type);
   ptr = or_pack_int (ptr, ddl_type);
   ptr = or_pack_int (ptr, object_type);
-  ptr = or_pack_int64 (ptr, (INT64) object_oid);
-  ptr = or_pack_int64 (ptr, (INT64) class_oid);
+  ptr = or_pack_int64 (ptr, (INT64) b_objectoid);
+  ptr = or_pack_int64 (ptr, (INT64) b_classoid);
   ptr = or_pack_int (ptr, statement_length);
   ptr = or_pack_string (ptr, statement);
+
   ddl_entry->length = ptr - start_ptr;
-#endif
+
   return NO_ERROR;
 }
 
@@ -13918,6 +13908,50 @@ cdc_initialize ()
     }
 
   return NO_ERROR;
+}
+
+static bool
+is_filtered_class (OID classoid)
+{
+  int i = 0;
+  uint64_t b_classoid;
+  memcpy (&b_classoid, &classoid, sizeof (uint64_t));
+
+  if (cdc_Gl.num_extraction_class == 0)
+    {
+      return true;
+    }
+
+  for (i = 0; i < cdc_Gl.num_extraction_class; i++)
+    {
+      if (cdc_Gl.extraction_classoids[i] == b_classoid)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+static bool
+is_filtered_user (char *user)
+{
+  int i = 0;
+
+  if (cdc_Gl.num_extraction_user == 0)
+    {
+      return true;
+    }
+
+  for (i = 0; i < cdc_Gl.num_extraction_user; i++)
+    {
+      if (strcmp (cdc_Gl.extraction_user[i], user) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 //
