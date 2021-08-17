@@ -2706,7 +2706,24 @@ disk_cache_load_all_volumes (THREAD_ENTRY * thread_p)
 {
   /* Cache every single volume */
   assert (disk_Cache != NULL);
-  return fileio_map_mounted (thread_p, disk_cache_load_volume, NULL);
+  if (is_tran_server_with_remote_storage ())
+    {
+      assert (disk_Cache->nvols_perm > 0);
+      for (VOLID volid = 0; volid < disk_Cache->nvols_perm; ++volid)
+	{
+	  if (!disk_cache_load_volume (thread_p, volid, NULL))
+	    {
+	      ASSERT_ERROR ();
+	      return false;
+	    }
+	}
+      return true;
+    }
+  else
+    {
+      // Load cache data from the mounted local volumes
+      return fileio_map_mounted (thread_p, disk_cache_load_volume, NULL);
+    }
 }
 
 /*
