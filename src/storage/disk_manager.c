@@ -205,6 +205,7 @@ struct disk_cache
 };
 
 static DISK_CACHE *disk_Cache = NULL;
+static DKNVOLS disk_Page_server_perm_volume_count = 0;	// used for transaction server with remote storage
 
 static DKNSECTS disk_Temp_max_sects = -2;
 
@@ -2708,8 +2709,8 @@ disk_cache_load_all_volumes (THREAD_ENTRY * thread_p)
   assert (disk_Cache != NULL);
   if (is_tran_server_with_remote_storage ())
     {
-      assert (disk_Cache->nvols_perm > 0);
-      for (VOLID volid = 0; volid < disk_Cache->nvols_perm; ++volid)
+      assert (disk_Page_server_perm_volume_count > 0);
+      for (VOLID volid = 0; volid < disk_Page_server_perm_volume_count; ++volid)
 	{
 	  if (!disk_cache_load_volume (thread_p, volid, NULL))
 	    {
@@ -6806,16 +6807,18 @@ disk_sectors_to_extend_npages (const int num_pages)
 DKNVOLS
 disk_get_perm_volume_count ()
 {
+  assert (disk_Cache != NULL);
   return disk_Cache->nvols_perm;
 }
 
 void
-disk_set_perm_volume_count (DKNVOLS nvols)
+disk_set_page_server_perm_volume_count (DKNVOLS nvols)
 {
-  // this is called only during boot, only to set the number of volumes on a transaction server with remote storage.
-  // no sync required
-  assert (is_tran_server_with_remote_storage () && !LOG_ISRESTARTED ());
-  disk_Cache->nvols_perm = nvols;
+  assert (is_tran_server_with_remote_storage ());
+
+  // Set the number of permanent volumes for transaction server with remote storage.
+  // Disk manager is not initialized yet, so save the number to be used later when disk cache is loaded.
+  disk_Page_server_perm_volume_count = nvols;
 }
 
 /************************************************************************/

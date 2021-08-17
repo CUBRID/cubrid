@@ -488,7 +488,7 @@ void active_tran_server::receive_boot_info (cubpacking::unpacker &upk)
   DKNVOLS nvols_perm;
   std::memcpy (&nvols_perm, message.c_str (), sizeof (nvols_perm));
 
-  disk_set_perm_volume_count (nvols_perm);
+  disk_set_page_server_perm_volume_count (nvols_perm);
 
   {
     std::unique_lock<std::mutex> ulock (m_boot_info_mutex);
