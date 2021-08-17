@@ -92,7 +92,7 @@ typedef struct tde_data_key_set
 typedef struct tde_mk_file_item
 {
   time_t created_time;		/* If it is -1, it is invalid and avaliable for a new key */
-  unsigned char master_key[TDE_DATA_KEY_LENGTH];
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH];
 } TDE_MK_FILE_ITEM;
 
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG

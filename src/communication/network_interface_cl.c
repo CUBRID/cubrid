@@ -1890,7 +1890,6 @@ int
 dblink_get_cipher_master_key ()
 {
 #if defined(CS_MODE)
-  TDE_DATA_KEY_SET data_keys;
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error, area_size;
   char *ptr;
