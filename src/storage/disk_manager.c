@@ -6786,6 +6786,21 @@ disk_sectors_to_extend_npages (const int num_pages)
   return DISK_SECTS_ROUND_UP (DISK_PAGES_TO_SECTS (num_pages));
 }
 
+DKNVOLS
+disk_get_perm_volume_count ()
+{
+  return disk_Cache->nvols_perm;
+}
+
+void
+disk_set_perm_volume_count (DKNVOLS nvols)
+{
+  // this is called only during boot, only to set the number of volumes on a transaction server with remote storage.
+  // no sync required
+  assert (is_tran_server_with_remote_storage () && !LOG_ISRESTARTED ());
+  disk_Cache->nvols_perm = nvols;
+}
+
 /************************************************************************/
 /* End of file                                                          */
 /************************************************************************/
