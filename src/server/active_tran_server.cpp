@@ -247,8 +247,6 @@ active_tran_server::get_boot_info_from_page_server ()
   std::unique_lock<std::mutex> ulock (m_boot_info_mutex);
   m_boot_info_condvar.wait (ulock, [this] { return m_is_boot_info_received; });
   // fix me: connection error handling
-
-  assert (disk_get_perm_volume_count () > 0);
 }
 
 int
