@@ -296,6 +296,10 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
   m_page_server_conn_vec.emplace_back (new page_server_conn_t (std::move (srv_chn),
   {
     {
+      ps_to_ats_request::SEND_BOOT_INFO,
+      std::bind (&active_tran_server::receive_boot_info, std::ref (*this), std::placeholders::_1)
+    },
+    {
       ps_to_ats_request::SEND_SAVED_LSA,
       std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1)
     },

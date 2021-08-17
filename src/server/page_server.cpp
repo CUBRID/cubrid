@@ -56,6 +56,10 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   m_active_tran_server_conn.reset (new active_tran_server_conn_t (std::move (chn),
   {
     {
+      ats_to_ps_request::GET_BOOT_INFO,
+      std::bind (&page_server::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
+    },
+    {
       ats_to_ps_request::SEND_LOG_PRIOR_LIST,
       std::bind (&page_server::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
     },
