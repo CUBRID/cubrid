@@ -10795,7 +10795,6 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	    {
 	      pthread_cond_wait (&cdc_Gl.queue_consume_cond, &cdc_Gl.queue_lock);
 	    }
-	  pthread_mutex_unlock (&cdc_Gl.queue_lock);
 
 	  LSA_COPY (&log_info_entry->start_lsa, &next_log_rec_lsa);
           /* *INDENT-OFF* */
@@ -10808,7 +10807,6 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
 	  cdc_Gl.queue_size += log_info_entry->length;
 
-	  pthread_mutex_lock (&cdc_Gl.queue_lock);
 	  pthread_cond_signal (&cdc_Gl.queue_produce_cond);
 	  pthread_mutex_unlock (&cdc_Gl.queue_lock);
 
@@ -13437,6 +13435,8 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
   assert (cdc_logInfo_queue != NULL);
   CDC_LOGINFO_ENTRY *consume;
 
+  pthread_mutex_lock (&cdc_Gl.queue_lock);
+
   if (LSA_LE (&cdc_Gl.last_consumed_lsa, start_lsa) && LSA_GT (&cdc_Gl.last_produced_lsa, start_lsa))
     {
       LOG_LSA next_consume_lsa = LSA_INITIALIZER;
@@ -13474,7 +13474,6 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 
   cdc_Gl.is_queue_initialized = true;
 
-  pthread_mutex_lock (&cdc_Gl.queue_lock);
   pthread_cond_signal (&cdc_Gl.queue_init_cond);
   pthread_mutex_unlock (&cdc_Gl.queue_lock);
 }
@@ -13890,15 +13889,17 @@ cdc_initialize ()
 
   if (cdc_logInfo_queue == NULL)
     {
-    /* *INDENT-OFF* */
-    cdc_logInfo_queue = new lockfree::circular_queue <CDC_LOGINFO_ENTRY *> (MAX_CDC_LOGINFO_QUEUE_ENTRY);
-    /* *INDENT-ON* */
+      pthread_mutex_lock (&cdc_Gl.queue_lock);
+
+      /* *INDENT-OFF* */
+      cdc_logInfo_queue = new lockfree::circular_queue <CDC_LOGINFO_ENTRY *> (MAX_CDC_LOGINFO_QUEUE_ENTRY);
+      /* *INDENT-ON* */
+
       cdc_Gl.is_queue_initialized = true;
       cdc_Gl.queue_size = 0;
       LSA_SET_NULL (&cdc_Gl.last_produced_lsa);
       LSA_SET_NULL (&cdc_Gl.last_consumed_lsa);
 
-      pthread_mutex_lock (&cdc_Gl.queue_lock);
       pthread_cond_signal (&cdc_Gl.queue_init_cond);
       pthread_mutex_unlock (&cdc_Gl.queue_lock);
     }

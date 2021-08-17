@@ -4647,6 +4647,7 @@ do_redistribute_partitions_data (const char *classname, const char *keyname, cha
     {
       query_size = 0;
       query_size += 7;		/* 'UPDATE ' */
+      query_size += 28;		// ' /*+ NO_SUPPLEMENTAL_LOG */ ' 
       query_size += strlen (classname) + 2;
       query_size += 5;		/* ' SET ' */
       query_size += strlen (keyname) * 2 + 6;	/* [keyname]=[keyname]; */
@@ -8616,7 +8617,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
       /* check for mis-creating string type with -1 precision */
       for (column = query_columns; column != NULL; column = db_query_format_next (column))
-	 {
+        {
           switch (column->domain->type->id)
             {
               case DB_TYPE_VARCHAR:
@@ -13092,9 +13093,9 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * a
 
   /* Allocate enough for each attribute's name, its default value, and for the "UPDATE table_name" part of the query.
    * 42 is more than the maximum length of any default value for an attribute, including three spaces, the coma sign
-   * and an equal. */
+   * and an equal. And size of 28 is added for NO_SUPPLEMENTAL_LOG hint. */
 
-  query_len = remaining = (attr_count + 1) * (DB_MAX_IDENTIFIER_LENGTH + 42);
+  query_len = remaining = (attr_count + 1) * (DB_MAX_IDENTIFIER_LENGTH + 42 + 28);
   if (query_len > QUERY_MAX_SIZE)
     {
       ERROR1 (error, ER_UNEXPECTED, "Too many attributes.");
