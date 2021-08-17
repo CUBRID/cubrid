@@ -82,8 +82,7 @@ namespace cublog
   {
     PERF_STAT_ID_PARALLEL_POP,
     PERF_STAT_ID_PARALLEL_SLEEP,
-    PERF_STAT_ID_PARALLEL_EXECUTE,
-    PERF_STAT_ID_PARALLEL_RETIRE,
+    PERF_STAT_ID_PARALLEL_EXECUTE_AND_RETIRE,
   };
 
   static constexpr cubperf::statset_definition::init_list_t perf_stats_async_definition_init_list
@@ -92,10 +91,8 @@ namespace cublog
 			      "Counter pop", "Timer pop (ms)"),
     cubperf::stat_definition (PERF_STAT_ID_PARALLEL_SLEEP, cubperf::stat_definition::COUNTER_AND_TIMER,
 			      "Counter sleep", "Timer sleep (ms)"),
-    cubperf::stat_definition (PERF_STAT_ID_PARALLEL_EXECUTE, cubperf::stat_definition::COUNTER_AND_TIMER,
-			      "Counter execute", "Timer execute (ms)"),
-    cubperf::stat_definition (PERF_STAT_ID_PARALLEL_RETIRE, cubperf::stat_definition::COUNTER_AND_TIMER,
-			      "Counter retire", "Timer retire (ms)"),
+    cubperf::stat_definition (PERF_STAT_ID_PARALLEL_EXECUTE_AND_RETIRE, cubperf::stat_definition::COUNTER_AND_TIMER,
+			      "Counter execute_and_retire", "Timer execute_and_retire (ms)"),
   };
 
   /* collect and log performance statistics based on a supplied definition
@@ -192,10 +189,13 @@ namespace cublog
   void perf_stats::accumulate (cubperf::stat_value *a_output_stats,
 			       std::size_t a_output_stats_size) const
   {
-    // minimal checking to ensure there is enough space for the underlying logic to write data
-    if (a_output_stats != nullptr && a_output_stats_size == m_definition.get_value_count ())
+    if (m_stats_set != nullptr)
       {
-	m_definition.add_stat_values_with_converted_timers<std::chrono::milliseconds> (*m_stats_set, a_output_stats);
+	// minimal checking to ensure there is enough space for the underlying logic to write data
+	if (a_output_stats != nullptr && a_output_stats_size == m_definition.get_value_count ())
+	  {
+	    m_definition.add_stat_values_with_converted_timers<std::chrono::milliseconds> (*m_stats_set, a_output_stats);
+	  }
       }
   }
 

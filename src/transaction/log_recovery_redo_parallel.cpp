@@ -717,6 +717,7 @@ namespace cublog
       {
 	bool adding_finished = false;
 	const bool jobs_popped = m_queue.pop_jobs (m_task_idx, jobs_vec, adding_finished);
+	m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_POP);
 	if (!jobs_popped && adding_finished)
 	  {
 	    m_queue.set_empty_at (m_task_idx);
@@ -751,6 +752,7 @@ namespace cublog
 		//  - already passed on to the reusable job container
 		//  - dangling, as they have deleted themselves
 		jobs_vec->clear ();
+		m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_EXECUTE_AND_RETIRE);
 	      }
 	  }
       }
@@ -888,32 +890,35 @@ namespace cublog
   void
   redo_parallel::log_perf_stats () const
   {
-    const cubperf::statset_definition definition
-    {
-      perf_stats_async_definition_init_list
-    };
-
-    std::vector<cubperf::stat_value> accum_perf_stat_results;
-    accum_perf_stat_results.resize (definition.get_value_count ());
-
-    for (auto &redo_task: m_redo_tasks)
+    if ( perf_stats_is_active_for_async () )
       {
-	redo_task->accumulate_perf_stats (accum_perf_stat_results.data (), accum_perf_stat_results.size ());
-	redo_task->log_perf_stats ();
-      }
+	const cubperf::statset_definition definition
+	{
+	  perf_stats_async_definition_init_list
+	};
 
-    // average
-    const std::size_t task_count = m_redo_tasks.size ();
-    const std::size_t value_count = accum_perf_stat_results.size ();
-    std::vector<cubperf::stat_value> avg_perf_stat_results;
-    avg_perf_stat_results.resize (value_count, 0.0);
-    for (std::size_t idx = 0; idx < value_count; ++idx)
-      {
-	avg_perf_stat_results[idx] = accum_perf_stat_results[idx] / task_count;
-      }
+	std::vector<cubperf::stat_value> accum_perf_stat_results;
+	accum_perf_stat_results.resize (definition.get_value_count ());
 
-    log_perf_stats_values_with_definition ("Log recovery redo worker threads averaged perf stats",
-					   definition, avg_perf_stat_results.data (), value_count);
+	for (auto &redo_task: m_redo_tasks)
+	  {
+	    redo_task->accumulate_perf_stats (accum_perf_stat_results.data (), accum_perf_stat_results.size ());
+	    redo_task->log_perf_stats ();
+	  }
+
+	// average
+	const std::size_t task_count = m_redo_tasks.size ();
+	const std::size_t value_count = accum_perf_stat_results.size ();
+	std::vector<cubperf::stat_value> avg_perf_stat_results;
+	avg_perf_stat_results.resize (value_count, 0.0);
+	for (std::size_t idx = 0; idx < value_count; ++idx)
+	  {
+	    avg_perf_stat_results[idx] = accum_perf_stat_results[idx] / task_count;
+	  }
+
+	log_perf_stats_values_with_definition ("Log recovery redo worker threads averaged perf stats",
+					       definition, avg_perf_stat_results.data (), value_count);
+      }
   }
 
   /*********************************************************************
