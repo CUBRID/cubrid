@@ -131,7 +131,10 @@ active_tran_server::boot (const char *db_name)
       return error;
     }
 
-  get_boot_info_from_page_server ();
+  if (m_uses_remote_storage)
+    {
+      get_boot_info_from_page_server ();
+    }
   return NO_ERROR;
 }
 
