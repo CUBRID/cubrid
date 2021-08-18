@@ -10426,9 +10426,14 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
 {
   DISK_ISVALID valid;
 
-  /* TODO: fix me */
+  if (VPID_ISNULL (vpid))
+    {
+      assert (no_error);
 
-  if (fileio_get_volume_label (vpid->volid, PEEK) == NULL || VPID_ISNULL (vpid))
+      return DISK_INVALID;
+    }
+
+  if (!is_tran_server_with_remote_storage () && fileio_get_volume_label (vpid->volid, PEEK) == NULL)
     {
       assert (no_error);
 
@@ -10441,8 +10446,9 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
     {
       if (valid != DISK_ERROR && !no_error)
 	{
+	  const char *vlabel = fileio_get_volume_label (vpid->volid, PEEK);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
-		  fileio_get_volume_label (vpid->volid, PEEK));
+		  vlabel == NULL ? "(unknown)" : vlabel);
 
 	  assert (false);
 	}
