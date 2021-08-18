@@ -870,23 +870,6 @@ namespace cublog
       return true;
     }
     ());
-
-    // formally invoke dtor  on all in-place constructed objects
-    for (auto &job : m_pop_jobs)
-      {
-	job->~redo_job_impl ();
-      }
-    for (auto &job : m_push_jobs)
-      {
-	job->~redo_job_impl ();
-      }
-    for (auto &push_job_container: m_per_task_push_jobs_vec)
-      {
-	for (auto &job : push_job_container)
-	  {
-	    job->~redo_job_impl ();
-	  }
-      }
   }
 
   redo_job_impl *reusable_jobs_stack::blocking_pop ()
