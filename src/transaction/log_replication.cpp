@@ -102,9 +102,6 @@ namespace cublog
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }
   {
-    log_zip_realloc_if_needed (m_redo_context.m_undo_zip, LOGAREA_SIZE);
-    log_zip_realloc_if_needed (m_redo_context.m_redo_zip, LOGAREA_SIZE);
-
     // depending on parameter, instantiate the mechanism to execute replication in parallel
     // mandatory to initialize before daemon such that:
     //  - race conditions, when daemon comes online, are avoided
