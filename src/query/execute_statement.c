@@ -2956,7 +2956,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement)
     {
       /* skip ddl execution in case of parameter or opt. level */
-      if (pt_is_ddl_statement (statement) != 0)
+      if (pt_is_ddl_statement (statement) != 0 || statement->node_type == PT_TRUNCATE)
 	{
 	  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
 	    {
@@ -3443,7 +3443,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
   /* skip ddl execution in case of parameter or opt. level */
-  if (pt_is_ddl_statement (statement) != 0)
+  if (pt_is_ddl_statement (statement) != 0 || statement->node_type == PT_TRUNCATE)
     {
       if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
 	{
