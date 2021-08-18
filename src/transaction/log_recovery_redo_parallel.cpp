@@ -687,6 +687,11 @@ namespace cublog
   void
   redo_parallel::log_perf_stats () const
   {
+    if ( !perf_stats_is_active_for_async () )
+      {
+	return;
+      }
+
     const cubperf::statset_definition definition
     {
       perf_stats_async_definition_init_list
