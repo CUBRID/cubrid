@@ -122,7 +122,7 @@ namespace cublog
 	m_reusable_jobs->initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_COUNT, replication_parallel,
 				     cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT);
 	m_parallel_replication_redo.reset (new cublog::redo_parallel (
-	    replication_parallel, m_minimum_log_lsa.get ()));
+	    replication_parallel, m_minimum_log_lsa.get (), m_redo_context));
       }
 
     // Create the daemon

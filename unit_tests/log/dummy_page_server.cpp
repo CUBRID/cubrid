@@ -77,6 +77,10 @@ page_server::get_replicator ()
   return replicator_GL;
 }
 
+log_rv_redo_context::log_rv_redo_context (const log_lsa &end_redo_lsa, log_reader::fetch_mode fetch_mode)
+{
+}
+
 log_rv_redo_context::~log_rv_redo_context ()
 {
 }

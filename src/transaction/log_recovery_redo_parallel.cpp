@@ -486,8 +486,8 @@ namespace cublog
       static constexpr unsigned short WAIT_AND_CHECK_MILLIS = 5;
 
     public:
-      redo_task (std::size_t a_task_idx, redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
-		 , redo_parallel::redo_job_queue &a_queue);
+      redo_task (std::size_t a_task_idx, redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping,
+		 redo_parallel::redo_job_queue &a_queue, const log_rv_redo_context &copy_context);
       redo_task (const redo_task &) = delete;
       redo_task (redo_task &&) = delete;
 
@@ -517,14 +517,16 @@ namespace cublog
 
   constexpr unsigned short redo_parallel::redo_task::WAIT_AND_CHECK_MILLIS;
 
-  redo_parallel::redo_task::redo_task (std::size_t a_task_idx
-				       , redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
-				       , redo_parallel::redo_job_queue &a_queue)
+  redo_parallel::redo_task::redo_task (std::size_t a_task_idx,
+				       redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping,
+				       redo_parallel::redo_job_queue &a_queue,
+				       const log_rv_redo_context &copy_context)
     : m_task_idx { a_task_idx }
     , m_task_state_bookkeeping (task_state_bookkeeping)
     , m_queue (a_queue)
     , m_perf_stats_definition { perf_stats_async_definition_init_list }
     , m_perf_stats { perf_stats_is_active_for_async (), m_perf_stats_definition }
+    , m_redo_context { copy_context }
   {
     // important to set this at this moment and not when execution begins
     // to circumvent race conditions where all tasks haven't yet started work
@@ -596,7 +598,8 @@ namespace cublog
    * redo_parallel - definition
    *********************************************************************/
 
-  redo_parallel::redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa)
+  redo_parallel::redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa,
+				const log_rv_redo_context &copy_context)
     : m_worker_pool (nullptr)
     , m_job_queue { a_minimum_log_lsa }
     , m_waited_for_termination (false)
@@ -607,7 +610,7 @@ namespace cublog
     m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
 
     do_init_worker_pool (a_worker_count);
-    do_init_tasks (a_worker_count);
+    do_init_tasks (a_worker_count, copy_context);
   }
 
   redo_parallel::~redo_parallel ()
@@ -684,14 +687,14 @@ namespace cublog
   }
 
   void
-  redo_parallel::do_init_tasks (std::size_t a_task_count)
+  redo_parallel::do_init_tasks (std::size_t a_task_count, const log_rv_redo_context &copy_context)
   {
     assert (a_task_count > 0);
     assert (m_worker_pool != nullptr);
 
     for (unsigned task_idx = 0; task_idx < a_task_count; ++task_idx)
       {
-	auto task = std::make_unique<redo_parallel::redo_task> (task_idx, m_task_state_bookkeeping, m_job_queue);
+	auto task = std::make_unique<redo_parallel::redo_task> (task_idx, m_task_state_bookkeeping, m_job_queue, copy_context);
 	m_worker_pool->execute (task.get ());
 	m_redo_tasks.push_back (std::move (task));
       }

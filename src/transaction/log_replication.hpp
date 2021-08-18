@@ -88,7 +88,7 @@ namespace cublog
       log_lsa m_redo_lsa = NULL_LSA;
       mutable std::mutex m_redo_lsa_mutex;
       mutable std::condition_variable m_redo_lsa_condvar;
-      log_rv_redo_context m_redo_context;
+      log_rv_redo_context m_redo_context { NULL_LSA, log_reader::fetch_mode::FORCE };
 
       std::unique_ptr<cublog::reusable_jobs_stack> m_reusable_jobs;
       std::unique_ptr<cublog::minimum_log_lsa_monitor> m_minimum_log_lsa;

@@ -38,6 +38,9 @@ class log_recovery_context
     log_recovery_context (const log_recovery_context &) = delete;
     log_recovery_context (log_recovery_context &&) = delete;
 
+    log_recovery_context &operator= (const log_recovery_context &) = delete;
+    log_recovery_context &operator= (log_recovery_context &&) = delete;
+
     // Accessors
     const log_lsa &get_checkpoint_lsa () const;
     const log_lsa &get_start_redo_lsa () const;

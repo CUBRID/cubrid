@@ -35,22 +35,35 @@ struct log_rv_redo_context
   log_reader m_reader { LOG_CS_SAFE_READER };
   LOG_ZIP m_redo_zip;
   LOG_ZIP m_undo_zip;
-  LOG_LSA m_end_redo_lsa = NULL_LSA;
-  log_reader::fetch_mode m_reader_fetch_page_mode = log_reader::fetch_mode::FORCE;
+  const LOG_LSA m_end_redo_lsa = NULL_LSA;
+  const log_reader::fetch_mode m_reader_fetch_page_mode = log_reader::fetch_mode::FORCE;
 
-  log_rv_redo_context () = default;
+  log_rv_redo_context () = delete;
+  log_rv_redo_context (const log_lsa &end_redo_lsa, log_reader::fetch_mode fetch_mode);
   ~log_rv_redo_context ();
+
+  log_rv_redo_context (const log_rv_redo_context &);
+  log_rv_redo_context (log_rv_redo_context &&) = delete;
+
+  log_rv_redo_context &operator= (const log_rv_redo_context &) = delete;
+  log_rv_redo_context &operator= (log_rv_redo_context &&) = delete;
 };
 
 template <typename T>
 struct log_rv_redo_rec_info
 {
-  LOG_LSA m_start_lsa = NULL_LSA;
-  LOG_RECTYPE m_type = LOG_SMALLER_LOGREC_TYPE;
-  T m_logrec;
+  const LOG_LSA m_start_lsa = NULL_LSA;
+  const LOG_RECTYPE m_type = LOG_SMALLER_LOGREC_TYPE;
+  const T m_logrec;
 
-  log_rv_redo_rec_info () = default;
+  log_rv_redo_rec_info () = delete;
   log_rv_redo_rec_info (const log_lsa lsa, LOG_RECTYPE type, const T &t);
+
+  log_rv_redo_rec_info (const log_rv_redo_rec_info &) = delete;
+  log_rv_redo_rec_info (log_rv_redo_rec_info &&) = delete;
+
+  log_rv_redo_rec_info &operator= (const log_rv_redo_rec_info &) = delete;
+  log_rv_redo_rec_info &operator= (log_rv_redo_rec_info &&) = delete;
 };
 
 /*

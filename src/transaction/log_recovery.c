@@ -76,7 +76,6 @@ static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * 
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
 static void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
 static TRANID log_rv_get_min_trantable_tranid ();
-static void log_rv_init_redo_context (const log_recovery_context & context, log_rv_redo_context & redo_context);
 
 /*
  * CRASH RECOVERY PROCESS
@@ -960,15 +959,6 @@ log_rv_get_min_trantable_tranid ()
   return min_tranid;
 }
 
-void
-log_rv_init_redo_context (const log_recovery_context & context, log_rv_redo_context & redo_context)
-{
-  redo_context.m_end_redo_lsa = context.get_end_redo_lsa ();
-  redo_context.m_reader_fetch_page_mode = log_reader::fetch_mode::NORMAL;
-  log_zip_realloc_if_needed (redo_context.m_redo_zip, LOGAREA_SIZE);
-  log_zip_realloc_if_needed (redo_context.m_undo_zip, LOGAREA_SIZE);
-}
-
 /*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
  *
@@ -1003,8 +993,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
 
-  log_rv_redo_context redo_context;
-  log_rv_init_redo_context (context, redo_context);
+  log_rv_redo_context redo_context
+  {
+  context.get_end_redo_lsa (), log_reader::fetch_mode::NORMAL};
 
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
@@ -1027,7 +1018,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
       {
 	reusable_jobs.initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_COUNT, log_recovery_redo_parallel_count,
 				  cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT);
-	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, nullptr));
+	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, nullptr,
+								 redo_context));
       }
   }
 #endif

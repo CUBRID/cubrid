@@ -120,7 +120,8 @@ namespace cublog
     public:
       /* - worker_count: the number of parallel tasks to spin that consume jobs
        */
-      redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa);
+      redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa,
+		     const log_rv_redo_context &copy_context);
 
       redo_parallel (const redo_parallel &) = delete;
       redo_parallel (redo_parallel &&) = delete;
@@ -157,7 +158,7 @@ namespace cublog
 
     private:
       void do_init_worker_pool (std::size_t a_task_count);
-      void do_init_tasks (std::size_t a_task_count);
+      void do_init_tasks (std::size_t a_task_count, const log_rv_redo_context &copy_context);
 
     private:
       /* rynchronizes prod/cons of log entries in n-prod - m-cons fashion
