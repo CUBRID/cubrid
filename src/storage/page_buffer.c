@@ -7878,6 +7878,12 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
       else
 	{
 	  fileio_init_lsa_of_page (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
+	  if (is_tran_server_with_remote_storage ())
+	    {
+	      // Permanent data pages on transaction servers with remote storage don't have to be flushed to disk when
+	      // they're dirty. Mark this by PGBUF_BCB_FLUSH_NOT_NEEDED flag
+	      bufptr->flags |= PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG;
+	    }
 	}
 
       /* perm volume */
