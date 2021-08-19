@@ -14932,31 +14932,23 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	break;
       }
-#if 0
     case PT_TRUNCATE:
 
       assert (statement->info.spec.entity_name);
-      classname = pt_print_bytes (parser, statement->info.spec.entity_name->info.spec.entity_name);
-      if (statement->info.truncate.is_cascade)
-	{
-	  dml_type = TRUNCATE_CASCADE;
-	}
-      else
-	{
-	  dml_type = TRUNCATE;
-	}
+      classname = statement->info.spec.entity_name->info.spec.entity_name->info.name.original;
 
-      // log_append_supplemental_log (dml_type, classoid);
+      classoid = ws_oid (sm_find_class (classname));
+      ddl_type = CDC_TRUNCATE;
+      objtype = CDC_TABLE;
 
       break;
-#endif
     default:
       return NO_ERROR;
     }
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 2)
     {
-      if (ddl_type != CDC_TRUNCATE || ddl_type != CDC_TRUNCATE_CASCADE || objtype != CDC_SERIAL)
+      if (ddl_type != CDC_TRUNCATE || objtype != CDC_SERIAL)
 	{
 	  goto end;
 	}
