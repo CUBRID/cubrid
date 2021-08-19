@@ -3943,7 +3943,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  {
 		    tran_index = logtb_find_tran_index (thread_p, tran_id);
 		  }
-		tran_index = logtb_find_tran_index (thread_p, tran_id);
 		if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
 		  {
 		    tdes = LOG_FIND_TDES (tran_index);
