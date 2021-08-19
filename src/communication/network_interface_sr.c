@@ -2191,6 +2191,7 @@ slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 
   char *supplemental_data;
   int data_len;
+  LOG_TDES *tdes;
 
   ptr = or_unpack_int (request, &ddl_type);
   ptr = or_unpack_int (ptr, &obj_type);
@@ -2200,42 +2201,38 @@ slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 
   or_unpack_string_nocopy (ptr, &stmt_text);
 
-  if (ddl_type == 4)
+  /* ddl_type | obj_type | class OID | OID | stmt_text len | stmt_text */
+  data_len =
+    OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_OID_SIZE + OR_INT_SIZE + or_packed_string_length (stmt_text, NULL);
+
+  supplemental_data = (char *) malloc (data_len + MAX_ALIGNMENT);
+  if (supplemental_data == NULL)
     {
-      /* | class OID | */
-      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRUNCATE, sizeof (OID), (void *) &classoid);
-    }
-  else if (ddl_type == 5)
-    {
-      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRUNCATE_CASCADE, sizeof (OID), (void *) &classoid);
-    }
-  else
-    {
-      /* ddl_type | obj_type | class OID | OID | stmt_text len | stmt_text */
-      data_len =
-	OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_OID_SIZE + OR_INT_SIZE + or_packed_string_length (stmt_text, NULL);
-
-      supplemental_data = (char *) malloc (data_len + MAX_ALIGNMENT);
-      if (supplemental_data == NULL)
-	{
-	  success = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
-	}
-
-      ptr = start_ptr = supplemental_data;
-
-      ptr = or_pack_int (ptr, ddl_type);
-      ptr = or_pack_int (ptr, obj_type);
-      ptr = or_pack_oid (ptr, &classoid);
-      ptr = or_pack_oid (ptr, &oid);
-      ptr = or_pack_int (ptr, strlen (stmt_text));
-      ptr = or_pack_string (ptr, stmt_text);
-
-      data_len = ptr - start_ptr;
-
-      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
+      success = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
     }
 
+  ptr = start_ptr = supplemental_data;
+
+  ptr = or_pack_int (ptr, ddl_type);
+  ptr = or_pack_int (ptr, obj_type);
+  ptr = or_pack_oid (ptr, &classoid);
+  ptr = or_pack_oid (ptr, &oid);
+  ptr = or_pack_int (ptr, strlen (stmt_text));
+  ptr = or_pack_string (ptr, stmt_text);
+
+  data_len = ptr - start_ptr;
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  if (!tdes->has_supplemental_log)
+    {
+      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+				    tdes->client.get_db_user ());
+      tdes->has_supplemental_log = true;
+    }
+
+  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
 
 end:
   (void) or_pack_int (reply, success);
@@ -10438,14 +10435,24 @@ scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   int rc;
 
+#if 1				//JOOHOK
+  _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info ");
+#endif
+
   if (cdc_Server_comm.is_sent == false)
     {
+#if 1				//JOOHOK
+      _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info : send failed loginfo");
+#endif
       LSA_COPY (&start_lsa, &cdc_Server_comm.next_lsa);
       num_log_info = cdc_Server_comm.num_log_item;
       total_length = cdc_Server_comm.total_length;
     }
   else
     {
+#if 1				//JOOHOK
+      _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info : no failed loginfo ");
+#endif
       or_unpack_log_lsa (request, &start_lsa);
       error = cdc_get_logitem_info (thread_p, &start_lsa, &total_length, &num_log_info);
     }
@@ -10457,8 +10464,11 @@ scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
 
   rc = css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-  if (rc != NO_ERROR)
+  if (rc != 0)
     {
+#if 1				//JOOHOK
+      _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info : failed to send loginfo : %d ", rc);
+#endif
       /*start lsa, total length, num_log_info wil be resent */
       cdc_Server_comm.is_sent = false;
       return;
@@ -10473,8 +10483,11 @@ scdc_get_logitem (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
 {
   int rc;
   rc = css_send_data_to_client (thread_p->conn_entry, rid, cdc_Server_comm.log_items, cdc_Server_comm.total_length);
-  if (rc != NO_ERRORS)
+  if (rc != 0)
     {
+#if 1				//JOOHOK
+      _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem : failed to send loginfo : %d ", rc);
+#endif
       cdc_Server_comm.is_sent = false;
       return;
     }
@@ -10493,10 +10506,17 @@ scdc_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   char *ptr;
   int error;
 
+#if 1				//JOOHOK
+  _er_log_debug (ARG_FILE_LINE, "scdc_finalize ");
+#endif
   error = cdc_finalize ();
 
   ptr = or_pack_int (reply, error);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+#if 1				//JOOHOK
+  _er_log_debug (ARG_FILE_LINE, "scdc_finalize return : %d", error);
+#endif
 
   return;
 }

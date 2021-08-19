@@ -793,7 +793,7 @@ typedef struct cdc_global_info
   pthread_mutex_t next_lsa_lock;
   pthread_mutex_t queue_produce_lock;
   pthread_mutex_t queue_consume_lock;
-  pthread_mutex_t queue_lock;
+  pthread_mutex_t init_queue_lock;
 
   pthread_mutex_t is_finalize_lock;
 

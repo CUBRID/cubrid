@@ -4173,10 +4173,12 @@ check_supplemental_log (THREAD_ENTRY * thread_p, OID * classoid)
   /* The value for PRM_ID_SUPPLEMENTAL_LOG is required to be greater than 0 if supplemental log is to be appended 
    * no_supplemental_log is used to block duplicated supplemental logs. So this value should be false if supplemental log is to be appended 
    */
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log
-      && !oid_is_system_class (classoid))
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log && !OID_ISNULL (classoid))
     {
-      return true;
+      if (!oid_is_system_class (classoid))
+	{
+	  return true;
+	}
     }
   else
     {
@@ -22788,7 +22790,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 				context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
 
       /* redo lsa for SUPPLEMENT_INSERT log */
-      if (context->do_supplemental_log && !heap_is_big_length (context->recdes_p->length))
+      if (context->do_supplemental_log && context->recdes_p->type != REC_BIGONE)
 	{
 	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
@@ -22849,7 +22851,7 @@ error:
   CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
 
-  if (context->do_supplemental_log && LSA_ISNULL (&context->supp_redo_lsa))
+  if (context->do_supplemental_log && !LSA_ISNULL (&context->supp_redo_lsa))
     {
       log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
     }

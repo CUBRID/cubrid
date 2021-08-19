@@ -1646,8 +1646,8 @@
 #define ER_CDC_LSA_NOT_FOUND                        -1284
 #define ER_CDC_EXTRACTION_TIMEOUT                   -1285
 #define ER_CDC_NOTHING_TO_RETURN                    -1286
-
-#define ER_LAST_ERROR                               -1287
+#define ER_CDC_IGNORE_TRANSACTION                   -1287
+#define ER_LAST_ERROR                               -1288
 
 /*
  * CAUTION!

@@ -758,7 +758,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
     }
 
   /* extraction timeout will be modified when it is defined */
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
@@ -823,7 +823,9 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
-
+#if 1				//JOOHOK
+  printf ("cubrid_log_extract ; recv_data_size : %d , total_length = %d \n", recv_data_size, *total_length);
+#endif
   if (recv_data == NULL || recv_data_size != *total_length)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT, trace_errbuf);
@@ -1489,7 +1491,7 @@ cubrid_log_reset_globals (void)
 
   if (g_log_infos != NULL)
     {
-      free (g_log_infos);
+//      free (g_log_infos);
       g_log_infos = NULL;
     }
 
