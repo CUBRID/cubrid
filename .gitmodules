@@ -1,7 +1,7 @@
 [submodule "cubridmanager"]
 	path = cubridmanager
 	url = https://github.com/CUBRID/cubrid-manager-server
-	branch = release/11.1
+	branch = develop
 [submodule "cubrid-jdbc"]
 	path = cubrid-jdbc
 	url = https://github.com/cubrid/cubrid-jdbc
