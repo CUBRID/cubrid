@@ -530,6 +530,7 @@ namespace cubschema
 	char select_query[DB_MAX_IDENTIFIER_LENGTH + 256] = { 0 };
 	constexpr int CNT_CATCLS_OBJECTS = 5;
 	DB_BIGINT cnt_refers = CNT_CATCLS_OBJECTS + 1;
+        int au_save;
 
 	const char *class_name = db_get_class_name (m_mop);
 	if (class_name == NULL)
@@ -551,6 +552,9 @@ namespace cubschema
 	 *
 	 * See CBRD-23983 for the details.
 	 */
+
+        AU_DISABLE (au_save);
+
 	(void) snprintf (select_query, sizeof (select_query),
 			 "SELECT COUNT(*) FROM [_db_domain] WHERE [data_type]=%d AND ([class_of].[class_name]='%s' OR [class_of] IS NULL) LIMIT %d",
 			 DB_TYPE_OBJECT, class_name, CNT_CATCLS_OBJECTS + 1);
@@ -560,6 +564,7 @@ namespace cubschema
 	  {
 	    assert (er_errid () != NO_ERROR);
 	    error = er_errid ();
+            AU_ENABLE (au_save);
 	    return error;
 	  }
 
@@ -569,6 +574,7 @@ namespace cubschema
 	    assert (er_errid () != NO_ERROR);
 	    error = er_errid ();
 	    db_close_session (session);
+            AU_ENABLE (au_save);
 	    return error;
 	  }
 
@@ -576,6 +582,7 @@ namespace cubschema
 	if (error < 0)
 	  {
 	    db_close_session (session);
+            AU_ENABLE (au_save);
 	    return error;
 	  }
 
@@ -584,6 +591,7 @@ namespace cubschema
 	  {
 	    db_query_end (result);
 	    db_close_session (session);
+            AU_ENABLE (au_save);
 	    return error;
 	  }
 
@@ -592,6 +600,7 @@ namespace cubschema
 	  {
 	    db_query_end (result);
 	    db_close_session (session);
+            AU_ENABLE (au_save);
 	    return error;
 	  }
 
@@ -599,6 +608,8 @@ namespace cubschema
 
 	db_query_end (result);
 	db_close_session (session);
+
+        AU_ENABLE (au_save);
 
 	if (cnt_refers > CNT_CATCLS_OBJECTS)
 	  {
