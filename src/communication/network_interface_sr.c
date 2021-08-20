@@ -10435,13 +10435,13 @@ scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   int rc;
 
-#if 1				//JOOHOK
+#if !defined(NDEBUG)
   _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info ");
 #endif
 
   if (cdc_Server_comm.is_sent == false)
     {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)
       _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info : send failed loginfo");
 #endif
       LSA_COPY (&start_lsa, &cdc_Server_comm.next_lsa);
@@ -10450,7 +10450,7 @@ scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
   else
     {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)
       _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info : no failed loginfo ");
 #endif
       or_unpack_log_lsa (request, &start_lsa);
@@ -10466,7 +10466,7 @@ scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   rc = css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   if (rc != 0)
     {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)
       _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info : failed to send loginfo : %d ", rc);
 #endif
       /*start lsa, total length, num_log_info wil be resent */
@@ -10485,7 +10485,7 @@ scdc_get_logitem (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   rc = css_send_data_to_client (thread_p->conn_entry, rid, cdc_Server_comm.log_items, cdc_Server_comm.total_length);
   if (rc != 0)
     {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)
       _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem : failed to send loginfo : %d ", rc);
 #endif
       cdc_Server_comm.is_sent = false;
@@ -10506,7 +10506,7 @@ scdc_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   char *ptr;
   int error;
 
-#if 1				//JOOHOK
+#if !defined(NDEBUG)
   _er_log_debug (ARG_FILE_LINE, "scdc_finalize ");
 #endif
   error = cdc_finalize ();
@@ -10514,7 +10514,7 @@ scdc_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   ptr = or_pack_int (reply, error);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
-#if 1				//JOOHOK
+#if !defined(NDEBUG)
   _er_log_debug (ARG_FILE_LINE, "scdc_finalize return : %d", error);
 #endif
 

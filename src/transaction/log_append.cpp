@@ -70,7 +70,6 @@ static void prior_lsa_append_data (int length);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
 static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
-static LOG_ZIP *log_append_get_zip_redo (THREAD_ENTRY *thread_p);
 static char *log_append_get_data_ptr (THREAD_ENTRY *thread_p);
 static bool log_append_realloc_data_ptr (THREAD_ENTRY *thread_p, int length);
 
@@ -1735,7 +1734,7 @@ log_append_get_zip_undo (THREAD_ENTRY *thread_p)
 #endif
 }
 
-static LOG_ZIP *
+LOG_ZIP *
 log_append_get_zip_redo (THREAD_ENTRY *thread_p)
 {
 #if defined (SERVER_MODE)

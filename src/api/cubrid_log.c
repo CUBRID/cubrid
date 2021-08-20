@@ -823,7 +823,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
-#if 1				//JOOHOK
+#if !defined (NDEBUG)		//JOOHOK
   printf ("cubrid_log_extract ; recv_data_size : %d , total_length = %d \n", recv_data_size, *total_length);
 #endif
   if (recv_data == NULL || recv_data_size != *total_length)

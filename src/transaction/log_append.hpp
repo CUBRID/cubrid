@@ -162,6 +162,7 @@ bool prior_is_tde_encrypted (const log_prior_node *node);
 void log_append_init_zip ();
 void log_append_final_zip ();
 extern LOG_ZIP *log_append_get_zip_undo (THREAD_ENTRY *thread_p);
+extern LOG_ZIP *log_append_get_zip_redo (THREAD_ENTRY *thread_p);
 
 // todo - move to header of log page buffer
 size_t logpb_get_memsize ();

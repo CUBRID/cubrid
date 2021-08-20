@@ -349,7 +349,7 @@ static int cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_t
 static int cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY * timer_entry);
 static int cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA lsa, int trid, char **user);
 static int cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpdata);
-static int cdc_put_value_to_loginfo (const db_value * new_value, char **ptr);
+static int cdc_put_value_to_loginfo (db_value * new_value, char **ptr);
 
 static int get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time);
 static int get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa);
@@ -4704,7 +4704,7 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 
   LSA_COPY (eot_lsa, &lsa);
 
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "done time : %lld", donetime->at_time);
 #endif
 }
@@ -10443,7 +10443,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   /* *INDENT-ON* */
   char *tran_user;
 
-  CDC_LOGINFO_ENTRY *log_info_entry;
+  CDC_LOGINFO_ENTRY log_info_entry;
 
   /*temp_logbuf consists of 2 entry, every time fetching new page, page will be stored in temp_logbuf[pageid%2] */
   CDC_TEMP_LOGBUF temp_logbuf[2];
@@ -10456,7 +10456,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   LOG_RECTYPE log_type;
 
   pthread_mutex_lock (&cdc_Gl.next_lsa_lock);
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_log_producer : next_lsa_lock");
 #endif
   if (LSA_ISNULL (&cdc_Gl.next_lsa))
@@ -10471,7 +10471,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   pthread_mutex_unlock (&cdc_Gl.next_lsa_lock);
 
   pthread_mutex_lock (&cdc_Gl.init_queue_lock);
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_log_producer : queue_init_lock");
 #endif
   if (cdc_Gl.is_queue_initialized == false || cdc_logInfo_queue == NULL)
@@ -10486,12 +10486,12 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   pthread_mutex_unlock (&cdc_Gl.init_queue_lock);
 
   pthread_mutex_lock (&cdc_Gl.queue_consume_lock);
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_log_producer : MAX_CDC_LOGINFO_QUEUE_SIZE");
 #endif
   if (cdc_Gl.queue_size >= MAX_CDC_LOGINFO_QUEUE_SIZE || cdc_logInfo_queue->is_full ())
     {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
       _er_log_debug (ARG_FILE_LINE, "cdc_log_producer : queue size and number of entry is exceeded");
 #endif
       if (cdc_Gl.is_finalize == true)
@@ -10504,12 +10504,12 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   pthread_mutex_unlock (&cdc_Gl.queue_consume_lock);
 
   pthread_mutex_lock (&cdc_Gl.is_finalize_lock);
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_log_producer : finalize");
 #endif
   if (cdc_Gl.is_finalize == true)
     {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
       _er_log_debug (ARG_FILE_LINE, "cdc_log_producer : signal finailize ");
 #endif
       goto end;
@@ -10521,6 +10521,10 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
   temp_logbuf[1].log_page_p = (LOG_PAGE *) PTR_ALIGN (temp_logbuf[1].log_page, MAX_ALIGNMENT);
   temp_logbuf[1].pageid = -1;
 
+  log_info_entry.length = 0;
+  LSA_SET_NULL (&log_info_entry.start_lsa);
+  log_info_entry.log_info = NULL;
+
   LSA_COPY (&cur_log_rec_lsa, &cdc_Gl.next_lsa);	/*lsa_to_process will be defined when get_lsa or get_log_item protocol is called */
   LSA_COPY (&process_lsa, &cur_log_rec_lsa);
 
@@ -10528,30 +10532,20 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
   pthread_mutex_lock (&cdc_Gl.is_finalize_lock);
 
-  /*fetch log page */
-  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
-    {
-      goto end;
-    }
-
-  tmpbuf_index = process_lsa.pageid % 2;
-  temp_logbuf[tmpbuf_index].pageid = process_lsa.pageid;
-  memcpy (temp_logbuf[tmpbuf_index].log_page_p, log_page_p, IO_MAX_PAGE_SIZE);
-
-
-  log_info_entry = (CDC_LOGINFO_ENTRY *) malloc (sizeof (CDC_LOGINFO_ENTRY));
-  if (log_info_entry == NULL)
-    {
-      goto end;
-    }
-
-  log_info_entry->length = 0;
-  LSA_SET_NULL (&log_info_entry->start_lsa);
-  log_info_entry->log_info = NULL;
 
   if (!LSA_ISNULL (&process_lsa))
     {
-#if 1				//JOOHOK
+      /*fetch log page */
+      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      tmpbuf_index = process_lsa.pageid % 2;
+      temp_logbuf[tmpbuf_index].pageid = process_lsa.pageid;
+      memcpy (temp_logbuf[tmpbuf_index].log_page_p, log_page_p, IO_MAX_PAGE_SIZE);
+
+#if !defined(NDEBUG)		//JOOHOK
       _er_log_debug (ARG_FILE_LINE, "cdc_log_producer : start produce : %lld | %d", LSA_AS_ARGS (&process_lsa));
 #endif
       log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
@@ -10613,7 +10607,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      break;
 	    }
 
-	  if (cdc_make_dcl_loginfo (donetime->at_time, trid, tran_user, log_type, log_info_entry) != NO_ERROR)
+	  if (cdc_make_dcl_loginfo (donetime->at_time, trid, tran_user, log_type, &log_info_entry) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -10637,7 +10631,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
 	  ha_dummy = (LOG_REC_HA_SERVER_STATE *) (log_page_p->area + process_lsa.offset);
 
-	  if (cdc_make_timer_loginfo (ha_dummy->at_time, trid, NULL, log_info_entry) != NO_ERROR)
+	  if (cdc_make_timer_loginfo (ha_dummy->at_time, trid, NULL, &log_info_entry) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -10785,7 +10779,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 		}
 	    case LOG_SUPPLEMENT_INSERT:
 
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "cdc_INSERT ");
 #endif
 	      memcpy (&classoid, supplement_data, sizeof (OID));
@@ -10801,10 +10795,10 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 		  goto error;
 		}
 
-	      cdc_make_dml_loginfo (thread_p, trid, tran_user, INSERT, classoid, NULL, &redo_recdes, log_info_entry);
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user, INSERT, classoid, NULL, &redo_recdes, &log_info_entry);
 	      break;
 	    case LOG_SUPPLEMENT_UPDATE:
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "cdc_DELETE ");
 #endif
 	      memcpy (&classoid, supplement_data, sizeof (OID));
@@ -10817,7 +10811,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 
 	      cdc_get_recdes (thread_p, temp_logbuf, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes);
 	      cdc_make_dml_loginfo (thread_p, trid, tran_user, UPDATE, classoid, &undo_recdes, &redo_recdes,
-				    log_info_entry);
+				    &log_info_entry);
 	      break;
 	    case LOG_SUPPLEMENT_DELETE:
 	      memcpy (&classoid, supplement_data, sizeof (OID));
@@ -10828,11 +10822,11 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
 	      cdc_get_recdes (thread_p, temp_logbuf, &undo_lsa, &undo_recdes, NULL, NULL);
-	      cdc_make_dml_loginfo (thread_p, trid, tran_user, DELETE, classoid, &undo_recdes, NULL, log_info_entry);
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user, DELETE, classoid, &undo_recdes, NULL, &log_info_entry);
 
 	      break;
 	    case LOG_SUPPLEMENT_DDL:
-	      if (cdc_make_ddl_loginfo (supplement_data, trid, tran_user, log_info_entry) != NO_ERROR)
+	      if (cdc_make_ddl_loginfo (supplement_data, trid, tran_user, &log_info_entry) != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -10855,35 +10849,31 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	}
 
       /*when refined log info is queued, update cdc_Gl */
-      if (log_info_entry->length != 0)
+      if (log_info_entry.length != 0)
 	{
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
 	  _er_log_debug (ARG_FILE_LINE, "log item produced ");
 #endif
+	  CDC_LOGINFO_ENTRY *tmp = (CDC_LOGINFO_ENTRY *) malloc (sizeof (CDC_LOGINFO_ENTRY));
+	  tmp->length = log_info_entry.length;
+	  tmp->log_info = log_info_entry.log_info;
+	  LSA_COPY (&tmp->start_lsa, &next_log_rec_lsa);
 
-	  LSA_COPY (&log_info_entry->start_lsa, &next_log_rec_lsa);
           /* *INDENT-OFF* */
-	  cdc_logInfo_queue->produce (log_info_entry);
+	  cdc_logInfo_queue->produce (tmp);
           /* *INDENT-ON* */
 
 	  LSA_COPY (&cdc_Gl.last_produced_lsa, &cur_log_rec_lsa);
 
-	  cdc_Gl.queue_size += log_info_entry->length;
+	  cdc_Gl.queue_size += tmp->length;
 
 
 //          pthread_mutex_lock (&cdc_Gl.queue_produce_lock);
 	  pthread_cond_signal (&cdc_Gl.queue_produce_cond);
 //          pthread_mutex_unlock (&cdc_Gl.queue_produce_lock);
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
 	  _er_log_debug (ARG_FILE_LINE, "log item produced signal complete  ");
 #endif
-	}
-      else
-	{
-	  if (log_info_entry != NULL)
-	    {
-	      free_and_init (log_info_entry);
-	    }
 	}
 
       if (!LSA_ISNULL (&next_log_rec_lsa))
@@ -10892,7 +10882,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	  pthread_mutex_lock (&cdc_Gl.next_lsa_lock);
 	  while (LSA_GE (&next_log_rec_lsa, &nxio_lsa))
 	    {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "next_log_rec_lsa > nxio_lsa ");
 #endif
 	      pthread_cond_wait (&cdc_Gl.nxio_lsa_cond, &cdc_Gl.next_lsa_lock);
@@ -10917,7 +10907,7 @@ end:
 
   if (cdc_Gl.is_finalize == true)
     {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
       _er_log_debug (ARG_FILE_LINE, "cdc_log_producer : signal finailize2 ");
 #endif
       pthread_cond_signal (&cdc_Gl.finalize_cond);
@@ -10927,16 +10917,6 @@ end:
   return NO_ERROR;
 
 error:
-
-  if (log_info_entry->log_info != NULL)
-    {
-      free_and_init (log_info_entry->log_info);
-    }
-
-  if (log_info_entry != NULL)
-    {
-      free_and_init (log_info_entry);
-    }
 
   pthread_mutex_unlock (&cdc_Gl.is_finalize_lock);
   return ER_FAILED;
@@ -10950,7 +10930,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 		CDC_TEMP_LOGBUF * temp_logbuf, LOG_LSA * undo_lsa,
 		RECDES * undo_recdes, LOG_LSA * redo_lsa, RECDES * redo_recdes)
 {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_get recdes ");
 #endif
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
@@ -11043,7 +11023,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 
 	    if (is_zipped_undo && undo_length != 0)
 	      {
-		undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
+		undo_zip_ptr = log_append_get_zip_undo (thread_p);
 		if (undo_zip_ptr == NULL)
 		  {
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -11122,7 +11102,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 
 		if (is_zipped_undo && undo_length != 0)
 		  {
-		    undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
+		    undo_zip_ptr = log_append_get_zip_undo (thread_p);
 		    if (undo_zip_ptr == NULL)
 		      {
 			return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -11201,7 +11181,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 
 		if (is_zipped_undo && undo_length != 0)
 		  {
-		    undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
+		    undo_zip_ptr = log_append_get_zip_undo (thread_p);
 		    if (undo_zip_ptr == NULL)
 		      {
 			return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -11290,7 +11270,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 
 		if (is_zipped_undo && undo_length != 0)
 		  {
-		    undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
+		    undo_zip_ptr = log_append_get_zip_undo (thread_p);
 		    if (undo_zip_ptr == NULL)
 		      {
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -11444,7 +11424,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 
 		if (is_zipped_redo && redo_length != 0)
 		  {
-		    redo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
+		    redo_zip_ptr = log_append_get_zip_redo (thread_p);
 		    if (redo_zip_ptr == NULL)
 		      {
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -11474,14 +11454,16 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 
 		redo_recdes->type = *(INT16 *) redo_data;
 		redo_recdes->length = redo_length - sizeof (INT16);
-		redo_recdes->data = (char *) malloc (redo_recdes->length);
+
+		tmp_ptr = (char *) redo_data + sizeof (redo_recdes->type);
+		redo_recdes->length += OR_HEADER_SIZE (tmp_ptr) - OR_CHN_OFFSET;
+
+		redo_recdes->data = (char *) malloc (redo_recdes->length + MAX_ALIGNMENT);
 		if (redo_recdes->data == NULL)
 		  {
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 		    goto end;
 		  }
-
-		tmp_ptr = (char *) redo_data + sizeof (redo_recdes->type);
 //              memcpy (redo_recdes->data, (char *) redo_data + sizeof (redo_recdes->type), redo_recdes->length);
 		memcpy (redo_recdes->data, tmp_ptr, OR_INT_SIZE);
 		memcpy (redo_recdes->data + OR_CHN_OFFSET, tmp_ptr + OR_INT_SIZE, OR_INT_SIZE);
@@ -11534,7 +11516,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 			    log_zip_free (undo_zip_ptr);
 			  }
 
-			undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
+			undo_zip_ptr = log_append_get_zip_undo (thread_p);
 			if (undo_zip_ptr == NULL)
 			  {
 			    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -11591,7 +11573,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 
 		if (is_zipped_redo && redo_length != 0)
 		  {
-		    redo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
+		    redo_zip_ptr = log_append_get_zip_redo (thread_p);
 		    if (redo_zip_ptr == NULL)
 		      {
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -11684,7 +11666,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 
 		if (is_zipped_redo && redo_length != 0)
 		  {
-		    redo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
+		    redo_zip_ptr = log_append_get_zip_redo (thread_p);
 		    if (redo_zip_ptr == NULL)
 		      {
 			return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -11758,7 +11740,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 			    log_zip_free (undo_zip_ptr);
 			  }
 
-			undo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
+			undo_zip_ptr = log_append_get_zip_undo (thread_p);
 			if (undo_zip_ptr == NULL)
 			  {
 			    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -11815,7 +11797,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p,
 
 		if (is_zipped_redo && redo_length != 0)
 		  {
-		    redo_zip_ptr = log_zip_alloc (IO_PAGESIZE);
+		    redo_zip_ptr = log_append_get_zip_redo (thread_p);
 		    if (redo_zip_ptr == NULL)
 		      {
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -11993,7 +11975,7 @@ cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 
   if (is_zipped && length != 0)
     {
-      zip_ptr = log_zip_alloc (IO_PAGESIZE);
+      zip_ptr = log_append_get_zip_undo (thread_p);
       if (zip_ptr == NULL)
 	{
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -12305,7 +12287,7 @@ static int
 cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type,
 		      OID classoid, RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry)
 {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_make_dml ");
 #endif
   /*this is for constructing dml data item */
@@ -12614,7 +12596,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
 {
   /* supplemental data : | ddl type | obj type | class OID | object OID | statement length | statement | */
 
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_make_ddl ");
 #endif
   char *ptr, *start_ptr;
@@ -13065,7 +13047,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
 }
 
 static int
-cdc_put_value_to_loginfo (const db_value * new_value, char **data_ptr)
+cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 {
   const char *src, *end;
   double d;
@@ -13081,6 +13063,8 @@ cdc_put_value_to_loginfo (const db_value * new_value, char **data_ptr)
   const char *date_format = "YYYY-MM-DD";
   const char *time_format = "HH24:MI:SS";
   const char *timestamp_frmt = "YYYY-MM-DD HH24:MI:SS.FF";
+  const char *timestamptz_frmt = "YYYY-MM-DD HH24:MI:SS.FF TZH:TZM";
+  const char *timestampltz_frmt = "YYYY-MM-DD HH24:MI:SS.FF TZR";
   db_make_int (&lang_str, 1);
   db_make_null (&result);
 
@@ -13174,48 +13158,58 @@ cdc_put_value_to_loginfo (const db_value * new_value, char **data_ptr)
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (&result));
       break;
+
     case DB_TYPE_TIMESTAMP:
-      (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (new_value));
-      func_type = 7;
-      ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, line);
-      break;
-    case DB_TYPE_TIMESTAMPLTZ:
-      (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (new_value));
-      func_type = 7;
-      ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, line);
-      break;
-    case DB_TYPE_TIMESTAMPTZ:
-      {
-	DB_TIMESTAMPTZ *ts_tz;
-	ts_tz = db_get_timestamptz (new_value);
-	(void) db_timestamptz_to_string (line, TOO_BIG_TO_MATTER, &(ts_tz->timestamp), &(ts_tz->tz_id));
-	func_type = 7;
-	ptr = or_pack_int (ptr, func_type);
-	ptr = or_pack_string (ptr, line);
-      }
-      break;
     case DB_TYPE_DATETIME:
+      db_make_char (&format, strlen (timestamp_frmt), timestamp_frmt,
+		    strlen (timestamp_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
+      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (&result));
+#if !defined(NDEBUG)		// JOOHOK
+      _er_log_debug (ARG_FILE_LINE, "timestamp : %s ", db_get_string (&result));
+#endif
       break;
-    case DB_TYPE_DATETIMELTZ:
-      (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_datetime (new_value));
+
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_DATETIMETZ:
+      db_make_char (&format, strlen (timestamptz_frmt), timestamptz_frmt,
+		    strlen (timestamptz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
+      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, line);
+      ptr = or_pack_string (ptr, db_get_string (&result));
+
+#if !defined(NDEBUG)		// JOOHOK
+      _er_log_debug (ARG_FILE_LINE, "timestamptz : %s ", db_get_string (&result));
+#endif
       break;
-    case DB_TYPE_DATETIMETZ:
-      {
-	DB_DATETIMETZ *dt_tz;
-	dt_tz = db_get_datetimetz (new_value);
-	(void) db_datetimetz_to_string (line, TOO_BIG_TO_MATTER, &(dt_tz->datetime), &(dt_tz->tz_id));
-	func_type = 7;
-	ptr = or_pack_int (ptr, func_type);
-	ptr = or_pack_string (ptr, line);
-      }
+
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_DATETIMELTZ:
+      db_make_char (&format, strlen (timestampltz_frmt), timestampltz_frmt,
+		    strlen (timestampltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
+      if (DB_VALUE_TYPE (new_value) == DB_TYPE_TIMESTAMPLTZ)
+	{
+	  db_value_alter_type (new_value, DB_TYPE_TIMESTAMPTZ);
+	}
+      else
+	{
+	  db_value_alter_type (new_value, DB_TYPE_DATETIMETZ);
+	}
+
+      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, db_get_string (&result));
+
+#if !defined(NDEBUG)		// JOOHOK
+      _er_log_debug (ARG_FILE_LINE, "timestampltz : %s ", db_get_string (&result));
+#endif
       break;
     case DB_TYPE_DATE:
 
@@ -13390,7 +13384,7 @@ cdc_thread_checker_daemon_init ()
 void
 cdc_daemons_init ()
 {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_daemons_init ");
 #endif
   cdc_log_producer_daemon_init ();
@@ -13400,7 +13394,7 @@ cdc_daemons_init ()
 void
 cdc_daemons_destroy ()
 {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_daemons_destroy ");
 #endif
 
@@ -13410,7 +13404,7 @@ cdc_daemons_destroy ()
   cubthread::get_manager ()->destroy_daemon (cdc_log_Producer_daemon);
   cubthread::get_manager ()->destroy_daemon (cdc_Thread_checker_daemon);
   /* *INDENT-ON* */
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_daemons_destroy done");
 #endif
 
@@ -13557,7 +13551,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 
   if (is_found)
     {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
       _er_log_debug (ARG_FILE_LINE, "cdc_find_lsa : %lld | %d  ,", LSA_AS_ARGS (start_lsa));
 #endif
       LSA_COPY (&cdc_Gl.next_lsa, start_lsa);
@@ -13578,7 +13572,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 static void
 cdc_reinitialize_queue (LOG_LSA * start_lsa)
 {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_reinitialize_queue : %lld | %d  ,", LSA_AS_ARGS (start_lsa));
 #endif
   assert (cdc_logInfo_queue != NULL);
@@ -13715,6 +13709,12 @@ get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_l
   if ((error_code = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_pgptr)) != NO_ERROR)
     {
       return error_code;
+    }
+
+  if (arv_num == -1)
+    {
+      process_lsa.pageid = log_pgptr->hdr.logical_pageid;
+      process_lsa.offset = log_pgptr->hdr.offset;
     }
 
   while (!LSA_ISNULL (&process_lsa))
@@ -13862,7 +13862,7 @@ get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * star
 int
 cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_length, int *num_log_info)
 {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_get_logitem_info ");
 #endif
   int rv;
@@ -13897,7 +13897,9 @@ cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_l
       pthread_mutex_lock (&cdc_Gl.queue_produce_lock);
       status = pthread_cond_timedwait (&cdc_Gl.queue_produce_cond, &cdc_Gl.queue_produce_lock, &timeout);
       pthread_mutex_unlock (&cdc_Gl.queue_produce_lock);
-      if (status == ETIMEDOUT)
+
+      end = (int) time (NULL);
+      if ((end - begin) >= cdc_Gl.extraction_timeout)
 	{
 	  return ER_CDC_EXTRACTION_TIMEOUT;
 	}
@@ -13905,7 +13907,7 @@ cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_l
 
   while (cdc_logInfo_queue->is_empty () == false && (*num_log_info < cdc_Gl.max_log_item))
     {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
       _er_log_debug (ARG_FILE_LINE, "cdc_get_logitem_info  : consume");
 #endif
       /* *INDENT-OFF* */
@@ -13953,17 +13955,17 @@ cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_l
 
 end:
 
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_get_logitem_info  : consume done");
 #endif
   pthread_mutex_lock (&cdc_Gl.queue_consume_lock);
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_get_logitem_info  : signal ");
 #endif
   pthread_cond_signal (&cdc_Gl.queue_consume_cond);
   pthread_mutex_unlock (&cdc_Gl.queue_consume_lock);
 
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_get_logitem_info  : signal done");
 #endif
 
@@ -13979,7 +13981,7 @@ cdc_finalize ()
 
   pthread_mutex_lock (&cdc_Gl.is_finalize_lock);
 
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_finalize ");
 #endif
   pthread_cond_signal (&cdc_Gl.lsa_init_cond);
@@ -14046,7 +14048,7 @@ cdc_finalize ()
 
   cdc_Gl.is_finalize = false;
   pthread_mutex_unlock (&cdc_Gl.is_finalize_lock);
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_finalize done");
 #endif
   return NO_ERROR;
@@ -14105,7 +14107,7 @@ cdc_initialize ()
       cdc_Gl.is_queue_initialized = false;
     }
 
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_is initialize done");
 #endif
   return NO_ERROR;
@@ -14115,7 +14117,7 @@ static bool
 is_filtered_class (OID classoid)
 {
 
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_is filtered classe");
 #endif
   int i = 0;
@@ -14141,7 +14143,7 @@ is_filtered_class (OID classoid)
 static bool
 is_filtered_user (char *user)
 {
-#if 1				//JOOHOK
+#if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_is filtered user");
 #endif
   int i = 0;
