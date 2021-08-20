@@ -3088,7 +3088,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	    {
 	      /* push into HAVING clause */
 	      query->info.query.q.select.having =
-	      parser_append_node (push_term_list, query->info.query.q.select.having);
+		parser_append_node (push_term_list, query->info.query.q.select.having);
 	    }
 	}
       else
@@ -3207,7 +3207,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
 
       /* check for nullable-term of outer join spec */
-      if (is_outer_joined && pt_has_nullable_term(parser, term))
+      if (is_outer_joined && pt_has_nullable_term (parser, term))
 	{
 	  continue;
 	}
@@ -3265,7 +3265,7 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
 {
   int push_cnt = 0;		/* init */
   FIND_ID_INFO info;
-  PT_NODE * subquery = NULL;
+  PT_NODE *subquery = NULL;
 
   info.type = FIND_ID_INLINE_VIEW;	/* inline view */
   /* init input section */
