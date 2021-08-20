@@ -1193,6 +1193,10 @@ pt_is_inst_or_orderby_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *a
     {
       *continue_walk = PT_LIST_WALK;
     }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
 
   return tree;
 }

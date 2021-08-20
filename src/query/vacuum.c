@@ -5622,7 +5622,14 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 VACUUM_LOG_BLOCKID
 vacuum_get_log_blockid (LOG_PAGEID pageid)
 {
-  return ((pageid == NULL_PAGEID) ? VACUUM_NULL_LOG_BLOCKID : (pageid / vacuum_Data.log_block_npages));
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) || pageid == NULL_PAGEID)
+    {
+      return VACUUM_NULL_LOG_BLOCKID;
+    }
+
+  assert (vacuum_Data.log_block_npages != 0);
+
+  return pageid / vacuum_Data.log_block_npages;
 }
 
 /*

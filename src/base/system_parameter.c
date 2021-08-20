@@ -5248,7 +5248,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ER_LOG_VACUUM,
    PRM_NAME_ER_LOG_VACUUM,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    &prm_er_log_vacuum_flag,
    (void *) &prm_er_log_vacuum_default,
