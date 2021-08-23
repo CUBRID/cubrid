@@ -3043,8 +3043,12 @@ bool
 pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   int has_nullable_term = 0;
+  PT_NODE *next;
 
-  (void) parser_walk_leaves (parser, node, NULL, NULL, qo_check_nullable_expr, &has_nullable_term);
+  next = node->next;
+  node->next = NULL;
+  (void) parser_walk_tree (parser, node, NULL, NULL, qo_check_nullable_expr, &has_nullable_term);
+  node->next = next;
 
   return has_nullable_term == 0 ? false : true;
 }
