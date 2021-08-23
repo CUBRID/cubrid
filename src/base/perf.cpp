@@ -31,43 +31,6 @@
 namespace cubperf
 {
   //////////////////////////////////////////////////////////////////////////
-  // stat_definition
-  //////////////////////////////////////////////////////////////////////////
-  stat_definition::stat_definition (void)
-  {
-    // nothing
-  }
-
-  stat_definition::stat_definition (const stat_definition &other)
-    : m_id (other.m_id)
-    , m_type (other.m_type)
-    , m_names { other.m_names[0], other.m_names[1] }
-    , m_offset (0)
-  {
-    //
-  }
-
-  stat_definition &
-  stat_definition::operator= (const stat_definition &other)
-  {
-    m_id = other.m_id;
-    m_type = other.m_type;
-    for (std::size_t i = 0; i < MAX_VALUE_COUNT; ++i)
-      {
-	m_names[i] = other.m_names[i];
-      }
-    m_offset = 0;
-
-    return *this;
-  }
-
-  std::size_t
-  stat_definition::get_value_count (void) const
-  {
-    return m_type == type::COUNTER_AND_TIMER ? 2 : 1;
-  }
-
-  //////////////////////////////////////////////////////////////////////////
   // statset_definition
   //////////////////////////////////////////////////////////////////////////
 

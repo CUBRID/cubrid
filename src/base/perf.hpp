@@ -101,6 +101,7 @@
 namespace cubperf
 {
   // stat_definition - defines one statistics entry in a set
+  //
   class stat_definition final
   {
     public:
@@ -113,18 +114,18 @@ namespace cubperf
 	COUNTER_AND_TIMER
       };
 
-      inline constexpr stat_definition (const stat_id id, type stat_type,
-					const char *first_name, const char *second_name = nullptr);
-      stat_definition (const stat_definition &other);
+      constexpr stat_definition (const stat_id id, type stat_type,
+				 const char *first_name, const char *second_name = nullptr);
+      constexpr stat_definition (const stat_definition &other);
 
-      stat_definition &operator= (const stat_definition &other);
+      constexpr stat_definition &operator= (const stat_definition &other);
 
-      std::size_t get_value_count (void) const; // get value count
+      constexpr std::size_t get_value_count (void) const;
 
     private:
       friend class statset_definition; // statset_definition will process private content
 
-      stat_definition (void);
+      constexpr stat_definition (void);
 
       // make sure this is updated if more values are possible
       static const std::size_t MAX_VALUE_COUNT = 2;
@@ -251,17 +252,59 @@ namespace cubperf
   //////////////////////////////////////////////////////////////////////////
 
   //////////////////////////////////////////////////////////////////////////
-  // statset_definition
+  // stat_definition
   //////////////////////////////////////////////////////////////////////////
 
-  inline constexpr stat_definition::stat_definition (const stat_id id, type stat_type,
-      const char *first_name, const char *second_name)
+  constexpr
+  stat_definition::stat_definition (void)
+    : m_id { std::numeric_limits<std::size_t>::max () } // arguably an invalid value
+    , m_type { stat_definition::COUNTER } // there is no uninitialized/invalid value to be used
+    , m_names { nullptr, nullptr }
+    , m_offset { 0 }
+  {
+  }
+
+  constexpr
+  stat_definition::stat_definition (const stat_id id, type stat_type, const char *first_name, const char *second_name)
     : m_id (id)
     , m_type (stat_type)
     , m_names { first_name, second_name }
     , m_offset (0)
   {
   }
+
+  constexpr
+  stat_definition::stat_definition (const stat_definition &other)
+    : m_id (other.m_id)
+    , m_type (other.m_type)
+    , m_names { other.m_names[0], other.m_names[1] }
+    , m_offset (0)
+  {
+  }
+
+  constexpr stat_definition &
+  stat_definition::operator= (const stat_definition &other)
+  {
+    m_id = other.m_id;
+    m_type = other.m_type;
+    for (std::size_t i = 0; i < MAX_VALUE_COUNT; ++i)
+      {
+	m_names[i] = other.m_names[i];
+      }
+    m_offset = 0;
+
+    return *this;
+  }
+
+  constexpr std::size_t
+  stat_definition::get_value_count (void) const
+  {
+    return (m_type == type::COUNTER_AND_TIMER) ? 2 : 1;
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // statset_definition
+  //////////////////////////////////////////////////////////////////////////
 
   template <bool IsAtomic>
   void

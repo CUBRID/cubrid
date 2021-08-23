@@ -58,8 +58,7 @@ class ut_redo_job_impl final : public cublog::redo_parallel::redo_job_base
     ut_redo_job_impl &operator = (ut_redo_job_impl const &) = delete;
     ut_redo_job_impl &operator = (ut_redo_job_impl &&) = delete;
 
-    int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-		 LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
+    int execute (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context) override;
     void retire (std::size_t a_task_idx) override;
 
     void require_equal (const ut_redo_job_impl &that) const;

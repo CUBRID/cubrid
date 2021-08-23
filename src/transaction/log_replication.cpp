@@ -65,8 +65,7 @@ namespace cublog
       redo_job_replication_delay_impl &operator = (redo_job_replication_delay_impl const &) = delete;
       redo_job_replication_delay_impl &operator = (redo_job_replication_delay_impl &&) = delete;
 
-      int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
+      int execute (THREAD_ENTRY *thread_p, log_rv_redo_context &) override;
       void retire (std::size_t a_task_idx) override;
 
     private:
@@ -87,8 +86,7 @@ namespace cublog
     public:
       redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, const log_unique_stats &stats);
 
-      int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader, LOG_ZIP &undo_unzip_support,
-		   LOG_ZIP &redo_unzip_support) override;
+      int execute (THREAD_ENTRY *thread_p, log_rv_redo_context &) override;
       void retire (std::size_t a_task_idx) override;
 
     private:
@@ -104,16 +102,12 @@ namespace cublog
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }
   {
-    log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
-    log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
-
     // depending on parameter, instantiate the mechanism to execute replication in parallel
     // mandatory to initialize before daemon such that:
     //  - race conditions, when daemon comes online, are avoided
     //  - (even making abstraction of the race conditions) no log records are needlessly
     //    processed synchronously
-    const int replication_parallel
-      = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
+    const int replication_parallel = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
     assert (replication_parallel >= 0);
     if (replication_parallel > 0)
       {
@@ -124,10 +118,9 @@ namespace cublog
 	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
 	const int recovery_reusable_jobs_count = prm_get_integer_value (PRM_ID_RECOVERY_REUSABLE_JOBS_COUNT);
 	m_reusable_jobs->initialize (recovery_reusable_jobs_count, replication_parallel,
-				     cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT,
-				     nullptr, force_each_log_page_fetch);
-	m_parallel_replication_redo.reset (new cublog::redo_parallel (
-	    replication_parallel, m_minimum_log_lsa.get ()));
+				     cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT);
+	m_parallel_replication_redo.reset (
+		new cublog::redo_parallel (replication_parallel, m_minimum_log_lsa.get (), m_redo_context));
       }
 
     // Create the daemon
@@ -156,9 +149,6 @@ namespace cublog
 	m_parallel_replication_redo->set_adding_finished ();
 	m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
       }
-
-    log_zip_free_data (m_undo_unzip);
-    log_zip_free_data (m_redo_unzip);
   }
 
   void
@@ -207,14 +197,14 @@ namespace cublog
 
     m_perfmon_redo_sync.start ();
     // make sure the log page is refreshed. otherwise it may be outdated and new records may be missed
-    m_reader.set_lsa_and_fetch_page (m_redo_lsa, log_reader::fetch_mode::FORCE);
+    m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa, log_reader::fetch_mode::FORCE);
 
     while (m_redo_lsa < end_redo_lsa)
       {
 	// read and redo a record
-	m_reader.set_lsa_and_fetch_page (m_redo_lsa);
+	m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa);
 
-	const log_rec_header header = m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
+	const log_rec_header header = m_redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
 
 	switch (header.type)
 	  {
@@ -240,12 +230,13 @@ namespace cublog
 	    break;
 	  case LOG_DBEXTERN_REDO_DATA:
 	  {
-	    const log_rec_dbout_redo dbout_redo = m_reader.reinterpret_copy_and_add_align<log_rec_dbout_redo> ();
+	    const log_rec_dbout_redo dbout_redo =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_dbout_redo> ();
 	    log_rcv rcv;
 	    rcv.length = dbout_redo.length;
 
-	    log_rv_redo_record (&thread_entry, m_reader, RV_fun[dbout_redo.rcvindex].redofun, &rcv, &m_redo_lsa, 0,
-				nullptr, m_redo_unzip);
+	    log_rv_redo_record (&thread_entry, m_redo_context.m_reader, RV_fun[dbout_redo.rcvindex].redofun, &rcv,
+				&m_redo_lsa, 0, nullptr, m_redo_context.m_redo_zip);
 	    break;
 	  }
 	  case LOG_COMMIT:
@@ -283,8 +274,7 @@ namespace cublog
 
   template <typename T>
   void
-  replicator::read_and_redo_btree_stats (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa,
-					 const T &log_rec)
+  replicator::read_and_redo_btree_stats (cubthread::entry &thread_entry, const log_rv_redo_rec_info<T> &record_info)
   {
     //
     // Recovery redo does not apply b-tree stats directly into the b-tree root page. But while replicating on the page
@@ -298,9 +288,8 @@ namespace cublog
 
     // Get redo data and read it
     LOG_RCV rcv;
-    rcv.length = log_rv_get_log_rec_redo_length<T> (log_rec);
-    if (log_rv_get_log_rec_redo_data (&thread_entry, m_reader, log_rec, rcv, rectype, m_undo_unzip, m_redo_unzip)
-	!= NO_ERROR)
+    rcv.length = log_rv_get_log_rec_redo_length<T> (record_info.m_logrec);
+    if (log_rv_get_log_rec_redo_data (&thread_entry, m_redo_context, record_info, rcv) != NO_ERROR)
       {
 	logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "replicator::read_and_redo_btree_stats");
 	return;
@@ -313,13 +302,13 @@ namespace cublog
     // Create a job or apply the change immediately
     if (m_parallel_replication_redo)
       {
-	redo_job_btree_stats *job = new redo_job_btree_stats (root_vpid, rec_lsa, stats);
+	redo_job_btree_stats *job = new redo_job_btree_stats (root_vpid, record_info.m_start_lsa, stats);
 	// ownership of raw pointer goes to the callee
 	m_parallel_replication_redo->add (job);
       }
     else
       {
-	replicate_btree_stats (thread_entry, root_vpid, stats, rec_lsa);
+	replicate_btree_stats (thread_entry, root_vpid, stats, record_info.m_start_lsa);
       }
   }
 
@@ -327,12 +316,13 @@ namespace cublog
   void
   replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa)
   {
-    m_reader.advance_when_does_not_fit (sizeof (T));
-    const T log_rec = m_reader.reinterpret_copy_and_add_align<T> ();
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
+    log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
+					 m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
 
     // To allow reads on the page server, make sure that all changes are visible.
     // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
-    MVCCID mvccid = log_rv_get_log_rec_mvccid (log_rec);
+    MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
     if (mvccid != MVCCID_NULL && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
       {
 	log_Gl.hdr.mvcc_next_id = mvccid;
@@ -341,15 +331,15 @@ namespace cublog
 
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
     // proceed.
-    LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (log_rec).rcvindex;
+    LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (record_info.m_logrec).rcvindex;
     if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
       {
-	read_and_redo_btree_stats (thread_entry, rectype, rec_lsa, log_rec);
+	read_and_redo_btree_stats (thread_entry, record_info);
       }
     else
       {
-	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
-	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, *m_reusable_jobs.get (), true, m_perf_stat_idle);
+	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_redo_context, record_info,
+	    m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
       }
   }
 
@@ -357,7 +347,7 @@ namespace cublog
   void replicator::calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
       const log_lsa &rec_lsa)
   {
-    const T log_rec = m_reader.reinterpret_copy_and_add_align<T> ();
+    const T log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
     // at_time, expressed in milliseconds rather than seconds
     const time_msec_t start_time_msec = log_rec.at_time;
     if (m_parallel_replication_redo != nullptr)
@@ -429,7 +419,7 @@ namespace cublog
   }
 
   int
-  redo_job_replication_delay_impl::execute (THREAD_ENTRY *thread_p, log_reader &, LOG_ZIP &, LOG_ZIP &)
+  redo_job_replication_delay_impl::execute (THREAD_ENTRY *thread_p, log_rv_redo_context &)
   {
     const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec);
     return res;
@@ -503,7 +493,7 @@ namespace cublog
   }
 
   int
-  redo_job_btree_stats::execute (THREAD_ENTRY *thread_p, log_reader &, LOG_ZIP &, LOG_ZIP &)
+  redo_job_btree_stats::execute (THREAD_ENTRY *thread_p, log_rv_redo_context &)
   {
     replicate_btree_stats (*thread_p, get_vpid (), m_stats, get_log_lsa ());
     return NO_ERROR;
