@@ -298,6 +298,8 @@ static LOG_PAGE *log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, F
 						      LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						  LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+						  LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
 				  LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p);
 static void log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
@@ -6819,6 +6821,19 @@ log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 }
 
 static LOG_PAGE *
+log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  LOG_REC_SUPPLEMENT *supplement;
+
+  /* Get the DATA HEADER */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), log_lsa, log_page_p);
+  supplement = ((LOG_REC_SUPPLEMENT *) ((char *) log_page_p->area + log_lsa->offset));
+  fprintf (out_fp, "  SUPPLEMENT TYPE = %d\n", supplement->rec_type);
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
 log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * log_lsa,
 		 LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
 {
@@ -6911,6 +6926,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_DUMMY_HA_SERVER_STATE:
       log_page_p = log_dump_record_ha_server_state (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
+    case LOG_SUPPLEMENTAL_INFO:
+      log_page_p = log_dump_record_supplemental_info (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_START_CHKPT:
