@@ -3139,6 +3139,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
  *  - nullable-term of outer join spec
  *  - query in predicate(term) ==>?
  *  - method in predicate(term)
+ *  - correlated column in predicate(term)
  *
  * 4. select_list of subquery which is matched to term check
  *  - query in subquery_select_list
@@ -3171,6 +3172,11 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
 
   /* 2.subquery check */
+  if (subquery == NULL)
+    {
+      return 0;
+    }
+
   /* check inst num or orderby_num */
   if (pt_has_inst_in_where_and_select_list (parser, subquery))
     {
@@ -3415,34 +3421,6 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
   spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
   spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FROM_VCLASS);
-
-  /* move sargable terms */
-  if ((statement->node_type == PT_SELECT) && (from = new_query->info.query.q.select.from)
-      && (entity_name = from->info.spec.entity_name) && (entity_name->node_type != PT_SPEC))
-    {
-      info.type = FIND_ID_VCLASS;	/* vclass */
-      /* init input section */
-      info.in.spec = spec;
-      info.in.others_spec_list = statement->info.query.q.select.from;
-      info.in.attr_list = mq_fetch_attributes (parser, entity_name);
-      if (info.in.attr_list == NULL && (pt_has_error (parser) || er_has_error ()))
-	{
-	  return NULL;
-	}
-
-      if (query_spec)
-	{
-	  /* check only specified query spec of the vclass */
-	  info.in.subquery = query_spec;
-	}
-      else
-	{
-	  /* check all query spec of the vclass */
-	  info.in.subquery = mq_fetch_subqueries (parser, entity_name);
-	}
-
-      (void) mq_copypush_sargable_terms_helper (parser, statement, spec, new_query, &info);
-    }
 
   if (PT_IS_SELECT (query_spec) && query_spec->info.query.q.select.connect_by)
     {
