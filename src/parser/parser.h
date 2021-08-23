@@ -523,6 +523,7 @@ extern "C"
   extern bool pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node);
 
   extern void pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node);

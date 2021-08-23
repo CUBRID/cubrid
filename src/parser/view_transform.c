@@ -3172,7 +3172,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   /* 2.subquery check */
   /* check inst num or orderby_num */
-  if (pt_has_inst_or_orderby_num (parser, subquery))
+  if (pt_has_inst_in_where_and_select_list (parser, subquery))
     {
       return 0;
     }

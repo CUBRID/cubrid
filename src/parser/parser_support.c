@@ -2987,6 +2987,52 @@ pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_has_inst_in_where_and_select_list ()
+ *          - check if tree has an INST_NUM or ORDERBY_NUM node in where and select_list
+ *   return: true if tree has INST_NUM/ORDERBY_NUM
+ *   parser(in):
+ *   node(in):
+ */
+
+bool
+pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_inst_orderby_num = false;
+  PT_NODE *where, *select_list, *orderby_for;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      where = node->info.query.q.select.where;
+      (void) parser_walk_tree (parser, where, pt_is_inst_or_orderby_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      select_list = node->info.query.q.select.list;
+      (void) parser_walk_tree (parser, select_list, pt_is_inst_or_orderby_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      orderby_for = node->info.query.orderby_for;
+      (void) parser_walk_tree (parser, orderby_for, pt_is_inst_or_orderby_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      if (node->info.query.limit)
+	{
+	  return true;
+	}
+      has_inst_orderby_num |= pt_has_inst_in_where_and_select_list (parser, node->info.query.q.union_.arg1);
+      has_inst_orderby_num |= pt_has_inst_in_where_and_select_list (parser, node->info.query.q.union_.arg2);
+      break;
+
+    default:
+      break;
+    }
+
+  return has_inst_orderby_num;
+}
+
+/*
  * pt_has_nullable_term () - check if tree has an nullable term
  *				   node somewhere
  *   return: true if tree has nullable term
