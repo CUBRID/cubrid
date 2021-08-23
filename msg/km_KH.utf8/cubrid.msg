@@ -1355,7 +1355,6 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1284 Cannot truncate the table due to the primary key referred to on %1$s. Try again with CASCADE option.
 1285 Cannot cascade truncate because the ON DELETE action of the foreign key (%1$s) is not set to CASCADE.
 
-
 1286 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL

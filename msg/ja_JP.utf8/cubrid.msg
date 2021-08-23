@@ -1353,7 +1353,7 @@ $ LOADDB
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
 1284 %1$s sで参照されている主キーが原因で、テーブルを切り捨てることができません。 CASCADEオプションを使用して再試行してください。
-1285外部キー（%1$s）のON DELETEアクションがCASCADEに設定されていないため、切り捨てをカスケードできません。
+1285 外部キー（%1$s）のON DELETEアクションがCASCADEに設定されていないため、切り捨てをカスケードできません。
 
 1286 ラストエラー
 
