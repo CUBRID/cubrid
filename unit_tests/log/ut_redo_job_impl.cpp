@@ -30,8 +30,7 @@ ut_redo_job_impl::ut_redo_job_impl (ut_database &a_database_recovery, job_type a
 {
 }
 
-int ut_redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-			       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
+int ut_redo_job_impl::execute (THREAD_ENTRY *thread_p, log_rv_redo_context &)
 {
   // busy wait before actually applying the changes as to simulate the real conditions
   if (m_millis > 0.)

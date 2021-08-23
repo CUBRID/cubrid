@@ -24,6 +24,7 @@
 #include "log_lsa.hpp"
 #include "log_reader.hpp"
 #include "log_record.hpp"
+#include "log_recovery_redo.hpp"
 #include "log_recovery_redo_perf.hpp"
 #include "thread_entry_task.hpp"
 #include "perf_monitor_trackers.hpp"
@@ -74,8 +75,7 @@ namespace cublog
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
       template <typename T>
-      void read_and_redo_btree_stats (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa,
-				      const T &log_rec);
+      void read_and_redo_btree_stats (cubthread::entry &thread_entry, const log_rv_redo_rec_info<T> &record_info);
       template <typename T>
       void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
 	  const log_lsa &rec_lsa);
@@ -88,10 +88,7 @@ namespace cublog
       log_lsa m_redo_lsa = NULL_LSA;
       mutable std::mutex m_redo_lsa_mutex;
       mutable std::condition_variable m_redo_lsa_condvar;
-
-      log_reader m_reader { LOG_CS_SAFE_READER };
-      LOG_ZIP m_undo_unzip;
-      LOG_ZIP m_redo_unzip;
+      log_rv_redo_context m_redo_context { NULL_LSA, log_reader::fetch_mode::FORCE };
 
       std::unique_ptr<cublog::reusable_jobs_stack> m_reusable_jobs;
       std::unique_ptr<cublog::minimum_log_lsa_monitor> m_minimum_log_lsa;

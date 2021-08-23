@@ -291,7 +291,7 @@ active_tran_server::disconnect_page_server ()
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
   er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
 
-  for (size_t i = 0; i < m_page_server_conn_vec.size(); i++)
+  for (size_t i = 0; i < m_page_server_conn_vec.size (); i++)
     {
       er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
 		    m_page_server_conn_vec[i]->get_underlying_channel_id ());
