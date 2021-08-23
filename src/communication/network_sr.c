@@ -58,6 +58,7 @@
 #endif
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "session.h"
 
 enum net_req_act
 {
@@ -1274,6 +1275,7 @@ loop:
   if (tran_index != NULL_TRAN_INDEX)
     {
       (void) xboot_unregister_client (thread_p, tran_index);
+      session_remove_query_entry_all (thread_p);
     }
   css_free_conn (conn_p);
 

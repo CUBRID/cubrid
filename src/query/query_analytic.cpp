@@ -54,8 +54,12 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
       return ER_FAILED;
     }
 
-  if (func_p->function == PT_COUNT_STAR || func_p->function == PT_COUNT || func_p->function == PT_ROW_NUMBER
-      || func_p->function == PT_RANK || func_p->function == PT_DENSE_RANK)
+  const FUNC_TYPE fcode = func_p->function;
+  if (fcode == PT_COUNT_STAR || fcode == PT_COUNT)
+    {
+      db_make_bigint (func_p->value, 0);
+    }
+  else if (fcode == PT_ROW_NUMBER || fcode == PT_RANK || fcode == PT_DENSE_RANK)
     {
       db_make_int (func_p->value, 0);
     }
@@ -139,7 +143,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	{
 	case PT_COUNT:
 	case PT_COUNT_STAR:
-	  func_p->domain = tp_domain_resolve_default (DB_TYPE_INTEGER);
+	  func_p->domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
 	  break;
 
 	case PT_AVG:
@@ -392,11 +396,11 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
     case PT_COUNT:
       if (func_p->curr_cnt < 1)
 	{
-	  db_make_int (func_p->value, 1);
+	  db_make_bigint (func_p->value, 1);
 	}
       else
 	{
-	  db_make_int (func_p->value, db_get_int (func_p->value) + 1);
+	  db_make_bigint (func_p->value, db_get_bigint (func_p->value) + 1);
 	}
       break;
 
@@ -782,7 +786,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   /* set count-star aggregate values */
   if (func_p->function == PT_COUNT_STAR)
     {
-      db_make_int (func_p->value, func_p->curr_cnt);
+      db_make_bigint (func_p->value, (INT64) func_p->curr_cnt);
     }
 
   /* process list file for distinct */
@@ -808,7 +812,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       if (func_p->function == PT_COUNT)
 	{
-	  db_make_int (func_p->value, list_id_p->tuple_cnt);
+	  db_make_bigint (func_p->value, list_id_p->tuple_cnt);
 	}
       else
 	{
@@ -1098,7 +1102,7 @@ qdata_analytic_interpolation (cubthread::entry *thread_p, cubxasl::analytic_list
 			      QFILE_LIST_SCAN_ID *scan_id)
 {
   int error = NO_ERROR;
-  int tuple_count;
+  INT64 tuple_count;
   double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
   FUNC_TYPE function;
   double cur_group_percentile;

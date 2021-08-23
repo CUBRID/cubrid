@@ -14098,7 +14098,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
       goto end;
     }
 
-  assert (result->query_type->db_type == DB_TYPE_INTEGER);
+  assert (result->query_type->db_type == DB_TYPE_BIGINT);
 
   error = db_query_set_copy_tplvalue (result, 0 /* peek */ );
   if (error != NO_ERROR)
@@ -14113,9 +14113,9 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
     }
 
   assert (!DB_IS_NULL (&count));
-  assert (DB_VALUE_DOMAIN_TYPE (&count) == DB_TYPE_INTEGER);
+  assert (DB_VALUE_DOMAIN_TYPE (&count) == DB_TYPE_BIGINT);
 
-  if (db_get_int (&count) > 0)
+  if (db_get_bigint (&count) > 0)
     {
       *has_nulls = true;
     }

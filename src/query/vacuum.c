@@ -5611,7 +5611,14 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 VACUUM_LOG_BLOCKID
 vacuum_get_log_blockid (LOG_PAGEID pageid)
 {
-  return ((pageid == NULL_PAGEID) ? VACUUM_NULL_LOG_BLOCKID : (pageid / vacuum_Data.log_block_npages));
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) || pageid == NULL_PAGEID)
+    {
+      return VACUUM_NULL_LOG_BLOCKID;
+    }
+
+  assert (vacuum_Data.log_block_npages != 0);
+
+  return pageid / vacuum_Data.log_block_npages;
 }
 
 /*
@@ -6737,7 +6744,7 @@ vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VPID_COPY (&page->next_page, (VPID *) rcv->data);
 
   /* Check recovery data is as expected */
-  assert (rcv->length = sizeof (VPID));
+  assert (rcv->length == sizeof (VPID));
 
   vacuum_er_log (VACUUM_ER_LOG_RECOVERY, "Set link for dropped files from page %d|%d to page %d|%d.",
 		 pgbuf_get_vpid_ptr (rcv->pgptr)->pageid, pgbuf_get_vpid_ptr (rcv->pgptr)->volid, page->next_page.volid,
