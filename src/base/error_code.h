@@ -1655,7 +1655,7 @@
 #define ER_DBLINK_PASSWORD_INVALID_LENGTH           -1293
 #define ER_DBLINK_PASSWORD_CHECKSUM                 -1294
 
-#define ER_LAST_ERROR                               -1294
+#define ER_LAST_ERROR                               -1295
 
 /*
  * CAUTION!
