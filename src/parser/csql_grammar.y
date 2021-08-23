@@ -84,7 +84,7 @@ extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
 
-extern void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
+static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
 /*%CODE_END%*/%}
 
 %{
@@ -24865,7 +24865,7 @@ connect_item
           {{
                 container_2 ctn;
 
-                if( pt_check_hostname($3) == false )
+                if( pt_check_hostname($3->info.name.original) == false )
                   {
                         PT_NODE* node = pt_top(this_parser);     
                         PT_ERROR (this_parser, node, "Incorrect hostname format");
@@ -24922,9 +24922,32 @@ connect_item
             DBG_PRINT}}
         | PASSWORD '=' 
           {{
-                container_2 ctn;
-                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), NULL);
-                $$ = ctn;
+               container_2 ctn;
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+	        if (val)                    
+		  {
+                        int     err;
+                        char    cipher[512];
+
+                        val->type_enum = PT_TYPE_CHAR;
+                        val->info.value.string_type = ' ';
+
+                        err = pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher));
+                        if (err == NO_ERROR)
+                          {
+                             val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
+                          }
+                        else if (!pt_has_error (this_parser))
+                          {
+                                PT_ERROR (this_parser, val, "Failed to check PASSWORD.");
+                          }
+
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+		   }
+
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), val);
+                 $$ = ctn;
            DBG_PRINT}}
         | PASSWORD '=' CHAR_STRING
           {{
@@ -24932,11 +24955,23 @@ connect_item
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
+                        int     err;                        
+                        char    cipher[512];
+
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
-                        val->info.value.data_value.str =
-                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
-                        
+
+                        err = pt_check_dblink_password(this_parser, $3, cipher, sizeof(cipher));
+                        if (err == NO_ERROR)
+                          {                             
+                             val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
+                          }
+                        else if (!pt_has_error (this_parser))
+                          {
+                                PT_ERROR (this_parser, val, "Failed to check PASSWORD.");
+                          }  
+
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 		   }
 
@@ -28320,7 +28355,7 @@ pt_create_paren_expr_list (PT_NODE * exp)
   return exp;
 }
 
-void
+static void
 pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_10 *ctn, container_2 info)
 {
   /* container order

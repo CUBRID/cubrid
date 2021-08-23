@@ -18407,9 +18407,17 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 	pt_append_bytes (parser, q, (char *) pt->user->info.value.data_value.str->bytes,
 			 pt->user->info.value.data_value.str->length);
       q = pt_append_nulstring (parser, q, ":");
-      q =
-	pt_append_bytes (parser, q, (char *) pt->pwd->info.value.data_value.str->bytes,
-			 pt->pwd->info.value.data_value.str->length);
+
+      if (p->info.dblink_table.is_name)
+	{
+	  q = pt_append_nulstring (parser, q, "*");
+	}
+      else
+	{
+	  q = pt_append_bytes (parser, q, (char *) pt->pwd->info.value.data_value.str->bytes,
+			       pt->pwd->info.value.data_value.str->length);
+	}
+
       // properties
       q = pt_append_nulstring (parser, q, t);
 
