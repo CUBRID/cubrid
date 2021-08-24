@@ -14015,13 +14015,23 @@ cdc_finalize ()
     {
       for (i = 0; i < cdc_Gl.num_extraction_user; i++)
 	{
-	  free (cdc_Gl.extraction_user[i]);
-	  free (cdc_Gl.extraction_user);
+	  if (cdc_Gl.extraction_user[i] != NULL)
+	    {
+	      free_and_init (cdc_Gl.extraction_user[i]);
+	    }
+	}
+
+      if (cdc_Gl.extraction_user != NULL)
+	{
+	  free_and_init (cdc_Gl.extraction_user);
 	}
     }
   if (cdc_Gl.num_extraction_class > 0)
     {
-      free (cdc_Gl.extraction_classoids);
+      if (cdc_Gl.extraction_classoids != NULL)
+	{
+	  free_and_init (cdc_Gl.extraction_classoids);
+	}
     }
 
 /* *INDENT-OFF* */
