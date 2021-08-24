@@ -3113,7 +3113,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   /* 1.main query check (statement) */
   /* do NOT copy-push for a hierarchical query or merge query */
   if (statement->info.query.q.select.connect_by != NULL
-      || PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY))
+      /*|| PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY) */ )
     {
       return 0;
     }
