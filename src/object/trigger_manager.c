@@ -127,7 +127,12 @@ static const char *OLD_REFERENCE_NAME = "old";
 static const char *EVAL_PREFIX = "EVALUATE ( ";
 static const char *EVAL_SUFFIX = " ) ";
 
-const char *TR_CLASS_NAME = "db_trigger";
+// const char *TR_CLASS_NAME = "db_trigger";
+
+/* Start of change for POC */
+const char *TR_CLASS_NAME = "dba.db_trigger";
+/* End of change for POC */
+
 const char *TR_ATT_NAME = "name";
 const char *TR_ATT_OWNER = "owner";
 const char *TR_ATT_EVENT = "event";
@@ -7290,7 +7295,7 @@ define_trigger_classes (void)
       goto tmp_error;
     }
 
-  if (dbt_add_attribute (tmp, TR_ATT_OWNER, "db_user", NULL))
+  if (dbt_add_attribute (tmp, TR_ATT_OWNER, AU_USER_CLASS_NAME, NULL))
     {
       goto tmp_error;
     }

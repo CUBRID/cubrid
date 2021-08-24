@@ -14105,6 +14105,25 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
 
+      /* Start of change for POC */
+      int class_name_len = strlen (class_name);
+      char class_name_buf[class_name_len + 1];
+      char *orig_class_name = NULL;
+      
+      memset(class_name_buf, 0, (class_name_len + 1));
+      strcpy(class_name_buf, class_name);
+
+      orig_class_name = strtok(class_name_buf, ".");
+      if (orig_class_name == NULL)
+        {
+	  orig_class_name = class_name_buf;
+	}
+      else
+        {
+	  orig_class_name = strtok(NULL, ".");
+	}
+      /* End of change for POC */
+
       switch (type)
 	{
 	case DB_CONSTRAINT_INDEX:
@@ -14138,7 +14157,11 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
        *  Count the number of characters that we'll need for the name
        */
       name_length = strlen (prefix);
-      name_length += strlen (class_name);	/* class name */
+      // name_length += strlen (class_name);	/* class name */
+
+      /* Start of change for POC */
+      name_length += strlen (orig_class_name);
+      /* End of change for POC */
 
       for (ptr = att_names; *ptr != NULL; ptr++)
 	{
@@ -14186,7 +14209,12 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (name_length + 1));
 	      goto exit;
 	    }
-	  strcpy (name_all, class_name);
+	  // strcpy (name_all, class_name);
+
+          /* Start of change for POC */
+          strcpy (name_all, orig_class_name);
+          /* End of change for POC */
+
 	  for (ptr = att_names, i = 0; i < n_attrs; ptr++, i++)
 	    {
 	      strcat (name_all, *ptr);
@@ -14211,15 +14239,29 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  att_name_prefix_size = size_class_and_attrs / (n_attrs + 1);
 	  class_name_prefix_size = att_name_prefix_size;
 
+          /*
 	  if (strlen (class_name) < class_name_prefix_size)
 	    {
 	      class_name_prefix_size = strlen (class_name);
 	    }
+	  */
+
+	  /* Start of change for POC */
+	  if (strlen (orig_class_name) < class_name_prefix_size)
+	    {
+	      class_name_prefix_size = strlen (orig_class_name);
+	    }
+          /* End of change for POC */
 	  else
 	    {
 	      char class_name_trunc[DB_MAX_IDENTIFIER_LENGTH];
 
-	      strncpy (class_name_trunc, class_name, class_name_prefix_size);
+	      // strncpy (class_name_trunc, class_name, class_name_prefix_size);
+
+	      /* Start of change for POC */
+	      strncpy (class_name_trunc, orig_class_name, class_name_prefix_size);
+              /* End of change for POC */
+
 	      class_name_trunc[class_name_prefix_size] = '\0';
 
 	      /* make sure last character is not truncated */
@@ -14248,7 +14290,11 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  strcpy (name, prefix);
 
 	  /* Class name */
-	  strncat (name, class_name, class_name_prefix_size);
+	  // strncat (name, class_name, class_name_prefix_size);
+
+	  /* Start of change for POC */
+	  strncat (name, orig_class_name, class_name_prefix_size);
+          /* End of change for POC */
 
 	  /* separated list of attribute names */
 	  k = 0;

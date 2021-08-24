@@ -827,6 +827,27 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       return node;
     }
 
+  /* Start of change for POC *
+  if (strstr(node->info.spec.entity_name->info.name.original, ".") == NULL)
+    {
+      const char *user_name = NULL;
+      if (node->info.spec.entity_name->info.name.resolved == NULL)
+        {
+          user_name = au_user_name();
+        }
+      else
+        {
+          user_name = node->info.spec.entity_name->info.name.resolved;
+        }
+
+      char *schema_name = NULL;
+      schema_name = pt_append_string (parser, NULL, user_name);
+      schema_name = pt_append_string (parser, schema_name, ".");
+      schema_name = pt_append_string (parser, schema_name, node->info.spec.entity_name->info.name.original);
+      node->info.spec.entity_name->info.name.original = schema_name;
+    }
+  /* End of change for POC */
+
   if (node->info.spec.partition != NULL)
     {
       /* add specified lock on specified partition */

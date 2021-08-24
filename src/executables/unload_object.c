@@ -98,14 +98,14 @@ static char *class_processed = NULL;
 static OID null_oid;
 
 static const char *prohibited_classes[] = {
-  "db_authorizations",		/* old name for db_root */
-  "db_root",
-  "db_user",
-  "db_authorization",
-  "db_password",
-  "db_trigger",
-  "db_serial",
-  "db_ha_apply_info",
+  AU_OLD_ROOT_CLASS_NAME,		/* old name for db_root */
+  AU_ROOT_CLASS_NAME,
+  AU_USER_CLASS_NAME,
+  AU_AUTH_CLASS_NAME,
+  AU_PASSWORD_CLASS_NAME,
+  TR_CLASS_NAME,
+  CT_SERIAL_NAME,
+  CT_HA_APPLY_INFO_NAME,
   /* catalog classes */
   CT_CLASS_NAME,
   CT_ATTRIBUTE_NAME,

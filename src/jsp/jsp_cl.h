@@ -34,8 +34,15 @@
 
 #include "parse_tree.h"
 
+/*
 #define SP_CLASS_NAME           "_db_stored_procedure"
 #define SP_ARG_CLASS_NAME       "_db_stored_procedure_args"
+*/
+
+/* Start of change for POC */
+#define SP_CLASS_NAME           "dba._db_stored_procedure"
+#define SP_ARG_CLASS_NAME       "dba._db_stored_procedure_args"
+/* End of change for POC */
 
 #define SP_ATTR_NAME            "sp_name"
 #define SP_ATTR_SP_TYPE         "sp_type"

@@ -2711,6 +2711,17 @@ create_stmt
 			if (node)
 			  {
 			    node->info.create_user.user_name = $4;
+
+			    /* Start of change for POC */
+			    if (strstr(node->info.create_user.user_name->info.name.original, ".") != NULL)
+			      {
+				/* To-DOIt is necessary to change the method of handling error messages. */
+				PT_ERRORm (this_parser, node,
+					   MSGCAT_SET_PARSER_SYNTAX,
+					   MSGCAT_SYNTAX_INVALID_CREATE_USER);
+			      }
+			    /* End of change for POC */
+
 			    node->info.create_user.password = $5;
 			    node->info.create_user.groups = $6;
 			    node->info.create_user.members = $7;
@@ -4952,14 +4963,61 @@ class_name
 			    parser_free_tree (this_parser, user_node);
 			  }
 
+			/* Start of change for POC */
+			const char *user_name = NULL;
+			if (pt_check_system_class (name_node->info.name.original) == true)
+			  {
+			    user_name = "DBA";
+			  }
+			else if (name_node->info.name.resolved == NULL)
+			  {
+			    user_name = pt_curr_user_name();
+			  }
+			else
+			  {
+			    user_name = name_node->info.name.resolved;
+			  }
+
+ 			char *schema_name = NULL;
+ 			schema_name = pt_append_string (this_parser, NULL, user_name);
+ 			schema_name = pt_append_string (this_parser, schema_name, ".");
+ 			schema_name = pt_append_string (this_parser, schema_name, name_node->info.name.original);
+ 			name_node->info.name.original = schema_name;
+			/* End of change for POC */
+
 			$$ = name_node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| identifier
 		{{
+			/* Start of change for POC */
+			PT_NODE *name_node = $1;
 
-			$$ = $1;
+			char *schema_name = NULL;
+			if (strstr(name_node->info.name.original, ".") == NULL)
+			  {
+			    const char *user_name = NULL;
+			    if (pt_check_system_class (name_node->info.name.original) == true)
+			      {
+			        user_name = "DBA";
+			      }
+			    else
+			      {
+			        user_name = pt_curr_user_name();
+			      }
+
+			    schema_name = pt_append_string (this_parser, NULL, user_name);
+			    schema_name = pt_append_string (this_parser, schema_name, ".");
+			  }
+			
+			schema_name = pt_append_string (this_parser, schema_name, name_node->info.name.original);
+			name_node->info.name.original = schema_name;
+
+			// $$ = $1;
+			$$ = name_node;
+			/* End of change for POC */
+
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -19415,7 +19473,10 @@ path_id
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	/* Start of change for POC */
 	| identifier
+	// | class_name
+	/* End of change for POC */
 		{{
 
 			$$ = $1;

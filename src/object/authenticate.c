@@ -100,7 +100,7 @@ extern bool catcls_Enable;
 
 /*
  * Authorization Class Names
- */
+ *
 const char *AU_ROOT_CLASS_NAME = "db_root";
 const char *AU_OLD_ROOT_CLASS_NAME = "db_authorizations";
 
@@ -108,6 +108,17 @@ const char *AU_USER_CLASS_NAME = "db_user";
 const char *AU_PASSWORD_CLASS_NAME = "db_password";
 const char *AU_AUTH_CLASS_NAME = "db_authorization";
 const char *AU_GRANT_CLASS_NAME = "db_grant";
+ */
+
+/* Start of change for POC */
+const char *AU_ROOT_CLASS_NAME = "dba.db_root";
+const char *AU_OLD_ROOT_CLASS_NAME = "dba.db_authorizations";
+
+const char *AU_USER_CLASS_NAME = "dba.db_user";
+const char *AU_PASSWORD_CLASS_NAME = "dba.db_password";
+const char *AU_AUTH_CLASS_NAME = "dba.db_authorization";
+const char *AU_GRANT_CLASS_NAME = "dba.db_grant";
+/* End of change for POC */
 
 const char *AU_PUBLIC_USER_NAME = "PUBLIC";
 const char *AU_DBA_USER_NAME = "DBA";
@@ -1165,7 +1176,7 @@ au_find_user (const char *user_name)
   DB_QUERY_ERROR query_error;
   int error = NO_ERROR;
   DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s] where [name] = '%s' using index none";
+  const char *qp1 = "select [%s] from %s where [name] = '%s' using index none";
   MOP user_class;
   char *upper_case_name;
   size_t upper_case_name_size;
@@ -1196,7 +1207,7 @@ au_find_user (const char *user_name)
    * if the query processing resources are all used up at the moment.
    * This is primarily of importance during logging in.
    */
-  user_class = db_find_class ("db_user");
+  user_class = db_find_class (AU_USER_CLASS_NAME);
   if (user_class)
     {
       db_make_string (&user_name_string, upper_case_name);
@@ -3392,7 +3403,10 @@ au_drop_user (MOP user)
      * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
      */
-    "_db_class", "db_trigger", "db_serial", NULL
+    CT_CLASS_NAME,
+    TR_CLASS_NAME,
+    CT_SERIAL_NAME,
+    NULL
   };
   char query_buf[1024];
 

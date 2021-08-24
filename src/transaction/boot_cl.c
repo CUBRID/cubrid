@@ -4132,7 +4132,7 @@ boot_define_view_class (void)
     }
 
   sprintf (stmt,
-	   "SELECT [c].[class_name], CAST([c].[owner].[name] AS VARCHAR(255)),"
+	   "SELECT SUBSTRING_INDEX([c].[class_name], '.', -1), CAST([c].[owner].[name] AS VARCHAR(255)),"
 	   " CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END,"
 	   " CASE WHEN MOD([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END,"
 	   " CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END,"
@@ -4273,7 +4273,7 @@ boot_define_view_vclass (void)
     }
 
   sprintf (stmt,
-	   "SELECT [q].[class_of].[class_name], [q].[spec], [c].[comment] FROM [%s] [q], [%s] [c]"
+	   "SELECT SUBSTRING_INDEX([q].[class_of].[class_name], '.', -1), [q].[spec], [c].[comment] FROM [%s] [q], [%s] [c]"
 	   " WHERE ([q].[class_of].[class_name] = [c].[class_name]) AND (CURRENT_USER = 'DBA' OR"
 	   " {[q].[class_of].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
@@ -4355,15 +4355,15 @@ boot_define_view_attribute (void)
     }
 
   sprintf (stmt,
-	   "SELECT [a].[attr_name], [c].[class_name], CASE WHEN [a].[attr_type] = 0 THEN 'INSTANCE'"
+	   "SELECT [a].[attr_name], SUBSTRING_INDEX([c].[class_name], '.', -1), CASE WHEN [a].[attr_type] = 0 THEN 'INSTANCE'"
 	   " WHEN [a].[attr_type] = 1 THEN 'CLASS' ELSE 'SHARED' END,"
-	   " [a].[def_order], [a].[from_class_of].[class_name],"
+	   " [a].[def_order], SUBSTRING_INDEX([a].[from_class_of].[class_name], '.', -1),"
 	   " [a].[from_attr_name], [t].[type_name], [d].[prec], [d].[scale],"
 	   " IF ([a].[data_type] IN (4, 25, 26, 27, 35), (SELECT [ch].[charset_name] FROM [%s] [ch]"
 	   " WHERE [d].[code_set] = [ch].[charset_id]), 'Not applicable'), "
 	   " IF ([a].[data_type] IN (4, 25, 26, 27, 35), (SELECT [coll].[coll_name]"
 	   " FROM [%s] [coll] WHERE [d].[collation_id] = [coll].[coll_id]), 'Not applicable'), "
-	   " [d].[class_of].[class_name], [a].[default_value],"
+	   " SUBSTRING_INDEX([d].[class_of].[class_name], '.', -1), [a].[default_value],"
 	   " CASE WHEN [a].[is_nullable] = 1 THEN 'YES' ELSE 'NO' END, [a].[comment]"
 	   " FROM [%s] [c], [%s] [a], [%s] [d], [%s] [t]"
 	   " WHERE [a].[class_of] = [c] AND [d].[object_of] = [a] AND [d].[data_type] = [t].[type_id] AND"
@@ -4440,9 +4440,9 @@ boot_define_view_attribute_set_domain (void)
     }
 
   sprintf (stmt,
-	   "SELECT [a].[attr_name], [c].[class_name], CASE WHEN [a].[attr_type] = 0 THEN 'INSTANCE'"
+	   "SELECT [a].[attr_name], SUBSTRING_INDEX([c].[class_name], '.', -1), CASE WHEN [a].[attr_type] = 0 THEN 'INSTANCE'"
 	   " WHEN [a].[attr_type] = 1 THEN 'CLASS' ELSE 'SHARED' END,"
-	   " [et].[type_name], [e].[prec], [e].[scale], [e].[code_set], [e].[class_of].[class_name]"
+	   " [et].[type_name], [e].[prec], [e].[scale], [e].[code_set], SUBSTRING_INDEX([e].[class_of].[class_name], '.', -1)"
 	   " FROM [%s] [c], [%s] [a], [%s] [d], TABLE([d].[set_domains]) AS [t]([e]), [%s] [et]"
 	   " WHERE [a].[class_of] = [c] AND [d].[object_of] = [a] AND [e].[data_type] = [et].[type_id] AND"
 	   " (CURRENT_USER = 'DBA' OR {[c].[owner].[name]} SUBSETEQ ("
@@ -4516,9 +4516,9 @@ boot_define_view_method (void)
     }
 
   sprintf (stmt,
-	   "SELECT [m].[meth_name], [m].[class_of].[class_name],"
+	   "SELECT [m].[meth_name], SUBSTRING_INDEX([m].[class_of].[class_name], '.', -1),"
 	   " CASE WHEN [m].[meth_type] = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " [m].[from_class_of].[class_name], [m].[from_meth_name], [s].[func_name] FROM [%s] [m], [%s] [s]"
+	   " SUBSTRING_INDEX([m].[from_class_of].[class_name], '.', -1), [m].[from_meth_name], [s].[func_name] FROM [%s] [m], [%s] [s]"
 	   " WHERE [s].[meth_of] = [m] AND (CURRENT_USER = 'DBA' OR {[m].[class_of].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
 	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) OR"
@@ -4593,9 +4593,9 @@ boot_define_view_method_argument (void)
     }
 
   sprintf (stmt,
-	   "SELECT [s].[meth_of].[meth_name], [s].[meth_of].[class_of].[class_name],"
+	   "SELECT [s].[meth_of].[meth_name], SUBSTRING_INDEX([s].[meth_of].[class_of].[class_name], '.', -1),"
 	   " CASE WHEN [s].[meth_of].[meth_type] = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " [a].[index_of], [t].[type_name], [d].[prec], [d].[scale], [d].[code_set], [d].[class_of].[class_name]"
+	   " [a].[index_of], [t].[type_name], [d].[prec], [d].[scale], [d].[code_set], SUBSTRING_INDEX([d].[class_of].[class_name], '.', -1)"
 	   " FROM [%s] [s], [%s] [a], [%s] [d], [%s] [t]"
 	   " WHERE [a].[meth_sig_of] = [s] AND [d].[object_of] = [a] AND [d].[data_type] = [t].[type_id] AND"
 	   " (CURRENT_USER = 'DBA' OR {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
@@ -4675,9 +4675,9 @@ boot_define_view_method_argument_set_domain (void)
     }
 
   sprintf (stmt,
-	   "SELECT [s].[meth_of].[meth_name], [s].[meth_of].[class_of].[class_name],"
+	   "SELECT [s].[meth_of].[meth_name], SUBSTRING_INDEX([s].[meth_of].[class_of].[class_name], '.', -1),"
 	   " CASE WHEN [s].[meth_of].[meth_type] = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " [a].[index_of], [et].[type_name], [e].[prec], [e].[scale], [e].[code_set], [e].[class_of].[class_name]"
+	   " [a].[index_of], [et].[type_name], [e].[prec], [e].[scale], [e].[code_set], SUBSTRING_INDEX([e].[class_of].[class_name], '.', -1)"
 	   " FROM [%s] [s], [%s] [a], [%s] [d], TABLE([d].[set_domains]) AS [t]([e]), [%s] [et]"
 	   " WHERE [a].[meth_sig_of] = [s] AND [d].[object_of] = [a] AND [e].[data_type] = [et].[type_id] AND"
 	   " (CURRENT_USER = 'DBA' OR {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
@@ -4748,7 +4748,7 @@ boot_define_view_method_file (void)
     }
 
   sprintf (stmt,
-	   "SELECT [f].[class_of].[class_name], [f].[path_name], [f].[from_class_of].[class_name] FROM [%s] [f]"
+	   "SELECT SUBSTRING_INDEX([f].[class_of].[class_name], '.', -1), [f].[path_name], SUBSTRING_INDEX([f].[from_class_of].[class_name], '.', -1) FROM [%s] [f]"
 	   " WHERE CURRENT_USER = 'DBA' OR {[f].[class_of].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
 	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) OR"
@@ -4826,7 +4826,7 @@ boot_define_view_index (void)
 
   sprintf (stmt,
 	   "SELECT [i].[index_name], CASE WHEN [i].[is_unique] = 0 THEN 'NO' ELSE 'YES' END,"
-	   " CASE WHEN [i].[is_reverse] = 0 THEN 'NO' ELSE 'YES' END, [i].[class_of].[class_name], [i].[key_count],"
+	   " CASE WHEN [i].[is_reverse] = 0 THEN 'NO' ELSE 'YES' END, SUBSTRING_INDEX([i].[class_of].[class_name], '.', -1), [i].[key_count],"
 	   " CASE WHEN [i].[is_primary_key] = 0 THEN 'NO' ELSE 'YES' END,"
 	   " CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END, [i].[filter_expression],"
 	   " CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END, [i].[comment],"
@@ -4907,7 +4907,7 @@ boot_define_view_index_key (void)
     }
 
   sprintf (stmt,
-	   "SELECT [k].[index_of].[index_name], [k].[index_of].[class_of].[class_name],"
+	   "SELECT [k].[index_of].[index_name], SUBSTRING_INDEX([k].[index_of].[class_of].[class_name], '.', -1),"
 	   " [k].[key_attr_name], [k].[key_order], CASE [k].[asc_desc] WHEN 0 THEN 'ASC' WHEN 1 THEN 'DESC'"
 	   " ELSE 'UNKN' END, [k].[key_prefix_length], [k].[func] FROM [%s] [k]"
 	   " WHERE CURRENT_USER = 'DBA' OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
@@ -4981,7 +4981,7 @@ boot_define_view_authorization (void)
 
   sprintf (stmt,
 	   "SELECT CAST([a].[grantor].[name] AS VARCHAR(255)),"
-	   " CAST([a].[grantee].[name] AS VARCHAR(255)), [a].[class_of].[class_name], [a].[auth_type],"
+	   " CAST([a].[grantee].[name] AS VARCHAR(255)), SUBSTRING_INDEX([a].[class_of].[class_name], '.', -1), [a].[auth_type],"
 	   " CASE WHEN [a].[is_grantable] = 0 THEN 'NO' ELSE 'YES' END FROM [%s] [a]"
 	   " WHERE CURRENT_USER = 'DBA' OR {[a].[class_of].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
@@ -5055,7 +5055,7 @@ boot_define_view_trigger (void)
     }
 
   sprintf (stmt,
-	   "SELECT CAST([t].[name] AS VARCHAR(255)), [c].[class_name], CAST([t].[target_attribute] AS VARCHAR(255)),"
+	   "SELECT CAST([t].[name] AS VARCHAR(255)), SUBSTRING_INDEX([c].[class_name], '.', -1), CAST([t].[target_attribute] AS VARCHAR(255)),"
 	   " CASE [t].[target_class_attribute] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
 	   " [t].[action_type], [t].[action_time], [t].[comment]"
 	   " FROM [%s] [t] LEFT OUTER JOIN [%s] [c] ON [t].[target_class] = [c].[class_of]"
@@ -5129,8 +5129,8 @@ boot_define_view_partition (void)
     }
 
   sprintf (stmt,
-	   "SELECT [pp].[super_class_name] AS [class_name], [p].[pname] AS [partition_name],"
-	   " CONCAT([pp].[super_class_name], '__p__', [p].[pname]) AS [partition_class_name],"
+	   "SELECT SUBSTRING_INDEX([pp].[super_class_name], '.', -1) AS [class_name], [p].[pname] AS [partition_name],"
+	   " CONCAT(SUBSTRING_INDEX([pp].[super_class_name], '.', -1), '__p__', [p].[pname]) AS [partition_class_name],"
 	   " CASE WHEN [p].[ptype] = 0 THEN 'HASH'"
 	   " WHEN [p].[ptype] = 1 THEN 'RANGE' ELSE 'LIST' END AS [partition_type],"
 	   " TRIM(SUBSTRING([pi].[pexpr] FROM 8 FOR (POSITION(' FROM ' IN [pi].[pexpr])-8)))"
@@ -5614,7 +5614,7 @@ boot_destroy_catalog_classes (void)
   AU_DISABLE (save);
 
   /* drop method of db_authorization */
-  error_code = db_drop_class_method (locator_find_class ("db_authorization"), "check_authorization");
+  error_code = db_drop_class_method (locator_find_class (CT_AUTHORIZATION_NAME), "check_authorization");
   /* error checking */
   if (error_code != NO_ERROR)
     {
