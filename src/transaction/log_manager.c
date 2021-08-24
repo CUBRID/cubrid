@@ -13345,6 +13345,12 @@ cdc_log_producer_execute (cubthread::entry & thread_ref)
   {
     return;
   }
+  
+  if (cdc_Gl.is_finalize == true)
+  {
+    pthread_cond_signal (&cdc_Gl.finalize_cond);
+    return;
+  }
 
   cdc_log_producer (&thread_ref);
 }
@@ -13401,6 +13407,7 @@ cdc_log_producer_daemon_init ()
   pthread_cond_init (&cdc_Gl.finalize_cond, NULL);
 
   LSA_SET_NULL (&cdc_Gl.next_lsa);
+  cdc_Gl.is_finalize = true;
 
   /* *INDENT-OFF* */
   //cubthread::looper looper = cubthread::looper (cdc_log_producer_interval);
@@ -14099,7 +14106,7 @@ cdc_finalize ()
   LSA_SET_NULL (&cdc_Gl.last_produced_lsa);
   LSA_SET_NULL (&cdc_Gl.last_consumed_lsa);
 
-  cdc_Gl.is_finalize = false;
+//  cdc_Gl.is_finalize = false;
   pthread_mutex_unlock (&cdc_Gl.is_finalize_lock);
 #if !defined(NDEBUG)		//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "cdc_finalize done");

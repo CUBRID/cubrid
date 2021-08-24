@@ -14748,6 +14748,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	BTID index;
 	MOP classop;
 
+	oid = (OID *) malloc (sizeof (OID));
+	if (oid == NULL)
+	  {
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
+
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
 
@@ -14766,6 +14772,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       {
 	BTID index;
 	MOP classop;
+
+	oid = (OID *) malloc (sizeof (OID));
+	if (oid == NULL)
+	  {
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
@@ -14786,6 +14798,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	BTID index;
 	MOP classop;
 
+	oid = (OID *) malloc (sizeof (OID));
+	if (oid == NULL)
+	  {
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
+
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
 
@@ -14802,6 +14820,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       }
     case PT_CREATE_SERIAL:
       {
+	oid = (OID *) malloc (sizeof (OID));
+	if (oid == NULL)
+	  {
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
+
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
 	objname = (char *) PT_NODE_SR_NAME (statement);
@@ -14817,6 +14841,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       }
     case PT_ALTER_SERIAL:
       {
+	oid = (OID *) malloc (sizeof (OID));
+	if (oid == NULL)
+	  {
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
+
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
 	objname = (char *) PT_NODE_SR_NAME (statement);
@@ -14832,6 +14862,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       }
     case PT_DROP_SERIAL:
       {
+	oid = (OID *) malloc (sizeof (OID));
+	if (oid == NULL)
+	  {
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
+
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
 	objname = (char *) PT_NODE_SR_NAME (statement);
@@ -14904,8 +14940,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       }
     case PT_DROP_TRIGGER:
       classname =
-	statement->info.drop_trigger.trigger_spec_list->info.trigger_spec_list.event_list->info.event_spec.
-	event_target->info.event_target.class_name->info.name.original;
+	statement->info.drop_trigger.trigger_spec_list->info.trigger_spec_list.event_list->info.
+	event_spec.event_target->info.event_target.class_name->info.name.original;
 
       classoid = ws_oid (sm_find_class (classname));
 
@@ -14922,8 +14958,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	DB_OBJECT *tr_object;
 	TR_TRIGGER *trigger;
 	classname =
-	  statement->info.alter_trigger.trigger_spec_list->info.trigger_spec_list.event_list->info.event_spec.
-	  event_target->info.event_target.class_name->info.name.original;
+	  statement->info.alter_trigger.trigger_spec_list->info.trigger_spec_list.event_list->info.
+	  event_spec.event_target->info.event_target.class_name->info.name.original;
 
 	classoid = ws_oid (sm_find_class (classname));
 
@@ -15109,6 +15145,11 @@ end:
 	      free (classname_list[i]);
 	    }
 	}
+    }
+
+  if (oid != NULL)
+    {
+      free_and_init (oid);
     }
 
   return error;
