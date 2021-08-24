@@ -208,7 +208,6 @@ static bool pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_
 static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
 static bool mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_spec);
-static bool pt_has_agrregate_without_group_by (PARSER_CONTEXT * parser, PT_NODE * query);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
@@ -3000,53 +2999,6 @@ pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * 
 }
 
 /*
- * pt_check_copypush_subquery () - check derived subquery to push sargable term
- *                                 into the derived subquery
- *   return:
- *   parser(in):
- *   query(in):
- *
- * Note:
- *  assumes cnf conversion is done
- */
-static bool
-pt_has_agrregate_without_group_by (PARSER_CONTEXT * parser, PT_NODE * query)
-{
-  bool result = false;
-
-  if (query == NULL)
-    {
-      return false;
-    }
-
-  switch (query->node_type)
-    {
-    case PT_SELECT:
-      if (pt_has_aggregate (parser, query) && query->info.query.q.select.group_by == NULL)
-	{
-	  return true;
-	}
-      break;
-
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-      result |= pt_has_agrregate_without_group_by (parser, query->info.query.q.union_.arg1);
-      result |= pt_has_agrregate_without_group_by (parser, query->info.query.q.union_.arg2);
-      if (result)
-	{
-	  return true;
-	}
-      break;
-
-    default:
-      break;
-    }
-
-  return result;
-}
-
-/*
  * pt_copypush_terms() - push sargable term into the derived subquery
  *   return:
  *   parser(in):
@@ -3084,12 +3036,9 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
       /* copy and put it in query's search condition */
       if (pt_has_aggregate (parser, query))
 	{
-	  /*if (query->info.query.q.select.group_by)
-	    {*/
-	      /* push into HAVING clause */
-	      query->info.query.q.select.having =
-		parser_append_node (push_term_list, query->info.query.q.select.having);
-	    /*}*/
+	  /* push into HAVING clause */
+	  query->info.query.q.select.having =
+	  parser_append_node (push_term_list, query->info.query.q.select.having);
 	}
       else
 	{
@@ -3132,7 +3081,6 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
  * 2. subquery check
  *  - has inst num or orderby_num
  *  - has analytic functions
- *  - has agrregate functions without group by
  *
  * 3. term check
  *  - on_cond term
@@ -3190,12 +3138,6 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
     {
       return 0;
     }
-
-  /* subquery has agrregate functions without group by */
-  /*if (pt_has_agrregate_without_group_by (parser, subquery))
-    {
-      return 0;
-    }*/
 
   /* 3.term check */
   /* check outer join spec. */
