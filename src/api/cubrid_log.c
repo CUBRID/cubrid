@@ -24,7 +24,13 @@
 
 #if defined(CS_MODE)
 
+#if defined(WINDOWS)
+#include <winsock2.h>
+#include <windows.h>
+#else /* WINDOWS */
 #include <arpa/inet.h>
+#endif /* WINDOWS */
+
 #include <assert.h>
 #include <limits.h>
 
