@@ -3192,10 +3192,10 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
 
   /* subquery has agrregate functions without group by */
-  if (pt_has_agrregate_without_group_by (parser, subquery))
+  /*if (pt_has_agrregate_without_group_by (parser, subquery))
     {
       return 0;
-    }
+    }*/
 
   /* 3.term check */
   /* check outer join spec. */
