@@ -14106,21 +14106,15 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       char md5_str[32 + 1] = { '\0' };
 
       /* Start of change for POC */
-      int class_name_len = strlen (class_name);
-      char class_name_buf[class_name_len + 1];
-      char *orig_class_name = NULL;
-      
-      memset(class_name_buf, 0, (class_name_len + 1));
-      strcpy(class_name_buf, class_name);
+      const char *orig_class_name = strstr(class_name, ".");
 
-      orig_class_name = strtok(class_name_buf, ".");
       if (orig_class_name == NULL)
         {
-	  orig_class_name = class_name_buf;
+	  orig_class_name = class_name;
 	}
       else
         {
-	  orig_class_name = strtok(NULL, ".");
+	  orig_class_name += 1;
 	}
       /* End of change for POC */
 

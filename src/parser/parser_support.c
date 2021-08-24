@@ -5425,9 +5425,8 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
       return NULL;
     }
 
-  // from_item = pt_add_table_name_to_from_list (parser, query, "db_serial", "S", DB_AUTH_NONE);
-
-  /* Start of change for POC */
+  from_item = pt_add_table_name_to_from_list (parser, query, "db_serial", "S", DB_AUTH_NONE);
+  /* Start of change for POC *
   from_item = pt_add_table_name_to_from_list (parser, query, "dba.db_serial", "S", DB_AUTH_NONE);
   /* End of change for POC */
 
@@ -5505,12 +5504,11 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     /* SELECT list : */
     pt_add_name_col_to_sel_list (parser, sub_query, "IK.key_attr_name", "ATTR");
     pt_add_name_col_to_sel_list (parser, sub_query, "I.is_primary_key", "PRI_KEY");
-    /* .. FROM : *
+    /* .. FROM : */
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "_db_index_key", "IK", DB_AUTH_SELECT);
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "_db_index", "I", DB_AUTH_SELECT);
-     */
-
-    /* Start of change for POC */
+    /**/
+    /* Start of change for POC *
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "dba._db_index_key", "IK", DB_AUTH_SELECT);
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "dba._db_index", "I", DB_AUTH_SELECT);
     /* End of change for POC */
@@ -5577,12 +5575,11 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     /* SELECT list : */
     pt_add_name_col_to_sel_list (parser, sub_query, "IK.key_attr_name", "ATTR");
     pt_add_name_col_to_sel_list (parser, sub_query, "I.is_unique", "UNI_KEY");
-    /* .. FROM : *
+    /* .. FROM : */
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "_db_index_key", "IK", DB_AUTH_SELECT);
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "_db_index", "I", DB_AUTH_SELECT);
-     */
-
-    /* Start of change for POC */
+    /**/
+    /* Start of change for POC *
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "dba._db_index_key", "IK", DB_AUTH_SELECT);
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "dba._db_index", "I", DB_AUTH_SELECT);
     /* End of change for POC */
@@ -5649,12 +5646,11 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
 
     /* SELECT list : */
     pt_add_name_col_to_sel_list (parser, sub_query, "IK.key_attr_name", "ATTR");
-    /* .. FROM : *
+    /* .. FROM : */
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "_db_index_key", "IK", DB_AUTH_SELECT);
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "_db_index", "I", DB_AUTH_SELECT);
-     */
-
-    /* Start of change for POC */
+    /**/
+    /* Start of change for POC *
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "dba._db_index_key", "IK", DB_AUTH_SELECT);
     from_item = pt_add_table_name_to_from_list (parser, sub_query, "dba._db_index", "I", DB_AUTH_SELECT);
     /* End of change for POC */
@@ -5894,13 +5890,12 @@ pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser, const char *tabl
     query->info.query.q.select.list = parser_append_node (sel_item, query->info.query.q.select.list);
   }
 
-  /* FROM : *
+  /* FROM : */
   from_item = pt_add_table_name_to_from_list (parser, query, "_db_attribute", "AA", DB_AUTH_SELECT);
   from_item = pt_add_table_name_to_from_list (parser, query, "_db_domain", "DD", DB_AUTH_SELECT);
   from_item = pt_add_table_name_to_from_list (parser, query, "_db_data_type", "TT", DB_AUTH_SELECT);
-   */
-
-  /* Start of change for POC */
+  /**/
+  /* Start of change for POC *
   from_item = pt_add_table_name_to_from_list (parser, query, "dba._db_attribute", "AA", DB_AUTH_SELECT);
   from_item = pt_add_table_name_to_from_list (parser, query, "dba._db_domain", "DD", DB_AUTH_SELECT);
   from_item = pt_add_table_name_to_from_list (parser, query, "dba._db_data_type", "TT", DB_AUTH_SELECT);
@@ -6037,9 +6032,8 @@ pt_make_query_show_table (PARSER_CONTEXT * parser, bool is_full_syntax, int like
   /* ------ SELECT ... FROM ------- */
   /* db_class is a view on the _db_class table; we are selecting from the view, to avoid checking the authorization as
    * this check is already performed by the view */
-  // from_item = pt_add_table_name_to_from_list (parser, sub_query, "db_class", "C", DB_AUTH_SELECT);
-
-  /* Start of change for POC */
+  from_item = pt_add_table_name_to_from_list (parser, sub_query, "db_class", "C", DB_AUTH_SELECT);
+  /* Start of change for POC *
   from_item = pt_add_table_name_to_from_list (parser, sub_query, "dba.db_class", "C", DB_AUTH_SELECT);
   /* End of change for POC */
 
@@ -6790,9 +6784,8 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
    */
   pt_add_string_col_to_sel_list (parser, select, table_name->info.name.original, "TABLE");
   pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer (), "CREATE TABLE");
-  // pt_add_table_name_to_from_list (parser, select, "dual", NULL, DB_AUTH_SELECT);
-
-  /* Start of change for POC */
+  pt_add_table_name_to_from_list (parser, select, "dual", NULL, DB_AUTH_SELECT);
+  /* Start of change for POC *
   pt_add_table_name_to_from_list (parser, select, "dba.dual", NULL, DB_AUTH_SELECT);
   /* End of change for POC */
 
@@ -6891,9 +6884,8 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   }
 
   /* ------ SELECT ... FROM ------- */
-  // from_item = pt_add_table_name_to_from_list (parser, node, "db_vclass", "VC", DB_AUTH_SELECT);
-
-  /* Start of change for POC */
+  from_item = pt_add_table_name_to_from_list (parser, node, "db_vclass", "VC", DB_AUTH_SELECT);
+  /* Start of change for POC *
   from_item = pt_add_table_name_to_from_list (parser, node, "dba.db_vclass", "VC", DB_AUTH_SELECT);
   /* End of change for POC */
 
@@ -7083,9 +7075,8 @@ pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
 
   /* FROM : */
   /* db_user U */
-  // from_item = pt_add_table_name_to_from_list (parser, query, "db_user", "U", DB_AUTH_SELECT);
-
-  /* Start of change for POC */
+  from_item = pt_add_table_name_to_from_list (parser, query, "db_user", "U", DB_AUTH_SELECT);
+  /* Start of change for POC *
   from_item = pt_add_table_name_to_from_list (parser, query, "dba.db_user", "U", DB_AUTH_SELECT);
   /* End of change for POC */
 
@@ -7169,7 +7160,7 @@ pt_curr_user_name ()
 }
 
 bool
-pt_check_system_class (const char * class_name)
+pt_is_system_class (const char * class_name)
 {
   const char *system_classes[] = {
     "Rootclass",
@@ -7398,13 +7389,12 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   }
   node->info.query.q.select.list = parser_append_node (concat_node, node->info.query.q.select.list);
 
-  /* ------ SELECT ... FROM ------- *
+  /* ------ SELECT ... FROM ------- */
   from_item = pt_add_table_name_to_from_list (parser, node, "db_class", "C", DB_AUTH_SELECT);
 
   from_item = pt_add_table_name_to_from_list (parser, node, "_db_auth", "AU", DB_AUTH_SELECT);
-   */
-
-  /* Start of change for POC */
+  /**/
+  /* Start of change for POC *
   from_item = pt_add_table_name_to_from_list (parser, node, "dba.db_class", "C", DB_AUTH_SELECT);
 
   from_item = pt_add_table_name_to_from_list (parser, node, "dba._db_auth", "AU", DB_AUTH_SELECT);
@@ -8926,9 +8916,8 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
   }
 
   /* ------ SELECT ... FROM ------- */
-  // from_item = pt_add_table_name_to_from_list (parser, sub_query, "_db_collation", NULL, DB_AUTH_SELECT);
-
-  /* Start of change for POC */
+  from_item = pt_add_table_name_to_from_list (parser, sub_query, "_db_collation", NULL, DB_AUTH_SELECT);
+  /* Start of change for POC *
   from_item = pt_add_table_name_to_from_list (parser, sub_query, "dba._db_collation", NULL, DB_AUTH_SELECT);
   /* End of change for POC */
 

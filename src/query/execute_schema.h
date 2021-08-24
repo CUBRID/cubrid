@@ -40,9 +40,8 @@
 #define UNIQUE_PARTITION_SAVEPOINT_OWNER "pARTITIONoWNER"
 #define UNIQUE_PARTITION_SAVEPOINT_INDEX "pARTITIONiNDEX"
 #define UNIQUE_PARTITION_SAVEPOINT_ALTER "pARTITIONaLTER"
-// #define PARTITION_CATALOG_CLASS "_db_partition"
-
-/* Start of change for POC */
+#define PARTITION_CATALOG_CLASS "_db_partition"
+/* Start of change for POC *
 #define PARTITION_CATALOG_CLASS "dba._db_partition"
 /* End of change for POC */
 

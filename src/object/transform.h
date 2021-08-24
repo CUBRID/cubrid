@@ -115,7 +115,7 @@ typedef struct tf_ct_class
 #define META_QUERY_SPEC_NAME		"sqlx_query_spec"
 #define META_PARTITION_NAME		"sqlx_partition"
 
-/* catalog classes *
+/* catalog classes */
 #define CT_CLASS_NAME              "_db_class"
 #define CT_ATTRIBUTE_NAME          "_db_attribute"
 #define CT_DOMAIN_NAME             "_db_domain"
@@ -143,8 +143,9 @@ typedef struct tf_ct_class
 #define CT_AUTHORIZATIONS_NAME     "db_authorizations"
 #define CT_CHARSET_NAME		   "_db_charset"
 #define CT_DUAL_NAME               "dual"
+/**/
 
-/* catalog vclasses *
+/* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"
 #define CTV_SUPER_CLASS_NAME       "db_direct_super_class"
 #define CTV_VCLASS_NAME            "db_vclass"
@@ -163,9 +164,9 @@ typedef struct tf_ct_class
 #define CTV_PARTITION_NAME         "db_partition"
 #define CTV_DB_COLLATION_NAME      "db_collation"
 #define CTV_DB_CHARSET_NAME	   "db_charset"
- */
+/**/
 
-/* Start of change for POC */
+/* Start of change for POC *
 #define CT_CLASS_NAME              "dba._db_class"
 #define CT_ATTRIBUTE_NAME          "dba._db_attribute"
 #define CT_DOMAIN_NAME             "dba._db_domain"

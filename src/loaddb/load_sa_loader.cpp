@@ -2230,12 +2230,12 @@ static int
 ldr_sys_user_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
 {
   display_error_line (0);
-  /*
+  /**/
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNAUTHORIZED_CLASS),
 	   "db_user");
-   */
+  /**/
 
-  /* Start of change for POC */
+  /* Start of change for POC *
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNAUTHORIZED_CLASS),
 	   "dba.db_user");
   /* End of change for POC */

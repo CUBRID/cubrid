@@ -1062,13 +1062,13 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_SCHEMA:
       // csql_help_schema ((argument[0] == '\0') ? NULL : argument);
 
-      /* Start of change for POC */
+      /* Start of change for POC *
       if (argument[0] != '\0')
         {
           if (strstr(argument, ".") == NULL)
             {
 	      const char *user_name = NULL;
-              if (pt_check_system_class (argument) == true)
+              if (pt_is_system_class (argument) == true)
                 {
                   user_name = "DBA";
                 }
@@ -1085,6 +1085,34 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      memset(schema_name, 0, schema_name_len);
 
 	      sprintf (schema_name, "%s.%s", user_name, argument);
+	      csql_help_schema (schema_name);
+            }
+          else
+            {
+	      csql_help_schema (argument);
+	    }
+	}
+      else
+        {
+	  csql_help_schema (NULL);
+	}
+      /* End of change for POC */
+
+      /* Start of change for POC */
+      if (argument[0] != '\0')
+        {
+          if (strstr(argument, ".") == NULL && pt_is_system_class (argument) != true)
+            {
+	      const char *user_name = pt_curr_user_name();
+
+	      int user_name_len = strlen(user_name);
+	      int class_name_len = strlen(argument);
+	      int schema_name_len = user_name_len + 1 + class_name_len + 1;
+
+	      char schema_name[schema_name_len];
+	      memset(schema_name, 0, schema_name_len);
+
+	      printf (schema_name, "%s.%s", user_name, argument);
 	      csql_help_schema (schema_name);
             }
           else

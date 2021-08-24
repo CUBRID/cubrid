@@ -4963,7 +4963,7 @@ class_name
 			    parser_free_tree (this_parser, user_node);
 			  }
 
-			/* Start of change for POC */
+			/* Start of change for POC *
 			const char *user_name = NULL;
 			if (pt_check_system_class (name_node->info.name.original) == true)
 			  {
@@ -4985,13 +4985,37 @@ class_name
  			name_node->info.name.original = schema_name;
 			/* End of change for POC */
 
+			/* Start of change for POC */
+			// Below, we expect the following results.
+			//   1. If identifier is a system table name, the user name will not be used as a prefix to the table name.
+			//   2. If identifier is not a system table name, the user name will be used as a prefix to the table name.
+			if (pt_check_system_class (name_node->info.name.original) != true)
+			  {
+			    const char *user_name = NULL;
+			    if (name_node->info.name.resolved == NULL)
+			      {
+				user_name = pt_curr_user_name();
+			      }
+			    else
+			      {
+				user_name = name_node->info.name.resolved;
+			      }
+			
+			    char *schema_name = NULL;
+			    schema_name = pt_append_string (this_parser, NULL, user_name);
+ 			    schema_name = pt_append_string (this_parser, schema_name, ".");
+ 			    schema_name = pt_append_string (this_parser, schema_name, name_node->info.name.original);
+			    name_node->info.name.original = schema_name;
+			  }
+			/* End of change for POC */
+
 			$$ = name_node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| identifier
 		{{
-			/* Start of change for POC */
+			/* Start of change for POC *
 			PT_NODE *name_node = $1;
 
 			char *schema_name = NULL;
@@ -5013,7 +5037,38 @@ class_name
 			
 			schema_name = pt_append_string (this_parser, schema_name, name_node->info.name.original);
 			name_node->info.name.original = schema_name;
+			/* End of change for POC */
 
+			/* Start of change for POC */
+			// Below, we expect the following results.
+			//   1. If identifier is a system table name, the user name will not be used as a prefix to the table name.
+			//   2. If identifier is not a system table name, the user name will be used as a prefix to the table name.
+			PT_NODE *name_node = $1;
+
+			if (strstr(name_node->info.name.original, ".") == NULL)
+			  {
+			    if (pt_check_system_class (name_node->info.name.original) != true)
+			      {
+				const char *user_name = NULL;
+			        if (name_node->info.name.resolved == NULL)
+			          {
+				    user_name = pt_curr_user_name();
+			          }
+			        else
+			          {
+				    user_name = name_node->info.name.resolved;
+			          }
+		    	
+			        char *schema_name = NULL;
+			        schema_name = pt_append_string (this_parser, NULL, user_name);
+ 			        schema_name = pt_append_string (this_parser, schema_name, ".");
+ 			        schema_name = pt_append_string (this_parser, schema_name, name_node->info.name.original);
+			        name_node->info.name.original = schema_name;
+			      }
+			  }
+			/* End of change for POC */
+
+			/* Start of change for POC */
 			// $$ = $1;
 			$$ = name_node;
 			/* End of change for POC */

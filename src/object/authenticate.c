@@ -100,7 +100,7 @@ extern bool catcls_Enable;
 
 /*
  * Authorization Class Names
- *
+ */
 const char *AU_ROOT_CLASS_NAME = "db_root";
 const char *AU_OLD_ROOT_CLASS_NAME = "db_authorizations";
 
@@ -108,9 +108,9 @@ const char *AU_USER_CLASS_NAME = "db_user";
 const char *AU_PASSWORD_CLASS_NAME = "db_password";
 const char *AU_AUTH_CLASS_NAME = "db_authorization";
 const char *AU_GRANT_CLASS_NAME = "db_grant";
- */
+/**/
 
-/* Start of change for POC */
+/* Start of change for POC *
 const char *AU_ROOT_CLASS_NAME = "dba.db_root";
 const char *AU_OLD_ROOT_CLASS_NAME = "dba.db_authorizations";
 
@@ -1176,7 +1176,10 @@ au_find_user (const char *user_name)
   DB_QUERY_ERROR query_error;
   int error = NO_ERROR;
   DB_VALUE user_val;
-  const char *qp1 = "select [%s] from %s where [name] = '%s' using index none";
+  /* Start of change for POC */
+  const char *qp1 = "select [%s] from [%s] where [name] = '%s' using index none";
+  // const char *qp1 = "select [%s] from %s where [name] = '%s' using index none";
+  /* End of change for POC */
   MOP user_class;
   char *upper_case_name;
   size_t upper_case_name_size;
@@ -5162,6 +5165,39 @@ au_change_owner (MOP classmop, MOP owner)
 	  /* Change class owner */
 	  class_->owner = owner;
 	  error = locator_flush_class (classmop);
+
+	  /* Start of change for POC */
+	  const char *old_ch_name = NULL;
+	  const char *new_ch_name = NULL;
+          const char *class_name = NULL;
+	  const char *owner_name = NULL;
+
+	  char *schema_name = NULL;
+
+	  int class_name_len = 0;
+	  int owner_name_len = 0;
+	  int schema_name_len = 0;
+
+          old_ch_name = class_->header.ch_name;
+	  if (strstr(old_ch_name, ".") != NULL && db_is_system_class (classmop) == FALSE)
+	    {
+	      class_name = strstr(old_ch_name, ".") + 1;
+	      owner_name = au_get_user_name(owner);
+
+	      class_name_len = strlen(class_name);
+	      owner_name_len = strlen(owner_name);
+	      schema_name_len = owner_name_len + 1 + class_name_len + 1;
+
+	      assert (schema_name_len <= SM_MAX_IDENTIFIER_LENGTH);
+
+	      schema_name = (char *) db_ws_alloc (sizeof(char) * schema_name_len);
+	      memset(schema_name, 0, schema_name_len);
+	      sprintf (schema_name, "%s.%s", owner_name, class_name);
+	
+	      sm_rename_class (classmop, schema_name);
+	      ws_free_string_and_init(schema_name);
+	    }
+	  /* End of change for POC */
 	}
     }
 exit_on_error:
@@ -5202,7 +5238,31 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
       return;
     }
 
-  classmop = sm_find_class (class_name);
+  /* Start of change for POC */
+  if (strstr(class_name, ".") == NULL && pt_is_system_class (class_name) != true)
+    {
+      const char *user_name = au_user_name();
+
+      int user_name_len = strlen(user_name);
+      int class_name_len = strlen(class_name);
+      int schema_name_len = user_name_len + 1 + class_name_len + 1;
+
+      char schema_name[schema_name_len];
+      memset(schema_name, 0, schema_name_len);
+
+      sprintf (schema_name, "%s.%s", user_name, class_name);
+
+      classmop = sm_find_class (schema_name);
+    }
+  else
+    {
+      classmop = sm_find_class (class_name);
+    }
+  /* End of change for POC */
+
+  /* Start of change for POC */
+  // classmop = sm_find_class (class_name);
+  /* End of change for POC */
   if (classmop == NULL)
     {
       db_make_error (returnval, er_errid ());

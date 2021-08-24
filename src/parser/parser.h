@@ -579,7 +579,7 @@ extern "C"
   extern PT_NODE *pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifier);
   extern PT_NODE *pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser);
   extern const char *pt_curr_user_name ();
-  extern bool pt_check_system_class (const char * class_name);
+  extern bool pt_is_system_class (const char * class_name);
   extern PT_NODE *pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_name);
   extern PT_NODE *pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser, PT_NODE * original_cls_id,
 						       PT_NODE * att_id);

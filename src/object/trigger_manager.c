@@ -127,10 +127,10 @@ static const char *OLD_REFERENCE_NAME = "old";
 static const char *EVAL_PREFIX = "EVALUATE ( ";
 static const char *EVAL_SUFFIX = " ) ";
 
-// const char *TR_CLASS_NAME = "db_trigger";
+const char *TR_CLASS_NAME = "db_trigger";
 
 /* Start of change for POC */
-const char *TR_CLASS_NAME = "dba.db_trigger";
+// const char *TR_CLASS_NAME = "dba.db_trigger";
 /* End of change for POC */
 
 const char *TR_ATT_NAME = "name";

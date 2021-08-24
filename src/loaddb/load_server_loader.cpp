@@ -664,10 +664,10 @@ namespace cubload
 	  }
 	else
 	  {
-	    // class_name = cons->type == LDR_SYS_USER ? "db_user" : "*system class*";
+	    class_name = cons->type == LDR_SYS_USER ? "db_user" : "*system class*";
 
 	    /* Start of change for POC */
-            class_name = cons->type == LDR_SYS_USER ? "dba.db_user" : "*system class*";
+            // class_name = cons->type == LDR_SYS_USER ? "dba.db_user" : "*system class*";
             /* End of change for POC */
 	  }
 

@@ -34,12 +34,12 @@
 
 #include "parse_tree.h"
 
-/*
+/**/
 #define SP_CLASS_NAME           "_db_stored_procedure"
 #define SP_ARG_CLASS_NAME       "_db_stored_procedure_args"
-*/
+/**/
 
-/* Start of change for POC */
+/* Start of change for POC *
 #define SP_CLASS_NAME           "dba._db_stored_procedure"
 #define SP_ARG_CLASS_NAME       "dba._db_stored_procedure_args"
 /* End of change for POC */

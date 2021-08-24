@@ -5367,9 +5367,8 @@ mq_add_dummy_from_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
       return node;
     }
 
-  // fake_from = pt_add_table_name_to_from_list (parser, node, "db_root", NULL, DB_AUTH_NONE);
-
-  /* Start of change for POC */
+  fake_from = pt_add_table_name_to_from_list (parser, node, "db_root", NULL, DB_AUTH_NONE);
+  /* Start of change for POC *
   fake_from = pt_add_table_name_to_from_list (parser, node, "dba.db_root", NULL, DB_AUTH_NONE);
   /* End of change for POC */
 

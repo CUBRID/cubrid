@@ -1028,10 +1028,9 @@ pt_check_access_status (PARSER_CONTEXT * parser, PT_NODE * node)
   derived_table = entity->info.spec.derived_table;
   assert (derived_table != NULL);
 
-  // classop = sm_find_class ("db_user");
-
+  classop = sm_find_class ("db_user");
   /* Start of change for POC */
-  classop = sm_find_class ("dba.db_user");
+  // classop = sm_find_class ("dba.db_user");
   /* End of change for POC */
 
   if (classop == NULL)

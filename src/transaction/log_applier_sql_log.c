@@ -362,9 +362,8 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
   int result;
 
-  // if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial") != 0)
-
-  /* Start of change for POC */
+  if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial") != 0)
+  /* Start of change for POC *
   if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "dba.db_serial") != 0)
   /* End of change for POC */
     {
