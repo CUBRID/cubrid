@@ -10626,9 +10626,9 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      break;
 	    }
 
-	  if (cdc_make_dcl_loginfo (donetime->at_time, trid, tran_user, log_type, &log_info_entry) != NO_ERROR)
+	  if (cdc_make_dcl_loginfo (donetime->at_time, trid, tran_user, log_type, &log_info_entry) == -1)
 	    {
-	      goto error;
+	      goto end;
 	    }
 	  free_and_init (tran_user);
 
@@ -10847,7 +10847,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	    case LOG_SUPPLEMENT_DDL:
 	      if (cdc_make_ddl_loginfo (supplement_data, trid, tran_user, &log_info_entry) != NO_ERROR)
 		{
-		  goto error;
+		  goto end;
 		}
 
 	      break;
@@ -10930,7 +10930,31 @@ end:
       _er_log_debug (ARG_FILE_LINE, "cdc_log_producer : signal finailize2 ");
 #endif
       pthread_cond_signal (&cdc_Gl.finalize_cond);
+      pthread_mutex_unlock (&cdc_Gl.is_finalize_lock);
+      return NO_ERROR;
     }
+
+  if (!LSA_ISNULL (&next_log_rec_lsa))
+    {
+      LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+      pthread_mutex_lock (&cdc_Gl.next_lsa_lock);
+      while (LSA_GE (&next_log_rec_lsa, &nxio_lsa))
+	{
+#if !defined(NDEBUG)		//JOOHOK
+	  _er_log_debug (ARG_FILE_LINE, "next_log_rec_lsa > nxio_lsa ");
+#endif
+	  pthread_cond_wait (&cdc_Gl.nxio_lsa_cond, &cdc_Gl.next_lsa_lock);
+	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
+
+	  if (cdc_Gl.is_finalize == true)
+	    {
+	      break;
+	    }
+	}
+      pthread_mutex_unlock (&cdc_Gl.next_lsa_lock);
+    }
+
+  LSA_COPY (&cdc_Gl.next_lsa, &next_log_rec_lsa);
 
   pthread_mutex_unlock (&cdc_Gl.is_finalize_lock);
   return NO_ERROR;
