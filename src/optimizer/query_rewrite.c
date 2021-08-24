@@ -5471,10 +5471,10 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 static PT_NODE *
 qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *spec, *prev_spec, *expr, *ns, *save_next;
+  PT_NODE *spec, *expr, *ns, *save_next;
   SPEC_ID_INFO info, info_spec;
   RESET_LOCATION_INFO locate_info;
-  bool rewrite_again;
+  bool rewrite_again, is_outer_joined;
 
   if (node->node_type != PT_SELECT)
     {
@@ -5492,23 +5492,13 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     {
       rewrite_again = false;
       /* traverse spec list */
-      prev_spec = NULL;
-      for (spec = node->info.query.q.select.from; spec; prev_spec = spec, spec = spec->next)
+      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
 	{
-	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
-	      || (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && prev_spec))
+	  /* check outer join spec. */
+	  is_outer_joined = mq_is_outer_join_spec (parser, spec);
+	  if (is_outer_joined)
 	    {
-	      if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
-		{
-		  info.id = info_spec.id = spec->info.spec.id;
-		}
-	      else
-		{
-		  info.id = info_spec.id = prev_spec->info.spec.id;
-		}
-
-	      info_spec.appears = false;
-	      info.nullable = false;
+	      info.id = info_spec.id = spec->info.spec.id;
 
 	      /* search where list */
 	      for (expr = node->info.query.q.select.where; expr; expr = expr->next)
@@ -5516,6 +5506,9 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 		  if (expr->node_type == PT_EXPR && expr->info.expr.location == 0 && expr->info.expr.op != PT_IS_NULL
 		      && expr->or_next == NULL && expr->info.expr.op != PT_AND && expr->info.expr.op != PT_OR)
 		    {
+		      info_spec.appears = false;
+		      info.nullable = false;
+
 		      save_next = expr->next;
 		      expr->next = NULL;
 		      (void) parser_walk_tree (parser, expr, NULL, NULL, qo_check_nullable_expr_with_spec, &info);
@@ -5527,12 +5520,15 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 		      if (info_spec.appears && !info.nullable)
 			{
 			  rewrite_again = true;
-			  spec->info.spec.join_type = PT_JOIN_INNER;
+			  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
+			    {
+			      spec->info.spec.join_type = PT_JOIN_INNER;
 
-			  locate_info.start = spec->info.spec.location;
-			  locate_info.end = locate_info.start;
-			  (void) parser_walk_tree (parser, node->info.query.q.select.where, qo_reset_location,
-						   &locate_info, NULL, NULL);
+			      locate_info.start = spec->info.spec.location;
+			      locate_info.end = locate_info.start;
+			      (void) parser_walk_tree (parser, node->info.query.q.select.where, qo_reset_location,
+						       &locate_info, NULL, NULL);
+			    }
 
 			  /* rewrite the following connected right outer join to inner join */
 			  for (ns = spec->next;	/* traverse next spec */
@@ -7350,6 +7346,17 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	  if (qo_reduce_order_by (parser, node) != NO_ERROR)
 	    {
 	      return node;	/* give up */
+	    }
+
+	  /* predicate push */
+	  spec = node->info.query.q.select.from;
+	  while (spec)
+	    {
+	      if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
+		{
+		  (void) mq_copypush_sargable_terms (parser, node, spec);
+		}
+	      spec = spec->next;
 	    }
 	}
 

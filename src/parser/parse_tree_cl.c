@@ -4397,6 +4397,10 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node, bool do_one)
 	    {
 	      do_rewrite = true;	/* give up */
 	    }
+	  else if (node->info.query.order_by && node->info.query.limit)
+	    {
+	      do_rewrite = true;
+	    }
 	  else
 	    {
 	      for (col = list; col && do_rewrite != true; col = col->next)
