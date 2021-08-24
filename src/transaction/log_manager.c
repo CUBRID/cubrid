@@ -10802,7 +10802,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      _er_log_debug (ARG_FILE_LINE, "cdc_INSERT ");
 #endif
 	      memcpy (&classoid, supplement_data, sizeof (OID));
-	      if (!is_filtered_class (classoid) && !oid_is_system_class (&classoid))
+	      if (!is_filtered_class (classoid) || oid_is_system_class (&classoid))
 		{
 		  break;
 		}
@@ -10821,7 +10821,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      _er_log_debug (ARG_FILE_LINE, "cdc_DELETE ");
 #endif
 	      memcpy (&classoid, supplement_data, sizeof (OID));
-	      if (!is_filtered_class (classoid) && !oid_is_system_class (&classoid))
+	      if (!is_filtered_class (classoid) || oid_is_system_class (&classoid))
 		{
 		  break;
 		}
@@ -10834,7 +10834,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      break;
 	    case LOG_SUPPLEMENT_DELETE:
 	      memcpy (&classoid, supplement_data, sizeof (OID));
-	      if (!is_filtered_class (classoid) && !oid_is_system_class (&classoid))
+	      if (!is_filtered_class (classoid) || oid_is_system_class (&classoid))
 		{
 		  break;
 		}
