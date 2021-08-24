@@ -10262,7 +10262,7 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
 	}
       else if (!pt_has_error (parser))
-	{
+	{			// TODO: error handling
 	  PT_ERROR (parser, node, "Failed to obtain server information");
 	}
 

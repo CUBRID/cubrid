@@ -3086,6 +3086,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* TODO: check it  */
 	case PT_CREATE_SERVER:
 	case PT_DROP_SERVER:
+	case PT_RENAME_SERVER:
+	case PT_ALTER_SERVER:
 
 	  /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
 	  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
@@ -3321,6 +3323,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_DROP_SERVER:
 	  error = do_drop_server (parser, statement);
+	  break;
+
+	case PT_RENAME_SERVER:
+	  error = do_rename_server (parser, statement);
+	  break;
+
+	case PT_ALTER_SERVER:
+	  error = do_alter_server (parser, statement);
 	  break;
 
 	default:
@@ -3583,6 +3593,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* TODO: check it  */
     case PT_CREATE_SERVER:
     case PT_DROP_SERVER:
+    case PT_RENAME_SERVER:
+    case PT_ALTER_SERVER:
       /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
       db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
       break;
@@ -3785,6 +3797,13 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_SERVER:
       err = do_drop_server (parser, statement);
       break;
+    case PT_RENAME_SERVER:
+      err = do_rename_server (parser, statement);
+      break;
+    case PT_ALTER_SERVER:
+      err = do_alter_server (parser, statement);
+      break;
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
       break;
@@ -14759,6 +14778,14 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.statement_type = CUBRID_STMT_DROP_SERVER;
       break;
 
+    case PT_RENAME_SERVER:
+      repl_stmt.statement_type = CUBRID_STMT_RENAME_SERVER;
+      break;
+
+    case PT_ALTER_SERVER:
+      repl_stmt.statement_type = CUBRID_STMT_ALTER_SERVER;
+      break;
+
     case PT_CREATE_USER:
       repl_stmt.statement_type = CUBRID_STMT_CREATE_USER;
       break;
@@ -14850,7 +14877,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       repl_stmt.stmt_text = statement->sql_user_text;
 
-      if (statement->node_type == PT_CREATE_SERVER /* || statement->node_type == PT_ALTER_CREATE_SERVER */ )
+      if (statement->node_type == PT_CREATE_SERVER || statement->node_type == PT_ALTER_SERVER)
 	{
 	  /* In the HA process, the original text information is transmitted to the DDL syntax.
 	   * In the CREATE SERVER statement and the ALTER SEVER statement, 
@@ -17778,10 +17805,20 @@ exit:
   return error;
 }
 
+#define SERVER_ATTR_LINK_NAME   "link_name"
+#define SERVER_ATTR_HOST        "host"
+#define SERVER_ATTR_PORT        "port"
+#define SERVER_ATTR_DB_NAME     "db_name"
+#define SERVER_ATTR_USER_NAME   "user_name"
+#define SERVER_ATTR_PROPERTIES  "properties"
+#define SERVER_ATTR_COMMENT     "comment"
+#define SERVER_ATTR_PASSWORD    "password"
+#define SERVER_ATTR_OWNER       "owner"
+
 static MOP
 do_get_server_obj_id (DB_IDENTIFIER * server_obj_id, DB_OBJECT * server_class_mop, const char *server_name)
 {
-  return do_get_obj_id (server_obj_id, server_class_mop, server_name, "link_name");
+  return do_get_obj_id (server_obj_id, server_class_mop, server_name, SERVER_ATTR_LINK_NAME);
 }
 
 int
@@ -17878,14 +17915,14 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
     }
 
   /* port */
-  error = dbt_put_internal (obj_tmpl, "port", port_no);
+  error = dbt_put_internal (obj_tmpl, SERVER_ATTR_PORT, port_no);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
   /* password */
-  error = dbt_put_internal (obj_tmpl, "password", passwd);
+  error = dbt_put_internal (obj_tmpl, SERVER_ATTR_PASSWORD, passwd);
   if (error != NO_ERROR)
     {
       goto end;
@@ -17893,7 +17930,15 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
 
   for (int i = 0; i < attr_cnt; i++)
     {
-      db_make_string (&value, attr_val[i]);
+      if (attr_val[i] == NULL)
+	{
+	  db_make_null (&value);
+	}
+      else
+	{
+	  db_make_string (&value, attr_val[i]);
+	}
+
       error = dbt_put_internal (obj_tmpl, attr_names[i], &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -17904,7 +17949,7 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
 
   /* owner */
   db_make_object (&value, Au_user);
-  error = dbt_put_internal (obj_tmpl, "owner", &value);
+  error = dbt_put_internal (obj_tmpl, SERVER_ATTR_OWNER, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
     {
@@ -17941,7 +17986,9 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_DATA_STATUS data_stat;
   char *pwd;
   char *attr_val[6];
-  const char *attr_names[6] = { "link_name", "host", "db_name", "user_name", "properties", "comment" };
+  const char *attr_names[6] = { SERVER_ATTR_LINK_NAME, SERVER_ATTR_HOST, SERVER_ATTR_DB_NAME,
+    SERVER_ATTR_USER_NAME, SERVER_ATTR_PROPERTIES, SERVER_ATTR_COMMENT
+  };
 
   int error = NO_ERROR;
   int save;
@@ -18036,34 +18083,12 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error = get_dblink_password_decrypt (pwd, &tmp_passwd);
+  error = pt_remake_dblink_password (parser, pwd, &passwd, false);
   if (error != NO_ERROR)
-    {
-      if (error == ER_DBLINK_PASSWORD_CHECKSUM)
+    {				// TODO: error handling
+      if (!pt_has_error (parser))
 	{
-	  PT_ERROR (parser, statement, "The checksum of the encrypted password does not match.");
-	}
-      else if (error == ER_DBLINK_PASSWORD_INVALID_LENGTH)
-	{
-	  PT_ERROR (parser, statement, "Encrypted password length is incorrect.");
-	}
-      else if (!pt_has_error (parser))
-	{
-	  PT_ERRORf (parser, NULL, "Failed to decryption password. error=%d", error);
-	}
-
-      goto end;
-    }
-  error = get_dblink_password_encrypt ((char *) db_get_string (&tmp_passwd), &passwd, false);
-  if (error != NO_ERROR)
-    {
-      if (error == ER_DBLINK_PASSWORD_OVER_MAX_LENGTH)
-	{
-	  PT_ERROR (parser, statement, "Password length exceeds max size.");
-	}
-      else if (!pt_has_error (parser))
-	{
-	  PT_ERRORf (parser, statement, "Failed to encryption password. error=%d", error);
+	  PT_ERRORf (parser, statement, "Failed to re-encryption password. error=%d", error);
 	}
 
       goto end;
@@ -18120,6 +18145,328 @@ end:
 }
 
 int
+do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  const char *old_name, *new_name;
+  char new_buf[512];
+  DB_OBJECT *server_class = NULL, *server_object = NULL;
+  DB_IDENTIFIER server_obj_id;
+  DB_VALUE value;
+  int save;
+  bool au_disable_flag = false;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  old_name = statement->info.rename_server.old_name->info.name.original;
+  new_name = statement->info.rename_server.new_name->info.name.original;
+
+  OID_SET_NULL (&server_obj_id);
+
+  server_class = sm_find_class (CT_DB_SERVER_NAME);
+  if (server_class == NULL)
+    {
+      error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  server_object = do_get_server_obj_id (&server_obj_id, server_class, old_name);
+  if (server_object == NULL)
+    {
+      error = ER_DBLINK_SERVER_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_NOT_DEFINED, old_name);
+      goto end;
+    }
+
+  AU_DISABLE (save);
+  au_disable_flag = true;
+
+  /* check if user is creator or DBA  */
+  error = au_check_server_authorization (server_object);
+  if (error != NO_ERROR)
+    {
+      if (error == ER_DBLINK_CANNOT_UPDATE_SERVER)
+	{
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
+	}
+      goto end;
+    }
+
+  sm_downcase_name (new_name, new_buf, sizeof (new_buf));
+  db_make_string (&value, new_buf);
+  error = db_put (server_object, SERVER_ATTR_LINK_NAME, &value);
+  pr_clear_value (&value);
+
+end:
+  if (au_disable_flag)
+    {
+      AU_ENABLE (save);
+    }
+
+  return error;
+}
+
+int
+do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  char *pt;
+  const char *server_name;
+  DB_OBJECT *server_class = NULL, *server_object = NULL;
+  DB_IDENTIFIER server_obj_id;
+  DB_VALUE value, passwd;
+  PT_ALTER_SERVER_INFO *alter;
+  int save;
+  bool au_disable_flag = false;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  alter = &(statement->info.alter_server);
+  server_name = alter->server_name->info.name.original;
+
+  OID_SET_NULL (&server_obj_id);
+
+  server_class = sm_find_class (CT_DB_SERVER_NAME);
+  if (server_class == NULL)
+    {
+      error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  server_object = do_get_server_obj_id (&server_obj_id, server_class, server_name);
+  if (server_object == NULL)
+    {
+      error = ER_DBLINK_SERVER_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, server_name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_NOT_DEFINED, server_name);
+      goto end;
+    }
+
+  AU_DISABLE (save);
+  au_disable_flag = true;
+
+  /* check if user is creator or DBA  */
+  error = au_check_server_authorization (server_object);
+  if (error != NO_ERROR)
+    {
+      if (error == ER_DBLINK_CANNOT_UPDATE_SERVER)
+	{
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
+	}
+      goto end;
+    }
+
+  if (alter->xbits.bit_pwd)
+    {
+      assert (alter->pwd && alter->pwd->node_type == PT_VALUE);
+      pt = (char *) PT_VALUE_GET_BYTES (alter->pwd);
+      assert (pt && *pt);
+
+      error = pt_remake_dblink_password (parser, pt, &passwd, false);
+      if (error != NO_ERROR)
+	{			// TODO: error handling
+	  if (!pt_has_error (parser))
+	    {			// TODO: error handling
+	      PT_ERRORf (parser, statement, "Failed to re-encryption password. error=%d", error);
+	    }
+
+	  goto end;
+	}
+      error = db_put (server_object, SERVER_ATTR_PASSWORD, &passwd);
+      pr_clear_value (&passwd);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  if (alter->xbits.bit_host)
+    {
+      assert ((alter->host->node_type == PT_NAME) || (alter->host->node_type == PT_VALUE));
+      if (alter->host->node_type == PT_VALUE)
+	{
+	  pt = (char *) PT_VALUE_GET_BYTES (alter->host);
+	}
+      else
+	{
+	  pt = (char *) alter->host->info.name.original;
+	}
+
+      assert (pt && *pt);
+      db_make_string (&value, pt);
+      error = db_put (server_object, SERVER_ATTR_HOST, &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  if (alter->xbits.bit_port)
+    {
+      DB_VALUE *pval = NULL;
+      DB_DATA_STATUS data_stat;
+
+      db_value_domain_init (&value, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+      pval = pt_value_to_db (parser, alter->port);
+      if (pval == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  goto end;
+	}
+
+      error = numeric_db_value_coerce_to_num (pval, &value, &data_stat);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      pval = NULL;
+
+      error = db_put (server_object, SERVER_ATTR_PORT, &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  if (alter->xbits.bit_dbname)
+    {
+      assert (alter->dbname->node_type == PT_NAME);
+      pt = (char *) alter->dbname->info.name.original;
+
+      assert (pt && *pt);
+      db_make_string (&value, pt);
+      error = db_put (server_object, SERVER_ATTR_DB_NAME, &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  if (alter->xbits.bit_user)
+    {
+      assert (alter->user->node_type == PT_NAME);
+      pt = (char *) alter->user->info.name.original;
+
+      assert (pt && *pt);
+      db_make_string (&value, pt);
+      error = db_put (server_object, SERVER_ATTR_USER_NAME, &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  if (alter->xbits.bit_prop)
+    {
+      if (alter->prop)
+	{
+	  assert (alter->prop->node_type == PT_VALUE);
+	  pt = (char *) PT_VALUE_GET_BYTES (alter->prop);
+	}
+      else
+	{
+	  pt = 0x00;
+	}
+
+      if (!pt)
+	{
+	  db_make_null (&value);
+	}
+      else
+	{
+	  db_make_string (&value, pt);
+	}
+      error = db_put (server_object, SERVER_ATTR_PROPERTIES, &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  if (alter->xbits.bit_comment)
+    {
+      if (alter->comment)
+	{
+	  assert (alter->comment->node_type == PT_VALUE);
+	  pt = (char *) PT_VALUE_GET_BYTES (alter->comment);
+	}
+      else
+	{
+	  pt = 0x00;
+	}
+
+      if (!pt)
+	{
+	  db_make_null (&value);
+	}
+      else
+	{
+	  db_make_string (&value, pt);
+	}
+
+      error = db_put (server_object, SERVER_ATTR_COMMENT, &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+
+  if (alter->xbits.bit_owner)
+    {
+      assert (alter->owner_name->node_type == PT_NAME);
+      pt = (char *) alter->owner_name->info.name.original;
+      assert (pt && *pt);
+
+      db_make_string (&value, pt);
+      MOP user = au_find_user (pt);
+      if (user == NULL)
+	{
+	  if (er_errid () == ER_NET_CANT_CONNECT_SERVER || er_errid () == ER_OBJ_NO_CONNECT)
+	    {
+	      error = ER_NET_CANT_CONNECT_SERVER;
+	    }
+	  else
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+
+	  pr_clear_value (&value);
+	  goto end;
+	}
+
+      pr_clear_value (&value);
+      db_make_object (&value, user);
+
+      error = db_put (server_object, SERVER_ATTR_OWNER, &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+end:
+  if (au_disable_flag)
+    {
+      AU_ENABLE (save);
+    }
+
+  return error;
+}
+
+int
 get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_VALUE * out_val)
 {
   char *server_name, *t;
@@ -18127,7 +18474,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   DB_IDENTIFIER server_obj_id;
   DB_VALUE values[4], pwd_val;
   int au_save, error, cnt;
-  const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
+  const char *url_attr_names[4] = { SERVER_ATTR_HOST, SERVER_ATTR_PORT, SERVER_ATTR_DB_NAME, SERVER_ATTR_PROPERTIES };
 
   cnt = 0;
   t = strchr ((char *) server, '.');	/* FIXME */
@@ -18167,13 +18514,13 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
 	}
     }
 
-  error = db_get (server_object, "user_name", &(out_val[1]));
+  error = db_get (server_object, SERVER_ATTR_USER_NAME, &(out_val[1]));
   if (error < 0)
     {
       goto error_end;
     }
 
-  error = db_get (server_object, "password", &pwd_val);
+  error = db_get (server_object, SERVER_ATTR_PASSWORD, &pwd_val);
   if (error < 0)
     {
       goto error_end;
@@ -18183,15 +18530,15 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   if (error != NO_ERROR)
     {
       if (error == ER_DBLINK_PASSWORD_CHECKSUM)
-	{
+	{			// TODO: error handling
 	  PT_ERROR (parser, NULL, "The checksum of the encrypted password does not match.");
 	}
       else if (error == ER_DBLINK_PASSWORD_INVALID_LENGTH)
-	{
+	{			// TODO: error handling
 	  PT_ERROR (parser, NULL, "Encrypted password length is incorrect.");
 	}
       else if (!pt_has_error (parser))
-	{
+	{			// TODO: error handling
 	  PT_ERRORf (parser, NULL, "Failed to decryption password. error=%d", error);
 	}
     }
@@ -18325,6 +18672,50 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
   return err;
 }
 
+int
+pt_remake_dblink_password (PARSER_CONTEXT * parser, const char *passwd, DB_VALUE * outval, bool is_external)
+{
+  int error;
+  DB_VALUE tmp_passwd;
+
+  db_make_null (&tmp_passwd);
+  error = get_dblink_password_decrypt (passwd, &tmp_passwd);
+  if (error != NO_ERROR)
+    {
+      if (error == ER_DBLINK_PASSWORD_CHECKSUM)
+	{			// TODO: error handling
+	  PT_ERROR (parser, NULL, "The checksum of the encrypted password does not match.");
+	}
+      else if (error == ER_DBLINK_PASSWORD_INVALID_LENGTH)
+	{			// TODO: error handling
+	  PT_ERROR (parser, NULL, "Encrypted password length is incorrect.");
+	}
+      else if (!pt_has_error (parser))
+	{			// TODO: error handling
+	  PT_ERRORf (parser, NULL, "Failed to decryption password. error=%d", error);
+	}
+
+      pr_clear_value (&tmp_passwd);
+      return error;
+    }
+
+  error = get_dblink_password_encrypt ((char *) db_get_string (&tmp_passwd), outval, is_external);
+  if (error != NO_ERROR)
+    {
+      if (error == ER_DBLINK_PASSWORD_OVER_MAX_LENGTH)
+	{			// TODO: error handling
+	  PT_ERROR (parser, NULL, "Password length exceeds max size.");
+	}
+      else if (!pt_has_error (parser))
+	{			// TODO: error handling
+	  PT_ERRORf (parser, NULL, "Failed to encryption password. error=%d", error);
+	}
+    }
+
+  pr_clear_value (&tmp_passwd);
+  return error;
+}
+
 /*
  * get_dblink_password_encrypt ()  : Generates an encrypted password.
  *
@@ -18435,19 +18826,21 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
 
   // hex string  to byte stream 
   err = crypt_dblink_str_to_bin (passwd_cipher, length, cipher, &new_length, private_key);
+  if (err != NO_ERROR)
+    {
+      return ER_DBLINK_PASSWORD_INVALID_FMT;
+    }
+
+  err = crypt_dblink_decrypt ((unsigned char *) cipher, new_length, (unsigned char *) newpwd, private_key);
   if (err == NO_ERROR)
     {
-      err = crypt_dblink_decrypt ((unsigned char *) cipher, new_length, (unsigned char *) newpwd, private_key);
-      if (err == NO_ERROR)
+      newpwd[new_length] = '\0';	// Do NOT omit this line.
+      err = reverse_shake_dblink_password (newpwd, new_length, cipher);
+      if (err != NO_ERROR)
 	{
-	  newpwd[new_length] = '\0';	// Do NOT omit this line.
-	  err = reverse_shake_dblink_password (newpwd, new_length, cipher);
-	  if (err != NO_ERROR)
-	    {
-	      return ER_DBLINK_PASSWORD_CHECKSUM;
-	    }
-	  err = db_make_string_copy (decrypt_val, cipher);
+	  return ER_DBLINK_PASSWORD_CHECKSUM;
 	}
+      err = db_make_string_copy (decrypt_val, cipher);
     }
 
   return err;

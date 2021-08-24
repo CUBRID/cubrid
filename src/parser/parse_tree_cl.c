@@ -268,6 +268,8 @@ static PT_NODE *pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p
 static PT_NODE *pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_create_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_drop_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_rename_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_alter_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -422,6 +424,8 @@ static PARSER_VARCHAR *pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_
 static PARSER_VARCHAR *pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_drop_server (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_rename_server (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_alter_server (PARSER_CONTEXT * parser, PT_NODE * p);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -3063,6 +3067,10 @@ pt_show_node_type (PT_NODE * node)
       return "CREATE_SERVER";
     case PT_DROP_SERVER:
       return "DROP_SERVER";
+    case PT_RENAME_SERVER:
+      return "RENAME_SERVER";
+    case PT_ALTER_SERVER:
+      return "ALTER_SERVER";
     default:
       return "NODE: type unknown";
     }
@@ -4942,6 +4950,8 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_DBLINK_TABLE] = pt_apply_dblink_table;
   pt_apply_func_array[PT_CREATE_SERVER] = pt_apply_create_server;
   pt_apply_func_array[PT_DROP_SERVER] = pt_apply_drop_server;
+  pt_apply_func_array[PT_RENAME_SERVER] = pt_apply_rename_server;
+  pt_apply_func_array[PT_ALTER_SERVER] = pt_apply_alter_server;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5069,6 +5079,8 @@ pt_init_init_f (void)
   pt_init_func_array[PT_DBLINK_TABLE] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_SERVER] = pt_init_func_null_function;
   pt_init_func_array[PT_DROP_SERVER] = pt_init_func_null_function;
+  pt_init_func_array[PT_RENAME_SERVER] = pt_init_func_null_function;
+  pt_init_func_array[PT_ALTER_SERVER] = pt_init_func_null_function;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5189,6 +5201,8 @@ pt_init_print_f (void)
   pt_print_func_array[PT_DBLINK_TABLE] = pt_print_dblink_table;
   pt_print_func_array[PT_CREATE_SERVER] = pt_print_create_server;
   pt_print_func_array[PT_DROP_SERVER] = pt_print_drop_server;
+  pt_print_func_array[PT_RENAME_SERVER] = pt_print_rename_server;
+  pt_print_func_array[PT_ALTER_SERVER] = pt_print_alter_server;
 
   pt_print_f = pt_print_func_array;
 }
@@ -18557,5 +18571,186 @@ pt_print_drop_server (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   q = pt_append_nulstring (parser, q, (char *) p->info.drop_server.server_name->info.name.original);
+  return q;
+}
+
+static PT_NODE *
+pt_apply_rename_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.rename_server.old_name, arg);
+  PT_APPLY_WALK (parser, p->info.rename_server.new_name, arg);
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_rename_server (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *b = 0, *r1, *r2;
+
+  r1 = pt_print_bytes (parser, p->info.rename_server.old_name);
+  r2 = pt_print_bytes (parser, p->info.rename_server.new_name);
+  b = pt_append_nulstring (parser, b, "RENAME SERVER ");
+  b = pt_append_varchar (parser, b, r1);
+  b = pt_append_nulstring (parser, b, " AS ");
+  b = pt_append_varchar (parser, b, r2);
+
+  return b;
+}
+
+static PT_NODE *
+pt_apply_alter_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.alter_server.server_name, arg);
+  PT_APPLY_WALK (parser, p->info.alter_server.host, arg);
+  PT_APPLY_WALK (parser, p->info.alter_server.port, arg);
+  PT_APPLY_WALK (parser, p->info.alter_server.dbname, arg);
+  PT_APPLY_WALK (parser, p->info.alter_server.user, arg);
+  PT_APPLY_WALK (parser, p->info.alter_server.pwd, arg);
+  PT_APPLY_WALK (parser, p->info.alter_server.prop, arg);
+  PT_APPLY_WALK (parser, p->info.alter_server.comment, arg);
+  PT_APPLY_WALK (parser, p->info.alter_server.owner_name, arg);
+
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_alter_server (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = 0, *r;
+  char *pt;
+  bool is_delimiter = false;
+  PT_ALTER_SERVER_INFO *alter = &(p->info.alter_server);
+
+  q = pt_append_nulstring (parser, q, "ALTER SERVER ");
+  q = pt_append_nulstring (parser, q, (char *) alter->server_name->info.name.original);
+
+  if (alter->xbits.bit_owner)
+    {
+      assert (alter->owner_name->node_type == PT_NAME);
+      q = pt_append_nulstring (parser, q, " OWNER TO ");
+      q = pt_append_nulstring (parser, q, (char *) alter->owner_name->info.name.original);
+      is_delimiter = true;
+    }
+
+  if (alter->xbits.bit_host)
+    {
+      assert ((alter->host->node_type == PT_NAME) || (alter->host->node_type == PT_VALUE));
+      pt = (alter->host->node_type == PT_VALUE) ?
+	(char *) PT_VALUE_GET_BYTES (alter->host) : (char *) alter->host->info.name.original;
+      assert (pt && *pt);
+
+      if (is_delimiter)
+	{
+	  q = pt_append_bytes (parser, q, (char *) ",", 1);
+	}
+      q = pt_append_nulstring (parser, q, " CHANGE HOST=");
+      r = pt_print_bytes (parser, alter->host);
+      q = pt_append_varchar (parser, q, r);
+      is_delimiter = true;
+    }
+
+  if (alter->xbits.bit_port)
+    {
+      if (is_delimiter)
+	{
+	  q = pt_append_bytes (parser, q, (char *) ",", 1);
+	}
+      q = pt_append_nulstring (parser, q, " CHANGE PORT=");
+      r = pt_print_bytes (parser, alter->port);
+      q = pt_append_varchar (parser, q, r);
+      is_delimiter = true;
+    }
+
+  if (alter->xbits.bit_dbname)
+    {
+      assert (alter->dbname->node_type == PT_NAME);
+      assert (alter->dbname->info.name.original && *alter->dbname->info.name.original);
+      if (is_delimiter)
+	{
+	  q = pt_append_bytes (parser, q, (char *) ",", 1);
+	}
+      q = pt_append_nulstring (parser, q, " CHANGE DBNAME=");
+      q = pt_append_nulstring (parser, q, (char *) alter->dbname->info.name.original);
+      is_delimiter = true;
+    }
+
+  if (alter->xbits.bit_user)
+    {
+      assert (alter->user->node_type == PT_NAME);
+      assert (alter->user->info.name.original && *alter->user->info.name.original);
+      if (is_delimiter)
+	{
+	  q = pt_append_bytes (parser, q, (char *) ",", 1);
+	}
+      q = pt_append_nulstring (parser, q, " CHANGE USER=");
+      q = pt_append_nulstring (parser, q, (char *) alter->user->info.name.original);
+      is_delimiter = true;
+    }
+
+  if (alter->xbits.bit_pwd)
+    {
+      assert (alter->pwd && alter->pwd->node_type == PT_VALUE);
+      pt = (char *) PT_VALUE_GET_BYTES (alter->pwd);
+      assert (pt && *pt);
+
+      if (is_delimiter)
+	{
+	  q = pt_append_bytes (parser, q, (char *) ",", 1);
+	}
+      q = pt_append_nulstring (parser, q, " CHANGE PASSWORD=");
+      r = pt_print_bytes (parser, alter->pwd);
+      q = pt_append_varchar (parser, q, r);
+      is_delimiter = true;
+    }
+
+  if (alter->xbits.bit_prop)
+    {
+      if (alter->prop)
+	{
+	  assert (alter->prop->node_type == PT_VALUE);
+	  pt = (char *) PT_VALUE_GET_BYTES (alter->prop);
+	}
+      else
+	{
+	  pt = 0x00;
+	}
+
+      if (is_delimiter)
+	{
+	  q = pt_append_bytes (parser, q, (char *) ",", 1);
+	}
+      q = pt_append_nulstring (parser, q, " CHANGE PROPERTIES=");
+      if (pt)
+	{
+	  r = pt_print_bytes (parser, alter->prop);
+	  q = pt_append_varchar (parser, q, r);
+	}
+      is_delimiter = true;
+    }
+
+  if (alter->xbits.bit_comment)
+    {
+      if (alter->comment)
+	{
+	  assert (alter->comment->node_type == PT_VALUE);
+	  pt = (char *) PT_VALUE_GET_BYTES (alter->comment);
+	}
+      else
+	{
+	  pt = 0x00;
+	}
+
+      if (is_delimiter)
+	{
+	  q = pt_append_bytes (parser, q, (char *) ",", 1);
+	}
+      q = pt_append_nulstring (parser, q, " CHANGE PROPERTIES=");
+      if (pt)
+	{
+	  r = pt_print_bytes (parser, alter->comment);
+	  q = pt_append_varchar (parser, q, r);
+	}
+    }
+
   return q;
 }
