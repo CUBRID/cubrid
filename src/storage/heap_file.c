@@ -4180,10 +4180,8 @@ check_supplemental_log (THREAD_ENTRY * thread_p, OID * classoid)
 	  return true;
 	}
     }
-  else
-    {
-      return false;
-    }
+
+  return false;
 }
 
 /*
@@ -22713,7 +22711,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 	}
     }
 
-  if (check_supplemental_log (thread_p, &context->class_oid))
+  if (check_supplemental_log (thread_p, &context->class_oid) == true)
     {
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
@@ -22851,7 +22849,8 @@ error:
   CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
 
-  if (context->do_supplemental_log && !LSA_ISNULL (&context->supp_redo_lsa))
+  if (context->do_supplemental_log && !LSA_ISNULL (&context->supp_redo_lsa)
+      && context->recdes_p->type != REC_ASSIGN_ADDRESS)
     {
       log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
     }
@@ -22978,7 +22977,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  if (check_supplemental_log (thread_p, &context->class_oid))
+  if (check_supplemental_log (thread_p, &context->class_oid) == true)
     {
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (!tdes->has_supplemental_log)
@@ -23040,7 +23039,7 @@ error:
   /* unfix pages */
   heap_unfix_watchers (thread_p, context);
 
-  if (context->do_supplemental_log)
+  if (context->do_supplemental_log == true)
     {
       log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa, NULL);
     }
@@ -23192,7 +23191,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  if (check_supplemental_log (thread_p, &context->class_oid))
+  if (check_supplemental_log (thread_p, &context->class_oid) == true)
     {
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (!tdes->has_supplemental_log)
@@ -23281,7 +23280,7 @@ exit:
   CUBRID_OBJ_UPDATE_END (&context->class_oid, (rc != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
 
-  if (context->do_supplemental_log)
+  if (context->do_supplemental_log == true)
     {
       log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
 				   &context->supp_redo_lsa);

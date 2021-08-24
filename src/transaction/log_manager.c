@@ -299,7 +299,7 @@ static LOG_PAGE *log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, F
 static LOG_PAGE *log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						  LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
-						  LOG_PAGE * log_page_p);
+						    LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
 				  LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p);
 static void log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
@@ -10713,7 +10713,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	    }
 	  else
 	    {
-	      supplement_data = (char *) malloc (supplement_length);
+	      supplement_data = (char *) malloc (supplement_length + MAX_ALIGNMENT);
 	      if (supplement_data == NULL)
 		{
 		  goto error;
@@ -10802,7 +10802,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      _er_log_debug (ARG_FILE_LINE, "cdc_INSERT ");
 #endif
 	      memcpy (&classoid, supplement_data, sizeof (OID));
-	      if (!is_filtered_class (classoid))
+	      if (!is_filtered_class (classoid) && !oid_is_system_class (&classoid))
 		{
 		  break;
 		}
@@ -10821,7 +10821,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      _er_log_debug (ARG_FILE_LINE, "cdc_DELETE ");
 #endif
 	      memcpy (&classoid, supplement_data, sizeof (OID));
-	      if (!is_filtered_class (classoid))
+	      if (!is_filtered_class (classoid) && !oid_is_system_class (&classoid))
 		{
 		  break;
 		}
@@ -10834,7 +10834,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      break;
 	    case LOG_SUPPLEMENT_DELETE:
 	      memcpy (&classoid, supplement_data, sizeof (OID));
-	      if (!is_filtered_class (classoid))
+	      if (!is_filtered_class (classoid) && !oid_is_system_class (&classoid))
 		{
 		  break;
 		}
