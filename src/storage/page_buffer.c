@@ -4803,7 +4803,6 @@ pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  *   return: void
  *   bufptr(in): pointer to buffer page
  *
- * Note: This function is used for debugging.
  */
 STATIC_INLINE void
 pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr)
@@ -4836,11 +4835,6 @@ pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr)
 	  /* values not reset upon page deallocation */
 	  assert (bufptr->iopage_buffer->iopage.prv.volid == bufptr->vpid.volid);
 	  assert (bufptr->iopage_buffer->iopage.prv.pageid == bufptr->vpid.pageid);
-
-	  /* values reset upon page deallocation */
-	  assert (bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN);
-	  /* only compare the encryption part of the flag, the rest is, as of now, unused */
-	  assert ((bufptr->iopage_buffer->iopage.prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK) == '\0');
 	}
     }
 }
