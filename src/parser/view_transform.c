@@ -3084,12 +3084,12 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
       /* copy and put it in query's search condition */
       if (pt_has_aggregate (parser, query))
 	{
-	  if (query->info.query.q.select.group_by)
-	    {
+	  /*if (query->info.query.q.select.group_by)
+	    {*/
 	      /* push into HAVING clause */
 	      query->info.query.q.select.having =
 		parser_append_node (push_term_list, query->info.query.q.select.having);
-	    }
+	    /*}*/
 	}
       else
 	{
