@@ -3969,9 +3969,9 @@ alter_stmt
                                 }
 
                                 if(is_not_allowed)
-                                  {
-                                        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX, 
-                                                MSGCAT_SYNTAX_INVALID_ALTER); 
+                                  {                                       
+                                        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
                                   }                 
 			  }
 
