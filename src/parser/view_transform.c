@@ -3075,7 +3075,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
  *
  * It is not pushable in the following cases.
  * 1. main query check
- *  - hierarchical query or merge query
+ *  - hierarchical query
  *
  * 2. subquery check
  *  - has inst num or orderby_num
@@ -3111,9 +3111,8 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   copy_cnt = -1;
 
   /* 1.main query check (statement) */
-  /* do NOT copy-push for a hierarchical query or merge query */
-  if (statement->info.query.q.select.connect_by != NULL
-      /*|| PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY) */ )
+  /* do NOT copy-push for a hierarchical query */
+  if (statement->info.query.q.select.connect_by != NULL)
     {
       return 0;
     }
