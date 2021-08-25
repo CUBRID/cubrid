@@ -230,7 +230,7 @@ extern int vacuum_data_load_and_recover (THREAD_ENTRY * thread_p);
 extern VACUUM_LOG_BLOCKID vacuum_get_log_blockid (LOG_PAGEID pageid);
 extern void vacuum_produce_log_block_data (THREAD_ENTRY * thread_p);
 extern int vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p);
-extern LOG_PAGEID vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p);
+extern LOG_PAGEID vacuum_min_log_pageid_to_keep ();
 extern bool vacuum_is_safe_to_remove_archives (void);
 extern void vacuum_notify_server_crashed (const LOG_LSA * recovery_lsa);
 extern void vacuum_notify_server_shutdown (void);
