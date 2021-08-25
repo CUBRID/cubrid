@@ -3300,7 +3300,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid);
 		  if (rcv.pgptr == NULL)
 		    {
-		      /* deallocated */
 		      break;
 		    }
 		}
@@ -3486,7 +3485,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid);
 		  if (rcv.pgptr == NULL)
 		    {
-		      /* deallocated */
 		      break;
 		    }
 		}
@@ -3608,7 +3606,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid);
 		  if (rcv.pgptr == NULL)
 		    {
-		      /* deallocated */
 		      break;
 		    }
 		}
@@ -3695,7 +3692,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid);
 		  if (rcv.pgptr == NULL)
 		    {
-		      /* deallocated */
 		      break;
 		    }
 		}
@@ -6384,7 +6380,7 @@ log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_siz
 }
 
 /*
- * log_rv_redo_fix_page () - fix page for recovery
+ * log_rv_redo_fix_page () - fix page for recovery without upfront reservation check
  *
  * return        : fixed page or NULL
  * thread_p (in) : thread entry
@@ -6397,7 +6393,6 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv)
 
   assert (vpid_rcv != NULL && !VPID_ISNULL (vpid_rcv));
 
-  //
   // during recovery, we don't care if a page is deallocated or not, apply the changes regardless. since changes to
   // sector reservation table are applied in parallel with the changes in pages, at times the page may appear to be
   // deallocated (part of an unreserved sector). but the changes were done while the sector was reserved and must be
