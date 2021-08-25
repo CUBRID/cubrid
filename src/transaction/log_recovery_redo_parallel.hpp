@@ -162,22 +162,12 @@ namespace cublog
        */
       class redo_job_queue final
       {
-	  using redo_job_deque_t = std::deque<redo_parallel::redo_job_base *>;
-
 	public:
 	  using redo_job_vector_t = std::vector<redo_job_base *>;
 
-	private:
-	  /*
-	  using vpid_ux_redo_job_deque_map_t = std::unordered_map<vpid, ux_redo_job_deque, std::hash<VPID>>;
-	  using vpid_set = std::set<VPID>;
-	  using log_lsa_set = std::set<log_lsa>;
-	  using log_lsa_vpid_map_t = std::map<log_lsa, vpid>;
-	  */
-
 	public:
 	  redo_job_queue () = delete;
-	  redo_job_queue (const std::size_t m_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa);
+	  redo_job_queue (const std::size_t a_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa);
 	  ~redo_job_queue ();
 
 	  redo_job_queue (redo_job_queue const &) = delete;
@@ -204,38 +194,8 @@ namespace cublog
 	   */
 	  bool pop_jobs (std::size_t a_task_idx, redo_job_vector_t *&in_out_jobs, bool &out_adding_finished);
 
-	  void notify_job_deque_finished (const redo_job_vector_t &a_job_deque);
-
 	private:
 	  void assert_empty () const;
-
-	  /* swap internal queues and notify if both are empty
-	   * assumes the consume queue is locked
-	   */
-	  /*
-	  void do_swap_queues_if_needed (const std::lock_guard<std::mutex> &a_consume_lockg);
-	  */
-
-	  /* find first job that can be consumed (ie: is not already marked
-	   * in the 'in progress vpids' set)
-	   *
-	   * NOTE: '*_locked_*' functions are supposed to be called from within locked
-	   * areas with respect to the resources they make use of
-	   */
-	  /*
-	  ux_redo_job_deque do_locked_find_job_to_consume_and_mark_in_progress (
-	    const std::lock_guard<std::mutex> &a_consume_lockg,
-	    const std::lock_guard<std::mutex> &a_in_progress_lockg);
-	  */
-
-	  /* NOTE: '*_locked_*' functions are supposed to be called from within locked
-	   * areas with respect to the resources they make use of
-	   */
-	  /*
-	  void do_locked_mark_job_deque_in_progress (
-	    const std::lock_guard<std::mutex> &a_in_progress_lockg,
-	    const ux_redo_job_deque &a_job_deque);
-	  */
 
 	private:
 	  const std::size_t m_task_count;
@@ -244,26 +204,7 @@ namespace cublog
 	  std::hash<VPID> m_vpid_hash;
 	  std::vector<std::mutex> m_produce_mutex_vec;
 
-	  /*
-	  std::map<unsigned, log_lsa> m_produce_index_to_min_lsa_map;
-	  log_lsa_set m_produce_min_lsa_set;
-	  */
-
 	  std::atomic_bool m_adding_finished;
-
-	  /* bookkeeping for log entries currently in process of being applied, this
-	   * mechanism guarantees ordering among entries with the same VPID;
-	   */
-	  /*
-	  vpid_set m_in_progress_vpids;
-	  log_lsa_set m_in_progress_lsas;
-	  mutable std::mutex m_in_progress_mutex;
-	  */
-	  /* signalled when the 'in progress' containers are empty
-	   */
-	  /*
-	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
-	  */
 
 	  /* utility class to maintain a minimum log_lsa that is still
 	   * to be processed (consumed); non-owning pointer, can be null

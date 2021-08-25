@@ -159,11 +159,6 @@ namespace cublog
     : m_task_count { a_task_count }
     , m_produce_vec { a_task_count }
     , m_produce_mutex_vec { a_task_count }
-      /*
-      : m_produce (new vpid_ux_redo_job_deque_map_t ())
-      , m_consume (new vpid_ux_redo_job_deque_map_t ())
-      , m_queues_empty (true)
-      */
     , m_adding_finished { false }
     , m_monitor_minimum_log_lsa { a_minimum_log_lsa != nullptr }
     , m_minimum_log_lsa { a_minimum_log_lsa }
@@ -183,14 +178,6 @@ namespace cublog
 	delete jobs;
       }
     m_produce_vec.clear ();
-
-    /*
-    delete m_produce;
-    m_produce = nullptr;
-
-    delete m_consume;
-    m_consume = nullptr;
-    */
   }
 
   void
@@ -241,227 +228,6 @@ namespace cublog
 	in_out_jobs = jobs_to_consume;
 	return true;
       }
-
-    /*
-    std::lock_guard<std::mutex> consume_lockg (m_consume_mutex);
-
-    out_adding_finished = false;
-
-    do_swap_queues_if_needed (consume_lockg);
-
-    if (m_consume->size () > 0)
-      {
-    // IDEA: instead of every task sifting through entries locked in execution by other tasks,
-    // promote those entries as they are found to separate queues on a per-VPID basis; thus,
-    // when that specific task enters the critical section, it will first investigate these
-    // promoted queues to see if there's smth to consume from there; this has the added benefit that
-    // it will also, possibly, bundle together consecutive entries that pertain to that task, thus,
-    // further, possibly reducing contention on the happy path (ie: many consecutive same-VPID entries)
-    // and also cache localization/affinity given that the same task (presumabily scheduled on the same
-    // core) might end up consuming consecutive same-VPID entries which are applied to same location in
-    // memory
-
-    // IDEA: if this is a  non-synched op, search all other entries from the current queue
-    // pertaining to the same vpid and consolidate them all in a single 'execution'; stop
-    // when all entries in the consume queue have been added or when a synched (to-be-waited-for)
-    // entry is found
-
-    std::lock_guard<std::mutex> in_progress_lockg (m_in_progress_mutex);
-    ux_redo_job_deque jobs_to_consume =
-    	do_locked_find_job_to_consume_and_mark_in_progress (consume_lockg, in_progress_lockg);
-
-    // specifically leave the 'out_adding_finished' on false as set at the beginning:
-    //  - even if adding has been finished, the produce queue might still have jobs to be consumed
-    //  - if so, setting the out param to true here, will cause consuming tasks to finish
-    //  - thus allowing for a corner case where the jobs are not fully processed and all
-    //    tasks have finished executing
-
-    // job is null at this point, task will have to spin-wait and come again
-    return jobs_to_consume;
-      }
-    else
-      {
-    // because two alternating queues are used internally, and because, when the consumption queue
-    // is being almost exhausted (i.e.: there are still entries to be consumed but all of them are locked
-    // by other tasks - via the m_in_progress_vpids), there are a few times when false negatives are returned
-    // to the consumption tasks (see the 'return nullptr' in the 'then' branch); but, if control reaches here
-    // it is ensured that indeed no more data exists and that no more data will be produced
-    out_adding_finished = m_adding_finished.load ();
-
-    // if no more data will be produced (signalled by the flag), the
-    // consumer will just need to terminate; otherwise, consumer is expected to
-    // spin-wait and try again
-    return ux_redo_job_deque ();
-      }
-    */
-  }
-
-  /*
-  void
-  redo_parallel::redo_job_queue::do_swap_queues_if_needed (const std::lock_guard<std::mutex> &a_consume_lockg)
-  {
-    // if consumption of everything in consume queue finished; see whether there's some more in the other one
-    if (m_consume->size () == 0)
-      {
-  // TODO: a second barrier such that, consumption threads do not 'busy wait' by
-  // constantly swapping two empty containers; works in combination with a notification
-  // dispatched after new work items are added to the produce queue; this, in effect means that
-  // this function will semantically become 'blocking_pop'
-
-  // consumer queue is locked anyway, interested in not locking the producer queue
-  bool notify_queues_empty = false;
-  {
-    // effectively, an 'atomic' swap because both queues are locked
-    std::lock_guard<std::mutex> produce_lockg (m_produce_mutex);
-    std::swap (m_produce, m_consume);
-    m_produce_min_lsa_map.swap (m_consume_min_lsa_map);
-
-    assert (m_produce->size () == m_produce_min_lsa_map.size () && m_produce->empty ());
-    assert (m_consume->size () == m_consume_min_lsa_map.size ());
-
-    if (m_monitor_minimum_log_lsa)
-      {
-        const log_lsa consume_minimum_log_lsa =
-  	      m_consume->empty () ? MAX_LSA : m_consume_min_lsa_map.cbegin ()->first;
-        // consume side, being empty, update with guard value
-        m_minimum_log_lsa->set_for_produce_and_consume (
-  	      MAX_LSA, consume_minimum_log_lsa);
-      }
-
-    // if both queues empty, notify the, possibly waiting, main thread
-    m_queues_empty = m_produce->empty () && m_consume->empty ();
-    notify_queues_empty = m_queues_empty;
-  }
-  if (notify_queues_empty)
-    {
-      m_queues_empty_cv.notify_one ();
-    }
-      }
-  }
-  */
-
-  /*
-  redo_parallel::redo_job_queue::ux_redo_job_deque
-  redo_parallel::redo_job_queue::do_locked_find_job_to_consume_and_mark_in_progress (
-    const std::lock_guard<std::mutex> &a_consume_lockg,
-    const std::lock_guard<std::mutex> &a_in_progress_lockg)
-  {
-    // choose the vpid with the minimum lsa, to avoid going back in time with the bookkeeping
-    // if jobs for that vpid happen to be in progress by another task, only way is to bail out, effectively
-    // spin-waiting until that other task would have finished processing entries for the vpid currently
-    // with lowest log_lsa;
-    // this might happen in situations where there is very high contention on one single vpid
-    const log_lsa_vpid_map_t::iterator consume_min_log_lsa_it = m_consume_min_lsa_map.begin ();
-    const vpid &consume_min_log_lsa_vpid = consume_min_log_lsa_it->second;
-    if (m_in_progress_vpids.find (consume_min_log_lsa_vpid) == m_in_progress_vpids.cend ())
-      {
-  vpid_ux_redo_job_deque_map_t::iterator consume_it = m_consume->find (consume_min_log_lsa_vpid);
-  assert (consume_it != m_consume->end ());
-
-  ux_redo_job_deque ret_job_deq {std::move (consume_it->second)};
-  m_consume->erase (consume_it);
-
-  assert (consume_min_log_lsa_it->first == (*ret_job_deq.cbegin ())->get_log_lsa ());
-  m_consume_min_lsa_map.erase (consume_min_log_lsa_it);
-
-  assert (m_consume->size () == m_consume_min_lsa_map.size ());
-
-  do_locked_mark_job_deque_in_progress (a_in_progress_lockg, ret_job_deq);
-
-  if (m_monitor_minimum_log_lsa)
-    {
-      // mark transition in one go for consistency
-      // if:
-      //  - first the consume is being changed (or even cleared)
-      //  - then, separately, the in-progress is updated
-      // the following might happen:
-      //  - suppose that there is only one job left in the consume queue, everything else is empty
-      //  - the minimum value for the consume queue would be cleared
-      //  - at this point, the minimum log lsa will actually be MAX_LSA
-      //  - while there is actually one more job (that has just been taken out of the consume queue
-      //    and is to be transferred to the in progress set)
-      const log_lsa &consume_minimum_log_lsa =
-  	    m_consume->empty () ? MAX_LSA : m_consume_min_lsa_map.cbegin ()->first;
-      const log_lsa in_progress_minimum_log_lsa = *m_in_progress_lsas.cbegin ();
-      m_minimum_log_lsa->set_for_consume_and_in_progress (
-  	    consume_minimum_log_lsa, in_progress_minimum_log_lsa);
-    }
-
-  return ret_job_deq;
-      }
-
-    // consumer task will have to spin-wait
-    return ux_redo_job_deque ();
-  }
-  */
-
-  /*
-  void
-  redo_parallel::redo_job_queue::do_locked_mark_job_deque_in_progress (
-    const std::lock_guard<std::mutex> &a_in_progress_lockg,
-    const ux_redo_job_deque &a_job_deque)
-  {
-    // all jobs have the same vpid
-    const ux_redo_job_base &first_job = *a_job_deque.cbegin ();
-    const vpid &first_job_vpid = first_job->get_vpid ();
-    assert (m_in_progress_vpids.find (first_job_vpid) == m_in_progress_vpids.cend ());
-    m_in_progress_vpids.insert (first_job_vpid);
-
-    if (m_monitor_minimum_log_lsa)
-      {
-  // each job has a different log_lsa but, within a queue, jobs have ever increasing log_lsa's
-  // so, suffices to only add the first one
-  const log_lsa &first_job_log_lsa = first_job->get_log_lsa ();
-  assert (m_in_progress_lsas.find (first_job_log_lsa) == m_in_progress_lsas.cend ());
-  m_in_progress_lsas.insert (first_job_log_lsa);
-      }
-  }
-  */
-
-  void
-  redo_parallel::redo_job_queue::notify_job_deque_finished (const redo_job_vector_t &a_job_deque)
-  {
-    /*
-    bool vpid_set_empty = false;
-    bool lsa_set_empty = false;
-    {
-      std::lock_guard<std::mutex> in_progress_lockg (m_in_progress_mutex);
-
-      const ux_redo_job_base &first_job = *a_job_deque.cbegin ();
-      // all jobs have the same vpid
-      {
-    const auto &first_job_vpid = first_job->get_vpid ();
-    const auto vpid_it = m_in_progress_vpids.find (first_job_vpid);
-    assert (vpid_it != m_in_progress_vpids.cend ());
-    m_in_progress_vpids.erase (vpid_it);
-      }
-      vpid_set_empty = m_in_progress_vpids.empty ();
-
-      if (m_monitor_minimum_log_lsa)
-    {
-      // each job has a different log_lsa but, within a queue, jobs have ever increasing log_lsa's
-      // so, suffices to only add the first one
-      const log_lsa &first_job_log_lsa = first_job->get_log_lsa ();
-      const auto log_lsa_it = m_in_progress_lsas.find (first_job_log_lsa);
-      assert (log_lsa_it != m_in_progress_lsas.cend ());
-      m_in_progress_lsas.erase (log_lsa_it);
-
-      const log_lsa &in_progress_minimum_log_lsa = m_in_progress_lsas.empty ()
-          ? MAX_LSA : *m_in_progress_lsas.cbegin ();
-      m_minimum_log_lsa->set_for_in_progress (in_progress_minimum_log_lsa);
-
-      assert (m_in_progress_vpids.size () == m_in_progress_lsas.size ());
-      assert ((vpid_set_empty && lsa_set_empty) || (!vpid_set_empty && !lsa_set_empty));
-    }
-      lsa_set_empty = m_in_progress_lsas.empty ();
-
-    }
-
-    if (vpid_set_empty && lsa_set_empty)
-      {
-    m_in_progress_vpids_empty_cv.notify_one ();
-      }
-    */
   }
 
   void
@@ -473,16 +239,6 @@ namespace cublog
 	assert (jobs != nullptr);
 	assert (jobs->empty ());
       }
-    /*
-    assert (m_produce->empty ());
-    assert (m_produce_min_lsa_map.empty ());
-
-    assert (m_consume->empty ());
-    assert (m_consume_min_lsa_map.empty ());
-
-    assert (m_in_progress_vpids.empty ());
-    assert (m_in_progress_lsas.empty ());
-    */
   }
 
   /*********************************************************************
@@ -630,8 +386,6 @@ namespace cublog
 		    job->execute (thread_entry, m_redo_context);
 		    job->retire (m_task_idx);
 		  }
-
-		m_queue.notify_job_deque_finished (*jobs_vec);
 
 		// pointers still present in the vector are either:
 		//  - already passed on to the reusable job container
