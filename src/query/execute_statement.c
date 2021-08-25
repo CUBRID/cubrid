@@ -14929,9 +14929,11 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	objname = statement->info.rename_trigger.old_name->info.name.original;
 
 	tr_object = tr_find_trigger (objname);
-	trigger = tr_map_trigger (tr_object, true);
-
-	classoid = ws_oid (trigger->class_mop);
+	if (tr_object != NULL)
+	  {
+	    trigger = tr_map_trigger (tr_object, true);
+	    classoid = ws_oid (trigger->class_mop);
+	  }
 
 	ddl_type = CDC_RENAME;
 	objtype = CDC_TRIGGER;
@@ -14939,17 +14941,24 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	break;
       }
     case PT_DROP_TRIGGER:
-      classname =
-	statement->info.drop_trigger.trigger_spec_list->info.trigger_spec_list.event_list->info.
-	event_spec.event_target->info.event_target.class_name->info.name.original;
+      {
+	DB_OBJECT *tr_object;
+	TR_TRIGGER *trigger;
+	objname =
+	  statement->info.drop_trigger.trigger_spec_list->info.trigger_spec_list.trigger_name_list->info.name.original;
 
-      classoid = ws_oid (sm_find_class (classname));
+	tr_object = tr_find_trigger (objname);
+	if (tr_object != NULL)
+	  {
+	    trigger = tr_map_trigger (tr_object, true);
+	    classoid = ws_oid (trigger->class_mop);
+	  }
 
-      ddl_type = CDC_DROP;
-      objtype = CDC_TRIGGER;
+	ddl_type = CDC_DROP;
+	objtype = CDC_TRIGGER;
 
-      break;
-
+	break;
+      }
     case PT_REMOVE_TRIGGER:
       break;
 
@@ -14957,11 +14966,16 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       {
 	DB_OBJECT *tr_object;
 	TR_TRIGGER *trigger;
-	classname =
-	  statement->info.alter_trigger.trigger_spec_list->info.trigger_spec_list.event_list->info.
-	  event_spec.event_target->info.event_target.class_name->info.name.original;
 
-	classoid = ws_oid (sm_find_class (classname));
+	objname =
+	  statement->info.alter_trigger.trigger_spec_list->info.trigger_spec_list.trigger_name_list->info.name.original;
+
+	tr_object = tr_find_trigger (objname);
+	if (tr_object != NULL)
+	  {
+	    trigger = tr_map_trigger (tr_object, true);
+	    classoid = ws_oid (trigger->class_mop);
+	  }
 
 	ddl_type = CDC_ALTER;
 	objtype = CDC_TRIGGER;
