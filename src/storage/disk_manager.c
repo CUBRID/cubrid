@@ -6818,6 +6818,7 @@ disk_set_page_server_perm_volume_count (DKNVOLS nvols)
 
   // Set the number of permanent volumes for transaction server with remote storage.
   // Disk manager is not initialized yet, so save the number to be used later when disk cache is loaded.
+  assert (disk_Page_server_perm_volume_count == 0);
   disk_Page_server_perm_volume_count = nvols;
 }
 
