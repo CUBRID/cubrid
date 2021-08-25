@@ -3554,15 +3554,29 @@ export_server (print_output & output_ctx)
 	      output_ctx (",\n\t PASSWORD= '%s'", (char *) db_get_string (&passwd_val));
 
 	      str = (char *) db_get_string (values + 6);
-	      if (str && *str)
+	      if (str)
 		{
-		  output_ctx (",\n\t PROPERTIES= '%s'", str);
+		  if (*str)
+		    {
+		      output_ctx (",\n\t PROPERTIES= '%s'", str);
+		    }
+		  else
+		    {
+		      output_ctx (",\n\t PROPERTIES= ''");
+		    }
 		}
 
 	      str = (char *) db_get_string (values + 7);
-	      if (str && *str)
+	      if (str)
 		{
-		  output_ctx (",\n\t COMMENT= '%s'", str);
+		  if (*str)
+		    {
+		      output_ctx (",\n\t COMMENT= '%s'", str);
+		    }
+		  else
+		    {
+		      output_ctx (",\n\t COMMENT= ''");
+		    }
 		}
 	      output_ctx (" );\n");
 
