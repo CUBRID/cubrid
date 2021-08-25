@@ -141,20 +141,14 @@ namespace cublog
        */
       void set_adding_finished ();
 
-      /* wait until all data has been consumed internally; blocking call
-       */
-      void wait_for_idle ();
-
-      /* check if all fed data has ben consumed internally; non-blocking call
-       * NOTE: the nature of this function is 'volatile' - ie: what might be
-       * true at the moment the function is called is not necessarily true a moment
-       * later; it can be useful only if the caller is aware of the execution context
-       */
-      bool is_idle () const;
-
       /* mandatory to explicitly call this before dtor
        */
       void wait_for_termination_and_stop_execution ();
+
+      inline bool get_waited_for_termination () const
+      {
+	return m_waited_for_termination;
+      }
 
       void log_perf_stats () const;
 
@@ -212,19 +206,6 @@ namespace cublog
 
 	  void notify_job_deque_finished (const redo_job_vector_t &a_job_deque);
 
-	  /* wait until all data has been consumed internally; blocking call
-	   */
-	  void wait_for_idle () const;
-
-	  /* check if all fed data has ben consumed internally; non-blocking call
-	   * NOTE: the nature of this function is 'volatile' - ie: what might be
-	   * true at the moment the function is called is not necessarily true a moment
-	   * later; it can be useful only if the caller is aware of the execution context
-	   */
-	  bool is_idle () const;
-
-	  void set_empty_at (std::size_t a_index);
-
 	private:
 	  void assert_idle () const;
 
@@ -256,11 +237,6 @@ namespace cublog
 	    const ux_redo_job_deque &a_job_deque);
 	  */
 
-	  void set_non_empty_at (std::size_t a_index);
-	  /*
-	  void do_check_empty_and_notify(std::lock_guard<std::mutex> &a_empty_lockg);
-	  */
-
 	private:
 	  const std::size_t m_task_count;
 
@@ -272,17 +248,6 @@ namespace cublog
 	  std::map<unsigned, log_lsa> m_produce_index_to_min_lsa_map;
 	  log_lsa_set m_produce_min_lsa_set;
 	  */
-
-	  /* NOTE: in the next variables, empty actually means 'finished'
-	   */
-	  /* for each execution task (aka: thread, there is a flag to indicate whether
-	   * that thread is empty (aka: has nothing to process at the moment); there is
-	   * also one extra position at the end of the vector for the corresponding state
-	   * of the pre-produce queue
-	   */
-	  std::vector<bool> m_empty_vec;
-	  mutable std::mutex m_empty_mutex;
-	  mutable std::condition_variable m_empty_cv;
 
 	  std::atomic_bool m_adding_finished;
 

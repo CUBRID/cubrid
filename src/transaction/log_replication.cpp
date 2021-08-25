@@ -145,9 +145,7 @@ namespace cublog
 
     if (m_parallel_replication_redo != nullptr)
       {
-	// this is the earliest it is ensured that no records are to be added anymore
-	m_parallel_replication_redo->set_adding_finished ();
-	m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
+	assert (m_parallel_replication_redo->get_waited_for_termination ());
       }
   }
 
@@ -174,11 +172,12 @@ namespace cublog
   void
   replicator::conclude_task_execution ()
   {
+    // TODO: this retire function might not be needed anymore
     if (m_parallel_replication_redo != nullptr)
       {
 	// without being aware of external context/factors, this is the earliest it is ensured that
 	// no records are to be added anymore
-	m_parallel_replication_redo->wait_for_idle ();
+	assert (m_parallel_replication_redo->get_waited_for_termination ());
       }
     else
       {
@@ -303,7 +302,7 @@ namespace cublog
     if (m_parallel_replication_redo)
       {
 	redo_job_btree_stats *job = new redo_job_btree_stats (root_vpid, record_info.m_start_lsa, stats);
-	// ownership of raw pointer goes to the callee
+	// ownership of raw pointer remains with the job instance which will delete itself upon retire
 	m_parallel_replication_redo->add (job);
       }
     else
@@ -357,7 +356,7 @@ namespace cublog
 	// delay between log generation on the page server and log recovery on the page server
 	cublog::redo_job_replication_delay_impl *replication_delay_job =
 		new cublog::redo_job_replication_delay_impl (m_redo_lsa, start_time_msec);
-	// ownership of raw pointer goes to the callee
+	// ownership of raw pointer remains with the job instance which will delete itself upon retire
 	m_parallel_replication_redo->add (replication_delay_job);
       }
     else
@@ -379,13 +378,11 @@ namespace cublog
     // at this moment, ALL data has been dispatched for, either, async replication
     // or has been applied synchronously
     // introduce a fuzzy syncronization point by waiting all fed data to be effectively
-    // consumed/applied
-    // however, since the daemon is still running, also leave the parallel replication
-    // logic (if instantiated) alive; will be destroyed only after the daemon (to maintain
-    // symmetry with instantiation)
+    // consumed/applied and tasks to finish executing
     if (m_parallel_replication_redo != nullptr)
       {
-	m_parallel_replication_redo->wait_for_idle ();
+	m_parallel_replication_redo->set_adding_finished ();
+	m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
       }
   }
 

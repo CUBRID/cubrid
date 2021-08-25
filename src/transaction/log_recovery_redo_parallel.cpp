@@ -173,11 +173,6 @@ namespace cublog
 	jobs_vec = new redo_job_vector_t ();
 	jobs_vec->reserve (PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE);
       }
-
-    if (m_monitor_minimum_log_lsa)
-      {
-	m_empty_vec.resize (a_task_count, true);
-      }
   }
 
   redo_parallel::redo_job_queue::~redo_job_queue ()
@@ -210,12 +205,6 @@ namespace cublog
     std::lock_guard<std::mutex> lockg (mtx);
 
     redo_job_vector_t *jobs = m_produce_vec[vec_idx];
-    if (jobs->empty ())
-      {
-	// will be empty no more
-	set_non_empty_at (vec_idx);
-      }
-
     jobs->push_back (a_job);
   }
 
@@ -477,56 +466,6 @@ namespace cublog
   }
 
   void
-  redo_parallel::redo_job_queue::wait_for_idle () const
-  {
-    assert (m_monitor_minimum_log_lsa);
-
-    {
-      std::unique_lock<std::mutex> empty_ulock (m_empty_mutex);
-      m_empty_cv.wait (empty_ulock, [this] ()
-      {
-	for (const bool &curr_empty : m_empty_vec)
-	  {
-	    if (!curr_empty)
-	      {
-		return false;
-	      }
-	  }
-	return true;
-      });
-    }
-
-    /*
-    {
-      std::unique_lock<std::mutex> empty_in_progress_lock (m_in_progress_mutex);
-      m_in_progress_vpids_empty_cv.wait (empty_in_progress_lock, [this] ()
-      {
-    return m_in_progress_vpids.empty ();
-      });
-      assert (m_in_progress_lsas.empty ());
-    }
-
-    assert_idle ();
-    */
-  }
-
-  bool
-  redo_parallel::redo_job_queue::is_idle () const
-  {
-    assert (m_monitor_minimum_log_lsa);
-
-    std::lock_guard<std::mutex> empty_lockg (m_empty_mutex);
-    for (const bool &curr_empty : m_empty_vec)
-      {
-	if (!curr_empty)
-	  {
-	    return false;
-	  }
-      }
-    return true;
-  }
-
-  void
   redo_parallel::redo_job_queue::assert_idle () const
   {
     assert (m_task_count == m_produce_vec.size ());
@@ -546,47 +485,6 @@ namespace cublog
     assert (m_in_progress_lsas.empty ());
     */
   }
-
-  void
-  redo_parallel::redo_job_queue::set_empty_at (std::size_t a_index)
-  {
-    if (m_monitor_minimum_log_lsa)
-      {
-	std::lock_guard<std::mutex> empty_lockg (m_empty_mutex);
-	m_empty_vec[a_index] = true;
-	m_empty_cv.notify_all ();
-      }
-  }
-
-  void
-  redo_parallel::redo_job_queue::set_non_empty_at (std::size_t a_index)
-  {
-    if (m_monitor_minimum_log_lsa)
-      {
-	std::lock_guard<std::mutex> empty_lockg (m_empty_mutex);
-	m_empty_vec[a_index] = false;
-      }
-  }
-
-  /*
-  void
-  redo_parallel::redo_job_queue::do_check_empty_and_notify(std::lock_guard<std::mutex> &a_empty_lockg)
-  {
-    bool all_empty = true;
-    for (const bool &curr_empty : m_empty_vec)
-      {
-        if (!curr_empty)
-          {
-            all_empty = false;
-            break;
-          }
-      }
-    if (all_empty)
-      {
-        m_empty_cv.notify_all();
-      }
-  }
-  */
 
   /*********************************************************************
    * redo_parallel::task_active_state_bookkeeping - definition
@@ -709,7 +607,6 @@ namespace cublog
 	m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_POP);
 	if (!jobs_popped && adding_finished)
 	  {
-	    m_queue.set_empty_at (m_task_idx);
 	    finished = true;
 	  }
 	else
@@ -819,6 +716,7 @@ namespace cublog
   redo_parallel::wait_for_termination_and_stop_execution ()
   {
     assert (false == m_waited_for_termination);
+    assert (true == m_job_queue.get_adding_finished ());
 
     // blocking call
     m_task_state_bookkeeping.wait_for_termination ();
@@ -829,24 +727,6 @@ namespace cublog
     assert (m_worker_pool == nullptr);
 
     m_waited_for_termination = true;
-  }
-
-  void
-  redo_parallel::wait_for_idle ()
-  {
-    assert (false == m_waited_for_termination);
-    assert (false == m_job_queue.get_adding_finished ());
-
-    m_job_queue.wait_for_idle ();
-  }
-
-  bool
-  redo_parallel::is_idle () const
-  {
-    assert (false == m_waited_for_termination);
-    assert (false == m_job_queue.get_adding_finished ());
-
-    return m_job_queue.is_idle ();
   }
 
   void
