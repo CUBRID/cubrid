@@ -3551,18 +3551,18 @@ export_server (print_output & output_ctx)
 	      output_ctx (",\n\t PORT= %d", db_get_int (values + 2));
 	      output_ctx (",\n\t DBNAME= %s", (char *) db_get_string (values + 3));
 	      output_ctx (",\n\t USER= %s", (char *) db_get_string (values + 4));
-	      output_ctx (",\n\t PASSWORD= %s", (char *) db_get_string (&passwd_val));
+	      output_ctx (",\n\t PASSWORD= '%s'", (char *) db_get_string (&passwd_val));
 
 	      str = (char *) db_get_string (values + 6);
 	      if (str && *str)
 		{
-		  output_ctx (",\n\t PROPERTIES= %s", str);
+		  output_ctx (",\n\t PROPERTIES= '%s'", str);
 		}
 
 	      str = (char *) db_get_string (values + 7);
 	      if (str && *str)
 		{
-		  output_ctx (",\n\t COMMENT= %s", str);
+		  output_ctx (",\n\t COMMENT= '%s'", str);
 		}
 	      output_ctx (" );\n");
 
