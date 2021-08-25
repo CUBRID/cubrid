@@ -3531,10 +3531,18 @@ export_server (print_output & output_ctx)
 	{
 	  srv_name = (char *) db_get_string (values + 0);
 	  str = (char *) db_get_string (values + 5);
-	  error = pt_remake_dblink_password (parser, str, &passwd_val, true);
+	  error = pt_remake_dblink_password (str, &passwd_val, true);
 	  if (error != NO_ERROR)
-	    {			// TODO: error handling
-	      fprintf (stderr, "Failed to re-encryption password. error=%d, [%s]\n", error, srv_name);
+	    {			// TODO: error handling       
+	      if (er_errid_if_has_error () != NO_ERROR)
+		{
+		  fprintf (stderr, "Failed to re-encryption password for %s. error=%d(%s)\n",
+			   srv_name, error, (char *) er_msg ());
+		}
+	      else
+		{
+		  fprintf (stderr, "Failed to re-encryption password for %s. error=%d\n", srv_name, error);
+		}
 	    }
 	  else
 	    {

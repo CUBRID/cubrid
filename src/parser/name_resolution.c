@@ -10262,8 +10262,16 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
 	}
       else if (!pt_has_error (parser))
-	{			// TODO: error handling
-	  PT_ERROR (parser, node, "Failed to obtain server information");
+	{			// TODO: error handling         
+	  if (er_errid_if_has_error () != NO_ERROR)
+	    {
+	      PT_ERROR (parser, node, (char *) er_msg ());
+	    }
+	  else
+	    {
+	      PT_ERRORf2 (parser, node, "Failed to obtain server information for %s. error=%d",
+			  dblink_table->conn->info.name.original, error);
+	    }
 	}
 
       pr_clear_value (&(values[0]));

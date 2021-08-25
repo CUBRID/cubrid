@@ -18079,12 +18079,19 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error = pt_remake_dblink_password (parser, pwd, &passwd, false);
+  error = pt_remake_dblink_password (pwd, &passwd, false);
   if (error != NO_ERROR)
     {				// TODO: error handling
       if (!pt_has_error (parser))
 	{
-	  PT_ERRORf (parser, statement, "Failed to re-encryption password. error=%d", error);
+	  if (er_errid_if_has_error () != NO_ERROR)
+	    {
+	      PT_ERROR (parser, statement, (char *) er_msg ());
+	    }
+	  else
+	    {
+	      PT_ERRORf2 (parser, statement, "Failed to re-encryption passwordfor %s. error=%d", attr_val[0], error);
+	    }
 	}
 
       goto end;
@@ -18261,12 +18268,20 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       pt = (char *) PT_VALUE_GET_BYTES (alter->pwd);
       assert (pt && *pt);
 
-      error = pt_remake_dblink_password (parser, pt, &passwd, false);
+      error = pt_remake_dblink_password (pt, &passwd, false);
       if (error != NO_ERROR)
-	{			// TODO: error handling
+	{
 	  if (!pt_has_error (parser))
 	    {			// TODO: error handling
-	      PT_ERRORf (parser, statement, "Failed to re-encryption password. error=%d", error);
+	      if (er_errid_if_has_error () != NO_ERROR)
+		{
+		  PT_ERROR (parser, statement, (char *) er_msg ());
+		}
+	      else
+		{
+		  PT_ERRORf2 (parser, statement, "Failed to re-encryption password for %s. error=%d",
+			      (char *) server_name, error);
+		}
 	    }
 
 	  goto end;
@@ -18525,17 +18540,14 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   error = get_dblink_password_decrypt (db_get_string (&pwd_val), &(out_val[2]));
   if (error != NO_ERROR)
     {
-      if (error == ER_DBLINK_PASSWORD_CHECKSUM)
-	{			// TODO: error handling
-	  PT_ERROR (parser, NULL, "The checksum of the encrypted password does not match.");
+      if (error == ER_DBLINK_PASSWORD_CHECKSUM || error == ER_DBLINK_PASSWORD_INVALID_LENGTH)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
-      else if (error == ER_DBLINK_PASSWORD_INVALID_LENGTH)
-	{			// TODO: error handling
-	  PT_ERROR (parser, NULL, "Encrypted password length is incorrect.");
-	}
-      else if (!pt_has_error (parser))
-	{			// TODO: error handling
-	  PT_ERRORf (parser, NULL, "Failed to decryption password. error=%d", error);
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_PASSWORD_DECRYPT, 1, error);
+	  error = ER_DBLINK_PASSWORD_DECRYPT;
 	}
     }
   else
@@ -18653,7 +18665,7 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 }
 
 int
-pt_remake_dblink_password (PARSER_CONTEXT * parser, const char *passwd, DB_VALUE * outval, bool is_external)
+pt_remake_dblink_password (const char *passwd, DB_VALUE * outval, bool is_external)
 {
   int error;
   DB_VALUE tmp_passwd;
@@ -18662,17 +18674,14 @@ pt_remake_dblink_password (PARSER_CONTEXT * parser, const char *passwd, DB_VALUE
   error = get_dblink_password_decrypt (passwd, &tmp_passwd);
   if (error != NO_ERROR)
     {
-      if (error == ER_DBLINK_PASSWORD_CHECKSUM)
-	{			// TODO: error handling
-	  PT_ERROR (parser, NULL, "The checksum of the encrypted password does not match.");
+      if (error == ER_DBLINK_PASSWORD_CHECKSUM || error == ER_DBLINK_PASSWORD_INVALID_LENGTH)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
-      else if (error == ER_DBLINK_PASSWORD_INVALID_LENGTH)
-	{			// TODO: error handling
-	  PT_ERROR (parser, NULL, "Encrypted password length is incorrect.");
-	}
-      else if (!pt_has_error (parser))
-	{			// TODO: error handling
-	  PT_ERRORf (parser, NULL, "Failed to decryption password. error=%d", error);
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_PASSWORD_DECRYPT, 1, error);
+	  error = ER_DBLINK_PASSWORD_DECRYPT;
 	}
 
       pr_clear_value (&tmp_passwd);
@@ -18683,12 +18692,13 @@ pt_remake_dblink_password (PARSER_CONTEXT * parser, const char *passwd, DB_VALUE
   if (error != NO_ERROR)
     {
       if (error == ER_DBLINK_PASSWORD_OVER_MAX_LENGTH)
-	{			// TODO: error handling
-	  PT_ERROR (parser, NULL, "Password length exceeds max size.");
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
-      else if (!pt_has_error (parser))
-	{			// TODO: error handling
-	  PT_ERRORf (parser, NULL, "Failed to encryption password. error=%d", error);
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_PASSWORD_ENCRYPT, 1, error);
+	  error = ER_DBLINK_PASSWORD_ENCRYPT;
 	}
     }
 

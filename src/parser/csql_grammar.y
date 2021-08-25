@@ -3152,8 +3152,9 @@ create_stmt
                                 si->dbname = CONTAINER_AT_2($5);
                                 si->user = CONTAINER_AT_3($5);
                                 if( !si->host || !si->port || !si->dbname || !si->user )
-                                  { // TODO: error handling
-                                      PT_ERROR(this_parser, node, "Required information is missing.");
+                                  { 
+                                      PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
                                   }
 
                                 si->pwd = CONTAINER_AT_4($5);
