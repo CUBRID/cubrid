@@ -177,14 +177,13 @@ namespace cublog
 
   redo_parallel::redo_job_queue::~redo_job_queue ()
   {
-    assert_idle ();
-
+    assert_empty ();
     for (auto &jobs : m_produce_vec)
       {
-	assert (jobs != nullptr);
-	assert (jobs->empty ());
 	delete jobs;
       }
+    m_produce_vec.clear ();
+
     /*
     delete m_produce;
     m_produce = nullptr;
@@ -466,7 +465,7 @@ namespace cublog
   }
 
   void
-  redo_parallel::redo_job_queue::assert_idle () const
+  redo_parallel::redo_job_queue::assert_empty () const
   {
     assert (m_task_count == m_produce_vec.size ());
     for (const auto &jobs : m_produce_vec)

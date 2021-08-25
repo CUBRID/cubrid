@@ -207,7 +207,7 @@ namespace cublog
 	  void notify_job_deque_finished (const redo_job_vector_t &a_job_deque);
 
 	private:
-	  void assert_idle () const;
+	  void assert_empty () const;
 
 	  /* swap internal queues and notify if both are empty
 	   * assumes the consume queue is locked
