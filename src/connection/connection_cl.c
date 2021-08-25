@@ -851,14 +851,11 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id
  * css_connect_to_master_server () - connect to the master from the server
  *   return:
  *   master_port_id(in):
- *   server_name(in):
- *   name_length(in):
- *
- * Note: The server name argument is actually a combination of two strings,
- *       the server name and the server version
+ *   message_to_master(in): server name and other info
+ *   message_to_master_length(in):
  */
 CSS_CONN_ENTRY *
-css_connect_to_master_server (int master_port_id, const char *server_name, int name_length)
+css_connect_to_master_server (int master_port_id, const char *message_to_master, int message_to_master_length)
 {
   char hname[CUB_MAXHOSTNAMELEN];
   CSS_CONN_ENTRY *conn;
@@ -880,15 +877,15 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
   conn = css_make_conn (0);
   if (conn == NULL)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, message_to_master);
       return NULL;
     }
 
   /* select the connection protocol, for PC's this will always be new */
   connection_protocol = ((css_Server_use_new_connection_protocol) ? SERVER_REQUEST_NEW : SERVER_REQUEST);
 
-  if (css_common_connect (hname, conn, connection_protocol, server_name, name_length, master_port_id, 0, &rid, true)
-      == NULL)
+  if (css_common_connect (hname, conn, connection_protocol, message_to_master, message_to_master_length,
+			  master_port_id, 0, &rid, true) == NULL)
     {
       goto fail_end;
     }
@@ -906,25 +903,25 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
     {
     case SERVER_ALREADY_EXISTS:
 #if defined(CS_MODE)
-      if (IS_MASTER_CONN_NAME_HA_COPYLOG (server_name))
+      if (IS_MASTER_CONN_NAME_HA_COPYLOG (message_to_master))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_COPYLOG_ALREADY_EXISTS, 1,
-		  GET_REAL_MASTER_CONN_NAME (server_name));
+		  GET_REAL_MASTER_CONN_NAME (message_to_master));
 	}
-      else if (IS_MASTER_CONN_NAME_HA_APPLYLOG (server_name))
+      else if (IS_MASTER_CONN_NAME_HA_APPLYLOG (message_to_master))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_APPLYLOG_ALREADY_EXISTS, 1,
-		  GET_REAL_MASTER_CONN_NAME (server_name));
+		  GET_REAL_MASTER_CONN_NAME (message_to_master));
 	}
-      else if (IS_MASTER_CONN_NAME_HA_SERVER (server_name))
+      else if (IS_MASTER_CONN_NAME_HA_SERVER (message_to_master))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1,
-		  GET_REAL_MASTER_CONN_NAME (server_name));
+		  GET_REAL_MASTER_CONN_NAME (message_to_master));
 	}
       else
 #endif /* CS_MODE */
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, server_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, message_to_master);
 	}
 
       goto fail_end;
@@ -953,7 +950,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
     case SERVER_REQUEST_ACCEPTED:
 #if defined(WINDOWS)
       /* Windows can't handle this style of connection at all */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, message_to_master);
 
       goto fail_end;
 #else /* WINDOWS */
@@ -966,14 +963,16 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
       if (!css_tcp_setup_server_datagram (pname.c_str (), &socket_fd))
 	{
 	  (void) unlink (pname.c_str ());
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
+			       message_to_master);
 	  goto fail_end;
 	}
       if (css_send_data (conn, rid, pname.c_str (), pname.length () + 1) != NO_ERRORS)
 	{
 	  (void) unlink (pname.c_str ());
 	  close (socket_fd);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
+			       message_to_master);
 	  goto fail_end;
 	}
       if (!css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
@@ -981,7 +980,8 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 	  (void) unlink (pname.c_str ());
 	  css_free_conn (conn);
 	  close (socket_fd);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
+			       message_to_master);
 	  return NULL;
 	}
       // success
