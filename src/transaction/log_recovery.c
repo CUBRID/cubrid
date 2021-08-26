@@ -3945,6 +3945,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  }
 		else
 		  {
+		    /* completed transactions should have already been cleared from the transaction table
+		     * in the analysis step (see: log_rv_analysis_complete)
+		     */
 		    assert (logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX);
 		  }
 	      }
