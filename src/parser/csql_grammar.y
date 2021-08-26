@@ -4057,7 +4057,7 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME SERVER class_name AS class_name
+	| RENAME SERVER identifier AS identifier
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SERVER);
 			if (node)
