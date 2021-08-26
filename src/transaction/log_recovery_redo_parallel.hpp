@@ -246,6 +246,8 @@ namespace cublog
       };
 
     private:
+      const std::size_t m_task_count;
+
       std::unique_ptr<cubthread::entry_manager> m_pool_context_manager;
 
       /* the workpool already has and internal bookkeeping and can also wait for the tasks to terminate;
@@ -258,9 +260,15 @@ namespace cublog
       cubthread::entry_workpool *m_worker_pool;
       std::vector<std::unique_ptr<redo_task>> m_redo_tasks;
 
+      /*
       redo_job_queue m_job_queue;
+      */
 
       bool m_waited_for_termination;
+
+      std::atomic_bool m_adding_finished;
+
+      std::hash<VPID> m_vpid_hash;
   };
 
 
