@@ -392,6 +392,9 @@ struct json_t;
 #define PT_IS_ORDERBYNUM(n) \
         ( (n) && ((n)->node_type == PT_EXPR && ((n)->info.expr.op == PT_ORDERBY_NUM)) )
 
+#define PT_IS_GROUPBYNUM(n) \
+        ( (n) && ((n)->node_type == PT_FUNCTION && ((n)->info.function.function_type == PT_GROUPBY_NUM)) )
+
 #define PT_IS_DISTINCT(n) \
         ( (n) && PT_IS_QUERY_NODE_TYPE((n)->node_type) && (n)->info.query.all_distinct != PT_ALL )
 
