@@ -21,6 +21,7 @@
 
 enum class ats_to_ps_request
 {
+  GET_BOOT_INFO,
   SEND_LOG_PRIOR_LIST,
   SEND_LOG_PAGE_FETCH,
   SEND_DATA_PAGE_FETCH,
@@ -29,6 +30,7 @@ enum class ats_to_ps_request
 
 enum class ps_to_ats_request
 {
+  SEND_BOOT_INFO,
   SEND_SAVED_LSA,
   SEND_LOG_PAGE,
   SEND_DATA_PAGE

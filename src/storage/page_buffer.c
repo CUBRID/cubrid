@@ -7878,6 +7878,12 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
       else
 	{
 	  fileio_init_lsa_of_page (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
+	  if (is_tran_server_with_remote_storage ())
+	    {
+	      // Permanent data pages on transaction servers with remote storage don't have to be flushed to disk when
+	      // they're dirty. Mark this by PGBUF_BCB_FLUSH_NOT_NEEDED flag
+	      bufptr->flags |= PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG;
+	    }
 	}
 
       /* perm volume */
@@ -10426,9 +10432,14 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
 {
   DISK_ISVALID valid;
 
-  /* TODO: fix me */
+  if (VPID_ISNULL (vpid))
+    {
+      assert (no_error);
 
-  if (fileio_get_volume_label (vpid->volid, PEEK) == NULL || VPID_ISNULL (vpid))
+      return DISK_INVALID;
+    }
+
+  if (!is_tran_server_with_remote_storage () && fileio_get_volume_label (vpid->volid, PEEK) == NULL)
     {
       assert (no_error);
 
@@ -10441,8 +10452,9 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
     {
       if (valid != DISK_ERROR && !no_error)
 	{
+	  const char *vlabel = fileio_get_volume_label (vpid->volid, PEEK);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
-		  fileio_get_volume_label (vpid->volid, PEEK));
+		  vlabel == NULL ? "(unknown)" : vlabel);
 
 	  assert (false);
 	}

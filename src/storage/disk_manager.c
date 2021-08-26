@@ -205,6 +205,7 @@ struct disk_cache
 };
 
 static DISK_CACHE *disk_Cache = NULL;
+static DKNVOLS disk_Page_server_perm_volume_count = 0;	// used for transaction server with remote storage
 
 static DKNSECTS disk_Temp_max_sects = -2;
 
@@ -2706,7 +2707,24 @@ disk_cache_load_all_volumes (THREAD_ENTRY * thread_p)
 {
   /* Cache every single volume */
   assert (disk_Cache != NULL);
-  return fileio_map_mounted (thread_p, disk_cache_load_volume, NULL);
+  if (is_tran_server_with_remote_storage ())
+    {
+      assert (disk_Page_server_perm_volume_count > 0);
+      for (VOLID volid = 0; volid < disk_Page_server_perm_volume_count; ++volid)
+	{
+	  if (!disk_cache_load_volume (thread_p, volid, NULL))
+	    {
+	      ASSERT_ERROR ();
+	      return false;
+	    }
+	}
+      return true;
+    }
+  else
+    {
+      // Load cache data from the mounted local volumes
+      return fileio_map_mounted (thread_p, disk_cache_load_volume, NULL);
+    }
 }
 
 /*
@@ -6784,6 +6802,24 @@ int
 disk_sectors_to_extend_npages (const int num_pages)
 {
   return DISK_SECTS_ROUND_UP (DISK_PAGES_TO_SECTS (num_pages));
+}
+
+DKNVOLS
+disk_get_perm_volume_count ()
+{
+  assert (disk_Cache != NULL);
+  return disk_Cache->nvols_perm;
+}
+
+void
+disk_set_page_server_perm_volume_count (DKNVOLS nvols)
+{
+  assert (is_tran_server_with_remote_storage ());
+
+  // Set the number of permanent volumes for transaction server with remote storage.
+  // Disk manager is not initialized yet, so save the number to be used later when disk cache is loaded.
+  assert (disk_Page_server_perm_volume_count == 0);
+  disk_Page_server_perm_volume_count = nvols;
 }
 
 /************************************************************************/

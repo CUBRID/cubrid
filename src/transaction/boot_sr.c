@@ -2424,11 +2424,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * are ok. However, some recovery may need to take place
    */
 
-  /* Mount the data volume */
-  error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
-  if (error_code != NO_ERROR)
+  if (!is_tran_server_with_remote_storage ())
     {
-      goto error;
+      /* Mount the data volume */
+      error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   /* Find the location of the database parameters and read them */
@@ -2478,12 +2481,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       lang_set_charset (db_charset_db_header);
     }
 
-  /* Find the rest of the volumes and mount them */
-
-  error_code = boot_find_rest_volumes (thread_p, from_backup ? r_args : NULL, LOG_DBFIRST_VOLID, boot_mount, NULL);
-  if (error_code != NO_ERROR)
+  if (!is_tran_server_with_remote_storage ())
     {
-      goto error;
+      /* Find the rest of the volumes and mount them */
+      error_code = boot_find_rest_volumes (thread_p, from_backup ? r_args : NULL, LOG_DBFIRST_VOLID, boot_mount, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   /* initialize disk manager */
