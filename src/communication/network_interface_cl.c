@@ -4198,7 +4198,7 @@ boot_delete (const char *db_name, bool force_delete)
 
   enter_server_no_thread_entry ();
 
-  error_code = xboot_delete (db_name, force_delete, BOOT_SHUTDOWN_ALL_MODULES);
+  error_code = xboot_delete (db_name, force_delete, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
 
   exit_server_no_thread_entry ();
 

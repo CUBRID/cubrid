@@ -16619,7 +16619,7 @@ exit:
     }
   /* If error and a savepoint was created, rollback to savepoint. No need to rollback if the TM aborted the
    * transaction. */
-  if (err < NO_ERROR && savepoint_name && err != ER_LK_UNILATERALLY_ABORTED)
+  if (err < NO_ERROR && savepoint_name && err != ER_LK_UNILATERALLY_ABORTED && statement->flag.use_auto_commit == false)
     {
       db_abort_to_savepoint (savepoint_name);
     }

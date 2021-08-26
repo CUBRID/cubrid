@@ -431,7 +431,6 @@ mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
   return false;
 }
 
-
 /*
  * mq_bump_corr_pre() -  Bump the correlation level of all matching
  *                       correlated queries
@@ -3179,7 +3178,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *temp;
   int nullable_cnt;		/* nullable terms count */
   PT_NODE *save_next;
-  bool is_afterjoinable, has_derived_table_inst;
+  bool is_outer_joined, has_derived_table_inst;
 
   /* init */
   push_term_list = NULL;
@@ -3203,6 +3202,9 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       return push_cnt;
     }
 
+  /* check outer join spec. */
+  is_outer_joined = mq_is_outer_join_spec (parser, spec);
+
   for (term = statement->info.query.q.select.where; term; term = term->next)
     {
       /* check for on_cond term */
@@ -3213,8 +3215,8 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  continue;		/* do not copy-push on_cond-term */
 	}
 
-      /* check for nullable-term */
-      if (term->node_type == PT_EXPR)
+      /* check for nullable-term of outer join spec */
+      if (is_outer_joined && term->node_type == PT_EXPR)
 	{
 	  save_next = term->next;
 	  term->next = NULL;	/* cut-off link */
@@ -3226,7 +3228,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	  if (nullable_cnt)
 	    {
-	      continue;		/* do not copy-push nullable-term */
+	      continue;		/* do not copy-push nullable-term of outer spec */
 	    }
 	}
       if (pt_sargable_term (parser, term, infop) && PT_PUSHABLE_TERM (infop))
@@ -3236,36 +3238,15 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  /* for term, mark as copy-pushed term */
 	  if (term->node_type == PT_EXPR)
 	    {
-	      /* check for after-join term */
-	      is_afterjoinable = false;	/* init */
-	      for (temp = spec; temp; temp = temp->next)
+	      if (copy_cnt == -1)	/* very the first time */
 		{
-		  if (temp->info.spec.join_type == PT_JOIN_LEFT_OUTER
-		      || temp->info.spec.join_type == PT_JOIN_RIGHT_OUTER
-		      || temp->info.spec.join_type == PT_JOIN_FULL_OUTER)
-		    {
-		      is_afterjoinable = true;
-		      break;
-		    }
+		  copy_cnt = pt_check_copypush_subquery (parser, new_query);
 		}
 
-	      if (is_afterjoinable)
+	      if (copy_cnt == 0)	/* not found not-pushable query */
 		{
-		  ;		/* may be after-join term. give up */
+		  PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
 		}
-	      else
-		{
-		  if (copy_cnt == -1)	/* very the first time */
-		    {
-		      copy_cnt = pt_check_copypush_subquery (parser, new_query);
-		    }
-
-		  if (copy_cnt == 0)	/* not found not-pushable query */
-		    {
-		      PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
-		    }
-		}
-
 	      PT_EXPR_INFO_CLEAR_FLAG (new_term, PT_EXPR_INFO_COPYPUSH);
 	    }
 	  push_term_list = parser_append_node (new_term, push_term_list);

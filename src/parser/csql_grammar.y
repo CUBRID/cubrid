@@ -25727,6 +25727,7 @@ parser_main (PARSER_CONTEXT * parser)
   yycolumn = yycolumn_end = 1;
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
+  csql_yyset_lineno (1);
   dot_flag = 0;
 
   g_query_string = NULL;
