@@ -9361,15 +9361,16 @@ exit_on_error:
  *
  */
 
-static int truncate_class_name (const char *name);
+static int truncate_class_name (const char *name, const bool is_cascade);
 
 /*
  * truncate_class_name() - This static routine truncates a class by name.
  *   return: Error code
  *   name(in): Class name to truncate
+ *   is_cascade(in): whether to truncate cascade FK-referring classes
  */
 static int
-truncate_class_name (const char *name)
+truncate_class_name (const char *name, const bool is_cascade)
 {
   DB_OBJECT *class_mop;
 
@@ -9377,7 +9378,7 @@ truncate_class_name (const char *name)
 
   if (class_mop)
     {
-      return db_truncate_class (class_mop);
+      return db_truncate_class (class_mop, is_cascade);
     }
   else
     {
@@ -9400,9 +9401,11 @@ do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *entity_spec = NULL;
   PT_NODE *entity = NULL;
   PT_NODE *entity_list = NULL;
+  bool is_cascade = false;
 
   CHECK_MODIFICATION_ERROR ();
 
+  is_cascade = statement->info.truncate.is_cascade;
   entity_spec = statement->info.truncate.spec;
   if (entity_spec == NULL)
     {
@@ -9429,7 +9432,7 @@ do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   for (entity = entity_list; entity != NULL; entity = entity->next)
     {
-      error = truncate_class_name (entity->info.name.original);
+      error = truncate_class_name (entity->info.name.original, is_cascade);
       if (error != NO_ERROR)
 	{
 	  if (error != ER_LK_UNILATERALLY_ABORTED)

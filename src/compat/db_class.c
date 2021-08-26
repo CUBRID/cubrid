@@ -1854,9 +1854,10 @@ db_drop_constraint (MOP classmop, DB_CONSTRAINT_TYPE constraint_type, const char
  *    Returns non-zero error status if the operation could not be performed.
  * return   : error code
  * class(in): class object
+ * is_cascade(in): whether to truncate cascade FK-referring classes
  */
 int
-db_truncate_class (DB_OBJECT * class_)
+db_truncate_class (DB_OBJECT * class_, const bool is_cascade)
 {
   int error_code = NO_ERROR;
 
@@ -1864,6 +1865,6 @@ db_truncate_class (DB_OBJECT * class_)
   CHECK_1ARG_ERROR (class_);
   CHECK_MODIFICATION_ERROR ();
 
-  error_code = sm_truncate_class (class_);
+  error_code = sm_truncate_class (class_, is_cascade);
   return error_code;
 }
