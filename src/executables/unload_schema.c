@@ -3556,27 +3556,13 @@ export_server (print_output & output_ctx)
 	      str = (char *) db_get_string (values + 6);
 	      if (str)
 		{
-		  if (*str)
-		    {
-		      output_ctx (",\n\t PROPERTIES= '%s'", str);
-		    }
-		  else
-		    {
-		      output_ctx (",\n\t PROPERTIES= ''");
-		    }
+		  output_ctx (",\n\t PROPERTIES= '%s'", str);
 		}
 
 	      str = (char *) db_get_string (values + 7);
 	      if (str)
 		{
-		  if (*str)
-		    {
-		      output_ctx (",\n\t COMMENT= '%s'", str);
-		    }
-		  else
-		    {
-		      output_ctx (",\n\t COMMENT= ''");
-		    }
+		  output_ctx (",\n\t COMMENT= '%s'", str);
 		}
 	      output_ctx (" );\n");
 
