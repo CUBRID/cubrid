@@ -157,62 +157,6 @@ namespace cublog
       void do_init_tasks (std::size_t a_task_count, const log_rv_redo_context &copy_context);
 
     private:
-      /* rynchronizes prod/cons of log entries in n-prod - m-cons fashion
-       * internal implementation detail; not to be used externally
-       */
-      class redo_job_queue final
-      {
-	public:
-	  using redo_job_vector_t = std::vector<redo_job_base *>;
-
-	public:
-	  redo_job_queue () = delete;
-	  redo_job_queue (const std::size_t a_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa);
-	  ~redo_job_queue ();
-
-	  redo_job_queue (redo_job_queue const &) = delete;
-	  redo_job_queue (redo_job_queue &&) = delete;
-
-	  redo_job_queue &operator= (redo_job_queue const &) = delete;
-	  redo_job_queue &operator= (redo_job_queue &&) = delete;
-
-	  void push_job (redo_parallel::redo_job_base *a_job);
-
-	  /* to be called after all known entries have been added
-	   * part of a mechanism to signal to the consumers, together with
-	   * whether there is still data to process, that they can bail out
-	   */
-	  void set_adding_finished ();
-
-	  /* mostly for debugging
-	   */
-	  bool get_adding_finished () const;
-
-	  /* the combination of a null return value with a finished
-	   * flag set to true signals to the callers that no more data is expected
-	   * and, therefore, they can also terminate
-	   */
-	  bool pop_jobs (std::size_t a_task_idx, redo_job_vector_t *&in_out_jobs, bool &out_adding_finished);
-
-	private:
-	  void assert_empty () const;
-
-	private:
-	  const std::size_t m_task_count;
-
-	  std::vector<redo_job_vector_t *> m_produce_vec;
-	  std::hash<VPID> m_vpid_hash;
-	  std::vector<std::mutex> m_produce_mutex_vec;
-
-	  std::atomic_bool m_adding_finished;
-
-	  /* utility class to maintain a minimum log_lsa that is still
-	   * to be processed (consumed); non-owning pointer, can be null
-	   */
-	  const bool m_monitor_minimum_log_lsa;
-	  minimum_log_lsa_monitor *m_minimum_log_lsa;
-      };
-
       /* maintain a bookkeeping of tasks that are still performing work;
        * internal implementation detail; not to be used externally
        */
@@ -259,10 +203,6 @@ namespace cublog
 
       cubthread::entry_workpool *m_worker_pool;
       std::vector<std::unique_ptr<redo_task>> m_redo_tasks;
-
-      /*
-      redo_job_queue m_job_queue;
-      */
 
       bool m_waited_for_termination;
 
