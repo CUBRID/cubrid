@@ -368,7 +368,6 @@ is_stmt_based_repl_type (const PT_NODE * node)
   switch (node->node_type)
     {
     case PT_DROP_VARIABLE:
-    case PT_TRUNCATE:
       return true;
     case PT_INSERT:
       if (node->info.insert.hint & PT_HINT_USE_SBR)
