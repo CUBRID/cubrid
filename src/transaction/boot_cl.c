@@ -5694,6 +5694,14 @@ boot_get_host_connected (void)
   return boot_Host_connected;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
+HA_SERVER_STATE
+boot_get_ha_server_state (void)
+{
+  return boot_Server_credential.ha_server_state;
+}
+#endif /* ENABLE_UNUSED_FUNCTION */
+
 /*
  * boot_get_lob_path - return the lob path which is received from the server
  */
