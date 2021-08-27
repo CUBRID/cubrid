@@ -43,7 +43,7 @@
 #define MAX_STACK_OBJECTS 500
 
 #define PT_PUSHABLE_TERM(p) \
-  ((p)->out.pushable /* && (p)->out.correlated_found == false */)
+  ((p)->out.pushable  && (p)->out.correlated_found == false )
 
 #define MAX_CYCLE 300
 
@@ -3084,9 +3084,9 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
  * 3. term check
  *  - on_cond term
  *  - nullable-term of outer join spec
- *  - query in predicate(term) ==>?
+ *  - query in predicate(term)
  *  - method in predicate(term)
- *  - correlated column in predicate(term)
+ *  - correlated column in predicate(term) => ?
  *
  * 4. select_list of subquery which is matched to term check
  *  - query in subquery_select_list
