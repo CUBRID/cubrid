@@ -89,6 +89,7 @@ static ARG_MAP_TABLE ua_Backup_map[] = {
   {"-nc", "--" BACKUP_NO_CHECK_L},
   {"-mt", "--" BACKUP_THREAD_COUNT_L},
   {"-zip", "--" BACKUP_COMPRESS_L},
+  {"-nozip", "--" BACKUP_NO_COMPRESS_L},
   {"-ni", "--" BACKUP_EXCEPT_ACTIVE_LOG_L},
   {"-c", (char *) -1},
   {0, 0}

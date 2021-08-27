@@ -289,7 +289,7 @@ opzioni valide:\n\
   -C, --CS-mode                modalità di esecuzione client-server\n\
       --no-check               non controllare la consistenza del database; predefinito: controlla\n\
   -t, --thread-count=COUNT     COUNT numero threads; predefinito: 0(auto)\n\
-  -z, --compress               compress volumi backup; predefinito: uncompress\n\
+      --no-compress            non comprimere i volumi di backup; default: compressione\n\
       --sleep-msecs=N          aspetta N millisecondi per 1M read; predefinito: 0\n\
   -k, --separate-keys          keys file (_keys) per TDE non è incluso nel volume di backup, ma è invece separato in un file\n
 71 Argomenti incompatibili, \"%1$s\", e \"%2$s\"\n

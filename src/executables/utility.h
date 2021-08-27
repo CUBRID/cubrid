@@ -1051,6 +1051,8 @@ typedef struct _ha_config
 #define BACKUP_THREAD_COUNT_L                   "thread-count"
 #define BACKUP_COMPRESS_S                       'z'
 #define BACKUP_COMPRESS_L                       "compress"
+#define BACKUP_NO_COMPRESS_S                    10507
+#define BACKUP_NO_COMPRESS_L                    "no-compress"
 #define BACKUP_EXCEPT_ACTIVE_LOG_S              'e'
 #define BACKUP_EXCEPT_ACTIVE_LOG_L              "except-active-log"
 #define BACKUP_SLEEP_MSECS_S                    10600
