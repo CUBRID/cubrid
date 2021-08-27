@@ -2468,18 +2468,7 @@ create_stmt
 			  {
 			    qc->info.create_entity.if_not_exists = $5;
 			    qc->info.create_entity.entity_name = $6;
-
-			    /* Check if it contains DOT(.) */
-			    if (qc->info.create_entity.entity_name != NULL)
-			      {
-				const char *entity_name = qc->info.create_entity.entity_name->info.name.original;
-				if (entity_name != NULL && strstr(entity_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, qc,
-					       "Table name %s not allowed. It cannot contain DOT(.).",
-					       entity_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, qc->info.create_entity.entity_name);
 
 			    qc->info.create_entity.entity_type = (PT_MISC_TYPE) $4;
 			    qc->info.create_entity.supclass_list = $7;
@@ -2524,18 +2513,7 @@ create_stmt
 			    qc->info.create_entity.or_replace = $2;
 
 			    qc->info.create_entity.entity_name = $4;
-
-			    /* Check if it contains DOT(.) */
-			    if (qc->info.create_entity.entity_name != NULL)
-			      {
-				const char *entity_name = qc->info.create_entity.entity_name->info.name.original;
-				if (entity_name != NULL && strstr(entity_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, qc,
-					       "View name %s not allowed. It cannot contain DOT(.).",
-					       entity_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, qc->info.create_entity.entity_name);
 
 			    qc->info.create_entity.entity_type = PT_VCLASS;
 
@@ -2611,18 +2589,10 @@ create_stmt
 			    node->info.index.reverse = $4;
 			    node->info.index.unique = $5;
 			    node->info.index.index_name = $8;
+			    pt_check_contain_dot (this_parser, node->info.index.index_name);
 
 			    if (node->info.index.index_name != NULL)
 			      {
-			        /* Check if it contains DOT(.) */
-			    	const char *index_name = node->info.index.index_name->info.name.original;
-			    	if (index_name != NULL && strstr(index_name, ".") != NULL)
-			    	  {
-				    PT_ERRORf (this_parser, node,
-					       "Index name %s not allowed. It cannot contain DOT(.).",
-			    		       index_name);
-			    	  }
-
 				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
 			      }
 
@@ -2749,18 +2719,7 @@ create_stmt
 			if (node)
 			  {
 			    node->info.create_user.user_name = $4;
-
-			    /* Check if it contains DOT(.) */
-			    if (node->info.create_user.user_name != NULL)
-			      {
-				const char *user_name = node->info.create_user.user_name->info.name.original;
-				if (user_name != NULL && strstr(user_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, node,
-					       "User name %s not allowed. It cannot contain DOT(.).",
-					       user_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, node->info.create_user.user_name);
 
 			    node->info.create_user.password = $5;
 			    node->info.create_user.groups = $6;
@@ -2793,18 +2752,7 @@ create_stmt
 			if (node)
 			  {
 			    node->info.create_trigger.trigger_name = $4;
-
-			    /* Check if it contains DOT(.) */
-			    if (node->info.create_trigger.trigger_name != NULL)
-			      {
-				const char *trigger_name = node->info.create_trigger.trigger_name->info.name.original;
-				if (trigger_name != NULL && strstr(trigger_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, node,
-					       "Trigger name %s not allowed. It cannot contain DOT(.).",
-					       trigger_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, node->info.create_trigger.trigger_name);
 
 			    node->info.create_trigger.trigger_status = $5;
 			    node->info.create_trigger.trigger_priority = $6;
@@ -2835,18 +2783,7 @@ create_stmt
 			if (node)
 			  {
 			    node->info.serial.serial_name = $5;
-
-			    /* Check if it contains DOT(.) */
-			    if (node->info.serial.serial_name != NULL)
-			      {
-				const char *serial_name = node->info.serial.serial_name->info.name.original;
-				if (serial_name != NULL && strstr(serial_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, node,
-					       "Serial name %s not allowed. It cannot contain DOT(.).",
-					       serial_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, node->info.serial.serial_name);
 
 			    /* container order
 			     * 0: start_val
@@ -2894,18 +2831,7 @@ create_stmt
 			  {
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
-
-			    /* Check if it contains DOT(.) */
-			    if (node->info.sp.name != NULL)
-			      {
-				const char *sp_name = node->info.sp.name->info.name.original;
-				if (sp_name != NULL && strstr(sp_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, node,
-					       "Procedure name %s not allowed. It cannot contain DOT(.).",
-					       sp_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, node->info.sp.name);
 
 			    node->info.sp.type = PT_SP_PROCEDURE;
 			    node->info.sp.param_list = $7;
@@ -2935,18 +2861,7 @@ create_stmt
 			  {
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
-
-			    /* Check if it contains DOT(.) */
-			    if (node->info.sp.name != NULL)
-			      {
-				const char *sp_name = node->info.sp.name->info.name.original;
-				if (sp_name != NULL && strstr(sp_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, node,
-					       "Function name %s not allowed. It cannot contain DOT(.).",
-					       sp_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, node->info.sp.name);
 
 			    node->info.sp.type = PT_SP_FUNCTION;
 			    node->info.sp.param_list = $7;
@@ -2985,18 +2900,7 @@ create_stmt
 			  {
 			    qc->info.create_entity.if_not_exists = $5;
 			    qc->info.create_entity.entity_name = $6;
-
-			    /* Check if it contains DOT(.) */
-			    if (qc->info.create_entity.entity_name != NULL)
-			      {
-				const char *entity_name = qc->info.create_entity.entity_name->info.name.original;
-				if (entity_name != NULL && strstr(entity_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, qc,
-					       "Table name %s not allowed. It cannot contain DOT(.).",
-					       entity_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, qc->info.create_entity.entity_name);
 			    
 			    qc->info.create_entity.entity_type = PT_CLASS;
 			    qc->info.create_entity.create_like = $8;
@@ -3027,18 +2931,7 @@ create_stmt
 			  {
 			    qc->info.create_entity.if_not_exists = $5;
 			    qc->info.create_entity.entity_name = $6;
-
-			    /* Check if it contains DOT(.) */
-			    if (qc->info.create_entity.entity_name != NULL)
-			      {
-				const char *entity_name = qc->info.create_entity.entity_name->info.name.original;
-				if (entity_name != NULL && strstr(entity_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, qc,
-					       "Table name %s not allowed. It cannot contain DOT(.).",
-					       entity_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, qc->info.create_entity.entity_name);
 
 			    qc->info.create_entity.entity_type = PT_CLASS;
 			    qc->info.create_entity.create_like = $9;
@@ -3843,20 +3736,9 @@ rename_stmt
 
 			if (node)
 			  {
-			    node->info.rename_trigger.new_name = $5;
 			    node->info.rename_trigger.old_name = $3;
-
-			    /* Check if it contains DOT(.) */
-			    if (node->info.rename_trigger.new_name != NULL)
-			      {
-				const char *new_name = node->info.rename_trigger.new_name->info.name.original;
-				if (new_name != NULL && strstr(new_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, node,
-					       "Trigger name %s not allowed. It cannot contain DOT(.).",
-					       new_name);
-				  }
-			      }
+			    node->info.rename_trigger.new_name = $5;
+			    pt_check_contain_dot (this_parser, node->info.rename_trigger.new_name);   
 			  }
 
 			$$ = node;
@@ -3891,18 +3773,7 @@ rename_class_pair
 			  {
 			    node->info.rename.old_name = $1;
 			    node->info.rename.new_name = $3;
-
-			    /* Check if it contains DOT(.) */
-			    if (node->info.rename.new_name != NULL)
-			      {
-				const char *new_name = node->info.rename.new_name->info.name.original;
-				if (new_name != NULL && strstr(new_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, node,
-					       "Table and view name %s not allowed. It cannot contain DOT(.).",
-					       new_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, node->info.rename.new_name);
 
 			    node->info.rename.entity_type = PT_CLASS;
 			  }
@@ -9021,18 +8892,7 @@ unique_constraint
 			  {
 			    node->info.constraint.type = PT_CONSTRAIN_PRIMARY_KEY;
 			    node->info.constraint.name = $3;
-
-			    /* Check if it contains DOT(.) */
-			    if (node->info.constraint.name != NULL)
-			      {
-				const char *constraint_name = node->info.constraint.name->info.name.original;
-				if (constraint_name != NULL && strstr(constraint_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, node,
-					       "Constraint name %s not allowed. It cannot contain DOT(.).",
-					       constraint_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, node->info.constraint.name);
 
 			    node->info.constraint.un.unique.attrs = $5;
 			  }
@@ -9073,18 +8933,7 @@ unique_constraint
 			      {
 				node->info.constraint.type = PT_CONSTRAIN_UNIQUE;
 				node->info.constraint.name = $3;
-
-				/* Check if it contains DOT(.) */
-			    	if (node->info.constraint.name != NULL)
-			      	  {
-				    const char *constraint_name = node->info.constraint.name->info.name.original;
-				    if (constraint_name != NULL && strstr(constraint_name, ".") != NULL)
-				      {
-				        PT_ERRORf (this_parser, node,
-						   "Constraint name %s not allowed. It cannot contain DOT(.).",
-					       	   constraint_name);
-				      }
-			          }
+				pt_check_contain_dot (this_parser, node->info.constraint.name);
 
 				node->info.constraint.un.unique.attrs = name_cols;
 			      }
@@ -9108,17 +8957,10 @@ unique_constraint
 				if (node)
 				  {
 				    node->info.index.index_name = $3;
+				    pt_check_contain_dot (this_parser, node->info.index.index_name);
+
 				    if (node->info.index.index_name != NULL)
 				      {
-					/* Check if it contains DOT(.) */
-					const char *constraint_name = node->info.index.index_name->info.name.original;
-					if (constraint_name != NULL && strstr(constraint_name, ".") != NULL)
-					  {
-					    PT_ERRORf (this_parser, node,
-						       "Constraint name %s not allowed. It cannot contain DOT(.).",
-						       constraint_name);
-					  }
-
 					node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
 				      }
 
@@ -9151,18 +8993,7 @@ foreign_key_constraint
 			if (node)
 			  {
 			    node->info.constraint.name = $3;
-
-			    /* Check if it contains DOT(.) */
-			    if (node->info.constraint.name != NULL)
-			      {
-				const char *constraint_name = node->info.constraint.name->info.name.original;
-				if (constraint_name != NULL && strstr(constraint_name, ".") != NULL)
-				  {
-				    PT_ERRORf (this_parser, node,
-					       "Constraint name %s not allowed. It cannot contain DOT(.).",
-					       constraint_name);
-				  }
-			      }
+			    pt_check_contain_dot (this_parser, node->info.constraint.name);
 
 			    node->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    node->info.constraint.un.foreign_key.attrs = $5;

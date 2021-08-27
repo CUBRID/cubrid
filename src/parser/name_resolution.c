@@ -3902,6 +3902,33 @@ pt_check_unique_names (PARSER_CONTEXT * parser, const PT_NODE * p)
 }
 
 /*
+ * pt_check_contain_dot () - check if name contains DOT(.)
+ *
+ *   return:
+ *   parser(in):
+ *   p(in/out): PT_NAME node representing the name
+ *
+ * Note :
+ * This routine is used not to include DOT(.) in table, view, index,
+ * user, trigger, serial, procedure, function, or constraint names.
+ * Because DOT(.) is used as a path expression and object separator,
+ * this is to prevent difficulties in distinguishing.
+ */
+void
+pt_check_contain_dot (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  if (p != NULL)
+    {
+      const char *name = p->info.name.original;
+
+      if (name != NULL && strstr(name, ".") != NULL)
+        {
+          PT_ERRORf (parser, p, "Name %s not allowed. It cannot contain DOT(.).", name);
+	}
+    }
+}
+
+/*
  * pt_common_attribute () - find the attributes that are identical
  *                          on both lists (i.e. the intersection)
  *   return: returns a modified version of p
