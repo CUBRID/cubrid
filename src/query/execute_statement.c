@@ -368,7 +368,6 @@ is_stmt_based_repl_type (const PT_NODE * node)
   switch (node->node_type)
     {
     case PT_DROP_VARIABLE:
-    case PT_TRUNCATE:
       return true;
     case PT_INSERT:
       if (node->info.insert.hint & PT_HINT_USE_SBR)
@@ -16620,7 +16619,7 @@ exit:
     }
   /* If error and a savepoint was created, rollback to savepoint. No need to rollback if the TM aborted the
    * transaction. */
-  if (err < NO_ERROR && savepoint_name && err != ER_LK_UNILATERALLY_ABORTED)
+  if (err < NO_ERROR && savepoint_name && err != ER_LK_UNILATERALLY_ABORTED && statement->flag.use_auto_commit == false)
     {
       db_abort_to_savepoint (savepoint_name);
     }

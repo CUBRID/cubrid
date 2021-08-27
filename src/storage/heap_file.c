@@ -5209,13 +5209,6 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 	      goto error;
 	    }
 
-	  error_code = heap_cache_class_info (thread_p, class_oid, hfid, file_type, NULL);
-	  if (error_code != NO_ERROR)
-	    {
-	      /* could not cache */
-	      ASSERT_ERROR ();
-	      goto error;
-	    }
 	  /* reuse successful */
 	  goto end;
 	}
@@ -5267,14 +5260,6 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   error_code = file_descriptor_update (thread_p, &hfid->vfid, &des);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
-      goto error;
-    }
-
-  error_code = heap_cache_class_info (thread_p, class_oid, hfid, file_type, NULL);
-  if (error_code != NO_ERROR)
-    {
-      /* Failed to cache HFID. */
       ASSERT_ERROR ();
       goto error;
     }
@@ -5810,12 +5795,13 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
  *   return: NO_ERROR
  *   hfid(in): Object heap file identifier.
  *   class_oid(in): class OID
+ *   force (in): destroy the heap forcefully, not just marking delete  even if it is DONT_REUSE_OID
  *
  * Note: Destroy the heap file associated with the given heap
  * identifier if it is a newly created heap file.
  */
 int
-xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid)
+xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, const bool force)
 {
   VFID vfid;
   FILE_TYPE file_type;
@@ -5828,7 +5814,7 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
       ASSERT_ERROR ();
       return ret;
     }
-  if (file_type == FILE_HEAP_REUSE_SLOTS)
+  if (file_type == FILE_HEAP_REUSE_SLOTS || force)
     {
       ret = xheap_destroy (thread_p, hfid, class_oid);
       return ret;
@@ -23583,6 +23569,63 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
   heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get hfid=%d|%d|%d, ftype = %s, classname = %s",
 		       HFID_AS_ARGS (&entry->hfid), file_type_to_string (entry->ftype), entry->classname.load ());
   return error_code;
+}
+
+/*
+ * heap_get_hfid_if_cached () - get HFID and file type for class if cached.
+ 
+ *   return: error code
+ *   thread_p  (in)     :
+ *   class_oid (in)     : the class OID for which the entry will be returned
+ *   hfid_out (out)     : output heap file identifier
+ *   ftype_out (out)    : output heap file type
+ *   classname_out (out): output classname
+ *   success  (out)     : true if found from cache
+ */
+int
+heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out, FILE_TYPE * ftype_out,
+			 char **classname_out, bool * success)
+{
+  int error_code = NO_ERROR;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
+  HEAP_HFID_TABLE_ENTRY *entry = NULL;
+
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+  assert (success != NULL);
+
+  *success = false;
+
+  error_code = lf_hash_find (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  if (entry)
+    {
+      assert (entry->hfid.hpgid != NULL_PAGEID && entry->hfid.vfid.fileid != NULL_FILEID
+	      && entry->hfid.vfid.volid != NULL_VOLID && entry->classname != NULL);
+
+      if (hfid_out != NULL)
+	{
+	  *hfid_out = entry->hfid;
+	}
+      if (ftype_out != NULL)
+	{
+	  *ftype_out = entry->ftype;
+	}
+      if (classname_out != NULL)
+	{
+	  *classname_out = entry->classname;
+	}
+
+      *success = true;
+
+      lf_tran_end_with_mb (t_entry);
+    }
+
+  return NO_ERROR;
 }
 
 /*
