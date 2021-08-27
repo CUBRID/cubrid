@@ -1352,8 +1352,10 @@ $ LOADDB
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 %1$s 의 기본키는 외래키 참조로 인해 truncate될 수 없습니다.
+1285 외래키 (%1$s) 의 ON DELETE action이 CASCADE가 아니기 때문에 truncate할 수 없습니다.
 
-1284 마지막 에러
+1286 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

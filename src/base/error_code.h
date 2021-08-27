@@ -1643,11 +1643,15 @@
 #define ER_SCALABILITY_DEV_RESERVED_ERROR19         -1282
 #define ER_SCALABILITY_DEV_RESERVED_ERROR20         -1283
 
-#define ER_CDC_LSA_NOT_FOUND                        -1284
-#define ER_CDC_EXTRACTION_TIMEOUT                   -1285
-#define ER_CDC_NOTHING_TO_RETURN                    -1286
-#define ER_CDC_IGNORE_TRANSACTION                   -1287
-#define ER_LAST_ERROR                               -1288
+#define ER_TRUNCATE_PK_REFERRED                     -1284
+#define ER_TRUNCATE_CANT_CASCADE                    -1285
+
+#define ER_CDC_LSA_NOT_FOUND                        -1286
+#define ER_CDC_EXTRACTION_TIMEOUT                   -1287
+#define ER_CDC_NOTHING_TO_RETURN                    -1288
+#define ER_CDC_IGNORE_TRANSACTION                   -1289
+
+#define ER_LAST_ERROR                               -1290
 
 /*
  * CAUTION!
