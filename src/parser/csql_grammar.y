@@ -21373,6 +21373,13 @@ identifier
 			    int size_in;
 			    char *str_name = $1;
 
+			    if (strstr(str_name, ".") != NULL)
+			      {
+				PT_ERRORf (this_parser, p,
+					   "Identifier name %s not allowed. It cannot contain DOT(.).",
+					   str_name);
+			      }
+
 			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
@@ -21391,6 +21398,13 @@ identifier
 			  {
 			    int size_in;
 			    char *str_name = $1;
+
+			    if (strstr(str_name, ".") != NULL)
+			      {
+				PT_ERRORf (this_parser, p,
+					   "Identifier name %s not allowed. It cannot contain DOT(.).",
+					   str_name);
+			      }
 
 			    size_in = strlen(str_name);
 
@@ -21411,6 +21425,13 @@ identifier
 			    int size_in;
 			    char *str_name = $1;
 
+			    if (strstr(str_name, ".") != NULL)
+			      {
+				PT_ERRORf (this_parser, p,
+					   "Identifier name %s not allowed. It cannot contain DOT(.).",
+					   str_name);
+			      }
+
 			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
@@ -21429,6 +21450,13 @@ identifier
 			  {
 			    int size_in;
 			    char *str_name = $1;
+
+			    if (strstr(str_name, ".") != NULL)
+			      {
+				PT_ERRORf (this_parser, p,
+					   "Identifier name %s not allowed. It cannot contain DOT(.).",
+					   str_name);
+			      }
 
 			    size_in = strlen(str_name);
 
