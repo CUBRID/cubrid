@@ -10814,7 +10814,8 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 		  goto error;
 		}
 
-	      cdc_make_dml_loginfo (thread_p, trid, tran_user, INSERT, classoid, NULL, &redo_recdes, &log_info_entry);
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_INSERT, classoid, NULL, &redo_recdes,
+				    &log_info_entry);
 	      break;
 	    case LOG_SUPPLEMENT_UPDATE:
 #if !defined(NDEBUG)		//JOOHOK
@@ -10832,7 +10833,7 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 		{
 		  goto end;
 		}
-	      cdc_make_dml_loginfo (thread_p, trid, tran_user, UPDATE, classoid, &undo_recdes, &redo_recdes,
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_UPDATE, classoid, &undo_recdes, &redo_recdes,
 				    &log_info_entry);
 	      break;
 	    case LOG_SUPPLEMENT_DELETE:
@@ -10847,7 +10848,8 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 	      memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
 	      cdc_get_recdes (thread_p, temp_logbuf, &undo_lsa, &undo_recdes, NULL, NULL);
-	      cdc_make_dml_loginfo (thread_p, trid, tran_user, DELETE, classoid, &undo_recdes, NULL, &log_info_entry);
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_DELETE, classoid, &undo_recdes, NULL,
+				    &log_info_entry);
 
 	      break;
 	    case LOG_SUPPLEMENT_DDL:
@@ -12337,7 +12339,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   int *pk_attr_index = NULL;	/*not attr_id, def_order array */
   int num_pk_attr;
 
-  CDC_DATAITEM_TYPE dataitem_type = DML;
+  CDC_DATAITEM_TYPE dataitem_type = CDC_DML;
   char *ptr, *start_ptr;
   char *dml_loginfo;
   uint64_t b_classoid = 0;
@@ -12424,7 +12426,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       record_length += redo_recdes->length;
     }
 
-  if (cdc_Gl.all_in_cond && dml_type != INSERT)
+  if (cdc_Gl.all_in_cond && dml_type != CDC_INSERT)
     {
       if (redo_recdes != NULL)
 	{
@@ -12461,7 +12463,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       memcpy (&b_classoid, &classoid, sizeof (uint64_t));
       switch (dml_type)
 	{
-	case 0:
+	case CDC_INSERT:
 	  /*insert */
 	  num_change_col = attr_info.num_values;
 	  ptr = or_pack_int (ptr, dml_type);
@@ -12482,7 +12484,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
 	  ptr = or_pack_int (ptr, num_cond_col);
 	  break;
-	case 1:
+	case CDC_UPDATE:
 	  /*update */
 	  ptr = or_pack_int (ptr, dml_type);
 	  ptr = or_pack_int64 (ptr, b_classoid);
@@ -12553,7 +12555,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 		}
 	    }
 	  break;
-	case 2:
+	case CDC_DELETE:
 	  /*delete */
 	  ptr = or_pack_int (ptr, dml_type);
 	  ptr = or_pack_int64 (ptr, b_classoid);
@@ -12652,7 +12654,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
   /*ddl log info : TRID | user | data_item_type | ddl_type | object_type | OID | class OID | statement length | statement | 
    * cdc_make_ddl_loginfo construct log info from ddl_type to statement */
   int loginfo_length;
-  int dataitem_type = 0;
+  int dataitem_type = CDC_DDL;
 
   ptr = PTR_ALIGN (supplement_data, MAX_ALIGNMENT);
 
@@ -12719,7 +12721,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
 static int
 cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LOGINFO_ENTRY * dcl_entry)
 {
-  CDC_DATAITEM_TYPE dataitem_type = DCL;
+  CDC_DATAITEM_TYPE dataitem_type = CDC_DCL;
   CDC_DCL_TYPE dcl_type;
   char *ptr, *start_ptr;
   int length = 0;
@@ -12727,10 +12729,10 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   switch (log_type)
     {
     case LOG_COMMIT:
-      dcl_type = COMMIT;
+      dcl_type = CDC_COMMIT;
       break;
     case LOG_ABORT:
-      dcl_type = ABORT;
+      dcl_type = CDC_ABORT;
       break;
     default:
       assert (false);
@@ -12768,7 +12770,7 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
 static int
 cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY * timer_entry)
 {
-  CDC_DATAITEM_TYPE dataitem_type = TIMER;
+  CDC_DATAITEM_TYPE dataitem_type = CDC_TIMER;
 
   char *ptr, *start_ptr;
   int length = 0;

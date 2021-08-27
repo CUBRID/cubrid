@@ -830,24 +830,23 @@ typedef struct ovf_page_list
 
 typedef enum cdc_dataitem_type
 {
-  DDL = 0,
-  DML,
-  DCL,
-  TIMER
+  CDC_DDL = 0,
+  CDC_DML,
+  CDC_DCL,
+  CDC_TIMER
 } CDC_DATAITEM_TYPE;
 
 typedef enum cdc_dcl_type
 {
-  COMMIT = 0,
-  ABORT
+  CDC_COMMIT = 0,
+  CDC_ABORT
 } CDC_DCL_TYPE;
 
 typedef enum cdc_dml_type
 {
-  INSERT = 0,
-  UPDATE,
-  DELETE,
-  TRUNCATE
+  CDC_INSERT = 0,
+  CDC_UPDATE,
+  CDC_DELETE,
 } CDC_DML_TYPE;
 
 typedef struct cdc_server_comm

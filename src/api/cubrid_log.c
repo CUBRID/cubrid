@@ -58,39 +58,6 @@ typedef enum
 
 typedef enum
 {
-  CREATE = 0,
-  ALTER,
-  DROP,
-  RENAME,
-  TRUNCATE
-} DDL_TYPE;
-
-typedef enum
-{
-  INSERT = 0,
-  UPDATE,
-  DELETE
-} DML_TYPE;
-
-typedef enum
-{
-  COMMIT = 0,
-  ROLLBACK
-} DCL_TYPE;
-
-typedef enum
-{
-  TABLE = 0,
-  INDEX,
-  SERIAL,
-  VIEW,
-  FUNCTION,
-  PROCEDURE,
-  TRIGGER
-} OBJ_TYPE;
-
-typedef enum
-{
   DATA_ITEM_TYPE_DDL = 0,
   DATA_ITEM_TYPE_DML,
   DATA_ITEM_TYPE_DCL,
