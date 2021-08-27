@@ -10921,10 +10921,10 @@ cdc_log_producer (THREAD_ENTRY * thread_p)
 		  break;
 		}
 	    }
+	  LSA_COPY (&cdc_Gl.next_lsa, &next_log_rec_lsa);
 	  pthread_mutex_unlock (&cdc_Gl.next_lsa_lock);
 	}
 
-      LSA_COPY (&cdc_Gl.next_lsa, &next_log_rec_lsa);
 //      LSA_COPY (&process_lsa, &next_log_rec_lsa);
 //      LSA_COPY (&cur_log_rec_lsa, &next_log_rec_lsa);
 
@@ -10960,10 +10960,10 @@ end:
 	      break;
 	    }
 	}
+      LSA_COPY (&cdc_Gl.next_lsa, &next_log_rec_lsa);
       pthread_mutex_unlock (&cdc_Gl.next_lsa_lock);
     }
 
-  LSA_COPY (&cdc_Gl.next_lsa, &next_log_rec_lsa);
 
   pthread_mutex_unlock (&cdc_Gl.is_finalize_lock);
   return NO_ERROR;

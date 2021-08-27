@@ -784,26 +784,28 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
   reply = PTR_ALIGN (g_log_infos, MAX_ALIGNMENT);
   reply_size = *total_length;
 
-
-  if (css_send_request_with_data_buffer
-      (g_conn_entry, NET_SERVER_CDC_GET_LOGITEM, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
+  if (*total_length > 0)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
-    }
+      if (css_send_request_with_data_buffer
+	  (g_conn_entry, NET_SERVER_CDC_GET_LOGITEM, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+	}
 
-  /* extraction timeout will be modified when it is defined */
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout) != NO_ERRORS)
-    {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
-    }
+      /* extraction timeout will be modified when it is defined */
+      if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout) != NO_ERRORS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+	}
+
 #if !defined (NDEBUG)		//JOOHOK
-  printf ("cubrid_log_extract ; recv_data_size : %d , total_length = %d \n", recv_data_size, *total_length);
+      printf ("cubrid_log_extract ; recv_data_size : %d , total_length = %d \n", recv_data_size, *total_length);
 #endif
-  if (recv_data == NULL || recv_data_size != *total_length)
-    {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT, trace_errbuf);
+      if (recv_data == NULL || recv_data_size != *total_length)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT, trace_errbuf);
+	}
     }
-
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_end:
