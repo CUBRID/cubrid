@@ -10329,7 +10329,6 @@ scdc_initialize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   int extraction_user_len = 0;
 
   char *dummy_user = NULL;
-  int timeout;
 
   ptr = or_unpack_int (request, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
@@ -10397,7 +10396,7 @@ scdc_initialize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
     }
 
   error =
-    cdc_set_configuration (max_log_item, timeout, all_in_cond, extraction_user, num_extraction_user,
+    cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
 			   extraction_classoids, num_extraction_class);
   if (error != NO_ERROR)
     {
