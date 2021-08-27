@@ -3921,9 +3921,9 @@ pt_check_contain_dot (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       const char *name = p->info.name.original;
 
-      if (name != NULL && strstr(name, ".") != NULL)
-        {
-          PT_ERRORf (parser, p, "Name %s not allowed. It cannot contain DOT(.).", name);
+      if (name != NULL && strstr (name, ".") != NULL)
+	{
+	  PT_ERRORf (parser, p, "Name %s not allowed. It cannot contain DOT(.).", name);
 	}
     }
 }
