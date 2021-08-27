@@ -2850,11 +2850,14 @@ ws_identifier_with_check (MOP mop, const bool check_non_referable)
 	{
 	  goto end;
 	}
-      class_mop = is_class > 0 ? mop : ws_class_mop (mop);
-      if (sm_is_reuse_oid_class (class_mop))
+      else if (is_class == 0)
 	{
-	  /* should not return the oid of a non-referable instance */
-	  goto end;
+	  class_mop = ws_class_mop (mop);
+	  if (sm_is_reuse_oid_class (class_mop))
+	    {
+	      /* should not return the oid of a non-referable instance */
+	      goto end;
+	    }
 	}
     }
 

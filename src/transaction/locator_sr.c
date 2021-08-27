@@ -5347,12 +5347,16 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
     {
       HEAP_OPERATION_CONTEXT update_context;
 
-      or_class_tde_algorithm (recdes, &tde_algo);
-      if (tde_algo != TDE_ALGORITHM_NONE && !tde_Cipher.is_loaded)
+      if (!OID_IS_ROOTOID (oid))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
-	  error_code = ER_TDE_CIPHER_IS_NOT_LOADED;
-	  goto error;
+	  /* Prevent any update on a TDE-encryted class if TDE is not loaded */
+	  or_class_tde_algorithm (recdes, &tde_algo);
+	  if (tde_algo != TDE_ALGORITHM_NONE && !tde_Cipher.is_loaded)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+	      error_code = ER_TDE_CIPHER_IS_NOT_LOADED;
+	      goto error;
+	    }
 	}
 
       /*
@@ -5462,13 +5466,37 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       if (update_context.is_logical_old)
 	{
-	  /* Update the catalog as long as it is not the root class */
+	  /* Update the catalog and hfid cache as long as it is not the root class */
 	  if (!OID_IS_ROOTOID (oid))
 	    {
 #if !defined(NDEBUG)
 	      or_class_rep_dir (recdes, &rep_dir);
 	      assert (!OID_ISNULL (&rep_dir));
 #endif
+	      HFID new_hfid = HFID_INITIALIZER;
+
+	      or_class_hfid (recdes, &new_hfid);
+
+	      /* if the hfid for the class is cached, and it is different from the NEW one, delete the previouse one. The new one is cached when it is accessed for the first time */
+	      if (!HFID_IS_NULL (&new_hfid))
+		{
+		  HFID cached_hfid = HFID_INITIALIZER;
+		  bool was_cached = false;
+		  error_code = heap_get_hfid_if_cached (thread_p, oid, &cached_hfid, NULL, NULL, &was_cached);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		  if (was_cached && !HFID_EQ (&cached_hfid, &new_hfid))
+		    {
+		      error_code = heap_delete_hfid_from_cache (thread_p, oid);
+		      if (error_code != NO_ERROR)
+			{
+			  goto error;
+			}
+		    }
+		}
+
 	      error_code = catalog_update (thread_p, recdes, oid);
 	      if (error_code < 0)
 		{

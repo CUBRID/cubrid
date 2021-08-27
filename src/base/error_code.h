@@ -1643,7 +1643,10 @@
 #define ER_SCALABILITY_DEV_RESERVED_ERROR19         -1282
 #define ER_SCALABILITY_DEV_RESERVED_ERROR20         -1283
 
-#define ER_LAST_ERROR                               -1284
+#define ER_TRUNCATE_PK_REFERRED                     -1284
+#define ER_TRUNCATE_CANT_CASCADE                    -1285
+
+#define ER_LAST_ERROR                               -1286
 
 /*
  * CAUTION!

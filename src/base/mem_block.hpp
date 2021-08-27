@@ -411,6 +411,8 @@ namespace cubmem
     if (m_use_stack)
       {
 	m_ext_block.extend_to (m_stack.SIZE + additional_bytes);
+	// copy data from m_stack to m_ext_block at first extension
+	memcpy (m_ext_block.get_ptr (), m_stack.get_ptr (), m_stack.SIZE);
       }
     else
       {
@@ -428,7 +430,12 @@ namespace cubmem
 	return;
       }
     m_ext_block.extend_to (total_bytes);
-    m_use_stack = false;
+    if (m_use_stack)
+      {
+	// copy data from m_stack to m_ext_block at first extension
+	memcpy (m_ext_block.get_ptr (), m_stack.get_ptr (), m_stack.SIZE);
+	m_use_stack = false;
+      }
   }
 
   template <size_t S>

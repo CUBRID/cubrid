@@ -459,6 +459,7 @@ int g_original_buffer_len;
 /*{{{*/
 %type <boolean> opt_reverse
 %type <boolean> opt_unique
+%type <boolean> opt_cascade
 %type <boolean> opt_cascade_constraints
 %type <number> opt_replace
 %type <number> opt_of_inner_left_right
@@ -3940,13 +3941,14 @@ as_or_to
 	;
 
 truncate_stmt
-	: TRUNCATE opt_table_type class_spec
+	: TRUNCATE opt_table_type class_spec opt_cascade
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_TRUNCATE);
 			if (node)
 			  {
 			    node->info.truncate.spec = $3;
+			    node->info.truncate.is_cascade = $4;
 			  }
 
 			$$ = node;
@@ -5196,6 +5198,21 @@ opt_table_type
 		{{
 
 			$$ = PT_CLASS;
+
+		DBG_PRINT}}
+	;
+
+opt_cascade
+	: /* empty */
+		{{
+
+			$$ = false;
+
+		DBG_PRINT}}
+	| CASCADE
+		{{
+
+			$$ = true;
 
 		DBG_PRINT}}
 	;
@@ -25910,6 +25927,7 @@ parser_main (PARSER_CONTEXT * parser)
   yycolumn = yycolumn_end = 1;
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
+  csql_yyset_lineno (1);
   dot_flag = 0;
 
   g_query_string = NULL;

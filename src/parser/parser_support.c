@@ -1193,6 +1193,10 @@ pt_is_inst_or_orderby_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *a
     {
       *continue_walk = PT_LIST_WALK;
     }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
 
   return tree;
 }
@@ -1234,6 +1238,7 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_REMOVE_TRIGGER:
 	case PT_RENAME_TRIGGER:
 	case PT_UPDATE_STATS:
+	case PT_TRUNCATE:
 	  return true;
 	default:
 	  break;
