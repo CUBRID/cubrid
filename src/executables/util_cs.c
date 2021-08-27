@@ -133,8 +133,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   bool no_compress_flag;
   bool sa_mode;
   bool separate_keys;
-  FILEIO_ZIP_METHOD backup_zip_method = FILEIO_ZIP_NONE_METHOD;
-  FILEIO_ZIP_LEVEL backup_zip_level = FILEIO_ZIP_NONE_LEVEL;
+  FILEIO_ZIP_METHOD backup_zip_method = FILEIO_ZIP_LZ4_METHOD;
+  FILEIO_ZIP_LEVEL backup_zip_level = FILEIO_ZIP_LZ4_DEFAULT_LEVEL;
   bool skip_activelog = false;
   int sleep_msecs;
   struct stat st_buf;
@@ -190,10 +190,10 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       goto print_backup_usage;
     }
 
-  if (!no_compress_flag)
+  if (no_compress_flag)
     {
-      backup_zip_method = FILEIO_ZIP_LZ4_METHOD;
-      backup_zip_level = FILEIO_ZIP_LZ4_DEFAULT_LEVEL;
+      backup_zip_method = FILEIO_ZIP_NONE_METHOD;
+      backup_zip_level = FILEIO_ZIP_NONE_LEVEL;
     }
 
   /* extra validation */
