@@ -289,7 +289,7 @@ backupdb: 备份一个数据库.\n\
   -C, --CS-mode                客户端-服务器模式执行\n\
       --no-check               不检测数据库的一致性; 默认: 检测\n\
   -t, --thread-count=COUNT     线程数; 默认: 0(auto)\n\
-  -z, --compress               压缩备份卷; 默认: 不压缩\n\
+      --no-compress            不要压缩备份卷；默认值：压缩\n\
       --sleep-msecs=N          每读 1M 休眠 N  毫秒; 默认: 0\n\
   -k, --separate-keys          TDE的密钥文件（_keys）不包含在备份卷中，而是被分成一个文件\n
 71 不兼容的参数, \"%1$s\", 和 \"%2$s\"\n
