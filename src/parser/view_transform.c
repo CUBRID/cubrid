@@ -5368,7 +5368,6 @@ mq_add_dummy_from_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
     }
 
   fake_from = pt_add_table_name_to_from_list (parser, node, "db_root", NULL, DB_AUTH_NONE);
-
   if (fake_from == NULL)
     {
       *continue_walk = PT_STOP_WALK;

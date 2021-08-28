@@ -1876,27 +1876,6 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
 	{
 	  const char *name;
 
-          /* Start of change for POC *
-          if (strstr(dt->info.data_type.entity->info.name.original, ".") == NULL)
-            {
-              const char *user_name = NULL;
-              if (dt->info.data_type.entity->info.name.resolved == NULL)
-                {
-                  user_name = "DBA";
-                }
-              else
-                {
-                  user_name = dt->info.data_type.entity->info.name.resolved;
-                }
-
-              char *schema_name = NULL;
-              schema_name = pt_append_string (parser, NULL, user_name);
-              schema_name = pt_append_string (parser, schema_name, ".");
-              schema_name = pt_append_string (parser, schema_name, dt->info.data_type.entity->info.name.original);
-	      dt->info.data_type.entity->info.name.original = schema_name;
-	    }
-	  /* End of change for POC */
-
 	  name = dt->info.data_type.entity->info.name.original;
 	  assert (name != NULL);
 

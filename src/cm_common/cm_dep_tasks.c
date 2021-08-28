@@ -1319,7 +1319,6 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_WITH_MSG;
     }
   p_class_db_user = db_find_class ("db_user");
-
   if (p_class_db_user == NULL)
     {
       goto error_return;

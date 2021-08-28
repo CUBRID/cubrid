@@ -608,5 +608,4 @@ tf_install_meta_classes ()
    */
   return NO_ERROR;
 }
-
 #endif /* CS_MODE */

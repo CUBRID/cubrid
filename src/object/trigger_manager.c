@@ -128,7 +128,6 @@ static const char *EVAL_PREFIX = "EVALUATE ( ";
 static const char *EVAL_SUFFIX = " ) ";
 
 const char *TR_CLASS_NAME = "db_trigger";
-
 const char *TR_ATT_NAME = "name";
 const char *TR_ATT_OWNER = "owner";
 const char *TR_ATT_EVENT = "event";

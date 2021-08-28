@@ -8359,27 +8359,6 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
- /* Start of change for POC *
-  if (strstr(node->info.create_entity.entity_name->info.name.original, ".") == NULL)
-    {
-      const char *user_name = NULL;
-      if (node->info.create_entity.entity_name->info.name.resolved == NULL)
-        {
-          user_name = au_user_name();
-        }
-      else
-        {
-          user_name = node->info.create_entity.entity_name->info.name.resolved;
-        }
-
-      char *schema_name = NULL;
-      schema_name = pt_append_string (parser, NULL, user_name);
-      schema_name = pt_append_string (parser, schema_name, ".");
-      schema_name = pt_append_string (parser, schema_name, node->info.create_entity.entity_name->info.name.original);
-      node->info.create_entity.entity_name->info.name.original = schema_name;
-    }
-  /* End of change for POC */
-
   /* check name doesn't already exist as a class */
   name = node->info.create_entity.entity_name;
   existing_entity = pt_find_class (parser, name, false);
