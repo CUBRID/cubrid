@@ -1320,10 +1320,6 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
     }
   p_class_db_user = db_find_class ("db_user");
 
-  /* Start of change for POC */
-  // p_class_db_user = db_find_class ("dba.db_user");
-  /* End of change for POC */
-
   if (p_class_db_user == NULL)
     {
       goto error_return;

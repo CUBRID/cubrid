@@ -2235,11 +2235,6 @@ ldr_sys_user_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_A
 	   "db_user");
   /**/
 
-  /* Start of change for POC *
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNAUTHORIZED_CLASS),
-	   "dba.db_user");
-  /* End of change for POC */
-
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
   ldr_increment_err_count (context, 1);
   return (ER_GENERIC_ERROR);

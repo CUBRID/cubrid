@@ -1074,7 +1074,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
                 }
               else
                 {
-                  user_name = pt_curr_user_name();
+                  user_name = db_get_user_name();
                 }
 
 	      int user_name_len = strlen(user_name);
@@ -1101,9 +1101,9 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       /* Start of change for POC */
       if (argument[0] != '\0')
         {
-          if (strstr(argument, ".") == NULL && pt_is_system_class (argument) != true)
+          if (strstr(argument, ".") == NULL && db_is_system_class_by_name (argument) != true)
             {
-	      const char *user_name = pt_curr_user_name();
+	      const char *user_name = db_get_user_name();
 
 	      int user_name_len = strlen(user_name);
 	      int class_name_len = strlen(argument);

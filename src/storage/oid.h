@@ -30,9 +30,6 @@
 #include "dbtype_def.h"
 
 #define ROOTCLASS_NAME "Rootclass"	/* Name of Rootclass */
-/* Start of change for POC *
-#define ROOTCLASS_NAME "dba.Rootclass"	/* Schema Name of Rootclass */
-/* End of change for POC */
 
 #define VIRTUAL_CLASS_DIR_OID_MASK (1 << 15)
 

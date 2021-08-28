@@ -108,17 +108,6 @@ const char *AU_USER_CLASS_NAME = "db_user";
 const char *AU_PASSWORD_CLASS_NAME = "db_password";
 const char *AU_AUTH_CLASS_NAME = "db_authorization";
 const char *AU_GRANT_CLASS_NAME = "db_grant";
-/**/
-
-/* Start of change for POC *
-const char *AU_ROOT_CLASS_NAME = "dba.db_root";
-const char *AU_OLD_ROOT_CLASS_NAME = "dba.db_authorizations";
-
-const char *AU_USER_CLASS_NAME = "dba.db_user";
-const char *AU_PASSWORD_CLASS_NAME = "dba.db_password";
-const char *AU_AUTH_CLASS_NAME = "dba.db_authorization";
-const char *AU_GRANT_CLASS_NAME = "dba.db_grant";
-/* End of change for POC */
 
 const char *AU_PUBLIC_USER_NAME = "PUBLIC";
 const char *AU_DBA_USER_NAME = "DBA";
@@ -5239,7 +5228,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
     }
 
   /* Start of change for POC */
-  if (strstr(class_name, ".") == NULL && pt_is_system_class (class_name) != true)
+  if (strstr(class_name, ".") == NULL && IS_CATALOG_CLASS (class_name) != true)
     {
       const char *user_name = au_user_name();
 

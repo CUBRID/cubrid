@@ -4965,13 +4965,13 @@ class_name
 
 			/* Start of change for POC *
 			const char *user_name = NULL;
-			if (pt_check_system_class (name_node->info.name.original) == true)
+			if (pt_is_system_class (name_node->info.name.original) == true)
 			  {
 			    user_name = "DBA";
 			  }
 			else if (name_node->info.name.resolved == NULL)
 			  {
-			    user_name = pt_curr_user_name();
+			    user_name = db_get_user_name();
 			  }
 			else
 			  {
@@ -4989,12 +4989,12 @@ class_name
 			// Below, we expect the following results.
 			//   1. If identifier is a system table name, the user name will not be used as a prefix to the table name.
 			//   2. If identifier is not a system table name, the user name will be used as a prefix to the table name.
-			if (pt_check_system_class (name_node->info.name.original) != true)
+			if (db_is_system_class_by_name (name_node->info.name.original) != true)
 			  {
 			    const char *user_name = NULL;
 			    if (name_node->info.name.resolved == NULL)
 			      {
-				user_name = pt_curr_user_name();
+				user_name = db_get_user_name();
 			      }
 			    else
 			      {
@@ -5022,13 +5022,13 @@ class_name
 			if (strstr(name_node->info.name.original, ".") == NULL)
 			  {
 			    const char *user_name = NULL;
-			    if (pt_check_system_class (name_node->info.name.original) == true)
+			    if (pt_is_system_class (name_node->info.name.original) == true)
 			      {
 			        user_name = "DBA";
 			      }
 			    else
 			      {
-			        user_name = pt_curr_user_name();
+			        user_name = db_get_user_name();
 			      }
 
 			    schema_name = pt_append_string (this_parser, NULL, user_name);
@@ -5047,12 +5047,12 @@ class_name
 
 			if (strstr(name_node->info.name.original, ".") == NULL)
 			  {
-			    if (pt_check_system_class (name_node->info.name.original) != true)
+			    if (db_is_system_class_by_name (name_node->info.name.original) != true)
 			      {
 				const char *user_name = NULL;
 			        if (name_node->info.name.resolved == NULL)
 			          {
-				    user_name = pt_curr_user_name();
+				    user_name = db_get_user_name();
 			          }
 			        else
 			          {

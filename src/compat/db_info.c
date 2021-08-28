@@ -511,6 +511,12 @@ db_is_system_class (MOP op)
   return retval;
 }
 
+bool
+db_is_system_class_by_name (const char * class_name)
+{
+  return sm_is_system_class_by_name (class_name);
+}
+
 /*
  * db_is_deleted() - This function is used to determine whether or not the
  *    database object associated with an object handle has been deleted.
