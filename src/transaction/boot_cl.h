@@ -38,7 +38,6 @@
 #include "error_manager.h"
 #include "storage_common.h"
 #include "transaction_cl.h"
-#include "server_type_enum.hpp"
 
 #define BOOT_IS_CLIENT_RESTARTED() (tm_Tran_index != NULL_TRAN_INDEX)
 
@@ -53,7 +52,7 @@ extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, B
 				   bool db_overwrite, const char *file_addmore_vols, DKNPAGES npages,
 				   PGLENGTH db_desired_pagesize, DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
 				   const char *lang_charset);
-extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential, SERVER_TYPE server_type);
+extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential);
 extern int boot_shutdown_client (bool iserfinal);
 extern void boot_donot_shutdown_client_at_exit (void);
 extern void boot_server_die_or_changed (void);

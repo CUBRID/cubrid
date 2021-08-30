@@ -261,7 +261,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
-  if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -479,7 +479,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) == NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
       if (volext_size == 0)
 	{
@@ -761,7 +761,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) == NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
       if (num_tables > 0)
 	{
@@ -950,7 +950,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
-  if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (ER_WARNING_SEVERITY));
       goto error_exit;
@@ -1161,7 +1161,7 @@ acldb (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
-  if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
@@ -1250,7 +1250,7 @@ lockdb (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
-  if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -1775,7 +1775,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
 #else
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  if (db_login ("DBA", NULL) || db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION))
+  if (db_login ("DBA", NULL) || db_restart (arg->command_name, TRUE, database_name))
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
       goto error_exit;
@@ -1944,7 +1944,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
     }
 
   /* first try to restart with the password given (possibly none) */
-  error = db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION);
+  error = db_restart (arg->command_name, TRUE, database_name);
   if (error)
     {
       if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
@@ -1970,7 +1970,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	    }
 	  else
 	    {
-	      error = db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION);
+	      error = db_restart (arg->command_name, TRUE, database_name);
 	    }
 	}
 
@@ -2155,7 +2155,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
-  if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -2258,7 +2258,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
-  if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -2386,7 +2386,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
-  if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -2560,7 +2560,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
-  error = db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION);
+  error = db_restart (arg->command_name, TRUE, database_name);
   if (error != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
@@ -2768,7 +2768,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
 #endif
 
 retry:
-  error = db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION);
+  error = db_restart (arg->command_name, TRUE, database_name);
   if (error != NO_ERROR)
     {
       if (retried % 10 == 0)
@@ -2980,7 +2980,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 #endif
 
 retry:
-  error = db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION);
+  error = db_restart (arg->command_name, TRUE, database_name);
   if (error != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
@@ -3269,7 +3269,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	    {
 	      goto check_applied_info_end;
 	    }
-	  error = db_restart (arg->command_name, TRUE, local_database_name, SERVER_TYPE_TRANSACTION);
+	  error = db_restart (arg->command_name, TRUE, local_database_name);
 	  if (error != NO_ERROR)
 	    {
 	      goto check_applied_info_end;
@@ -3324,7 +3324,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      goto check_master_info_end;
 	    }
 
-	  error = db_restart (arg->command_name, TRUE, master_database_name, SERVER_TYPE_TRANSACTION);
+	  error = db_restart (arg->command_name, TRUE, master_database_name);
 	  if (error != NO_ERROR)
 	    {
 	      goto check_master_info_end;
@@ -3621,7 +3621,7 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
     }
   db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) == NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
       (void) db_set_isolation (TRAN_READ_COMMITTED);
 
@@ -3672,7 +3672,7 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
       db_login ("DBA", NULL);
 
-      if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
+      if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  goto error_exit;
@@ -3801,7 +3801,7 @@ tde (UTIL_FUNCTION_ARG * arg)
     }
 
   /* first try to restart with the password given (possibly none) */
-  error = db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION);
+  error = db_restart (arg->command_name, TRUE, database_name);
   if (error)
     {
       if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
@@ -3826,7 +3826,7 @@ tde (UTIL_FUNCTION_ARG * arg)
 	    }
 	  else
 	    {
-	      error = db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION);
+	      error = db_restart (arg->command_name, TRUE, database_name);
 	    }
 	}
 
