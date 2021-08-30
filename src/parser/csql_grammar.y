@@ -3929,7 +3929,14 @@ alter_stmt
                                 if (item_bits & (0x01 << CONN_INFO_HOST))
                                 {
                                     server->xbits.bit_host = 1;
-                                    str = (char *) PT_VALUE_GET_BYTES (server->host);
+                                    if (server->host->node_type == PT_NAME)
+                                      {
+                                        str = server->host->info.name.original;
+                                      }
+                                    else
+                                      {
+                                        str = (char *) PT_VALUE_GET_BYTES (server->host);
+                                      }                                    
                                     is_not_allowed |= (!str || str[0] == '\0');
                                 }
                                 if (item_bits & (0x01 << CONN_INFO_PORT))
@@ -3940,13 +3947,13 @@ alter_stmt
                                 if (item_bits & (0x01 << CONN_INFO_DBNAME))
                                 {
                                     server->xbits.bit_dbname = 1;
-                                    str = (char *) PT_VALUE_GET_BYTES (server->dbname);
+                                    str = server->dbname->info.name.original;
                                     is_not_allowed |= (!str || str[0] == '\0');
                                 }
                                 if (item_bits & (0x01 << CONN_INFO_USER))
                                 {
                                     server->xbits.bit_user = 1;
-                                    str = (char *) PT_VALUE_GET_BYTES (server->user);
+                                    str = server->user->info.name.original;
                                     is_not_allowed |= (!str || str[0] == '\0');
                                 }  
                                 if (item_bits & (0x01 << CONN_INFO_PASSWORD))
@@ -3964,7 +3971,7 @@ alter_stmt
                                 if (item_bits & (0x01 << CONN_INFO_OWNER))
                                 {
                                     server->xbits.bit_owner = 1;
-                                    str = (char *) PT_VALUE_GET_BYTES (server->owner_name);
+                                    str = server->owner_name->info.name.original;
                                     is_not_allowed |= (!str || str[0] == '\0');
                                 }
 
