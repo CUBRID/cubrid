@@ -2738,11 +2738,68 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 }
 
 /*
+ * pt_check_pushable_select_list() - check for pushable
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out):
+ *   continue_walk(in):
+ *
+ * Note:
+ *  subquery, method does not pushable if we find these in corresponding item
+ *  in select_list of query
+ */
+static PT_NODE *
+pt_check_pushable_select_list (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  CHECK_PUSHABLE_INFO *cinfop = (CHECK_PUSHABLE_INFO *) arg;
+
+  if (!tree || *continue_walk == PT_STOP_WALK)
+    {
+      return tree;
+    }
+
+  switch (tree->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      if (cinfop->check_query)
+	{
+	  cinfop->query_found = true;	/* not pushable */
+	}
+      break;
+
+    case PT_METHOD_CALL:
+      if (cinfop->check_method)
+	{
+	  cinfop->method_found = true;	/* not pushable */
+	}
+      break;
+    default:
+      break;
+    }				/* switch (tree->node_type) */
+
+  if (cinfop->query_found || cinfop->method_found)
+    {
+      /* not pushable */
+      /* do not need to traverse anymore */
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
  * pt_check_pushable_subquery_select_list() -
  *   return: true on pushable query
  *   parser(in):
  *   query(in):
  *   pos(in):
+ * Note:
+ *  subquery, method does not pushable if we find these in corresponding item
+ *  in select_list of query
  */
 static bool
 pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query, int pos)
@@ -2757,10 +2814,10 @@ pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query
 	PT_NODE *list;
 	int i;
 
+	cinfo.check_query = true;
+	cinfo.check_method = true;
 	cinfo.query_found = false;
 	cinfo.method_found = false;
-	cinfo.xxxnum_found = false;
-	cinfo.analytic_found = false;
 	/* Traverse select list */
 	for (list = query->info.query.q.select.list, i = 0; list; list = list->next, i++)
 	  {
@@ -2787,17 +2844,17 @@ pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query
 	      }			/* switch (list->node_type) */
 
 	    /* check for subquery, method does not pushable in select_list of subquery */
-	    if (cinfo.query_found || cinfo.method_found || cinfo.xxxnum_found || cinfo.analytic_found)
+	    if (cinfo.query_found || cinfo.method_found)
 	      {
+		pushable = false;
 		break;		/* not pushable */
 	      }
-
+	    else
+	      {
+		pushable = true;
+		break;
+	      }
 	  }			/* for (list = ...) */
-
-	if (list == NULL)
-	  {			/* check all select list */
-	    pushable = true;	/* OK */
-	  }
       }
       break;
 
