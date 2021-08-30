@@ -43,7 +43,7 @@
 #define MAX_STACK_OBJECTS 500
 
 #define PT_PUSHABLE_TERM(p) \
-  ((p)->out.pushable  && (p)->out.correlated_found == false )
+  ((p)->out.pushable)
 
 #define MAX_CYCLE 300
 
@@ -3245,7 +3245,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  /* set correlation level */
 	  if (subquery->info.query.correlation_level == 0)
 	    {
-	      subquery->info.query.correlation_level = statement->info.query.correlation_level + 1;
+	      pt_set_correlation_level(parser, subquery, statement->info.query.correlation_level + 1);
 	    }
 	}
 
