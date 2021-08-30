@@ -1077,7 +1077,7 @@ renamedb (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, src_db_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, src_db_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -1190,7 +1190,7 @@ installdb (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, db_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -1302,7 +1302,7 @@ copydb (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
-  if (db_restart (arg->command_name, TRUE, src_db_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, src_db_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -1384,7 +1384,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, db_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -1504,7 +1504,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, db_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -2603,7 +2603,7 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, db_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -3825,7 +3825,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   db_localdatetime (&restart_arg.db_creation, &datetime);
   db_datetime_to_string (db_creation_time, LINE_MAX, &datetime);
 
-  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+  if (db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       fprintf (stderr,
@@ -4025,7 +4025,7 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 
       for (db_info_p = dir; db_info_p != NULL; db_info_p = db_info_p->next)
 	{
-	  if (db_restart (arg->command_name, TRUE, db_info_p->name) != NO_ERROR)
+	  if (db_restart (arg->command_name, TRUE, db_info_p->name, SERVER_TYPE_TRANSACTION) != NO_ERROR)
 	    {
 	      need_db_shutdown = true;
 	      exit_status = EXIT_FAILURE;

@@ -41,6 +41,7 @@
 #include "db_query.h"
 #include "databases_file.h"
 #include "error_code.h"
+#include "server_type_enum.hpp"
 
 #ifdef __cplusplus
 extern "C"
@@ -65,7 +66,7 @@ extern "C"
   extern int db_auth_logout (void);
 
   extern int db_login (const char *name, const char *password);
-  extern int db_restart (const char *program, int print_version, const char *volume);
+  extern int db_restart (const char *program, int print_version, const char *volume, SERVER_TYPE server_type);
   extern int db_restart_ex (const char *program, const char *db_name, const char *db_user, const char *db_password,
 			    const char *preferred_hosts, int client_type);
   extern void db_set_server_session_key (const char *key);

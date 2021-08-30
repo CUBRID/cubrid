@@ -166,7 +166,8 @@ static int boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isola
 static void boot_shutdown_client_at_exit (void);
 #if defined(CS_MODE)
 static int boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabilities, int opt_cap,
-				       bool discriminative, int connect_order, bool is_preferred_host);
+				       bool discriminative, int connect_order, bool is_preferred_host,
+				       SERVER_TYPE server_type);
 #endif /* CS_MODE */
 static int boot_define_class (MOP class_mop);
 static int boot_define_attribute (MOP class_mop);
@@ -535,7 +536,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   /* Initialize the communication subsystem */
   error_code =
     boot_client_initialize_css (db, client_credential->client_type, false, BOOT_NO_OPT_CAP, false,
-				DB_CONNECT_ORDER_SEQ, false);
+				DB_CONNECT_ORDER_SEQ, false, SERVER_TYPE_ANY);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -735,7 +736,7 @@ error_exit:
  */
 
 int
-boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
+boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential, SERVER_TYPE server_type)
 {
   int tran_index;
   TRAN_ISOLATION tran_isolation;
@@ -1012,7 +1013,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  /* connect to preferred hosts in a sequential order even though a user sets CONNECT_ORDER to RANDOM */
 	  error_code =
 	    boot_client_initialize_css (tmp_db, client_credential->client_type, check_capabilities,
-					optional_cap, false, DB_CONNECT_ORDER_SEQ, true);
+					optional_cap, false, DB_CONNECT_ORDER_SEQ, true, server_type);
 
 	  if (error_code != NO_ERROR)
 	    {
@@ -1059,7 +1060,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 	  error_code =
 	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
-					optional_cap, false, client_credential->connect_order, false);
+					optional_cap, false, client_credential->connect_order, false, server_type);
 	}
       else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
 	{
@@ -1070,7 +1071,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 	  error_code =
 	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
-					optional_cap, false, DB_CONNECT_ORDER_SEQ, false);
+					optional_cap, false, DB_CONNECT_ORDER_SEQ, false, server_type);
 	  break;		/* dont retry */
 	}
       else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
@@ -1088,7 +1089,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 	  error_code =
 	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
-					optional_cap, false, client_credential->connect_order, false);
+					optional_cap, false, client_credential->connect_order, false, server_type);
 
 	}
       else
@@ -1099,7 +1100,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  optional_cap = BOOT_NO_OPT_CAP;
 	  error_code =
 	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
-					optional_cap, false, client_credential->connect_order, false);
+					optional_cap, false, client_credential->connect_order, false, server_type);
 	  break;		/* dont retry */
 	}
 
@@ -1620,7 +1621,7 @@ boot_client_all_finalize (bool is_er_final)
  */
 static int
 boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabilities, int opt_cap, bool discriminative,
-			    int connect_order, bool is_preferred_host)
+			    int connect_order, bool is_preferred_host, SERVER_TYPE server_type)
 {
   int error = ER_NET_NO_SERVER_HOST;
   int hn, n;
@@ -1690,7 +1691,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	}
 
       er_log_debug (ARG_FILE_LINE, "trying to connect '%s@%s'\n", db->name, hostlist[n]);
-      error = net_client_init (db->name, hostlist[n]);
+      error = net_client_init (db->name, hostlist[n], server_type);
       if (error != NO_ERROR)
 	{
 	  if (error == ERR_CSS_TCP_CONNECT_TIMEDOUT)

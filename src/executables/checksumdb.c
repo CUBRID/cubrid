@@ -2205,7 +2205,7 @@ begin:
       goto error_exit;
     }
 
-  error = db_restart (arg->command_name, TRUE, database_name);
+  error = db_restart (arg->command_name, TRUE, database_name, SERVER_TYPE_TRANSACTION);
   if (error != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));

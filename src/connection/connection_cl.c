@@ -1004,7 +1004,7 @@ fail_end:
  *   server_name(in):
  */
 CSS_CONN_ENTRY *
-css_connect_to_cubrid_server (char *host_name, char *server_name)
+css_connect_to_cubrid_server (char *host_name, char *server_name, SERVER_TYPE server_type)
 {
   CSS_CONN_ENTRY *conn;
   CSS_QUEUE_ENTRY *buffer_q_entry_p;

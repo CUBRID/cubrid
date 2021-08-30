@@ -865,7 +865,7 @@ db_clear_host_connected (void)
  *
  */
 int
-db_restart (const char *program, int print_version, const char *volume)
+db_restart (const char *program, int print_version, const char *volume, SERVER_TYPE server_type)
 {
   int error = NO_ERROR;
   BOOT_CLIENT_CREDENTIAL client_credential;
@@ -891,7 +891,7 @@ db_restart (const char *program, int print_version, const char *volume)
       client_credential.preferred_hosts = db_Preferred_hosts;
       client_credential.connect_order = db_Connect_order;
 
-      error = boot_restart_client (&client_credential);
+      error = boot_restart_client (&client_credential, server_type);
       if (error != NO_ERROR)
 	{
 	  db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
@@ -951,7 +951,7 @@ db_restart_ex (const char *program, const char *db_name, const char *db_user, co
       db_set_preferred_hosts (preferred_hosts);
     }
 
-  return db_restart (program, false, db_name);
+  return db_restart (program, false, db_name, SERVER_TYPE_TRANSACTION);
 }
 
 /*

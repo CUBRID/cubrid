@@ -41,6 +41,7 @@
 #include "object_domain.h"
 #include "query_list.h"
 #include "query_monitoring.hpp"
+#include "server_type_enum.hpp"
 #include "statistics.h"
 #include "connection_defs.h"
 #include "log_writer.h"
@@ -363,7 +364,7 @@ extern int net_client_ping_server_with_handshake (int client_type, bool check_ca
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void net_client_shutdown_server (void);
 #endif
-extern int net_client_init (const char *dbname, const char *hostname);
+extern int net_client_init (const char *dbname, const char *hostname, SERVER_TYPE server_type);
 extern int net_client_final (void);
 
 extern void net_cleanup_client_queues (void);
