@@ -162,6 +162,20 @@ static bool boot_Is_client_all_final = true;
 static bool boot_Set_client_at_exit = false;
 static int boot_Process_id = -1;
 
+static SERVER_TYPE g_conn_server_type = SERVER_TYPE_TRANSACTION;
+
+SERVER_TYPE
+get_conn_server_type ()
+{
+  return g_conn_server_type;
+}
+
+void
+set_conn_server_type (SERVER_TYPE server_type)
+{
+  g_conn_server_type = server_type;
+}
+
 static int boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation);
 static void boot_shutdown_client_at_exit (void);
 #if defined(CS_MODE)
