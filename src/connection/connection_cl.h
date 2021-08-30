@@ -49,7 +49,8 @@ extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
 extern void css_free_conn (CSS_CONN_ENTRY * conn);
 
-extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
+extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *message_to_master,
+						     int message_to_master_length);
 
 extern CSS_CONN_ENTRY *css_find_exception_conn (void);
 extern int css_receive_error (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, int *buffer_size);

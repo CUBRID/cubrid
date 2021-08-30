@@ -28,6 +28,7 @@
 #include "communication_server_channel.hpp"
 #include "load_worker_manager.hpp"
 #include "log_append.hpp"
+#include "server_type.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
@@ -944,8 +945,8 @@ css_reestablish_connection_to_master (void)
 {
   CSS_CONN_ENTRY *conn;
   static int i = CSS_WAIT_COUNT;
-  char *packed_server_name;
-  int name_length;
+  char *message_to_master;
+  int message_to_master_length;
 
   if (i-- > 0)
     {
@@ -953,10 +954,10 @@ css_reestablish_connection_to_master (void)
     }
   i = CSS_WAIT_COUNT;
 
-  packed_server_name = css_pack_server_name (css_Master_server_name, &name_length);
-  if (packed_server_name != NULL)
+  message_to_master = css_pack_message_to_master (css_Master_server_name, &message_to_master_length);
+  if (message_to_master != NULL)
     {
-      conn = css_connect_to_master_server (css_Master_port_id, packed_server_name, name_length);
+      conn = css_connect_to_master_server (css_Master_port_id, message_to_master, message_to_master_length);
       if (conn != NULL)
 	{
 	  css_Pipe_to_master = conn->fd;
@@ -965,12 +966,12 @@ css_reestablish_connection_to_master (void)
 	      css_free_conn (css_Master_conn);
 	    }
 	  css_Master_conn = conn;
-	  free_and_init (packed_server_name);
+	  free_and_init (message_to_master);
 	  return 1;
 	}
       else
 	{
-	  free_and_init (packed_server_name);
+	  free_and_init (message_to_master);
 	}
     }
 
@@ -1298,8 +1299,8 @@ css_start_shutdown_server ()
  * css_init() -
  *   return:
  *   thread_p(in):
- *   server_name(in):
- *   name_length(in):
+ *   message_to_master(in):
+ *   message_to_master_length(in):
  *   port_id(in):
  *
  * Note: This routine is the entry point for the server interface. Once this
@@ -1308,13 +1309,12 @@ css_start_shutdown_server ()
  *       css_initialize_server_interfaces before calling this function.
  */
 int
-css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
+css_init (THREAD_ENTRY * thread_p, char *message_to_master, int message_to_master_length, int port_id)
 {
   CSS_CONN_ENTRY *conn;
   int status = NO_ERROR;
-  std::string buffer;
 
-  if (server_name == NULL || port_id <= 0)
+  if (message_to_master == NULL || port_id <= 0)
     {
       return ER_FAILED;
     }
@@ -1365,20 +1365,13 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   css_Server_connection_socket = INVALID_SOCKET;
 
-  /*
-   * The packing of the server name and type is done by setting the first
-   * character to the numer related to the server type enum value, the rest of the
-   * buffer space is used to copy the server name.
-   */
-  buffer = (char) (get_server_type () + '0');
-  buffer.append (server_name, name_length);
-  conn = css_connect_to_master_server (port_id, buffer.c_str (), name_length + 1);
+  conn = css_connect_to_master_server (port_id, message_to_master, message_to_master_length);
   if (conn != NULL)
     {
       /* insert conn into active conn list */
       css_insert_into_active_conn_list (conn);
 
-      css_Master_server_name = strdup (server_name);
+      css_Master_server_name = strdup (message_to_master);
       css_Master_port_id = port_id;
       css_Pipe_to_master = conn->fd;
       css_Master_conn = conn;
@@ -1791,7 +1784,7 @@ css_end_server_request (CSS_CONN_ENTRY * conn)
 }
 
 /*
- * css_pack_server_name() -
+ * css_pack_message_to_master() -
  *   return: a new string containing the server name and the database version
  *           string
  *   server_name(in): the name of the database volume
@@ -1802,9 +1795,9 @@ css_end_server_request (CSS_CONN_ENTRY * conn)
  *       CUBRID environment variable (if exists)
  */
 char *
-css_pack_server_name (const char *server_name, int *name_length)
+css_pack_message_to_master (const char *server_name, int *message_length)
 {
-  char *packed_name = NULL;
+  char *message = NULL;
   const char *env_name = NULL;
   char pid_string[16], *s;
   const char *t;
@@ -1828,29 +1821,32 @@ css_pack_server_name (const char *server_name, int *name_length)
        */
 
       sprintf (pid_string, "%d", getpid ());
-      *name_length =
+      *message_length =
 	(int) (strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1 +
 	       strlen (pid_string) + 1);
 
-      /* in order to prepend '#' */
-      if (!HA_DISABLED ())
-	{
-	  (*name_length)++;
-	}
+      /* in order to prepend '#' or server type */
+      (*message_length)++;
 
-      packed_name = (char *) malloc (*name_length);
-      if (packed_name == NULL)
+      message = (char *) malloc (*message_length);
+      if (message == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (*name_length));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (*message_length));
 	  return NULL;
 	}
 
-      s = packed_name;
+      s = message;
       t = server_name;
 
       if (!HA_DISABLED ())
 	{
 	  *s++ = '#';
+	}
+      else
+	{
+	  SERVER_TYPE type = get_server_type ();
+	  assert (type == SERVER_TYPE_TRANSACTION || type == SERVER_TYPE_PAGE);
+	  *s++ = '0' + ((char) type);
 	}
 
       while (*t)
@@ -1880,7 +1876,7 @@ css_pack_server_name (const char *server_name, int *name_length)
 	}
       *s++ = '\0';
     }
-  return packed_name;
+  return message;
 }
 
 /*

@@ -1294,8 +1294,6 @@ int
 net_server_start (THREAD_ENTRY * thread_p, const char *server_name)
 {
   int error = NO_ERROR;
-  int name_length;
-  char *packed_name;
   int r, status = 0;
   CHECK_ARGS check_coll_and_timezone = { true, true };
 
@@ -1362,10 +1360,11 @@ net_server_start (THREAD_ENTRY * thread_p, const char *server_name)
     }
   else
     {
-      packed_name = css_pack_server_name (server_name, &name_length);
+      int message_to_master_size = 0;
+      char *message_to_master = css_pack_message_to_master (server_name, &message_to_master_size);
 
-      r = css_init (thread_p, packed_name, name_length, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
-      free_and_init (packed_name);
+      r = css_init (thread_p, message_to_master, message_to_master_size, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
+      free_and_init (message_to_master);
 
       if (r < 0)
 	{

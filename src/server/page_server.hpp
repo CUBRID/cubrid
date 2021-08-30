@@ -61,6 +61,7 @@ class page_server
     using active_tran_server_conn_t =
 	    cubcomm::request_sync_client_server<ps_to_ats_request, ats_to_ps_request, std::string>;
 
+    void receive_boot_info_request (cubpacking::unpacker &upk);
     void receive_log_prior_list (cubpacking::unpacker &upk);
     void receive_log_page_fetch (cubpacking::unpacker &upk);
     void receive_data_page_fetch (cubpacking::unpacker &upk);

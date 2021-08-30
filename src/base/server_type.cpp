@@ -98,7 +98,7 @@ int init_server_type (const char *db_name)
 #endif
   if (g_server_type == SERVER_TYPE_TRANSACTION)
     {
-      er_code = ats_Gl.init_page_server_hosts (db_name);
+      er_code = ats_Gl.boot (db_name);
     }
   else
     {
