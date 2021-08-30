@@ -4953,6 +4953,56 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
   return NO_ERROR;
 }
 
+int
+log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name, int cached_num, OID * classoid,
+				OID * serial_oid)
+{
+  assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
+
+  int ddl_type = 1;
+  int obj_type = 2;
+  int data_len;
+  char stmt[1024];
+  char *supplemental_data = NULL;
+
+  char *ptr, *start_ptr;
+
+  LOG_TDES *tdes;
+
+  sprintf (stmt, "SELECT SERIAL_NEXT_VALUE(%s, %d);", serial_name, cached_num);
+
+  data_len = OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_OID_SIZE + OR_INT_SIZE + or_packed_string_length (stmt, NULL);
+
+  supplemental_data = (char *) malloc (data_len + MAX_ALIGNMENT);
+  if (supplemental_data == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = start_ptr = supplemental_data;
+
+  ptr = or_pack_int (ptr, ddl_type);
+  ptr = or_pack_int (ptr, obj_type);
+  ptr = or_pack_oid (ptr, classoid);
+  ptr = or_pack_oid (ptr, serial_oid);
+  ptr = or_pack_int (ptr, strlen (stmt));
+  ptr = or_pack_string (ptr, stmt);
+
+  data_len = ptr - start_ptr;
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  if (!tdes->has_supplemental_log)
+    {
+      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+				    tdes->client.get_db_user ());
+      tdes->has_supplemental_log = true;
+    }
+
+  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
+
+}
+
 /*
  * log_add_to_modified_class_list -
  *
@@ -12395,7 +12445,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       for (i = 0; i < attr_info.num_values; i++)
 	{
 	  heap_value = &attr_info.values[i];
-	  oldval_deforder = heap_value->read_attrepr->def_order;
+	  oldval_deforder = heap_value->last_attrepr->def_order;
 	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
 	}
 
@@ -12419,7 +12469,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       for (i = 0; i < attr_info.num_values; i++)
 	{
 	  heap_value = &attr_info.values[i];
-	  newval_deforder = heap_value->read_attrepr->def_order;
+	  newval_deforder = heap_value->last_attrepr->def_order;
 	  memcpy (&new_values[newval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
 	}
 
@@ -13116,6 +13166,11 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 
   if (DB_IS_NULL (new_value))
     {
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, NULL);
+      *data_ptr = ptr;
+      /* for alter case . if num of col is changed, there will be NULL db_value inserted */
       return ER_FAILED;		/*error */
     }
 
@@ -14133,6 +14188,7 @@ cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **us
 int
 cdc_initialize ()
 {
+#if 0
   /*communication buffer from server to client initialization */
   if (cdc_Server_comm.log_items != NULL)
     {
@@ -14140,7 +14196,10 @@ cdc_initialize ()
     }
   cdc_Server_comm.total_length = 0;
   cdc_Server_comm.num_log_item = 0;
+  /* TODO : if client exits abnomaly, it cans sends 0 log items and it can cause segfault */
   LSA_SET_NULL (&cdc_Server_comm.next_lsa);
+#endif
+
   cdc_Server_comm.is_sent = true;
 
   LSA_SET_NULL (&cdc_Gl.next_lsa);

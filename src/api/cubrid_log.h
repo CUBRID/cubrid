@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <time.h>
 
+#define CUBRID_LOG_FAILED_LOGIN                 (-33)
 #define CUBRID_LOG_INVALID_PASSWORD             (-32)
 #define CUBRID_LOG_INVALID_ID                   (-31)
 #define CUBRID_LOG_FAILED_EXTRACT               (-30)

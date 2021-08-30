@@ -16656,6 +16656,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		}
 	    }
 
+	  thread_p->no_supplemental_log = true;
+
 	  if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER) || (att->type == DB_TYPE_BIGINT))
 	    {
 	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
@@ -16687,6 +16689,13 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
 	  *is_set = 1;
 	  value->state = HEAP_READ_ATTRVALUE;
+
+	  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+	    {
+	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	      log_append_supplemental_serial (thread_p, serial_name, 0, &att->classoid, &serial_obj_oid);
+	      thread_p->no_supplemental_log = false;
+	    }
 	}
     }
 

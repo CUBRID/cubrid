@@ -40,6 +40,7 @@
 #include "log_lsa.hpp"
 #include "network.h"
 #include "object_representation.h"
+#include "dbi.h"
 
 #define CUBRID_LOG_ERROR_HANDLING(e, v) \
   (err_code) = (e); \
@@ -559,6 +560,11 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *p
   if (password == NULL)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PASSWORD, trace_errbuf);
+    }
+
+  if (db_login (id, password) != NO_ERROR)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, trace_errbuf);
     }
 
   if (cubrid_log_connect_server_internal (host, port, dbname) != CUBRID_LOG_SUCCESS)
