@@ -3245,7 +3245,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  /* set correlation level */
 	  if (subquery->info.query.correlation_level == 0)
 	    {
-	      pt_set_correlation_level(parser, subquery, statement->info.query.correlation_level + 1);
+	      pt_set_correlation_level (parser, subquery, statement->info.query.correlation_level + 1);
 	    }
 	}
 
