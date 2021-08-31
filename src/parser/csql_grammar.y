@@ -2586,7 +2586,7 @@ create_stmt
 			    node->info.index.reverse = $4;
 			    node->info.index.unique = $5;
 			    node->info.index.index_name = $8;
-			    if (node->info.index.index_name != NULL)
+			    if (node->info.index.index_name)
 			      {
 				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
 			      }
@@ -8932,7 +8932,7 @@ unique_constraint
 				if (node)
 				  {
 				    node->info.index.index_name = $3;
-				    if (node->info.index.index_name != NULL)
+				    if (node->info.index.index_name)
 				      {
 					node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
 				      }
@@ -21395,7 +21395,7 @@ identifier_without_dot
 			    /* Check if it contains DOT(.) */
       			    if (name != NULL && strchr (name, '.') != NULL)
 			      {
-				PT_ERRORf (parser, p,
+				PT_ERRORf (this_parser, p,
 					   "Identifier name %s not allowed. It cannot contain DOT(.).",
 					   name);
 			      }
