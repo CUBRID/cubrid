@@ -28,7 +28,6 @@ namespace cublog
 {
   class reusable_jobs_stack {};
   class redo_parallel {};
-  class minimum_log_lsa_monitor {};
 
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_perfmon_redo_sync{ PSTAT_REDO_REPL_LOG_REDO_SYNC }

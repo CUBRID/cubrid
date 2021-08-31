@@ -43,7 +43,6 @@ namespace cublog
 {
   // addind this here allows to include the corresponding header only in the source
   class reusable_jobs_stack;
-  class minimum_log_lsa_monitor;
   class redo_parallel;
 }
 
@@ -91,7 +90,6 @@ namespace cublog
       log_rv_redo_context m_redo_context { NULL_LSA, log_reader::fetch_mode::FORCE };
 
       std::unique_ptr<cublog::reusable_jobs_stack> m_reusable_jobs;
-      std::unique_ptr<cublog::minimum_log_lsa_monitor> m_minimum_log_lsa;
       std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
 
       /* perf data for processing log redo on the page server - the synchronous part:

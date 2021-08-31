@@ -46,65 +46,7 @@ namespace cublog
   // forward declaration
   class reusable_jobs_stack;
 
-  /* minimum_log_lsa_monitor - utility to support calculation of a minimum
-   *       lsa out of a set of, concurrently (or not), advacing ones; not
-   *       all lsa's participate in the game in every scenarios; those that
-   *       do not partake are gracefully ignored by being kept to a maximum
-   *       sentinel value
-   */
-  class minimum_log_lsa_monitor final
-  {
-    private:
-      static constexpr int ARRAY_LENGTH = 4;
-
-      using log_lsa_array_t = std::array<log_lsa, ARRAY_LENGTH>;
-
-      enum ARRAY_INDEX
-      {
-	PRODUCE_IDX = 0,
-	CONSUME_IDX = 1,
-	IN_PROGRESS_IDX = 2,
-	OUTER_IDX = 3,
-      };
-
-    public:
-      minimum_log_lsa_monitor ();
-      minimum_log_lsa_monitor (const minimum_log_lsa_monitor &) = delete;
-      minimum_log_lsa_monitor (minimum_log_lsa_monitor &&) = delete;
-
-      minimum_log_lsa_monitor &operator = (const minimum_log_lsa_monitor &) = delete;
-      minimum_log_lsa_monitor &operator = (minimum_log_lsa_monitor &&) = delete;
-
-      void set_for_produce (const log_lsa &a_lsa);
-      void set_for_produce_and_consume (const log_lsa &a_produce_lsa, const log_lsa &a_consume_lsa);
-      void set_for_consume_and_in_progress (const log_lsa &a_consume_lsa, const log_lsa &a_in_progress_lsa);
-      void set_for_in_progress (const log_lsa &a_lsa);
-      void set_for_outer (const log_lsa &a_lsa);
-
-      /* obtain the current calculated minimum value
-       */
-      log_lsa get () const;
-
-      /* wait till the recorder minimum lsa has passed the target lsa
-       * blocking call
-       *
-       * return: minimum log_lsa value calculated internally (mainly for testing purpose)
-       */
-      log_lsa wait_past_target_lsa (const log_lsa &a_target_lsa);
-
-    private:
-      void do_set_at (ARRAY_INDEX a_idx, const log_lsa &a_new_lsa);
-      template <typename T_LOCKER>
-      log_lsa do_locked_get (const T_LOCKER &) const;
-
-    private:
-      mutable std::mutex m_values_mtx;
-      log_lsa_array_t m_values;
-
-      std::condition_variable m_wait_for_target_value_cv;
-  };
-
-  /* a class to handle infrastructure for parallel log recovery/replication RAII-style;
+  /* handle infrastructure for parallel log recovery/replication RAII-style;
    * usage:
    *  - instantiate an object of this class with the desired number of background workers
    *  - create and add jobs - see 'redo_job_impl'
@@ -122,7 +64,7 @@ namespace cublog
     public:
       /* - worker_count: the number of parallel tasks to spin that consume jobs
        */
-      redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa,
+      redo_parallel (unsigned a_worker_count, bool a_do_monitor_minimum_not_applied_log_lsa,
 		     const log_rv_redo_context &copy_context);
 
       redo_parallel (const redo_parallel &) = delete;
@@ -152,9 +94,17 @@ namespace cublog
 
       void log_perf_stats () const;
 
+      void set_outer_not_applied_log_lsa (const log_lsa &a_log_lsa);
+
+      log_lsa get_calculated_minimum_not_applied_log_lsa ();
+      log_lsa wait_past_target_lsa (const log_lsa &a_target_lsa);
+
     private:
       void do_init_worker_pool (std::size_t a_task_count);
-      void do_init_tasks (std::size_t a_task_count, const log_rv_redo_context &copy_context);
+      void do_init_tasks (std::size_t a_task_count, bool a_do_monitor_not_applied_log_lsa,
+			  const log_rv_redo_context &copy_context);
+      log_lsa calculate_minimum_log_lsa ();
+      void calculate_and_save_minimum_not_applied_log_lsa ();
 
     private:
       /* maintain a bookkeeping of tasks that are still performing work;
@@ -191,6 +141,7 @@ namespace cublog
 
     private:
       const std::size_t m_task_count;
+      const bool m_do_monitor_minimum_log_lsa;
 
       std::unique_ptr<cubthread::entry_manager> m_pool_context_manager;
 
@@ -209,6 +160,25 @@ namespace cublog
       std::atomic_bool m_adding_finished;
 
       std::hash<VPID> m_vpid_hash;
+
+      /* the not-applied set from the outside by the main thread (for recovery, the main thread
+       * is the thread running the analysis redo and undo; for replication, the main thread is the
+       * recovery applying thread);
+       * the reason the outer log_lsa is needed is because some of the log entries are being applied
+       * synchronously by the main thread and the calculation of the minimum not-applied log_lsa needs
+       * to be accurate
+       */
+      std::atomic<log_lsa> m_outer_not_applied_log_lsa;
+
+      /* following members control the pro-active calculation of the minimum not-applied log_lsa as well
+       * as means to actually trigger and wait for the calculation asynchronously
+       */
+      log_lsa m_calculated_minimum_not_applied_log_lsa;
+      std::mutex m_calculate_minimum_not_applied_log_lsa_mtx;
+
+      volatile bool m_terminate_minimum_not_applied_log_lsa_calculation;
+      std::thread m_calculate_minimum_not_applied_log_lsa_thread;
+      std::condition_variable m_calculate_minimum_not_applied_log_lsa_cv;
   };
 
 
@@ -361,7 +331,6 @@ namespace cublog
 #else /* SERVER_MODE */
   /* dummy implementations for SA mode
    */
-  class minimum_log_lsa_monitor final { };
   class redo_parallel final { };
   class reusable_jobs_stack final { };
 #endif /* SERVER_MODE */

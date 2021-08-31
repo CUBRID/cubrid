@@ -1022,7 +1022,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	const int recovery_reusable_jobs_count = prm_get_integer_value (PRM_ID_RECOVERY_REUSABLE_JOBS_COUNT);
 	reusable_jobs.initialize (recovery_reusable_jobs_count, log_recovery_redo_parallel_count,
 				  cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT);
-	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, nullptr,
+	// TODO: set to false
+	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, true /*nullptr */ ,
 								 redo_context));
       }
   }

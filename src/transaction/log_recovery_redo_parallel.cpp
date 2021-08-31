@@ -24,133 +24,6 @@
 namespace cublog
 {
   /*********************************************************************
-   * minimum_log_lsa_monitor - definition
-   *********************************************************************/
-
-  minimum_log_lsa_monitor::minimum_log_lsa_monitor ()
-  {
-    /* MAX_LSA is used as an internal sentinel value; this is considered safe as long as,
-     * if the engine actually gets to this value, things are already haywire elsewhere
-     */
-    std::lock_guard<std::mutex> lockg { m_values_mtx };
-    m_values[PRODUCE_IDX] = MAX_LSA;
-    m_values[CONSUME_IDX] = MAX_LSA;
-    m_values[IN_PROGRESS_IDX] = MAX_LSA;
-    m_values[OUTER_IDX] = MAX_LSA;
-  }
-
-  void
-  minimum_log_lsa_monitor::set_for_produce (const log_lsa &a_lsa)
-  {
-    do_set_at (PRODUCE_IDX, a_lsa);
-  }
-
-  void
-  minimum_log_lsa_monitor::set_for_produce_and_consume (
-	  const log_lsa &a_produce_lsa, const log_lsa &a_consume_lsa)
-  {
-    assert (!a_produce_lsa.is_null ());
-    assert (!a_consume_lsa.is_null ());
-    {
-      std::lock_guard<std::mutex> lockg { m_values_mtx };
-      m_values[PRODUCE_IDX] = a_produce_lsa;
-      m_values[CONSUME_IDX] = a_consume_lsa;
-    }
-    m_wait_for_target_value_cv.notify_all ();
-  }
-
-  void
-  minimum_log_lsa_monitor::set_for_consume_and_in_progress (
-	  const log_lsa &a_consume_lsa, const log_lsa &a_in_progress_lsa)
-  {
-    assert (!a_consume_lsa.is_null ());
-    assert (!a_in_progress_lsa.is_null ());
-    {
-      std::lock_guard<std::mutex> lockg { m_values_mtx };
-      m_values[CONSUME_IDX] = a_consume_lsa;
-      m_values[IN_PROGRESS_IDX] = a_in_progress_lsa;
-    }
-    m_wait_for_target_value_cv.notify_all ();
-  }
-
-  void
-  minimum_log_lsa_monitor::set_for_in_progress (const log_lsa &a_lsa)
-  {
-    do_set_at (IN_PROGRESS_IDX, a_lsa);
-  }
-
-  void minimum_log_lsa_monitor::set_for_outer (const log_lsa &a_lsa)
-  {
-    do_set_at (OUTER_IDX, a_lsa);
-  }
-
-  template <typename T_LOCKER>
-  log_lsa minimum_log_lsa_monitor::do_locked_get (const T_LOCKER &) const
-  {
-    const log_lsa new_minimum_log_lsa = std::min (
-    {
-      m_values[PRODUCE_IDX],
-      m_values[CONSUME_IDX],
-      m_values[IN_PROGRESS_IDX],
-      m_values[OUTER_IDX],
-    });
-    return new_minimum_log_lsa;
-  }
-
-  log_lsa
-  minimum_log_lsa_monitor::get () const
-  {
-    std::lock_guard<std::mutex> lockg { m_values_mtx };
-    return do_locked_get (lockg);
-  }
-
-  void
-  minimum_log_lsa_monitor::do_set_at (ARRAY_INDEX a_idx, const log_lsa &a_new_lsa)
-  {
-    assert (!a_new_lsa.is_null ());
-
-    bool do_notify_change = false; // avoid gratuitous wake-ups
-    {
-      std::lock_guard<std::mutex> lockg { m_values_mtx };
-      do_notify_change = m_values[a_idx] != a_new_lsa;
-
-      m_values[a_idx] = a_new_lsa;
-    }
-
-    if (do_notify_change)
-      {
-	m_wait_for_target_value_cv.notify_all ();
-      }
-  }
-
-  log_lsa
-  minimum_log_lsa_monitor::wait_past_target_lsa (const log_lsa &a_target_lsa)
-  {
-    assert (!a_target_lsa.is_null ());
-
-    std::unique_lock<std::mutex> ulock { m_values_mtx };
-    log_lsa outer_res;
-    m_wait_for_target_value_cv.wait (ulock, [this, &ulock, &a_target_lsa, &outer_res] ()
-    {
-      const log_lsa current_minimum_lsa = do_locked_get (ulock);
-      if (current_minimum_lsa == MAX_LSA)
-	{
-	  // TODO: corner case that can appear if no entries have ever been processed
-	  // the value is actually invalid but the condition would pass 'stricto sensu'
-	  // what to do in this case?
-	  // assert (false);
-	}
-      if (current_minimum_lsa > a_target_lsa)
-	{
-	  outer_res = current_minimum_lsa;
-	  return true;
-	}
-      return false;
-    });
-    return outer_res;
-  }
-
-  /*********************************************************************
    * redo_parallel::task_active_state_bookkeeping - definition
    *********************************************************************/
 
@@ -209,7 +82,7 @@ namespace cublog
 
     public:
       redo_task () = delete;
-      redo_task (std::size_t a_task_idx,
+      redo_task (std::size_t a_task_idx, bool a_do_monitor_not_applied_log_lsa,
 		 redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping,
 		 const log_rv_redo_context &copy_context, std::atomic_bool &a_adding_finished);
       redo_task (const redo_task &) = delete;
@@ -230,11 +103,17 @@ namespace cublog
 
       inline void push_job (redo_parallel::redo_job_base *a_job);
 
+      inline log_lsa get_not_applied_log_lsa ();
+
     private:
       inline void pop_jobs (redo_job_vector_t *&a_out_job_vec);
 
+      inline void set_not_applied_log_lsa_from_push_side (const log_lsa &a_log_lsa);
+      inline void set_not_applied_log_lsa_from_pop_side (const log_lsa &a_log_lsa);
+
     private:
       const std::size_t m_task_idx;
+      const bool m_do_monitor_not_applied_log_lsa;
 
       redo_parallel::task_active_state_bookkeeping &m_task_state_bookkeeping;
 
@@ -246,10 +125,41 @@ namespace cublog
       redo_job_vector_t *m_produce_vec;
       mutable std::mutex m_produce_vec_mtx;
 
-      // TODO: temporary solution, there might be a better solution with only one between this
-      // and m_task_state_bookkeeping being needed
       std::atomic_bool m_in_execution;
       std::atomic_bool &m_adding_finished;
+
+      /* minimum still-to-be-applied (not-applied) log_lsa for a single log applying task
+       * scenarios:
+       * - job is pushed for processing to the internal waiting queue:
+       *    - internal waiting queue and processing queue are still empty:
+       *      - old: MAX_LSA
+       *      - new: pushed job's log_lsa
+       *    - either internal waiting queue, or processing queue, or both are non-empty:
+       *      - old: minimum log_lsa is smaller than that of the currently pushed job since
+       *        jobs log_lsa's are in ever increasing order
+       * - task picks-up existing jobs in the internal waiting queue
+       *    - if previosly processing queue was non empty:
+       *      - minimum log_lsa from the previous update from the processing queue
+       *    - if previous processing queue was empty
+       *      - if waiting queue is empty
+       *        - MAX_LSA
+       *      - if waiting queue is non-empty
+       *        - minimum log_lsa from waiting queue
+       * - task has just finished processing a job:
+       *    - there are still jobs to process in the processing queue:
+       *      - minimum log_lsa from the processing queue (ie: the log_lsa of the next job since
+       *        log_lsa are inserted in ever increasing order
+       *    - processing queue is empty
+       *      - no change,the minimum log_lsa will be advanced upon subsequent request to pop
+       *        jobs from the internal waiting queue (see corresponding step)
+       *
+       * - a job is pushed for processing to the internal waiting queue:
+       *    - if current minimum log_lsa is MAX_LSA, the newly added job's log_lsa
+       *        becomes the new minimum log_lsa
+       *    - if current minimum log_lsa is not MAX_LSA, assert that the newly added
+       *        job has a log_lsa greater than the existing minimum log_lsa
+       */
+      std::atomic<log_lsa> m_not_applied_log_lsa;
   };
 
   /*********************************************************************
@@ -258,16 +168,18 @@ namespace cublog
 
   constexpr unsigned short redo_parallel::redo_task::WAIT_AND_CHECK_MILLIS;
 
-  redo_parallel::redo_task::redo_task (std::size_t a_task_idx,
+  redo_parallel::redo_task::redo_task (std::size_t a_task_idx, bool a_do_monitor_not_applied_log_lsa,
 				       redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping,
 				       const log_rv_redo_context &copy_context, std::atomic_bool &a_adding_finished)
     : m_task_idx { a_task_idx }
+    , m_do_monitor_not_applied_log_lsa { a_do_monitor_not_applied_log_lsa }
     , m_task_state_bookkeeping (task_state_bookkeeping)
     , m_perf_stats_definition { perf_stats_async_definition_init_list }
     , m_perf_stats { perf_stats_is_active_for_async (), m_perf_stats_definition }
     , m_redo_context { copy_context }
     , m_produce_vec { new redo_job_vector_t () }
   , m_adding_finished { a_adding_finished }
+  , m_not_applied_log_lsa { MAX_LSA }
   {
     // important to set this at this moment and not when execution begins
     // to circumvent race conditions where all tasks haven't yet started work
@@ -289,14 +201,12 @@ namespace cublog
   void
   redo_parallel::redo_task::execute (context_type &context)
   {
-    bool finished = false;
-
     redo_job_vector_t *jobs_vec = new redo_job_vector_t ();
     // according to spec, reserved size survives clearing of the vector
     // which should help to only allocate/reserve once
     jobs_vec->reserve (PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE);
 
-    for (; !finished ;)
+    for (bool finished = false; !finished ;)
       {
 	pop_jobs (jobs_vec);
 	const bool jobs_popped { !jobs_vec->empty ()};
@@ -324,6 +234,10 @@ namespace cublog
 		THREAD_ENTRY *const thread_entry = &context;
 		for (auto &job : *jobs_vec)
 		  {
+		    if (m_do_monitor_not_applied_log_lsa)
+		      {
+			set_not_applied_log_lsa_from_pop_side (job->get_log_lsa ());
+		      }
 		    job->execute (thread_entry, m_redo_context);
 		    job->retire (m_task_idx);
 		  }
@@ -345,25 +259,29 @@ namespace cublog
     m_in_execution.store (false);
   }
 
-  void redo_parallel::redo_task::retire ()
+  void
+  redo_parallel::redo_task::retire ()
   {
     // avoid self destruct, will be deleted by owning class
   }
 
-  void redo_parallel::redo_task::log_perf_stats () const
+  void
+  redo_parallel::redo_task::log_perf_stats () const
   {
     std::stringstream ss;
     ss << "Log recovery redo worker thread " << m_task_idx << " perf stats";
     m_perf_stats.log (ss.str ().c_str ());
   }
 
-  void redo_parallel::redo_task::accumulate_perf_stats (
+  void
+  redo_parallel::redo_task::accumulate_perf_stats (
 	  cubperf::stat_value *a_output_stats, std::size_t a_output_stats_size) const
   {
     m_perf_stats.accumulate (a_output_stats, a_output_stats_size);
   }
 
-  bool redo_parallel::redo_task::is_idle () const
+  bool
+  redo_parallel::redo_task::is_idle () const
   {
     bool is_vector_empty = false;
     {
@@ -373,28 +291,85 @@ namespace cublog
     return is_vector_empty && !m_in_execution.load ();
   }
 
-  inline void redo_parallel::redo_task::push_job (redo_parallel::redo_job_base *a_job)
+  inline void
+  redo_parallel::redo_task::push_job (redo_parallel::redo_job_base *a_job)
   {
     std::scoped_lock<std::mutex> slock { m_produce_vec_mtx };
+
+    if (m_do_monitor_not_applied_log_lsa && m_produce_vec->empty ())
+      {
+	const log_lsa &job_log_lsa = a_job->get_log_lsa ();
+	set_not_applied_log_lsa_from_push_side (job_log_lsa);
+      }
+
     m_produce_vec->push_back (a_job);
   }
 
-  inline void redo_parallel::redo_task::pop_jobs (redo_parallel::redo_task::redo_job_vector_t *&a_out_job_vec)
+  inline void
+  redo_parallel::redo_task::pop_jobs (redo_parallel::redo_task::redo_job_vector_t *&a_out_job_vec)
   {
+    assert (a_out_job_vec->empty ());
+
     std::scoped_lock<std::mutex> slock { m_produce_vec_mtx };
     std::swap (m_produce_vec, a_out_job_vec);
+
+    if (m_do_monitor_not_applied_log_lsa)
+      {
+	const log_lsa new_log_lsa =  a_out_job_vec->empty ()
+				     ? MAX_LSA
+				     : (*a_out_job_vec->begin ())->get_log_lsa ();
+	set_not_applied_log_lsa_from_pop_side (new_log_lsa);
+      }
+  }
+
+  inline void
+  redo_parallel::redo_task::set_not_applied_log_lsa_from_push_side (const log_lsa &a_log_lsa)
+  {
+    {
+      const log_lsa snapshot_not_applied_log_lsa { m_not_applied_log_lsa.load () };
+      // strict comparison because jobs have ever-increasing log_lsa's
+      assert (snapshot_not_applied_log_lsa == MAX_LSA || snapshot_not_applied_log_lsa < a_log_lsa);
+    }
+
+    log_lsa expected_not_applied_log_lsa { MAX_LSA };
+    m_not_applied_log_lsa.compare_exchange_strong (expected_not_applied_log_lsa, a_log_lsa);
+    // TODO: any check for the return value?
+  }
+
+  inline void
+  redo_parallel::redo_task::set_not_applied_log_lsa_from_pop_side (const log_lsa &a_log_lsa)
+  {
+    log_lsa expected_log_lsa;
+    do
+      {
+	expected_log_lsa = m_not_applied_log_lsa.load ();
+	// -or-equal because push side can fill in a minimum log_lsa, while the task (ie: pop side) is
+	// still empty, which is then found and tested-only by the pop side
+	assert (expected_log_lsa <= a_log_lsa);
+      }
+    while (!m_not_applied_log_lsa.compare_exchange_strong (expected_log_lsa, a_log_lsa));
+  }
+
+  inline log_lsa
+  redo_parallel::redo_task::get_not_applied_log_lsa ()
+  {
+    return m_not_applied_log_lsa.load ();
   }
 
   /*********************************************************************
    * redo_parallel - definition
    *********************************************************************/
 
-  redo_parallel::redo_parallel (unsigned a_task_count, minimum_log_lsa_monitor *a_minimum_log_lsa,
+  redo_parallel::redo_parallel (unsigned a_task_count, bool a_do_monitor_minimum_not_applied_log_lsa,
 				const log_rv_redo_context &copy_context)
     : m_task_count { a_task_count }
+    , m_do_monitor_minimum_log_lsa { a_do_monitor_minimum_not_applied_log_lsa }
     , m_worker_pool (nullptr)
     , m_waited_for_termination (false)
     , m_adding_finished { false }
+    , m_outer_not_applied_log_lsa { MAX_LSA }
+    , m_calculated_minimum_not_applied_log_lsa { MAX_LSA }
+    , m_terminate_minimum_not_applied_log_lsa_calculation { false }
   {
     assert (a_task_count > 0);
 
@@ -402,7 +377,15 @@ namespace cublog
     m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
 
     do_init_worker_pool (a_task_count);
-    do_init_tasks (a_task_count, copy_context);
+    do_init_tasks (a_task_count, a_do_monitor_minimum_not_applied_log_lsa, copy_context);
+
+    if (m_do_monitor_minimum_log_lsa)
+      {
+	m_calculate_minimum_not_applied_log_lsa_thread = std::thread
+	{
+	  std::bind (&redo_parallel::redo_parallel::calculate_and_save_minimum_not_applied_log_lsa, std::ref (*this))
+	};
+      }
   }
 
   redo_parallel::~redo_parallel ()
@@ -414,6 +397,11 @@ namespace cublog
       {
 	assert (redo_task->is_idle ());
       }
+
+    assert (m_calculate_minimum_not_applied_log_lsa_thread.joinable ());
+    m_terminate_minimum_not_applied_log_lsa_calculation = true;
+    m_calculate_minimum_not_applied_log_lsa_cv.notify_one ();
+    m_calculate_minimum_not_applied_log_lsa_thread.join ();
   }
 
   void
@@ -476,15 +464,16 @@ namespace cublog
   }
 
   void
-  redo_parallel::do_init_tasks (std::size_t a_task_count, const log_rv_redo_context &copy_context)
+  redo_parallel::do_init_tasks (std::size_t a_task_count, bool a_do_monitor_not_applied_log_lsa,
+				const log_rv_redo_context &copy_context)
   {
     assert (a_task_count > 0);
     assert (m_worker_pool != nullptr);
 
     for (unsigned task_idx = 0; task_idx < a_task_count; ++task_idx)
       {
-	auto task = std::make_unique<redo_parallel::redo_task> (
-			    task_idx, m_task_state_bookkeeping, copy_context, m_adding_finished);
+	auto task = std::make_unique<redo_parallel::redo_task> (task_idx, a_do_monitor_not_applied_log_lsa,
+		    m_task_state_bookkeeping, copy_context, m_adding_finished);
 	m_worker_pool->execute (task.get ());
 	m_redo_tasks.push_back (std::move (task));
       }
@@ -524,6 +513,105 @@ namespace cublog
 
     log_perf_stats_values_with_definition ("Log recovery redo worker threads averaged perf stats",
 					   definition, avg_perf_stat_results.data (), value_count);
+  }
+
+  void
+  redo_parallel::set_outer_not_applied_log_lsa (const log_lsa &a_log_lsa)
+  {
+    assert (m_do_monitor_minimum_log_lsa);
+
+    m_outer_not_applied_log_lsa.store (a_log_lsa);
+  }
+
+  log_lsa
+  redo_parallel::get_calculated_minimum_not_applied_log_lsa ()
+  {
+    std::scoped_lock<std::mutex> slock { m_calculate_minimum_not_applied_log_lsa_mtx };
+    return m_calculated_minimum_not_applied_log_lsa;
+  }
+
+  log_lsa
+  redo_parallel::wait_past_target_lsa (const log_lsa &a_target_lsa)
+  {
+    assert (m_do_monitor_minimum_log_lsa);
+    assert (a_target_lsa != MAX_LSA);
+    assert (a_target_lsa != NULL_LSA);
+
+    log_lsa calculated_minimum_not_applied_log_lsa { MAX_LSA };
+
+    {
+      // avoid gratuitously notifying the calculating internal thread if the condition is already satisfied
+      std::scoped_lock<std::mutex> slock { m_calculate_minimum_not_applied_log_lsa_mtx };
+      calculated_minimum_not_applied_log_lsa = m_calculated_minimum_not_applied_log_lsa;
+    }
+
+    if (calculated_minimum_not_applied_log_lsa <= a_target_lsa)
+      {
+	// there is only one thread doing this calculation
+	m_calculate_minimum_not_applied_log_lsa_cv.notify_one ();
+
+	{
+	  std::unique_lock<std::mutex> ulock { m_calculate_minimum_not_applied_log_lsa_mtx };
+	  m_calculate_minimum_not_applied_log_lsa_cv.wait (ulock,
+	      [this, &calculated_minimum_not_applied_log_lsa, &a_target_lsa] ()
+	  {
+	    calculated_minimum_not_applied_log_lsa = m_calculated_minimum_not_applied_log_lsa;
+	    assert (!m_adding_finished.load ());
+	    return (calculated_minimum_not_applied_log_lsa == MAX_LSA)
+		   || (calculated_minimum_not_applied_log_lsa >= a_target_lsa);
+	  });
+	}
+      }
+
+    return calculated_minimum_not_applied_log_lsa;
+  }
+
+  log_lsa
+  redo_parallel::calculate_minimum_log_lsa ()
+  {
+    assert (m_do_monitor_minimum_log_lsa);
+
+    log_lsa minimum_not_applied_log_lsa { m_outer_not_applied_log_lsa.load () };
+    for (auto &redo_task: m_redo_tasks)
+      {
+	const log_lsa minimum_task_log_lsa { redo_task->get_not_applied_log_lsa () };
+	if (minimum_task_log_lsa != MAX_LSA && minimum_task_log_lsa < minimum_not_applied_log_lsa)
+	  {
+	    minimum_not_applied_log_lsa = minimum_task_log_lsa;
+	  }
+      }
+
+    // - assert might be invalid due to the calculating thread which might kick pro-active
+    //    calculation before any client requests it
+    // - also, a MAX_LSA result might mean that all threads have finished processing jobs
+    //assert (minimum_not_applied_log_lsa != MAX_LSA);
+
+    return minimum_not_applied_log_lsa;
+  }
+
+  void
+  redo_parallel::calculate_and_save_minimum_not_applied_log_lsa ()
+  {
+    assert (m_do_monitor_minimum_log_lsa);
+
+    while (!m_terminate_minimum_not_applied_log_lsa_calculation)
+      {
+	// calculation happens outside lock to not hold waiting threads
+	const log_lsa calculated_minimum_not_applied_log_lsa = calculate_minimum_log_lsa ();
+	{
+	  std::scoped_lock<std::mutex> slock { m_calculate_minimum_not_applied_log_lsa_mtx };
+	  m_calculated_minimum_not_applied_log_lsa = calculated_minimum_not_applied_log_lsa;
+	}
+
+	// there might be more than one waiting thread
+	m_calculate_minimum_not_applied_log_lsa_cv.notify_all ();
+
+	{
+	  std::unique_lock<std::mutex> ulock { m_calculate_minimum_not_applied_log_lsa_mtx };
+	  // wait might be interrupted by an outside notify and this is expected
+	  m_calculate_minimum_not_applied_log_lsa_cv.wait_for (ulock, std::chrono::milliseconds (1000));
+	}
+      }
   }
 
   /*********************************************************************

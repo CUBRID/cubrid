@@ -111,7 +111,6 @@ namespace cublog
     assert (replication_parallel >= 0);
     if (replication_parallel > 0)
       {
-	m_minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
 	// no need to reset with start redo lsa
 
 	const bool force_each_log_page_fetch = true;
@@ -120,7 +119,7 @@ namespace cublog
 	m_reusable_jobs->initialize (recovery_reusable_jobs_count, replication_parallel,
 				     cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT);
 	m_parallel_replication_redo.reset (
-		new cublog::redo_parallel (replication_parallel, m_minimum_log_lsa.get (), m_redo_context));
+		new cublog::redo_parallel (replication_parallel, true, m_redo_context));
       }
 
     // Create the daemon
@@ -261,7 +260,7 @@ namespace cublog
 	}
 	if (m_parallel_replication_redo != nullptr)
 	  {
-	    m_minimum_log_lsa->set_for_outer (m_redo_lsa);
+	    m_parallel_replication_redo->set_outer_not_applied_log_lsa (m_redo_lsa);
 	  }
 
 	// to accurately track progress and avoid clients to wait for too long, notify each change
@@ -400,7 +399,7 @@ namespace cublog
     else
       {
 	// async
-	m_minimum_log_lsa->wait_past_target_lsa (a_target_lsa);
+	m_parallel_replication_redo->wait_past_target_lsa (a_target_lsa);
       }
   }
 

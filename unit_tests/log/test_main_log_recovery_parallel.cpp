@@ -29,6 +29,9 @@ struct log_recovery_test_config
   /* the number of redo jobs to generate */
   const size_t redo_job_count;
 
+  /* whether to wait progress past previous log_lsa  */
+  const bool wait_past_previous_log_lsa;
+
   /* useful in debugging to print helper messages/progress */
   bool verbose;
 };
@@ -64,18 +67,19 @@ void execute_test (const log_recovery_test_config &a_test_config,
 		<< "\t pages=" << a_database_config.max_page_count_per_volume
 		<< "\t parallel=" << a_test_config.parallel_count
 		<< "\t jobs=" << a_test_config.redo_job_count
+		<< "\t wait_past_previous_log_lsa=" << std::boolalpha << a_test_config.wait_past_previous_log_lsa
 		<< std::endl;
     }
 
   ux_ut_database db_online { new ut_database (a_database_config) };
   ux_ut_database db_recovery { new ut_database (a_database_config) };
 
-  cublog::minimum_log_lsa_monitor minimum_log_lsa;
   log_rv_redo_context dummy_redo_context (NULL_LSA, log_reader::fetch_mode::NORMAL);
 
-  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, &minimum_log_lsa, dummy_redo_context);
+  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, true, dummy_redo_context);
 
   ut_database_values_generator global_values{ a_database_config };
+  log_lsa previous_page_modification_log_lsa { MAX_LSA };
   for (size_t idx = 0u; idx < a_test_config.redo_job_count; ++idx)
     {
       ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
@@ -87,6 +91,17 @@ void execute_test (const log_recovery_test_config &a_test_config,
 	}
       else
 	{
+	  if (a_test_config.wait_past_previous_log_lsa)
+	    {
+	      // only if there actually was a previous page modification
+	      if (previous_page_modification_log_lsa != MAX_LSA)
+		{
+		  log_redo_parallel.wait_past_target_lsa (previous_page_modification_log_lsa);
+		}
+
+	      previous_page_modification_log_lsa = job->get_log_lsa ();
+	    }
+
 	  // ownership of released raw pointer goes to the callee
 	  log_redo_parallel.add (job.release ());
 	}
@@ -125,10 +140,11 @@ TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci]")
   srand (time (nullptr));
   initialize_thread_infrastructure ();
 
-  std::array<size_t, 1> volume_count_per_database_arr { 10u };
-  std::array<size_t, 1> page_count_per_volume_arr { _1k };
-  std::array<size_t, 2> job_count_arr { 0u, _64k };
-  std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
+  constexpr std::array<size_t, 1> volume_count_per_database_arr { 10u };
+  constexpr std::array<size_t, 1> page_count_per_volume_arr { _1k };
+  constexpr std::array<size_t, 2> job_count_arr { 0u, _64k };
+  const std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
+  constexpr std::array<bool, 2> wait_past_previous_log_lsa_arr { false, true };
   for (const size_t volume_count_per_database : volume_count_per_database_arr)
     {
       for (const size_t page_count_per_volume : page_count_per_volume_arr)
@@ -137,21 +153,25 @@ TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci]")
 	    {
 	      for (const size_t parallel_count : parallel_count_arr)
 		{
-		  const log_recovery_test_config test_config =
-		  {
-		    parallel_count, // parallel_count
-		    job_count, // redo_job_count
-		    false, // verbose
-		  };
+		  for (const bool wait_past_previous_log_lsa : wait_past_previous_log_lsa_arr)
+		    {
+		      const log_recovery_test_config test_config =
+		      {
+			parallel_count, // parallel_count
+			job_count, // redo_job_count
+			wait_past_previous_log_lsa, // wait_past_previous_log_lsa
+			false, // verbose
+		      };
 
-		  const ut_database_config database_config =
-		  {
-		    volume_count_per_database, // max_volume_count_per_database
-		    page_count_per_volume, // max_page_count_per_volume
-		    0., // max_duration_in_millis
-		  };
+		      const ut_database_config database_config =
+		      {
+			volume_count_per_database, // max_volume_count_per_database
+			page_count_per_volume, // max_page_count_per_volume
+			0., // max_duration_in_millis
+		      };
 
-		  execute_test (test_config, database_config);
+		      execute_test (test_config, database_config);
+		    }
 		}
 	    }
 	}
@@ -169,7 +189,8 @@ TEST_CASE ("log recovery parallel test: stress test", "[long]")
   constexpr std::array<size_t, 2> volume_count_per_database_arr { 1u, 10u };
   constexpr std::array<size_t, 2> page_count_per_volume_arr { _1k, _128k };
   constexpr std::array<size_t, 3> job_count_arr { 0u, _1k, _128k };
-  const std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
+  const std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency () };
+  constexpr std::array<bool, 2> wait_past_previous_log_lsa_arr { false, true };
   for (const size_t volume_count_per_database : volume_count_per_database_arr)
     {
       for (const size_t page_count_per_volume : page_count_per_volume_arr)
@@ -178,27 +199,32 @@ TEST_CASE ("log recovery parallel test: stress test", "[long]")
 	    {
 	      for (const size_t parallel_count : parallel_count_arr)
 		{
-		  const log_recovery_test_config test_config =
-		  {
-		    parallel_count, // std::thread::hardware_concurrency (), // parallel_count
-		    job_count, // redo_job_count
-		    false, // verbose
-		  };
+		  for (const bool wait_past_previous_log_lsa : wait_past_previous_log_lsa_arr)
+		    {
+		      const log_recovery_test_config test_config =
+		      {
+			parallel_count, // std::thread::hardware_concurrency (), // parallel_count
+			job_count, // redo_job_count
+			wait_past_previous_log_lsa, // wait_past_previous_log_lsa
+			false, // verbose
+		      };
 
-		  const ut_database_config database_config =
-		  {
-		    volume_count_per_database, // max_volume_count_per_database
-		    page_count_per_volume, // max_page_count_per_volume
-		    1.5, // max_duration_in_millis
-		  };
+		      const ut_database_config database_config =
+		      {
+			volume_count_per_database, // max_volume_count_per_database
+			page_count_per_volume, // max_page_count_per_volume
+			1.5, // max_duration_in_millis
+		      };
 
-		  execute_test (test_config, database_config);
+		      execute_test (test_config, database_config);
+		    }
 		}
 	    }
 	}
     }
 }
 
+/*
 TEST_CASE ("log recovery parallel test: idle status", "[ci]")
 {
   srand (time (nullptr));
@@ -213,14 +239,13 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
   ux_ut_database db_online { new ut_database (database_config) };
   ux_ut_database db_recovery { new ut_database (database_config) };
 
-  cublog::minimum_log_lsa_monitor minimum_log_lsa;
   log_rv_redo_context dummy_redo_context (NULL_LSA, log_reader::fetch_mode::NORMAL);
 
-  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), &minimum_log_lsa,
+  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), true,
       dummy_redo_context);
 
   //REQUIRE (log_redo_parallel.is_idle ());
-  REQUIRE (minimum_log_lsa.get () == MAX_LSA);
+  REQUIRE (log_redo_parallel.get_calculated_minimum_not_applied_log_lsa () == MAX_LSA);
 
   ut_database_values_generator global_values{ database_config };
 
@@ -245,9 +270,8 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
 
   // sleep here more than 'max_duration_in_millis' to invalidate test
   //REQUIRE_FALSE (log_redo_parallel.is_idle ());
-  REQUIRE_FALSE (minimum_log_lsa.get ().is_null ());
-  // FIXME: minimum log lsa is not yet working
-  //REQUIRE (minimum_log_lsa.get () == single_supplied_lsa);
+  REQUIRE_FALSE (log_redo_parallel.get_calculated_minimum_not_applied_log_lsa ().is_null ());
+  REQUIRE (log_redo_parallel.get_calculated_minimum_not_applied_log_lsa () == single_supplied_lsa);
 
   //log_redo_parallel.wait_for_idle ();
   //REQUIRE (log_redo_parallel.is_idle ());
@@ -258,7 +282,9 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
 
   db_online->require_equal (*db_recovery);
 }
+*/
 
+/*
 TEST_CASE ("minimum log lsa: simple test", "[ci]")
 {
   srand (time (nullptr));
@@ -272,8 +298,8 @@ TEST_CASE ("minimum log lsa: simple test", "[ci]")
 
   ut_database_values_generator values_generator{ database_config };
 
-  cublog::minimum_log_lsa_monitor min_log_lsa;
-  REQUIRE (min_log_lsa.get () == MAX_LSA);
+  //cublog::minimum_log_lsa_monitor min_log_lsa;
+  //REQUIRE (min_log_lsa.get () == MAX_LSA);
 
   // collect some lsa's in a vector
   std::vector<log_lsa> log_lsa_vec;
@@ -292,7 +318,7 @@ TEST_CASE ("minimum log lsa: simple test", "[ci]")
   {
     std::thread observing_thread ([&] ()
     {
-      const log_lsa min_lsa = min_log_lsa.wait_past_target_lsa (target_log_lsa);
+      const log_lsa min_lsa = MAX_LSA; // min_log_lsa.wait_past_target_lsa (target_log_lsa);
       REQUIRE (min_lsa != NULL_LSA);
       REQUIRE (min_lsa == MAX_LSA);
     });
@@ -303,19 +329,19 @@ TEST_CASE ("minimum log lsa: simple test", "[ci]")
   {
     // push one value such that we can launch a waiting thread
     // that will not return immediately
-    min_log_lsa.set_for_produce (*log_lsa_vec_it);
+    //min_log_lsa.set_for_produce (*log_lsa_vec_it);
     ++log_lsa_vec_it;
 
     std::thread observing_thread ([&] ()
     {
-      const log_lsa min_lsa = min_log_lsa.wait_past_target_lsa (target_log_lsa);
+      const log_lsa min_lsa = MAX_LSA; // min_log_lsa.wait_past_target_lsa (target_log_lsa);
       REQUIRE (min_lsa != NULL_LSA);
       REQUIRE (min_lsa != MAX_LSA);
     });
 
     for ( ; ; )
       {
-	min_log_lsa.set_for_produce (*log_lsa_vec_it);
+	//min_log_lsa.set_for_produce (*log_lsa_vec_it);
 	++log_lsa_vec_it;
 	if (log_lsa_vec_it == log_lsa_vec.cend ())
 	  {
@@ -323,24 +349,26 @@ TEST_CASE ("minimum log lsa: simple test", "[ci]")
 	  }
 
 	// leave in-progress untouched
-	min_log_lsa.set_for_consume_and_in_progress (*log_lsa_vec_it, MAX_LSA);
+	//min_log_lsa.set_for_consume_and_in_progress (*log_lsa_vec_it, MAX_LSA);
 	++log_lsa_vec_it;
 	if (log_lsa_vec_it == log_lsa_vec.cend ())
 	  {
 	    break;
 	  }
 
-	const auto current_min_lsa = min_log_lsa.get ();
+	const auto current_min_lsa = MAX_LSA; // min_log_lsa.get ();
 	REQUIRE (!current_min_lsa.is_null ());
 	REQUIRE (current_min_lsa != MAX_LSA);
       }
     observing_thread.join ();
-    REQUIRE (min_log_lsa.get () != NULL_LSA);
-    REQUIRE (min_log_lsa.get () > target_log_lsa);
-    REQUIRE (min_log_lsa.get () != MAX_LSA);
+    //REQUIRE (min_log_lsa.get () != NULL_LSA);
+    //REQUIRE (min_log_lsa.get () > target_log_lsa);
+    //REQUIRE (min_log_lsa.get () != MAX_LSA);
   }
 }
+*/
 
+/*
 TEST_CASE ("minimum log lsa: complete test", "[ci]")
 {
   constexpr int TASK_THREAD_COUNT = 42;
@@ -353,7 +381,7 @@ TEST_CASE ("minimum log lsa: complete test", "[ci]")
 
   using log_lsa_deque = std::deque<log_lsa>;
 
-  cublog::minimum_log_lsa_monitor min_log_lsa_monitor;
+  //cublog::minimum_log_lsa_monitor min_log_lsa_monitor;
 
   // some deques that mirror the 3 separate containers used in actual functioning: prod, cons, in-progress
   //
@@ -370,7 +398,7 @@ TEST_CASE ("minimum log lsa: complete test", "[ci]")
   //
   // seed with a first value
   log_lsa outer_lsa = global_values.increment_and_get_lsa_log ();
-  min_log_lsa_monitor.set_for_outer (outer_lsa);
+  //min_log_lsa_monitor.set_for_outer (outer_lsa);
   std::mutex outer_lsa_mtx;
 
   std::atomic_bool do_execute_test { true };
@@ -401,7 +429,7 @@ TEST_CASE ("minimum log lsa: complete test", "[ci]")
 		min_in_progress = in_progress_lsa_deq.empty () ? SENTINEL_LSA : in_progress_lsa_deq.front ();
 		min_outer = outer_lsa;
 
-		min_lsa_from_monitor = min_log_lsa_monitor.get ();
+		min_lsa_from_monitor = MAX_LSA; // min_log_lsa_monitor.get ();
 	      }
 	    }
 	  }
@@ -437,12 +465,12 @@ TEST_CASE ("minimum log lsa: complete test", "[ci]")
 
 	    if (produce_lsa_deq.empty ())
 	      {
-		min_log_lsa_monitor.set_for_produce (outer_lsa);
+		//min_log_lsa_monitor.set_for_produce (outer_lsa);
 	      }
 	    produce_lsa_deq.push_back (outer_lsa);
 
 	    outer_lsa = new_lsa;
-	    min_log_lsa_monitor.set_for_outer (new_lsa);
+	    //min_log_lsa_monitor.set_for_outer (new_lsa);
 	  }
 	}
 
@@ -470,7 +498,7 @@ TEST_CASE ("minimum log lsa: complete test", "[ci]")
 						  ? SENTINEL_LSA : produce_lsa_deq.front ();
 		  const log_lsa min_consume_lsa = consume_lsa_deq.empty ()
 						  ? SENTINEL_LSA : consume_lsa_deq.front ();
-		  min_log_lsa_monitor.set_for_produce_and_consume (min_produce_lsa, min_consume_lsa);
+		  //min_log_lsa_monitor.set_for_produce_and_consume (min_produce_lsa, min_consume_lsa);
 
 		}
 	    }
@@ -490,7 +518,7 @@ TEST_CASE ("minimum log lsa: complete test", "[ci]")
 		    const log_lsa min_consume_lsa = consume_lsa_deq.empty ()
 						    ? SENTINEL_LSA : consume_lsa_deq.front ();
 		    const log_lsa min_in_progress_lsa = in_progress_lsa_deq.front ();
-		    min_log_lsa_monitor.set_for_consume_and_in_progress (min_consume_lsa, min_in_progress_lsa);
+		    //min_log_lsa_monitor.set_for_consume_and_in_progress (min_consume_lsa, min_in_progress_lsa);
 		  }
 		}
 	    }
@@ -505,7 +533,7 @@ TEST_CASE ("minimum log lsa: complete test", "[ci]")
 		  in_progress_lsa_deq.pop_front ();
 		  const log_lsa min_in_progress_lsa = in_progress_lsa_deq.empty ()
 						      ? SENTINEL_LSA : in_progress_lsa_deq.front ();
-		  min_log_lsa_monitor.set_for_in_progress (min_in_progress_lsa);
+		  //min_log_lsa_monitor.set_for_in_progress (min_in_progress_lsa);
 		}
 	    }
 	    std::this_thread::yield ();
@@ -530,3 +558,4 @@ TEST_CASE ("minimum log lsa: complete test", "[ci]")
   do_execute_test_check.store (false);
   checking_thread.join ();
 }
+*/
