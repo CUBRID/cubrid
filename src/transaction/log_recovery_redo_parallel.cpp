@@ -325,6 +325,8 @@ namespace cublog
   inline void
   redo_parallel::redo_task::set_not_applied_log_lsa_from_push_side (const log_lsa &a_log_lsa)
   {
+    assert (m_do_monitor_not_applied_log_lsa);
+
     {
       const log_lsa snapshot_not_applied_log_lsa { m_not_applied_log_lsa.load () };
       // strict comparison because jobs have ever-increasing log_lsa's
@@ -339,6 +341,8 @@ namespace cublog
   inline void
   redo_parallel::redo_task::set_not_applied_log_lsa_from_pop_side (const log_lsa &a_log_lsa)
   {
+    assert (m_do_monitor_not_applied_log_lsa);
+
     log_lsa expected_log_lsa;
     do
       {
@@ -353,6 +357,8 @@ namespace cublog
   inline log_lsa
   redo_parallel::redo_task::get_not_applied_log_lsa ()
   {
+    assert (m_do_monitor_not_applied_log_lsa);
+
     return m_not_applied_log_lsa.load ();
   }
 
@@ -398,10 +404,18 @@ namespace cublog
 	assert (redo_task->is_idle ());
       }
 
-    assert (m_calculate_minimum_not_applied_log_lsa_thread.joinable ());
-    m_terminate_minimum_not_applied_log_lsa_calculation = true;
-    m_calculate_minimum_not_applied_log_lsa_cv.notify_one ();
-    m_calculate_minimum_not_applied_log_lsa_thread.join ();
+    if (m_do_monitor_minimum_log_lsa)
+      {
+	assert (m_calculate_minimum_not_applied_log_lsa_thread.joinable ());
+	m_terminate_minimum_not_applied_log_lsa_calculation = true;
+	m_calculate_minimum_not_applied_log_lsa_cv.notify_one ();
+	m_calculate_minimum_not_applied_log_lsa_thread.join ();
+      }
+    else
+      {
+	assert (!m_calculate_minimum_not_applied_log_lsa_thread.joinable ());
+	assert (m_calculated_minimum_not_applied_log_lsa == MAX_LSA);
+      }
   }
 
   void
@@ -526,6 +540,8 @@ namespace cublog
   log_lsa
   redo_parallel::get_calculated_minimum_not_applied_log_lsa ()
   {
+    assert (m_do_monitor_minimum_log_lsa);
+
     std::scoped_lock<std::mutex> slock { m_calculate_minimum_not_applied_log_lsa_mtx };
     return m_calculated_minimum_not_applied_log_lsa;
   }
