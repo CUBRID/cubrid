@@ -9729,6 +9729,11 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
       return node;
     }
 
+  if (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_CORRELATED_COL))
+    {
+      return node;
+    }
+
   for (; groupby_p; groupby_p = groupby_p->next)
     {
       if (!(PT_IS_SORT_SPEC_NODE (groupby_p) && PT_IS_NAME_NODE (groupby_p->info.sort_spec.expr)))
