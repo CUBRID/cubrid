@@ -2727,7 +2727,7 @@ create_stmt
 	| CREATE 					/* 1 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_TRIGGER); }	/* 2 */
 	  TRIGGER 					/* 3 */
-	  identifier_without_dot 			/* 4 */
+	  identifier_without_dot			/* 4 */
 	  opt_status					/* 5 */
 	  opt_priority					/* 6 */
 	  trigger_time 					/* 7 */
@@ -3273,11 +3273,11 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER
-	  TRIGGER
-	  identifier_list
-	  trigger_status_or_priority_or_change_owner
-	  opt_comment_spec					/* 5 */
+	| ALTER						/* 1 */
+	  TRIGGER					/* 2 */
+	  identifier_list				/* 3 */
+	  trigger_status_or_priority_or_change_owner	/* 4 */
+	  opt_comment_spec				/* 5 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_TRIGGER);
@@ -3303,8 +3303,8 @@ alter_stmt
 		DBG_PRINT}}
 	| ALTER						/* 1 */
 	  TRIGGER					/* 2 */
-	  identifier				/* 3 */
-	  COMMENT comment_value		/* 4, 5 */
+	  identifier_without_dot			/* 3 */
+	  COMMENT comment_value				/* 4, 5 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_TRIGGER);
@@ -3325,11 +3325,11 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER                                /* 1 */
-	  SERIAL                               /* 2 */
-	  identifier                           /* 3 */
-	  opt_serial_option_list	       	   /* 4 */
-	  opt_comment_spec				       /* 5 */
+	| ALTER						/* 1 */
+	  SERIAL					/* 2 */
+	  identifier_without_dot			/* 3 */
+	  opt_serial_option_list			/* 4 */
+	  opt_comment_spec				/* 5 */
 		{{
 			/* container order
 			 * 0: start_val
@@ -8764,9 +8764,10 @@ opt_constraint_id
 			$$ = NULL;
 
 		DBG_PRINT}}
-	| CONSTRAINT identifier
+	| CONSTRAINT identifier_without_dot
 		{{
 
+			printf ("opt_constraint_id CONSTRAINT identifier_without_dot");
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -9685,7 +9686,7 @@ attr_constraint_def
 
 attr_index_def
 	: index_or_key              /* 1 */
-	  identifier                /* 2 */
+	  identifier_without_dot    /* 2 */
 	  index_column_name_list    /* 3 */
 	  opt_where_clause          /* 4 */
 	  opt_comment_spec          /* 5 */
@@ -21402,7 +21403,7 @@ identifier_without_dot
 			  }
 			
 			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;
