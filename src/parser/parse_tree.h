@@ -849,6 +849,8 @@ enum pt_node_type
 
   PT_CREATE_SERVER = CUBRID_STMT_CREATE_SERVER,
   PT_DROP_SERVER = CUBRID_STMT_DROP_SERVER,
+  PT_RENAME_SERVER = CUBRID_STMT_RENAME_SERVER,
+  PT_ALTER_SERVER = CUBRID_STMT_ALTER_SERVER,
 
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be distinct from statements */
   PT_INTERSECTION,		/* difference intersection and union are reported as CUBRID_STMT_SELECT. */
@@ -3293,13 +3295,41 @@ typedef struct pt_create_server_info
   PT_NODE *comment;
 } PT_CREATE_SERVER_INFO;
 
+typedef struct pt_alter_server_info
+{
+  PT_NODE *server_name;
+  PT_NODE *host;
+  PT_NODE *port;
+  PT_NODE *dbname;
+  PT_NODE *user;
+  PT_NODE *pwd;
+  PT_NODE *prop;
+  PT_NODE *comment;
+  PT_NODE *owner_name;
+  struct
+  {
+    unsigned int bit_host:1;
+    unsigned int bit_port:1;
+    unsigned int bit_dbname:1;
+    unsigned int bit_user:1;
+    unsigned int bit_pwd:1;
+    unsigned int bit_prop:1;
+    unsigned int bit_comment:1;
+    unsigned int bit_owner:1;
+  } xbits;
+} PT_ALTER_SERVER_INFO;
+
 typedef struct pt_drop_server_info
 {
   bool if_exists;		/* IF EXISTS clause for DROP SERVER */
   PT_NODE *server_name;		/* name */
 } PT_DROP_SERVER_INFO;
 
-
+typedef struct pt_rename_server_info
+{
+  PT_NODE *old_name;		/* PT_NAME */
+  PT_NODE *new_name;		/* PT_NAME */
+} PT_RENAME_SERVER_INFO;
 
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
@@ -3313,6 +3343,7 @@ union pt_statement_info
   PT_ALTER_INFO alter;
   PT_ALTER_TRIGGER_INFO alter_trigger;
   PT_ALTER_USER_INFO alter_user;
+  PT_ALTER_SERVER_INFO alter_server;
   PT_ATTACH_INFO attach;
   PT_ATTR_DEF_INFO attr_def;
   PT_ATTR_ORDERING_INFO attr_ordering;
@@ -3373,6 +3404,7 @@ union pt_statement_info
   PT_QUERY_INFO query;
   PT_REMOVE_TRIGGER_INFO remove_trigger;
   PT_RENAME_INFO rename;
+  PT_RENAME_SERVER_INFO rename_server;
   PT_RENAME_TRIGGER_INFO rename_trigger;
   PT_RESOLUTION_INFO resolution;
   PT_REVOKE_INFO revoke;
