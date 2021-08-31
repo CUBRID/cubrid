@@ -29,10 +29,11 @@
 namespace cubcomm
 {
 
-  server_channel::server_channel (const char *server_name, int max_timeout_in_ms)
+  server_channel::server_channel (const char *server_name, SERVER_TYPE server_type, int max_timeout_in_ms)
     : channel (max_timeout_in_ms),
       m_server_name (server_name)
   {
+    m_server_type = server_type;
     assert (server_name != NULL);
   }
 
@@ -54,6 +55,7 @@ namespace cubcomm
   {
     unsigned short m_request_id;
     css_error_code rc = NO_ERRORS;
+    std::string msg;
 
     er_log_debug (ARG_FILE_LINE, "connecting to %s, port:%d\n", hostname, port);
 
@@ -77,8 +79,15 @@ namespace cubcomm
 		  " server_name_size:%zu\n",
 		  cmd_type, hostname, port, m_server_name.c_str (), m_server_name.size ());
 
+    /*
+     * The packing of the server name and type is done by setting the first
+     * character to the numer related to the server type enum value, the rest of the
+     * buffer space is used to copy the server name.
+     */
+    msg = (char) (m_server_type + '0');
+    msg.append (m_server_name, m_server_name.length ());
     rc = (css_error_code) css_send_request_with_socket (m_socket, cmd_type, &m_request_id,
-	 m_server_name.c_str (), static_cast<int> (m_server_name.size ()));
+	 msg.c_str (), static_cast<int> (msg.size ()));
     if (rc != NO_ERRORS)
       {
 	/* if error, css_send_request should have closed the connection */

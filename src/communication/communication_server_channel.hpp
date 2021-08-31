@@ -24,6 +24,7 @@
 #define _COMMUNICATION_SERVER_CHANNEL_HPP_
 
 #include "communication_channel.hpp"
+#include "server_type_enum.hpp"
 
 #include <string>
 
@@ -37,7 +38,7 @@ namespace cubcomm
   class server_channel : public channel
   {
     public:
-      server_channel (const char *server_name, int max_timeout_in_ms = -1);
+      server_channel (const char *server_name, SERVER_TYPE server_type, int max_timeout_in_ms = -1);
       ~server_channel () = default;
 
       server_channel (const server_channel &) = delete;
@@ -50,6 +51,7 @@ namespace cubcomm
 
     private:
       std::string m_server_name;
+      SERVER_TYPE m_server_type;
   };
 
 }; /* cubcomm namepace */

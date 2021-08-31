@@ -232,7 +232,7 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
 
   // connect to page server
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
-  cubcomm::server_channel srv_chn (db_name, CHANNEL_POLL_TIMEOUT);
+  cubcomm::server_channel srv_chn (db_name, SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
 
   srv_chn.set_channel_name ("ATS_PS_comm");
 

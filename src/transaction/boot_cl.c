@@ -1704,7 +1704,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	}
 
       er_log_debug (ARG_FILE_LINE, "trying to connect '%s@%s'\n", db->name, hostlist[n]);
-      error = net_client_init (db->name, hostlist[n]);
+      error = net_client_init (db->name, hostlist[n], get_conn_server_type ());
       if (error != NO_ERROR)
 	{
 	  if (error == ERR_CSS_TCP_CONNECT_TIMEDOUT)

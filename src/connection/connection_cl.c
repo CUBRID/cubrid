@@ -106,7 +106,7 @@ static int css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header);
 static CSS_CONN_ENTRY *css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
 					   const char *server_name, int server_name_length, int port, int timeout,
 					   unsigned short *rid, bool send_magic);
-static CSS_CONN_ENTRY *css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name,
+static CSS_CONN_ENTRY *css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *server_name,
 					   unsigned short *rid);
 static CSS_CONN_ENTRY *css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id,
 						    unsigned short *rid);
@@ -773,7 +773,7 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_ty
  *   rid(out):
  */
 static CSS_CONN_ENTRY *
-css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, unsigned short *rid)
+css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *server_name, unsigned short *rid)
 {
   int length;
 
@@ -1004,7 +1004,7 @@ fail_end:
  *   server_name(in):
  */
 CSS_CONN_ENTRY *
-css_connect_to_cubrid_server (char *host_name, char *server_name)
+css_connect_to_cubrid_server (char *host_name, char *server_name, SERVER_TYPE server_type)
 {
   CSS_CONN_ENTRY *conn;
   CSS_QUEUE_ENTRY *buffer_q_entry_p;
@@ -1018,6 +1018,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
   char *error_area;
   int error_length;
   int timeout = -1;
+  std::string msg;
 
   conn = css_make_conn (-1);
   if (conn == NULL)
@@ -1027,8 +1028,15 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 
   timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
 
+  /*
+   * The packing of the server name and type is done by setting the first
+   * character to the numer related to the server type enum value, the rest of the
+   * buffer space is used to copy the server name.
+   */
+  msg = (char) (server_type + '0');
+  msg.append (server_name, strlen (server_name));
   retry_count = 0;
-  if (css_server_connect (host_name, conn, server_name, &rid) == NULL)
+  if (css_server_connect (host_name, conn, msg.c_str (), &rid) == NULL)
     {
       goto exit;
     }
