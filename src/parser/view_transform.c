@@ -43,7 +43,7 @@
 #define MAX_STACK_OBJECTS 500
 
 #define PT_PUSHABLE_TERM(p) \
-  ((p)->out.pushable)
+  ((p)->out.pushable && (p)->out.found && !(p)->out.others_found)
 
 #define MAX_CYCLE 300
 
@@ -2939,7 +2939,7 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
     case PT_NAME:
       spec = infop->in.spec;
       /* match specified spec */
-      if (node->info.name.spec_id == spec->info.spec.id)
+      if (!PT_IS_OID_NAME (node) && node->info.name.spec_id == spec->info.spec.id)
 	{
 	  infop->out.found = true;
 	  /* check for subquery, method: does not pushable if we find subquery, method in corresponding item in
@@ -3047,6 +3047,7 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 static bool
 pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop)
 {
+  bool is_correlated_with_agg = false;
   /* init output section */
   infop->out.found = false;
   infop->out.others_found = false;
@@ -3055,7 +3056,15 @@ pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * 
 
   parser_walk_leaves (parser, term, pt_find_only_name_id, infop, NULL, NULL);
 
-  return infop->out.found && !infop->out.others_found && PT_PUSHABLE_TERM (infop);
+  if (infop->out.correlated_found && pt_has_aggregate (parser, infop->in.subquery))
+    {
+      /* When a correlated term is pushed to a subquery that includes an aggregate function, */
+      /* group_by processing can be repeatedly performed. */
+      /* This may cause performance degradation. In this case, copypush is not performed. */
+      is_correlated_with_agg = true;
+    }
+
+  return PT_PUSHABLE_TERM (infop) && !is_correlated_with_agg;
 }
 
 /*
@@ -3146,7 +3155,8 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
  *  - nullable-term of outer join spec
  *  - query in predicate(term)
  *  - method in predicate(term)
- *  - correlated column in predicate(term) => ?
+ *  - correlated column with aggregation in predicate(term)
+ *  - OID column
  *
  * 4. select_list of subquery which is matched to term check
  *  - query in subquery_select_list
