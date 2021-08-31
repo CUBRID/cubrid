@@ -8767,7 +8767,6 @@ opt_constraint_id
 	| CONSTRAINT identifier_without_dot
 		{{
 
-			printf ("opt_constraint_id CONSTRAINT identifier_without_dot");
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -21386,15 +21385,15 @@ simple_path_id_list
 identifier_without_dot
 	: identifier
 		{{
-
+		
 			PT_NODE *p = $1;
-
+			
 			if (p)
 			  {
-      			    const char *name = p->info.name.original;
-
+			    const char *name = p->info.name.original;
+			
 			    /* Check if it contains DOT(.) */
-      			    if (name != NULL && strchr (name, '.') != NULL)
+			    if (name != NULL && strchr (name, '.') != NULL)
 			      {
 				PT_ERRORf (this_parser, p,
 					   "Identifier name %s not allowed. It cannot contain DOT(.).",
@@ -21404,7 +21403,7 @@ identifier_without_dot
 			
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
+			
 		DBG_PRINT}}
 	;
 
