@@ -9729,7 +9729,7 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
       return node;
     }
 
-  if (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_CORRELATED_COL))
+  if (node->info.name.correlation_level != 0)
     {
       return node;
     }

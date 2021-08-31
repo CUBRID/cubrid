@@ -2996,9 +2996,6 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	    {
 	      /* is correlated other spec */
 	      infop->out.correlated_found = true;
-
-	      /* TO_DO : move it to pt_resolve_names () */
-	      PT_NAME_INFO_SET_FLAG (node, PT_NAME_CORRELATED_COL);
 	    }
 	}
       break;
