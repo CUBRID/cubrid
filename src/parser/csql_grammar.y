@@ -1066,6 +1066,7 @@ int g_original_buffer_len;
 %type <node> json_table_column_rule
 %type <node> json_table_column_list_rule
 
+%type <node> dblink_server_name
 %type <node> dblink_expr
 %type <node> dblink_conn
 %type <node> dblink_conn_str
@@ -3130,7 +3131,7 @@ create_stmt
 
 		DBG_PRINT}}
 
-	| CREATE SERVER identifier '(' connect_info ')'
+	| CREATE SERVER dblink_server_name '(' connect_info ')'
 		{{
                         PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SERVER);
 			if (node)
@@ -3151,14 +3152,12 @@ create_stmt
                                 si->port = CONTAINER_AT_1($5);
                                 si->dbname = CONTAINER_AT_2($5);
                                 si->user = CONTAINER_AT_3($5);
-                                if( !si->host || !si->port || !si->dbname || !si->user )
+                                si->pwd = CONTAINER_AT_4($5);
+                                if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
                                   { 
                                       PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
                                   }
-
-                                si->pwd = CONTAINER_AT_4($5);
-                                assert(si->pwd); 
                                 si->prop = CONTAINER_AT_5($5);
                                 si->comment = CONTAINER_AT_6($5);
 			  }
@@ -3892,7 +3891,7 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER  SERVER  identifier alter_server_list
+	| ALTER  SERVER  dblink_server_name alter_server_list
                 {{
                         PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERVER);
 			if (node)
@@ -4064,7 +4063,7 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME SERVER identifier AS identifier
+	| RENAME SERVER dblink_server_name AS dblink_server_name
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SERVER);
 			if (node)
@@ -4375,7 +4374,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP SERVER opt_if_exists identifier
+	| DROP SERVER opt_if_exists dblink_server_name
 		{{
                         PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERVER);
 
@@ -25162,7 +25161,20 @@ alter_server_item
 	        $$ = $2;
            DBG_PRINT}}
         ;
-                
+
+dblink_server_name
+	: identifier
+          {{
+              if (strchr($1->info.name.original, '.')) 
+                {// TODO: error handling                  
+                  PT_ERRORm (this_parser, $1, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_SERVER_NAME);                  
+                }
+
+              $$ = $1;
+              PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+          DBG_PRINT}}
+        ;
+
 
 dblink_expr
         :   dblink_conn  ','  CHAR_STRING  
@@ -28589,7 +28601,8 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
     ctn->c10 = FROM_NUMBER(set_bits);
 }
 
-static bool pt_ct_check_select (char* p, char *perr_msg)
+static bool 
+pt_ct_check_select (char* p, char *perr_msg)
 {  
    perr_msg[0] = 0x00;
    while (*p == ' ' || *p == '(' || *p == '\t' || *p == '\r' || *p == '\n')
