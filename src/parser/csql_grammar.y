@@ -764,6 +764,7 @@ int g_original_buffer_len;
 %type <node> identifier_list
 %type <node> opt_bracketed_identifier_list
 %type <node> index_column_identifier_list
+%type <node> identifier_without_dot
 %type <node> identifier
 %type <node> index_column_identifier
 %type <node> string_literal_or_input_hv
@@ -2468,8 +2469,6 @@ create_stmt
 			  {
 			    qc->info.create_entity.if_not_exists = $5;
 			    qc->info.create_entity.entity_name = $6;
-			    pt_check_contain_dot (this_parser, qc->info.create_entity.entity_name);
-
 			    qc->info.create_entity.entity_type = (PT_MISC_TYPE) $4;
 			    qc->info.create_entity.supclass_list = $7;
 			    qc->info.create_entity.class_attr_def_list = $8;
@@ -2513,8 +2512,6 @@ create_stmt
 			    qc->info.create_entity.or_replace = $2;
 
 			    qc->info.create_entity.entity_name = $4;
-			    pt_check_contain_dot (this_parser, qc->info.create_entity.entity_name);
-
 			    qc->info.create_entity.entity_type = PT_VCLASS;
 
 			    qc->info.create_entity.supclass_list = $5;
@@ -2546,7 +2543,7 @@ create_stmt
 	  opt_unique					/* 5 */
 	  INDEX						/* 6 */
 		{ pop_msg(); }  			/* 7 */
-	  identifier				        /* 8 */
+	  identifier_without_dot			/* 8 */
 	  ON_						/* 9 */
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
@@ -2589,8 +2586,6 @@ create_stmt
 			    node->info.index.reverse = $4;
 			    node->info.index.unique = $5;
 			    node->info.index.index_name = $8;
-			    pt_check_contain_dot (this_parser, node->info.index.index_name);
-
 			    if (node->info.index.index_name != NULL)
 			      {
 				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
@@ -2706,7 +2701,7 @@ create_stmt
 	| CREATE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_USER); }
 	  USER
-	  identifier
+	  identifier_without_dot
 	  opt_password
 	  opt_groups
 	  opt_members
@@ -2719,8 +2714,6 @@ create_stmt
 			if (node)
 			  {
 			    node->info.create_user.user_name = $4;
-			    pt_check_contain_dot (this_parser, node->info.create_user.user_name);
-
 			    node->info.create_user.password = $5;
 			    node->info.create_user.groups = $6;
 			    node->info.create_user.members = $7;
@@ -2734,7 +2727,7 @@ create_stmt
 	| CREATE 					/* 1 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_TRIGGER); }	/* 2 */
 	  TRIGGER 					/* 3 */
-	  identifier 					/* 4 */
+	  identifier_without_dot 			/* 4 */
 	  opt_status					/* 5 */
 	  opt_priority					/* 6 */
 	  trigger_time 					/* 7 */
@@ -2752,8 +2745,6 @@ create_stmt
 			if (node)
 			  {
 			    node->info.create_trigger.trigger_name = $4;
-			    pt_check_contain_dot (this_parser, node->info.create_trigger.trigger_name);
-
 			    node->info.create_trigger.trigger_status = $5;
 			    node->info.create_trigger.trigger_priority = $6;
 			    node->info.create_trigger.condition_time = $7;
@@ -2773,7 +2764,7 @@ create_stmt
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); }	/* 2 */
 	  SERIAL 					/* 3 */
 		{ pop_msg(); }				/* 4 */
-	  identifier 					/* 5 */
+	  identifier_without_dot			/* 5 */
 	  opt_serial_option_list			/* 6 */
 	  opt_comment_spec				/* 7 */
 		{{
@@ -2783,7 +2774,6 @@ create_stmt
 			if (node)
 			  {
 			    node->info.serial.serial_name = $5;
-			    pt_check_contain_dot (this_parser, node->info.serial.serial_name);
 
 			    /* container order
 			     * 0: start_val
@@ -2815,14 +2805,14 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CREATE						/* 1 */
-	  opt_or_replace                /* 2 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }		/* 3 */
-	  PROCEDURE						/* 4 */
-	  identifier '(' opt_sp_param_list  ')'			/* 5, 6, 7, 8 */
-	  opt_of_is_as LANGUAGE JAVA				/* 9, 10, 11 */
-	  NAME char_string_literal				/* 12, 13 */
-	  opt_comment_spec						/* 14 */
+	| CREATE					/* 1 */
+	  opt_or_replace                		/* 2 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }	/* 3 */
+	  PROCEDURE					/* 4 */
+	  identifier_without_dot '(' opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
+	  opt_of_is_as LANGUAGE JAVA			/* 9, 10, 11 */
+	  NAME char_string_literal			/* 12, 13 */
+	  opt_comment_spec				/* 14 */
 		{ pop_msg(); }
 		{{
 
@@ -2831,8 +2821,6 @@ create_stmt
 			  {
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
-			    pt_check_contain_dot (this_parser, node->info.sp.name);
-
 			    node->info.sp.type = PT_SP_PROCEDURE;
 			    node->info.sp.param_list = $7;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
@@ -2844,15 +2832,15 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CREATE                        /* 1 */
-	  opt_or_replace                /* 2 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }		/* 3 */
-	  FUNCTION						/* 4 */
-	  identifier '('  opt_sp_param_list  ')'			/* 5, 6, 7, 8 */
-	  RETURN opt_of_data_type_cursor				/* 9, 10 */
-	  opt_of_is_as LANGUAGE JAVA					/* 11, 12, 13 */
-	  NAME char_string_literal						/* 14, 15 */
-	  opt_comment_spec								/* 16 */
+	| CREATE                        		/* 1 */
+	  opt_or_replace                		/* 2 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }	/* 3 */
+	  FUNCTION					/* 4 */
+	  identifier_without_dot '('  opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
+	  RETURN opt_of_data_type_cursor		/* 9, 10 */
+	  opt_of_is_as LANGUAGE JAVA			/* 11, 12, 13 */
+	  NAME char_string_literal			/* 14, 15 */
+	  opt_comment_spec				/* 16 */
 		{ pop_msg(); }
 		{{
 
@@ -2861,8 +2849,6 @@ create_stmt
 			  {
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
-			    pt_check_contain_dot (this_parser, node->info.sp.name);
-
 			    node->info.sp.type = PT_SP_FUNCTION;
 			    node->info.sp.param_list = $7;
 			    node->info.sp.ret_type = $10;
@@ -2900,8 +2886,6 @@ create_stmt
 			  {
 			    qc->info.create_entity.if_not_exists = $5;
 			    qc->info.create_entity.entity_name = $6;
-			    pt_check_contain_dot (this_parser, qc->info.create_entity.entity_name);
-			    
 			    qc->info.create_entity.entity_type = PT_CLASS;
 			    qc->info.create_entity.create_like = $8;
 			  }
@@ -2931,8 +2915,6 @@ create_stmt
 			  {
 			    qc->info.create_entity.if_not_exists = $5;
 			    qc->info.create_entity.entity_name = $6;
-			    pt_check_contain_dot (this_parser, qc->info.create_entity.entity_name);
-
 			    qc->info.create_entity.entity_type = PT_CLASS;
 			    qc->info.create_entity.create_like = $9;
 			  }
@@ -3738,7 +3720,6 @@ rename_stmt
 			  {
 			    node->info.rename_trigger.old_name = $3;
 			    node->info.rename_trigger.new_name = $5;
-			    pt_check_contain_dot (this_parser, node->info.rename_trigger.new_name);   
 			  }
 
 			$$ = node;
@@ -3773,8 +3754,6 @@ rename_class_pair
 			  {
 			    node->info.rename.old_name = $1;
 			    node->info.rename.new_name = $3;
-			    pt_check_contain_dot (this_parser, node->info.rename.new_name);
-
 			    node->info.rename.entity_type = PT_CLASS;
 			  }
 
@@ -4961,7 +4940,7 @@ only_all_class_spec
 	;
 
 class_name
-	: identifier DOT identifier
+	: identifier_without_dot DOT identifier_without_dot
 		{{
 
 			PT_NODE *user_node = $1;
@@ -4981,7 +4960,7 @@ class_name
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| identifier
+	| identifier_without_dot
 		{{
 
 			$$ = $1;
@@ -5381,7 +5360,7 @@ opt_identifier
 			$$ = NULL;
 
 		DBG_PRINT}}
-	| identifier
+	| identifier_without_dot
 		{{
 
 			$$ = $1;
@@ -8892,8 +8871,6 @@ unique_constraint
 			  {
 			    node->info.constraint.type = PT_CONSTRAIN_PRIMARY_KEY;
 			    node->info.constraint.name = $3;
-			    pt_check_contain_dot (this_parser, node->info.constraint.name);
-
 			    node->info.constraint.un.unique.attrs = $5;
 			  }
 
@@ -8933,8 +8910,6 @@ unique_constraint
 			      {
 				node->info.constraint.type = PT_CONSTRAIN_UNIQUE;
 				node->info.constraint.name = $3;
-				pt_check_contain_dot (this_parser, node->info.constraint.name);
-
 				node->info.constraint.un.unique.attrs = name_cols;
 			      }
 			    parser_free_tree (this_parser, sort_spec_cols);
@@ -8957,8 +8932,6 @@ unique_constraint
 				if (node)
 				  {
 				    node->info.index.index_name = $3;
-				    pt_check_contain_dot (this_parser, node->info.index.index_name);
-
 				    if (node->info.index.index_name != NULL)
 				      {
 					node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
@@ -8993,8 +8966,6 @@ foreign_key_constraint
 			if (node)
 			  {
 			    node->info.constraint.name = $3;
-			    pt_check_contain_dot (this_parser, node->info.constraint.name);
-
 			    node->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
@@ -21407,6 +21378,31 @@ simple_path_id_list
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+identifier_without_dot
+	: identifier
+		{{
+
+			PT_NODE *p = $1;
+
+			if (p)
+			  {
+      			    const char *name = p->info.name.original;
+
+			    /* Check if it contains DOT(.) */
+      			    if (name != NULL && strchr (name, '.') != NULL)
+			      {
+				PT_ERRORf (parser, p,
+					   "Identifier name %s not allowed. It cannot contain DOT(.).",
+					   name);
+			      }
+			  }
+			
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;
