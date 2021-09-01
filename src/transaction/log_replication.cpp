@@ -298,7 +298,7 @@ namespace cublog
     VPID root_vpid = { btid.root_pageid, btid.vfid.volid };
 
     // Create a job or apply the change immediately
-    if (m_parallel_replication_redo)
+    if (m_parallel_replication_redo != nullptr)
       {
 	redo_job_btree_stats *job = new redo_job_btree_stats (root_vpid, record_info.m_start_lsa, stats);
 	// ownership of raw pointer remains with the job instance which will delete itself upon retire
