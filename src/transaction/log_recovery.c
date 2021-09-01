@@ -1016,8 +1016,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     assert (log_recovery_redo_parallel_count >= 0);
     if (log_recovery_redo_parallel_count > 0)
       {
-	const int recovery_reusable_jobs_count = prm_get_integer_value (PRM_ID_RECOVERY_REUSABLE_JOBS_COUNT);
-	reusable_jobs.initialize (recovery_reusable_jobs_count, log_recovery_redo_parallel_count);
+	reusable_jobs.initialize (log_recovery_redo_parallel_count);
 	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false,
 								 redo_context));
       }
@@ -1627,7 +1626,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_WAIT_FOR_PARALLEL);
       }
     const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
-    const int recovery_reusable_jobs_count = prm_get_integer_value (PRM_ID_RECOVERY_REUSABLE_JOBS_COUNT);
     /* 'async' measures the time taken by the main thread to execute sync log records, dispatch async ones
      * and wait for the async infrastructure to finish */
     const auto time_dur_async_ms = std::chrono::duration_cast <std::chrono::milliseconds> (
@@ -1635,7 +1633,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     _er_log_debug (ARG_FILE_LINE,
 		   "log_recovery_redo_perf:  parallel_count=%2d  reusable_jobs_count=%6d  flush_back_count=%4d\n"
 		   "log_recovery_redo_perf:  setting_up=%6lld  main=%6lld  async=%6lld (ms)\n",
-		   log_recovery_redo_parallel_count, recovery_reusable_jobs_count,
+		   log_recovery_redo_parallel_count,
+		   cublog::PARALLEL_REDO_REUSABLE_JOBS_COUNT,
 		   cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT,
 		   (long long) time_dur_setting_up_ms.count (),
 		   (long long) time_dur_main_ms.count (),

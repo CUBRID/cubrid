@@ -721,17 +721,16 @@ namespace cublog
   {
   }
 
-  void reusable_jobs_stack::initialize (std::size_t a_job_count, std::size_t a_push_task_count)
+  void reusable_jobs_stack::initialize (std::size_t a_push_task_count)
   {
     assert (m_pop_jobs.empty ());
     assert (m_push_jobs.empty ());
 
     assert (m_per_task_push_jobs_vec.empty ());
 
-    assert (a_job_count > 0);
     assert (a_push_task_count > 0);
 
-    m_job_pool.resize (a_job_count, redo_job_impl (this));
+    m_job_pool.resize (PARALLEL_REDO_REUSABLE_JOBS_COUNT, redo_job_impl (this));
 
     m_pop_jobs.reserve (m_job_pool.size ());
     for (std::size_t idx = 0; idx < m_job_pool.size (); ++idx)

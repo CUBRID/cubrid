@@ -115,8 +115,7 @@ namespace cublog
 
 	const bool force_each_log_page_fetch = true;
 	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
-	const int recovery_reusable_jobs_count = prm_get_integer_value (PRM_ID_RECOVERY_REUSABLE_JOBS_COUNT);
-	m_reusable_jobs->initialize (recovery_reusable_jobs_count, replication_parallel_count);
+	m_reusable_jobs->initialize (replication_parallel_count);
 	m_parallel_replication_redo.reset (
 		new cublog::redo_parallel (replication_parallel_count, true, m_redo_context));
       }
