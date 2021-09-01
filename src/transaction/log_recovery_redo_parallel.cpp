@@ -574,7 +574,7 @@ namespace cublog
 	    calculated_minimum_not_applied_log_lsa = m_calculated_minimum_not_applied_log_lsa;
 	    assert (!m_adding_finished.load ());
 	    return (calculated_minimum_not_applied_log_lsa == MAX_LSA)
-		   || (calculated_minimum_not_applied_log_lsa >= a_target_lsa);
+		   || (calculated_minimum_not_applied_log_lsa > a_target_lsa);
 	  });
 	}
       }
