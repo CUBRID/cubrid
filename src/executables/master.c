@@ -459,7 +459,7 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
 	  dbname = std::string (buffer + 1, buffer_length - 1);
 	}
 
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "The %s server of type %s wants to connect to cub_master.",
 			   dbname.c_str (), type == SERVER_TYPE_PAGE ? "page" : "transaction");
     }
   return exit_code;
