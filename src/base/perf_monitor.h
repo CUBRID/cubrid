@@ -1147,35 +1147,35 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   statvalp = pstat_Global.global_stats + offset;
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1ULL);
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
-//  do
-//    {
-//      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
-//      if (max_time >= timediff)
-//      {
-//        /* No need to change max_time. */
-//        break;
-//      }
-//    }
-//  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff));
+  do
+    {
+      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
+      if (max_time >= timediff)
+	{
+	  /* No need to change max_time. */
+	  break;
+	}
+    }
+  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff));
   /* Average is not computed here. */
 
-//#if defined (SERVER_MODE) || defined (SA_MODE)
-//  /* Update local statistic */
-//  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-//  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-//  if (pstat_Global.is_watching[tran_index])
-//    {
-//      assert (pstat_Global.tran_stats[tran_index] != NULL);
-//      statvalp = pstat_Global.tran_stats[tran_index] + offset;
-//      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += 1;
-//      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
-//      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
-//      if (max_time < timediff)
-//      {
-//        (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
-//      }
-//    }
-//#endif /* SERVER_MODE || SA_MODE */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  /* Update local statistic */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+  if (pstat_Global.is_watching[tran_index])
+    {
+      assert (pstat_Global.tran_stats[tran_index] != NULL);
+      statvalp = pstat_Global.tran_stats[tran_index] + offset;
+      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += 1;
+      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
+      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
+      if (max_time < timediff)
+	{
+	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
+	}
+    }
+#endif /* SERVER_MODE || SA_MODE */
 }
 
 /*
@@ -1235,35 +1235,35 @@ perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timedif
   statvalp = pstat_Global.global_stats + offset;
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), count);
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
-//  do
-//    {
-//      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
-//      if (max_time >= time_per_unit)
-//      {
-//        /* No need to change max_time. */
-//        break;
-//      }
-//    }
-//  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, time_per_unit));
+  do
+    {
+      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
+      if (max_time >= time_per_unit)
+	{
+	  /* No need to change max_time. */
+	  break;
+	}
+    }
+  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, time_per_unit));
   /* Average is not computed here. */
 
-//#if defined (SERVER_MODE) || defined (SA_MODE)
-//  /* Update local statistic */
-//  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-//  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-//  if (pstat_Global.is_watching[tran_index])
-//    {
-//      assert (pstat_Global.tran_stats[tran_index] != NULL);
-//      statvalp = pstat_Global.tran_stats[tran_index] + offset;
-//      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += count;
-//      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
-//      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
-//      if (max_time < time_per_unit)
-//      {
-//        (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = time_per_unit;
-//      }
-//    }
-//#endif /* SERVER_MODE || SA_MODE */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  /* Update local statistic */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+  if (pstat_Global.is_watching[tran_index])
+    {
+      assert (pstat_Global.tran_stats[tran_index] != NULL);
+      statvalp = pstat_Global.tran_stats[tran_index] + offset;
+      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += count;
+      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
+      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
+      if (max_time < time_per_unit)
+	{
+	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = time_per_unit;
+	}
+    }
+#endif /* SERVER_MODE || SA_MODE */
 }
 
 /*
@@ -1396,65 +1396,49 @@ struct perf_utime_tracker
   TSC_TICKS end_tick;
 };
 #define PERF_UTIME_TRACKER_INITIALIZER { false, {0}, {0} }
-
-inline void
-PERF_UTIME_TRACKER_START (THREAD_ENTRY * thread_p, perf_utime_tracker * track)
-{
-  track->is_perf_tracking = perfmon_is_perf_tracking ();
-  if (track->is_perf_tracking)
-    {
-      track->start_tick.time_point = std::chrono::system_clock::now ();
-    }
-}
-
+#define PERF_UTIME_TRACKER_START(thread_p, track) \
+  do \
+    { \
+      (track)->is_perf_tracking = perfmon_is_perf_tracking (); \
+      if ((track)->is_perf_tracking) tsc_getticks (&(track)->start_tick); \
+    } \
+  while (false)
 /* Time trackers - perfmon_time_stat is called. */
-inline void
-PERF_UTIME_TRACKER_TIME (THREAD_ENTRY * thread_p, perf_utime_tracker * track, PERF_STAT_ID psid)
-{
-  if (!track->is_perf_tracking)
-    return;
-  track->end_tick.time_point = std::chrono::system_clock::now ();
-  const auto dur = track->end_tick.time_point - track->start_tick.time_point;
-  const uint64_t elapsed_us = std::chrono::duration_cast < std::chrono::nanoseconds > (dur).count ();
-  perfmon_time_stat (thread_p, psid, elapsed_us);
-}
-
-inline void
-PERF_UTIME_TRACKER_TIME_AND_RESTART (THREAD_ENTRY * thread_p, perf_utime_tracker * track, PERF_STAT_ID psid)
-{
-  if (!track->is_perf_tracking)
-    return;
-  track->end_tick.time_point = std::chrono::system_clock::now ();
-  const auto dur = track->end_tick.time_point - track->start_tick.time_point;
-  const uint64_t elapsed_us = std::chrono::duration_cast < std::chrono::nanoseconds > (dur).count ();
-  perfmon_time_stat (thread_p, psid, elapsed_us);
-  track->start_tick = track->end_tick;
-}
-
+#define PERF_UTIME_TRACKER_TIME(thread_p, track, psid) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      perfmon_time_stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
+    } \
+  while (false)
+#define PERF_UTIME_TRACKER_TIME_AND_RESTART(thread_p, track, psid) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      perfmon_time_stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
+      (track)->start_tick = (track)->end_tick; \
+    } \
+  while (false)
 /* Bulk time trackers - perfmon_time_bulk_stat is called. */
-inline void
-PERF_UTIME_TRACKER_BULK_TIME (THREAD_ENTRY * thread_p, perf_utime_tracker * track, PERF_STAT_ID psid, uint64_t count)
-{
-  if (!track->is_perf_tracking)
-    return;
-  track->end_tick.time_point = std::chrono::system_clock::now ();
-  const auto dur = track->end_tick.time_point - track->start_tick.time_point;
-  const uint64_t elapsed_us = std::chrono::duration_cast < std::chrono::nanoseconds > (dur).count ();
-  perfmon_time_bulk_stat (thread_p, psid, elapsed_us, count);
-}
-
-inline void
-PERF_UTIME_TRACKER_BULK_TIME_AND_RESTART (THREAD_ENTRY * thread_p, perf_utime_tracker * track,
-					  PERF_STAT_ID psid, uint64_t count)
-{
-  if (!track->is_perf_tracking)
-    return;
-  track->end_tick.time_point = std::chrono::system_clock::now ();
-  const auto dur = track->end_tick.time_point - track->start_tick.time_point;
-  const uint64_t elapsed_us = std::chrono::duration_cast < std::chrono::nanoseconds > (dur).count ();
-  perfmon_time_bulk_stat (thread_p, psid, elapsed_us, count);
-  (track)->start_tick = (track)->end_tick;
-}
+#define PERF_UTIME_TRACKER_BULK_TIME(thread_p, track, psid, count) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      perfmon_time_bulk_stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick, (track)->start_tick), count); \
+    } \
+  while (false)
+#define PERF_UTIME_TRACKER_BULK_TIME_AND_RESTART(thread_p, track, psid, count) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      perfmon_time_bulk, stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), count); \
+      (track)->start_tick = (track)->end_tick; \
+    } \
+  while (false)
 
 /* Time accumulators only - perfmon_add_stat is called. */
 /* todo: PERF_UTIME_TRACKER_ADD_TIME is never used and PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART is similar to
