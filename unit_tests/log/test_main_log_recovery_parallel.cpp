@@ -71,6 +71,8 @@ void execute_test (const log_recovery_test_config &a_test_config,
 		<< std::endl;
     }
 
+  // simulated database with volumes and pages
+  //
   ux_ut_database db_online { new ut_database (a_database_config) };
   ux_ut_database db_recovery { new ut_database (a_database_config) };
 
@@ -78,8 +80,41 @@ void execute_test (const log_recovery_test_config &a_test_config,
 
   cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, true, dummy_redo_context);
 
+  // infrastructure to check progress of the test
+  //
+  struct
+  {
+    log_lsa m_log_lsa { MAX_LSA }; // NULL_LSA is the stop condition
+    std::mutex m_mtx;
+    std::condition_variable m_cv;
+  } wait_past_log_lsa_info;
+  std::thread wait_past_log_lsa_thr;
+  if (a_test_config.wait_past_previous_log_lsa)
+    {
+      wait_past_log_lsa_thr = std::thread ([&log_redo_parallel, &wait_past_log_lsa_info] ()
+      {
+	log_lsa local_log_lsa { MAX_LSA };
+	do
+	  {
+	    {
+	      std::unique_lock<std::mutex> ulock { wait_past_log_lsa_info.m_mtx };
+	      wait_past_log_lsa_info.m_cv.wait_for (ulock, std::chrono::milliseconds (100));
+	      local_log_lsa = wait_past_log_lsa_info.m_log_lsa;
+	    }
+	    if (!local_log_lsa.is_max () && !local_log_lsa.is_null ())
+	      {
+		log_redo_parallel.wait_past_target_lsa (local_log_lsa);
+	      }
+	  }
+	while (!local_log_lsa.is_null ());
+      });
+    }
+
+  REQUIRE (log_redo_parallel.get_calculated_minimum_not_applied_log_lsa ().is_max ());
+
+  // the test proper
+  //
   ut_database_values_generator global_values{ a_database_config };
-  log_lsa previous_page_modification_log_lsa { MAX_LSA };
   for (size_t idx = 0u; idx < a_test_config.redo_job_count; ++idx)
     {
       ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
@@ -93,18 +128,28 @@ void execute_test (const log_recovery_test_config &a_test_config,
 	{
 	  if (a_test_config.wait_past_previous_log_lsa)
 	    {
-	      // only if there actually was a previous page modification
-	      if (previous_page_modification_log_lsa != MAX_LSA)
-		{
-		  log_redo_parallel.wait_past_target_lsa (previous_page_modification_log_lsa);
-		}
-
-	      previous_page_modification_log_lsa = job->get_log_lsa ();
+	      {
+		std::scoped_lock<std::mutex> slock { wait_past_log_lsa_info.m_mtx };
+		wait_past_log_lsa_info.m_log_lsa = job->get_log_lsa ();
+	      }
+	      wait_past_log_lsa_info.m_cv.notify_one ();
 	    }
 
-	  // ownership of released raw pointer goes to the callee
+	  // ownership of released raw pointer remains with the job itself (check 'retire' function)
 	  log_redo_parallel.add (job.release ());
 	}
+    }
+
+  // wait for termination
+  //
+  if (a_test_config.wait_past_previous_log_lsa)
+    {
+      {
+	std::scoped_lock<std::mutex> slock { wait_past_log_lsa_info.m_mtx };
+	wait_past_log_lsa_info.m_log_lsa = NULL_LSA;
+      }
+      wait_past_log_lsa_info.m_cv.notify_one ();
+      wait_past_log_lsa_thr.join ();
     }
 
   log_redo_parallel.set_adding_finished ();
@@ -135,7 +180,7 @@ class measure_time
 
 /* '[ci]' tests are supposed to be executed by the Continuous Integration infrastructure
  */
-TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci]")
+TEST_CASE ("log recovery parallel test: quick tests", "[ci]")
 {
   srand (time (nullptr));
   initialize_thread_infrastructure ();
@@ -181,7 +226,7 @@ TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci]")
 /* the main difference versus the [ci] tests is that these perform a busy-loop
  * in addition to the bookkeeping actions
  */
-TEST_CASE ("log recovery parallel test: stress test", "[long]")
+TEST_CASE ("log recovery parallel test: extensive tests", "[long]")
 {
   srand (time (nullptr));
   initialize_thread_infrastructure ();
@@ -223,339 +268,3 @@ TEST_CASE ("log recovery parallel test: stress test", "[long]")
 	}
     }
 }
-
-/*
-TEST_CASE ("log recovery parallel test: idle status", "[ci]")
-{
-  srand (time (nullptr));
-  initialize_thread_infrastructure ();
-
-  const ut_database_config database_config =
-  {
-    42, // max_volume_count_per_database
-    42, // max_page_count_per_volume
-    .2, // max_duration_in_millis
-  };
-  ux_ut_database db_online { new ut_database (database_config) };
-  ux_ut_database db_recovery { new ut_database (database_config) };
-
-  log_rv_redo_context dummy_redo_context (NULL_LSA, log_reader::fetch_mode::NORMAL);
-
-  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), true,
-      dummy_redo_context);
-
-  //REQUIRE (log_redo_parallel.is_idle ());
-  REQUIRE (log_redo_parallel.get_calculated_minimum_not_applied_log_lsa () == MAX_LSA);
-
-  ut_database_values_generator global_values{ database_config };
-
-  log_lsa single_supplied_lsa;
-  for (bool at_least_one_page_update = false; !at_least_one_page_update; )
-    {
-      ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
-      single_supplied_lsa = job->get_log_lsa ();
-
-      if (job->is_volume_creation () || job->is_page_creation ())
-	{
-	  // jobs not tied to a non-null vpid, are executed in-synch
-	  db_recovery->apply_changes (std::move (job));
-	}
-      else
-	{
-	  // ownership of released raw pointer goes to the callee
-	  log_redo_parallel.add (job.release ());
-	  at_least_one_page_update = true;
-	}
-    }
-
-  // sleep here more than 'max_duration_in_millis' to invalidate test
-  //REQUIRE_FALSE (log_redo_parallel.is_idle ());
-  REQUIRE_FALSE (log_redo_parallel.get_calculated_minimum_not_applied_log_lsa ().is_null ());
-  REQUIRE (log_redo_parallel.get_calculated_minimum_not_applied_log_lsa () == single_supplied_lsa);
-
-  //log_redo_parallel.wait_for_idle ();
-  //REQUIRE (log_redo_parallel.is_idle ());
-  //REQUIRE_FALSE (minimum_log_lsa.get ().is_null ());
-
-  log_redo_parallel.set_adding_finished ();
-  log_redo_parallel.wait_for_termination_and_stop_execution ();
-
-  db_online->require_equal (*db_recovery);
-}
-*/
-
-/*
-TEST_CASE ("minimum log lsa: simple test", "[ci]")
-{
-  srand (time (nullptr));
-
-  const ut_database_config database_config =
-  {
-    42, // max_volume_count_per_database
-    42, // max_page_count_per_volume
-    2., // max_duration_in_millis
-  };
-
-  ut_database_values_generator values_generator{ database_config };
-
-  //cublog::minimum_log_lsa_monitor min_log_lsa;
-  //REQUIRE (min_log_lsa.get () == MAX_LSA);
-
-  // collect some lsa's in a vector
-  std::vector<log_lsa> log_lsa_vec;
-  for (int i = 0; i < 100; ++i)
-    {
-      log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
-    }
-  const log_lsa target_log_lsa = values_generator.increment_and_get_lsa_log ();
-  // push at least 2 more values in the vector such that the target lsa is passed
-  // these two values ought to be distributed to the 'for_produce' and 'for_consume' functions
-  log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
-  log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
-  auto log_lsa_vec_it = log_lsa_vec.cbegin ();
-
-  SECTION ("1. idle test; will immediately finish")
-  {
-    std::thread observing_thread ([&] ()
-    {
-      const log_lsa min_lsa = MAX_LSA; // min_log_lsa.wait_past_target_lsa (target_log_lsa);
-      REQUIRE (min_lsa != NULL_LSA);
-      REQUIRE (min_lsa == MAX_LSA);
-    });
-    observing_thread.join ();
-  }
-
-  SECTION ("2. produce & consume lsa's; leave others untouched")
-  {
-    // push one value such that we can launch a waiting thread
-    // that will not return immediately
-    //min_log_lsa.set_for_produce (*log_lsa_vec_it);
-    ++log_lsa_vec_it;
-
-    std::thread observing_thread ([&] ()
-    {
-      const log_lsa min_lsa = MAX_LSA; // min_log_lsa.wait_past_target_lsa (target_log_lsa);
-      REQUIRE (min_lsa != NULL_LSA);
-      REQUIRE (min_lsa != MAX_LSA);
-    });
-
-    for ( ; ; )
-      {
-	//min_log_lsa.set_for_produce (*log_lsa_vec_it);
-	++log_lsa_vec_it;
-	if (log_lsa_vec_it == log_lsa_vec.cend ())
-	  {
-	    break;
-	  }
-
-	// leave in-progress untouched
-	//min_log_lsa.set_for_consume_and_in_progress (*log_lsa_vec_it, MAX_LSA);
-	++log_lsa_vec_it;
-	if (log_lsa_vec_it == log_lsa_vec.cend ())
-	  {
-	    break;
-	  }
-
-	const auto current_min_lsa = MAX_LSA; // min_log_lsa.get ();
-	REQUIRE (!current_min_lsa.is_null ());
-	REQUIRE (current_min_lsa != MAX_LSA);
-      }
-    observing_thread.join ();
-    //REQUIRE (min_log_lsa.get () != NULL_LSA);
-    //REQUIRE (min_log_lsa.get () > target_log_lsa);
-    //REQUIRE (min_log_lsa.get () != MAX_LSA);
-  }
-}
-*/
-
-/*
-TEST_CASE ("minimum log lsa: complete test", "[ci]")
-{
-  constexpr int TASK_THREAD_COUNT = 42;
-  constexpr log_lsa SENTINEL_LSA { MAX_LSA };
-
-  // use a ut_database_values_generator to generate ever-increasing lsa values
-  //
-  const ut_database_config database_config { 42, 42, 2.};
-  ut_database_values_generator global_values{ database_config };
-
-  using log_lsa_deque = std::deque<log_lsa>;
-
-  //cublog::minimum_log_lsa_monitor min_log_lsa_monitor;
-
-  // some deques that mirror the 3 separate containers used in actual functioning: prod, cons, in-progress
-  //
-  log_lsa_deque produce_lsa_deq;
-  std::mutex produce_lsa_deq_mtx;
-
-  log_lsa_deque consume_lsa_deq;
-  std::mutex consume_lsa_deq_mtx;
-
-  log_lsa_deque in_progress_lsa_deq;
-  std::mutex in_progress_lsa_deq_mtx;
-
-  // for the 'outer' don't use a container, just a single value
-  //
-  // seed with a first value
-  log_lsa outer_lsa = global_values.increment_and_get_lsa_log ();
-  //min_log_lsa_monitor.set_for_outer (outer_lsa);
-  std::mutex outer_lsa_mtx;
-
-  std::atomic_bool do_execute_test { true };
-  std::atomic_bool do_execute_test_check { true };
-
-  // one thread that continuosly checks correctness
-  //
-  std::thread checking_thread ([&] ()
-  {
-    while (do_execute_test_check.load ())
-      {
-	log_lsa min_produce { SENTINEL_LSA };
-	log_lsa min_consume { SENTINEL_LSA };
-	log_lsa min_in_progress { SENTINEL_LSA };
-	log_lsa min_outer { SENTINEL_LSA };
-	log_lsa min_lsa_from_monitor { SENTINEL_LSA };
-	{
-	  std::lock_guard<std::mutex> consume_lockg { consume_lsa_deq_mtx };
-	  {
-	    std::lock_guard<std::mutex> produce_lockg { produce_lsa_deq_mtx };
-	    {
-	      std::lock_guard<std::mutex> in_progress_lockg { in_progress_lsa_deq_mtx };
-	      {
-		std::lock_guard<std::mutex> outer_lockg { outer_lsa_mtx };
-
-		min_produce = produce_lsa_deq.empty () ? SENTINEL_LSA : produce_lsa_deq.front ();
-		min_consume = consume_lsa_deq.empty () ? SENTINEL_LSA : consume_lsa_deq.front ();
-		min_in_progress = in_progress_lsa_deq.empty () ? SENTINEL_LSA : in_progress_lsa_deq.front ();
-		min_outer = outer_lsa;
-
-		min_lsa_from_monitor = MAX_LSA; // min_log_lsa_monitor.get ();
-	      }
-	    }
-	  }
-	}
-
-	const log_lsa min_lsa_calculated = std::min (
-	{
-	  min_produce,
-	  min_consume,
-	  min_in_progress,
-	  min_outer
-	});
-	REQUIRE (min_lsa_calculated == min_lsa_from_monitor);
-
-	std::this_thread::yield ();
-      }
-  });
-  // allow checking of initial (empty) state
-  std::this_thread::sleep_for (std::chrono::milliseconds (2));
-
-  // some threads that randomly move the data simiar to how the actual tasks work and also
-  // update the monitor
-  //
-  std::thread generate_log_lsas_thread ([&] ()
-  {
-    while (do_execute_test.load ())
-      {
-	const log_lsa new_lsa = global_values.increment_and_get_lsa_log ();
-	{
-	  std::lock_guard<std::mutex> produce_lockg { produce_lsa_deq_mtx };
-	  {
-	    std::lock_guard<std::mutex> outer_lockg { outer_lsa_mtx };
-
-	    if (produce_lsa_deq.empty ())
-	      {
-		//min_log_lsa_monitor.set_for_produce (outer_lsa);
-	      }
-	    produce_lsa_deq.push_back (outer_lsa);
-
-	    outer_lsa = new_lsa;
-	    //min_log_lsa_monitor.set_for_outer (new_lsa);
-	  }
-	}
-
-	std::this_thread::yield ();
-      }
-  });
-
-  std::vector<std::thread> task_threads;
-  task_threads.reserve (TASK_THREAD_COUNT);
-  for (int i = 0; i < TASK_THREAD_COUNT; ++i)
-    {
-      task_threads.emplace_back ([&] ()
-      {
-	while (do_execute_test.load ())
-	  {
-	    // swap produce with consume deques
-	    {
-	      std::lock_guard<std::mutex> consume_lockg { consume_lsa_deq_mtx };
-	      if (consume_lsa_deq.empty ())
-		{
-		  std::lock_guard<std::mutex> produce_lockg { produce_lsa_deq_mtx };
-		  // produce queue might also be empty
-		  consume_lsa_deq.swap (produce_lsa_deq);
-		  const log_lsa min_produce_lsa = produce_lsa_deq.empty ()
-						  ? SENTINEL_LSA : produce_lsa_deq.front ();
-		  const log_lsa min_consume_lsa = consume_lsa_deq.empty ()
-						  ? SENTINEL_LSA : consume_lsa_deq.front ();
-		  //min_log_lsa_monitor.set_for_produce_and_consume (min_produce_lsa, min_consume_lsa);
-
-		}
-	    }
-	    std::this_thread::yield ();
-
-	    // move consume to in progress
-	    {
-	      std::lock_guard<std::mutex> consume_lockg { consume_lsa_deq_mtx };
-	      if (false == consume_lsa_deq.empty ())
-		{
-		  const log_lsa to_in_progress_lsa = consume_lsa_deq.front ();
-		  consume_lsa_deq.pop_front ();
-		  {
-		    std::lock_guard<std::mutex> in_progress_lockg { in_progress_lsa_deq_mtx };
-		    in_progress_lsa_deq.push_back (to_in_progress_lsa);
-
-		    const log_lsa min_consume_lsa = consume_lsa_deq.empty ()
-						    ? SENTINEL_LSA : consume_lsa_deq.front ();
-		    const log_lsa min_in_progress_lsa = in_progress_lsa_deq.front ();
-		    //min_log_lsa_monitor.set_for_consume_and_in_progress (min_consume_lsa, min_in_progress_lsa);
-		  }
-		}
-	    }
-	    std::this_thread::yield ();
-
-	    // consume in progress
-	    {
-	      std::lock_guard<std::mutex> in_progress_lockg { in_progress_lsa_deq_mtx };
-	      if (!in_progress_lsa_deq.empty ())
-		{
-		  const log_lsa lsa_to_finish = in_progress_lsa_deq.front ();
-		  in_progress_lsa_deq.pop_front ();
-		  const log_lsa min_in_progress_lsa = in_progress_lsa_deq.empty ()
-						      ? SENTINEL_LSA : in_progress_lsa_deq.front ();
-		  //min_log_lsa_monitor.set_for_in_progress (min_in_progress_lsa);
-		}
-	    }
-	    std::this_thread::yield ();
-	  }
-      });
-    }
-
-  // let it run for a short whilem, then wrap it all up
-  //
-  std::this_thread::sleep_for (std::chrono::milliseconds (200));
-
-  do_execute_test.store (false);
-
-  generate_log_lsas_thread.join ();
-  for (int i = 0; i < TASK_THREAD_COUNT; ++i)
-    {
-      task_threads[i].join ();
-    }
-
-  // allow checking of final state
-  std::this_thread::sleep_for (std::chrono::milliseconds (2));
-  do_execute_test_check.store (false);
-  checking_thread.join ();
-}
-*/
