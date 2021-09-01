@@ -121,6 +121,11 @@ void execute_test (const log_recovery_test_config &a_test_config,
 
       if (job->is_volume_creation () || job->is_page_creation ())
 	{
+	  if (a_test_config.wait_past_previous_log_lsa)
+	    {
+	      log_redo_parallel.set_outer_not_applied_log_lsa (job->get_log_lsa ());
+	    }
+
 	  // jobs not tied to a non-null vpid, are executed in-synch
 	  db_recovery->apply_changes (std::move (job));
 	}
@@ -158,9 +163,8 @@ void execute_test (const log_recovery_test_config &a_test_config,
   db_online->require_equal (*db_recovery);
 }
 
-constexpr auto _1k = 1024u;
-constexpr auto _64k = 64 * _1k;
-constexpr auto _128k = 128 * _1k;
+constexpr size_t _64_K =  64u * ONE_K;
+constexpr size_t _128_K = 128u * ONE_K;
 
 /* small helper class to count the seconds between ctor and dtor invocations
  */
@@ -186,8 +190,8 @@ TEST_CASE ("log recovery parallel test: quick tests", "[ci]")
   initialize_thread_infrastructure ();
 
   constexpr std::array<size_t, 1> volume_count_per_database_arr { 10u };
-  constexpr std::array<size_t, 1> page_count_per_volume_arr { _1k };
-  constexpr std::array<size_t, 2> job_count_arr { 0u, _64k };
+  constexpr std::array<size_t, 1> page_count_per_volume_arr { ONE_K };
+  constexpr std::array<size_t, 2> job_count_arr { 0u, _64_K };
   const std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
   constexpr std::array<bool, 2> wait_past_previous_log_lsa_arr { false, true };
   for (const size_t volume_count_per_database : volume_count_per_database_arr)
@@ -232,8 +236,8 @@ TEST_CASE ("log recovery parallel test: extensive tests", "[long]")
   initialize_thread_infrastructure ();
 
   constexpr std::array<size_t, 2> volume_count_per_database_arr { 1u, 10u };
-  constexpr std::array<size_t, 2> page_count_per_volume_arr { _1k, _128k };
-  constexpr std::array<size_t, 3> job_count_arr { 0u, _1k, _128k };
+  constexpr std::array<size_t, 2> page_count_per_volume_arr { ONE_K, _64_K };
+  constexpr std::array<size_t, 3> job_count_arr { 0u, ONE_K, _128_K };
   const std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency () };
   constexpr std::array<bool, 2> wait_past_previous_log_lsa_arr { false, true };
   for (const size_t volume_count_per_database : volume_count_per_database_arr)
