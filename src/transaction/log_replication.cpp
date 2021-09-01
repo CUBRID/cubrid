@@ -107,19 +107,18 @@ namespace cublog
     //  - race conditions, when daemon comes online, are avoided
     //  - (even making abstraction of the race conditions) no log records are needlessly
     //    processed synchronously
-    const int replication_parallel = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
-    assert (replication_parallel >= 0);
-    if (replication_parallel > 0)
+    const int replication_parallel_count = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
+    assert (replication_parallel_count >= 0);
+    if (replication_parallel_count > 0)
       {
 	// no need to reset with start redo lsa
 
 	const bool force_each_log_page_fetch = true;
 	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
 	const int recovery_reusable_jobs_count = prm_get_integer_value (PRM_ID_RECOVERY_REUSABLE_JOBS_COUNT);
-	m_reusable_jobs->initialize (recovery_reusable_jobs_count, replication_parallel,
-				     cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT);
+	m_reusable_jobs->initialize (recovery_reusable_jobs_count, replication_parallel_count);
 	m_parallel_replication_redo.reset (
-		new cublog::redo_parallel (replication_parallel, true, m_redo_context));
+		new cublog::redo_parallel (replication_parallel_count, true, m_redo_context));
       }
 
     // Create the daemon

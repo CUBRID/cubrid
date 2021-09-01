@@ -717,14 +717,12 @@ namespace cublog
    *********************************************************************/
 
   reusable_jobs_stack::reusable_jobs_stack ()
+    : m_flush_push_at_count { cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT }
   {
   }
 
-  void reusable_jobs_stack::initialize (std::size_t a_job_count, std::size_t a_push_task_count,
-					std::size_t a_flush_push_at_count)
+  void reusable_jobs_stack::initialize (std::size_t a_job_count, std::size_t a_push_task_count)
   {
-    assert (m_flush_push_at_count == 0);
-
     assert (m_pop_jobs.empty ());
     assert (m_push_jobs.empty ());
 
@@ -732,9 +730,6 @@ namespace cublog
 
     assert (a_job_count > 0);
     assert (a_push_task_count > 0);
-    assert (a_flush_push_at_count > 0);
-
-    m_flush_push_at_count = a_flush_push_at_count;
 
     m_job_pool.resize (a_job_count, redo_job_impl (this));
 

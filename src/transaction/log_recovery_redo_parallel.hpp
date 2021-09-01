@@ -41,7 +41,7 @@ namespace cublog
 #if defined (SERVER_MODE)
   // TODO: make reserve size configurable based on expected load of recovery
   static constexpr std::size_t PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE = ONE_M;
-  static constexpr std::size_t PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT = 100;
+  static constexpr std::size_t PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT = ONE_K;
 
   // forward declaration
   class reusable_jobs_stack;
@@ -295,8 +295,7 @@ namespace cublog
       reusable_jobs_stack &operator = (const reusable_jobs_stack &) = delete;
       reusable_jobs_stack &operator = (reusable_jobs_stack &&) = delete;
 
-      void initialize (std::size_t a_job_count, std::size_t a_push_task_count,
-		       std::size_t a_flush_push_at_count);
+      void initialize (std::size_t a_job_count, std::size_t a_push_task_count);
 
       redo_job_impl *blocking_pop (perf_stats &a_rcv_redo_perf_stat);
       void push (std::size_t a_task_idx, redo_job_impl *a_job);
@@ -304,7 +303,7 @@ namespace cublog
     private:
       /* configuration, constants after initialization
        */
-      std::size_t m_flush_push_at_count = 0;
+      const std::size_t m_flush_push_at_count;
 
       /* support array for initializing jobs in-place
        */
