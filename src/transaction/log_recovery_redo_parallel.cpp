@@ -106,7 +106,7 @@ namespace cublog
       inline log_lsa get_not_applied_log_lsa ();
 
     private:
-      inline void pop_jobs (redo_job_vector_t *&a_out_job_vec);
+      inline void pop_jobs (std::unique_ptr<redo_job_vector_t> &a_out_job_vec);
 
       inline void set_not_applied_log_lsa_from_push_side (const log_lsa &a_log_lsa);
       inline void set_not_applied_log_lsa_from_pop_side (const log_lsa &a_log_lsa);
@@ -122,7 +122,7 @@ namespace cublog
 
       log_rv_redo_context m_redo_context;
 
-      redo_job_vector_t *m_produce_vec;
+      std::unique_ptr<redo_job_vector_t> m_produce_vec;
       mutable std::mutex m_produce_vec_mtx;
 
       std::atomic_bool m_in_execution;
@@ -193,15 +193,12 @@ namespace cublog
   redo_parallel::redo_task::~redo_task ()
   {
     assert (is_idle ());
-    assert (m_produce_vec != nullptr);
-    delete m_produce_vec;
-    m_produce_vec = nullptr;
   }
 
   void
   redo_parallel::redo_task::execute (context_type &context)
   {
-    redo_job_vector_t *jobs_vec = new redo_job_vector_t ();
+    std::unique_ptr<redo_job_vector_t> jobs_vec { new redo_job_vector_t () };
     // according to spec, reserved size survives clearing of the vector
     // which should help to only allocate/reserve once
     jobs_vec->reserve (PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE);
@@ -230,7 +227,6 @@ namespace cublog
 	      }
 	    else
 	      {
-		assert (!jobs_vec->empty ());
 		THREAD_ENTRY *const thread_entry = &context;
 		for (auto &job : *jobs_vec)
 		  {
@@ -251,9 +247,7 @@ namespace cublog
 	  }
       }
 
-    assert (jobs_vec != nullptr);
     assert (jobs_vec->empty ());
-    delete jobs_vec;
 
     m_task_state_bookkeeping.set_inactive ();
     m_in_execution.store (false);
@@ -306,12 +300,12 @@ namespace cublog
   }
 
   inline void
-  redo_parallel::redo_task::pop_jobs (redo_parallel::redo_task::redo_job_vector_t *&a_out_job_vec)
+  redo_parallel::redo_task::pop_jobs (std::unique_ptr<redo_parallel::redo_task::redo_job_vector_t> &a_out_job_vec)
   {
     assert (a_out_job_vec->empty ());
 
     std::scoped_lock<std::mutex> slock { m_produce_vec_mtx };
-    std::swap (m_produce_vec, a_out_job_vec);
+    m_produce_vec.swap (a_out_job_vec);
 
     if (m_do_monitor_not_applied_log_lsa)
       {
