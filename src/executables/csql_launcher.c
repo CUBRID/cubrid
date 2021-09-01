@@ -120,6 +120,7 @@ main (int argc, char *argv[])
   CSQL csql;
   int check_output_style = 0;
   bool explicit_single_line = false;
+  bool page_server_arg = false;
 
   GETOPT_LONG csql_option[] = {
     {CSQL_SA_MODE_L, 0, 0, CSQL_SA_MODE_S},
@@ -162,6 +163,7 @@ main (int argc, char *argv[])
   csql_arg.loaddb_output = false;
   csql_arg.column_delimiter = -1;
   csql_arg.column_enclosure = -1;
+  csql_arg.page_server = false;
   utility_make_getopt_optstring (csql_option, option_string);
 
   while (1)
@@ -342,6 +344,10 @@ main (int argc, char *argv[])
 	  csql_arg.loaddb_output = true;
 	  break;
 
+	case CSQL_PAGE_SERVER_S:
+	  page_server_arg = true;
+	  break;
+
 	case VERSION_S:
 	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME, PRODUCT_STRING);
 	  goto exit_on_end;
@@ -445,6 +451,11 @@ main (int argc, char *argv[])
   else
     {
       utility_load_library (&util_library, LIB_UTIL_CS_NAME);
+    }
+
+  if (csql_arg.sysadm && page_server_arg)
+    {
+      csql_arg.page_server = true;
     }
 
   if (util_library == NULL)
