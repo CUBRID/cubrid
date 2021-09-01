@@ -10054,6 +10054,11 @@ log_clock_daemon_init ()
 void
 log_check_ha_delay_info_daemon_init ()
 {
+  if (HA_DISABLED ())
+    {
+      return;
+    }
+
   assert (log_Check_ha_delay_info_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
