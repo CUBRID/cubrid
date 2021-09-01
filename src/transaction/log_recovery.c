@@ -47,7 +47,6 @@
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 #include "util_func.h"
-#include <chrono>
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -998,6 +997,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
+  const auto time_start_setting_up = std::chrono::system_clock::now ();
+  const TRANID min_trantable_tranid = log_rv_get_min_trantable_tranid ();
 
   /* depending on compilation mode and on a system parameter, initialize the
    * infrastructure for parallel log recovery;
@@ -1005,12 +1006,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
    */
   LOG_CS_EXIT (thread_p);
 
-  const auto time_start_setting_up = std::chrono::system_clock::now ();
-
-  const TRANID min_trantable_tranid = log_rv_get_min_trantable_tranid ();
-
-  // *INDENT-OFF*
   cublog::reusable_jobs_stack reusable_jobs;
+  // *INDENT-OFF*
   std::unique_ptr<cublog::redo_parallel> parallel_recovery_redo;
   // *INDENT-ON*
 #if defined(SERVER_MODE)
@@ -1028,18 +1025,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   }
 #endif
 
-  const auto time_end_setting_up = std::chrono::system_clock::now ();
+  /* 'setting_up' measures the time taken to initialize parallel log recovery redo infrstructure */
   const auto time_dur_setting_up_ms =
-    std::chrono::duration_cast < std::chrono::milliseconds > (time_end_setting_up - time_start_setting_up);
-  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo_perf:  setting_up= %6d (ms)\n",
-		 (long long) time_dur_setting_up_ms.count ());
-
-  // prompt after threads/tasks are started but before any work is done
-  //fprintf (stdout, "START recovery_redo (any key)? ");
-  //fflush (stdout);
-  //(void) getc (stdin);
-  //fprintf (stdout, "\n");
-  const auto time_start = std::chrono::system_clock::now ();
+    std::chrono::duration_cast < std::chrono::milliseconds >
+    (std::chrono::system_clock::now () - time_start_setting_up);
+  const auto time_start_main = std::chrono::system_clock::now ();
 
   // statistics data initialize
   //
@@ -1627,8 +1617,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 #if defined(SERVER_MODE)
   {
     // *INDENT-OFF*
-    const auto time_end_main = std::chrono::system_clock::now ();
-    const auto time_dur_main_ms = std::chrono::duration_cast < std::chrono::milliseconds > (time_end_main - time_start);
+    /* 'main' measures the time taken by the main thread to execute sync log records and dispatch async ones */
+    const auto time_dur_main_ms = std::chrono::duration_cast < std::chrono::milliseconds > (
+          std::chrono::system_clock::now () - time_start_main);
     if (parallel_recovery_redo != nullptr)
       {
 	parallel_recovery_redo->set_adding_finished ();
@@ -1637,15 +1628,18 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
       }
     const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
     const int recovery_reusable_jobs_count = prm_get_integer_value (PRM_ID_RECOVERY_REUSABLE_JOBS_COUNT);
-    const auto time_end_async = std::chrono::system_clock::now ();
-    const auto time_dur_async_ms =
-      std::chrono::duration_cast < std::chrono::milliseconds > (time_end_async - time_start);
+    /* 'async' measures the time taken by the main thread to execute sync log records, dispatch async ones
+     * and wait for the async infrastructure to finish */
+    const auto time_dur_async_ms = std::chrono::duration_cast < std::chrono::milliseconds > (
+          std::chrono::system_clock::now () - time_start_main);
     _er_log_debug (ARG_FILE_LINE,
-		   "log_recovery_redo_perf:  parallel_count= %2d  reusable_jobs_count= %6d  flush_back_count= %4d\n"
-		   "log_recovery_redo_perf:  main= %6lld  async= %6lld (ms)\n",
+		   "log_recovery_redo_perf:  parallel_count=%2d  reusable_jobs_count=%6d  flush_back_count=%4d\n"
+		   "log_recovery_redo_perf:  setting_up=%6lld  main=%6lld  async=%6lld (ms)\n",
 		   log_recovery_redo_parallel_count, recovery_reusable_jobs_count,
 		   cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT,
-		   (long long) time_dur_main_ms.count (), (long long) time_dur_async_ms.count ());
+		   (long long) time_dur_setting_up_ms.count (),
+		   (long long) time_dur_main_ms.count (),
+		   (long long) time_dur_async_ms.count ());
     // *INDENT-ON*
   }
 #endif
