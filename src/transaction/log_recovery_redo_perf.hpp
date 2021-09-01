@@ -37,7 +37,6 @@ namespace cublog
    */
   enum : cubperf::stat_id
   {
-    PERF_STAT_ID_OVERHEAD,
     PERF_STAT_ID_FETCH_PAGE,
     PERF_STAT_ID_READ_LOG,
     PERF_STAT_ID_REDO_OR_PUSH_PREP,
@@ -52,8 +51,6 @@ namespace cublog
 
   static constexpr cubperf::statset_definition::init_list_t perf_stats_main_definition_init_list
   {
-    cubperf::stat_definition (PERF_STAT_ID_OVERHEAD, cubperf::stat_definition::COUNTER_AND_TIMER,
-			      "Counter overhead", "Timer overhead (μs)"),
     cubperf::stat_definition (PERF_STAT_ID_FETCH_PAGE, cubperf::stat_definition::COUNTER_AND_TIMER,
 			      "Counter fetch_page", "Timer fetch_page (ms)"),
     cubperf::stat_definition (PERF_STAT_ID_READ_LOG, cubperf::stat_definition::COUNTER_AND_TIMER,
