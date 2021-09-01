@@ -442,10 +442,22 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
   int exit_code = css_receive_data (conn, rid, &buffer, &buffer_length, -1);
   if (exit_code == NO_ERRORS)
     {
-      // *INDENT-OFF*
-      type = static_cast<SERVER_TYPE> (buffer[0] - '0');
-      // *INDENT-ON*
-      dbname = std::string (buffer + 1, buffer_length - 1);
+      const char first_char = buffer[0];
+      if (first_char == '#')
+	{
+	  // HA mode on; only transaction servers connect.
+	  type = SERVER_TYPE_TRANSACTION;
+	  // Include '#' in the dbname; legacy requirement
+	  dbname = std::string (buffer, buffer_length);
+	}
+      else
+	{
+	  // First character represents server type
+	  // *INDENT-OFF*
+	  type = static_cast<SERVER_TYPE> (buffer[0] - '0');
+	  // *INDENT-ON*
+	  dbname = std::string (buffer + 1, buffer_length - 1);
+	}
 
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
 			   dbname.c_str (), type == SERVER_TYPE_PAGE ? "page" : "transaction");
