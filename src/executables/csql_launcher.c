@@ -120,7 +120,6 @@ main (int argc, char *argv[])
   CSQL csql;
   int check_output_style = 0;
   bool explicit_single_line = false;
-  bool page_server_arg = false;
 
   GETOPT_LONG csql_option[] = {
     {CSQL_SA_MODE_L, 0, 0, CSQL_SA_MODE_S},
@@ -345,7 +344,7 @@ main (int argc, char *argv[])
 	  break;
 
 	case CSQL_PAGE_SERVER_S:
-	  page_server_arg = true;
+	  csql_arg.page_server = true;
 	  break;
 
 	case VERSION_S:
@@ -429,6 +428,12 @@ main (int argc, char *argv[])
       goto print_usage;
     }
 
+  if (csql_arg.page_server && csql_arg.sysadm == false)
+    {
+      /* only sysadm can connect to page server */
+      goto print_usage;
+    }
+
   if (csql_arg.sa_mode && (csql_arg.cs_mode || csql_arg.write_on_standby))
     {
       /* Don't allow both at once. */
@@ -451,11 +456,6 @@ main (int argc, char *argv[])
   else
     {
       utility_load_library (&util_library, LIB_UTIL_CS_NAME);
-    }
-
-  if (csql_arg.sysadm && page_server_arg)
-    {
-      csql_arg.page_server = true;
     }
 
   if (util_library == NULL)
