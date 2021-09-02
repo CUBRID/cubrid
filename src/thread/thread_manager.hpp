@@ -96,7 +96,7 @@ namespace cubthread
   //
   //  how to use:
   //     1. daemon -
-  //          daemon *my_daemon = cubthread::get_manager ()->create_daemon (daemon_looper, daemon_task_p);
+  //          daemon *my_daemon = cubthread::get_manager ()->create_daemon (daemon_looper, daemon_task_p, daemon_name);
   //          // daemon loops and execute task on each iteration
   //          cubthread::get_manager ()->destroy_daemon (my_daemon);
   //
@@ -171,7 +171,7 @@ namespace cubthread
       //       moved at the end to allow a default value
       //
       // todo: remove default daemon name
-      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name = "",
+      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name,
 			     entry_manager *context_manager = NULL);
       // destroy daemon thread
       void destroy_daemon (daemon *&daemon_arg);
