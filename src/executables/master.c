@@ -86,7 +86,6 @@ static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, c
 static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry,
 				    const char *server_name, int server_name_length);
 static int receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & dbname, SERVER_TYPE & type);
-static int receive_server_type (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & dbname, SERVER_TYPE & type);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
 static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid,
@@ -454,27 +453,6 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
   return exit_code;
 }
 
-static int
-receive_server_type (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & dbname, SERVER_TYPE & type)
-{
-  int buffer_length;
-  char *buffer = NULL;
-
-  int exit_code = css_receive_data (conn, rid, &buffer, &buffer_length, -1);
-
-  if (exit_code == NO_ERRORS)
-    {
-      // *INDENT-OFF*
-      type = static_cast<SERVER_TYPE> (buffer[0] - '0');
-      // *INDENT-ON*
-      dbname = std::string (buffer + 1, buffer_length - 1);
-
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
-			   dbname.c_str (), type == SERVER_TYPE_PAGE ? "page" : "transaction");
-    }
-  return exit_code;
-}
-
 /*
  * css_register_new_server() - register a new server by reading the server name
  *   return: none
@@ -679,7 +657,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
   std::string server_name;
   SERVER_TYPE type;
 
-  if (receive_server_type (conn, rid, server_name, type) == NO_ERRORS && !server_name.empty ())
+  if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS && !server_name.empty ())
     {
       temp = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
       if (temp != NULL
