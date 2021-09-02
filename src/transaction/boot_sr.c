@@ -2528,11 +2528,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
   /* Load and recover data pages before log recovery */
-  error_code = dwb_load_and_recover_pages (thread_p, log_path, log_prefix);
-  if (error_code != NO_ERROR)
+  if (!is_tran_server_with_remote_storage ())
     {
-      ASSERT_ERROR ();
-      goto error;
+      error_code = dwb_load_and_recover_pages (thread_p, log_path, log_prefix);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
     }
 
   /*
@@ -2551,7 +2554,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if defined(SERVER_MODE)
   pgbuf_daemons_init ();
   pgbuf_highest_evicted_lsa_init ();
-  dwb_daemons_init ();
+  if (!is_tran_server_with_remote_storage ())
+    {
+      dwb_daemons_init ();
+    }
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
@@ -2893,7 +2899,10 @@ error:
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
-  dwb_daemons_destroy ();
+  if (!is_tran_server_with_remote_storage ())
+    {
+      dwb_daemons_destroy ();
+    }
 #endif
 
   log_final (thread_p);
@@ -3221,7 +3230,10 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   log_final (thread_p);
 
   /* Since all pages were flushed, now it's safe to destroy DWB. */
-  (void) dwb_destroy (thread_p);
+  if (!is_tran_server_with_remote_storage ())
+    {
+      (void) dwb_destroy (thread_p);
+    }
 
   if (is_er_final == ER_ALL_FINAL)
     {
