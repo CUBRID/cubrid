@@ -10572,7 +10572,6 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
   /* the serial property has not changed, we are only dealing with renaming */
   if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF)
-      && attribute->info.attr_def.auto_increment != NULL
       && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
       && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_LOST)
       && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_GAINED))
@@ -10610,7 +10609,6 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
     {
       MOP auto_increment_obj = NULL;
 
-      assert (attribute->info.attr_def.auto_increment != NULL);
       assert_release (found_att->auto_increment != NULL);
 
       error = do_update_maxvalue_of_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
