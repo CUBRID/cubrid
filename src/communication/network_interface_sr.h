@@ -242,9 +242,9 @@ extern void ssession_stop_attached_threads (void *session);
 
 /*for CDC*/
 extern void slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void scdc_initialize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void scdc_get_logitem (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void scdc_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

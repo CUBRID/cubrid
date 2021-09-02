@@ -10295,42 +10295,23 @@ ssession_stop_attached_threads (void *session)
 }
 
 void
-scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE + OR_INT64_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr;
-  LOG_LSA start_lsa;
-  time_t input_time;
-  uint64_t b_start_lsa;
-  int error;
-
-  ptr = or_unpack_int64 (request, &input_time);
-
-  error = cdc_find_lsa (thread_p, &input_time, &start_lsa);
-
-  ptr = or_pack_int (reply, error);
-  ptr = or_pack_log_lsa (ptr, &start_lsa);
-  or_pack_int64 (ptr, input_time);
-
-  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-
-  return;
-}
-
-void
-scdc_initialize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
-  int error;
+  int error_code;
   int max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class;
   uint64_t *extraction_classoids = NULL;
   char **extraction_user = NULL;
-  int extraction_user_len = 0;
 
   char *dummy_user = NULL;
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
+    {
+      error_code = ER_CDC_NOT_AVAILABLE;
+      goto error;
+    }
 
   ptr = or_unpack_int (request, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
@@ -10342,32 +10323,20 @@ scdc_initialize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
       extraction_user = (char **) malloc (sizeof (char *) * num_extraction_user);
       if (extraction_user == NULL)
 	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
 	}
 
       for (int i = 0; i < num_extraction_user; i++)
 	{
-	  ptr = or_unpack_string (ptr, &dummy_user);
-	  extraction_user_len = strlen (dummy_user);
-	  extraction_user[i] = (char *) malloc (extraction_user_len + 1);
+	  ptr = or_unpack_string_nocopy (ptr, &dummy_user);
 
+	  extraction_user[i] = strdup (dummy_user);
 	  if (extraction_user[i] == NULL)
 	    {
-	      for (int j = 0; j <= i; j++)
-		{
-		  free (extraction_user[j]);
-		}
-	      free (extraction_user);
-	      db_private_free_and_init (NULL, dummy_user);
-
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto end;
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
 	    }
-
-	  memcpy (extraction_user[i], dummy_user, extraction_user_len);
-	  db_private_free_and_init (NULL, dummy_user);
-	  extraction_user[i][extraction_user_len] = '\0';
 	}
     }
 
@@ -10375,148 +10344,202 @@ scdc_initialize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
 
   if (num_extraction_class > 0)
     {
-      extraction_classoids = (uint64_t *) malloc (sizeof (uint64_t) * num_extraction_class);
+      extraction_classoids = (UINT64 *) malloc (sizeof (UINT64) * num_extraction_class);
       if (extraction_classoids == NULL)
 	{
-	  if (num_extraction_user > 0)
-	    {
-	      for (int i = 0; i < num_extraction_user; i++)
-		{
-		  free (extraction_user[i]);
-		}
-
-	      free (extraction_user);
-	    }
-
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
 	}
+
       for (int i = 0; i < num_extraction_class; i++)
 	{
-	  ptr = or_unpack_int64 (ptr, (INT64 *) & extraction_classoids[i]);
+	  ptr = or_unpack_int64 (ptr, (INT64 *) extraction_classoids + i);
 	}
     }
 
-  error =
+  error_code =
     cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
 			   extraction_classoids, num_extraction_class);
-  if (error != NO_ERROR)
+  if (error_code != NO_ERROR)
     {
-      goto end;
+      goto error;
     }
 
-  error = cdc_initialize ();
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-end:
-
-  ptr = or_pack_int (reply, error);
+  or_pack_int (reply, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
+
+error:
+
+  cdc_free_extraction_filter ();
+
+  or_pack_int (reply, error_code);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 void
-scdc_get_logitem_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
-  /*total size of reply message is decided after log_item has been returned */
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE + OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
   LOG_LSA start_lsa;
-  UINT64 b_start_lsa;
+  time_t input_time;
+  int error_code;
+
+  ptr = or_unpack_int64 (request, &input_time);
+
+  error_code = cdc_find_lsa (thread_p, &input_time, &start_lsa);
+  if (error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA)
+    {
+      cdc_set_extraction_lsa (&start_lsa);
+      if (cdc_Gl.loginfo_queue_size != 0)
+	{
+	  cdc_reinitialize_queue (&start_lsa);
+	}
+
+      cdc_wakeup_loginfo_producer ();
+
+      ptr = or_pack_int (reply, error_code);
+      ptr = or_pack_log_lsa (ptr, &start_lsa);
+      or_pack_int64 (ptr, input_time);
+
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+      return;
+    }
+  else
+    {
+      goto error;
+    }
+
+error:
+
+  or_pack_int (reply, error_code);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  LOG_LSA start_lsa;
+  LOG_LSA next_lsa;
+
   int total_length;
   char *log_info_list;
-  int error;
+  int error_code = NO_ERROR;
   int num_log_info;
 
   int rc;
 
 #if !defined(NDEBUG)
-  _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info ");
+  _er_log_debug (ARG_FILE_LINE, "scdc_get_loginfo_metadata ");
 #endif
+  or_unpack_log_lsa (request, &start_lsa);
 
-  if (cdc_Server_comm.is_sent == false)
+  if (LSA_ISNULL (&cdc_Gl.consumer.next_lsa))
     {
-#if !defined(NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info : send failed loginfo");
-#endif
-      LSA_COPY (&start_lsa, &cdc_Server_comm.next_lsa);
-      num_log_info = cdc_Server_comm.num_log_item;
-      total_length = cdc_Server_comm.total_length;
+      /* if server is restarted while cdc is running, and client immediately calls extraction without scdc_find_lsa(), 
+       * LSA validation is needed to perform at client side or somewhere because server has no information about LSAs. it needs to be discussed ( 보류) */
+      cdc_set_extraction_lsa (&start_lsa);
+
+      cdc_wakeup_loginfo_producer ();
+    }
+
+  if (LSA_EQ (&cdc_Gl.consumer.next_lsa, &start_lsa))
+    {
+      error_code = cdc_make_loginfo (thread_p, &start_lsa);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      error_code = cdc_get_loginfo_metadata (&next_lsa, &total_length, &num_log_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+  else if (LSA_EQ (&cdc_Gl.consumer.start_lsa, &start_lsa))
+    {
+      /* Send again; only the case, where cdc client re-request loginfo metadata requested last time due to a problem like shutdown, will be dealt. */
+      error_code = cdc_get_loginfo_metadata (&next_lsa, &total_length, &num_log_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
   else
     {
-#if !defined(NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info : no failed loginfo ");
-#endif
-      or_unpack_log_lsa (request, &start_lsa);
-      error = cdc_get_logitem_info (thread_p, &start_lsa, &total_length, &num_log_info);
+      _er_log_debug (ARG_FILE_LINE,
+		     "requested extract lsa is (%lld | %d) is not in a range of previously requested lsa (%lld | %d) and next lsa to extract (%lld | %d)",
+		     LSA_AS_ARGS (&start_lsa), LSA_AS_ARGS (&cdc_Gl.consumer.start_lsa),
+		     LSA_AS_ARGS (&cdc_Gl.consumer.next_lsa));
+      error_code = ER_CDC_INVALID_LOG_LSA;
+      goto error;
     }
-  ptr = or_pack_int (reply, error);
 
-  ptr = or_pack_log_lsa (ptr, &start_lsa);	/*pack_int64 */
+#if 0
+  if (LSA_ISNULL (&cdc_Gl.cdc_server_comm.next_lsa) || LSA_EQ (&cdc_Gl.cdc_server_comm.next_lsa, &start_lsa));
+  if (LSA_EQ (&cdc_Gl.cdc_server_comm.start_lsa, &start_lsa));
+#endif
+
+  ptr = or_pack_int (reply, error_code);
+
+  ptr = or_pack_log_lsa (ptr, &next_lsa);
   ptr = or_pack_int (ptr, num_log_info);
   ptr = or_pack_int (ptr, total_length);
 
-
-  rc = css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-  if (rc != 0)
-    {
-#if !defined(NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem_info : failed to send loginfo : %d ", rc);
-#endif
-      /*start lsa, total length, num_log_info wil be resent */
-      cdc_Server_comm.is_sent = false;
-      return;
-    }
-  cdc_Server_comm.is_sent = true;
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
+
+error:
+
+  or_pack_int (reply, error_code);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 void
-scdc_get_logitem (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int rc;
-  rc = css_send_data_to_client (thread_p->conn_entry, rid, cdc_Server_comm.log_items, cdc_Server_comm.total_length);
-  if (rc != 0)
-    {
-#if !defined(NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "scdc_get_logitem : failed to send loginfo : %d ", rc);
-#endif
-      cdc_Server_comm.is_sent = false;
-      return;
-    }
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, cdc_Gl.consumer.log_info, cdc_Gl.consumer.log_info_size);
 
-  free_and_init (cdc_Server_comm.log_items);
-
-  cdc_Server_comm.is_sent = true;
   return;
 }
 
 void
-scdc_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr;
-  int error;
+  int error_code;
 
 #if !defined(NDEBUG)
   _er_log_debug (ARG_FILE_LINE, "scdc_finalize ");
 #endif
-  error = cdc_finalize ();
 
-  ptr = or_pack_int (reply, error);
+  // 1. producer 정지 및 관련 자료구조 cleanup
+  // 2. consumer 버퍼 정리 및 초기화
+  error_code = cdc_cleanup ();
+
+  /* server side, client side finalize is mixed 
+   * server : 전역 변수 초기화 
+   * client : server finalize의 subset */
+
+  or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
 #if !defined(NDEBUG)
-  _er_log_debug (ARG_FILE_LINE, "scdc_finalize return : %d", error);
+  _er_log_debug (ARG_FILE_LINE, "scdc_finalize return : %d", error_code);
 #endif
 
   return;

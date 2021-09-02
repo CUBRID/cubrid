@@ -455,7 +455,7 @@ cubrid_log_send_configurations (void)
   request_size = ptr - request;
 
   if (css_send_request_with_data_buffer
-      (g_conn_entry, NET_SERVER_CDC_INITIALIZE, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
+      (g_conn_entry, NET_SERVER_CDC_START_SESSION, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
@@ -472,7 +472,11 @@ cubrid_log_send_configurations (void)
 
   or_unpack_int (recv_data, &reply_code);
 
-  if (reply_code != NO_ERROR)
+  if (reply_code == ER_CDC_NOT_AVAILABLE)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_UNAVAILABLE_CDC_SERVER, trace_errbuf);
+    }
+  else if (reply_code != NO_ERROR)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
@@ -627,7 +631,7 @@ cubrid_log_find_start_lsa (time_t * timestamp, LOG_LSA * lsa)
 
   ptr = or_unpack_int (recv_data, &reply_code);
 
-  if (reply_code == NO_ERROR || reply_code == ER_CDC_LSA_NOT_FOUND)
+  if (reply_code == NO_ERROR || reply_code == ER_CDC_ADJUSTED_LSA)
     {
       ptr = or_unpack_log_lsa (ptr, lsa);
       or_unpack_int64 (ptr, timestamp);
@@ -639,6 +643,18 @@ cubrid_log_find_start_lsa (time_t * timestamp, LOG_LSA * lsa)
 
       return CUBRID_LOG_SUCCESS;
     }
+  else if (reply_code == ER_CDC_ADJUSTED_LSA)
+  {
+    ptr = or_unpack_log_lsa (ptr, lsa);
+    or_unpack_int64 (ptr, timestamp);
+
+      if (recv_data != NULL && recv_data != reply)
+	{
+	  free_and_init (recv_data);
+	}
+
+    return CUBRID_LOG_SUCCESS_WITH_ADJUSTED_LSA;
+  }
   else
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND, trace_errbuf);
@@ -731,7 +747,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   /* protocol name will be modified */
   if (css_send_request_with_data_buffer
-      (g_conn_entry, NET_SERVER_CDC_GET_LOGITEM_INFO, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
+      (g_conn_entry, NET_SERVER_CDC_GET_LOGINFO_METADATA, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
@@ -759,6 +775,10 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_EXTRACTION_TIMEOUT, trace_errbuf);
 	}
+      else if (reply_code == ER_CDC_INVALID_LOG_LSA)
+        {
+          CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA, trace_errbuf);
+        }
     }
 
   ptr = or_unpack_log_lsa (ptr, next_lsa);
@@ -793,7 +813,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
   if (*total_length > 0)
     {
       if (css_send_request_with_data_buffer
-	  (g_conn_entry, NET_SERVER_CDC_GET_LOGITEM, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
+	  (g_conn_entry, NET_SERVER_CDC_GET_LOGINFO, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
 	}
@@ -1379,7 +1399,7 @@ cubrid_log_disconnect_server (void)
   char trace_errbuf[1024];
 
   if (css_send_request_with_data_buffer
-      (g_conn_entry, NET_SERVER_CDC_FINALIZE, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
+      (g_conn_entry, NET_SERVER_CDC_END_SESSION, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }

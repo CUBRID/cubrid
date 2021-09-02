@@ -228,7 +228,6 @@ extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
 #if defined (SERVER_MODE)
 extern void cdc_daemons_init ();
 extern void cdc_daemons_destroy ();
-extern void cdc_wakeup_log_producer ();
 #endif
 
 /*cdc functions*/
@@ -238,6 +237,14 @@ extern int cdc_set_configuration (int max_log_item, int timeout, int all_in_cond
 extern int cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_length, int *num_log_info);
 extern int cdc_initialize ();
 extern int cdc_finalize ();
+extern int cdc_free_extraction_filter ();
+extern int cdc_cleanup ();
+extern int cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa);
+extern int cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info);
+
+extern int cdc_set_extraction_lsa (LOG_LSA * lsa);
+extern void cdc_wakeup_loginfo_producer ();
+extern void cdc_reinitialize_queue (LOG_LSA * start_lsa);
 //
 // log critical section
 //

@@ -783,41 +783,72 @@ typedef struct cdc_temp_logbuf
   char log_page[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 } CDC_TEMP_LOGBUF;
 
-typedef struct cdc_global_info
+#if 0
+typedef struct cdc_server_comm
 {
-  LOG_LSA next_lsa;		/* next LSA to process */
+  char *log_info;		/* log info list. it is used as buffer to send to client */
+  int log_info_size;		/* total length of data in log_info */
+  int log_info_buf_size;	/* size of buffer for log_info */
+  int num_log_info;		/* how many log info is stored in log_infos (log info list) */
 
-  LOG_LSA last_produced_lsa;
-  LOG_LSA last_consumed_lsa;
+  LOG_LSA start_lsa;		/* first LSA of log info that should be sent */
+  LOG_LSA next_lsa;		/* next LSA to be sent to client */
+} CDC_SERVER_COMM;
+#endif
 
-  pthread_mutex_t next_lsa_lock;
-  pthread_mutex_t queue_produce_lock;
-  pthread_mutex_t queue_consume_lock;
-  pthread_mutex_t init_queue_lock;
+typedef struct cdc_producer
+{
+  LOG_LSA next_extraction_lsa;
 
-  pthread_mutex_t is_finalize_lock;
+  /* configuration */
+  int all_in_cond;
 
-  pthread_cond_t lsa_init_cond;
-  pthread_cond_t nxio_lsa_cond;
-  pthread_cond_t queue_produce_cond;
-  pthread_cond_t queue_consume_cond;
-  pthread_cond_t finalize_cond;
-  pthread_cond_t queue_init_cond;
-
-  uint64_t queue_size;
-  bool is_queue_initialized;
-
-  bool is_finalize;
-
-  /*configuration */
   int num_extraction_user;
   char **extraction_user;
+
   int num_extraction_class;
   UINT64 *extraction_classoids;
-  int all_in_cond;
-  int max_log_item;
+
+  bool do_produce_loginfo;	/* whether cdc_loginfo_producer process or not */
+  bool stop_produce_loginfo;
+
+  pthread_mutex_t execute_lock;
+  pthread_cond_t execute_cond;
+
+  CDC_TEMP_LOGBUF temp_logbuf[2];
+} CDC_PRODUCER;
+
+typedef struct cdc_consumer
+{
   int extraction_timeout;
-} CDC_GLOBAL_INFO;
+  int max_log_item;
+
+  char *log_info;		/* log info list. it is used as buffer to send to client */
+  int log_info_size;		/* total length of data in log_info */
+  int log_info_buf_size;	/* size of buffer for log_info */
+  int num_log_info;		/* how many log info is stored in log_infos (log info list) */
+
+  LOG_LSA start_lsa;		/* first LSA of log info that should be sent */
+  LOG_LSA next_lsa;		/* next LSA to be sent to client */
+
+} CDC_CONSUMER;
+
+typedef struct cdc_global
+{
+  CDC_PRODUCER producer;
+  CDC_CONSUMER consumer;
+
+  /* *INDENT-OFF* */
+  lockfree::circular_queue<CDC_LOGINFO_ENTRY *> *loginfo_queue;
+  /* *INDENT-ON* */
+
+  LOG_LSA first_loginfo_queue_lsa;
+  LOG_LSA last_loginfo_queue_lsa;
+  uint64_t loginfo_queue_size;
+
+  pthread_mutex_t queue_consume_lock;
+  pthread_cond_t queue_consume_cond;
+} CDC_GLOBAL;
 
 /* will be moved to new file for CDC */
 typedef struct ovf_page_list
@@ -848,15 +879,6 @@ typedef enum cdc_dml_type
   CDC_UPDATE,
   CDC_DELETE,
 } CDC_DML_TYPE;
-
-typedef struct cdc_server_comm
-{
-  char *log_items;		/* log item list. it is used as buffer to send to client */
-  int total_length;		/* total length of log_items */
-  int num_log_item;		/* how many log log item is stored in log_items (log item list) */
-  LOG_LSA next_lsa;		/* LSA to process for next step */
-  bool is_sent;			/* if is_sent is true, then trasferring log_items to client is done well */
-} CDC_SERVER_COMM;
 
 /*Data structure for CDC interface end */
 
@@ -890,12 +912,7 @@ extern char log_Name_bg_archive[];
 extern char log_Name_removed_archive[];
 
 /*CDC global variables */
-extern CDC_GLOBAL_INFO cdc_Gl;
-
-/* *INDENT-OFF* */
-extern lockfree::circular_queue<CDC_LOGINFO_ENTRY *> *cdc_logInfo_queue;
-/* *INDENT-ON* */
-extern CDC_SERVER_COMM cdc_Server_comm;
+extern CDC_GLOBAL cdc_Gl;
 
 /* logging */
 #if defined (SA_MODE)

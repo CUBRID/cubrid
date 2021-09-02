@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <time.h>
 
+#define CUBRID_LOG_UNAVAILABLE_CDC_SERVER        (-34)
 #define CUBRID_LOG_FAILED_LOGIN                 (-33)
 #define CUBRID_LOG_INVALID_PASSWORD             (-32)
 #define CUBRID_LOG_INVALID_ID                   (-31)
@@ -63,6 +64,7 @@
 #define CUBRID_LOG_FAILED_DEALLOC               (-1)
 #define CUBRID_LOG_SUCCESS                      (0)
 #define CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM      (1)
+#define CUBRID_LOG_SUCCESS_WITH_ADJUSTED_LSA    (2)
 
 typedef struct ddl DDL;
 struct ddl

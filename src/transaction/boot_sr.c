@@ -2496,9 +2496,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if defined(SERVER_MODE)
   pgbuf_daemons_init ();
   dwb_daemons_init ();
-
   cdc_daemons_init ();
-  //cdc_wakeup_log_producer ();
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
@@ -2812,7 +2810,6 @@ error:
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
   dwb_daemons_destroy ();
-
   cdc_daemons_destroy ();
 #endif
 
