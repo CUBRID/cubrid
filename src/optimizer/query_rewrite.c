@@ -3564,7 +3564,6 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * like, P
 
   /* if success, use like_save. Otherwise, keep like. */
   like_save = pt_semantic_type (parser, like_save, NULL);
-
   if (like_save == NULL || er_errid () != NO_ERROR || pt_has_error (parser))
     {
       like->next = between->next;
@@ -3630,7 +3629,13 @@ qo_check_like_expression_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
       return node;
     }
 
-  if (PT_IS_QUERY (node) || PT_IS_NAME_NODE (node) || PT_IS_DOT_NODE (node))
+  if (PT_IS_QUERY (node) || PT_IS_DOT_NODE (node))
+    {
+      *like_expression_not_safe = true;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  else if (PT_IS_NAME_NODE (node) && node->info.name.correlation_level == 0)
     {
       *like_expression_not_safe = true;
       *continue_walk = PT_STOP_WALK;
