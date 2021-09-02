@@ -2528,12 +2528,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
   /* Load and recover data pages before log recovery */
-  // TODO: only when !is_tran_server_with_remote_storage ?
-  error_code = dwb_load_and_recover_pages (thread_p, log_path, log_prefix);
-  if (error_code != NO_ERROR)
+  if (!is_tran_server_with_remote_storage ())
     {
-      ASSERT_ERROR ();
-      goto error;
+      error_code = dwb_load_and_recover_pages (thread_p, log_path, log_prefix);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
     }
 
   /*
@@ -5076,7 +5078,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   /* Create double write buffer if not already created. DWB creation must be done before first volume.
    * DWB file is created on log_path.
    */
-  // TODO: !is_tran_server_with_remote_storage ?
   if (dwb_create (thread_p, log_path, log_prefix) != NO_ERROR)
     {
       goto error;
