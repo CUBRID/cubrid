@@ -657,7 +657,13 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
   std::string server_name;
   SERVER_TYPE type;
 
-  if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS && !server_name.empty ())
+  if (receive_server_info (conn, rid, server_name, type) != NO_ERRORS)
+    {
+      css_free_conn (conn);
+      return;
+    }
+
+  if (server_name.empty () == false)
     {
       temp = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
       if (temp != NULL
@@ -692,8 +698,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 		    }
 		  else if (!temp->ha_mode)
 		    {
-		      temp =
-			css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, SERVER_TYPE_ANY);
+		      temp = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
 		      if (temp != NULL)
 			{
 			  css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);

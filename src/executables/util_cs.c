@@ -263,7 +263,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   if (utility_get_option_bool_value (arg_map, BACKUP_PAGE_SERVER_S))
     {
-      set_conn_server_type (SERVER_TYPE_PAGE);
+      boot_set_conn_server_type (SERVER_TYPE_PAGE);
     }
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
@@ -2265,7 +2265,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 
   if (utility_get_option_bool_value (arg_map, PARAMDUMP_PAGE_SERVER_S))
     {
-      set_conn_server_type (SERVER_TYPE_PAGE);
+      boot_set_conn_server_type (SERVER_TYPE_PAGE);
     }
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
@@ -2398,7 +2398,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
 
   if (utility_get_option_bool_value (arg_map, STATDUMP_PAGE_SERVER_S))
     {
-      set_conn_server_type (SERVER_TYPE_PAGE);
+      boot_set_conn_server_type (SERVER_TYPE_PAGE);
     }
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)

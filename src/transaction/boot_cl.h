@@ -77,6 +77,6 @@ extern void boot_clear_host_connected (void);
 extern char *boot_get_server_session_key (void);
 extern void boot_set_server_session_key (const char *key);
 extern int boot_add_collations (MOP class_mop);
-extern SERVER_TYPE get_conn_server_type ();
-extern void set_conn_server_type (SERVER_TYPE server_type);
+extern SERVER_TYPE boot_get_conn_server_type ();
+extern void boot_set_conn_server_type (SERVER_TYPE server_type);
 #endif /* _BOOT_CL_H_ */

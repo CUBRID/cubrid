@@ -2711,7 +2711,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->page_server)
     {
-      set_conn_server_type (SERVER_TYPE_PAGE);
+      boot_set_conn_server_type (SERVER_TYPE_PAGE);
     }
 
   /* Establish a globaly accessible longjmp environment so we can terminate on severe errors without calling exit(). */

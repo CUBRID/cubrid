@@ -165,13 +165,13 @@ static int boot_Process_id = -1;
 static SERVER_TYPE g_conn_server_type = SERVER_TYPE_TRANSACTION;
 
 SERVER_TYPE
-get_conn_server_type ()
+boot_get_conn_server_type ()
 {
   return g_conn_server_type;
 }
 
 void
-set_conn_server_type (SERVER_TYPE server_type)
+boot_set_conn_server_type (SERVER_TYPE server_type)
 {
   g_conn_server_type = server_type;
 }
@@ -1704,7 +1704,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	}
 
       er_log_debug (ARG_FILE_LINE, "trying to connect '%s@%s'\n", db->name, hostlist[n]);
-      error = net_client_init (db->name, hostlist[n], get_conn_server_type ());
+      error = net_client_init (db->name, hostlist[n], boot_get_conn_server_type ());
       if (error != NO_ERROR)
 	{
 	  if (error == ERR_CSS_TCP_CONNECT_TIMEDOUT)

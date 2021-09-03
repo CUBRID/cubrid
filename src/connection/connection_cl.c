@@ -29,6 +29,7 @@
 #if defined (WINDOWS)
 #include <io.h>
 #endif
+#include <cstring>
 #include <filesystem>
 #include <stdio.h>
 #include <stdlib.h>
@@ -104,9 +105,9 @@ static void css_dealloc_conn (CSS_CONN_ENTRY * conn);
 
 static int css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header);
 static CSS_CONN_ENTRY *css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
-					   const char *server_name, int server_name_length, int port, int timeout,
+					   const char *message, int server_name_length, int port, int timeout,
 					   unsigned short *rid, bool send_magic);
-static CSS_CONN_ENTRY *css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *server_name,
+static CSS_CONN_ENTRY *css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *message,
 					   unsigned short *rid);
 static CSS_CONN_ENTRY *css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id,
 						    unsigned short *rid);
@@ -717,7 +718,7 @@ begin:
  *   rid(out):
  */
 static CSS_CONN_ENTRY *
-css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type, const char *server_name,
+css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type, const char *message,
 		    int server_name_length, int port, int timeout, unsigned short *rid, bool send_magic)
 {
   SOCKET fd;
@@ -745,7 +746,7 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_ty
 	  return NULL;
 	}
 
-      if (css_send_request (conn, connect_type, rid, server_name, server_name_length) == NO_ERRORS)
+      if (css_send_request (conn, connect_type, rid, message, server_name_length) == NO_ERRORS)
 	{
 	  return conn;
 	}
@@ -773,13 +774,13 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_ty
  *   rid(out):
  */
 static CSS_CONN_ENTRY *
-css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *server_name, unsigned short *rid)
+css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *message, unsigned short *rid)
 {
   int length;
 
-  if (server_name)
+  if (message)
     {
-      length = (int) strlen (server_name) + 1;
+      length = (int) strlen (message) + 1;
     }
   else
     {
@@ -787,7 +788,7 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *server_n
     }
 
   /* timeout in second in css_common_connect() */
-  return (css_common_connect (host_name, conn, DATA_REQUEST, server_name, length, css_Service_id,
+  return (css_common_connect (host_name, conn, DATA_REQUEST, message, length, css_Service_id,
 			      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true));
 }
 
@@ -1033,8 +1034,8 @@ css_connect_to_cubrid_server (char *host_name, char *server_name, SERVER_TYPE se
    * character to the numer related to the server type enum value, the rest of the
    * buffer space is used to copy the server name.
    */
-  msg = (char) (server_type + '0');
-  msg.append (server_name, strlen (server_name));
+  msg = ((char) server_type) + '0';
+  msg.append (server_name, std::strlen (server_name));
   retry_count = 0;
   if (css_server_connect (host_name, conn, msg.c_str (), &rid) == NULL)
     {

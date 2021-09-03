@@ -84,7 +84,7 @@ namespace cubcomm
      * character to the numer related to the server type enum value, the rest of the
      * buffer space is used to copy the server name.
      */
-    msg = (char) (m_server_type + '0');
+    msg = ((char) m_server_type) + '0';
     msg.append (m_server_name, m_server_name.length ());
     rc = (css_error_code) css_send_request_with_socket (m_socket, cmd_type, &m_request_id,
 	 msg.c_str (), static_cast<int> (msg.size ()));
