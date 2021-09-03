@@ -1161,7 +1161,11 @@ typedef enum
   PT_JOIN_UNION = 0x40		/* 0100 0000 -- not used */
 } PT_JOIN_TYPE;
 
-typedef enum
+#if defined (WINDOWS)
+enum hint_enum : INT64
+#else
+enum hint_enum
+#endif
 {
   PT_HINT_NONE = 0x00,		/* 0000 0000 *//* no hint */
   PT_HINT_ORDERED = 0x01,	/* 0000 0001 *//* force join left-to-right */
@@ -1205,8 +1209,9 @@ typedef enum
   PT_HINT_SELECT_KEY_INFO = 0x80000000,	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT key information from index b-tree instead of table record data */
   PT_HINT_NO_PUSH_PRED = 0x100000000	/* 0001 0000 0000 0000 0000 0000 0000 0000 0000 */
-  /* do not push predicates */
-} PT_HINT_ENUM;
+/* do not push predicates */
+};
+typedef enum hint_enum PT_HINT_ENUM;
 
 /* Codes for error messages */
 
