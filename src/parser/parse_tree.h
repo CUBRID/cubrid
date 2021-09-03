@@ -1162,7 +1162,7 @@ typedef enum
 } PT_JOIN_TYPE;
 
 #if defined (WINDOWS)
-enum hint_enum : INT64
+enum hint_enum:INT64
 #else
 enum hint_enum
 #endif
