@@ -117,7 +117,6 @@ log_lsa::is_max () const
   return *this == MAX_LSA;
 }
 
-
 void
 log_lsa::set_null ()
 {
