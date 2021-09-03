@@ -52,6 +52,7 @@ geçerli ayarlar:\n\
       --no-trigger-action      tetikleyicileri devre dışı bırak\n\
       --delimiter=ARG          sütunlar arası sınırlayıcı (-q sadece çalışır)\n\
       --enclosure=ARG          bir sonuç dizesi için kapsam (-q sadece çalışır)\n\
+      --page-server            connect the page server available locally\n\
 \n\
 Ek bilgi için, adresine bakın http://www.cubrid.org\n
 41 %1$s: doğru olmayan %2$s_MODE ortam değeri. \n%3$s veya %4$s olmalıdır.\n

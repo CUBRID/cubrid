@@ -52,6 +52,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
       --no-trigger-action      トリガーアクションを無効にする\n\
       --delimiter=ARG          列間の区切り文字（-qでのみ機能）\n\
       --enclosure=ARG          結果文字列のエンクロージャ（-qでのみ機能）\n\
+      --page-server            connect the page server available locally\n\
 \n\
 追加情報は「http://www.cubrid.org」で得られます。\n
 41 %1$s: 正しくない環境バリアブル「%2$s_MODE」 \n%3$s、または%4$sしかできません。\n

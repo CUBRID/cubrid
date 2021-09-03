@@ -52,6 +52,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
       --no-trigger-action      트리거 실행 안함\n\
       --delimiter=ARG          컬럼간 구분자 (-q에서만 사용 가능)\n\
       --enclosure=ARG          결과 문자열 엔클러저 (-q에서만 사용 가능)\n\
+      --page-server            connect the page server available locally\n\
 \n\
 추가적인 정보는 http://www.cubrid.org 에서 얻을 수 있습니다.\n
 41 %1$s: 환경 변수 %2$s_MODE 의 값이 틀림. \n%3$s 또는 %4$s 이어야 합니다.\n

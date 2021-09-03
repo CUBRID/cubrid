@@ -291,7 +291,8 @@ valid options:\n\
   -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
   -z, --compress               compress backup volumes; default: uncompress\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
-  -k, --separate-keys          keys file (_keys) for TDE is not included in the backup volume, but is separated into a file instead\n
+  -k, --separate-keys          keys file (_keys) for TDE is not included in the backup volume, but is separated into a file instead\n\
+      --page-server            run backupdb on the page server available locally\n
 71 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
 
 
@@ -900,7 +901,8 @@ valid options:\n\
   -o, --output-file=FILE       redirect output message to FILE; default: none\n\
   -b, --both                   dump both client and server parameters\n\
   -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+  -C, --CS-mode                client-server mode execution\n\
+      --page-server            run paramdump on the page server available locally\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Wrong value \"%1$s\" for the server's HA running mode.\n
@@ -962,7 +964,8 @@ valid options:\n\
   -o, --output-file=FILE       redirect output message to FILE; default: none\n\
   -c, --cumulative             print cumulative stats\n\
   -i, --interval=S             print stats every S secs\n\
-  -s, --substr=STRING          print stat item only that match the substring\n
+  -s, --substr=STRING          print stat item only that match the substring\n\
+      --page-server            run statdump on the page server available locally\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Enter DBA password:

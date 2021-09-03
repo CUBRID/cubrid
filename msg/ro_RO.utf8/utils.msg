@@ -292,7 +292,8 @@ opţiuni valide:\n\
   -t, --thread-count=NUMAR     număr de fire de excuţie; implicit: 0(auto)\n\
   -z, --compress               compresia volumelor de backup; implicit: decompresie\n\
       --sleep-msecs=N          asteapta N milisecunde la fiecare 1MB citit; implicit: 0\n\
-  -k, --separate-keys          cheie file (_keys) for TDE is not included in the backup volume, but is separate into a file\n
+  -k, --separate-keys          cheie file (_keys) for TDE is not included in the backup volume, but is separate into a file\n\
+      --page-server            run backupdb on the page server available locally\n
 71 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
 
 
@@ -915,7 +916,8 @@ opţiuni valide:\n\
   -o, --output-file=FIŞIER     redirecţionează mesajele de ieşire către FIŞIER; implicit: nul\n\
   -b, --both                   varsă atât parametri de client, cât şi pe cei de sistem\n\
   -S, --SA-mode                mod de execuţie independent\n\
-  -C, --CS-mode                mod de execuţie client-server\n
+  -C, --CS-mode                mod de execuţie client-server\n\
+      --page-server            run paramdump on the page server available locally\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Valoare greşită \"%1$s\" pentru modul de execuţie HA al serverului.\n
@@ -977,7 +979,8 @@ opţiuni valide:\n\
   -o, --output-file=FIŞIER     redirecţionează mesajele de ieşire către un FIŞIER; implicit: nul\n\
   -c, --cumulative             afişează statistici cumulative\n\
   -i, --interval=S             afişează statisticile la fiecare S secunde\n\
-  -s, --substr=STRING          afişează un element de statistică ce conţine şirul de caractere specificat\n
+  -s, --substr=STRING          afişează un element de statistică ce conţine şirul de caractere specificat\n\
+      --page-server            run statdump on the page server available locally\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Introduceţi parola de administrator (DBA):

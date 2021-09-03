@@ -52,6 +52,7 @@ valid options:\n\
       --no-trigger-action      disable trigger action\n\
       --delimiter=ARG          delimiter between columns (only work with -q)\n\
       --enclosure=ARG	       enclosure for a result string (only work with -q)\n\
+      --page-server            connect the page server available locally\n\
 \n\
 For additional information, see http://www.cubrid.org\n
 41 %1$s: the environment value of %2$s_MODE is incorrect. \nIt should be either %3$s or %4$s.\n
