@@ -3654,11 +3654,18 @@ qo_check_like_expression_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 static void
 qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 {
+  bool error_saved;
   PT_NODE *cnf_node = NULL;
   /* prev node in list which linked by next pointer. */
   PT_NODE *prev = NULL;
   /* prev node in list which linked by or_next pointer. */
   PT_NODE *or_prev = NULL;
+
+  if (er_errid () != NO_ERROR)
+    {
+      er_stack_push ();
+      error_saved = true;
+    }
 
   for (cnf_node = *cnf_list; cnf_node != NULL; cnf_node = cnf_node->next)
     {
@@ -3788,6 +3795,11 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	  or_prev = crt_expr;
 	}
       prev = cnf_node;
+    }
+
+  if (error_saved)
+    {
+      er_stack_pop ();
     }
 }
 
