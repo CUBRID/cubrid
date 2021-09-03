@@ -11065,6 +11065,11 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       {
 	int *const p = &(attr_chg_properties->p[i]);
 
+	if (*p & ATT_CHG_PROPERTY_LOST)
+	  {
+	    continue;
+	  }
+
 	if (*p & ATT_CHG_PROPERTY_PRESENT_OLD)
 	  {
 	    if (*p & ATT_CHG_PROPERTY_PRESENT_NEW)
