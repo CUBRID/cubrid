@@ -276,6 +276,38 @@ extern int db_Disable_modifications;
 #define MAX_NUM_EXEC_QUERY_HISTORY                      100
 
 /*CDC defines*/
+
+#define CDC_GET_TEMP_LOGPAGE(thread_p, process_lsa, log_page_p) \
+  do \
+    { \
+      if (cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p->hdr.logical_pageid \
+          != (process_lsa)->pageid) \
+      { \
+        if (logpb_fetch_page ((thread_p), (process_lsa), LOG_CS_FORCE_USE, (log_page_p)) \
+            != NO_ERROR) \
+        { \
+          goto error; \
+        } \
+         memcpy (cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p, (log_page_p), IO_MAX_PAGE_SIZE); \
+      } \
+      else \
+      { \
+        (log_page_p) = cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p ;\
+      } \
+    } \
+  while (0)
+
+#define CDC_CHECK_TEMP_LOGPAGE(process_lsa, tmpbuf_index, log_page_p) \
+  do \
+    { \
+      if (((process_lsa)->pageid % 2) != *(tmpbuf_index)) \
+      { \
+	  *(tmpbuf_index) = (*(tmpbuf_index) + 1) % 2; \
+	  memcpy (cdc_Gl.producer.temp_logbuf[*(tmpbuf_index)].log_page_p, (log_page_p), IO_MAX_PAGE_SIZE); \
+      } \
+    } \
+  while (0)
+
 #define MAX_CDC_LOGINFO_QUEUE_ENTRY  2048
 #define MAX_CDC_LOGINFO_QUEUE_SIZE   32 * 1024 * 1024	/*32 MB */
 #define MAX_CDC_TRAN_USER_TABLE       4000
@@ -778,7 +810,6 @@ typedef struct cdc_loginfo_entry
 
 typedef struct cdc_temp_logbuf
 {
-  int pageid;
   LOG_PAGE *log_page_p;
   char log_page[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 } CDC_TEMP_LOGBUF;
@@ -816,6 +847,11 @@ typedef struct cdc_producer
   pthread_cond_t execute_cond;
 
   CDC_TEMP_LOGBUF temp_logbuf[2];
+
+/* *INDENT-OFF* */
+  std::unordered_map <TRANID, char *> tran_user; /*to clear when log producer ends suddenly */
+  std::unordered_map<TRANID, int > tran_ignore;
+  /* *INDENT-ON* */
 } CDC_PRODUCER;
 
 typedef struct cdc_consumer

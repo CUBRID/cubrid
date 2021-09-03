@@ -19463,6 +19463,8 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   context->is_bulk_op = false;
 
   context->time_track = NULL;
+
+  context->do_supplemental_log = false;
 }
 
 /*
@@ -21212,18 +21214,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * of the heap type (reusable OID or not) as the relocated record
        * should not be referenced anywhere in the database.
        */
-      if (context->do_supplemental_log)
-	{
-	  /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
-	   * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
-	  heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				    &forward_recdes, true, &context->supp_undo_lsa);
-	}
-      else
-	{
-	  heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				    &forward_recdes, true, NULL);
-	}
+
+      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
+       * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
+      heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
+				&forward_recdes, true, context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -21541,19 +21536,11 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      if (context->do_supplemental_log)
-	{
-	  /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
-	   * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
-	  heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				    &context->home_recdes, is_reusable, &context->supp_undo_lsa);
-	}
-      else
-	{
-	  /* log operation */
-	  heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				    &context->home_recdes, is_reusable, NULL);
-	}
+      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
+       * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
+      heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
+				&context->home_recdes, is_reusable,
+				context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
