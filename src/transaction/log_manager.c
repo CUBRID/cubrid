@@ -10628,7 +10628,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
       if (cdc_Gl.producer.tran_ignore.count (trid) != 0)
 	{
-          goto end;
+	  goto end;
 	}
 
       supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa->offset);
@@ -10843,8 +10843,8 @@ error:
   return error;
 }
 
-static int
-cdc_loginfo_producer (THREAD_ENTRY * thread_p)
+static void
+cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 {
   LOG_LSA cur_log_rec_lsa;
   LOG_LSA process_lsa;
@@ -10852,31 +10852,24 @@ cdc_loginfo_producer (THREAD_ENTRY * thread_p)
 
   CDC_LOGINFO_ENTRY log_info_entry;
 
+  THREAD_ENTRY *thread_p = &thread_ref;
   int error = NO_ERROR;
 
-  if (cdc_Gl.producer.stop_produce_loginfo == true)
-    {
-      return NO_ERROR;
-    }
-  else if (cdc_Gl.producer.do_produce_loginfo == false)
-    {
-#if !defined(NDEBUG)		//JOOHOK
-      _er_log_debug (ARG_FILE_LINE, "cdc_producer_wait ");
-#endif
-      pthread_mutex_lock (&cdc_Gl.producer.execute_lock);
-      pthread_cond_wait (&cdc_Gl.producer.execute_cond, &cdc_Gl.producer.execute_lock);
-      pthread_mutex_unlock (&cdc_Gl.producer.execute_lock);
-    }
-
-  while (cdc_Gl.producer.do_produce_loginfo)	// 종료 flag가 true인 경우에만 계속 돈다.
+  while (!cdc_Gl.producer.shutdown)
     {
 #if !defined(NDEBUG)		//JOOHOK
       _er_log_debug (ARG_FILE_LINE, "cdc_producer_start ");
 #endif
-
-      if (cdc_Gl.producer.stop_produce_loginfo == true)
+      if (cdc_Gl.producer.do_produce_loginfo != true)
 	{
-	  return NO_ERROR;
+#if !defined(NDEBUG)		//JOOHOK
+	  _er_log_debug (ARG_FILE_LINE, "cdc_producer_wait ");
+#endif
+	  pthread_mutex_lock (&cdc_Gl.producer.execute_lock);
+	  pthread_cond_wait (&cdc_Gl.producer.execute_cond, &cdc_Gl.producer.execute_lock);
+	  pthread_mutex_unlock (&cdc_Gl.producer.execute_lock);
+
+	  continue;
 	}
 
       pthread_mutex_lock (&cdc_Gl.queue_consume_lock);
@@ -10893,13 +10886,12 @@ cdc_loginfo_producer (THREAD_ENTRY * thread_p)
 
       if (LSA_GE (&cdc_Gl.producer.next_extraction_lsa, &nxio_lsa))
 	{
-//        pthread_cond_wait (&cdc_Gl.nxio_lsa_cond, &cdc_Gl.next_lsa_lock);
-	  sleep (1);
-	  continue;
+	  /* LOG_HA_DUMMY_SERVER_STATUS is appended every 1 seconds and flushed. So it is expected to be woken up by looper within period of looper */
+	  break;
 	}
 
       log_info_entry.length = 0;
-      LSA_SET_NULL (&log_info_entry.start_lsa);
+      LSA_SET_NULL (&log_info_entry.next_lsa);
       log_info_entry.log_info = NULL;
 
       LSA_COPY (&cur_log_rec_lsa, &cdc_Gl.producer.next_extraction_lsa);
@@ -10911,44 +10903,67 @@ cdc_loginfo_producer (THREAD_ENTRY * thread_p)
 	  goto end;
 	}
 
-      LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, &process_lsa);
-
-      if (cdc_Gl.producer.stop_produce_loginfo == true)
-	{
-	  return NO_ERROR;
-	}
+      assert (!LSA_ISNULL (&process_lsa));
 
       /*when refined log info is queued, update cdc_Gl */
       if (log_info_entry.length != 0)
 	{
 #if !defined(NDEBUG)		//JOOHOK
-	  _er_log_debug (ARG_FILE_LINE, "log item produced (length=%d ", log_info_entry.length);
+	  _er_log_debug (ARG_FILE_LINE, "log item produced (length=%d) ", log_info_entry.length);
 #endif
 	  CDC_LOGINFO_ENTRY *tmp = (CDC_LOGINFO_ENTRY *) malloc (sizeof (CDC_LOGINFO_ENTRY));
 	  if (tmp == NULL)
 	    {
-	      goto end;
+#if !defined(NDEBUG)		//JOOHOK
+	      _er_log_debug (ARG_FILE_LINE, "LSA(%lld | %d) , malloc error ", LSA_AS_ARGS (&cur_log_rec_lsa));
+#endif
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
 	    }
+
 	  tmp->length = log_info_entry.length;
 	  tmp->log_info = log_info_entry.log_info;
-	  LSA_COPY (&tmp->start_lsa, &cdc_Gl.producer.next_extraction_lsa);
+	  LSA_COPY (&tmp->next_lsa, &process_lsa);
+
+	  pthread_mutex_lock (&cdc_Gl.queue_consume_lock);
+
+	  if (cdc_Gl.is_queue_reinitialized)
+	    {
+	      pthread_mutex_unlock (&cdc_Gl.queue_consume_lock);
+
+	      free_and_init (tmp->log_info);
+	      free_and_init (tmp);
+
+	      cdc_Gl.is_queue_reinitialized = false;
+
+	      continue;
+	    }
+
           /* *INDENT-OFF* */
 	  cdc_Gl.loginfo_queue->produce (tmp);
           /* *INDENT-ON* */
+	  cdc_Gl.loginfo_queue_size += tmp->length;
 
 	  LSA_COPY (&cdc_Gl.last_loginfo_queue_lsa, &cur_log_rec_lsa);
 
-	  cdc_Gl.loginfo_queue_size += tmp->length;
+	  pthread_mutex_unlock (&cdc_Gl.queue_consume_lock);
+
 
 #if !defined(NDEBUG)		//JOOHOK
 	  _er_log_debug (ARG_FILE_LINE, "log item produced signal complete  ");
 #endif
 	}
+
+      LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, &process_lsa);
     }
 
 end:
 
-  return NO_ERROR;
+  return;
+
+error:
+
+  return;
 }
 
 static SCAN_CODE
@@ -12462,31 +12477,31 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
 		    + OR_INT_SIZE
 		    + OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE + OR_BIGINT_SIZE + OR_INT_SIZE + statement_length);
 
-    {
-      char loginfo_buf[loginfo_length * 2 + MAX_ALIGNMENT];
-      ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
-      ptr = or_pack_int (ptr, loginfo_length);
-      ptr = or_pack_int (ptr, trid);
-      ptr = or_pack_string (ptr, user);
-      ptr = or_pack_int (ptr, dataitem_type);
-      ptr = or_pack_int (ptr, ddl_type);
-      ptr = or_pack_int (ptr, object_type);
-      ptr = or_pack_int64 (ptr, (INT64) b_objectoid);
-      ptr = or_pack_int64 (ptr, (INT64) b_classoid);
-      ptr = or_pack_int (ptr, statement_length);
-      ptr = or_pack_string (ptr, statement);
+  {
+    char loginfo_buf[loginfo_length * 2 + MAX_ALIGNMENT];
+    ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
+    ptr = or_pack_int (ptr, loginfo_length);
+    ptr = or_pack_int (ptr, trid);
+    ptr = or_pack_string (ptr, user);
+    ptr = or_pack_int (ptr, dataitem_type);
+    ptr = or_pack_int (ptr, ddl_type);
+    ptr = or_pack_int (ptr, object_type);
+    ptr = or_pack_int64 (ptr, (INT64) b_objectoid);
+    ptr = or_pack_int64 (ptr, (INT64) b_classoid);
+    ptr = or_pack_int (ptr, statement_length);
+    ptr = or_pack_string (ptr, statement);
 
-      ddl_entry->length = ptr - start_ptr;
-      or_pack_int (start_ptr, ddl_entry->length);
+    ddl_entry->length = ptr - start_ptr;
+    or_pack_int (start_ptr, ddl_entry->length);
 
-      ddl_entry->log_info = (char *) malloc (ddl_entry->length);
-      if (ddl_entry->log_info == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
+    ddl_entry->log_info = (char *) malloc (ddl_entry->length);
+    if (ddl_entry->log_info == NULL)
+      {
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
 
-      memcpy (ddl_entry->log_info, start_ptr, ddl_entry->length);
-    }
+    memcpy (ddl_entry->log_info, start_ptr, ddl_entry->length);
+  }
   return NO_ERROR;
 }
 
@@ -13106,19 +13121,6 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 }
 
 #if defined (SERVER_MODE)
-/* *INDENT-OFF* */
-static void
-cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
-{
-  if (!BO_IS_SERVER_RESTARTED ())
-    {
-      return;
-    }
-
-  cdc_loginfo_producer (&thread_ref);
-}
-/* *INDENT-ON* */
-
 void
 cdc_loginfo_producer_daemon_init ()
 {
@@ -13132,7 +13134,7 @@ cdc_loginfo_producer_daemon_init ()
 
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
   cdc_Gl.producer.do_produce_loginfo = false;
-  cdc_Gl.producer.stop_produce_loginfo = false;
+  cdc_Gl.producer.shutdown = false;
 
   /* *INDENT-OFF* */
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10)); /* 주석 처리  */
@@ -13171,7 +13173,7 @@ cdc_daemons_destroy ()
     }
 
   cdc_Gl.producer.do_produce_loginfo = false;
-  cdc_Gl.producer.stop_produce_loginfo = true;
+  cdc_Gl.producer.shutdown = true;
 
   pthread_cond_signal (&cdc_Gl.queue_consume_cond);
   pthread_cond_signal (&cdc_Gl.producer.execute_cond);
@@ -13345,6 +13347,14 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
   assert (cdc_Gl.loginfo_queue != NULL);
   CDC_LOGINFO_ENTRY *consume;
 
+  pthread_mutex_lock (&cdc_Gl.queue_consume_lock);
+  if (cdc_Gl.loginfo_queue_size == 0)
+    {
+      goto end;
+    }
+
+  cdc_Gl.is_queue_reinitialized = true;
+
   if (LSA_LE (&cdc_Gl.first_loginfo_queue_lsa, start_lsa) && LSA_GT (&cdc_Gl.last_loginfo_queue_lsa, start_lsa))
     {
       LOG_LSA next_consume_lsa = LSA_INITIALIZER;
@@ -13353,7 +13363,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	{
 	  cdc_Gl.loginfo_queue->consume (consume);
 	  cdc_Gl.loginfo_queue_size -= consume->length;
-	  LSA_COPY (&next_consume_lsa, &consume->start_lsa);
+	  LSA_COPY (&next_consume_lsa, &consume->next_lsa);
 
 	  if (consume->log_info != NULL)
 	    {
@@ -13379,6 +13389,12 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
     cdc_Gl.loginfo_queue = new lockfree::circular_queue <CDC_LOGINFO_ENTRY *> (MAX_CDC_LOGINFO_QUEUE_ENTRY);
           /* *INDENT-ON* */
     }
+
+end:
+
+  pthread_mutex_unlock (&cdc_Gl.queue_consume_lock);
+
+  pthread_cond_signal (&cdc_Gl.queue_consume_cond);
 }
 
 /*
@@ -13624,6 +13640,11 @@ cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info)
   LSA_COPY (lsa, &cdc_Gl.consumer.next_lsa);
   *length = cdc_Gl.consumer.log_info_size;
   *num_log_info = cdc_Gl.consumer.num_log_info;
+
+#if !defined(NDEBUG)
+  _er_log_debug (ARG_FILE_LINE, "cdc_get_loginfo_metadata : total length : %d, num_log_info : %d ", *length,
+		 *num_log_info);
+#endif
 }
 
 /* 버퍼 realloc 고려 (consumer.log_info) */
@@ -13663,8 +13684,8 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
     }
 
   LSA_COPY (&cdc_Gl.consumer.start_lsa, start_lsa);	/* stores start lsa to consume */
-
-//  log_infos = cdc_Gl.consumer.log_info;
+  log_infos = cdc_Gl.consumer.log_info;
+  memset (log_infos, 0, cdc_Gl.consumer.log_info_size);
 
   while (cdc_Gl.loginfo_queue->is_empty () == false && (num_log_info < cdc_Gl.consumer.max_log_item))
     {
@@ -13674,10 +13695,12 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
       /* *INDENT-OFF* */
       cdc_Gl.loginfo_queue->consume (consume);
       /* *INDENT-ON* */
-      if (LSA_GE (&consume->start_lsa, start_lsa))
+      if (LSA_GE (&consume->next_lsa, start_lsa))
 	{
-	  log_infos = (char *) realloc (log_infos, total_length + consume->length + MAX_ALIGNMENT);
-
+	  if (total_length + consume->length + MAX_ALIGNMENT > cdc_Gl.consumer.log_info_size)
+	    {
+	      log_infos = (char *) realloc (log_infos, total_length + consume->length + MAX_ALIGNMENT);
+	    }
 	  memcpy (PTR_ALIGN (log_infos + total_length, MAX_ALIGNMENT), PTR_ALIGN (consume->log_info, MAX_ALIGNMENT),
 		  consume->length);
 
@@ -13687,8 +13710,8 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 
 	  num_log_info++;
 
-	  LSA_COPY (&cdc_Gl.first_loginfo_queue_lsa, &consume->start_lsa);
-	  LSA_COPY (start_lsa, &consume->start_lsa);
+	  LSA_COPY (&cdc_Gl.first_loginfo_queue_lsa, &consume->next_lsa);
+	  LSA_COPY (start_lsa, &consume->next_lsa);
 
 	  cdc_Gl.loginfo_queue_size -= consume->length;
 
@@ -13741,7 +13764,7 @@ cdc_initialize ()
   cdc_Gl.producer.extraction_classoids = NULL;
 
   cdc_Gl.producer.do_produce_loginfo = false;
-  cdc_Gl.producer.stop_produce_loginfo = false;
+  cdc_Gl.producer.shutdown = false;
 
   /* *INDENT-OFF* */
   cdc_Gl.loginfo_queue = new lockfree::circular_queue <CDC_LOGINFO_ENTRY *> (MAX_CDC_LOGINFO_QUEUE_ENTRY);

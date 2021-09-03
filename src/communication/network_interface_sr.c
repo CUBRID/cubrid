@@ -10391,15 +10391,15 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   int error_code;
 
   ptr = or_unpack_int64 (request, &input_time);
+  //if scdc_find_lsa() is called more than once, it should pause running cdc_loginfo_producer_execute() thread 
+  cdc_Gl.producer.do_produce_loginfo = false;
 
   error_code = cdc_find_lsa (thread_p, &input_time, &start_lsa);
   if (error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA)
     {
       cdc_set_extraction_lsa (&start_lsa);
-      if (cdc_Gl.loginfo_queue_size != 0)
-	{
-	  cdc_reinitialize_queue (&start_lsa);
-	}
+
+      cdc_reinitialize_queue (&start_lsa);
 
       cdc_wakeup_loginfo_producer ();
 
@@ -10486,19 +10486,18 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
       goto error;
     }
 
-#if 0
-  if (LSA_ISNULL (&cdc_Gl.cdc_server_comm.next_lsa) || LSA_EQ (&cdc_Gl.cdc_server_comm.next_lsa, &start_lsa));
-  if (LSA_EQ (&cdc_Gl.cdc_server_comm.start_lsa, &start_lsa));
-#endif
-
   ptr = or_pack_int (reply, error_code);
 
   ptr = or_pack_log_lsa (ptr, &next_lsa);
   ptr = or_pack_int (ptr, num_log_info);
   ptr = or_pack_int (ptr, total_length);
 
-  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+#if !defined(NDEBUG)
+  _er_log_debug (ARG_FILE_LINE, "scdc_get_loginfo_metadata : total length : %d, num_log_info : %d ", total_length,
+		 num_log_info);
+#endif
 
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   return;
 
 error:

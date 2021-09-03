@@ -803,7 +803,7 @@ typedef struct log_logging_stat
 
 typedef struct cdc_loginfo_entry
 {
-  LOG_LSA start_lsa;
+  LOG_LSA next_lsa;
   int length;
   char *log_info;
 } CDC_LOGINFO_ENTRY;
@@ -839,9 +839,8 @@ typedef struct cdc_producer
 
   int num_extraction_class;
   UINT64 *extraction_classoids;
-
   bool do_produce_loginfo;	/* whether cdc_loginfo_producer process or not */
-  bool stop_produce_loginfo;
+  bool shutdown;
 
   pthread_mutex_t execute_lock;
   pthread_cond_t execute_cond;
@@ -881,6 +880,8 @@ typedef struct cdc_global
   LOG_LSA first_loginfo_queue_lsa;
   LOG_LSA last_loginfo_queue_lsa;
   uint64_t loginfo_queue_size;
+
+  bool is_queue_reinitialized;
 
   pthread_mutex_t queue_consume_lock;
   pthread_cond_t queue_consume_cond;
