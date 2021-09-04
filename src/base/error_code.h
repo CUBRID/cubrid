@@ -1653,8 +1653,8 @@
 #define ER_CDC_INVALID_LOG_LSA                      -1290
 #define ER_CDC_NOT_AVAILABLE                        -1291
 #define ER_CDC_ADJUSTED_LSA                         -1292
-
-#define ER_LAST_ERROR                               -1293
+#define ER_CDC_NULL_EXTRACTION_LSA                  -1293
+#define ER_LAST_ERROR                               -1294
 
 /*
  * CAUTION!

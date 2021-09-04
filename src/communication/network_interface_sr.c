@@ -10439,9 +10439,6 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 
   int rc;
 
-#if !defined(NDEBUG)
-  _er_log_debug (ARG_FILE_LINE, "scdc_get_loginfo_metadata ");
-#endif
   or_unpack_log_lsa (request, &start_lsa);
 
   if (LSA_ISNULL (&cdc_Gl.consumer.next_lsa))
@@ -10492,11 +10489,6 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   ptr = or_pack_int (ptr, num_log_info);
   ptr = or_pack_int (ptr, total_length);
 
-#if !defined(NDEBUG)
-  _er_log_debug (ARG_FILE_LINE, "scdc_get_loginfo_metadata : total length : %d, num_log_info : %d ", total_length,
-		 num_log_info);
-#endif
-
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   return;
 
@@ -10522,10 +10514,6 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-#if !defined(NDEBUG)
-  _er_log_debug (ARG_FILE_LINE, "scdc_finalize ");
-#endif
-
   // 1. producer 정지 및 관련 자료구조 cleanup
   // 2. consumer 버퍼 정리 및 초기화
   error_code = cdc_cleanup ();
@@ -10536,10 +10524,6 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-
-#if !defined(NDEBUG)
-  _er_log_debug (ARG_FILE_LINE, "scdc_finalize return : %d", error_code);
-#endif
 
   return;
 }
