@@ -222,14 +222,15 @@ namespace cublog
 		    set_not_applied_log_lsa_from_execute_func (job->get_log_lsa ());
 		  }
 		job->execute (thread_entry, m_redo_context);
+		m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_EXECUTE);
 		job->retire (m_task_idx);
+		m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_RETIRE);
 	      }
 
 	    // pointers still present in the vector are either:
 	    //  - already passed on to the reusable job container
 	    //  - dangling, as they have deleted themselves
 	    jobs_vec.clear ();
-	    m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_EXECUTE_AND_RETIRE);
 	  }
       }
 

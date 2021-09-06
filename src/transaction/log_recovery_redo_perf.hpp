@@ -79,7 +79,8 @@ namespace cublog
   {
     PERF_STAT_ID_PARALLEL_POP,
     PERF_STAT_ID_PARALLEL_SLEEP,
-    PERF_STAT_ID_PARALLEL_EXECUTE_AND_RETIRE,
+    PERF_STAT_ID_PARALLEL_EXECUTE,
+    PERF_STAT_ID_PARALLEL_RETIRE,
   };
 
   static constexpr cubperf::statset_definition::init_list_t perf_stats_async_definition_init_list
@@ -88,8 +89,10 @@ namespace cublog
 			      "Counter pop", "Timer pop (ms)"),
     cubperf::stat_definition (PERF_STAT_ID_PARALLEL_SLEEP, cubperf::stat_definition::COUNTER_AND_TIMER,
 			      "Counter sleep", "Timer sleep (ms)"),
-    cubperf::stat_definition (PERF_STAT_ID_PARALLEL_EXECUTE_AND_RETIRE, cubperf::stat_definition::COUNTER_AND_TIMER,
-			      "Counter execute_and_retire", "Timer execute_and_retire (ms)"),
+    cubperf::stat_definition (PERF_STAT_ID_PARALLEL_EXECUTE, cubperf::stat_definition::COUNTER_AND_TIMER,
+			      "Counter execute", "Timer execute (ms)"),
+    cubperf::stat_definition (PERF_STAT_ID_PARALLEL_RETIRE, cubperf::stat_definition::COUNTER_AND_TIMER,
+			      "Counter retire", "Timer retire (ms)"),
   };
 
   /* collect and log performance statistics based on a supplied definition
