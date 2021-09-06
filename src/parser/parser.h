@@ -61,6 +61,7 @@ extern "C"
     HIDDEN_CLASSOID_NAME
   } VIEW_HANDLING;
 
+  extern void csql_yyset_lineno (int line_number);
   extern size_t json_table_column_count;
 
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
