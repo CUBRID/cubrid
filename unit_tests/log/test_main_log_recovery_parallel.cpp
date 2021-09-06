@@ -110,7 +110,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
 	  if (a_test_config.wait_past_previous_log_lsa)
 	    {
 	      {
-		std::lock_guard<std::mutex> lockg { wait_past_log_lsa_info.m_mtx };
+		std::scoped_lock<std::mutex> slock { wait_past_log_lsa_info.m_mtx };
 		wait_past_log_lsa_info.m_log_lsa = job->get_log_lsa ();
 	      }
 	      wait_past_log_lsa_info.m_cv.notify_one ();
@@ -128,8 +128,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
       // only start monitoring after the first job has been dispatched
       if (a_test_config.wait_past_previous_log_lsa && !wait_past_log_lsa_thr.joinable ())
 	{
-	  wait_past_log_lsa_thr = std::thread ([&log_redo_parallel, &wait_past_log_lsa_info,
-								    &idx, &a_test_config] ()
+	  wait_past_log_lsa_thr = std::thread ([&log_redo_parallel, &wait_past_log_lsa_info] ()
 	  {
 	    log_lsa local_log_lsa { MAX_LSA };
 	    do
@@ -139,11 +138,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
 		  wait_past_log_lsa_info.m_cv.wait_for (ulock, std::chrono::milliseconds (100));
 		  local_log_lsa = wait_past_log_lsa_info.m_log_lsa;
 		}
-		// do not wait the very last job that was created:
-		//  - it might be an non-modifying job
-		//  - it will never satisfy the internal condition which does a strict comparison
-		if (!local_log_lsa.is_max () && !local_log_lsa.is_null ()
-		    && (idx < a_test_config.redo_job_count - 1))
+		if (!local_log_lsa.is_max () && !local_log_lsa.is_null ())
 		  {
 		    log_redo_parallel.wait_past_target_lsa (local_log_lsa);
 		  }
@@ -158,7 +153,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
   if (a_test_config.wait_past_previous_log_lsa)
     {
       {
-	std::lock_guard<std::mutex> lockg { wait_past_log_lsa_info.m_mtx };
+	std::scoped_lock<std::mutex> slock { wait_past_log_lsa_info.m_mtx };
 	wait_past_log_lsa_info.m_log_lsa = NULL_LSA;
       }
       wait_past_log_lsa_info.m_cv.notify_one ();
