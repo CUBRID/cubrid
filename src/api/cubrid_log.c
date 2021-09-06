@@ -644,17 +644,17 @@ cubrid_log_find_start_lsa (time_t * timestamp, LOG_LSA * lsa)
       return CUBRID_LOG_SUCCESS;
     }
   else if (reply_code == ER_CDC_ADJUSTED_LSA)
-  {
-    ptr = or_unpack_log_lsa (ptr, lsa);
-    or_unpack_int64 (ptr, timestamp);
+    {
+      ptr = or_unpack_log_lsa (ptr, lsa);
+      or_unpack_int64 (ptr, timestamp);
 
       if (recv_data != NULL && recv_data != reply)
 	{
 	  free_and_init (recv_data);
 	}
 
-    return CUBRID_LOG_SUCCESS_WITH_ADJUSTED_LSA;
-  }
+      return CUBRID_LOG_SUCCESS_WITH_ADJUSTED_LSA;
+    }
   else
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND, trace_errbuf);
@@ -776,9 +776,9 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_EXTRACTION_TIMEOUT, trace_errbuf);
 	}
       else if (reply_code == ER_CDC_INVALID_LOG_LSA)
-        {
-          CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA, trace_errbuf);
-        }
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA, trace_errbuf);
+	}
     }
 
   ptr = or_unpack_log_lsa (ptr, next_lsa);
@@ -798,10 +798,15 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   if (g_log_infos_size < *total_length)
     {
-      g_log_infos = (char *) realloc ((void *) g_log_infos, *total_length + MAX_ALIGNMENT);
-      if (g_log_infos == NULL)
+      char *tmp_log_infos;
+      tmp_log_infoss = (char *) realloc ((void *) g_log_infos, *total_length + MAX_ALIGNMENT);
+      if (tmp_log_infos == NULL)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);
+	}
+      else
+	{
+	  g_log_infos = tmp_log_infos;
 	}
 
       g_log_infos_size = *total_length;
@@ -1211,10 +1216,16 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
 
   if (g_log_items_count < num_infos)
     {
-      g_log_items = (CUBRID_LOG_ITEM *) realloc ((void *) g_log_items, sizeof (CUBRID_LOG_ITEM) * num_infos);
-      if (g_log_items == NULL)
+      CUBRID_LOG_ITEM *tmp_log_items;
+
+      tmp_log_items = (CUBRID_LOG_ITEM *) realloc ((void *) g_log_items, sizeof (CUBRID_LOG_ITEM) * num_infos);
+      if (tmp_log_items == NULL)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);
+	}
+      else
+	{
+	  g_log_items = tmp_log_items;
 	}
 
       g_log_items_count = num_infos;

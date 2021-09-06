@@ -349,7 +349,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		}
 	      hint_table[i].arg_list = NULL;
 	      break;
-#if 0 
+#if 0
 	    case PT_HINT_QUERY_NO_CACHE:
 	      if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 		{
