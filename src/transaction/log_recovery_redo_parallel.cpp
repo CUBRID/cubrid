@@ -74,9 +74,6 @@ namespace cublog
    */
   class redo_parallel::redo_task final : public cubthread::task<cubthread::entry>
   {
-    public:
-      static constexpr unsigned short WAIT_AND_CHECK_MILLIS = 5;
-
     private:
       using redo_job_vector_t = std::vector<redo_parallel::redo_job_base *>;
 
@@ -102,14 +99,18 @@ namespace cublog
       bool is_idle () const;
 
       inline void push_job (redo_parallel::redo_job_base *a_job);
+      inline void notify_adding_finished ();
 
       inline log_lsa get_not_applied_log_lsa ();
 
     private:
       inline void pop_jobs (std::unique_ptr<redo_job_vector_t> &a_out_job_vec);
 
-      inline void set_not_applied_log_lsa_from_push_side (const log_lsa &a_log_lsa);
-      inline void set_not_applied_log_lsa_from_pop_side (const log_lsa &a_log_lsa);
+      inline void set_not_applied_log_lsa_from_push (const log_lsa &a_log_lsa,
+	  const std::lock_guard<std::mutex> &);
+      inline void set_not_applied_log_lsa_from_pop_func (const log_lsa &a_log_lsa,
+	  std::unique_lock<std::mutex> &a_ulock);
+      inline void set_not_applied_log_lsa_from_execute_func (const log_lsa &a_log_lsa);
 
     private:
       const std::size_t m_task_idx;
@@ -124,6 +125,7 @@ namespace cublog
 
       std::unique_ptr<redo_job_vector_t> m_produce_vec;
       mutable std::mutex m_produce_vec_mtx;
+      std::condition_variable m_produce_vec_cv;
 
       std::atomic_bool m_in_execution;
       std::atomic_bool &m_adding_finished;
@@ -166,8 +168,6 @@ namespace cublog
    * redo_parallel::redo_task - definition
    *********************************************************************/
 
-  constexpr unsigned short redo_parallel::redo_task::WAIT_AND_CHECK_MILLIS;
-
   redo_parallel::redo_task::redo_task (std::size_t a_task_idx, bool a_do_monitor_not_applied_log_lsa,
 				       redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping,
 				       const log_rv_redo_context &copy_context, std::atomic_bool &a_adding_finished)
@@ -206,51 +206,38 @@ namespace cublog
     for (bool finished = false; !finished ;)
       {
 	pop_jobs (jobs_vec);
-	const bool jobs_popped { !jobs_vec->empty ()};
 	m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_POP);
-	if (!jobs_popped && m_adding_finished.load ())
+	if (jobs_vec->empty () && m_adding_finished.load ())
 	  {
 	    finished = true;
 	  }
 	else
 	  {
-	    if (!jobs_popped)
-	      {
-		// TODO: if needed, check if requested to finish ourselves
+	    assert (!jobs_vec->empty ());
 
-		// no notification towards the parent for empty here, because at the next attempt
-		// we might get more work
-
-		// expecting more data, sleep and check again
-		std::this_thread::sleep_for (std::chrono::milliseconds (WAIT_AND_CHECK_MILLIS));
-		m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_SLEEP);
-	      }
-	    else
+	    THREAD_ENTRY *const thread_entry = &context;
+	    for (auto &job : *jobs_vec)
 	      {
-		THREAD_ENTRY *const thread_entry = &context;
-		for (auto &job : *jobs_vec)
+		if (m_do_monitor_not_applied_log_lsa)
 		  {
-		    if (m_do_monitor_not_applied_log_lsa)
-		      {
-			set_not_applied_log_lsa_from_pop_side (job->get_log_lsa ());
-		      }
-		    job->execute (thread_entry, m_redo_context);
-		    job->retire (m_task_idx);
+		    set_not_applied_log_lsa_from_execute_func (job->get_log_lsa ());
 		  }
-
-		// pointers still present in the vector are either:
-		//  - already passed on to the reusable job container
-		//  - dangling, as they have deleted themselves
-		jobs_vec->clear ();
-		m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_EXECUTE_AND_RETIRE);
+		job->execute (thread_entry, m_redo_context);
+		job->retire (m_task_idx);
 	      }
+
+	    // pointers still present in the vector are either:
+	    //  - already passed on to the reusable job container
+	    //  - dangling, as they have deleted themselves
+	    jobs_vec->clear ();
+	    m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_EXECUTE_AND_RETIRE);
 	  }
       }
 
     assert (jobs_vec->empty ());
 
-    m_task_state_bookkeeping.set_inactive ();
     m_in_execution.store (false);
+    m_task_state_bookkeeping.set_inactive ();
   }
 
   void
@@ -288,15 +275,23 @@ namespace cublog
   inline void
   redo_parallel::redo_task::push_job (redo_parallel::redo_job_base *a_job)
   {
-    std::scoped_lock<std::mutex> slock { m_produce_vec_mtx };
+    std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
 
     if (m_do_monitor_not_applied_log_lsa && m_produce_vec->empty ())
       {
 	const log_lsa &job_log_lsa = a_job->get_log_lsa ();
-	set_not_applied_log_lsa_from_push_side (job_log_lsa);
+	set_not_applied_log_lsa_from_push (job_log_lsa, lockg);
+
+	m_produce_vec_cv.notify_one ();
       }
 
     m_produce_vec->push_back (a_job);
+  }
+
+  inline void
+  redo_parallel::redo_task::notify_adding_finished ()
+  {
+    m_produce_vec_cv.notify_one ();
   }
 
   inline void
@@ -304,48 +299,83 @@ namespace cublog
   {
     assert (a_out_job_vec->empty ());
 
-    std::scoped_lock<std::mutex> slock { m_produce_vec_mtx };
+    std::unique_lock<std::mutex> ulock { m_produce_vec_mtx };
+    m_produce_vec_cv.wait (ulock, [this, &ulock] ()
+    {
+      if (m_produce_vec->empty ())
+	{
+	  if (m_do_monitor_not_applied_log_lsa)
+	    {
+	      set_not_applied_log_lsa_from_pop_func (MAX_LSA, ulock);
+	    }
+	  // the fact that the adding might have finished is also a termination condition
+	  return m_adding_finished.load ();
+	}
+      return true;
+    });
+    assert (!m_produce_vec->empty () || m_adding_finished.load ());
+
     m_produce_vec.swap (a_out_job_vec);
 
     if (m_do_monitor_not_applied_log_lsa)
       {
+	// when adding finshes, there are no more jobs
 	const log_lsa new_log_lsa =  a_out_job_vec->empty ()
 				     ? MAX_LSA
 				     : (*a_out_job_vec->begin ())->get_log_lsa ();
-	set_not_applied_log_lsa_from_pop_side (new_log_lsa);
+	set_not_applied_log_lsa_from_pop_func (new_log_lsa, ulock);
       }
   }
 
   inline void
-  redo_parallel::redo_task::set_not_applied_log_lsa_from_push_side (const log_lsa &a_log_lsa)
+  redo_parallel::redo_task::set_not_applied_log_lsa_from_push (const log_lsa &a_log_lsa,
+      const std::lock_guard<std::mutex> &)
   {
     assert (m_do_monitor_not_applied_log_lsa);
 
-    {
-      const log_lsa snapshot_not_applied_log_lsa { m_not_applied_log_lsa.load () };
-      // strict comparison because jobs have ever-increasing log_lsa's
-      assert (snapshot_not_applied_log_lsa == MAX_LSA || snapshot_not_applied_log_lsa < a_log_lsa);
-    }
-
-    log_lsa expected_not_applied_log_lsa { MAX_LSA };
-    m_not_applied_log_lsa.compare_exchange_strong (expected_not_applied_log_lsa, a_log_lsa);
-    // TODO: any check for the return value?
-  }
-
-  inline void
-  redo_parallel::redo_task::set_not_applied_log_lsa_from_pop_side (const log_lsa &a_log_lsa)
-  {
-    assert (m_do_monitor_not_applied_log_lsa);
-
-    log_lsa expected_log_lsa;
-    do
+    const log_lsa snapshot_not_applied_log_lsa = m_not_applied_log_lsa.load ();
+    if (snapshot_not_applied_log_lsa.is_max ())
       {
-	expected_log_lsa = m_not_applied_log_lsa.load ();
-	// -or-equal because push side can fill in a minimum log_lsa, while the task (ie: pop side) is
-	// still empty, which is then found and tested-only by the pop side
-	assert (expected_log_lsa <= a_log_lsa);
+	m_not_applied_log_lsa.store (a_log_lsa);
       }
-    while (!m_not_applied_log_lsa.compare_exchange_strong (expected_log_lsa, a_log_lsa));
+    else
+      {
+	// strict comparison because jobs have ever-increasing log_lsa's
+	assert (snapshot_not_applied_log_lsa < a_log_lsa);
+      }
+  }
+
+  inline void
+  redo_parallel::redo_task::set_not_applied_log_lsa_from_pop_func (const log_lsa &a_log_lsa,
+      std::unique_lock<std::mutex> &a_ulock)
+  {
+    assert (m_do_monitor_not_applied_log_lsa);
+    assert (a_ulock.owns_lock ());
+
+    // either replace valid value with max - when task goes to idle mode
+    // or replace with a greater or equal when the task moves log_lsa's to execution
+
+    // -or-equal because push side can fill in a minimum log_lsa, while the task is still idle (ie: has
+    //  nothing yet to execute), which is then found and tested-only on the pop side (first in pop
+    //  function, and then in the execute function before first job in the newly popped vector is executed)
+    assert (m_not_applied_log_lsa.load () <= a_log_lsa);
+
+    m_not_applied_log_lsa.store (a_log_lsa);
+  }
+
+  inline void
+  redo_parallel::redo_task::set_not_applied_log_lsa_from_execute_func (const log_lsa &a_log_lsa)
+  {
+    assert (m_do_monitor_not_applied_log_lsa);
+
+    const log_lsa snapshot_not_applied_log_lsa = m_not_applied_log_lsa.load ();
+    // can never be max because it was already set to a valid value in the pop function
+    assert (!snapshot_not_applied_log_lsa.is_max ());
+    // -or-equal because the value was set once to a valid log_lsa in the pop function, while the execute
+    //    function will once again attempt to set the value for the first job in the newly popped vector
+    assert (snapshot_not_applied_log_lsa <= a_log_lsa);
+
+    m_not_applied_log_lsa.store (a_log_lsa);
   }
 
   inline log_lsa
@@ -433,6 +463,10 @@ namespace cublog
     assert (false == m_adding_finished.load ());
 
     m_adding_finished.store (true);
+    for (auto &redo_task: m_redo_tasks)
+      {
+	redo_task->notify_adding_finished ();
+      }
   }
 
   void
