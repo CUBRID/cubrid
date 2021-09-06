@@ -2808,9 +2808,10 @@ error:
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+  cdc_daemons_destroy ();
+
   pgbuf_daemons_destroy ();
   dwb_daemons_destroy ();
-  cdc_daemons_destroy ();
 #endif
 
   log_final (thread_p);

@@ -308,6 +308,22 @@ extern int db_Disable_modifications;
     } \
   while (0)
 
+#define CDC_UPDATE_TEMP_LOGPAGE(thread_p, process_lsa, log_page_p) \
+  do \
+    { \
+      if (cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p->hdr.logical_pageid \
+          == (process_lsa)->pageid) \
+      { \
+        if (logpb_fetch_page ((thread_p), (process_lsa), LOG_CS_FORCE_USE, (log_page_p)) \
+            != NO_ERROR) \
+        { \
+          goto error; \
+        } \
+         memcpy (cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p, (log_page_p), IO_MAX_PAGE_SIZE); \
+      } \
+    } \
+  while (0)
+
 #define MAX_CDC_LOGINFO_QUEUE_ENTRY  2048
 #define MAX_CDC_LOGINFO_QUEUE_SIZE   32 * 1024 * 1024	/*32 MB */
 #define MAX_CDC_TRAN_USER_TABLE       4000
@@ -799,7 +815,22 @@ typedef struct log_logging_stat
   unsigned long async_commit_request_count;
 } LOG_LOGGING_STAT;
 
-/*for CDC interface */
+/* For CDC interface */
+
+typedef enum cdc_producer_state
+{
+  CDC_PRODUCER_STATE_WAIT,
+  CDC_PRODUCER_STATE_RUN,
+  CDC_PRODUCER_STATE_DEAD
+} CDC_PRODUCER_STATE;
+
+typedef enum cdc_producer_request
+{
+  CDC_REQUEST_PRODUCER_IS_DEAD,
+  CDC_REQUEST_PRODUCER_IS_WAITED,
+  CDC_REQUEST_CONSUMER_TO_WAIT,
+  CDC_REQUEST_NONE
+} CDC_PRODUCER_REQUEST;
 
 typedef struct cdc_loginfo_entry
 {
@@ -814,19 +845,6 @@ typedef struct cdc_temp_logbuf
   char log_page[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 } CDC_TEMP_LOGBUF;
 
-#if 0
-typedef struct cdc_server_comm
-{
-  char *log_info;		/* log info list. it is used as buffer to send to client */
-  int log_info_size;		/* total length of data in log_info */
-  int log_info_buf_size;	/* size of buffer for log_info */
-  int num_log_info;		/* how many log info is stored in log_infos (log info list) */
-
-  LOG_LSA start_lsa;		/* first LSA of log info that should be sent */
-  LOG_LSA next_lsa;		/* next LSA to be sent to client */
-} CDC_SERVER_COMM;
-#endif
-
 typedef struct cdc_producer
 {
   LOG_LSA next_extraction_lsa;
@@ -839,11 +857,13 @@ typedef struct cdc_producer
 
   int num_extraction_class;
   UINT64 *extraction_classoids;
-  bool do_produce_loginfo;	/* whether cdc_loginfo_producer process or not */
-  bool shutdown;
 
-  pthread_mutex_t execute_lock;
-  pthread_cond_t execute_cond;
+  CDC_PRODUCER_STATE state;
+
+  int produced_queue_size;
+
+  pthread_mutex_t lock;
+  pthread_cond_t wait_cond;
 
   CDC_TEMP_LOGBUF temp_logbuf[2];
 
@@ -862,6 +882,10 @@ typedef struct cdc_consumer
   int log_info_size;		/* total length of data in log_info */
   int log_info_buf_size;	/* size of buffer for log_info */
   int num_log_info;		/* how many log info is stored in log_infos (log info list) */
+
+  int consumed_queue_size;
+
+  CDC_PRODUCER_REQUEST request;
 
   LOG_LSA start_lsa;		/* first LSA of log info that should be sent */
   LOG_LSA next_lsa;		/* next LSA to be sent to client */

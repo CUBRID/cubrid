@@ -90,7 +90,7 @@
 #include "transaction_transient.hpp"
 #include "vacuum.h"
 #include "xasl_cache.h"
-
+#include "overflow_file.h"
 #include "dbtype.h"
 
 #if !defined(SERVER_MODE)
@@ -172,26 +172,8 @@ struct archive_log_header_scan_context
   LOG_ARV_HEADER header;
 };
 
-/*It will be moved to the CDC module and will define overflow.h in that module  */
-
-struct overflow_first_part
-{
-  VPID next_vpid;
-  int length;
-  char data[1];			/* Really more than one */
-};
-
-struct overflow_rest_part
-{
-  VPID next_vpid;
-  char data[1];			/* Really more than one */
-};
-
-typedef struct overflow_rest_part OVERFLOW_REST_PART;
-typedef struct overflow_first_part OVERFLOW_FIRST_PART;
-
 CDC_GLOBAL cdc_Gl;
-static bool cdc_Logging = true;	// TODO : cdc_Logging is to be set by system parameter 
+static bool cdc_Logging = false;
 /* CDC end */
 
 /*
@@ -333,7 +315,6 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 
 /*for CDC */
-static int cdc_loginfo_producer (THREAD_ENTRY * thread_p);
 static int cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry);
 static int cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * recdes,
 				    LOG_LSA lsa, LOG_RCVINDEX rcvindex, bool is_redo);
@@ -4937,10 +4918,14 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
   assert (undo_recdes != NULL);
   assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
 
-  int length = undo_recdes->length;
-  void *data = undo_recdes->data;
+  int length = undo_recdes->length + sizeof (undo_recdes->type);
+  void *data = malloc (length);
+  memcpy (data, &undo_recdes->type, sizeof (undo_recdes->type));
+  memcpy (data + sizeof (undo_recdes->type), undo_recdes->data, undo_recdes->length);
 
   log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_UNDO_RECORD, length, data);
+
+  free_and_init (data);
 
   return NO_ERROR;
 }
@@ -9710,7 +9695,6 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
       udata_length = supplement->length;
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
     }
-
   else
     {
       assert_release (log_rec_header->type == LOG_MVCC_UNDO_DATA || log_rec_header->type == LOG_MVCC_UNDOREDO_DATA
@@ -10509,18 +10493,15 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
   LOG_PAGE *log_page_p = NULL;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
-  LOG_RECORD_HEADER *log_rec_header;
+  LOG_RECORD_HEADER *log_rec_header, *nx_rec_header;
 
   char *tran_user;
-
-  int tmpbuf_index = 0;
-
   int trid;
+  int tmpbuf_index = 0;
 
   int error = NO_ERROR;
 
   LOG_RECTYPE log_type;
-
   LOG_ZIP *supp_zip = NULL;
 
   LSA_COPY (&cur_log_rec_lsa, process_lsa);
@@ -10529,21 +10510,22 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
   /*fetch log page */
 
-  cdc_log ("cdc_log_extract : started to make log info entry from LOG_LSA (%lld | %d)", LSA_AS_ARGS (process_lsa));
-
   CDC_GET_TEMP_LOGPAGE (thread_p, process_lsa, log_page_p);
   tmpbuf_index = process_lsa->pageid % 2;
 
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, process_lsa);
+  nx_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_rec_header->forw_lsa);
 
-  log_type = log_rec_header->type;
-  trid = log_rec_header->trid;
-
-  if (LSA_ISNULL (&log_rec_header->forw_lsa))
+  if (nx_rec_header->type == LOG_END_OF_LOG || LSA_ISNULL (&log_rec_header->forw_lsa))
     {
+      CDC_UPDATE_TEMP_LOGPAGE (thread_p, process_lsa, log_page_p);
       error = ER_CDC_NULL_EXTRACTION_LSA;
       goto error;
     }
+
+
+  log_type = log_rec_header->type;
+  trid = log_rec_header->trid;
 
   LSA_COPY (&next_log_rec_lsa, &log_rec_header->forw_lsa);
 
@@ -10583,10 +10565,13 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	  break;
 	}
 
-      if (cdc_make_dcl_loginfo (donetime->at_time, trid, tran_user, log_type, log_info_entry) == -1)
+      if ((error =
+	   cdc_make_dcl_loginfo (donetime->at_time, trid, tran_user, log_type,
+				 log_info_entry)) != ER_CDC_LOGINFO_ENTRY_GENERATED)
 	{
-	  goto end;
+	  goto error;
 	}
+
       free_and_init (tran_user);
 
       cdc_Gl.producer.tran_user.erase (trid);
@@ -10602,10 +10587,11 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
       ha_dummy = (LOG_REC_HA_SERVER_STATE *) (log_page_p->area + process_lsa->offset);
 
-      if (cdc_make_timer_loginfo (ha_dummy->at_time, trid, NULL, log_info_entry) != NO_ERROR)
+      if ((error = cdc_make_timer_loginfo (ha_dummy->at_time, trid, NULL, log_info_entry)) == ER_OUT_OF_VIRTUAL_MEMORY)
 	{
 	  goto error;
 	}
+
       break;
 
     case LOG_SUPPLEMENTAL_INFO:
@@ -10623,9 +10609,8 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
       OID classoid;
 
       LOG_LSA undo_lsa, redo_lsa;
-      RECDES undo_recdes, redo_recdes;
-      undo_recdes.data = NULL;
-      redo_recdes.data = NULL;
+      RECDES undo_recdes = RECDES_INITIALIZER;
+      RECDES redo_recdes = RECDES_INITIALIZER;
 
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), process_lsa, log_page_p);
 
@@ -10761,7 +10746,14 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	      goto error;
 	    }
 
-	  cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_INSERT, classoid, NULL, &redo_recdes, log_info_entry);
+	  error =
+	    cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_INSERT, classoid, NULL, &redo_recdes, log_info_entry);
+
+	  if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
+	    {
+	      goto error;
+	    }
+
 	  break;
 	case LOG_SUPPLEMENT_UPDATE:
 	  memcpy (&classoid, supplement_data, sizeof (OID));
@@ -10776,11 +10768,16 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	  if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes) != NO_ERROR)
 	    {
-	      goto end;
+	      goto error;
 	    }
 
-	  cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_UPDATE, classoid, &undo_recdes, &redo_recdes,
-				log_info_entry);
+	  error = cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_UPDATE, classoid, &undo_recdes, &redo_recdes,
+					log_info_entry);
+	  if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
+	    {
+	      goto error;
+	    }
+
 	  break;
 	case LOG_SUPPLEMENT_DELETE:
 	  memcpy (&classoid, supplement_data, sizeof (OID));
@@ -10794,16 +10791,24 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	  if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, NULL, NULL) != NO_ERROR)
 	    {
-	      goto end;
+	      goto error;
 	    }
 
-	  cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_DELETE, classoid, &undo_recdes, NULL, log_info_entry);
+	  error =
+	    cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_DELETE, classoid, &undo_recdes, NULL, log_info_entry);
+
+	  if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
+	    {
+	      goto error;
+	    }
 
 	  break;
 	case LOG_SUPPLEMENT_DDL:
-	  if (cdc_make_ddl_loginfo (supplement_data, trid, tran_user, log_info_entry) != NO_ERROR)
+	  error = cdc_make_ddl_loginfo (supplement_data, trid, tran_user, log_info_entry);
+
+	  if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
 	    {
-	      goto end;
+	      goto error;
 	    }
 
 	  break;
@@ -10836,9 +10841,11 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 end:
 
   LSA_COPY (process_lsa, &next_log_rec_lsa);
-  return NO_ERROR;
+  return error;
 
 error:
+
+  LSA_COPY (process_lsa, &cur_log_rec_lsa);
   return error;
 }
 
@@ -10854,33 +10861,46 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
   THREAD_ENTRY *thread_p = &thread_ref;
   int error = NO_ERROR;
 
-  while (!cdc_Gl.producer.shutdown)
+  while (cdc_Gl.producer.state != CDC_PRODUCER_STATE_DEAD)
     {
-      if (cdc_Gl.producer.do_produce_loginfo != true)
+      if (cdc_Gl.producer.state == CDC_PRODUCER_STATE_WAIT)
 	{
-	  pthread_mutex_lock (&cdc_Gl.producer.execute_lock);
-	  pthread_cond_wait (&cdc_Gl.producer.execute_cond, &cdc_Gl.producer.execute_lock);
-	  pthread_mutex_unlock (&cdc_Gl.producer.execute_lock);
+	  cdc_log ("cdc_loginfo_producer_execute : cdc_Gl.producer.state is in CDC_PRODUCER_STATE_WAIT ");
+	  cdc_Gl.consumer.request = CDC_REQUEST_PRODUCER_IS_WAITED;
+
+	  pthread_mutex_lock (&cdc_Gl.producer.lock);
+	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
+	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
 	  continue;
 	}
 
-      pthread_mutex_lock (&cdc_Gl.queue_consume_lock);
-      if (cdc_Gl.loginfo_queue_size >= MAX_CDC_LOGINFO_QUEUE_SIZE || cdc_Gl.loginfo_queue->is_full ())
+      if (cdc_Gl.producer.produced_queue_size >= MAX_CDC_LOGINFO_QUEUE_SIZE || cdc_Gl.loginfo_queue->is_full ())
 	{
-	  pthread_cond_wait (&cdc_Gl.queue_consume_cond, &cdc_Gl.queue_consume_lock);
-	  pthread_mutex_unlock (&cdc_Gl.queue_consume_lock);
+	  cdc_log ("cdc_loginfo_producer_execute : produced queue size is over the limit");
+	  cdc_pause_consumer ();
+	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
+
+	  pthread_mutex_lock (&cdc_Gl.producer.lock);
+	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
+	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
+
+	  cdc_Gl.producer.produced_queue_size -= cdc_Gl.consumer.consumed_queue_size;
+	  cdc_Gl.consumer.consumed_queue_size = 0;
+
+	  cdc_wakeup_consumer ();
+
 	  continue;
 	}
-
-      pthread_mutex_unlock (&cdc_Gl.queue_consume_lock);
 
       nxio_lsa = log_Gl.append.get_nxio_lsa ();
 
       if (LSA_GE (&cdc_Gl.producer.next_extraction_lsa, &nxio_lsa))
 	{
 	  /* LOG_HA_DUMMY_SERVER_STATUS is appended every 1 seconds and flushed. So it is expected to be woken up by looper within period of looper */
-	  break;
+	  sleep (1);
+
+	  continue;
 	}
 
       log_info_entry.length = 0;
@@ -10891,15 +10911,15 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       LSA_COPY (&process_lsa, &cur_log_rec_lsa);
 
       error = cdc_log_extract (thread_p, &process_lsa, &log_info_entry);
-      if (error != NO_ERROR)
+      if (!(error == NO_ERROR || error == ER_CDC_LOGINFO_ENTRY_GENERATED))
 	{
-	  goto end;
+	  continue;
 	}
 
       assert (!LSA_ISNULL (&process_lsa));
 
-      /*when refined log info is queued, update cdc_Gl */
-      if (log_info_entry.length != 0)
+      /* when refined log info is queued, update cdc_Gl */
+      if (error == ER_CDC_LOGINFO_ENTRY_GENERATED)
 	{
 	  CDC_LOGINFO_ENTRY *tmp = (CDC_LOGINFO_ENTRY *) malloc (sizeof (CDC_LOGINFO_ENTRY));
 	  if (tmp == NULL)
@@ -10908,7 +10928,7 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 		("cdc_loginfo_producer_execute : failed to allocate memory for log info entry of LOG_LSA (%lld | %d)",
 		 LSA_AS_ARGS (&process_lsa));
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto error;
+	      continue;
 	    }
 
 	  tmp->length = log_info_entry.length;
@@ -10932,7 +10952,7 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
           /* *INDENT-OFF* */
 	  cdc_Gl.loginfo_queue->produce (tmp);
           /* *INDENT-ON* */
-	  cdc_Gl.loginfo_queue_size += tmp->length;
+	  cdc_Gl.producer.produced_queue_size += tmp->length;
 
 	  LSA_COPY (&cdc_Gl.last_loginfo_queue_lsa, &cur_log_rec_lsa);
 
@@ -10944,6 +10964,8 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
       LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, &process_lsa);
     }
+
+  cdc_Gl.consumer.request = CDC_REQUEST_PRODUCER_IS_DEAD;
 
 end:
 
@@ -10959,12 +10981,31 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
 {
   SCAN_CODE scan_code = S_SUCCESS;
 
+  if (log_page_p->hdr.logical_pageid != lsa.pageid)
+    {
+      if (logpb_fetch_page (thread_p, &lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+    }
+
+  undo_recdes->data = (char *) malloc (sizeof (256));
+  if (undo_recdes->data == NULL)
+    {
+      cdc_log ("cdc_get_undo_record : failed to allocate memoryh while reading from undo log lsa:(%lld | %d)",
+	       LSA_AS_ARGS (&lsa));
+      return S_ERROR;
+    }
+  undo_recdes->area_size = 256;
+
   scan_code = log_get_undo_record (thread_p, log_page_p, lsa, undo_recdes);
   if (scan_code != S_SUCCESS)
     {
       if (scan_code == S_DOESNT_FIT)
 	{
 	  undo_recdes->data = (char *) realloc (undo_recdes->data, (size_t) (-undo_recdes->length));
+	  undo_recdes->area_size = (size_t) (-undo_recdes->length);
 	  scan_code = log_get_undo_record (thread_p, log_page_p, lsa, undo_recdes);
 	  if (scan_code != S_SUCCESS)
 	    {
@@ -11048,11 +11089,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_hdr), &process_lsa, log_page_p);
 
-      undo_recdes->data = (char *) malloc (sizeof (IO_MAX_PAGE_SIZE));
-
-      cdc_log ("cdc_get_recdes : reading from undo log lsa:(%lld | %d), undo log record type:%s",
-	       LSA_AS_ARGS (undo_lsa), log_to_string (log_rec_hdr->type));
-
       switch (log_rec_hdr->type)
 	{
 	case LOG_SUPPLEMENTAL_INFO:
@@ -11069,6 +11105,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	case LOG_MVCC_UNDOREDO_DATA:
 	  {
 	    LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
+
+	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
 
 	    mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = mvcc_undoredo->undoredo.data.rcvindex;
@@ -11091,6 +11129,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	  {
 	    LOG_REC_UNDOREDO *undoredo = NULL;
 
+	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
+
 	    undoredo = (LOG_REC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = undoredo->data.rcvindex;
 	    undo_length = undoredo->ulength;
@@ -11110,6 +11150,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	  {
 	    LOG_REC_UNDO *undo = NULL;
 
+	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undo), &process_lsa, log_page_p);
 	    undo = (LOG_REC_UNDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = undo->data.rcvindex;
 	    undo_length = undo->length;
@@ -11141,6 +11182,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	  {
 	    LOG_REC_REDO *redo = NULL;
 	    LOG_RCVINDEX rcvindex;
+
+	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*redo), &process_lsa, log_page_p);
 
 	    redo = (LOG_REC_REDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = redo->data.rcvindex;
@@ -11182,8 +11225,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    }
 	  else
 	    {
-	      log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-
 	      if (logpb_fetch_page (thread_p, redo_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 		{
 		  error_code = ER_FAILED;
@@ -11193,6 +11234,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	}
 
       LSA_COPY (&process_lsa, redo_lsa);
+      LSA_COPY (&current_logrec_lsa, redo_lsa);
 
       log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
 
@@ -11233,7 +11275,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    redo_length = (int) GET_ZIP_LEN (redo_length);
 		    is_zipped_redo = true;
 		  }
-
 		if (process_lsa.offset + redo_length < (int) LOGAREA_SIZE)
 		  {
 		    redo_data = (char *) (log_page_p->area + process_lsa.offset);
@@ -11304,6 +11345,9 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      }
 	    else if (rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	      {
+		RECDES tmp_undo_recdes = RECDES_INITIALIZER;
+		int tmp_undo_length;
+
 		if (ZIP_CHECK (undo_length))
 		  {
 		    undo_length = (int) GET_ZIP_LEN (undo_length);
@@ -11313,63 +11357,19 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    if (process_lsa.offset + undo_length < (int) LOGAREA_SIZE)
+		    scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, &tmp_undo_recdes);
+		    if (scan_code != S_SUCCESS)
 		      {
-			undo_data = (char *) (log_page_p->area + process_lsa.offset);
+			return ER_FAILED;
 		      }
-		    else
-		      {
-			undo_data = (char *) malloc (undo_length);
-			if (undo_data == NULL)
-			  {
-			    cdc_log
-			      ("cdc_get_recdes : failed to allocate memory for undo data to get diff with redo data on recovery index:%d",
-			       rcvindex);
-			    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-			    goto end;
-			  }
+		    undo_data = (char *) malloc (tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type));
+		    memcpy (undo_data, &tmp_undo_recdes.type, sizeof (tmp_undo_recdes.type));
+		    memcpy (undo_data + sizeof (tmp_undo_recdes.type), tmp_undo_recdes.data, tmp_undo_recdes.length);
 
-			logpb_copy_from_log (thread_p, undo_data, undo_length, &process_lsa, log_page_p);
-			is_undo_alloced = true;
-		      }
-
-		    if (is_zipped_undo && undo_length != 0)
-		      {
-			undo_zip_ptr = log_append_get_zip_undo (thread_p);
-			if (undo_zip_ptr == NULL)
-			  {
-			    cdc_log ("cdc_get_recdes : failed to get memory of unzip on recovery index:%d", rcvindex);
-			    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-			    goto end;
-			  }
-
-			is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, undo_data);
-			if (is_unzipped_undo != true)
-			  {
-			    cdc_log
-			      ("cdc_get_recdes : failed to unzip the undo data to get diff with redo data on recovery index:%d",
-			       rcvindex);
-			    error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
-			    goto end;
-			  }
-		      }
-
-		    if (is_zipped_undo && is_unzipped_undo)
-		      {
-			/* undo_length = (int) undo_zip_ptr->data_length; */
-			/* after undo_length is added to process_lsa offset to read REDO record, modify undo_length to undo_zip_ptr->data_length */
-
-			if (is_undo_alloced)
-			  {
-			    free_and_init (undo_data);
-			    is_undo_alloced = false;
-			  }
-
-			undo_data = undo_zip_ptr->log_data;
-		      }
+		    free_and_init (tmp_undo_recdes.data);
 		  }
 
-		/*get REDO record */
+		/* get REDO record */
 		LOG_READ_ADD_ALIGN (thread_p, undo_length, &process_lsa, log_page_p);
 
 		if (ZIP_CHECK (redo_length))
@@ -11378,24 +11378,16 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    is_zipped_redo = true;
 		  }
 
-		if (process_lsa.offset + redo_length < (int) LOGAREA_SIZE)
+		redo_data = (char *) malloc (redo_length);
+		if (redo_data == NULL)
 		  {
-		    redo_data = (char *) (log_page_p->area + process_lsa.offset);
+		    cdc_log ("cdc_get_recdes : failed to allocate memory for redo data on recovery index:%d", rcvindex);
+		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
 		  }
-		else
-		  {
-		    redo_data = (char *) malloc (redo_length);
-		    if (redo_data == NULL)
-		      {
-			cdc_log ("cdc_get_recdes : failed to allocate memory for redo data on recovery index:%d",
-				 rcvindex);
-			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-			goto end;
-		      }
 
-		    logpb_copy_from_log (thread_p, redo_data, redo_length, &process_lsa, log_page_p);
-		    is_redo_alloced = true;
-		  }
+		logpb_copy_from_log (thread_p, redo_data, redo_length, &process_lsa, log_page_p);
+		is_redo_alloced = true;
 
 		if (is_zipped_redo && redo_length != 0)
 		  {
@@ -11431,14 +11423,14 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
 		if (is_diff)
 		  {
-		    (void) log_diff (is_unzipped_undo ? undo_zip_ptr->data_length : undo_length, undo_data, redo_length,
-				     redo_data);
+		    undo_length = tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type);
+		    (void) log_diff (undo_length, undo_data, redo_length, redo_data);
 		  }
-
 
 		redo_recdes->type = *(INT16 *) redo_data;
 		redo_recdes->length = redo_length - sizeof (INT16);
-		redo_recdes->data = (char *) malloc (redo_recdes->length);
+//              redo_recdes->data = (char *) malloc (redo_recdes->length);
+		redo_recdes->data = (char *) realloc (redo_recdes->data, redo_recdes->length + MAX_ALIGNMENT);
 		if (redo_recdes->data == NULL)
 		  {
 		    cdc_log ("cdc_get_recdes : failed to allocate memory for redo_recdes->data on recovery index:%d",
@@ -11469,10 +11461,10 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		is_diff = true;
 	      }
 
+	    LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
+
 	    if (rcvindex == RVHF_INSERT)
 	      {
-		LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
-
 		if (ZIP_CHECK (redo_length))
 		  {
 		    redo_length = (int) GET_ZIP_LEN (redo_length);
@@ -11541,6 +11533,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      }
 	    else if (rcvindex == RVHF_UPDATE)
 	      {
+		RECDES tmp_undo_recdes = RECDES_INITIALIZER;
+
 		if (ZIP_CHECK (undo_length))
 		  {
 		    undo_length = (int) GET_ZIP_LEN (undo_length);
@@ -11550,60 +11544,17 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    if (undo_data != NULL)
+		    scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, &tmp_undo_recdes);
+		    if (scan_code != S_SUCCESS)
 		      {
-			free_and_init (undo_data);
+			return ER_FAILED;
 		      }
+		    undo_data = (char *) malloc (tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type));
+		    memcpy (undo_data, &tmp_undo_recdes.type, sizeof (tmp_undo_recdes.type));
+		    memcpy (undo_data + sizeof (tmp_undo_recdes.type), tmp_undo_recdes.data, tmp_undo_recdes.length);
 
-		    if (process_lsa.offset + undo_length < (int) LOGAREA_SIZE)
-		      {
-			undo_data = (char *) (log_page_p->area + process_lsa.offset);
-		      }
-		    else
-		      {
-			undo_data = (char *) malloc (undo_length);
-			if (undo_data == NULL)
-			  {
-			    cdc_log ("cdc_get_recdes : failed to allocate memory for undo data on recovery index:%d",
-				     rcvindex);
-			    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-			    goto end;
-			  }
+		    free_and_init (tmp_undo_recdes.data);
 
-			logpb_copy_from_log (thread_p, undo_data, undo_length, &process_lsa, log_page_p);
-			is_undo_alloced = true;
-		      }
-
-		    if (is_zipped_undo && undo_length != 0)
-		      {
-			undo_zip_ptr = log_append_get_zip_undo (thread_p);
-			if (undo_zip_ptr == NULL)
-			  {
-			    cdc_log ("cdc_get_recdes : failed to get memory for undo zip on recovery index:%d",
-				     rcvindex);
-			    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-			    goto end;
-			  }
-
-			is_unzipped_undo = log_unzip (undo_zip_ptr, undo_length, undo_data);
-			if (is_unzipped_undo != true)
-			  {
-			    cdc_log ("cdc_get_recdes : failed to unzip undo data on recovery index:%d", rcvindex);
-			    error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
-			    goto end;
-			  }
-		      }
-
-		    if (is_zipped_undo && is_unzipped_undo)
-		      {
-			if (is_undo_alloced)
-			  {
-			    free_and_init (undo_data);
-			    is_undo_alloced = false;
-			  }
-
-			undo_data = undo_zip_ptr->log_data;
-		      }
 		  }
 
 		/*get REDO record */
@@ -11668,6 +11619,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
 		if (is_diff)
 		  {
+		    undo_length = tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type);
 		    (void) log_diff (is_unzipped_undo ? undo_zip_ptr->data_length : undo_length, undo_data,
 				     redo_length, redo_data);
 		  }
@@ -11801,22 +11753,16 @@ cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
       length = (int) GET_ZIP_LEN (length);
       is_zipped = true;
     }
-  if (process_lsa->offset + length < (int) LOGAREA_SIZE)
-    {
-      data = (char *) (log_page_p->area + process_lsa->offset);
-    }
-  else
-    {
-      data = (char *) malloc (length);
-      if (data == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
-	}
 
-      logpb_copy_from_log (thread_p, data, length, process_lsa, log_page_p);
-      is_alloced = true;
+  data = (char *) malloc (length);
+  if (data == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
     }
+
+  logpb_copy_from_log (thread_p, data, length, process_lsa, log_page_p);
+  is_alloced = true;
 
   if (is_zipped && length != 0)
     {
@@ -12190,6 +12136,37 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	   user, OID_AS_ARGS (&classoid), dml_type);
   if ((error_code = heap_attrinfo_start (thread_p, &classoid, -1, NULL, &attr_info)) != NO_ERROR)
     {
+      /* if not able to find schema  */
+      char loginfo_buf[record_length * 2 + MAX_ALIGNMENT];
+      int changed_col_idx[attr_info.num_values];
+
+      ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
+      ptr = or_pack_int (ptr, 0);	//dummy for log info length 
+      ptr = or_pack_int (ptr, trid);
+      ptr = or_pack_string (ptr, user);
+      ptr = or_pack_int (ptr, dataitem_type);
+
+      memcpy (&b_classoid, &classoid, sizeof (uint64_t));
+      ptr = or_pack_int (ptr, dml_type);
+      ptr = or_pack_int64 (ptr, b_classoid);
+      ptr = or_pack_int (ptr, num_change_col);
+      ptr = or_pack_int (ptr, num_cond_col);
+      dml_entry->length = ptr - start_ptr;
+      or_pack_int (start_ptr, dml_entry->length);
+
+      dml_entry->log_info = (char *) malloc (dml_entry->length);
+      if (dml_entry->log_info == NULL)
+	{
+	  cdc_log ("cdc_make_dml_loginfo : failed to allocate memory for log info in dml log entry");
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
+      error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
+
+      cdc_log ("cdc_make_dml_loginfo : failed to find class representationl ");
+
       goto end;
     }
 
@@ -12235,7 +12212,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       for (i = 0; i < attr_info.num_values; i++)
 	{
 	  heap_value = &attr_info.values[i];
-	  newval_deforder = heap_value->last_attrepr->def_order;
+	  newval_deforder = heap_value->read_attrepr->def_order;
 	  memcpy (&new_values[newval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
 	}
 
@@ -12424,6 +12401,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       }
 
     memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
+    error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
     cdc_log ("cdc_make_dml_loginfo : success to generated dml log info. length:%d", dml_entry->length);
   }
 end:
@@ -12523,7 +12501,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
     memcpy (ddl_entry->log_info, start_ptr, ddl_entry->length);
     cdc_log ("cdc_make_ddl_loginfo : success to generated ddl log info. length:%d", ddl_entry->length);
   }
-  return NO_ERROR;
+  return ER_CDC_LOGINFO_ENTRY_GENERATED;
 }
 
 static int
@@ -12551,31 +12529,31 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   length =
     (OR_INT_SIZE + OR_INT_SIZE + or_packed_string_length (user, NULL) + OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE);
 
-  if (length > 0)
-    {
-      char loginfo_buf[length * 2 + MAX_ALIGNMENT];
+  {
+    char loginfo_buf[length * 2 + MAX_ALIGNMENT];
 
-      ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
-      ptr = or_pack_int (ptr, dcl_entry->length);
-      ptr = or_pack_int (ptr, trid);
-      ptr = or_pack_string (ptr, user);
-      ptr = or_pack_int (ptr, dataitem_type);
-      ptr = or_pack_int (ptr, dcl_type);
-      ptr = or_pack_int64 (ptr, at_time);
-      dcl_entry->length = ptr - start_ptr;
-      or_pack_int (start_ptr, dcl_entry->length);
+    ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
+    ptr = or_pack_int (ptr, dcl_entry->length);
+    ptr = or_pack_int (ptr, trid);
+    ptr = or_pack_string (ptr, user);
+    ptr = or_pack_int (ptr, dataitem_type);
+    ptr = or_pack_int (ptr, dcl_type);
+    ptr = or_pack_int64 (ptr, at_time);
+    dcl_entry->length = ptr - start_ptr;
+    or_pack_int (start_ptr, dcl_entry->length);
 
-      dcl_entry->log_info = (char *) malloc (dcl_entry->length);
-      if (dcl_entry->log_info == NULL)
-	{
-	  cdc_log ("cdc_make_dcl_loginfo : failed to allocate memory for log info in dcl entry", trid, user, dcl_type);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
+    dcl_entry->log_info = (char *) malloc (dcl_entry->length);
+    if (dcl_entry->log_info == NULL)
+      {
+	cdc_log ("cdc_make_dcl_loginfo : failed to allocate memory for log info in dcl entry", trid, user, dcl_type);
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
 
-      memcpy (dcl_entry->log_info, start_ptr, dcl_entry->length);
-      cdc_log ("cdc_make_dcl_loginfo : success to generated dcl log info. length:%d", dcl_entry->length);
-    }
-  return NO_ERROR;
+    memcpy (dcl_entry->log_info, start_ptr, dcl_entry->length);
+    cdc_log ("cdc_make_dcl_loginfo : success to generated dcl log info. length:%d", dcl_entry->length);
+  }
+
+  return ER_CDC_LOGINFO_ENTRY_GENERATED;
 }
 
 static int
@@ -12606,7 +12584,8 @@ cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY 
 
   memcpy (timer_entry->log_info, start_ptr, timer_entry->length);
 
-  return NO_ERROR;
+  cdc_log ("cdc_make_timer_loginfo : success to generated timer log info. length:%d", timer_entry->length);
+  return ER_CDC_LOGINFO_ENTRY_GENERATED;
 }
 
 static int
@@ -13143,19 +13122,12 @@ cdc_loginfo_producer_daemon_init ()
 {
   assert (cdc_Loginfo_producer_daemon == NULL);
 
-#if !defined (NDEBUG)
-  cdc_Logging = true;
-#endif
+  pthread_mutex_init (&cdc_Gl.producer.lock, NULL);
 
-  pthread_mutex_init (&cdc_Gl.queue_consume_lock, NULL);
-  pthread_mutex_init (&cdc_Gl.producer.execute_lock, NULL);
-
-  pthread_cond_init (&cdc_Gl.queue_consume_cond, NULL);
-  pthread_cond_init (&cdc_Gl.producer.execute_cond, NULL);
+  pthread_cond_init (&cdc_Gl.producer.wait_cond, NULL);
 
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
-  cdc_Gl.producer.do_produce_loginfo = false;
-  cdc_Gl.producer.shutdown = false;
+  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
 
   /* *INDENT-OFF* */
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10)); /* 주석 처리  */
@@ -13173,6 +13145,8 @@ cdc_daemons_init ()
       return;
     }
 
+  cdc_Logging = prm_get_bool_value (PRM_ID_CDC_LOGGING_DEBUG);
+
   cdc_initialize ();
 
   cdc_loginfo_producer_daemon_init ();
@@ -13186,11 +13160,7 @@ cdc_daemons_destroy ()
       return;
     }
 
-  cdc_Gl.producer.do_produce_loginfo = false;
-  cdc_Gl.producer.shutdown = true;
-
-  pthread_cond_signal (&cdc_Gl.queue_consume_cond);
-  pthread_cond_signal (&cdc_Gl.producer.execute_cond);
+  cdc_kill_producer ();
 
   /* *INDENT-OFF* */
   cubthread::get_manager ()->destroy_daemon (cdc_Loginfo_producer_daemon);
@@ -13199,6 +13169,55 @@ cdc_daemons_destroy ()
   cdc_finalize ();
 }
 #endif
+void
+cdc_pause_producer ()
+{
+  cdc_log ("cdc_pause_producer : consumer request the producer to pause");
+  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
+
+  while (cdc_Gl.consumer.request != CDC_REQUEST_PRODUCER_IS_WAITED)
+    {
+      sleep (1);
+    }
+}
+
+void
+cdc_wakeup_producer ()
+{
+  cdc_log ("cdc_wakeup_producer : consumer request the producer to wakeup");
+  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
+  cdc_Gl.consumer.request = CDC_REQUEST_NONE;
+
+  pthread_cond_signal (&cdc_Gl.producer.wait_cond);
+}
+
+void
+cdc_kill_producer ()
+{
+  cdc_log ("cdc_kill_producer : consumer request the producer to be dead");
+  cdc_Gl.producer.state = CDC_PRODUCER_STATE_DEAD;
+
+  pthread_cond_signal (&cdc_Gl.producer.wait_cond);
+  while (cdc_Gl.consumer.request != CDC_REQUEST_PRODUCER_IS_DEAD)
+    {
+      sleep (1);
+    }
+}
+
+void
+cdc_pause_consumer ()
+{
+  cdc_log ("cdc_pause_consumer : producer request the consumer to be pause");
+  cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_TO_WAIT;
+  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
+}
+
+void
+cdc_wakeup_consumer ()
+{
+  cdc_log ("cdc_pause_consumer : producer request the consumer to wakeup");
+  cdc_Gl.consumer.request = CDC_REQUEST_NONE;
+}
 
 int
 cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
@@ -13328,7 +13347,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 end:
   if (is_found)
     {
-      cdc_log ("cdc_find_lsa : find LOG_LSA (%lld | %d) from time (%lld)", *time);
+      cdc_log ("cdc_find_lsa : find LOG_LSA (%lld | %d) from time (%lld)", LSA_AS_ARGS (start_lsa), *time);
     }
   else
     {
@@ -13336,13 +13355,6 @@ end:
     }
 
   return error;
-}
-
-void
-cdc_wakeup_loginfo_producer ()
-{
-  cdc_Gl.producer.do_produce_loginfo = true;
-  pthread_cond_signal (&cdc_Gl.producer.execute_cond);
 }
 
 int
@@ -13360,8 +13372,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
   assert (cdc_Gl.loginfo_queue != NULL);
   CDC_LOGINFO_ENTRY *consume;
 
-  pthread_mutex_lock (&cdc_Gl.queue_consume_lock);
-  if (cdc_Gl.loginfo_queue_size == 0)
+  if (cdc_Gl.producer.produced_queue_size == 0)
     {
       goto end;
     }
@@ -13375,7 +13386,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       while (LSA_LE (&next_consume_lsa, start_lsa))
 	{
 	  cdc_Gl.loginfo_queue->consume (consume);
-	  cdc_Gl.loginfo_queue_size -= consume->length;
+	  cdc_Gl.loginfo_queue_size += consume->length;
 	  LSA_COPY (&next_consume_lsa, &consume->next_lsa);
 
 	  if (consume->log_info != NULL)
@@ -13383,6 +13394,9 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	      free_and_init (consume->log_info);
 	    }
 	}
+
+      cdc_Gl.producer.produced_queue_size -= cdc_Gl.consumer.consumed_queue_size;
+      cdc_Gl.consumer.consumed_queue_size = 0;
     }
   else
     {
@@ -13395,7 +13409,8 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	      free_and_init (consume->log_info);
 	    }
 	}
-      cdc_Gl.loginfo_queue_size = 0;
+      cdc_Gl.producer.produced_queue_size = 0;
+      cdc_Gl.consumer.consumed_queue_size = 0;
 
           /* *INDENT-OFF* */
     delete cdc_Gl.loginfo_queue;
@@ -13404,10 +13419,6 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
     }
 
 end:
-
-  pthread_mutex_unlock (&cdc_Gl.queue_consume_lock);
-
-  pthread_cond_signal (&cdc_Gl.queue_consume_cond);
 
   cdc_log
     ("cdc_reinitialize_queue : reconstruct existing log info queue to remove the log infos before the LOG_LSA (%lld | %d)",
@@ -13657,6 +13668,8 @@ cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info)
   LSA_COPY (lsa, &cdc_Gl.consumer.next_lsa);
   *length = cdc_Gl.consumer.log_info_size;
   *num_log_info = cdc_Gl.consumer.num_log_info;
+
+  return NO_ERROR;
 }
 
 /* 버퍼 realloc 고려 (consumer.log_info) */
@@ -13713,7 +13726,7 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 	  LSA_COPY (&cdc_Gl.first_loginfo_queue_lsa, &consume->next_lsa);
 	  LSA_COPY (start_lsa, &consume->next_lsa);
 
-	  cdc_Gl.loginfo_queue_size -= consume->length;
+	  cdc_Gl.consumer.consumed_queue_size += consume->length;
 
 	  if (consume->log_info != NULL)
 	    {
@@ -13740,8 +13753,17 @@ end:
   cdc_Gl.consumer.num_log_info = num_log_info;
   LSA_COPY (&cdc_Gl.consumer.next_lsa, start_lsa);	/* stores next lsa to consume */
 
-  pthread_cond_signal (&cdc_Gl.queue_consume_cond);
+  if (cdc_Gl.consumer.request == CDC_REQUEST_CONSUMER_TO_WAIT)
+    {
+      pthread_cond_signal (&cdc_Gl.producer.wait_cond);
 
+      while (cdc_Gl.consumer.request != CDC_REQUEST_NONE)
+	{
+	  sleep (1);
+	}
+    }
+
+//  if producer status is wait, and producer queue size is over the limit 
   cdc_log
     ("cdc_make_loginfo : consume the log info entry in the queue and send to the requester.\nnumber of loginfos:(%d), total length of loginfos:(%d), next LOG_LSA to consume:(%lld | %d).",
      cdc_Gl.consumer.num_log_info, cdc_Gl.consumer.log_info_size, LSA_AS_ARGS (&cdc_Gl.consumer.next_lsa));
@@ -13755,14 +13777,14 @@ cdc_initialize ()
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;
 
-  cdc_Gl.producer.do_produce_loginfo = false;
-  cdc_Gl.producer.shutdown = false;
+  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
 
   /* *INDENT-OFF* */
   cdc_Gl.loginfo_queue = new lockfree::circular_queue <CDC_LOGINFO_ENTRY *> (MAX_CDC_LOGINFO_QUEUE_ENTRY);
   /* *INDENT-ON* */
 
-  cdc_Gl.loginfo_queue_size = 0;
+  cdc_Gl.consumer.consumed_queue_size = 0;
+  cdc_Gl.producer.produced_queue_size = 0;
 
   LSA_SET_NULL (&cdc_Gl.first_loginfo_queue_lsa);
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
@@ -13811,7 +13833,7 @@ cdc_free_extraction_filter ()
 int
 cdc_cleanup ()
 {
-  cdc_Gl.producer.do_produce_loginfo = false;
+  cdc_pause_producer ();
 
   cdc_free_extraction_filter ();
 
@@ -13892,7 +13914,8 @@ cdc_finalize ()
       cdc_Gl.loginfo_queue = NULL;
     }
 
-  cdc_Gl.loginfo_queue_size = 0;
+  cdc_Gl.consumer.consumed_queue_size = 0;
+  cdc_Gl.producer.produced_queue_size = 0;
 
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);

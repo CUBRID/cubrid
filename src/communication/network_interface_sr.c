@@ -10392,16 +10392,24 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
 
   ptr = or_unpack_int64 (request, &input_time);
   //if scdc_find_lsa() is called more than once, it should pause running cdc_loginfo_producer_execute() thread 
-  cdc_Gl.producer.do_produce_loginfo = false;
 
   error_code = cdc_find_lsa (thread_p, &input_time, &start_lsa);
   if (error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA)
     {
+      // check producer is sleep, and if not 
+      // make producer sleep, and producer request consumer to be sleep 
+      // if request is set to consumer to be sleep, go into spinlock 
+      // checks request is set to none, then if it is none, 
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
+	}
+
       cdc_set_extraction_lsa (&start_lsa);
 
       cdc_reinitialize_queue (&start_lsa);
 
-      cdc_wakeup_loginfo_producer ();
+      cdc_wakeup_producer ();
 
       ptr = or_pack_int (reply, error_code);
       ptr = or_pack_log_lsa (ptr, &start_lsa);
@@ -10447,7 +10455,7 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
        * LSA validation is needed to perform at client side or somewhere because server has no information about LSAs. it needs to be discussed ( 보류) */
       cdc_set_extraction_lsa (&start_lsa);
 
-      cdc_wakeup_loginfo_producer ();
+      cdc_wakeup_producer ();
     }
 
   if (LSA_EQ (&cdc_Gl.consumer.next_lsa, &start_lsa))

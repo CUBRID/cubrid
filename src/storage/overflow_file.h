@@ -34,6 +34,22 @@
 #include "slotted_page.h"
 #include "storage_common.h"
 
+typedef struct overflow_first_part OVERFLOW_FIRST_PART;
+struct overflow_first_part
+{
+  VPID next_vpid;
+  int length;
+  char data[1];			/* Really more than one */
+};
+
+typedef struct overflow_rest_part OVERFLOW_REST_PART;
+struct overflow_rest_part
+{
+  VPID next_vpid;
+  char data[1];			/* Really more than one */
+};
+
+
 extern int overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
 			    FILE_TYPE file_type);
 extern int overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ovf_vpid, RECDES * recdes,
