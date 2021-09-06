@@ -292,7 +292,7 @@ opciones validas:\n\
   -z, --compress               comprimir volumenes de respaldo; estandar: descomprimir\n\
       --sleep-msecs=N          dormir N milisecondas para cada 1M leido estandar: 0\n\
   -k, --separate-keys          el archivo de claves (_keys) para TDE no se incluye en el volumen de respaldo, sino que se divide en un archivo\n\
-      --page-server            run backupdb on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 71 Argumentos incompatibles, \"%1$s\", y \"%2$s\"\n
 
 
@@ -900,7 +900,7 @@ opciones validas:\n\
   -b, --both                   imprimir parametros de cliente y servidor\n\
   -S, --SA-mode                modo de ejecucion independiente\n\
   -C, --CS-mode                modo de ejecucion cliente-servidor\n\
-      --page-server            run paramdump on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Valor equivocado \"%1$s\" para el modo HA de ejecucion del servidor.\n
@@ -963,7 +963,7 @@ opciones validas:\n\
   -c, --cumulative             imprimir estadisticas cumulativas\n\
   -i, --interval=S             imprimir estadisticas casa S segundos\n\
   -s, --substr=STRING          imprimir solo aquellos articulos de estadistica que emparejan con el substring\n\
-      --page-server            run statdump on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Introducir contrasena DBA:

@@ -292,7 +292,7 @@ backupdb: データーベースをバックアップします。\n\
   -z, --compress               バックアップボリュームを圧縮します。;　デフォルト:圧縮しない\n\
       --sleep-msecs            １メガバイトを読むたびにNミリセコンドを休みます。;　デフォルト: 0 \n\
   -k, --separate-keys          TDEのキーファイル（_keys）はバックアップボリュームに含まれていませんが、代わりにファイルに分割されています\n\
-      --page-server            run backupdb on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 71 「%1$s」と「%2$s」は共に使えません。\n
 
 
@@ -899,7 +899,7 @@ paramdump: システムパラメーター設定をダンプする。\n\
   -b, --both                   クライアントとサーバー両方のパラメーターをダンプ\n\
   -S, --SA-mode                スタンドアロンモードで実行\n\
   -C, --CS-mode                クライアントーサーバモードで実行\n\
-      --page-server            run paramdump on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 「%1$s」はサーバーのHA実行モードに正しくありません。\n
@@ -962,7 +962,7 @@ valid options:\n\
   -c, --cumulative             総計を出力\n\
   -i, --interval=S             S秒の旅に通計を出力\n\
   -s, --substr=STRING          指定したストリングが含まれた項目だけ出力\n\
-      --page-server            run statdump on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBAパスワードを入力してください。:

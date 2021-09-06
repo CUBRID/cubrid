@@ -52,7 +52,6 @@ opzioni valide:\n\
       --no-trigger-action      disattivare l'azione del trigger\n\
       --delimiter=ARG          delimitatore tra le colonne (funziona solo con -q)\n\
       --enclosure=ARG          allegato per una stringa di risultato (funziona solo con -q)\n\
-      --page-server            connect the page server available locally\n\
 \n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
 41 %1$s: non è corretto il valore di ambiente di %2$s_MODE. \nDovrebbe essere %3$s o %4$s.\n

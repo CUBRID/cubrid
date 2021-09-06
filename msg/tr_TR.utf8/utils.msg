@@ -292,7 +292,7 @@ geçerli opsiyonlar:\n\
   -z, --compress               yedekleme birimleri sıkıştırmak; varsayılan: sıkıştırmayı açma\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
   -k, --separate-keys          TDE için anahtarlar dosyası (_keys) yedekleme birimine dahil değildir, bunun yerine bir dosyaya ayrılmıştır\n\
-      --page-server            run backupdb on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 71 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
 
 
@@ -900,7 +900,7 @@ geçerli seçenekler:\n\
   -b, --both                   istemci ve sunucu parametreleri tüm dökümü\n\
   -S, --SA-mode                stand-alone modu yürütme\n\
   -C, --CS-mode                istemci-sunucu modunda yürütme\n\
-      --page-server            run paramdump on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 yanlış bir değeri \"%1$s\" sunucunun HA çalışan modu için.\n
@@ -963,7 +963,7 @@ geçerli seçenekler:\n\
   -c, --cumulative             kümülatif istatistikler Yazdırma\n\
   -i, --interval=S             bilgiyi her S saniye görüntüler\n\
   -s, --substr=STRING          substring eşleşen, stat öğeyi Yazdırma\n\
-      --page-server            run statdump on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA şifrenizi girin:

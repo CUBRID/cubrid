@@ -52,7 +52,6 @@ $set 1 MSGCAT_CSQL_SET_CSQL
       --no-trigger-action      禁用触发器动作\n\
       --delimiter=ARG          列之间的分隔符（仅适用于-q)\n\
       --enclosure=ARG          结果字符串的附件（仅适用于-q)\n\
-      --page-server            connect the page server available locally\n\
 \n\
 额外的信息, 请浏览 http://www.cubrid.org\n
 41 %1$s: 环境变量 %2$s_MODE 的值不正确. \n应该是 %3$s 或 %4$s.\n

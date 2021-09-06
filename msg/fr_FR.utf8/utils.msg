@@ -292,7 +292,7 @@ options valides:\n\
   -z, --compress               comprimer les volumes de sauvegarde; par défaut: décompresser\n\
       --sleep-msecs=N          veille N millisecondes par 1M lit; par défaut: 0\n\
   -k, --separate-keys          fichier de clés (_keys) pour TDE n'est pas inclus dans le volume de sauvegarde, mais est séparé dans un fichier à la place\n\
-      --page-server            run backupdb on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 71 Arguments incompatibles, \"%1$s\", et \"%2$s\"\n
 
 
@@ -903,7 +903,7 @@ options valids:\n\
   -b, --both                 sauvegarder les paramètres client et serveur\n\
   -S, --SA-mode              exécution en mode autonome\n\
   -C, --CS-mode              exécution en mode client-serveur\n\
-      --page-server          run paramdump on the page server available locally\n\
+      --page-server          run on the page server; default: runs on the transaction\n\
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Valeur incorrecte \"%1$s\" pour le mode d'exécution HA du serveur.\n
@@ -966,7 +966,7 @@ options valids:\n\
   -c, --cumulative             affiche les statistiques cumulatives\n\
   -i, --interval=S             affiche les statistiques toutes les S secondes\n\
   -s, --substr=CHAÎNE          affiche seulement les articles statistiques qui correspondent à le CHAÎNE\n\
-      --page-server            run statdump on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Entrez mot de passe DBA:

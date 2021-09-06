@@ -52,7 +52,6 @@ optiuni valide:\n\
       --no-trigger-action      dezactivarea acţiunilor declanşatorilor\n\
       --delimiter=ARG          delimitator între coloană (doar împreună cu -q)\n\
       --enclosure=ARG          incintă pentru un șir de rezultate (doar împreună cu -q)\n\
-      --page-server            connect the page server available locally\n\
 \n\
 Pentru informaţii suplimentare accesaţi http://www.cubrid.org\n
 41 %1$s: valoarea de mediu pentru %2$s_MODE este incorectă. \nTrebuie să fie %3$s sau %4$s.\n

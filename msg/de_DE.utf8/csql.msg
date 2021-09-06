@@ -52,7 +52,6 @@ gültigen Optionen:\n\
       --no-trigger-action      deaktivieren Trigger Aktion\n\
       --delimiter=ARG          Trennzeichen zwischen Spalte (funktioniert nur mit -q)\n\
       --enclosure=ARG          Gehäuse für eine Ergebniszeichenfolge (funktioniert nur mit -q)\n\
-      --page-server            connect the page server available locally\n\
 \n\
 Für weitere Informationen, siehe http://www.cubrid.org\n
 41 %1$s: der Umgebungswert von %2$s_MODE ist inkorrekt. \nEr sollte entweder %3$s oder %4$s sein.\n

@@ -292,7 +292,7 @@ backupdb: 데이터베이스를 백업합니다.\n\
   -z, --compress               백업 볼륨을 압축합니다; 기본값: 압축하지 않음\n\
       --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n\
   -k, --separate-keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다.\n\
-      --page-server            run backupdb on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 71 \"%1$s\" 와 \"%2$s\" (은)는 함께 사용할 수 없습니다.\n
 
 
@@ -900,7 +900,7 @@ valid options:\n\
   -b, --both                   dump both client and server parameters\n\
   -S, --SA-mode                독립 모드 실행\n\
   -C, --CS-mode                클라이언트 서버 모드 실행\n\
-      --page-server            run paramdump on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 서버의 HA 모드에 대해 잘못된 값 \"%1$s\"입니다.\n
@@ -963,7 +963,7 @@ valid options:\n\
   -c, --cumulative             누적값을 출력\n\
   -i, --interval=S             매 S 초마다 통계를 출력\n\
   -s, --substr=STRING          지정한 문자열이 포함된 항목만 출력\n\
-      --page-server            run statdump on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA 암호 입력:

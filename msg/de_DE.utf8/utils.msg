@@ -292,7 +292,7 @@ gültige Optionen:\n\
   -z, --compress               Backupdatenträger komprimieren; Standard: nicht komprimiert\n\
       --sleep-msecs=N          N Millisekunden per gelesenen 1M schlafen; Standard: 0\n\
   -k, --separate-keys          Schlüsseldatei (_keys) für TDE ist nicht im Sicherungsvolume enthalten, sondern wird stattdessen in eine Datei aufgeteilt\n\
-      --page-server            run backupdb on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 71 Nicht kompatible Argumente, \"%1$s\", und \"%2$s\"\n
 
 
@@ -899,7 +899,7 @@ gültige Optionen:\n\
   -b, --both                   sowohl Client- als auch Serverparameter exportieren \n\
   -S, --SA-mode                Stand-Alone-Ausführung\n\
   -C, --CS-mode                Client-Server-Ausführung\n\
-      --page-server            run paramdump on the page server available locally\n
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Ungültiger Wert \"%1$s\" für das HA-Ausführung-Modus des Servers.\n
@@ -962,7 +962,7 @@ gültige Optionen:\n\
   -c, --cumulative            kumulative Statistiken anzeigen \n\
   -i, --interval=S            Informationen jede S Sekunden drucken\n\
   -s, --substr=STRING         nur die Statistiken anzeigen, die zum String anpassen\n\
-      --page-server           run statdump on the page server available locally\n
+      --page-server           run on the page server; default: runs on the transaction\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA-Passwort eingeben:
