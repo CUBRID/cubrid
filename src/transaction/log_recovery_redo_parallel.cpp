@@ -616,8 +616,7 @@ namespace cublog
     {
       assert (!m_adding_finished.load ());
 
-      return (m_calculated_min_unapplied_log_lsa == MAX_LSA)
-	     || (m_calculated_min_unapplied_log_lsa > a_target_lsa);
+      return m_calculated_min_unapplied_log_lsa > a_target_lsa;
     });
   }
 
@@ -644,6 +643,7 @@ namespace cublog
     // - also, a MAX_LSA result might mean that all threads have finished processing jobs
     //assert (min_unapplied_log_lsa != MAX_LSA);
 
+    assert (!min_unapplied_log_lsa.is_max ());
     return min_unapplied_log_lsa;
   }
 
