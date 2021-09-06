@@ -95,7 +95,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
   cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, true,
       global_values.get_lsa_log (), dummy_redo_context);
 
-  REQUIRE (log_redo_parallel.get_calculated_minimum_not_applied_log_lsa ().is_max ());
+  REQUIRE (log_redo_parallel.get_calculated_min_unapplied_log_lsa ().is_max ());
 
   for (size_t idx = 0u; idx < a_test_config.redo_job_count; ++idx)
     {
@@ -124,7 +124,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
 
       if (a_test_config.wait_past_previous_log_lsa)
 	{
-	  log_redo_parallel.set_outer_not_applied_log_lsa (job_log_lsa);
+	  log_redo_parallel.set_main_thread_unapplied_log_lsa (job_log_lsa);
 	}
 
       // only start monitoring after the first job has been dispatched

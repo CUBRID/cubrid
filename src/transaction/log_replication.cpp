@@ -258,7 +258,7 @@ namespace cublog
 	}
 	if (m_parallel_replication_redo != nullptr)
 	  {
-	    m_parallel_replication_redo->set_outer_not_applied_log_lsa (m_redo_lsa);
+	    m_parallel_replication_redo->set_main_thread_unapplied_log_lsa (m_redo_lsa);
 	  }
 
 	// to accurately track progress and avoid clients to wait for too long, notify each change
