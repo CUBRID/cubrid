@@ -1655,7 +1655,9 @@
 #define ER_CDC_ADJUSTED_LSA                         -1292
 #define ER_CDC_NULL_EXTRACTION_LSA                  -1293
 #define ER_CDC_LOGINFO_ENTRY_GENERATED              -1294
-#define ER_LAST_ERROR                               -1295
+#define ER_CDC_IGNORE_LOG_INFO                      -1295
+
+#define ER_LAST_ERROR                               -1296
 
 /*
  * CAUTION!

@@ -10353,7 +10353,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
       for (int i = 0; i < num_extraction_class; i++)
 	{
-	  ptr = or_unpack_int64 (ptr, (INT64 *) extraction_classoids + i);
+	  ptr = or_unpack_int64 (ptr, (INT64 *) & extraction_classoids[i]);
 	}
     }
 
