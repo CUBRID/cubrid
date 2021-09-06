@@ -104,7 +104,7 @@ namespace cublog
       inline log_lsa get_not_applied_log_lsa ();
 
     private:
-      inline void pop_jobs (std::unique_ptr<redo_job_vector_t> &a_out_job_vec);
+      inline void pop_jobs (redo_job_vector_t &a_out_job_vec);
 
       inline void set_not_applied_log_lsa_from_push (const log_lsa &a_log_lsa,
 	  const std::lock_guard<std::mutex> &);
@@ -123,7 +123,7 @@ namespace cublog
 
       log_rv_redo_context m_redo_context;
 
-      std::unique_ptr<redo_job_vector_t> m_produce_vec;
+      redo_job_vector_t m_produce_vec;
       mutable std::mutex m_produce_vec_mtx;
       std::condition_variable m_produce_vec_cv;
 
@@ -177,9 +177,8 @@ namespace cublog
     , m_perf_stats_definition { perf_stats_async_definition_init_list }
     , m_perf_stats { perf_stats_is_active_for_async (), m_perf_stats_definition }
     , m_redo_context { copy_context }
-    , m_produce_vec { new redo_job_vector_t () }
-  , m_adding_finished { a_adding_finished }
-  , m_not_applied_log_lsa { MAX_LSA }
+    , m_adding_finished { a_adding_finished }
+    , m_not_applied_log_lsa { MAX_LSA }
   {
     // important to set this at this moment and not when execution begins
     // to circumvent race conditions where all tasks haven't yet started work
@@ -187,7 +186,7 @@ namespace cublog
     m_task_state_bookkeeping.set_active ();
     m_in_execution.store (true);
 
-    m_produce_vec->reserve (PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE);
+    m_produce_vec.reserve (PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE);
   }
 
   redo_parallel::redo_task::~redo_task ()
@@ -198,25 +197,25 @@ namespace cublog
   void
   redo_parallel::redo_task::execute (context_type &context)
   {
-    std::unique_ptr<redo_job_vector_t> jobs_vec { new redo_job_vector_t () };
+    redo_job_vector_t jobs_vec;
     // according to spec, reserved size survives clearing of the vector
     // which should help to only allocate/reserve once
-    jobs_vec->reserve (PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE);
+    jobs_vec.reserve (PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE);
 
     for (bool finished = false; !finished ;)
       {
 	pop_jobs (jobs_vec);
 	m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_POP);
-	if (jobs_vec->empty () && m_adding_finished.load ())
+	if (jobs_vec.empty () && m_adding_finished.load ())
 	  {
 	    finished = true;
 	  }
 	else
 	  {
-	    assert (!jobs_vec->empty ());
+	    assert (!jobs_vec.empty ());
 
 	    THREAD_ENTRY *const thread_entry = &context;
-	    for (auto &job : *jobs_vec)
+	    for (auto &job : jobs_vec)
 	      {
 		if (m_do_monitor_not_applied_log_lsa)
 		  {
@@ -229,12 +228,12 @@ namespace cublog
 	    // pointers still present in the vector are either:
 	    //  - already passed on to the reusable job container
 	    //  - dangling, as they have deleted themselves
-	    jobs_vec->clear ();
+	    jobs_vec.clear ();
 	    m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_EXECUTE_AND_RETIRE);
 	  }
       }
 
-    assert (jobs_vec->empty ());
+    assert (jobs_vec.empty ());
 
     m_in_execution.store (false);
     m_task_state_bookkeeping.set_inactive ();
@@ -264,12 +263,8 @@ namespace cublog
   bool
   redo_parallel::redo_task::is_idle () const
   {
-    bool is_vector_empty = false;
-    {
-      std::scoped_lock<std::mutex> slock { m_produce_vec_mtx };
-      is_vector_empty = m_produce_vec->empty ();
-    }
-    return is_vector_empty && !m_in_execution.load ();
+    std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
+    return m_produce_vec.empty () && !m_in_execution.load ();
   }
 
   inline void
@@ -277,7 +272,7 @@ namespace cublog
   {
     std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
 
-    if (m_do_monitor_not_applied_log_lsa && m_produce_vec->empty ())
+    if (m_do_monitor_not_applied_log_lsa && m_produce_vec.empty ())
       {
 	const log_lsa &job_log_lsa = a_job->get_log_lsa ();
 	set_not_applied_log_lsa_from_push (job_log_lsa, lockg);
@@ -285,7 +280,7 @@ namespace cublog
 	m_produce_vec_cv.notify_one ();
       }
 
-    m_produce_vec->push_back (a_job);
+    m_produce_vec.push_back (a_job);
   }
 
   inline void
@@ -295,14 +290,14 @@ namespace cublog
   }
 
   inline void
-  redo_parallel::redo_task::pop_jobs (std::unique_ptr<redo_parallel::redo_task::redo_job_vector_t> &a_out_job_vec)
+  redo_parallel::redo_task::pop_jobs (redo_parallel::redo_task::redo_job_vector_t &a_out_job_vec)
   {
-    assert (a_out_job_vec->empty ());
+    assert (a_out_job_vec.empty ());
 
     std::unique_lock<std::mutex> ulock { m_produce_vec_mtx };
     m_produce_vec_cv.wait (ulock, [this, &ulock] ()
     {
-      if (m_produce_vec->empty ())
+      if (m_produce_vec.empty ())
 	{
 	  if (m_do_monitor_not_applied_log_lsa)
 	    {
@@ -313,16 +308,16 @@ namespace cublog
 	}
       return true;
     });
-    assert (!m_produce_vec->empty () || m_adding_finished.load ());
+    assert (!m_produce_vec.empty () || m_adding_finished.load ());
 
     m_produce_vec.swap (a_out_job_vec);
 
     if (m_do_monitor_not_applied_log_lsa)
       {
 	// when adding finshes, there are no more jobs
-	const log_lsa new_log_lsa =  a_out_job_vec->empty ()
+	const log_lsa new_log_lsa =  a_out_job_vec.empty ()
 				     ? MAX_LSA
-				     : (*a_out_job_vec->begin ())->get_log_lsa ();
+				     : (*a_out_job_vec.begin ())->get_log_lsa ();
 	set_not_applied_log_lsa_from_pop_func (new_log_lsa, ulock);
       }
   }
