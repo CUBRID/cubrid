@@ -1017,8 +1017,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (log_recovery_redo_parallel_count);
-	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false,
-								 redo_context));
+	parallel_recovery_redo.
+	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
       }
   }
 #endif

@@ -67,7 +67,7 @@ namespace cublog
       /* - worker_count: the number of parallel tasks to spin that consume jobs
        */
       redo_parallel (unsigned a_worker_count, bool a_do_monitor_minimum_not_applied_log_lsa,
-		     const log_rv_redo_context &copy_context);
+		     const log_lsa &a_start_outer_log_lsa, const log_rv_redo_context &copy_context);
 
       redo_parallel (const redo_parallel &) = delete;
       redo_parallel (redo_parallel &&) = delete;
@@ -99,7 +99,7 @@ namespace cublog
       void set_outer_not_applied_log_lsa (const log_lsa &a_log_lsa);
 
       log_lsa get_calculated_minimum_not_applied_log_lsa ();
-      log_lsa wait_past_target_lsa (const log_lsa &a_target_lsa);
+      void wait_past_target_lsa (const log_lsa &a_target_lsa);
 
     private:
       void do_init_worker_pool (std::size_t a_task_count);

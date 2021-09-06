@@ -218,13 +218,13 @@ namespace cublog
     // which should help to only allocate/reserve once
     jobs_vec.reserve (PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE);
 
-    for (bool finished = false; !finished ;)
+    for ( ; ; )
       {
 	pop_jobs (jobs_vec);
 	m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_POP);
 	if (jobs_vec.empty () && m_adding_finished.load ())
 	  {
-	    finished = true;
+	    break;
 	  }
 	else
 	  {
@@ -290,8 +290,7 @@ namespace cublog
 
     if (m_do_monitor_not_applied_log_lsa && m_produce_vec.empty ())
       {
-	const log_lsa &job_log_lsa = a_job->get_log_lsa ();
-	set_not_applied_log_lsa_from_push (job_log_lsa, lockg);
+	set_not_applied_log_lsa_from_push (a_job->get_log_lsa (), lockg);
 
 	m_produce_vec_cv.notify_one ();
       }
@@ -402,18 +401,21 @@ namespace cublog
    *********************************************************************/
 
   redo_parallel::redo_parallel (unsigned a_task_count, bool a_do_monitor_minimum_not_applied_log_lsa,
-				const log_rv_redo_context &copy_context)
+				const log_lsa &a_start_outer_log_lsa, const log_rv_redo_context &copy_context)
     : m_task_count { a_task_count }
     , m_do_monitor_minimum_log_lsa { a_do_monitor_minimum_not_applied_log_lsa }
     , m_task_state_bookkeeping { a_task_count }
     , m_worker_pool (nullptr)
     , m_waited_for_termination (false)
     , m_adding_finished { false }
-    , m_outer_not_applied_log_lsa { MAX_LSA }
+    , m_outer_not_applied_log_lsa { a_start_outer_log_lsa }
     , m_calculated_minimum_not_applied_log_lsa { MAX_LSA }
     , m_terminate_minimum_not_applied_log_lsa_calculation { false }
   {
     assert (a_task_count > 0);
+    assert ((a_do_monitor_minimum_not_applied_log_lsa &&
+	     !a_start_outer_log_lsa.is_max () && !a_start_outer_log_lsa.is_null ())
+	    || (!a_do_monitor_minimum_not_applied_log_lsa && a_start_outer_log_lsa.is_max ()));
 
     const thread_type tt = log_is_in_crash_recovery () ? TT_RECOVERY : TT_REPLICATION;
     m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
@@ -423,6 +425,7 @@ namespace cublog
 
     if (m_do_monitor_minimum_log_lsa)
       {
+	// an upfront value for the minimum not applied log_lsa will be calculated quasi instantaneous
 	m_calculate_minimum_not_applied_log_lsa_thread = std::thread
 	{
 	  std::bind (&redo_parallel::redo_parallel::calculate_and_save_minimum_not_applied_log_lsa, std::ref (*this))
@@ -460,9 +463,7 @@ namespace cublog
     assert (false == m_waited_for_termination);
     assert (false == m_adding_finished.load ());
 
-    const vpid &job_vpid = a_job->get_vpid ();
-    const std::size_t vpid_hash = m_vpid_hash (job_vpid);
-    const std::size_t task_index = vpid_hash % m_task_count;
+    const std::size_t task_index = m_vpid_hash (a_job->get_vpid ()) % m_task_count;
 
     redo_task *const task = m_redo_tasks[task_index].get ();
     task->push_job (a_job);
@@ -575,6 +576,9 @@ namespace cublog
     assert (m_do_monitor_minimum_log_lsa);
 
     m_outer_not_applied_log_lsa.store (a_log_lsa);
+
+    // notify thread performing calculation
+    m_calculate_minimum_not_applied_log_lsa_cv.notify_one ();
   }
 
   log_lsa
@@ -582,44 +586,37 @@ namespace cublog
   {
     assert (m_do_monitor_minimum_log_lsa);
 
-    std::scoped_lock<std::mutex> slock { m_calculate_minimum_not_applied_log_lsa_mtx };
+    std::lock_guard<std::mutex> lockg { m_calculate_minimum_not_applied_log_lsa_mtx };
     return m_calculated_minimum_not_applied_log_lsa;
   }
 
-  log_lsa
+  void
   redo_parallel::wait_past_target_lsa (const log_lsa &a_target_lsa)
   {
     assert (m_do_monitor_minimum_log_lsa);
     assert (a_target_lsa != MAX_LSA);
     assert (a_target_lsa != NULL_LSA);
 
-    log_lsa calculated_minimum_not_applied_log_lsa { MAX_LSA };
-
-    {
-      // avoid gratuitously notifying the calculating internal thread if the condition is already satisfied
-      std::scoped_lock<std::mutex> slock { m_calculate_minimum_not_applied_log_lsa_mtx };
-      calculated_minimum_not_applied_log_lsa = m_calculated_minimum_not_applied_log_lsa;
-    }
-
-    if (calculated_minimum_not_applied_log_lsa <= a_target_lsa)
+    // avoid gratuitously notifying the calculating internal thread if the condition is already satisfied
+    // no need to lock the check because, by design, the value will be calculated
+    // immediately after initialization starting from an outer log_lsa which will alwayis
+    // be a valid value (i.e., neiether max, nor null)
+    if (a_target_lsa < m_calculated_minimum_not_applied_log_lsa)
       {
-	// there is only one thread doing this calculation
-	m_calculate_minimum_not_applied_log_lsa_cv.notify_one ();
-
-	{
-	  std::unique_lock<std::mutex> ulock { m_calculate_minimum_not_applied_log_lsa_mtx };
-	  m_calculate_minimum_not_applied_log_lsa_cv.wait (ulock,
-	      [this, &calculated_minimum_not_applied_log_lsa, &a_target_lsa] ()
-	  {
-	    calculated_minimum_not_applied_log_lsa = m_calculated_minimum_not_applied_log_lsa;
-	    assert (!m_adding_finished.load ());
-	    return (calculated_minimum_not_applied_log_lsa == MAX_LSA)
-		   || (calculated_minimum_not_applied_log_lsa > a_target_lsa);
-	  });
-	}
+	return;
       }
 
-    return calculated_minimum_not_applied_log_lsa;
+    // notify thread performing calculation
+    m_calculate_minimum_not_applied_log_lsa_cv.notify_one ();
+
+    std::unique_lock<std::mutex> ulock { m_calculate_minimum_not_applied_log_lsa_mtx };
+    m_calculate_minimum_not_applied_log_lsa_cv.wait (ulock, [this, &a_target_lsa] ()
+    {
+      assert (!m_adding_finished.load ());
+
+      return (m_calculated_minimum_not_applied_log_lsa == MAX_LSA)
+	     || (m_calculated_minimum_not_applied_log_lsa > a_target_lsa);
+    });
   }
 
   log_lsa
@@ -655,7 +652,7 @@ namespace cublog
 	// calculation happens outside lock to not hold waiting threads
 	const log_lsa calculated_minimum_not_applied_log_lsa = calculate_minimum_log_lsa ();
 	{
-	  std::scoped_lock<std::mutex> slock { m_calculate_minimum_not_applied_log_lsa_mtx };
+	  std::lock_guard<std::mutex> lockg { m_calculate_minimum_not_applied_log_lsa_mtx };
 	  m_calculated_minimum_not_applied_log_lsa = calculated_minimum_not_applied_log_lsa;
 	}
 

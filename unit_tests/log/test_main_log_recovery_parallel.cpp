@@ -78,8 +78,6 @@ void execute_test (const log_recovery_test_config &a_test_config,
 
   log_rv_redo_context dummy_redo_context (NULL_LSA, log_reader::fetch_mode::NORMAL);
 
-  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, true, dummy_redo_context);
-
   // infrastructure to check progress of the test
   //
   struct
@@ -90,11 +88,15 @@ void execute_test (const log_recovery_test_config &a_test_config,
   } wait_past_log_lsa_info;
   std::thread wait_past_log_lsa_thr;
 
-  REQUIRE (log_redo_parallel.get_calculated_minimum_not_applied_log_lsa ().is_max ());
-
   // the test proper
   //
   ut_database_values_generator global_values{ a_database_config };
+
+  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, true,
+      global_values.get_lsa_log (), dummy_redo_context);
+
+  REQUIRE (log_redo_parallel.get_calculated_minimum_not_applied_log_lsa ().is_max ());
+
   for (size_t idx = 0u; idx < a_test_config.redo_job_count; ++idx)
     {
       ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
@@ -110,7 +112,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
 	  if (a_test_config.wait_past_previous_log_lsa)
 	    {
 	      {
-		std::scoped_lock<std::mutex> slock { wait_past_log_lsa_info.m_mtx };
+		std::lock_guard<std::mutex> lockg { wait_past_log_lsa_info.m_mtx };
 		wait_past_log_lsa_info.m_log_lsa = job->get_log_lsa ();
 	      }
 	      wait_past_log_lsa_info.m_cv.notify_one ();
@@ -128,7 +130,8 @@ void execute_test (const log_recovery_test_config &a_test_config,
       // only start monitoring after the first job has been dispatched
       if (a_test_config.wait_past_previous_log_lsa && !wait_past_log_lsa_thr.joinable ())
 	{
-	  wait_past_log_lsa_thr = std::thread ([&log_redo_parallel, &wait_past_log_lsa_info] ()
+	  wait_past_log_lsa_thr = std::thread ([&log_redo_parallel, &wait_past_log_lsa_info,
+								    &idx, &a_test_config] ()
 	  {
 	    log_lsa local_log_lsa { MAX_LSA };
 	    do
@@ -138,7 +141,11 @@ void execute_test (const log_recovery_test_config &a_test_config,
 		  wait_past_log_lsa_info.m_cv.wait_for (ulock, std::chrono::milliseconds (100));
 		  local_log_lsa = wait_past_log_lsa_info.m_log_lsa;
 		}
-		if (!local_log_lsa.is_max () && !local_log_lsa.is_null ())
+		// do not wait the very last job that was created:
+		//  - it might be an non-modifying job
+		//  - it will never satisfy the internal condition which does a strict comparison
+		if (!local_log_lsa.is_max () && !local_log_lsa.is_null ()
+		    && (idx < a_test_config.redo_job_count - 1))
 		  {
 		    log_redo_parallel.wait_past_target_lsa (local_log_lsa);
 		  }
@@ -153,7 +160,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
   if (a_test_config.wait_past_previous_log_lsa)
     {
       {
-	std::scoped_lock<std::mutex> slock { wait_past_log_lsa_info.m_mtx };
+	std::lock_guard<std::mutex> lockg { wait_past_log_lsa_info.m_mtx };
 	wait_past_log_lsa_info.m_log_lsa = NULL_LSA;
       }
       wait_past_log_lsa_info.m_cv.notify_one ();

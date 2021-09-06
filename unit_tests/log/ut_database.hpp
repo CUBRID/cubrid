@@ -71,6 +71,7 @@ class ut_database_values_generator
   public:
     ut_database_values_generator (const ut_database_config &a_database_config);
 
+    const log_lsa &get_lsa_log () const;
     const log_lsa &increment_and_get_lsa_log ();
 
     double rand_duration_in_millis ();
