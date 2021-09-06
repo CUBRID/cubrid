@@ -27,39 +27,57 @@ namespace cublog
    * redo_parallel::task_active_state_bookkeeping - definition
    *********************************************************************/
 
-  void
-  redo_parallel::task_active_state_bookkeeping::set_active ()
+  redo_parallel::task_active_state_bookkeeping::task_active_state_bookkeeping (std::size_t a_size)
+    : m_size { a_size }
   {
-    std::lock_guard<std::mutex> lck { m_active_count_mtx };
-    ++m_active_count;
-    assert (m_active_count > 0);
+    assert (a_size < BITSET_MAX_SIZE);
   }
 
-  void
-  redo_parallel::task_active_state_bookkeeping::set_inactive ()
+  inline void
+  redo_parallel::task_active_state_bookkeeping::set_active (std::size_t a_index)
   {
-    bool do_notify { false };
+    assert (a_index < m_size);
+
+    std::lock_guard<std::mutex> lockg { m_values_mtx };
+    assert (!m_values.test (a_index));
+    m_values.set (a_index);
+  }
+
+  inline bool
+  redo_parallel::task_active_state_bookkeeping::is_active (std::size_t a_index)
+  {
+    assert (a_index < m_size);
+
+    std::lock_guard<std::mutex> lockg { m_values_mtx };
+    return m_values.test (a_index);
+  }
+
+  inline void
+  redo_parallel::task_active_state_bookkeeping::set_inactive (std::size_t a_index)
+  {
+    assert (a_index < m_size);
+
+    bool all_inactive { false };
     {
-      std::lock_guard<std::mutex> lck { m_active_count_mtx };
-      assert (m_active_count > 0);
-      --m_active_count;
-      do_notify = m_active_count == 0;
+      std::lock_guard<std::mutex> lockg { m_values_mtx };
+      assert (m_values.test (a_index));
+      m_values.reset (a_index);
+      all_inactive = m_values.none ();
     }
 
-    if (do_notify)
+    if (all_inactive)
       {
-	m_active_count_cv.notify_one ();
+	m_values_cv.notify_one ();
       }
   }
 
-  void
+  inline void
   redo_parallel::task_active_state_bookkeeping::wait_for_termination ()
   {
-    std::unique_lock<std::mutex> lck (m_active_count_mtx);
-    m_active_count_cv.wait (lck, [this] ()
+    std::unique_lock<std::mutex> ulock (m_values_mtx);
+    m_values_cv.wait (ulock, [this] ()
     {
-      const auto res = m_active_count == 0;
-      return res;
+      return m_values.none ();
     });
   }
 
@@ -127,7 +145,6 @@ namespace cublog
       mutable std::mutex m_produce_vec_mtx;
       std::condition_variable m_produce_vec_cv;
 
-      std::atomic_bool m_in_execution;
       std::atomic_bool &m_adding_finished;
 
       /* minimum still-to-be-applied (not-applied) log_lsa for a single log applying task
@@ -183,8 +200,7 @@ namespace cublog
     // important to set this at this moment and not when execution begins
     // to circumvent race conditions where all tasks haven't yet started work
     // while already bookkeeping is being checked
-    m_task_state_bookkeeping.set_active ();
-    m_in_execution.store (true);
+    m_task_state_bookkeeping.set_active (m_task_idx);
 
     m_produce_vec.reserve (PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE);
   }
@@ -236,8 +252,7 @@ namespace cublog
 
     assert (jobs_vec.empty ());
 
-    m_in_execution.store (false);
-    m_task_state_bookkeeping.set_inactive ();
+    m_task_state_bookkeeping.set_inactive (m_task_idx);
   }
 
   void
@@ -265,7 +280,7 @@ namespace cublog
   redo_parallel::redo_task::is_idle () const
   {
     std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
-    return m_produce_vec.empty () && !m_in_execution.load ();
+    return m_produce_vec.empty () && !m_task_state_bookkeeping.is_active (m_task_idx);
   }
 
   inline void
@@ -390,6 +405,7 @@ namespace cublog
 				const log_rv_redo_context &copy_context)
     : m_task_count { a_task_count }
     , m_do_monitor_minimum_log_lsa { a_do_monitor_minimum_not_applied_log_lsa }
+    , m_task_state_bookkeeping { a_task_count }
     , m_worker_pool (nullptr)
     , m_waited_for_termination (false)
     , m_adding_finished { false }

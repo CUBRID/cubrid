@@ -30,6 +30,7 @@
 #include "vpid_utilities.hpp"
 
 #include <atomic>
+#include <bitset>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -113,8 +114,10 @@ namespace cublog
        */
       class task_active_state_bookkeeping final
       {
+	  static constexpr std::size_t BITSET_MAX_SIZE = 256;
+
 	public:
-	  task_active_state_bookkeeping () = default;
+	  task_active_state_bookkeeping (std::size_t a_size);
 
 	  task_active_state_bookkeeping (const task_active_state_bookkeeping &) = delete;
 	  task_active_state_bookkeeping (task_active_state_bookkeeping &&) = delete;
@@ -122,22 +125,19 @@ namespace cublog
 	  task_active_state_bookkeeping &operator = (const task_active_state_bookkeeping &) = delete;
 	  task_active_state_bookkeeping &operator = (task_active_state_bookkeeping &&) = delete;
 
-	  /* increment the internal number of active tasks
-	   */
-	  inline void set_active ();
-
-	  /* decrement the internal number of active tasks
-	   */
-	  inline void set_inactive ();
+	  inline void set_active (std::size_t a_index);
+	  inline bool is_active (std::size_t a_index);
+	  inline void set_inactive (std::size_t a_index);
 
 	  /* blocking call until all active tasks terminate
 	   */
 	  inline void wait_for_termination ();
 
 	private:
-	  int m_active_count { 0 };
-	  std::mutex m_active_count_mtx;
-	  std::condition_variable m_active_count_cv;
+	  const std::size_t m_size;
+	  std::bitset<BITSET_MAX_SIZE> m_values;
+	  std::mutex m_values_mtx;
+	  std::condition_variable m_values_cv;
       };
 
     private:
