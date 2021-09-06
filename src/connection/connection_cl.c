@@ -105,7 +105,7 @@ static void css_dealloc_conn (CSS_CONN_ENTRY * conn);
 
 static int css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header);
 static CSS_CONN_ENTRY *css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
-					   const char *message, int server_name_length, int port, int timeout,
+					   const char *message, int message_length, int port, int timeout,
 					   unsigned short *rid, bool send_magic);
 static CSS_CONN_ENTRY *css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *message,
 					   unsigned short *rid);
@@ -719,7 +719,7 @@ begin:
  */
 static CSS_CONN_ENTRY *
 css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type, const char *message,
-		    int server_name_length, int port, int timeout, unsigned short *rid, bool send_magic)
+		    int message_length, int port, int timeout, unsigned short *rid, bool send_magic)
 {
   SOCKET fd;
 
@@ -746,7 +746,7 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_ty
 	  return NULL;
 	}
 
-      if (css_send_request (conn, connect_type, rid, message, server_name_length) == NO_ERRORS)
+      if (css_send_request (conn, connect_type, rid, message, message_length) == NO_ERRORS)
 	{
 	  return conn;
 	}
