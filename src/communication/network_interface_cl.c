@@ -2633,10 +2633,10 @@ log_drop_lob_locator (const char *locator)
 }
 #endif // CS_MODE
 
-#if defined(CS_MODE)
 int
 log_supplement_statement (int ddl_type, int objtype, OID * classoid, OID * objoid, const char *stmt_text)
 {
+#if defined(CS_MODE)
   int req_error, rep_error = ER_FAILED;
   int request_size = 0;
   char *request = NULL, *ptr, *start_ptr;
@@ -2679,8 +2679,9 @@ log_supplement_statement (int ddl_type, int objtype, OID * classoid, OID * objoi
   free_and_init (request);
 
   return rep_error;
+#endif // CS_MODE
+  return ER_NOT_IN_STANDALONE;
 }
-#endif /* CS_MODE */
 
 /*
  * tran_server_commit -

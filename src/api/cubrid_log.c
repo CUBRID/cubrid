@@ -799,7 +799,8 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
   if (g_log_infos_size < *total_length)
     {
       char *tmp_log_infos;
-      tmp_log_infoss = (char *) realloc ((void *) g_log_infos, *total_length + MAX_ALIGNMENT);
+
+      tmp_log_infos = (char *) realloc ((void *) g_log_infos, *total_length + MAX_ALIGNMENT);
       if (tmp_log_infos == NULL)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);

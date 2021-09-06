@@ -10328,7 +10328,9 @@ log_clock_daemon_init ()
 void
 log_check_ha_delay_info_daemon_init ()
 {
-  if (HA_DISABLED ())
+  bool do_supplemental_log = prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 ? true : false;
+
+  if (HA_DISABLED () && !do_supplemental_log)
     {
       return;
     }
