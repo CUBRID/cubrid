@@ -798,7 +798,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   if (g_log_infos_size < *total_length)
     {
-      char *tmp_log_infos;
+      char *tmp_log_infos = NULL;
 
       tmp_log_infos = (char *) realloc ((void *) g_log_infos, *total_length + MAX_ALIGNMENT);
       if (tmp_log_infos == NULL)
@@ -1217,7 +1217,7 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
 
   if (g_log_items_count < num_infos)
     {
-      CUBRID_LOG_ITEM *tmp_log_items;
+      CUBRID_LOG_ITEM *tmp_log_items = NULL;
 
       tmp_log_items = (CUBRID_LOG_ITEM *) realloc ((void *) g_log_items, sizeof (CUBRID_LOG_ITEM) * num_infos);
       if (tmp_log_items == NULL)
