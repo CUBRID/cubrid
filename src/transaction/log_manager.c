@@ -4921,7 +4921,7 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
   assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
 
   int length = undo_recdes->length + sizeof (undo_recdes->type);
-  void *data = malloc (length);
+  char *data = (char *) malloc (length);
   memcpy (data, &undo_recdes->type, sizeof (undo_recdes->type));
   memcpy (data + sizeof (undo_recdes->type), undo_recdes->data, undo_recdes->length);
 
@@ -12144,6 +12144,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   int num_change_col = 0;
   char **changed_col_data = NULL;
   int *changed_col_data_len = NULL;
+  int *changed_col_idx = NULL;
 
   int num_cond_col = 0;
   int *cond_col_idx = NULL;
@@ -12161,14 +12162,21 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   int length = 0;
 
   int record_length = 0;
+  int defalut_length = 32 + DB_MAX_USER_LENGTH;
+
+  char *loginfo_buf = NULL;
 
   cdc_log ("cdc_make_dml_loginfo : started with trid:%d, transaction user:%s, class oid:(%d|%d|%d), dml type:%d", trid,
 	   user, OID_AS_ARGS (&classoid), dml_type);
   if ((error_code = heap_attrinfo_start (thread_p, &classoid, -1, NULL, &attr_info)) != NO_ERROR)
     {
       /* if not able to find schema  */
-      char loginfo_buf[record_length * 2 + MAX_ALIGNMENT];
-      int changed_col_idx[attr_info.num_values];
+      loginfo_buf = (char *) malloc ((defalut_length * 2) + MAX_ALIGNMENT);
+      if (loginfo_buf == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
 
       ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
       ptr = or_pack_int (ptr, 0);	//dummy for log info length 
@@ -12194,6 +12202,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
       memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
       error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
+
+      free_and_init (loginfo_buf);
 
       cdc_log ("cdc_make_dml_loginfo : failed to find class representationl ");
 
@@ -12269,172 +12279,190 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	}
     }
 
-  {
-    char loginfo_buf[record_length * 2 + MAX_ALIGNMENT];
-    int changed_col_idx[attr_info.num_values];
+  loginfo_buf = (char *) malloc (record_length * 2 + MAX_ALIGNMENT);
+  if (loginfo_buf == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
 
-    ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
-    ptr = or_pack_int (ptr, 0);	//dummy for log info length 
-    ptr = or_pack_int (ptr, trid);
-    ptr = or_pack_string (ptr, user);
-    ptr = or_pack_int (ptr, dataitem_type);
-    memcpy (&b_classoid, &classoid, sizeof (uint64_t));
-    switch (dml_type)
-      {
-      case CDC_INSERT:
-	/*insert */
-	num_change_col = attr_info.num_values;
-	ptr = or_pack_int (ptr, dml_type);
-	ptr = or_pack_int64 (ptr, b_classoid);
-	ptr = or_pack_int (ptr, num_change_col);
-	for (i = 0; i < num_change_col; i++)
-	  {
-	    ptr = or_pack_int (ptr, i);
-	  }
+  changed_col_idx = (int *) malloc (attr_info.num_values);
+  if (changed_col_idx == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
 
-	for (i = 0; i < num_change_col; i++)
-	  {
-	    if ((error_code = cdc_put_value_to_loginfo (&new_values[i], &ptr)) != NO_ERROR)
-	      {
-		goto end;
-	      }
-	  }
+  ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
+  ptr = or_pack_int (ptr, 0);	//dummy for log info length 
+  ptr = or_pack_int (ptr, trid);
+  ptr = or_pack_string (ptr, user);
+  ptr = or_pack_int (ptr, dataitem_type);
+  memcpy (&b_classoid, &classoid, sizeof (uint64_t));
+  switch (dml_type)
+    {
+    case CDC_INSERT:
+      /*insert */
+      num_change_col = attr_info.num_values;
+      ptr = or_pack_int (ptr, dml_type);
+      ptr = or_pack_int64 (ptr, b_classoid);
+      ptr = or_pack_int (ptr, num_change_col);
+      for (i = 0; i < num_change_col; i++)
+	{
+	  ptr = or_pack_int (ptr, i);
+	}
 
-	ptr = or_pack_int (ptr, num_cond_col);
-	break;
-      case CDC_UPDATE:
-	/*update */
-	ptr = or_pack_int (ptr, dml_type);
-	ptr = or_pack_int64 (ptr, b_classoid);
-	for (i = 0; i < attr_info.num_values; i++)
-	  {
-	    if ((error_code = cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i])) > 0)
-	      {
-		changed_col_idx[cnt++] = i;	//REVIEW : i 대신 def_order 
-	      }
-	    else if (error_code < 0)
-	      {
-		goto end;
-	      }
-	  }
-	num_change_col = cnt;
-	ptr = or_pack_int (ptr, num_change_col);
-	for (i = 0; i < num_change_col; i++)
-	  {
-	    ptr = or_pack_int (ptr, changed_col_idx[i]);
-	  }
+      for (i = 0; i < num_change_col; i++)
+	{
+	  if ((error_code = cdc_put_value_to_loginfo (&new_values[i], &ptr)) != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
 
-	for (i = 0; i < num_change_col; i++)
-	  {
-	    if (cdc_put_value_to_loginfo (&new_values[changed_col_idx[i]], &ptr) != NO_ERROR)
-	      {
-		error_code = ER_FAILED;
-		goto end;
-	      }
-	  }
+      ptr = or_pack_int (ptr, num_cond_col);
+      break;
+    case CDC_UPDATE:
+      /*update */
+      ptr = or_pack_int (ptr, dml_type);
+      ptr = or_pack_int64 (ptr, b_classoid);
+      for (i = 0; i < attr_info.num_values; i++)
+	{
+	  if ((error_code = cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i])) > 0)
+	    {
+	      changed_col_idx[cnt++] = i;	//REVIEW : i 대신 def_order 
+	    }
+	  else if (error_code < 0)
+	    {
+	      goto end;
+	    }
+	}
+      num_change_col = cnt;
+      ptr = or_pack_int (ptr, num_change_col);
+      for (i = 0; i < num_change_col; i++)
+	{
+	  ptr = or_pack_int (ptr, changed_col_idx[i]);
+	}
 
-	if (has_pk == 1)
-	  {
-	    num_cond_col = num_pk_attr;
-	    cond_col_idx = pk_attr_index;
-	    ptr = or_pack_int (ptr, num_cond_col);
+      for (i = 0; i < num_change_col; i++)
+	{
+	  if (cdc_put_value_to_loginfo (&new_values[changed_col_idx[i]], &ptr) != NO_ERROR)
+	    {
+	      error_code = ER_FAILED;
+	      goto end;
+	    }
+	}
 
-	    for (i = 0; i < num_cond_col; i++)
-	      {
-		ptr = or_pack_int (ptr, cond_col_idx[i]);
-	      }
+      if (has_pk == 1)
+	{
+	  num_cond_col = num_pk_attr;
+	  cond_col_idx = pk_attr_index;
+	  ptr = or_pack_int (ptr, num_cond_col);
 
-	    for (i = 0; i < num_cond_col; i++)
-	      {
-		if (cdc_put_value_to_loginfo (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
-		  {
-		    error_code = ER_FAILED;
-		    goto end;
-		  }
-	      }
-	  }
-	else
-	  {
-	    num_cond_col = attr_info.num_values;
-	    ptr = or_pack_int (ptr, num_cond_col);
+	  for (i = 0; i < num_cond_col; i++)
+	    {
+	      ptr = or_pack_int (ptr, cond_col_idx[i]);
+	    }
 
-	    for (i = 0; i < num_cond_col; i++)
-	      {
-		ptr = or_pack_int (ptr, i);
-	      }
+	  for (i = 0; i < num_cond_col; i++)
+	    {
+	      if (cdc_put_value_to_loginfo (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		  goto end;
+		}
+	    }
+	}
+      else
+	{
+	  num_cond_col = attr_info.num_values;
+	  ptr = or_pack_int (ptr, num_cond_col);
 
-	    for (i = 0; i < num_cond_col; i++)
-	      {
-		if (cdc_put_value_to_loginfo (&old_values[i], &ptr) != NO_ERROR)
-		  {
-		    error_code = ER_FAILED;
-		    goto end;
-		  }
-	      }
-	  }
-	break;
-      case CDC_DELETE:
-	/*delete */
-	ptr = or_pack_int (ptr, dml_type);
-	ptr = or_pack_int64 (ptr, b_classoid);
-	ptr = or_pack_int (ptr, num_change_col);
-	if (has_pk == 1)
-	  {
-	    num_cond_col = num_pk_attr;
-	    cond_col_idx = pk_attr_index;
-	    ptr = or_pack_int (ptr, num_cond_col);
-	    for (i = 0; i < num_cond_col; i++)
-	      {
-		ptr = or_pack_int (ptr, cond_col_idx[i]);
-	      }
+	  for (i = 0; i < num_cond_col; i++)
+	    {
+	      ptr = or_pack_int (ptr, i);
+	    }
 
-	    for (i = 0; i < num_cond_col; i++)
-	      {
-		if (cdc_put_value_to_loginfo (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
-		  {
-		    error_code = ER_FAILED;
-		    goto end;
-		  }
-	      }
-	  }
-	else
-	  {
-	    num_cond_col = attr_info.num_values;
-	    ptr = or_pack_int (ptr, num_cond_col);
-	    for (i = 0; i < num_cond_col; i++)
-	      {
-		ptr = or_pack_int (ptr, i);
-	      }
+	  for (i = 0; i < num_cond_col; i++)
+	    {
+	      if (cdc_put_value_to_loginfo (&old_values[i], &ptr) != NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		  goto end;
+		}
+	    }
+	}
+      break;
+    case CDC_DELETE:
+      /*delete */
+      ptr = or_pack_int (ptr, dml_type);
+      ptr = or_pack_int64 (ptr, b_classoid);
+      ptr = or_pack_int (ptr, num_change_col);
+      if (has_pk == 1)
+	{
+	  num_cond_col = num_pk_attr;
+	  cond_col_idx = pk_attr_index;
+	  ptr = or_pack_int (ptr, num_cond_col);
+	  for (i = 0; i < num_cond_col; i++)
+	    {
+	      ptr = or_pack_int (ptr, cond_col_idx[i]);
+	    }
 
-	    for (i = 0; i < num_cond_col; i++)
-	      {
-		if (cdc_put_value_to_loginfo (&old_values[i], &ptr) != NO_ERROR)
-		  {
-		    error_code = ER_FAILED;
-		    goto end;
-		  }
-	      }
-	  }
-	break;
-      }
-    /*malloc the size of log_info and packing and  entry->log_info will pointing it  */
+	  for (i = 0; i < num_cond_col; i++)
+	    {
+	      if (cdc_put_value_to_loginfo (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		  goto end;
+		}
+	    }
+	}
+      else
+	{
+	  num_cond_col = attr_info.num_values;
+	  ptr = or_pack_int (ptr, num_cond_col);
+	  for (i = 0; i < num_cond_col; i++)
+	    {
+	      ptr = or_pack_int (ptr, i);
+	    }
 
-    dml_entry->length = ptr - start_ptr;
-    or_pack_int (start_ptr, dml_entry->length);
+	  for (i = 0; i < num_cond_col; i++)
+	    {
+	      if (cdc_put_value_to_loginfo (&old_values[i], &ptr) != NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		  goto end;
+		}
+	    }
+	}
+      break;
+    }
+  /*malloc the size of log_info and packing and  entry->log_info will pointing it  */
 
-    dml_entry->log_info = (char *) malloc (dml_entry->length);
-    if (dml_entry->log_info == NULL)
-      {
-	cdc_log ("cdc_make_dml_loginfo : failed to allocate memory for log info in dml log entry");
-	error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	goto end;
-      }
+  dml_entry->length = ptr - start_ptr;
+  or_pack_int (start_ptr, dml_entry->length);
 
-    memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
-    error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
-    cdc_log ("cdc_make_dml_loginfo : success to generated dml log info. length:%d", dml_entry->length);
-  }
+  dml_entry->log_info = (char *) malloc (dml_entry->length);
+  if (dml_entry->log_info == NULL)
+    {
+      cdc_log ("cdc_make_dml_loginfo : failed to allocate memory for log info in dml log entry");
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+
+  memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
+  error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
+
+  free_and_init (loginfo_buf);
+
+  cdc_log ("cdc_make_dml_loginfo : success to generated dml log info. length:%d", dml_entry->length);
+
 end:
+
+  if (changed_col_idx != NULL)
+    {
+      free_and_init (changed_col_idx);
+    }
 
   if (cond_col_idx != NULL)
     {
@@ -12473,6 +12501,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
    * cdc_make_ddl_loginfo construct log info from ddl_type to statement */
   int loginfo_length;
   int dataitem_type = CDC_DDL;
+  char *loginfo_buf = NULL;;
 
   ptr = PTR_ALIGN (supplement_data, MAX_ALIGNMENT);
 
@@ -12505,32 +12534,40 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
 		    + OR_INT_SIZE
 		    + OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE + OR_BIGINT_SIZE + OR_INT_SIZE + statement_length);
 
-  {
-    char loginfo_buf[loginfo_length * 2 + MAX_ALIGNMENT];
-    ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
-    ptr = or_pack_int (ptr, loginfo_length);
-    ptr = or_pack_int (ptr, trid);
-    ptr = or_pack_string (ptr, user);
-    ptr = or_pack_int (ptr, dataitem_type);
-    ptr = or_pack_int (ptr, ddl_type);
-    ptr = or_pack_int (ptr, object_type);
-    ptr = or_pack_int64 (ptr, (INT64) b_objectoid);
-    ptr = or_pack_int64 (ptr, (INT64) b_classoid);
-    ptr = or_pack_int (ptr, statement_length);
-    ptr = or_pack_string (ptr, statement);
+//    char loginfo_buf[loginfo_length * 2 + MAX_ALIGNMENT];
+  loginfo_buf = (char *) malloc (loginfo_length * 2 + MAX_ALIGNMENT);
+  if (loginfo_buf == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
-    ddl_entry->length = ptr - start_ptr;
-    or_pack_int (start_ptr, ddl_entry->length);
+  ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
+  ptr = or_pack_int (ptr, loginfo_length);
+  ptr = or_pack_int (ptr, trid);
+  ptr = or_pack_string (ptr, user);
+  ptr = or_pack_int (ptr, dataitem_type);
+  ptr = or_pack_int (ptr, ddl_type);
+  ptr = or_pack_int (ptr, object_type);
+  ptr = or_pack_int64 (ptr, (INT64) b_objectoid);
+  ptr = or_pack_int64 (ptr, (INT64) b_classoid);
+  ptr = or_pack_int (ptr, statement_length);
+  ptr = or_pack_string (ptr, statement);
 
-    ddl_entry->log_info = (char *) malloc (ddl_entry->length);
-    if (ddl_entry->log_info == NULL)
-      {
-	return ER_OUT_OF_VIRTUAL_MEMORY;
-      }
+  ddl_entry->length = ptr - start_ptr;
+  or_pack_int (start_ptr, ddl_entry->length);
 
-    memcpy (ddl_entry->log_info, start_ptr, ddl_entry->length);
-    cdc_log ("cdc_make_ddl_loginfo : success to generated ddl log info. length:%d", ddl_entry->length);
-  }
+  ddl_entry->log_info = (char *) malloc (ddl_entry->length);
+  if (ddl_entry->log_info == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  memcpy (ddl_entry->log_info, start_ptr, ddl_entry->length);
+
+  free_and_init (loginfo_buf);
+
+  cdc_log ("cdc_make_ddl_loginfo : success to generated ddl log info. length:%d", ddl_entry->length);
+
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
 }
 
@@ -12541,6 +12578,7 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   CDC_DCL_TYPE dcl_type;
   char *ptr, *start_ptr;
   int length = 0;
+  char *loginfo_buf = NULL;
 
   switch (log_type)
     {
@@ -12559,29 +12597,33 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   length =
     (OR_INT_SIZE + OR_INT_SIZE + or_packed_string_length (user, NULL) + OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE);
 
-  {
-    char loginfo_buf[length * 2 + MAX_ALIGNMENT];
+  loginfo_buf = (char *) malloc (length * 2 + MAX_ALIGNMENT);
+  if (loginfo_buf == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
-    ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
-    ptr = or_pack_int (ptr, dcl_entry->length);
-    ptr = or_pack_int (ptr, trid);
-    ptr = or_pack_string (ptr, user);
-    ptr = or_pack_int (ptr, dataitem_type);
-    ptr = or_pack_int (ptr, dcl_type);
-    ptr = or_pack_int64 (ptr, at_time);
-    dcl_entry->length = ptr - start_ptr;
-    or_pack_int (start_ptr, dcl_entry->length);
+  ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
+  ptr = or_pack_int (ptr, dcl_entry->length);
+  ptr = or_pack_int (ptr, trid);
+  ptr = or_pack_string (ptr, user);
+  ptr = or_pack_int (ptr, dataitem_type);
+  ptr = or_pack_int (ptr, dcl_type);
+  ptr = or_pack_int64 (ptr, at_time);
+  dcl_entry->length = ptr - start_ptr;
+  or_pack_int (start_ptr, dcl_entry->length);
 
-    dcl_entry->log_info = (char *) malloc (dcl_entry->length);
-    if (dcl_entry->log_info == NULL)
-      {
-	cdc_log ("cdc_make_dcl_loginfo : failed to allocate memory for log info in dcl entry", trid, user, dcl_type);
-	return ER_OUT_OF_VIRTUAL_MEMORY;
-      }
+  dcl_entry->log_info = (char *) malloc (dcl_entry->length);
+  if (dcl_entry->log_info == NULL)
+    {
+      cdc_log ("cdc_make_dcl_loginfo : failed to allocate memory for log info in dcl entry", trid, user, dcl_type);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
-    memcpy (dcl_entry->log_info, start_ptr, dcl_entry->length);
-    cdc_log ("cdc_make_dcl_loginfo : success to generated dcl log info. length:%d", dcl_entry->length);
-  }
+  memcpy (dcl_entry->log_info, start_ptr, dcl_entry->length);
+
+  free_and_init (loginfo_buf);
+  cdc_log ("cdc_make_dcl_loginfo : success to generated dcl log info. length:%d", dcl_entry->length);
 
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
 }
@@ -12594,8 +12636,13 @@ cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY 
   char *ptr, *start_ptr;
   int length = 0;
   length = (OR_INT_SIZE + OR_INT_SIZE + or_packed_string_length (user, NULL) + OR_INT_SIZE + OR_BIGINT_SIZE);
+  char *loginfo_buf = NULL;
 
-  char loginfo_buf[length * 2 + MAX_ALIGNMENT];
+  loginfo_buf = (char *) malloc (length * 2 + MAX_ALIGNMENT);
+  if (loginfo_buf == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
   ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
   ptr = or_pack_int (ptr, timer_entry->length);
@@ -12613,6 +12660,8 @@ cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY 
     }
 
   memcpy (timer_entry->log_info, start_ptr, timer_entry->length);
+
+  free_and_init (loginfo_buf);
 
   cdc_log ("cdc_make_timer_loginfo : success to generated timer log info. length:%d", timer_entry->length);
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
