@@ -69,7 +69,6 @@ namespace cublog
 
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
-      void conclude_task_execution ();
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
@@ -80,7 +79,6 @@ namespace cublog
 	  const log_lsa &rec_lsa);
 
     private:
-      std::unique_ptr<cubthread::entry_task> m_daemon_task;
       std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
 

@@ -124,15 +124,15 @@ namespace cublog
     cubthread::looper loop (std::chrono::milliseconds (1));   // don't spin when there is no new log, wait a bit
     auto func_exec = std::bind (&replicator::redo_upto_nxio_lsa, std::ref (*this), std::placeholders::_1);
 
-    auto func_retire = std::bind (&replicator::conclude_task_execution, std::ref (*this));
-    // initialized with explicit 'exec' and 'retire' functors, the ownership of the daemon task
-    // done not reside with the task itself (aka, the task does not get to delete itself anymore);
-    // therefore store it in in pointer such that we can be sure it is disposed of sometime towards the end
-    m_daemon_task.reset (new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire)));
+    // ownership of the daemon task lies with the task itself (aka: will delete itself upon retiring)
+    std::unique_ptr<cubthread::entry_task> daemon_task
+    {
+      new cubthread::entry_callable_task (std::move (func_exec))
+    };
 
     m_daemon_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (TT_REPLICATION);
 
-    m_daemon = cubthread::get_manager ()->create_daemon (loop, m_daemon_task.get (), "cublog::replicator",
+    m_daemon = cubthread::get_manager ()->create_daemon (loop, daemon_task.release (), "cublog::replicator",
 	       m_daemon_context_manager.get ());
   }
 
@@ -163,24 +163,6 @@ namespace cublog
 	    assert (m_redo_lsa == nxio_lsa);
 	    break;
 	  }
-      }
-  }
-
-  void
-  replicator::conclude_task_execution ()
-  {
-    // TODO: this retire function might not be needed anymore
-    if (m_parallel_replication_redo != nullptr)
-      {
-	// without being aware of external context/factors, this is the earliest it is ensured that
-	// no records are to be added anymore
-	assert (m_parallel_replication_redo->get_waited_for_termination ());
-      }
-    else
-      {
-	// nothing needs to be done in the synchronous execution scenario
-	// the default/internal implementation of the retire functor used to delete the task
-	// itself; this is now handled by the instantiating entity
       }
   }
 
