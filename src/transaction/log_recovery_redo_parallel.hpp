@@ -105,8 +105,6 @@ namespace cublog
       void do_init_worker_pool (std::size_t a_task_count);
       void do_init_tasks (std::size_t a_task_count, bool a_do_monitor_unapplied_log_lsa,
 			  const log_rv_redo_context &copy_context);
-      log_lsa calculate_min_unapplied_log_lsa ();
-      void calculate_and_save_min_unapplied_log_lsa ();
 
     private:
       /* maintain a bookkeeping of tasks that are still performing work;
@@ -140,9 +138,63 @@ namespace cublog
 	  std::condition_variable m_values_cv;
       };
 
+      /*
+       */
+      class min_unapplied_log_lsa_calculation final
+      {
+	public:
+	  min_unapplied_log_lsa_calculation (bool a_do_monitor_min_unapplied_log_lsa,
+					     const log_lsa &a_start_main_thread_log_lsa);
+
+	  min_unapplied_log_lsa_calculation (const min_unapplied_log_lsa_calculation &) = delete;
+	  min_unapplied_log_lsa_calculation (min_unapplied_log_lsa_calculation &&) = delete;
+
+	  ~min_unapplied_log_lsa_calculation ();
+
+	  min_unapplied_log_lsa_calculation &operator= (const min_unapplied_log_lsa_calculation &) = delete;
+	  min_unapplied_log_lsa_calculation &operator= (min_unapplied_log_lsa_calculation &&) = delete;
+
+	  /* only start calculation once the tasks have been created; avoid race
+	   * conditions of the internal calculation and actual creation of the tasks
+	   */
+	  void start (const std::vector<std::unique_ptr<redo_task>> *a_redo_tasks);
+
+	  void set_main_thread_unapplied_log_lsa (const log_lsa &a_log_lsa);
+
+	  log_lsa get_calculated_min_unapplied_log_lsa ();
+	  void wait_past_target_lsa (const log_lsa &a_target_lsa);
+
+	private:
+	  log_lsa calculate_min_unapplied_log_lsa ();
+	  void calculate_min_unapplied_log_lsa_loop ();
+
+	private:
+	  const bool m_do_monitor_min_unapplied_log_lsa;
+
+	  /* the not-applied set from the outside by the main thread (for recovery, the main thread
+	   * is the thread running the analysis redo and undo; for replication, the main thread is the
+	   * recovery applying thread);
+	   * the reason the main thread log_lsa is needed is because some of the log entries are being applied
+	   * synchronously by the main thread and the calculation of the minimum not-applied log_lsa needs
+	   * to be accurate
+	   */
+	  std::atomic<log_lsa> m_main_thread_unapplied_log_lsa;
+
+	  const std::vector<std::unique_ptr<redo_task>> *m_redo_tasks;
+
+	  /* following members control the pro-active calculation of the minimum not-applied log_lsa as well
+	   * as means to actually trigger and wait for the calculation asynchronously
+	   */
+	  log_lsa m_calculated_min_unapplied_log_lsa;
+	  std::mutex m_calculate_min_unapplied_log_lsa_mtx;
+
+	  volatile bool m_terminate_min_unapplied_log_lsa_calculation;
+	  std::thread m_calculate_min_unapplied_log_lsa_thread;
+	  std::condition_variable m_calculate_min_unapplied_log_lsa_cv;
+      };
+
     private:
       const std::size_t m_task_count;
-      const bool m_do_monitor_min_unapplied_log_lsa;
 
       std::unique_ptr<cubthread::entry_manager> m_pool_context_manager;
 
@@ -154,6 +206,9 @@ namespace cublog
       task_active_state_bookkeeping m_task_state_bookkeeping;
 
       cubthread::entry_workpool *m_worker_pool;
+      /* tasks have owner-controlled life-time in order to be able to
+       * collect post-execution perf stats from them
+       */
       std::vector<std::unique_ptr<redo_task>> m_redo_tasks;
 
       bool m_waited_for_termination;
@@ -162,24 +217,7 @@ namespace cublog
 
       std::hash<VPID> m_vpid_hash;
 
-      /* the not-applied set from the outside by the main thread (for recovery, the main thread
-       * is the thread running the analysis redo and undo; for replication, the main thread is the
-       * recovery applying thread);
-       * the reason the main thread log_lsa is needed is because some of the log entries are being applied
-       * synchronously by the main thread and the calculation of the minimum not-applied log_lsa needs
-       * to be accurate
-       */
-      std::atomic<log_lsa> m_main_thread_unapplied_log_lsa;
-
-      /* following members control the pro-active calculation of the minimum not-applied log_lsa as well
-       * as means to actually trigger and wait for the calculation asynchronously
-       */
-      log_lsa m_calculated_min_unapplied_log_lsa;
-      std::mutex m_calculate_min_unapplied_log_lsa_mtx;
-
-      volatile bool m_terminate_min_unapplied_log_lsa_calculation;
-      std::thread m_calculate_min_unapplied_log_lsa_thread;
-      std::condition_variable m_calculate_min_unapplied_log_lsa_cv;
+      min_unapplied_log_lsa_calculation m_min_unapplied_log_lsa_calculation;
   };
 
 
@@ -327,7 +365,6 @@ namespace cublog
        */
       std::vector<job_container_t> m_per_task_push_jobs_vec;
   };
-
 #else /* SERVER_MODE */
   /* dummy implementations for SA mode
    */

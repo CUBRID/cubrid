@@ -92,16 +92,62 @@ void execute_test (const log_recovery_test_config &a_test_config,
   //
   ut_database_values_generator global_values{ a_database_config };
 
-  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, true,
-      global_values.get_lsa_log (), dummy_redo_context);
-
-  REQUIRE (log_redo_parallel.get_calculated_min_unapplied_log_lsa ().is_max ());
+  const log_lsa start_log_lsa = global_values.get_lsa_log ();
+  REQUIRE ((!start_log_lsa.is_max () && !start_log_lsa.is_null ()));
+  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, true, start_log_lsa, dummy_redo_context);
 
   for (size_t idx = 0u; idx < a_test_config.redo_job_count; ++idx)
     {
+      // pending job with unapplied log_lsa
       ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
-      const log_lsa &job_log_lsa = job->get_log_lsa ();
 
+      {
+	const log_lsa &job_unapplied_log_lsa = job->get_log_lsa ();
+
+	// set the [still] unapplied log_lsa
+	if (a_test_config.wait_past_previous_log_lsa)
+	  {
+	    log_redo_parallel.set_main_thread_unapplied_log_lsa (job_unapplied_log_lsa);
+
+	    // simulate the situation where the job has been submitted for processing
+	    // but has actually not been processed yet
+	    if (idx == 0)
+	      {
+		log_redo_parallel.wait_past_target_lsa (start_log_lsa);
+
+		REQUIRE (log_redo_parallel.get_calculated_min_unapplied_log_lsa () == job_unapplied_log_lsa);
+	      }
+	  }
+      }
+
+      // only start monitoring after the first job has been dispatched
+      if (a_test_config.wait_past_previous_log_lsa && !wait_past_log_lsa_thr.joinable ())
+	{
+	  wait_past_log_lsa_thr = std::thread ([&log_redo_parallel, &wait_past_log_lsa_info,
+								    &idx, &a_test_config] ()
+	  {
+	    log_lsa local_log_lsa { MAX_LSA };
+	    do
+	      {
+		{
+		  std::unique_lock<std::mutex> ulock { wait_past_log_lsa_info.m_mtx };
+		  wait_past_log_lsa_info.m_cv.wait_for (ulock, std::chrono::microseconds (10));
+		  local_log_lsa = wait_past_log_lsa_info.m_log_lsa;
+		}
+		// do not wait the very last job that was created:
+		//  - it might be an non-modifying job
+		//  - it will never satisfy the internal condition which does a strict comparison
+		if (!local_log_lsa.is_max () && !local_log_lsa.is_null ()
+		    && (idx < a_test_config.redo_job_count - 1))
+		  {
+		    log_redo_parallel.wait_past_target_lsa (local_log_lsa);
+		  }
+	      }
+	    while (!local_log_lsa.is_null ());
+	  });
+	}
+
+      // at last, sugmit job for processing
       if (job->is_volume_creation () || job->is_page_creation ())
 	{
 	  // jobs not tied to a non-null vpid, are executed in-synch
@@ -120,38 +166,6 @@ void execute_test (const log_recovery_test_config &a_test_config,
 
 	  // ownership of released raw pointer remains with the job itself (check 'retire' function)
 	  log_redo_parallel.add (job.release ());
-	}
-
-      if (a_test_config.wait_past_previous_log_lsa)
-	{
-	  log_redo_parallel.set_main_thread_unapplied_log_lsa (job_log_lsa);
-	}
-
-      // only start monitoring after the first job has been dispatched
-      if (a_test_config.wait_past_previous_log_lsa && !wait_past_log_lsa_thr.joinable ())
-	{
-	  wait_past_log_lsa_thr = std::thread ([&log_redo_parallel, &wait_past_log_lsa_info,
-								    &idx, &a_test_config] ()
-	  {
-	    log_lsa local_log_lsa { MAX_LSA };
-	    do
-	      {
-		{
-		  std::unique_lock<std::mutex> ulock { wait_past_log_lsa_info.m_mtx };
-		  wait_past_log_lsa_info.m_cv.wait_for (ulock, std::chrono::milliseconds (100));
-		  local_log_lsa = wait_past_log_lsa_info.m_log_lsa;
-		}
-		// do not wait the very last job that was created:
-		//  - it might be an non-modifying job
-		//  - it will never satisfy the internal condition which does a strict comparison
-		if (!local_log_lsa.is_max () && !local_log_lsa.is_null ()
-		    && (idx < a_test_config.redo_job_count - 1))
-		  {
-		    log_redo_parallel.wait_past_target_lsa (local_log_lsa);
-		  }
-	      }
-	    while (!local_log_lsa.is_null ());
-	  });
 	}
     }
 
@@ -207,8 +221,8 @@ TEST_CASE ("log recovery parallel test: quick tests", "[ci]")
 
   constexpr std::array<size_t, 1> volume_count_per_database_arr { 10u };
   constexpr std::array<size_t, 1> page_count_per_volume_arr { ONE_K };
-  constexpr std::array<size_t, 2> job_count_arr { 0u, _64_K };
-  const std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
+  constexpr std::array<size_t, 3> job_count_arr { 0u, 1u, _64_K };
+  const std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency () };
   constexpr std::array<bool, 2> wait_past_previous_log_lsa_arr { false, true };
   for (const size_t volume_count_per_database : volume_count_per_database_arr)
     {
