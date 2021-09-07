@@ -135,7 +135,7 @@ css_set_pipe_signal (void)
  *   host_name(in):
  */
 int
-css_client_init (int sockid, const char *server_name, const char *host_name)
+css_client_init (int sockid, const char *server_name, const char *host_name, SERVER_TYPE server_type)
 {
   CSS_CONN_ENTRY *conn;
   int error = NO_ERROR;
@@ -146,7 +146,7 @@ css_client_init (int sockid, const char *server_name, const char *host_name)
 
   css_Service_id = sockid;
   css_set_pipe_signal ();
-  conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name);
+  conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name, server_type);
   if (conn != NULL)
     {
       css_queue_connection (conn, (char *) host_name, &css_Client_anchor);

@@ -147,6 +147,7 @@ main (int argc, char *argv[])
     {CSQL_QUERY_COLUMN_DELIMITER_L, 1, 0, CSQL_QUERY_COLUMN_DELIMITER_S},
     {CSQL_QUERY_COLUMN_ENCLOSURE_L, 1, 0, CSQL_QUERY_COLUMN_ENCLOSURE_S},
     {CSQL_LOADDB_OUTPUT_L, 0, 0, CSQL_LOADDB_OUTPUT_S},
+    {CSQL_PAGE_SERVER_L, 0, 0, CSQL_PAGE_SERVER_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
@@ -161,6 +162,7 @@ main (int argc, char *argv[])
   csql_arg.loaddb_output = false;
   csql_arg.column_delimiter = -1;
   csql_arg.column_enclosure = -1;
+  csql_arg.page_server = false;
   utility_make_getopt_optstring (csql_option, option_string);
 
   while (1)
@@ -341,6 +343,10 @@ main (int argc, char *argv[])
 	  csql_arg.loaddb_output = true;
 	  break;
 
+	case CSQL_PAGE_SERVER_S:
+	  csql_arg.page_server = true;
+	  break;
+
 	case VERSION_S:
 	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME, PRODUCT_STRING);
 	  goto exit_on_end;
@@ -419,6 +425,12 @@ main (int argc, char *argv[])
   if (csql_arg.sysadm == false && csql_arg.write_on_standby == true)
     {
       /* write_on_standby must come with sysadm */
+      goto print_usage;
+    }
+
+  if (csql_arg.page_server && csql_arg.sysadm == false)
+    {
+      /* only sysadm can connect to page server */
       goto print_usage;
     }
 
