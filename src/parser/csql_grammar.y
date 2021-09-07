@@ -25914,6 +25914,8 @@ PT_HINT parser_hint_table[] = {
   ,
   {"USE_SBR", NULL, PT_HINT_USE_SBR}
   ,
+  {"NO_SUPPLEMENTAL_LOG", NULL, PT_HINT_NO_SUPPLEMENTAL_LOG}
+  ,
   {NULL, NULL, -1}		/* mark as end */
 };
 

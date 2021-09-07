@@ -124,6 +124,7 @@ namespace cubthread
     , on_trace (false)
     , clear_trace (false)
     , tran_entries ()
+    , no_supplemental_log (false)
 #if !defined (NDEBUG)
     , fi_test_array (NULL)
     , count_private_allocators (0)
@@ -255,6 +256,8 @@ namespace cubthread
       }
 
     no_logging = false;
+
+    no_supplemental_log = false;
 
     end_resource_tracks ();
 

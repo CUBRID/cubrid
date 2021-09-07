@@ -1194,13 +1194,15 @@ typedef enum
   PT_HINT_SKIP_UPDATE_NULL = 0x2000000,	/* 0010 0000 0000 0000 0000 0000 0000 */
   PT_HINT_NO_INDEX_LS = 0x4000000,	/* 0100 0000 0000 0000 0000 0000 0000 *//* enable loose index scan */
   PT_HINT_INDEX_LS = 0x8000000,	/* 1000 0000 0000 0000 0000 0000 0000 *//* disable loose index scan */
-  PT_HINT_QUERY_NO_CACHE = 0x10000000,	/* 0001 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache */
+  PT_HINT_NO_SUPPLEMENTAL_LOG = 0x10000000,	/* 0001 0000 0000 0000 0000 0000 0000 0000 0000 */
+  /* Used in DML (only for update, delete currently) to avoid adding DML supplemental logs that may be duplicated by DDL */
   PT_HINT_SELECT_RECORD_INFO = 0x20000000,	/* 0010 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT record info from tuple header instead of data */
   PT_HINT_SELECT_PAGE_INFO = 0x40000000,	/* 0100 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT page header information from heap file instead of record data */
-  PT_HINT_SELECT_KEY_INFO = 0x80000000	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
-    /* SELECT key information from index b-tree instead of table record data */
+  PT_HINT_SELECT_KEY_INFO = 0x80000000,	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
+  /* SELECT key information from index b-tree instead of table record data */
+  PT_HINT_QUERY_NO_CACHE = 0x100000000	/* 0001 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache (unused) */
 } PT_HINT_ENUM;
 
 /* Codes for error messages */
@@ -3700,6 +3702,29 @@ struct pt_coll_infer
   // *INDENT-ON*
 #endif				// c++
 };
+
+enum cdc_ddl_type
+{
+  CDC_CREATE,
+  CDC_ALTER,
+  CDC_DROP,
+  CDC_RENAME,
+  CDC_TRUNCATE,
+  CDC_TRUNCATE_CASCADE
+};
+typedef enum cdc_ddl_type CDC_DDL_TYPE;
+
+enum cdc_ddl_object_type
+{
+  CDC_TABLE,
+  CDC_INDEX,
+  CDC_SERIAL,
+  CDC_VIEW,
+  CDC_FUNCTION,
+  CDC_PROCEDURE,
+  CDC_TRIGGER
+};
+typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
 

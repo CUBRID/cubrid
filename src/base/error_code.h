@@ -1646,7 +1646,18 @@
 #define ER_TRUNCATE_PK_REFERRED                     -1284
 #define ER_TRUNCATE_CANT_CASCADE                    -1285
 
-#define ER_LAST_ERROR                               -1286
+#define ER_CDC_LSA_NOT_FOUND                        -1286
+#define ER_CDC_EXTRACTION_TIMEOUT                   -1287
+#define ER_CDC_NOTHING_TO_RETURN                    -1288
+#define ER_CDC_IGNORE_TRANSACTION                   -1289
+#define ER_CDC_INVALID_LOG_LSA                      -1290
+#define ER_CDC_NOT_AVAILABLE                        -1291
+#define ER_CDC_ADJUSTED_LSA                         -1292
+#define ER_CDC_NULL_EXTRACTION_LSA                  -1293
+#define ER_CDC_LOGINFO_ENTRY_GENERATED              -1294
+#define ER_CDC_IGNORE_LOG_INFO                      -1295
+
+#define ER_LAST_ERROR                               -1296
 
 /*
  * CAUTION!
