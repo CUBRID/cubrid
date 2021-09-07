@@ -1035,7 +1035,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name, SERVER_TYPE se
    * buffer space is used to copy the server name.
    */
   msg = ((char) server_type) + '0';
-  msg.append (server_name, std::strlen (server_name));
+  msg.append (server_name, std::strlen (server_name) + 1);
   retry_count = 0;
   if (css_server_connect (host_name, conn, msg.c_str (), &rid) == NULL)
     {
