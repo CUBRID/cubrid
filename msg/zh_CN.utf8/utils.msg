@@ -291,7 +291,8 @@ backupdb: 备份一个数据库.\n\
   -t, --thread-count=COUNT     线程数; 默认: 0(auto)\n\
   -z, --compress               压缩备份卷; 默认: 不压缩\n\
       --sleep-msecs=N          每读 1M 休眠 N  毫秒; 默认: 0\n\
-  -k, --separate-keys          TDE的密钥文件（_keys）不包含在备份卷中，而是被分成一个文件\n
+  -k, --separate-keys          TDE的密钥文件（_keys）不包含在备份卷中，而是被分成一个文件\n\
+      --page-server            run on the page server; default: runs on the transaction\n
 71 不兼容的参数, \"%1$s\", 和 \"%2$s\"\n
 
 
@@ -898,7 +899,8 @@ paramdump: 转储系统参数设置.\n\
   -o, --output-file=FILE       重定向输出信息到FILE; 默认: 无\n\
   -b, --both                   转储客户端和服务端的参数\n\
   -S, --SA-mode                单机模式执行\n\
-  -C, --CS-mode                客户端-服务端模式执行\n
+  -C, --CS-mode                客户端-服务端模式执行\n\
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 错误的值 \"%1$s\" 对于服务端的HA运行模式.\n
@@ -960,7 +962,8 @@ statdump: 转储全局统计信息.\n\
   -o, --output-file=FILE       重定向输出信息到文件FILE; 默认: 无\n\
   -c, --cumulative             打印累计状态\n\
   -i, --interval=S             每 S 秒打印一次状态\n\
-  -s, --substr=STRING          只为匹配上得 子字符串打印状态\n
+  -s, --substr=STRING          只为匹配上得 子字符串打印状态\n\
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 输入 DBA 密码:
