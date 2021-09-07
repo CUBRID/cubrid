@@ -3479,7 +3479,7 @@ export_server (print_output & output_ctx)
 #define SERVER_VALUE_INDEX_MAX   (10)
   DB_VALUE values[SERVER_VALUE_INDEX_MAX];
   DB_VALUE passwd_val;
-  char *srv_name, *str;
+  char *srv_name, *owner_name, *str;
   const char *attr_names[SERVER_VALUE_INDEX_MAX] = {
     "link_name", "host", "port", "db_name", "user_name", "password", "properties", "comment", "owner_name", "owner_obj"
   };
@@ -3546,7 +3546,8 @@ export_server (print_output & output_ctx)
 	    }
 	  else
 	    {
-	      output_ctx ("CREATE SERVER [%s] (", srv_name);
+	      owner_name = (char *) db_get_string (values + 8);
+	      output_ctx ("CREATE SERVER [%s].[%s] (", owner_name, srv_name);
 	      output_ctx ("\n\t HOST= %s", (char *) db_get_string (values + 1));
 	      output_ctx (",\n\t PORT= %d", db_get_int (values + 2));
 	      output_ctx (",\n\t DBNAME= %s", (char *) db_get_string (values + 3));
@@ -3565,9 +3566,6 @@ export_server (print_output & output_ctx)
 		  output_ctx (",\n\t COMMENT= '%s'", str);
 		}
 	      output_ctx (" );\n");
-
-	      str = (char *) db_get_string (values + 8);
-	      output_ctx ("ALTER SERVER [%s] OWNER TO [%s];\n\n", srv_name, str);
 	    }
 
 	  db_value_clear (&passwd_val);
