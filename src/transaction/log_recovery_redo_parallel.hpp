@@ -91,7 +91,10 @@ namespace cublog
 
       inline bool get_waited_for_termination () const
       {
-	return m_waited_for_termination;
+	return (m_task_count > 0)
+	       && m_adding_finished.load ()
+	       && !m_task_state_bookkeeping.is_any_active ()
+	       && (m_worker_pool == nullptr);
       }
 
       void log_perf_stats () const;
@@ -124,8 +127,9 @@ namespace cublog
 	  task_active_state_bookkeeping &operator = (task_active_state_bookkeeping &&) = delete;
 
 	  inline void set_active (std::size_t a_index);
-	  inline bool is_active (std::size_t a_index);
+	  inline bool is_active (std::size_t a_index) const;
 	  inline void set_inactive (std::size_t a_index);
+	  bool is_any_active () const;
 
 	  /* blocking call until all active tasks terminate
 	   */
@@ -134,7 +138,7 @@ namespace cublog
 	private:
 	  const std::size_t m_size;
 	  std::bitset<BITSET_MAX_SIZE> m_values;
-	  std::mutex m_values_mtx;
+	  mutable std::mutex m_values_mtx;
 	  std::condition_variable m_values_cv;
       };
 
@@ -212,8 +216,6 @@ namespace cublog
        * collect post-execution perf stats from them
        */
       std::vector<std::unique_ptr<redo_task>> m_redo_tasks;
-
-      bool m_waited_for_termination;
 
       std::atomic_bool m_adding_finished;
 

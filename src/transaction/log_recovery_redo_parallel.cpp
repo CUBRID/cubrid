@@ -44,7 +44,7 @@ namespace cublog
   }
 
   inline bool
-  redo_parallel::task_active_state_bookkeeping::is_active (std::size_t a_index)
+  redo_parallel::task_active_state_bookkeeping::is_active (std::size_t a_index) const
   {
     assert (a_index < m_size);
 
@@ -69,6 +69,13 @@ namespace cublog
       {
 	m_values_cv.notify_one ();
       }
+  }
+
+  bool
+  redo_parallel::task_active_state_bookkeeping::is_any_active () const
+  {
+    std::lock_guard<std::mutex> lockg { m_values_mtx };
+    return m_values.any ();
   }
 
   inline void
@@ -567,8 +574,7 @@ namespace cublog
 				const log_lsa &a_start_main_thread_log_lsa, const log_rv_redo_context &copy_context)
     : m_task_count { a_task_count }
     , m_task_state_bookkeeping { a_task_count }
-    , m_worker_pool (nullptr)
-    , m_waited_for_termination (false)
+    , m_worker_pool { nullptr }
     , m_adding_finished { false }
     , m_min_unapplied_log_lsa_calculation { a_do_monitor_min_unapplied_log_lsa, a_start_main_thread_log_lsa }
   {
@@ -584,8 +590,8 @@ namespace cublog
   redo_parallel::~redo_parallel ()
   {
     assert (m_adding_finished.load ());
+    assert (!m_task_state_bookkeeping.is_any_active ());
     assert (m_worker_pool == nullptr);
-    assert (m_waited_for_termination);
     for (auto &redo_task: m_redo_tasks)
       {
 	assert (redo_task->is_idle ());
@@ -595,7 +601,6 @@ namespace cublog
   void
   redo_parallel::add (redo_job_base *a_job)
   {
-    assert (false == m_waited_for_termination);
     assert (false == m_adding_finished.load ());
 
     const std::size_t task_index = m_vpid_hash (a_job->get_vpid ()) % m_task_count;
@@ -607,7 +612,6 @@ namespace cublog
   void
   redo_parallel::set_adding_finished ()
   {
-    assert (false == m_waited_for_termination);
     assert (false == m_adding_finished.load ());
 
     m_adding_finished.store (true);
@@ -620,7 +624,6 @@ namespace cublog
   void
   redo_parallel::wait_for_termination_and_stop_execution ()
   {
-    assert (false == m_waited_for_termination);
     assert (m_adding_finished.load ());
 
     // blocking call
@@ -635,8 +638,6 @@ namespace cublog
     cubthread::manager *thread_manager = cubthread::get_manager ();
     thread_manager->destroy_worker_pool (m_worker_pool);
     assert (m_worker_pool == nullptr);
-
-    m_waited_for_termination = true;
   }
 
   void
