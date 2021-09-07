@@ -401,45 +401,45 @@ namespace cublog
    * min_unapplied_log_lsa_calculation - definition
    *********************************************************************/
 
-  redo_parallel::min_unapplied_log_lsa_calculation::min_unapplied_log_lsa_calculation (
-	  bool a_do_monitor_min_unapplied_log_lsa, const log_lsa &a_start_main_thread_log_lsa)
-    : m_do_monitor_min_unapplied_log_lsa { a_do_monitor_min_unapplied_log_lsa }
+  redo_parallel::min_unapplied_log_lsa_monitoring::min_unapplied_log_lsa_monitoring (
+	  bool a_do_monitor, const log_lsa &a_start_main_thread_log_lsa)
+    : m_do_monitor { a_do_monitor }
     , m_main_thread_unapplied_log_lsa { a_start_main_thread_log_lsa }
     , m_redo_tasks { nullptr }
-    , m_calculated_min_unapplied_log_lsa { a_do_monitor_min_unapplied_log_lsa
-					   ? a_start_main_thread_log_lsa
-					   : MAX_LSA }
-    , m_terminate_min_unapplied_log_lsa_calculation { false }
+    , m_calculated_log_lsa { a_do_monitor
+			     ? a_start_main_thread_log_lsa
+			     : MAX_LSA }
+    , m_terminate_calculation { false }
   {
-    assert ((a_do_monitor_min_unapplied_log_lsa &&
+    assert ((a_do_monitor &&
 	     !a_start_main_thread_log_lsa.is_max () && !a_start_main_thread_log_lsa.is_null ())
-	    || (!a_do_monitor_min_unapplied_log_lsa && a_start_main_thread_log_lsa.is_max ()));
+	    || (!a_do_monitor && a_start_main_thread_log_lsa.is_max ()));
   }
 
-  redo_parallel::min_unapplied_log_lsa_calculation::~min_unapplied_log_lsa_calculation ()
+  redo_parallel::min_unapplied_log_lsa_monitoring::~min_unapplied_log_lsa_monitoring ()
   {
-    if (m_do_monitor_min_unapplied_log_lsa)
+    if (m_do_monitor)
       {
-	m_terminate_min_unapplied_log_lsa_calculation = true;
+	m_terminate_calculation = true;
 	assert (m_redo_tasks != nullptr);
 	m_redo_tasks = nullptr;
-	assert (m_calculate_min_unapplied_log_lsa_thread.joinable ());
-	m_calculate_min_unapplied_log_lsa_cv.notify_one ();
-	m_calculate_min_unapplied_log_lsa_thread.join ();
+	assert (m_calculate_thread.joinable ());
+	m_calculate_cv.notify_one ();
+	m_calculate_thread.join ();
       }
     else
       {
 	assert (m_redo_tasks == nullptr);
-	assert (!m_calculate_min_unapplied_log_lsa_thread.joinable ());
-	assert (m_calculated_min_unapplied_log_lsa == MAX_LSA);
+	assert (!m_calculate_thread.joinable ());
+	assert (m_calculated_log_lsa == MAX_LSA);
       }
   }
 
   void
-  redo_parallel::min_unapplied_log_lsa_calculation::start (
+  redo_parallel::min_unapplied_log_lsa_monitoring::start (
 	  const std::vector<std::unique_ptr<redo_task>> *a_redo_tasks)
   {
-    if (m_do_monitor_min_unapplied_log_lsa)
+    if (m_do_monitor)
       {
 	assert (a_redo_tasks != nullptr);
 	assert (a_redo_tasks->size () > 0);
@@ -447,114 +447,114 @@ namespace cublog
 	m_redo_tasks = a_redo_tasks;
 
 	// an upfront value for the minimum unapplied log_lsa will be calculated quasi instantaneous
-	m_calculate_min_unapplied_log_lsa_thread = std::thread
+	m_calculate_thread = std::thread
 	{
-	  std::bind (&redo_parallel::min_unapplied_log_lsa_calculation::calculate_min_unapplied_log_lsa_loop,
+	  std::bind (&redo_parallel::min_unapplied_log_lsa_monitoring::calculate_loop,
 		     std::ref (*this))
 	};
       }
   }
 
   void
-  redo_parallel::min_unapplied_log_lsa_calculation::set_main_thread_unapplied_log_lsa (const log_lsa &a_log_lsa)
+  redo_parallel::min_unapplied_log_lsa_monitoring::set_main_thread_unapplied_log_lsa (const log_lsa &a_log_lsa)
   {
-    assert (m_do_monitor_min_unapplied_log_lsa);
+    assert (m_do_monitor);
     assert (m_main_thread_unapplied_log_lsa.load () < a_log_lsa);
     assert (!a_log_lsa.is_max () && !a_log_lsa.is_null ());
 
     m_main_thread_unapplied_log_lsa.store (a_log_lsa);
 
     // notify thread performing calculation
-    m_calculate_min_unapplied_log_lsa_cv.notify_one ();
+    m_calculate_cv.notify_one ();
   }
 
   log_lsa
-  redo_parallel::min_unapplied_log_lsa_calculation::get_calculated_min_unapplied_log_lsa ()
+  redo_parallel::min_unapplied_log_lsa_monitoring::get_calculated_log_lsa ()
   {
-    assert (m_do_monitor_min_unapplied_log_lsa);
+    assert (m_do_monitor);
 
-    std::lock_guard<std::mutex> lockg { m_calculate_min_unapplied_log_lsa_mtx };
-    return m_calculated_min_unapplied_log_lsa;
+    std::lock_guard<std::mutex> lockg { m_calculate_mtx };
+    return m_calculated_log_lsa;
   }
 
   void
-  redo_parallel::min_unapplied_log_lsa_calculation::wait_past_target_lsa (const log_lsa &a_target_lsa)
+  redo_parallel::min_unapplied_log_lsa_monitoring::wait_past_target_log_lsa (const log_lsa &a_target_lsa)
   {
-    assert (m_do_monitor_min_unapplied_log_lsa);
+    assert (m_do_monitor);
     assert (a_target_lsa != MAX_LSA);
     assert (a_target_lsa != NULL_LSA);
-    assert (!m_calculated_min_unapplied_log_lsa.is_max ());
+    assert (!m_calculated_log_lsa.is_max ());
 
     // avoid gratuitously notifying the calculating internal thread if the condition is already satisfied
     // no need to lock the check because, by design, the value will be calculated
     // immediately after initialization starting from a main thread log_lsa which will always
     // be a valid value (i.e., neiether max, nor null)
-    if (a_target_lsa < m_calculated_min_unapplied_log_lsa)
+    if (a_target_lsa < m_calculated_log_lsa)
       {
 	return;
       }
 
     // notify thread performing calculation
-    m_calculate_min_unapplied_log_lsa_cv.notify_one ();
+    m_calculate_cv.notify_one ();
 
-    std::unique_lock<std::mutex> ulock { m_calculate_min_unapplied_log_lsa_mtx };
-    m_calculate_min_unapplied_log_lsa_cv.wait (ulock, [this, &a_target_lsa] ()
+    std::unique_lock<std::mutex> ulock { m_calculate_mtx };
+    m_calculate_cv.wait (ulock, [this, &a_target_lsa] ()
     {
       //assert (!m_adding_finished.load ());
 
-      return m_calculated_min_unapplied_log_lsa > a_target_lsa;
+      return m_calculated_log_lsa > a_target_lsa;
     });
   }
 
   log_lsa
-  redo_parallel::min_unapplied_log_lsa_calculation::calculate_min_unapplied_log_lsa ()
+  redo_parallel::min_unapplied_log_lsa_monitoring::calculate ()
   {
-    assert (m_do_monitor_min_unapplied_log_lsa);
+    assert (m_do_monitor);
 
     // the log_lsa supplied by the main thread will always be a valid one, as asserted in the
     // ctor; therefore, if the system is idle (ie: no job is currently being executed), this
     // main thread log_lsa will dictate the actual "progress" of the system;
-    log_lsa min_unapplied_log_lsa { m_main_thread_unapplied_log_lsa.load () };
-    for (auto &redo_task: *m_redo_tasks)
+    log_lsa calculated_log_lsa { m_main_thread_unapplied_log_lsa.load () };
+    for (const auto &redo_task: *m_redo_tasks)
       {
-	const log_lsa task_min_unapplied_log_lsa { redo_task->get_unapplied_log_lsa () };
-	if (task_min_unapplied_log_lsa != MAX_LSA && task_min_unapplied_log_lsa < min_unapplied_log_lsa)
+	const log_lsa task_unapplied_log_lsa { redo_task->get_unapplied_log_lsa () };
+	if (task_unapplied_log_lsa != MAX_LSA && task_unapplied_log_lsa < calculated_log_lsa)
 	  {
-	    min_unapplied_log_lsa = task_min_unapplied_log_lsa;
+	    calculated_log_lsa = task_unapplied_log_lsa;
 	  }
       }
 
     // - assert might be invalid due to the calculating thread which might kick pro-active
     //    calculation before any client requests it
     // - also, a MAX_LSA result might mean that all threads have finished processing jobs
-    //assert (min_unapplied_log_lsa != MAX_LSA);
+    assert (calculated_log_lsa != MAX_LSA);
 
-    assert (!min_unapplied_log_lsa.is_max ());
-    return min_unapplied_log_lsa;
+    assert (!calculated_log_lsa.is_max ());
+    return calculated_log_lsa;
   }
 
   void
-  redo_parallel::min_unapplied_log_lsa_calculation::calculate_min_unapplied_log_lsa_loop ()
+  redo_parallel::min_unapplied_log_lsa_monitoring::calculate_loop ()
   {
-    assert (m_do_monitor_min_unapplied_log_lsa);
+    assert (m_do_monitor);
     assert (m_redo_tasks != nullptr);
 
-    while (!m_terminate_min_unapplied_log_lsa_calculation)
+    while (!m_terminate_calculation)
       {
 	// calculation happens outside lock to not hold waiting threads
-	const log_lsa calculated_min_unapplied_log_lsa = calculate_min_unapplied_log_lsa ();
+	const log_lsa calculated_log_lsa = calculate ();
 	{
-	  std::lock_guard<std::mutex> lockg { m_calculate_min_unapplied_log_lsa_mtx };
-	  m_calculated_min_unapplied_log_lsa = calculated_min_unapplied_log_lsa;
+	  std::lock_guard<std::mutex> lockg { m_calculate_mtx };
+	  m_calculated_log_lsa = calculated_log_lsa;
 	}
 
 	// there might be more than one waiting thread
-	m_calculate_min_unapplied_log_lsa_cv.notify_all ();
+	m_calculate_cv.notify_all ();
 
 	{
-	  std::unique_lock<std::mutex> ulock { m_calculate_min_unapplied_log_lsa_mtx };
+	  std::unique_lock<std::mutex> ulock { m_calculate_mtx };
 	  // wait might be interrupted by an outside notify and this is expected
-	  m_calculate_min_unapplied_log_lsa_cv.wait_for (ulock, std::chrono::milliseconds (1000));
+	  m_calculate_cv.wait_for (ulock, std::chrono::milliseconds (1000));
 	}
       }
   }
@@ -716,7 +716,7 @@ namespace cublog
   log_lsa
   redo_parallel::get_calculated_min_unapplied_log_lsa ()
   {
-    return m_min_unapplied_log_lsa_calculation.get_calculated_min_unapplied_log_lsa ();
+    return m_min_unapplied_log_lsa_calculation.get_calculated_log_lsa ();
   }
 
   void
@@ -724,7 +724,7 @@ namespace cublog
   {
     assert (!m_adding_finished.load ());
 
-    m_min_unapplied_log_lsa_calculation.wait_past_target_lsa (a_target_lsa);
+    m_min_unapplied_log_lsa_calculation.wait_past_target_log_lsa (a_target_lsa);
   }
 
   /*********************************************************************

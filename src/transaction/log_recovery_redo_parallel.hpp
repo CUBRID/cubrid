@@ -138,21 +138,21 @@ namespace cublog
 	  std::condition_variable m_values_cv;
       };
 
-      /*
+      /* handles monitoring of minimum unapplied log_lsa
        */
-      class min_unapplied_log_lsa_calculation final
+      class min_unapplied_log_lsa_monitoring final
       {
 	public:
-	  min_unapplied_log_lsa_calculation (bool a_do_monitor_min_unapplied_log_lsa,
-					     const log_lsa &a_start_main_thread_log_lsa);
+	  min_unapplied_log_lsa_monitoring (bool a_do_monitor,
+					    const log_lsa &a_start_main_thread_log_lsa);
 
-	  min_unapplied_log_lsa_calculation (const min_unapplied_log_lsa_calculation &) = delete;
-	  min_unapplied_log_lsa_calculation (min_unapplied_log_lsa_calculation &&) = delete;
+	  min_unapplied_log_lsa_monitoring (const min_unapplied_log_lsa_monitoring &) = delete;
+	  min_unapplied_log_lsa_monitoring (min_unapplied_log_lsa_monitoring &&) = delete;
 
-	  ~min_unapplied_log_lsa_calculation ();
+	  ~min_unapplied_log_lsa_monitoring ();
 
-	  min_unapplied_log_lsa_calculation &operator= (const min_unapplied_log_lsa_calculation &) = delete;
-	  min_unapplied_log_lsa_calculation &operator= (min_unapplied_log_lsa_calculation &&) = delete;
+	  min_unapplied_log_lsa_monitoring &operator= (const min_unapplied_log_lsa_monitoring &) = delete;
+	  min_unapplied_log_lsa_monitoring &operator= (min_unapplied_log_lsa_monitoring &&) = delete;
 
 	  /* only start calculation once the tasks have been created; avoid race
 	   * conditions of the internal calculation and actual creation of the tasks
@@ -161,15 +161,18 @@ namespace cublog
 
 	  void set_main_thread_unapplied_log_lsa (const log_lsa &a_log_lsa);
 
-	  log_lsa get_calculated_min_unapplied_log_lsa ();
-	  void wait_past_target_lsa (const log_lsa &a_target_lsa);
+	  log_lsa get_calculated_log_lsa ();
+
+	  /* blocking call
+	   */
+	  void wait_past_target_log_lsa (const log_lsa &a_target_lsa);
 
 	private:
-	  log_lsa calculate_min_unapplied_log_lsa ();
-	  void calculate_min_unapplied_log_lsa_loop ();
+	  log_lsa calculate ();
+	  void calculate_loop ();
 
 	private:
-	  const bool m_do_monitor_min_unapplied_log_lsa;
+	  const bool m_do_monitor;
 
 	  /* the not-applied set from the outside by the main thread (for recovery, the main thread
 	   * is the thread running the analysis redo and undo; for replication, the main thread is the
@@ -185,12 +188,11 @@ namespace cublog
 	  /* following members control the pro-active calculation of the minimum not-applied log_lsa as well
 	   * as means to actually trigger and wait for the calculation asynchronously
 	   */
-	  log_lsa m_calculated_min_unapplied_log_lsa;
-	  std::mutex m_calculate_min_unapplied_log_lsa_mtx;
-
-	  volatile bool m_terminate_min_unapplied_log_lsa_calculation;
-	  std::thread m_calculate_min_unapplied_log_lsa_thread;
-	  std::condition_variable m_calculate_min_unapplied_log_lsa_cv;
+	  log_lsa m_calculated_log_lsa;
+	  std::mutex m_calculate_mtx;
+	  volatile bool m_terminate_calculation;
+	  std::thread m_calculate_thread;
+	  std::condition_variable m_calculate_cv;
       };
 
     private:
@@ -217,7 +219,7 @@ namespace cublog
 
       std::hash<VPID> m_vpid_hash;
 
-      min_unapplied_log_lsa_calculation m_min_unapplied_log_lsa_calculation;
+      min_unapplied_log_lsa_monitoring m_min_unapplied_log_lsa_calculation;
   };
 
 
