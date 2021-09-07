@@ -13443,6 +13443,8 @@ cdc_set_extraction_lsa (LOG_LSA * lsa)
   LSA_COPY (&cdc_Gl.consumer.next_lsa, lsa);
 
   cdc_log ("cdc_set_extraction_lsa : set LOG_LSA (%lld | %d) to produce ", LSA_AS_ARGS (lsa));
+
+  return NO_ERROR;
 }
 
 void
@@ -13906,6 +13908,7 @@ cdc_free_extraction_filter ()
     {
       free_and_init (cdc_Gl.producer.extraction_classoids);
     }
+  return NO_ERROR;
 }
 
 /* if client request for session end, it clean up all data structure */
