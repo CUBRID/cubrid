@@ -1067,6 +1067,7 @@ int g_original_buffer_len;
 %type <node> json_table_column_list_rule
 
 %type <node> dblink_server_name
+%type <node> server_identifier
 %type <node> dblink_expr
 %type <node> dblink_conn
 %type <node> dblink_conn_str
@@ -3137,6 +3138,11 @@ create_stmt
 			if (node)
 			  {
                                 node->info.create_server.server_name = $3;
+                                if ($3->next)
+                                  {
+                                     node->info.create_server.owner_name = $3->next;
+                                     $3->next = NULL;
+                                  }
 
                                 PT_CREATE_SERVER_INFO *si = &node->info.create_server;
                                 /* container order
@@ -3902,6 +3908,11 @@ alter_stmt
                                 PT_ALTER_SERVER_INFO *server = &node->info.alter_server;
 
                                 node->info.alter_server.server_name = $3;
+                                if ($3->next)
+                                  {
+                                     node->info.alter_server.current_owner_name = $3->next;
+                                     $3->next = NULL;
+                                  }                                
                                 is_not_allowed = (bool)(item_bits == 0);
 
                                 /* container order
@@ -4063,13 +4074,15 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME SERVER dblink_server_name AS dblink_server_name
+	| RENAME SERVER dblink_server_name AS identifier
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SERVER);
 			if (node)
 			  {
-			    node->info.rename_server.new_name = $5;
 			    node->info.rename_server.old_name = $3;
+                            node->info.rename_server.owner_name = $3->next;
+                            $3->next = NULL;
+                            node->info.rename_server.new_name = $5;
 			  }
 
 			$$ = node;
@@ -4382,6 +4395,11 @@ drop_stmt
 			  {
                             node->info.drop_server.if_exists = $3;
 			    node->info.drop_server.server_name = $4;
+                            if ($4->next)
+                              {
+                                node->info.drop_server.owner_name = $4->next;
+                                $4->next = NULL;
+                              }
 			  }
 
 			$$ = node;
@@ -25146,12 +25164,7 @@ alter_server_list
 alter_server_item
         : OWNER TO identifier
           {{
-                container_2 ctn;
-
-                if (db_find_user ($3->info.name.original) == NULL)
-                  {                      
-                      PT_ERRORf (this_parser, pt_top(this_parser), "Invalid user name %s", $3->info.name.original);
-                  }
+                container_2 ctn;                 
 
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_OWNER), $3);
                 $$ = ctn;
@@ -25163,19 +25176,39 @@ alter_server_item
         ;
 
 dblink_server_name
-	: identifier
-          {{
-              if (strchr($1->info.name.original, '.')) 
-                {// TODO: error handling                  
-                  PT_ERRORm (this_parser, $1, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_SERVER_NAME);                  
-                }
-
-              $$ = $1;
+	: identifier DOT server_identifier
+          {{                
+             if($3)
+               {
+                  $3->next = $1;                  
+               }
+             else if($1)
+               {
+                  parser_free_node (this_parser, $1);
+               }  
+              $$ = $3;
               PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+          DBG_PRINT}}
+        | server_identifier
+          {{
+              $$ = $1;
           DBG_PRINT}}
         ;
 
-
+server_identifier
+        : identifier
+            {{  
+                if ($1)
+                  {                
+                     if (strchr($1->info.name.original, '.')) 
+                       {                 
+                          PT_ERRORm (this_parser, $1, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_SERVER_NAME);
+                       }
+                  }
+                $$ = $1;
+                PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
+         ;
 dblink_expr
         :   dblink_conn  ','  CHAR_STRING  
             {{
@@ -25206,6 +25239,11 @@ dblink_expr
                         {
                                 ct->info.dblink_table.is_name = true;
                                 ct->info.dblink_table.conn = $1;
+                                if ($1->next)
+                                  {
+                                    ct->info.dblink_table.owner_name = $1->next;
+                                    $1->next = NULL;
+                                  }
                         }
                         else // ( $1->node_type == PT_VALUE )
                         {
@@ -25227,19 +25265,9 @@ dblink_expr
         ;
 
 dblink_conn:
-        IdName
-        {{
-                char* str_name = $1;
-                int   str_len = strlen(str_name);
-                PT_NODE* p = parser_new_node (this_parser, PT_NAME);
-                if (p)
-                {
-                        PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-                        str_name = pt_check_identifier (this_parser, p, str_name, str_len);
-                        p->info.name.original = str_name;
-                }
-                $$ = p;
-                PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+        dblink_server_name      
+        {{  
+                $$ = $1;                
                 DBG_PRINT}}
         | dblink_conn_str
         {{

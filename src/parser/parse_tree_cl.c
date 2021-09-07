@@ -18345,24 +18345,17 @@ pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp))
 static PT_NODE *
 pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-#if 0				// TODO: Exception cases require further review.
-  PT_WALK_ARG *walk = (PT_WALK_ARG *) arg;
-
-  if ((walk->post_function == free_node_in_tree_post)
-      || (walk->post_function == copy_node_in_tree_post) || (walk->pre_function == copy_node_in_tree_pre))
-#endif
+  if (p->info.dblink_table.is_name)
     {
-      if (p->info.dblink_table.is_name)
-	{
-	  PT_APPLY_WALK (parser, p->info.dblink_table.conn, arg);
-	}
-      PT_APPLY_WALK (parser, p->info.dblink_table.url, arg);
-      PT_APPLY_WALK (parser, p->info.dblink_table.user, arg);
-      PT_APPLY_WALK (parser, p->info.dblink_table.pwd, arg);
-      PT_APPLY_WALK (parser, p->info.dblink_table.qstr, arg);
-      PT_APPLY_WALK (parser, p->info.dblink_table.pushed_pred, arg);
-      PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
+      PT_APPLY_WALK (parser, p->info.dblink_table.conn, arg);
+      PT_APPLY_WALK (parser, p->info.dblink_table.owner_name, arg);
     }
+  PT_APPLY_WALK (parser, p->info.dblink_table.url, arg);
+  PT_APPLY_WALK (parser, p->info.dblink_table.user, arg);
+  PT_APPLY_WALK (parser, p->info.dblink_table.pwd, arg);
+  PT_APPLY_WALK (parser, p->info.dblink_table.qstr, arg);
+  PT_APPLY_WALK (parser, p->info.dblink_table.pushed_pred, arg);
+  PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
 
   return p;
 }
@@ -18378,6 +18371,11 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.dblink_table.is_name)
     {
+      if (p->info.dblink_table.owner_name)
+	{
+	  q = pt_append_nulstring (parser, q, (char *) p->info.dblink_table.owner_name->info.name.original);
+	  q = pt_append_nulstring (parser, q, ".");
+	}
       q = pt_append_nulstring (parser, q, p->info.dblink_table.conn->info.name.original);
 
       if (!pt->url || !pt->user || !pt->pwd)
@@ -18465,22 +18463,15 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_create_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-#if 0				// TODO: Exception cases require further review.
-  PT_WALK_ARG *walk = (PT_WALK_ARG *) arg;
-
-  if ((walk->post_function == free_node_in_tree_post)
-      || (walk->post_function == copy_node_in_tree_post) || (walk->pre_function == copy_node_in_tree_pre))
-#endif
-    {
-      PT_APPLY_WALK (parser, p->info.create_server.server_name, arg);
-      PT_APPLY_WALK (parser, p->info.create_server.host, arg);
-      PT_APPLY_WALK (parser, p->info.create_server.port, arg);
-      PT_APPLY_WALK (parser, p->info.create_server.dbname, arg);
-      PT_APPLY_WALK (parser, p->info.create_server.user, arg);
-      PT_APPLY_WALK (parser, p->info.create_server.pwd, arg);
-      PT_APPLY_WALK (parser, p->info.create_server.prop, arg);
-      PT_APPLY_WALK (parser, p->info.create_server.comment, arg);
-    }
+  PT_APPLY_WALK (parser, p->info.create_server.server_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_server.owner_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_server.host, arg);
+  PT_APPLY_WALK (parser, p->info.create_server.port, arg);
+  PT_APPLY_WALK (parser, p->info.create_server.dbname, arg);
+  PT_APPLY_WALK (parser, p->info.create_server.user, arg);
+  PT_APPLY_WALK (parser, p->info.create_server.pwd, arg);
+  PT_APPLY_WALK (parser, p->info.create_server.prop, arg);
+  PT_APPLY_WALK (parser, p->info.create_server.comment, arg);
 
   return p;
 }
@@ -18492,6 +18483,12 @@ pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p)
   PT_CREATE_SERVER_INFO *si = &(p->info.create_server);
 
   q = pt_append_nulstring (parser, q, "CREATE SERVER ");
+
+  if (p->info.create_server.owner_name)
+    {
+      q = pt_append_nulstring (parser, q, (char *) p->info.create_server.owner_name->info.name.original);
+      q = pt_append_nulstring (parser, q, ".");
+    }
   q = pt_append_nulstring (parser, q, (char *) si->server_name->info.name.original);
   q = pt_append_nulstring (parser, q, " ( HOST=");
   if (si->host->node_type == PT_VALUE)
@@ -18543,15 +18540,8 @@ pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_drop_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-#if 0				// TODO: Exception cases require further review.
-  PT_WALK_ARG *walk = (PT_WALK_ARG *) arg;
-
-  if ((walk->post_function == free_node_in_tree_post)
-      || (walk->post_function == copy_node_in_tree_post) || (walk->pre_function == copy_node_in_tree_pre))
-#endif
-    {
-      PT_APPLY_WALK (parser, p->info.drop_server.server_name, arg);
-    }
+  PT_APPLY_WALK (parser, p->info.drop_server.owner_name, arg);
+  PT_APPLY_WALK (parser, p->info.drop_server.server_name, arg);
 
   return p;
 }
@@ -18570,6 +18560,12 @@ pt_print_drop_server (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "DROP SERVER ");
     }
 
+  if (p->info.drop_server.owner_name)
+    {
+      q = pt_append_nulstring (parser, q, (char *) p->info.drop_server.owner_name->info.name.original);
+      q = pt_append_nulstring (parser, q, ".");
+    }
+
   q = pt_append_nulstring (parser, q, (char *) p->info.drop_server.server_name->info.name.original);
   return q;
 }
@@ -18579,17 +18575,25 @@ pt_apply_rename_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.rename_server.old_name, arg);
   PT_APPLY_WALK (parser, p->info.rename_server.new_name, arg);
+  PT_APPLY_WALK (parser, p->info.rename_server.owner_name, arg);
   return p;
 }
 
 static PARSER_VARCHAR *
 pt_print_rename_server (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = 0, *r1, *r2;
+  PARSER_VARCHAR *b = 0, *r1, *r2, *o1, *o2;
 
   r1 = pt_print_bytes (parser, p->info.rename_server.old_name);
   r2 = pt_print_bytes (parser, p->info.rename_server.new_name);
+
   b = pt_append_nulstring (parser, b, "RENAME SERVER ");
+  if (p->info.rename_server.owner_name)
+    {
+      o1 = pt_print_bytes (parser, p->info.rename_server.owner_name);
+      b = pt_append_varchar (parser, b, o1);
+      b = pt_append_nulstring (parser, b, ".");
+    }
   b = pt_append_varchar (parser, b, r1);
   b = pt_append_nulstring (parser, b, " AS ");
   b = pt_append_varchar (parser, b, r2);
@@ -18601,6 +18605,7 @@ static PT_NODE *
 pt_apply_alter_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.alter_server.server_name, arg);
+  PT_APPLY_WALK (parser, p->info.alter_server.current_owner_name, arg);
   PT_APPLY_WALK (parser, p->info.alter_server.host, arg);
   PT_APPLY_WALK (parser, p->info.alter_server.port, arg);
   PT_APPLY_WALK (parser, p->info.alter_server.dbname, arg);
@@ -18622,6 +18627,12 @@ pt_print_alter_server (PARSER_CONTEXT * parser, PT_NODE * p)
   PT_ALTER_SERVER_INFO *alter = &(p->info.alter_server);
 
   q = pt_append_nulstring (parser, q, "ALTER SERVER ");
+
+  if (alter->current_owner_name)
+    {
+      q = pt_append_nulstring (parser, q, (char *) alter->current_owner_name->info.name.original);
+      q = pt_append_nulstring (parser, q, ".");
+    }
   q = pt_append_nulstring (parser, q, (char *) alter->server_name->info.name.original);
 
   if (alter->xbits.bit_owner)

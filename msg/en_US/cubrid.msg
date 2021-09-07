@@ -1368,7 +1368,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1295 dblink - invalid cipher string format.
 1296 dblink - Failed to decryption password. error=%1$d".
 1297 dblink - Failed to encryption password. error=%1$d".
-1298 Last Error
+1298 dblink - Multiple "%1$s" Server found.
+1299 dblink - Not allowed "%1$s" Server. 
+1300 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

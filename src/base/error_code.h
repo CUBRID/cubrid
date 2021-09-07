@@ -1657,8 +1657,10 @@
 #define ER_DBLINK_PASSWORD_INVALID_FMT              -1295
 #define ER_DBLINK_PASSWORD_DECRYPT                  -1296
 #define ER_DBLINK_PASSWORD_ENCRYPT                  -1297
+#define ER_DBLINK_SERVER_MULTIPLE_FOUND             -1298
+#define ER_DBLINK_SERVER_ALTER_NOT_ALLOWED          -1299
 
-#define ER_LAST_ERROR                               -1298
+#define ER_LAST_ERROR                               -1300
 
 /*
  * CAUTION!
