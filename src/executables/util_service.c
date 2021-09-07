@@ -40,6 +40,7 @@
 #include "utility.h"
 #include "error_code.h"
 #include "error_manager.h"
+#include "server_type_enum.hpp"
 #include "system_parameter.h"
 #include "connection_cl.h"
 #include "util_func.h"
@@ -1668,16 +1669,16 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_START, token);
 
 #if !defined(WINDOWS)
+	      status = sysprm_load_and_init (token, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+	      if (status != NO_ERROR)
+		{
+		  util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+		  print_result (PRINT_SERVER_NAME, status, command_type);
+		  break;
+		}
+
 	      if (check_ha_mode == true)
 		{
-		  status = sysprm_load_and_init (token, NULL, SYSPRM_IGNORE_INTL_PARAMS);
-		  if (status != NO_ERROR)
-		    {
-		      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
-		      print_result (PRINT_SERVER_NAME, status, command_type);
-		      break;
-		    }
-
 		  if (util_get_ha_mode_for_sa_utils () != HA_MODE_OFF)
 		    {
 		      status = ER_GENERIC_ERROR;
@@ -1699,14 +1700,39 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	      else
 		{
 		  int pid;
-		  const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
-		  status = proc_execute (UTIL_CUBRID_NAME, args, false, false, false, &pid);
 
-		  if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, pid))
+		  if (server_type_config::SINGLE_NODE ==
+		      (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE))
 		    {
-		      status = ER_GENERIC_ERROR;
+		      const char *args_page[] = { UTIL_CUBRID_NAME, token, "-t", "page" };
+		      status = proc_execute (UTIL_CUBRID_NAME, args_page, false, false, false, &pid);
+
+		      if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, pid))
+			{
+			  status = ER_GENERIC_ERROR;
+			}
+		      print_result (PRINT_SERVER_NAME, status, command_type);
+
+		      const char *args_transaction[] = { UTIL_CUBRID_NAME, token, "-t", "transaction" };
+		      status = proc_execute (UTIL_CUBRID_NAME, args_transaction, false, false, false, &pid);
+
+		      if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, pid))
+			{
+			  status = ER_GENERIC_ERROR;
+			}
+		      print_result (PRINT_SERVER_NAME, status, command_type);
 		    }
-		  print_result (PRINT_SERVER_NAME, status, command_type);
+		  else
+		    {
+		      const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
+		      status = proc_execute (UTIL_CUBRID_NAME, args, false, false, false, &pid);
+
+		      if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, pid))
+			{
+			  status = ER_GENERIC_ERROR;
+			}
+		      print_result (PRINT_SERVER_NAME, status, command_type);
+		    }
 		}
 	    }
 	}
