@@ -52,9 +52,7 @@ namespace cublog
    * usage:
    *  - instantiate an object of this class with the desired number of background workers
    *  - create and add jobs - see 'redo_job_impl'
-   *  - after all jobs have been added, explicitly call 'set_adding_finished'
-   *  - and, as a final step, call 'wait_for_termination_and_stop_execution'; implementation
-   *    explicitly needs these last two steps to be executed in this order to be able to clean-up
+   *  - after all jobs have been added, explicitly call 'wait_for_termination_and_stop_execution'
    */
   class redo_parallel final
   {
@@ -81,18 +79,15 @@ namespace cublog
        */
       void add (redo_job_base *job);
 
-      /* mandatory to explicitly call this after all data have been added
-       */
-      void set_adding_finished ();
-
       /* mandatory to explicitly call this before dtor
+       * blocking call
        */
       void wait_for_termination_and_stop_execution ();
 
       inline bool get_waited_for_termination () const
       {
-	return (m_task_count > 0)
-	       && m_adding_finished.load ()
+	// all steps from the wait_for_termination.. blocking function must have been done
+	return m_adding_finished.load ()
 	       && !m_task_state_bookkeeping.is_any_active ()
 	       && (m_worker_pool == nullptr);
       }

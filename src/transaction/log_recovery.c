@@ -1621,7 +1621,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
           std::chrono::system_clock::now () - time_start_main);
     if (parallel_recovery_redo != nullptr)
       {
-	parallel_recovery_redo->set_adding_finished ();
 	parallel_recovery_redo->wait_for_termination_and_stop_execution ();
 	rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_WAIT_FOR_PARALLEL);
       }

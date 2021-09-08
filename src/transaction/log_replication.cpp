@@ -360,7 +360,6 @@ namespace cublog
     // consumed/applied and tasks to finish executing
     if (m_parallel_replication_redo != nullptr)
       {
-	m_parallel_replication_redo->set_adding_finished ();
 	m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
       }
   }

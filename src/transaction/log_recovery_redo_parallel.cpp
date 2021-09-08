@@ -57,18 +57,14 @@ namespace cublog
   {
     assert (a_index < m_size);
 
-    bool all_inactive { false };
     {
       std::lock_guard<std::mutex> lockg { m_values_mtx };
       assert (m_values.test (a_index));
       m_values.reset (a_index);
-      all_inactive = m_values.none ();
     }
 
-    if (all_inactive)
-      {
-	m_values_cv.notify_one ();
-      }
+    // since active/inactive state is nominal (ie: per each entry), notification has to be nominal as well
+    m_values_cv.notify_one ();
   }
 
   bool
@@ -294,16 +290,23 @@ namespace cublog
   inline void
   redo_parallel::redo_task::push_job (redo_parallel::redo_job_base *a_job)
   {
-    std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
+    bool first_job_in_produce_vec = false;
+    {
+      std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
 
-    if (m_do_monitor_unapplied_log_lsa && m_produce_vec.empty ())
+      first_job_in_produce_vec = m_produce_vec.empty ();
+      if (m_do_monitor_unapplied_log_lsa && first_job_in_produce_vec)
+	{
+	  set_unapplied_log_lsa_from_push (a_job->get_log_lsa (), lockg);
+	}
+
+      m_produce_vec.push_back (a_job);
+    }
+
+    if (first_job_in_produce_vec)
       {
-	set_unapplied_log_lsa_from_push (a_job->get_log_lsa (), lockg);
-
 	m_produce_vec_cv.notify_one ();
       }
-
-    m_produce_vec.push_back (a_job);
   }
 
   inline void
@@ -337,7 +340,7 @@ namespace cublog
 
     if (m_do_monitor_unapplied_log_lsa)
       {
-	// when adding finshes, there are no more jobs
+	// just before adding finishes, there might be no more jobs
 	const log_lsa new_log_lsa =  a_out_job_vec.empty ()
 				     ? MAX_LSA
 				     : (*a_out_job_vec.begin ())->get_log_lsa ();
@@ -610,7 +613,7 @@ namespace cublog
   }
 
   void
-  redo_parallel::set_adding_finished ()
+  redo_parallel::wait_for_termination_and_stop_execution ()
   {
     assert (false == m_adding_finished.load ());
 
@@ -619,12 +622,6 @@ namespace cublog
       {
 	redo_task->notify_adding_finished ();
       }
-  }
-
-  void
-  redo_parallel::wait_for_termination_and_stop_execution ()
-  {
-    assert (m_adding_finished.load ());
 
     // blocking call
     m_task_state_bookkeeping.wait_for_termination ();
