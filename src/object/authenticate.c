@@ -5860,7 +5860,7 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
    * Callers generally check Au_disable already to avoid the function call.
    * Check it again to be safe, at this point, it isn't going to add anything.
    */
-  if (Au_disable)
+  if (Au_disable && !(sm_class->flags & SM_CLASSFLAG_SYSTEM))
     {
       return NO_ERROR;
     }
@@ -6150,7 +6150,7 @@ au_fetch_class_internal (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, 
 	}
     }
 
-  if (Au_disable || !(error = check_authorization (classmop, class_, type)))
+  if ((Au_disable && type != DB_AUTH_ALTER) || !(error = check_authorization (classmop, class_, type)))
     {
       if (class_ptr != NULL)
 	{
