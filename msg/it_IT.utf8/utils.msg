@@ -291,7 +291,8 @@ opzioni valide:\n\
   -t, --thread-count=COUNT     COUNT numero threads; predefinito: 0(auto)\n\
   -z, --compress               compress volumi backup; predefinito: uncompress\n\
       --sleep-msecs=N          aspetta N millisecondi per 1M read; predefinito: 0\n\
-  -k, --separate-keys          keys file (_keys) per TDE non è incluso nel volume di backup, ma è invece separato in un file\n
+  -k, --separate-keys          keys file (_keys) per TDE non è incluso nel volume di backup, ma è invece separato in un file\n\
+      --page-server            run on the page server; default: runs on the transaction\n
 71 Argomenti incompatibili, \"%1$s\", e \"%2$s\"\n
 
 
@@ -898,7 +899,8 @@ opzioni valide:\n\
   -o, --output-file=FILE       reindirizzare il messaggio di output a FILE; predefinito: nessuno\n\
   -b, --both                   scarica parametri sia client che server\n\
   -S, --SA-mode                modalità di esecuzione stand-alone\n\
-  -C, --CS-mode                modalità di esecuzione client-server\n
+  -C, --CS-mode                modalità di esecuzione client-server\n\
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Errato valore \"%1$s\" per modalità di esecuzione HA.\n
@@ -960,7 +962,8 @@ opzioni valide:\n\
   -o, --output-file=FILE       reindirizzare il messaggio di output al FILE; predefinito: nessuno\n\
   -c, --cumulative             stampa cumulativo stats\n\
   -i, --interval=S             stampa stats ogni S secs\n\
-  -s, --substr=STRING          stampa stat item solo che corrisponde la sottostringa STRING\n
+  -s, --substr=STRING          stampa stat item solo che corrisponde la sottostringa STRING\n\
+      --page-server            run on the page server; default: runs on the transaction\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Inserire la password DBA:

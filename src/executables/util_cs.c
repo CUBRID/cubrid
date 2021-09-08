@@ -261,6 +261,11 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
+  if (utility_get_option_bool_value (arg_map, BACKUP_PAGE_SERVER_S))
+    {
+      boot_set_conn_server_type (SERVER_TYPE_PAGE);
+    }
+
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
@@ -2258,6 +2263,11 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
+  if (utility_get_option_bool_value (arg_map, PARAMDUMP_PAGE_SERVER_S))
+    {
+      boot_set_conn_server_type (SERVER_TYPE_PAGE);
+    }
+
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
@@ -2385,6 +2395,11 @@ statdump (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
+
+  if (utility_get_option_bool_value (arg_map, STATDUMP_PAGE_SERVER_S))
+    {
+      boot_set_conn_server_type (SERVER_TYPE_PAGE);
+    }
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
