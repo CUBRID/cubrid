@@ -312,6 +312,13 @@ namespace cublog
   inline void
   redo_parallel::redo_task::notify_adding_finished ()
   {
+    {
+      // for a condition variable, checking the predicate and waiting are not performed atomically
+      // while unlocking the lock and sleeping are performed atomically
+      // therefore, force a lock to avoid the situation where the notification occurs just after
+      // the predicate is checked and before going to sleep
+      std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
+    }
     m_produce_vec_cv.notify_one ();
   }
 
@@ -431,17 +438,21 @@ namespace cublog
     if (m_do_monitor)
       {
 	m_terminate_calculation = true;
+	assert (m_calculate_thread.joinable ());
+	// multiple external threads can wait on this cv (wait_past_target_log_lsa)
+	// calculating loop might also temporarily wait on this
+	m_calculate_cv.notify_all ();
+	m_calculate_thread.join ();
+
 	assert (m_redo_tasks != nullptr);
 	m_redo_tasks = nullptr;
-	assert (m_calculate_thread.joinable ());
-	m_calculate_cv.notify_one ();
-	m_calculate_thread.join ();
       }
     else
       {
-	assert (m_redo_tasks == nullptr);
 	assert (!m_calculate_thread.joinable ());
 	assert (m_calculated_log_lsa == MAX_LSA);
+
+	assert (m_redo_tasks == nullptr);
       }
   }
 
@@ -474,8 +485,9 @@ namespace cublog
 
     m_main_thread_unapplied_log_lsa.store (a_log_lsa);
 
-    // notify thread performing calculation
-    m_calculate_cv.notify_one ();
+    // multiple external threads can wait on this cv (wait_past_target_log_lsa)
+    // calculating loop might also temporarily wait on this
+    m_calculate_cv.notify_all ();
   }
 
   log_lsa
@@ -504,8 +516,10 @@ namespace cublog
 	return;
       }
 
-    // notify thread performing calculation
-    m_calculate_cv.notify_one ();
+    // multiple external threads can wait on this cv (wait_past_target_log_lsa)
+    // calculating loop might also temporarily wait on this
+    // since it is needed to wake the calculating loop, wake all
+    m_calculate_cv.notify_all ();
 
     std::unique_lock<std::mutex> ulock { m_calculate_mtx };
     m_calculate_cv.wait (ulock, [this, &a_target_lsa] ()
@@ -558,12 +572,13 @@ namespace cublog
 	  m_calculated_log_lsa = calculated_log_lsa;
 	}
 
-	// there might be more than one waiting thread
+	// multiple external threads can wait on this cv (wait_past_target_log_lsa)
 	m_calculate_cv.notify_all ();
 
 	{
 	  std::unique_lock<std::mutex> ulock { m_calculate_mtx };
-	  // wait might be interrupted by an outside notify and this is expected
+	  // might be interrupted from the outside (wait_past_target_log_lsa)
+	  // or by the termination sequence (dtor)
 	  m_calculate_cv.wait_for (ulock, std::chrono::milliseconds (1000));
 	}
       }
