@@ -571,7 +571,7 @@ namespace cublog
 	  std::unique_lock<std::mutex> ulock { m_calculate_mtx };
 	  // might be interrupted from the outside (wait_past_target_log_lsa)
 	  // or by the termination sequence (dtor)
-	  m_calculate_cv.wait_for (ulock, std::chrono::milliseconds (1000));
+	  m_calculate_cv.wait_for (ulock, std::chrono::milliseconds (10));
 	}
       }
   }
