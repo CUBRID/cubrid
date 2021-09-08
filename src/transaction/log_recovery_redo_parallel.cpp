@@ -419,10 +419,11 @@ namespace cublog
    *********************************************************************/
 
   redo_parallel::min_unapplied_log_lsa_monitoring::min_unapplied_log_lsa_monitoring (
-	  bool a_do_monitor, const log_lsa &a_start_main_thread_log_lsa)
+	  bool a_do_monitor, const log_lsa &a_start_main_thread_log_lsa,
+	  const std::vector<std::unique_ptr<redo_task>> &a_redo_task)
     : m_do_monitor { a_do_monitor }
     , m_main_thread_unapplied_log_lsa { a_start_main_thread_log_lsa }
-    , m_redo_tasks { nullptr }
+    , m_redo_tasks { a_redo_task }
     , m_calculated_log_lsa { a_do_monitor
 			     ? a_start_main_thread_log_lsa
 			     : MAX_LSA }
@@ -443,29 +444,20 @@ namespace cublog
 	// calculating loop might also temporarily wait on this
 	m_calculate_cv.notify_all ();
 	m_calculate_thread.join ();
-
-	assert (m_redo_tasks != nullptr);
-	m_redo_tasks = nullptr;
       }
     else
       {
 	assert (!m_calculate_thread.joinable ());
 	assert (m_calculated_log_lsa == MAX_LSA);
-
-	assert (m_redo_tasks == nullptr);
       }
   }
 
   void
-  redo_parallel::min_unapplied_log_lsa_monitoring::start (
-	  const std::vector<std::unique_ptr<redo_task>> *a_redo_tasks)
+  redo_parallel::min_unapplied_log_lsa_monitoring::start ()
   {
     if (m_do_monitor)
       {
-	assert (a_redo_tasks != nullptr);
-	assert (a_redo_tasks->size () > 0);
-
-	m_redo_tasks = a_redo_tasks;
+	assert (m_redo_tasks.size () > 0);
 
 	// an upfront value for the minimum unapplied log_lsa will be calculated quasi instantaneous
 	m_calculate_thread = std::thread
@@ -537,7 +529,7 @@ namespace cublog
     // ctor; therefore, if the system is idle (ie: no job is currently being executed), this
     // main thread log_lsa will dictate the actual "progress" of the system;
     log_lsa calculated_log_lsa { m_main_thread_unapplied_log_lsa.load () };
-    for (const auto &redo_task: *m_redo_tasks)
+    for (const auto &redo_task: m_redo_tasks)
       {
 	const log_lsa task_unapplied_log_lsa { redo_task->get_unapplied_log_lsa () };
 	if (task_unapplied_log_lsa != MAX_LSA && task_unapplied_log_lsa < calculated_log_lsa)
@@ -559,7 +551,7 @@ namespace cublog
   redo_parallel::min_unapplied_log_lsa_monitoring::calculate_loop ()
   {
     assert (m_do_monitor);
-    assert (m_redo_tasks != nullptr);
+    assert (m_redo_tasks.size () > 0);
 
     while (!m_terminate_calculation)
       {
@@ -592,7 +584,7 @@ namespace cublog
     , m_task_state_bookkeeping { a_task_count }
     , m_worker_pool { nullptr }
     , m_adding_finished { false }
-    , m_min_unapplied_log_lsa_calculation { a_do_monitor_min_unapplied_log_lsa, a_start_main_thread_log_lsa }
+    , m_min_unapplied_log_lsa_calculation { a_do_monitor_min_unapplied_log_lsa, a_start_main_thread_log_lsa, m_redo_tasks }
   {
     assert (a_task_count > 0);
 
@@ -679,7 +671,7 @@ namespace cublog
 	m_redo_tasks.push_back (std::move (task));
       }
 
-    m_min_unapplied_log_lsa_calculation.start (&m_redo_tasks);
+    m_min_unapplied_log_lsa_calculation.start ();
   }
 
   void

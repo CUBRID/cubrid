@@ -134,8 +134,8 @@ namespace cublog
       class min_unapplied_log_lsa_monitoring final
       {
 	public:
-	  min_unapplied_log_lsa_monitoring (bool a_do_monitor,
-					    const log_lsa &a_start_main_thread_log_lsa);
+	  min_unapplied_log_lsa_monitoring (bool a_do_monitor, const log_lsa &a_start_main_thread_log_lsa,
+					    const std::vector<std::unique_ptr<redo_task>> &a_redo_task);
 
 	  min_unapplied_log_lsa_monitoring (const min_unapplied_log_lsa_monitoring &) = delete;
 	  min_unapplied_log_lsa_monitoring (min_unapplied_log_lsa_monitoring &&) = delete;
@@ -148,7 +148,7 @@ namespace cublog
 	  /* only start calculation once the tasks have been created; avoid race
 	   * conditions of the internal calculation and actual creation of the tasks
 	   */
-	  void start (const std::vector<std::unique_ptr<redo_task>> *a_redo_tasks);
+	  void start ();
 
 	  void set_main_thread_unapplied_log_lsa (const log_lsa &a_log_lsa);
 
@@ -174,7 +174,7 @@ namespace cublog
 	   */
 	  std::atomic<log_lsa> m_main_thread_unapplied_log_lsa;
 
-	  const std::vector<std::unique_ptr<redo_task>> *m_redo_tasks;
+	  const std::vector<std::unique_ptr<redo_task>> &m_redo_tasks;
 
 	  /* following members control the pro-active calculation of the minimum not-applied log_lsa as well
 	   * as means to actually trigger and wait for the calculation asynchronously
