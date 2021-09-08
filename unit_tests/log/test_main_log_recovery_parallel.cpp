@@ -187,8 +187,6 @@ void execute_test (const log_recovery_test_config &a_test_config,
 
   log_redo_parallel.wait_for_termination_and_stop_execution ();
 
-  REQUIRE (log_redo_parallel.get_waited_for_termination ());
-
   db_online->require_equal (*db_recovery);
 }
 

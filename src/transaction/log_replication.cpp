@@ -142,7 +142,7 @@ namespace cublog
 
     if (m_parallel_replication_redo != nullptr)
       {
-	assert (m_parallel_replication_redo->get_waited_for_termination ());
+	m_parallel_replication_redo.reset (nullptr);
       }
   }
 

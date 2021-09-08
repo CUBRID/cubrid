@@ -84,14 +84,6 @@ namespace cublog
        */
       void wait_for_termination_and_stop_execution ();
 
-      inline bool get_waited_for_termination () const
-      {
-	// all steps from the wait_for_termination.. blocking function must have been done
-	return m_adding_finished.load ()
-	       && !m_task_state_bookkeeping.is_any_active ()
-	       && (m_worker_pool == nullptr);
-      }
-
       void log_perf_stats () const;
 
       void set_main_thread_unapplied_log_lsa (const log_lsa &a_log_lsa);

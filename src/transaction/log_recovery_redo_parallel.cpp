@@ -284,7 +284,7 @@ namespace cublog
   redo_parallel::redo_task::is_idle () const
   {
     std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
-    return m_produce_vec.empty () && !m_task_state_bookkeeping.is_active (m_task_idx);
+    return !m_task_state_bookkeeping.is_active (m_task_idx);
   }
 
   inline void
@@ -524,8 +524,6 @@ namespace cublog
     std::unique_lock<std::mutex> ulock { m_calculate_mtx };
     m_calculate_cv.wait (ulock, [this, &a_target_lsa] ()
     {
-      //assert (!m_adding_finished.load ());
-
       return m_calculated_log_lsa > a_target_lsa;
     });
   }
