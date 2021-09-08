@@ -2899,10 +2899,7 @@ error:
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
-  if (!is_tran_server_with_remote_storage ())
-    {
-      dwb_daemons_destroy ();
-    }
+  dwb_daemons_destroy ();
 #endif
 
   log_final (thread_p);
