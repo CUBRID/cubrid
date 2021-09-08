@@ -1711,7 +1711,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 			{
 			  status = ER_GENERIC_ERROR;
 			}
-		      print_result (PRINT_SERVER_NAME, status, command_type);
+		      print_result (PRINT_PAGE_SERVER_NAME, status, command_type);
 
 		      const char *args_transaction[] = { UTIL_CUBRID_NAME, token, "-t", "transaction" };
 		      status = proc_execute (UTIL_CUBRID_NAME, args_transaction, false, false, false, &pid);
@@ -1720,7 +1720,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 			{
 			  status = ER_GENERIC_ERROR;
 			}
-		      print_result (PRINT_SERVER_NAME, status, command_type);
+		      print_result (PRINT_TRANSACTION_SERVER_NAME, status, command_type);
 		    }
 		  else
 		    {
@@ -1762,17 +1762,24 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		}
 	      else
 		{
-		  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SERVER_STOP, token, NULL };
+		  status = sysprm_load_and_init (token, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+		  if (status != NO_ERROR)
+		    {
+		      print_result (PRINT_SERVER_NAME, status, command_type);
+		      break;
+		    }
+		  if (server_type_config::SINGLE_NODE ==
+		      (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE))
+		    {
+		      const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SERVER_STOP, token, NULL };
+		    }
+		  else
+		    {
+		      const char *args[] = { UTIL_COMMDB_NAME, "-n", token, NULL };
+		    }
 #if !defined(WINDOWS)
 		  if (check_ha_mode)
 		    {
-		      status = sysprm_load_and_init (token, NULL, SYSPRM_IGNORE_INTL_PARAMS);
-		      if (status != NO_ERROR)
-			{
-			  print_result (PRINT_SERVER_NAME, status, command_type);
-			  break;
-			}
-
 		      if (util_get_ha_mode_for_sa_utils () != HA_MODE_OFF)
 			{
 			  status = ER_GENERIC_ERROR;

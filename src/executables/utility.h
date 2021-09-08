@@ -843,14 +843,16 @@ typedef struct _ha_config
 #define PROPERTY_OFF            "off"
 
 
-#define PRINT_SERVICE_NAME	"cubrid service"
-#define PRINT_MASTER_NAME       "cubrid master"
-#define PRINT_SERVER_NAME       "cubrid server"
-#define PRINT_BROKER_NAME       "cubrid broker"
-#define PRINT_MANAGER_NAME      "cubrid manager server"
-#define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
-#define PRINT_JAVASP_NAME       "cubrid javasp"
-#define PRINT_HA_PROCS_NAME     "HA processes"
+#define PRINT_SERVICE_NAME              "cubrid service"
+#define PRINT_MASTER_NAME               "cubrid master"
+#define PRINT_SERVER_NAME               "cubrid server"
+#define PRINT_PAGE_SERVER_NAME          "cubrid page server"
+#define PRINT_TRANSACTION_SERVER_NAME   "cubrid page server"
+#define PRINT_BROKER_NAME               "cubrid broker"
+#define PRINT_MANAGER_NAME              "cubrid manager server"
+#define PRINT_HEARTBEAT_NAME            "cubrid heartbeat"
+#define PRINT_JAVASP_NAME               "cubrid javasp"
+#define PRINT_HA_PROCS_NAME             "HA processes"
 
 #define PRINT_CMD_SERVICE       "service"
 #define PRINT_CMD_BROKER        "broker"
@@ -1434,6 +1436,8 @@ typedef struct _ha_config
 #define COMMDB_HA_ADMIN_INFO_L                  "admin-info"
 #define COMMDB_HA_START_UTIL_PROCESS_S          't'
 #define COMMDB_HA_START_UTIL_PROCESS_L          "start-ha-util-process"
+#define COMMDB_STOP_SINGLE_NODE_S               'n'
+#define COMMDB_STOP_SINGLE_NODE_L               "single_node"
 
 /* paramdump option list */
 #define PARAMDUMP_OUTPUT_FILE_S                 'o'
