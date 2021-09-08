@@ -88,7 +88,6 @@ namespace cublog
 
       void set_main_thread_unapplied_log_lsa (const log_lsa &a_log_lsa);
 
-      log_lsa get_calculated_min_unapplied_log_lsa ();
       void wait_past_target_lsa (const log_lsa &a_target_lsa);
 
     private:
@@ -151,8 +150,6 @@ namespace cublog
 	  void start ();
 
 	  void set_main_thread_unapplied_log_lsa (const log_lsa &a_log_lsa);
-
-	  log_lsa get_calculated_log_lsa ();
 
 	  /* blocking call
 	   */

@@ -493,15 +493,6 @@ namespace cublog
     m_calculate_cv.notify_all ();
   }
 
-  log_lsa
-  redo_parallel::min_unapplied_log_lsa_monitoring::get_calculated_log_lsa ()
-  {
-    assert (m_do_monitor);
-
-    std::lock_guard<std::mutex> lockg { m_calculate_mtx };
-    return m_calculated_log_lsa;
-  }
-
   void
   redo_parallel::min_unapplied_log_lsa_monitoring::wait_past_target_log_lsa (const log_lsa &a_target_lsa)
   {
@@ -718,12 +709,6 @@ namespace cublog
   redo_parallel::set_main_thread_unapplied_log_lsa (const log_lsa &a_log_lsa)
   {
     m_min_unapplied_log_lsa_calculation.set_main_thread_unapplied_log_lsa (a_log_lsa);
-  }
-
-  log_lsa
-  redo_parallel::get_calculated_min_unapplied_log_lsa ()
-  {
-    return m_min_unapplied_log_lsa_calculation.get_calculated_log_lsa ();
   }
 
   void

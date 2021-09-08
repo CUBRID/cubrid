@@ -114,8 +114,6 @@ void execute_test (const log_recovery_test_config &a_test_config,
 	    if (idx == 0)
 	      {
 		log_redo_parallel.wait_past_target_lsa (start_log_lsa);
-
-		REQUIRE (log_redo_parallel.get_calculated_min_unapplied_log_lsa () == job_unapplied_log_lsa);
 	      }
 	  }
       }
