@@ -125,7 +125,7 @@ namespace cublog
       inline log_lsa get_unapplied_log_lsa () const;
 
     private:
-      inline void pop_jobs (redo_job_vector_t &a_out_job_vec);
+      inline void pop_jobs (redo_job_vector_t &a_out_job_vec, bool &a_out_adding_finished);
 
       inline void set_unapplied_log_lsa_from_push (const log_lsa &a_log_lsa,
 	  const std::lock_guard<std::mutex> &);
@@ -148,7 +148,7 @@ namespace cublog
       mutable std::mutex m_produce_vec_mtx;
       std::condition_variable m_produce_vec_cv;
 
-      std::atomic_bool m_adding_finished;
+      bool m_adding_finished;
 
       /* minimum still-to-be-applied (not-applied) log_lsa for a single log applying task
        * scenarios:
@@ -210,7 +210,7 @@ namespace cublog
 
   redo_parallel::redo_task::~redo_task ()
   {
-    assert (m_adding_finished.load ());
+    assert (m_adding_finished); // unguarded read
     assert (is_idle ());
   }
 
@@ -224,9 +224,10 @@ namespace cublog
 
     for ( ; ; )
       {
-	pop_jobs (jobs_vec);
+	bool adding_finished { false };
+	pop_jobs (jobs_vec, adding_finished);
 	m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_POP);
-	if (jobs_vec.empty () && m_adding_finished.load ())
+	if (jobs_vec.empty () && adding_finished)
 	  {
 	    // do not finish before executing all jobs
 	    break;
@@ -292,7 +293,7 @@ namespace cublog
   inline void
   redo_parallel::redo_task::push_job (redo_parallel::redo_job_base *a_job)
   {
-    assert (false == m_adding_finished.load ());
+    assert (false == m_adding_finished); // unguarded read
 
     bool first_job_in_produce_vec = false;
     {
@@ -322,18 +323,21 @@ namespace cublog
       // therefore, force a lock to avoid the situation where the notification occurs just after
       // the predicate is checked and before going to sleep
       std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
-      m_adding_finished.store (true);
+      m_adding_finished = true;
     }
     m_produce_vec_cv.notify_one ();
   }
 
   inline void
-  redo_parallel::redo_task::pop_jobs (redo_parallel::redo_task::redo_job_vector_t &a_out_job_vec)
+  redo_parallel::redo_task::pop_jobs (redo_parallel::redo_task::redo_job_vector_t &a_out_job_vec,
+				      bool &a_out_adding_finished)
   {
     assert (a_out_job_vec.empty ());
 
+    a_out_adding_finished = false;
+
     std::unique_lock<std::mutex> ulock { m_produce_vec_mtx };
-    m_produce_vec_cv.wait (ulock, [this, &ulock] ()
+    m_produce_vec_cv.wait (ulock, [this, &ulock, &a_out_adding_finished] ()
     {
       if (m_produce_vec.empty ())
 	{
@@ -341,12 +345,14 @@ namespace cublog
 	    {
 	      set_unapplied_log_lsa_from_pop_func (MAX_LSA, ulock);
 	    }
-	  // the fact that the adding might have finished is also a termination condition
-	  return m_adding_finished.load ();
+	  // adding having finished is also a termination condition
+	  a_out_adding_finished = m_adding_finished;
+	  return a_out_adding_finished;
 	}
       return true;
     });
-    assert (!m_produce_vec.empty () || m_adding_finished.load ());
+    assert ((!m_produce_vec.empty () && !a_out_adding_finished) ||
+	    (m_produce_vec.empty () && a_out_adding_finished)); // xor
 
     m_produce_vec.swap (a_out_job_vec);
 
