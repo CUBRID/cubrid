@@ -102,7 +102,7 @@ namespace cublog
       redo_task () = delete;
       redo_task (std::size_t a_task_idx, bool a_do_monitor_unapplied_log_lsa,
 		 redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping,
-		 const log_rv_redo_context &copy_context, std::atomic_bool &a_adding_finished);
+		 const log_rv_redo_context &copy_context);
       redo_task (const redo_task &) = delete;
       redo_task (redo_task &&) = delete;
 
@@ -148,7 +148,7 @@ namespace cublog
       mutable std::mutex m_produce_vec_mtx;
       std::condition_variable m_produce_vec_cv;
 
-      std::atomic_bool &m_adding_finished;
+      std::atomic_bool m_adding_finished;
 
       /* minimum still-to-be-applied (not-applied) log_lsa for a single log applying task
        * scenarios:
@@ -190,14 +190,14 @@ namespace cublog
 
   redo_parallel::redo_task::redo_task (std::size_t a_task_idx, bool a_do_monitor_unapplied_log_lsa,
 				       redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping,
-				       const log_rv_redo_context &copy_context, std::atomic_bool &a_adding_finished)
+				       const log_rv_redo_context &copy_context)
     : m_task_idx { a_task_idx }
     , m_do_monitor_unapplied_log_lsa { a_do_monitor_unapplied_log_lsa }
     , m_task_state_bookkeeping (task_state_bookkeeping)
     , m_perf_stats_definition { perf_stats_async_definition_init_list }
     , m_perf_stats { perf_stats_is_active_for_async (), m_perf_stats_definition }
     , m_redo_context { copy_context }
-    , m_adding_finished { a_adding_finished }
+    , m_adding_finished { false }
     , m_unapplied_log_lsa { MAX_LSA }
   {
     // important to set this at this moment and not when execution begins
@@ -210,6 +210,7 @@ namespace cublog
 
   redo_parallel::redo_task::~redo_task ()
   {
+    assert (m_adding_finished.load ());
     assert (is_idle ());
   }
 
@@ -227,6 +228,7 @@ namespace cublog
 	m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_POP);
 	if (jobs_vec.empty () && m_adding_finished.load ())
 	  {
+	    // do not finish before executing all jobs
 	    break;
 	  }
 	else
@@ -290,6 +292,8 @@ namespace cublog
   inline void
   redo_parallel::redo_task::push_job (redo_parallel::redo_job_base *a_job)
   {
+    assert (false == m_adding_finished.load ());
+
     bool first_job_in_produce_vec = false;
     {
       std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
@@ -318,6 +322,7 @@ namespace cublog
       // therefore, force a lock to avoid the situation where the notification occurs just after
       // the predicate is checked and before going to sleep
       std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
+      m_adding_finished.store (true);
     }
     m_produce_vec_cv.notify_one ();
   }
@@ -583,7 +588,6 @@ namespace cublog
     : m_task_count { a_task_count }
     , m_task_state_bookkeeping { a_task_count }
     , m_worker_pool { nullptr }
-    , m_adding_finished { false }
     , m_min_unapplied_log_lsa_calculation { a_do_monitor_min_unapplied_log_lsa, a_start_main_thread_log_lsa, m_redo_tasks }
   {
     assert (a_task_count > 0);
@@ -597,7 +601,6 @@ namespace cublog
 
   redo_parallel::~redo_parallel ()
   {
-    assert (m_adding_finished.load ());
     assert (!m_task_state_bookkeeping.is_any_active ());
     assert (m_worker_pool == nullptr);
     for (auto &redo_task: m_redo_tasks)
@@ -609,8 +612,6 @@ namespace cublog
   void
   redo_parallel::add (redo_job_base *a_job)
   {
-    assert (false == m_adding_finished.load ());
-
     const std::size_t task_index = m_vpid_hash (a_job->get_vpid ()) % m_task_count;
 
     redo_task *const task = m_redo_tasks[task_index].get ();
@@ -620,9 +621,6 @@ namespace cublog
   void
   redo_parallel::wait_for_termination_and_stop_execution ()
   {
-    assert (false == m_adding_finished.load ());
-
-    m_adding_finished.store (true);
     for (auto &redo_task: m_redo_tasks)
       {
 	redo_task->notify_adding_finished ();
@@ -666,7 +664,7 @@ namespace cublog
     for (unsigned task_idx = 0; task_idx < a_task_count; ++task_idx)
       {
 	auto task = std::make_unique<redo_parallel::redo_task> (task_idx, a_do_monitor_unapplied_log_lsa,
-		    m_task_state_bookkeeping, copy_context, m_adding_finished);
+		    m_task_state_bookkeeping, copy_context);
 	m_worker_pool->execute (task.get ());
 	m_redo_tasks.push_back (std::move (task));
       }
@@ -725,8 +723,6 @@ namespace cublog
   void
   redo_parallel::wait_past_target_lsa (const log_lsa &a_target_lsa)
   {
-    assert (!m_adding_finished.load ());
-
     m_min_unapplied_log_lsa_calculation.wait_past_target_log_lsa (a_target_lsa);
   }
 

@@ -204,8 +204,6 @@ namespace cublog
        */
       std::vector<std::unique_ptr<redo_task>> m_redo_tasks;
 
-      std::atomic_bool m_adding_finished;
-
       std::hash<VPID> m_vpid_hash;
 
       min_unapplied_log_lsa_monitoring m_min_unapplied_log_lsa_calculation;

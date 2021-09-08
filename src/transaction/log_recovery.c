@@ -997,7 +997,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
+  // *INDENT-OFF*
   const auto time_start_setting_up = std::chrono::system_clock::now ();
+  // *INDENT-ON*
   const TRANID min_trantable_tranid = log_rv_get_min_trantable_tranid ();
 
   /* depending on compilation mode and on a system parameter, initialize the
@@ -1017,8 +1019,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (log_recovery_redo_parallel_count);
-	parallel_recovery_redo.
-	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+	parallel_recovery_redo.reset (new cublog::
+				      redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
       }
   }
 #endif
