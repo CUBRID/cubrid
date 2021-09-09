@@ -7496,6 +7496,11 @@ pt_print_truncate (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, "truncate ");
   q = pt_append_varchar (parser, q, r1);
 
+  if (p->info.truncate.is_cascade)
+    {
+      q = pt_append_nulstring (parser, q, " cascade");
+    }
+
   return q;
 }
 
@@ -8508,6 +8513,11 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.delete_.hint & PT_HINT_USE_SBR)
 	{
 	  q = pt_append_nulstring (parser, q, " USE_SBR ");
+	}
+
+      if (p->info.delete_.hint & PT_HINT_NO_SUPPLEMENTAL_LOG)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_SUPPLEMENTAL_LOG ");
 	}
 
       q = pt_append_nulstring (parser, q, " */");
@@ -14988,6 +14998,11 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.update.hint & PT_HINT_USE_SBR)
 	{
 	  b = pt_append_nulstring (parser, b, " USE_SBR ");
+	}
+
+      if (p->info.update.hint & PT_HINT_NO_SUPPLEMENTAL_LOG)
+	{
+	  b = pt_append_nulstring (parser, b, " NO_SUPPLEMENTAL_LOG ");
 	}
 
       b = pt_append_nulstring (parser, b, " */ ");

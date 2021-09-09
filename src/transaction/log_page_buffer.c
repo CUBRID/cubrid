@@ -2666,10 +2666,11 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
       TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
       logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
       logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
-      logpb_log ("logpb_next_append_page: set tde_algorithm to appending page (%lld), "
-		 "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
-		 tde_get_algorithm_name (tde_algo));
     }
+
+  logpb_log ("logpb_next_append_page: append the new page (%lld), tde_algorithm = %s\n",
+	     (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
+	     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
 
 #if defined(CUBRID_DEBUG)
   {
@@ -2957,13 +2958,15 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
       logpb_flush_all_append_pages (thread_p);
     }
 
-  logpb_log ("logpb_append_next_record: append a record\n"
-	     "log_Gl.hdr.append_lsa.offset = %d, total record size = %d\n",
-	     log_Gl.hdr.append_lsa.offset,
-	     sizeof (LOG_RECORD_HEADER) + node->data_header_length + node->ulength + node->rlength);
-
   /* to tde-encrypt pages which is being created while appending */
   log_Gl.append.appending_page_tde_encrypted = prior_is_tde_encrypted (node);
+
+  logpb_log ("logpb_append_next_record: append a record\n"
+	     "log_Gl.hdr.append_lsa.offset = %d, total record size = %d, TDE-encryption = %d\n",
+	     log_Gl.hdr.append_lsa.offset,
+	     sizeof (LOG_RECORD_HEADER) + node->data_header_length + node->ulength + node->rlength,
+	     log_Gl.append.appending_page_tde_encrypted);
+
 
   logpb_start_append (thread_p, &node->log_header);
 
@@ -2986,6 +2989,8 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
   logpb_end_append (thread_p, &node->log_header);
 
   log_Gl.append.appending_page_tde_encrypted = false;
+
+  logpb_log ("logpb_append_next_record: append a record end.\n");
 
   return NO_ERROR;
 }
@@ -4188,17 +4193,12 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 	  TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
 	  logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
 	  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
-	  logpb_log ("logpb_start_append: set tde_algorithm to existing page (%lld), "
-		     "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
-		     tde_get_algorithm_name (tde_algo));
-	}
-      else
-	{
-	  logpb_log ("logpb_start_append: tde_algorithm already set to existing page (%lld), "
-		     "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
-		     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
 	}
     }
+
+  logpb_log ("logpb_start_append: start append on the page (%lld), tde_algorithm = %s\n",
+	     (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
+	     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
 
   log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
   *log_rec = *header;

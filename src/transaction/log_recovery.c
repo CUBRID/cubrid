@@ -126,7 +126,7 @@ static int log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv
 static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, OR_BUF * rcv_buf, RECDES * record,
 						      bool is_undo);
 
-STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex)
+STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv)
   __attribute__ ((ALWAYS_INLINE));
 
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -2323,6 +2323,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
+    case LOG_SUPPLEMENTAL_INFO:
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:
@@ -3297,10 +3298,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
+		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid);
 		  if (rcv.pgptr == NULL)
 		    {
-		      /* deallocated */
 		      break;
 		    }
 		}
@@ -3483,10 +3483,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
+		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid);
 		  if (rcv.pgptr == NULL)
 		    {
-		      /* deallocated */
 		      break;
 		    }
 		}
@@ -3605,10 +3604,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
+		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid);
 		  if (rcv.pgptr == NULL)
 		    {
-		      /* deallocated */
 		      break;
 		    }
 		}
@@ -3692,10 +3690,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
+		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid);
 		  if (rcv.pgptr == NULL)
 		    {
-		      /* deallocated */
 		      break;
 		    }
 		}
@@ -3997,6 +3994,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
+	    case LOG_SUPPLEMENTAL_INFO:
 	    case LOG_END_OF_LOG:
 	    case LOG_SYSOP_ATOMIC_START:
 	      break;
@@ -4798,6 +4796,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_DUMMY_HA_SERVER_STATE:
 		case LOG_DUMMY_OVF_RECORD:
 		case LOG_DUMMY_GENERIC:
+		case LOG_SUPPLEMENTAL_INFO:
 		case LOG_SYSOP_ATOMIC_START:
 		  /* Not for UNDO ... */
 		  /* Break switch to go to previous record */
@@ -5450,6 +5449,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_2PC_START *start_2pc;	/* A 2PC start log record */
   LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit */
   LOG_REC_REPLICATION *repl_log;
+  LOG_REC_SUPPLEMENT *supplement;
 
   int undo_length;		/* Undo length */
   int redo_length;		/* Redo length */
@@ -5733,6 +5733,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_PARTICP_ACK), &log_lsa, log_pgptr);
       break;
 
+    case LOG_SUPPLEMENTAL_INFO:
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SUPPLEMENT), &log_lsa, log_pgptr);
+      supplement = (LOG_REC_SUPPLEMENT *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SUPPLEMENT), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, supplement->length, &log_lsa, log_pgptr);
     case LOG_WILL_COMMIT:
     case LOG_START_CHKPT:
     case LOG_2PC_COMMIT_DECISION:
@@ -6383,90 +6388,36 @@ log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_siz
 }
 
 /*
- * log_rv_redo_fix_page () - fix page for recovery
+ * log_rv_redo_fix_page () - fix page for recovery without upfront reservation check
  *
  * return        : fixed page or NULL
  * thread_p (in) : thread entry
  * vpid_rcv (in) : page identifier
- * rcvindex (in) : recovery index of log record to redo
  */
 STATIC_INLINE PAGE_PTR
-log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex)
+log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv)
 {
   PAGE_PTR page = NULL;
 
   assert (vpid_rcv != NULL && !VPID_ISNULL (vpid_rcv));
 
-  /* how it works:
-   * since we are during recovery, we don't know the current state of page. it may be unreserved (its file is destroyed)
-   * or it may not be allocated. these are expected cases and we don't want to raise errors if it happens.
-   * some redo records are used to initialize a page for the first time (also setting its page type which is necessary
-   * to consider a page allocated). even first attempt to fix page fails, but the page's sector is reserved, we will
-   * fix the page as NEW_PAGE and apply its initialization redo log record.
-   * In case of RVPGBUF_COMPENSATE_DEALLOC, we expect deallocated page.
-   */
-
-  if (rcvindex == RVPGBUF_COMPENSATE_DEALLOC)
+  // during recovery, we don't care if a page is deallocated or not, apply the changes regardless. since changes to
+  // sector reservation table are applied in parallel with the changes in pages, at times the page may appear to be
+  // deallocated (part of an unreserved sector). but the changes were done while the sector was reserved and must be
+  // re-applied to get a correct end result.
+  // 
+  // moreover, the sector reservation check is very expensive. running this check on every page fix costs much more
+  // than any time gained by skipping redoing changes on deallocated pages.
+  //
+  // therefore, fix page using RECOVERY_PAGE mode. pgbuf_fix will know to accept even new or deallocated pages.
+  //
+  page = pgbuf_fix (thread_p, vpid_rcv, RECOVERY_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page == NULL)
     {
-      page = pgbuf_fix (thread_p, vpid_rcv, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page == NULL)
-	{
-	  assert_release (false);
-	  return NULL;
-	}
-
-      return page;
-    }
-
-  /* let's first try to fix page if it is not deallocated. */
-  if (pgbuf_fix_if_not_deallocated (thread_p, vpid_rcv, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH, &page)
-      != NO_ERROR)
-    {
-      ASSERT_ERROR ();
+      // this is terrible, because it makes recovery impossible
+      assert_release (false);
       return NULL;
     }
-
-  if (page == NULL && RCV_IS_NEW_PAGE_INIT (rcvindex))
-    {
-      DISK_ISVALID isvalid;
-
-      /* see case OLD_PAGE_MAYBE_DEALLOCATED of pgbuf_fix
-       * redo recovery may try to fix an immature page, reserved, but which was not initialized
-       * or it was reused (deallocated and allocated again).
-       */
-
-      if (er_errid () == ER_PB_BAD_PAGEID && er_get_severity () == ER_WARNING_SEVERITY)
-	{
-	  // forget the warning since we are going to fix the page as NEW and don't want it will bother us.
-	  er_clear ();
-	}
-
-      /* page is deallocated. however, this is redo of a new page initialization, we still have to apply it.
-       * page must still be reserved, otherwise it means its file was completely destroyed.
-       */
-
-      isvalid = disk_is_page_sector_reserved (thread_p, vpid_rcv->volid, vpid_rcv->pageid);
-      if (isvalid == DISK_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return NULL;
-	}
-      else if (isvalid == DISK_INVALID)
-	{
-	  /* not reserved */
-	  return NULL;
-	}
-
-      assert (isvalid == DISK_VALID);
-
-      page = pgbuf_fix (thread_p, vpid_rcv, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page == NULL)
-	{
-	  ASSERT_ERROR ();
-	  return NULL;
-	}
-    }
-
   return page;
 }
 
