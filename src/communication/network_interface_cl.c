@@ -2633,6 +2633,56 @@ log_drop_lob_locator (const char *locator)
 }
 #endif // CS_MODE
 
+int
+log_supplement_statement (int ddl_type, int objtype, OID * classoid, OID * objoid, const char *stmt_text)
+{
+#if defined(CS_MODE)
+  int req_error, rep_error = ER_FAILED;
+  int request_size = 0;
+  char *request = NULL, *ptr, *start_ptr;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* ddl_type, object type, class OID, object OID, statement */
+
+  request_size = OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_OID_SIZE + or_packed_string_length (stmt_text, NULL);
+
+  request = (char *) malloc (request_size + MAX_ALIGNMENT);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_FAILED;
+    }
+
+  ptr = start_ptr = PTR_ALIGN (request, INT_ALIGNMENT);
+
+  ptr = or_pack_int (ptr, ddl_type);
+  ptr = or_pack_int (ptr, objtype);
+  ptr = or_pack_oid (ptr, classoid);
+  ptr = or_pack_oid (ptr, objoid);
+  ptr = or_pack_string (ptr, stmt_text);
+
+  request_size = ptr - start_ptr;
+
+  req_error =
+    net_client_request (NET_SERVER_SUPPLEMENT_STMT, start_ptr, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+			0, NULL, 0);
+
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rep_error);
+    }
+
+  free_and_init (request);
+
+  return rep_error;
+#endif // CS_MODE
+  return ER_NOT_IN_STANDALONE;
+}
+
 /*
  * tran_server_commit -
  *

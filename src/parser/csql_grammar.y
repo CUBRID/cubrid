@@ -25727,7 +25727,6 @@ parser_main (PARSER_CONTEXT * parser)
   yycolumn = yycolumn_end = 1;
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
-  csql_yyset_lineno (1);
   dot_flag = 0;
 
   g_query_string = NULL;
@@ -25914,6 +25913,8 @@ PT_HINT parser_hint_table[] = {
   {"SELECT_BTREE_NODE_INFO", NULL, PT_HINT_SELECT_BTREE_NODE_INFO}
   ,
   {"USE_SBR", NULL, PT_HINT_USE_SBR}
+  ,
+  {"NO_SUPPLEMENTAL_LOG", NULL, PT_HINT_NO_SUPPLEMENTAL_LOG}
   ,
   {NULL, NULL, -1}		/* mark as end */
 };
