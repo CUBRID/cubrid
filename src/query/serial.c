@@ -818,7 +818,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
     {
-      log_append_supplemental_serial (thread_p, db_get_string (&key_val), entry->cached_num, NULL, &entry->oid);
+      log_append_supplemental_serial (thread_p, db_get_string (&key_val), cached_num, NULL, serial_oidp);
     }
 
   /* copy result value */
