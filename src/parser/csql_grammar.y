@@ -3939,14 +3939,7 @@ alter_stmt
                                 if (item_bits & (0x01 << CONN_INFO_HOST))
                                 {
                                     server->xbits.bit_host = 1;
-                                    if (server->host->node_type == PT_NAME)
-                                      {
-                                        str = server->host->info.name.original;
-                                      }
-                                    else
-                                      {
-                                        str = (char *) PT_VALUE_GET_BYTES (server->host);
-                                      }                                    
+                                    str = (char *) PT_VALUE_GET_BYTES (server->host);                                                                       
                                     is_not_allowed |= (!str || str[0] == '\0');
                                 }
                                 if (item_bits & (0x01 << CONN_INFO_PORT))
@@ -24989,35 +24982,24 @@ connect_info
         ;
 
 connect_item    
-        :  HOST '=' identifier 
+        :  HOST '=' CHAR_STRING 
           {{
                 container_2 ctn;
-
-                if( pt_check_hostname($3->info.name.original) == false )
-                  {
-                        PT_NODE* node = pt_top(this_parser);     
-                        PT_ERROR (this_parser, node, "Incorrect hostname format");
-                  }
-
-                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_HOST), $3);
-                $$ = ctn;
-            DBG_PRINT}}
-        | HOST '=' IPV4_ADDRESS
-          {{
-                container_2 ctn;
-    		PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
                 if (val)
-                   {
-                        val->info.value.data_value.str =
-                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
-                        val->type_enum = PT_TYPE_CHAR;
-                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
-                   }
-                
+                  {
+                     val->info.value.data_value.str =
+                               pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                     val->type_enum = PT_TYPE_CHAR;
+                     if (!pt_check_ipv4($3) && !pt_check_hostname($3))
+                     { 
+                        PT_ERROR (this_parser, val, "Incorrect hostname format");
+                     }
+                     PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+                  }
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_HOST), val);
                 $$ = ctn;
-
-	   DBG_PRINT}}
+            DBG_PRINT}}
         | PORT '=' UNSIGNED_INTEGER 
           {{
                 container_2 ctn;

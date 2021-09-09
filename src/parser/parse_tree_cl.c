@@ -18496,15 +18496,8 @@ pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_varchar (parser, q, r);
 
   q = pt_append_nulstring (parser, q, " ( HOST=");
-  if (si->host->node_type == PT_VALUE)
-    {
-      q = pt_append_bytes (parser, q, (char *) si->host->info.value.data_value.str->bytes,
-			   si->host->info.value.data_value.str->length);
-    }
-  else
-    {
-      q = pt_append_nulstring (parser, q, (char *) si->host->info.name.original);
-    }
+  r = pt_print_bytes (parser, si->host);
+  q = pt_append_varchar (parser, q, r);
 
   q = pt_append_nulstring (parser, q, ", PORT=");
   r = pt_print_bytes (parser, si->port);
@@ -18653,9 +18646,8 @@ pt_print_alter_server (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (alter->xbits.bit_host)
     {
-      assert (alter->host && ((alter->host->node_type == PT_NAME) || (alter->host->node_type == PT_VALUE)));
-      pt = (alter->host->node_type == PT_VALUE) ?
-	(char *) PT_VALUE_GET_BYTES (alter->host) : (char *) alter->host->info.name.original;
+      assert (alter->host && (alter->host->node_type == PT_VALUE));
+      pt = (char *) PT_VALUE_GET_BYTES (alter->host);
       assert (pt && *pt);
 
       if (is_delimiter)
@@ -18663,16 +18655,8 @@ pt_print_alter_server (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_bytes (parser, q, (char *) ",", 1);
 	}
       q = pt_append_nulstring (parser, q, " CHANGE HOST=");
-      if (alter->host->node_type == PT_VALUE)
-	{
-	  q = pt_append_bytes (parser, q, (char *) alter->host->info.value.data_value.str->bytes,
-			       alter->host->info.value.data_value.str->length);
-	}
-      else
-	{
-	  q = pt_append_nulstring (parser, q, (char *) alter->host->info.name.original);
-	}
-
+      r = pt_print_bytes (parser, alter->host);
+      q = pt_append_varchar (parser, q, r);
       is_delimiter = true;
     }
 

@@ -18008,15 +18008,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* HOST */
-  assert ((create_server->host->node_type == PT_NAME) || (create_server->host->node_type == PT_VALUE));
-  if (create_server->host->node_type == PT_VALUE)
-    {
-      attr_val[1] = (char *) PT_VALUE_GET_BYTES (create_server->host);
-    }
-  else
-    {
-      attr_val[1] = (char *) create_server->host->info.name.original;
-    }
+  assert (create_server->host->node_type == PT_VALUE);
+  attr_val[1] = (char *) PT_VALUE_GET_BYTES (create_server->host);
   if (attr_val[1] == NULL)
     {
       error = ER_FAILED;
@@ -18292,17 +18285,10 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (alter->xbits.bit_host)
     {
-      assert ((alter->host->node_type == PT_NAME) || (alter->host->node_type == PT_VALUE));
-      if (alter->host->node_type == PT_VALUE)
-	{
-	  pt = (char *) PT_VALUE_GET_BYTES (alter->host);
-	}
-      else
-	{
-	  pt = (char *) alter->host->info.name.original;
-	}
-
+      assert (alter->host->node_type == PT_VALUE);
+      pt = (char *) PT_VALUE_GET_BYTES (alter->host);
       assert (pt && *pt);
+
       db_make_string (&value, pt);
       error = db_put (server_object, SERVER_ATTR_HOST, &value);
       pr_clear_value (&value);
