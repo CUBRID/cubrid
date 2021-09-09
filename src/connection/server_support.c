@@ -1309,15 +1309,20 @@ css_start_shutdown_server ()
  *       css_initialize_server_interfaces before calling this function.
  */
 int
-css_init (THREAD_ENTRY * thread_p, char *message_to_master, int message_to_master_length, int port_id)
+css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 {
   CSS_CONN_ENTRY *conn;
   int status = NO_ERROR;
+  int message_to_master_length = 0;
+  char *message_to_master = NULL;
 
-  if (message_to_master == NULL || port_id <= 0)
+  if (server_name == NULL || port_id <= 0)
     {
       return ER_FAILED;
     }
+
+  message_to_master = css_pack_message_to_master (server_name, &message_to_master_length);
+  assert (message_to_master != NULL);
 
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
@@ -1371,7 +1376,7 @@ css_init (THREAD_ENTRY * thread_p, char *message_to_master, int message_to_maste
       /* insert conn into active conn list */
       css_insert_into_active_conn_list (conn);
 
-      css_Master_server_name = strdup (message_to_master);
+      css_Master_server_name = strdup (server_name);
       css_Master_port_id = port_id;
       css_Pipe_to_master = conn->fd;
       css_Master_conn = conn;
@@ -1448,6 +1453,11 @@ shutdown:
 #if defined(WINDOWS)
   css_windows_shutdown ();
 #endif /* WINDOWS */
+
+  if (message_to_master != NULL)
+    {
+      free (message_to_master);
+    }
 
   return status;
 }
