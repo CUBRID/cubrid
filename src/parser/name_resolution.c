@@ -717,6 +717,11 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	    }
 	  level++;
 	}
+      if (node && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+	{
+	  /* An error is meaningful only when it cannot be found in all scopes. */
+	  er_clear ();
+	}
     }
   else
     {
