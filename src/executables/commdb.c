@@ -1091,7 +1091,7 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
   if ((commdb_Arg_server_name) && (!commdb_Arg_halt_shutdown))
     {
-      if (commdb_Arg_single_node)
+      if (!commdb_Arg_single_node)
 	{
 	  pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_ANY);
 	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
@@ -1249,6 +1249,7 @@ main (int argc, char **argv)
     {COMMDB_HOST_L, 1, 0, COMMDB_HOST_S},
     {COMMDB_HA_ADMIN_INFO_L, 0, 0, COMMDB_HA_ADMIN_INFO_S},
     {COMMDB_HA_START_UTIL_PROCESS_L, 1, 0, COMMDB_HA_START_UTIL_PROCESS_S},
+    {COMMDB_STOP_SINGLE_NODE_L, 0, 0, COMMDB_STOP_SINGLE_NODE_S},
     {0, 0, 0, 0}
   };
 
@@ -1310,6 +1311,9 @@ main (int argc, char **argv)
 	      free_and_init (commdb_Arg_server_name);
 	    }
 	  commdb_Arg_server_name = strdup (optarg);
+	  break;
+	case 'n':
+	  commdb_Arg_single_node = true;
 	  break;
 	case 'c':
 	  if (commdb_Arg_ha_mode_server_name != NULL)

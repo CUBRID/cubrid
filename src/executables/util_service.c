@@ -1704,19 +1704,19 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		  if (server_type_config::SINGLE_NODE ==
 		      (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE))
 		    {
-		      const char *args_page[] = { UTIL_CUBRID_NAME, token, "-t", "page" };
+		      const char *args_page[] = { UTIL_CUBRID_NAME, "-t", "page", token };
 		      status = proc_execute (UTIL_CUBRID_NAME, args_page, false, false, false, &pid);
 
-		      if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, pid))
+		      if (status == NO_ERROR && !is_server_running (CHECK_PAGE_SERVER, token, pid))
 			{
 			  status = ER_GENERIC_ERROR;
 			}
 		      print_result (PRINT_PAGE_SERVER_NAME, status, command_type);
 
-		      const char *args_transaction[] = { UTIL_CUBRID_NAME, token, "-t", "transaction" };
+		      const char *args_transaction[] = { UTIL_CUBRID_NAME, token, "-t", "transaction", token };
 		      status = proc_execute (UTIL_CUBRID_NAME, args_transaction, false, false, false, &pid);
 
-		      if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, pid))
+		      if (status == NO_ERROR && !is_server_running (CHECK_TRANSACTION_SERVER, token, pid))
 			{
 			  status = ER_GENERIC_ERROR;
 			}
@@ -1768,15 +1768,6 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		      print_result (PRINT_SERVER_NAME, status, command_type);
 		      break;
 		    }
-		  if (server_type_config::SINGLE_NODE ==
-		      (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE))
-		    {
-		      const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SERVER_STOP, token, NULL };
-		    }
-		  else
-		    {
-		      const char *args[] = { UTIL_COMMDB_NAME, "-n", token, NULL };
-		    }
 #if !defined(WINDOWS)
 		  if (check_ha_mode)
 		    {
@@ -1790,7 +1781,18 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 			}
 		    }
 #endif /* !WINDOWS */
-		  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+		  if (server_type_config::SINGLE_NODE ==
+		      (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE))
+		    {
+		      const char *args[] =
+			{ UTIL_COMMDB_NAME, COMMDB_SINGLE_NODE_STOP, COMMDB_SERVER_STOP, token, NULL };
+		      status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+		    }
+		  else
+		    {
+		      const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SERVER_STOP, token, NULL };
+		      status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+		    }
 		}
 	      print_result (PRINT_SERVER_NAME, status, command_type);
 	    }

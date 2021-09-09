@@ -847,7 +847,7 @@ typedef struct _ha_config
 #define PRINT_MASTER_NAME               "cubrid master"
 #define PRINT_SERVER_NAME               "cubrid server"
 #define PRINT_PAGE_SERVER_NAME          "cubrid page server"
-#define PRINT_TRANSACTION_SERVER_NAME   "cubrid page server"
+#define PRINT_TRANSACTION_SERVER_NAME   "cubrid transaction server"
 #define PRINT_BROKER_NAME               "cubrid broker"
 #define PRINT_MANAGER_NAME              "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME            "cubrid heartbeat"
@@ -882,6 +882,7 @@ typedef struct _ha_config
 #define CHECK_TRANSACTION_SERVER  "Transaction-Server"
 
 #define COMMDB_SERVER_STOP      "-S"
+#define COMMDB_SINGLE_NODE_STOP "-n"
 #define COMMDB_SERVER_STATUS    "-P"
 #define COMMDB_ALL_STATUS       "-O"
 #define COMMDB_ALL_STOP         "-A"
