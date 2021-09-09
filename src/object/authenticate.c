@@ -307,6 +307,7 @@ MOP Au_root = NULL;
  * use the AU_DISABLE, AU_ENABLE macros instead.
  */
 int Au_disable = 1;
+bool Au_sysadm = false;
 
 /*
  * Au_ignore_passwords
@@ -5860,7 +5861,7 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
    * Callers generally check Au_disable already to avoid the function call.
    * Check it again to be safe, at this point, it isn't going to add anything.
    */
-  if (Au_disable && !(sm_class->flags & SM_CLASSFLAG_SYSTEM))
+  if (Au_disable && (!Au_sysadm || !(sm_class->flags & SM_CLASSFLAG_SYSTEM)))
     {
       return NO_ERROR;
     }
@@ -8624,6 +8625,19 @@ au_disable (void)
 }
 
 /*
+ * au_sysadm_disable - set Au_disable for sysadm
+ *   return: original Au_disable value
+ */
+int
+au_sysadm_disable (void)
+{
+  int save = Au_disable;
+  Au_disable = 1;
+  Au_sysadm = true;
+  return save;
+}
+
+/*
  * au_enable - restore Au_disable
  *   return:
  *   save(in): original Au_disable value
@@ -8632,6 +8646,7 @@ void
 au_enable (int save)
 {
   Au_disable = save;
+  Au_sysadm = false;
 }
 
 /*
