@@ -29,6 +29,7 @@
 #if defined (WINDOWS)
 #include <io.h>
 #endif
+#include <cstring>
 #include <filesystem>
 #include <stdio.h>
 #include <stdlib.h>
@@ -104,9 +105,9 @@ static void css_dealloc_conn (CSS_CONN_ENTRY * conn);
 
 static int css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header);
 static CSS_CONN_ENTRY *css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
-					   const char *server_name, int server_name_length, int port, int timeout,
+					   const char *message, int message_length, int port, int timeout,
 					   unsigned short *rid, bool send_magic);
-static CSS_CONN_ENTRY *css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name,
+static CSS_CONN_ENTRY *css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *message,
 					   unsigned short *rid);
 static CSS_CONN_ENTRY *css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id,
 						    unsigned short *rid);
@@ -717,8 +718,8 @@ begin:
  *   rid(out):
  */
 static CSS_CONN_ENTRY *
-css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type, const char *server_name,
-		    int server_name_length, int port, int timeout, unsigned short *rid, bool send_magic)
+css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type, const char *message,
+		    int message_length, int port, int timeout, unsigned short *rid, bool send_magic)
 {
   SOCKET fd;
 
@@ -745,7 +746,7 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_ty
 	  return NULL;
 	}
 
-      if (css_send_request (conn, connect_type, rid, server_name, server_name_length) == NO_ERRORS)
+      if (css_send_request (conn, connect_type, rid, message, message_length) == NO_ERRORS)
 	{
 	  return conn;
 	}
@@ -773,13 +774,13 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_ty
  *   rid(out):
  */
 static CSS_CONN_ENTRY *
-css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, unsigned short *rid)
+css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *message, unsigned short *rid)
 {
   int length;
 
-  if (server_name)
+  if (message)
     {
-      length = (int) strlen (server_name) + 1;
+      length = (int) strlen (message) + 1;
     }
   else
     {
@@ -787,7 +788,7 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, u
     }
 
   /* timeout in second in css_common_connect() */
-  return (css_common_connect (host_name, conn, DATA_REQUEST, server_name, length, css_Service_id,
+  return (css_common_connect (host_name, conn, DATA_REQUEST, message, length, css_Service_id,
 			      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true));
 }
 
@@ -851,14 +852,11 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id
  * css_connect_to_master_server () - connect to the master from the server
  *   return:
  *   master_port_id(in):
- *   server_name(in):
- *   name_length(in):
- *
- * Note: The server name argument is actually a combination of two strings,
- *       the server name and the server version
+ *   message_to_master(in): server name and other info
+ *   message_to_master_length(in):
  */
 CSS_CONN_ENTRY *
-css_connect_to_master_server (int master_port_id, const char *server_name, int name_length)
+css_connect_to_master_server (int master_port_id, const char *message_to_master, int message_to_master_length)
 {
   char hname[CUB_MAXHOSTNAMELEN];
   CSS_CONN_ENTRY *conn;
@@ -880,15 +878,15 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
   conn = css_make_conn (0);
   if (conn == NULL)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, message_to_master);
       return NULL;
     }
 
   /* select the connection protocol, for PC's this will always be new */
   connection_protocol = ((css_Server_use_new_connection_protocol) ? SERVER_REQUEST_NEW : SERVER_REQUEST);
 
-  if (css_common_connect (hname, conn, connection_protocol, server_name, name_length, master_port_id, 0, &rid, true)
-      == NULL)
+  if (css_common_connect (hname, conn, connection_protocol, message_to_master, message_to_master_length,
+			  master_port_id, 0, &rid, true) == NULL)
     {
       goto fail_end;
     }
@@ -906,25 +904,25 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
     {
     case SERVER_ALREADY_EXISTS:
 #if defined(CS_MODE)
-      if (IS_MASTER_CONN_NAME_HA_COPYLOG (server_name))
+      if (IS_MASTER_CONN_NAME_HA_COPYLOG (message_to_master))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_COPYLOG_ALREADY_EXISTS, 1,
-		  GET_REAL_MASTER_CONN_NAME (server_name));
+		  GET_REAL_MASTER_CONN_NAME (message_to_master));
 	}
-      else if (IS_MASTER_CONN_NAME_HA_APPLYLOG (server_name))
+      else if (IS_MASTER_CONN_NAME_HA_APPLYLOG (message_to_master))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_APPLYLOG_ALREADY_EXISTS, 1,
-		  GET_REAL_MASTER_CONN_NAME (server_name));
+		  GET_REAL_MASTER_CONN_NAME (message_to_master));
 	}
-      else if (IS_MASTER_CONN_NAME_HA_SERVER (server_name))
+      else if (IS_MASTER_CONN_NAME_HA_SERVER (message_to_master))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1,
-		  GET_REAL_MASTER_CONN_NAME (server_name));
+		  GET_REAL_MASTER_CONN_NAME (message_to_master));
 	}
       else
 #endif /* CS_MODE */
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, server_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, message_to_master);
 	}
 
       goto fail_end;
@@ -953,7 +951,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
     case SERVER_REQUEST_ACCEPTED:
 #if defined(WINDOWS)
       /* Windows can't handle this style of connection at all */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, message_to_master);
 
       goto fail_end;
 #else /* WINDOWS */
@@ -966,14 +964,16 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
       if (!css_tcp_setup_server_datagram (pname.c_str (), &socket_fd))
 	{
 	  (void) unlink (pname.c_str ());
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
+			       message_to_master);
 	  goto fail_end;
 	}
       if (css_send_data (conn, rid, pname.c_str (), pname.length () + 1) != NO_ERRORS)
 	{
 	  (void) unlink (pname.c_str ());
 	  close (socket_fd);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
+			       message_to_master);
 	  goto fail_end;
 	}
       if (!css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
@@ -981,7 +981,8 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 	  (void) unlink (pname.c_str ());
 	  css_free_conn (conn);
 	  close (socket_fd);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
+			       message_to_master);
 	  return NULL;
 	}
       // success
@@ -1004,7 +1005,7 @@ fail_end:
  *   server_name(in):
  */
 CSS_CONN_ENTRY *
-css_connect_to_cubrid_server (char *host_name, char *server_name)
+css_connect_to_cubrid_server (char *host_name, char *server_name, SERVER_TYPE server_type)
 {
   CSS_CONN_ENTRY *conn;
   CSS_QUEUE_ENTRY *buffer_q_entry_p;
@@ -1018,6 +1019,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
   char *error_area;
   int error_length;
   int timeout = -1;
+  std::string msg;
 
   conn = css_make_conn (-1);
   if (conn == NULL)
@@ -1027,8 +1029,15 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 
   timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
 
+  /*
+   * The packing of the server name and type is done by setting the first
+   * character to the numer related to the server type enum value, the rest of the
+   * buffer space is used to copy the server name.
+   */
+  msg = ((char) server_type) + '0';
+  msg.append (server_name, std::strlen (server_name) + 1);
   retry_count = 0;
-  if (css_server_connect (host_name, conn, server_name, &rid) == NULL)
+  if (css_server_connect (host_name, conn, msg.c_str (), &rid) == NULL)
     {
       goto exit;
     }

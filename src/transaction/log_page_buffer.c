@@ -6248,7 +6248,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
     }
 
   /* Get first log pageid needed for vacuum before locking LOG_CS. */
-  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep ();
 
   LOG_CS_ENTER (thread_p);
 
@@ -6447,7 +6447,7 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 
   last_deleted_arv_num--;
 
-  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep ();
   if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
     {
       min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
@@ -7596,7 +7596,7 @@ loop:
       first_arv_needed = log_Gl.hdr.nxarv_num;
     }
 
-  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep ();
   vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
 
   if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))

@@ -1116,7 +1116,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
       return;
     }
 
-  min_log_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  min_log_pageid = vacuum_min_log_pageid_to_keep ();
   if (min_log_pageid == NULL_PAGEID)
     {
       /* this is an assertion case but ignore. */
@@ -1126,7 +1126,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 
   fprintf (outfp, "\n");
   fprintf (outfp, "*** Vacuum Dump ***\n");
-  fprintf (outfp, "First log page ID referenced = %lld", (long long int) min_log_pageid);
+  fprintf (outfp, "First log page ID referenced = %lld ", (long long int) min_log_pageid);
   if (!is_tran_server_with_remote_storage ())
     {
       if (logpb_is_page_in_archive (min_log_pageid))
@@ -5640,7 +5640,7 @@ vacuum_get_log_blockid (LOG_PAGEID pageid)
  * thread_p (in) : Thread entry.
  */
 LOG_PAGEID
-vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p)
+vacuum_min_log_pageid_to_keep ()
 {
   /* Return first pageid from first block in vacuum data table */
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))

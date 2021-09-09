@@ -442,12 +442,24 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
   int exit_code = css_receive_data (conn, rid, &buffer, &buffer_length, -1);
   if (exit_code == NO_ERRORS)
     {
-      // *INDENT-OFF*
-      type = static_cast<SERVER_TYPE> (buffer[0] - '0');
-      // *INDENT-ON*
-      dbname = std::string (buffer + 1, buffer_length - 1);
+      const char first_char = buffer[0];
+      if (first_char == '#')
+	{
+	  // HA mode on; only transaction servers connect.
+	  type = SERVER_TYPE_TRANSACTION;
+	  // Include '#' in the dbname; legacy requirement
+	  dbname = std::string (buffer, buffer_length);
+	}
+      else
+	{
+	  // First character represents server type
+	  // *INDENT-OFF*
+	  type = static_cast<SERVER_TYPE> (buffer[0] - '0');
+	  // *INDENT-ON*
+	  dbname = std::string (buffer + 1, buffer_length - 1);
+	}
 
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "A server with database:'%s' of type:'%s' wants to connect to cub_master.",
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "The %s server of type %s wants to connect to cub_master.",
 			   dbname.c_str (), type == SERVER_TYPE_PAGE ? "page" : "transaction");
     }
   return exit_code;
@@ -652,13 +664,20 @@ static void
 css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request)
 {
   SOCKET_QUEUE_ENTRY *temp;
-  char *server_name = NULL;
   int name_length, buffer;
   name_length = 1024;
-  if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
+  std::string server_name;
+  SERVER_TYPE type;
+
+  if (receive_server_info (conn, rid, server_name, type) != NO_ERRORS)
     {
-      server_name[name_length] = 0;
-      temp = css_return_entry_of_server (server_name, css_Master_socket_anchor, SERVER_TYPE_ANY);
+      css_free_conn (conn);
+      return;
+    }
+
+  if (server_name.empty () == false)
+    {
+      temp = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
       if (temp != NULL
 #if !defined(WINDOWS)
 	  && (temp->ha_mode == false || hb_is_deactivation_started () == false)
@@ -671,7 +690,6 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 	      if (IS_INVALID_SOCKET (temp->fd))
 		{
 		  css_reject_client_request (conn, rid, SERVER_STARTED);
-		  free_and_init (server_name);
 		  css_free_conn (conn);
 		  return;
 		}
@@ -681,20 +699,18 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 		  if (hb_is_hang_process (temp->fd))
 		    {
 		      css_reject_client_request (conn, rid, SERVER_HANG);
-		      free_and_init (server_name);
 		      css_free_conn (conn);
 		      return;
 		    }
 #endif
 		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request))
 		    {
-		      free_and_init (server_name);
 		      css_free_conn (conn);
 		      return;
 		    }
 		  else if (!temp->ha_mode)
 		    {
-		      temp = css_return_entry_of_server (server_name, css_Master_socket_anchor, SERVER_TYPE_ANY);
+		      temp = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
 		      if (temp != NULL)
 			{
 			  css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
@@ -710,7 +726,6 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 	      if (hb_is_hang_process (temp->fd))
 		{
 		  css_reject_client_request (conn, rid, SERVER_HANG);
-		  free_and_init (server_name);
 		  css_free_conn (conn);
 		  return;
 		}
@@ -724,10 +739,6 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
       css_reject_client_request (conn, rid, SERVER_NOT_FOUND);
     }
   css_free_conn (conn);
-  if (server_name != NULL)
-    {
-      free_and_init (server_name);
-    }
 }
 
 /*

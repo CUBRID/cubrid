@@ -28,6 +28,7 @@
 
 #include "connection_defs.h"
 #include "connection_support.h"
+#include "server_type_enum.hpp"
 
 /* the order to connect to db-hosts in databases.txt */
 #define DB_CONNECT_ORDER_SEQ         0
@@ -49,12 +50,13 @@ extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
 extern void css_free_conn (CSS_CONN_ENTRY * conn);
 
-extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
+extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *message_to_master,
+						     int message_to_master_length);
 
 extern CSS_CONN_ENTRY *css_find_exception_conn (void);
 extern int css_receive_error (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, int *buffer_size);
 
-extern CSS_CONN_ENTRY *css_connect_to_cubrid_server (char *host_name, char *server_name);
+extern CSS_CONN_ENTRY *css_connect_to_cubrid_server (char *host_name, char *server_name, SERVER_TYPE server_type);
 extern CSS_CONN_ENTRY *css_connect_to_master_for_info (const char *host_name, int port_id, unsigned short *rid);
 extern CSS_CONN_ENTRY *css_connect_to_master_timeout (const char *host_name, int port_id, int timeout,
 						      unsigned short *rid);

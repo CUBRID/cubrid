@@ -19,6 +19,7 @@
 #include "active_tran_server.hpp"
 
 #include "communication_server_channel.hpp"
+#include "disk_manager.h"
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
@@ -121,6 +122,23 @@ active_tran_server::parse_page_server_hosts_config (std::string &hosts)
 }
 
 int
+active_tran_server::boot (const char *db_name)
+{
+  int error = init_page_server_hosts (db_name);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  if (m_uses_remote_storage)
+    {
+      get_boot_info_from_page_server ();
+    }
+  return NO_ERROR;
+}
+
+int
 active_tran_server::init_page_server_hosts (const char *db_name)
 {
   assert_is_active_tran_server ();
@@ -219,6 +237,18 @@ active_tran_server::init_page_server_hosts (const char *db_name)
   return exit_code;
 }
 
+void
+active_tran_server::get_boot_info_from_page_server ()
+{
+  assert (!m_is_boot_info_received);
+
+  push_request (ats_to_ps_request::GET_BOOT_INFO, std::string ()); // empty message
+
+  std::unique_lock<std::mutex> ulock (m_boot_info_mutex);
+  m_boot_info_condvar.wait (ulock, [this] { return m_is_boot_info_received; });
+  // fix me: connection error handling
+}
+
 int
 active_tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_name)
 {
@@ -232,7 +262,7 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
 
   // connect to page server
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
-  cubcomm::server_channel srv_chn (db_name, CHANNEL_POLL_TIMEOUT);
+  cubcomm::server_channel srv_chn (db_name, SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
 
   srv_chn.set_channel_name ("ATS_PS_comm");
 
@@ -263,6 +293,10 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
 
   m_page_server_conn_vec.emplace_back (new page_server_conn_t (std::move (srv_chn),
   {
+    {
+      ps_to_ats_request::SEND_BOOT_INFO,
+      std::bind (&active_tran_server::receive_boot_info, std::ref (*this), std::placeholders::_1)
+    },
     {
       ps_to_ats_request::SEND_SAVED_LSA,
       std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1)
@@ -441,6 +475,24 @@ void active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
     {
       _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
     }
+}
+
+void active_tran_server::receive_boot_info (cubpacking::unpacker &upk)
+{
+  std::string message;
+  upk.unpack_string (message);
+
+  assert (message.size () == sizeof (DKNVOLS));
+  DKNVOLS nvols_perm;
+  std::memcpy (&nvols_perm, message.c_str (), sizeof (nvols_perm));
+
+  disk_set_page_server_perm_volume_count (nvols_perm);
+
+  {
+    std::unique_lock<std::mutex> ulock (m_boot_info_mutex);
+    m_is_boot_info_received = true;
+  }
+  m_boot_info_condvar.notify_one ();
 }
 
 void

@@ -279,6 +279,7 @@ extern "C"
     char column_delimiter;
     char column_enclosure;
     bool loaddb_output;
+    bool page_server;
 #if defined(CSQL_NO_LONGGING)
     bool no_logging;
 #endif				/* CSQL_NO_LONGGING */

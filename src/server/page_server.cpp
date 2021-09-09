@@ -18,6 +18,7 @@
 
 #include "page_server.hpp"
 
+#include "disk_manager.h"
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa_utils.hpp"
@@ -54,6 +55,10 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   assert (m_active_tran_server_conn == nullptr);
   m_active_tran_server_conn.reset (new active_tran_server_conn_t (std::move (chn),
   {
+    {
+      ats_to_ps_request::GET_BOOT_INFO,
+      std::bind (&page_server::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
+    },
     {
       ats_to_ps_request::SEND_LOG_PRIOR_LIST,
       std::bind (&page_server::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
@@ -141,6 +146,17 @@ void page_server::receive_disconnect_request (cubpacking::unpacker &upk)
   //start a thread to destroy the ATS to PS connection object
   std::thread disconnect_thread (&page_server::disconnect_active_tran_server, std::ref (*this));
   disconnect_thread.detach ();
+}
+
+void page_server::receive_boot_info_request (cubpacking::unpacker &upk)
+{
+  DKNVOLS nvols_perm = disk_get_perm_volume_count ();
+
+  std::string response_message;
+  response_message.reserve (sizeof (nvols_perm));
+  response_message.append (reinterpret_cast<const char *> (&nvols_perm), sizeof (nvols_perm));
+
+  m_active_tran_server_conn->push (ps_to_ats_request::SEND_BOOT_INFO, std::move (response_message));
 }
 
 void page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload)

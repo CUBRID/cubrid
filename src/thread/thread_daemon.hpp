@@ -89,7 +89,7 @@ namespace cubthread
       daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
 	      task<Context> *exec, const char *name);
       daemon (const looper &loop_pattern_arg, task_without_context *exec_arg, const char *name);
-      ~daemon();
+      ~daemon ();
 
       void wakeup (void);         // wakeup daemon thread
       void stop_execution (void); // stop_execution daemon thread from looping and join it
@@ -148,7 +148,7 @@ namespace cubthread
 
   template <typename Context>
   daemon::daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-		  task<Context> *exec, const char *name /* = "" */)
+		  task<Context> *exec, const char *name)
     : m_waiter ()
     , m_looper (loop_pattern_arg)
     , m_func_on_stop ()

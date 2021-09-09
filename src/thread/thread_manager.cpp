@@ -183,7 +183,7 @@ namespace cubthread
   }
 
   daemon *
-  manager::create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name /* = "" */,
+  manager::create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name,
 			  entry_manager *context_manager /* = NULL */)
   {
 #if defined (SERVER_MODE)
@@ -194,6 +194,7 @@ namespace cubthread
       }
     else
       {
+	assert (daemon_name != nullptr);
 	if (context_manager == NULL)
 	  {
 	    context_manager = m_daemon_entry_manager;

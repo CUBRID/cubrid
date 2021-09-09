@@ -2424,11 +2424,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * are ok. However, some recovery may need to take place
    */
 
-  /* Mount the data volume */
-  error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
-  if (error_code != NO_ERROR)
+  if (!is_tran_server_with_remote_storage ())
     {
-      goto error;
+      /* Mount the data volume */
+      error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   /* Find the location of the database parameters and read them */
@@ -2478,12 +2481,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       lang_set_charset (db_charset_db_header);
     }
 
-  /* Find the rest of the volumes and mount them */
-
-  error_code = boot_find_rest_volumes (thread_p, from_backup ? r_args : NULL, LOG_DBFIRST_VOLID, boot_mount, NULL);
-  if (error_code != NO_ERROR)
+  if (!is_tran_server_with_remote_storage ())
     {
-      goto error;
+      /* Find the rest of the volumes and mount them */
+      error_code = boot_find_rest_volumes (thread_p, from_backup ? r_args : NULL, LOG_DBFIRST_VOLID, boot_mount, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   /* initialize disk manager */
@@ -2523,11 +2528,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
   /* Load and recover data pages before log recovery */
-  error_code = dwb_load_and_recover_pages (thread_p, log_path, log_prefix);
-  if (error_code != NO_ERROR)
+  if (!is_tran_server_with_remote_storage ())
     {
-      ASSERT_ERROR ();
-      goto error;
+      error_code = dwb_load_and_recover_pages (thread_p, log_path, log_prefix);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
     }
 
   /*
@@ -2546,7 +2554,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if defined(SERVER_MODE)
   pgbuf_daemons_init ();
   pgbuf_highest_evicted_lsa_init ();
-  dwb_daemons_init ();
+  if (!is_tran_server_with_remote_storage ())
+    {
+      dwb_daemons_init ();
+    }
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
@@ -3216,7 +3227,10 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   log_final (thread_p);
 
   /* Since all pages were flushed, now it's safe to destroy DWB. */
-  (void) dwb_destroy (thread_p);
+  if (!is_tran_server_with_remote_storage ())
+    {
+      (void) dwb_destroy (thread_p);
+    }
 
   if (is_er_final == ER_ALL_FINAL)
     {

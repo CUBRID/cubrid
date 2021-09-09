@@ -45,6 +45,7 @@
 #endif /* !WINDOWS */
 
 #include "authenticate.h"
+#include "boot_cl.h"
 #include "csql.h"
 #include "filesys.hpp"
 #include "filesys_temp.hpp"
@@ -2707,6 +2708,11 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   int avail_size;
   char *p = NULL;
   unsigned char ip_addr[16] = { "0" };
+
+  if (csql_arg->page_server)
+    {
+      boot_set_conn_server_type (SERVER_TYPE_PAGE);
+    }
 
   /* Establish a globaly accessible longjmp environment so we can terminate on severe errors without calling exit(). */
   csql_exit_init ();

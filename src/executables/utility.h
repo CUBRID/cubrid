@@ -1058,10 +1058,12 @@ typedef struct _ha_config
 #define BACKUP_COMPRESS_L                       "compress"
 #define BACKUP_EXCEPT_ACTIVE_LOG_S              'e'
 #define BACKUP_EXCEPT_ACTIVE_LOG_L              "except-active-log"
-#define BACKUP_SLEEP_MSECS_S                    10600
+#define BACKUP_SLEEP_MSECS_S                    10507
 #define BACKUP_SLEEP_MSECS_L                    "sleep-msecs"
 #define BACKUP_SEPARATE_KEYS_S                  'k'
 #define BACKUP_SEPARATE_KEYS_L                  "separate-keys"
+#define BACKUP_PAGE_SERVER_S                    10508
+#define BACKUP_PAGE_SERVER_L                    "page-server"
 
 
 /* restoredb option list */
@@ -1390,6 +1392,8 @@ typedef struct _ha_config
 #define CSQL_QUERY_COLUMN_ENCLOSURE_L		"enclosure"
 #define CSQL_LOADDB_OUTPUT_S			'd'
 #define CSQL_LOADDB_OUTPUT_L			"loaddb-output"
+#define CSQL_PAGE_SERVER_S                      12020
+#define CSQL_PAGE_SERVER_L                      "page-server"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"
@@ -1449,6 +1453,8 @@ typedef struct _ha_config
 #define PARAMDUMP_SA_MODE_L                     "SA-mode"
 #define PARAMDUMP_CS_MODE_S                     'C'
 #define PARAMDUMP_CS_MODE_L                     "CS-mode"
+#define PARAMDUMP_PAGE_SERVER_S                 12200
+#define PARAMDUMP_PAGE_SERVER_L                 "page-server"
 
 /* statdump option list */
 #define STATDUMP_OUTPUT_FILE_S                  'o'
@@ -1459,6 +1465,8 @@ typedef struct _ha_config
 #define STATDUMP_CUMULATIVE_L                   "cumulative"
 #define STATDUMP_SUBSTR_S			's'
 #define STATDUMP_SUBSTR_L			"substr"
+#define STATDUMP_PAGE_SERVER_S                  12300
+#define STATDUMP_PAGE_SERVER_L                  "page-server"
 
 /* acl option list */
 #define ACLDB_RELOAD_S                          'r'

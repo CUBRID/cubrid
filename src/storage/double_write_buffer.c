@@ -3110,12 +3110,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
   int num_recoverable_pages;
 
   assert (dwb_Global.vdes == NULL_VOLDES);
-
-  if (is_tran_server_with_remote_storage ())
-    {
-      // No permanent data flushes, no double write buffer required.
-      return NO_ERROR;
-    }
+  assert (!is_tran_server_with_remote_storage ());
 
   dwb_check_logging ();
 
@@ -3314,11 +3309,7 @@ dwb_destroy (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
 
-  if (is_tran_server_with_remote_storage ())
-    {
-      assert (dwb_Global.vdes == NULL_VOLDES);
-      return NO_ERROR;
-    }
+  assert (!is_tran_server_with_remote_storage ());
 
   UINT64 current_position_with_flags;
   error_code = dwb_starts_structure_modification (thread_p, &current_position_with_flags);
@@ -3996,7 +3987,7 @@ dwb_flush_block_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1));
   dwb_flush_block_daemon_task *daemon_task = new dwb_flush_block_daemon_task ();
 
-  dwb_flush_block_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  dwb_flush_block_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "dwb_flush_block");
 }
 
 /*
@@ -4008,7 +3999,7 @@ dwb_file_sync_helper_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (dwb_file_sync_helper_execute);
 
-  dwb_file_sync_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  dwb_file_sync_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "dwb_file_sync_helper");
 }
 
 /*
