@@ -14912,9 +14912,11 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
     case PT_CREATE_TRIGGER:
       target = PT_NODE_TR_TARGET (statement);
-      classname = target->info.event_target.class_name->info.name.original;
-
-      classoid = ws_oid (sm_find_class (classname));
+      if (target)
+	{
+	  classname = target->info.event_target.class_name->info.name.original;
+	  classoid = ws_oid (sm_find_class (classname));
+	}
 
       ddl_type = CDC_CREATE;
       objtype = CDC_TRIGGER;
