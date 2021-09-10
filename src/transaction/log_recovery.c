@@ -997,6 +997,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
+  // *INDENT-OFF*
+  const auto time_start_setting_up = std::chrono::system_clock::now ();
+  // *INDENT-ON*
   const TRANID min_trantable_tranid = log_rv_get_min_trantable_tranid ();
 
   /* depending on compilation mode and on a system parameter, initialize the
@@ -1004,6 +1007,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
    * if infrastructure is not initialized dependent code below works sequentially
    */
   LOG_CS_EXIT (thread_p);
+
   cublog::reusable_jobs_stack reusable_jobs;
   // *INDENT-OFF*
   std::unique_ptr<cublog::redo_parallel> parallel_recovery_redo;
@@ -1014,15 +1018,19 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     assert (log_recovery_redo_parallel_count >= 0);
     if (log_recovery_redo_parallel_count > 0)
       {
-	reusable_jobs.initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_COUNT, log_recovery_redo_parallel_count,
-				  cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT);
-	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, nullptr,
-								 redo_context));
+	reusable_jobs.initialize (log_recovery_redo_parallel_count);
+	parallel_recovery_redo.reset (new cublog::
+				      redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
       }
   }
 #endif
 
-  const auto time_start = std::chrono::system_clock::now ();
+  // *INDENT-OFF*
+  const auto time_start_main = std::chrono::system_clock::now ();
+  /* 'setting_up' measures the time taken to initialize parallel log recovery redo infrstructure */
+  const auto duration_setting_up_ms
+      = std::chrono::duration_cast <std::chrono::milliseconds>(time_start_main - time_start_setting_up);
+  // *INDENT-ON*
 
   // statistics data initialize
   //
@@ -1610,22 +1618,28 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 #if defined(SERVER_MODE)
   {
     // *INDENT-OFF*
-    const auto time_end_main = std::chrono::system_clock::now ();
-    const auto time_dur_main_ms = std::chrono::duration_cast < std::chrono::milliseconds > (time_end_main - time_start);
+    /* 'main' measures the time taken by the main thread to execute sync log records and dispatch async ones */
+    const auto duration_main_ms = std::chrono::duration_cast <std::chrono::milliseconds> (
+          std::chrono::system_clock::now () - time_start_main);
     if (parallel_recovery_redo != nullptr)
       {
-	parallel_recovery_redo->set_adding_finished ();
 	parallel_recovery_redo->wait_for_termination_and_stop_execution ();
 	rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_WAIT_FOR_PARALLEL);
       }
     const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
-    const auto time_end_async = std::chrono::system_clock::now ();
-    const auto time_dur_async_ms =
-      std::chrono::duration_cast < std::chrono::milliseconds > (time_end_async - time_start);
+    /* 'async' measures the time taken by the main thread to execute sync log records, dispatch async ones
+     * and wait for the async infrastructure to finish */
+    const auto duration_async_ms = std::chrono::duration_cast <std::chrono::milliseconds> (
+          std::chrono::system_clock::now () - time_start_main);
     _er_log_debug (ARG_FILE_LINE,
-		   "log_recovery_redo_perf: recovery_parallel_count= %2d  reusable_jobs= %6d  main= %6lld  async= %6lld (ms)\n",
-		   log_recovery_redo_parallel_count, reusable_jobs.size (), (long long) time_dur_main_ms.count (),
-		   (long long) time_dur_async_ms.count ());
+		   "log_recovery_redo_perf:  parallel_count=%2d  reusable_jobs_count=%6d  flush_back_count=%4d\n"
+		   "log_recovery_redo_perf:  setting_up=%6lld  main=%6lld  async=%6lld (ms)\n",
+		   log_recovery_redo_parallel_count,
+		   cublog::PARALLEL_REDO_REUSABLE_JOBS_COUNT,
+		   cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT,
+		   (long long) duration_setting_up_ms.count (),
+		   (long long) duration_main_ms.count (),
+		   (long long) duration_async_ms.count ());
     // *INDENT-ON*
   }
 #endif

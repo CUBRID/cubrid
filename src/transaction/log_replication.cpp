@@ -107,34 +107,32 @@ namespace cublog
     //  - race conditions, when daemon comes online, are avoided
     //  - (even making abstraction of the race conditions) no log records are needlessly
     //    processed synchronously
-    const int replication_parallel = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
-    assert (replication_parallel >= 0);
-    if (replication_parallel > 0)
+    const int replication_parallel_count = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
+    assert (replication_parallel_count >= 0);
+    if (replication_parallel_count > 0)
       {
-	m_minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
 	// no need to reset with start redo lsa
 
 	const bool force_each_log_page_fetch = true;
 	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
-	m_reusable_jobs->initialize (cublog::PARALLEL_REDO_REUSABLE_JOBS_COUNT, replication_parallel,
-				     cublog::PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT);
-	m_parallel_replication_redo.reset (new cublog::redo_parallel (
-	    replication_parallel, m_minimum_log_lsa.get (), m_redo_context));
+	m_reusable_jobs->initialize (replication_parallel_count);
+	m_parallel_replication_redo.reset (
+		new cublog::redo_parallel (replication_parallel_count, true, m_redo_lsa, m_redo_context));
       }
 
     // Create the daemon
     cubthread::looper loop (std::chrono::milliseconds (1));   // don't spin when there is no new log, wait a bit
     auto func_exec = std::bind (&replicator::redo_upto_nxio_lsa, std::ref (*this), std::placeholders::_1);
 
-    auto func_retire = std::bind (&replicator::conclude_task_execution, std::ref (*this));
-    // initialized with explicit 'exec' and 'retire' functors, the ownership of the daemon task
-    // done not reside with the task itself (aka, the task does not get to delete itself anymore);
-    // therefore store it in in pointer such that we can be sure it is disposed of sometime towards the end
-    m_daemon_task.reset (new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire)));
+    // ownership of the daemon task lies with the task itself (aka: will delete itself upon retiring)
+    std::unique_ptr<cubthread::entry_task> daemon_task
+    {
+      new cubthread::entry_callable_task (std::move (func_exec))
+    };
 
     m_daemon_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (TT_REPLICATION);
 
-    m_daemon = cubthread::get_manager ()->create_daemon (loop, m_daemon_task.get (), "cublog::replicator",
+    m_daemon = cubthread::get_manager ()->create_daemon (loop, daemon_task.release (), "cublog::replicator",
 	       m_daemon_context_manager.get ());
   }
 
@@ -144,9 +142,7 @@ namespace cublog
 
     if (m_parallel_replication_redo != nullptr)
       {
-	// this is the earliest it is ensured that no records are to be added anymore
-	m_parallel_replication_redo->set_adding_finished ();
-	m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
+	m_parallel_replication_redo.reset (nullptr);
       }
   }
 
@@ -167,23 +163,6 @@ namespace cublog
 	    assert (m_redo_lsa == nxio_lsa);
 	    break;
 	  }
-      }
-  }
-
-  void
-  replicator::conclude_task_execution ()
-  {
-    if (m_parallel_replication_redo != nullptr)
-      {
-	// without being aware of external context/factors, this is the earliest it is ensured that
-	// no records are to be added anymore
-	m_parallel_replication_redo->wait_for_idle ();
-      }
-    else
-      {
-	// nothing needs to be done in the synchronous execution scenario
-	// the default/internal implementation of the retire functor used to delete the task
-	// itself; this is now handled by the instantiating entity
       }
   }
 
@@ -261,7 +240,7 @@ namespace cublog
 	}
 	if (m_parallel_replication_redo != nullptr)
 	  {
-	    m_minimum_log_lsa->set_for_outer (m_redo_lsa);
+	    m_parallel_replication_redo->set_main_thread_unapplied_log_lsa (m_redo_lsa);
 	  }
 
 	// to accurately track progress and avoid clients to wait for too long, notify each change
@@ -299,10 +278,10 @@ namespace cublog
     VPID root_vpid = { btid.root_pageid, btid.vfid.volid };
 
     // Create a job or apply the change immediately
-    if (m_parallel_replication_redo)
+    if (m_parallel_replication_redo != nullptr)
       {
 	redo_job_btree_stats *job = new redo_job_btree_stats (root_vpid, record_info.m_start_lsa, stats);
-	// ownership of raw pointer goes to the callee
+	// ownership of raw pointer remains with the job instance which will delete itself upon retire
 	m_parallel_replication_redo->add (job);
       }
     else
@@ -356,7 +335,7 @@ namespace cublog
 	// delay between log generation on the page server and log recovery on the page server
 	cublog::redo_job_replication_delay_impl *replication_delay_job =
 		new cublog::redo_job_replication_delay_impl (m_redo_lsa, start_time_msec);
-	// ownership of raw pointer goes to the callee
+	// ownership of raw pointer remains with the job instance which will delete itself upon retire
 	m_parallel_replication_redo->add (replication_delay_job);
       }
     else
@@ -378,13 +357,10 @@ namespace cublog
     // at this moment, ALL data has been dispatched for, either, async replication
     // or has been applied synchronously
     // introduce a fuzzy syncronization point by waiting all fed data to be effectively
-    // consumed/applied
-    // however, since the daemon is still running, also leave the parallel replication
-    // logic (if instantiated) alive; will be destroyed only after the daemon (to maintain
-    // symmetry with instantiation)
+    // consumed/applied and tasks to finish executing
     if (m_parallel_replication_redo != nullptr)
       {
-	m_parallel_replication_redo->wait_for_idle ();
+	m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
       }
   }
 
@@ -402,7 +378,7 @@ namespace cublog
     else
       {
 	// async
-	m_minimum_log_lsa->wait_past_target_lsa (a_target_lsa);
+	m_parallel_replication_redo->wait_past_target_lsa (a_target_lsa);
       }
   }
 

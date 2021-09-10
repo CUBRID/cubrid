@@ -53,10 +53,11 @@ struct log_lsa
   inline log_lsa (const log_lsa &olsa) = default;
   inline log_lsa &operator= (const log_lsa &olsa) = default;
 
-  inline bool is_null () const;
+  constexpr inline bool is_null () const;
+  constexpr inline bool is_max () const;
   inline void set_null ();
 
-  inline bool operator== (const log_lsa &olsa) const;
+  constexpr inline bool operator== (const log_lsa &olsa) const;
   inline bool operator!= (const log_lsa &olsa) const;
   inline bool operator< (const log_lsa &olsa) const;
   inline bool operator<= (const log_lsa &olsa) const;
@@ -104,10 +105,16 @@ log_lsa::log_lsa (const int64_t value)
   std::memcpy (this, &value, sizeof (value));
 }
 
-bool
+constexpr bool
 log_lsa::is_null () const
 {
   return pageid == NULL_LOG_PAGEID;
+}
+
+constexpr bool
+log_lsa::is_max () const
+{
+  return *this == MAX_LSA;
 }
 
 void
@@ -118,7 +125,7 @@ log_lsa::set_null ()
   // we'll have "conditional jump or move on uninitialized value"
 }
 
-bool
+constexpr bool
 log_lsa::operator== (const log_lsa &olsa) const
 {
   return pageid == olsa.pageid && offset == olsa.offset;

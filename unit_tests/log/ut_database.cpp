@@ -43,6 +43,11 @@ ut_database_values_generator::ut_database_values_generator (const ut_database_co
   m_log_lsa.offset = 0;
 }
 
+const log_lsa &ut_database_values_generator::get_lsa_log () const
+{
+  return m_log_lsa;
+}
+
 const log_lsa &ut_database_values_generator::increment_and_get_lsa_log ()
 {
   const auto if_false_increment_page_id_else_increment_offset = m_rand_log_lsa_dist (m_gen);
