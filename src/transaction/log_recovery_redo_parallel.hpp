@@ -23,11 +23,13 @@
 #include "log_recovery_redo.hpp"
 #include "log_recovery_redo_perf.hpp"
 
-#if defined(SERVER_MODE)
+#if defined (SERVER_MODE)
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "vpid_utilities.hpp"
 
 #include <atomic>
+#include <bitset>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -36,78 +38,20 @@
 
 namespace cublog
 {
-#if defined(SERVER_MODE)
+#if defined (SERVER_MODE)
+  // TODO: these constants could be dynamic based on expected load of recovery/replication
   static constexpr std::size_t PARALLEL_REDO_REUSABLE_JOBS_COUNT = ONE_M;
-  static constexpr std::size_t PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT = 100;
+  static constexpr std::size_t PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE = ONE_M;
+  static constexpr std::size_t PARALLEL_REDO_REUSABLE_JOBS_FLUSH_BACK_COUNT = ONE_K;
 
   // forward declaration
   class reusable_jobs_stack;
 
-  /* minimum_log_lsa_monitor - utility to support calculation of a minimum
-   *       lsa out of a set of, concurrently (or not), advacing ones; not
-   *       all lsa's participate in the game in every scenarios; those that
-   *       do not partake are gracefully ignored by being kept to a maximum
-   *       sentinel value
-   */
-  class minimum_log_lsa_monitor final
-  {
-    private:
-      static constexpr int ARRAY_LENGTH = 4;
-
-      using log_lsa_array_t = std::array<log_lsa, ARRAY_LENGTH>;
-
-      enum ARRAY_INDEX
-      {
-	PRODUCE_IDX = 0,
-	CONSUME_IDX = 1,
-	IN_PROGRESS_IDX = 2,
-	OUTER_IDX = 3,
-      };
-
-    public:
-      minimum_log_lsa_monitor ();
-      minimum_log_lsa_monitor (const minimum_log_lsa_monitor &) = delete;
-      minimum_log_lsa_monitor (minimum_log_lsa_monitor &&) = delete;
-
-      minimum_log_lsa_monitor &operator = (const minimum_log_lsa_monitor &) = delete;
-      minimum_log_lsa_monitor &operator = (minimum_log_lsa_monitor &&) = delete;
-
-      void set_for_produce (const log_lsa &a_lsa);
-      void set_for_produce_and_consume (const log_lsa &a_produce_lsa, const log_lsa &a_consume_lsa);
-      void set_for_consume_and_in_progress (const log_lsa &a_consume_lsa, const log_lsa &a_in_progress_lsa);
-      void set_for_in_progress (const log_lsa &a_lsa);
-      void set_for_outer (const log_lsa &a_lsa);
-
-      /* obtain the current calculated minimum value
-       */
-      log_lsa get () const;
-
-      /* wait till the recorder minimum lsa has passed the target lsa
-       * blocking call
-       *
-       * return: minimum log_lsa value calculated internally (mainly for testing purpose)
-       */
-      log_lsa wait_past_target_lsa (const log_lsa &a_target_lsa);
-
-    private:
-      void do_set_at (ARRAY_INDEX a_idx, const log_lsa &a_new_lsa);
-      template <typename T_LOCKER>
-      log_lsa do_locked_get (const T_LOCKER &) const;
-
-    private:
-      mutable std::mutex m_values_mtx;
-      log_lsa_array_t m_values;
-
-      std::condition_variable m_wait_for_target_value_cv;
-  };
-
-  /* a class to handle infrastructure for parallel log recovery/replication RAII-style;
+  /* handle infrastructure for parallel log recovery/replication RAII-style;
    * usage:
    *  - instantiate an object of this class with the desired number of background workers
    *  - create and add jobs - see 'redo_job_impl'
-   *  - after all jobs have been added, explicitly call 'set_adding_finished'
-   *  - and, as a final step, call 'wait_for_termination_and_stop_execution'; implementation
-   *    explicitly needs these last two steps to be executed in this order to be able to clean-up
+   *  - after all jobs have been added, explicitly call 'wait_for_termination_and_stop_execution'
    */
   class redo_parallel final
   {
@@ -119,8 +63,8 @@ namespace cublog
     public:
       /* - worker_count: the number of parallel tasks to spin that consume jobs
        */
-      redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa,
-		     const log_rv_redo_context &copy_context);
+      redo_parallel (unsigned a_worker_count, bool a_do_monitor_min_unapplied_log_lsa,
+		     const log_lsa &a_start_main_thread_log_lsa, const log_rv_redo_context &copy_context);
 
       redo_parallel (const redo_parallel &) = delete;
       redo_parallel (redo_parallel &&) = delete;
@@ -134,130 +78,32 @@ namespace cublog
        */
       void add (redo_job_base *job);
 
-      /* mandatory to explicitly call this after all data have been added
-       */
-      void set_adding_finished ();
-
-      /* wait until all data has been consumed internally; blocking call
-       */
-      void wait_for_idle ();
-
       /* mandatory to explicitly call this before dtor
+       * blocking call
        */
       void wait_for_termination_and_stop_execution ();
 
       void log_perf_stats () const;
 
+      void set_main_thread_unapplied_log_lsa (const log_lsa &a_log_lsa);
+
+      void wait_past_target_lsa (const log_lsa &a_target_lsa);
+
     private:
       void do_init_worker_pool (std::size_t a_task_count);
-      void do_init_tasks (std::size_t a_task_count, const log_rv_redo_context &copy_context);
+      void do_init_tasks (std::size_t a_task_count, bool a_do_monitor_unapplied_log_lsa,
+			  const log_rv_redo_context &copy_context);
 
     private:
-      /* rynchronizes prod/cons of log entries in n-prod - m-cons fashion
-       * internal implementation detail; not to be used externally
-       */
-      class redo_job_queue final
-      {
-	  using redo_job_deque_t = std::deque<redo_parallel::redo_job_base *>;
-	  using vpid_set = std::set<VPID>;
-	  using log_lsa_set = std::set<log_lsa>;
-
-	public:
-	  redo_job_queue (minimum_log_lsa_monitor *a_minimum_log_lsa);
-	  ~redo_job_queue ();
-
-	  redo_job_queue (redo_job_queue const &) = delete;
-	  redo_job_queue (redo_job_queue &&) = delete;
-
-	  redo_job_queue &operator= (redo_job_queue const &) = delete;
-	  redo_job_queue &operator= (redo_job_queue &&) = delete;
-
-	  void push_job (redo_parallel::redo_job_base *a_job);
-
-	  /* to be called after all known entries have been added
-	   * part of a mechanism to signal to the consumers, together with
-	   * whether there is still data to process, that they can bail out
-	   */
-	  void set_adding_finished ();
-
-	  /* mostly for debugging
-	   */
-	  bool get_adding_finished () const;
-
-	  /* the combination of a null return value with a finished
-	   * flag set to true signals to the callers that no more data is expected
-	   * and, therefore, they can also terminate
-	   */
-	  redo_parallel::redo_job_base *pop_job (bool &out_adding_finished);
-
-	  void notify_job_finished (const redo_job_base *a_job);
-
-	  /* wait until all data has been consumed internally; blocking call
-	   */
-	  void wait_for_idle () const;
-
-	private:
-	  void assert_idle () const;
-
-	  /* swap internal queues and notify if both are empty
-	   * assumes the consume queue is locked
-	   */
-	  void do_swap_queues_if_needed (const std::lock_guard<std::mutex> &a_consume_lockg);
-
-	  /* find first job that can be consumed (ie: is not already marked
-	   * in the 'in progress vpids' set)
-	   *
-	   * NOTE: '*_locked_*' functions are supposed to be called from within locked
-	   * areas with respect to the resources they make use of
-	   */
-	  redo_parallel::redo_job_base *do_locked_find_job_to_consume_and_mark_in_progress (
-		  const std::lock_guard<std::mutex> &a_consume_lockg,
-		  const std::lock_guard<std::mutex> &a_in_progress_lockg);
-
-	  /* NOTE: '*_locked_*' functions are supposed to be called from within locked
-	   * areas with respect to the resources they make use of
-	   */
-	  void do_locked_mark_job_in_progress (
-		  const std::lock_guard<std::mutex> &a_in_progress_lockg,
-		  const redo_parallel::redo_job_base *a_job);
-
-	private:
-	  /* two queues are internally managed and take turns at being either
-	   * on the producing or on the consumption side
-	   */
-	  redo_job_deque_t *m_produce_queue;
-	  mutable std::mutex m_produce_queue_mutex;
-	  redo_job_deque_t *m_consume_queue;
-	  std::mutex m_consume_queue_mutex;
-
-	  bool m_queues_empty;
-	  mutable std::condition_variable m_queues_empty_cv;
-
-	  std::atomic_bool m_adding_finished;
-
-	  /* bookkeeping for log entries currently in process of being applied, this
-	   * mechanism guarantees ordering among entries with the same VPID;
-	   */
-	  vpid_set m_in_progress_vpids;
-	  log_lsa_set m_in_progress_lsas;
-	  mutable std::mutex m_in_progress_mutex;
-	  /* signalled when the 'in progress' containers are empty
-	   */
-	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
-
-	  /* utility class to maintain a minimum log_lsa that is still
-	   * to be processed (consumed); non-owning pointer, can be null
-	   */
-	  minimum_log_lsa_monitor *m_minimum_log_lsa;
-      };
-
       /* maintain a bookkeeping of tasks that are still performing work;
        * internal implementation detail; not to be used externally
        */
       class task_active_state_bookkeeping final
       {
+	  static constexpr std::size_t BITSET_MAX_SIZE = 256;
+
 	public:
-	  task_active_state_bookkeeping () = default;
+	  task_active_state_bookkeeping (std::size_t a_size);
 
 	  task_active_state_bookkeeping (const task_active_state_bookkeeping &) = delete;
 	  task_active_state_bookkeeping (task_active_state_bookkeeping &&) = delete;
@@ -265,25 +111,80 @@ namespace cublog
 	  task_active_state_bookkeeping &operator = (const task_active_state_bookkeeping &) = delete;
 	  task_active_state_bookkeeping &operator = (task_active_state_bookkeeping &&) = delete;
 
-	  /* increment the internal number of active tasks
-	   */
-	  inline void set_active ();
-
-	  /* decrement the internal number of active tasks
-	   */
-	  inline void set_inactive ();
+	  inline void set_active (std::size_t a_index);
+	  inline bool is_active (std::size_t a_index) const;
+	  inline void set_inactive (std::size_t a_index);
+	  bool is_any_active () const;
 
 	  /* blocking call until all active tasks terminate
 	   */
 	  inline void wait_for_termination ();
 
 	private:
-	  int m_active_count { 0 };
-	  std::mutex m_active_count_mtx;
-	  std::condition_variable m_active_count_cv;
+	  const std::size_t m_size;
+	  std::bitset<BITSET_MAX_SIZE> m_values;
+	  mutable std::mutex m_values_mtx;
+	  std::condition_variable m_values_cv;
+      };
+
+      /* handles monitoring of minimum unapplied log_lsa
+       */
+      class min_unapplied_log_lsa_monitoring final
+      {
+	public:
+	  min_unapplied_log_lsa_monitoring (bool a_do_monitor, const log_lsa &a_start_main_thread_log_lsa,
+					    const std::vector<std::unique_ptr<redo_task>> &a_redo_task);
+
+	  min_unapplied_log_lsa_monitoring (const min_unapplied_log_lsa_monitoring &) = delete;
+	  min_unapplied_log_lsa_monitoring (min_unapplied_log_lsa_monitoring &&) = delete;
+
+	  ~min_unapplied_log_lsa_monitoring ();
+
+	  min_unapplied_log_lsa_monitoring &operator= (const min_unapplied_log_lsa_monitoring &) = delete;
+	  min_unapplied_log_lsa_monitoring &operator= (min_unapplied_log_lsa_monitoring &&) = delete;
+
+	  /* only start calculation once the tasks have been created; avoid race
+	   * conditions of the internal calculation and actual creation of the tasks
+	   */
+	  void start ();
+
+	  void set_main_thread_unapplied_log_lsa (const log_lsa &a_log_lsa);
+
+	  /* blocking call
+	   */
+	  void wait_past_target_log_lsa (const log_lsa &a_target_lsa);
+
+	private:
+	  log_lsa calculate ();
+	  void calculate_loop ();
+
+	private:
+	  const bool m_do_monitor;
+
+	  /* the not-applied set from the outside by the main thread (for recovery, the main thread
+	   * is the thread running the analysis redo and undo; for replication, the main thread is the
+	   * recovery applying thread);
+	   * the reason the main thread log_lsa is needed is because some of the log entries are being applied
+	   * synchronously by the main thread and the calculation of the minimum not-applied log_lsa needs
+	   * to be accurate
+	   */
+	  std::atomic<log_lsa> m_main_thread_unapplied_log_lsa;
+
+	  const std::vector<std::unique_ptr<redo_task>> &m_redo_tasks;
+
+	  /* following members control the pro-active calculation of the minimum not-applied log_lsa as well
+	   * as means to actually trigger and wait for the calculation asynchronously
+	   */
+	  log_lsa m_calculated_log_lsa;
+	  std::mutex m_calculate_mtx;
+	  volatile bool m_terminate_calculation;
+	  std::thread m_calculate_thread;
+	  std::condition_variable m_calculate_cv;
       };
 
     private:
+      const std::size_t m_task_count;
+
       std::unique_ptr<cubthread::entry_manager> m_pool_context_manager;
 
       /* the workpool already has and internal bookkeeping and can also wait for the tasks to terminate;
@@ -294,11 +195,14 @@ namespace cublog
       task_active_state_bookkeeping m_task_state_bookkeeping;
 
       cubthread::entry_workpool *m_worker_pool;
+      /* tasks have owner-controlled life-time in order to be able to
+       * collect post-execution perf stats from them
+       */
       std::vector<std::unique_ptr<redo_task>> m_redo_tasks;
 
-      redo_job_queue m_job_queue;
+      std::hash<VPID> m_vpid_hash;
 
-      bool m_waited_for_termination;
+      min_unapplied_log_lsa_monitoring m_min_unapplied_log_lsa_calculation;
   };
 
 
@@ -414,21 +318,15 @@ namespace cublog
       reusable_jobs_stack &operator = (const reusable_jobs_stack &) = delete;
       reusable_jobs_stack &operator = (reusable_jobs_stack &&) = delete;
 
-      void initialize (std::size_t a_job_count, std::size_t a_push_task_count,
-		       std::size_t a_flush_push_at_count);
+      void initialize (std::size_t a_push_task_count);
 
-      std::size_t size () const
-      {
-	return m_job_pool.size ();
-      }
-
-      redo_job_impl *blocking_pop ();
+      redo_job_impl *blocking_pop (perf_stats &a_rcv_redo_perf_stat);
       void push (std::size_t a_task_idx, redo_job_impl *a_job);
 
     private:
       /* configuration, constants after initialization
        */
-      std::size_t m_flush_push_at_count = 0;
+      const std::size_t m_flush_push_at_count;
 
       /* support array for initializing jobs in-place
        */
@@ -451,11 +349,9 @@ namespace cublog
        */
       std::vector<job_container_t> m_per_task_push_jobs_vec;
   };
-
 #else /* SERVER_MODE */
   /* dummy implementations for SA mode
    */
-  class minimum_log_lsa_monitor final { };
   class redo_parallel final { };
   class reusable_jobs_stack final { };
 #endif /* SERVER_MODE */
@@ -508,9 +404,8 @@ log_rv_redo_record_sync_or_dispatch_async (
   else
     {
       // dispatch async
-      cublog::redo_job_impl *const job = a_reusable_jobs.blocking_pop ();
+      cublog::redo_job_impl *const job = a_reusable_jobs.blocking_pop (a_rcv_redo_perf_stat);
       assert (job != nullptr);
-      a_rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_REDO_OR_PUSH_POP_REUSABLE);
 
       job->set_record_info (rcv_vpid, record_info.m_start_lsa, record_info.m_type);
       // it is the callee's responsibility to return the pointer back to the reusable
