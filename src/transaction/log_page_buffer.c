@@ -6652,12 +6652,18 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
   return fileio_is_volume_exist (log_Name_active);
 }
 
+/*
+ */
 void
 logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, int &ntrans, int &ntops,
 			LOG_LSA & smallest_lsa)
 {
   LOG_INFO_CHKPT_TRANS *chkpt_entry = &chkpt_entries[ntrans];
-  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->tail_lsa))
+  /* - commit_abort_lsa is filled when either commit or abbort entry is appended to the transaction
+   * - TODO: further explanation of why the condition is needed (what other log records may appear for
+   *    a transaction after commit/abort; what is the reason for this ...)
+   */
+  if (tdes != NULL && tdes->trid != NULL_TRANID && !tdes->tail_lsa.is_null () && !tdes->commit_abort_lsa.is_null ())
     {
       chkpt_entry->isloose_end = tdes->isloose_end;
       chkpt_entry->trid = tdes->trid;
