@@ -1205,7 +1205,9 @@ typedef enum
   /* SELECT page header information from heap file instead of record data */
   PT_HINT_SELECT_KEY_INFO = 0x80000000,	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT key information from index b-tree instead of table record data */
-  PT_HINT_QUERY_NO_CACHE = 0x100000000	/* 0001 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache (unused) */
+  PT_HINT_QUERY_NO_CACHE = 0x100000000,	/* 0001 0000 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache (unused) */
+  PT_HINT_NO_PUSH_PRED = 0x200000000	/* 0010 0000 0000 0000 0000 0000 0000 0000 0000 */
+  /* do not push predicates */
 } PT_HINT_ENUM;
 
 /* Codes for error messages */
