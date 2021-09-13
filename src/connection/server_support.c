@@ -50,6 +50,7 @@
 #include <netinet/in.h>
 #endif /* !WINDOWS */
 #include <assert.h>
+#include <string>
 
 #include "porting.h"
 #include "memory_alloc.h"
@@ -262,6 +263,7 @@ static cubthread::wait_seconds css_get_connection_thread_timeout_configuration (
 static bool css_get_server_request_thread_pooling_configuration (void);
 static cubthread::wait_seconds css_get_server_request_thread_timeout_configuration (void);
 static void css_start_all_threads (void);
+static std::string css_pack_message_to_master (const char *server_name);
 // *INDENT-ON*
 
 #if defined (SERVER_MODE)
@@ -945,8 +947,6 @@ css_reestablish_connection_to_master (void)
 {
   CSS_CONN_ENTRY *conn;
   static int i = CSS_WAIT_COUNT;
-  char *message_to_master;
-  int message_to_master_length;
 
   if (i-- > 0)
     {
@@ -954,25 +954,20 @@ css_reestablish_connection_to_master (void)
     }
   i = CSS_WAIT_COUNT;
 
-  message_to_master = css_pack_message_to_master (css_Master_server_name, &message_to_master_length);
-  if (message_to_master != NULL)
+  // *INDENT-OFF*
+  std::string message_to_master = css_pack_message_to_master (css_Master_server_name);
+  // *INDENT-ON*
+
+  conn = css_connect_to_master_server (css_Master_port_id, message_to_master.c_str (), (int) message_to_master.size ());
+  if (conn != NULL)
     {
-      conn = css_connect_to_master_server (css_Master_port_id, message_to_master, message_to_master_length);
-      if (conn != NULL)
+      css_Pipe_to_master = conn->fd;
+      if (css_Master_conn)
 	{
-	  css_Pipe_to_master = conn->fd;
-	  if (css_Master_conn)
-	    {
-	      css_free_conn (css_Master_conn);
-	    }
-	  css_Master_conn = conn;
-	  free_and_init (message_to_master);
-	  return 1;
+	  css_free_conn (css_Master_conn);
 	}
-      else
-	{
-	  free_and_init (message_to_master);
-	}
+      css_Master_conn = conn;
+      return 1;
     }
 
   css_Pipe_to_master = INVALID_SOCKET;
@@ -1299,8 +1294,7 @@ css_start_shutdown_server ()
  * css_init() -
  *   return:
  *   thread_p(in):
- *   message_to_master(in):
- *   message_to_master_length(in):
+ *   server_name(in):
  *   port_id(in):
  *
  * Note: This routine is the entry point for the server interface. Once this
@@ -1313,16 +1307,14 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 {
   CSS_CONN_ENTRY *conn;
   int status = NO_ERROR;
-  int message_to_master_length = 0;
-  char *message_to_master = NULL;
-
   if (server_name == NULL || port_id <= 0)
     {
       return ER_FAILED;
     }
 
-  message_to_master = css_pack_message_to_master (server_name, &message_to_master_length);
-  assert (message_to_master != NULL);
+  // *INDENT-OFF*
+  std::string message_to_master = css_pack_message_to_master (server_name);
+  // *INDENT-ON*
 
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
@@ -1370,7 +1362,7 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 
   css_Server_connection_socket = INVALID_SOCKET;
 
-  conn = css_connect_to_master_server (port_id, message_to_master, message_to_master_length);
+  conn = css_connect_to_master_server (port_id, message_to_master.c_str (), (int) message_to_master.size ());
   if (conn != NULL)
     {
       /* insert conn into active conn list */
@@ -1453,11 +1445,6 @@ shutdown:
 #if defined(WINDOWS)
   css_windows_shutdown ();
 #endif /* WINDOWS */
-
-  if (message_to_master != NULL)
-    {
-      free (message_to_master);
-    }
 
   return status;
 }
@@ -1795,99 +1782,72 @@ css_end_server_request (CSS_CONN_ENTRY * conn)
 
 /*
  * css_pack_message_to_master() -
- *   return: a new string containing the server name and the database version
- *           string
+ *   return: a new string containing the server name and other information about the server
  *   server_name(in): the name of the database volume
- *   name_length(out): returned size of the server_name
- *
- * Note: Builds a character buffer with three embedded strings: the database
- *       volume name, a string containing the release identifier, and the
- *       CUBRID environment variable (if exists)
  */
-char *
-css_pack_message_to_master (const char *server_name, int *message_length)
+// *INDENT-OFF*
+std::string
+css_pack_message_to_master (const char *server_name)
 {
-  char *message = NULL;
   const char *env_name = NULL;
-  char pid_string[16], *s;
-  const char *t;
+  char pid_string[16];
+  std::string message;
 
-  if (server_name != NULL)
+  assert (server_name != NULL);
+
+  env_name = envvar_root ();
+  if (env_name == NULL)
     {
-      env_name = envvar_root ();
-      if (env_name == NULL)
-	{
-	  return NULL;
-	}
-
-      /*
-       * here we changed the 2nd string in packed_name from
-       * rel_release_string() to rel_major_release_string()
-       * solely for the purpose of matching the name of the cubrid driver.
-       * That is, the name of the cubrid driver has been changed to use
-       * MAJOR_RELEASE_STRING (see drivers/Makefile).  So, here we must also
-       * use rel_major_release_string(), so master can successfully find and
-       * fork cubrid drivers.
-       */
-
-      sprintf (pid_string, "%d", getpid ());
-      *message_length =
-	(int) (strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1 +
-	       strlen (pid_string) + 1);
-
-      /* in order to prepend '#' or server type */
-      (*message_length)++;
-
-      message = (char *) malloc (*message_length);
-      if (message == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (*message_length));
-	  return NULL;
-	}
-
-      s = message;
-      t = server_name;
-
-      if (!HA_DISABLED ())
-	{
-	  *s++ = '#';
-	}
-      else
-	{
-	  SERVER_TYPE type = get_server_type ();
-	  assert (type == SERVER_TYPE_TRANSACTION || type == SERVER_TYPE_PAGE);
-	  *s++ = '0' + ((char) type);
-	}
-
-      while (*t)
-	{
-	  *s++ = *t++;
-	}
-      *s++ = '\0';
-
-      t = rel_major_release_string ();
-      while (*t)
-	{
-	  *s++ = *t++;
-	}
-      *s++ = '\0';
-
-      t = env_name;
-      while (*t)
-	{
-	  *s++ = *t++;
-	}
-      *s++ = '\0';
-
-      t = pid_string;
-      while (*t)
-	{
-	  *s++ = *t++;
-	}
-      *s++ = '\0';
+      return NULL;
     }
+
+  /*
+    * here we changed the 2nd string in packed_name from
+    * rel_release_string() to rel_major_release_string()
+    * solely for the purpose of matching the name of the cubrid driver.
+    * That is, the name of the cubrid driver has been changed to use
+    * MAJOR_RELEASE_STRING (see drivers/Makefile).  So, here we must also
+    * use rel_major_release_string(), so master can successfully find and
+    * fork cubrid drivers.
+    */
+
+  sprintf (pid_string, "%d", getpid ());
+  size_t message_size =
+    strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1
+    + strlen (pid_string) + 1;
+  /* in order to prepend '#' or server type */
+  message_size++;
+
+  message.reserve (message_size);
+
+  if (!HA_DISABLED ())
+    {
+      message.append (1, '#');
+    }
+  else
+    {
+      SERVER_TYPE type = get_server_type ();
+      assert (type == SERVER_TYPE_TRANSACTION || type == SERVER_TYPE_PAGE);
+      message.append (1, '0' + ((char) type));
+    }
+
+  message.append (server_name);
+  message.append (1, '\0');
+
+  message.append (rel_major_release_string ());
+  message.append (1, '\0');
+
+  message.append (env_name);
+  message.append (1, '\0');
+
+  message.append (pid_string);
+  message.append (1, '\0');
+
+  assert (message.size () == message_size);
+
   return message;
 }
+// *INDENT-ON*
 
 /*
  * css_add_client_version_string() - add the version_string to socket queue
