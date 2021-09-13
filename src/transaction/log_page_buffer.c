@@ -6659,11 +6659,11 @@ logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, i
 			LOG_LSA & smallest_lsa)
 {
   LOG_INFO_CHKPT_TRANS *chkpt_entry = &chkpt_entries[ntrans];
-  /* - commit_abort_lsa is filled when either commit or abbort entry is appended to the transaction
-   * - TODO: further explanation of why the condition is needed (what other log records may appear for
-   *    a transaction after commit/abort; what is the reason for this ...)
+  /* - commit_abort_lsa is filled when either commit or abbort entry is appended to the transaction;
+   *    the last part of the condition has the effect that the actual transaction state is ignored by the
+   *    checkpoint mechanism as long as either the commit or the abort log records have been appended
    */
-  if (tdes != NULL && tdes->trid != NULL_TRANID && !tdes->tail_lsa.is_null () && !tdes->commit_abort_lsa.is_null ())
+  if (tdes != NULL && tdes->trid != NULL_TRANID && !tdes->tail_lsa.is_null () && tdes->commit_abort_lsa.is_null ())
     {
       chkpt_entry->isloose_end = tdes->isloose_end;
       chkpt_entry->trid = tdes->trid;
