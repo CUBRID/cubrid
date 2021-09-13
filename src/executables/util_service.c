@@ -1857,14 +1857,13 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 
 /*
  * process_server_start_single_node - start both a page and a transaction server,
- *                                     the page server must be started before transaction server
- *
- * return:
+ *                                    the page server must be started before transaction server
  */
 static int
 process_server_start_single_node (char *server_name, int command_type)
 {
-  int status, pid;
+  int status = NO_ERROR;
+  int pid = 0;
 
   const char *args_page[] = { UTIL_CUBRID_NAME, "-t", "page", server_name, NULL };
   status = proc_execute (UTIL_CUBRID_NAME, args_page, false, false, false, &pid);
@@ -1874,6 +1873,11 @@ process_server_start_single_node (char *server_name, int command_type)
       status = ER_GENERIC_ERROR;
     }
   print_result (PRINT_PAGE_SERVER_NAME, status, command_type);
+
+  if (status != NO_ERROR)
+    {
+      return status;
+    }
 
   const char *args_transaction[] = { UTIL_CUBRID_NAME, "-t", "transaction", server_name, NULL };
   status = proc_execute (UTIL_CUBRID_NAME, args_transaction, false, false, false, &pid);
