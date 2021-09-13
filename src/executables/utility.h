@@ -882,7 +882,7 @@ typedef struct _ha_config
 #define CHECK_TRANSACTION_SERVER  "Transaction-Server"
 
 #define COMMDB_SERVER_STOP      "-S"
-#define COMMDB_SINGLE_NODE_STOP "-n"
+#define COMMDB_SINGLE_NODE_STOP "--single-node-stop"
 #define COMMDB_SERVER_STATUS    "-P"
 #define COMMDB_ALL_STATUS       "-O"
 #define COMMDB_ALL_STOP         "-A"
@@ -1441,8 +1441,8 @@ typedef struct _ha_config
 #define COMMDB_HA_ADMIN_INFO_L                  "admin-info"
 #define COMMDB_HA_START_UTIL_PROCESS_S          't'
 #define COMMDB_HA_START_UTIL_PROCESS_L          "start-ha-util-process"
-#define COMMDB_STOP_SINGLE_NODE_S               'n'
-#define COMMDB_STOP_SINGLE_NODE_L               "single_node"
+#define COMMDB_STOP_SINGLE_NODE_S               12116
+#define COMMDB_STOP_SINGLE_NODE_L               "single-node-stop"
 
 /* paramdump option list */
 #define PARAMDUMP_OUTPUT_FILE_S                 'o'

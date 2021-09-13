@@ -261,6 +261,7 @@ static int parse_arg (UTIL_SERVICE_OPTION_MAP_T * option, const char *arg);
 static int process_service (int command_type, bool process_window_service);
 static int process_server (int command_type, int argc, char **argv, bool show_usage, bool check_ha_mode,
 			   bool process_window_service);
+static int process_server_start_single_node (char *server_name, int command_type);
 static int process_broker (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_manager (int command_type, bool process_window_service);
 static int process_javasp (int command_type, int argc, const char **argv, bool process_window_service);
@@ -1668,7 +1669,6 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		}
 	      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_START, token);
 
-#if !defined(WINDOWS)
 	      status = sysprm_load_and_init (token, NULL, SYSPRM_IGNORE_INTL_PARAMS);
 	      if (status != NO_ERROR)
 		{
@@ -1676,7 +1676,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		  print_result (PRINT_SERVER_NAME, status, command_type);
 		  break;
 		}
-
+#if !defined(WINDOWS)
 	      if (check_ha_mode == true)
 		{
 		  if (util_get_ha_mode_for_sa_utils () != HA_MODE_OFF)
@@ -1704,23 +1704,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		  if (server_type_config::SINGLE_NODE ==
 		      (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE))
 		    {
-		      const char *args_page[] = { UTIL_CUBRID_NAME, "-t", "page", token, NULL };
-		      status = proc_execute (UTIL_CUBRID_NAME, args_page, false, false, false, &pid);
-
-		      if (status == NO_ERROR && !is_server_running (CHECK_PAGE_SERVER, token, pid))
-			{
-			  status = ER_GENERIC_ERROR;
-			}
-		      print_result (PRINT_PAGE_SERVER_NAME, status, command_type);
-
-		      const char *args_transaction[] = { UTIL_CUBRID_NAME, "-t", "transaction", token, NULL };
-		      status = proc_execute (UTIL_CUBRID_NAME, args_transaction, false, false, false, &pid);
-
-		      if (status == NO_ERROR && !is_server_running (CHECK_TRANSACTION_SERVER, token, pid))
-			{
-			  status = ER_GENERIC_ERROR;
-			}
-		      print_result (PRINT_TRANSACTION_SERVER_NAME, status, command_type);
+		      status = process_server_start_single_node (token, command_type);
 		    }
 		  else
 		    {
@@ -1867,6 +1851,38 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
       status = ER_GENERIC_ERROR;
       break;
     }
+
+  return status;
+}
+
+/*
+ * process_server_start_single_node - start both a page and a transaction server,
+ *                                     the page server must be started before transaction server
+ *
+ * return:
+ */
+static int
+process_server_start_single_node (char *server_name, int command_type)
+{
+  int status, pid;
+
+  const char *args_page[] = { UTIL_CUBRID_NAME, "-t", "page", server_name, NULL };
+  status = proc_execute (UTIL_CUBRID_NAME, args_page, false, false, false, &pid);
+
+  if (status == NO_ERROR && !is_server_running (CHECK_PAGE_SERVER, server_name, pid))
+    {
+      status = ER_GENERIC_ERROR;
+    }
+  print_result (PRINT_PAGE_SERVER_NAME, status, command_type);
+
+  const char *args_transaction[] = { UTIL_CUBRID_NAME, "-t", "transaction", server_name, NULL };
+  status = proc_execute (UTIL_CUBRID_NAME, args_transaction, false, false, false, &pid);
+
+  if (status == NO_ERROR && !is_server_running (CHECK_TRANSACTION_SERVER, server_name, pid))
+    {
+      status = ER_GENERIC_ERROR;
+    }
+  print_result (PRINT_TRANSACTION_SERVER_NAME, status, command_type);
 
   return status;
 }

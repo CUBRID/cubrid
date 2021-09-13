@@ -1312,7 +1312,7 @@ main (int argc, char **argv)
 	    }
 	  commdb_Arg_server_name = strdup (optarg);
 	  break;
-	case 'n':
+	case COMMDB_STOP_SINGLE_NODE_S:
 	  commdb_Arg_single_node = true;
 	  break;
 	case 'c':
