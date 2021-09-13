@@ -3564,7 +3564,6 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * like, P
 
   /* if success, use like_save. Otherwise, keep like. */
   like_save = pt_semantic_type (parser, like_save, NULL);
-
   if (like_save == NULL || er_errid () != NO_ERROR || pt_has_error (parser))
     {
       like->next = between->next;
@@ -3630,7 +3629,13 @@ qo_check_like_expression_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
       return node;
     }
 
-  if (PT_IS_QUERY (node) || PT_IS_NAME_NODE (node) || PT_IS_DOT_NODE (node))
+  if (PT_IS_QUERY (node) || PT_IS_DOT_NODE (node))
+    {
+      *like_expression_not_safe = true;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  else if (PT_IS_NAME_NODE (node) && node->info.name.correlation_level == 0)
     {
       *like_expression_not_safe = true;
       *continue_walk = PT_STOP_WALK;
@@ -3649,11 +3654,18 @@ qo_check_like_expression_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 static void
 qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 {
+  bool error_saved = false;
   PT_NODE *cnf_node = NULL;
   /* prev node in list which linked by next pointer. */
   PT_NODE *prev = NULL;
   /* prev node in list which linked by or_next pointer. */
   PT_NODE *or_prev = NULL;
+
+  if (er_errid () != NO_ERROR)
+    {
+      er_stack_push ();
+      error_saved = true;
+    }
 
   for (cnf_node = *cnf_list; cnf_node != NULL; cnf_node = cnf_node->next)
     {
@@ -3783,6 +3795,11 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	  or_prev = crt_expr;
 	}
       prev = cnf_node;
+    }
+
+  if (error_saved)
+    {
+      er_stack_pop ();
     }
 }
 
