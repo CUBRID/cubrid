@@ -39,10 +39,14 @@ server_type_to_string (SERVER_TYPE type)
 {
   switch (type)
     {
+    case SERVER_TYPE_UNKNOWN:
+      return  "unknown";
+    case SERVER_TYPE_TRANSACTION:
+      return "transaction";
     case SERVER_TYPE_PAGE:
       return "page";
-    default:
-      return "transaction";
+    case SERVER_TYPE_ANY:
+      return "any";
     }
 }
 
