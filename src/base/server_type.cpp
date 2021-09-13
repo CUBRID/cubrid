@@ -110,8 +110,7 @@ int init_server_type (const char *db_name)
 
   if (er_code == NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
-		    get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
+      er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n", server_type_to_string (get_server_type ()));
     }
   else
     {

@@ -33,4 +33,30 @@ enum class server_type_config
   PAGE,
   SINGLE_NODE,
 };
+
+inline const char *
+server_type_to_string (SERVER_TYPE type)
+{
+  switch (type)
+    {
+    case SERVER_TYPE_PAGE:
+      return "page";
+    default:
+      return "transaction";
+    }
+}
+
+inline const char *
+server_type_config_to_string (server_type_config type)
+{
+  switch (type)
+    {
+    case server_type_config::PAGE:
+      return "page";
+    case server_type_config::TRANSACTION:
+      return "transaction";
+    case server_type_config::SINGLE_NODE:
+      return "single_node";
+    }
+}
 #endif // _SERVER_TYPE_ENUM_H_

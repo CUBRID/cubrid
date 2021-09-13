@@ -6448,9 +6448,9 @@ static KEYVAL tde_algorithm_words[] = {
 
 /* *INDENT-OFF* */
 static KEYVAL server_type_words[] = {
-  {"transaction", (int) server_type_config::TRANSACTION},
-  {"page", (int) server_type_config::PAGE},
-  {"single_node", (int) server_type_config::SINGLE_NODE}
+  {server_type_config_to_string (server_type_config::TRANSACTION), (int) server_type_config::TRANSACTION},
+  {server_type_config_to_string (server_type_config::PAGE), (int) server_type_config::PAGE},
+  {server_type_config_to_string (server_type_config::SINGLE_NODE), (int) server_type_config::SINGLE_NODE}
 };
 /* *INDENT-ON* */
 
