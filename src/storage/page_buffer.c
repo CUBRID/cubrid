@@ -1077,7 +1077,7 @@ STATIC_INLINE void pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BC
 
 STATIC_INLINE bool pgbuf_get_check_page_validation_level (int page_validation_level) __attribute__ ((ALWAYS_INLINE));
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
-STATIC_INLINE void pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr, bool force_set_vpid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr, bool maybe_deallocated)
   __attribute__ ((ALWAYS_INLINE));
 
@@ -1810,7 +1810,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   bool had_holder = false;
 #endif /* !NDEBUG */
   PGBUF_FIX_PERF perf;
-  bool maybe_deallocated, force_set_vpid;
+  bool maybe_deallocated;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
 
@@ -1950,8 +1950,7 @@ try_again:
 
   /* Set Page identifier if needed */
   // Redo recovery may find an immature page which should be set.
-  force_set_vpid = (fetch_mode == NEW_PAGE && log_is_in_crash_recovery_and_not_yet_completes_redo ());
-  pgbuf_set_bcb_page_vpid (bufptr, force_set_vpid);
+  pgbuf_set_bcb_page_vpid (bufptr);
 
   maybe_deallocated = (fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED);
   if (pgbuf_check_bcb_page_vpid (bufptr, maybe_deallocated) != true)
@@ -2083,6 +2082,7 @@ try_again:
 	case NEW_PAGE:
 	case OLD_PAGE_DEALLOCATED:
 	case OLD_PAGE_IF_IN_BUFFER:
+	case RECOVERY_PAGE:
 	  /* fixing deallocated page is expected. fall through to return it. */
 	  break;
 	case OLD_PAGE:
@@ -4802,12 +4802,10 @@ pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  * pgbuf_set_bcb_page_vpid () -
  *   return: void
  *   bufptr(in): pointer to buffer page
- *   force_set_vpid(in): true, if forces VPID setting
  *
- * Note: This function is used for debugging.
  */
 STATIC_INLINE void
-pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr, bool force_set_vpid)
+pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr)
 {
   if (bufptr == NULL || VPID_ISNULL (&bufptr->vpid))
     {
@@ -4820,17 +4818,23 @@ pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr, bool force_set_vpid)
   if (bufptr->vpid.volid > NULL_VOLID)
     {
       /* Check if is the first time */
-      if (force_set_vpid
-	  || (bufptr->iopage_buffer->iopage.prv.pageid == -1 && bufptr->iopage_buffer->iopage.prv.volid == -1))
+      if (bufptr->iopage_buffer->iopage.prv.pageid == NULL_PAGEID
+	  && bufptr->iopage_buffer->iopage.prv.volid == NULL_VOLID)
 	{
 	  /* Set Page identifier */
 	  bufptr->iopage_buffer->iopage.prv.pageid = bufptr->vpid.pageid;
 	  bufptr->iopage_buffer->iopage.prv.volid = bufptr->vpid.volid;
 
-	  bufptr->iopage_buffer->iopage.prv.ptype = '\0';
+	  bufptr->iopage_buffer->iopage.prv.ptype = PAGE_UNKNOWN;
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_1 = 0;
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_2 = 0;
 	  bufptr->iopage_buffer->iopage.prv.tde_nonce = 0;
+	}
+      else
+	{
+	  /* values not reset upon page deallocation */
+	  assert (bufptr->iopage_buffer->iopage.prv.volid == bufptr->vpid.volid);
+	  assert (bufptr->iopage_buffer->iopage.prv.pageid == bufptr->vpid.pageid);
 	}
     }
 }
@@ -4863,7 +4867,7 @@ pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype)
   assert (!VPID_ISNULL (&bufptr->vpid));
 
   /* Set Page identifier if needed */
-  pgbuf_set_bcb_page_vpid (bufptr, false);
+  pgbuf_set_bcb_page_vpid (bufptr);
 
   if (pgbuf_check_bcb_page_vpid (bufptr, false) != true)
     {
@@ -5009,7 +5013,7 @@ pgbuf_initialize_bcb_table (void)
       ioptr->iopage.prv.pageid = -1;
       ioptr->iopage.prv.volid = -1;
 
-      ioptr->iopage.prv.ptype = '\0';
+      ioptr->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
       ioptr->iopage.prv.pflag = '\0';
       ioptr->iopage.prv.p_reserve_1 = 0;
       ioptr->iopage.prv.p_reserve_2 = 0;
@@ -10462,7 +10466,7 @@ pgbuf_scramble (FILEIO_PAGE * iopage)
   iopage->prv.pageid = -1;
   iopage->prv.volid = -1;
 
-  iopage->prv.ptype = '\0';
+  iopage->prv.ptype = (unsigned char) PAGE_UNKNOWN;
   iopage->prv.pflag = '\0';
   iopage->prv.p_reserve_1 = 0;
   iopage->prv.p_reserve_2 = 0;
@@ -14013,7 +14017,7 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 #endif /* !NDEBUG */
 
   /* set unknown type */
-  bcb->iopage_buffer->iopage.prv.ptype = (char) PAGE_UNKNOWN;
+  bcb->iopage_buffer->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
   /* clear page flags (now only tde algorithm) */
   bcb->iopage_buffer->iopage.prv.pflag = (unsigned char) 0;
 
