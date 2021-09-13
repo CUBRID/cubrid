@@ -3071,6 +3071,36 @@ pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_set_correlation_level ()
+ *          - set correlation level
+ *   parser(in):
+ *   subquery(in):
+ *   level(in):
+ */
+
+void
+pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level)
+{
+  switch (subquery->node_type)
+    {
+    case PT_SELECT:
+      subquery->info.query.correlation_level = level;
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      subquery->info.query.correlation_level = level;
+      pt_set_correlation_level (parser, subquery->info.query.q.union_.arg1, level);
+      pt_set_correlation_level (parser, subquery->info.query.q.union_.arg2, level);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
  * pt_has_nullable_term () - check if tree has an nullable term
  *				   node somewhere
  *   return: true if tree has nullable term
@@ -9695,6 +9725,11 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
     }
 
   if (!PT_IS_NAME_NODE (node))
+    {
+      return node;
+    }
+
+  if (node->info.name.correlation_level > 0)
     {
       return node;
     }
