@@ -1704,7 +1704,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		  if (server_type_config::SINGLE_NODE ==
 		      (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE))
 		    {
-		      const char *args_page[] = { UTIL_CUBRID_NAME, "-t", "page", token };
+		      const char *args_page[] = { UTIL_CUBRID_NAME, "-t", "page", token, NULL };
 		      status = proc_execute (UTIL_CUBRID_NAME, args_page, false, false, false, &pid);
 
 		      if (status == NO_ERROR && !is_server_running (CHECK_PAGE_SERVER, token, pid))
@@ -1713,7 +1713,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 			}
 		      print_result (PRINT_PAGE_SERVER_NAME, status, command_type);
 
-		      const char *args_transaction[] = { UTIL_CUBRID_NAME, token, "-t", "transaction", token };
+		      const char *args_transaction[] = { UTIL_CUBRID_NAME, "-t", "transaction", token, NULL };
 		      status = proc_execute (UTIL_CUBRID_NAME, args_transaction, false, false, false, &pid);
 
 		      if (status == NO_ERROR && !is_server_running (CHECK_TRANSACTION_SERVER, token, pid))

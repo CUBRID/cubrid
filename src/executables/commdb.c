@@ -1098,11 +1098,11 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 	}
       else
 	{
-	  // kill the page server first
-	  pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_PAGE);
-	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
-	  // and then the transaction server
+	  // kill the transaction server first
 	  pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_TRANSACTION);
+	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
+	  // and then the page server
+	  pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_PAGE);
 	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
 	}
     }
