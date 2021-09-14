@@ -14726,6 +14726,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  objtype = CDC_VIEW;
 	}
 
+      ddl_type = CDC_DROP;
+
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
 	{
 	  entity = entity_spec->info.spec.flat_entity_list;
