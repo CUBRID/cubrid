@@ -3164,21 +3164,15 @@ create_stmt
                                    PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
                                    if (val)                    
                                      {
-                                        int     err;
                                         char    cipher[512];
 
                                         val->type_enum = PT_TYPE_CHAR;
                                         val->info.value.string_type = ' ';
 
-                                        err = pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher));
-                                        if (err == NO_ERROR)
+                                        if (pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher)) == NO_ERROR)
                                         {
                                           val->info.value.data_value.str =
                                                 pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
-                                        }
-                                        else if (!pt_has_error (this_parser))
-                                        {
-                                           PT_ERROR (this_parser, val, "Failed to check PASSWORD.");
                                         }
                                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
                                      }
@@ -25062,23 +25056,16 @@ connect_item
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
-                        int     err;
                         char    cipher[512];
 
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
 
-                        err = pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher));
-                        if (err == NO_ERROR)
+                        if (pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher)) == NO_ERROR)
                           {
                              val->info.value.data_value.str =
                                 pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
                           }
-                        else if (!pt_has_error (this_parser))
-                          {
-                                PT_ERROR (this_parser, val, "Failed to check PASSWORD.");
-                          }
-
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 		   }
 
@@ -25091,23 +25078,16 @@ connect_item
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
-                        int     err;                        
                         char    cipher[512];
 
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
 
-                        err = pt_check_dblink_password(this_parser, $3, cipher, sizeof(cipher));
-                        if (err == NO_ERROR)
+                        if (pt_check_dblink_password(this_parser, $3, cipher, sizeof(cipher)) == NO_ERROR)
                           {                             
                              val->info.value.data_value.str =
                                 pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
                           }
-                        else if (!pt_has_error (this_parser))
-                          {
-                                PT_ERROR (this_parser, val, "Failed to check PASSWORD.");
-                          }  
-
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 		   }
 

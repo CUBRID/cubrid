@@ -18599,7 +18599,9 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 
   if (ciper_buf_size <= max_len)
     {
-      return ER_FAILED;
+      err = ER_TF_BUFFER_OVERFLOW;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto ret_pos;
     }
 
   if (passwd && *passwd)
@@ -18618,10 +18620,23 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 	  if (!str)
 	    {
 	      err = ER_FAILED;
+	      goto ret_pos;
 	    }
 	  else
 	    {
 	      strcpy (cipher_buf, str);
+	    }
+	}
+      else
+	{
+	  if (err == ER_DBLINK_PASSWORD_OVER_MAX_LENGTH)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_PASSWORD_ENCRYPT, 1, err);
+	      err = ER_DBLINK_PASSWORD_ENCRYPT;
 	    }
 	}
       pr_clear_value (&val);
@@ -18631,6 +18646,19 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
       // A encrypted password from the raw password.      
       strcpy (cipher_buf, passwd);
       err = NO_ERROR;
+    }
+
+ret_pos:
+  if (err != NO_ERROR)
+    {
+      if (er_errid_if_has_error () != NO_ERROR)
+	{
+	  PT_ERROR (parser, pt_top (parser), (char *) er_msg ());
+	}
+      else if (!pt_has_error (parser))
+	{
+	  PT_ERROR (parser, pt_top (parser), "Failed to check PASSWORD.");
+	}
     }
 
   return err;
