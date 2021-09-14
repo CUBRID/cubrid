@@ -4934,7 +4934,7 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
 
 int
 log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name, int cached_num, OID * classoid,
-				OID * serial_oid)
+				const OID * serial_oid)
 {
   assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
 
@@ -4946,7 +4946,6 @@ log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name
 
   char *ptr, *start_ptr;
 
-  LOG_TDES *tdes;
   if (cached_num == 0)
     {
       cached_num = 1;
@@ -4973,17 +4972,10 @@ log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name
 
   data_len = ptr - start_ptr;
 
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-
-  if (!tdes->has_supplemental_log)
-    {
-      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
-				    tdes->client.get_db_user ());
-      tdes->has_supplemental_log = true;
-    }
 
   log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
 
+  return NO_ERROR;
 }
 
 /*

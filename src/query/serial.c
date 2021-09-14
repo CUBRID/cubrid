@@ -584,7 +584,21 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
     {
-      log_append_supplemental_serial (thread_p, db_get_string (&key_val), entry->cached_num, NULL, &entry->oid);
+
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      if (tdes)
+	{
+	  if (!tdes->has_supplemental_log)
+	    {
+	      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					    tdes->client.get_db_user ());
+
+	      tdes->has_supplemental_log = true;
+	    }
+	}
+
+      (void) log_append_supplemental_serial (thread_p, db_get_string (&key_val), entry->cached_num, NULL, &entry->oid);
     }
 
   pr_clear_value (&key_val);
@@ -818,8 +832,22 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
     {
-      log_append_supplemental_serial (thread_p, db_get_string (&key_val), entry->cached_num, NULL, &entry->oid);
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      if (tdes)
+	{
+	  if (!tdes->has_supplemental_log)
+	    {
+	      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					    tdes->client.get_db_user ());
+
+	      tdes->has_supplemental_log = true;
+	    }
+	}
+
+      (void) log_append_supplemental_serial (thread_p, db_get_string (&key_val), cached_num, NULL, serial_oidp);
     }
+
 
   /* copy result value */
   pr_share_value (&next_val, result_num);

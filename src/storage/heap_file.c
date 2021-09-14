@@ -16692,8 +16692,21 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
 	  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	    {
+	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+	      if (tdes)
+		{
+		  if (!tdes->has_supplemental_log)
+		    {
+		      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER,
+						    strlen (tdes->client.get_db_user ()), tdes->client.get_db_user ());
+
+		      tdes->has_supplemental_log = true;
+		    }
+		}
+
 	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	      log_append_supplemental_serial (thread_p, serial_name, 1, &att->classoid, &serial_obj_oid);
+	      (void) log_append_supplemental_serial (thread_p, serial_name, 1, &att->classoid, &serial_obj_oid);
 	      thread_p->no_supplemental_log = false;
 	    }
 	}
@@ -20574,6 +20587,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 {
   OID overflow_oid;
   int rc;
+  int error_code;
 
   LOG_TDES *tdes = NULL;
 
@@ -20601,10 +20615,10 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
     {
       /* whether it is mvcc or not, undo image does not recorded in the log */
       RECDES ovf_recdes = RECDES_INITIALIZER;
-      if ((rc =
+      if ((error_code =
 	   heap_get_bigone_content (thread_p, context->scan_cache_p, PEEK, &overflow_oid, &ovf_recdes)) != S_SUCCESS)
 	{
-	  return rc;
+	  return error_code;
 	}
 
       log_append_supplemental_undo_record (thread_p, &ovf_recdes);
@@ -21088,7 +21102,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  if (context->do_supplemental_log)
 	    {
 	      /* relocation -> relocation case does not have any undo image to refer */
-	      log_append_supplemental_undo_record (thread_p, &new_forward_recdes);
+	      (void) log_append_supplemental_undo_record (thread_p, &new_forward_recdes);
 
 	      /* SUPPLEMENT_DELETE UNDO LSA */
 	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
@@ -21512,7 +21526,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  /* undo lsa for SUPPLEMENT_DELETE : when REC_HOME is not changed  */
 	  if (context->do_supplemental_log)
 	    {
-	      log_append_supplemental_undo_record (thread_p, &built_recdes);
+	      (void) log_append_supplemental_undo_record (thread_p, &built_recdes);
 	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	    }
 
@@ -22834,7 +22848,8 @@ error:
   if (context->do_supplemental_log && !LSA_ISNULL (&context->supp_redo_lsa)
       && context->recdes_p->type != REC_ASSIGN_ADDRESS)
     {
-      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
+      (void) log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL,
+					  &context->supp_redo_lsa);
     }
 
   /* all ok */
@@ -23023,7 +23038,8 @@ error:
 
   if (context->do_supplemental_log == true)
     {
-      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa, NULL);
+      (void) log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa,
+					  NULL);
     }
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -23264,8 +23280,8 @@ exit:
 
   if (context->do_supplemental_log == true)
     {
-      log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
-				   &context->supp_redo_lsa);
+      (void) log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
+					  &context->supp_redo_lsa);
     }
 
   return rc;

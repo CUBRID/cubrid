@@ -3327,9 +3327,9 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+      if (error >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
 	{
-	  do_supplemental_statement (parser, statement);
+	  (void) do_supplemental_statement (parser, statement);
 	}
     }
 
@@ -3785,9 +3785,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+  if (err >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
     {
-      do_supplemental_statement (parser, statement);
+      (void) do_supplemental_statement (parser, statement);
     }
 
 end:
@@ -14912,9 +14912,11 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
     case PT_CREATE_TRIGGER:
       target = PT_NODE_TR_TARGET (statement);
-      classname = target->info.event_target.class_name->info.name.original;
-
-      classoid = ws_oid (sm_find_class (classname));
+      if (target)
+	{
+	  classname = target->info.event_target.class_name->info.name.original;
+	  classoid = ws_oid (sm_find_class (classname));
+	}
 
       ddl_type = CDC_CREATE;
       objtype = CDC_TRIGGER;
