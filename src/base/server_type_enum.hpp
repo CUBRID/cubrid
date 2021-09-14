@@ -18,6 +18,7 @@
 
 #ifndef _SERVER_TYPE_ENUM_H_
 #define _SERVER_TYPE_ENUM_H_
+#include <assert.h>
 
 typedef enum
 {
@@ -33,4 +34,38 @@ enum class server_type_config
   PAGE,
   SINGLE_NODE,
 };
+
+constexpr const char *
+server_type_to_string (SERVER_TYPE type)
+{
+  switch (type)
+    {
+    case SERVER_TYPE_UNKNOWN:
+      return "unknown";
+    case SERVER_TYPE_TRANSACTION:
+      return "transaction";
+    case SERVER_TYPE_PAGE:
+      return "page";
+    case SERVER_TYPE_ANY:
+      return "any";
+    default:
+      assert (false);
+    }
+}
+
+constexpr const char *
+server_type_config_to_string (server_type_config type)
+{
+  switch (type)
+    {
+    case server_type_config::PAGE:
+      return "page";
+    case server_type_config::TRANSACTION:
+      return "transaction";
+    case server_type_config::SINGLE_NODE:
+      return "single_node";
+    default:
+      assert (false);
+    }
+}
 #endif // _SERVER_TYPE_ENUM_H_

@@ -337,11 +337,11 @@ argument_handler (int argc, char **argv)
 	{
 	case SERVER_TYPE_SHORT:
 	  // *INDENT-ON*
-	  if (std::strcmp (optarg, "transaction") == 0)
+	  if (std::strcmp (optarg, server_type_to_string (SERVER_TYPE_TRANSACTION)) == 0)
 	    {
 	      set_server_type (SERVER_TYPE_TRANSACTION);
 	    }
-	  else if (std::strcmp (optarg, "page") == 0)
+	  else if (std::strcmp (optarg, server_type_to_string (SERVER_TYPE_PAGE)) == 0)
 	    {
 	      set_server_type (SERVER_TYPE_PAGE);
 	    }
