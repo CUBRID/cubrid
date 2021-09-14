@@ -3327,9 +3327,9 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
 	{
-	  do_supplemental_statement (parser, statement);
+	  (void) do_supplemental_statement (parser, statement);
 	}
     }
 
@@ -3785,9 +3785,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
     {
-      do_supplemental_statement (parser, statement);
+      (void) do_supplemental_statement (parser, statement);
     }
 
 end:
