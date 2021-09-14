@@ -137,8 +137,6 @@ static bool commdb_Arg_deact_confirm_no_server = false;
 static char *commdb_Arg_host_name = NULL;
 static bool commdb_Arg_ha_start_util_process = false;
 static char *commdb_Arg_ha_util_process_args = NULL;
-static bool commdb_Arg_single_node = false;
-
 /*
  * send_request_no_args() - send request without argument
  *   return: request id if success, otherwise 0
@@ -1091,18 +1089,17 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
   if ((commdb_Arg_server_name) && (!commdb_Arg_halt_shutdown))
     {
-      if (!commdb_Arg_single_node)
+      // kill the transaction server first
+      pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_TRANSACTION);
+      if (pid != 0)
 	{
-	  pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_ANY);
 	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
 	}
-      else
+
+      // and then the page server
+      pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_PAGE);
+      if (pid != 0)
 	{
-	  // kill the transaction server first
-	  pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_TRANSACTION);
-	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
-	  // and then the page server
-	  pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_PAGE);
 	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
 	}
     }
@@ -1249,7 +1246,6 @@ main (int argc, char **argv)
     {COMMDB_HOST_L, 1, 0, COMMDB_HOST_S},
     {COMMDB_HA_ADMIN_INFO_L, 0, 0, COMMDB_HA_ADMIN_INFO_S},
     {COMMDB_HA_START_UTIL_PROCESS_L, 1, 0, COMMDB_HA_START_UTIL_PROCESS_S},
-    {COMMDB_STOP_SINGLE_NODE_L, 0, 0, COMMDB_STOP_SINGLE_NODE_S},
     {0, 0, 0, 0}
   };
 
@@ -1311,9 +1307,6 @@ main (int argc, char **argv)
 	      free_and_init (commdb_Arg_server_name);
 	    }
 	  commdb_Arg_server_name = strdup (optarg);
-	  break;
-	case COMMDB_STOP_SINGLE_NODE_S:
-	  commdb_Arg_single_node = true;
 	  break;
 	case 'c':
 	  if (commdb_Arg_ha_mode_server_name != NULL)

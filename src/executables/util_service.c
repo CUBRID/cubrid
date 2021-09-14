@@ -1765,18 +1765,9 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 			}
 		    }
 #endif /* !WINDOWS */
-		  if (server_type_config::SINGLE_NODE ==
-		      (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE))
-		    {
-		      const char *args[] =
-			{ UTIL_COMMDB_NAME, COMMDB_SINGLE_NODE_STOP, COMMDB_SERVER_STOP, token, NULL };
-		      status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
-		    }
-		  else
-		    {
-		      const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SERVER_STOP, token, NULL };
-		      status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
-		    }
+
+		  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SERVER_STOP, token, NULL };
+		  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 		}
 	      print_result (PRINT_SERVER_NAME, status, command_type);
 	    }
