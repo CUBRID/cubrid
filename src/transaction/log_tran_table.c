@@ -6142,7 +6142,7 @@ log_tdes::on_sysop_start ()
       LSA_SET_NULL (&tail_lsa);
       LSA_SET_NULL (&undo_nxlsa);
       LSA_SET_NULL (&tail_topresult_lsa);
-      LSA_SET_NULL (&commit_abort_lsa);
+      assert (commit_abort_lsa.is_null ());
       LSA_SET_NULL (&rcv.tran_start_postpone_lsa);
       LSA_SET_NULL (&rcv.sysop_start_postpone_lsa);
     }
@@ -6160,7 +6160,7 @@ log_tdes::on_sysop_end ()
       LSA_SET_NULL (&tail_lsa);
       LSA_SET_NULL (&undo_nxlsa);
       LSA_SET_NULL (&tail_topresult_lsa);
-      LSA_SET_NULL (&commit_abort_lsa);
+      assert (commit_abort_lsa.is_null ());
     }
 }
 
