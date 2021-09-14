@@ -3178,6 +3178,12 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   copy_cnt = -1;
 
   /* 1.main query check (statement) */
+  /* NO_PUSH_PRED hint check */
+  if (statement->info.query.q.select.hint & PT_HINT_NO_PUSH_PRED)
+    {
+      return 0;
+    }
+
   /* do NOT copy-push for a hierarchical query */
   if (statement->info.query.q.select.connect_by != NULL)
     {
