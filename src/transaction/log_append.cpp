@@ -274,7 +274,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
   LOG_PRIOR_NODE *node;
   int error_code = NO_ERROR;
 
-  // TODO: extract alloc and init in separate function
   node = (LOG_PRIOR_NODE *) malloc (sizeof (LOG_PRIOR_NODE));
   if (node == NULL)
     {
@@ -412,7 +411,6 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, L
   LOG_PRIOR_NODE *node;
   int error = NO_ERROR;
 
-  // TODO: extract alloc and init in separate function
   node = (LOG_PRIOR_NODE *) malloc (sizeof (LOG_PRIOR_NODE));
   if (node == NULL)
     {
