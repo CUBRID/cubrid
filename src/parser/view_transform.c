@@ -1398,7 +1398,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
   cpi.check_xxxnum = !is_only_spec;
-  cpi.check_analytic = false;	/* analytic functions are pushable */
+  cpi.check_analytic = true;	/* analytic functions are not pushable */
 
   cpi.method_found = false;
   cpi.query_found = false;
