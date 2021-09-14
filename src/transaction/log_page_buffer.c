@@ -6652,7 +6652,7 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
   return fileio_is_volume_exist (log_Name_active);
 }
 
-/*
+/* logpb_checkpoint_trans - checkpoint a transaction if it is valid for checkpointing
  */
 void
 logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, int &ntrans, int &ntops,
