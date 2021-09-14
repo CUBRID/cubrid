@@ -3159,6 +3159,32 @@ create_stmt
                                 si->dbname = CONTAINER_AT_2($5);
                                 si->user = CONTAINER_AT_3($5);
                                 si->pwd = CONTAINER_AT_4($5);
+                                if(si->pwd == NULL)
+                                {
+                                   PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+                                   if (val)                    
+                                     {
+                                        int     err;
+                                        char    cipher[512];
+
+                                        val->type_enum = PT_TYPE_CHAR;
+                                        val->info.value.string_type = ' ';
+
+                                        err = pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher));
+                                        if (err == NO_ERROR)
+                                        {
+                                          val->info.value.data_value.str =
+                                                pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
+                                        }
+                                        else if (!pt_has_error (this_parser))
+                                        {
+                                           PT_ERROR (this_parser, val, "Failed to check PASSWORD.");
+                                        }
+                                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+                                     }
+                                     si->pwd = val;
+                                }
+
                                 if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
                                   { 
                                       PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
