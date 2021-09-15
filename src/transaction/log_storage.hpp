@@ -164,7 +164,7 @@ struct log_header
   INT8 dummy4;
   LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in active log */
   LOG_LSA append_lsa;		/* Current append location */
-  LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the recovery process */
+  LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the recovery (analysis) process at */
   LOG_PAGEID nxarv_pageid;	/* Next logical page to archive */
   LOG_PHY_PAGEID nxarv_phy_pageid;	/* Physical location of logical page to archive */
   int nxarv_num;		/* Next log archive number */
