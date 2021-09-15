@@ -6927,8 +6927,6 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
 LOG_PAGEID
 logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
-#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
-
   LOG_TDES *tdes;		/* System transaction descriptor */
   LOG_LSA prev_chkpt_lsa;	/* copy of log_Gl.hdr.chkpt_lsa */
   LOG_LSA prev_chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
@@ -6947,7 +6945,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int first_arv_num_not_needed;
   int last_arv_num_not_needed;
   int flushed_page_cnt = 0, vdes;
-  bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+  const bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
   if (is_tran_server_with_remote_storage ())
     {
@@ -7310,6 +7309,8 @@ error_cannot_chkpt:
 int
 logpb_checkpoint_trantable (THREAD_ENTRY * thread_p)
 {
+  const bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+
   if (!is_tran_server_with_remote_storage ())
     {
       er_log_debug (ARG_FILE_LINE,
@@ -7317,9 +7318,10 @@ logpb_checkpoint_trantable (THREAD_ENTRY * thread_p)
       return ER_FAILED;
     }
 
-  er_log_debug (ARG_FILE_LINE, "checkpointing trantable started\n");
-
-  er_log_debug (ARG_FILE_LINE, "checkpointing trantable ended\n");
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "logpb_checkpoint_trantable\n");
+    }
 
   return NO_ERROR;
 }
