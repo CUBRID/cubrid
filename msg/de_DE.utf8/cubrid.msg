@@ -1353,7 +1353,24 @@ $ LOADDB
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
 
-1284 Letzter Fehler
+1284 dblink - %1$s
+1285 dblink - invalid number of columns specified.
+1286 dblink - catalog _db_server class not found.
+1287 dblink - server "%1$s" not found.
+1288 dblink - server "%1$s" already exists.
+1289 dblink - Cannot update server object.
+1290 dblink - unsupported type.
+1291 dblink - invalid bind param.
+1292 dblink - password length exceeds max size.
+1293 dblink - encrypted password length is incorrect.
+1294 dblink - the checksum of the encrypted password does not match.
+1295 dblink - invalid cipher string format.
+1296 dblink - Failed to decryption password. error=%1$d".
+1297 dblink - Failed to encryption password. error=%1$d".
+1298 dblink - Multiple "%1$s" Server found.
+1299 dblink - Not allowed "%1$s" Server. 
+
+1300 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -1818,6 +1835,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unerwartete Anzahl von Argumenten %1$d.
 304 Konnte keine kompatible Signatur für die Funktion finden %1$s().
 305 Die Signatur %1$s ist nicht mit Funktionsargumenten kompatibel.
+306 dblink - Erforderliche Informationen fehlen.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.

@@ -1370,6 +1370,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1297 dblink - Failed to encryption password. error=%1$d".
 1298 dblink - Multiple "%1$s" Server found.
 1299 dblink - Not allowed "%1$s" Server. 
+
 1300 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1836,8 +1837,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unexpected number of arguments %1$d.
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
-306 dblink - The server '%1$s' already exists.
-307 dblink - Required information is missing.
+306 dblink - Required information is missing.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
@@ -1921,8 +1921,6 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
 82 Invalid JSON: '%1$s'.
-83 The server '%1$s' is not defined.
-84 The owner or DBA can only alter the definition of the target server.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** invalid cache ***
