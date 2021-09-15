@@ -322,6 +322,7 @@ static cubthread::daemon *log_Clock_daemon = NULL;
 static cubthread::daemon *log_Checkpoint_daemon = NULL;
 static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
 static cubthread::daemon *log_Check_ha_delay_info_daemon = NULL;
+static cubthread::daemon *log_Checkpoint_trantable_daemon = nullptr;
 
 static cubthread::daemon *log_Flush_daemon = NULL;
 static std::atomic<bool> log_Flush_has_been_requested = {false};
@@ -9618,6 +9619,7 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
 /*
  * log_get_log_group_commit_interval () - setup flush daemon period based on system parameter
  */
@@ -9626,13 +9628,11 @@ log_get_log_group_commit_interval (bool & is_timed_wait, cubthread::delta_time &
 {
   is_timed_wait = true;
 
-#if defined (SERVER_MODE)
   if (log_Flush_has_been_requested)
     {
       period = std::chrono::milliseconds (0);
       return;
     }
-#endif /* SERVER_MODE */
 
   const int MAX_WAIT_TIME_MSEC = 1000;
   int log_group_commit_interval_msec = prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
@@ -9648,7 +9648,9 @@ log_get_log_group_commit_interval (bool & is_timed_wait, cubthread::delta_time &
       period = std::chrono::milliseconds (log_group_commit_interval_msec);
     }
 }
+#endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE)
 /*
  * log_get_checkpoint_interval () - setup log checkpoint daemon period based on system parameter
  */
@@ -9671,6 +9673,7 @@ log_get_checkpoint_interval (bool & is_timed_wait, cubthread::delta_time & perio
       is_timed_wait = false;
     }
 }
+#endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
 /*
@@ -9754,6 +9757,20 @@ log_checkpoint_execute (cubthread::entry & thread_ref)
     }
 
   logpb_checkpoint (&thread_ref);
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+static void
+log_checkpoint_trantable_execute(cubthread::entry &thread_ref)
+{
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // wait for boot to finish
+      return;
+    }
+
+  logpb_checkpoint_trantable(&thread_ref);
 }
 #endif /* SERVER_MODE */
 
@@ -10035,6 +10052,23 @@ log_checkpoint_daemon_init ()
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+void
+log_checkpoint_trantable_daemon_init()
+{
+  assert (log_Checkpoint_trantable_daemon == nullptr);
+
+  if (is_tran_server_with_remote_storage())
+    {
+      cubthread::looper looper { std::chrono::seconds(59) };
+      cubthread::entry_callable_task *daemon_task =
+          new cubthread::entry_callable_task (log_checkpoint_trantable_execute);
+      log_Checkpoint_trantable_daemon =
+          cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint_trantable");
+    }
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
 /*
  * log_remove_log_archive_daemon_init () - initialize remove log archive daemon
  */
@@ -10118,6 +10152,7 @@ log_daemons_init ()
 {
   log_remove_log_archive_daemon_init ();
   log_checkpoint_daemon_init ();
+  log_checkpoint_trantable_daemon_init ();
   log_check_ha_delay_info_daemon_init ();
   log_clock_daemon_init ();
   log_flush_daemon_init ();
@@ -10133,6 +10168,7 @@ log_daemons_destroy ()
 {
   cubthread::get_manager ()->destroy_daemon (log_Remove_log_archive_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Checkpoint_daemon);
+  cubthread::get_manager ()->destroy_daemon (log_Checkpoint_trantable_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Check_ha_delay_info_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Clock_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Flush_daemon);
