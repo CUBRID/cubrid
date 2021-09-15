@@ -25106,6 +25106,10 @@ connect_item
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
+                        if( $3 && $3[0] &&  $3[0] != '?' )
+                        {                           
+                           PT_ERROR (this_parser, val, "Invalid properties of connection information for dblink");
+                        }
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
                         val->info.value.data_value.str =
