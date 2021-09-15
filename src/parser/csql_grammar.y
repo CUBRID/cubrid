@@ -1066,6 +1066,8 @@ int g_original_buffer_len;
 %type <node> json_table_column_rule
 %type <node> json_table_column_list_rule
 
+%type <node> dblink_server_name
+%type <node> server_identifier
 %type <node> dblink_expr
 %type <node> dblink_conn
 %type <node> dblink_conn_str
@@ -3130,12 +3132,17 @@ create_stmt
 
 		DBG_PRINT}}
 
-	| CREATE SERVER identifier '(' connect_info ')'
+	| CREATE SERVER dblink_server_name '(' connect_info ')'
 		{{
                         PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SERVER);
 			if (node)
 			  {
                                 node->info.create_server.server_name = $3;
+                                if ($3->next)
+                                  {
+                                     node->info.create_server.owner_name = $3->next;
+                                     $3->next = NULL;
+                                  }
 
                                 PT_CREATE_SERVER_INFO *si = &node->info.create_server;
                                 /* container order
@@ -3151,14 +3158,32 @@ create_stmt
                                 si->port = CONTAINER_AT_1($5);
                                 si->dbname = CONTAINER_AT_2($5);
                                 si->user = CONTAINER_AT_3($5);
-                                if( !si->host || !si->port || !si->dbname || !si->user )
+                                si->pwd = CONTAINER_AT_4($5);
+                                if(si->pwd == NULL)
+                                {
+                                   PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+                                   if (val)                    
+                                     {
+                                        char    cipher[512];
+
+                                        val->type_enum = PT_TYPE_CHAR;
+                                        val->info.value.string_type = ' ';
+
+                                        if (pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher)) == NO_ERROR)
+                                        {
+                                          val->info.value.data_value.str =
+                                                pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
+                                        }
+                                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+                                     }
+                                     si->pwd = val;
+                                }
+
+                                if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
                                   { 
                                       PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
                                   }
-
-                                si->pwd = CONTAINER_AT_4($5);
-                                assert(si->pwd); 
                                 si->prop = CONTAINER_AT_5($5);
                                 si->comment = CONTAINER_AT_6($5);
 			  }
@@ -3892,7 +3917,7 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER  SERVER  identifier alter_server_list
+	| ALTER  SERVER  dblink_server_name alter_server_list
                 {{
                         PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERVER);
 			if (node)
@@ -3903,6 +3928,11 @@ alter_stmt
                                 PT_ALTER_SERVER_INFO *server = &node->info.alter_server;
 
                                 node->info.alter_server.server_name = $3;
+                                if ($3->next)
+                                  {
+                                     node->info.alter_server.current_owner_name = $3->next;
+                                     $3->next = NULL;
+                                  }                                
                                 is_not_allowed = (bool)(item_bits == 0);
 
                                 /* container order
@@ -3929,14 +3959,7 @@ alter_stmt
                                 if (item_bits & (0x01 << CONN_INFO_HOST))
                                 {
                                     server->xbits.bit_host = 1;
-                                    if (server->host->node_type == PT_NAME)
-                                      {
-                                        str = server->host->info.name.original;
-                                      }
-                                    else
-                                      {
-                                        str = (char *) PT_VALUE_GET_BYTES (server->host);
-                                      }                                    
+                                    str = (char *) PT_VALUE_GET_BYTES (server->host);                                                                       
                                     is_not_allowed |= (!str || str[0] == '\0');
                                 }
                                 if (item_bits & (0x01 << CONN_INFO_PORT))
@@ -4064,13 +4087,15 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME SERVER identifier AS identifier
+	| RENAME SERVER dblink_server_name AS identifier
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SERVER);
 			if (node)
 			  {
-			    node->info.rename_server.new_name = $5;
 			    node->info.rename_server.old_name = $3;
+                            node->info.rename_server.owner_name = $3->next;
+                            $3->next = NULL;
+                            node->info.rename_server.new_name = $5;
 			  }
 
 			$$ = node;
@@ -4375,7 +4400,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP SERVER opt_if_exists identifier
+	| DROP SERVER opt_if_exists dblink_server_name
 		{{
                         PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERVER);
 
@@ -4383,6 +4408,11 @@ drop_stmt
 			  {
                             node->info.drop_server.if_exists = $3;
 			    node->info.drop_server.server_name = $4;
+                            if ($4->next)
+                              {
+                                node->info.drop_server.owner_name = $4->next;
+                                $4->next = NULL;
+                              }
 			  }
 
 			$$ = node;
@@ -24972,35 +25002,24 @@ connect_info
         ;
 
 connect_item    
-        :  HOST '=' identifier 
+        :  HOST '=' CHAR_STRING 
           {{
                 container_2 ctn;
-
-                if( pt_check_hostname($3->info.name.original) == false )
-                  {
-                        PT_NODE* node = pt_top(this_parser);     
-                        PT_ERROR (this_parser, node, "Incorrect hostname format");
-                  }
-
-                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_HOST), $3);
-                $$ = ctn;
-            DBG_PRINT}}
-        | HOST '=' IPV4_ADDRESS
-          {{
-                container_2 ctn;
-    		PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
                 if (val)
-                   {
-                        val->info.value.data_value.str =
-                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
-                        val->type_enum = PT_TYPE_CHAR;
-                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
-                   }
-                
+                  {
+                     val->info.value.data_value.str =
+                               pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                     val->type_enum = PT_TYPE_CHAR;
+                     if (!pt_check_ipv4($3) && !pt_check_hostname($3))
+                     { 
+                        PT_ERROR (this_parser, val, "Incorrect hostname format");
+                     }
+                     PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+                  }
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_HOST), val);
                 $$ = ctn;
-
-	   DBG_PRINT}}
+            DBG_PRINT}}
         | PORT '=' UNSIGNED_INTEGER 
           {{
                 container_2 ctn;
@@ -25037,23 +25056,16 @@ connect_item
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
-                        int     err;
                         char    cipher[512];
 
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
 
-                        err = pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher));
-                        if (err == NO_ERROR)
+                        if (pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher)) == NO_ERROR)
                           {
                              val->info.value.data_value.str =
                                 pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
                           }
-                        else if (!pt_has_error (this_parser))
-                          {
-                                PT_ERROR (this_parser, val, "Failed to check PASSWORD.");
-                          }
-
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 		   }
 
@@ -25066,23 +25078,16 @@ connect_item
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
-                        int     err;                        
                         char    cipher[512];
 
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
 
-                        err = pt_check_dblink_password(this_parser, $3, cipher, sizeof(cipher));
-                        if (err == NO_ERROR)
+                        if (pt_check_dblink_password(this_parser, $3, cipher, sizeof(cipher)) == NO_ERROR)
                           {                             
                              val->info.value.data_value.str =
                                 pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
                           }
-                        else if (!pt_has_error (this_parser))
-                          {
-                                PT_ERROR (this_parser, val, "Failed to check PASSWORD.");
-                          }  
-
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 		   }
 
@@ -25101,6 +25106,10 @@ connect_item
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
+                        if( $3 && $3[0] &&  $3[0] != '?' )
+                        {                           
+                           PT_ERROR (this_parser, val, "Invalid properties of connection information for dblink");
+                        }
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
                         val->info.value.data_value.str =
@@ -25147,12 +25156,7 @@ alter_server_list
 alter_server_item
         : OWNER TO identifier
           {{
-                container_2 ctn;
-
-                if (db_find_user ($3->info.name.original) == NULL)
-                  {                      
-                      PT_ERRORf (this_parser, pt_top(this_parser), "Invalid user name %s", $3->info.name.original);
-                  }
+                container_2 ctn;                 
 
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_OWNER), $3);
                 $$ = ctn;
@@ -25162,8 +25166,41 @@ alter_server_item
 	        $$ = $2;
            DBG_PRINT}}
         ;
-                
 
+dblink_server_name
+	: identifier DOT server_identifier
+          {{                
+             if($3)
+               {
+                  $3->next = $1;                  
+               }
+             else if($1)
+               {
+                  parser_free_node (this_parser, $1);
+               }  
+              $$ = $3;
+              PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+          DBG_PRINT}}
+        | server_identifier
+          {{
+              $$ = $1;
+          DBG_PRINT}}
+        ;
+
+server_identifier
+        : identifier
+            {{  
+                if ($1)
+                  {                
+                     if (strchr($1->info.name.original, '.')) 
+                       {                 
+                          PT_ERRORm (this_parser, $1, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_SERVER_NAME);
+                       }
+                  }
+                $$ = $1;
+                PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
+         ;
 dblink_expr
         :   dblink_conn  ','  CHAR_STRING  
             {{
@@ -25194,6 +25231,11 @@ dblink_expr
                         {
                                 ct->info.dblink_table.is_name = true;
                                 ct->info.dblink_table.conn = $1;
+                                if ($1->next)
+                                  {
+                                    ct->info.dblink_table.owner_name = $1->next;
+                                    $1->next = NULL;
+                                  }
                         }
                         else // ( $1->node_type == PT_VALUE )
                         {
@@ -25215,19 +25257,9 @@ dblink_expr
         ;
 
 dblink_conn:
-        IdName
-        {{
-                char* str_name = $1;
-                int   str_len = strlen(str_name);
-                PT_NODE* p = parser_new_node (this_parser, PT_NAME);
-                if (p)
-                {
-                        PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-                        str_name = pt_check_identifier (this_parser, p, str_name, str_len);
-                        p->info.name.original = str_name;
-                }
-                $$ = p;
-                PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+        dblink_server_name      
+        {{  
+                $$ = $1;                
                 DBG_PRINT}}
         | dblink_conn_str
         {{
@@ -28589,7 +28621,8 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
     ctn->c10 = FROM_NUMBER(set_bits);
 }
 
-static bool pt_ct_check_select (char* p, char *perr_msg)
+static bool 
+pt_ct_check_select (char* p, char *perr_msg)
 {  
    perr_msg[0] = 0x00;
    while (*p == ' ' || *p == '(' || *p == '\t' || *p == '\r' || *p == '\n')

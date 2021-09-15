@@ -820,18 +820,26 @@ pt_check_hostname (char *p)
   //   ^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
   // case RFC 952) Hostname segment cannot start with a number
   //   ^(([a-zA-Z]|[a-zA-Z][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z]|[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9])$
-  // The total length of the hostname must not exceed 255 characters
+  // The length of the part separated by '.' is from 1 to 63 characters.
+  // The total length of the hostname must not exceed 255 characters.
   bool isdot = false;
   char *s = p;
+  char *t = p;
 
   if (char_isalnum (*p) == 0)
-    return false;
+    {
+      return false;
+    }
 
   for (p++; *p; p++)
     {
       if (*p == '.')
 	{
 	  if (char_isalnum (p[-1]) == 0)
+	    {
+	      return false;
+	    }
+	  else if (63 < (int) (p - t))
 	    {
 	      return false;
 	    }
@@ -843,6 +851,7 @@ pt_check_hostname (char *p)
 	    {
 	      return false;
 	    }
+	  t = p;
 	  isdot = false;
 	}
       else if ((char_isalnum (*p) == 0) && (*p != '-'))
@@ -852,6 +861,10 @@ pt_check_hostname (char *p)
     }
 
   if (isdot || (p[-1] == '-'))
+    {
+      return false;
+    }
+  else if (63 < (int) (p - t))
     {
       return false;
     }

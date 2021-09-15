@@ -3272,6 +3272,7 @@ typedef struct host_vars_info
 typedef struct pt_dblink_info
 {
   PT_NODE *conn;		/* name for DBLINK */
+  PT_NODE *owner_name;
   PT_NODE *url;			/* url info */
   PT_NODE *user;
   PT_NODE *pwd;
@@ -3286,6 +3287,7 @@ typedef struct pt_dblink_info
 typedef struct pt_create_server_info
 {
   PT_NODE *server_name;
+  PT_NODE *owner_name;
   PT_NODE *host;
   PT_NODE *port;
   PT_NODE *dbname;
@@ -3298,6 +3300,7 @@ typedef struct pt_create_server_info
 typedef struct pt_alter_server_info
 {
   PT_NODE *server_name;
+  PT_NODE *current_owner_name;
   PT_NODE *host;
   PT_NODE *port;
   PT_NODE *dbname;
@@ -3322,12 +3325,14 @@ typedef struct pt_alter_server_info
 typedef struct pt_drop_server_info
 {
   bool if_exists;		/* IF EXISTS clause for DROP SERVER */
+  PT_NODE *owner_name;		/* name */
   PT_NODE *server_name;		/* name */
 } PT_DROP_SERVER_INFO;
 
 typedef struct pt_rename_server_info
 {
   PT_NODE *old_name;		/* PT_NAME */
+  PT_NODE *owner_name;		/* name */
   PT_NODE *new_name;		/* PT_NAME */
 } PT_RENAME_SERVER_INFO;
 

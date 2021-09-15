@@ -184,6 +184,7 @@ static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, boo
 
 static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is_external);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
+static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name);
 
 /*
  * initialize_serial_invariant() - initialize a serial invariant
@@ -17810,6 +17811,7 @@ exit:
 #define SERVER_ATTR_COMMENT     "comment"
 #define SERVER_ATTR_PASSWORD    "password"
 #define SERVER_ATTR_OWNER       "owner"
+#define SERVER_ATTR_LINK_NAME_BUF_SIZE  (255)	// link_name varchar(255)
 
 static MOP
 do_get_server_obj_id (DB_IDENTIFIER * server_obj_id, DB_OBJECT * server_class_mop, const char *server_name)
@@ -17820,68 +17822,35 @@ do_get_server_obj_id (DB_IDENTIFIER * server_obj_id, DB_OBJECT * server_class_mo
 int
 do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  DB_OBJECT *server_class = NULL, *server_object = NULL;
-  DB_IDENTIFIER server_obj_id;
-  char *name;
-  int error = NO_ERROR;
-  int save;
-  bool au_disable_flag = false;
+  DB_OBJECT *server_object = NULL;
+  PT_DROP_SERVER_INFO *drop_server;
+  int error;
 
   CHECK_MODIFICATION_ERROR ();
 
-  OID_SET_NULL (&server_obj_id);
-
-  server_class = sm_find_class (CT_DB_SERVER_NAME);
-  if (server_class == NULL)
-    {
-      error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto end;
-    }
-
-  name = (char *) statement->info.drop_server.server_name->info.name.original;
-  server_object = do_get_server_obj_id (&server_obj_id, server_class, name);
+  drop_server = &(statement->info.drop_server);
+  server_object = server_find (drop_server->server_name, drop_server->owner_name, false);
   if (server_object == NULL)
     {
-      if (statement->info.drop_server.if_exists)
+      error = er_errid ();
+      if (drop_server->if_exists && (error == ER_DBLINK_SERVER_NOT_FOUND))
 	{
-	  return NO_ERROR;
+	  error = NO_ERROR;
 	}
-      error = ER_DBLINK_SERVER_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_NOT_DEFINED, name);
-      goto end;
+      return error;
     }
 
+  int save;
   AU_DISABLE (save);
-  au_disable_flag = true;
-
-  /* check if user is creator or DBA  */
-  error = au_check_server_authorization (server_object);
-  if (error != NO_ERROR)
-    {
-      if (error == ER_DBLINK_CANNOT_UPDATE_SERVER)
-	{
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
-	}
-      goto end;
-    }
-
   error = db_drop (server_object);
-
-end:
-  if (au_disable_flag)
-    {
-      AU_ENABLE (save);
-    }
-
+  AU_ENABLE (save);
   return error;
 }
 
 
 static int
-do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * passwd, const char **attr_names,
-			   char **attr_val, int attr_cnt)
+do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * passwd, MOP owner,
+			   const char **attr_names, char **attr_val, int attr_cnt)
 {
   DB_OBJECT *ret_obj = NULL;
   DB_OTMPL *obj_tmpl = NULL;
@@ -17944,7 +17913,7 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
     }
 
   /* owner */
-  db_make_object (&value, Au_user);
+  db_make_object (&value, owner);
   error = dbt_put_internal (obj_tmpl, SERVER_ATTR_OWNER, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -17975,59 +17944,72 @@ end:
 int
 do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  DB_OBJECT *server_class = NULL, *server_object = NULL;
-  DB_IDENTIFIER server_obj_id;
+  DB_OBJECT *server_object = NULL;
   DB_VALUE *pval = NULL;
-  DB_VALUE port_no, passwd, tmp_passwd;
+  DB_VALUE port_no, passwd;
   DB_DATA_STATUS data_stat;
   char *pwd;
   char *attr_val[6];
   const char *attr_names[6] = { SERVER_ATTR_LINK_NAME, SERVER_ATTR_HOST, SERVER_ATTR_DB_NAME,
     SERVER_ATTR_USER_NAME, SERVER_ATTR_PROPERTIES, SERVER_ATTR_COMMENT
   };
-
+  MOP owner_obj = Au_user;
+  char name_buf[SERVER_ATTR_LINK_NAME_BUF_SIZE + 1];	// link_name varchar(255)
   int error = NO_ERROR;
   int save;
-  bool au_disable_flag = false;
 
-  PT_CREATE_SERVER_INFO *si = &statement->info.create_server;
+  PT_CREATE_SERVER_INFO *create_server = &statement->info.create_server;
 
   CHECK_MODIFICATION_ERROR ();
 
   memset (attr_val, 0x00, sizeof (attr_val));
   db_make_null (&passwd);
-  db_make_null (&tmp_passwd);
-  db_make_null (&port_no);
   db_make_int (&port_no, 0);
 
-  server_class = sm_find_class (CT_DB_SERVER_NAME);
-  if (server_class == NULL)
+  if (create_server->owner_name)
     {
-      error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto end;
+      owner_obj = db_find_user ((char *) create_server->owner_name->info.name.original);
+      if (owner_obj == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	    {
+	      error = ER_NET_CANT_CONNECT_SERVER;
+	    }
+	  else
+	    {
+	      error = ER_AU_INVALID_USER;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1,
+		      create_server->owner_name->info.name.original);
+	    }
+	  return error;
+	}
     }
 
-  attr_val[0] = (char *) si->server_name->info.name.original;
-  server_object = do_get_server_obj_id (&server_obj_id, server_class, attr_val[0]);
+  sm_downcase_name ((char *) create_server->server_name->info.name.original, name_buf, SERVER_ATTR_LINK_NAME_BUF_SIZE);
+  attr_val[0] = name_buf;
+  server_object = server_find (create_server->server_name, create_server->owner_name, true);
   if (server_object != NULL)
     {
       error = ER_DBLINK_SERVER_ALREADY_EXISTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, attr_val[0]);
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERVER_ALREADY_EXISTS, attr_val[0]);
+      goto end;
+    }
+
+  error = er_errid ();
+  if (error != ER_DBLINK_SERVER_NOT_FOUND)
+    {
+      if (error == ER_DBLINK_SERVER_MULTIPLE_FOUND)
+	{
+	  error = ER_DBLINK_SERVER_ALREADY_EXISTS;
+	}
       goto end;
     }
 
   /* HOST */
-  assert ((si->host->node_type == PT_NAME) || (si->host->node_type == PT_VALUE));
-  if (si->host->node_type == PT_VALUE)
-    {
-      attr_val[1] = (char *) PT_VALUE_GET_BYTES (si->host);
-    }
-  else
-    {
-      attr_val[1] = (char *) si->host->info.name.original;
-    }
+  assert (create_server->host->node_type == PT_VALUE);
+  attr_val[1] = (char *) PT_VALUE_GET_BYTES (create_server->host);
   if (attr_val[1] == NULL)
     {
       error = ER_FAILED;
@@ -18036,7 +18018,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* PORT */
   db_value_domain_init (&port_no, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
-  pval = pt_value_to_db (parser, si->port);
+  pval = pt_value_to_db (parser, create_server->port);
   if (pval == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -18052,8 +18034,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   pval = NULL;
 
   /* DBNAME */
-  assert (si->dbname->node_type == PT_NAME);
-  attr_val[2] = (char *) si->dbname->info.name.original;
+  assert (create_server->dbname->node_type == PT_NAME);
+  attr_val[2] = (char *) create_server->dbname->info.name.original;
   if (attr_val[2] == NULL)
     {
       error = ER_FAILED;
@@ -18061,8 +18043,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* USER */
-  assert (si->user->node_type == PT_NAME);
-  attr_val[3] = (char *) si->user->info.name.original;
+  assert (create_server->user->node_type == PT_NAME);
+  attr_val[3] = (char *) create_server->user->info.name.original;
   if (attr_val[3] == NULL)
     {
       error = ER_FAILED;
@@ -18070,9 +18052,9 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* PASSWORD */
-  assert (si->pwd);
-  assert (si->pwd->node_type == PT_VALUE);
-  pwd = (char *) PT_VALUE_GET_BYTES (si->pwd);
+  assert (create_server->pwd);
+  assert (create_server->pwd->node_type == PT_VALUE);
+  pwd = (char *) PT_VALUE_GET_BYTES (create_server->pwd);
   if (pwd == NULL)
     {
       error = ER_FAILED;
@@ -18098,10 +18080,10 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* PROPERTIES */
-  if (si->prop != NULL)
+  if (create_server->prop != NULL)
     {
-      assert (si->prop->node_type == PT_VALUE);
-      attr_val[4] = (char *) PT_VALUE_GET_BYTES (si->prop);
+      assert (create_server->prop->node_type == PT_VALUE);
+      attr_val[4] = (char *) PT_VALUE_GET_BYTES (create_server->prop);
       if (attr_val[4] == NULL)
 	{
 	  error = ER_FAILED;
@@ -18110,10 +18092,10 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* COMMENT */
-  if (si->comment != NULL)
+  if (create_server->comment != NULL)
     {
-      assert (si->comment->node_type == PT_VALUE);
-      attr_val[5] = (char *) PT_VALUE_GET_BYTES (si->comment);
+      assert (create_server->comment->node_type == PT_VALUE);
+      attr_val[5] = (char *) PT_VALUE_GET_BYTES (create_server->comment);
       if (attr_val[5] == NULL)
 	{
 	  error = ER_FAILED;
@@ -18121,28 +18103,21 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  server_object = NULL;
   /* now create server object which is insert into _db_server */
   AU_DISABLE (save);
-  au_disable_flag = true;
-
-  server_object = NULL;
   error =
-    do_create_server_internal (&server_object, &port_no, &passwd, attr_names, attr_val,
+    do_create_server_internal (&server_object, &port_no, &passwd, owner_obj, attr_names, attr_val,
 			       sizeof (attr_names) / sizeof (attr_names[0]));
+  AU_ENABLE (save);
   if (error >= 0)
     {
       error = NO_ERROR;
     }
 
 end:
-  if (au_disable_flag == true)
-    {
-      AU_ENABLE (save);
-    }
-
   pr_clear_value (&port_no);
   pr_clear_value (&passwd);
-  pr_clear_value (&tmp_passwd);
 
   return error;
 }
@@ -18151,63 +18126,103 @@ int
 do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
-  const char *old_name, *new_name;
-  char new_buf[512];
-  DB_OBJECT *server_class = NULL, *server_object = NULL;
-  DB_IDENTIFIER server_obj_id;
+  DB_OBJECT *server_object = NULL;
+  char name_buf[SERVER_ATTR_LINK_NAME_BUF_SIZE + 1];
   DB_VALUE value;
   int save;
-  bool au_disable_flag = false;
+  PT_RENAME_SERVER_INFO *rename_server = &(statement->info.rename_server);
 
   CHECK_MODIFICATION_ERROR ();
 
-  old_name = statement->info.rename_server.old_name->info.name.original;
-  new_name = statement->info.rename_server.new_name->info.name.original;
-
-  OID_SET_NULL (&server_obj_id);
-
-  server_class = sm_find_class (CT_DB_SERVER_NAME);
-  if (server_class == NULL)
-    {
-      error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto end;
-    }
-
-  server_object = do_get_server_obj_id (&server_obj_id, server_class, old_name);
+  server_object = server_find (rename_server->old_name, rename_server->owner_name, false);
   if (server_object == NULL)
     {
-      error = ER_DBLINK_SERVER_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_NOT_DEFINED, old_name);
-      goto end;
+      return er_errid ();
     }
+
+
+  // If rename_server->owner_name is not specified, the owner information of the existing server must be maintained.
+  // e.g; If u1.srv and u1.test exist and "rename server test as srv" is performed in the dba account, 
+  //      it is necessary to check whether "u1.srv" exists. It is not to check with "dba.srv" or "srv"
+  PT_NODE *owner_node = rename_server->owner_name;
+  if (rename_server->owner_name == NULL)
+    {
+      DB_VALUE owner_val, name_val;
+
+      AU_DISABLE (save);
+      error = db_get (server_object, SERVER_ATTR_OWNER, &owner_val);
+      if (error == NO_ERROR)
+	{
+	  error = db_get (db_get_object (&owner_val), "name", &name_val);
+	}
+      AU_ENABLE (save);
+
+      if (error != NO_ERROR)
+	{
+	  pr_clear_value (&owner_val);
+	  pr_clear_value (&name_val);
+	  return error;
+	}
+
+      owner_node = parser_new_node (parser, PT_NAME);
+      if (owner_node == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return MSGCAT_RUNTIME_OUT_OF_MEMORY;
+	}
+
+      owner_node->info.name.original = pt_append_string (parser, NULL, db_get_string (&name_val));
+      pr_clear_value (&owner_val);
+      pr_clear_value (&name_val);
+    }
+
+  if (server_find (rename_server->new_name, owner_node, false))
+    {
+      error = ER_DBLINK_SERVER_ALREADY_EXISTS;
+    }
+  else
+    {
+      error = er_errid ();
+      if (error == ER_DBLINK_SERVER_MULTIPLE_FOUND)
+	{
+	  error = ER_DBLINK_SERVER_ALREADY_EXISTS;
+	}
+    }
+
+  if (owner_node && owner_node != rename_server->owner_name)
+    {
+      parser_free_node (parser, owner_node);
+    }
+
+  const char *new_name = rename_server->new_name->info.name.original;
+  if (error != ER_DBLINK_SERVER_NOT_FOUND)
+    {
+      if (error == ER_DBLINK_SERVER_ALREADY_EXISTS)
+	{
+	  if (rename_server->owner_name)
+	    {
+	      char err_buf[2048];
+	      sprintf (err_buf, "[%s].[%s]", (char *) rename_server->owner_name->info.name.original, new_name);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, err_buf);
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, new_name);
+	    }
+	}
+      return error;
+    }
+
+  er_clear ();
+
+  sm_downcase_name (new_name, name_buf, SERVER_ATTR_LINK_NAME_BUF_SIZE);
+  db_make_string (&value, name_buf);
 
   AU_DISABLE (save);
-  au_disable_flag = true;
-
-  /* check if user is creator or DBA  */
-  error = au_check_server_authorization (server_object);
-  if (error != NO_ERROR)
-    {
-      if (error == ER_DBLINK_CANNOT_UPDATE_SERVER)
-	{
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
-	}
-      goto end;
-    }
-
-  sm_downcase_name (new_name, new_buf, sizeof (new_buf));
-  db_make_string (&value, new_buf);
   error = db_put (server_object, SERVER_ATTR_LINK_NAME, &value);
+  AU_ENABLE (save);
+
   pr_clear_value (&value);
-
-end:
-  if (au_disable_flag)
-    {
-      AU_ENABLE (save);
-    }
-
   return error;
 }
 
@@ -18217,50 +18232,24 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   char *pt;
   const char *server_name;
-  DB_OBJECT *server_class = NULL, *server_object = NULL;
-  DB_IDENTIFIER server_obj_id;
+  DB_OBJECT *server_object = NULL;
   DB_VALUE value, passwd;
   PT_ALTER_SERVER_INFO *alter;
   int save;
-  bool au_disable_flag = false;
 
   CHECK_MODIFICATION_ERROR ();
 
+  db_make_null (&value);
   alter = &(statement->info.alter_server);
   server_name = alter->server_name->info.name.original;
 
-  OID_SET_NULL (&server_obj_id);
-
-  server_class = sm_find_class (CT_DB_SERVER_NAME);
-  if (server_class == NULL)
-    {
-      error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto end;
-    }
-
-  server_object = do_get_server_obj_id (&server_obj_id, server_class, server_name);
+  server_object = server_find (alter->server_name, alter->current_owner_name, false);
   if (server_object == NULL)
     {
-      error = ER_DBLINK_SERVER_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, server_name);
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_NOT_DEFINED, server_name);
-      goto end;
+      return er_errid ();
     }
 
   AU_DISABLE (save);
-  au_disable_flag = true;
-
-  /* check if user is creator or DBA  */
-  error = au_check_server_authorization (server_object);
-  if (error != NO_ERROR)
-    {
-      if (error == ER_DBLINK_CANNOT_UPDATE_SERVER)
-	{
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
-	}
-      goto end;
-    }
 
   if (alter->xbits.bit_pwd)
     {
@@ -18296,17 +18285,10 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (alter->xbits.bit_host)
     {
-      assert ((alter->host->node_type == PT_NAME) || (alter->host->node_type == PT_VALUE));
-      if (alter->host->node_type == PT_VALUE)
-	{
-	  pt = (char *) PT_VALUE_GET_BYTES (alter->host);
-	}
-      else
-	{
-	  pt = (char *) alter->host->info.name.original;
-	}
-
+      assert (alter->host->node_type == PT_VALUE);
+      pt = (char *) PT_VALUE_GET_BYTES (alter->host);
       assert (pt && *pt);
+
       db_make_string (&value, pt);
       error = db_put (server_object, SERVER_ATTR_HOST, &value);
       pr_clear_value (&value);
@@ -18432,34 +18414,45 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-
   if (alter->xbits.bit_owner)
     {
       assert (alter->owner_name->node_type == PT_NAME);
       pt = (char *) alter->owner_name->info.name.original;
       assert (pt && *pt);
 
-      db_make_string (&value, pt);
-      MOP user = au_find_user (pt);
+      MOP user = db_find_user (pt);
       if (user == NULL)
 	{
-	  if (er_errid () == ER_NET_CANT_CONNECT_SERVER || er_errid () == ER_OBJ_NO_CONNECT)
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }
-	  else
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	    }
-
-	  pr_clear_value (&value);
 	  goto end;
 	}
 
-      pr_clear_value (&value);
-      db_make_object (&value, user);
+      if (server_find (alter->server_name, alter->owner_name, false))
+	{
+	  char buf[2048];
+	  sprintf (buf, "[%s].[%s]",
+		   (char *) alter->owner_name->info.name.original, (char *) alter->server_name->info.name.original);
+	  error = ER_DBLINK_SERVER_ALREADY_EXISTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, buf);
+	  goto end;
+	}
 
+      error = er_errid ();
+      if (error != ER_DBLINK_SERVER_NOT_FOUND)
+	{
+	  if (error == ER_DBLINK_SERVER_MULTIPLE_FOUND)
+	    {
+	      error = ER_DBLINK_SERVER_ALREADY_EXISTS;
+	    }
+	  goto end;
+	}
+
+      db_make_object (&value, user);
       error = db_put (server_object, SERVER_ATTR_OWNER, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -18469,52 +18462,31 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 end:
-  if (au_disable_flag)
-    {
-      AU_ENABLE (save);
-    }
+  AU_ENABLE (save);
 
   return error;
 }
 
 int
-get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_VALUE * out_val)
+get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * out_val)
 {
-  char *server_name, *t;
-  DB_OBJECT *server_object, *server_class;
-  DB_IDENTIFIER server_obj_id;
+  char *server_name;
+  DB_OBJECT *server_object = NULL;
   DB_VALUE values[4], pwd_val;
   int au_save, error, cnt;
   const char *url_attr_names[4] = { SERVER_ATTR_HOST, SERVER_ATTR_PORT, SERVER_ATTR_DB_NAME, SERVER_ATTR_PROPERTIES };
+  PT_DBLINK_INFO *dblink_table = &node->info.dblink_table;
 
+  server_name = (char *) dblink_table->conn->info.name.original;
   cnt = 0;
-  t = strchr ((char *) server, '.');	/* FIXME */
-  server_name = (t != NULL) ? (t + 1) : (char *) server;
 
-  AU_DISABLE (au_save);		// disable checking authorization
-
-  server_class = sm_find_class (CT_DB_SERVER_NAME);
-  if (server_class == NULL)
-    {
-      error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto error_end;
-    }
-
-  server_object = do_get_server_obj_id (&server_obj_id, server_class, server_name);
+  server_object = server_find (dblink_table->conn, dblink_table->owner_name, false);
   if (server_object == NULL)
     {
-      error = ER_DBLINK_SERVER_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, server_name);
-      goto error_end;
+      return er_errid ();
     }
 
-  error = au_check_server_authorization (server_object);
-  if (error != NO_ERROR)
-    {
-      goto error_end;
-    }
-
+  AU_DISABLE (au_save);		// disable checking authorization
   for (cnt = 0; cnt < 4; cnt++)
     {
       db_make_null (&(values[cnt]));
@@ -18627,7 +18599,9 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 
   if (ciper_buf_size <= max_len)
     {
-      return ER_FAILED;
+      err = ER_TF_BUFFER_OVERFLOW;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto ret_pos;
     }
 
   if (passwd && *passwd)
@@ -18646,10 +18620,23 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 	  if (!str)
 	    {
 	      err = ER_FAILED;
+	      goto ret_pos;
 	    }
 	  else
 	    {
 	      strcpy (cipher_buf, str);
+	    }
+	}
+      else
+	{
+	  if (err == ER_DBLINK_PASSWORD_OVER_MAX_LENGTH)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_PASSWORD_ENCRYPT, 1, err);
+	      err = ER_DBLINK_PASSWORD_ENCRYPT;
 	    }
 	}
       pr_clear_value (&val);
@@ -18659,6 +18646,19 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
       // A encrypted password from the raw password.      
       strcpy (cipher_buf, passwd);
       err = NO_ERROR;
+    }
+
+ret_pos:
+  if (err != NO_ERROR)
+    {
+      if (er_errid_if_has_error () != NO_ERROR)
+	{
+	  PT_ERROR (parser, pt_top (parser), (char *) er_msg ());
+	}
+      else if (!pt_has_error (parser))
+	{
+	  PT_ERROR (parser, pt_top (parser), "Failed to check PASSWORD.");
+	}
     }
 
   return err;
@@ -18834,4 +18834,176 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
     }
 
   return err;
+}
+
+/*
+ * server_find ()  : Query by server name in the _db_server catalog.
+ *
+ * return		  : Record object or NULL
+ * node_server(in)	  : PT_NODE* for server name.
+ * node_owner(in)         : PT_NODE* for owner name.
+ * force_owner_name(in)   : Set whether to designate as the current user when node_owner is NULL
+ * 
+ * Remark: 
+ *      
+ */
+static MOP
+server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
+{
+  int error = NO_ERROR;
+  MOP server_obj = NULL;
+  char *upper_case_name = NULL;
+  size_t name_size;
+  char *owner_name = NULL;
+  char *server_name = NULL;
+  char query[2048];
+  char name_buf[SERVER_ATTR_LINK_NAME_BUF_SIZE + 1];	// link_name varchar(255)
+
+  sm_downcase_name ((char *) node_server->info.name.original, name_buf, SERVER_ATTR_LINK_NAME_BUF_SIZE);
+  if (node_owner)
+    {
+      owner_name = (char *) node_owner->info.name.original;
+      name_size = intl_identifier_upper_string_size (owner_name);
+      upper_case_name = (char *) malloc (name_size + 1);
+      if (upper_case_name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (name_size + 1));
+	  return NULL;
+	}
+      intl_identifier_upper (owner_name, upper_case_name);
+      owner_name = upper_case_name;
+    }
+  else if (force_owner_name)
+    {
+      owner_name = (char *) au_user_name ();
+      if (!owner_name)
+	{
+	  return NULL;
+	}
+    }
+
+  if (owner_name)
+    {
+      sprintf (query,
+	       "SELECT [_db_server], [owner] FROM [_db_server] WHERE [link_name] = '%s' AND [owner].[name] = '%s'",
+	       name_buf, owner_name);
+    }
+  else
+    {
+      sprintf (query, "SELECT [_db_server], [owner] FROM [_db_server] WHERE [link_name] = '%s'", name_buf);
+    }
+
+  if (owner_name == upper_case_name)
+    {
+      free (upper_case_name);
+    }
+  else
+    {
+      db_string_free ((char *) owner_name);
+    }
+
+  DB_QUERY_RESULT *query_result;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE values[2];
+  int au_save;
+  int rec_cnt = 0;
+
+  server_name = (char *) node_server->info.name.original;
+  owner_name = (char *) (node_owner ? node_owner->info.name.original : NULL);
+
+  PARSER_CONTEXT *parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      return NULL;
+    }
+
+  db_make_null (&values[0]);
+  db_make_null (&values[1]);
+
+  AU_DISABLE (au_save);
+
+  error = db_compile_and_execute_local (query, &query_result, &query_error);
+  if (error < 0)
+    {
+      goto err;
+    }
+  else if (error == 0)
+    {
+      error = ER_DBLINK_SERVER_NOT_FOUND;
+    }
+  else
+    {
+      error = db_query_first_tuple (query_result);
+      if (error != DB_CURSOR_SUCCESS)
+	{
+	  goto err;
+	}
+
+      do
+	{
+	  error = db_query_get_tuple_value (query_result, 1, &values[1]);
+	  if (error != NO_ERROR)
+	    {
+	      goto err;
+	    }
+	  /* check if user is creator or DBA  */
+	  if (au_is_server_authorized_user (&values[1]))
+	    {
+	      rec_cnt++;
+	      error = db_query_get_tuple_value (query_result, 0, &values[0]);
+	      if (error != NO_ERROR)
+		{
+		  goto err;
+		}
+	      server_obj = db_get_object (&values[0]);
+	    }
+
+	  db_value_clear (&values[0]);
+	  db_value_clear (&values[1]);
+	  if (rec_cnt > 1)
+	    break;
+	}
+      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
+      if (rec_cnt == 0)
+	{
+	  error = ER_DBLINK_SERVER_ALTER_NOT_ALLOWED;	// ER_DBLINK_CANNOT_UPDATE_SERVER
+	}
+    }
+
+  if (rec_cnt != 1)
+    {
+      server_obj = NULL;
+      if (owner_name)
+	{
+	  sprintf (query, "[%s].[%s]", owner_name, server_name);
+	}
+      else
+	{
+	  sprintf (query, "[%s]", server_name);
+	}
+
+      if (rec_cnt == 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, query);
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_SERVER_MULTIPLE_FOUND, 1, query);
+	}
+    }
+  error = NO_ERROR;
+
+err:
+  parser_free_parser (parser);
+  db_query_end (query_result);
+
+  AU_ENABLE (au_save);
+
+  if (error != NO_ERROR)
+    {
+      db_value_clear (&values[0]);
+      db_value_clear (&values[1]);
+    }
+
+  return server_obj;
 }

@@ -1368,7 +1368,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1295 dblink - invalid cipher string format.
 1296 dblink - Failed to decryption password. error=%1$d".
 1297 dblink - Failed to encryption password. error=%1$d".
-1298 Last Error
+1298 dblink - Multiple "%1$s" Server found.
+1299 dblink - Not allowed "%1$s" Server. 
+1300 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1526,6 +1528,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Maximum length of a comment is %1$d bytes.
 128 Invalid number of arguments for JSON_OBJECTAGG
 129 PARALLEL count argument must be between %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1833,8 +1836,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unexpected number of arguments %1$d.
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
-306 The server '%1$s' already exists.
-307 Required information is missing.
+306 dblink - The server '%1$s' already exists.
+307 dblink - Required information is missing.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

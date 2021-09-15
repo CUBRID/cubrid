@@ -4027,7 +4027,7 @@ boot_define_db_server (MOP class_mop)
   SM_TEMPLATE *def;
   char args_string[64];
   int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "link_name", NULL };
+  const char *index_col_names[3] = { "link_name", "owner", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -4092,7 +4092,7 @@ boot_define_db_server (MOP class_mop)
     }
 
   /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, NULL, index_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL, index_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
