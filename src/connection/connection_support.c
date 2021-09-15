@@ -24,6 +24,7 @@
 
 #include "config.h"
 
+#include <filesystem>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,6 +61,7 @@
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "boot_sr.h"
+#include "master_util.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -125,6 +127,16 @@ static char css_Vector_buffer[CSS_VECTOR_SIZE];
 #endif /* SERVER_MODE */
 #endif /* WINDOWS */
 
+#ifdef PACKET_TRACE
+#define TRACE(string, arg1)        \
+        do {                       \
+          er_log_debug(ARG_FILE_LINE, string, arg1);  \
+        }                          \
+        while (0)
+#else /* PACKET_TRACE */
+#define TRACE(string, arg1)
+#endif /* PACKET_TRACE */
+
 static int css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char **client_host_name,
 				     int *client_pid);
 static int css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p, ssize_t total_len, int vector_length,
@@ -167,6 +179,12 @@ static LAST_ACCESS_STATUS *css_get_access_status_with_name (LAST_ACCESS_STATUS *
 							    const char *user_name);
 static LAST_ACCESS_STATUS *css_get_unused_access_status (LAST_ACCESS_STATUS ** access_status_array, int num_user);
 #endif /* !CS_MODE */
+
+CSS_CONN_ENTRY *css_both_connect_to_master_server (int master_port_id, const char *message_to_master,
+						   int message_to_master_length, bool client_mode);
+static CSS_CONN_ENTRY *css_both_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host_name,
+						int connect_type, const char *message, int message_length, int port,
+						int timeout, bool send_magic, bool client_mode);
 
 #if !defined(SERVER_MODE)
 static int
@@ -2945,3 +2963,225 @@ css_conn_entry::init_pending_request ()
   pending_request_count = 0;
 }
 // *INDENT-ON*
+
+CSS_CONN_ENTRY *
+css_both_connect_to_master_server (int master_port_id, const char *message_to_master, int message_to_master_length,
+				   bool client_mode)
+{
+  char hname[CUB_MAXHOSTNAMELEN];
+  CSS_CONN_ENTRY *conn;
+  unsigned short rid;
+  int response, response_buff;
+  int server_port_id;
+  int connection_protocol;
+#if !defined(WINDOWS)
+  std::string pname;
+  int datagram_fd, socket_fd;
+#endif
+  css_Service_id = master_port_id;
+  if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
+    {
+      return NULL;
+    }
+  conn = css_make_conn (0);
+  if (conn == NULL)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, message_to_master);
+      return NULL;
+    }
+
+  /* select the connection protocol */
+  if (css_Server_use_new_connection_protocol)
+    {
+      // Windows
+      connection_protocol = SERVER_REQUEST_NEW;
+    }
+  else
+    {
+      // Linux and Unix
+      connection_protocol = SERVER_REQUEST;
+    }
+
+  if (css_both_common_connect
+      (conn, &rid, hname, connection_protocol, message_to_master, message_to_master_length, master_port_id, 0, true,
+       client_mode) == NULL)
+    {
+      goto fail_end;
+
+    }
+
+  if (css_readn (conn->fd, (char *) &response_buff, sizeof (int), -1) != sizeof (int))
+    {
+      goto fail_end;
+    }
+
+  response = ntohl (response_buff);
+  TRACE ("css_connect_to_master_server received %d as response from master\n", response);
+
+  switch (response)
+    {
+    case SERVER_ALREADY_EXISTS:
+      if (client_mode)
+	{
+#if defined(CS_MODE)
+	  if (IS_MASTER_CONN_NAME_HA_COPYLOG (message_to_master))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_COPYLOG_ALREADY_EXISTS, 1,
+		      GET_REAL_MASTER_CONN_NAME (message_to_master));
+	    }
+	  else if (IS_MASTER_CONN_NAME_HA_APPLYLOG (message_to_master))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_APPLYLOG_ALREADY_EXISTS, 1,
+		      GET_REAL_MASTER_CONN_NAME (message_to_master));
+	    }
+	  else if (IS_MASTER_CONN_NAME_HA_SERVER (message_to_master))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1,
+		      GET_REAL_MASTER_CONN_NAME (message_to_master));
+	    }
+	  else
+#endif /* CS_MODE */
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, message_to_master);
+	    }
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, message_to_master);
+	}
+      goto fail_end;
+
+    case SERVER_REQUEST_ACCEPTED_NEW:
+      /*
+       * Master requests a new-style connect, must go get
+       * our port id and set up our connection socket.
+       * For drivers, we don't need a connection socket and we
+       * don't want to allocate a bunch of them.  Let a flag variable
+       * control whether or not we actually create one of these.
+       */
+      if (css_Server_inhibit_connection_socket)
+	{
+	  server_port_id = -1;
+	}
+      else
+	{
+	  server_port_id = css_open_server_connection_socket ();
+	}
+      response = htonl (server_port_id);
+      css_net_send (conn, (char *) &response, sizeof (int), -1);
+      /* this connection remains our only contact with the master */
+      return conn;
+
+    case SERVER_REQUEST_ACCEPTED:
+#if defined(WINDOWS)
+      /* Windows can't handle this style of connection at all */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, message_to_master);
+      goto fail_end;
+#else /* WINDOWS */
+      /* send the "pathname" for the datagram */
+      /* be sure to open the datagram first.  */
+      pname = std::filesystem::temp_directory_path ();
+
+      if (client_mode)
+	{
+	  pname += "/csql_tcp_setup_server" + std::to_string (getpid ());
+	}
+      else
+	{
+	  pname += "/cubrid_tcp_setup_server" + std::to_string (getpid ());
+	}
+      (void) unlink (pname.c_str ());	// make sure file is deleted
+      if (!css_tcp_setup_server_datagram (pname.c_str (), &socket_fd))
+	{
+	  (void) unlink (pname.c_str ());
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
+			       message_to_master);
+	  goto fail_end;
+	}
+      if (css_send_data (conn, rid, pname.c_str (), pname.length () + 1) != NO_ERRORS)
+	{
+	  (void) unlink (pname.c_str ());
+	  close (socket_fd);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
+			       message_to_master);
+	  goto fail_end;
+	}
+      if (!css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
+	{
+	  (void) unlink (pname.c_str ());
+	  css_free_conn (conn);
+	  close (socket_fd);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
+			       message_to_master);
+	  return NULL;
+	}
+      // success
+      (void) unlink (pname.c_str ());
+      css_free_conn (conn);
+      close (socket_fd);
+      return (css_make_conn (datagram_fd));
+#endif /* WINDOWS */
+    }
+
+fail_end:
+  css_free_conn (conn);
+  return NULL;
+}
+
+static CSS_CONN_ENTRY *
+css_both_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host_name,
+			 int connect_type, const char *message, int message_length, int port, int timeout,
+			 bool send_magic, bool client_mode)
+{
+  SOCKET fd;
+
+  if (client_mode)
+    {
+#if !defined (WINDOWS)
+      if (timeout > 0)
+	{
+	  /* timeout in milli-seconds in css_tcp_client_open_with_timeout() */
+	  fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
+	}
+      else
+	{
+	  fd = css_tcp_client_open_with_retry (host_name, port, true);
+	}
+#else /* !WINDOWS */
+      fd = css_tcp_client_open_with_retry (host_name, port, true);
+#endif /* WINDOWS */
+    }
+  else
+    {
+      fd = css_tcp_client_open ((char *) host_name, port);
+    }
+
+  if (!IS_INVALID_SOCKET (fd))
+    {
+      conn->fd = fd;
+      if (send_magic == true && css_send_magic (conn) != NO_ERRORS)
+	{
+	  return NULL;
+	}
+      if (css_send_request (conn, connect_type, rid, message, message_length) == NO_ERRORS)
+	{
+	  return conn;
+	}
+#if !defined (WINDOWS)
+      else if (client_mode)
+	{
+	  if (errno == ETIMEDOUT)
+	    {
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CONNECT_TIMEDOUT, 2, host_name,
+				   timeout);
+	    }
+#endif /* !WINDOWS */
+	  else
+	    {
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 1,
+				   host_name);
+	    }
+	}
+    }
+  return NULL;
+}
