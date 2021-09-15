@@ -1022,7 +1022,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
-	      au_disable ();
+	      au_sysadm_disable ();
 	    }
 	  csql_Database_connected = true;
 
@@ -2871,7 +2871,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_disable ();
+      au_sysadm_disable ();
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */
