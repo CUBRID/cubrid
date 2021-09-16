@@ -103,9 +103,6 @@ static void css_close_conn (CSS_CONN_ENTRY * conn);
 static void css_dealloc_conn (CSS_CONN_ENTRY * conn);
 
 static int css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header);
-static CSS_CONN_ENTRY *css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
-					   const char *server_name, int server_name_length, int port, int timeout,
-					   unsigned short *rid, bool send_magic);
 static CSS_CONN_ENTRY *css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name,
 					   unsigned short *rid);
 static CSS_CONN_ENTRY *css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id,
@@ -716,7 +713,7 @@ begin:
  *   timeout(in): timeout in seconds
  *   rid(out):
  */
-static CSS_CONN_ENTRY *
+CSS_CONN_ENTRY *
 css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type, const char *server_name,
 		    int server_name_length, int port, int timeout, unsigned short *rid, bool send_magic)
 {

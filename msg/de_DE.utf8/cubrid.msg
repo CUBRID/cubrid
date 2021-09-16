@@ -1352,8 +1352,10 @@ $ LOADDB
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 Die Tabelle kann aufgrund des Primärschlüssels, auf den in %1$s verwiesen wird, nicht abgeschnitten werden. Versuchen Sie es erneut mit der Option CASCADE.
+1285 Abschneiden in Kaskade nicht möglich, da die Aktion ON DELETE des Fremdschlüssels (%1$s) nicht auf CASCADE gesetzt ist.
 
-1284 Letzter Fehler
+1286 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

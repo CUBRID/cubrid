@@ -722,6 +722,11 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	    }
 	  level++;
 	}
+      if (node && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+	{
+	  /* An error is meaningful only when it cannot be found in all scopes. */
+	  er_clear ();
+	}
     }
   else
     {
@@ -1123,6 +1128,7 @@ pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 PT_NODE *
 pt_set_is_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  bool do_not_replace_orderby = (bool *) arg ? *((bool *) arg) : false;
   if (!node)
     {
       return node;
@@ -1133,6 +1139,11 @@ pt_set_is_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       /* Reset query id # */
       node->info.query.id = (UINTPTR) node;
       node->info.query.is_view_spec = 1;
+
+      if (do_not_replace_orderby)
+	{
+	  node->flag.do_not_replace_orderby = 1;
+	}
     }
 
   return node;

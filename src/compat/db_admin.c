@@ -34,6 +34,7 @@
 #include <signal.h>
 
 #include "authenticate.h"
+#include "client_support.h"
 #include "porting.h"
 #include "system_parameter.h"
 #include "storage_common.h"
@@ -2831,7 +2832,7 @@ db_get_ha_server_state (char *buffer, int maxlen)
   CHECK_CONNECT_ERROR ();
 
 #if defined(CS_MODE)
-  ha_state = boot_get_ha_server_state ();
+  ha_state = css_ha_server_state ();
 #else
   ha_state = HA_SERVER_STATE_NA;
 #endif

@@ -349,6 +349,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		}
 	      hint_table[i].arg_list = NULL;
 	      break;
+#if 0
 	    case PT_HINT_QUERY_NO_CACHE:
 	      if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 		{
@@ -361,6 +362,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		}
 	      hint_table[i].arg_list = NULL;
 	      break;
+#endif
 	    case PT_HINT_REEXECUTE:	/* reexecute */
 	      if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 		{
@@ -443,6 +445,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 		}
 	      break;
+	    case PT_HINT_NO_PUSH_PRED:
+	      if (node->node_type == PT_SELECT)
+		{
+		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+		}
+	      break;
 	    case PT_HINT_SKIP_UPDATE_NULL:
 	      if (node->node_type == PT_ALTER)
 		{
@@ -502,6 +510,16 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.insert.hint = (PT_HINT_ENUM) (node->info.insert.hint | hint_table[i].hint);
 		}
 	      else if (node->node_type == PT_DELETE)
+		{
+		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+		}
+	      break;
+	    case PT_HINT_NO_SUPPLEMENTAL_LOG:	/* statement-based replication */
+	      if (node->node_type == PT_DELETE)
 		{
 		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
 		}

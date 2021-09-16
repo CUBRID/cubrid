@@ -4647,6 +4647,7 @@ do_redistribute_partitions_data (const char *classname, const char *keyname, cha
     {
       query_size = 0;
       query_size += 7;		/* 'UPDATE ' */
+      query_size += 28;		// ' /*+ NO_SUPPLEMENTAL_LOG */ ' 
       query_size += strlen (classname) + 2;
       query_size += 5;		/* ' SET ' */
       query_size += strlen (keyname) * 2 + 6;	/* [keyname]=[keyname]; */
@@ -4656,7 +4657,7 @@ do_redistribute_partitions_data (const char *classname, const char *keyname, cha
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size + 1);
 	  return ER_FAILED;
 	}
-      sprintf (query_buf, "UPDATE [%s] SET [%s]=[%s];", classname, keyname, keyname);
+      sprintf (query_buf, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ [%s] SET [%s]=[%s];", classname, keyname, keyname);
 
       error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
       if (error >= 0)
@@ -9372,15 +9373,16 @@ exit_on_error:
  *
  */
 
-static int truncate_class_name (const char *name);
+static int truncate_class_name (const char *name, const bool is_cascade);
 
 /*
  * truncate_class_name() - This static routine truncates a class by name.
  *   return: Error code
  *   name(in): Class name to truncate
+ *   is_cascade(in): whether to truncate cascade FK-referring classes
  */
 static int
-truncate_class_name (const char *name)
+truncate_class_name (const char *name, const bool is_cascade)
 {
   DB_OBJECT *class_mop;
 
@@ -9388,7 +9390,7 @@ truncate_class_name (const char *name)
 
   if (class_mop)
     {
-      return db_truncate_class (class_mop);
+      return db_truncate_class (class_mop, is_cascade);
     }
   else
     {
@@ -9411,9 +9413,11 @@ do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *entity_spec = NULL;
   PT_NODE *entity = NULL;
   PT_NODE *entity_list = NULL;
+  bool is_cascade = false;
 
   CHECK_MODIFICATION_ERROR ();
 
+  is_cascade = statement->info.truncate.is_cascade;
   entity_spec = statement->info.truncate.spec;
   if (entity_spec == NULL)
     {
@@ -9440,7 +9444,7 @@ do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   for (entity = entity_list; entity != NULL; entity = entity->next)
     {
-      error = truncate_class_name (entity->info.name.original);
+      error = truncate_class_name (entity->info.name.original, is_cascade);
       if (error != NO_ERROR)
 	{
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -13103,9 +13107,9 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * a
 
   /* Allocate enough for each attribute's name, its default value, and for the "UPDATE table_name" part of the query.
    * 42 is more than the maximum length of any default value for an attribute, including three spaces, the coma sign
-   * and an equal. */
+   * and an equal. And size of 28 is added for NO_SUPPLEMENTAL_LOG hint. */
 
-  query_len = remaining = (attr_count + 1) * (DB_MAX_IDENTIFIER_LENGTH + 42);
+  query_len = remaining = (attr_count + 1) * (DB_MAX_IDENTIFIER_LENGTH + 42 + 28);
   if (query_len > QUERY_MAX_SIZE)
     {
       ERROR1 (error, ER_UNEXPECTED, "Too many attributes.");
@@ -13123,7 +13127,9 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * a
 
   /* Using UPDATE ALL to update the current class and all its children. */
 
-  n = snprintf (q, remaining, "UPDATE ALL [%s] SET ", alter->info.alter.entity_name->info.name.original);
+  n =
+    snprintf (q, remaining, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ ALL [%s] SET ",
+	      alter->info.alter.entity_name->info.name.original);
   if (n < 0)
     {
       ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
@@ -13211,7 +13217,9 @@ do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, 
   query[0] = 0;
 
   /* Using UPDATE ALL to update the current class and all its children. */
-  n = snprintf (q, remaining, "UPDATE ALL [%s] SET ", alter->info.alter.entity_name->info.name.original);
+  n =
+    snprintf (q, remaining, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ ALL [%s] SET ",
+	      alter->info.alter.entity_name->info.name.original);
   if (n < 0)
     {
       ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
@@ -14109,7 +14117,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
       goto end;
     }
 
-  assert (result->query_type->db_type == DB_TYPE_INTEGER);
+  assert (result->query_type->db_type == DB_TYPE_BIGINT);
 
   error = db_query_set_copy_tplvalue (result, 0 /* peek */ );
   if (error != NO_ERROR)
@@ -14124,9 +14132,9 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
     }
 
   assert (!DB_IS_NULL (&count));
-  assert (DB_VALUE_DOMAIN_TYPE (&count) == DB_TYPE_INTEGER);
+  assert (DB_VALUE_DOMAIN_TYPE (&count) == DB_TYPE_BIGINT);
 
-  if (db_get_int (&count) > 0)
+  if (db_get_bigint (&count) > 0)
     {
       *has_nulls = true;
     }
