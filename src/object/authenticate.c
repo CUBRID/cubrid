@@ -8732,6 +8732,12 @@ au_check_server_authorization (MOP server_object)
   return ret_val;
 }
 
+bool
+au_is_server_authorized_user (DB_VALUE * owner_val)
+{
+  return (au_check_owner (owner_val) == NO_ERROR);
+}
+
 const char *
 au_get_public_user_name (void)
 {

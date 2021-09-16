@@ -10249,21 +10249,26 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
   db_make_null (&(values[0]));
   db_make_null (&(values[1]));
   db_make_null (&(values[2]));
-  error = get_dblink_info_from_dbserver (parser, dblink_table->conn->info.name.original, values);
+  error = get_dblink_info_from_dbserver (parser, node, values);
   if (error != NO_ERROR)
     {
-      if (error == ER_DBLINK_SERVER_NOT_FOUND)
+      // TODO: error handling         
+      if (er_errid_if_has_error () != NO_ERROR)
 	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_NOT_DEFINED,
-		      dblink_table->conn->info.name.original);
-	}
-      else if (error == ER_DBLINK_CANNOT_UPDATE_SERVER)
-	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
+	  PT_ERROR (parser, node, (char *) er_msg ());
 	}
       else if (!pt_has_error (parser))
 	{
-	  PT_ERROR (parser, node, "Failed to obtain server information");
+	  if (dblink_table->owner_name)
+	    {
+	      PT_ERRORf3 (parser, node, "Failed to obtain server information for [%s].[%s]. error=%d",
+			  dblink_table->owner_name->info.name.original, dblink_table->conn->info.name.original, error);
+	    }
+	  else
+	    {
+	      PT_ERRORf2 (parser, node, "Failed to obtain server information for [%s]. error=%d",
+			  dblink_table->conn->info.name.original, error);
+	    }
 	}
 
       pr_clear_value (&(values[0]));

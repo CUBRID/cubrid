@@ -1237,6 +1237,8 @@ pt_is_ddl_statement (const PT_NODE * node)
 	  /* TODO: check it  */
 	case PT_CREATE_SERVER:
 	case PT_DROP_SERVER:
+	case PT_RENAME_SERVER:
+	case PT_ALTER_SERVER:
 	  return true;
 	default:
 	  break;

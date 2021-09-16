@@ -5450,6 +5450,8 @@ la_apply_statement_log (LA_ITEM * item)
       /* TODO: check it */
     case CUBRID_STMT_CREATE_SERVER:
     case CUBRID_STMT_DROP_SERVER:
+    case CUBRID_STMT_RENAME_SERVER:
+    case CUBRID_STMT_ALTER_SERVER:
 
     case CUBRID_STMT_TRUNCATE:
 

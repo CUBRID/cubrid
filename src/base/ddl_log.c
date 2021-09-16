@@ -1359,6 +1359,8 @@ logddl_is_ddl_type (int node_type)
       /* TODO: check it  */
     case PT_CREATE_SERVER:
     case PT_DROP_SERVER:
+    case PT_RENAME_SERVER:
+    case PT_ALTER_SERVER:
       return true;
     default:
       break;

@@ -4027,7 +4027,7 @@ boot_define_db_server (MOP class_mop)
   SM_TEMPLATE *def;
   char args_string[64];
   int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "link_name", NULL };
+  const char *index_col_names[3] = { "link_name", "owner", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -4092,7 +4092,7 @@ boot_define_db_server (MOP class_mop)
     }
 
   /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, NULL, index_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL, index_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5590,8 +5590,16 @@ boot_define_view_db_server (void)
     }
 
   sprintf (stmt,
-	   "SELECT [ds].[link_name], [ds].[host], [ds].[port], [ds].[db_name], [ds].[user_name], [ds].[properties], [ds].[owner].[name], [ds].[comment]"
-	   " FROM [%s] [ds] WHERE CURRENT_USER = 'DBA' OR CURRENT_USER = [owner].[name]", CT_DB_SERVER_NAME);
+	   "SELECT [ds].[link_name], [ds].[host], [ds].[port], [ds].[db_name], [ds].[user_name], [ds].[properties],"
+	   "       [ds].[owner].[name], [ds].[comment]"
+	   " FROM [%s] [ds] WHERE CURRENT_USER = 'DBA' "
+	   "  OR {[ds].[owner].[name]} SUBSETEQ (SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "        FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER)"
+	   "  OR {[ds]} SUBSETEQ ( SELECT SUM(SET{[au].[class_of]}) FROM [%s] [au] WHERE {[au].[grantee].[name]} "
+	   "        SUBSETEQ ( SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{}) "
+	   "                   FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "                   WHERE [u].[name] = CURRENT_USER) AND [au].[auth_type] = 'SELECT')", CT_DB_SERVER_NAME,
+	   CT_USER_NAME, CT_CLASSAUTH_NAME, CT_USER_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)

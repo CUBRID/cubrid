@@ -11047,6 +11047,12 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
     case PT_UPDATE_STATS:
       break;
 
+    case PT_CREATE_SERVER:
+    case PT_DROP_SERVER:
+    case PT_RENAME_SERVER:
+    case PT_ALTER_SERVER:
+      break;
+
     case PT_ALTER:
       pt_check_alter (parser, node);
 
