@@ -37,7 +37,7 @@ class meta_file
     void reload ();
 
   private:
-    static constexpr char *FILENAME = "meta_log";
+    static constexpr char FILENAME[] = "meta_log";
 
     std::FILE *m_file;
 };
@@ -67,17 +67,17 @@ TEST_CASE ("Test meta load_from_file and flush_to_file", "")
 
   // match meta log with one checkpoint info
   test_chkpt_lsa_and_info_t keyval1 = create_chkpt_lsa_and_info (1);
-  meta_log.add_checkpoint_info (keyval1.first, keyval1.second);
+  meta_log.add_checkpoint_info (keyval1.first, std::move (keyval1.second));
   match_meta_log_after_flush_and_load (meta_log, mf);
 
   // match meta log with two checkpoint info
   test_chkpt_lsa_and_info_t keyval2 = create_chkpt_lsa_and_info (2);
-  meta_log.add_checkpoint_info (keyval2.first, keyval2.second);
+  meta_log.add_checkpoint_info (keyval2.first, std::move (keyval2.second));
   match_meta_log_after_flush_and_load (meta_log, mf);
 
   // match meta log with three checkpoint info
   test_chkpt_lsa_and_info_t keyval3 = create_chkpt_lsa_and_info (3);
-  meta_log.add_checkpoint_info (keyval3.first, keyval3.second);
+  meta_log.add_checkpoint_info (keyval3.first, std::move (keyval3.second));
   match_meta_log_after_flush_and_load (meta_log, mf);
 }
 
