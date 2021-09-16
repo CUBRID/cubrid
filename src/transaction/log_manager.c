@@ -10858,6 +10858,8 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
 	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
+	  cdc_wakeup_consumer ();
+
 	  continue;
 	}
 
@@ -10865,7 +10867,7 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	{
 	  cdc_log ("cdc_loginfo_producer_execute : produced queue size is over the limit");
 	  cdc_pause_consumer ();
-	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
+	  cdc_Gl.consumer.request = CDC_REQUEST_PRODUCER_IS_WAITED;
 
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
@@ -13404,7 +13406,6 @@ cdc_pause_consumer ()
 {
   cdc_log ("cdc_pause_consumer : producer request the consumer to be pause");
   cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_TO_WAIT;
-  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
 }
 
 void
@@ -13952,7 +13953,8 @@ end:
 
   if (cdc_Gl.consumer.request == CDC_REQUEST_CONSUMER_TO_WAIT)
     {
-      pthread_cond_signal (&cdc_Gl.producer.wait_cond);
+      CDC_PRODUCER_REQUEST request;
+      cdc_wakeup_producer ();
 
       while (cdc_Gl.consumer.request != CDC_REQUEST_NONE)
 	{

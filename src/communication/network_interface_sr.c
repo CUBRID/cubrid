@@ -10400,7 +10400,7 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
       // make producer sleep, and producer request consumer to be sleep 
       // if request is set to consumer to be sleep, go into spinlock 
       // checks request is set to none, then if it is none, 
-      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+      if (cdc_Gl.consumer.request != CDC_REQUEST_PRODUCER_IS_WAITED)
 	{
 	  cdc_pause_producer ();
 	}
