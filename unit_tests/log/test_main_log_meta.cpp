@@ -54,7 +54,7 @@ TEST_CASE ("Load meta from empty file", "")
   cublog::meta meta_log;
 
   meta_log.load_from_file (mf.get_file ());
-  REQUIRE (meta_log.get_checkpoint_info_size () == 0);
+  REQUIRE (meta_log.get_checkpoint_count () == 0);
 }
 
 TEST_CASE ("Test meta load_from_file and flush_to_file", "")
@@ -91,7 +91,7 @@ TEST_CASE ("Test checkpoint_info functions", "")
 
   // Add keyval1
   meta_log.add_checkpoint_info (keyval1.first, keyval1.second);
-  REQUIRE (meta_log.get_checkpoint_info_size () == 1);
+  REQUIRE (meta_log.get_checkpoint_count () == 1);
   // key of keyval1 exists and its value matches
   REQUIRE (meta_log.get_checkpoint_info (keyval1.first) != nullptr);
   match_checkpoint_info (meta_log.get_checkpoint_info (keyval1.first), &keyval1.second);
@@ -100,7 +100,7 @@ TEST_CASE ("Test checkpoint_info functions", "")
 
   // Add keyval2
   meta_log.add_checkpoint_info (keyval2.first, keyval2.second);
-  REQUIRE (meta_log.get_checkpoint_info_size () == 2);
+  REQUIRE (meta_log.get_checkpoint_count () == 2);
   // Both keyval1 and keyval2 exist and values are matching
   REQUIRE (meta_log.get_checkpoint_info (keyval1.first) != nullptr);
   match_checkpoint_info (meta_log.get_checkpoint_info (keyval1.first), &keyval1.second);
@@ -109,7 +109,7 @@ TEST_CASE ("Test checkpoint_info functions", "")
 
   // Erase all before keyval2's key. That's keyval1.
   REQUIRE (meta_log.remove_checkpoint_info_before_lsa (keyval2.first) == 1);
-  REQUIRE (meta_log.get_checkpoint_info_size () == 1);
+  REQUIRE (meta_log.get_checkpoint_count () == 1);
   // Keyval2 exists, keyval1 no longer
   REQUIRE (meta_log.get_checkpoint_info (keyval1.first) == nullptr);
   REQUIRE (meta_log.get_checkpoint_info (keyval2.first) != nullptr);
@@ -117,7 +117,7 @@ TEST_CASE ("Test checkpoint_info functions", "")
 
   // Add keyval3
   meta_log.add_checkpoint_info (keyval3.first, keyval3.second);
-  REQUIRE (meta_log.get_checkpoint_info_size () == 2);
+  REQUIRE (meta_log.get_checkpoint_count () == 2);
   // Keyval2 and keyval3 exist
   REQUIRE (meta_log.get_checkpoint_info (keyval2.first) != nullptr);
   match_checkpoint_info (meta_log.get_checkpoint_info (keyval2.first), &keyval2.second);
@@ -127,7 +127,7 @@ TEST_CASE ("Test checkpoint_info functions", "")
   // Remove all
   REQUIRE (meta_log.remove_checkpoint_info_before_lsa (MAX_UT_LSA) == 2);
   // No keys exist
-  REQUIRE (meta_log.get_checkpoint_info_size () == 0);
+  REQUIRE (meta_log.get_checkpoint_count () == 0);
   REQUIRE (meta_log.get_checkpoint_info (keyval2.first) == nullptr);
   REQUIRE (meta_log.get_checkpoint_info (keyval3.first) == nullptr);
 }
@@ -161,7 +161,7 @@ meta_file::reload ()
 void
 match_meta_log (const cublog::meta &left, const cublog::meta &right)
 {
-  REQUIRE (left.get_checkpoint_info_size () == right.get_checkpoint_info_size ());
+  REQUIRE (left.get_checkpoint_count () == right.get_checkpoint_count ());
   match_checkpoint_info (left.get_checkpoint_info ({ 1, 1 }), right.get_checkpoint_info ({ 1, 1 }));
   match_checkpoint_info (left.get_checkpoint_info ({ 2, 2 }), right.get_checkpoint_info ({ 2, 2 }));
   match_checkpoint_info (left.get_checkpoint_info ({ 3, 3 }), right.get_checkpoint_info ({ 3, 3 }));

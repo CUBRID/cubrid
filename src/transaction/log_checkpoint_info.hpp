@@ -37,6 +37,10 @@ struct log_tdes;
 // Replaces LOG_REC_CHKPT
 namespace cublog
 {
+  /* used in two contexts:
+   *  - regular checkpoint on the page server used for page server recovery
+   *  - transaction table checkpoint on the transaction server used for transaction server recovery
+   */
   class checkpoint_info : public cubpacking::packable_object
   {
     public:

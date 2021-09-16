@@ -81,6 +81,7 @@
 #include "critical_section.h"
 #include "page_buffer.h"
 #include "page_server.hpp"
+#include "scope_exit.hpp"
 #include "double_write_buffer.h"
 #include "file_io.h"
 #include "disk_manager.h"
@@ -7066,7 +7067,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    *    - therefore log_value.chkpt_redo_lsa is no longer needed and can be removed and its usage
    *      replaced with 'log_Gl.hdr.chkpt_lsa'
    *    - further simplifications in this and callee functions
-   * - there are a few usages but mostly they seem to have the purpose of 'working variables' and
+   * - there are a few usages but they mostly seem to have the purpose of 'working variables' and
    *    can be adapted
    */
   assert (oldest_unflushed_lsa.is_null ());
@@ -7326,7 +7327,7 @@ error_cannot_chkpt:
 /* log_checkpoint_trantable - TODO
  */
 int
-logpb_checkpoint_trantable (THREAD_ENTRY * thread_p)
+logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
 {
   const bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
 
@@ -7339,7 +7340,59 @@ logpb_checkpoint_trantable (THREAD_ENTRY * thread_p)
 
   if (detailed_logging)
     {
-      _er_log_debug (ARG_FILE_LINE, "logpb_checkpoint_trantable\n");
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: started\n");
+    }
+
+  {
+    LOG_CS_ENTER (thread_p);
+    // *INDENT-OFF*
+    scope_exit <std::function<void (void)>> unlock_log_cs_on_exit ([thread_p] ()
+    {
+      LOG_CS_EXIT(thread_p);
+    });
+    // *INDENT-ON*
+
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: load trantable\n");
+      }
+    cublog::checkpoint_info trantable_checkpoint_info;
+
+    LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
+    trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
+
+    const log_lsa trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
+
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: add\n");
+      }
+    log_Gl.m_metainfo.add_checkpoint_info (trantable_checkpoint_lsa, std::move (trantable_checkpoint_info));
+
+    // make sure new checkpoint is persisted to disk
+    log_write_metalog_to_file ();
+
+    logpb_flush_pages_direct (thread_p);
+
+    // drop previous checkpoints
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: drop previous\n");
+      }
+    log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
+
+    // - in nominal conditions, there should be at most one previous trantable checkpoint
+    // - in abnormal conditions (such as when the system crashed just after adding a new trantable
+    //    checkpoint and before deleting the outdated checkpoint) there can be at most two
+    assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
+
+    // make sure new checkpoint is persisted to disk
+    log_write_metalog_to_file ();
+  }
+
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: finished\n");
     }
 
   return NO_ERROR;
