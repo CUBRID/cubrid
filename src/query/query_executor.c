@@ -8781,7 +8781,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   int force_count;
   int op_type = SINGLE_ROW_UPDATE;
   int s = 0;
-  int tuple_cnt, error = NO_ERROR;
+  INT64 tuple_cnt;
+  int error = NO_ERROR;
   REPL_INFO_TYPE repl_info;
   int class_oid_cnt = 0, class_oid_idx = 0;
   int mvcc_reev_class_cnt = 0, mvcc_reev_class_idx = 0;
@@ -8798,6 +8799,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
   thread_p->no_logging = (bool) update->no_logging;
+
+  thread_p->no_supplemental_log = (bool) update->no_supplemental_log;
 
   /* get the snapshot, before acquiring locks, since the transaction may be blocked and we need the snapshot when
    * update starts, not later */
@@ -9660,6 +9663,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
   thread_p->no_logging = (bool) delete_->no_logging;
+
+  thread_p->no_supplemental_log = (bool) delete_->no_supplemental_log;
 
   /* get the snapshot, before acquiring locks, since the transaction may be blocked and we need the snapshot when
    * delete starts, not later */
@@ -18578,7 +18583,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
       if (agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR)
 	{
 	  /* COUNT and COUNT(*) always have the same signature */
-	  agg_p->accumulator_domain.value_dom = &tp_Integer_domain;
+	  agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
 	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 
 	  continue;
@@ -18848,7 +18853,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   SCAN_CODE scan_code;
   QFILE_TUPLE_RECORD tuple_rec = { NULL, 0 };
   REGU_VARIABLE_LIST regu_list;
-  int tuple_cnt = 0;
+  INT64 tuple_cnt = 0;
   DB_VALUE val;
 
   TSC_TICKS start_tick, end_tick;
