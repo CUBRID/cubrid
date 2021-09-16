@@ -167,4 +167,6 @@ extern int do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
+
+extern int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement);
 #endif /* _EXECUTE_STATEMENT_H_ */

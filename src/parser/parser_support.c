@@ -1193,6 +1193,44 @@ pt_is_inst_or_orderby_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *a
     {
       *continue_walk = PT_LIST_WALK;
     }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_inst_or_inst_num_node () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an INST_NUM or ORDERBY_NUM or GROUPBY_NUM expression node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_inst_or_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_inst_orderby_num = (bool *) arg;
+
+  if (PT_IS_INSTNUM (tree) || PT_IS_ORDERBYNUM (tree) || PT_IS_GROUPBYNUM (tree))
+    {
+      *has_inst_orderby_num = true;
+    }
+
+  if (*has_inst_orderby_num)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
 
   return tree;
 }
@@ -1239,6 +1277,7 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_DROP_SERVER:
 	case PT_RENAME_SERVER:
 	case PT_ALTER_SERVER:
+	case PT_TRUNCATE:
 	  return true;
 	default:
 	  break;
@@ -2988,24 +3027,33 @@ pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_has_inst_or_orderby_num_in_where ()
- *          - check if tree has an INST_NUM or ORDERBY_NUM node in where
+ * pt_has_inst_in_where_and_select_list ()
+ *          - check if tree has an INST_NUM or ORDERBY_NUM or GROUPBY_NUM node in where and select_list
  *   return: true if tree has INST_NUM/ORDERBY_NUM
  *   parser(in):
  *   node(in):
  */
 
 bool
-pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   bool has_inst_orderby_num = false;
-  PT_NODE *where;
+  PT_NODE *where, *select_list, *orderby_for, *having;
 
   switch (node->node_type)
     {
     case PT_SELECT:
       where = node->info.query.q.select.where;
-      (void) parser_walk_tree (parser, where, pt_is_inst_or_orderby_num_node, &has_inst_orderby_num,
+      (void) parser_walk_tree (parser, where, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      select_list = node->info.query.q.select.list;
+      (void) parser_walk_tree (parser, select_list, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      orderby_for = node->info.query.orderby_for;
+      (void) parser_walk_tree (parser, orderby_for, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      having = node->info.query.q.select.having;
+      (void) parser_walk_tree (parser, having, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
 			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
       break;
 
@@ -3016,8 +3064,8 @@ pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  return true;
 	}
-      has_inst_orderby_num |= pt_has_inst_or_orderby_num_in_where (parser, node->info.query.q.union_.arg1);
-      has_inst_orderby_num |= pt_has_inst_or_orderby_num_in_where (parser, node->info.query.q.union_.arg2);
+      has_inst_orderby_num |= pt_has_inst_in_where_and_select_list (parser, node->info.query.q.union_.arg1);
+      has_inst_orderby_num |= pt_has_inst_in_where_and_select_list (parser, node->info.query.q.union_.arg2);
       break;
 
     default:
@@ -3028,6 +3076,58 @@ pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_set_correlation_level ()
+ *          - set correlation level
+ *   parser(in):
+ *   subquery(in):
+ *   level(in):
+ */
+
+void
+pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level)
+{
+  switch (subquery->node_type)
+    {
+    case PT_SELECT:
+      subquery->info.query.correlation_level = level;
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      subquery->info.query.correlation_level = level;
+      pt_set_correlation_level (parser, subquery->info.query.q.union_.arg1, level);
+      pt_set_correlation_level (parser, subquery->info.query.q.union_.arg2, level);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * pt_has_nullable_term () - check if tree has an nullable term
+ *				   node somewhere
+ *   return: true if tree has nullable term
+ *   parser(in):
+ *   node(in):
+ */
+bool
+pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  int has_nullable_term = 0;
+  PT_NODE *next;
+
+  next = node->next;
+  node->next = NULL;
+  (void) parser_walk_tree (parser, node, NULL, NULL, qo_check_nullable_expr, &has_nullable_term);
+  node->next = next;
+
+  return has_nullable_term == 0 ? false : true;
+}
+
+/*
+>>>>>>> upstream/develop
  * pt_insert_host_var () - insert a host_var into a list based on
  *                         its ordinal position
  *   return: a list of PT_HOST_VAR type nodes
@@ -9631,6 +9731,11 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
     }
 
   if (!PT_IS_NAME_NODE (node))
+    {
+      return node;
+    }
+
+  if (node->info.name.correlation_level > 0)
     {
       return node;
     }

@@ -214,6 +214,8 @@ extern void hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info);
 extern void hm_srv_handle_set_pooled (void);
 #endif
 
+extern void hm_set_current_srv_handle (int h_id);
+
 extern int hm_srv_handle_get_current_count (void);
 extern void hm_srv_handle_unset_prepare_flag_all (void);
 #endif /* _CAS_HANDLE_H_ */

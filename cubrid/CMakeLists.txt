@@ -574,7 +574,10 @@ install(FILES
   ${BASE_DIR}/error_code.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
-
+install(FILES
+  ${API_DIR}/cubrid_log.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY
