@@ -1356,21 +1356,21 @@ $ LOADDB
 1285 외래키 (%1$s) 의 ON DELETE action이 CASCADE가 아니기 때문에 truncate할 수 없습니다.
 
 1296 dblink - %1$s
-1297 dblink - invalid number of columns specified.
-1298 dblink - catalog _db_server class not found.
-1299 dblink - server "%1$s" not found.
-1300 dblink - server "%1$s" already exists.
-1301 dblink - Cannot update server object.
-1302 dblink - unsupported type.
-1303 dblink - invalid bind param.
-1304 dblink - password length exceeds max size.
-1305 dblink - encrypted password length is incorrect.
-1306 dblink - the checksum of the encrypted password does not match.
-1307 dblink - invalid cipher string format.
-1308 dblink - Failed to decryption password. error=%1$d".
-1309 dblink - Failed to encryption password. error=%1$d".
-1310 dblink - Multiple "%1$s" Server found.
-1311 dblink - Not allowed "%1$s" Server. 
+1297 dblink - 명시된 열의 개수가 올바르지 않습니다.
+1298 dblink - _db_server 카탈로그를 찾을 수 없습니다.
+1299 dblink - "%1$s" 서버를 찾을 수 없습니다.
+1300 dblink - "%1$s" 서버는 이미 존재합니다.
+1301 dblink - 서버 객체에 대한 소유권이 없습니다.
+1302 dblink - 지원하지 않는 유형입니다.
+1303 dblink - 유효하지 않은 바인드 파라메터입니다.
+1304 dblink - 암호화할 비밀번호의 길이가 최댓값을 넘어섰습니다.
+1305 dblink - 암호화된 비밀번호의 길이가 올바르지 않습니다.
+1306 dblink - 암호화된 비밀번호의 체크섬이 일치하지 않습니다.
+1307 dblink - 암호 문자열의 형식이 올바르지 않습니다.
+1308 dblink - 암호화된 비밀번호를 복호화하는 데 실패했습니다.. error=%1$d".
+1309 dblink - 비밀번호를 암호화하는 데 실패했습니다. error=%1$d".
+1310 dblink - 이름이 "%1$s"인 서버가 여러 개 있습니다.
+1311 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다. 
 
 1312 마지막 에러
 
