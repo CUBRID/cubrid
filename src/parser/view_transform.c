@@ -2808,10 +2808,6 @@ pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query
 
   switch (query->node_type)
     {
-    case PT_DBLINK_TABLE:
-      pushable = true;
-      break;
-
     case PT_SELECT:
       {
 	CHECK_PUSHABLE_INFO cinfo;
@@ -3084,9 +3080,6 @@ static void
 pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list, FIND_ID_TYPE type)
 {
   PT_NODE *push_term_list;
-  PARSER_VARCHAR *rewritten = NULL;
-  PARSER_VARCHAR *pushed_pred, *query_str, *col_list;
-  unsigned int save_custom;
 
   if (query == NULL || term_list == NULL)
     {
@@ -3118,45 +3111,6 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	  query->info.query.q.select.where = parser_append_node (push_term_list, query->info.query.q.select.where);
 	}
       break;
-    case PT_DBLINK_TABLE:
-      /* copy terms */
-      query->info.dblink_table.pushed_pred = parser_copy_tree_list (parser, term_list);
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_CONVERT_RANGE | PT_SUPPRESS_RESOLVED | PT_PRINT_NO_HOST_VAR_INDEX;
-      pushed_pred = pt_print_and_list (parser, query->info.dblink_table.pushed_pred);
-
-      /* wrapped query SELECT * FROM */
-      rewritten = pt_append_bytes (parser, rewritten, "SELECT * FROM (", 15);
-      query_str = query->info.dblink_table.qstr->info.value.data_value.str;
-      rewritten = pt_append_varchar (parser, rewritten, query_str);
-
-      /* alias name : '_r' */
-      rewritten = pt_append_bytes (parser, rewritten, ") AS _r", 7);
-
-      if (query->info.dblink_table.cols != NULL)
-	{
-	  /* aliased column list */
-	  rewritten = pt_append_bytes (parser, rewritten, "(", 1);
-	  col_list = pt_print_bytes_l (parser, spec->info.spec.as_attr_list);
-	  rewritten = pt_append_varchar (parser, rewritten, col_list);
-	  rewritten = pt_append_bytes (parser, rewritten, ")", 1);
-	}
-
-      if (pushed_pred != NULL)
-	{
-	  /* where predicate */
-	  rewritten = pt_append_bytes (parser, rewritten, " WHERE ", 7);
-	  rewritten = pt_append_varchar (parser, rewritten, pushed_pred);
-	}
-
-      query->info.dblink_table.rewritten = rewritten;
-
-      parser->custom_print = save_custom;
-
-#if !defined (NDEBUG)
-      printf ("===> rewriting query = %s\n", (char *) rewritten->bytes);
-#endif
-      break;
 
     case PT_UNION:
     case PT_DIFFERENCE:
@@ -3170,57 +3124,6 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
     }				/* switch (query->node_type) */
 
   return;
-}
-
-/*
- * mq_copypush_sargable_terms_dblink() -
- *   return:
- *   parser(in):
- *   statement(in):
- *   spec(in):
- *   new_query(in/out):
- *   infop(in):
- */
-static int
-mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec, PT_NODE * new_query,
-				   FIND_ID_INFO * infop)
-{
-  PT_NODE *term, *new_term, *push_term_list;
-  int push_cnt, copy_cnt;
-  PT_NODE *save_next;
-
-  /* init */
-  push_term_list = NULL;
-  push_cnt = 0;
-
-  for (term = statement->info.query.q.select.where; term; term = term->next)
-    {
-      if (pt_sargable_term (parser, term, infop) && PT_PUSHABLE_TERM (infop))
-	{
-	  /* copy term */
-	  new_term = parser_copy_tree (parser, term);
-
-	  /* for term, mark as copy-pushed term */
-	  if (term->node_type == PT_EXPR)
-	    {
-	      PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
-	    }
-	  push_term_list = parser_append_node (new_term, push_term_list);
-
-	  push_cnt++;
-	}
-    }
-
-  if (push_cnt)
-    {
-      /* copy and push term in new_query's search condition */
-      (void) pt_copypush_terms (parser, spec, new_query, push_term_list, infop->type);
-
-      /* free alloced */
-      parser_free_tree (parser, push_term_list);
-    }
-
-  return push_cnt;
 }
 
 /*
@@ -3550,112 +3453,6 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
   spec->info.spec.derived_table = new_query;
 
   return spec;
-}
-
-/*
- * mq_rewrite_dblink_as_derived -
- *   return: rewritten dblink as a derived table (like a subquery)
- *   parser(in): 
- *   query(in): it should be a spec node with dblink
- */
-static PT_NODE *
-mq_rewrite_dblink_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
-{
-  PT_NODE *new_query = NULL, *derived = NULL;
-  PT_NODE *range = NULL, *spec = NULL, *temp, *node = NULL;
-  PT_NODE **head;
-  int i = 0;
-
-  /* set line number to range name */
-  range = pt_name (parser, "_dbl");
-  if (range == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      goto exit_on_error;
-    }
-
-  /* construct new spec We are now copying the query and updating the spec_id references */
-  spec = parser_new_node (parser, PT_SPEC);
-  if (spec == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      goto exit_on_error;
-    }
-
-  derived = query;
-
-  spec->info.spec.derived_table = derived;
-  spec->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
-  spec->info.spec.range_var = range;
-  spec->info.spec.id = (UINTPTR) spec;
-  range->info.name.spec_id = (UINTPTR) spec;
-
-  new_query = parser_new_node (parser, PT_SELECT);
-  if (new_query == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      goto exit_on_error;
-    }
-
-  new_query->info.query.q.select.from = spec;
-
-  temp = derived->info.dblink_table.cols;
-  head = &new_query->info.query.q.select.list;
-
-  while (temp)
-    {
-
-      /* we have the original name */
-      node = pt_name (parser, temp->info.attr_def.attr_name->info.name.original);
-
-      if (node == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  goto exit_on_error;
-	}
-      /* set line, column number */
-      node->line_number = temp->line_number;
-      node->column_number = temp->column_number;
-
-      node->info.name.meta_class = PT_NORMAL;
-      node->info.name.resolved = range->info.name.original;
-      node->info.name.spec_id = spec->info.spec.id;
-      node->type_enum = temp->type_enum;
-      node->data_type = parser_copy_tree (parser, temp->data_type);
-      spec->info.spec.as_attr_list = parser_append_node (node, spec->info.spec.as_attr_list);
-
-      *head = parser_copy_tree (parser, node);
-
-      head = &((*head)->next);
-
-      temp = temp->next;
-    }
-
-  /* move query id # */
-  new_query->info.query.id = query->info.query.id;
-  new_query->flag.recompile = query->flag.recompile;
-
-  return new_query;
-
-exit_on_error:
-
-  if (node != NULL)
-    {
-      parser_free_node (parser, node);
-    }
-  if (new_query != NULL)
-    {
-      parser_free_node (parser, new_query);
-    }
-  if (spec != NULL)
-    {
-      parser_free_node (parser, spec);
-    }
-  if (range != NULL)
-    {
-      parser_free_node (parser, range);
-    }
-  return NULL;
 }
 
 /*
@@ -4880,44 +4677,6 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int
   return statement;
 }
 
-/*
- * mq_rewrite_dblink_as_subquery () - rewrite dblink as a subquery
- *   return: PT_NODE *
- *   parser(in): parser environment
- *   node(in): possible dblink query
- */
-static PT_NODE *
-mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *walk)
-{
-  PT_NODE *spec, *derived = NULL;
-  PT_NODE *derived_table;
-
-  if (node->node_type != PT_SELECT)
-    {
-      return node;
-    }
-
-  for (spec = node->info.query.q.select.from; spec; spec = spec->next)
-    {
-      if ((derived_table = spec->info.spec.derived_table)
-	  && spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-	{
-	  derived = mq_rewrite_dblink_as_derived (parser, derived_table);
-	  if (derived == NULL)
-	    {
-	      break;
-	    }
-
-	  derived->info.query.is_subquery = PT_IS_SUBQUERY;
-	  spec->info.spec.derived_table = derived;
-	  spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
-	}
-    }
-
-  *walk = PT_STOP_WALK;
-
-  return node;
-}
 
 /*
  * mq_translate_local() - recursively expands each query against a view or
@@ -4964,6 +4723,7 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
 	      aggregate_rewrote_as_derived = true;
 	    }
 	}
+
       break;
 
     case PT_UPDATE:
@@ -6466,10 +6226,6 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (node)
 	{
-	  /* for the optimization of the query includes dblink
-	   * it is better to be written to a subquery */
-	  node = parser_walk_tree (parser, node, NULL, NULL, mq_rewrite_dblink_as_subquery, NULL);
-
 	  /* mq_optimize works for queries only. Queries generated for update, insert or delete will go thru this path
 	   * when mq_translate is called, so will still get this optimization step applied. */
 	  node = mq_optimize (parser, node);
