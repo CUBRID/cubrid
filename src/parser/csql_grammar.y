@@ -84,7 +84,7 @@ extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
 
-static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
+extern void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
 /*%CODE_END%*/%}
 
 %{
@@ -152,168 +152,6 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #endif
 
 #define STACK_SIZE	128
-
-typedef struct function_map FUNCTION_MAP;
-struct function_map
-{
-  const char *keyword;
-  int op;
-};
-
-
-static FUNCTION_MAP functions[] = {
-  {"abs", PT_ABS},
-  {"acos", PT_ACOS},
-  {"addtime", PT_ADDTIME},
-  {"asin", PT_ASIN},
-  {"atan", PT_ATAN},
-  {"atan2", PT_ATAN2},
-  {"bin", PT_BIN},
-  {"bit_count", PT_BIT_COUNT},
-  {"bit_to_blob", PT_BIT_TO_BLOB},
-  {"blob_from_file", PT_BLOB_FROM_FILE},
-  {"blob_length", PT_BLOB_LENGTH},
-  {"blob_to_bit", PT_BLOB_TO_BIT},
-  {"ceil", PT_CEIL},
-  {"ceiling", PT_CEIL},
-  {"char_length", PT_CHAR_LENGTH},
-  {"char_to_blob", PT_CHAR_TO_BLOB},
-  {"char_to_clob", PT_CHAR_TO_CLOB},
-  {"character_length", PT_CHAR_LENGTH},
-  {"clob_from_file", PT_CLOB_FROM_FILE},
-  {"clob_length", PT_CLOB_LENGTH},
-  {"concat", PT_CONCAT},
-  {"concat_ws", PT_CONCAT_WS},
-  {"cos", PT_COS},
-  {"cot", PT_COT},
-  {"cume_dist", PT_CUME_DIST},
-  {"curtime", PT_CURRENT_TIME},
-  {"curdate", PT_CURRENT_DATE},
-  {"utc_time", PT_UTC_TIME},
-  {"utc_date", PT_UTC_DATE},
-  {"datediff", PT_DATEDIFF},
-  {"timediff",PT_TIMEDIFF},
-  {"date_format", PT_DATE_FORMAT},
-  {"dayofmonth", PT_DAYOFMONTH},
-  {"dayofyear", PT_DAYOFYEAR},
-  {"decode", PT_DECODE},
-  {"decr", PT_DECR},
-  {"degrees", PT_DEGREES},
-  {"drand", PT_DRAND},
-  {"drandom", PT_DRANDOM},
-  {"exec_stats", PT_EXEC_STATS},
-  {"exp", PT_EXP},
-  {"field", PT_FIELD},
-  {"floor", PT_FLOOR},
-  {"from_days", PT_FROMDAYS},
-  {"greatest", PT_GREATEST},
-  {"groupby_num", PT_GROUPBY_NUM},
-  {"incr", PT_INCR},
-  {"index_cardinality", PT_INDEX_CARDINALITY},
-  {"inst_num", PT_INST_NUM},
-  {"instr", PT_INSTR},
-  {"instrb", PT_INSTR},
-  {"last_day", PT_LAST_DAY},
-  {"length", PT_CHAR_LENGTH},
-  {"lengthb", PT_CHAR_LENGTH},
-  {"least", PT_LEAST},
-  {"like_match_lower_bound", PT_LIKE_LOWER_BOUND},
-  {"like_match_upper_bound", PT_LIKE_UPPER_BOUND},
-  {"list_dbs", PT_LIST_DBS},
-  {"locate", PT_LOCATE},
-  {"ln", PT_LN},
-  {"log2", PT_LOG2},
-  {"log10", PT_LOG10},
-  {"log", PT_LOG},
-  {"lpad", PT_LPAD},
-  {"ltrim", PT_LTRIM},
-  {"makedate", PT_MAKEDATE},
-  {"maketime", PT_MAKETIME},
-  {"mid", PT_MID},
-  {"months_between", PT_MONTHS_BETWEEN},
-  {"new_time", PT_NEW_TIME},
-  {"format", PT_FORMAT},
-  {"now", PT_CURRENT_DATETIME},
-  {"nvl", PT_NVL},
-  {"nvl2", PT_NVL2},
-  {"orderby_num", PT_ORDERBY_NUM},
-  {"percent_rank", PT_PERCENT_RANK},
-  {"power", PT_POWER},
-  {"pow", PT_POWER},
-  {"pi", PT_PI},
-  {"radians", PT_RADIANS},
-  {"rand", PT_RAND},
-  {"random", PT_RANDOM},
-  {"repeat", PT_REPEAT},
-  {"space", PT_SPACE},
-  {"reverse", PT_REVERSE},
-  {"disk_size", PT_DISK_SIZE},
-  {"round", PT_ROUND},
-  {"row_count", PT_ROW_COUNT},
-  {"last_insert_id", PT_LAST_INSERT_ID},
-  {"rpad", PT_RPAD},
-  {"rtrim", PT_RTRIM},
-  {"sec_to_time", PT_SECTOTIME},
-  {"serial_current_value", PT_CURRENT_VALUE},
-  {"serial_next_value", PT_NEXT_VALUE},
-  {"sign", PT_SIGN},
-  {"sin", PT_SIN},
-  {"sqrt", PT_SQRT},
-  {"strcmp", PT_STRCMP},
-  {"substr", PT_SUBSTRING},
-  {"substring_index", PT_SUBSTRING_INDEX},
-  {"find_in_set", PT_FINDINSET},
-  {"md5", PT_MD5},
-/*
- * temporarily block aes_encrypt and aes_decrypt functions until binary string charset is available.
- *
- *  {"aes_encrypt", PT_AES_ENCRYPT},
- *  {"aes_decrypt", PT_AES_DECRYPT},
- */
-  {"sha1", PT_SHA_ONE},
-  {"sha2", PT_SHA_TWO},
-  {"substrb", PT_SUBSTRING},
-  {"tan", PT_TAN},
-  {"time_format", PT_TIME_FORMAT},
-  {"to_char", PT_TO_CHAR},
-  {"to_date", PT_TO_DATE},
-  {"to_datetime", PT_TO_DATETIME},
-  {"to_days", PT_TODAYS},
-  {"time_to_sec", PT_TIMETOSEC},
-  {"to_number", PT_TO_NUMBER},
-  {"to_time", PT_TO_TIME},
-  {"to_timestamp", PT_TO_TIMESTAMP},
-  {"trunc", PT_TRUNC},
-  {"tz_offset", PT_TZ_OFFSET},
-  {"unix_timestamp", PT_UNIX_TIMESTAMP},
-  {"typeof", PT_TYPEOF},
-  {"from_unixtime", PT_FROM_UNIXTIME},
-  {"from_tz", PT_FROM_TZ},
-  {"weekday", PT_WEEKDAY},
-  {"dayofweek", PT_DAYOFWEEK},
-  {"version", PT_VERSION},
-  {"quarter", PT_QUARTERF},
-  {"week", PT_WEEKF},
-  {"hex", PT_HEX},
-  {"ascii", PT_ASCII},
-  {"conv", PT_CONV},
-  {"inet_aton", PT_INET_ATON},
-  {"inet_ntoa", PT_INET_NTOA},
-  {"coercibility", PT_COERCIBILITY},
-  {"width_bucket", PT_WIDTH_BUCKET},
-  {"trace_stats", PT_TRACE_STATS},
-  {"str_to_date", PT_STR_TO_DATE},
-  {"to_base64", PT_TO_BASE64},
-  {"from_base64", PT_FROM_BASE64},
-  {"sys_guid", PT_SYS_GUID},
-  {"sleep", PT_SLEEP},
-  {"to_datetime_tz", PT_TO_DATETIME_TZ},
-  {"to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
-  {"utc_timestamp", PT_UTC_TIMESTAMP},
-  {"crc32", PT_CRC32},
-  {"schema_def", PT_SCHEMA_DEF},
-  {"conv_tz", PT_CONV_TZ},
-};
 
 
 static int parser_groupby_exception = 0;
@@ -424,19 +262,6 @@ typedef enum
   SERIAL_CACHE,
 } SERIAL_DEFINE;
 
-typedef enum
-{
-  CONN_INFO_HOST = 0,
-  CONN_INFO_PORT,
-  CONN_INFO_DBNAME,
-  CONN_INFO_USER,
-  CONN_INFO_PASSWORD,
-  CONN_INFO_PROPERTIES,
-  CONN_INFO_COMMENT,
-  CONN_INFO_OWNER,
-} CONN_INFO_DEFINE;
-
-FUNCTION_MAP *keyword_offset (const char *name);
 
 static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
 static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
@@ -650,6 +475,7 @@ int g_original_buffer_len;
 /*{{{*/
 %type <boolean> opt_reverse
 %type <boolean> opt_unique
+%type <boolean> opt_cascade
 %type <boolean> opt_cascade_constraints
 %type <number> opt_replace
 %type <number> opt_of_inner_left_right
@@ -1066,8 +892,6 @@ int g_original_buffer_len;
 %type <node> json_table_column_rule
 %type <node> json_table_column_list_rule
 
-%type <node> dblink_server_name
-%type <node> server_identifier
 %type <node> dblink_expr
 %type <node> dblink_conn
 %type <node> dblink_conn_str
@@ -1076,8 +900,6 @@ int g_original_buffer_len;
 %type <node> dblink_column_definition
 %type <c10> connect_info
 %type <c2>  connect_item
-%type <c10> alter_server_list
-%type <c2>  alter_server_item
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -3132,18 +2954,13 @@ create_stmt
 
 		DBG_PRINT}}
 
-	| CREATE SERVER dblink_server_name '(' connect_info ')'
+	| CREATE SERVER identifier '(' connect_info ')'
 		{{
                         PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SERVER);
 			if (node)
 			  {
                                 node->info.create_server.server_name = $3;
-                                if ($3->next)
-                                  {
-                                     node->info.create_server.owner_name = $3->next;
-                                     $3->next = NULL;
-                                  }
-
+                                container_10 x = $5;
                                 PT_CREATE_SERVER_INFO *si = &node->info.create_server;
                                 /* container order
                                 * 1: HOST(IP/NAME)
@@ -3158,32 +2975,12 @@ create_stmt
                                 si->port = CONTAINER_AT_1($5);
                                 si->dbname = CONTAINER_AT_2($5);
                                 si->user = CONTAINER_AT_3($5);
-                                si->pwd = CONTAINER_AT_4($5);
-                                if(si->pwd == NULL)
-                                {
-                                   PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
-                                   if (val)                    
-                                     {
-                                        char    cipher[512];
-
-                                        val->type_enum = PT_TYPE_CHAR;
-                                        val->info.value.string_type = ' ';
-
-                                        if (pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher)) == NO_ERROR)
-                                        {
-                                          val->info.value.data_value.str =
-                                                pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
-                                        }
-                                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
-                                     }
-                                     si->pwd = val;
-                                }
-
-                                if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
-                                  { 
-                                      PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
+                                if( !si->host || !si->port || !si->dbname || !si->user )
+                                  {
+                                      PT_ERROR(this_parser, node, "Required information is missing.");
                                   }
+
+                                si->pwd = CONTAINER_AT_4($5);
                                 si->prop = CONTAINER_AT_5($5);
                                 si->comment = CONTAINER_AT_6($5);
 			  }
@@ -3917,98 +3714,6 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER  SERVER  dblink_server_name alter_server_list
-                {{
-                        PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERVER);
-			if (node)
-			  {
-                                char *str;  
-                                bool is_not_allowed = false;  
-                                int  item_bits = (int)TO_NUMBER(CONTAINER_AT_9($4));
-                                PT_ALTER_SERVER_INFO *server = &node->info.alter_server;
-
-                                node->info.alter_server.server_name = $3;
-                                if ($3->next)
-                                  {
-                                     node->info.alter_server.current_owner_name = $3->next;
-                                     $3->next = NULL;
-                                  }                                
-                                is_not_allowed = (bool)(item_bits == 0);
-
-                                /* container order
-                                * 1: HOST(IP/NAME)
-                                * 2: PORT
-                                * 3: DBNMAE
-                                * 4: USER
-                                * 5: PASSWORD
-                                * 6: PROPERTIES
-                                * 7: COMMENT
-                                * 8: OWNER
-                                * 9: --
-                                *10: bits
-                                */
-                                server->host = CONTAINER_AT_0($4);
-                                server->port = CONTAINER_AT_1($4);
-                                server->dbname = CONTAINER_AT_2($4);
-                                server->user = CONTAINER_AT_3($4);
-                                server->pwd = CONTAINER_AT_4($4);
-                                server->prop = CONTAINER_AT_5($4);
-                                server->comment = CONTAINER_AT_6($4);
-                                server->owner_name = CONTAINER_AT_7($4);
-
-                                if (item_bits & (0x01 << CONN_INFO_HOST))
-                                {
-                                    server->xbits.bit_host = 1;
-                                    str = (char *) PT_VALUE_GET_BYTES (server->host);                                                                       
-                                    is_not_allowed |= (!str || str[0] == '\0');
-                                }
-                                if (item_bits & (0x01 << CONN_INFO_PORT))
-                                {
-                                    server->xbits.bit_port = 1;
-                                    is_not_allowed |= (!server->port);
-                                }
-                                if (item_bits & (0x01 << CONN_INFO_DBNAME))
-                                {
-                                    server->xbits.bit_dbname = 1;
-                                    str = server->dbname->info.name.original;
-                                    is_not_allowed |= (!str || str[0] == '\0');
-                                }
-                                if (item_bits & (0x01 << CONN_INFO_USER))
-                                {
-                                    server->xbits.bit_user = 1;
-                                    str = server->user->info.name.original;
-                                    is_not_allowed |= (!str || str[0] == '\0');
-                                }  
-                                if (item_bits & (0x01 << CONN_INFO_PASSWORD))
-                                {
-                                    server->xbits.bit_pwd = 1;
-                                }
-                                if (item_bits & (0x01 << CONN_INFO_PROPERTIES))
-                                {
-                                    server->xbits.bit_prop = 1;
-                                }
-                                if (item_bits & (0x01 << CONN_INFO_COMMENT))
-                                {
-                                    server->xbits.bit_comment = 1;
-                                }  
-                                if (item_bits & (0x01 << CONN_INFO_OWNER))
-                                {
-                                    server->xbits.bit_owner = 1;
-                                    str = server->owner_name->info.name.original;
-                                    is_not_allowed |= (!str || str[0] == '\0');
-                                }
-
-                                if(is_not_allowed)
-                                  {                                       
-                                        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
-                                  }                 
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
 	;
 
 view_or_vclass
@@ -4087,20 +3792,6 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME SERVER dblink_server_name AS identifier
-		{{
-			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SERVER);
-			if (node)
-			  {
-			    node->info.rename_server.old_name = $3;
-                            node->info.rename_server.owner_name = $3->next;
-                            $3->next = NULL;
-                            node->info.rename_server.new_name = $5;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
 	;
 
 rename_class_list
@@ -4166,13 +3857,14 @@ as_or_to
 	;
 
 truncate_stmt
-	: TRUNCATE opt_table_type class_spec
+	: TRUNCATE opt_table_type class_spec opt_cascade
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_TRUNCATE);
 			if (node)
 			  {
 			    node->info.truncate.spec = $3;
+			    node->info.truncate.is_cascade = $4;
 			  }
 
 			$$ = node;
@@ -4400,7 +4092,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP SERVER opt_if_exists dblink_server_name
+	| DROP SERVER opt_if_exists identifier
 		{{
                         PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERVER);
 
@@ -4408,11 +4100,6 @@ drop_stmt
 			  {
                             node->info.drop_server.if_exists = $3;
 			    node->info.drop_server.server_name = $4;
-                            if ($4->next)
-                              {
-                                node->info.drop_server.owner_name = $4->next;
-                                $4->next = NULL;
-                              }
 			  }
 
 			$$ = node;
@@ -5454,6 +5141,21 @@ opt_table_type
 		{{
 
 			$$ = PT_CLASS;
+
+		DBG_PRINT}}
+	;
+
+opt_cascade
+	: /* empty */
+		{{
+
+			$$ = false;
+
+		DBG_PRINT}}
+	| CASCADE
+		{{
+
+			$$ = true;
 
 		DBG_PRINT}}
 	;
@@ -25002,24 +24704,35 @@ connect_info
         ;
 
 connect_item    
-        :  HOST '=' CHAR_STRING 
+        :  HOST '=' identifier 
           {{
                 container_2 ctn;
-                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
-                if (val)
+
+                if( pt_check_hostname($3) == false )
                   {
-                     val->info.value.data_value.str =
-                               pt_append_bytes (this_parser, NULL, $3, strlen ($3));
-                     val->type_enum = PT_TYPE_CHAR;
-                     if (!pt_check_ipv4($3) && !pt_check_hostname($3))
-                     { 
-                        PT_ERROR (this_parser, val, "Incorrect hostname format");
-                     }
-                     PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+                        PT_NODE* node = pt_top(this_parser);     
+                        PT_ERROR (this_parser, node, "Incorrect hostname format");
                   }
-                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_HOST), val);
+
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_HOST), $3);
                 $$ = ctn;
             DBG_PRINT}}
+        | HOST '=' IPV4_ADDRESS
+          {{
+                container_2 ctn;
+    		PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+                if (val)
+                   {
+                        val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                        val->type_enum = PT_TYPE_CHAR;
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+                   }
+                
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_HOST), val);
+                $$ = ctn;
+
+	   DBG_PRINT}}
         | PORT '=' UNSIGNED_INTEGER 
           {{
                 container_2 ctn;
@@ -25052,25 +24765,9 @@ connect_item
             DBG_PRINT}}
         | PASSWORD '=' 
           {{
-               container_2 ctn;
-                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
-	        if (val)                    
-		  {
-                        char    cipher[512];
-
-                        val->type_enum = PT_TYPE_CHAR;
-                        val->info.value.string_type = ' ';
-
-                        if (pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher)) == NO_ERROR)
-                          {
-                             val->info.value.data_value.str =
-                                pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
-                          }
-                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
-		   }
-
-                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), val);
-                 $$ = ctn;
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), NULL);
+                $$ = ctn;
            DBG_PRINT}}
         | PASSWORD '=' CHAR_STRING
           {{
@@ -25078,16 +24775,11 @@ connect_item
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
-                        char    cipher[512];
-
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
-
-                        if (pt_check_dblink_password(this_parser, $3, cipher, sizeof(cipher)) == NO_ERROR)
-                          {                             
-                             val->info.value.data_value.str =
-                                pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
-                          }
+                        val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                        
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 		   }
 
@@ -25106,10 +24798,6 @@ connect_item
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
-                        if( $3 && $3[0] &&  $3[0] != '?' )
-                        {                           
-                           PT_ERROR (this_parser, val, "Invalid properties of connection information for dblink");
-                        }
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
                         val->info.value.data_value.str =
@@ -25135,72 +24823,6 @@ connect_item
            DBG_PRINT}}
         ;
 
-alter_server_list
-        : alter_server_list ',' alter_server_item
-          {{
-               container_10 ctn = $1;
-
-               pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $3);
-	        $$ = ctn;
-           DBG_PRINT }}
-        | alter_server_item
-          {{
-                container_10 ctn;
-                memset(&ctn, 0x00, sizeof(container_10));
-
-                pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $1);
-	        $$ = ctn;
-           DBG_PRINT}}
-        ;
-
-alter_server_item
-        : OWNER TO identifier
-          {{
-                container_2 ctn;                 
-
-                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_OWNER), $3);
-                $$ = ctn;
-          }}
-        | CHANGE connect_item
-          {{   
-	        $$ = $2;
-           DBG_PRINT}}
-        ;
-
-dblink_server_name
-	: identifier DOT server_identifier
-          {{                
-             if($3)
-               {
-                  $3->next = $1;                  
-               }
-             else if($1)
-               {
-                  parser_free_node (this_parser, $1);
-               }  
-              $$ = $3;
-              PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-          DBG_PRINT}}
-        | server_identifier
-          {{
-              $$ = $1;
-          DBG_PRINT}}
-        ;
-
-server_identifier
-        : identifier
-            {{  
-                if ($1)
-                  {                
-                     if (strchr($1->info.name.original, '.')) 
-                       {                 
-                          PT_ERRORm (this_parser, $1, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_SERVER_NAME);
-                       }
-                  }
-                $$ = $1;
-                PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                DBG_PRINT}}
-         ;
 dblink_expr
         :   dblink_conn  ','  CHAR_STRING  
             {{
@@ -25231,11 +24853,6 @@ dblink_expr
                         {
                                 ct->info.dblink_table.is_name = true;
                                 ct->info.dblink_table.conn = $1;
-                                if ($1->next)
-                                  {
-                                    ct->info.dblink_table.owner_name = $1->next;
-                                    $1->next = NULL;
-                                  }
                         }
                         else // ( $1->node_type == PT_VALUE )
                         {
@@ -25257,9 +24874,19 @@ dblink_expr
         ;
 
 dblink_conn:
-        dblink_server_name      
-        {{  
-                $$ = $1;                
+        IdName
+        {{
+                char* str_name = $1;
+                int   str_len = strlen(str_name);
+                PT_NODE* p = parser_new_node (this_parser, PT_NAME);
+                if (p)
+                {
+                        PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+                        str_name = pt_check_identifier (this_parser, p, str_name, str_len);
+                        p->info.name.original = str_name;
+                }
+                $$ = p;
+                PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
                 DBG_PRINT}}
         | dblink_conn_str
         {{
@@ -26716,6 +26343,8 @@ PT_HINT parser_hint_table[] = {
   ,
   {"NO_HASH_LIST_SCAN", NULL, PT_HINT_NO_HASH_LIST_SCAN}
   ,
+  {"NO_PUSH_PRED", NULL, PT_HINT_NO_PUSH_PRED}
+  ,
   {"SKIP_UPDATE_NULL", NULL, PT_HINT_SKIP_UPDATE_NULL}
   ,
   {"NO_INDEX_LS", NULL, PT_HINT_NO_INDEX_LS}
@@ -26732,55 +26361,11 @@ PT_HINT parser_hint_table[] = {
   ,
   {"USE_SBR", NULL, PT_HINT_USE_SBR}
   ,
+  {"NO_SUPPLEMENTAL_LOG", NULL, PT_HINT_NO_SUPPLEMENTAL_LOG}
+  ,
   {NULL, NULL, -1}		/* mark as end */
 };
 
-
-
-static int
-function_keyword_cmp (const void *f1, const void *f2)
-{
-  return strcasecmp (((FUNCTION_MAP *) f1)->keyword,
-		     ((FUNCTION_MAP *) f2)->keyword);
-}
-
-
-
-FUNCTION_MAP *
-keyword_offset (const char *text)
-{
-  static bool function_keyword_sorted = false;
-  FUNCTION_MAP dummy;
-  FUNCTION_MAP *result_key;
-
-  if (function_keyword_sorted == false)
-    {
-      qsort (functions,
-	     (sizeof (functions) / sizeof (functions[0])),
-	     sizeof (functions[0]), function_keyword_cmp);
-
-      function_keyword_sorted = true;
-    }
-
-  if (!text)
-    {
-      return NULL;
-    }
-
-  if (strlen (text) >= MAX_KEYWORD_SIZE)
-    {
-      return NULL;
-    }
-
-  dummy.keyword = text;
-
-  result_key =
-    (FUNCTION_MAP *) bsearch (&dummy, functions,
-			      (sizeof (functions) / sizeof (functions[0])),
-			      sizeof (FUNCTION_MAP), function_keyword_cmp);
-
-  return result_key;
-}
 
 
 PT_NODE *
@@ -26796,7 +26381,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
   parser_function_code = PT_EMPTY;
   c = parser_count_list (args);
-  key = keyword_offset (name);
+  key = pt_find_function_name (name);
   if (key == NULL)
     return NULL;
 
@@ -28536,7 +28121,7 @@ pt_create_paren_expr_list (PT_NODE * exp)
   return exp;
 }
 
-static void
+void
 pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_10 *ctn, container_2 info)
 {
   /* container order
@@ -28602,27 +28187,13 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
                 }
                 ctn->c7 = CONTAINER_AT_1(info);        
                 break;
-
-        case CONN_INFO_OWNER:
-                if( ctn->c8 != NULL )
-                {
-                    PT_ERROR (parser, node, "OWNER information was duplicated.");
-                }
-                ctn->c8 = CONTAINER_AT_1(info);
-                break;
-
         default:
                 assert(0);
                 break;
     }
-
-    unsigned int set_bits = (unsigned int)TO_NUMBER(CONTAINER_AT_9(*ctn));
-    set_bits |= (0x01 << TO_NUMBER (CONTAINER_AT_0(info)));
-    ctn->c10 = FROM_NUMBER(set_bits);
 }
 
-static bool 
-pt_ct_check_select (char* p, char *perr_msg)
+static bool pt_ct_check_select (char* p, char *perr_msg)
 {  
    perr_msg[0] = 0x00;
    while (*p == ' ' || *p == '(' || *p == '\t' || *p == '\r' || *p == '\n')
