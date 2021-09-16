@@ -969,7 +969,14 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	    case 7:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
-	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
+	      if (dml->changed_column_data[i] == NULL)
+		{
+		  dml->changed_column_data_len[i] = 0;
+		}
+	      else
+		{
+		  dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
+		}
 	      break;
 
 	    case 8:
