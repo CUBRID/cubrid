@@ -6853,7 +6853,8 @@ log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_L
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), log_lsa, log_page_p);
   supplement = ((LOG_REC_SUPPLEMENT *) ((char *) log_page_p->area + log_lsa->offset));
-  fprintf (out_fp, "  SUPPLEMENT TYPE = %d\n", supplement->rec_type);
+  fprintf (out_fp, "\tSUPPLEMENT TYPE = %d\n", supplement->rec_type);
+  fprintf (out_fp, "\tSUPPLEMENT LENGTH = %d\n", supplement->length);
 
   return log_page_p;
 }
@@ -12948,11 +12949,89 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
     case DB_TYPE_DB_VALUE:
       /* make sure line is NULL terminated, may not be necessary line[0] = '\0'; */
       break;
+    case DB_TYPE_ENUMERATION:
+      if (db_get_enum_string (new_value) == NULL && db_get_enum_short (new_value) != 0)
+	{
+	  return db_get_enum_short (new_value) == db_get_enum_short (cmpdata);
+	}
+      else
+	{
+	  DB_VALUE varchar_val;
+	  DB_VALUE varchar_val2;
+
+	  /* print enumerations as strings */
+	  if (tp_enumeration_to_varchar (new_value, &varchar_val) == NO_ERROR)
+	    {
+	      if (tp_enumeration_to_varchar (cmpdata, &varchar_val2) == NO_ERROR)
+		{
+		  if (strcmp (db_get_string (&varchar_val), db_get_string (&varchar_val2)))
+		    {
+		      return 0;
+		    }
+		  else
+		    {
+		      return strlen (db_get_string (&varchar_val));
+		    }
+		}
+	    }
+	  else
+	    {
+	      assert (false);
+	    }
+	}
+      break;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      {
+	DB_ELO *elo, *elo2;
+	func_type = 7;
+	elo = db_get_elo (new_value);
+	elo2 = db_get_elo (cmpdata);
+	if (elo != NULL)
+	  {
+	    if (elo->type == ELO_FBO)
+	      {
+		assert (elo->locator != NULL);
+		if (strcmp (elo->locator, elo2->locator))
+		  {
+		    return 0;
+		  }
+		else
+		  {
+		    return strlen (elo->locator);
+		  }
+	      }
+	    else		/* ELO_LO */
+	      {
+		/* should not happen for now */
+		return ER_FAILED;
+	      }
+	  }
+	else
+	  {
+	    cdc_log ("cdc_put_value_to_loginfo : Failed to extract LOB File");
+	    return ER_FAILED;
+	  }
+      }
+
+      break;
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_ELO:
+    case DB_TYPE_JSON:
+    case DB_TYPE_POINTER:
+    case DB_TYPE_ERROR:
+      return ER_FAILED;
+      cdc_log ("cdc_compare_undoredo_dbvalue : Not Supported data type %d", DB_VALUE_TYPE (new_value));
+      break;
     default:
       /* NB: THERE MUST BE NO DEFAULT CASE HERE. ALL TYPES MUST BE HANDLED! */
       assert (false);
       break;
     }
+  return ER_FAILED;
 }
 
 static int
@@ -12970,10 +13049,14 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
   DB_VALUE result;
   INTL_CODESET format_codeset = LANG_SYS_CODESET;
   const char *date_format = "YYYY-MM-DD";
+  const char *datetime_frmt = "YYYY-MM-DD HH24:MI:SS.FF";
+  const char *datetimetz_frmt = "YYYY-MM-DD HH24:MI:SS.FF TZH:TZM";
+  const char *datetimeltz_frmt = "YYYY-MM-DD HH24:MI:SS.FF TZR";
+
   const char *time_format = "HH24:MI:SS";
-  const char *timestamp_frmt = "YYYY-MM-DD HH24:MI:SS.FF";
-  const char *timestamptz_frmt = "YYYY-MM-DD HH24:MI:SS.FF TZH:TZM";
-  const char *timestampltz_frmt = "YYYY-MM-DD HH24:MI:SS.FF TZR";
+  const char *timestamp_frmt = "YYYY-MM-DD HH24:MI:SS";
+  const char *timestamptz_frmt = "YYYY-MM-DD HH24:MI:SS TZH:TZM";
+  const char *timestampltz_frmt = "YYYY-MM-DD HH24:MI:SS TZR";
   db_make_int (&lang_str, 1);
   db_make_null (&result);
 
@@ -12987,7 +13070,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_string (ptr, NULL);
       *data_ptr = ptr;
       /* for alter case . if num of col is changed, there will be NULL db_value inserted */
-      return ER_FAILED;		/*error */
+      return NO_ERROR;		/*error */
     }
 
   switch (DB_VALUE_TYPE (new_value))
@@ -13073,9 +13156,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (&result));
       break;
-
     case DB_TYPE_TIMESTAMP:
-    case DB_TYPE_DATETIME:
       db_make_char (&format, strlen (timestamp_frmt), timestamp_frmt,
 		    strlen (timestamp_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
@@ -13084,9 +13165,16 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (&result));
       break;
+    case DB_TYPE_DATETIME:
+      db_make_char (&format, strlen (datetime_frmt), datetime_frmt,
+		    strlen (datetime_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
+      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, db_get_string (&result));
+      break;
     case DB_TYPE_TIMESTAMPTZ:
-    case DB_TYPE_DATETIMETZ:
       db_make_char (&format, strlen (timestamptz_frmt), timestamptz_frmt,
 		    strlen (timestamptz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
@@ -13094,28 +13182,39 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (&result));
-
       break;
+    case DB_TYPE_DATETIMETZ:
+      db_make_char (&format, strlen (datetimetz_frmt), datetimetz_frmt,
+		    strlen (datetimetz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
+      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, db_get_string (&result));
+      break;
     case DB_TYPE_TIMESTAMPLTZ:
-    case DB_TYPE_DATETIMELTZ:
+
       db_make_char (&format, strlen (timestampltz_frmt), timestampltz_frmt,
 		    strlen (timestampltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
-      if (DB_VALUE_TYPE (new_value) == DB_TYPE_TIMESTAMPLTZ)
-	{
-	  db_value_alter_type (new_value, DB_TYPE_TIMESTAMPTZ);
-	}
-      else
-	{
-	  db_value_alter_type (new_value, DB_TYPE_DATETIMETZ);
-	}
+      db_value_alter_type (new_value, DB_TYPE_TIMESTAMPTZ);
 
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (&result));
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      db_make_char (&format, strlen (datetimeltz_frmt), datetimeltz_frmt,
+		    strlen (datetimeltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
+      db_value_alter_type (new_value, DB_TYPE_DATETIMETZ);
+
+      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, db_get_string (&result));
       break;
     case DB_TYPE_DATE:
 
@@ -13136,14 +13235,28 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_DB_VALUE:
       /* make sure line is NULL terminated, may not be necessary line[0] = '\0'; */
       break;
-    case DB_TYPE_OBJECT:
-    case DB_TYPE_SET:
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-    case DB_TYPE_ELO:
     case DB_TYPE_ENUMERATION:
-    case DB_TYPE_JSON:
-      _er_log_debug (ARG_FILE_LINE, "Not Supported");
+      if (db_get_enum_string (new_value) == NULL && db_get_enum_short (new_value) != 0)
+	{
+	  func_type = 4;
+	  ptr = or_pack_int (ptr, func_type);
+	  ptr = or_pack_short (ptr, db_get_enum_short (new_value));
+	}
+      else
+	{
+	  DB_VALUE varchar_val;
+	  func_type = 7;
+	  /* print enumerations as strings */
+	  if (tp_enumeration_to_varchar (new_value, &varchar_val) == NO_ERROR)
+	    {
+	      ptr = or_pack_int (ptr, func_type);
+	      ptr = or_pack_string (ptr, db_get_string (&varchar_val));
+	    }
+	  else
+	    {
+	      assert (false);
+	    }
+	}
       break;
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
@@ -13167,15 +13280,26 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 	  }
 	else
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "LOB File");
+	    cdc_log ("cdc_put_value_to_loginfo : Failed to extract LOB File");
 	    return ER_FAILED;
 	  }
       }
 
       break;
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_ELO:
+    case DB_TYPE_JSON:
     case DB_TYPE_POINTER:
     case DB_TYPE_ERROR:
-      _er_log_debug (ARG_FILE_LINE, "Not Supported, it is used only for method");
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, NULL);
+      *data_ptr = ptr;
+
+      cdc_log ("cdc_put_value_to_loginfo : Not Supported data type %d", DB_VALUE_TYPE (new_value));
       break;
     default:
       /* NB: THERE MUST BE NO DEFAULT CASE HERE. ALL TYPES MUST BE HANDLED! */
