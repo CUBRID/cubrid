@@ -3379,6 +3379,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 int
 mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec)
 {
+  PT_NODE *derived_table;
   int push_cnt = 0;		/* init */
   FIND_ID_INFO info;
   PT_NODE *subquery = NULL;
