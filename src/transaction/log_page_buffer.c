@@ -7322,7 +7322,13 @@ error_cannot_chkpt:
 #undef detailed_er_log
 }
 
-/* log_checkpoint_trantable - TODO
+/*
+ * log_checkpoint_trantable - execute a transaction table checkpoint;
+ *          wait for log pages to be persisted up to the lsa where where the transaction table
+ *          snapshot was taken; delete previous transaction table checkpoints
+ *
+ * return: error status
+ *
  */
 int
 logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
