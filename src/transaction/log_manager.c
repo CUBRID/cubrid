@@ -9762,7 +9762,7 @@ log_checkpoint_execute (cubthread::entry & thread_ref)
 
 #if defined(SERVER_MODE)
 static void
-log_checkpoint_trantable_execute(cubthread::entry &thread_ref)
+log_checkpoint_trantable_execute (cubthread::entry &thread_ref)
 {
   if (!BO_IS_SERVER_RESTARTED ())
     {
@@ -10053,14 +10053,14 @@ log_checkpoint_daemon_init ()
 
 #if defined(SERVER_MODE)
 void
-log_checkpoint_trantable_daemon_init()
+log_checkpoint_trantable_daemon_init ()
 {
   assert (log_Checkpoint_trantable_daemon == nullptr);
 
-  if (is_tran_server_with_remote_storage())
+  if (is_tran_server_with_remote_storage ())
     {
-      cubthread::looper looper { std::chrono::seconds(59) };
-      cubthread::entry_callable_task *daemon_task =
+      cubthread::looper looper { std::chrono::seconds (60) };
+      cubthread::entry_callable_task * daemon_task =
           new cubthread::entry_callable_task (log_checkpoint_trantable_execute);
       log_Checkpoint_trantable_daemon =
           cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint_trantable");
@@ -10078,7 +10078,7 @@ log_remove_log_archive_daemon_init ()
   assert (log_Remove_log_archive_daemon == NULL);
   if (is_tran_server_with_remote_storage ())
     {
-      return;	// no archives are created, no need for archive removal
+      return;			// no archives are created, no need for archive removal
     }
 
   log_remove_log_archive_daemon_task *daemon_task = new log_remove_log_archive_daemon_task ();
@@ -10142,6 +10142,7 @@ log_flush_daemon_init ()
   log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_flush");
 }
 #endif /* SERVER_MODE */
+// *INDENT-ON*
 
 #if defined(SERVER_MODE)
 /*
@@ -10163,6 +10164,7 @@ log_daemons_init ()
 /*
  * log_daemons_destroy () - destroy daemon threads
  */
+// *INDENT-OFF*
 static void
 log_daemons_destroy ()
 {

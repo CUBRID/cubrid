@@ -7331,14 +7331,8 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
 
   if (!is_tran_server_with_remote_storage ())
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "checkpointing trantable is only allowed on transaction server with remote storage\n");
+      er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: only allowed on transaction server with remote storage\n");
       return ER_FAILED;
-    }
-
-  if (detailed_logging)
-    {
-      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: started\n");
     }
 
   {
@@ -7350,32 +7344,48 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     });
     // *INDENT-ON*
 
-    if (detailed_logging)
-      {
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: load trantable\n");
-      }
     cublog::checkpoint_info trantable_checkpoint_info;
 
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: started, loading trantable\n");
+      }
     LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
     trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
 
+    // loading the transaction table snapshot ensures also that a snapshot lsa has been set
     const log_lsa trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
+
+    if (trantable_checkpoint_lsa.is_null ())
+      {
+	// no transaction table checkpoint can be recorded
+	er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: failed; null checkpoint lsa\n");
+	return ER_FAILED;
+      }
 
     if (detailed_logging)
       {
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: add\n");
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: adding with lsa=%lld|%d\n",
+		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
       }
     log_Gl.m_metainfo.add_checkpoint_info (trantable_checkpoint_lsa, std::move (trantable_checkpoint_info));
 
     // make sure new checkpoint is persisted to disk
-    log_write_metalog_to_file ();
+    const int res_metalog_to_file = log_write_metalog_to_file ();
+    if (res_metalog_to_file != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: failed; writing metalog to file\n");
+	return res_metalog_to_file;
+      }
 
-    logpb_flush_pages_direct (thread_p);
+    logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
 
     // drop previous checkpoints
     if (detailed_logging)
       {
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: drop previous\n");
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
+		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
       }
     log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
 
