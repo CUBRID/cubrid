@@ -1373,7 +1373,7 @@ $ LOADDB
 1310 dblink - Multiple "%1$s" Server found.
 1311 dblink - Not allowed "%1$s" Server. 
 
-1300 最后一个错误.
+1312 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
