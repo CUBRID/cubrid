@@ -10967,18 +10967,28 @@ error:
   return;
 }
 
+static int
+cdc_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * lsa)
+{
+  if (log_page_p->hdr.logical_pageid != lsa->pageid)
+    {
+      if (logpb_fetch_page (thread_p, lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
 static SCAN_CODE
 cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa, RECDES * undo_recdes)
 {
   SCAN_CODE scan_code = S_SUCCESS;
 
-  if (log_page_p->hdr.logical_pageid != lsa.pageid)
+  if (cdc_check_log_page (thread_p, log_page_p, &lsa) != NO_ERROR)
     {
-      if (logpb_fetch_page (thread_p, &lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
-	{
-	  return S_ERROR;
-	}
-
+      return S_ERROR;
     }
 
   undo_recdes->data = (char *) malloc (ONE_K);
@@ -10998,6 +11008,12 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
 	{
 	  undo_recdes->data = (char *) realloc (undo_recdes->data, (size_t) (-undo_recdes->length));
 	  undo_recdes->area_size = (size_t) (-undo_recdes->length);
+
+	  if (cdc_check_log_page (thread_p, log_page_p, &lsa) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
 	  scan_code = log_get_undo_record (thread_p, log_page_p, lsa, undo_recdes);
 	  if (scan_code != S_SUCCESS)
 	    {
@@ -11477,7 +11493,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
 	    LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
 
-	    if (rcvindex == RVHF_INSERT)
+	    if (rcvindex == RVHF_INSERT || rcvindex == RVHF_INSERT_NEWHOME)
 	      {
 		if (ZIP_CHECK (redo_length))
 		  {
