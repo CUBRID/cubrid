@@ -14695,9 +14695,9 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
   int drop_stmt_length = 0, pre_drop_length = 0;
   int drop_copied_length = 0;
   char *drop_stmt = NULL;
-  const char *drop_prefix = "DROP TABLE ";
-  const char *if_exist_statement = "IF EXISTS ";
-  const char *cascade_statement = " CASCADE CONSTRAINTS";
+  const char *drop_prefix = "drop table ";
+  const char *if_exist_statement = "if exists ";
+  const char *cascade_statement = " cascade constraints";
 
   const char *classname = NULL;
   const char *objname = NULL;
@@ -15176,8 +15176,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	      drop_copied_length += strlen (cascade_statement);
 	    }
 
-	  drop_stmt[drop_copied_length] = ';';
-	  drop_stmt[drop_copied_length + 1] = '\0';
+	  drop_stmt[drop_copied_length] = '\0';
 
 	  error = log_supplement_statement (ddl_type, objtype, &cls_info[i]->oid, &cls_info[i]->oid, drop_stmt);
 
