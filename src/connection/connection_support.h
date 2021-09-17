@@ -130,4 +130,9 @@ extern int css_net_send3_with_socket (SOCKET & socket, const char *buff1, int le
 				      const char *buff3, int len3);
 extern int css_send_request_with_socket (SOCKET & socket, int command, unsigned short *request_id,
 					 const char *arg_buffer, int arg_buffer_size);
+extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *message_to_master,
+						     int message_to_master_length, bool client_mode);
+extern CSS_CONN_ENTRY *css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host_name,
+					   int connect_type, const char *message, int message_length, int port,
+					   int timeout, bool send_magic, bool client_mode);
 #endif /* _CONNECTION_SUPPORT_H_ */

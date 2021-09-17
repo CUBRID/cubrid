@@ -587,7 +587,7 @@ hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYP
     {
       return NULL;
     }
-  conn = css_connect_to_master_server (prm_get_master_port_id (), packed_name, name_length);
+  conn = css_connect_to_master_server (prm_get_master_port_id (), packed_name, name_length, true);
   if (conn == NULL)
     {
       free_and_init (packed_name);

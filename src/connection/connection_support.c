@@ -180,12 +180,6 @@ static LAST_ACCESS_STATUS *css_get_access_status_with_name (LAST_ACCESS_STATUS *
 static LAST_ACCESS_STATUS *css_get_unused_access_status (LAST_ACCESS_STATUS ** access_status_array, int num_user);
 #endif /* !CS_MODE */
 
-CSS_CONN_ENTRY *css_both_connect_to_master_server (int master_port_id, const char *message_to_master,
-						   int message_to_master_length, bool client_mode);
-static CSS_CONN_ENTRY *css_both_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host_name,
-						int connect_type, const char *message, int message_length, int port,
-						int timeout, bool send_magic, bool client_mode);
-
 #if !defined(SERVER_MODE)
 static int
 css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char **client_host_name, int *client_pid)
@@ -2965,8 +2959,8 @@ css_conn_entry::init_pending_request ()
 // *INDENT-ON*
 
 CSS_CONN_ENTRY *
-css_both_connect_to_master_server (int master_port_id, const char *message_to_master, int message_to_master_length,
-				   bool client_mode)
+css_connect_to_master_server (int master_port_id, const char *message_to_master, int message_to_master_length,
+			      bool client_mode)
 {
   char hname[CUB_MAXHOSTNAMELEN];
   CSS_CONN_ENTRY *conn;
@@ -3002,7 +2996,7 @@ css_both_connect_to_master_server (int master_port_id, const char *message_to_ma
       connection_protocol = SERVER_REQUEST;
     }
 
-  if (css_both_common_connect
+  if (css_common_connect
       (conn, &rid, hname, connection_protocol, message_to_master, message_to_master_length, master_port_id, 0, true,
        client_mode) == NULL)
     {
@@ -3128,10 +3122,10 @@ fail_end:
   return NULL;
 }
 
-static CSS_CONN_ENTRY *
-css_both_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host_name,
-			 int connect_type, const char *message, int message_length, int port, int timeout,
-			 bool send_magic, bool client_mode)
+CSS_CONN_ENTRY *
+css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host_name,
+		    int connect_type, const char *message, int message_length, int port, int timeout,
+		    bool send_magic, bool client_mode)
 {
   SOCKET fd;
 
