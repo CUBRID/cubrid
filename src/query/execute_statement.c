@@ -164,6 +164,13 @@ struct eval_insert_value
   bool replace_names;		/* true if names may need to be replaced with each evaluation */
 };
 
+typedef struct reserved_class_info
+{
+  OID oid;
+  char name[1024];
+
+} RESERVED_CLASS_INFO;
+
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
 					 PT_OP_TYPE cmp_op, int val1_msgid, int val2_msgid, int error_type);
 static int check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int *ret_msg_id);
@@ -180,6 +187,10 @@ static int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, P
 static void init_compile_context (PARSER_CONTEXT * parser);
 
 static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
+
+static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info);
+
+static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info);
 
 /*
  * initialize_serial_invariant() - initialize a serial invariant
@@ -2945,6 +2956,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool need_stmt_replication = false;
   int suppress_repl_error = NO_ERROR;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
+  RESERVED_CLASS_INFO *cls_info[64];
 
   /* save old read fetch instance version */
   read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
@@ -3120,6 +3132,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP:
+	  (void) do_reserve_classinfo (parser, statement, cls_info);
+
 	  error = do_check_internal_statements (parser, statement,
 						/* statement->info.drop. internal_stmts, */
 						do_drop);
@@ -3329,7 +3343,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (error >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
 	{
-	  (void) do_supplemental_statement (parser, statement);
+	  (void) do_supplemental_statement (parser, statement, cls_info);
 	}
     }
 
@@ -3437,6 +3451,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool need_stmt_based_repl = false;
   int suppress_repl_error;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
+
+  RESERVED_CLASS_INFO *cls_info[64];
 
   assert (parser->query_id == NULL_QUERY_ID);
   /* save old read fetch instance version */
@@ -3609,6 +3625,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP:
       /* err = do_drop(parser, statement); */
       /* execute internal statements before and after do_drop() */
+
+      (void) do_reserve_classinfo (parser, statement, cls_info);
       err = do_check_internal_statements (parser, statement,
 					  /* statement->info.drop.internal_stmts, */
 					  do_drop);
@@ -3787,7 +3805,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (err >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
     {
-      (void) do_supplemental_statement (parser, statement);
+      (void) do_supplemental_statement (parser, statement, cls_info);
     }
 
 end:
@@ -14618,8 +14636,50 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   return err;
 }				/* do_execute_select() */
 
+
+static int
+do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info)
+{
+  int count = 0;
+  PT_NODE *entity = NULL;
+  PT_NODE *entity_spec = NULL;
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
+    {
+      return NO_ERROR;
+    }
+
+  if (statement->node_type == PT_DROP)
+    {
+      if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
+	{
+	  return NO_ERROR;
+	}
+
+      for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
+	{
+	  entity = entity_spec->info.spec.flat_entity_list;
+
+	  cls_info[count] = (RESERVED_CLASS_INFO *) malloc (sizeof (RESERVED_CLASS_INFO));
+	  if (cls_info[count] == NULL)
+	    {
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
+	  strcpy (cls_info[count]->name, entity->info.name.original);
+
+	  memcpy (&cls_info[count]->oid, ws_oid (db_find_class (cls_info[count]->name)), sizeof (OID));
+	  count++;
+	}
+    }
+
+  cls_info[count] = NULL;
+
+  return NO_ERROR;
+}
+
 int
-do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info)
 {
   int error = NO_ERROR;
   PARSER_VARCHAR **host_val = NULL;
@@ -14641,8 +14701,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   const char *classname = NULL;
   const char *objname = NULL;
-
-  char *classname_list[64];
 
   CDC_DDL_TYPE ddl_type;
   CDC_DDL_OBJECT_TYPE objtype;
@@ -14728,18 +14786,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       ddl_type = CDC_DROP;
 
-      for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
+      if (cls_info != NULL)
 	{
-	  entity = entity_spec->info.spec.flat_entity_list;
-	  classname = entity->info.name.original;
-	  classname_list[num_class] = (char *) malloc (strlen (classname) + 1);
-	  if (classname_list[num_class] == NULL)
+	  while (cls_info[num_class] != NULL)
 	    {
-	      goto end;
+	      num_class++;
 	    }
-	  memcpy (classname_list[num_class], classname, strlen (classname));
-
-	  classoid_list[num_class++] = ws_oid (sm_find_class (classname));
 	}
 
       break;
@@ -15093,12 +15145,13 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement->node_type == PT_DROP)
     {
+
       /*length for ';' and '\0' are added as 2 */
       pre_drop_length = strlen (drop_prefix) + strlen (if_exist_statement) + strlen (cascade_statement) + 2;
 
       for (int i = 0; i < num_class; i++)
 	{
-	  drop_stmt_length = pre_drop_length + strlen (classname_list[i]);
+	  drop_stmt_length = pre_drop_length + strlen (cls_info[i]->name);
 	  drop_stmt = (char *) malloc (drop_stmt_length);
 	  if (drop_stmt == NULL)
 	    {
@@ -15114,8 +15167,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      drop_copied_length += strlen (if_exist_statement);
 	    }
 
-	  strncpy (drop_stmt + drop_copied_length, classname_list[i], strlen (classname_list[i]));
-	  drop_copied_length += strlen (classname_list[i]);
+	  strncpy (drop_stmt + drop_copied_length, cls_info[i]->name, strlen (cls_info[i]->name));
+	  drop_copied_length += strlen (cls_info[i]->name);
 
 	  if (statement->info.drop.is_cascade_constraints)
 	    {
@@ -15126,9 +15179,10 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  drop_stmt[drop_copied_length] = ';';
 	  drop_stmt[drop_copied_length + 1] = '\0';
 
-	  error = log_supplement_statement (ddl_type, objtype, classoid_list[i], oid, drop_stmt);
+	  error = log_supplement_statement (ddl_type, objtype, &cls_info[i]->oid, &cls_info[i]->oid, drop_stmt);
 
 	  free (drop_stmt);
+	  free_and_init (cls_info[i]);
 	}
     }
   else
@@ -15151,17 +15205,6 @@ end:
   if (host_val)
     {
       free (host_val);
-    }
-
-  if (num_class > 1)
-    {
-      for (int i = 0; i < num_class; i++)
-	{
-	  if (classname_list[i] != NULL)
-	    {
-	      free (classname_list[i]);
-	    }
-	}
     }
 
   if (oid != NULL)
