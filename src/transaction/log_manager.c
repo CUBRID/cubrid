@@ -10043,7 +10043,7 @@ log_checkpoint_daemon_init ()
   if (!is_tran_server_with_remote_storage ())
     {
       cubthread::looper looper = cubthread::looper (log_get_checkpoint_interval);
-      cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute);
+      cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute, true);
 
       // create checkpoint daemon thread
       log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint");

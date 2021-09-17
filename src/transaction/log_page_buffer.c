@@ -7008,8 +7008,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   {
     // *INDENT-OFF*
     std::unique_lock<std::mutex> prior_ulock (log_Gl.prior_info.prior_lsa_mutex);
-    // TODO: this seems to be an existing LSA, not a future one; in which case, we should not
-    // wait 'past' but 'up to and including' it
     new_chkpt_lsa = log_Gl.prior_info.prev_lsa;
     assert (!LSA_ISNULL (&new_chkpt_lsa));
     // *INDENT-ON*
