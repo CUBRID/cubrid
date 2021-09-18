@@ -188,10 +188,12 @@ static void init_compile_context (PARSER_CONTEXT * parser);
 
 static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
 
-static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info);
+static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
+				      OID * reserved_oid);
 
 static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info);
 
+static int do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** oid);
 /*
  * initialize_serial_invariant() - initialize a serial invariant
  *   return: None
@@ -2956,7 +2958,9 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool need_stmt_replication = false;
   int suppress_repl_error = NO_ERROR;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
+
   RESERVED_CLASS_INFO *cls_info[64];
+  OID *reserved_oid = NULL;
 
   /* save old read fetch instance version */
   read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
@@ -3271,6 +3275,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP_SERIAL:
+	  (void) do_reserve_oidinfo (parser, statement, &reserved_oid);
+
 	  error = do_drop_serial (parser, statement);
 	  break;
 
@@ -3343,7 +3349,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (error >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
 	{
-	  (void) do_supplemental_statement (parser, statement, cls_info);
+	  (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
 	}
     }
 
@@ -3453,6 +3459,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
   RESERVED_CLASS_INFO *cls_info[64];
+  OID *reserved_oid = NULL;
 
   assert (parser->query_id == NULL_QUERY_ID);
   /* save old read fetch instance version */
@@ -3635,6 +3642,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_drop_index (parser, statement);
       break;
     case PT_DROP_SERIAL:
+      (void) do_reserve_oidinfo (parser, statement, &reserved_oid);
+
       err = do_drop_serial (parser, statement);
       break;
     case PT_DROP_TRIGGER:
@@ -3805,7 +3814,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (err >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
     {
-      (void) do_supplemental_statement (parser, statement, cls_info);
+      (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
     }
 
 end:
@@ -14636,6 +14645,45 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   return err;
 }				/* do_execute_select() */
 
+static int
+do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** reserved_oid)
+{
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
+    {
+      return NO_ERROR;
+    }
+
+  switch (statement->node_type)
+    {
+      /* can be expanded to several drop statements */
+    case PT_DROP_SERIAL:
+      {
+	const char *objname = NULL;
+	OID *oid = NULL;
+
+	oid = (OID *) malloc (sizeof (OID));
+	if (oid == NULL)
+	  {
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
+
+	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
+
+	objname = (char *) PT_NODE_SR_NAME (statement);
+	if (do_get_serial_obj_id (oid, serial_class, objname) == NULL)
+	  {
+	    free_and_init (oid);
+
+	    return ER_FAILED;
+	  }
+	*reserved_oid = oid;
+	break;
+      }
+    default:
+      break;
+    }
+  return NO_ERROR;
+}
 
 static int
 do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info)
@@ -14678,8 +14726,9 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
   return NO_ERROR;
 }
 
-int
-do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info)
+static int
+do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
+			   OID * reserved_oid)
 {
   int error = NO_ERROR;
   PARSER_VARCHAR **host_val = NULL;
@@ -14916,18 +14965,14 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_DROP_SERIAL:
       {
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
+	if (reserved_oid != NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    oid = reserved_oid;
 	  }
-
-	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
-
-	objname = (char *) PT_NODE_SR_NAME (statement);
-	if (do_get_serial_obj_id (oid, serial_class, objname) == NULL)
+	else
 	  {
-	    return NO_ERROR;
+	    oid = (OID *) malloc (sizeof (OID));
+	    OID_SET_NULL (oid);
 	  }
 
 	ddl_type = CDC_DROP;
