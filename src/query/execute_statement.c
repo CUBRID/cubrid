@@ -14696,6 +14696,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
   int drop_copied_length = 0;
   char *drop_stmt = NULL;
   const char *drop_prefix = "drop table ";
+  const char *drop_view_prefix = "drop view ";
   const char *if_exist_statement = "if exists ";
   const char *cascade_statement = " cascade constraints";
 
@@ -15143,11 +15144,14 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       stmt_text = sbr_text;
     }
 
-  if (statement->node_type == PT_DROP)
+  if (statement->node_type == PT_DROP && num_class > 1)
     {
 
       /*length for ';' and '\0' are added as 2 */
-      pre_drop_length = strlen (drop_prefix) + strlen (if_exist_statement) + strlen (cascade_statement) + 2;
+      pre_drop_length =
+	(objtype ==
+	 CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix) + strlen (if_exist_statement) +
+	strlen (cascade_statement) + 2;
 
       for (int i = 0; i < num_class; i++)
 	{
@@ -15158,8 +15162,16 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	      goto end;
 	    }
 
-	  strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
-	  drop_copied_length = strlen (drop_prefix);
+	  if (objtype == CDC_TABLE)
+	    {
+	      strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
+	      drop_copied_length = strlen (drop_prefix);
+	    }
+	  else
+	    {
+	      strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix));
+	      drop_copied_length = strlen (drop_view_prefix);
+	    }
 
 	  if (statement->info.drop.if_exists)
 	    {
