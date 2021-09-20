@@ -4907,6 +4907,10 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
       memcpy (data, classoid, sizeof (OID));
       memcpy (data + sizeof (OID), undo_lsa, sizeof (LOG_LSA));
       break;
+
+    default:
+      assert (false);
+      return ER_FAILED;
     }
 
   log_append_supplemental_info (thread_p, rec_type, size, (void *) data);
@@ -10658,7 +10662,6 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	  {
 	    if (cdc_Gl.producer.tran_user.count (trid) == 0)
 	      {
-		/* JOOHOK : error handling when user not found */
 		if ((error = cdc_find_user (thread_p, log_page_p, cur_log_rec_lsa, trid, &tran_user)) == NO_ERROR)
 		  {
 		    cdc_Gl.producer.tran_user.insert (std::make_pair (trid, tran_user));
@@ -12076,7 +12079,7 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 
   for (int i = 0; i < rep->n_indexes; i++)
     {
-      index = rep->indexes + i;	//REVIEW : array? 
+      index = rep->indexes + i;
       if (index->type == BTREE_PRIMARY_KEY)
 	{
 	  has_pk = 1;
@@ -12087,8 +12090,7 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 	    }
 	  else
 	    {
-	      //REVIEW : function index 동작 구조 보고, 에러처리 할지, 다른 곳과 동일하게 처리할지 결정
-	      // TODO : 일단 반환하지 않고, 나중에. 
+	      // TODO : function indexes 
 	      num_idx_att = index->func_index_info->attr_index_start;
 	      return ER_FAILED;
 	    }
@@ -12224,7 +12226,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  // if (attr_info.values[i]->read_attrper != NULL) ? 
 	  heap_value = &attr_info.values[i];
 	  oldval_deforder = heap_value->read_attrepr->def_order;
-	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));	// REVIEW : copy 없이, old_attr_info, def_order는 그냥 index에다가 넣어주기. 
+	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
 	}
 
       record_length += undo_recdes->length;
@@ -12325,7 +12327,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	{
 	  if ((error_code = cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i])) > 0)
 	    {
-	      changed_col_idx[cnt++] = i;	//REVIEW : i 대신 def_order 
+	      changed_col_idx[cnt++] = i;
 	    }
 	  else if (error_code < 0)
 	    {
