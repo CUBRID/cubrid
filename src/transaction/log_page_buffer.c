@@ -7049,25 +7049,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   LOG_CS_ENTER (thread_p);
 
-  /* Removal of 'log_value.chkpt_redo_lsa'
-   * - in functions
-   *      pgbuf_flush_checkpoint -> pgbuf_flush_chkpt_seq_list -> pgbuf_flush_seq_list
-   *    there is no way that 'oldest_unflushed_lsa' is ever assigned a value
-   * - there are many asserts in place for this; it does seem to have been
-   *    some sort of failsafe/extracheck mechanism used in the past which, in the meantime, has
-   *    been rendered useless by the added asserts
-   * - as such there is no need to surface or use this value, because:
-   *    - in function 'pgbuf_checkpoint', the value of new_chkpt_lsa is the same as the value
-   *      of new_chkpt_redo_lsa;
-   *    - new_chkpt_lsa is assigned to log_Gl.hdr.chkpt_lsa
-   *    - new_chkpt_redo_lsa is assigned to log_Gl.chkpt_redo_lsa
-   *    - thus the value of these two log_Gl members are equal
-   *    - therefore log_value.chkpt_redo_lsa is no longer needed and can be removed and its usage
-   *      replaced with 'log_Gl.hdr.chkpt_lsa'
-   *    - further simplifications in this and callee functions
-   * - there are a few usages but they mostly seem to have the purpose of 'working variables' and
-   *    can be adapted
-   */
+  // assert is in line with what happens in function pgbuf_flush_seq_list where value is collected
   assert (oldest_unflushed_lsa.is_null ());
 
   new_chkpt_redo_lsa = oldest_unflushed_lsa.is_null ()? new_chkpt_lsa : oldest_unflushed_lsa;
