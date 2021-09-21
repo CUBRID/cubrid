@@ -10825,6 +10825,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	break;
       }
+
     default:
       break;
     }
