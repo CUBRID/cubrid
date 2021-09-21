@@ -249,6 +249,7 @@ namespace cublog
 	    m_has_2pc = true;
 	  }
       }
+    m_snapshot_lsa = log_Gl.append.prev_lsa;
 
     // Checkpoint system transactions' topops
     log_system_tdes::map_func mapper = [this] (log_tdes &tdes)

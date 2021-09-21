@@ -5340,7 +5340,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
       if (sp_success != SP_SUCCESS)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNABLE_TO_CREATE_HEAP, 1,
-		  fileio_get_volume_label (hfid->vfid.volid, PEEK));
+		  fileio_get_volume_label_with_unknown (hfid->vfid.volid));
 	}
 
       /* Free the page and release the lock */
@@ -17817,7 +17817,8 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   if (spage_get_record (thread_p, pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
     {
       error = ER_SP_INVALID_HEADER;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, vpid.pageid, fileio_get_volume_label (vpid.volid, PEEK), 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, vpid.pageid,
+	      fileio_get_volume_label_with_unknown (vpid.volid), 0);
       goto cleanup;
     }
 
