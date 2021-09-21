@@ -51,6 +51,7 @@ struct log_lsa
 
   inline log_lsa (const int64_t value);
   inline log_lsa (const log_lsa &olsa) = default;
+  inline log_lsa (log_lsa &&olsa) = default;
   inline log_lsa &operator= (const log_lsa &olsa) = default;
 
   constexpr inline bool is_null () const;

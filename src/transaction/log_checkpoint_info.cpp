@@ -256,6 +256,8 @@ namespace cublog
       load_checkpoint_topop (tdes);
     };
     log_system_tdes::map_all_tdes (mapper);
+
+    m_snapshot_lsa = log_Gl.append.prev_lsa;
   }
 
   void
@@ -392,6 +394,8 @@ namespace cublog
   log_lsa
   checkpoint_info::get_snapshot_lsa () const
   {
+    assert (!m_snapshot_lsa.is_null ());
+
     return m_snapshot_lsa;
   }
 

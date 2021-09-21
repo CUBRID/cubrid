@@ -81,9 +81,11 @@ struct check_args
   bool check_timezone;
 };
 
-#define BO_IS_SERVER_RESTARTED() \
-        (boot_Server_status == BOOT_SERVER_UP \
-         || boot_Server_status == BOOT_SERVER_MAINTENANCE)
+inline bool
+BO_IS_SERVER_RESTARTED ()
+{
+  return (boot_Server_status == BOOT_SERVER_UP || boot_Server_status == BOOT_SERVER_MAINTENANCE);
+}
 
 extern void boot_server_status (BOOT_SERVER_STATUS status);
 

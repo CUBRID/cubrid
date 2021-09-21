@@ -28,8 +28,6 @@
 
 namespace cublog
 {
-  // todo: replace with real checkpoint info
-
   class meta : cubpacking::packable_object
   {
     public:
@@ -47,11 +45,18 @@ namespace cublog
       void add_checkpoint_info (const log_lsa &chkpt_lsa, checkpoint_info &&chkpt_info);
       void add_checkpoint_info (const log_lsa &chkpt_lsa, const checkpoint_info &chkpt_info);
       size_t remove_checkpoint_info_before_lsa (const log_lsa &target_lsa);
-      size_t get_checkpoint_info_size () const;
+      size_t get_checkpoint_count () const;
 
     private:
-      using checkpoint_container_t = std::map<log_lsa, checkpoint_info>;   // todo: replace unsigned with checkpoint_info
+      using checkpoint_container_t = std::map<log_lsa, checkpoint_info>;
 
+      /* as the system is designed, it is not needed to hold a map of checkpoints since there should
+       * be, at most, 2 checkpoints:
+       *  - the current checkpoint: the one to be used in case of crash
+       *  - the new - in progress - checkpoint: at the moment the new checkpoint is commited to disk, the
+       *      previous - current - checkpoint is discarded and the new checkpoint becomes the current one
+       * but the implementation is simpler with a container
+       */
       checkpoint_container_t m_checkpoints;
   };
 }

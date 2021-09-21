@@ -170,7 +170,7 @@ namespace cublog
   }
 
   size_t
-  meta::get_checkpoint_info_size () const
+  meta::get_checkpoint_count () const
   {
     return m_checkpoints.size ();
   }

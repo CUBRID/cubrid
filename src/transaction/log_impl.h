@@ -620,7 +620,8 @@ struct log_global
   LOG_LSA flushed_lsa_lower_bound;	/* lsa */
   pthread_mutex_t chkpt_lsa_lock;
 #endif				/* SERVER_MODE */
-  LOG_LSA chkpt_redo_lsa;
+  LOG_LSA chkpt_redo_lsa;	/* checkpoint redo lsa working variable; it's the member checkpoint lsa
+				   in the header that must be used as reference */
   DKNPAGES chkpt_every_npages;	/* How frequent a checkpoint should be taken ? */
   LOG_RECVPHASE rcv_phase;	/* Phase of the recovery */
   LOG_LSA rcv_phase_lsa;	/* LSA of phase (e.g. Restart) */
@@ -847,6 +848,7 @@ extern int logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_f
 extern bool logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			     const char *prefix_logname);
 extern LOG_PAGEID logpb_checkpoint (THREAD_ENTRY * thread_p);
+extern int logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p);
 extern int logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path,
 			 FILEIO_BACKUP_LEVEL backup_level, bool delete_unneeded_logarchives,
 			 const char *backup_verbose_file_path, int num_threads, FILEIO_ZIP_METHOD zip_method,

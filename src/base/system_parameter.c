@@ -2366,7 +2366,7 @@ static UINT64 prm_ddl_audit_log_size_upper = 2147483648ULL;	/* 2G */
 static unsigned int prm_ddl_audit_log_size_flag = 0;
 
 char *PRM_PAGE_SERVER_HOST = NULL;
-static char *prm_page_server_host_default = "";
+static const char *prm_page_server_host_default = "";
 static unsigned int prm_page_server_host_flag = 0;
 
 /* *INDENT-OFF* */
