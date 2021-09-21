@@ -7081,7 +7081,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   }
 
   // Flush meta log (and checkpoint info) to disk
-  log_write_metalog_to_file ();
+  (void) log_write_metalog_to_file ();
   detailed_er_log ("logpb_checkpoint: wrote metalog containing checkpoint information.\n");
 
   /*
@@ -7326,13 +7326,13 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
   {
     LOG_CS_ENTER (thread_p);
     // *INDENT-OFF*
-    scope_exit <std::function<void (void)>> unlock_log_cs_on_exit ([thread_p] ()
+    scope_exit<std::function<void (void)>> unlock_log_cs_on_exit ([thread_p] ()
     {
-      LOG_CS_EXIT(thread_p);
+      LOG_CS_EXIT (thread_p);
     });
-    // *INDENT-ON*
 
     cublog::checkpoint_info trantable_checkpoint_info;
+    // *INDENT-ON*
 
     if (detailed_logging)
       {
@@ -7343,13 +7343,6 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
 
     // loading the transaction table snapshot ensures also that a snapshot lsa has been set
     const log_lsa trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
-
-    if (trantable_checkpoint_lsa.is_null ())
-      {
-	// no transaction table checkpoint can be recorded
-	er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: failed; null checkpoint lsa\n");
-	return ER_FAILED;
-      }
 
     if (detailed_logging)
       {
@@ -7363,7 +7356,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     if (res_metalog_to_file != NO_ERROR)
       {
 	ASSERT_ERROR ();
-	er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: failed; writing metalog to file\n");
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: failed; writing metalog to file\n");
 	return res_metalog_to_file;
       }
 
@@ -7382,8 +7375,9 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     //    checkpoint and before deleting the outdated checkpoint) there can be at most two
     assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
 
-    // make sure new checkpoint is persisted to disk
-    log_write_metalog_to_file ();
+    // make sure new checkpoint is persisted to disk; discard possible error; if not transient, will be
+    // handled upon next attempt
+    (void) log_write_metalog_to_file ();
   }
 
   if (detailed_logging)
