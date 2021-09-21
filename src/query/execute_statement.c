@@ -14804,13 +14804,11 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       break;
 
     case PT_RENAME:
-      classname = statement->info.rename.old_name->info.name.original;
       ddl_type = CDC_RENAME;
 
       if (statement->info.rename.entity_type == PT_CLASS)
 	{
 	  objtype = CDC_TABLE;
-	  classoid = ws_oid (sm_find_class (classname));
 	}
       else if (error == 0)
 	{
@@ -15189,10 +15187,9 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       stmt_text = sbr_text;
     }
 
+  /* To manage multi object ddl statement. like drop table t1, t2 or rename t1 to t2, t3 to t4, .. */
   if (statement->node_type == PT_DROP && num_class > 1)
     {
-
-      /*length for ';' and '\0' are added as 2 */
       pre_drop_length =
 	(objtype ==
 	 CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix) + strlen (if_exist_statement) +
@@ -15239,6 +15236,26 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
 	  free (drop_stmt);
 	  free_and_init (cls_info[i]);
+	}
+    }
+  else if (statement->node_type == PT_RENAME)
+    {
+      const PT_NODE *current_rename = NULL;
+
+      for (current_rename = statement; current_rename != NULL; current_rename = current_rename->next)
+	{
+	  char rename_statement[1024] = "\0";
+	  const char *new_name = current_rename->info.rename.new_name->info.name.original;
+	  const char *old_name = current_rename->info.rename.old_name->info.name.original;
+
+	  if (objtype == CDC_TABLE)
+	    {
+	      classoid = ws_oid (sm_find_class (new_name));
+	    }
+
+	  sprintf (rename_statement, "rename table %s as %s", old_name, new_name);
+
+	  error = log_supplement_statement (ddl_type, objtype, classoid, classoid, rename_statement);
 	}
     }
   else
