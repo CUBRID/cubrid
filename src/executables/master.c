@@ -460,7 +460,7 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
       else
 	{
 	  // First character represents server type
-          type = static_cast<SERVER_TYPE> (buffer[0] - '0');
+	  type = static_cast<SERVER_TYPE> (buffer[0] - '0');
 	  dbname = std::string (buffer + 1, buffer_length - 1);
 	}
 
