@@ -436,6 +436,7 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
 static int
 receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & dbname, SERVER_TYPE & type)
 {
+  // *INDENT-OFF*
   int buffer_length;
   char *buffer = NULL;
 
@@ -459,9 +460,7 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
       else
 	{
 	  // First character represents server type
-          // *INDENT-OFF*
           type = static_cast<SERVER_TYPE> (buffer[0] - '0');
-          // *INDENT-ON*
 	  dbname = std::string (buffer + 1, buffer_length - 1);
 	}
 
@@ -469,6 +468,7 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
 			   server_type_to_string (type));
     }
   return exit_code;
+  // *INDENT-ON*
 }
 
 /*
