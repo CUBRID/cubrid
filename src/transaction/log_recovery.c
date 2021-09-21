@@ -682,7 +682,7 @@ log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log_reader & l
  *
  */
 void
-log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
+log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
 {
   LOG_TDES *rcv_tdes;		/* Tran. descriptor for the recovery phase */
   int rcv_tran_index;		/* Saved transaction index */
@@ -719,12 +719,9 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       log_Gl.hdr.has_logging_been_skipped = false;
     }
 
-  er_log_debug (ARG_FILE_LINE, "RECOVERY: start with %lld|%d and stop at %lld", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa),
-		stopat != NULL ? *stopat : -1);
-
   /* Find the starting LSA for the analysis phase */
 
-  if (ismedia_crash != false)
+  if (is_media_crash != false)
     {
       /* Media crash means restore from backup. */
       LOG_LSA chkpt_lsa = log_Gl.hdr.chkpt_lsa;
@@ -738,6 +735,10 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       // Recovery after unexpected stop or crash
       context.init_for_recovery (log_Gl.hdr.chkpt_lsa);
     }
+  er_log_debug (ARG_FILE_LINE, "RECOVERY: start with %lld|%d and stop at %lld %s",
+		LSA_AS_ARGS (&context.get_start_redo_lsa ()), context.get_restore_stop_point (),
+		is_media_crash ? "(media crash)" : "");
+
 
   /* Notify vacuum it may need to recover the lost block data.
    * There are two possible cases here:
@@ -884,6 +885,55 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
 }
 
+//void
+//log_recovery_finish_transactions_phase_analysis (THREAD_ENTRY * const thread_p)
+//{
+//}
+
+/*
+ * log_recovery_finish_transactions - TODO
+ *
+ * return: nothing
+ *
+ */
+void
+log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
+{
+  assert (log_Gl.m_metainfo.is_loaded_from_file ());
+
+  // TODO: save the transaction index and find transaction descriptor
+  // TODO: logging has been ignored?
+
+  //
+  // analysis phase
+  //
+  log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
+
+  log_recovery_context log_rcv_context;
+  // start with what metalog tells
+  const auto[chkpt_lsa, chkpt_info] = log_Gl.m_metainfo.get_highest_lsa_checkpoint_info ();
+  if (chkpt_info == nullptr)
+    {
+      assert ("log_recovery_finish_transactions: no checkpoints found, control should not end up here" == nullptr);
+      return;
+    }
+  else
+    {
+      assert (!chkpt_lsa.is_null ());
+    }
+  // TODO: is media crash
+  log_rcv_context.init_for_recovery (chkpt_lsa);
+
+  long redo_log_record_count = 0;
+  log_recovery_analysis (thread_p, &redo_log_record_count, log_rcv_context);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 3,
+	  (long long) redo_log_record_count, log_rcv_context.get_start_redo_lsa ().pageid,
+	  log_rcv_context.get_end_redo_lsa ().pageid);
+
+  assert (!log_Gl.append.prev_lsa.is_null ());
+  vacuum_notify_server_crashed (&log_Gl.append.prev_lsa);
+}
+
 /*
  * log_recovery_needs_skip_logical_redo - Check whether we need to skip logical redo.
  *
@@ -1019,8 +1069,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (log_recovery_redo_parallel_count);
-	parallel_recovery_redo.reset (new cublog::
-				      redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+	parallel_recovery_redo.
+	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
       }
   }
 #endif

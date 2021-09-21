@@ -34,7 +34,7 @@ int log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader &
 			       bool & is_zip);
 int log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader, LOG_RCV * rcv,
 					     int undo_length, const char *undo_data, LOG_ZIP & redo_unzip);
-void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
+void log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat);
 LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);
 int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
 					    RECDES * record, bool is_undo);
@@ -48,5 +48,6 @@ bool log_rv_need_sync_redo (const vpid & a_rcv_vpid, LOG_RCVINDEX a_rcvindex);
 void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
 			 int (*redofun) (THREAD_ENTRY * thread_p, const LOG_RCV *), LOG_RCV * rcv,
 			 const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data, LOG_ZIP & redo_unzip);
+void log_recovery_finish_transactions (THREAD_ENTRY * const thread_p);
 
 #endif // _LOG_RECOVERY_H_
