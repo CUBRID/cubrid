@@ -1299,6 +1299,8 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
   char next_vol_fullname[PATH_MAX];	/* Next volume name */
   const char *vlabel;
 
+  assert (!is_tran_server_with_remote_storage ());
+
   /*
    * Don't use volinfo .. or could not find volinfo
    */
@@ -3825,9 +3827,12 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids,
   bool repair = check_flag & CHECKDB_REPAIR;
   int error_code = NO_ERROR;
 
-  disk_lock_extend ();
-  error_code = boot_check_permanent_volumes (thread_p);
-  disk_unlock_extend ();
+  if (!is_tran_server_with_remote_storage ())
+    {
+      disk_lock_extend ();
+      error_code = boot_check_permanent_volumes (thread_p);
+      disk_unlock_extend ();
+    }
 
   isvalid = disk_check (thread_p, repair);
   if (isvalid != DISK_VALID)
