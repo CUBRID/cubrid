@@ -1410,14 +1410,10 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   log_Gl.rcv_phase = LOG_RESTARTED;
 
   // PREREQ: metalog is loaded at this point
-  if (is_tran_server_with_remote_storage ())
+  if (log_Gl.m_metainfo.get_clean_shutdown () && is_tran_server_with_remote_storage ())
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "TEMP: log_initialize_internal: transaction server with remote storage clean shutdown: %s\n",
-		    log_Gl.m_metainfo.get_is_tsrs_shutdown ()? "yes" : "no");
-
-      // mark that transaction server with remote storage is running and save the meta log to persist the value
-      log_Gl.m_metainfo.set_is_tsrs_shutdown (false);
+      // mark, if needed, that transaction server with remote storage is running and persist the value
+      log_Gl.m_metainfo.set_clean_shutdown (false);
 
       const int res_metalog_to_file = log_write_metalog_to_file ();
       if (res_metalog_to_file != NO_ERROR)
@@ -1750,7 +1746,7 @@ log_final (THREAD_ENTRY * thread_p)
   // mark and persist that transaction server with remote storage has been correctly closed
   if (is_tran_server_with_remote_storage ())
     {
-      log_Gl.m_metainfo.set_is_tsrs_shutdown (true);
+      log_Gl.m_metainfo.set_clean_shutdown (true);
 
       const int res_metalog_to_file = log_write_metalog_to_file ();
       if (res_metalog_to_file != NO_ERROR)

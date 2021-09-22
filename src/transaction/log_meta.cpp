@@ -43,7 +43,7 @@ namespace cublog
   void
   meta::pack (cubpacking::packer &serializer) const
   {
-    serializer.pack_bool (m_is_tsrs_shutdown);
+    serializer.pack_bool (m_clean_shutdown);
     serializer.pack_to_int (m_checkpoints.size ());
     for (const auto chkinfo : m_checkpoints)
       {
@@ -57,7 +57,7 @@ namespace cublog
   meta::unpack (cubpacking::unpacker &deserializer)
   {
     size_t size;
-    deserializer.unpack_bool (m_is_tsrs_shutdown);
+    deserializer.unpack_bool (m_clean_shutdown);
     deserializer.unpack_from_int (size);
     for (size_t i = 0; i < size; ++i)
       {
@@ -128,9 +128,9 @@ namespace cublog
   }
 
   void
-  meta::set_is_tsrs_shutdown (bool a_is)
+  meta::set_clean_shutdown (bool a_clean_shutdown)
   {
-    m_is_tsrs_shutdown = a_is;
+    m_clean_shutdown = a_clean_shutdown;
   }
 
   const checkpoint_info *
