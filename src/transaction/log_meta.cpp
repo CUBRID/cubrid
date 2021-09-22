@@ -25,49 +25,52 @@
 namespace cublog
 {
   size_t
-  meta::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  meta::get_packed_size (cubpacking::packer &serializer, std::size_t start_offset) const
   {
     size_t end_offset = start_offset;
 
-    end_offset += serializator.get_packed_int_size (end_offset); // m_checkpoints.size ()
+    end_offset += serializer.get_packed_bool_size (end_offset); // is shutdown
+    end_offset += serializer.get_packed_int_size (end_offset); // m_checkpoints.size ()
     for (const auto chkinfo : m_checkpoints)
       {
-	end_offset += serializator.get_packed_bigint_size (end_offset);
-	end_offset += serializator.get_packed_int_size (end_offset);
-	end_offset += serializator.get_packed_size_overloaded (chkinfo.second, end_offset);
+	end_offset += serializer.get_packed_bigint_size (end_offset);
+	end_offset += serializer.get_packed_int_size (end_offset);
+	end_offset += serializer.get_packed_size_overloaded (chkinfo.second, end_offset);
       }
     return end_offset - start_offset;
   }
 
   void
-  meta::pack (cubpacking::packer &serializator) const
+  meta::pack (cubpacking::packer &serializer) const
   {
-    serializator.pack_to_int (m_checkpoints.size ());
+    serializer.pack_bool (m_is_tsrs_shutdown);
+    serializer.pack_to_int (m_checkpoints.size ());
     for (const auto chkinfo : m_checkpoints)
       {
-	serializator.pack_bigint (chkinfo.first.pageid);
-	serializator.pack_int (chkinfo.first.offset);
-	serializator.pack_overloaded (chkinfo.second);
+	serializer.pack_bigint (chkinfo.first.pageid);
+	serializer.pack_int (chkinfo.first.offset);
+	serializer.pack_overloaded (chkinfo.second);
       }
   }
 
   void
-  meta::unpack (cubpacking::unpacker &deserializator)
+  meta::unpack (cubpacking::unpacker &deserializer)
   {
     size_t size;
-    deserializator.unpack_from_int (size);
+    deserializer.unpack_bool (m_is_tsrs_shutdown);
+    deserializer.unpack_from_int (size);
     for (size_t i = 0; i < size; ++i)
       {
 	log_lsa chkpt_lsa;
 	std::int64_t upk_bigint;
 	int upk_int;
-	deserializator.unpack_bigint (upk_bigint);
-	deserializator.unpack_int (upk_int);
+	deserializer.unpack_bigint (upk_bigint);
+	deserializer.unpack_int (upk_int);
 	assert (upk_int <= INT16_MAX);
 	chkpt_lsa = { upk_bigint, static_cast<std::int16_t> (upk_int) };
 
 	checkpoint_info chkinfo;
-	deserializator.unpack_overloaded (chkinfo);
+	deserializer.unpack_overloaded (chkinfo);
 
 	m_checkpoints.insert ({ chkpt_lsa, std::move (chkinfo) });
       }
@@ -94,18 +97,18 @@ namespace cublog
       {
 	return;
       }
-    cubpacking::unpacker deserializator (charbuf.get (), size);
-    unpack (deserializator);
+    cubpacking::unpacker deserializer (charbuf.get (), size);
+    unpack (deserializer);
   }
 
   void
   meta::flush_to_file (std::FILE *stream) const
   {
-    cubpacking::packer serializator;
-    size_t size = static_cast<unsigned> (get_packed_size (serializator, 0));
+    cubpacking::packer serializer;
+    size_t size = static_cast<unsigned> (get_packed_size (serializer, 0));
     std::unique_ptr<char[]> charbuf (new char[size]);
-    serializator.set_buffer (charbuf.get (), size);
-    pack (serializator);
+    serializer.set_buffer (charbuf.get (), size);
+    pack (serializer);
 
     // write size
     size_t ret = std::fwrite (&size, sizeof (size), 1, stream);
@@ -122,6 +125,12 @@ namespace cublog
 	return;
       }
     std::fflush (stream);
+  }
+
+  void
+  meta::set_is_tsrs_shutdown (bool a_is)
+  {
+    m_is_tsrs_shutdown = a_is;
   }
 
   const checkpoint_info *

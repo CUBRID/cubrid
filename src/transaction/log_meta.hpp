@@ -35,11 +35,18 @@ namespace cublog
       ~meta () = default;
 
       void load_from_file (std::FILE *stream);       // load meta from meta log file
+      // TODO: function can be called from different threads (main, daemon); must be synched ???
       void flush_to_file (std::FILE *stream) const;  // write meta to disk
 
-      size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
-      void pack (cubpacking::packer &serializator) const;
-      void unpack (cubpacking::unpacker &deserializator);
+      size_t get_packed_size (cubpacking::packer &serializer, std::size_t start_offset = 0) const;
+      void pack (cubpacking::packer &serializer) const;
+      void unpack (cubpacking::unpacker &deserializer);
+
+      inline bool get_is_tsrs_shutdown () const
+      {
+	return m_is_tsrs_shutdown;
+      }
+      void set_is_tsrs_shutdown (bool a_is);
 
       const checkpoint_info *get_checkpoint_info (const log_lsa &checkpoint_lsa) const;
       void add_checkpoint_info (const log_lsa &chkpt_lsa, checkpoint_info &&chkpt_info);
@@ -49,6 +56,14 @@ namespace cublog
 
     private:
       using checkpoint_container_t = std::map<log_lsa, checkpoint_info>;
+
+    private:
+      /* flag parallel to 'log global header is shutdown':
+       *  - false: server has not been clean shut down
+       *  - true: has been clean shut down
+       * after start, flag is set to 'false' and the meta log is saved
+       */
+      bool m_is_tsrs_shutdown = false;
 
       /* as the system is designed, it is not needed to hold a map of checkpoints since there should
        * be, at most, 2 checkpoints:
