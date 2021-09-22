@@ -7323,9 +7323,6 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
       return ER_FAILED;
     }
 
-  // *INDENT-OFF*
-  log_lsa trantable_checkpoint_lsa { NULL_LSA };
-  // *INDENT-ON*
   {
     LOG_CS_ENTER (thread_p);
     // *INDENT-OFF*
@@ -7345,7 +7342,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
 
     // loading the transaction table snapshot ensures also that a snapshot lsa has been set
-    trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
+    const log_lsa trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
 
     if (detailed_logging)
       {
@@ -7362,26 +7359,26 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
 	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: failed; writing metalog to file\n");
 	return res_metalog_to_file;
       }
+
+    logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
+
+    // drop previous checkpoints
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
+		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
+      }
+    log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
+
+    // - in nominal conditions, there should be at most one previous trantable checkpoint
+    // - in abnormal conditions (such as when the system crashed just after adding a new trantable
+    //    checkpoint and before deleting the outdated checkpoint) there can be at most two
+    assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
+
+    // make sure new checkpoint is persisted to disk; discard possible error; if not transient, will be
+    // handled upon next attempt
+    (void) log_write_metalog_to_file ();
   }
-
-  logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
-
-  // drop previous checkpoints
-  if (detailed_logging)
-    {
-      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
-		     LSA_AS_ARGS (&trantable_checkpoint_lsa));
-    }
-  log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
-
-  // - in nominal conditions, there should be at most one previous trantable checkpoint
-  // - in abnormal conditions (such as when the system crashed just after adding a new trantable
-  //    checkpoint and before deleting the outdated checkpoint) there can be at most two
-  assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
-
-  // make sure new checkpoint is persisted to disk; discard possible error; if not transient, will be
-  // handled upon next attempt
-  (void) log_write_metalog_to_file ();
 
   if (detailed_logging)
     {
@@ -7390,6 +7387,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
 
   return NO_ERROR;
 }
+
 
 /*
  * logpb_backup_for_volume - Execute a full backup for the given volume
