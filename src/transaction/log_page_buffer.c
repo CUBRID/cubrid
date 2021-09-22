@@ -81,6 +81,7 @@
 #include "critical_section.h"
 #include "page_buffer.h"
 #include "page_server.hpp"
+#include "scope_exit.hpp"
 #include "double_write_buffer.h"
 #include "file_io.h"
 #include "disk_manager.h"
@@ -6927,8 +6928,6 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
 LOG_PAGEID
 logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
-#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
-
   LOG_TDES *tdes;		/* System transaction descriptor */
   LOG_LSA prev_chkpt_lsa;	/* copy of log_Gl.hdr.chkpt_lsa */
   LOG_LSA prev_chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
@@ -6947,7 +6946,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int first_arv_num_not_needed;
   int last_arv_num_not_needed;
   int flushed_page_cnt = 0, vdes;
-  bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+  const bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
   if (is_tran_server_with_remote_storage ())
     {
@@ -7049,7 +7049,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   LOG_CS_ENTER (thread_p);
 
-  assert (LSA_LE (&oldest_unflushed_lsa, &new_chkpt_lsa));
+  // assert is in line with what happens in function pgbuf_flush_seq_list where value is collected
+  assert (oldest_unflushed_lsa.is_null ());
 
   new_chkpt_redo_lsa = oldest_unflushed_lsa.is_null ()? new_chkpt_lsa : oldest_unflushed_lsa;
 
@@ -7080,7 +7081,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   }
 
   // Flush meta log (and checkpoint info) to disk
-  log_write_metalog_to_file ();
+  (void) log_write_metalog_to_file ();
   detailed_er_log ("logpb_checkpoint: wrote metalog containing checkpoint information.\n");
 
   /*
@@ -7302,6 +7303,91 @@ error_cannot_chkpt:
 
 #undef detailed_er_log
 }
+
+/*
+ * log_checkpoint_trantable - execute a transaction table checkpoint;
+ *          wait for log pages to be persisted up to the lsa where where the transaction table
+ *          snapshot was taken; delete previous transaction table checkpoints
+ *
+ * return: error status
+ *
+ */
+int
+logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
+{
+  const bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+
+  if (!is_tran_server_with_remote_storage ())
+    {
+      er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: only allowed on transaction server with remote storage\n");
+      return ER_FAILED;
+    }
+
+  {
+    LOG_CS_ENTER (thread_p);
+    // *INDENT-OFF*
+    scope_exit<std::function<void (void)>> unlock_log_cs_on_exit ([thread_p] ()
+    {
+      LOG_CS_EXIT (thread_p);
+    });
+
+    cublog::checkpoint_info trantable_checkpoint_info;
+    // *INDENT-ON*
+
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: started, loading trantable\n");
+      }
+    LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
+    trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
+
+    // loading the transaction table snapshot ensures also that a snapshot lsa has been set
+    const log_lsa trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
+
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: adding with lsa=%lld|%d\n",
+		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
+      }
+    log_Gl.m_metainfo.add_checkpoint_info (trantable_checkpoint_lsa, std::move (trantable_checkpoint_info));
+
+    // make sure new checkpoint is persisted to disk
+    const int res_metalog_to_file = log_write_metalog_to_file ();
+    if (res_metalog_to_file != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: failed; writing metalog to file\n");
+	return res_metalog_to_file;
+      }
+
+    logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
+
+    // drop previous checkpoints
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
+		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
+      }
+    log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
+
+    // - in nominal conditions, there should be at most one previous trantable checkpoint
+    // - in abnormal conditions (such as when the system crashed just after adding a new trantable
+    //    checkpoint and before deleting the outdated checkpoint) there can be at most two
+    assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
+
+    // make sure new checkpoint is persisted to disk; discard possible error; if not transient, will be
+    // handled upon next attempt
+    (void) log_write_metalog_to_file ();
+  }
+
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: finished\n");
+    }
+
+  return NO_ERROR;
+}
+
 
 /*
  * logpb_backup_for_volume - Execute a full backup for the given volume

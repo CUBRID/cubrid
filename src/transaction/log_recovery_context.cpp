@@ -39,9 +39,9 @@ void
 log_recovery_context::init_for_restore (const log_lsa &chkpt_lsa, const time_t *stopat_p)
 {
   init_for_recovery (chkpt_lsa);
-  m_checkpoint_lsa = chkpt_lsa;
+
   m_is_restore_from_backup = true;
-  if (stopat_p)
+  if (stopat_p != nullptr)
     {
       m_restore_stop_point = *stopat_p;
     }

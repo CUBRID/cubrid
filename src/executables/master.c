@@ -433,6 +433,7 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
     }
 }
 
+// *INDENT-OFF*
 static int
 receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & dbname, SERVER_TYPE & type)
 {
@@ -450,12 +451,16 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
 	  // Include '#' in the dbname; legacy requirement
 	  dbname = std::string (buffer, buffer_length);
 	}
+      else if (first_char == '$' || first_char == '%')
+	{
+	  // not really a server, it is copylogdb or applylogdb
+	  type = SERVER_TYPE_UNKNOWN;
+	  dbname = std::string (buffer, buffer_length);
+	}
       else
 	{
 	  // First character represents server type
-	  // *INDENT-OFF*
 	  type = static_cast<SERVER_TYPE> (buffer[0] - '0');
-	  // *INDENT-ON*
 	  dbname = std::string (buffer + 1, buffer_length - 1);
 	}
 
@@ -464,6 +469,7 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
     }
   return exit_code;
 }
+// *INDENT-ON*
 
 /*
  * css_register_new_server() - register a new server by reading the server name
