@@ -7367,6 +7367,12 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
   // function explicitely needs to be called in critical section-free context
   logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
 
+  // drop previous checkpoints
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
+		     LSA_AS_ARGS (&trantable_checkpoint_lsa));
+    }
   {
     LOG_CS_ENTER (thread_p);
     // *INDENT-OFF*
@@ -7376,12 +7382,6 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     });
     // *INDENT-ON*
 
-    // drop previous checkpoints
-    if (detailed_logging)
-      {
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
-		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
-      }
     log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
 
     // - in nominal conditions, there should be at most one previous trantable checkpoint
@@ -7392,12 +7392,12 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     // make sure new checkpoint is persisted to disk; discard possible error; if not transient, will be
     // handled upon next attempt
     (void) log_write_metalog_to_file ();
-
-    if (detailed_logging)
-      {
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: finished\n");
-      }
   }
+
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: finished\n");
+    }
 
   return NO_ERROR;
 }
