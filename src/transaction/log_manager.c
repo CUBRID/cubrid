@@ -1409,6 +1409,24 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
   log_Gl.rcv_phase = LOG_RESTARTED;
 
+  // PREREQ: metalog is loaded at this point
+  if (is_tran_server_with_remote_storage ())
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "TEMP: log_initialize_internal: transaction server with remote storage clean shutdown: %s\n",
+		    log_Gl.m_metainfo.get_is_tsrs_shutdown ()? "yes" : "no");
+
+      // mark that transaction server with remote storage is running and save the meta log to persist the value
+      log_Gl.m_metainfo.set_is_tsrs_shutdown (false);
+
+      const int res_metalog_to_file = log_write_metalog_to_file ();
+      if (res_metalog_to_file != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  _er_log_debug (ARG_FILE_LINE, "log_initialize_internal: failed writing metalog to file\n");
+	}
+    }
+
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
   log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
 
@@ -1728,6 +1746,19 @@ log_final (THREAD_ENTRY * thread_p)
     }
 
   save_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  // mark and persist that transaction server with remote storage has been correctly closed
+  if (is_tran_server_with_remote_storage ())
+    {
+      log_Gl.m_metainfo.set_is_tsrs_shutdown (true);
+
+      const int res_metalog_to_file = log_write_metalog_to_file ();
+      if (res_metalog_to_file != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  _er_log_debug (ARG_FILE_LINE, "log_final: failed writing metalog to file\n");
+	}
+    }
 
   if (!logpb_is_pool_initialized ())
     {
