@@ -13113,8 +13113,8 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 {
   const char *src, *end;
   double d;
-  char line[1025];
-  char line2[1025];
+  char line[1025] = "\0";
+  int line_length = 0;
   int func_type = 0;
 
   /*DATE, TIME */
@@ -13232,45 +13232,64 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (time_format), time_format,
 		    strlen (time_format), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
       break;
     case DB_TYPE_TIMESTAMP:
       db_make_char (&format, strlen (timestamp_frmt), timestamp_frmt,
 		    strlen (timestamp_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
+
       break;
     case DB_TYPE_DATETIME:
       db_make_char (&format, strlen (datetime_frmt), datetime_frmt,
 		    strlen (datetime_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
+
       break;
     case DB_TYPE_TIMESTAMPTZ:
       db_make_char (&format, strlen (timestamptz_frmt), timestamptz_frmt,
 		    strlen (timestamptz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
+
       break;
     case DB_TYPE_DATETIMETZ:
       db_make_char (&format, strlen (datetimetz_frmt), datetimetz_frmt,
 		    strlen (datetimetz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
 
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
+
       break;
     case DB_TYPE_TIMESTAMPLTZ:
 
@@ -13279,28 +13298,40 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
+
       break;
     case DB_TYPE_DATETIMELTZ:
       db_make_char (&format, strlen (datetimeltz_frmt), datetimeltz_frmt,
 		    strlen (datetimeltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
 
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
+
       break;
     case DB_TYPE_DATE:
 
       db_make_char (&format, strlen (date_format), date_format,
 		    strlen (date_format), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
+
       break;
     case DB_TYPE_MONETARY:
       break;

@@ -15191,14 +15191,14 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
   if (statement->node_type == PT_DROP)
     {
       pre_drop_length =
-	(objtype ==
-	 CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix) + strlen (if_exist_statement) +
+	((objtype ==
+	  CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix)) + strlen (if_exist_statement) +
 	strlen (cascade_statement) + 2;
 
       for (int i = 0; i < num_class; i++)
 	{
 	  drop_stmt_length = pre_drop_length + strlen (cls_info[i]->name);
-	  drop_stmt = (char *) malloc (drop_stmt_length);
+	  drop_stmt = (char *) malloc (drop_stmt_length * 2);
 	  if (drop_stmt == NULL)
 	    {
 	      goto end;
