@@ -10696,7 +10696,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    }
 	  else
 	    {
-	      tran_user = (char *) malloc (supplement_length);
+	      tran_user = (char *) malloc (supplement_length + 1);
 	      if (tran_user == NULL)
 		{
 		  goto error;
@@ -10846,6 +10846,8 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
   CDC_LOGINFO_ENTRY log_info_entry;
 
   THREAD_ENTRY *thread_p = &thread_ref;
+  thread_p->is_cdc_daemon = true;
+
   int error = NO_ERROR;
 
   while (cdc_Gl.producer.state != CDC_PRODUCER_STATE_DEAD)
@@ -10961,10 +10963,13 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
 end:
 
+  thread_p->is_cdc_daemon = false;
+
   return;
 
 error:
 
+  thread_p->is_cdc_daemon = false;
   return;
 }
 
@@ -11007,7 +11012,7 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
     {
       if (scan_code == S_DOESNT_FIT)
 	{
-	  undo_recdes->data = (char *) realloc (undo_recdes->data, (size_t) (-undo_recdes->length));
+	  undo_recdes->data = (char *) realloc (undo_recdes->data, (size_t) (-undo_recdes->length));	//realloc error 처리
 	  undo_recdes->area_size = (size_t) (-undo_recdes->length);
 
 	  if (cdc_check_log_page (thread_p, log_page_p, &lsa) != NO_ERROR)
@@ -12330,7 +12335,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	}
     }
 
-  loginfo_buf = (char *) malloc (record_length * 2 + MAX_ALIGNMENT);
+  loginfo_buf = (char *) malloc (record_length * 5 + MAX_ALIGNMENT);
   if (loginfo_buf == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -13262,7 +13267,6 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 
       db_make_char (&format, strlen (timestampltz_frmt), timestampltz_frmt,
 		    strlen (timestampltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
-      db_value_alter_type (new_value, DB_TYPE_TIMESTAMPTZ);
 
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
@@ -13273,8 +13277,6 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_DATETIMELTZ:
       db_make_char (&format, strlen (datetimeltz_frmt), datetimeltz_frmt,
 		    strlen (datetimeltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
-
-      db_value_alter_type (new_value, DB_TYPE_DATETIMETZ);
 
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
