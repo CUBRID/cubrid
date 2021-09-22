@@ -12884,20 +12884,29 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
-      /* Copy string into buf providing for any embedded quotes. Strings may have embedded NULL characters and
-       * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
-       * character and the second byte of the multibyte character.
-       */
-      if (strcmp (db_get_string (new_value), db_get_string (cmpdata)) == 0)
-	{
-	  return 0;
-	}
-      else
-	{
-	  return strlen (line);
-	}
+      {
+	DB_VALUE result;
+	int ret = 0;
 
-      break;
+	if (db_string_compare (new_value, cmpdata, &result) == NO_ERROR)
+	  {
+	    ret = db_get_int (&result);
+	    if (ret == 0)
+	      {
+		return ret;
+	      }
+	    else
+	      {
+		return 1;
+	      }
+	  }
+	else
+	  {
+	    return ER_FAILED;
+	  }
+
+	break;
+      }
 #define TOO_BIG_TO_MATTER       1024
     case DB_TYPE_TIME:
       (void) db_time_to_string (line, TOO_BIG_TO_MATTER, db_get_time (new_value));
