@@ -15188,7 +15188,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
     }
 
   /* To manage multi object ddl statement. like drop table t1, t2 or rename t1 to t2, t3 to t4, .. */
-  if (statement->node_type == PT_DROP && num_class > 1)
+  if (statement->node_type == PT_DROP)
     {
       pre_drop_length =
 	(objtype ==
@@ -15234,7 +15234,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
 	  error = log_supplement_statement (ddl_type, objtype, &cls_info[i]->oid, &cls_info[i]->oid, drop_stmt);
 
-	  free (drop_stmt);
+	  free_and_init (drop_stmt);
 	  free_and_init (cls_info[i]);
 	}
     }
