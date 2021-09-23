@@ -7323,6 +7323,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
       return ER_FAILED;
     }
 
+  log_lsa trantable_checkpoint_lsa = NULL_LSA;
   {
     LOG_CS_ENTER (thread_p);
     // *INDENT-OFF*
@@ -7342,7 +7343,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
 
     // loading the transaction table snapshot ensures also that a snapshot lsa has been set
-    const log_lsa trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
+    trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
 
     if (detailed_logging)
       {
@@ -7360,7 +7361,10 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
 	return res_metalog_to_file;
       }
 
+    // function explicitly needs to be called in critical section-free context
+    LOG_CS_EXIT (thread_p);
     logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
+    LOG_CS_ENTER (thread_p);
 
     // drop previous checkpoints
     if (detailed_logging)
@@ -7387,7 +7391,6 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
 
   return NO_ERROR;
 }
-
 
 /*
  * logpb_backup_for_volume - Execute a full backup for the given volume
