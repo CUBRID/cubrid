@@ -1355,7 +1355,24 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1284 Impossibile troncare la tabella a causa della chiave primaria a cui si fa riferimento su %1$s. Riprova con l'opzione CASCADE.
 1285 Impossibile eseguire il troncamento a catena perché l'azione ON DELETE della chiave esterna (%1$s) non è impostata su CASCADE.
 
-1286 Ultimo errore
+1296 dblink - %1$s
+1297 dblink - invalid number of columns specified.
+1298 dblink - catalog _db_server class not found.
+1299 dblink - server "%1$s" not found.
+1300 dblink - server "%1$s" already exists.
+1301 dblink - Cannot update server object.
+1302 dblink - unsupported type.
+1303 dblink - invalid bind param.
+1304 dblink - password length exceeds max size.
+1305 dblink - encrypted password length is incorrect.
+1306 dblink - the checksum of the encrypted password does not match.
+1307 dblink - invalid cipher string format.
+1308 dblink - Failed to decryption password. error=%1$d".
+1309 dblink - Failed to encryption password. error=%1$d".
+1310 dblink - Multiple "%1$s" Server found.
+1311 dblink - Not allowed "%1$s" Server. 
+
+1312 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
@@ -1820,6 +1837,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Numero imprevisto di argomenti %1$d.
 304 Impossibile trovare una firma compatibile per la funzione %1$s()
 305 Firma %1$s non è compatibile con gli argomenti delle funzioni.
+306 dblink - Mancano le informazioni richieste.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.

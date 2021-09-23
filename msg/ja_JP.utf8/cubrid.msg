@@ -1355,7 +1355,24 @@ $ LOADDB
 1284 %1$s sで参照されている主キーが原因で、テーブルを切り捨てることができません。 CASCADEオプションを使用して再試行してください。
 1285 外部キー（%1$s）のON DELETEアクションがCASCADEに設定されていないため、切り捨てをカスケードできません。
 
-1286 ラストエラー
+1296 dblink - %1$s
+1297 dblink - invalid number of columns specified.
+1298 dblink - catalog _db_server class not found.
+1299 dblink - server "%1$s" not found.
+1300 dblink - server "%1$s" already exists.
+1301 dblink - Cannot update server object.
+1302 dblink - unsupported type.
+1303 dblink - invalid bind param.
+1304 dblink - password length exceeds max size.
+1305 dblink - encrypted password length is incorrect.
+1306 dblink - the checksum of the encrypted password does not match.
+1307 dblink - invalid cipher string format.
+1308 dblink - Failed to decryption password. error=%1$d".
+1309 dblink - Failed to encryption password. error=%1$d".
+1310 dblink - Multiple "%1$s" Server found.
+1311 dblink - Not allowed "%1$s" Server. 
+
+1312 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1820,6 +1837,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unexpected number of arguments %1$d.
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
+306 dblink - Required information is missing.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

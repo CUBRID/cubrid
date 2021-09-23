@@ -1356,7 +1356,24 @@ $ LOADDB
 1284 由于在 %1$s 上引用了主键，因此无法截断表。 使用 CASCADE 选项重试。
 1285 无法级联截断，因为外键 (%1$s) 的 ON DELETE 操作未设置为 CASCADE。
 
-1286 最后一个错误.
+1296 dblink - %1$s
+1297 dblink - invalid number of columns specified.
+1298 dblink - catalog _db_server class not found.
+1299 dblink - server "%1$s" not found.
+1300 dblink - server "%1$s" already exists.
+1301 dblink - Cannot update server object.
+1302 dblink - unsupported type.
+1303 dblink - invalid bind param.
+1304 dblink - password length exceeds max size.
+1305 dblink - encrypted password length is incorrect.
+1306 dblink - the checksum of the encrypted password does not match.
+1307 dblink - invalid cipher string format.
+1308 dblink - Failed to decryption password. error=%1$d".
+1309 dblink - Failed to encryption password. error=%1$d".
+1310 dblink - Multiple "%1$s" Server found.
+1311 dblink - Not allowed "%1$s" Server. 
+
+1312 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1821,6 +1838,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 为期待的参数个数 %1$d.
 304 没有找到与 %1$s() 函数兼容的签名.
 305 函数签名 %1$s 与函数参数不匹配.
+306 dblink - 缺少必需的信息.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
