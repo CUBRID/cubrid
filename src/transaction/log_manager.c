@@ -4908,6 +4908,10 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
       memcpy (data, classoid, sizeof (OID));
       memcpy (data + sizeof (OID), undo_lsa, sizeof (LOG_LSA));
       break;
+
+    default:
+      assert (false);
+      return ER_FAILED;
     }
 
   log_append_supplemental_info (thread_p, rec_type, size, (void *) data);
@@ -10599,229 +10603,233 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
       break;
 
     case LOG_SUPPLEMENTAL_INFO:
-      /*supplemental log info types : time, tran_user, undo image */
-      LOG_REC_SUPPLEMENT * supplement;
-      int supplement_length;
-      char *supplement_data;
-      RECDES supp_recdes = RECDES_INITIALIZER;
+      {
+	/*supplemental log info types : time, tran_user, undo image */
+	LOG_REC_SUPPLEMENT *supplement;
+	int supplement_length;
+	char *supplement_data;
+	RECDES supp_recdes = RECDES_INITIALIZER;
 
-      SUPPLEMENT_REC_TYPE rec_type;
+	SUPPLEMENT_REC_TYPE rec_type;
 
-      bool is_zip_supplement = false;
-      bool is_unzip_supplement = false;
-      bool is_alloced = false;
+	bool is_zip_supplement = false;
+	bool is_unzip_supplement = false;
+	bool is_alloced = false;
 
-      OID classoid;
+	OID classoid;
 
-      LOG_LSA undo_lsa, redo_lsa;
-      RECDES undo_recdes = RECDES_INITIALIZER;
-      RECDES redo_recdes = RECDES_INITIALIZER;
+	LOG_LSA undo_lsa, redo_lsa;
+	RECDES undo_recdes = RECDES_INITIALIZER;
+	RECDES redo_recdes = RECDES_INITIALIZER;
 
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), process_lsa, log_page_p);
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), process_lsa, log_page_p);
 
-      CDC_CHECK_TEMP_LOGPAGE (process_lsa, &tmpbuf_index, log_page_p);
+	CDC_CHECK_TEMP_LOGPAGE (process_lsa, &tmpbuf_index, log_page_p);
 
-      if (cdc_Gl.producer.tran_ignore.count (trid) != 0)
-	{
-	  goto end;
-	}
+	if (cdc_Gl.producer.tran_ignore.count (trid) != 0)
+	  {
+	    goto end;
+	  }
 
-      supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa->offset);
-      supplement_length = supplement->length;
-      rec_type = supplement->rec_type;
+	supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa->offset);
+	supplement_length = supplement->length;
+	rec_type = supplement->rec_type;
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), process_lsa, log_page_p);
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), process_lsa, log_page_p);
 
-      CDC_CHECK_TEMP_LOGPAGE (process_lsa, &tmpbuf_index, log_page_p);
+	CDC_CHECK_TEMP_LOGPAGE (process_lsa, &tmpbuf_index, log_page_p);
 
-      if (cdc_get_undo_record (thread_p, log_page_p, cur_log_rec_lsa, &supp_recdes) != S_SUCCESS)
-	{
-	  error = ER_FAILED;
-	  goto error;
-	}
+	if (cdc_get_undo_record (thread_p, log_page_p, cur_log_rec_lsa, &supp_recdes) != S_SUCCESS)
+	  {
+	    error = ER_FAILED;
+	    goto error;
+	  }
 
-      supplement_length = sizeof (supp_recdes.type) + supp_recdes.length;
-      supplement_data = (char *) malloc (supplement_length);
-      if (supplement_data == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
+	supplement_length = sizeof (supp_recdes.type) + supp_recdes.length;
+	supplement_data = (char *) malloc (supplement_length);
+	if (supplement_data == NULL)
+	  {
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto error;
+	  }
 
-      memcpy (supplement_data, &supp_recdes.type, sizeof (supp_recdes.type));
-      memcpy (supplement_data + sizeof (supp_recdes.type), supp_recdes.data, supp_recdes.length);
+	memcpy (supplement_data, &supp_recdes.type, sizeof (supp_recdes.type));
+	memcpy (supplement_data + sizeof (supp_recdes.type), supp_recdes.data, supp_recdes.length);
 
-      free_and_init (supp_recdes.data);
+	free_and_init (supp_recdes.data);
 
-      CDC_UPDATE_TEMP_LOGPAGE (thread_p, process_lsa, log_page_p);
+	CDC_UPDATE_TEMP_LOGPAGE (thread_p, process_lsa, log_page_p);
 
-      if (rec_type != LOG_SUPPLEMENT_TRAN_USER)
-	{
-	  if (cdc_Gl.producer.tran_user.count (trid) == 0)
-	    {
-	      /* JOOHOK : error handling when user not found */
-	      if ((error = cdc_find_user (thread_p, log_page_p, cur_log_rec_lsa, trid, &tran_user)) == NO_ERROR)
-		{
-		  cdc_Gl.producer.tran_user.insert (std::make_pair (trid, tran_user));
-		}
-	      else if (error == ER_CDC_IGNORE_TRANSACTION)
-		{
-		  /* can not find user. It meets abort log. So, ignore the logs from this transaction */
-		  cdc_Gl.producer.tran_ignore.insert (std::make_pair (trid, 1));
-		  goto end;
-		}
-	      else
-		{
-		  /* can not find user */
-		  goto end;
-		}
-	    }
-	  else
-	    {
-	      tran_user = cdc_Gl.producer.tran_user.at (trid);
-	    }
+	if (rec_type != LOG_SUPPLEMENT_TRAN_USER)
+	  {
+	    if (cdc_Gl.producer.tran_user.count (trid) == 0)
+	      {
+		if ((error = cdc_find_user (thread_p, log_page_p, cur_log_rec_lsa, trid, &tran_user)) == NO_ERROR)
+		  {
+		    cdc_Gl.producer.tran_user.insert (std::make_pair (trid, tran_user));
+		  }
+		else if (error == ER_CDC_IGNORE_TRANSACTION)
+		  {
+		    /* can not find user. It meets abort log. So, ignore the logs from this transaction */
+		    cdc_Gl.producer.tran_ignore.insert (std::make_pair (trid, 1));
+		    goto end;
+		  }
+		else
+		  {
+		    /* can not find user */
+		    goto end;
+		  }
+	      }
+	    else
+	      {
+		tran_user = cdc_Gl.producer.tran_user.at (trid);
+	      }
 
-	  if (!cdc_is_filtered_user (tran_user))
-	    {
-	      goto end;
-	    }
-	}
+	    if (!cdc_is_filtered_user (tran_user))
+	      {
+		goto end;
+	      }
+	  }
 
-      switch (rec_type)
-	{
-	case LOG_SUPPLEMENT_TRAN_USER:
-	  if (cdc_Gl.producer.tran_user.count (trid) != 0)
-	    {
-	      break;
-	    }
-	  else
-	    {
-	      tran_user = (char *) malloc (supplement_length + 1);
-	      if (tran_user == NULL)
-		{
-		  goto error;
-		}
-// |string|, |smart pointer|, strdup
-	      memcpy (tran_user, supplement_data, supplement_length);
-	      tran_user[supplement_length] = '\0';
+	switch (rec_type)
+	  {
+	  case LOG_SUPPLEMENT_TRAN_USER:
+	    if (cdc_Gl.producer.tran_user.count (trid) != 0)
+	      {
+		break;
+	      }
+	    else
+	      {
+		tran_user = (char *) malloc (supplement_length + 1);
+		if (tran_user == NULL)
+		  {
+		    goto error;
+		  }
 
-	      cdc_Gl.producer.tran_user.insert (std::make_pair (trid, tran_user));
+		// |string|, |smart pointer|, strdup
+		memcpy (tran_user, supplement_data, supplement_length);
+		tran_user[supplement_length] = '\0';
 
-	      break;
-	    }
-	case LOG_SUPPLEMENT_INSERT:
-	  memcpy (&classoid, supplement_data, sizeof (OID));
+		cdc_Gl.producer.tran_user.insert (std::make_pair (trid, tran_user));
 
-	  if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
-	    {
-	      goto end;
-	    }
+		break;
+	      }
+	  case LOG_SUPPLEMENT_INSERT:
+	    memcpy (&classoid, supplement_data, sizeof (OID));
 
-	  memcpy (&redo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
+	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
+	      {
+		goto end;
+	      }
 
-	  if (cdc_get_recdes (thread_p, NULL, NULL, &redo_lsa, &redo_recdes) != NO_ERROR)
-	    {
-	      goto error;
-	    }
+	    memcpy (&redo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
-	  error =
-	    cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_INSERT, classoid, NULL, &redo_recdes, log_info_entry);
+	    if (cdc_get_recdes (thread_p, NULL, NULL, &redo_lsa, &redo_recdes) != NO_ERROR)
+	      {
+		goto error;
+	      }
 
-	  if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
-	    {
-	      goto error;
-	    }
+	    error =
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_INSERT, classoid, NULL, &redo_recdes,
+				    log_info_entry);
 
-	  break;
-	case LOG_SUPPLEMENT_UPDATE:
-	  memcpy (&classoid, supplement_data, sizeof (OID));
+	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
+	      {
+		goto error;
+	      }
 
-	  if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
-	    {
-	      break;
-	    }
+	    break;
+	  case LOG_SUPPLEMENT_UPDATE:
+	    memcpy (&classoid, supplement_data, sizeof (OID));
 
-	  memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
-	  memcpy (&redo_lsa, supplement_data + sizeof (OID) + sizeof (LOG_LSA), sizeof (LOG_LSA));
+	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
+	      {
+		break;
+	      }
 
-	  if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes) != NO_ERROR)
-	    {
-	      goto error;
-	    }
+	    memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
+	    memcpy (&redo_lsa, supplement_data + sizeof (OID) + sizeof (LOG_LSA), sizeof (LOG_LSA));
 
-	  error = cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_UPDATE, classoid, &undo_recdes, &redo_recdes,
-					log_info_entry);
-	  if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
-	    {
-	      goto error;
-	    }
+	    if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes) != NO_ERROR)
+	      {
+		goto error;
+	      }
 
-	  break;
-	case LOG_SUPPLEMENT_DELETE:
-	  memcpy (&classoid, supplement_data, sizeof (OID));
+	    error = cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_UPDATE, classoid, &undo_recdes, &redo_recdes,
+					  log_info_entry);
+	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
+	      {
+		goto error;
+	      }
 
-	  if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
-	    {
-	      break;
-	    }
+	    break;
+	  case LOG_SUPPLEMENT_DELETE:
+	    memcpy (&classoid, supplement_data, sizeof (OID));
 
-	  memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
+	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
+	      {
+		break;
+	      }
 
-	  if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, NULL, NULL) != NO_ERROR)
-	    {
-	      goto error;
-	    }
+	    memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
-	  error =
-	    cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_DELETE, classoid, &undo_recdes, NULL, log_info_entry);
+	    if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, NULL, NULL) != NO_ERROR)
+	      {
+		goto error;
+	      }
 
-	  if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
-	    {
-	      goto error;
-	    }
+	    error =
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_DELETE, classoid, &undo_recdes, NULL,
+				    log_info_entry);
 
-	  break;
-	case LOG_SUPPLEMENT_DDL:
-	  error = cdc_make_ddl_loginfo (supplement_data, trid, tran_user, log_info_entry);
+	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
+	      {
+		goto error;
+	      }
 
-	  if (error == ER_CDC_IGNORE_LOG_INFO)
-	    {
-	      goto end;
-	    }
-	  else if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
-	    {
-	      goto error;
-	    }
+	    break;
+	  case LOG_SUPPLEMENT_DDL:
+	    error = cdc_make_ddl_loginfo (supplement_data, trid, tran_user, log_info_entry);
 
-	  break;
+	    if (error == ER_CDC_IGNORE_LOG_INFO)
+	      {
+		goto end;
+	      }
+	    else if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
+	      {
+		goto error;
+	      }
 
-	default:
-	  break;
-	}
+	    break;
 
-      if (supplement_data != NULL)
-	{
-	  free_and_init (supplement_data);
-	}
+	  default:
+	    break;
+	  }
 
-      if (undo_recdes.data != NULL)
-	{
-	  free_and_init (undo_recdes.data);
-	}
+	if (supplement_data != NULL)
+	  {
+	    free_and_init (supplement_data);
+	  }
 
-      if (redo_recdes.data != NULL)
-	{
-	  free_and_init (redo_recdes.data);
-	}
+	if (undo_recdes.data != NULL)
+	  {
+	    free_and_init (undo_recdes.data);
+	  }
 
-      if (is_alloced == true)
-	{
-	  free_and_init (supplement_data);
-	}
+	if (redo_recdes.data != NULL)
+	  {
+	    free_and_init (redo_recdes.data);
+	  }
 
-      break;
+	if (is_alloced == true)
+	  {
+	    free_and_init (supplement_data);
+	  }
 
-    defalut:
+	break;
+      }
+
+    default:
       break;
     }
 
@@ -12098,7 +12106,7 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 
   for (int i = 0; i < rep->n_indexes; i++)
     {
-      index = rep->indexes + i;	//REVIEW : array? 
+      index = rep->indexes + i;
       if (index->type == BTREE_PRIMARY_KEY)
 	{
 	  has_pk = 1;
@@ -12109,8 +12117,7 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 	    }
 	  else
 	    {
-	      //REVIEW : function index 동작 구조 보고, 에러처리 할지, 다른 곳과 동일하게 처리할지 결정
-	      // TODO : 일단 반환하지 않고, 나중에. 
+	      // TODO : function indexes 
 	      num_idx_att = index->func_index_info->attr_index_start;
 	      return ER_FAILED;
 	    }
