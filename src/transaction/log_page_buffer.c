@@ -6652,12 +6652,18 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
   return fileio_is_volume_exist (log_Name_active);
 }
 
+/* logpb_checkpoint_trans - checkpoint a transaction if it is valid for checkpointing
+ */
 void
 logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, int &ntrans, int &ntops,
 			LOG_LSA & smallest_lsa)
 {
   LOG_INFO_CHKPT_TRANS *chkpt_entry = &chkpt_entries[ntrans];
-  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->tail_lsa))
+  /* - commit_abort_lsa is filled when either commit or abbort entry is appended to the transaction;
+   *    the last part of the condition has the effect that the actual transaction state is ignored by the
+   *    checkpoint mechanism as long as either the commit or the abort log records have been appended
+   */
+  if (tdes != NULL && tdes->trid != NULL_TRANID && !tdes->tail_lsa.is_null () && tdes->commit_abort_lsa.is_null ())
     {
       chkpt_entry->isloose_end = tdes->isloose_end;
       chkpt_entry->trid = tdes->trid;

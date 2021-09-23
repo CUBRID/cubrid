@@ -1496,6 +1496,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->savept_lsa);
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
+  LSA_SET_NULL (&tdes->commit_abort_lsa);
   tdes->topops.last = -1;
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
@@ -1620,6 +1621,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->savept_lsa);
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
+  LSA_SET_NULL (&tdes->commit_abort_lsa);
 
   r = rmutex_initialize (&tdes->rmutex_topop, RMUTEX_NAME_TDES_TOPOP);
   assert (r == NO_ERROR);
@@ -6140,6 +6142,7 @@ log_tdes::on_sysop_start ()
       LSA_SET_NULL (&tail_lsa);
       LSA_SET_NULL (&undo_nxlsa);
       LSA_SET_NULL (&tail_topresult_lsa);
+      assert (commit_abort_lsa.is_null ());
       LSA_SET_NULL (&rcv.tran_start_postpone_lsa);
       LSA_SET_NULL (&rcv.sysop_start_postpone_lsa);
     }
@@ -6157,6 +6160,7 @@ log_tdes::on_sysop_end ()
       LSA_SET_NULL (&tail_lsa);
       LSA_SET_NULL (&undo_nxlsa);
       LSA_SET_NULL (&tail_topresult_lsa);
+      assert (commit_abort_lsa.is_null ());
     }
 }
 
