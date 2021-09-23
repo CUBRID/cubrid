@@ -7323,9 +7323,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
       return ER_FAILED;
     }
 
-  // *INDENT-OFF*
-  log_lsa trantable_checkpoint_lsa { NULL_LSA };
-  // *INDENT-ON*
+  log_lsa trantable_checkpoint_lsa = NULL_LSA;
   {
     LOG_CS_ENTER (thread_p);
     // *INDENT-OFF*
@@ -7362,26 +7360,18 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
 	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: failed; writing metalog to file\n");
 	return res_metalog_to_file;
       }
-  }
 
-  // function explicitely needs to be called in critical section-free context
-  logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
-
-  // drop previous checkpoints
-  if (detailed_logging)
-    {
-      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
-		     LSA_AS_ARGS (&trantable_checkpoint_lsa));
-    }
-  {
+    // function explicitly needs to be called in critical section-free context
+    LOG_CS_EXIT (thread_p);
+    logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
     LOG_CS_ENTER (thread_p);
-    // *INDENT-OFF*
-    scope_exit<std::function<void (void)>> unlock_log_cs_on_exit ([thread_p] ()
-    {
-      LOG_CS_EXIT (thread_p);
-    });
-    // *INDENT-ON*
 
+    // drop previous checkpoints
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
+		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
+      }
     log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
 
     // - in nominal conditions, there should be at most one previous trantable checkpoint
