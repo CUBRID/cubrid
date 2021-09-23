@@ -481,7 +481,7 @@ cubrid_log_send_configurations (void)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
 
-  free (a_request);
+  free_and_init (a_request);
 
   return CUBRID_LOG_SUCCESS;
 
@@ -501,7 +501,7 @@ cubrid_log_error:
 
   if (a_request != NULL)
     {
-      free (a_request);
+      free_and_init (a_request);
     }
 
   return err_code;
@@ -619,7 +619,7 @@ cubrid_log_find_start_lsa (time_t * timestamp, LOG_LSA * lsa)
     }
 
   /* extraction timeout will be replaced when it is defined */
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
@@ -825,14 +825,11 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 	}
 
       /* extraction timeout will be modified when it is defined */
-      if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout) != NO_ERRORS)
+      if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
 	}
 
-#if !defined (NDEBUG)		//JOOHOK
-      printf ("cubrid_log_extract ; recv_data_size : %d , total_length = %d \n", recv_data_size, *total_length);
-#endif
       if (recv_data == NULL || recv_data_size != *total_length)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT, trace_errbuf);
@@ -972,7 +969,14 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	    case 7:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
-	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
+	      if (dml->changed_column_data[i] == NULL)
+		{
+		  dml->changed_column_data_len[i] = 0;
+		}
+	      else
+		{
+		  dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
+		}
 	      break;
 
 	    case 8:
@@ -1321,13 +1325,21 @@ cubrid_log_clear_data_item (DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * da
       break;
 
     case DATA_ITEM_TYPE_DML:
-      free (data_item->dml.changed_column_index);
-      free (data_item->dml.changed_column_data);
-      free (data_item->dml.changed_column_data_len);
+      if (data_item->dml.num_changed_column > 0)
+	{
+	  free_and_init (data_item->dml.changed_column_index);
+	  free_and_init (data_item->dml.changed_column_data);
+	  free_and_init (data_item->dml.changed_column_data_len);
+	  data_item->dml.num_changed_column = 0;
+	}
 
-      free (data_item->dml.cond_column_index);
-      free (data_item->dml.cond_column_data);
-      free (data_item->dml.cond_column_data_len);
+      if (data_item->dml.num_cond_column > 0)
+	{
+	  free_and_init (data_item->dml.cond_column_index);
+	  free_and_init (data_item->dml.cond_column_data);
+	  free_and_init (data_item->dml.cond_column_data_len);
+	  data_item->dml.num_cond_column = 0;
+	}
 
       break;
 
@@ -1416,7 +1428,7 @@ cubrid_log_disconnect_server (void)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
 
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 * 4) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
@@ -1477,7 +1489,7 @@ cubrid_log_reset_globals (void)
 
   if (g_extraction_table != NULL)
     {
-      free (g_extraction_table);
+      free_and_init (g_extraction_table);
       g_extraction_table = NULL;
     }
 
@@ -1487,10 +1499,10 @@ cubrid_log_reset_globals (void)
     {
       for (i = 0; i < g_extraction_user_count; i++)
 	{
-	  free (g_extraction_user[i]);
+	  free_and_init (g_extraction_user[i]);
 	}
 
-      free (g_extraction_user);
+      free_and_init (g_extraction_user);
       g_extraction_user = NULL;
     }
 

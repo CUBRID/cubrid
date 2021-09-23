@@ -2193,46 +2193,50 @@ slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   int data_len;
   LOG_TDES *tdes;
 
-  ptr = or_unpack_int (request, &ddl_type);
-  ptr = or_unpack_int (ptr, &obj_type);
-
-  ptr = or_unpack_oid (ptr, &classoid);
-  ptr = or_unpack_oid (ptr, &oid);
-
-  or_unpack_string_nocopy (ptr, &stmt_text);
-
-  /* ddl_type | obj_type | class OID | OID | stmt_text len | stmt_text */
-  data_len =
-    OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_OID_SIZE + OR_INT_SIZE + or_packed_string_length (stmt_text, NULL);
-
-  supplemental_data = (char *) malloc (data_len + MAX_ALIGNMENT);
-  if (supplemental_data == NULL)
+  /* CAS and Server are able to have different parameter value, when broker restarted with changed parameter value */
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
     {
-      success = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto end;
+      ptr = or_unpack_int (request, &ddl_type);
+      ptr = or_unpack_int (ptr, &obj_type);
+
+      ptr = or_unpack_oid (ptr, &classoid);
+      ptr = or_unpack_oid (ptr, &oid);
+
+      or_unpack_string_nocopy (ptr, &stmt_text);
+
+      /* ddl_type | obj_type | class OID | OID | stmt_text len | stmt_text */
+      data_len =
+	OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_OID_SIZE + OR_INT_SIZE + or_packed_string_length (stmt_text, NULL);
+
+      supplemental_data = (char *) malloc (data_len + MAX_ALIGNMENT);
+      if (supplemental_data == NULL)
+	{
+	  success = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      ptr = start_ptr = supplemental_data;
+
+      ptr = or_pack_int (ptr, ddl_type);
+      ptr = or_pack_int (ptr, obj_type);
+      ptr = or_pack_oid (ptr, &classoid);
+      ptr = or_pack_oid (ptr, &oid);
+      ptr = or_pack_int (ptr, strlen (stmt_text));
+      ptr = or_pack_string (ptr, stmt_text);
+
+      data_len = ptr - start_ptr;
+
+      tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      if (!tdes->has_supplemental_log)
+	{
+	  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					tdes->client.get_db_user ());
+	  tdes->has_supplemental_log = true;
+	}
+
+      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
     }
-
-  ptr = start_ptr = supplemental_data;
-
-  ptr = or_pack_int (ptr, ddl_type);
-  ptr = or_pack_int (ptr, obj_type);
-  ptr = or_pack_oid (ptr, &classoid);
-  ptr = or_pack_oid (ptr, &oid);
-  ptr = or_pack_int (ptr, strlen (stmt_text));
-  ptr = or_pack_string (ptr, stmt_text);
-
-  data_len = ptr - start_ptr;
-
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-
-  if (!tdes->has_supplemental_log)
-    {
-      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
-				    tdes->client.get_db_user ());
-      tdes->has_supplemental_log = true;
-    }
-
-  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
 
 end:
   (void) or_pack_int (reply, success);
@@ -10400,7 +10404,7 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
       // make producer sleep, and producer request consumer to be sleep 
       // if request is set to consumer to be sleep, go into spinlock 
       // checks request is set to none, then if it is none, 
-      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+      if (cdc_Gl.consumer.request != CDC_REQUEST_PRODUCER_IS_WAITED)
 	{
 	  cdc_pause_producer ();
 	}
