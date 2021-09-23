@@ -92,6 +92,7 @@
 #include "xasl_cache.h"
 #include "overflow_file.h"
 #include "dbtype.h"
+#include "cnv.h"
 
 #if !defined(SERVER_MODE)
 
@@ -6865,7 +6866,8 @@ log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_L
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), log_lsa, log_page_p);
   supplement = ((LOG_REC_SUPPLEMENT *) ((char *) log_page_p->area + log_lsa->offset));
-  fprintf (out_fp, "  SUPPLEMENT TYPE = %d\n", supplement->rec_type);
+  fprintf (out_fp, "\tSUPPLEMENT TYPE = %d\n", supplement->rec_type);
+  fprintf (out_fp, "\tSUPPLEMENT LENGTH = %d\n", supplement->length);
 
   return log_page_p;
 }
@@ -10769,12 +10771,13 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	      }
 	    else
 	      {
-		tran_user = (char *) malloc (supplement_length);
+		tran_user = (char *) malloc (supplement_length + 1);
 		if (tran_user == NULL)
 		  {
 		    goto error;
 		  }
-// |string|, |smart pointer|, strdup
+
+		// |string|, |smart pointer|, strdup
 		memcpy (tran_user, supplement_data, supplement_length);
 		tran_user[supplement_length] = '\0';
 
@@ -10922,6 +10925,8 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
   CDC_LOGINFO_ENTRY log_info_entry;
 
   THREAD_ENTRY *thread_p = &thread_ref;
+  thread_p->is_cdc_daemon = true;
+
   int error = NO_ERROR;
 
   while (cdc_Gl.producer.state != CDC_PRODUCER_STATE_DEAD)
@@ -10935,6 +10940,8 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
 	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
+	  cdc_wakeup_consumer ();
+
 	  continue;
 	}
 
@@ -10942,7 +10949,7 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	{
 	  cdc_log ("cdc_loginfo_producer_execute : produced queue size is over the limit");
 	  cdc_pause_consumer ();
-	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
+	  cdc_Gl.consumer.request = CDC_REQUEST_PRODUCER_IS_WAITED;
 
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
@@ -11035,11 +11042,28 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
 end:
 
+  thread_p->is_cdc_daemon = false;
+
   return;
 
 error:
 
+  thread_p->is_cdc_daemon = false;
   return;
+}
+
+static int
+cdc_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * lsa)
+{
+  if (log_page_p->hdr.logical_pageid != lsa->pageid)
+    {
+      if (logpb_fetch_page (thread_p, lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 static SCAN_CODE
@@ -11047,13 +11071,9 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
 {
   SCAN_CODE scan_code = S_SUCCESS;
 
-  if (log_page_p->hdr.logical_pageid != lsa.pageid)
+  if (cdc_check_log_page (thread_p, log_page_p, &lsa) != NO_ERROR)
     {
-      if (logpb_fetch_page (thread_p, &lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
-	{
-	  return S_ERROR;
-	}
-
+      return S_ERROR;
     }
 
   undo_recdes->data = (char *) malloc (ONE_K);
@@ -11071,8 +11091,14 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
     {
       if (scan_code == S_DOESNT_FIT)
 	{
-	  undo_recdes->data = (char *) realloc (undo_recdes->data, (size_t) (-undo_recdes->length));
+	  undo_recdes->data = (char *) realloc (undo_recdes->data, (size_t) (-undo_recdes->length));	//realloc error 처리
 	  undo_recdes->area_size = (size_t) (-undo_recdes->length);
+
+	  if (cdc_check_log_page (thread_p, log_page_p, &lsa) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
 	  scan_code = log_get_undo_record (thread_p, log_page_p, lsa, undo_recdes);
 	  if (scan_code != S_SUCCESS)
 	    {
@@ -11552,7 +11578,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
 	    LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
 
-	    if (rcvindex == RVHF_INSERT)
+	    if (rcvindex == RVHF_INSERT || rcvindex == RVHF_INSERT_NEWHOME)
 	      {
 		if (ZIP_CHECK (redo_length))
 		  {
@@ -12189,6 +12215,63 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 }
 
 static int
+cdc_make_error_loginfo (int trid, char *user, CDC_DML_TYPE dml_type, OID classoid, CDC_LOGINFO_ENTRY * dml_entry)
+{
+  char *loginfo_buf = NULL;
+  int defalut_length = 32 + DB_MAX_USER_LENGTH;
+
+  char *ptr, *start_ptr;
+
+  uint64_t b_classoid;
+  CDC_DATAITEM_TYPE dataitem_type = CDC_DML;
+  int num_change_col = 0;
+  int num_cond_col = 0;
+
+  int error_code = NO_ERROR;
+
+  /* if not able to find schema  */
+  loginfo_buf = (char *) malloc ((defalut_length * 2) + MAX_ALIGNMENT);
+  if (loginfo_buf == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+
+  ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
+  ptr = or_pack_int (ptr, 0);	//dummy for log info length 
+  ptr = or_pack_int (ptr, trid);
+  ptr = or_pack_string (ptr, user);
+  ptr = or_pack_int (ptr, dataitem_type);
+
+  memcpy (&b_classoid, &classoid, sizeof (uint64_t));
+  ptr = or_pack_int (ptr, dml_type);
+  ptr = or_pack_int64 (ptr, b_classoid);
+  ptr = or_pack_int (ptr, num_change_col);
+  ptr = or_pack_int (ptr, num_cond_col);
+  dml_entry->length = ptr - start_ptr;
+  or_pack_int (start_ptr, dml_entry->length);
+
+  dml_entry->log_info = (char *) malloc (dml_entry->length);
+  if (dml_entry->log_info == NULL)
+    {
+      cdc_log ("cdc_make_error_loginfo : failed to allocate memory for log info in dml log entry");
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+
+  memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
+  error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
+
+end:
+  if (loginfo_buf != NULL)
+    {
+      free_and_init (loginfo_buf);
+    }
+
+  return error_code;
+}
+
+static int
 cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type,
 		      OID classoid, RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry)
 {
@@ -12231,50 +12314,16 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   int length = 0;
 
   int record_length = 0;
-  int defalut_length = 32 + DB_MAX_USER_LENGTH;
 
   char *loginfo_buf = NULL;
 
   cdc_log ("cdc_make_dml_loginfo : started with trid:%d, transaction user:%s, class oid:(%d|%d|%d), dml type:%d", trid,
 	   user, OID_AS_ARGS (&classoid), dml_type);
+
   if ((error_code = heap_attrinfo_start (thread_p, &classoid, -1, NULL, &attr_info)) != NO_ERROR)
     {
-      /* if not able to find schema  */
-      loginfo_buf = (char *) malloc ((defalut_length * 2) + MAX_ALIGNMENT);
-      if (loginfo_buf == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
-	}
-
-      ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
-      ptr = or_pack_int (ptr, 0);	//dummy for log info length 
-      ptr = or_pack_int (ptr, trid);
-      ptr = or_pack_string (ptr, user);
-      ptr = or_pack_int (ptr, dataitem_type);
-
-      memcpy (&b_classoid, &classoid, sizeof (uint64_t));
-      ptr = or_pack_int (ptr, dml_type);
-      ptr = or_pack_int64 (ptr, b_classoid);
-      ptr = or_pack_int (ptr, num_change_col);
-      ptr = or_pack_int (ptr, num_cond_col);
-      dml_entry->length = ptr - start_ptr;
-      or_pack_int (start_ptr, dml_entry->length);
-
-      dml_entry->log_info = (char *) malloc (dml_entry->length);
-      if (dml_entry->log_info == NULL)
-	{
-	  cdc_log ("cdc_make_dml_loginfo : failed to allocate memory for log info in dml log entry");
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
-	}
-
-      memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
-      error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
-
-      free_and_init (loginfo_buf);
-
-      cdc_log ("cdc_make_dml_loginfo : failed to find class representationl ");
+      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+      cdc_log ("cdc_make_dml_loginfo : failed to find class representation ");
 
       goto end;
     }
@@ -12297,6 +12346,14 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	{
 	  // if (attr_info.values[i]->read_attrper != NULL) ? 
 	  heap_value = &attr_info.values[i];
+	  if (heap_value->read_attrepr == NULL)
+	    {
+	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
+
+	      goto end;
+	    }
+
 	  oldval_deforder = heap_value->read_attrepr->def_order;
 	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
 	}
@@ -12321,6 +12378,14 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       for (i = 0; i < attr_info.num_values; i++)
 	{
 	  heap_value = &attr_info.values[i];
+	  if (heap_value->read_attrepr == NULL)
+	    {
+	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
+
+	      goto end;
+	    }
+
 	  newval_deforder = heap_value->read_attrepr->def_order;
 	  memcpy (&new_values[newval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
 	}
@@ -12348,7 +12413,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	}
     }
 
-  loginfo_buf = (char *) malloc (record_length * 2 + MAX_ALIGNMENT);
+  loginfo_buf = (char *) malloc (record_length * 5 + MAX_ALIGNMENT);
   if (loginfo_buf == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -12399,7 +12464,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	{
 	  if ((error_code = cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i])) > 0)
 	    {
-	      changed_col_idx[cnt++] = i;
+	      changed_col_idx[cnt++] = i;	//TODO: replace i with def_order to reduce memory alloc and copy 
 	    }
 	  else if (error_code < 0)
 	    {
@@ -12813,16 +12878,19 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
   char line[1025];
   char line2[1025];
   int func_type = 0;
+
   if (DB_IS_NULL (new_value))
     {
       cdc_log ("cdc_compare_undoredo_dbvalue : failed due to dbvalue of redo data is NULL");
       return ER_FAILED;		/*error */
     }
+
   if (DB_IS_NULL (cmpdata))
     {
       cdc_log ("cdc_compare_undoredo_dbvalue : failed due to dbvalue of undo data is NULL");
       return ER_FAILED;		/* error */
     }
+
   switch (DB_VALUE_TYPE (new_value))
     {
     case DB_TYPE_INTEGER:
@@ -12879,7 +12947,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
     case DB_TYPE_NUMERIC:
       numeric_db_value_print (new_value, line);
       numeric_db_value_print (cmpdata, line2);
-      if (strcmp (line, line2))
+      if (strcmp (line, line2) == 0)
 	{
 	  return 0;
 	}
@@ -12894,25 +12962,34 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
-      /* Copy string into buf providing for any embedded quotes. Strings may have embedded NULL characters and
-       * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
-       * character and the second byte of the multibyte character.
-       */
-      if (strcmp (db_get_string (new_value), db_get_string (cmpdata)) == 0)
-	{
-	  return 0;
-	}
-      else
-	{
-	  return strlen (line);
-	}
+      {
+	DB_VALUE result;
+	int ret = 0;
 
-      break;
+	if (db_string_compare (new_value, cmpdata, &result) == NO_ERROR)
+	  {
+	    ret = db_get_int (&result);
+	    if (ret == 0)
+	      {
+		return ret;
+	      }
+	    else
+	      {
+		return 1;
+	      }
+	  }
+	else
+	  {
+	    return ER_FAILED;
+	  }
+
+	break;
+      }
 #define TOO_BIG_TO_MATTER       1024
     case DB_TYPE_TIME:
       (void) db_time_to_string (line, TOO_BIG_TO_MATTER, db_get_time (new_value));
       (void) db_time_to_string (line2, TOO_BIG_TO_MATTER, db_get_time (cmpdata));
-      if (strcmp (line, line2))
+      if (strcmp (line, line2) == 0)
 	{
 	  return 0;
 	}
@@ -12924,7 +13001,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
     case DB_TYPE_TIMESTAMP:
       (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (new_value));
       (void) db_utime_to_string (line2, TOO_BIG_TO_MATTER, db_get_timestamp (cmpdata));
-      if (strcmp (line, line2))
+      if (strcmp (line, line2) == 0)
 	{
 	  return 0;
 	}
@@ -12936,7 +13013,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
     case DB_TYPE_TIMESTAMPLTZ:
       (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (new_value));
       (void) db_timestampltz_to_string (line2, TOO_BIG_TO_MATTER, db_get_timestamp (cmpdata));
-      if (strcmp (line, line2))
+      if (strcmp (line, line2) == 0)
 	{
 	  return 0;
 	}
@@ -12952,7 +13029,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
 	(void) db_timestamptz_to_string (line, TOO_BIG_TO_MATTER, &(ts_tz->timestamp), &(ts_tz->tz_id));
 	ts_tz = db_get_timestamptz (cmpdata);
 	(void) db_timestamptz_to_string (line2, TOO_BIG_TO_MATTER, &(ts_tz->timestamp), &(ts_tz->tz_id));
-	if (strcmp (line, line2))
+	if (strcmp (line, line2) == 0)
 	  {
 	    return 0;
 	  }
@@ -12965,7 +13042,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
     case DB_TYPE_DATETIME:
       (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER, db_get_datetime (new_value));
       (void) db_datetime_to_string (line2, TOO_BIG_TO_MATTER, db_get_datetime (cmpdata));
-      if (strcmp (line, line2))
+      if (strcmp (line, line2) == 0)
 	{
 	  return 0;
 	}
@@ -12977,7 +13054,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
     case DB_TYPE_DATETIMELTZ:
       (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_datetime (new_value));
       (void) db_datetimeltz_to_string (line2, TOO_BIG_TO_MATTER, db_get_datetime (cmpdata));
-      if (strcmp (line, line2))
+      if (strcmp (line, line2) == 0)
 	{
 	  return 0;
 	}
@@ -12993,7 +13070,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
 	(void) db_datetimetz_to_string (line, TOO_BIG_TO_MATTER, &(dt_tz->datetime), &(dt_tz->tz_id));
 	dt_tz = db_get_datetimetz (cmpdata);
 	(void) db_datetimetz_to_string (line2, TOO_BIG_TO_MATTER, &(dt_tz->datetime), &(dt_tz->tz_id));
-	if (strcmp (line, line2))
+	if (strcmp (line, line2) == 0)
 	  {
 	    return 0;
 	  }
@@ -13006,7 +13083,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
     case DB_TYPE_DATE:
       (void) db_date_to_string (line, TOO_BIG_TO_MATTER, db_get_date (new_value));
       (void) db_date_to_string (line2, TOO_BIG_TO_MATTER, db_get_date (cmpdata));
-      if (strcmp (line, line2))
+      if (strcmp (line, line2) == 0)
 	{
 	  return 0;
 	}
@@ -13025,11 +13102,88 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
     case DB_TYPE_DB_VALUE:
       /* make sure line is NULL terminated, may not be necessary line[0] = '\0'; */
       break;
+    case DB_TYPE_ENUMERATION:
+      if (db_get_enum_string (new_value) == NULL && db_get_enum_short (new_value) != 0)
+	{
+	  return db_get_enum_short (new_value) == db_get_enum_short (cmpdata);
+	}
+      else
+	{
+	  DB_VALUE varchar_val;
+	  DB_VALUE varchar_val2;
+
+	  /* print enumerations as strings */
+	  if (tp_enumeration_to_varchar (new_value, &varchar_val) == NO_ERROR)
+	    {
+	      if (tp_enumeration_to_varchar (cmpdata, &varchar_val2) == NO_ERROR)
+		{
+		  if (strcmp (db_get_string (&varchar_val), db_get_string (&varchar_val2)) == 0)
+		    {
+		      return 0;
+		    }
+		  else
+		    {
+		      return strlen (db_get_string (&varchar_val));
+		    }
+		}
+	    }
+	  else
+	    {
+	      assert (false);
+	    }
+	}
+      break;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      {
+	DB_ELO *elo, *elo2;
+	func_type = 7;
+	elo = db_get_elo (new_value);
+	elo2 = db_get_elo (cmpdata);
+	if (elo != NULL)
+	  {
+	    if (elo->type == ELO_FBO)
+	      {
+		assert (elo->locator != NULL);
+		if (strcmp (elo->locator, elo2->locator) == 0)
+		  {
+		    return 0;
+		  }
+		else
+		  {
+		    return strlen (elo->locator);
+		  }
+	      }
+	    else		/* ELO_LO */
+	      {
+		/* should not happen for now */
+		return ER_FAILED;
+	      }
+	  }
+	else
+	  {
+	    cdc_log ("cdc_put_value_to_loginfo : Failed to extract LOB File");
+	    return ER_FAILED;
+	  }
+      }
+
+      break;
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_ELO:
+    case DB_TYPE_JSON:
+    case DB_TYPE_POINTER:
+    case DB_TYPE_ERROR:
+      cdc_log ("cdc_compare_undoredo_dbvalue : Not Supported data type %d", DB_VALUE_TYPE (new_value));
+      break;
     default:
       /* NB: THERE MUST BE NO DEFAULT CASE HERE. ALL TYPES MUST BE HANDLED! */
       assert (false);
       break;
     }
+  return ER_FAILED;
 }
 
 static int
@@ -13037,8 +13191,8 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 {
   const char *src, *end;
   double d;
-  char line[1025];
-  char line2[1025];
+  char line[1025] = "\0";
+  int line_length = 0;
   int func_type = 0;
 
   /*DATE, TIME */
@@ -13047,10 +13201,14 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
   DB_VALUE result;
   INTL_CODESET format_codeset = LANG_SYS_CODESET;
   const char *date_format = "YYYY-MM-DD";
+  const char *datetime_frmt = "YYYY-MM-DD HH24:MI:SS.FF";
+  const char *datetimetz_frmt = "YYYY-MM-DD HH24:MI:SS.FF TZH:TZM";
+  const char *datetimeltz_frmt = "YYYY-MM-DD HH24:MI:SS.FF TZR";
+
   const char *time_format = "HH24:MI:SS";
-  const char *timestamp_frmt = "YYYY-MM-DD HH24:MI:SS.FF";
-  const char *timestamptz_frmt = "YYYY-MM-DD HH24:MI:SS.FF TZH:TZM";
-  const char *timestampltz_frmt = "YYYY-MM-DD HH24:MI:SS.FF TZR";
+  const char *timestamp_frmt = "YYYY-MM-DD HH24:MI:SS";
+  const char *timestamptz_frmt = "YYYY-MM-DD HH24:MI:SS TZH:TZM";
+  const char *timestampltz_frmt = "YYYY-MM-DD HH24:MI:SS TZR";
   db_make_int (&lang_str, 1);
   db_make_null (&result);
 
@@ -13064,7 +13222,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_string (ptr, NULL);
       *data_ptr = ptr;
       /* for alter case . if num of col is changed, there will be NULL db_value inserted */
-      return ER_FAILED;		/*error */
+      return NO_ERROR;		/*error */
     }
 
   switch (DB_VALUE_TYPE (new_value))
@@ -13104,25 +13262,31 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       {
-	const unsigned char *bstring;
+	char result[1024] = "\0";
 	int length, n, count;
-	char *buf = (char *) malloc (db_get_string_length (new_value));
+	char *bitstring = NULL;
 	func_type = 7;
-	bstring = REINTERPRET_CAST (const unsigned char *, db_get_string (new_value));
-	if (bstring == NULL)
+
+	length = ((db_get_string_length (new_value) + 3) / 4) + 4;
+
+	bitstring = (char *) malloc (length);
+	if (bitstring == NULL)
 	  {
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
+
+	if (db_bit_string (new_value, "%X", bitstring, length) != NO_ERROR)
+	  {
+	    free_and_init (bitstring);
 	    return ER_FAILED;
 	  }
 
-	length = ((db_get_string_length (new_value) + 3) / 4);
-	for (n = 0, count = 0; n < length - 1; count++, n += 2)
-	  {
-	    sprintf (buf + n, "%02x", bstring[count]);
-	  }
+	sprintf (result, "X'%s'", bitstring);
 
 	ptr = or_pack_int (ptr, func_type);
-	ptr = or_pack_string (ptr, buf);
-	free (buf);
+	ptr = or_pack_string (ptr, result);
+
+	free_and_init (bitstring);
       }
       break;
     case DB_TYPE_CHAR:
@@ -13146,52 +13310,91 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (time_format), time_format,
 		    strlen (time_format), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
       break;
-
     case DB_TYPE_TIMESTAMP:
-    case DB_TYPE_DATETIME:
       db_make_char (&format, strlen (timestamp_frmt), timestamp_frmt,
 		    strlen (timestamp_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
-      break;
+      ptr = or_pack_string (ptr, line);
 
+      break;
+    case DB_TYPE_DATETIME:
+      db_make_char (&format, strlen (datetime_frmt), datetime_frmt,
+		    strlen (datetime_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
+      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, line);
+
+      break;
     case DB_TYPE_TIMESTAMPTZ:
-    case DB_TYPE_DATETIMETZ:
       db_make_char (&format, strlen (timestamptz_frmt), timestamptz_frmt,
 		    strlen (timestamptz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
 
       break;
+    case DB_TYPE_DATETIMETZ:
+      db_make_char (&format, strlen (datetimetz_frmt), datetimetz_frmt,
+		    strlen (datetimetz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
+      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
 
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, line);
+
+      break;
     case DB_TYPE_TIMESTAMPLTZ:
-    case DB_TYPE_DATETIMELTZ:
+
       db_make_char (&format, strlen (timestampltz_frmt), timestampltz_frmt,
 		    strlen (timestampltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
-      if (DB_VALUE_TYPE (new_value) == DB_TYPE_TIMESTAMPLTZ)
-	{
-	  db_value_alter_type (new_value, DB_TYPE_TIMESTAMPTZ);
-	}
-      else
-	{
-	  db_value_alter_type (new_value, DB_TYPE_DATETIMETZ);
-	}
 
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
+
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      db_make_char (&format, strlen (datetimeltz_frmt), datetimeltz_frmt,
+		    strlen (datetimeltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
+
+      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, line);
 
       break;
     case DB_TYPE_DATE:
@@ -13199,9 +13402,14 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (date_format), date_format,
 		    strlen (date_format), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      line_length = db_get_string_length (&result);
+      strncpy (line, db_get_string (&result), line_length);
+
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (&result));
+      ptr = or_pack_string (ptr, line);
+
       break;
     case DB_TYPE_MONETARY:
       break;
@@ -13213,14 +13421,28 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_DB_VALUE:
       /* make sure line is NULL terminated, may not be necessary line[0] = '\0'; */
       break;
-    case DB_TYPE_OBJECT:
-    case DB_TYPE_SET:
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-    case DB_TYPE_ELO:
     case DB_TYPE_ENUMERATION:
-    case DB_TYPE_JSON:
-      _er_log_debug (ARG_FILE_LINE, "Not Supported");
+      if (db_get_enum_string (new_value) == NULL && db_get_enum_short (new_value) != 0)
+	{
+	  func_type = 4;
+	  ptr = or_pack_int (ptr, func_type);
+	  ptr = or_pack_short (ptr, db_get_enum_short (new_value));
+	}
+      else
+	{
+	  DB_VALUE varchar_val;
+	  func_type = 7;
+	  /* print enumerations as strings */
+	  if (tp_enumeration_to_varchar (new_value, &varchar_val) == NO_ERROR)
+	    {
+	      ptr = or_pack_int (ptr, func_type);
+	      ptr = or_pack_string (ptr, db_get_string (&varchar_val));
+	    }
+	  else
+	    {
+	      assert (false);
+	    }
+	}
       break;
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
@@ -13244,15 +13466,26 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 	  }
 	else
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "LOB File");
+	    cdc_log ("cdc_put_value_to_loginfo : Failed to extract LOB File");
 	    return ER_FAILED;
 	  }
       }
 
       break;
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_ELO:
+    case DB_TYPE_JSON:
     case DB_TYPE_POINTER:
     case DB_TYPE_ERROR:
-      _er_log_debug (ARG_FILE_LINE, "Not Supported, it is used only for method");
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, NULL);
+      *data_ptr = ptr;
+
+      cdc_log ("cdc_put_value_to_loginfo : Not Supported data type %d", DB_VALUE_TYPE (new_value));
       break;
     default:
       /* NB: THERE MUST BE NO DEFAULT CASE HERE. ALL TYPES MUST BE HANDLED! */
@@ -13357,7 +13590,6 @@ cdc_pause_consumer ()
 {
   cdc_log ("cdc_pause_consumer : producer request the consumer to be pause");
   cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_TO_WAIT;
-  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
 }
 
 void
@@ -13905,7 +14137,8 @@ end:
 
   if (cdc_Gl.consumer.request == CDC_REQUEST_CONSUMER_TO_WAIT)
     {
-      pthread_cond_signal (&cdc_Gl.producer.wait_cond);
+      CDC_PRODUCER_REQUEST request;
+      cdc_wakeup_producer ();
 
       while (cdc_Gl.consumer.request != CDC_REQUEST_NONE)
 	{
