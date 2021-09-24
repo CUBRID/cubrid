@@ -1019,8 +1019,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (log_recovery_redo_parallel_count);
-	parallel_recovery_redo.
-	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+	parallel_recovery_redo.reset (new cublog::
+				      redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
       }
   }
 #endif
@@ -1472,9 +1472,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
 	      {
+		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
 		if (context.is_restore_incomplete ())
 		  {
-		    tran_index = logtb_find_tran_index (thread_p, tran_id);
+		    int tran_index = logtb_find_tran_index (thread_p, tran_id);
+		    LOG_TDES *tdes = NULL;
 		    if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
 		      {
 			tdes = LOG_FIND_TDES (tran_index);
@@ -3708,7 +3710,7 @@ log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_siz
  * thread_p (in) : thread entry
  * vpid_rcv (in) : page identifier
  */
-STATIC_INLINE PAGE_PTR
+PAGE_PTR
 log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv)
 {
   PAGE_PTR page = NULL;
@@ -3719,7 +3721,7 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv)
   // sector reservation table are applied in parallel with the changes in pages, at times the page may appear to be
   // deallocated (part of an unreserved sector). but the changes were done while the sector was reserved and must be
   // re-applied to get a correct end result.
-  // 
+  //
   // moreover, the sector reservation check is very expensive. running this check on every page fix costs much more
   // than any time gained by skipping redoing changes on deallocated pages.
   //

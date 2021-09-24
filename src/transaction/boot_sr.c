@@ -83,6 +83,7 @@
 #include "vacuum.h"
 #include "tde.h"
 #include "porting.h"
+#include "page_server.hpp"
 #include "server_type.hpp"
 
 #if defined(SERVER_MODE)
