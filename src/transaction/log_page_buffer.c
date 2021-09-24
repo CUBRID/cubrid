@@ -6919,20 +6919,14 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
   return fileio_is_volume_exist (log_Name_active);
 }
 
-/* logpb_checkpoint_trans - checkpoint a transaction if it is valid for checkpointing
- */
-  /* - commit_abort_lsa is filled when either commit or abbort entry is appended to the transaction;
-   *    the last part of the condition has the effect that the actual transaction state is ignored by the
-   *    checkpoint mechanism as long as either the commit or the abort log records have been appended
-   */
-if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->tail_lsa))
 /*
  * logpb_checkpoint - Execute a fuzzy checkpoint
  *
  * return: pageid where a redo will start
  *
  */
-  LOG_PAGEID logpb_checkpoint (THREAD_ENTRY * thread_p)
+LOG_PAGEID
+logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;		/* System transaction descriptor */
   LOG_LSA prev_chkpt_lsa;	/* copy of log_Gl.hdr.chkpt_lsa */
