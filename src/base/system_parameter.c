@@ -2348,7 +2348,7 @@ static UINT64 prm_ddl_audit_log_size_upper = 2147483648ULL;	/* 2G */
 static unsigned int prm_ddl_audit_log_size_flag = 0;
 
 int PRM_SUPPLEMENTAL_LOG = 0;
-static int prm_supplemental_log_default = 1;
+static int prm_supplemental_log_default = 0;
 static int prm_supplemental_log_lower = 0;
 static int prm_supplemental_log_upper = 2;
 static unsigned int prm_supplemental_log_flag = 0;
