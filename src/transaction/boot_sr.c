@@ -83,7 +83,6 @@
 #include "vacuum.h"
 #include "tde.h"
 #include "porting.h"
-#include "page_server.hpp"
 #include "server_type.hpp"
 
 #if defined(SERVER_MODE)
@@ -2558,6 +2557,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       dwb_daemons_init ();
     }
+  cdc_daemons_init ();
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
@@ -2898,6 +2898,8 @@ error:
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+  cdc_daemons_destroy ();
+
   pgbuf_daemons_destroy ();
   dwb_daemons_destroy ();
 #endif
@@ -3219,6 +3221,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
+  cdc_daemons_destroy ();
 #endif
 
 #if defined (SA_MODE)

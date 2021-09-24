@@ -289,7 +289,7 @@ options valides:\n\
   -C, --CS-mode                exécution en mode client-serveur\n\
       --no-check               ne vérifie pas la cohérence de la base de données; par défaut: vérifier\n\
   -t, --thread-count=NOMBRE    NOMBRE de fils d'exécution; par défaut: 0 (auto)\n\
-  -z, --compress               comprimer les volumes de sauvegarde; par défaut: décompresser\n\
+      --no-compress            ne compressez pas les volumes de sauvegarde ; par défaut : compression\n\
       --sleep-msecs=N          veille N millisecondes par 1M lit; par défaut: 0\n\
   -k, --separate-keys          fichier de clés (_keys) pour TDE n'est pas inclus dans le volume de sauvegarde, mais est séparé dans un fichier à la place\n\
       --page-server            run on the page server; default: runs on the transaction\n

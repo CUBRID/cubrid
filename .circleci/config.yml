@@ -49,7 +49,16 @@ jobs:
             git submodule update --init
       - run:
           name: Build
-          command: scl enable devtoolset-8 -- /entrypoint.sh build -b ${BUILD_DIR_NAME} -c -DUNIT_TESTS=ON
+          command: |
+            mkdir -p /tmp/build_logs
+            scl enable devtoolset-8 -- /entrypoint.sh build -b ${BUILD_DIR_NAME} -c -DUNIT_TESTS=ON
+            mv -f ${BUILD_DIR_NAME}/build.log /tmp/build_logs
+      - run:
+          name: Commits
+          command: |
+            mkdir -p /tmp/build_logs
+            git log | head -n 1000 > commits.log || true
+            mv -f commits.log /tmp/build_logs
       - run:
           name: Unit tests
           command: |
@@ -60,8 +69,7 @@ jobs:
           paths:
             - CUBRID
       - store_artifacts:
-          path: build.log
-
+          path: /tmp/build_logs
   test_medium:
     <<: *defaults
     environment:

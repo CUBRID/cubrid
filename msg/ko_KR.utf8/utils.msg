@@ -289,7 +289,7 @@ backupdb: 데이터베이스를 백업합니다.\n\
   -C, --CS-mode                클라이언트 서버 모드 실행\n\
       --no-check               데이터베이스의 정합성 확인 작업을 수행하지 않습니다; 기본값: 수행\n\
   -t, --thread-count=COUNT     백업을 수행하는 스레드 개수; 기본값: 자동\n\
-  -z, --compress               백업 볼륨을 압축합니다; 기본값: 압축하지 않음\n\
+      --no-compress            백업 볼륨을 압축하지 않습니다; 기본값: 압축\n\
       --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n\
   -k, --separate-keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다. \n\
       --page-server            run on the page server; default: runs on the transaction\n

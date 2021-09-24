@@ -3398,7 +3398,7 @@ synccoll_force (void)
     }
 
   AU_DISABLE (au_save);
-  if (db_truncate_class (class_mop) != NO_ERROR)
+  if (db_truncate_class (class_mop, false) != NO_ERROR)
     {
       AU_ENABLE (au_save);
       status = EXIT_FAILURE;

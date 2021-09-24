@@ -26,7 +26,7 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
-PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex);
+PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv);
 bool log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
 					       LOG_RCVINDEX rcvindex, const log_lsa & rcv_lsa,
 					       const LOG_LSA & end_redo_lsa);

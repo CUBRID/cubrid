@@ -1713,6 +1713,7 @@ log_rv_analysis_record_on_tran (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, in
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
+    case LOG_SUPPLEMENTAL_INFO:
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:
