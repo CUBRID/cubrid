@@ -10457,7 +10457,15 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
     {
       /* if server is restarted while cdc is running, and client immediately calls extraction without scdc_find_lsa(), 
        * LSA validation is needed to perform at client side or somewhere because server has no information about LSAs. it needs to be discussed ( 보류) */
+      error_code = cdc_validate_lsa (thread_p, &start_lsa);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
       cdc_set_extraction_lsa (&start_lsa);
+
+      cdc_reinitialize_queue (&start_lsa);
 
       cdc_wakeup_producer ();
     }
