@@ -1513,6 +1513,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 커맨트의 최대 길이는 %1$d 바이트입니다.
 128 JSON_OBJECTAGG 인자의 갯수가 잘못되었습니다.
 129 PARALLEL 인자 값은 %1$d에서 %2$d까지 허용됩니다.
+130 이름 바꾸기 전과 후의 소유자가 다릅니다.\n이름 바꾸기는 소유자를 변경할 수 없습니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다

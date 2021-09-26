@@ -265,6 +265,10 @@ static PT_NODE *pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -417,6 +421,10 @@ static PARSER_VARCHAR *pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -3333,6 +3341,12 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "text";
     case PT_TRACE_FORMAT_JSON:
       return "json";
+    case PT_PRIVATE:
+      return "private";
+    case PT_PUBLIC:
+      return "public";
+    case PT_SYNONYM:
+      return "synonym";
     default:
       return "MISC_TYPE: type unknown";
     }
@@ -4927,6 +4941,10 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_JSON_TABLE] = pt_apply_json_table;
   pt_apply_func_array[PT_JSON_TABLE_NODE] = pt_apply_json_table_node;
   pt_apply_func_array[PT_JSON_TABLE_COLUMN] = pt_apply_json_table_column;
+  pt_apply_func_array[PT_ALTER_SYNONYM] = pt_apply_alter_synonym;
+  pt_apply_func_array[PT_CREATE_SYNONYM] = pt_apply_create_synonym;
+  pt_apply_func_array[PT_DROP_SYNONYM] = pt_apply_drop_synonym;
+  pt_apply_func_array[PT_RENAME_SYNONYM] = pt_apply_rename_synonym;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5051,6 +5069,10 @@ pt_init_init_f (void)
   pt_init_func_array[PT_JSON_TABLE] = pt_init_func_null_function;
   pt_init_func_array[PT_JSON_TABLE_NODE] = pt_init_func_null_function;
   pt_init_func_array[PT_JSON_TABLE_COLUMN] = pt_init_json_table_column;
+  pt_init_func_array[PT_ALTER_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_CREATE_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_RENAME_SYNONYM] = pt_init_func_null_function;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5168,6 +5190,10 @@ pt_init_print_f (void)
   pt_print_func_array[PT_JSON_TABLE] = pt_print_json_table;
   pt_print_func_array[PT_JSON_TABLE_NODE] = pt_print_json_table_node;
   pt_print_func_array[PT_JSON_TABLE_COLUMN] = pt_print_json_table_columns;
+  pt_print_func_array[PT_ALTER_SYNONYM] = pt_print_alter_synonym;
+  pt_print_func_array[PT_CREATE_SYNONYM] = pt_print_create_synonym;
+  pt_print_func_array[PT_DROP_SYNONYM] = pt_print_drop_synonym;
+  pt_print_func_array[PT_RENAME_SYNONYM] = pt_print_rename_synonym;
 
   pt_print_f = pt_print_func_array;
 }
@@ -18287,4 +18313,171 @@ pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp))
 {
   destp = srcp;
   srcp = NULL;
+}
+
+static PT_NODE *
+pt_apply_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.create_synonym.synonym_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_synonym.synonym_owner_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_synonym.target_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_synonym.target_owner_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_synonym.comment, arg);
+  return p;
+}
+
+static PT_NODE *
+pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.create_synonym.synonym_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_synonym.synonym_owner_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_synonym.target_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_synonym.target_owner_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_synonym.comment, arg);
+  return p;
+}
+
+static PT_NODE *
+pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.drop_synonym.synonym_list, arg);
+  return p;
+}
+
+static PT_NODE *
+pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.rename_synonym.old_name, arg);
+  PT_APPLY_WALK (parser, p->info.rename_synonym.old_owner_name, arg);
+  PT_APPLY_WALK (parser, p->info.rename_synonym.new_name, arg);
+  PT_APPLY_WALK (parser, p->info.rename_synonym.new_owner_name, arg);
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+
+  q = pt_append_nulstring (parser, q, "alters ");
+
+  /* private is not printed because PT_PRIVATE is the default. */
+  /* TO-BE: public synonym cannot be altered. */
+  if (p->info.alter_synonym.access_modifier == PT_PUBLIC)
+    {
+      q = pt_append_nulstring (parser, q, "public ");
+    }
+
+  q = pt_append_nulstring (parser, q, "synonym ");
+
+  r1 = pt_print_bytes (parser, p->info.alter_synonym.synonym_name);
+  q = pt_append_varchar (parser, q, r1);
+  
+  q = pt_append_nulstring (parser, q, " for ");
+
+  if (p->info.alter_synonym.target_owner_name)
+    {
+      r1 = pt_print_bytes (parser, p->info.alter_synonym.target_owner_name);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ".");
+    }
+
+  r1 = pt_print_bytes (parser, p->info.alter_synonym.target_name);
+  q = pt_append_varchar (parser, q, r1);
+
+  if (p->info.alter_synonym.comment)
+    {
+      r1 = pt_print_bytes (parser, p->info.alter_synonym.comment);
+      q = pt_append_nulstring (parser, q, " comment ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  return q;
+}
+
+static PARSER_VARCHAR *
+pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+
+  q = pt_append_nulstring (parser, q, "create ");
+
+  if (p->info.create_synonym.or_replace)
+    {
+      q = pt_append_nulstring (parser, q, "or replace ");
+    }
+
+  /* PT_PRIVATE is not printed because PT_PRIVATE is the default. */
+  if (p->info.create_synonym.access_modifier == PT_PUBLIC)
+    {
+      q = pt_append_nulstring (parser, q, "public ");
+    }
+
+  q = pt_append_nulstring (parser, q, "synonym ");
+
+  r1 = pt_print_bytes (parser, p->info.create_synonym.synonym_name);
+  q = pt_append_varchar (parser, q, r1);
+  
+  q = pt_append_nulstring (parser, q, " for ");
+
+  if (p->info.create_synonym.target_owner_name)
+    {
+      r1 = pt_print_bytes (parser, p->info.create_synonym.target_owner_name);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ".");
+    }
+
+  r1 = pt_print_bytes (parser, p->info.create_synonym.target_name);
+  q = pt_append_varchar (parser, q, r1);
+
+  if (p->info.create_synonym.comment != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.create_synonym.comment);
+      q = pt_append_nulstring (parser, q, "comment ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  return q;
+}
+
+static PARSER_VARCHAR *
+pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+
+  q = pt_append_nulstring (parser, q, "drop ");
+
+  /* private is not printed because PT_PRIVATE is the default. */
+  if (p->info.drop_synonym.access_modifier == PT_PUBLIC)
+    {
+      q = pt_append_nulstring (parser, q, "public ");
+    }
+
+  q = pt_append_nulstring (parser, q, "synonym ");
+  
+  if (p->info.drop_synonym.if_exists)
+    {
+      q = pt_append_nulstring (parser, q, "if exists ");
+    }
+
+  r1 = pt_print_bytes_l (parser, p->info.drop_synonym.synonym_list);
+  q = pt_append_varchar (parser, q, r1);
+
+  return q;
+}
+
+/* TO-BE: private synonym only */
+static PARSER_VARCHAR *
+pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1, *r2;
+
+  r1 = pt_print_bytes (parser, p->info.rename_synonym.old_name);
+  r2 = pt_print_bytes (parser, p->info.rename_synonym.new_name);
+  q = pt_append_nulstring (parser, q, "rename synonym ");
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, " to ");
+  q = pt_append_varchar (parser, q, r2);
+
+  return q;
 }

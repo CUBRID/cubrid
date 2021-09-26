@@ -1513,6 +1513,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Lungimea maximă a comentariilor este %1$d bytes.
 128 Număr invalid de argumente pentru JSON_OBJECTAGG
 129 Valoarea argumentului PARALLEL trebuie sa fie între %1$d and %2$d.
+130 Diferenți proprietari înainte și după redenumire.\nRedenumirea nu poate schimba proprietarul.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
