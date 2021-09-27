@@ -404,8 +404,9 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	{
 	  // The transaction table snapshot was taken before the next log record was logged.
 	  // Rebuild the transaction table image based on checkpoint information
-	  LOG_LSA start_redo_lsa;
+	  LOG_LSA start_redo_lsa = NULL_LSA;
 	  chkpt_infop->recovery_analysis (thread_p, start_redo_lsa);
+	  assert (!start_redo_lsa.is_null ());
 	  context.set_start_redo_lsa (start_redo_lsa);
 	}
 
