@@ -169,7 +169,6 @@ typedef struct reserved_class_info
   OID oid;
   CDC_DDL_OBJECT_TYPE objtype;
   char name[1024];
-
 } RESERVED_CLASS_INFO;
 
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
@@ -14692,7 +14691,9 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
   int count = 0;
   PT_NODE *entity = NULL;
   PT_NODE *entity_spec = NULL;
-  int ret;
+
+  const char *classname;
+  DB_OBJECT *class_obj;
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
     {
@@ -14716,15 +14717,18 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
-	  strcpy (cls_info[count]->name, entity->info.name.original);
+	  classname = entity->info.name.original;
+	  class_obj = db_find_class (classname);
 
-	  memcpy (&cls_info[count]->oid, ws_oid (db_find_class (cls_info[count]->name)), sizeof (OID));
+	  strcpy (cls_info[count]->name, classname);
 
-	  if ((ret = db_is_vclass (db_find_class (cls_info[count]->name))) > 0)
+	  memcpy (&cls_info[count]->oid, ws_oid (class_obj), sizeof (OID));
+
+	  if (db_is_vclass (class_obj))
 	    {
 	      cls_info[count]->objtype = CDC_VIEW;
 	    }
-	  else if (ret = db_is_class (db_find_class (cls_info[count]->name)) > 0)
+	  else if (db_is_class (class_obj))
 	    {
 	      cls_info[count]->objtype = CDC_TABLE;
 	    }
@@ -14732,6 +14736,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	    {
 	      assert (false);
 	    }
+
 	  count++;
 	}
     }
@@ -14800,6 +14805,11 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	{
 	  objtype = CDC_VIEW;
 	}
+      else
+	{
+	  assert (false);
+	}
+
       break;
 
     case PT_ALTER:
@@ -14844,8 +14854,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	{
 	  return NO_ERROR;
 	}
-
-      objtype = cls_info[0]->objtype;
 
       ddl_type = CDC_DROP;
 
@@ -15219,15 +15227,19 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	      goto end;
 	    }
 
-	  if (objtype == CDC_TABLE)
+	  if (cls_info[i]->objtype == CDC_TABLE)
 	    {
 	      strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
 	      drop_copied_length = strlen (drop_prefix);
 	    }
-	  else if (objtype == CDC_VIEW)
+	  else if (cls_info[i]->objtype == CDC_VIEW)
 	    {
 	      strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix));
 	      drop_copied_length = strlen (drop_view_prefix);
+	    }
+	  else
+	    {
+	      assert (false);
 	    }
 
 	  if (statement->info.drop.if_exists)
@@ -15247,7 +15259,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
 	  drop_stmt[drop_copied_length] = '\0';
 
-	  error = log_supplement_statement (ddl_type, objtype, &cls_info[i]->oid, &cls_info[i]->oid, drop_stmt);
+	  error =
+	    log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid, drop_stmt);
 
 	  free_and_init (drop_stmt);
 	  free_and_init (cls_info[i]);
@@ -15262,17 +15275,17 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	  char rename_statement[1024] = "\0";
 	  const char *new_name = current_rename->info.rename.new_name->info.name.original;
 	  const char *old_name = current_rename->info.rename.old_name->info.name.original;
+	  DB_OBJECT *object = db_find_class (new_name);
 
-	  int ret;
 	  /* Bug : statement->info.rename.entity_type always has PT_CLASS 
 	   * when rename view1 as view2 or rename table1 as table2. So, objtype can not be classified with entity_type */
 
-	  if ((ret = db_is_vclass (db_find_class (new_name))) > 0)
+	  if (db_is_vclass (object))
 	    {
 	      objtype = CDC_VIEW;
 	      sprintf (rename_statement, "rename view %s as %s", old_name, new_name);
 	    }
-	  else if ((ret = db_is_class (db_find_class (new_name))) > 0)
+	  else if (db_is_class (object))
 	    {
 	      objtype = CDC_TABLE;
 	      classoid = ws_oid (sm_find_class (new_name));
