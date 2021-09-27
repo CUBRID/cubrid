@@ -18446,7 +18446,7 @@ pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.create_synonym.comment)
     {
       r1 = pt_print_bytes (parser, p->info.create_synonym.comment);
-      q = pt_append_nulstring (parser, q, "comment ");
+      q = pt_append_nulstring (parser, q, " comment ");
       q = pt_append_varchar (parser, q, r1);
     }
 
@@ -18491,6 +18491,8 @@ pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       q = pt_append_nulstring (parser, q, "public ");
     }
+
+  q = pt_append_nulstring (parser, q, "synonym ");
 
   if (p->info.create_synonym.target_owner_name)
     {
