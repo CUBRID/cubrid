@@ -3905,18 +3905,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
 	      {
-		bool free_tran = false;
-
-		tran_index = logtb_find_tran_index (thread_p, tran_id);
-		if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
-		  {
-		    tdes = LOG_FIND_TDES (tran_index);
-		    assert (tdes && tdes->state != TRAN_ACTIVE);
-		    free_tran = true;
-		  }
-
 		if (stopat != NULL && *stopat != -1)
 		  {
+		    tran_index = logtb_find_tran_index (thread_p, tran_id);
+		    if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
+		      {
+			tdes = LOG_FIND_TDES (tran_index);
+			assert (tdes && tdes->state != TRAN_ACTIVE);
+		      }
+
 		    /*
 		     * Need to read the donetime record to find out if we need to stop
 		     * the recovery at this point.
@@ -3941,12 +3938,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			  {
 			    tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
 			  }
-			free_tran = false;
 		      }
 		  }
-		if (free_tran == true)
+		else
 		  {
-		    logtb_free_tran_index (thread_p, tran_index);
+		    /* completed transactions should have already been cleared from the transaction table
+		     * in the analysis step (see: log_rv_analysis_complete)
+		     */
+		    assert (logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX);
 		  }
 	      }
 

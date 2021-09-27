@@ -532,6 +532,8 @@ struct log_tdes
   LOG_LSA savept_lsa;		/* Address of last savepoint */
   LOG_LSA topop_lsa;		/* Address of last top operation */
   LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
+  LOG_LSA commit_abort_lsa;	/* Address of the commit/abort operation. Used by checkpoint to decide whether to
+				 * consider or not a transaction as concluded. */
   int client_id;		/* unique client id */
   int gtrid;			/* Global transaction identifier; used only if this transaction is a participant to a
 				 * global transaction and it is prepared to commit. */
