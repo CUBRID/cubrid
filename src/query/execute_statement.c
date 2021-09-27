@@ -167,6 +167,7 @@ struct eval_insert_value
 typedef struct reserved_class_info
 {
   OID oid;
+  CDC_DDL_OBJECT_TYPE objtype;
   char name[1024];
 
 } RESERVED_CLASS_INFO;
@@ -14691,6 +14692,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
   int count = 0;
   PT_NODE *entity = NULL;
   PT_NODE *entity_spec = NULL;
+  int ret;
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
     {
@@ -14717,6 +14719,15 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	  strcpy (cls_info[count]->name, entity->info.name.original);
 
 	  memcpy (&cls_info[count]->oid, ws_oid (db_find_class (cls_info[count]->name)), sizeof (OID));
+
+	  if ((ret = db_is_vclass (db_find_class (cls_info[count]->name))) > 0)
+	    {
+	      cls_info[count]->objtype = CDC_VIEW;
+	    }
+	  else if (ret = db_is_class (db_find_class (cls_info[count]->name)) > 0)
+	    {
+	      cls_info[count]->objtype = CDC_TABLE;
+	    }
 	  count++;
 	}
     }
@@ -14781,7 +14792,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	  classoid = ws_oid (sm_find_class (classname));
 	  objtype = CDC_TABLE;
 	}
-      else
+      else if (statement->info.create_entity.entity_type == PT_VCLASS)
 	{
 	  objtype = CDC_VIEW;
 	}
@@ -14796,24 +14807,27 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	  objtype = CDC_TABLE;
 	  classoid = ws_oid (sm_find_class (classname));
 	}
-      else if (error == 0)
+      else if (statement->info.alter.entity_type == PT_VCLASS)
 	{
 	  objtype = CDC_VIEW;
+	}
+      else
+	{
+	  int ret;
+	  if ((ret = db_is_vclass (db_find_class (classname))) > 0)
+	    {
+	      objtype = CDC_VIEW;
+	    }
+	  else if (ret = db_is_class (db_find_class (classname)) > 0)
+	    {
+	      objtype = CDC_TABLE;
+	    }
 	}
 
       break;
 
     case PT_RENAME:
       ddl_type = CDC_RENAME;
-
-      if (statement->info.rename.entity_type == PT_CLASS)
-	{
-	  objtype = CDC_TABLE;
-	}
-      else if (error == 0)
-	{
-	  objtype = CDC_VIEW;
-	}
 
       break;
 
@@ -14823,14 +14837,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	  return NO_ERROR;
 	}
 
-      if (statement->info.drop.entity_type == PT_CLASS)
-	{
-	  objtype = CDC_TABLE;
-	}
-      else
-	{
-	  objtype = CDC_VIEW;
-	}
+      objtype = cls_info[0]->objtype;
 
       ddl_type = CDC_DROP;
 
@@ -15209,7 +15216,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	      strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
 	      drop_copied_length = strlen (drop_prefix);
 	    }
-	  else
+	  else if (objtype == CDC_VIEW)
 	    {
 	      strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix));
 	      drop_copied_length = strlen (drop_view_prefix);
@@ -15248,12 +15255,21 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	  const char *new_name = current_rename->info.rename.new_name->info.name.original;
 	  const char *old_name = current_rename->info.rename.old_name->info.name.original;
 
-	  if (objtype == CDC_TABLE)
-	    {
-	      classoid = ws_oid (sm_find_class (new_name));
-	    }
+	  int ret;
+	  /* Bug : statement->info.rename.entity_type always has PT_CLASS 
+	   * when rename view1 as view2 or rename table1 as table2. So, objtype can not be classified with entity_type */
 
-	  sprintf (rename_statement, "rename table %s as %s", old_name, new_name);
+	  if ((ret = db_is_vclass (db_find_class (new_name))) > 0)
+	    {
+	      objtype = CDC_VIEW;
+	      sprintf (rename_statement, "rename view %s as %s", old_name, new_name);
+	    }
+	  else if ((ret = db_is_class (db_find_class (new_name))) > 0)
+	    {
+	      objtype = CDC_TABLE;
+	      classoid = ws_oid (sm_find_class (new_name));
+	      sprintf (rename_statement, "rename table %s as %s", old_name, new_name);
+	    }
 
 	  error = log_supplement_statement (ddl_type, objtype, classoid, classoid, rename_statement);
 	}
