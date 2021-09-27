@@ -1363,6 +1363,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
       // todo: TS with remote storage recovery
     }
+//  else if (is_tran_server_with_remote_storage()
+//           && init_emergency == false && (log_Gl.m_metainfo.get_clean_shutdown() || is_media_crash == true))
+//    {
+//      log_recovery_finish_transactions(thread_p);
+//    }
   else
     {
       if (init_emergency == true && log_Gl.hdr.is_shutdown == false)
