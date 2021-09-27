@@ -367,6 +367,13 @@ struct json_t;
                   ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_PARAMETER) ) \
         )
 
+#define PT_IS_CONST_OR_DERIVED(n) \
+        ( (n) && ((n)->node_type == PT_VALUE || \
+                  (n)->node_type == PT_HOST_VAR || \
+                  ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_PARAMETER) || \
+                  ((n)->node_type == PT_NAME && ((n)->info.name.flag & PT_NAME_GENERATED_DERIVED_SPEC))) \
+        )
+
 #define PT_IS_CONST_NOT_HOSTVAR(n) \
         ( (n) && ((n)->node_type == PT_VALUE || \
                   ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_PARAMETER) ) \
