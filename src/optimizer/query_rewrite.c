@@ -1374,7 +1374,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	      arg1 = arg1->info.expr.arg1;
 	    }
 
-	  if (pt_is_attr (arg1))
+	  if (pt_is_attr (arg1) || pt_is_function_index_expression (arg1))
 	    {
 	      if (qo_is_reduceable_const (arg2))
 		{
