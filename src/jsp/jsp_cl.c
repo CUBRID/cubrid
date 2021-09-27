@@ -558,6 +558,127 @@ jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * jsp_call_stored_procedure_ng - call java stored procedure in constant folding
+ *   return: call jsp failed return error code
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *
+ * Note:
+ */
+
+int
+jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  PT_NODE *method;
+  const char *method_name;
+  if (!statement || !(method = statement->info.method_call.method_name) || method->node_type != PT_NAME
+      || !(method_name = method->info.name.original))
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return er_errid ();
+    }
+
+  DB_VALUE ret_value;
+  db_make_null (&ret_value);
+
+  std::vector < DB_VALUE * >args;
+  PT_NODE *vc = statement->info.method_call.arg_list;
+  while (vc)
+    {
+      DB_VALUE *db_value;
+      bool to_break = false;
+
+      /*
+       * Don't clone host vars; they may actually be acting as output variables (e.g., a character array that is
+       * intended to receive bytes from the method), and cloning will ensure that the results never make it to the
+       * expected area.  Since pt_evaluate_tree() always clones its db_values we must not use pt_evaluate_tree() to
+       * extract the db_value from a host variable; instead extract it ourselves. */
+      if (PT_IS_CONST (vc))
+	{
+	  db_value = pt_value_to_db (parser, vc);
+	}
+      else
+	{
+	  db_value = (DB_VALUE *) calloc (1, sizeof (DB_VALUE));
+	  if (db_value == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE));
+	      return er_errid ();
+	    }
+
+	  /* must call pt_evaluate_tree */
+	  pt_evaluate_tree (parser, vc, db_value, 1);
+	  if (pt_has_error (parser))
+	    {
+	      /* to maintain the list to free all the allocated */
+	      to_break = true;
+	    }
+	}
+
+      args.push_back (db_value);
+      vc = vc->next;
+
+      if (to_break)
+	{
+	  break;
+	}
+    }
+
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error = er_errid ();
+    }
+  else
+    {
+      /* call sp */
+      method_sig_list sig_list;
+
+      sig_list.method_sig = nullptr;
+      sig_list.num_methods = 0;
+
+      error = jsp_make_method_sig_list (parser, statement, sig_list);
+      if (error == NO_ERROR)
+	{
+	  error = method_invoke_fold_constants (sig_list, args, ret_value);
+	}
+      sig_list.freemem ();
+      // error = jsp_do_call_stored_procedure (&ret_value, value_list, proc);
+    }
+
+  vc = statement->info.method_call.arg_list;
+  for (int i = 0; i < args.size () && vc; i++)
+    {
+      if (!PT_IS_CONST (vc))
+	{
+	  db_value_clear (args[i]);
+	  free_and_init (args[i]);
+	}
+      vc = vc->next;
+    }
+
+  vc = statement->info.method_call.arg_list;
+  if (error == NO_ERROR)
+    {
+      /* Save the method result. */
+      statement->etc = (void *) db_value_copy (&ret_value);
+      PT_NODE *into = statement->info.method_call.to_return_var;
+
+      const char *into_label;
+      if (into != NULL && into->node_type == PT_NAME && (into_label = into->info.name.original) != NULL)
+	{
+	  /* create another DB_VALUE of the new instance for the label_table */
+	  DB_VALUE *ins_value = db_value_copy (&ret_value);
+	  error = pt_associate_label_with_value_check_reference (into_label, ins_value);
+	}
+    }
+
+  db_value_clear (&ret_value);
+  return error;
+}
+
+/*
  * jsp_drop_stored_procedure - drop java stored procedure
  *   return: Error code
  *   parser(in/out): parser environment
@@ -1555,8 +1676,8 @@ jsp_send_destroy_request (const SOCKET sockfd)
   char *request = OR_ALIGNED_BUF_START (a_request);
 
   or_pack_int (request, (int) SP_CODE_DESTROY);
-  int nbytes = jsp_writen (sockfd, request, (int) sizeof (int));
-  if (nbytes != (int) sizeof (int))
+  int nbytes = jsp_writen (sockfd, request, OR_INT_SIZE);
+  if (nbytes != OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, "destroy");
       return er_errid ();
@@ -1564,8 +1685,8 @@ jsp_send_destroy_request (const SOCKET sockfd)
 
   /* read request code */
   int code;
-  nbytes = jsp_readn (sockfd, (char *) &code, (int) sizeof (int));
-  if (nbytes != (int) sizeof (int))
+  nbytes = jsp_readn (sockfd, (char *) &code, OR_INT_SIZE);
+  if (nbytes != OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
       return er_errid ();
@@ -1608,8 +1729,8 @@ jsp_receive_response (const SOCKET sockfd, const SP_ARGS * sp_args)
   while (true)
     {
       /* read request command code */
-      nbytes = jsp_readn (sockfd, (char *) &command_code, (int) sizeof (int));
-      if (nbytes != (int) sizeof (int))
+      nbytes = jsp_readn (sockfd, (char *) &command_code, OR_INT_SIZE);
+      if (nbytes != OR_INT_SIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
 	  return ER_SP_NETWORK_ERROR;
@@ -1663,8 +1784,8 @@ static int
 jsp_alloc_response (const SOCKET sockfd, cubmem::extensible_block & blk)
 {
   int nbytes, res_size;
-  nbytes = jsp_readn (sockfd, (char *) &res_size, (int) sizeof (int));
-  if (nbytes != (int) sizeof (int))
+  nbytes = jsp_readn (sockfd, (char *) &res_size, OR_INT_SIZE);
+  if (nbytes != OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
       return ER_SP_NETWORK_ERROR;

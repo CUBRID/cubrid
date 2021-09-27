@@ -10453,6 +10453,7 @@ method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE
     }
   /* *INDENT-ON* */
 
+<<<<<<< HEAD
   OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -10460,11 +10461,20 @@ method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE
     net_client_request_method_callback (NET_SERVER_METHOD_FOLD_CONSTANTS, eb.get_ptr (),
 					(int) packer.get_current_size (), reply,
 					OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
+=======
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error =
+    net_client_request2 (NET_SERVER_METHOD_FOLD_CONSTANTS, eb.get_ptr (), (int) packer.get_current_size (), reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+>>>>>>> upstream/feature/javasp_redesign
   if (req_error != NO_ERROR)
     {
       return req_error;
     }
 
+<<<<<<< HEAD
   int rc = NO_ERROR;
   int a, b, c;
   char *ptr = or_unpack_int (reply, &a);
@@ -10515,6 +10525,45 @@ method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE
       db_make_null (&result);
     }
 
+=======
+  char *ptr = or_unpack_int (reply, &data_reply_size);
+  int rc = ER_FAILED;
+  ptr = or_unpack_int (ptr, &rc);
+  if (rc != NO_ERROR)
+    {
+      free_and_init (data_reply);
+      return rc;
+    }
+
+  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+
+  /* result */
+  unpacker.unpack_db_value (result);
+
+  /* output parameters */
+  int arg_size = 0;
+  unpacker.unpack_int (arg_size);
+
+  method_sig_node *sig = sig_list.method_sig;
+  DB_VALUE temp;
+  for (int i = 0; i < sig->num_method_args; i++)
+    {
+      if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
+	{
+	  continue;
+	}
+
+      int pos = sig->method_arg_pos[i];
+      unpacker.unpack_db_value (temp);
+
+      db_value_clear (args[pos]);
+      db_value_clone (&temp, args[pos]);
+      db_value_clear (&temp);
+    }
+
+  free_and_init (data_reply);
+
+>>>>>>> upstream/feature/javasp_redesign
   return rc;
 #else /* CS_MODE */
   return NO_ERROR;

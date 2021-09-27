@@ -126,6 +126,7 @@ public class ExecuteThread extends Thread {
         // charSet = null;
     }
 
+<<<<<<< HEAD
     public Connection createConnection() {
         this.connection = new CUBRIDServerSideConnection(this);
         return this.connection;
@@ -134,6 +135,11 @@ public class ExecuteThread extends Thread {
     public void setJdbcConnection(Connection con) throws IOException {
         this.connection = (CUBRIDServerSideConnection) con;
         // sendCommand(null);
+=======
+    public void setJdbcConnection(Connection con) throws IOException {
+        this.connection = (CUBRIDConnectionDefault) con;
+        sendCommand(null);
+>>>>>>> upstream/feature/javasp_redesign
     }
 
     public Connection getJdbcConnection() {
@@ -263,6 +269,7 @@ public class ExecuteThread extends Thread {
     }
 
     private int listenCommand() throws Exception {
+<<<<<<< HEAD
         receiveBuffer();
 
         /* read header */
@@ -274,6 +281,9 @@ public class ExecuteThread extends Thread {
 
     public CUBRIDUnpacker receiveBuffer() throws IOException {
         if (input == null) {
+=======
+        if (input == null || this.connection != null) {
+>>>>>>> upstream/feature/javasp_redesign
             input = new DataInputStream(new BufferedInputStream(this.client.getInputStream()));
         }
 
@@ -288,12 +298,25 @@ public class ExecuteThread extends Thread {
         readbuffer.put(bytes);
         readbuffer.flip(); /* prepare to read */
 
+<<<<<<< HEAD
         return unpacker;
     }
 
     private void processPrepare() throws Exception {
         id = unpacker.unpackBigint();
 
+=======
+        /* read header */
+        int command = unpacker.unpackInt();
+
+        setStatus(ExecuteThreadStatus.IDLE);
+        return command;
+    }
+
+    private void processPrepare() throws Exception {
+        id = unpacker.unpackBigint();
+
+>>>>>>> upstream/feature/javasp_redesign
         int argCount = unpacker.unpackInt();
         if (arguments == null || argCount != arguments.length) {
             arguments = new Value[argCount];
