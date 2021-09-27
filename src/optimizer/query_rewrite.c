@@ -1328,10 +1328,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
       /* check for 2nd phase; '=', 'range ( =)' keep out function index expr = const */
       found_equality_term = false;	/* 2nd init */
 
-      if (expr->info.expr.op == PT_EQ && expr->info.expr.arg1 && expr->info.expr.arg2
-	  && (!pt_is_function_index_expression (expr->info.expr.arg1) || !PT_IS_CONST_OR_DERIVED (expr->info.expr.arg2))
-	  && (!pt_is_function_index_expression (expr->info.expr.arg2)
-	      || !PT_IS_CONST_OR_DERIVED (expr->info.expr.arg1)))
+      if (expr->info.expr.op == PT_EQ && expr->info.expr.arg1 && expr->info.expr.arg2)
 	{			/* 'opd = opd' */
 	  found_equality_term = true;	/* pass 2nd phase */
 	  num_check = 2;
@@ -1375,7 +1372,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	      arg1 = arg1->info.expr.arg1;
 	    }
 
-	  if (pt_is_attr (arg1) || pt_is_function_index_expression (arg1))
+	  if (pt_is_attr (arg1))
 	    {
 	      if (qo_is_reduceable_const (arg2))
 		{
