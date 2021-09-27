@@ -1178,11 +1178,9 @@ int g_original_buffer_len;
 %token PRESERVE
 %token PRIMARY
 %token PRIOR
-%token PRIVATE
 %token PRIVILEGES
 %token PROCEDURE
 %token PROMOTE
-%token PUBLIC
 %token QUERY
 %token READ
 %token REBUILD
@@ -1256,7 +1254,6 @@ int g_original_buffer_len;
 %token SUPERCLASS
 %token SUPERSET
 %token SUPERSETEQ
-%token SYNONYM
 %token SYS_CONNECT_BY_PATH
 %token SYS_DATE
 %token SYS_DATETIME
@@ -1472,6 +1469,8 @@ int g_original_buffer_len;
 %token <cptr> PERCENTILE_DISC
 %token <cptr> PRINT
 %token <cptr> PRIORITY
+%token <cptr> PRIVATE
+%token <cptr> PUBLIC
 %token <cptr> QUARTER
 %token <cptr> QUEUES
 %token <cptr> RANGE_
@@ -1502,6 +1501,7 @@ int g_original_buffer_len;
 %token <cptr> STDDEV_SAMP
 %token <cptr> STR_TO_DATE
 %token <cptr> SUBDATE
+%token <cptr> SYNONYM
 %token <cptr> SYSTEM
 %token <cptr> TABLES
 %token <cptr> TEXT
@@ -3882,7 +3882,7 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME opt_access_modifier SYNONYM simple_path_id AS simple_path_id
+	| RENAME opt_access_modifier SYNONYM simple_path_id as_or_to simple_path_id
 		{{
 
 			PT_NODE *p = parser_new_node(this_parser, PT_RENAME_SYNONYM);
@@ -22698,6 +22698,26 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| PRIVATE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| PUBLIC
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| QUEUES
 		{{
 
@@ -22949,6 +22969,16 @@ identifier
 
 		DBG_PRINT}}
 	| STDDEV_SAMP
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SYNONYM
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
