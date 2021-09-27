@@ -14827,14 +14827,14 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	}
       else
 	{
-	  int ret;
-	  if ((ret = db_is_vclass (db_find_class (classname))) > 0)
+	  if (db_is_vclass (db_find_class (classname)))
 	    {
 	      objtype = CDC_VIEW;
 	    }
-	  else if (ret = db_is_class (db_find_class (classname)) > 0)
+	  else if (db_is_class (db_find_class (classname)))
 	    {
 	      objtype = CDC_TABLE;
+	      classoid = ws_oid (sm_find_class (classname));
 	    }
 	  else
 	    {
