@@ -1153,8 +1153,7 @@ typedef enum
   PT_PRIVATE,
   PT_PUBLIC,
   PT_SYNONYM
-
-  // todo: separate into relevant enumerations
+// todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
 /* Enumerated join type */

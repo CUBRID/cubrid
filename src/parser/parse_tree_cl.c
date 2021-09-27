@@ -18372,7 +18372,7 @@ pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.alter_synonym.synonym_name);
   q = pt_append_varchar (parser, q, r1);
-  
+
   q = pt_append_nulstring (parser, q, " for ");
 
   if (p->info.alter_synonym.target_owner_name)
@@ -18417,7 +18417,7 @@ pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.create_synonym.synonym_name);
   q = pt_append_varchar (parser, q, r1);
-  
+
   q = pt_append_nulstring (parser, q, " for ");
 
   if (p->info.create_synonym.target_owner_name)
@@ -18454,7 +18454,7 @@ pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   q = pt_append_nulstring (parser, q, "synonym ");
-  
+
   if (p->info.drop_synonym.if_exists)
     {
       q = pt_append_nulstring (parser, q, "if exists ");
