@@ -15270,6 +15270,10 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	      classoid = ws_oid (sm_find_class (new_name));
 	      sprintf (rename_statement, "rename table %s as %s", old_name, new_name);
 	    }
+	  else
+	    {
+	      assert (false);
+	    }
 
 	  error = log_supplement_statement (ddl_type, objtype, classoid, classoid, rename_statement);
 	}
