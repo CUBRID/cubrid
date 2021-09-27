@@ -82,7 +82,6 @@ static int method_fixup_set_vobjs (DB_VALUE *value_p);
 static int method_fixup_vobjs (DB_VALUE *value_p);
 
 #if defined (CS_MODE)
-<<<<<<< HEAD:src/method/query_method.cpp
 static int method_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &conn_info);
 static int method_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn_info);
 static int method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_inf);
@@ -93,11 +92,6 @@ void method_reset ()
 {
   handler.free_query_handle_all ();
 }
-=======
-static int method_callback_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &conn_info);
-static int method_callback_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn_info);
-#endif
->>>>>>> upstream/feature/javasp_redesign:src/query/query_method.cpp
 
 /*
  * method_send_value_to_server () - Send an error indication to the server
@@ -116,7 +110,6 @@ method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p,
 
   pr_clear_value (&value);
 
-<<<<<<< HEAD:src/method/query_method.cpp
   int error = net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
   if (error != NO_ERROR)
     {
@@ -124,9 +117,6 @@ method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p,
     }
 
   return NO_ERROR;
-=======
-  return net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
->>>>>>> upstream/feature/javasp_redesign:src/query/query_method.cpp
 }
 
 /*
@@ -144,7 +134,6 @@ method_send_error_to_server (unsigned int rc, char *host_p, char *server_name, i
   int code = METHOD_ERROR;
   packer.set_buffer_and_pack_all (ext_blk, code, error_id);
 
-<<<<<<< HEAD:src/method/query_method.cpp
   int error = net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
   if (error != NO_ERROR)
     {
@@ -152,9 +141,6 @@ method_send_error_to_server (unsigned int rc, char *host_p, char *server_name, i
     }
 
   return NO_ERROR;
-=======
-  return net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
->>>>>>> upstream/feature/javasp_redesign:src/query/query_method.cpp
 }
 
 /*
@@ -173,7 +159,6 @@ method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddat
 
   int error = NO_ERROR;
 
-<<<<<<< HEAD:src/method/query_method.cpp
   packing_unpacker unpacker (methoddata, (size_t) methoddata_size);
   method_server_conn_info conn_info {rc, host, server_name};
 
@@ -200,23 +185,6 @@ method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddat
       break;
     case METHOD_REQUEST_END:
       error = method_end (unpacker, conn_info);
-=======
-#if defined (CS_MODE)
-  packing_unpacker unpacker (methoddata, (size_t) methoddata_size);
-  method_server_conn_info conn_info {rc, host, server_name};
-
-  int method_dispatch_code;
-  unpacker.unpack_int (method_dispatch_code);
-
-  dispatch_function_type dispatch_function;
-  switch (method_dispatch_code)
-    {
-    case METHOD_CALLBACK_ARG_PREPARE:
-      dispatch_function = method_callback_prepare_arguments;
-      break;
-    case METHOD_CALLBACK_INVOKE:
-      dispatch_function = method_callback_invoke_builtin;
->>>>>>> upstream/feature/javasp_redesign:src/query/query_method.cpp
       break;
     default:
       assert (false); // the other callbacks are disabled now
@@ -224,7 +192,6 @@ method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddat
       break;
     }
 
-<<<<<<< HEAD:src/method/query_method.cpp
   return error;
 }
 
@@ -237,25 +204,6 @@ method_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &c
   int arg_count;
   unpacker.unpack_int (arg_count);
 
-=======
-  // call dispatch function
-  error = dispatch_function (unpacker, conn_info);
-#endif
-
-  return error;
-}
-
-#if defined (CS_MODE)
-static int
-method_callback_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &conn_info)
-{
-  UINT64 id;
-  unpacker.unpack_bigint (id);
-
-  int arg_count;
-  unpacker.unpack_int (arg_count);
-
->>>>>>> upstream/feature/javasp_redesign:src/query/query_method.cpp
   // reset previous arguments
   auto search = runtime_args.find (id);
   if (search != runtime_args.end())
@@ -282,16 +230,11 @@ method_callback_prepare_arguments (packing_unpacker &unpacker, method_server_con
 }
 
 static int
-<<<<<<< HEAD:src/method/query_method.cpp
 method_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn_info)
-=======
-method_callback_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn_info)
->>>>>>> upstream/feature/javasp_redesign:src/query/query_method.cpp
 {
   int error = NO_ERROR;
   UINT64 id;
   unpacker.unpack_bigint (id);
-<<<<<<< HEAD:src/method/query_method.cpp
 
   METHOD_SIG sig;
   sig.unpack (unpacker);
@@ -299,15 +242,6 @@ method_callback_invoke_builtin (packing_unpacker &unpacker, method_server_conn_i
   DB_VALUE result;
   db_make_null (&result);
 
-=======
-
-  METHOD_SIG sig;
-  sig.unpack (unpacker);
-
-  DB_VALUE result;
-  db_make_null (&result);
-
->>>>>>> upstream/feature/javasp_redesign:src/query/query_method.cpp
   // reset previous arguments
   auto search = runtime_args.find (id);
   if (search != runtime_args.end())

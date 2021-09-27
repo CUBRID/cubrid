@@ -339,13 +339,8 @@ javasp_stop_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_nam
       ptr = or_pack_int (request, OR_INT_SIZE);
       ptr = or_pack_int (ptr, stop_code);
 
-<<<<<<< HEAD
-      int nbytes = jsp_writen (socket, request, (int) sizeof (int) * 2);
-      if (nbytes != (int) sizeof (int) * 2)
-=======
       int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
       if (nbytes != OR_INT_SIZE * 2)
->>>>>>> upstream/feature/javasp_redesign
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
 	  status = er_errid ();
@@ -383,13 +378,8 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info)
       ptr = or_pack_int (ptr, OR_INT_SIZE);
       ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
-<<<<<<< HEAD
-      int nbytes = jsp_writen (socket, request, (int) sizeof (int) * 4);
-      if (nbytes != (int) sizeof (int) * 4)
-=======
       int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 4);
       if (nbytes != OR_INT_SIZE * 4)
->>>>>>> upstream/feature/javasp_redesign
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
 	  status = er_errid ();
@@ -463,13 +453,8 @@ javasp_ping_server (const int server_port, char *buf)
       ptr = or_pack_int (ptr, OR_INT_SIZE);
       ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
-<<<<<<< HEAD
-      int nbytes = jsp_writen (socket, request, (int) sizeof (int) * 4);
-      if (nbytes != (int) sizeof (int) * 4)
-=======
       int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 4);
       if (nbytes != OR_INT_SIZE * 4)
->>>>>>> upstream/feature/javasp_redesign
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
 	  goto exit;

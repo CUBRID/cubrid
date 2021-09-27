@@ -208,15 +208,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
-<<<<<<< HEAD
-=======
-  ${QUERY_DIR}/method_def.cpp
-  ${QUERY_DIR}/method_invoke.cpp
-  ${QUERY_DIR}/method_invoke_common.cpp
-  ${QUERY_DIR}/method_invoke_common_value.cpp
-  ${QUERY_DIR}/method_invoke_group.cpp
-  ${QUERY_DIR}/method_scan.cpp
->>>>>>> upstream/feature/javasp_redesign
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp

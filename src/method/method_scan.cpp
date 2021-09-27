@@ -48,11 +48,7 @@ namespace cubscan
 
       if (m_method_group == nullptr) // signature is not initialized
 	{
-<<<<<<< HEAD:src/method/method_scan.cpp
 	  m_method_group = new cubmethod::method_invoke_group (m_thread_p, sig_list);
-=======
-	  m_method_group = new cubmethod::method_invoke_group (sig_list);
->>>>>>> upstream/feature/javasp_redesign:src/query/method_scan.cpp
 	}
 
       if (m_list_id == nullptr)
@@ -75,11 +71,7 @@ namespace cubscan
 
       if (m_dbval_list == nullptr)
 	{
-<<<<<<< HEAD:src/method/method_scan.cpp
 	  m_dbval_list = (qproc_db_value_list *) db_private_alloc (thread_p,
-=======
-	  m_dbval_list = (qproc_db_value_list *) db_private_alloc (m_thread_p,
->>>>>>> upstream/feature/javasp_redesign:src/query/method_scan.cpp
 			 sizeof (m_dbval_list[0]) * m_method_group->get_num_methods ());
 	  if (m_dbval_list == NULL)
 	    {
@@ -118,7 +110,6 @@ namespace cubscan
       error = qfile_open_list_scan (m_list_id, &m_scan_id);
 
       // connect
-<<<<<<< HEAD:src/method/method_scan.cpp
       m_method_group->begin ();
 
       SCAN_CODE scan_code = S_SUCCESS;
@@ -128,9 +119,6 @@ namespace cubscan
 	{
 	  scan_code = S_ERROR;
 	}
-=======
-      m_method_group->begin (m_thread_p);
->>>>>>> upstream/feature/javasp_redesign:src/query/method_scan.cpp
 
       return error;
     }
@@ -153,21 +141,9 @@ namespace cubscan
 
       next_value_array (vl);
 
-<<<<<<< HEAD:src/method/method_scan.cpp
       if (scan_code == S_SUCCESS && m_method_group->execute (m_arg_vector) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
-=======
-      scan_code = get_single_tuple ();
-      if (scan_code == S_SUCCESS && m_method_group->prepare (m_arg_vector) != NO_ERROR)
-	{
-	  scan_code = S_ERROR;
-	}
-
-      if (scan_code == S_SUCCESS && m_method_group->execute (m_arg_vector) != NO_ERROR)
-	{
-	  scan_code = S_ERROR;
->>>>>>> upstream/feature/javasp_redesign:src/query/method_scan.cpp
 	}
 
       if (scan_code == S_SUCCESS)
@@ -186,7 +162,6 @@ namespace cubscan
 	    }
 
 	  m_method_group->reset ();
-<<<<<<< HEAD:src/method/method_scan.cpp
 	}
 
       // clear
@@ -195,16 +170,6 @@ namespace cubscan
 	  db_value_clear (&value);
 	}
 
-=======
-	}
-
-      // clear
-      for (DB_VALUE &value : m_arg_vector)
-	{
-	  db_value_clear (&value);
-	}
-
->>>>>>> upstream/feature/javasp_redesign:src/query/method_scan.cpp
       return scan_code;
     }
 

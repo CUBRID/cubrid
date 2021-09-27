@@ -797,7 +797,7 @@ namespace cubmethod
   {
     int grant_opt = class_priv >> 8;
     int priv_type = 1;
-    int num_tuple;
+    int num_tuple = 0;
     for (int i = 0; i < 7; i++)
       {
 	if (class_priv & priv_type)

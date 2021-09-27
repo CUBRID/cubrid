@@ -46,10 +46,7 @@ extern int method_invoke (DB_VALUE &result, std::vector <DB_VALUE> &args, method
 
 #endif
 
-<<<<<<< HEAD:src/method/query_method.hpp
 extern void method_reset ();
-=======
->>>>>>> upstream/feature/javasp_redesign:src/query/query_method.hpp
 extern int method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddata, int methoddata_size);
 
 
