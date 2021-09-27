@@ -80,6 +80,7 @@ public class ValueUtilities {
             case DBType.DB_NUMERIC:
                 resolvedResult = value.toBigDecimal();
                 break;
+            case DBType.DB_OID:
             case DBType.DB_OBJECT:
                 resolvedResult = value.toOid();
                 break;

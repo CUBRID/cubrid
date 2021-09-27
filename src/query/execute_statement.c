@@ -8117,7 +8117,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
   int error = NO_ERROR;
   int i;
   XASL_NODE *xasl = NULL;
-  int count = 0;
+  INT64 count = 0;
   QUERY_ID query_id_self = parser->query_id;
   QFILE_LIST_ID *list_id = NULL;
   PT_NODE *cl_name_node = NULL, *spec = NULL;
@@ -9118,7 +9118,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err, result = 0;
+  INT64 err, result = 0;
   PT_NODE *flat, *spec = NULL;
   const char *savepoint_name = NULL;
   DB_OBJECT *class_obj;
@@ -9761,7 +9761,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
   DB_OBJECT *class_obj;
-  int count = 0;
+  INT64 count = 0;
   QUERY_ID query_id_self = parser->query_id;
   QFILE_LIST_ID *list_id = NULL;
   const PT_NODE *node;
@@ -10415,7 +10415,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 int
 do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err, result = 0;
+  INT64 err, result = 0;
   PT_NODE *flat, *node;
   const char *savepoint_name = NULL;
   DB_OBJECT *class_obj;
@@ -11005,7 +11005,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
-  int count = 0;
+  INT64 count = 0;
   QUERY_ID query_id_self = parser->query_id;
   QFILE_LIST_ID *list_id = NULL;
 
@@ -13462,7 +13462,7 @@ cleanup:
 int
 do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err;
+  INT64 err;
   PT_NODE *flat;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
@@ -13767,7 +13767,7 @@ do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      return jsp_call_stored_procedure (parser, statement);
+      return jsp_call_stored_procedure_ng (parser, statement);
     }
 }
 
@@ -16243,7 +16243,9 @@ cleanup:
 int
 do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err = NO_ERROR, result = 0, error = NO_ERROR;
+  int err = NO_ERROR;
+  INT64 result = 0;
+  int error = NO_ERROR;
   PT_NODE *flat, *spec = NULL, *values_list = NULL;
   const char *savepoint_name;
   DB_OBJECT *class_obj;

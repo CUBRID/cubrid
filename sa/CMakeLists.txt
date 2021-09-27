@@ -245,8 +245,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
-  ${QUERY_DIR}/method_def.cpp
-  ${QUERY_DIR}/method_scan.cpp
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
@@ -322,6 +320,16 @@ set(JSP_SOURCES
   )
 set(JSP_HEADERS
   ${JSP_DIR}/jsp_struct.hpp
+  )
+
+set(METHOD_SOURCES
+  ${METHOD_DIR}/method_def.cpp
+  ${METHOD_DIR}/method_scan.cpp
+  ${METHOD_DIR}/method_invoke.cpp
+  ${METHOD_DIR}/method_invoke_java.cpp
+  ${METHOD_DIR}/method_struct_invoke.cpp
+  ${METHOD_DIR}/method_struct_value.cpp
+  ${METHOD_DIR}/method_invoke_group.cpp
   )
 
 set(THREAD_SOURCES
@@ -535,6 +543,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
+  ${METHOD_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
@@ -570,6 +579,7 @@ add_library(cubridsa SHARED
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
+  ${METHOD_SOURCES}
   ${MONITOR_HEADERS}
   ${MONITOR_SOURCES}
   ${OBJECT_HEADERS}

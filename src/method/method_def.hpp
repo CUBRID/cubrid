@@ -23,6 +23,8 @@
 #ifndef _METHOD_DEF_H_
 #define _METHOD_DEF_H_
 
+#include <string>
+
 #include "packer.hpp"
 
 typedef enum
@@ -32,24 +34,65 @@ typedef enum
   METHOD_ERROR
 } METHOD_CALL_STATUS;
 
-typedef enum
+enum METHOD_TYPE
 {
-  METHOD_IS_NONE = 0,
-  METHOD_IS_INSTANCE_METHOD = 1,
-  METHOD_IS_CLASS_METHOD = 2,
-  METHOD_IS_JAVA_SP = 3
-} METHOD_TYPE;
+  METHOD_TYPE_NONE = 0,
+  METHOD_TYPE_INSTANCE_METHOD,
+  METHOD_TYPE_CLASS_METHOD,
+  METHOD_TYPE_JAVA_SP
+};
 
-#if 0
-/* this structure will be used at the next */
+enum METHOD_REQUEST
+{
+  METHOD_REQUEST_ARG_PREPARE,
+  METHOD_REQUEST_INVOKE,
+  METHOD_REQUEST_CALLBACK,
+  METHOD_REQUEST_END
+};
+
+enum METHOD_CALLBACK_RESPONSE
+{
+  METHOD_CALLBACK_QUERY_PREPARE = 2,
+  METHOD_CALLBACK_QUERY_EXECUTE = 3,
+  METHOD_CALLBACK_GET_DB_PARAMETER = 4,
+
+  METHOD_CALLBACK_CURSOR = 7,
+  METHOD_CALLBACK_FETCH = 8,
+  METHOD_CALLBACK_GET_SCHEMA_INFO = 9,
+
+  METHOD_CALLBACK_OID_GET = 10,
+  METHOD_CALLBACK_OID_SET = 11,
+
+  // METHOD_CALLBACK_GET_DB_VERSION = 15,
+
+  METHOD_CALLBACK_OID_CMD = 17,
+  METHOD_CALLBACK_COLLECTION = 18,
+  METHOD_CALLBACK_NEXT_RESULT = 19,
+
+  METHOD_CALLBACK_EXECUTE_BATCH = 20,
+  METHOD_CALLBACK_EXECUTE_ARRAY = 21,
+
+  METHOD_CALLBACK_CURSOR_UPDATE = 22,
+
+  METHOD_CALLBACK_MAKE_OUT_RS = 33,
+  METHOD_CALLBACK_GET_GENERATED_KEYS = 34,
+
+  METHOD_CALLBACK_LOB_NEW = 35,
+  METHOD_CALLBACK_LOB_WRITE = 36,
+  METHOD_CALLBACK_LOB_READ = 37,
+
+  METHOD_CALLBACK_CURSOR_CLOSE = 42
+};
+
 typedef struct method_arg_info METHOD_ARG_INFO;
 struct method_arg_info
 {
   int *arg_mode; /* IN, OUT, INOUT */
   int *arg_type; /* DB_TYPE */
   int result_type; /* DB_TYPE */
+
+  method_arg_info () = default;
 };
-#endif
 
 typedef struct method_sig_node METHOD_SIG;
 struct method_sig_node
@@ -63,12 +106,17 @@ struct method_sig_node
 
   union
   {
-    char *class_name;		/* class for the method */
-    /* this structure will be used at the next subtask */
-    // METHOD_ARG_INFO arg_info;
+    char *class_name;		/* class name for the class method */
+    METHOD_ARG_INFO arg_info;  /* argument info for javasp's server-side calling */
   };
 
-  method_sig_node () = default;
+  void pack (cubpacking::packer &serializator) const;
+  void unpack (cubpacking::unpacker &deserializator);
+  size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
+
+  void freemem ();
+
+  method_sig_node ();
 };
 
 struct method_sig_list

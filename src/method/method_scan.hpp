@@ -25,15 +25,17 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include <functional>
 #include <vector>
 
 #include "dbtype_def.h" /* DB_VALUE */
 #include "method_def.hpp" /* method_sig_list */
+#include "method_invoke_group.hpp" /* cubmethod::method_invoke_group */
 #include "object_domain.h" /* TP_DOMAIN */
 #include "query_list.h" /* qfile_list_id, qfile_list_scan_id */
 
 #if defined (SA_MODE)
-#include "query_method.h"
+#include "query_method.hpp"
 #endif
 
 /* forward declarations */
@@ -56,36 +58,22 @@ namespace cubscan
 
 	scanner ();
 
+	int init (cubthread::entry *thread_p, method_sig_list *sig_list, qfile_list_id *list_id);
+	void clear (bool is_final);
+
 //////////////////////////////////////////////////////////////////////////
 // Main SCAN routines
 //////////////////////////////////////////////////////////////////////////
 
-	int init (cubthread::entry *thread_p, method_sig_list *sig_list, qfile_list_id *list_id);
 	int open ();
 	SCAN_CODE next_scan (val_list_node &vl);
 	int close ();
 
+//////////////////////////////////////////////////////////////////////////
+// Value array (Output structure to scan manager) declarations
+//////////////////////////////////////////////////////////////////////////
+
       protected:
-
-//////////////////////////////////////////////////////////////////////////
-// Common interface to send args and receive values
-//////////////////////////////////////////////////////////////////////////
-
-	int request ();
-	int receive (DB_VALUE &return_val);
-
-#if defined(SERVER_MODE)
-//////////////////////////////////////////////////////////////////////////
-// Communication with CAS
-//////////////////////////////////////////////////////////////////////////
-
-	int xs_send ();
-	int xs_receive (DB_VALUE &val);
-#endif
-
-//////////////////////////////////////////////////////////////////////////
-// Value array scanning declarations
-//////////////////////////////////////////////////////////////////////////
 
 	int open_value_array ();
 	void next_value_array (val_list_node &vl);
@@ -100,19 +88,13 @@ namespace cubscan
       private:
 
 	cubthread::entry *m_thread_p; /* thread entry */
-
-	// TODO: method signature list will be interpret according to the method types in the future
-	method_sig_list *m_method_sig_list;	/* method signatures */
+	cubmethod::method_invoke_group *m_method_group; /* method invoke implementations */
 
 	qfile_list_id *m_list_id; 		/* list file from cselect */
 	qfile_list_scan_id m_scan_id;	/* for scanning list file */
 
-	std::vector<TP_DOMAIN *> m_arg_dom_vector; /* placeholder for arg value's domain */
-	std::vector<DB_VALUE> m_arg_vector;        /* placeholder for arg value */
-
-#if defined (SA_MODE)
-	std::vector<DB_VALUE> m_result_vector;     /* placeholder for result value */
-#endif
+	std::vector<TP_DOMAIN *> m_arg_dom_vector; /* arg value's domain */
+	std::vector<DB_VALUE> m_arg_vector;        /* arg value */
 
 	qproc_db_value_list *m_dbval_list; /* result */
     };

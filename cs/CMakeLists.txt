@@ -229,10 +229,8 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/execute_schema.c
   ${QUERY_DIR}/execute_statement.c
   ${QUERY_DIR}/numeric_opfunc.c
-  ${QUERY_DIR}/method_def.cpp
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
-  ${QUERY_DIR}/query_method.c
   ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -282,6 +280,21 @@ set(JSP_SOURCES
   )
 set(JSP_HEADERS
   ${JSP_DIR}/jsp_struct.hpp
+  )
+
+set(METHOD_SOURCES
+  ${METHOD_DIR}/method_callback.cpp
+  ${METHOD_DIR}/method_def.cpp
+  ${METHOD_DIR}/method_error.cpp
+  ${METHOD_DIR}/method_query_handler.cpp
+  ${METHOD_DIR}/method_query_result.cpp
+  ${METHOD_DIR}/method_query_util.cpp
+  ${METHOD_DIR}/method_struct_invoke.cpp
+  ${METHOD_DIR}/method_struct_value.cpp
+  ${METHOD_DIR}/method_struct_query.cpp
+  ${METHOD_DIR}/method_struct_schema_info.cpp
+  ${METHOD_DIR}/method_schema_info.cpp
+  ${METHOD_DIR}/query_method.cpp
   )
 
 set(TRANSACTION_SOURCES
@@ -421,6 +434,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
+  ${METHOD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
@@ -459,6 +473,7 @@ add_library(cubridcs SHARED
   ${QUERY_HEADERS}
   ${QUERY_SOURCES}
   ${JSP_SOURCES}
+  ${METHOD_SOURCES}
   ${TRANSACTION_HEADERS}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}

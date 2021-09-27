@@ -756,10 +756,10 @@ qmgr_dump_query_entry (QMGR_QUERY_ENTRY * query_p)
     {
       list_id_p = query_p->list_id;
       fprintf (stdout,
-	       "\t\t{type_list: {%d, %p}, tuple_cnt: %d, page_cnt: %d,\n"
+	       "\t\t{type_list: {%d, %p}, tuple_cnt: %lld, page_cnt: %d,\n"
 	       "\t first_vpid: {%d, %d}, last_vpid: {%d, %d},\n"
 	       "\t last_pgptr: %p, last_offset: %d, lasttpl_len: %d}\n", list_id_p->type_list.type_cnt,
-	       (void *) list_id_p->type_list.domp, list_id_p->tuple_cnt, list_id_p->page_cnt,
+	       (void *) list_id_p->type_list.domp, (long long) list_id_p->tuple_cnt, list_id_p->page_cnt,
 	       list_id_p->first_vpid.pageid, list_id_p->first_vpid.volid, list_id_p->last_vpid.pageid,
 	       list_id_p->last_vpid.volid, list_id_p->last_pgptr, list_id_p->last_offset, list_id_p->lasttpl_len);
     }
@@ -1392,8 +1392,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       if (do_not_cache == false)
 	{
 	  /* lookup the list cache with the parameter values (DB_VALUE array) */
-	  list_cache_entry_p =
-	    qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p->list_ht_no, &params, &cached_result);
+	  list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p, &params, &cached_result);
+
 	  /* If we've got the cached result, return it. */
 	  if (cached_result)
 	    {
@@ -1507,7 +1507,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   /* If it is allowed to cache the query result or if it is required to cache, put the list file id(QFILE_LIST_ID) into
    * the list cache. Provided are the corresponding XASL cache entry to be linked, and the parameters (host variables -
    * DB_VALUES). */
-  if (qmgr_is_allowed_result_cache (*flag_p) && do_not_cache == false)
+  if (qmgr_is_allowed_result_cache (*flag_p) && do_not_cache == false && xasl_cache_entry_p->list_ht_no >= 0)
     {
       /* check once more to ensure that the related XASL entry is still valid */
       if (xcache_can_entry_cache_list (xasl_cache_entry_p))

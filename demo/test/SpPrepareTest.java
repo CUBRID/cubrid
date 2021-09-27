@@ -1,3 +1,5 @@
+package test;
+
 /*
  *
  * Copyright (c) 2016 CUBRID Corporation.
@@ -42,15 +44,14 @@ import java.sql.*;
 
 public class SpPrepareTest {
 
-   /*
+    /*
      * CREATE OR REPLACE FUNCTION TestReturnString() RETURN STRING
      * AS LANGUAGE JAVA
      * NAME 'SpCubrid.testReturnString() return java.lang.String';
      */
     public static String testReturnString() {
         String temp = "";
-        for ( int i = 0; i< 10000; i++)
-            temp = temp + "1234567890";
+        for (int i = 0; i < 10000; i++) temp = temp + "1234567890";
         return temp;
     }
 
@@ -175,7 +176,7 @@ public class SpPrepareTest {
 
             int result = 0;
             while (rs.next()) {
-                result = rs.getInt(1);
+                result += rs.getInt(1);
                 break;
             }
 
@@ -220,6 +221,34 @@ public class SpPrepareTest {
 
             rs.close();
             pstmt.close();
+            conn.close();
+            return result;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return e.getMessage();
+        }
+    }
+
+    /*
+     * CREATE OR REPLACE FUNCTION testStatementRs(q string) RETURN STRING AS LANGUAGE JAVA NAME 'SpPrepareTest.testStatement(java.lang.String) return java.lang.String';
+     * SELECT testStatementRs ('SELECT * from game');
+     */
+    public static String testStatement(String query) {
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(query);
+
+            String result = "";
+            while (rs.next()) {
+                result = rs.getString(1);
+                break;
+            }
+
+            rs.close();
+            stmt.close();
             conn.close();
             return result;
         } catch (Exception e) {

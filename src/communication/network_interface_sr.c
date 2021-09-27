@@ -83,6 +83,7 @@
 #include "xasl_cache.h"
 #include "elo.h"
 #include "transaction_transient.hpp"
+#include "method_invoke_group.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -6458,6 +6459,39 @@ xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, 
 }
 
 /*
+ * xs_send_action_to_client -
+ *
+ * return:
+ *
+ *   action(in):
+ *
+ * NOTE:
+ */
+int
+xs_send_status_to_client (THREAD_ENTRY * thread_p, METHOD_CALL_STATUS status)
+{
+  unsigned int rid;
+  bool continue_checking = true;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (logtb_is_interrupted (thread_p, false, &continue_checking))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+      return ER_FAILED;
+    }
+
+  rid = css_get_comm_request_id (thread_p);
+  (void) or_pack_int (reply, (int) status);
+  if (css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_INT_SIZE))
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * slocator_assign_oid_batch -
  *
  * return:
@@ -10189,4 +10223,124 @@ void
 ssession_stop_attached_threads (void *session)
 {
   session_stop_attached_threads (session);
+}
+
+void
+smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  method_sig_list sig_list;
+  sig_list.unpack (unpacker);
+
+  int arg_cnt = 0;
+  unpacker.unpack_int (arg_cnt);
+
+  /* *INDENT-OFF* */
+  std::vector<DB_VALUE> args (arg_cnt);
+  /* *INDENT-ON* */
+
+  for (int i = 0; i < arg_cnt; i++)
+    {
+      unpacker.unpack_db_value (args[i]);
+    }
+
+  /* *INDENT-OFF* */
+  cubmethod::method_invoke_group method_group (thread_p, &sig_list);
+  /* *INDENT-ON* */
+
+  method_group.begin ();
+
+  int error_code = method_group.prepare (args);
+  if (error_code != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  /* *INDENT-OFF* */
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  /* *INDENT-ON* */
+
+  char *reply_data = NULL;
+  int reply_data_size = 0;
+
+  DB_VALUE ret_value;
+  db_make_null (&ret_value);
+
+  error_code = method_group.execute (args);
+  if (error_code == NO_ERROR)
+    {
+      ret_value = method_group.get_return_value (0);
+
+      method_sig_node *sig = sig_list.method_sig;
+
+      /* *INDENT-OFF* */
+      std::vector <DB_VALUE *> out_args;
+      /* *INDENT-ON* */
+      for (int i = 0; i < sig->num_method_args; i++)
+	{
+	  if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
+	    {
+	      continue;
+	    }
+
+	  int pos = sig->method_arg_pos[i];
+	  DB_VALUE & val = args[pos];
+	  out_args.push_back (&val);
+	}
+
+      //int total_size = packer.get_packed_int_size (0);
+      int total_size = packer.get_packed_db_value_size (ret_value, 0);
+      total_size += packer.get_packed_int_size (total_size);
+    /* *INDENT-OFF* */
+    for (DB_VALUE *value : out_args)
+	{
+	  total_size += packer.get_packed_db_value_size (*value, total_size);
+	}
+    /* *INDENT-ON* */
+
+      eb.extend_to (total_size);
+      packer.set_buffer (eb.get_ptr (), total_size);
+
+      /* result */
+      //packer.pack_int (error_code);
+      packer.pack_db_value (ret_value);
+
+      /* output parameters */
+      packer.pack_int (out_args.size ());
+
+    /* *INDENT-OFF* */
+    for (DB_VALUE *value : out_args)
+	{
+	  packer.pack_db_value (*value);	// DB_VALUEs
+	}
+    /* *INDENT-ON* */
+
+      reply_data = eb.get_ptr ();
+      reply_data_size = (int) packer.get_current_size ();
+    }
+  else
+    {
+      reply_data = NULL;
+      reply_data_size = 0;
+    }
+
+  // clear
+  for (int i = 0; i < arg_cnt; i++)
+    {
+      db_value_clear (&args[i]);
+    }
+
+  method_group.end ();
+  sig_list.freemem ();
+
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = or_pack_int (reply, (int) END_CALLBACK);
+  ptr = or_pack_int (ptr, reply_data_size);
+  ptr = or_pack_int (ptr, error_code);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
+				     reply_data_size);
 }

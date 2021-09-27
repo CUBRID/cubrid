@@ -58,6 +58,11 @@ public class DataUtilities {
         return newOffset;
     }
 
+    public static int alignedPosition(int currentPosition, int alignment) {
+        int newOffset = (currentPosition + alignment - 1) & ~(alignment - 1);
+        return newOffset;
+    }
+
     public static int alignedPosition(ByteBuffer buffer, int alignment) {
         int newOffset = (buffer.position() + alignment - 1) & ~(alignment - 1);
         return newOffset;

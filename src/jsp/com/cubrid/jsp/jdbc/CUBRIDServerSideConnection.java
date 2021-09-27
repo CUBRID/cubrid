@@ -31,13 +31,11 @@
 
 package com.cubrid.jsp.jdbc;
 
-import cubrid.jdbc.jci.UJCIUtil;
-import java.util.logging.Logger;
-
 import com.cubrid.jsp.ExecuteThread;
-
-import com.cubrid.jsp.data.CUBRIDPacker;
-import java.nio.ByteBuffer;
+import com.cubrid.jsp.data.DBParameterInfo;
+import com.cubrid.jsp.io.SUConnection;
+import cubrid.jdbc.jci.CUBRIDIsolationLevel;
+import java.io.IOException;
 import java.sql.Array;
 import java.sql.Blob;
 import java.sql.CallableStatement;
@@ -60,73 +58,64 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
 
-import java.net.Socket;
-
 /**
  * Title: CUBRID JDBC Driver Description:
  *
  * @version 2.0
  */
 public class CUBRIDServerSideConnection implements Connection {
-    private final static Logger LOG = Logger.getGlobal();
+    private ExecuteThread thread = null;
 
-    // Transaction Isolation Level Constants ported from CUBRIDConnection
-    public static final int TRAN_REP_CLASS_REP_INSTANCE = TRANSACTION_REPEATABLE_READ; // 4
-    public static final int TRAN_REP_CLASS_COMMIT_INSTANCE = 16;
-    public static final int TRAN_REP_CLASS_UNCOMMIT_INSTANCE = 32;
-    public static final int TRAN_SERIALIZABLE = TRANSACTION_SERIALIZABLE;
-
-    // Request Function Code
-    public static final int REQ_FUNCTION_PREPARE = 2; // UFunctionCode.PREPARE;
-    public static final int REQ_FUNCTION_EXECUTE = 3; // UFunctionCode.EXECUTE;
-    public static final int REQ_FUNCTION_CURSOR = 7; // UFunctionCode.CURSOR;
-    public static final int REQ_FUNCTION_FETCH = 8; // UFunctionCode.FETCH;
-    public static final int REQ_FUNCTION_GET_SCHEMA_INFO = 9; // UFunctionCode.GET_SCHEMA_INFO;
-    public static final int REQ_FUNCTION_GET_NEXT_RESULT = 19; // UFunctionCode.NEXT_RESULT;
-    public static final int REQ_FUNCTION_MAKE_OUT_RS = 33; // UFunctionCode.MAKE_OUT_RS;
-    public static final int REQ_FUNCTION_GET_GENERATED_KEYS = 34; // UFunctionCode.GET_GENERATED_KEYS;
-    public static final int REQ_FUNCTION_CURSOR_CLOSE = 34; // UFunctionCode.CURSOR_CLOSE;
-
-    int transactionIsolation;
-    int holdability;
     protected CUBRIDServerSideDatabaseMetaData mdata = null;
     protected List<Statement> statements = null;
+    private SUConnection suConn = null;
 
-    public CUBRIDServerSideConnection() {
-        holdability = ResultSet.HOLD_CURSORS_OVER_COMMIT; // there is no meaning for the holdable cursor on server-side
+    private int transactionIsolation;
+    private int holdability;
+
+    public CUBRIDServerSideConnection(ExecuteThread thread) {
+        this.thread = thread;
+
+        holdability =
+                ResultSet.HOLD_CURSORS_OVER_COMMIT; // default value, there is no meaning for the
+        // holdable cursor on server-side
         transactionIsolation = TRANSACTION_NONE;
 
-        statements = new ArrayList<Statement> ();
-        LOG.info ("CUBRIDServerSideConnection constructor");
+        statements = new ArrayList<Statement>();
     }
 
-    ExecuteThread thread = null;
-    public void setThread (ExecuteThread t) {
-        thread = t;
+    public SUConnection getSUConnection() {
+        if (suConn == null) {
+            suConn = new SUConnection(thread);
+        }
+        return suConn;
     }
 
-    public boolean requestPrepare (String sql, int flag) {
-        try {
-            ByteBuffer buffer = ByteBuffer.allocate(sql.length() + Integer.BYTES);
-            CUBRIDPacker packer = new CUBRIDPacker (buffer);
-            
-            packer.packInt (REQ_FUNCTION_PREPARE);
-            packer.packString (sql);
-            packer.packInt (flag);
+    protected void requestDBParameter() throws IOException {
+        DBParameterInfo info = suConn.getDBParameter();
+        switch (info.tran_isolation) {
+            case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
+                transactionIsolation = TRANSACTION_READ_COMMITTED;
+                break;
 
-            // thread.sendCommand(packer.getBuffer());
-            } catch (Exception e) {
-                return false;
-            }
-        return true;
-    }
+            case CUBRIDIsolationLevel.TRAN_REPEATABLE_READ:
+                transactionIsolation = TRANSACTION_REPEATABLE_READ;
+                break;
 
-    public boolean requestExecute () {
-        return true;
+            case CUBRIDIsolationLevel.TRAN_SERIALIZABLE:
+                transactionIsolation = TRANSACTION_SERIALIZABLE;
+                break;
+
+            default:
+                transactionIsolation = TRANSACTION_NONE;
+                break;
+        }
+
+        // TODO: lock timeout?
     }
 
     /* To manage List<Statement> statements */
-    public void addStatement (Statement s) {
+    public void addStatement(Statement s) {
         this.statements.add(s);
     }
 
@@ -138,7 +127,7 @@ public class CUBRIDServerSideConnection implements Connection {
     }
 
     // ==============================================================
-    // The following is JDBC Interface Implementations
+    // The following are JDBC Interface Implementations
     // ==============================================================
 
     public Statement createStatement() throws SQLException {
@@ -146,17 +135,13 @@ public class CUBRIDServerSideConnection implements Connection {
     }
 
     public PreparedStatement prepareStatement(String sql) throws SQLException {
-        LOG.info ("prepareStatement");
         return prepareStatement(
-            sql, 
-            ResultSet.TYPE_FORWARD_ONLY,
-            ResultSet.CONCUR_READ_ONLY,
-            holdability);
+                sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY, holdability);
     }
 
     public CallableStatement prepareCall(String sql) throws SQLException {
         CallableStatement cstmt = new CUBRIDServerSideCallableStatement(this, sql);
-        addStatement (cstmt);
+        addStatement(cstmt);
         return cstmt;
     }
 
@@ -183,8 +168,13 @@ public class CUBRIDServerSideConnection implements Connection {
 
     public void close() throws SQLException {
         /* Becuase It is assume that Java SP Server always connecting with DB Server directly, It should not be closed */
-        /* The connection is an implicit data channel, not an explicit connection instance as from a client. */
-        /* do nothing */
+        /* Here, only the JDBC resources are cleaned up */
+        /* The connection is not actually terminated or database resources such as query handlers and result sets are removed. */
+        for (Statement s : statements) {
+            s.close();
+        }
+        statements.clear();
+        statements = null;
     }
 
     public boolean isClosed() throws SQLException {
@@ -223,10 +213,15 @@ public class CUBRIDServerSideConnection implements Connection {
     }
 
     public int getTransactionIsolation() throws SQLException {
-        // TODO
-        // It is able to get at DB Server
-        // int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-        // TRAN_ISOLATION tran_isolation = logtb_find_isolation (tran_index);
+        if (transactionIsolation == TRANSACTION_NONE) {
+            try {
+                requestDBParameter();
+            } catch (IOException e) {
+                throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                        CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+            }
+        }
+
         return transactionIsolation;
     }
 
@@ -241,19 +236,21 @@ public class CUBRIDServerSideConnection implements Connection {
 
     public Statement createStatement(int resultSetType, int resultSetConcurrency)
             throws SQLException {
-        Statement stmt = new CUBRIDServerSideStatement(this, resultSetType, resultSetConcurrency, holdability);
-        addStatement (stmt);
+        Statement stmt =
+                new CUBRIDServerSideStatement(
+                        this, resultSetType, resultSetConcurrency, holdability);
+        addStatement(stmt);
         return stmt;
     }
 
     public PreparedStatement prepareStatement(
             String sql, int resultSetType, int resultSetConcurrency) throws SQLException {
-        return prepareStatement (sql, resultSetType, resultSetConcurrency, holdability);
+        return prepareStatement(sql, resultSetType, resultSetConcurrency, holdability);
     }
 
     public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency)
             throws SQLException {
-        return prepareCall (sql);
+        return prepareCall(sql);
     }
 
     public Map<String, Class<?>> getTypeMap() throws SQLException {
@@ -289,27 +286,33 @@ public class CUBRIDServerSideConnection implements Connection {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
-    public Statement createStatement(int resultSetType, int resultSetConcurrency, int holdable) throws SQLException {
+    public Statement createStatement(int resultSetType, int resultSetConcurrency, int holdable)
+            throws SQLException {
         if (holdable == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
-            if (resultSetType == ResultSet.TYPE_SCROLL_SENSITIVE || resultSetConcurrency == ResultSet.CONCUR_UPDATABLE) {
+            if (resultSetType == ResultSet.TYPE_SCROLL_SENSITIVE
+                    || resultSetConcurrency == ResultSet.CONCUR_UPDATABLE) {
                 throw new SQLException(new java.lang.UnsupportedOperationException());
             }
         }
-        Statement stmt = new CUBRIDServerSideStatement(this, resultSetType, resultSetConcurrency, holdable);
-        addStatement (stmt);
+        Statement stmt =
+                new CUBRIDServerSideStatement(this, resultSetType, resultSetConcurrency, holdable);
+        addStatement(stmt);
         return stmt;
     }
 
-    public PreparedStatement prepareStatement(
-            String sql, int type, int concur, int holdable) throws SQLException {
+    public PreparedStatement prepareStatement(String sql, int type, int concur, int holdable)
+            throws SQLException {
         if (holdable == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
             if (type == ResultSet.TYPE_SCROLL_SENSITIVE || concur == ResultSet.CONCUR_UPDATABLE) {
                 throw new SQLException(new java.lang.UnsupportedOperationException());
             }
         }
-        PreparedStatement stmt = new CUBRIDServerSidePreparedStatement 
-            (this, sql, type, concur, holdable, Statement.NO_GENERATED_KEYS);
-        statements.add (stmt);
+
+        PreparedStatement stmt =
+                new CUBRIDServerSidePreparedStatement(
+                        this, sql, type, concur, holdable, Statement.NO_GENERATED_KEYS);
+
+        statements.add(stmt);
         return stmt;
     }
 
@@ -320,39 +323,38 @@ public class CUBRIDServerSideConnection implements Connection {
 
     public PreparedStatement prepareStatement(String sql, int autoGeneratedKeys)
             throws SQLException {
-        PreparedStatement stmt = new CUBRIDServerSidePreparedStatement 
-            (this, 
-            sql, 
-            ResultSet.TYPE_FORWARD_ONLY, 
-            ResultSet.CONCUR_READ_ONLY, 
-            holdability, 
-            autoGeneratedKeys);
-        statements.add (stmt);
+        PreparedStatement stmt =
+                new CUBRIDServerSidePreparedStatement(
+                        this,
+                        sql,
+                        ResultSet.TYPE_FORWARD_ONLY,
+                        ResultSet.CONCUR_READ_ONLY,
+                        holdability,
+                        autoGeneratedKeys);
+        statements.add(stmt);
         return stmt;
     }
 
-    public PreparedStatement prepareStatement(String sql, int[] indexes)
-            throws SQLException {
+    public PreparedStatement prepareStatement(String sql, int[] indexes) throws SQLException {
         return prepareStatement(sql);
     }
 
-    public PreparedStatement prepareStatement(String sql, String[] colName)
-            throws SQLException {
+    public PreparedStatement prepareStatement(String sql, String[] colName) throws SQLException {
         return prepareStatement(sql);
     }
 
     /* JDK 1.6 */
     public Clob createClob() throws SQLException {
-        // TODO
+        // TODO: not implemented yet
         // Clob clob = new CUBRIDClob(this, getUConnection().getCharset());
-        return null;
+        throw new SQLException(new UnsupportedOperationException());
     }
 
     /* JDK 1.6 */
     public Blob createBlob() throws SQLException {
-        // TODO
+        // TODO: not implemented yet
         // Blob blob = new CUBRIDBlob(this);
-        return null;
+        throw new SQLException(new UnsupportedOperationException());
     }
 
     /* JDK 1.6 */
@@ -371,7 +373,7 @@ public class CUBRIDServerSideConnection implements Connection {
             throw new SQLException();
         }
 
-        // it have to be always valid
+        // it has to be always valid
         return true;
     }
 

@@ -97,10 +97,17 @@ public class CUBRIDUnpacker {
 
     public String unpackCString() {
         int len = unpackStringSize();
-
-        byte[] str = new byte[len];
-        buffer.get(str);
-        return new String(str);
+        if (len > 0)
+        {
+            byte[] str = new byte[len];
+            buffer.get(str);
+            align(DataUtilities.INT_ALIGNMENT);
+            return new String(str);
+        }
+        else
+        {
+            return "";
+        }
     }
 
     public byte[] unpackCStringByteArray() {
@@ -118,6 +125,115 @@ public class CUBRIDUnpacker {
             len = buffer.getInt();
         }
         return len;
+    }
+
+    public Value unpackValue(int paramSize, int paramType) throws TypeMismatchException {
+        Value arg = null;
+        switch (paramType) {
+            case DBType.DB_SHORT:
+                arg = new ShortValue(unpackShort());
+                break;
+            case DBType.DB_INT:
+                arg = new IntValue(unpackInt());
+                break;
+            case DBType.DB_BIGINT:
+                arg = new LongValue(unpackBigint());
+                break;
+            case DBType.DB_FLOAT:
+                arg = new FloatValue(unpackFloat());
+                break;
+            case DBType.DB_DOUBLE:
+            case DBType.DB_MONETARY:
+                arg = new DoubleValue(unpackDouble());
+                break;
+            case DBType.DB_NUMERIC:
+                arg = new NumericValue(unpackCString());
+                break;
+            case DBType.DB_CHAR:
+            case DBType.DB_STRING:
+                arg = new StringValue(unpackCString());
+                break;
+            case DBType.DB_DATE:
+                {
+                    int year = unpackInt();
+                    int month = unpackInt();
+                    int day = unpackInt();
+
+                    arg = new DateValue(year, month, day);
+                }
+                break;
+            case DBType.DB_TIME:
+                {
+                    int hour = unpackInt();
+                    int min = unpackInt();
+                    int sec = unpackInt();
+
+                    Calendar cal = Calendar.getInstance();
+                    cal.set(0, 0, 0, hour, min, sec);
+
+                    arg = new TimeValue(hour, min, sec);
+                }
+                break;
+            case DBType.DB_TIMESTAMP:
+                {
+                    int year = unpackInt();
+                    int month = unpackInt();
+                    int day = unpackInt();
+                    int hour = unpackInt();
+                    int min = unpackInt();
+                    int sec = unpackInt();
+                    arg = new TimestampValue(year, month, day, hour, min, sec);
+                }
+                break;
+            case DBType.DB_DATETIME:
+                {
+                    int year = unpackInt();
+                    int month = unpackInt();
+                    int day = unpackInt();
+                    int hour = unpackInt();
+                    int min = unpackInt();
+                    int sec = unpackInt();
+                    int msec = unpackInt();
+                    arg = new DatetimeValue(year, month, day, hour, min, sec, msec);
+                }
+                break;
+            case DBType.DB_SET:
+            case DBType.DB_MULTISET:
+            case DBType.DB_SEQUENCE:
+                {
+                    int nCol = unpackInt();
+                    arg = new SetValue(unpackSetValue(nCol));
+                }
+                break;
+
+            case DBType.DB_OID:
+            case DBType.DB_OBJECT:
+                {
+                    int page = unpackInt();
+                    short slot = unpackShort();
+                    short vol = unpackShort();
+
+                    byte[] bOID = new byte[DataUtilities.OID_BYTE_SIZE];
+                    bOID[0] = ((byte) ((page >>> 24) & 0xFF));
+                    bOID[1] = ((byte) ((page >>> 16) & 0xFF));
+                    bOID[2] = ((byte) ((page >>> 8) & 0xFF));
+                    bOID[3] = ((byte) ((page >>> 0) & 0xFF));
+                    bOID[4] = ((byte) ((slot >>> 8) & 0xFF));
+                    bOID[5] = ((byte) ((slot >>> 0) & 0xFF));
+                    bOID[6] = ((byte) ((vol >>> 8) & 0xFF));
+                    bOID[7] = ((byte) ((vol >>> 0) & 0xFF));
+
+                    arg = new OidValue(bOID);
+                }
+                break;
+            case DBType.DB_NULL:
+                arg = new NullValue();
+                break;
+            default:
+                // unknown type
+                break;
+        }
+        return arg;
     }
 
     public Value unpackValue(int paramSize, int paramType, int mode, int dbType)

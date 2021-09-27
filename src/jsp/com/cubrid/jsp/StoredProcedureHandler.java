@@ -29,68 +29,11 @@
  *
  */
 
-import java.sql.*;
+package com.cubrid.jsp;
 
-public class SpTypeTest {
-    public static int testRIntConst() {
-        return 10;
-    }
+import com.cubrid.jsp.value.Value;
+import java.util.List;
 
-    public static void testOutInt(int i[]) {
-        i[0] = i[0] + 10;
-    }
-
-    public static void testOutInt2(int i[]) {
-        i[0] = i[0] * 1000000;
-    }
-
-    public static int testInt(int i) {
-        return i + 1;
-    }
-
-    public static int testInt2(int i) {
-        return i * 1000000;
-    }
-
-    public static int testIntArgs(int i, int j) {
-        return i + j;
-    }
-
-    public static String testIntRString(int i, int j) {
-        return i + j + "";
-    }
-
-    public static float testFloat(float f) {
-        return f + 1;
-    }
-
-    public static double testDouble(double d) {
-        return d + 1;
-    }
-
-    public static String testChar(String c) {
-        return c + 1;
-    }
-
-    public static String testString(String s) {
-        return "Result: " + s;
-    }
-
-    public static int testArray(int[] a) {
-        return a.length;
-    }
-
-    public static java.sql.Date testDate(java.sql.Date d) {
-        return d;
-    }
-
-    public static java.sql.Time testTime(java.sql.Time d) {
-        return d;
-    }
-
-    public static java.sql.Timestamp testTimestamp(java.sql.Timestamp d) {
-        return d;
-    }
-
-    // TODO :Monetary, OID, SET
+public class StoredProcedureHandler {
+    private List<Value> arguments;
 }

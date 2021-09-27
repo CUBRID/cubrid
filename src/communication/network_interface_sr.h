@@ -151,6 +151,7 @@ extern int xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, qfile_li
 					       method_sig_list * methsg_list);
 extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize);
 extern int xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout);
+extern int xs_send_status_to_client (THREAD_ENTRY * thread_p, METHOD_CALL_STATUS status);
 
 extern void slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -238,4 +239,6 @@ extern void sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *re
 extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (void *session);
+
+extern void smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

@@ -809,6 +809,29 @@ namespace cubpacking
     return unpack_oid (oid);
   }
 
+  void unpacker::peek_unpack_block_length (int &value)
+  {
+    return peek_unpack_int (value);
+  }
+
+  size_t
+  packer::get_packed_size_overloaded (const cubmem::block &blk, size_t curr_offset)
+  {
+    return get_packed_buffer_size (blk.ptr, blk.dim, curr_offset);
+  }
+
+  void
+  packer::pack_overloaded (const cubmem::block &blk)
+  {
+    pack_buffer_with_length (blk.ptr, blk.dim);
+  }
+
+  void
+  unpacker::unpack_overloaded (cubmem::block &blk)
+  {
+    return unpack_buffer_with_length (blk.ptr, blk.dim);
+  }
+
   const char *
   unpacker::get_curr_ptr (void)
   {

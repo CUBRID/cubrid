@@ -19,9 +19,11 @@
 install(FILES 
   ${CMAKE_SOURCE_DIR}/demo/demodb_objects 
   ${CMAKE_SOURCE_DIR}/demo/demodb_schema
-  ${CMAKE_SOURCE_DIR}/demo/SpPrepareTest.java
-  ${CMAKE_SOURCE_DIR}/demo/SpTypeTest.java
   DESTINATION ${CUBRID_DEMODIR}) 
+
+install(DIRECTORY 
+  ${CMAKE_SOURCE_DIR}/demo/test
+  DESTINATION ${CUBRID_DEMODIR})
 
 if(UNIX)
   set(DEMODB_SCRIPT make_cubrid_demo.sh)

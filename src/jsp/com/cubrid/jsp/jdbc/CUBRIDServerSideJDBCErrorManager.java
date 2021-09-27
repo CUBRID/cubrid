@@ -31,26 +31,20 @@
 
 package com.cubrid.jsp.jdbc;
 
-import cubrid.jdbc.jci.UError;
+import com.cubrid.jsp.Server;
 import cubrid.jdbc.driver.CUBRIDException;
-import java.sql.SQLException;
+import cubrid.jdbc.jci.UError;
 
 public class CUBRIDServerSideJDBCErrorManager {
-    public static CUBRIDException createCUBRIDException(UError error) {
-        CUBRIDException e = new CUBRIDException(error);
-        // TODO: u_con.logException(e);
-        return e;
-    }
-
     public static CUBRIDException createCUBRIDException(int errCode, Throwable t) {
         CUBRIDException e = new CUBRIDException(errCode, t);
-        // TODO: u_con.logException(e);
+        Server.log(t);
         return e;
     }
 
     public static CUBRIDException createCUBRIDException(int errCode, String msg, Throwable t) {
         CUBRIDException e = new CUBRIDException(errCode, msg, t);
-        // TODO: u_con.logException(e);
+        Server.log(t);
         return e;
     }
 }

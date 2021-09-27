@@ -39,6 +39,7 @@
 
 #include "porting.h"
 
+/* It should be sync with the same request code in ExecuteThread.java */
 typedef enum
 {
   SP_CODE_INVOKE = 0x01,
@@ -46,6 +47,8 @@ typedef enum
   SP_CODE_ERROR = 0x04,
   SP_CODE_INTERNAL_JDBC = 0x08,
   SP_CODE_DESTROY = 0x10,
+  // SP_CODE_END = 0x20,
+  SP_CODE_PREPARE_ARGS = 0x40,
 
   SP_CODE_UTIL_PING = 0xDE,
   SP_CODE_UTIL_STATUS = 0xEE,
