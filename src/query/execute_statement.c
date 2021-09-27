@@ -14728,6 +14728,10 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	    {
 	      cls_info[count]->objtype = CDC_TABLE;
 	    }
+	  else
+	    {
+	      assert (false);
+	    }
 	  count++;
 	}
     }
@@ -14821,6 +14825,10 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	  else if (ret = db_is_class (db_find_class (classname)) > 0)
 	    {
 	      objtype = CDC_TABLE;
+	    }
+	  else
+	    {
+	      assert (false);
 	    }
 	}
 
