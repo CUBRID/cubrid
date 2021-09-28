@@ -3042,6 +3042,7 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
   int server_mk_vdes = NULL_VOLDES;
   int backup_mk_vdes = NULL_VOLDES;
   int err = NO_ERROR;
+  bool is_tran_active = false;
 
   assert (tde_Cipher.is_loaded);
 
@@ -3119,6 +3120,15 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD, 2, mk_path, mk_path_old);
     }
 
+  if (logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
+			       TRAN_DEFAULT_ISOLATION_LEVEL ()) == NULL_TRAN_INDEX)
+    {
+      assert (false);
+      err = ER_FAILED;
+      goto exit;
+    }
+  is_tran_active = true;
+
   err = tde_copy_keys_file (thread_p, mk_path, r_args->keys_file_path, false, false);
   if (err != NO_ERROR)
     {
@@ -3145,6 +3155,10 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
     }
 
 exit:
+  if (is_tran_active)
+    {
+      xtran_server_abort (thread_p);
+    }
   if (server_mk_vdes != NULL_VOLDES)
     {
       fileio_dismount (thread_p, server_mk_vdes);
