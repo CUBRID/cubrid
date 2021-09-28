@@ -2985,7 +2985,7 @@ create_stmt
 				  {
 				    assert (target->node_type == PT_NAME);
 
-				    p->info.create_synonym.target_ssowner_name = NULL;
+				    p->info.create_synonym.target_owner_name = NULL;
 				    p->info.create_synonym.target_name = target;
 				  }
 			      }
@@ -3730,6 +3730,7 @@ alter_stmt
 	  For			/* 6 */
 	  simple_path_id       	/* 7 */
 	  opt_comment_spec	/* 8 */
+		{ pop_msg(); }
 		{{
 
 			PT_NODE *p = parser_new_node(this_parser, PT_ALTER_SYNONYM);
