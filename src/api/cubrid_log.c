@@ -1453,6 +1453,7 @@ cubrid_log_disconnect_server (void)
   if (g_trace_log != NULL)
     {
       fclose (g_trace_log);
+      g_trace_log = NULL;
     }
 
   css_free_conn (g_conn_entry);
@@ -1507,11 +1508,10 @@ cubrid_log_reset_globals (void)
     }
 
   g_extraction_user_count = 0;
-  memset (g_trace_log_path, 0, PATH_MAX + 1);
+
   snprintf (g_trace_log_path, PATH_MAX + 1, "%s", "./cubrid_tracelog.err");
   g_trace_log_level = 0;
   g_trace_log_filesize = 10 * 1024 * 1024;
-  g_trace_log = NULL;
 
   g_next_lsa = LSA_INITIALIZER;
 
