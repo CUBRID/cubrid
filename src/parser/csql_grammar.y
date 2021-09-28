@@ -2946,56 +2946,48 @@ create_stmt
 
 			    /* synonym_name, synonym_owner_name */
 			    PT_NODE *synonym = $6;
-			    if (synonym && synonym->node_type == PT_DOT_)
+			    if (synonym)
 			      {
-				assert (synonym->info.dot.arg1 && synonym->info.dot.arg2->node_type == PT_NAME);
-				assert (synonym->info.dot.arg2 && synonym->info.dot.arg2->node_type == PT_NAME);
-
-				if (synonym->info.dot.arg1 && synonym->info.dot.arg1->node_type == PT_NAME)
+				if (synonym->node_type == PT_DOT_)
 				  {
+				    assert (synonym->info.dot.arg1);
+				    assert (synonym->info.dot.arg1->node_type == PT_NAME);
+				    assert (synonym->info.dot.arg2);
+				    assert (synonym->info.dot.arg2->node_type == PT_NAME);
+
 				    p->info.create_synonym.synonym_owner_name = synonym->info.dot.arg1;
-				  }
-
-				if (synonym->info.dot.arg2 && synonym->info.dot.arg2->node_type == PT_NAME)
-				  {
 				    p->info.create_synonym.synonym_name = synonym->info.dot.arg2;
 				  }
-			      }
-			    else if (synonym && synonym->node_type == PT_NAME)
-			      {
-				p->info.create_synonym.synonym_owner_name = NULL;
-				p->info.create_synonym.synonym_name = synonym;
-			      }
-			    else
-			      {
-				assert (false);
+				else
+				  {
+				    assert (synonym->node_type == PT_NAME);
+
+				    p->info.create_synonym.synonym_owner_name = NULL;
+				    p->info.create_synonym.synonym_name = synonym;
+				  }
 			      }
 
 			    /* target_owner_name, target_name */
 			    PT_NODE *target = $8;
-			    if (target && target->node_type == PT_DOT_)
+			    if (target)
 			      {
-				assert (target->info.dot.arg1 && target->info.dot.arg2->node_type == PT_NAME);
-				assert (target->info.dot.arg2 && target->info.dot.arg2->node_type == PT_NAME);
-
-				if (target->info.dot.arg1 && target->info.dot.arg1->node_type == PT_NAME)
+				if (target->node_type == PT_DOT_)
 				  {
+				    assert (target->info.dot.arg1);
+				    assert (target->info.dot.arg1->node_type == PT_NAME);
+				    assert (target->info.dot.arg2);
+				    assert (target->info.dot.arg2->node_type == PT_NAME);
+
 				    p->info.create_synonym.target_owner_name = target->info.dot.arg1;
-				  }
-
-				if (target->info.dot.arg2 && target->info.dot.arg2->node_type == PT_NAME)
-				  {
 				    p->info.create_synonym.target_name = target->info.dot.arg2;
 				  }
-			      }
-			    else if (target && target->node_type == PT_NAME)
-			      {
-				p->info.create_synonym.target_owner_name = NULL;
-				p->info.create_synonym.target_name = target;
-			      }
-			    else
-			      {
-				assert (false);
+				else
+				  {
+				    assert (target->node_type == PT_NAME);
+
+				    p->info.create_synonym.target_ssowner_name = NULL;
+				    p->info.create_synonym.target_name = target;
+				  }
 			      }
 
 			    p->info.create_synonym.comment = $9;
@@ -3748,56 +3740,48 @@ alter_stmt
 
 			    /* synonym_name, synonym_owner_name */
 			    PT_NODE *synonym = $5;
-			    if (synonym && synonym->node_type == PT_DOT_)
+			    if (synonym)
 			      {
-				assert (synonym->info.dot.arg1 && synonym->info.dot.arg2->node_type == PT_NAME);
-				assert (synonym->info.dot.arg2 && synonym->info.dot.arg2->node_type == PT_NAME);
-
-				if (synonym->info.dot.arg1 && synonym->info.dot.arg1->node_type == PT_NAME)
+				if (synonym->node_type == PT_DOT_)
 				  {
+				    assert (synonym->info.dot.arg1);
+				    assert (synonym->info.dot.arg1->node_type == PT_NAME);
+				    assert (synonym->info.dot.arg2);
+				    assert (synonym->info.dot.arg2->node_type == PT_NAME);
+
 				    p->info.alter_synonym.synonym_owner_name = synonym->info.dot.arg1;
-				  }
-
-				if (synonym->info.dot.arg2 && synonym->info.dot.arg2->node_type == PT_NAME)
-				  {
 				    p->info.alter_synonym.synonym_name = synonym->info.dot.arg2;
 				  }
-			      }
-			    else if (synonym && synonym->node_type == PT_NAME)
-			      {
-				p->info.alter_synonym.synonym_owner_name = NULL;
-				p->info.alter_synonym.synonym_name = synonym;
-			      }
-			    else
-			      {
-				assert (false);
+				else
+				  {
+				    assert (synonym->node_type == PT_NAME);
+
+				    p->info.alter_synonym.synonym_owner_name = NULL;
+				    p->info.alter_synonym.synonym_name = synonym;
+				  }
 			      }
 
 			    /* target_owner_name, target_name */
 			    PT_NODE *target = $7;
-			    if (target && target->node_type == PT_DOT_)
+			    if (target)
 			      {
-				assert (target->info.dot.arg1 && target->info.dot.arg2->node_type == PT_NAME);
-				assert (target->info.dot.arg2 && target->info.dot.arg2->node_type == PT_NAME);
-
-				if (target->info.dot.arg1 && target->info.dot.arg1->node_type == PT_NAME)
+				if (target->node_type == PT_DOT_)
 				  {
+				    assert (target->info.dot.arg1);
+				    assert (target->info.dot.arg1->node_type == PT_NAME);
+				    assert (target->info.dot.arg2);
+				    assert (target->info.dot.arg2->node_type == PT_NAME);
+
 				    p->info.alter_synonym.target_owner_name = target->info.dot.arg1;
-				  }
-
-				if (target->info.dot.arg2 && target->info.dot.arg2->node_type == PT_NAME)
-				  {
 				    p->info.alter_synonym.target_name = target->info.dot.arg2;
 				  }
-			      }
-			    else if (target && target->node_type == PT_NAME)
-			      {
-				p->info.alter_synonym.target_owner_name = NULL;
-				p->info.alter_synonym.target_name = target;
-			      }
-			    else
-			      {
-				assert (false);
+				else
+				  {
+				    assert (target->node_type == PT_NAME);
+
+				    p->info.alter_synonym.target_owner_name = NULL;
+				    p->info.alter_synonym.target_name = target;
+				  }
 			      }
 
 			    p->info.alter_synonym.comment = $8;
@@ -3903,60 +3887,48 @@ rename_stmt
 
 			    /* old_name, old_owner_name */
 			    PT_NODE *old_synonym = $5;
-			    if (old_synonym && old_synonym->node_type == PT_DOT_)
+			    if (old_synonym)
 			      {
-				assert (old_synonym->info.dot.arg1
-					&& old_synonym->info.dot.arg2->node_type == PT_NAME);
-				assert (old_synonym->info.dot.arg2
-					&& old_synonym->info.dot.arg2->node_type == PT_NAME);
-
-				if (old_synonym->info.dot.arg1 && old_synonym->info.dot.arg1->node_type == PT_NAME)
+				if (old_synonym->node_type == PT_DOT_)
 				  {
+				    assert (old_synonym->info.dot.arg1);
+				    assert (old_synonym->info.dot.arg1->node_type == PT_NAME);
+				    assert (old_synonym->info.dot.arg2);
+				    assert (old_synonym->info.dot.arg2->node_type == PT_NAME);
+
 				    p->info.rename_synonym.old_owner_name = old_synonym->info.dot.arg1;
-				  }
-
-				if (old_synonym->info.dot.arg2 && old_synonym->info.dot.arg2->node_type == PT_NAME)
-				  {
 				    p->info.rename_synonym.old_name = old_synonym->info.dot.arg2;
 				  }
-			      }
-			    else if (old_synonym && old_synonym->node_type == PT_NAME)
-			      {
-				p->info.rename_synonym.old_owner_name = NULL;
-				p->info.rename_synonym.old_name = old_synonym;
-			      }
-			    else
-			      {
-				assert (false);
+				else
+				  {
+				    assert (old_synonym->node_type == PT_NAME);
+
+				    p->info.rename_synonym.old_owner_name = NULL;
+				    p->info.rename_synonym.old_name = old_synonym;
+				  }
 			      }
 
 			    /* new_name, new_owner_name */
 			    PT_NODE *new_synonym = $7;
-			    if (new_synonym && new_synonym->node_type == PT_DOT_)
+			    if (new_synonym)
 			      {
-				assert (new_synonym->info.dot.arg1
-					&& new_synonym->info.dot.arg2->node_type == PT_NAME);
-				assert (new_synonym->info.dot.arg2
-					&& new_synonym->info.dot.arg2->node_type == PT_NAME);
-
-				if (new_synonym->info.dot.arg1 && new_synonym->info.dot.arg1->node_type == PT_NAME)
+				if (new_synonym->node_type == PT_DOT_)
 				  {
+				    assert (new_synonym->info.dot.arg1);
+				    assert (new_synonym->info.dot.arg1->node_type == PT_NAME);
+				    assert (new_synonym->info.dot.arg2);
+				    assert (new_synonym->info.dot.arg2->node_type == PT_NAME);
+
 				    p->info.rename_synonym.new_owner_name = new_synonym->info.dot.arg1;
-				  }
-
-				if (new_synonym->info.dot.arg2 && new_synonym->info.dot.arg2->node_type == PT_NAME)
-				  {
 				    p->info.rename_synonym.new_name = new_synonym->info.dot.arg2;
 				  }
-			      }
-			    else if (new_synonym && new_synonym->node_type == PT_NAME)
-			      {
-				p->info.rename_synonym.new_owner_name = NULL;
-				p->info.rename_synonym.new_name = new_synonym;
-			      }
-			    else
-			      {
-				assert (false);
+				else
+				  {
+				    assert (new_synonym->node_type == PT_NAME);
+
+				    p->info.rename_synonym.new_owner_name = NULL;
+				    p->info.rename_synonym.new_name = new_synonym;
+				  }
 			      }
 
 			    if (p->info.rename_synonym.old_owner_name
