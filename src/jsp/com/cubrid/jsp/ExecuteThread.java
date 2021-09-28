@@ -107,7 +107,7 @@ public class ExecuteThread extends Thread {
     }
 
     public void closeJdbcConnection() throws IOException, SQLException {
-        if (connection != null && compareStatus(ExecuteThreadStatus.CALL)) {
+        if (connection != null) {
             connection.close();
             setStatus(ExecuteThreadStatus.INVOKE);
         }
@@ -127,7 +127,9 @@ public class ExecuteThread extends Thread {
     }
 
     public Connection createConnection() {
-        this.connection = new CUBRIDServerSideConnection(this);
+        if (this.connection == null) {
+            this.connection = new CUBRIDServerSideConnection(this);
+        }
         return this.connection;
     }
 

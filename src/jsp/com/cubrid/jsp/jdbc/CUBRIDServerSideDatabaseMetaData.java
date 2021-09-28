@@ -741,7 +741,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
             case Connection.TRANSACTION_READ_COMMITTED:
             case Connection.TRANSACTION_REPEATABLE_READ:
             case Connection.TRANSACTION_SERIALIZABLE:
-            case CUBRIDServerSideConnection.TRAN_REP_CLASS_COMMIT_INSTANCE:
+            // case CUBRIDServerSideConnection.TRAN_REP_CLASS_COMMIT_INSTANCE:
                 return true;
             default:
                 return false;

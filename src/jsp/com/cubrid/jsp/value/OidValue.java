@@ -33,7 +33,7 @@ package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.exception.TypeMismatchException;
-import cubrid.jdbc.driver.CUBRIDConnectionDefault;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import cubrid.sql.CUBRIDOID;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -77,10 +77,11 @@ public class OidValue extends Value {
     private void createInstance() {
         if (oidValue != null && oidObject == null) {
             try {
-                CUBRIDConnectionDefault con =
-                        (CUBRIDConnectionDefault)
+                CUBRIDServerSideConnection con =
+                        (CUBRIDServerSideConnection)
                                 DriverManager.getConnection("jdbc:default:connection:");
-                oidObject = new CUBRIDOID(con, oidValue);
+                // TODO:
+                // oidObject = new CUBRIDOID(con, oidValue);
             } catch (SQLException e) {
                 oidObject = null;
             }

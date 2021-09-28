@@ -170,11 +170,12 @@ public class CUBRIDServerSideConnection implements Connection {
         /* Becuase It is assume that Java SP Server always connecting with DB Server directly, It should not be closed */
         /* Here, only the JDBC resources are cleaned up */
         /* The connection is not actually terminated or database resources such as query handlers and result sets are removed. */
-        for (Statement s : statements) {
-            s.close();
+        if (statements != null) {
+            for (Statement s : statements) {
+                s.close();
+            }
+            statements.clear();
         }
-        statements.clear();
-        statements = null;
     }
 
     public boolean isClosed() throws SQLException {

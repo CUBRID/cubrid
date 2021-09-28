@@ -54,19 +54,6 @@ static std::unordered_map <UINT64, std::vector<DB_VALUE>> runtime_args;
 
 static cubmethod::callback_handler handler (100);
 /* For Java SP Method */
-// static std::unordered_map <UINT64, METHOD_QUERY_HANDLE> query_handles;
-// *INDENT-ON*
-
-struct method_server_conn_info
-{
-  unsigned int rc;
-  char *host;
-  char *server_name;
-};
-
-// *INDENT-OFF*
-static std::unordered_map <UINT64, std::vector<DB_VALUE>> runtime_args;
-static std::vector<DB_VALUE> runtime_argument_base;
 // *INDENT-ON*
 
 struct method_server_conn_info
@@ -263,7 +250,6 @@ method_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn
   sig.freemem ();
   return error;
 }
-#endif
 
 static int
 method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_info)
