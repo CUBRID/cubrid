@@ -43,11 +43,18 @@
 #include "dbi.h"
 
 #define CUBRID_LOG_ERROR_HANDLING(e, v) \
-  (err_code) = (e); \
+  do\
+    {\
+      (err_code) = (e); \
+      if(g_trace_log)\
+        {\
           sprintf(v, "FILE : %s, LINE : %d \n", __FILE__, __LINE__); \
           cubrid_log_set_tracelog_pointer (v); \
           fprintf (g_trace_log, v); \
-          goto cubrid_log_error
+        }\
+      goto cubrid_log_error; \
+    }\
+  while(0)
 
 typedef enum
 {
