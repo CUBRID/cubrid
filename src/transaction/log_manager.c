@@ -371,6 +371,8 @@ static void log_daemons_destroy ();
 extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
 #endif /* SERVER_MODE */
 
+static bool log_Log_header_initialized = false;
+
 /*
  * log_rectype_string - RETURN TYPE OF LOG RECORD IN STRING FORMAT
  *
@@ -1121,19 +1123,21 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   /* Make sure that the log is a valid one */
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
-  LOG_CS_ENTER (thread_p);
-
-  if (log_Gl.trantable.area != NULL)
-    {
-      log_final (thread_p);
-    }
-
   /* Initialize log name for log volumes */
   error_code = logpb_initialize_log_names (thread_p, db_fullname, logpath, prefix_logname);
   if (error_code != NO_ERROR)
     {
-      logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE, "log_xinit");
+      logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE,
+			 "log_initialize_internal: logpb_initialize_log_names");
       goto error;
+    }
+
+  LOG_CS_ENTER (thread_p);
+
+  /* Make sure that we are starting from a clean state */
+  if (log_Gl.trantable.area != NULL)
+    {
+      log_final (thread_p);
     }
 
   error_code = log_read_metalog_from_file ();
@@ -1151,7 +1155,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   if (log_Gl.loghdr_pgptr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LOG_PAGESIZE);
-      logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE, "log_xinit");
+      logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE, "log_initialize_internal: out of memory");
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -1206,6 +1210,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       logpb_fetch_header (thread_p, &log_Gl.hdr);
     }
+  log_Log_header_initialized = true;
 
   if (ismedia_crash != false && (r_args) && r_args->restore_slave)
     {
@@ -1446,6 +1451,15 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
   log_Gl.rcv_phase = LOG_RESTARTED;
 
+  // PREREQ: metalog is loaded at this point
+  if (log_Gl.m_metainfo.get_clean_shutdown () && is_tran_server_with_remote_storage ())
+    {
+      // if needed, mark that transaction server with remote storage is running and persist the value
+      log_Gl.m_metainfo.set_clean_shutdown (false);
+
+      log_write_metalog_to_file ();
+    }
+
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
   log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
 
@@ -1542,10 +1556,9 @@ error:
 
   LOG_CS_EXIT (thread_p);
 
-  logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE, "log_init");
+  logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE, "log_initialize_internal");
 
   return error_code;
-
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -1758,6 +1771,7 @@ log_final (THREAD_ENTRY * thread_p)
   /* reset log_Gl.rcv_phase */
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
+  /* make sure that execution is not on a clean state */
   if (log_Gl.trantable.area == NULL)
     {
       LOG_CS_EXIT (thread_p);
@@ -1773,7 +1787,7 @@ log_final (THREAD_ENTRY * thread_p)
       return;
     }
 
-  if (log_Gl.append.vdes == NULL_VOLDES)
+  if (!log_Log_header_initialized)
     {
       logpb_finalize_pool (thread_p);
       logtb_undefine_trantable (thread_p);
@@ -1832,6 +1846,14 @@ log_final (THREAD_ENTRY * thread_p)
       log_Gl.hdr.is_shutdown = true;
       LSA_COPY (&log_Gl.hdr.chkpt_lsa, &log_Gl.hdr.append_lsa);
       LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt, &log_Gl.hdr.chkpt_lsa);
+
+      // mark and persist that transaction server with remote storage has been correctly closed
+      if (is_tran_server_with_remote_storage ())
+	{
+	  log_Gl.m_metainfo.set_clean_shutdown (true);
+
+	  log_write_metalog_to_file ();
+	}
     }
   else
     {
@@ -1861,6 +1883,8 @@ log_final (THREAD_ENTRY * thread_p)
   log_unmount_active_file (thread_p);
 
   free_and_init (log_Gl.loghdr_pgptr);
+
+  log_Log_header_initialized = false;
 
   LOG_CS_EXIT (thread_p);
 }
@@ -10597,19 +10621,20 @@ log_read_metalog_from_file ()
 }
 
 // Write meta log from log_Gl to disk
-int
+void
 log_write_metalog_to_file ()
 {
-  FILE *fp = fopen (log_Name_metainfo, "r+");
-  if (!fp)
+  FILE *const fp = fopen (log_Name_metainfo, "r+");
+  if (fp == nullptr)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
-      return ER_LOG_MOUNT_FAIL;
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
+      assert (false);
     }
-
-  log_Gl.m_metainfo.flush_to_file (fp);
-  fclose (fp);
-  return NO_ERROR;
+  else
+    {
+      log_Gl.m_metainfo.flush_to_file (fp);
+      fclose (fp);
+    }
 }
 
 static int
