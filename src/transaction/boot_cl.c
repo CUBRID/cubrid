@@ -5545,7 +5545,7 @@ boot_define_view_synonym (void)
     {"synonym_owner_name", "varchar(255)"},
     {"target_name", "varchar(255)"},
     {"target_owner_name", "varchar(255)"},
-    {"is_public_synonym", "varchar(3)"}, /* access_modifier */
+    {"is_public_synonym", "varchar(3)"},	/* access_modifier */
     {"comment", "varchar(2048)"}
   };
 
@@ -5574,19 +5574,12 @@ boot_define_view_synonym (void)
 	}
     }
 
-  sprintf (stmt, "SELECT"
-  	   " [a].[synonym_name],"
-	   " [a].[synonym_owner_name],"
-	   " [a].[target_name],"
-	   " [a].[target_owner_name],"
-	   " CASE WHEN [a].[is_public_synonym] = 1 THEN 'YES' ELSE 'NO' END,"
-	   " [a].[comment]"
+  sprintf (stmt, "SELECT [a].[synonym_name], [a].[synonym_owner_name], [a].[target_name], [a].[target_owner_name],"
+	   " CASE WHEN [a].[is_public_synonym] = 1 THEN 'YES' ELSE 'NO' END, [a].[comment]"
 	   " FROM [%s] [a]"
-	   " WHERE"
-	   " ([a].[synonym_owner_name] = CURRENT_USER AND [a].[is_public_synonym] = 0)"
+	   " WHERE ([a].[synonym_owner_name] = CURRENT_USER AND [a].[is_public_synonym] = 0)"
 	   " OR ([a].[synonym_owner_name] = 'DBA' AND [a].[is_public_synonym] = 1)"
-	   " OR (CURRENT_USER = 'DBA')",
-	   CT_SYNONYM_NAME);
+	   " OR (CURRENT_USER = 'DBA')", CT_SYNONYM_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
