@@ -16598,6 +16598,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		}
 
 	      SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, classname, attr_name);
+
 	      if (OID_ISNULL (&serial_obj_oid))
 		{
 		  if (string != NULL && alloced_string == 1)
