@@ -265,6 +265,8 @@ namespace cublog
   {
     LOG_TDES *tdes = nullptr;
 
+    start_redo_lsa = m_start_redo_lsa;
+
     /* Add the transactions to the transaction table */
     for (const auto &chkpt : m_trans)
       {

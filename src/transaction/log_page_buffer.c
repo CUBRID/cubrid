@@ -7081,7 +7081,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   }
 
   // Flush meta log (and checkpoint info) to disk
-  (void) log_write_metalog_to_file ();
+  log_write_metalog_to_file ();
   detailed_er_log ("logpb_checkpoint: wrote metalog containing checkpoint information.\n");
 
   /*
@@ -7352,21 +7352,14 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
       }
     log_Gl.m_metainfo.add_checkpoint_info (trantable_checkpoint_lsa, std::move (trantable_checkpoint_info));
 
-    // make sure new checkpoint is persisted to disk
-    const int res_metalog_to_file = log_write_metalog_to_file ();
-    if (res_metalog_to_file != NO_ERROR)
-      {
-	ASSERT_ERROR ();
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: failed; writing metalog to file\n");
-	return res_metalog_to_file;
-      }
+    log_write_metalog_to_file ();
 
     // function explicitly needs to be called in critical section-free context
     LOG_CS_EXIT (thread_p);
     logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
     LOG_CS_ENTER (thread_p);
 
-    // drop previous checkpoints
+    // drop previous checkpoints and persist to disk
     if (detailed_logging)
       {
 	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
@@ -7379,9 +7372,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     //    checkpoint and before deleting the outdated checkpoint) there can be at most two
     assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
 
-    // make sure new checkpoint is persisted to disk; discard possible error; if not transient, will be
-    // handled upon next attempt
-    (void) log_write_metalog_to_file ();
+    log_write_metalog_to_file ();
   }
 
   if (detailed_logging)

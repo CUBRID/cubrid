@@ -216,7 +216,7 @@ extern void log_flush_daemon_get_stats (UINT64 * statsp);
 
 extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
 
-extern int log_write_metalog_to_file ();
+extern void log_write_metalog_to_file ();
 
 //
 // log critical section
