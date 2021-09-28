@@ -420,7 +420,6 @@ static CT_ATTR ct_synonym_atts[] = {
   {"class_owner_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"is_public_synonym", NULL_ATTRID, DB_TYPE_INTEGER},
   {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
-  /* TO-BE: DBLink support. */
 };
 
 CT_CLASS ct_Class = {
