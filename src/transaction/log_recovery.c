@@ -885,11 +885,6 @@ log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
 }
 
-//void
-//log_recovery_finish_transactions_phase_analysis (THREAD_ENTRY * const thread_p)
-//{
-//}
-
 /*
  * log_recovery_finish_transactions - TODO
  *
@@ -932,6 +927,10 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
 
   assert (!log_Gl.append.prev_lsa.is_null ());
   vacuum_notify_server_crashed (&log_Gl.append.prev_lsa);
+
+  log_recovery_abort_all_atomic_sysops (thread_p);
+
+  log_recovery_finish_all_postpone (thread_p);
 }
 
 /*
@@ -1069,8 +1068,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (log_recovery_redo_parallel_count);
-	parallel_recovery_redo.
-	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+	parallel_recovery_redo.reset (new cublog::
+				      redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
       }
   }
 #endif
@@ -1700,9 +1699,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
       log_Gl.mvcc_table.reset_start_mvccid ();
 
       /* Abort all atomic system operations that were open when server crashed */
+      // TODO: for TSRS, done in log_recovery_finish_transactions now
       log_recovery_abort_all_atomic_sysops (thread_p);
 
       /* Now finish all postpone operations */
+      // TODO: for TSRS, done in log_recovery_finish_transactions now
       log_recovery_finish_all_postpone (thread_p);
     }
 
