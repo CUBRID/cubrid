@@ -62,6 +62,7 @@ static OID oid_Password_class = { 0, 0, 0 };
 static OID oid_Authorization_class = { 0, 0, 0 };
 static OID oid_Authorizations_class = { 0, 0, 0 };
 static OID oid_DB_root_class = { 0, 0, 0 };
+static OID oid_Synonym_class = { 0, 0, 0 };
 
 static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };
 
@@ -76,6 +77,7 @@ OID *oid_Root_class_oid = &oid_Root_class;
 OID *oid_Serial_class_oid = &oid_Serial_class;
 OID *oid_Partition_class_oid = &oid_Partition_class;
 OID *oid_User_class_oid = &oid_User_class;
+OID *oid_Synonym_class_oid = &oid_Synonym_class;
 
 
 OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
@@ -104,7 +106,8 @@ OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Password_class, CT_PASSWORD_NAME},
   {&oid_Authorization_class, CT_AUTHORIZATION_NAME},
   {&oid_Authorizations_class, CT_AUTHORIZATIONS_NAME},
-  {&oid_DB_root_class, CT_ROOT_NAME}
+  {&oid_DB_root_class, CT_ROOT_NAME},
+  {&oid_Synonym_class, CT_SYNONYM_NAME}
 };
 
 /*
@@ -402,4 +405,10 @@ oid_is_system_class (const OID * class_oid)
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
   return oid_is_cached_class_oid (class_oid);
+}
+
+OID *
+oid_get_synonym_oid (void)
+{
+  return oid_Cache[OID_CACHE_SYNONYM_CLASS_ID].oid;
 }

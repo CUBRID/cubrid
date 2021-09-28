@@ -211,6 +211,7 @@ enum
   OID_CACHE_AUTH_CLASS_ID,
   OID_CACHE_OLD_ROOT_CLASS_ID,
   OID_CACHE_DB_ROOT_CLASS_ID,
+  OID_CACHE_SYNONYM_CLASS_ID,
 
   OID_CACHE_SIZE
 };
@@ -219,6 +220,7 @@ extern const OID oid_Null_oid;
 extern OID *oid_Root_class_oid;
 extern OID *oid_Serial_class_oid;
 extern OID *oid_User_class_oid;
+extern OID *oid_Synonym_class_oid;
 extern PAGEID oid_Next_tempid;
 
 extern void oid_set_root (const OID * oid);
@@ -244,4 +246,5 @@ extern const char *oid_get_cached_class_name (const int cache_id);
 extern bool oid_is_cached_class_oid (const OID * class_oid);
 extern OID *oid_get_rep_read_tran_oid (void);
 extern bool oid_is_system_class (const OID * class_oid);
+extern OID *oid_get_synonym_oid (void);
 #endif /* _OID_H_ */

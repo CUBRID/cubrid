@@ -190,6 +190,7 @@ static int boot_define_collations (MOP class_mop);
 static int boot_add_charsets (MOP class_mop);
 static int boot_define_charsets (MOP class_mop);
 static int boot_define_dual (MOP class_mop);
+static int boot_define_synonym (MOP class_mop);
 static int boot_define_view_class (void);
 static int boot_define_view_super_class (void);
 static int boot_define_view_vclass (void);
@@ -207,6 +208,7 @@ static int boot_define_view_partition (void);
 static int boot_define_view_stored_procedure (void);
 static int boot_define_view_stored_procedure_arguments (void);
 static int boot_define_view_db_collation (void);
+static int boot_define_view_synonym (void);
 static int catcls_class_install (void);
 static int catcls_vclass_install (void);
 #if defined(CS_MODE)
@@ -4013,6 +4015,95 @@ boot_define_dual (MOP class_mop)
   return NO_ERROR;
 }
 
+static int
+boot_define_synonym (MOP class_mop)
+{
+  SM_TEMPLATE *def;
+  int error_code = NO_ERROR;
+  const char *primary_key_col_names[] = { "synonym_name", "synonym_owner_name", NULL };
+  const char *index_col_names[] = { "synonym_owner_name", "is_public_synonym", NULL };
+
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
+
+  error_code = smt_add_attribute (def, "synonym_name", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "synonym_owner_name", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "target_name", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "target_owner_name", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "is_public_synonym", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "comment", "varchar(2048)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = sm_update_class (def, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* add constraints */
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL, primary_key_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* add index */
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
+
+  error_code = db_constrain_non_null (class_mop, "target_name", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "is_public_synonym", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (locator_has_heap (class_mop) == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * catcls_class_install :
  *
@@ -4048,7 +4139,8 @@ catcls_class_install (void)
     {CT_HA_APPLY_INFO_NAME, boot_define_ha_apply_info},
     {CT_COLLATION_NAME, boot_define_collations},
     {CT_CHARSET_NAME, boot_define_charsets},
-    {CT_DUAL_NAME, boot_define_dual}
+    {CT_DUAL_NAME, boot_define_dual},
+    {CT_SYNONYM_NAME, boot_define_synonym}
   };
   // *INDENT-ON*
 
@@ -5444,6 +5536,79 @@ boot_define_view_db_charset (void)
   return NO_ERROR;
 }
 
+static int
+boot_define_view_synonym (void)
+{
+  MOP class_mop;
+  COLUMN columns[] = {
+    {"synonym_name", "varchar(255)"},
+    {"synonym_owner_name", "varchar(255)"},
+    {"target_name", "varchar(255)"},
+    {"target_owner_name", "varchar(255)"},
+    {"is_public_synonym", "varchar(3)"}, /* access_modifier */
+    {"comment", "varchar(2048)"}
+  };
+
+  int num_cols = sizeof (columns) / sizeof (columns[0]);
+  int i;
+  char stmt[2048];
+  int error_code = NO_ERROR;
+
+  /* Initialization */
+  memset (stmt, '\0', sizeof (char) * 2048);
+
+  class_mop = db_create_vclass (CTV_SYNONYM_NAME);
+  if (class_mop == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      return error_code;
+    }
+
+  for (i = 0; i < num_cols; i++)
+    {
+      error_code = db_add_attribute (class_mop, columns[i].name, columns[i].type, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  sprintf (stmt, "SELECT"
+  	   " [a].[synonym_name],"
+	   " [a].[synonym_owner_name],"
+	   " [a].[target_name],"
+	   " [a].[target_owner_name],"
+	   " CASE WHEN [a].[is_public_synonym] = 1 THEN 'YES' ELSE 'NO' END,"
+	   " [a].[comment]"
+	   " FROM [%s] [a]"
+	   " WHERE"
+	   " ([a].[synonym_owner_name] = CURRENT_USER AND [a].[is_public_synonym] = 0)"
+	   " OR ([a].[synonym_owner_name] = 'DBA' AND [a].[is_public_synonym] = 1)"
+	   " OR (CURRENT_USER = 'DBA')",
+	   CT_SYNONYM_NAME);
+
+  error_code = db_add_query_spec (class_mop, stmt);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * catcls_vclass_install :
  *
@@ -5460,24 +5625,25 @@ catcls_vclass_install (void)
   }
   clist[] =
   {
-    {"CTV_CLASS_NAME", boot_define_view_class},
-    {"CTV_SUPER_CLASS_NAME", boot_define_view_super_class},
-    {"CTV_VCLASS_NAME", boot_define_view_vclass},
-    {"CTV_ATTRIBUTE_NAME", boot_define_view_attribute},
-    {"CTV_ATTR_SD_NAME", boot_define_view_attribute_set_domain},
-    {"CTV_METHOD_NAME", boot_define_view_method},
-    {"CTV_METHARG_NAME", boot_define_view_method_argument},
-    {"CTV_METHARG_SD_NAME", boot_define_view_method_argument_set_domain},
-    {"CTV_METHFILE_NAME", boot_define_view_method_file},
-    {"CTV_INDEX_NAME", boot_define_view_index},
-    {"CTV_INDEXKEY_NAME", boot_define_view_index_key},
-    {"CTV_AUTH_NAME", boot_define_view_authorization},
-    {"CTV_TRIGGER_NAME", boot_define_view_trigger},
-    {"CTV_PARTITION_NAME", boot_define_view_partition},
-    {"CTV_STORED_PROC_NAME", boot_define_view_stored_procedure},
-    {"CTV_STORED_PROC_ARGS_NAME", boot_define_view_stored_procedure_arguments},
-    {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation},
-    {"CTV_DB_CHARSET_NAME", boot_define_view_db_charset}
+    {CTV_CLASS_NAME, boot_define_view_class},
+    {CTV_SUPER_CLASS_NAME, boot_define_view_super_class},
+    {CTV_VCLASS_NAME, boot_define_view_vclass},
+    {CTV_ATTRIBUTE_NAME, boot_define_view_attribute},
+    {CTV_ATTR_SD_NAME, boot_define_view_attribute_set_domain},
+    {CTV_METHOD_NAME, boot_define_view_method},
+    {CTV_METHARG_NAME, boot_define_view_method_argument},
+    {CTV_METHARG_SD_NAME, boot_define_view_method_argument_set_domain},
+    {CTV_METHFILE_NAME, boot_define_view_method_file},
+    {CTV_INDEX_NAME, boot_define_view_index},
+    {CTV_INDEXKEY_NAME, boot_define_view_index_key},
+    {CTV_AUTH_NAME, boot_define_view_authorization},
+    {CTV_TRIGGER_NAME, boot_define_view_trigger},
+    {CTV_PARTITION_NAME, boot_define_view_partition},
+    {CTV_STORED_PROC_NAME, boot_define_view_stored_procedure},
+    {CTV_STORED_PROC_ARGS_NAME, boot_define_view_stored_procedure_arguments},
+    {CTV_DB_COLLATION_NAME, boot_define_view_db_collation},
+    {CTV_DB_CHARSET_NAME, boot_define_view_db_charset},
+    {CTV_SYNONYM_NAME, boot_define_view_synonym}
   };
   // *INDENT-ON*
 
@@ -5597,7 +5763,8 @@ boot_destroy_catalog_classes (void)
     CTV_METHARG_NAME, CTV_METHARG_SD_NAME, CTV_METHFILE_NAME,
     CTV_INDEX_NAME, CTV_INDEXKEY_NAME, CTV_AUTH_NAME,
     CTV_TRIGGER_NAME, CTV_PARTITION_NAME, CTV_STORED_PROC_NAME,
-    CTV_STORED_PROC_ARGS_NAME, CT_COLLATION_NAME, NULL
+    CTV_STORED_PROC_ARGS_NAME, CT_COLLATION_NAME, CT_SYNONYM_NAME,
+    CTV_SYNONYM_NAME, NULL
   };
 
   /* check if catalog exists */
