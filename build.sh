@@ -195,18 +195,6 @@ function build_configure ()
   fi
   print_result "OK"
 
-  print_check "Checking manager server directory"
-  if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
-    without_cmserver="true"
-    print_error "Manager server source path is not exist. It will not be built"
-  fi
-
-  print_check "Checking JDBC directory"
-  if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
-    without_jdbc="true"
-    print_error "JDBC source path is not exist. It will not be built"
-  fi
-  
   print_check "Checking CCI directory"
   if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
     with_cci="false"
@@ -216,6 +204,22 @@ function build_configure ()
     configure_options="$configure_options -DWITH_CCI=true"
   fi
 
+  print_check "Checking manager server directory"
+  if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
+    without_cmserver="true"
+    print_error "Manager server source path is not exist. It will not be built"
+  else
+    if [ "$with_cci" = "false" ]; then
+      print_error "Manager server source path is exist, but Manager server requires cci header, It will not be built"
+    fi
+  fi
+
+  print_check "Checking JDBC directory"
+  if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
+    without_jdbc="true"
+    print_error "JDBC source path is not exist. It will not be built"
+  fi
+  
   print_check "Setting environment variables"
   if [ "x$java_dir" != "x" ]; then
     export JAVA_HOME="$java_dir"

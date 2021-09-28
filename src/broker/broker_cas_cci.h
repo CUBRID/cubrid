@@ -238,5 +238,5 @@ typedef enum
  * cci repository source (src/cci/cas_cci.h) must be updated,
  * becuase CCI source and Engine source have been separated.
  */
- 
-#endif				/* _BROKER_CAS_CCI_H_ */
+
+#endif /* _BROKER_CAS_CCI_H_ */
