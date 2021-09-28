@@ -1286,8 +1286,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
       found_equality_term = false;	/* 2nd init */
 
       if (expr->info.expr.op == PT_EQ && expr->info.expr.arg1 && expr->info.expr.arg2
-	  && (!pt_is_function_index_expression (expr->info.expr.arg1) || !PT_IS_CONST (expr->info.expr.arg2))
-	  && (!pt_is_function_index_expression (expr->info.expr.arg2) || !PT_IS_CONST (expr->info.expr.arg1)))
+	  && !(pt_is_function_index_expression (expr->info.expr.arg1) && qo_is_reduceable_const (expr->info.expr.arg2))
+	  && !(pt_is_function_index_expression (expr->info.expr.arg2) && qo_is_reduceable_const (expr->info.expr.arg1)))
 	{			/* 'opd = opd' */
 	  found_equality_term = true;	/* pass 2nd phase */
 	  num_check = 2;
