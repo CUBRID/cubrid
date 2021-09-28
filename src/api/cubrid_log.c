@@ -87,7 +87,7 @@ int g_extraction_table_count = 0;
 char **g_extraction_user;
 int g_extraction_user_count = 0;
 
-FILE *g_trace_log;
+FILE *g_trace_log = NULL;
 char g_trace_log_path[PATH_MAX + 1] = "./cubrid_tracelog.err";
 int g_trace_log_level = 0;
 int64_t g_trace_log_filesize = 10 * 1024 * 1024;	/* 10 MB */
