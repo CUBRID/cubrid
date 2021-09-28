@@ -1513,7 +1513,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Maximale Länge eines Kommentars ist %1$d bytes.
 128 Ungültige Anzahl von Argumenten für JSON_OBJECTAGG.
 129 PARALLEL count-Argument muss zwischen %1$d und %2$d liegen.
-130 Verschiedene Besitzer vor und nach der Umbenennung.\nBeim Umbenennen kann der Besitzer nicht geändert werden.
+130 Verschiedene Besitzer vor und nach der Umbenennung.\n  Beim Umbenennen kann der Besitzer nicht geändert werden.
+131 Invalid alter synonym.\n  ALTER [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+132 Invalid create synonym.\n  CREATE [OR REPLACE] [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 Invalid drop synonym.\n  DROP [PUBLIC|PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+134 Invalid rename synonym.\n  RENAME [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.

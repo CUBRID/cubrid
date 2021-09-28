@@ -1513,7 +1513,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Lunghezza massima di un commento è %1$d bytes.
 128 Numero di argomenti non valido per JSON_OBJECTAGG.
 129 L'argomento conteggio PARALLELO deve essere compreso tra %1$d e %2$d.
-130 Diversi proprietari prima e dopo la ridenominazione.\nRinomina non può cambiare proprietario.
+130 Diversi proprietari prima e dopo la ridenominazione.\n  Rinomina non può cambiare proprietario.
+131 Invalid alter synonym.\n  ALTER [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+132 Invalid create synonym.\n  CREATE [OR REPLACE] [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 Invalid drop synonym.\n  DROP [PUBLIC|PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+134 Invalid rename synonym.\n  RENAME [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.

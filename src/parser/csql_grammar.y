@@ -2927,12 +2927,14 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE		/* 1 */
 	  opt_or_replace	/* 2 */
-	  opt_access_modifier	/* 3 */
-	  SYNONYM		/* 4 */
-	  simple_path_id	/* 5 */
-	  For			/* 6 */
-	  simple_path_id	/* 7 */
-	  opt_comment_spec	/* 8 */
+	  	{ push_msg (MSGCAT_SYNTAX_INVALID_CREATE_SYNONYM); }	/* 3 */
+	  opt_access_modifier	/* 4 */
+	  SYNONYM		/* 5 */
+	  simple_path_id	/* 6 */
+	  For			/* 7 */
+	  simple_path_id	/* 8 */
+	  opt_comment_spec	/* 9 */
+	  	{ pop_msg(); }
 		{{
 
 			PT_NODE *p = parser_new_node(this_parser, PT_CREATE_SYNONYM);
@@ -2940,10 +2942,10 @@ create_stmt
 			if (p)
 			  {
 			    p->info.create_synonym.or_replace = $2;
-			    p->info.create_synonym.access_modifier = $3;
+			    p->info.create_synonym.access_modifier = $4;
 
 			    /* synonym_name, synonym_owner_name */
-			    PT_NODE *synonym = $5;
+			    PT_NODE *synonym = $6;
 			    if (synonym && synonym->node_type == PT_DOT_)
 			      {
 				assert (synonym->info.dot.arg1 && synonym->info.dot.arg2->node_type == PT_NAME);
@@ -2970,7 +2972,7 @@ create_stmt
 			      }
 
 			    /* target_owner_name, target_name */
-			    PT_NODE *target = $7;
+			    PT_NODE *target = $8;
 			    if (target && target->node_type == PT_DOT_)
 			      {
 				assert (target->info.dot.arg1 && target->info.dot.arg2->node_type == PT_NAME);
@@ -2996,7 +2998,7 @@ create_stmt
 				assert (false);
 			      }
 
-			    p->info.create_synonym.comment = $8;
+			    p->info.create_synonym.comment = $9;
 			  }
 
 			$$ = p;
@@ -3729,22 +3731,23 @@ alter_stmt
 
 		DBG_PRINT}}
 	| ALTER			/* 1 */
-	  opt_access_modifier	/* 2 */
-	  SYNONYM		/* 3 */
-	  simple_path_id	/* 4 */
-	  For			/* 5 */
-	  simple_path_id       	/* 6 */
-	  opt_comment_spec	/* 7 */
+		{ push_msg (MSGCAT_SYNTAX_INVALID_ALTER_SYNONYM); }	/* 2 */
+	  opt_access_modifier	/* 3 */
+	  SYNONYM		/* 4 */
+	  simple_path_id	/* 5 */
+	  For			/* 6 */
+	  simple_path_id       	/* 7 */
+	  opt_comment_spec	/* 8 */
 		{{
 
 			PT_NODE *p = parser_new_node(this_parser, PT_ALTER_SYNONYM);
 
 			if (p)
 			  {
-			    p->info.alter_synonym.access_modifier = $2;
+			    p->info.alter_synonym.access_modifier = $3;
 
 			    /* synonym_name, synonym_owner_name */
-			    PT_NODE *synonym = $4;
+			    PT_NODE *synonym = $5;
 			    if (synonym && synonym->node_type == PT_DOT_)
 			      {
 				assert (synonym->info.dot.arg1 && synonym->info.dot.arg2->node_type == PT_NAME);
@@ -3771,7 +3774,7 @@ alter_stmt
 			      }
 
 			    /* target_owner_name, target_name */
-			    PT_NODE *target = $6;
+			    PT_NODE *target = $7;
 			    if (target && target->node_type == PT_DOT_)
 			      {
 				assert (target->info.dot.arg1 && target->info.dot.arg2->node_type == PT_NAME);
@@ -3797,7 +3800,7 @@ alter_stmt
 				assert (false);
 			      }
 
-			    p->info.alter_synonym.comment = $7;
+			    p->info.alter_synonym.comment = $8;
 			  }
 
 			$$ = p;
@@ -3882,17 +3885,24 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME opt_access_modifier SYNONYM simple_path_id as_or_to simple_path_id
+	| RENAME		/* 1 */
+		{ push_msg (MSGCAT_SYNTAX_INVALID_RENAME_SYNONYM); }	/* 2 */
+	  opt_access_modifier	/* 3 */
+	  SYNONYM		/* 4 */
+	  simple_path_id	/* 5 */
+	  as_or_to		/* 6 */
+	  simple_path_id	/* 7 */
+	  	{ pop_msg(); }
 		{{
 
 			PT_NODE *p = parser_new_node(this_parser, PT_RENAME_SYNONYM);
 
 			if (p)
 			  {
-			    p->info.rename_synonym.access_modifier = $2;
+			    p->info.rename_synonym.access_modifier = $3;
 
 			    /* old_name, old_owner_name */
-			    PT_NODE *old_synonym = $4;
+			    PT_NODE *old_synonym = $5;
 			    if (old_synonym && old_synonym->node_type == PT_DOT_)
 			      {
 				assert (old_synonym->info.dot.arg1
@@ -3921,7 +3931,7 @@ rename_stmt
 			      }
 
 			    /* new_name, new_owner_name */
-			    PT_NODE *new_synonym = $6;
+			    PT_NODE *new_synonym = $7;
 			    if (new_synonym && new_synonym->node_type == PT_DOT_)
 			      {
 				assert (new_synonym->info.dot.arg1
@@ -4266,16 +4276,22 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP opt_access_modifier SYNONYM opt_if_exists simple_path_id_list
+	| DROP			/* 1 */
+		{ push_msg (MSGCAT_SYNTAX_INVALID_DROP_SYNONYM); }	/* 2 */
+	  opt_access_modifier	/* 3 */
+	  SYNONYM		/* 4 */
+	  opt_if_exists		/* 5 */
+	  simple_path_id_list	/* 6 */
+	  	{ pop_msg(); }
 		{{
 
 			PT_NODE *p = parser_new_node(this_parser, PT_DROP_SYNONYM);
 
 			if (p)
 			  {
-			    p->info.drop_synonym.access_modifier = $2;
-			    p->info.drop_synonym.if_exists = $4;
-			    p->info.drop_synonym.synonym_list = $5;
+			    p->info.drop_synonym.access_modifier = $3;
+			    p->info.drop_synonym.if_exists = $5;
+			    p->info.drop_synonym.synonym_list = $6;
 			  }
 
 			$$ = p;
