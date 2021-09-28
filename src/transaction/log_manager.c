@@ -1847,6 +1847,8 @@ log_final (THREAD_ENTRY * thread_p)
 
   free_and_init (log_Gl.loghdr_pgptr);
 
+  log_Log_header_initialized = false;
+
   LOG_CS_EXIT (thread_p);
 }
 
