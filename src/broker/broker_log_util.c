@@ -35,7 +35,7 @@
 
 #include "cas_common.h"
 #include "broker_log_util.h"
-#include "cas_cci.h"
+#include "broker_cas_cci.h"
 
 static bool is_bind_with_size (char *buf, int *tot_val_size, int *info_size);
 
