@@ -1,4 +1,4 @@
-package com.cubrid.jsp.io;
+package com.cubrid.jsp.impl;
 
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.SOID;

@@ -1,4 +1,4 @@
-package com.cubrid.jsp.io;
+package com.cubrid.jsp.impl;
 
 public class SUParameter {
     int number;

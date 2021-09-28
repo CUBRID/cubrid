@@ -28,7 +28,7 @@
  * OF SUCH DAMAGE.
  *
  */
-package com.cubrid.jsp.io;
+package com.cubrid.jsp.impl;
 
 /** 
  *  NOTE: This enumeration is ported from UFunctionCode in cubrid-jdbc.

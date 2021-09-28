@@ -32,7 +32,7 @@
 package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.data.ColumnInfo;
-import com.cubrid.jsp.io.SUStatement;
+import com.cubrid.jsp.impl.SUStatement;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.List;

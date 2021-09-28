@@ -33,7 +33,7 @@ package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
-import com.cubrid.jsp.io.SUStatement;
+import com.cubrid.jsp.impl.SUStatement;
 import cubrid.jdbc.driver.CUBRIDDriver;
 import cubrid.jdbc.jci.USchType;
 import java.sql.Connection;

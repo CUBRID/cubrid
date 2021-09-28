@@ -1,4 +1,4 @@
-package com.cubrid.jsp.io;
+package com.cubrid.jsp.impl;
 import cubrid.jdbc.jci.UErrorCode;
 import cubrid.jdbc.jci.UJciException;
 import cubrid.jdbc.jci.UUType;

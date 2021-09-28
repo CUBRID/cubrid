@@ -1,6 +1,6 @@
 package com.cubrid.jsp.data;
 import com.cubrid.jsp.exception.TypeMismatchException;
-import com.cubrid.jsp.io.SUResultTuple;
+import com.cubrid.jsp.impl.SUResultTuple;
 
 public class FetchInfo {
     public int numFetched;

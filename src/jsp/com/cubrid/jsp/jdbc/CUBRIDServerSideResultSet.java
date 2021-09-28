@@ -31,7 +31,7 @@
 
 package com.cubrid.jsp.jdbc;
 
-import com.cubrid.jsp.io.SUStatement;
+import com.cubrid.jsp.impl.SUStatement;
 import cubrid.jdbc.driver.CUBRIDException;
 import cubrid.sql.CUBRIDOID;
 import java.io.InputStream;

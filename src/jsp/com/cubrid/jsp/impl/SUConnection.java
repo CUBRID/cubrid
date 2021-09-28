@@ -29,7 +29,7 @@
  *
  */
 
-package com.cubrid.jsp.io;
+package com.cubrid.jsp.impl;
 import com.cubrid.jsp.data.FetchInfo;
 import com.cubrid.jsp.data.PrepareInfo;
 import com.cubrid.jsp.ExecuteThread;
@@ -41,7 +41,7 @@ import com.cubrid.jsp.data.GetByOIDInfo;
 import com.cubrid.jsp.data.GetSchemaInfo;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
-import com.cubrid.jsp.io.SUFunctionCode;
+import com.cubrid.jsp.impl.SUFunctionCode;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
