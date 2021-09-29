@@ -12245,6 +12245,16 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   int record_length = 0;
 
   char *loginfo_buf = NULL;
+  OID partitioned_classoid;
+
+  if ((error_code = partition_find_root_class_oid (thread_p, &classoid, &partitioned_classoid)) == NO_ERROR)
+    {
+      COPY_OID (&classoid, &partitioned_classoid);
+    }
+  else
+    {
+      goto end;
+    }
 
   cdc_log ("cdc_make_dml_loginfo : started with trid:%d, transaction user:%s, class oid:(%d|%d|%d), dml type:%d", trid,
 	   user, OID_AS_ARGS (&classoid), dml_type);
