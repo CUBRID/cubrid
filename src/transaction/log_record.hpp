@@ -144,6 +144,10 @@ enum log_rectype
                                  * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
                                  * or undo images that never retrieved from the log. */
 
+  LOG_SUPPLEMENTAL_INFO,        /* used for supplemental logs to support CDC interface.
+                                 * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
+                                 * or undo images that never retrieved from the log. */
+
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
 typedef enum log_rectype LOG_RECTYPE;

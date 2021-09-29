@@ -85,6 +85,7 @@
 #include "porting.h"
 #include "page_server.hpp"
 #include "server_type.hpp"
+#include "log_manager.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
