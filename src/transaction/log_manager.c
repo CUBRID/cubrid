@@ -12257,39 +12257,6 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       goto end;
     }
 
-  if (undo_recdes != NULL)
-    {
-      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, &attr_info)) != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      old_values = (DB_VALUE *) malloc (sizeof (DB_VALUE) * attr_info.num_values);
-      if (old_values == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
-	}
-
-      for (i = 0; i < attr_info.num_values; i++)
-	{
-	  // if (attr_info.values[i]->read_attrper != NULL) ? 
-	  heap_value = &attr_info.values[i];
-	  if (heap_value->read_attrepr == NULL)
-	    {
-	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
-	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
-
-	      goto end;
-	    }
-
-	  oldval_deforder = heap_value->read_attrepr->def_order;
-	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
-	}
-
-      record_length += undo_recdes->length;
-    }
-
   if (redo_recdes != NULL)
     {
       if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, NULL, &attr_info)) != NO_ERROR)
@@ -12321,6 +12288,47 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
       record_length += redo_recdes->length;
     }
+
+  if (undo_recdes != NULL)
+    {
+      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, &attr_info)) != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      old_values = (DB_VALUE *) malloc (sizeof (DB_VALUE) * attr_info.num_values);
+      if (old_values == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      for (i = 0; i < attr_info.num_values; i++)
+	{
+	  // if (attr_info.values[i]->read_attrper != NULL) ? 
+	  heap_value = &attr_info.values[i];
+	  if (heap_value->read_attrepr == NULL)
+	    {
+	      if (or_rep_id (redo_recdes) > or_rep_id (undo_recdes))
+		{
+		  heap_value->read_attrepr = heap_value->last_attrepr;
+		}
+	      else
+		{
+		  error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+		  cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
+
+		  goto end;
+		}
+	    }
+
+	  oldval_deforder = heap_value->read_attrepr->def_order;
+	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
+	}
+
+      record_length += undo_recdes->length;
+    }
+
 
   if ((cdc_Gl.producer.all_in_cond == 0) && dml_type != CDC_INSERT)
     {
@@ -12817,7 +12825,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpda
   if (DB_IS_NULL (cmpdata))
     {
       cdc_log ("cdc_compare_undoredo_dbvalue : failed due to dbvalue of undo data is NULL");
-      return ER_FAILED;		/* error */
+//      return ER_FAILED;               /* error */
     }
 
   switch (DB_VALUE_TYPE (new_value))
