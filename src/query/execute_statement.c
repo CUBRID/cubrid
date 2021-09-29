@@ -14764,9 +14764,10 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 
 	  if (do_find_object_type (statement->info.drop.entity_type, classname, &cls_info[count]->objtype) != NO_ERROR)
 	    {
-	      assert (cls_info[count]->objtype == CDC_TABLE || cls_info[count]->objtype == CDC_VIEW);
 	      return ER_FAILED;
 	    }
+
+	  assert (cls_info[count]->objtype == CDC_TABLE || cls_info[count]->objtype == CDC_VIEW);
 
 	  count++;
 	}
@@ -14851,9 +14852,10 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
       if (do_find_object_type (statement->info.alter.entity_type, classname, &objtype) != NO_ERROR)
 	{
-	  assert (objtype == CDC_TABLE || objtype == CDC_VIEW);
 	  return ER_FAILED;
 	}
+
+      assert (objtype == CDC_TABLE || objtype == CDC_VIEW);
 
       if (objtype == CDC_TABLE)
 	{
@@ -14872,21 +14874,25 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	    char rename_statement[1024] = "\0";
 	    const char *new_name = current_rename->info.rename.new_name->info.name.original;
 	    const char *old_name = current_rename->info.rename.old_name->info.name.original;
-	    DB_OBJECT *object = db_find_class (new_name);
 
 	    /* Bug : statement->info.rename.entity_type always has PT_CLASS 
 	     * when rename view1 as view2 or rename table1 as table2. So, objtype can not be classified with entity_type */
-
-	    if (db_is_vclass (object))
+	    if (do_find_object_type (PT_MISC_DUMMY, new_name, &objtype) != NO_ERROR)
 	      {
-		objtype = CDC_VIEW;
+		return ER_FAILED;
+	      }
+
+	    assert (objtype == CDC_TABLE || objtype == CDC_VIEW);
+
+
+	    if (objtype == CDC_VIEW)
+	      {
 		sprintf (rename_statement, "rename view %s as %s", old_name, new_name);
 	      }
-	    else if (db_is_class (object))
+	    else if (objtype == CDC_TABLE)
 	      {
 		classoid = ws_oid (sm_find_class (new_name));
 		sprintf (rename_statement, "rename table %s as %s", old_name, new_name);
-		objtype = CDC_TABLE;
 	      }
 	    else
 	      {
@@ -14917,13 +14923,14 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	      }
 	  }
 
-	pre_drop_length =
-	  ((objtype ==
-	    CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix)) + strlen (if_exist_statement) +
-	  strlen (cascade_statement) + 2;
 
 	for (int i = 0; i < num_class; i++)
 	  {
+	    pre_drop_length =
+	      ((cls_info[i]->objtype ==
+		CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix)) + strlen (if_exist_statement) +
+	      strlen (cascade_statement) + 2;
+
 	    drop_stmt_length = pre_drop_length + strlen (cls_info[i]->name);
 	    drop_stmt = (char *) malloc (drop_stmt_length * 2);
 	    if (drop_stmt == NULL)
