@@ -6873,19 +6873,6 @@ log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_L
 }
 
 static LOG_PAGE *
-log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
-{
-  LOG_REC_SUPPLEMENT *supplement;
-
-  /* Get the DATA HEADER */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), log_lsa, log_page_p);
-  supplement = ((LOG_REC_SUPPLEMENT *) ((char *) log_page_p->area + log_lsa->offset));
-  fprintf (out_fp, "  SUPPLEMENT TYPE = %d\n", supplement->rec_type);
-
-  return log_page_p;
-}
-
-static LOG_PAGE *
 log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * log_lsa,
 		 LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
 {
