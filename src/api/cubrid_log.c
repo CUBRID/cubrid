@@ -541,6 +541,12 @@ cubrid_log_db_login (char *dbname, char *id, char *password)
       goto error;
     }
 
+  if (db_login (id, password) != NO_ERROR)
+    {
+      error = CUBRID_LOG_FAILED_LOGIN;
+      goto error;
+    }
+
   db_shutdown ();
 
   return CUBRID_LOG_SUCCESS;
