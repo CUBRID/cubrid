@@ -13682,6 +13682,58 @@ end:
 }
 
 int
+cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
+{
+  LOG_RECORD_HEADER *log_rec_header;
+  LOG_PAGE *log_page_p = NULL;
+  char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+
+  LOG_LSA process_lsa;
+
+  LOG_PAGEID pageid;
+
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_page_p->hdr.logical_pageid = NULL_PAGEID;
+  log_page_p->hdr.offset = NULL_OFFSET;
+
+  int error = NO_ERROR;
+
+  if (LSA_ISNULL (lsa))
+    {
+      return ER_CDC_INVALID_LOG_LSA;
+    }
+
+  if (lsa->pageid >= LOGPAGEID_MAX)
+    {
+      return ER_CDC_INVALID_LOG_LSA;
+    }
+
+  /*fetch log page */
+  if (logpb_fetch_page (thread_p, lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  process_lsa.pageid = log_page_p->hdr.logical_pageid;
+  process_lsa.offset = log_page_p->hdr.offset;
+  pageid = log_page_p->hdr.logical_pageid;
+
+  while (process_lsa.pageid == pageid)
+    {
+      log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
+
+      if (LSA_EQ (&process_lsa, lsa))
+	{
+	  return NO_ERROR;
+	}
+
+      LSA_COPY (&process_lsa, &log_rec_header->forw_lsa);
+    }
+
+  return ER_CDC_INVALID_LOG_LSA;
+}
+
+int
 cdc_set_extraction_lsa (LOG_LSA * lsa)
 {
   LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, lsa);
