@@ -12332,7 +12332,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
     }
   else
     {
-      goto end;
+      goto error;
     }
 
   cdc_log ("cdc_make_dml_loginfo : started with trid:%d, transaction user:%s, class oid:(%d|%d|%d), dml type:%d", trid,
