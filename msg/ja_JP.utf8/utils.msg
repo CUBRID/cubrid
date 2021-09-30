@@ -289,7 +289,7 @@ backupdb: データーベースをバックアップします。\n\
   -C, --CS-mode                クライアント−サーバーモード\n\
       --no-check               データーベースの整合性を確認する作業を実行しません。;　デフォルト:実行\n\
   -t, --thread-count=COUNT     バックアップをするスレッド数。;　デフォルト:自動\n\
-  -z, --compress               バックアップボリュームを圧縮します。;　デフォルト:圧縮しない\n\
+      --no-compress            バックアップボリュームを圧縮しないでください。デフォルト：圧縮\n\
       --sleep-msecs            １メガバイトを読むたびにNミリセコンドを休みます。;　デフォルト: 0 \n\
   -k, --separate-keys          TDEのキーファイル（_keys）はバックアップボリュームに含まれていませんが、代わりにファイルに分割されています\n\
       --page-server            run on the page server; default: runs on the transaction\n

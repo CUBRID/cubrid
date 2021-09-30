@@ -5466,13 +5466,37 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       if (update_context.is_logical_old)
 	{
-	  /* Update the catalog as long as it is not the root class */
+	  /* Update the catalog and hfid cache as long as it is not the root class */
 	  if (!OID_IS_ROOTOID (oid))
 	    {
 #if !defined(NDEBUG)
 	      or_class_rep_dir (recdes, &rep_dir);
 	      assert (!OID_ISNULL (&rep_dir));
 #endif
+	      HFID new_hfid = HFID_INITIALIZER;
+
+	      or_class_hfid (recdes, &new_hfid);
+
+	      /* if the hfid for the class is cached, and it is different from the NEW one, delete the previouse one. The new one is cached when it is accessed for the first time */
+	      if (!HFID_IS_NULL (&new_hfid))
+		{
+		  HFID cached_hfid = HFID_INITIALIZER;
+		  bool was_cached = false;
+		  error_code = heap_get_hfid_if_cached (thread_p, oid, &cached_hfid, NULL, NULL, &was_cached);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		  if (was_cached && !HFID_EQ (&cached_hfid, &new_hfid))
+		    {
+		      error_code = heap_delete_hfid_from_cache (thread_p, oid);
+		      if (error_code != NO_ERROR)
+			{
+			  goto error;
+			}
+		    }
+		}
+
 	      error_code = catalog_update (thread_p, recdes, oid);
 	      if (error_code < 0)
 		{
@@ -12795,12 +12819,18 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 		  goto exit;
 		}
 
+	      /* No supplemental log for insert is appended due to DDL statement */
+	      thread_p->no_supplemental_log = true;
+
 	      /* make sure that pruning does not change the given class OID */
 	      COPY_OID (&cls_oid, class_oid);
 	      error =
 		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, &recdes, true, SINGLE_ROW_INSERT,
 				      &parent_scan_cache, &force_count, DB_PARTITIONED_CLASS, &pcontext, NULL,
 				      UPDATE_INPLACE_OLD_MVCCID, NULL, false, false);
+
+	      thread_p->no_supplemental_log = false;
+
 	      if (error != NO_ERROR)
 		{
 		  goto exit;

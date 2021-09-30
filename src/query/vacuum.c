@@ -2465,6 +2465,7 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
 {
   int error_code = NO_ERROR;	/* Error code. */
   OID class_oid = OID_INITIALIZER;	/* Class OID. */
+  FILE_DESCRIPTORS file_descriptor;
   FILE_TYPE ftype;
 
   assert (helper != NULL);
@@ -2485,34 +2486,18 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
   assert (!OID_ISNULL (&class_oid));
 
   /* Get HFID for class OID. */
-  error_code = heap_get_class_info (thread_p, &class_oid, &helper->hfid, &ftype, NULL);
-  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+  error_code = file_descriptor_get (thread_p, vfid, &file_descriptor);
+  if (error_code != NO_ERROR)
     {
-      FILE_DESCRIPTORS file_descriptor;
-
-      /* clear expected error */
-      er_clear ();
-      error_code = NO_ERROR;
-
-      error_code = file_descriptor_get (thread_p, vfid, &file_descriptor);
+      assert_release (false);
+    }
+  else
+    {
+      helper->hfid = file_descriptor.heap.hfid;
+      error_code = file_get_type (thread_p, vfid, &ftype);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
-	}
-      else
-	{
-	  helper->hfid = file_descriptor.heap.hfid;
-	  error_code = file_get_type (thread_p, vfid, &ftype);
-	  if (error_code != NO_ERROR)
-	    {
-	      assert_release (false);
-	    }
-	  else
-	    {
-	      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_DROPPED_FILES, "%s",
-				     "vacuuming heap found deleted class oid, however hfid and file type "
-				     "have been successfully loaded from file header. ");
-	    }
 	}
     }
   if (error_code != NO_ERROR)

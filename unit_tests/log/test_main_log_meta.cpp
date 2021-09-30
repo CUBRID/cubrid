@@ -233,27 +233,27 @@ or_unpack_value (const char *buf, DB_VALUE *value)
 
 // checkpoint_info
 void
-cublog::checkpoint_info::pack (cubpacking::packer &serializator) const
+cublog::checkpoint_info::pack (cubpacking::packer &serializer) const
 {
-  serializator.pack_bigint (m_start_redo_lsa.pageid);
-  serializator.pack_int (m_start_redo_lsa.offset);
+  serializer.pack_bigint (m_start_redo_lsa.pageid);
+  serializer.pack_int (m_start_redo_lsa.offset);
 }
 
 size_t
-cublog::checkpoint_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+cublog::checkpoint_info::get_packed_size (cubpacking::packer &serializer, std::size_t start_offset) const
 {
-  size_t size = serializator.get_packed_bigint_size (start_offset);
-  size += serializator.get_packed_int_size (start_offset + size);
+  size_t size = serializer.get_packed_bigint_size (start_offset);
+  size += serializer.get_packed_int_size (start_offset + size);
   return size;
 }
 
 void
-cublog::checkpoint_info::unpack (cubpacking::unpacker &deserializator)
+cublog::checkpoint_info::unpack (cubpacking::unpacker &deserializer)
 {
   int64_t bigint;
   int i;
-  deserializator.unpack_bigint (bigint);
-  deserializator.unpack_int (i);
+  deserializer.unpack_bigint (bigint);
+  deserializer.unpack_int (i);
   m_start_redo_lsa = { bigint, static_cast<std::int16_t> (i) };
 }
 
