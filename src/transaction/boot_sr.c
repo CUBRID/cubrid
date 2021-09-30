@@ -2543,6 +2543,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * Now restart the recovery manager and execute any recovery actions
    */
 
+#if defined (SERVER_MODE)
+  // Initialize page buffer daemons first to allow page flushing in background.
+  pgbuf_daemons_init ();
+  if (!is_tran_server_with_remote_storage ())
+    {
+      dwb_daemons_init ();
+    }
+#endif
+
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
   error_code = boot_after_copydb (thread_p);	// only does something if this is first boot after copydb
@@ -2553,12 +2562,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  pgbuf_daemons_init ();
+  // Reset highest evicted LSA
   pgbuf_highest_evicted_lsa_init ();
-  if (!is_tran_server_with_remote_storage ())
-    {
-      dwb_daemons_init ();
-    }
+
   cdc_daemons_init ();
 #endif /* SERVER_MODE */
 
