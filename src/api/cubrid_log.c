@@ -43,11 +43,18 @@
 #include "dbi.h"
 
 #define CUBRID_LOG_ERROR_HANDLING(e, v) \
-  (err_code) = (e); \
+  do\
+    {\
+      (err_code) = (e); \
+      if(g_trace_log)\
+        {\
           sprintf(v, "FILE : %s, LINE : %d \n", __FILE__, __LINE__); \
           cubrid_log_set_tracelog_pointer (v); \
           fprintf (g_trace_log, v); \
-          goto cubrid_log_error
+        }\
+      goto cubrid_log_error; \
+    }\
+  while(0)
 
 typedef enum
 {
@@ -80,7 +87,7 @@ int g_extraction_table_count = 0;
 char **g_extraction_user;
 int g_extraction_user_count = 0;
 
-FILE *g_trace_log;
+FILE *g_trace_log = NULL;
 char g_trace_log_path[PATH_MAX + 1] = "./cubrid_tracelog.err";
 int g_trace_log_level = 0;
 int64_t g_trace_log_filesize = 10 * 1024 * 1024;	/* 10 MB */
@@ -1453,6 +1460,7 @@ cubrid_log_disconnect_server (void)
   if (g_trace_log != NULL)
     {
       fclose (g_trace_log);
+      g_trace_log = NULL;
     }
 
   css_free_conn (g_conn_entry);
@@ -1508,7 +1516,7 @@ cubrid_log_reset_globals (void)
 
   g_extraction_user_count = 0;
 
-  snprintf (g_trace_log_path, PATH_MAX + 1, "%s", "./");
+  snprintf (g_trace_log_path, PATH_MAX + 1, "%s", "./cubrid_tracelog.err");
   g_trace_log_level = 0;
   g_trace_log_filesize = 10 * 1024 * 1024;
 

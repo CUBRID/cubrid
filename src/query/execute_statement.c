@@ -167,8 +167,8 @@ struct eval_insert_value
 typedef struct reserved_class_info
 {
   OID oid;
+  CDC_DDL_OBJECT_TYPE objtype;
   char name[1024];
-
 } RESERVED_CLASS_INFO;
 
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
@@ -14686,11 +14686,52 @@ do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** reserve
 }
 
 static int
+do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TYPE * objtype)
+{
+  DB_OBJECT *class_obj;
+
+  if (type == PT_CLASS)
+    {
+      *objtype = CDC_TABLE;
+    }
+  else if (type == PT_VCLASS)
+    {
+      *objtype = CDC_VIEW;
+    }
+  else if (type == PT_MISC_DUMMY)
+    {
+      class_obj = db_find_class (classname);
+
+      if (db_is_vclass (class_obj))
+	{
+	  *objtype = CDC_VIEW;
+	}
+      else if (db_is_class (class_obj))
+	{
+	  *objtype = CDC_TABLE;
+	}
+      else
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+static int
 do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info)
 {
   int count = 0;
   PT_NODE *entity = NULL;
   PT_NODE *entity_spec = NULL;
+
+  const char *classname;
+  DB_OBJECT *class_obj;
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
     {
@@ -14714,9 +14755,20 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
-	  strcpy (cls_info[count]->name, entity->info.name.original);
+	  classname = entity->info.name.original;
+	  class_obj = db_find_class (classname);
 
-	  memcpy (&cls_info[count]->oid, ws_oid (db_find_class (cls_info[count]->name)), sizeof (OID));
+	  strcpy (cls_info[count]->name, classname);
+
+	  memcpy (&cls_info[count]->oid, ws_oid (class_obj), sizeof (OID));
+
+	  if (do_find_object_type (statement->info.drop.entity_type, classname, &cls_info[count]->objtype) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  assert (cls_info[count]->objtype == CDC_TABLE || cls_info[count]->objtype == CDC_VIEW);
+
 	  count++;
 	}
     }
@@ -14764,6 +14816,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
   OID *oid = NULL;
   int stmt_length = 0;
 
+  bool supp_appended = false;
+
   if (statement->sql_user_text == NULL || statement->sql_user_text_len == 0)
     {
       /* this should be loaddb. */
@@ -14781,69 +14835,153 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	  classoid = ws_oid (sm_find_class (classname));
 	  objtype = CDC_TABLE;
 	}
-      else
+      else if (statement->info.create_entity.entity_type == PT_VCLASS)
 	{
 	  objtype = CDC_VIEW;
 	}
+      else
+	{
+	  assert (false);
+	}
+
       break;
 
     case PT_ALTER:
       classname = statement->info.alter.entity_name->info.name.original;
       ddl_type = CDC_ALTER;
 
-      if (statement->info.alter.entity_type == PT_CLASS)
+      if (do_find_object_type (statement->info.alter.entity_type, classname, &objtype) != NO_ERROR)
 	{
-	  objtype = CDC_TABLE;
-	  classoid = ws_oid (sm_find_class (classname));
+	  return ER_FAILED;
 	}
-      else if (error == 0)
+
+      assert (objtype == CDC_TABLE || objtype == CDC_VIEW);
+
+      if (objtype == CDC_TABLE)
 	{
-	  objtype = CDC_VIEW;
+	  classoid = ws_oid (sm_find_class (classname));
 	}
 
       break;
 
     case PT_RENAME:
-      ddl_type = CDC_RENAME;
+      {
+	const PT_NODE *current_rename = NULL;
+	ddl_type = CDC_RENAME;
 
-      if (statement->info.rename.entity_type == PT_CLASS)
-	{
-	  objtype = CDC_TABLE;
-	}
-      else if (error == 0)
-	{
-	  objtype = CDC_VIEW;
-	}
+	for (current_rename = statement; current_rename != NULL; current_rename = current_rename->next)
+	  {
+	    char rename_statement[1024] = "\0";
+	    const char *new_name = current_rename->info.rename.new_name->info.name.original;
+	    const char *old_name = current_rename->info.rename.old_name->info.name.original;
 
-      break;
+	    /* Bug : statement->info.rename.entity_type always has PT_CLASS 
+	     * when rename view1 as view2 or rename table1 as table2. So, objtype can not be classified with entity_type */
+	    if (do_find_object_type (PT_MISC_DUMMY, new_name, &objtype) != NO_ERROR)
+	      {
+		return ER_FAILED;
+	      }
 
+	    assert (objtype == CDC_TABLE || objtype == CDC_VIEW);
+
+
+	    if (objtype == CDC_VIEW)
+	      {
+		sprintf (rename_statement, "rename view %s as %s", old_name, new_name);
+	      }
+	    else if (objtype == CDC_TABLE)
+	      {
+		classoid = ws_oid (sm_find_class (new_name));
+		sprintf (rename_statement, "rename table %s as %s", old_name, new_name);
+	      }
+	    else
+	      {
+		assert (false);
+	      }
+
+	    error = log_supplement_statement (ddl_type, objtype, classoid, classoid, rename_statement);
+	  }
+
+	supp_appended = true;
+
+	break;
+      }
     case PT_DROP:
-      if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
-	{
-	  return NO_ERROR;
-	}
+      {
+	if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
+	  {
+	    return NO_ERROR;
+	  }
 
-      if (statement->info.drop.entity_type == PT_CLASS)
-	{
-	  objtype = CDC_TABLE;
-	}
-      else
-	{
-	  objtype = CDC_VIEW;
-	}
+	ddl_type = CDC_DROP;
 
-      ddl_type = CDC_DROP;
+	if (cls_info != NULL)
+	  {
+	    while (cls_info[num_class] != NULL)
+	      {
+		num_class++;
+	      }
+	  }
 
-      if (cls_info != NULL)
-	{
-	  while (cls_info[num_class] != NULL)
-	    {
-	      num_class++;
-	    }
-	}
 
-      break;
+	for (int i = 0; i < num_class; i++)
+	  {
+	    pre_drop_length =
+	      ((cls_info[i]->objtype ==
+		CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix)) + strlen (if_exist_statement) +
+	      strlen (cascade_statement) + 2;
 
+	    drop_stmt_length = pre_drop_length + strlen (cls_info[i]->name);
+	    drop_stmt = (char *) malloc (drop_stmt_length * 2);
+	    if (drop_stmt == NULL)
+	      {
+		goto end;
+	      }
+
+	    if (cls_info[i]->objtype == CDC_TABLE)
+	      {
+		strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
+		drop_copied_length = strlen (drop_prefix);
+	      }
+	    else if (cls_info[i]->objtype == CDC_VIEW)
+	      {
+		strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix));
+		drop_copied_length = strlen (drop_view_prefix);
+	      }
+	    else
+	      {
+		assert (false);
+	      }
+
+	    if (statement->info.drop.if_exists)
+	      {
+		strncpy (drop_stmt + drop_copied_length, if_exist_statement, strlen (if_exist_statement));
+		drop_copied_length += strlen (if_exist_statement);
+	      }
+
+	    strncpy (drop_stmt + drop_copied_length, cls_info[i]->name, strlen (cls_info[i]->name));
+	    drop_copied_length += strlen (cls_info[i]->name);
+
+	    if (statement->info.drop.is_cascade_constraints)
+	      {
+		strncpy (drop_stmt + drop_copied_length, cascade_statement, strlen (cascade_statement));
+		drop_copied_length += strlen (cascade_statement);
+	      }
+
+	    drop_stmt[drop_copied_length] = '\0';
+
+	    error =
+	      log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid,
+					drop_stmt);
+
+	    free_and_init (drop_stmt);
+	    free_and_init (cls_info[i]);
+	  }
+
+	supp_appended = true;
+
+	break;
+      }
     case PT_CREATE_INDEX:
       {
 	BTID index;
@@ -15187,78 +15325,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       stmt_text = sbr_text;
     }
 
-  /* To manage multi object ddl statement. like drop table t1, t2 or rename t1 to t2, t3 to t4, .. */
-  if (statement->node_type == PT_DROP)
-    {
-      pre_drop_length =
-	((objtype ==
-	  CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix)) + strlen (if_exist_statement) +
-	strlen (cascade_statement) + 2;
-
-      for (int i = 0; i < num_class; i++)
-	{
-	  drop_stmt_length = pre_drop_length + strlen (cls_info[i]->name);
-	  drop_stmt = (char *) malloc (drop_stmt_length * 2);
-	  if (drop_stmt == NULL)
-	    {
-	      goto end;
-	    }
-
-	  if (objtype == CDC_TABLE)
-	    {
-	      strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
-	      drop_copied_length = strlen (drop_prefix);
-	    }
-	  else
-	    {
-	      strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix));
-	      drop_copied_length = strlen (drop_view_prefix);
-	    }
-
-	  if (statement->info.drop.if_exists)
-	    {
-	      strncpy (drop_stmt + drop_copied_length, if_exist_statement, strlen (if_exist_statement));
-	      drop_copied_length += strlen (if_exist_statement);
-	    }
-
-	  strncpy (drop_stmt + drop_copied_length, cls_info[i]->name, strlen (cls_info[i]->name));
-	  drop_copied_length += strlen (cls_info[i]->name);
-
-	  if (statement->info.drop.is_cascade_constraints)
-	    {
-	      strncpy (drop_stmt + drop_copied_length, cascade_statement, strlen (cascade_statement));
-	      drop_copied_length += strlen (cascade_statement);
-	    }
-
-	  drop_stmt[drop_copied_length] = '\0';
-
-	  error = log_supplement_statement (ddl_type, objtype, &cls_info[i]->oid, &cls_info[i]->oid, drop_stmt);
-
-	  free_and_init (drop_stmt);
-	  free_and_init (cls_info[i]);
-	}
-    }
-  else if (statement->node_type == PT_RENAME)
-    {
-      const PT_NODE *current_rename = NULL;
-
-      for (current_rename = statement; current_rename != NULL; current_rename = current_rename->next)
-	{
-	  char rename_statement[1024] = "\0";
-	  const char *new_name = current_rename->info.rename.new_name->info.name.original;
-	  const char *old_name = current_rename->info.rename.old_name->info.name.original;
-
-	  if (objtype == CDC_TABLE)
-	    {
-	      classoid = ws_oid (sm_find_class (new_name));
-	    }
-
-	  sprintf (rename_statement, "rename table %s as %s", old_name, new_name);
-
-	  error = log_supplement_statement (ddl_type, objtype, classoid, classoid, rename_statement);
-	}
-    }
-  else
+  if (!supp_appended)
     {
       error = log_supplement_statement (ddl_type, objtype, classoid, oid, stmt_text);
     }
