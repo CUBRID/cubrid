@@ -517,33 +517,28 @@ cubrid_log_error:
 }
 
 static int
-cubrid_log_db_login (char *dbname, char *id, char *password)
+cubrid_log_db_login (char *dbname, char *username, char *password)
 {
   MOP user;
-  int error = NO_ERROR;
 
-  error = db_restart ("cubrid_log_api", TRUE, dbname);
-  if (error != NO_ERROR)
+  if (db_restart ("cubrid_log_api", 0, dbname) != NO_ERROR)
     {
       return CUBRID_LOG_FAILED_LOGIN;
     }
 
-  user = au_find_user (id);
+  user = au_find_user (username);
   if (user == NULL)
     {
-      error = CUBRID_LOG_FAILED_LOGIN;
       goto error;
     }
 
   if (!au_is_dba_group_member (user))
     {
-      error = CUBRID_LOG_FAILED_LOGIN;
       goto error;
     }
 
-  if (db_login (id, password) != NO_ERROR)
+  if (db_login (username, password) != NO_ERROR)
     {
-      error = CUBRID_LOG_FAILED_LOGIN;
       goto error;
     }
 
@@ -555,7 +550,7 @@ error:
 
   db_shutdown ();
 
-  return error;
+  return CUBRID_LOG_FAILED_LOGIN;
 }
 
 /*
