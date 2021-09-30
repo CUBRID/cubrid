@@ -2957,6 +2957,10 @@ create_stmt
 
 				    p->info.create_synonym.synonym_owner_name = synonym->info.dot.arg1;
 				    p->info.create_synonym.synonym_name = synonym->info.dot.arg2;
+
+				    synonym->info.dot.arg1 = NULL; /* cut */
+				    synonym->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, synonym);
 				  }
 				else
 				  {
@@ -2980,6 +2984,10 @@ create_stmt
 
 				    p->info.create_synonym.target_owner_name = target->info.dot.arg1;
 				    p->info.create_synonym.target_name = target->info.dot.arg2;
+
+				    target->info.dot.arg1 = NULL; /* cut */
+				    target->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, target);
 				  }
 				else
 				  {
@@ -3752,6 +3760,10 @@ alter_stmt
 
 				    p->info.alter_synonym.synonym_owner_name = synonym->info.dot.arg1;
 				    p->info.alter_synonym.synonym_name = synonym->info.dot.arg2;
+
+				    synonym->info.dot.arg1 = NULL; /* cut */
+				    synonym->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, synonym);
 				  }
 				else
 				  {
@@ -3775,6 +3787,10 @@ alter_stmt
 
 				    p->info.alter_synonym.target_owner_name = target->info.dot.arg1;
 				    p->info.alter_synonym.target_name = target->info.dot.arg2;
+
+				    target->info.dot.arg1 = NULL; /* cut */
+				    target->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, target);
 				  }
 				else
 				  {
@@ -3899,6 +3915,10 @@ rename_stmt
 
 				    p->info.rename_synonym.old_owner_name = old_synonym->info.dot.arg1;
 				    p->info.rename_synonym.old_name = old_synonym->info.dot.arg2;
+
+				    old_synonym->info.dot.arg1 = NULL; /* cut */
+				    old_synonym->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, old_synonym);
 				  }
 				else
 				  {
@@ -3922,6 +3942,10 @@ rename_stmt
 
 				    p->info.rename_synonym.new_owner_name = new_synonym->info.dot.arg1;
 				    p->info.rename_synonym.new_name = new_synonym->info.dot.arg2;
+
+				    new_synonym->info.dot.arg1 = NULL; /* cut */
+				    new_synonym->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, new_synonym);
 				  }
 				else
 				  {
