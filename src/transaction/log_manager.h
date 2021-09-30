@@ -244,6 +244,7 @@ extern int cdc_cleanup ();
 extern int cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa);
 extern int cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info);
 
+extern int cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern int cdc_set_extraction_lsa (LOG_LSA * lsa);
 extern void cdc_reinitialize_queue (LOG_LSA * start_lsa);
 
