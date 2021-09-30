@@ -726,12 +726,11 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
    * Last,   UNDO going backwards
    */
 
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 0);
+
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
   log_recovery_analysis (thread_p, &rcv_lsa, &start_redolsa, &end_redo_lsa, ismedia_crash, stopat, &did_incom_recovery,
 			 &num_redo_log_records);
-
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 3, num_redo_log_records,
-	  start_redolsa.pageid, end_redo_lsa.pageid);
 
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
 
