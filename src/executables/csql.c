@@ -1023,7 +1023,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
-	      au_disable ();
+	      au_sysadm_disable ();
 	    }
 	  csql_Database_connected = true;
 
@@ -1818,6 +1818,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
   logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
   logddl_set_commit_mode (csql_is_auto_commit_requested (csql_arg));
+
+  if (csql_Is_interactive)
+    {
+      csql_yyset_lineno (1);
+    }
 
   /* execute the statements one-by-one */
   for (num_stmts = 0; num_stmts < total; num_stmts++)
@@ -2872,7 +2877,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_disable ();
+      au_sysadm_disable ();
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */

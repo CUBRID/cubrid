@@ -4867,7 +4867,6 @@ pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  *   return: void
  *   bufptr(in): pointer to buffer page
  *
- * Note: This function is used for debugging.
  */
 STATIC_INLINE void
 pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr)
@@ -4894,6 +4893,12 @@ pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr)
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_1 = 0;
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_2 = 0;
 	  bufptr->iopage_buffer->iopage.prv.tde_nonce = 0;
+	}
+      else
+	{
+	  /* values not reset upon page deallocation */
+	  assert (bufptr->iopage_buffer->iopage.prv.volid == bufptr->vpid.volid);
+	  assert (bufptr->iopage_buffer->iopage.prv.pageid == bufptr->vpid.pageid);
 	}
     }
 }
@@ -5085,7 +5090,7 @@ pgbuf_initialize_bcb_table (void)
       ioptr->iopage.prv.pageid = -1;
       ioptr->iopage.prv.volid = -1;
 
-      ioptr->iopage.prv.ptype = '\0';
+      ioptr->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
       ioptr->iopage.prv.pflag = '\0';
       ioptr->iopage.prv.p_reserve_1 = 0;
       ioptr->iopage.prv.p_reserve_2 = 0;
@@ -10665,7 +10670,7 @@ pgbuf_scramble (FILEIO_PAGE * iopage)
   iopage->prv.pageid = -1;
   iopage->prv.volid = -1;
 
-  iopage->prv.ptype = '\0';
+  iopage->prv.ptype = (unsigned char) PAGE_UNKNOWN;
   iopage->prv.pflag = '\0';
   iopage->prv.p_reserve_1 = 0;
   iopage->prv.p_reserve_2 = 0;
@@ -14222,7 +14227,7 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 #endif /* !NDEBUG */
 
   /* set unknown type */
-  bcb->iopage_buffer->iopage.prv.ptype = (char) PAGE_UNKNOWN;
+  bcb->iopage_buffer->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
   /* clear page flags (now only tde algorithm) */
   bcb->iopage_buffer->iopage.prv.pflag = (unsigned char) 0;
 
