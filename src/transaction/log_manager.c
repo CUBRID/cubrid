@@ -12276,7 +12276,6 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
       for (i = 0; i < attr_info.num_values; i++)
 	{
-	  // if (attr_info.values[i]->read_attrper != NULL) ? 
 	  heap_value = &attr_info.values[i];
 	  if (heap_value->read_attrepr == NULL)
 	    {
@@ -12365,6 +12364,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   ptr = or_pack_string (ptr, user);
   ptr = or_pack_int (ptr, dataitem_type);
   memcpy (&b_classoid, &classoid, sizeof (uint64_t));
+
   switch (dml_type)
     {
     case CDC_INSERT:
