@@ -12245,7 +12245,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   int record_length = 0;
 
   char *loginfo_buf = NULL;
-  OID partitioned_classoid;
+  OID partitioned_classoid = OID_INITIALIZER;
 
   /* when partition class oid input, it is required to be changed to partitioned class oid  */
 
