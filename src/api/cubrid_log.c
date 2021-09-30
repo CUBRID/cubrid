@@ -34,6 +34,7 @@
 #include <assert.h>
 #include <limits.h>
 
+#include "authenticate.h"
 #include "connection_cl.h"
 #include "connection_list_cl.h"
 #include "cubrid_log.h"
@@ -41,6 +42,7 @@
 #include "network.h"
 #include "object_representation.h"
 #include "dbi.h"
+#include "dbtype_def.h"
 
 #define CUBRID_LOG_ERROR_HANDLING(e, v) \
   do\
@@ -514,6 +516,43 @@ cubrid_log_error:
   return err_code;
 }
 
+static int
+cubrid_log_db_login (char *dbname, char *username, char *password)
+{
+  MOP user;
+
+  if (db_restart ("cubrid_log_api", 0, dbname) != NO_ERROR)
+    {
+      return CUBRID_LOG_FAILED_LOGIN;
+    }
+
+  user = au_find_user (username);
+  if (user == NULL)
+    {
+      goto error;
+    }
+
+  if (!au_is_dba_group_member (user))
+    {
+      goto error;
+    }
+
+  if (db_login (username, password) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_shutdown ();
+
+  return CUBRID_LOG_SUCCESS;
+
+error:
+
+  db_shutdown ();
+
+  return CUBRID_LOG_FAILED_LOGIN;
+}
+
 /*
  * cubrid_log_connect_server () -
  *   return:
@@ -573,7 +612,7 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *p
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PASSWORD, trace_errbuf);
     }
 
-  if (db_login (id, password) != NO_ERROR)
+  if (cubrid_log_db_login (dbname, id, password) != CUBRID_LOG_SUCCESS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, trace_errbuf);
     }
