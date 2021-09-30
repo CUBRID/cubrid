@@ -12394,7 +12394,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       ptr = or_pack_int64 (ptr, b_classoid);
       for (i = 0; i < attr_info.num_values; i++)
 	{
-	  if ((error_code = cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i])) > 0)
+	  if (cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i]) > 0)
 	    {
 	      changed_col_idx[cnt++] = i;	//TODO: replace i with def_order to reduce memory alloc and copy 
 	    }
@@ -12515,18 +12515,14 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
   error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
 
-  free_and_init (loginfo_buf);
-
   cdc_log ("cdc_make_dml_loginfo : success to generated dml log info. length:%d", dml_entry->length);
 
 error:
 
-  if (loginfo_buf)
+  if (loginfo_buf != NULL)
     {
       free_and_init (loginfo_buf);
     }
-
-end:
 
   if (changed_col_idx != NULL)
     {
