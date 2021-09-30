@@ -332,7 +332,7 @@ static int cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *us
 static int cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LOGINFO_ENTRY * dcl_entry);
 static int cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY * timer_entry);
 static int cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA lsa, int trid, char **user);
-static int cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpdata);
+static int cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * old_value);
 static int cdc_put_value_to_loginfo (db_value * new_value, char **ptr);
 
 static int cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time);
@@ -12163,7 +12163,7 @@ cdc_make_error_loginfo (int trid, char *user, CDC_DML_TYPE dml_type, OID classoi
   if (loginfo_buf == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto end;
+      goto error;
     }
 
   ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
@@ -12185,13 +12185,16 @@ cdc_make_error_loginfo (int trid, char *user, CDC_DML_TYPE dml_type, OID classoi
     {
       cdc_log ("cdc_make_error_loginfo : failed to allocate memory for log info in dml log entry");
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto end;
+      goto error;
     }
 
   memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
-  error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
 
-end:
+  free_and_init (loginfo_buf);
+
+  return ER_CDC_LOGINFO_ENTRY_GENERATED;
+
+error:
   if (loginfo_buf != NULL)
     {
       free_and_init (loginfo_buf);
@@ -12569,6 +12572,8 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
   int dataitem_type = CDC_DDL;
   char *loginfo_buf = NULL;;
 
+  int error_code = NO_ERROR;
+
   ptr = PTR_ALIGN (supplement_data, MAX_ALIGNMENT);
 
   ptr = or_unpack_int (ptr, &ddl_type);
@@ -12579,7 +12584,8 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
     {
       if (oid_is_system_class (&classoid) || !cdc_is_filtered_class (classoid))
 	{
-	  return ER_CDC_IGNORE_LOG_INFO;
+	  error_code = ER_CDC_IGNORE_LOG_INFO;
+	  goto error;
 	}
     }
 
@@ -12600,11 +12606,11 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
 		    + OR_INT_SIZE
 		    + OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE + OR_BIGINT_SIZE + OR_INT_SIZE + statement_length);
 
-//    char loginfo_buf[loginfo_length * 2 + MAX_ALIGNMENT];
   loginfo_buf = (char *) malloc (loginfo_length * 2 + MAX_ALIGNMENT);
   if (loginfo_buf == NULL)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
@@ -12625,7 +12631,8 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
   ddl_entry->log_info = (char *) malloc (ddl_entry->length);
   if (ddl_entry->log_info == NULL)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   memcpy (ddl_entry->log_info, start_ptr, ddl_entry->length);
@@ -12635,6 +12642,15 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
   cdc_log ("cdc_make_ddl_loginfo : success to generated ddl log info. length:%d", ddl_entry->length);
 
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
+
+error:
+
+  if (loginfo_buf != NULL)
+    {
+      free_and_init (loginfo_buf);
+    }
+
+  return error_code;
 }
 
 static int
@@ -12645,6 +12661,8 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   char *ptr, *start_ptr;
   int length = 0;
   char *loginfo_buf = NULL;
+
+  int error_code = NO_ERROR;
 
   switch (log_type)
     {
@@ -12666,7 +12684,8 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   loginfo_buf = (char *) malloc (length * 2 + MAX_ALIGNMENT);
   if (loginfo_buf == NULL)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
@@ -12683,7 +12702,8 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   if (dcl_entry->log_info == NULL)
     {
       cdc_log ("cdc_make_dcl_loginfo : failed to allocate memory for log info in dcl entry", trid, user, dcl_type);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   memcpy (dcl_entry->log_info, start_ptr, dcl_entry->length);
@@ -12692,6 +12712,15 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   cdc_log ("cdc_make_dcl_loginfo : success to generated dcl log info. length:%d", dcl_entry->length);
 
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
+
+error:
+
+  if (loginfo_buf != NULL)
+    {
+      free_and_init (loginfo_buf);
+    }
+
+  return error_code;
 }
 
 static int
@@ -12704,10 +12733,13 @@ cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY 
   length = (OR_INT_SIZE + OR_INT_SIZE + or_packed_string_length (user, NULL) + OR_INT_SIZE + OR_BIGINT_SIZE);
   char *loginfo_buf = NULL;
 
+  int error_code = NO_ERROR;
+
   loginfo_buf = (char *) malloc (length * 2 + MAX_ALIGNMENT);
   if (loginfo_buf == NULL)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
@@ -12722,7 +12754,8 @@ cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY 
   timer_entry->log_info = (char *) malloc (timer_entry->length);
   if (timer_entry->log_info == NULL)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   memcpy (timer_entry->log_info, start_ptr, timer_entry->length);
@@ -12731,6 +12764,15 @@ cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY 
 
   cdc_log ("cdc_make_timer_loginfo : success to generated timer log info. length:%d", timer_entry->length);
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
+
+error:
+
+  if (loginfo_buf != NULL)
+    {
+      free_and_init (loginfo_buf);
+    }
+
+  return error_code;
 }
 
 static int
@@ -12800,14 +12842,14 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa
 }
 
 static int
-cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * cmpdata)
+cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * old_value)
 {
   /* return 1 if different */
   /* return 0 if same */
 
-  assert (new_value != NULL || cmpdata != NULL);
+  assert (new_value != NULL && old_value != NULL);
 
-  return db_value_compare (new_value, cmpdata) == 0 ? 0 : 1;
+  return db_value_compare (new_value, old_value) == 0 ? 0 : 1;
 }
 
 static int
