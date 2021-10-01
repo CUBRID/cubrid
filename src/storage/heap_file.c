@@ -23259,6 +23259,13 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	}
     }
 
+  if (context->do_supplemental_log == true)
+    {
+      (void) log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
+					  &context->supp_redo_lsa);
+    }
+
+
 exit:
 
   /* unfix or cache home page */
@@ -23280,12 +23287,6 @@ exit:
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_UPDATE_END (&context->class_oid, (rc != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
-
-  if (context->do_supplemental_log == true)
-    {
-      (void) log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
-					  &context->supp_redo_lsa);
-    }
 
   return rc;
 }
