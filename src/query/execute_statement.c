@@ -17293,10 +17293,10 @@ int
 do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   char synonym_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
-  OID *synonym_owner = NULL;
+  DB_OBJECT *synonym_owner = NULL;
   const char *target_name = NULL;
   const char *target_owner_name = NULL;
-  OID *target_owner = NULL;
+  DB_OBJECT *target_owner = NULL;
   int is_public_synonym = 0;
   const char *comment = NULL;
 
@@ -17306,74 +17306,86 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Initialization */
   memset (synonym_downcase_name, '\0', sizeof (char) * SM_MAX_IDENTIFIER_LENGTH);
 
-  /* synonym_name */
-  if (statement && statement->info.create_synonym.synonym_name)
+  if (statement)
     {
-      assert (statement->info.create_synonym.synonym_name->node_type == PT_NAME);
-
-      const char *synonym_name = statement->info.create_synonym.synonym_name->info.name.original;
-      sm_downcase_name (synonym_name, synonym_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
-    }
-
-  /* synonym_owner */
-  synonym_owner = db_get_user (); /* current user OID */
-
-  /* target_name, target_owner
-   *  - target_owner can be null.
-   */
-  if (statement && statement->info.create_synonym.target_name)
-    {
-      assert (statement->info.create_synonym.target_name->node_type == PT_NAME);
-
-      target_name = statement->info.create_synonym.target_name->info.name.original;
-      target_owner_name = statement->info.create_synonym.target_owner_name->info.name.original;
-      target_owner = db_find_user (target_owner_name);
-    }
-
-  /* is_public_synonym
-   *  - Only DBA users and members of the DBA group can create public synonyms.
-   *  - Otherwise, an error occurs.
-   */
-  if (statement && statement->info.create_synonym.access_modifier == PT_PUBLIC)
-    {
-      if (au_is_dba_group_member (db_get_user ())) /* current user */
+      /* synonym_name */
+      if (statement->info.create_synonym.synonym_name)
 	{
-          is_public_synonym = 1;
+	  assert (statement->info.create_synonym.synonym_name->node_type == PT_NAME);
+
+	  const char *synonym_name = statement->info.create_synonym.synonym_name->info.name.original;
+	  sm_downcase_name (synonym_name, synonym_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
+	}
+
+      /* synonym_owner */
+      synonym_owner = db_get_user (); /* current user OID */
+
+      /* target_name */
+      if (statement->info.create_synonym.target_name)
+	{
+	  assert (statement->info.create_synonym.target_name->node_type == PT_NAME);
+
+	  target_name = statement->info.create_synonym.target_name->info.name.original;
+	}
+
+      /* target_owner */
+      if (statement->info.create_synonym.target_owner_name)
+	{
+	  assert (statement->info.create_synonym.target_owner_name->node_type == PT_NAME);
+
+	  target_owner_name = statement->info.create_synonym.target_owner_name->info.name.original;
+	  target_owner = db_find_user (target_owner_name);
 	}
       else
         {
-	  /* To Do: Exception handling */
-	  goto end;
+	  target_owner = synonym_owner;
 	}
-    }
-  else
-    {
-	assert (statement && statement->info.create_synonym.access_modifier == PT_PRIVATE)
 
-	is_public_synonym = 0;
-    }
-
-  /* comment */
-  if (statement && statement->info.create_synonym.comment)
-    {
-      assert (statement->info.create_synonym.comment->node_type == PT_VALUE);
-      
-      comment = (char *) PT_VALUE_GET_BYTES (statement->info.create_synonym.comment);
-      
-      if (comment == NULL)
+      /* is_public_synonym
+       *  - Only DBA users and members of the DBA group can create public synonyms.
+       *  - Otherwise, an error occurs.
+       */
+      if (statement->info.create_synonym.access_modifier == PT_PUBLIC)
 	{
-	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
-	  goto end;
+	  if (au_is_dba_group_member (db_get_user ())) /* current user */
+	    {
+	      is_public_synonym = 1;
+	    }
+	  else
+	    {
+	      /* To Do: Exception handling */
+	      goto end;
+	    }
 	}
+      else
+	{
+	  assert (statement && statement->info.create_synonym.access_modifier == PT_PRIVATE);
+
+	  is_public_synonym = 0;
+	}
+
+      /* comment */
+      if (statement->info.create_synonym.comment)
+	{
+	  assert (statement->info.create_synonym.comment->node_type == PT_VALUE);
+      
+	  comment = (char *) PT_VALUE_GET_BYTES (statement->info.create_synonym.comment);
+      
+	  if (comment == NULL)
+	    {
+	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	      goto end;
+	    }
+	}
+
+      AU_DISABLE (au_save);
+
+      /* A synonym is created by inserting a synonym object into the _db_synonym class. */
+      error = do_create_synonym_internal (synonym_downcase_name, synonym_owner, target_name, target_owner,
+					  is_public_synonym, comment);
+
+      AU_ENABLE (au_save);
     }
-
-  AU_DISABLE (au_save);
-
-  /* A synonym is created by inserting a synonym object into the _db_synonym class. */
-  error = do_create_synonym_internal (synonym_downcase_name, synonym_owner, target_name, target_owner,
-                                      is_public_synonym, comment);
-
-  AU_ENABLE (au_save);
 
 end:
   return error;
@@ -17427,8 +17439,8 @@ do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   A synonym is created by inserting a synonym object into the _db_synonym class.
  */
 static int
-do_create_synonym_internal (const char * synonym_name, OID * synonym_owner, const char * target_name,
-			    OID * target_owner, const int is_public_synonym, const char * comment)
+do_create_synonym_internal (const char * synonym_name, DB_OBJECT * synonym_owner, const char * target_name,
+			    DB_OBJECT * target_owner, const int is_public_synonym, const char * comment)
 {
   DB_OBJECT *class_obj = NULL;
   DB_OTMPL *obj_tmpl = NULL;
@@ -17447,8 +17459,8 @@ do_create_synonym_internal (const char * synonym_name, OID * synonym_owner, cons
   class_obj = sm_find_class (CT_SYNONYM_NAME);
   if (class_obj == NULL)
     {
-      error = ER_QPROC_DB_SYNONYM_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
       goto end;
     }
 
@@ -17472,7 +17484,7 @@ do_create_synonym_internal (const char * synonym_name, OID * synonym_owner, cons
     }
 
   /* synonym_owner */
-  db_make_oid (&value, synonym_owner);
+  db_make_object (&value, synonym_owner);
   error = dbt_put_internal (obj_tmpl, "synonym_owner", &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -17494,7 +17506,7 @@ do_create_synonym_internal (const char * synonym_name, OID * synonym_owner, cons
     }
 
   /* target_owner */
-  db_make_oid (&value, target_owner);
+  db_make_object (&value, target_owner);
   error = dbt_put_internal (obj_tmpl, "target_owner", &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)

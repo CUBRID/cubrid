@@ -4020,7 +4020,7 @@ boot_define_synonym (MOP class_mop)
 {
   SM_TEMPLATE *def;
   int error_code = NO_ERROR;
-  const char *primary_key_col_names[] = { "synonym_name", "synonym_owner", NULL };
+  const char *primary_key_col_names[] = { "synonym_name", "synonym_owner", "is_public_synonym", NULL };
   const char *index_col_names[] = { "synonym_owner", "is_public_synonym", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
@@ -4083,7 +4083,7 @@ boot_define_synonym (MOP class_mop)
       return error_code;
     }
 
-  error_code = db_constrain_non_null (class_mop, "is_public_synonym", 0, 1);
+  error_code = db_constrain_non_null (class_mop, "target_owner", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5574,16 +5574,17 @@ boot_define_view_synonym (void)
 	}
     }
 
+  /* Use ORDER BY to get PRIVATE SYNONYM first. */
   sprintf (stmt, "SELECT [s].[synonym_name], CAST([s].[synonym_owner].[name] AS VARCHAR(255)), [s].[target_name], "
 		 "CAST([s].[target_owner].[name] AS VARCHAR(255)), "
 		 "CASE WHEN [s].[is_public_synonym] = 1 THEN 'YES' ELSE 'NO' END, [s].[comment]"
 		 "FROM [%s] [s]"
 		 "WHERE (CURRENT_USER = 'DBA') "
-		 "OR ([s].[is_public_synonym] = 1 AND [s].[synonym_owner].[name] = 'DBA') "
+		 "OR ([s].[is_public_synonym] = 1) "
 		 "OR ([s].[is_public_synonym] = 0 AND [s].[synonym_owner].[name] = CURRENT_USER)"
 		 "OR ([s].[is_public_synonym] = 0 AND [s].[synonym_owner].[name] IN "
-		 "(SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER)"
-		 ")",  CT_SYNONYM_NAME, AU_USER_CLASS_NAME);
+		 "(SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER))"
+		 "ORDER BY [is_public_synonym]",  CT_SYNONYM_NAME, AU_USER_CLASS_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
