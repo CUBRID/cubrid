@@ -12967,54 +12967,18 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       }
       break;
     case DB_TYPE_CHAR:
-      {
-	const char *str;
-	int length;
-	func_type = 7;
+      func_type = 7;
 
-	str = db_get_char (new_value, &length);
-
-	ptr = or_pack_int (ptr, func_type);
-	ptr = or_pack_string_with_length (ptr, str, length - 1);
-	break;
-      }
-    case DB_TYPE_VARCHAR:
-      {
-	func_type = 7;
-	ptr = or_pack_int (ptr, func_type);
-	ptr = or_pack_string (ptr, db_get_string (new_value));
-
-	break;
-      }
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string_with_length (ptr, db_get_string (new_value), new_value->domain.char_info.length - 1);
+      break;
     case DB_TYPE_NCHAR:
+    case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
-      {
-	int size;
-	char *result = NULL;
-	const char *temp_string = NULL;
-	temp_string = db_get_nchar (new_value, &size);
-	if (temp_string != NULL)
-	  {
-	    result = (char *) malloc (size + 4);
-	    if (result == NULL)
-	      {
-		return ER_OUT_OF_VIRTUAL_MEMORY;
-	      }
-
-	    snprintf (result, size + 4, "N'%s'", temp_string);
-	  }
-
-	func_type = 7;
-	ptr = or_pack_int (ptr, func_type);
-	ptr = or_pack_string (ptr, result);
-
-	if (result != NULL)
-	  {
-	    free_and_init (result);
-	  }
-
-	break;
-      }
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string (ptr, db_get_string (new_value));
+      break;
 #define TOO_BIG_TO_MATTER       1024
     case DB_TYPE_TIME:
       db_make_char (&format, strlen (time_format), time_format,
