@@ -5584,7 +5584,7 @@ boot_define_view_synonym (void)
 	   "OR ([s].[is_public_synonym] = 0 AND [s].[synonym_owner].[name] = CURRENT_USER)"
 	   "OR ([s].[is_public_synonym] = 0 AND [s].[synonym_owner].[name] IN "
 	   "(SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER))"
-	   "ORDER BY [is_public_synonym]",  CT_SYNONYM_NAME, AU_USER_CLASS_NAME);
+	   "ORDER BY [is_public_synonym]", CT_SYNONYM_NAME, AU_USER_CLASS_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
