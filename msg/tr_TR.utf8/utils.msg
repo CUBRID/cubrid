@@ -289,7 +289,7 @@ geçerli opsiyonlar:\n\
   -C, --CS-mode                istemci-sunucu modunda yürütme\n\
       --no-check               veritabanının tutarlılığını kontrol etmez; varsayılan: kontrol edin\n\
   -t, --thread-count=COUNT     Konu sayısı; Varsayılan olarak: 0 (otomatik)\n\
-  -z, --compress               yedekleme birimleri sıkıştırmak; varsayılan: sıkıştırmayı açma\n\
+      --no-compress            yedekleme birimlerini sıkıştırmayın; varsayılan: sıkıştırma\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
   -k, --separate-keys          TDE için anahtarlar dosyası (_keys) yedekleme birimine dahil değildir, bunun yerine bir dosyaya ayrılmıştır\n\
       --page-server            run on the page server; default: runs on the transaction\n

@@ -449,7 +449,7 @@ namespace cublog
   replicate_btree_stats (cubthread::entry &thread_entry, const VPID &root_vpid, const log_unique_stats &stats,
 			 const log_lsa &record_lsa)
   {
-    PAGE_PTR root_page = log_rv_redo_fix_page (&thread_entry, &root_vpid, RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT);
+    PAGE_PTR root_page = log_rv_redo_fix_page (&thread_entry, &root_vpid);
     if (root_page == nullptr)
       {
 	logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "cublog::replicate_btree_stats");

@@ -50,6 +50,9 @@ extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
 extern void css_free_conn (CSS_CONN_ENTRY * conn);
 
+extern CSS_CONN_ENTRY *css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
+					   const char *message_to_master, int message_to_master_length, int port,
+					   int timeout, unsigned short *rid, bool send_magic);
 extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *message_to_master,
 						     int message_to_master_length);
 

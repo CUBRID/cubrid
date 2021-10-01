@@ -155,7 +155,7 @@ namespace cublog
   void
   checkpoint_info::load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa)
   {
-    if (tdes.trid != NULL_TRANID && !LSA_ISNULL (&tdes.tail_lsa))
+    if (tdes.trid != NULL_TRANID && !tdes.tail_lsa.is_null () && tdes.commit_abort_lsa.is_null ())
       {
 	m_trans.emplace_back ();
 	tran_info &chkpt_tran = m_trans.back ();
