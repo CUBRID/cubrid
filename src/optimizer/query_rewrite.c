@@ -1300,7 +1300,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   PT_NODE *join_term, *join_term_list, *s_name1, *s_name2;
   PT_NAME_SPEC_INFO info1, info2;
   int spec1_cnt, spec2_cnt;
-  bool found_equality_term, found_join_term;
+  bool found_equality_term, found_join_term, is_from_derived_table = false;
   PT_NODE *spec, *derived_table, *attr, *col;
   int i, num_check, idx;
   PT_NODE *save_where_next;
@@ -1314,6 +1314,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
   while ((expr = *wherep))
     {
+      is_from_derived_table = false;
       col = NULL;		/* init - reserve for constant column of derived-table */
 
       /* check for 1st phase; keep out OR conjunct; 1st init */
@@ -1438,6 +1439,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		  /* do not reduce PT_NAME that belongs to PT_NODE_LIST to PT_VALUE */
 		  if (attr && col && !PT_IS_VALUE_QUERY (col) && qo_is_reduceable_const (col))
 		    {
+		      is_from_derived_table = true;
+
 		      /* add additional equailty-term; is reduced */
 		      PT_NODE *expr_copy = parser_copy_tree (parser, expr);
 		      PT_EXPR_INFO_SET_FLAG (expr_copy, PT_EXPR_INFO_DO_NOT_AUTOPARAM);
@@ -1501,6 +1504,12 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
       /* save reduced join terms */
       for (temp = *wherep; temp; temp = temp->next)
 	{
+	  if (is_from_derived_table)
+	    {
+	      /* skip and go ahead */
+	      continue;
+	    }
+
 	  if (temp == expr)
 	    {
 	      /* this is the working equality_term, skip and go ahead */
@@ -1752,7 +1761,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	  /* query with WHERE condition */
 	  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, arg1, arg2,
 							       (temp->info.name.location > 0 ? true : false), 1,
-							       true /* dont_replace */ );
+							       false /* dont_replace */ );
 	}
       *wherep = pt_lambda_with_arg (parser, *wherep, arg1, arg2, (temp->info.name.location > 0 ? true : false), 1,
 				    false /* dont_replace: DEFAULT */ );
@@ -1782,6 +1791,28 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
       *orgp = parser_append_node (join_term_list, *orgp);
     }
 
+}
+
+/*
+ * qo_reduce_equality_terms_post ()
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   node(in): (name) node to compare id's with
+ *   arg(in): info of spec and result
+ *   continue_walk(in):
+ */
+static PT_NODE *
+qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *wherep;
+
+  if (node->node_type == PT_SELECT)
+    {
+      wherep = node->info.query.q.select.where;
+      qo_reduce_equality_terms (parser, node, &wherep);
+    }
+
+  return node;
 }
 
 /*
@@ -7095,7 +7126,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       /* reduce equality terms */
       if (*wherep)
 	{
-	  qo_reduce_equality_terms (parser, node, wherep);
+	  parser_walk_tree (parser, node, NULL, NULL, qo_reduce_equality_terms_post, NULL);
 	}
       if (*havingp)
 	{
