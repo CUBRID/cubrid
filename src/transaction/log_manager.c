@@ -10877,8 +10877,15 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       if (cdc_Gl.producer.produced_queue_size >= MAX_CDC_LOGINFO_QUEUE_SIZE || cdc_Gl.loginfo_queue->is_full ())
 	{
 	  cdc_log ("cdc_loginfo_producer_execute : produced queue size is over the limit");
-	  cdc_pause_consumer ();
-	  cdc_Gl.consumer.request = CDC_REQUEST_PRODUCER_IS_WAITED;
+
+	  if (cdc_Gl.consumer.consumed_queue_size != 0)
+	    {
+	      cdc_pause_consumer ();
+	    }
+	  else
+	    {
+	      cdc_Gl.consumer.request = CDC_REQUEST_PRODUCER_IS_WAITED;
+	    }
 
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
@@ -13252,7 +13259,6 @@ cdc_wakeup_producer ()
 {
   cdc_log ("cdc_wakeup_producer : consumer request the producer to wakeup");
   cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
-  cdc_Gl.consumer.request = CDC_REQUEST_NONE;
 
   pthread_cond_signal (&cdc_Gl.producer.wait_cond);
 }
@@ -13280,7 +13286,7 @@ cdc_pause_consumer ()
 void
 cdc_wakeup_consumer ()
 {
-  cdc_log ("cdc_pause_consumer : producer request the consumer to wakeup");
+  cdc_log ("cdc_wakeup_consumer : producer request the consumer to wakeup");
   cdc_Gl.consumer.request = CDC_REQUEST_NONE;
 }
 
@@ -13872,14 +13878,14 @@ end:
   cdc_Gl.consumer.num_log_info = num_log_info;
   LSA_COPY (&cdc_Gl.consumer.next_lsa, start_lsa);	/* stores next lsa to consume */
 
-  if (cdc_Gl.consumer.request == CDC_REQUEST_CONSUMER_TO_WAIT)
+  while (cdc_Gl.consumer.request == CDC_REQUEST_CONSUMER_TO_WAIT
+	 || cdc_Gl.consumer.request == CDC_REQUEST_PRODUCER_IS_WAITED)
     {
-      CDC_PRODUCER_REQUEST request;
       cdc_wakeup_producer ();
 
-      while (cdc_Gl.consumer.request != CDC_REQUEST_NONE)
+      if (cdc_Gl.consumer.request == CDC_REQUEST_NONE)
 	{
-	  sleep (1);
+	  break;
 	}
     }
 

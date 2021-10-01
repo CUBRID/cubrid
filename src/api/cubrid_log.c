@@ -115,7 +115,7 @@ cubrid_log_set_connection_timeout (int timeout)
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
 
-  if (timeout < -1 || timeout > 360)
+  if (timeout < 0 || timeout > 360)
     {
       return CUBRID_LOG_INVALID_CONNECTION_TIMEOUT;
     }
@@ -138,7 +138,7 @@ cubrid_log_set_extraction_timeout (int timeout)
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
 
-  if (timeout < -1 || timeout > 360)
+  if (timeout < 0 || timeout > 360)
     {
       return CUBRID_LOG_INVALID_EXTRACTION_TIMEOUT;
     }
@@ -577,11 +577,6 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *p
 	}
     }
 
-  if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
-    {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
-    }
-
   if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE, trace_errbuf);
@@ -615,6 +610,11 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *p
   if (cubrid_log_db_login (dbname, id, password) != CUBRID_LOG_SUCCESS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, trace_errbuf);
+    }
+
+  if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
 
   if (cubrid_log_connect_server_internal (host, port, dbname) != CUBRID_LOG_SUCCESS)
@@ -741,7 +741,7 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE, trace_errbuf);
     }
 
-  if (timestamp <= 0)
+  if (*timestamp < 0 || timestamp == NULL)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_TIMESTAMP, trace_errbuf);
     }
@@ -861,6 +861,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   reply = PTR_ALIGN (g_log_infos, MAX_ALIGNMENT);
   reply_size = *total_length;
+  recv_data = NULL;
 
   if (*total_length > 0)
     {
