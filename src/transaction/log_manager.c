@@ -12967,21 +12967,40 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       }
       break;
     case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string_with_length (ptr, db_get_string (new_value), new_value->domain.char_info.length);
       break;
     case DB_TYPE_NCHAR:
-    case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
-      /* Copy string into buf providing for any embedded quotes. Strings may have embedded NULL characters and
-       * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
-       * character and the second byte of the multibyte character.
-       */
-      func_type = 7;
-      ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (new_value));
-      break;
+      {
+	int size;
+	char *result = NULL;
+	const char *temp_string = NULL;
+	temp_string = db_get_nchar (new_value, &size);
+	if (temp_string != NULL)
+	  {
+	    result = (char *) malloc (size + 3);
+	    if (result == NULL)
+	      {
+		return ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
+
+	    snprintf (result, size + 3, "N'%s'", temp_string);
+	  }
+
+	func_type = 7;
+	ptr = or_pack_int (ptr, func_type);
+	ptr = or_pack_string (ptr, result);
+
+	if (result != NULL)
+	  {
+	    free_and_init (result);
+	  }
+
+	break;
+      }
 #define TOO_BIG_TO_MATTER       1024
     case DB_TYPE_TIME:
       db_make_char (&format, strlen (time_format), time_format,
