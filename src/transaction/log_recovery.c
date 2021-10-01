@@ -883,7 +883,10 @@ log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
 }
 
 /*
- * log_recovery_finish_transactions - TODO
+ * log_recovery_finish_transactions - transaction server with remote storage needs to rebuild the
+ *                    transaction table information at the time of the crash and finalize transactions;
+ *                    this starts with the last available transaction table snapshot and performing recovery
+ *                    analysis from that LSA followed by undo
  *
  * return: nothing
  *
@@ -894,8 +897,8 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   assert (is_tran_server_with_remote_storage ());
   assert (log_Gl.m_metainfo.is_loaded_from_file ());
 
-  const int log_sys_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (log_sys_tran_index == LOG_SYSTEM_TRAN_INDEX && LOG_FIND_TDES (log_sys_tran_index) != nullptr);
+  const int sys_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (sys_tran_index == LOG_SYSTEM_TRAN_INDEX && LOG_FIND_TDES (sys_tran_index) != nullptr);
 
   // TODO: logging has been ignored ?
 
@@ -923,12 +926,12 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 3,
 	  (long long) redo_log_record_count, log_rcv_context.get_start_redo_lsa ().pageid,
 	  log_rcv_context.get_end_redo_lsa ().pageid);
-  // analysis changes the transaction index and leaves it dangling
-  // TODO: set in log_recovery_analysis and clean all other restoring code after call to
-  // log_recovery_analysis leaves the tran index in an indefinite state
-  LOG_SET_CURRENT_TRAN_INDEX (thread_p, log_sys_tran_index);
+  // analysis changes the transaction index and leaves it dangling in an indefinite state
+  // therefore reset to system transaction index
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 
   // make sure the append page is available
+  // needed to read the lsa of the last added log record that is found there
   if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
@@ -1137,8 +1140,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (log_recovery_redo_parallel_count);
-	parallel_recovery_redo.reset (new cublog::
-				      redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+	parallel_recovery_redo.
+	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
       }
   }
 #endif
@@ -1768,11 +1771,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
       log_Gl.mvcc_table.reset_start_mvccid ();
 
       /* Abort all atomic system operations that were open when server crashed */
-      // TODO: for TSRS, done in log_recovery_finish_transactions now
       log_recovery_abort_all_atomic_sysops (thread_p);
 
       /* Now finish all postpone operations */
-      // TODO: for TSRS, done in log_recovery_finish_transactions now
       log_recovery_finish_all_postpone (thread_p);
     }
 
