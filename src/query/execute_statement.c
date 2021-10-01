@@ -17439,7 +17439,7 @@ do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   A synonym is created by inserting a synonym object into the _db_synonym class.
  */
 static int
-do_create_synonym_internal (const char * synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
+do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
 			    DB_OBJECT * target_owner, const int is_public_synonym, const char *comment)
 {
   DB_OBJECT *class_obj = NULL;
