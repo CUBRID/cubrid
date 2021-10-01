@@ -729,8 +729,12 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 0);
 
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_ANALYSIS_STARTED, 1,
+	  log_Gl.hdr.eof_lsa.pageid - rcv_lsa.pageid);
   log_recovery_analysis (thread_p, &rcv_lsa, &start_redolsa, &end_redo_lsa, ismedia_crash, stopat, &did_incom_recovery,
 			 &num_redo_log_records);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "ANALYSIS");
 
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
 
@@ -766,7 +770,10 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
 
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_REDO_STARTED, 2,
+	  end_redo_lsa.pageid - start_redolsa.pageid, num_redo_log_records);
   log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa, stopat);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "REDO");
   boot_reset_db_parm (thread_p);
 
   /* Undo phase */
@@ -774,7 +781,10 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
 
+  /* ER_LOG_RECOVERY_REDO_STARTED logging is inside log_recovery_undo() */
   log_recovery_undo (thread_p);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "UNDO");
+
   boot_reset_db_parm (thread_p);
 
   // *INDENT-OFF*
@@ -4547,6 +4557,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   int tran_index;
   int data_header_size = 0;
   LOG_ZIP *undo_unzip_ptr = NULL;
+  int cnt_trans_to_undo = 0;
+  LOG_LSA min_lsa;
   bool is_mvcc_op;
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
@@ -4583,6 +4595,28 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
   /* Find the largest LSA to undo */
   log_find_unilaterally_largest_undo_lsa (thread_p, max_undo_lsa);
+
+  /* Print undo recovery information */
+  // *INDENT-OFF*
+  auto count_func =[&cnt_trans_to_undo] (LOG_TDES & tdes) {
+    cnt_trans_to_undo++;
+  };
+  log_system_tdes::map_all_tdes (count_func);
+
+  min_lsa = NULL_LSA;
+  logtb_find_smallest_lsa (thread_p, &min_lsa);
+  auto min_lsa_func =[&min_lsa] (LOG_TDES & tdes) {
+    if (!LSA_ISNULL (&tdes.head_lsa) && (min_lsa.is_null () || LSA_LT (&tdes.head_lsa, &min_lsa)))
+      {
+        min_lsa = tdes.head_lsa;
+      }
+  };
+  log_system_tdes::map_all_tdes (min_lsa_func);
+  // *INDENT-ON*
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_UNDO_STARTED, 2,
+	  max_undo_lsa.pageid - min_lsa.pageid, cnt_trans_to_undo);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
