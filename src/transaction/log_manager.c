@@ -1365,14 +1365,12 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * Execute the recovery process
        */
       log_recovery (thread_p, is_media_crash, stopat);
-
-      // todo: TS with remote storage recovery
     }
-//  else if (is_tran_server_with_remote_storage()
-//           && init_emergency == false && (log_Gl.m_metainfo.get_clean_shutdown() || is_media_crash == true))
-//    {
-//      log_recovery_finish_transactions(thread_p);
-//    }
+  else if (is_tran_server_with_remote_storage ()
+	   && init_emergency == false && (log_Gl.m_metainfo.get_clean_shutdown () == false || is_media_crash == true))
+    {
+      log_recovery_finish_transactions (thread_p);
+    }
   else
     {
       if (init_emergency == true && log_Gl.hdr.is_shutdown == false)
@@ -1795,10 +1793,13 @@ log_final (THREAD_ENTRY * thread_p)
    */
   logpb_flush_pages_direct (thread_p);
 
-  error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
-  if (error_code == NO_ERROR)
+  if (!is_tran_server_with_remote_storage ())
     {
-      error_code = fileio_synchronize_all (thread_p, false);
+      error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
+      if (error_code == NO_ERROR)
+	{
+	  error_code = fileio_synchronize_all (thread_p, false);
+	}
     }
 
   logpb_decache_archive_info (thread_p);

@@ -40,6 +40,7 @@
 #include "msgcat_set_log.hpp"
 #include "mvcc_table.hpp"
 #include "porting.h"
+#include "server_type.hpp"
 #include "storage_common.h"
 #include "system_parameter.h"
 #include "util_func.h"
@@ -332,7 +333,7 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
        * it whenever is possible.
        */
 
-      if (LSA_ISNULL (&next_record_lsa) && logpb_is_page_in_archive (crt_record_lsa.pageid))
+      if (LSA_ISNULL (&next_record_lsa) && (log_rtype != LOG_END_OF_LOG) && logpb_is_page_in_archive (crt_record_lsa.pageid))
 	{
 	  next_record_lsa.pageid = crt_record_lsa.pageid + 1;
 	}
@@ -406,7 +407,7 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	  // Rebuild the transaction table image based on checkpoint information
 	  LOG_LSA start_redo_lsa = NULL_LSA;
 	  chkpt_infop->recovery_analysis (thread_p, start_redo_lsa);
-	  assert (!start_redo_lsa.is_null ());
+	  assert (is_tran_server_with_remote_storage () || !start_redo_lsa.is_null ());
 	  context.set_start_redo_lsa (start_redo_lsa);
 	}
 
@@ -1564,7 +1565,7 @@ log_rv_analysis_2pc_recv_ack (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_
 static int
 log_rv_analysis_log_end (int tran_id, const LOG_LSA *log_lsa)
 {
-  if (!logpb_is_page_in_archive (log_lsa->pageid))
+  if (is_tran_server_with_remote_storage () || !logpb_is_page_in_archive (log_lsa->pageid))
     {
       /*
        * Reset the log header for the recovery undo operation

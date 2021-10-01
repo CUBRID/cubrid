@@ -62,7 +62,7 @@ static void log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * td
 static void log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p);
 static void log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p);
-static void log_recovery_undo (THREAD_ENTRY * thread_p);
+static void log_recovery_undo (THREAD_ENTRY * thread_p, bool skip_flush_log_header);
 static bool log_unformat_ahead_volumes (THREAD_ENTRY * thread_p, VOLID volid, VOLID * start_volid);
 static void log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p);
 static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
@@ -685,9 +685,7 @@ void
 log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
 {
   LOG_TDES *rcv_tdes;		/* Tran. descriptor for the recovery phase */
-  int rcv_tran_index;		/* Saved transaction index */
   LOG_RECORD_HEADER *eof;	/* End of the log record */
-  int tran_index;
   INT64 num_redo_log_records;
   int error_code = NO_ERROR;
 
@@ -697,16 +695,15 @@ log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
 
   /* Save the transaction index and find the transaction descriptor */
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  rcv_tdes = LOG_FIND_TDES (tran_index);
+  const int rcv_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);	/* Saved transaction index */
+  rcv_tdes = LOG_FIND_TDES (rcv_tran_index);
   if (rcv_tdes == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, rcv_tran_index);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:LOG_FIND_TDES");
       return;
     }
 
-  rcv_tran_index = tran_index;
   rcv_tdes->state = TRAN_RECOVERY;
 
   if (LOG_HAS_LOGGING_BEEN_IGNORED ())
@@ -810,7 +807,7 @@ log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
 
   if (!context.is_page_server ())
     {
-      log_recovery_undo (thread_p);
+      log_recovery_undo (thread_p, false);
       boot_reset_db_parm (thread_p);
     }
 
@@ -894,29 +891,31 @@ log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
 void
 log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
 {
+  assert (is_tran_server_with_remote_storage ());
   assert (log_Gl.m_metainfo.is_loaded_from_file ());
 
-  // TODO: save the transaction index and find transaction descriptor
-  // TODO: logging has been ignored?
+  const int log_sys_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (log_sys_tran_index == LOG_SYSTEM_TRAN_INDEX && LOG_FIND_TDES (log_sys_tran_index) != nullptr);
 
-  //
-  // analysis phase
+  // TODO: logging has been ignored ?
+
+  // recovery analysis phase
   //
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
-  log_recovery_context log_rcv_context;
-  // start with what metalog tells
+  // start with what metalog tells us
   const auto[chkpt_lsa, chkpt_info] = log_Gl.m_metainfo.get_highest_lsa_checkpoint_info ();
   if (chkpt_info == nullptr)
     {
-      assert ("log_recovery_finish_transactions: no checkpoints found, control should not end up here" == nullptr);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery_finish_transactions: no checkpoint found; control should not end up here");
+      // unreachable
       return;
     }
-  else
-    {
-      assert (!chkpt_lsa.is_null ());
-    }
-  // TODO: is media crash
+  assert (!chkpt_lsa.is_null ());
+
+  log_recovery_context log_rcv_context;
+  // TODO: is media crash check?
   log_rcv_context.init_for_recovery (chkpt_lsa);
 
   long redo_log_record_count = 0;
@@ -924,6 +923,27 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 3,
 	  (long long) redo_log_record_count, log_rcv_context.get_start_redo_lsa ().pageid,
 	  log_rcv_context.get_end_redo_lsa ().pageid);
+  // analysis changes the transaction index and leaves it dangling
+  // TODO: set in log_recovery_analysis and clean all other restoring code after call to
+  // log_recovery_analysis leaves the tran index in an indefinite state
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, log_sys_tran_index);
+
+  // make sure the append page is available
+  if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery_finish_transactions: logpb_fetch_start_append_page");
+      // unreachable
+      return;
+    }
+
+  // read the end of file record to find out about the previous address
+  assert (log_Gl.append.log_pgptr != nullptr);
+  assert (!log_Gl.hdr.append_lsa.is_null ());
+  assert (!log_rcv_context.is_restore_incomplete ());
+  const LOG_RECORD_HEADER *const log_append_log_header =
+    (const LOG_RECORD_HEADER *) (log_Gl.append.log_pgptr->area + log_Gl.hdr.append_lsa.offset);
+  LOG_RESET_PREV_LSA (&log_append_log_header->back_lsa);
 
   assert (!log_Gl.append.prev_lsa.is_null ());
   vacuum_notify_server_crashed (&log_Gl.append.prev_lsa);
@@ -931,6 +951,55 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   log_recovery_abort_all_atomic_sysops (thread_p);
 
   log_recovery_finish_all_postpone (thread_p);
+
+  const int err_code_reset_db_parm = boot_reset_db_parm (thread_p);
+  if (err_code_reset_db_parm != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_finish_transactions: boot_reset_db_parm");
+      // unreachable
+      return;
+    }
+
+  // NOTE: no recovery redo phase on transaction server with remote storage
+
+  // recovery undo phase
+  //
+  log_Gl.rcv_phase = LOG_RECOVERY_UNDO_PHASE;
+
+  log_recovery_undo (thread_p, true);
+
+  const int err_code_reset_db_parm_2 = boot_reset_db_parm (thread_p);
+  if (err_code_reset_db_parm_2 != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_finish_transactions: boot_reset_db_parm");
+      // unreachable
+      return;
+    }
+
+  // *INDENT-OFF*
+  log_system_tdes::rv_final ();
+  // *INDENT-ON*
+
+  const int err_code_locator_initialize = locator_initialize (thread_p);
+  if (err_code_locator_initialize != NO_ERROR)
+    {
+      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_finish_transactions: locator_initialize");
+      // unreachable
+      return;
+    }
+
+  const int err_code_heap_class_repr = heap_classrepr_restart_cache ();
+  if (err_code_heap_class_repr != NO_ERROR)
+    {
+      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery_finish_transactions: heap_classrepr_restart_cache");
+      // unreachable
+      return;
+    }
+
+  // final recovery phase flag is set in the caller
 }
 
 /*
@@ -2201,7 +2270,7 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  *
  */
 static void
-log_recovery_undo (THREAD_ENTRY * thread_p)
+log_recovery_undo (THREAD_ENTRY * thread_p, bool skip_flush_log_header)
 {
   LOG_LSA max_undo_lsa;		/* LSA of log record to undo */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -2665,7 +2734,10 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
   logpb_flush_pages_direct (thread_p);
 
-  logpb_flush_header (thread_p);
+  if (!skip_flush_log_header)
+    {
+      logpb_flush_header (thread_p);
+    }
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
 
   return;
