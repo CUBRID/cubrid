@@ -11599,6 +11599,12 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 			return ER_FAILED;
 		      }
 		    undo_data = (char *) malloc (tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type));
+		    if (undo_data == NULL)
+		      {
+			free_and_init (tmp_undo_recdes.data);
+			return ER_OUT_OF_VIRTUAL_MEMORY;
+		      }
+
 		    memcpy (undo_data, &tmp_undo_recdes.type, sizeof (tmp_undo_recdes.type));
 		    memcpy (undo_data + sizeof (tmp_undo_recdes.type), tmp_undo_recdes.data, tmp_undo_recdes.length);
 
