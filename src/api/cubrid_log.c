@@ -741,7 +741,7 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE, trace_errbuf);
     }
 
-  if (*timestamp < 0 || timestamp == NULL)
+  if (timestamp == NULL || *timestamp < 0)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_TIMESTAMP, trace_errbuf);
     }
