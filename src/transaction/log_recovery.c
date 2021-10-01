@@ -2737,8 +2737,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p, bool skip_flush_log_header)
   if (!skip_flush_log_header)
     {
       logpb_flush_header (thread_p);
+      (void) pgbuf_flush_all (thread_p, NULL_VOLID);
     }
-  (void) pgbuf_flush_all (thread_p, NULL_VOLID);
 
   return;
 }
