@@ -17318,7 +17318,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* synonym_owner */
-      synonym_owner = db_get_user (); /* current user OID */
+      synonym_owner = db_get_user ();	/* current user OID */
 
       /* target_name */
       if (statement->info.create_synonym.target_name)
@@ -17337,7 +17337,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  target_owner = db_find_user (target_owner_name);
 	}
       else
-        {
+	{
 	  target_owner = synonym_owner;
 	}
 
@@ -17347,7 +17347,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
        */
       if (statement->info.create_synonym.access_modifier == PT_PUBLIC)
 	{
-	  if (au_is_dba_group_member (db_get_user ())) /* current user */
+	  if (au_is_dba_group_member (db_get_user ()))	/* current user */
 	    {
 	      is_public_synonym = 1;
 	    }
@@ -17368,9 +17368,9 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (statement->info.create_synonym.comment)
 	{
 	  assert (statement->info.create_synonym.comment->node_type == PT_VALUE);
-      
+
 	  comment = (char *) PT_VALUE_GET_BYTES (statement->info.create_synonym.comment);
-      
+
 	  if (comment == NULL)
 	    {
 	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
@@ -17439,8 +17439,8 @@ do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   A synonym is created by inserting a synonym object into the _db_synonym class.
  */
 static int
-do_create_synonym_internal (const char * synonym_name, DB_OBJECT * synonym_owner, const char * target_name,
-			    DB_OBJECT * target_owner, const int is_public_synonym, const char * comment)
+do_create_synonym_internal (const char * synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
+			    DB_OBJECT * target_owner, const int is_public_synonym, const char *comment)
 {
   DB_OBJECT *class_obj = NULL;
   DB_OTMPL *obj_tmpl = NULL;
