@@ -12978,16 +12978,19 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 	int size;
 	char *result = NULL;
 	const char *temp_string = NULL;
+
 	temp_string = db_get_nchar (new_value, &size);
+	size = db_get_string_size (new_value);
+
 	if (temp_string != NULL)
 	  {
-	    result = (char *) malloc (size + 3);
+	    result = (char *) malloc (size + 4);
 	    if (result == NULL)
 	      {
 		return ER_OUT_OF_VIRTUAL_MEMORY;
 	      }
 
-	    snprintf (result, size + 3, "N'%s'", temp_string);
+	    snprintf (result, size + 4, "N'%s'", temp_string);
 	  }
 
 	func_type = 7;
