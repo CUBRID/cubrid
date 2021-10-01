@@ -10948,8 +10948,8 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       if (cdc_Gl.producer.produced_queue_size >= MAX_CDC_LOGINFO_QUEUE_SIZE || cdc_Gl.loginfo_queue->is_full ())
 	{
 	  cdc_log ("cdc_loginfo_producer_execute : produced queue size is over the limit");
+
 	  cdc_pause_consumer ();
-	  cdc_Gl.consumer.request = CDC_REQUEST_PRODUCER_IS_WAITED;
 
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
@@ -11228,8 +11228,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	  {
 	    LOG_REC_UNDOREDO *undoredo = NULL;
 
-	    LSA_COPY (&prev_lsa, &log_rec_hdr->prev_tranlsa);
-
 	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
 
 	    undoredo = (LOG_REC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
@@ -11373,7 +11371,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    redo_length = mvcc_undoredo->undoredo.rlength;
 	    undo_length = mvcc_undoredo->undoredo.ulength;
 
-	    if (LOG_IS_DIFF_UNDOREDO_TYPE (log_rec_hdr->type) == true)
+	    if (LOG_IS_DIFF_UNDOREDO_TYPE (log_type) == true)
 	      {
 		is_diff = true;
 	      }
@@ -11477,7 +11475,14 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			return ER_FAILED;
 		      }
+
 		    undo_data = (char *) malloc (tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type));
+		    if (undo_data == NULL)
+		      {
+			free_and_init (tmp_undo_recdes.data);
+			return ER_OUT_OF_VIRTUAL_MEMORY;
+		      }
+
 		    memcpy (undo_data, &tmp_undo_recdes.type, sizeof (tmp_undo_recdes.type));
 		    memcpy (undo_data + sizeof (tmp_undo_recdes.type), tmp_undo_recdes.data, tmp_undo_recdes.length);
 
@@ -11571,7 +11576,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    redo_length = undoredo->rlength;
 	    undo_length = undoredo->ulength;
 
-	    if (LOG_IS_DIFF_UNDOREDO_TYPE (log_rec_hdr->type) == true)
+	    if (LOG_IS_DIFF_UNDOREDO_TYPE (log_type) == true)
 	      {
 		is_diff = true;
 	      }
@@ -11665,6 +11670,12 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 			return ER_FAILED;
 		      }
 		    undo_data = (char *) malloc (tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type));
+		    if (undo_data == NULL)
+		      {
+			free_and_init (tmp_undo_recdes.data);
+			return ER_OUT_OF_VIRTUAL_MEMORY;
+		      }
+
 		    memcpy (undo_data, &tmp_undo_recdes.type, sizeof (tmp_undo_recdes.type));
 		    memcpy (undo_data + sizeof (tmp_undo_recdes.type), tmp_undo_recdes.data, tmp_undo_recdes.length);
 
@@ -13312,7 +13323,6 @@ cdc_wakeup_producer ()
 {
   cdc_log ("cdc_wakeup_producer : consumer request the producer to wakeup");
   cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
-  cdc_Gl.consumer.request = CDC_REQUEST_NONE;
 
   pthread_cond_signal (&cdc_Gl.producer.wait_cond);
 }
@@ -13340,7 +13350,7 @@ cdc_pause_consumer ()
 void
 cdc_wakeup_consumer ()
 {
-  cdc_log ("cdc_pause_consumer : producer request the consumer to wakeup");
+  cdc_log ("cdc_wakeup_consumer : producer request the consumer to wakeup");
   cdc_Gl.consumer.request = CDC_REQUEST_NONE;
 }
 
@@ -13932,14 +13942,14 @@ end:
   cdc_Gl.consumer.num_log_info = num_log_info;
   LSA_COPY (&cdc_Gl.consumer.next_lsa, start_lsa);	/* stores next lsa to consume */
 
-  if (cdc_Gl.consumer.request == CDC_REQUEST_CONSUMER_TO_WAIT)
+  while (cdc_Gl.consumer.request == CDC_REQUEST_CONSUMER_TO_WAIT)
     {
-      CDC_PRODUCER_REQUEST request;
+
       cdc_wakeup_producer ();
 
-      while (cdc_Gl.consumer.request != CDC_REQUEST_NONE)
+      if (cdc_Gl.consumer.request == CDC_REQUEST_NONE || cdc_Gl.consumer.consumed_queue_size == 0)
 	{
-	  sleep (1);
+	  break;
 	}
     }
 
