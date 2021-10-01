@@ -62,7 +62,7 @@ static void log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * td
 static void log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p);
 static void log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p);
-static void log_recovery_undo (THREAD_ENTRY * thread_p, bool skip_flush_log_header);
+static void log_recovery_undo (THREAD_ENTRY * thread_p, bool skip_some_page_buffer_flushes);
 static bool log_unformat_ahead_volumes (THREAD_ENTRY * thread_p, VOLID volid, VOLID * start_volid);
 static void log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p);
 static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
@@ -1140,8 +1140,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (log_recovery_redo_parallel_count);
+	// *INDENT-OFF*
 	parallel_recovery_redo.
 	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+	// *INDENT-ON*
       }
   }
 #endif
@@ -2269,9 +2271,12 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  *
  * return: nothing
  *
+ * skip_some_page_buffer_flushes (in) : skip flushes to log page buffer header (mainly needed when
+ *               function called in the context of recovering a transaction server with
+ *               remote storage)
  */
 static void
-log_recovery_undo (THREAD_ENTRY * thread_p, bool skip_flush_log_header)
+log_recovery_undo (THREAD_ENTRY * thread_p, bool skip_some_page_buffer_flushes)
 {
   LOG_LSA max_undo_lsa;		/* LSA of log record to undo */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -2735,7 +2740,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p, bool skip_flush_log_header)
 
   logpb_flush_pages_direct (thread_p);
 
-  if (!skip_flush_log_header)
+  if (!skip_some_page_buffer_flushes)
     {
       logpb_flush_header (thread_p);
       (void) pgbuf_flush_all (thread_p, NULL_VOLID);
