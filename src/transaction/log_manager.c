@@ -11300,7 +11300,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    redo_length = mvcc_undoredo->undoredo.rlength;
 	    undo_length = mvcc_undoredo->undoredo.ulength;
 
-
 	    if (LOG_IS_DIFF_UNDOREDO_TYPE (log_type) == true)
 	      {
 		is_diff = true;
