@@ -3558,6 +3558,10 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_SESSION_VARIABLES:
     case PT_SET_NAMES:
     case PT_SET_TIMEZONE:
+    case PT_ALTER_SYNONYM:
+    case PT_CREATE_SYNONYM:
+    case PT_DROP_SYNONYM:
+    case PT_RENAME_SYNONYM:
       /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
       db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
       break;
@@ -3753,6 +3757,18 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_SET_TIMEZONE:
       err = do_set_timezone (parser, statement);
+      break;
+    case PT_ALTER_SYNONYM:
+      err = do_alter_synonym (parser, statement);
+      break;
+    case PT_CREATE_SYNONYM:
+      err = do_create_synonym (parser, statement);
+      break;
+    case PT_DROP_SYNONYM:
+      err = do_drop_synonym (parser, statement);
+      break;
+    case PT_RENAME_SYNONYM:
+      err = do_rename_synonym (parser, statement);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
@@ -17244,6 +17260,290 @@ do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 #undef MAX_LEN
   return (error != NO_ERROR) ? ER_OBJ_INVALID_ARGUMENTS : NO_ERROR;
+}
+
+/*
+ * do_alter_synonym () - 
+ *   return: Error code
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a statement
+ *
+ * Note:
+ * 
+ */
+int
+do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+
+  return error;
+}
+
+/*
+ * do_create_synonym () - 
+ *   return: Error code
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a statement
+ *
+ * Note:
+ *   A synonym is created by changing the synonym name to lowercase.
+ *   And only DBA users and members of the DBA group can create public synonyms.
+ */
+int
+do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  char synonym_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
+  OID *synonym_owner = NULL;
+  const char *target_name = NULL;
+  const char *target_owner_name = NULL;
+  OID *target_owner = NULL;
+  int is_public_synonym = 0;
+  const char *comment = NULL;
+
+  int error = NO_ERROR;
+  int au_save = 0;
+
+  /* Initialization */
+  memset (synonym_downcase_name, '\0', sizeof (char) * SM_MAX_IDENTIFIER_LENGTH);
+
+  /* synonym_name */
+  if (statement && statement->info.create_synonym.synonym_name)
+    {
+      assert (statement->info.create_synonym.synonym_name->node_type == PT_NAME);
+
+      const char *synonym_name = statement->info.create_synonym.synonym_name->info.name.original;
+      sm_downcase_name (synonym_name, synonym_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
+    }
+
+  /* synonym_owner */
+  synonym_owner = db_get_user (); /* current user OID */
+
+  /* target_name, target_owner
+   *  - target_owner can be null.
+   */
+  if (statement && statement->info.create_synonym.target_name)
+    {
+      assert (statement->info.create_synonym.target_name->node_type == PT_NAME);
+
+      target_name = statement->info.create_synonym.target_name->info.name.original;
+      target_owner_name = statement->info.create_synonym.target_owner_name->info.name.original;
+      target_owner = db_find_user (target_owner_name);
+    }
+
+  /* is_public_synonym
+   *  - Only DBA users and members of the DBA group can create public synonyms.
+   *  - Otherwise, an error occurs.
+   */
+  if (statement && statement->info.create_synonym.access_modifier == PT_PUBLIC)
+    {
+      if (au_is_dba_group_member (db_get_user ())) /* current user */
+	{
+          is_public_synonym = 1;
+	}
+      else
+        {
+	  /* To Do: Exception handling */
+	  goto end;
+	}
+    }
+  else
+    {
+	assert (statement && statement->info.create_synonym.access_modifier == PT_PRIVATE)
+
+	is_public_synonym = 0;
+    }
+
+  /* comment */
+  if (statement && statement->info.create_synonym.comment)
+    {
+      assert (statement->info.create_synonym.comment->node_type == PT_VALUE);
+      
+      comment = (char *) PT_VALUE_GET_BYTES (statement->info.create_synonym.comment);
+      
+      if (comment == NULL)
+	{
+	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  goto end;
+	}
+    }
+
+  AU_DISABLE (au_save);
+
+  /* A synonym is created by inserting a synonym object into the _db_synonym class. */
+  error = do_create_synonym_internal (synonym_downcase_name, synonym_owner, target_name, target_owner,
+                                      is_public_synonym, comment);
+
+  AU_ENABLE (au_save);
+
+end:
+  return error;
+}
+
+/*
+ * do_drop_synonym () - 
+ *   return: Error code
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a statement
+ *
+ * Note:
+ * 
+ */
+int
+do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+
+  return error;
+}
+
+/*
+ * do_rename_synonym () - 
+ *   return: Error code
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a statement
+ *
+ * Note:
+ * 
+ */
+int
+do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+
+  return error;
+}
+
+/*
+ * do_create_synonym_internal () - 
+ *   return: Error code
+ *   synonym_name(in): Synonym name
+ *   synonym_owner_name(in): Synonym Owner name
+ *   class_name(in): Synonym target class name
+ *   class_owner_name(in): The name of the owner of the synonym target class
+ *   is_public_synonym(in): Access modifiers for synonyms
+ *   comment(in): Comments on synonyms
+ *
+ * Note:
+ *   A synonym is created by inserting a synonym object into the _db_synonym class.
+ */
+static int
+do_create_synonym_internal (const char * synonym_name, OID * synonym_owner, const char * target_name,
+			    OID * target_owner, const int is_public_synonym, const char * comment)
+{
+  DB_OBJECT *class_obj = NULL;
+  DB_OTMPL *obj_tmpl = NULL;
+  DB_OBJECT *ret_obj = NULL;
+  DB_VALUE value;
+
+  int error = NO_ERROR;
+  int au_save = 0;
+
+  /* initialization */
+  pr_clear_value (&value);
+
+  AU_DISABLE (au_save);
+
+  /* synonym object */
+  class_obj = sm_find_class (CT_SYNONYM_NAME);
+  if (class_obj == NULL)
+    {
+      error = ER_QPROC_DB_SYNONYM_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  obj_tmpl = dbt_create_object_internal ((MOP) class_obj);
+  if (obj_tmpl == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+
+  /* synonym_name */
+  db_make_string (&value, synonym_name);
+  error = dbt_put_internal (obj_tmpl, "synonym_name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+
+  /* synonym_owner */
+  db_make_oid (&value, synonym_owner);
+  error = dbt_put_internal (obj_tmpl, "synonym_owner", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+
+  /* target_name */
+  db_make_string (&value, target_name);
+  error = dbt_put_internal (obj_tmpl, "target_name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+
+  /* target_owner */
+  db_make_oid (&value, target_owner);
+  error = dbt_put_internal (obj_tmpl, "target_owner", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+
+  /* is_public_synonym */
+  db_make_int (&value, is_public_synonym);
+  error = dbt_put_internal (obj_tmpl, "is_public_synonym", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+
+  /* comment */
+  db_make_string (&value, comment);
+  error = dbt_put_internal (obj_tmpl, "comment", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+
+  /* flush template */
+  ret_obj = dbt_finish_object (obj_tmpl);
+  if (ret_obj == NULL)
+    {
+      /* To Do: Exception handling */
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+
+end:
+  if (obj_tmpl != NULL && ret_obj == NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+
+  AU_ENABLE (au_save);
+
+  return error;
 }
 
 /*

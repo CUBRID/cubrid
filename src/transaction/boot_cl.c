@@ -4020,8 +4020,8 @@ boot_define_synonym (MOP class_mop)
 {
   SM_TEMPLATE *def;
   int error_code = NO_ERROR;
-  const char *primary_key_col_names[] = { "synonym_name", "synonym_owner_name", NULL };
-  const char *index_col_names[] = { "synonym_owner_name", "is_public_synonym", NULL };
+  const char *primary_key_col_names[] = { "synonym_name", "synonym_owner", NULL };
+  const char *index_col_names[] = { "synonym_owner", "is_public_synonym", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -4031,7 +4031,7 @@ boot_define_synonym (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "synonym_owner_name", "varchar(255)", NULL);
+  error_code = smt_add_attribute (def, "synonym_owner", AU_USER_CLASS_NAME, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -4043,7 +4043,7 @@ boot_define_synonym (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "target_owner_name", "varchar(255)", NULL);
+  error_code = smt_add_attribute (def, "target_owner", AU_USER_CLASS_NAME, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5574,12 +5574,16 @@ boot_define_view_synonym (void)
 	}
     }
 
-  sprintf (stmt, "SELECT [a].[synonym_name], [a].[synonym_owner_name], [a].[target_name], [a].[target_owner_name],"
-	   " CASE WHEN [a].[is_public_synonym] = 1 THEN 'YES' ELSE 'NO' END, [a].[comment]"
-	   " FROM [%s] [a]"
-	   " WHERE ([a].[synonym_owner_name] = CURRENT_USER AND [a].[is_public_synonym] = 0)"
-	   " OR ([a].[synonym_owner_name] = 'DBA' AND [a].[is_public_synonym] = 1)"
-	   " OR (CURRENT_USER = 'DBA')", CT_SYNONYM_NAME);
+  sprintf (stmt, "SELECT [s].[synonym_name], CAST([s].[synonym_owner].[name] AS VARCHAR(255)), [s].[target_name], "
+		 "CAST([s].[target_owner].[name] AS VARCHAR(255)), "
+		 "CASE WHEN [s].[is_public_synonym] = 1 THEN 'YES' ELSE 'NO' END, [s].[comment]"
+		 "FROM [%s] [s]"
+		 "WHERE (CURRENT_USER = 'DBA') "
+		 "OR ([s].[is_public_synonym] = 1 AND [s].[synonym_owner].[name] = 'DBA') "
+		 "OR ([s].[is_public_synonym] = 0 AND [s].[synonym_owner].[name] = CURRENT_USER)"
+		 "OR ([s].[is_public_synonym] = 0 AND [s].[synonym_owner].[name] IN "
+		 "(SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER)"
+		 ")",  CT_SYNONYM_NAME, AU_USER_CLASS_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)

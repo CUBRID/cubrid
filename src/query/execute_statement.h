@@ -159,6 +159,14 @@ extern int do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
+
+static int do_create_synonym_internal (const char * synonym_name, OID * synonym_owner, const char * target_name,
+				       OID * target_owner, const int is_public_synonym, const char * comment);
+
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
 
