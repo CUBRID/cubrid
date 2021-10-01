@@ -731,7 +731,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_ANALYSIS_STARTED, 1,
-	  log_Gl.hdr.eof_lsa.pageid - rcv_lsa.pageid);
+	  LSA_DIFF_IN_PAGE (&log_Gl.hdr.eof_lsa, &rcv_lsa));
   log_recovery_analysis (thread_p, &rcv_lsa, &start_redolsa, &end_redo_lsa, ismedia_crash, stopat, &did_incom_recovery,
 			 &num_redo_log_records);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "ANALYSIS");
@@ -771,7 +771,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_REDO_STARTED, 2,
-	  end_redo_lsa.pageid - start_redolsa.pageid, num_redo_log_records);
+	  LSA_DIFF_IN_PAGE (&end_redo_lsa, &start_redolsa), num_redo_log_records);
   log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa, stopat);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "REDO");
   boot_reset_db_parm (thread_p);
@@ -4615,7 +4615,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   // *INDENT-ON*
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_UNDO_STARTED, 2,
-	  max_undo_lsa.pageid - min_lsa.pageid, cnt_trans_to_undo);
+	  LSA_DIFF_IN_PAGE (&max_undo_lsa, &min_lsa), cnt_trans_to_undo);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;

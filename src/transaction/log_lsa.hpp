@@ -72,6 +72,7 @@ inline bool LSA_LE (const log_lsa *plsa1, const log_lsa *plsa2);
 inline bool LSA_LT (const log_lsa *plsa1, const log_lsa *plsa2);
 inline bool LSA_GE (const log_lsa *plsa1, const log_lsa *plsa2);
 inline bool LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2);
+inline std::int64_t LSA_DIFF_IN_PAGE (const log_lsa *plsa1, const log_lsa *plsa2);
 
 #define LSA_INITIALIZER	{NULL_LOG_PAGEID, NULL_LOG_OFFSET}
 
@@ -189,6 +190,22 @@ LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2)
 {
   assert (plsa1 != NULL && plsa2 != NULL);
   return *plsa1 > *plsa2;
+}
+
+std::int64_t LSA_DIFF_IN_PAGE (const log_lsa *plsa1, const log_lsa *plsa2)
+{
+  if (*plsa1 == *plsa2)
+    {
+      return 0;
+    }
+  else if (plsa1->offset == plsa2->offset)
+    {
+      return plsa1->pageid - plsa2->pageid;
+    }
+  else
+    {
+      return plsa1->pageid - plsa2->pageid + 1;
+    }
 }
 
 #endif  // _LOG_LSA_HPP_
