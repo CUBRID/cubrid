@@ -537,6 +537,7 @@ int g_original_buffer_len;
 %type <boolean> opt_analytic_from_last
 %type <boolean> opt_analytic_ignore_nulls
 %type <number> opt_encrypt_algorithm
+%type <number> opt_access_modifier
 /*}}}*/
 
 /* define rule type (node) */
@@ -1468,6 +1469,8 @@ int g_original_buffer_len;
 %token <cptr> PERCENTILE_DISC
 %token <cptr> PRINT
 %token <cptr> PRIORITY
+%token <cptr> PRIVATE
+%token <cptr> PUBLIC
 %token <cptr> QUARTER
 %token <cptr> QUEUES
 %token <cptr> RANGE_
@@ -1498,6 +1501,7 @@ int g_original_buffer_len;
 %token <cptr> STDDEV_SAMP
 %token <cptr> STR_TO_DATE
 %token <cptr> SUBDATE
+%token <cptr> SYNONYM
 %token <cptr> SYSTEM
 %token <cptr> TABLES
 %token <cptr> TEXT
@@ -2921,6 +2925,86 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| CREATE		/* 1 */
+	  opt_or_replace	/* 2 */
+	  	{ push_msg (MSGCAT_SYNTAX_INVALID_CREATE_SYNONYM); }	/* 3 */
+	  opt_access_modifier	/* 4 */
+	  SYNONYM		/* 5 */
+	  simple_path_id	/* 6 */
+	  For			/* 7 */
+	  simple_path_id	/* 8 */
+	  opt_comment_spec	/* 9 */
+	  	{ pop_msg(); }
+		{{
+
+			PT_NODE *p = parser_new_node(this_parser, PT_CREATE_SYNONYM);
+
+			if (p)
+			  {
+			    p->info.create_synonym.or_replace = $2;
+			    p->info.create_synonym.access_modifier = $4;
+
+			    /* synonym_name, synonym_owner_name */
+			    PT_NODE *synonym = $6;
+			    if (synonym)
+			      {
+				if (synonym->node_type == PT_DOT_)
+				  {
+				    assert (synonym->info.dot.arg1);
+				    assert (synonym->info.dot.arg1->node_type == PT_NAME);
+				    assert (synonym->info.dot.arg2);
+				    assert (synonym->info.dot.arg2->node_type == PT_NAME);
+
+				    p->info.create_synonym.synonym_owner_name = synonym->info.dot.arg1;
+				    p->info.create_synonym.synonym_name = synonym->info.dot.arg2;
+
+				    synonym->info.dot.arg1 = NULL; /* cut */
+				    synonym->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, synonym);
+				  }
+				else
+				  {
+				    assert (synonym->node_type == PT_NAME);
+
+				    p->info.create_synonym.synonym_owner_name = NULL;
+				    p->info.create_synonym.synonym_name = synonym;
+				  }
+			      }
+
+			    /* target_owner_name, target_name */
+			    PT_NODE *target = $8;
+			    if (target)
+			      {
+				if (target->node_type == PT_DOT_)
+				  {
+				    assert (target->info.dot.arg1);
+				    assert (target->info.dot.arg1->node_type == PT_NAME);
+				    assert (target->info.dot.arg2);
+				    assert (target->info.dot.arg2->node_type == PT_NAME);
+
+				    p->info.create_synonym.target_owner_name = target->info.dot.arg1;
+				    p->info.create_synonym.target_name = target->info.dot.arg2;
+
+				    target->info.dot.arg1 = NULL; /* cut */
+				    target->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, target);
+				  }
+				else
+				  {
+				    assert (target->node_type == PT_NAME);
+
+				    p->info.create_synonym.target_owner_name = NULL;
+				    p->info.create_synonym.target_name = target;
+				  }
+			      }
+
+			    p->info.create_synonym.comment = $9;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 opt_serial_option_list
@@ -3646,6 +3730,84 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| ALTER			/* 1 */
+		{ push_msg (MSGCAT_SYNTAX_INVALID_ALTER_SYNONYM); }	/* 2 */
+	  opt_access_modifier	/* 3 */
+	  SYNONYM		/* 4 */
+	  simple_path_id	/* 5 */
+	  For			/* 6 */
+	  simple_path_id       	/* 7 */
+	  opt_comment_spec	/* 8 */
+		{ pop_msg(); }
+		{{
+
+			PT_NODE *p = parser_new_node(this_parser, PT_ALTER_SYNONYM);
+
+			if (p)
+			  {
+			    p->info.alter_synonym.access_modifier = $3;
+
+			    /* synonym_name, synonym_owner_name */
+			    PT_NODE *synonym = $5;
+			    if (synonym)
+			      {
+				if (synonym->node_type == PT_DOT_)
+				  {
+				    assert (synonym->info.dot.arg1);
+				    assert (synonym->info.dot.arg1->node_type == PT_NAME);
+				    assert (synonym->info.dot.arg2);
+				    assert (synonym->info.dot.arg2->node_type == PT_NAME);
+
+				    p->info.alter_synonym.synonym_owner_name = synonym->info.dot.arg1;
+				    p->info.alter_synonym.synonym_name = synonym->info.dot.arg2;
+
+				    synonym->info.dot.arg1 = NULL; /* cut */
+				    synonym->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, synonym);
+				  }
+				else
+				  {
+				    assert (synonym->node_type == PT_NAME);
+
+				    p->info.alter_synonym.synonym_owner_name = NULL;
+				    p->info.alter_synonym.synonym_name = synonym;
+				  }
+			      }
+
+			    /* target_owner_name, target_name */
+			    PT_NODE *target = $7;
+			    if (target)
+			      {
+				if (target->node_type == PT_DOT_)
+				  {
+				    assert (target->info.dot.arg1);
+				    assert (target->info.dot.arg1->node_type == PT_NAME);
+				    assert (target->info.dot.arg2);
+				    assert (target->info.dot.arg2->node_type == PT_NAME);
+
+				    p->info.alter_synonym.target_owner_name = target->info.dot.arg1;
+				    p->info.alter_synonym.target_name = target->info.dot.arg2;
+
+				    target->info.dot.arg1 = NULL; /* cut */
+				    target->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, target);
+				  }
+				else
+				  {
+				    assert (target->node_type == PT_NAME);
+
+				    p->info.alter_synonym.target_owner_name = NULL;
+				    p->info.alter_synonym.target_name = target;
+				  }
+			      }
+
+			    p->info.alter_synonym.comment = $8;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 view_or_vclass
@@ -3721,6 +3883,93 @@ rename_stmt
 			  }
 
 			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| RENAME		/* 1 */
+		{ push_msg (MSGCAT_SYNTAX_INVALID_RENAME_SYNONYM); }	/* 2 */
+	  opt_access_modifier	/* 3 */
+	  SYNONYM		/* 4 */
+	  simple_path_id	/* 5 */
+	  as_or_to		/* 6 */
+	  simple_path_id	/* 7 */
+	  	{ pop_msg(); }
+		{{
+
+			PT_NODE *p = parser_new_node(this_parser, PT_RENAME_SYNONYM);
+
+			if (p)
+			  {
+			    p->info.rename_synonym.access_modifier = $3;
+
+			    /* old_name, old_owner_name */
+			    PT_NODE *old_synonym = $5;
+			    if (old_synonym)
+			      {
+				if (old_synonym->node_type == PT_DOT_)
+				  {
+				    assert (old_synonym->info.dot.arg1);
+				    assert (old_synonym->info.dot.arg1->node_type == PT_NAME);
+				    assert (old_synonym->info.dot.arg2);
+				    assert (old_synonym->info.dot.arg2->node_type == PT_NAME);
+
+				    p->info.rename_synonym.old_owner_name = old_synonym->info.dot.arg1;
+				    p->info.rename_synonym.old_name = old_synonym->info.dot.arg2;
+
+				    old_synonym->info.dot.arg1 = NULL; /* cut */
+				    old_synonym->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, old_synonym);
+				  }
+				else
+				  {
+				    assert (old_synonym->node_type == PT_NAME);
+
+				    p->info.rename_synonym.old_owner_name = NULL;
+				    p->info.rename_synonym.old_name = old_synonym;
+				  }
+			      }
+
+			    /* new_name, new_owner_name */
+			    PT_NODE *new_synonym = $7;
+			    if (new_synonym)
+			      {
+				if (new_synonym->node_type == PT_DOT_)
+				  {
+				    assert (new_synonym->info.dot.arg1);
+				    assert (new_synonym->info.dot.arg1->node_type == PT_NAME);
+				    assert (new_synonym->info.dot.arg2);
+				    assert (new_synonym->info.dot.arg2->node_type == PT_NAME);
+
+				    p->info.rename_synonym.new_owner_name = new_synonym->info.dot.arg1;
+				    p->info.rename_synonym.new_name = new_synonym->info.dot.arg2;
+
+				    new_synonym->info.dot.arg1 = NULL; /* cut */
+				    new_synonym->info.dot.arg2 = NULL; /* cut */
+				    parser_free_node(this_parser, new_synonym);
+				  }
+				else
+				  {
+				    assert (new_synonym->node_type == PT_NAME);
+
+				    p->info.rename_synonym.new_owner_name = NULL;
+				    p->info.rename_synonym.new_name = new_synonym;
+				  }
+			      }
+
+			    if (p->info.rename_synonym.old_owner_name
+			        && p->info.rename_synonym.old_owner_name->node_type == PT_NAME
+				&& p->info.rename_synonym.new_owner_name
+				&& p->info.rename_synonym.new_owner_name->node_type == PT_NAME
+				&& strcmp(p->info.rename_synonym.old_owner_name->info.name.original,
+					  p->info.rename_synonym.new_owner_name->info.name.original) != 0)
+			      {
+				PT_ERRORm(this_parser, p,
+					  MSGCAT_SET_PARSER_SYNTAX,
+					  MSGCAT_SYNTAX_RENAME_CANNOT_CHANGE_OWNER);
+			      }
+			  }
+
+			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -4021,6 +4270,28 @@ drop_stmt
 
 
 			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| DROP			/* 1 */
+		{ push_msg (MSGCAT_SYNTAX_INVALID_DROP_SYNONYM); }	/* 2 */
+	  opt_access_modifier	/* 3 */
+	  SYNONYM		/* 4 */
+	  opt_if_exists		/* 5 */
+	  simple_path_id_list	/* 6 */
+	  	{ pop_msg(); }
+		{{
+
+			PT_NODE *p = parser_new_node(this_parser, PT_DROP_SYNONYM);
+
+			if (p)
+			  {
+			    p->info.drop_synonym.access_modifier = $3;
+			    p->info.drop_synonym.if_exists = $5;
+			    p->info.drop_synonym.synonym_list = $6;
+			  }
+
+			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -22440,6 +22711,26 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| PRIVATE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| PUBLIC
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| QUEUES
 		{{
 
@@ -22691,6 +22982,16 @@ identifier
 
 		DBG_PRINT}}
 	| STDDEV_SAMP
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SYNONYM
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -24561,6 +24862,27 @@ json_table_rule
         json_table_column_count = 0;  // reset for next json table, if I am nested
 
         $$ = jt;
+      DBG_PRINT}}
+    ;
+
+opt_access_modifier
+    : /*empty*/
+      {{
+
+	$$ = PT_PRIVATE;
+
+      DBG_PRINT}}
+    | PRIVATE
+      {{
+
+	$$ = PT_PRIVATE;
+
+      DBG_PRINT}}
+    | PUBLIC
+      {{
+
+	$$ = PT_PUBLIC;
+
       DBG_PRINT}}
     ;
 

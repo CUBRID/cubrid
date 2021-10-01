@@ -848,6 +848,11 @@ enum pt_node_type
   PT_SET_NAMES = CUBRID_STMT_SET_NAMES,
   PT_SET_TIMEZONE = CUBRID_STMT_SET_TIMEZONE,
 
+  PT_ALTER_SYNONYM = CUBRID_STMT_ALTER_SYNONYM,
+  PT_CREATE_SYNONYM = CUBRID_STMT_CREATE_SYNONYM,
+  PT_DROP_SYNONYM = CUBRID_STMT_DROP_SYNONYM,
+  PT_RENAME_SYNONYM = CUBRID_STMT_RENAME_SYNONYM,
+
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be distinct from statements */
   PT_INTERSECTION,		/* difference intersection and union are reported as CUBRID_STMT_SELECT. */
   PT_UNION,
@@ -1145,7 +1150,10 @@ typedef enum
 
   PT_DERIVED_JSON_TABLE,	// json table spec derivation
 
-  // todo: separate into relevant enumerations
+  PT_PRIVATE,
+  PT_PUBLIC,
+  PT_SYNONYM
+// todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1679,6 +1687,11 @@ typedef struct pt_flat_spec_info PT_FLAT_SPEC_INFO;
 typedef struct pt_json_table_info PT_JSON_TABLE_INFO;
 typedef struct pt_json_table_node_info PT_JSON_TABLE_NODE_INFO;
 typedef struct pt_json_table_column_info PT_JSON_TABLE_COLUMN_INFO;
+
+typedef struct pt_alter_synonym_info PT_ALTER_SYNONYM_INFO;
+typedef struct pt_create_synonym_info PT_CREATE_SYNONYM_INFO;
+typedef struct pt_drop_synonym_info PT_DROP_SYNONYM_INFO;
+typedef struct pt_rename_synonym_info PT_RENAME_SYNONYM_INFO;
 
 typedef PT_NODE *(*PT_NODE_WALK_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg, int *continue_walk);
 
@@ -3251,6 +3264,43 @@ struct pt_json_table_info
   bool is_correlated;
 };
 
+struct pt_alter_synonym_info
+{
+  PT_NODE *synonym_name;
+  PT_NODE *synonym_owner_name;
+  PT_NODE *target_name;
+  PT_NODE *target_owner_name;
+  PT_NODE *comment;
+  PT_MISC_TYPE access_modifier;
+};
+
+struct pt_create_synonym_info
+{
+  PT_NODE *synonym_name;
+  PT_NODE *synonym_owner_name;
+  PT_NODE *target_name;
+  PT_NODE *target_owner_name;
+  PT_NODE *comment;
+  PT_MISC_TYPE access_modifier;
+  bool or_replace;
+};
+
+struct pt_drop_synonym_info
+{
+  PT_NODE *synonym_list;
+  PT_MISC_TYPE access_modifier;
+  bool if_exists;
+};
+
+struct pt_rename_synonym_info
+{
+  PT_NODE *old_name;
+  PT_NODE *old_owner_name;
+  PT_NODE *new_name;
+  PT_NODE *new_owner_name;
+  PT_MISC_TYPE access_modifier;
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3355,6 +3405,10 @@ union pt_statement_info
   PT_TRACE_INFO trace;
   PT_KILLSTMT_INFO killstmt;
   PT_WITH_CLAUSE_INFO with_clause;
+  PT_ALTER_SYNONYM_INFO alter_synonym;
+  PT_CREATE_SYNONYM_INFO create_synonym;
+  PT_DROP_SYNONYM_INFO drop_synonym;
+  PT_RENAME_SYNONYM_INFO rename_synonym;
 };
 
 /*
