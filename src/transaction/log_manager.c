@@ -12968,16 +12968,13 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       break;
     case DB_TYPE_CHAR:
       func_type = 7;
+
       ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string_with_length (ptr, db_get_string (new_value), new_value->domain.char_info.length);
+      ptr = or_pack_string_with_length (ptr, db_get_string (new_value), db_get_string_size (new_value) - 1);
       break;
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
-      /* Copy string into buf providing for any embedded quotes. Strings may have embedded NULL characters and
-       * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
-       * character and the second byte of the multibyte character.
-       */
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (new_value));
