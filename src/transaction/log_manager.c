@@ -12967,11 +12967,25 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       }
       break;
     case DB_TYPE_CHAR:
+      {
+	const char *str;
+	int length;
+	func_type = 7;
+
+	str = db_get_char (new_value, &length);
+
+	ptr = or_pack_int (ptr, func_type);
+	ptr = or_pack_string_with_length (ptr, str, length - 1);
+	break;
+      }
     case DB_TYPE_VARCHAR:
-      func_type = 7;
-      ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string_with_length (ptr, db_get_string (new_value), new_value->domain.char_info.length);
-      break;
+      {
+	func_type = 7;
+	ptr = or_pack_int (ptr, func_type);
+	ptr = or_pack_string (ptr, db_get_string (new_value));
+
+	break;
+      }
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       {
