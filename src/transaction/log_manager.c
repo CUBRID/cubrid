@@ -12995,13 +12995,13 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 	temp_string = db_get_nchar (new_value, &size);
 	if (temp_string != NULL)
 	  {
-	    result = (char *) malloc (size + 3);
+	    result = (char *) malloc (size + 4);
 	    if (result == NULL)
 	      {
 		return ER_OUT_OF_VIRTUAL_MEMORY;
 	      }
 
-	    snprintf (result, size + 3, "N'%s'", temp_string);
+	    snprintf (result, size + 4, "N'%s'", temp_string);
 	  }
 
 	func_type = 7;
