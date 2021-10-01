@@ -727,7 +727,7 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *message,
 
   /* timeout in second in css_common_connect() */
   return (css_common_connect
-	  (conn, rid, host_name, DATA_REQUEST, message, length, css_Client_id,
+	  (conn, rid, host_name, DATA_REQUEST, message, length, css_Service_id,
 	   prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), true, true));
 }
 
