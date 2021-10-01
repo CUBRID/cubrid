@@ -1506,7 +1506,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	{
 	  if (is_from_derived_table)
 	    {
-	      /* skip and go ahead */
+	      /* skip and go ahead  */
 	      continue;
 	    }
 
