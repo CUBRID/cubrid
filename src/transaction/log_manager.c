@@ -12973,7 +12973,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 
 	snprintf (result, 3, "X'");
 
-	if (db_bit_string (new_value, "%X", result + 2, length) != NO_ERROR)
+	if (db_bit_string (new_value, "%X", result + 2, length - 2) != NO_ERROR)
 	  {
 	    if (result != temp)
 	      {
@@ -12984,6 +12984,8 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 	  }
 
 	snprintf (result + length - 2, 2, "'");
+
+	assert (strlen (result) == (length - 1));
 
 	ptr = or_pack_int (ptr, func_type);
 	ptr = or_pack_string (ptr, result);
