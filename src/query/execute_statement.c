@@ -15392,7 +15392,7 @@ end:
 
       while (cls_info[i] != NULL)
 	{
-	  free_and_init (cls_info[i]);
+	  free_and_init (cls_info[i++]);
 	}
     }
 
