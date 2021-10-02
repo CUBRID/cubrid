@@ -15386,13 +15386,13 @@ end:
       free_and_init (drop_stmt);
     }
 
-  if (cls_info[0] != NULL)
+  if (cls_info[0] != NULL && statement->node_type == PT_DROP)
     {
       int i = 0;
 
       while (cls_info[i] != NULL)
 	{
-	  free_and_init cls_info[i];
+	  free_and_init (cls_info[i]);
 	}
     }
 

@@ -11795,7 +11795,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
   if (tmp_undo_recdes.data != NULL)
     {
-      free_and_init (temp_undo_recdes.data);
+      free_and_init (tmp_undo_recdes.data);
     }
 
   return NO_ERROR;
@@ -11813,7 +11813,7 @@ error:
 
   if (tmp_undo_recdes.data != NULL)
     {
-      free_and_init (temp_undo_recdes.data);
+      free_and_init (tmp_undo_recdes.data);
     }
 
   if (redo_recdes->data != NULL)
