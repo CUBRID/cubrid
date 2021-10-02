@@ -170,10 +170,12 @@ public class SUConnection {
 
     // UFunctionCode.FETCH
     public FetchInfo fetch (
+        long queryId,
         int currentRowIndex,
         int fetchSize, int fetchFlag) throws IOException, TypeMismatchException {
             CUBRIDPacker packer = new CUBRIDPacker (outputBuffer);
             packer.packInt (SUFunctionCode.FETCH.getCode());
+            packer.packBigInt(queryId);
             packer.packInt (currentRowIndex);
             packer.packInt (fetchSize);
             packer.packInt (fetchFlag);

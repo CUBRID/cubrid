@@ -11,6 +11,8 @@ import com.cubrid.jsp.data.QueryResultInfo;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConstants;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorManager;
 import com.cubrid.jsp.value.Value;
 import cubrid.jdbc.jci.CUBRIDCommandType;
 import java.io.IOException;
@@ -149,8 +151,7 @@ public class SUStatement {
     public void bindValue(int index, int type, Object data) throws SQLException {
         int bindIdx = index - 1;
         if (bindParameter == null || bindIdx < 0 || bindIdx >= parameterNumber) {
-            // TODo: error handling
-            throw new SQLException("ER_BIND_INDEX");
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_BIND_INDEX, null);
         }
 
         bindParameter.setParameter(bindIdx, type, data);
@@ -257,7 +258,7 @@ public class SUStatement {
 
         // send fetch request
         try {
-            fetchInfo = suConn.fetch(cursorPosition, fetchSize, 0);
+            fetchInfo = suConn.fetch(executeInfo.getResultInfo(0).queryId, cursorPosition, fetchSize, 0);
             fetchedTupleNumber = fetchInfo.numFetched;
             fetchedStartCursorPosition = fetchInfo.tuples[0].tupleNumber() - 1;
         } catch (Exception e) {
@@ -346,6 +347,7 @@ public class SUStatement {
         if (index < 0 || index >= columnNumber) {
             // TODO: error handling
             // errorHandler.setErrorCode(UErrorCode.ER_COLUMN_INDEX);
+            // CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_COLUMN_INDEX);
             return null;
         }
 
