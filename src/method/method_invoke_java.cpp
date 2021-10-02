@@ -32,7 +32,7 @@
 namespace cubmethod
 {
   method_invoke_java::method_invoke_java (method_invoke_group *group, method_sig_node *method_sig)
-    : method_invoke (group, method_sig), m_query_cursor (nullptr)
+    : method_invoke (group, method_sig)
   {
     //
   }
@@ -40,11 +40,14 @@ namespace cubmethod
   method_invoke_java::~method_invoke_java ()
   {
 #if defined (SERVER_MODE)
-    if (m_query_cursor)
+    query_cursor *cursor = nullptr;
+    for (auto &cursor_iter: m_cursor_map)
       {
-	m_query_cursor->close ();
-	delete m_query_cursor;
+	cursor = cursor_iter.second;
+	cursor->close ();
+	delete cursor;
       }
+    m_cursor_map.clear ();
 #endif
   }
 
@@ -388,17 +391,23 @@ namespace cubmethod
 
       if (info.qresult_infos[0].stmt_type == CUBRID_STMT_SELECT)
 	{
-	  if (m_query_cursor)
+	  std::uint64_t qid = info.qresult_infos[0].query_id;
+	  const auto &iter = m_cursor_map.find (qid);
+
+	  query_cursor *cursor = nullptr;
+	  if (iter == m_cursor_map.end ())
 	    {
-	      m_query_cursor->close ();
-	      m_query_cursor->reset (info.qresult_infos[0].query_id);
-	      m_query_cursor->open ();
+	      /* not found, new cursor is created */
+	      cursor = m_cursor_map[qid] = new query_cursor (m_group->get_thread_entry(), qid);
 	    }
 	  else
 	    {
-	      m_query_cursor = new query_cursor (m_group->get_thread_entry(), info.qresult_infos[0].query_id);
-	      m_query_cursor->open ();
+	      /* found, cursur is reset */
+	      cursor = iter->second;
+	      cursor->close ();
+	      cursor->reset (qid);
 	    }
+	  cursor->open ();
 	}
 
       error = method_send_buffer_to_java (m_group->get_socket(), b);
@@ -418,35 +427,50 @@ namespace cubmethod
     unpacker.set_buffer (blk.ptr, blk.dim);
 
     int code;
+    std::uint64_t qid;
     int pos;
     int fetch_count;
     int fetch_flag;
 
     unpacker.unpack_int (code);
+    unpacker.unpack_bigint (qid);
     unpacker.unpack_int (pos);
     unpacker.unpack_int (fetch_count);
     unpacker.unpack_int (fetch_flag);
 
     fetch_info info;
 
-    /* fetch all */
-    int i = 0;
-    SCAN_CODE s_code = S_SUCCESS;
-    while (s_code == S_SUCCESS)
+    /* find query cursor */
+    const auto &iter = m_cursor_map.find (qid);
+    if (iter == m_cursor_map.end ())
       {
-	s_code = m_query_cursor->next_row ();
-	if (s_code == S_END || i > 1000)
+	/* error */
+	// TODO: error handling
+	error = ER_FAILED;
+      }
+    else
+      {
+	query_cursor *cursor = iter->second;
+
+	int i = 0;
+	SCAN_CODE s_code = S_SUCCESS;
+	while (s_code == S_SUCCESS)
 	  {
-	    break;
+	    s_code = cursor->next_row ();
+	    if (s_code == S_END || i > 1000)
+	      {
+		break;
+	      }
+
+	    int tuple_index = cursor->get_current_index ();
+	    std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
+	    info.tuples.emplace_back (tuple_index, tuple_values);
+	    i++;
 	  }
 
-	int tuple_index = m_query_cursor->get_current_index ();
-	std::vector<DB_VALUE> tuple_values = m_query_cursor->get_current_tuple ();
-	info.tuples.emplace_back (tuple_index, tuple_values);
-	i++;
+	error = method_send_data_to_java (m_group->get_socket (), info);
       }
 
-    error = method_send_data_to_java (m_group->get_socket (), info);
 #endif
     return error;
   }

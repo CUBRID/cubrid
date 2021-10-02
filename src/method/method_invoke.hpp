@@ -26,6 +26,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include <vector>
+#include <unordered_map>
 
 #include "dbtype.h"		/* db_value_* */
 #include "method_def.hpp"	/* method_sig_node */
@@ -96,7 +97,7 @@ namespace cubmethod
       int callback_execute (cubthread::entry &thread_ref, cubmem::block &blk);
       int callback_fetch (cubthread::entry &thread_ref, cubmem::block &blk);
 
-      query_cursor *m_query_cursor;
+      std::unordered_map <std::uint64_t, query_cursor *> m_cursor_map;
       SOCKET m_sock_fd = INVALID_SOCKET;
   };
 

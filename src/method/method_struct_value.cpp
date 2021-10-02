@@ -71,7 +71,7 @@ namespace cubmethod
       case DB_TYPE_FLOAT:
       {
 	serializator.pack_int (sizeof (float));
-	// TODO: update packer
+	// FIXME: update packer
 	// serializator.pack_float (db_get_float (&v));
 	float f = db_get_float (&v);
 	OR_BUF or_buf;
@@ -83,7 +83,8 @@ namespace cubmethod
       case DB_TYPE_DOUBLE:
       {
 	serializator.pack_int (sizeof (double));
-	// TODO: update packer
+
+	// FIXME: update packer
 	// serializator.pack_double (db_get_double (&v));
 	double d = db_get_double (&v);
 	OR_BUF or_buf;
@@ -101,7 +102,7 @@ namespace cubmethod
 	serializator.delegate_to_or_buf (OR_DOUBLE_SIZE, or_buf);
 	OR_PUT_DOUBLE (or_buf.ptr, money->amount);
 
-	// TODO: update packer
+	// FIXME: update packer
 	// serializator.pack_double (money->amount);
       }
       break;
@@ -306,7 +307,7 @@ namespace cubmethod
 	// FIXME: no alignment ?
 	// size += DB_ALIGN (size, OR_FLOAT_SIZE) - size + OR_FLOAT_SIZE;
 
-	// TODO: update packer
+	// FIXME: update packer
 	// size += serializator.get_packed_float_size (size);
 	break;
 
@@ -319,7 +320,7 @@ namespace cubmethod
 	// size += DB_ALIGN (size, OR_DOUBLE_SIZE) - size + OR_DOUBLE_SIZE;
 
 	// assert (false);
-	// TODO: update packer
+	// FIXME: update packer
 	// size += serializator.get_packed_double_size (size);
 	break;
 
@@ -476,7 +477,7 @@ namespace cubmethod
       case DB_TYPE_FLOAT:
       {
 	float f;
-	// TODO: update packer
+	// FIXME: update packer
 	// deserializator.unpack_float (f);
 	OR_BUF or_buf;
 	deserializator.delegate_to_or_buf (OR_FLOAT_SIZE, or_buf);
@@ -488,7 +489,7 @@ namespace cubmethod
       case DB_TYPE_DOUBLE:
       {
 	double d;
-	// TODO: update packer
+	// FIXME: update packer
 	// deserializator.unpack_double (d);
 	OR_BUF or_buf;
 	deserializator.delegate_to_or_buf (OR_DOUBLE_SIZE, or_buf);
@@ -712,7 +713,7 @@ namespace cubmethod
       {
 	double monetary;
 
-	// TODO: update packer
+	// FIXME: update packer
 	// deserializator.unpack_double (monetary);
 
 	OR_BUF or_buf;

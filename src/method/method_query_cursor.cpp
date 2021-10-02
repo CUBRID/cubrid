@@ -52,12 +52,13 @@ namespace cubmethod
 	else
 	  {
 	    m_list_id = query_entry_p->list_id;
-	    m_current_row = 0;
+	    m_current_row_index = 0;
 	    m_current_tuple.resize (m_list_id->type_list.type_cnt);
 	  }
       }
     else
       {
+	// tfile_vfid_p = (QMGR_TEMP_FILE *) query_id;
 	assert (false);
       }
   }
@@ -79,18 +80,17 @@ namespace cubmethod
   query_cursor::clear ()
   {
     m_current_tuple.clear ();
-    m_current_row = 0;
+    m_current_row_index = 0;
   }
 
   SCAN_CODE
   query_cursor::prev_row ()
   {
-    m_current_row--;
-
     QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
     SCAN_CODE scan_code = qfile_scan_list_prev (m_thread, &m_scan_id, &tuple_record, PEEK);
     if (scan_code == S_SUCCESS)
       {
+	m_current_row_index--;
 	char *ptr;
 	int length;
 	OR_BUF buf;
@@ -106,7 +106,6 @@ namespace cubmethod
 		//TODO: error handling
 		qfile_close_scan (m_thread, &m_scan_id);
 	      }
-
 
 	    DB_VALUE *value = &m_current_tuple[i];
 	    PR_TYPE *pr_type = domain->type;
@@ -134,12 +133,12 @@ namespace cubmethod
   SCAN_CODE
   query_cursor::next_row ()
   {
-    m_current_row++;
-
     QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
     SCAN_CODE scan_code = qfile_scan_list_next (m_thread, &m_scan_id, &tuple_record, PEEK);
     if (scan_code == S_SUCCESS)
       {
+	m_current_row_index++;
+
 	char *ptr;
 	int length;
 	OR_BUF buf;

@@ -66,7 +66,7 @@ namespace cubmethod
 
       int get_current_index ()
       {
-	return m_current_row;
+	return m_current_row_index;
       }
 
       int get_tuple_value (int index, DB_VALUE &result);
@@ -80,7 +80,7 @@ namespace cubmethod
       QFILE_LIST_SCAN_ID m_scan_id;	/* scan on list_id */
 
       std::vector<DB_VALUE> m_current_tuple;
-      int m_current_row;
+      int m_current_row_index;
 
       // bool is_updatable;		/* Cursor updatable ? */
       bool is_oid_included;		/* Cursor has first hidden oid col. */
