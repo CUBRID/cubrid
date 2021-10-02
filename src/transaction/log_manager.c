@@ -12950,6 +12950,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       {
+	char temp[1024];
 	char *result;
 	int length, n, count;
 	char *bitstring = NULL;
@@ -12957,32 +12958,40 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 
 	length = ((db_get_string_length (new_value) + 3) / 4) + 4;
 
-	bitstring = (char *) malloc (length);
-	if (bitstring == NULL)
+	if (length <= 1024)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    result = temp;
+	  }
+	else
+	  {
+	    result = (char *) malloc (length);
+	    if (result == NULL)
+	      {
+		return ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
 	  }
 
-	if (db_bit_string (new_value, "%X", bitstring, length) != NO_ERROR)
+	snprintf (result, 3, "X'");
+
+	if (db_bit_string (new_value, "%X", result + 2, length) != NO_ERROR)
 	  {
-	    free_and_init (bitstring);
+	    if (result != temp)
+	      {
+		free_and_init (result);
+	      }
+
 	    return ER_FAILED;
 	  }
 
-	result = (char *) malloc (length + 4);
-	if (result == NULL)
-	  {
-	    free_and_init (bitstring);
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
-	  }
-
-	sprintf (result, "X'%s'", bitstring);
+	snprintf (result + length - 2, 2, "'");
 
 	ptr = or_pack_int (ptr, func_type);
 	ptr = or_pack_string (ptr, result);
 
-	free_and_init (bitstring);
-	free_and_init (result);
+	if (result != temp)
+	  {
+	    free_and_init (result);
+	  }
 
 	break;
       }
