@@ -13021,33 +13021,53 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       {
-	char result[1024] = "\0";
+	char temp[1024];
+	char *result = NULL;
 	int length, n, count;
 	char *bitstring = NULL;
 	func_type = 7;
 
 	length = ((db_get_string_length (new_value) + 3) / 4) + 4;
 
-	bitstring = (char *) malloc (length);
-	if (bitstring == NULL)
+	if (length <= 1024)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    result = temp;
+	  }
+	else
+	  {
+	    result = (char *) malloc (length);
+	    if (result == NULL)
+	      {
+		return ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
 	  }
 
-	if (db_bit_string (new_value, "%X", bitstring, length) != NO_ERROR)
+	snprintf (result, 3, "X'");
+
+	if (db_bit_string (new_value, "%X", result + 2, length - 2) != NO_ERROR)
 	  {
-	    free_and_init (bitstring);
+	    if (result != temp)
+	      {
+		free_and_init (result);
+	      }
+
 	    return ER_FAILED;
 	  }
 
-	sprintf (result, "X'%s'", bitstring);
+	snprintf (result + length - 2, 2, "'");
+
+	assert (strlen (result) == (length - 1));
 
 	ptr = or_pack_int (ptr, func_type);
 	ptr = or_pack_string (ptr, result);
 
-	free_and_init (bitstring);
+	if (result != temp)
+	  {
+	    free_and_init (result);
+	  }
+
+	break;
       }
-      break;
     case DB_TYPE_CHAR:
       func_type = 7;
 
