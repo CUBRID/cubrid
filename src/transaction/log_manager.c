@@ -12951,7 +12951,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_VARBIT:
       {
 	char temp[1024];
-	char *result;
+	char *result = NULL;
 	int length, n, count;
 	char *bitstring = NULL;
 	func_type = 7;
