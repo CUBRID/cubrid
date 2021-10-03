@@ -4926,7 +4926,13 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
   assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
 
   int length = undo_recdes->length + sizeof (undo_recdes->type);
+
   char *data = (char *) malloc (length);
+  if (data != NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
   memcpy (data, &undo_recdes->type, sizeof (undo_recdes->type));
   memcpy (data + sizeof (undo_recdes->type), undo_recdes->data, undo_recdes->length);
 
@@ -10512,6 +10518,13 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
   LOG_RECTYPE log_type;
   LOG_ZIP *supp_zip = NULL;
 
+  char *supplement_data;
+  bool is_alloced = false;
+
+  RECDES supp_recdes = RECDES_INITIALIZER;
+  RECDES undo_recdes = RECDES_INITIALIZER;
+  RECDES redo_recdes = RECDES_INITIALIZER;
+
   LSA_COPY (&cur_log_rec_lsa, process_lsa);
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -10607,20 +10620,14 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	/*supplemental log info types : time, tran_user, undo image */
 	LOG_REC_SUPPLEMENT *supplement;
 	int supplement_length;
-	char *supplement_data;
-	RECDES supp_recdes = RECDES_INITIALIZER;
-
 	SUPPLEMENT_REC_TYPE rec_type;
 
 	bool is_zip_supplement = false;
 	bool is_unzip_supplement = false;
-	bool is_alloced = false;
 
 	OID classoid;
 
 	LOG_LSA undo_lsa, redo_lsa;
-	RECDES undo_recdes = RECDES_INITIALIZER;
-	RECDES redo_recdes = RECDES_INITIALIZER;
 
 	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), process_lsa, log_page_p);
 
@@ -10806,25 +10813,6 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    break;
 	  }
 
-	if (supplement_data != NULL)
-	  {
-	    free_and_init (supplement_data);
-	  }
-
-	if (undo_recdes.data != NULL)
-	  {
-	    free_and_init (undo_recdes.data);
-	  }
-
-	if (redo_recdes.data != NULL)
-	  {
-	    free_and_init (redo_recdes.data);
-	  }
-
-	if (is_alloced == true)
-	  {
-	    free_and_init (supplement_data);
-	  }
 
 	break;
       }
@@ -10834,13 +10822,53 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
     }
 
 end:
+  if (supplement_data != NULL)
+    {
+      free_and_init (supplement_data);
+    }
+
+  if (undo_recdes.data != NULL)
+    {
+      free_and_init (undo_recdes.data);
+    }
+
+  if (redo_recdes.data != NULL)
+    {
+      free_and_init (redo_recdes.data);
+    }
+
+  if (is_alloced == true)
+    {
+      free_and_init (supplement_data);
+    }
 
   LSA_COPY (process_lsa, &next_log_rec_lsa);
+
   return error;
 
 error:
+  if (supplement_data != NULL)
+    {
+      free_and_init (supplement_data);
+    }
+
+  if (undo_recdes.data != NULL)
+    {
+      free_and_init (undo_recdes.data);
+    }
+
+  if (redo_recdes.data != NULL)
+    {
+      free_and_init (redo_recdes.data);
+    }
+
+  if (is_alloced == true)
+    {
+      free_and_init (supplement_data);
+    }
 
   LSA_COPY (process_lsa, &cur_log_rec_lsa);
+
   return error;
 }
 
@@ -11062,10 +11090,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
   int log_type;
 
-  int is_zipped_undo = false;
-  int is_unzipped_undo = false;
-  LOG_ZIP *undo_zip_ptr = NULL;
-
   int is_zipped_redo = false;
   int is_unzipped_redo = false;
   LOG_ZIP *redo_zip_ptr = NULL;
@@ -11079,7 +11103,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
   char *undo_data = NULL;
 
   bool is_redo_alloced = false;
-  bool is_undo_alloced = false;
+
+  RECDES tmp_undo_recdes = RECDES_INITIALIZER;
 
   SCAN_CODE scan_code = S_SUCCESS;
 
@@ -11103,7 +11128,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	{
 	  if ((error_code = logpb_fetch_page (thread_p, undo_lsa, LOG_CS_SAFE_READER, log_page_p)) != NO_ERROR)
 	    {
-	      goto end;
+	      goto error;
 	    }
 	}
 
@@ -11124,7 +11149,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, undo_recdes);
 	    if (scan_code != S_SUCCESS)
 	      {
-		return ER_FAILED;
+		error_code = ER_FAILED;
+		goto error;
 	      }
 
 	    break;
@@ -11145,7 +11171,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, undo_recdes);
 		if (scan_code != S_SUCCESS)
 		  {
-		    return ER_FAILED;
+		    error_code = ER_FAILED;
+		    goto error;
 		  }
 
 	      }
@@ -11168,7 +11195,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, undo_recdes);
 		if (scan_code != S_SUCCESS)
 		  {
-		    return ER_FAILED;
+		    error_code = ER_FAILED;
+		    goto error;
 		  }
 	      }
 	    else if (rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVOVF_NEWPAGE_LINK)
@@ -11178,7 +11206,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		     cdc_get_overflow_recdes (thread_p, log_page_p, undo_recdes, prev_lsa, RVOVF_PAGE_UPDATE,
 					      false)) != NO_ERROR)
 		  {
-		    goto end;
+		    goto error;
 		  }
 
 	      }
@@ -11201,7 +11229,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		     cdc_get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex,
 					      false)) != NO_ERROR)
 		  {
-		    goto end;
+		    goto error;
 		  }
 
 	      }
@@ -11210,7 +11238,9 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, undo_recdes);
 		if (scan_code != S_SUCCESS)
 		  {
-		    return ER_FAILED;
+		    error_code = ER_FAILED;
+
+		    goto error;
 		  }
 	      }
 
@@ -11234,7 +11264,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		     cdc_get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex,
 					      false)) != NO_ERROR)
 		  {
-		    goto end;
+		    goto error;
 		  }
 	      }
 
@@ -11267,7 +11297,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      if (logpb_fetch_page (thread_p, redo_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 		{
 		  error_code = ER_FAILED;
-		  goto end;
+		  goto error;
 		}
 	    }
 	}
@@ -11329,7 +11359,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 			cdc_log ("cdc_get_recdes : failed to allocate memory for redo data on recovery index:%d",
 				 rcvindex);
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-			goto end;
+			goto error;
 		      }
 
 		    logpb_copy_from_log (thread_p, redo_data, redo_length, &process_lsa, log_page_p);
@@ -11342,7 +11372,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    if (redo_zip_ptr == NULL)
 		      {
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-			goto end;
+			goto error;
 		      }
 
 		    is_unzipped_redo = log_unzip (redo_zip_ptr, redo_length, redo_data);
@@ -11350,7 +11380,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			cdc_log ("cdc_get_recdes : failed to unzip the redo data on recovery index:%d", rcvindex);
 			error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
-			goto end;
+			goto error;
 		      }
 		  }
 
@@ -11377,7 +11407,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		if (redo_recdes->data == NULL)
 		  {
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-		    goto end;
+		    goto error;
 		  }
 
 		memcpy (redo_recdes->data, tmp_ptr, OR_INT_SIZE);
@@ -11387,13 +11417,9 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      }
 	    else if (rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	      {
-		RECDES tmp_undo_recdes = RECDES_INITIALIZER;
-		int tmp_undo_length;
-
 		if (ZIP_CHECK (undo_length))
 		  {
 		    undo_length = (int) GET_ZIP_LEN (undo_length);
-		    is_zipped_undo = true;
 		  }
 
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
@@ -11402,20 +11428,19 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)
 		      {
-			return ER_FAILED;
+			error_code = ER_FAILED;
+			goto error;
 		      }
 
 		    undo_data = (char *) malloc (tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type));
 		    if (undo_data == NULL)
 		      {
-			free_and_init (tmp_undo_recdes.data);
-			return ER_OUT_OF_VIRTUAL_MEMORY;
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto error;
 		      }
 
 		    memcpy (undo_data, &tmp_undo_recdes.type, sizeof (tmp_undo_recdes.type));
 		    memcpy (undo_data + sizeof (tmp_undo_recdes.type), tmp_undo_recdes.data, tmp_undo_recdes.length);
-
-		    free_and_init (tmp_undo_recdes.data);
 		  }
 
 		/* get REDO record */
@@ -11432,7 +11457,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		  {
 		    cdc_log ("cdc_get_recdes : failed to allocate memory for redo data on recovery index:%d", rcvindex);
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-		    goto end;
+		    goto error;
 		  }
 
 		logpb_copy_from_log (thread_p, redo_data, redo_length, &process_lsa, log_page_p);
@@ -11445,7 +11470,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			cdc_log ("cdc_get_recdes : failed to get memory of redo zip on recovery index:%d", rcvindex);
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-			goto end;
+			goto error;
 		      }
 
 		    is_unzipped_redo = log_unzip (redo_zip_ptr, redo_length, redo_data);
@@ -11453,7 +11478,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			cdc_log ("cdc_get_recdes : failed to unzip the redo data on recovery index:%d", rcvindex);
 			error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
-			goto end;
+			goto error;
 		      }
 		  }
 
@@ -11485,7 +11510,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    cdc_log ("cdc_get_recdes : failed to allocate memory for redo_recdes->data on recovery index:%d",
 			     rcvindex);
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-		    goto end;
+		    goto error;
 		  }
 
 		memcpy (redo_recdes->data, (char *) redo_data + sizeof (redo_recdes->type), redo_recdes->length);
@@ -11531,7 +11556,9 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			cdc_log ("cdc_get_recdes : failed to allocate memory for redo data on recovery index:%d",
 				 rcvindex);
-			return ER_OUT_OF_VIRTUAL_MEMORY;
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+
+			goto error;
 		      }
 
 		    logpb_copy_from_log (thread_p, redo_data, redo_length, &process_lsa, log_page_p);
@@ -11544,7 +11571,10 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    if (redo_zip_ptr == NULL)
 		      {
 			cdc_log ("cdc_get_recdes : failed to get memory for redo zip on recovery index:%d", rcvindex);
-			return ER_OUT_OF_VIRTUAL_MEMORY;
+
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+
+			goto error;
 		      }
 
 		    is_unzipped_redo = log_unzip (redo_zip_ptr, redo_length, redo_data);
@@ -11552,7 +11582,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			cdc_log ("cdc_get_recdes : failed to unzip the redo data on recovery index:%d", rcvindex);
 			error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
-			goto end;
+			goto error;
 		      }
 		  }
 
@@ -11575,7 +11605,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		if (redo_recdes->data == NULL)
 		  {
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-		    goto end;
+		    goto error;
 		  }
 
 		memcpy (redo_recdes->data, (char *) redo_data + sizeof (redo_recdes->type), redo_recdes->length);
@@ -11587,7 +11617,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		if (ZIP_CHECK (undo_length))
 		  {
 		    undo_length = (int) GET_ZIP_LEN (undo_length);
-		    is_zipped_undo = true;
 		  }
 
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
@@ -11596,20 +11625,20 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)
 		      {
-			return ER_FAILED;
+			error_code = ER_FAILED;
+
+			goto error;
 		      }
+
 		    undo_data = (char *) malloc (tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type));
 		    if (undo_data == NULL)
 		      {
-			free_and_init (tmp_undo_recdes.data);
-			return ER_OUT_OF_VIRTUAL_MEMORY;
+			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto error;
 		      }
 
 		    memcpy (undo_data, &tmp_undo_recdes.type, sizeof (tmp_undo_recdes.type));
 		    memcpy (undo_data + sizeof (tmp_undo_recdes.type), tmp_undo_recdes.data, tmp_undo_recdes.length);
-
-		    free_and_init (tmp_undo_recdes.data);
-
 		  }
 
 		/*get REDO record */
@@ -11633,7 +11662,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 			cdc_log ("cdc_get_recdes : failed to allocate memory for redo data on recovery index:%d",
 				 rcvindex);
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-			goto end;
+			goto error;
 		      }
 
 		    logpb_copy_from_log (thread_p, redo_data, redo_length, &process_lsa, log_page_p);
@@ -11647,7 +11676,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			cdc_log ("cdc_get_recdes : failed to get memory for redo zip on recovery index:%d", rcvindex);
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-			goto end;
+			goto error;
 		      }
 
 		    is_unzipped_redo = log_unzip (redo_zip_ptr, redo_length, redo_data);
@@ -11655,7 +11684,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			cdc_log ("cdc_get_recdes : failed to unzip redo data on recovery index:%d", rcvindex);
 			error_code = ER_IO_LZ4_DECOMPRESS_FAIL;
-			goto end;
+			goto error;
 		      }
 		  }
 
@@ -11675,8 +11704,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		if (is_diff)
 		  {
 		    undo_length = tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type);
-		    (void) log_diff (is_unzipped_undo ? undo_zip_ptr->data_length : undo_length, undo_data,
-				     redo_length, redo_data);
+
+		    (void) log_diff (undo_length, undo_data, redo_length, redo_data);
 		  }
 
 
@@ -11689,7 +11718,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    cdc_log ("cdc_get_recdes : failed to allocate memory for redo_recdes->data on recovery index:%d",
 			     rcvindex);
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-		    goto end;
+		    goto error;
 		  }
 		memcpy (redo_recdes->data, (char *) redo_data + sizeof (redo_recdes->type), redo_recdes->length);
 	      }
@@ -11700,11 +11729,10 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, prev_lsa, RVOVF_PAGE_UPDATE,
 					      true)) != NO_ERROR)
 		  {
-		    goto end;
+		    goto error;
 		  }
 
 	      }
-
 
 	    break;
 	  }
@@ -11723,7 +11751,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex,
 					      true)) != NO_ERROR)
 		  {
-		    goto end;
+		    goto error;
 		  }
 	      }
 
@@ -11744,7 +11772,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex,
 					      true)) != NO_ERROR)
 		  {
-		    goto end;
+		    goto error;
 		  }
 	      }
 	    break;
@@ -11755,17 +11783,48 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	}
     }
 
-end:
   if (redo_data != NULL && is_redo_alloced)
     {
       free_and_init (redo_data);
     }
 
-  if (undo_data != NULL && is_undo_alloced)
+  if (undo_data != NULL)
     {
       free_and_init (undo_data);
     }
 
+  if (tmp_undo_recdes.data != NULL)
+    {
+      free_and_init (tmp_undo_recdes.data);
+    }
+
+  return NO_ERROR;
+
+error:
+  if (redo_data != NULL && is_redo_alloced)
+    {
+      free_and_init (redo_data);
+    }
+
+  if (undo_data != NULL)
+    {
+      free_and_init (undo_data);
+    }
+
+  if (tmp_undo_recdes.data != NULL)
+    {
+      free_and_init (tmp_undo_recdes.data);
+    }
+
+  if (redo_recdes->data != NULL)
+    {
+      free_and_init (redo_recdes->data);
+    }
+
+  if (undo_recdes->data != NULL)
+    {
+      free_and_init (undo_recdes->data);
+    }
   return error_code;
 }
 
@@ -11979,6 +12038,7 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
 		    {
 		      free_and_init (ovf_list_data->data);
 		    }
+
 		  free_and_init (ovf_list_data);
 		  goto end;
 		}
@@ -12025,6 +12085,7 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
 		{
 		  free_and_init (ovf_list_data->data);
 		}
+
 	      free_and_init (ovf_list_data);
 	      goto end;
 	    }
@@ -12034,7 +12095,9 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
 	{
 	  if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_SAFE_READER, current_log_page) != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      error_code = ER_FAILED;
+
+	      goto end;
 	    }
 	}
       LSA_COPY (&current_lsa, &prev_lsa);
@@ -12048,6 +12111,7 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
       cdc_log ("cdc_get_overflow_recdes : failed to allocate memory for record descriptor for overflow data");
       /* malloc failed: clear linked-list */
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+
       goto end;
     }
 
