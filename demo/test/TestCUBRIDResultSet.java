@@ -1214,6 +1214,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
+    /* test updateXX() and cancelRowUpdates() */
     public static String test10() throws SQLException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -1245,6 +1246,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
+    /* test moveToInsertRow() and moveToCurrentRow() */
     public static String test11() throws SQLException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
