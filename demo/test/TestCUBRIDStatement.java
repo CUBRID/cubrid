@@ -297,7 +297,6 @@ public class TestCUBRIDStatement {
         SqlUtil.createTable(conn, "t1", "a int");
         try {
             ResultSet rs = SqlUtil.executeQuery(conn, "select * from t1");
-            rs = SqlUtil.executeQuery(conn, "select * from t1");
             rs.close();
         } finally {
             SqlUtil.dropTable(conn, "t1");
@@ -305,6 +304,7 @@ public class TestCUBRIDStatement {
         return "t";
     }
 
+    /* TODO: Testing for this is not needed
     // Add test case For http://bts4.nhncorp.com/nhnbts/browse/CUBRIDSUS-10706
     public static String test17() throws SQLException {
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -331,4 +331,5 @@ public class TestCUBRIDStatement {
 
         return "t";
     }
+    */
 }
