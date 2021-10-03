@@ -14884,19 +14884,37 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
 	for (current_rename = statement; current_rename != NULL; current_rename = current_rename->next)
 	  {
-	    char rename_statement[1024] = "\0";
+	    char temp_statement[1024] = "\0";
+	    char *rename_statement = NULL;
 	    const char *new_name = current_rename->info.rename.new_name->info.name.original;
 	    const char *old_name = current_rename->info.rename.old_name->info.name.original;
+	    int length = 0;
 
 	    /* Bug : statement->info.rename.entity_type always has PT_CLASS 
 	     * when rename view1 as view2 or rename table1 as table2. So, objtype can not be classified with entity_type */
 	    if (do_find_object_type (PT_MISC_DUMMY, new_name, &objtype) != NO_ERROR)
 	      {
-		return ER_FAILED;
+		error = ER_FAILED;
+		goto end;
 	      }
 
 	    assert (objtype == CDC_TABLE || objtype == CDC_VIEW);
 
+	    length = strlen (new_name) + strlen (old_name) + 18;
+
+	    if (length <= 1024)
+	      {
+		rename_statement = temp_statement;
+	      }
+	    else
+	      {
+		rename_statement = (char *) malloc (length);
+		if (rename_statement == NULL)
+		  {
+		    error = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
+	      }
 
 	    if (objtype == CDC_VIEW)
 	      {
@@ -14913,6 +14931,11 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	      }
 
 	    error = log_supplement_statement (ddl_type, objtype, classoid, classoid, rename_statement);
+
+	    if (rename_statement != temp_statement)
+	      {
+		free_and_init (rename_statement);
+	      }
 	  }
 
 	supp_appended = true;
@@ -14923,7 +14946,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       {
 	if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
 	  {
-	    return NO_ERROR;
+	    goto end;
 	  }
 
 	ddl_type = CDC_DROP;
@@ -15003,7 +15026,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	oid = (OID *) malloc (sizeof (OID));
 	if (oid == NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
 	  }
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -15028,7 +15052,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	oid = (OID *) malloc (sizeof (OID));
 	if (oid == NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
 	  }
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -15053,7 +15078,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	oid = (OID *) malloc (sizeof (OID));
 	if (oid == NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
 	  }
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -15075,7 +15101,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	oid = (OID *) malloc (sizeof (OID));
 	if (oid == NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
 	  }
 
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
@@ -15083,7 +15110,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	objname = (char *) PT_NODE_SR_NAME (statement);
 	if (do_get_serial_obj_id (oid, serial_class, objname) == NULL)
 	  {
-	    return NO_ERROR;
+	    error = ER_FAILED;
+	    goto end;
 	  }
 
 	ddl_type = CDC_CREATE;
@@ -15096,7 +15124,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	oid = (OID *) malloc (sizeof (OID));
 	if (oid == NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
 	  }
 
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
@@ -15104,7 +15133,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	objname = (char *) PT_NODE_SR_NAME (statement);
 	if (do_get_serial_obj_id (oid, serial_class, objname) == NULL)
 	  {
-	    return NO_ERROR;
+	    goto end;
 	  }
 
 	ddl_type = CDC_ALTER;
@@ -15361,6 +15390,21 @@ end:
   if (oid != NULL)
     {
       free_and_init (oid);
+    }
+
+  if (drop_stmt != NULL)
+    {
+      free_and_init (drop_stmt);
+    }
+
+  if (cls_info[0] != NULL && statement->node_type == PT_DROP)
+    {
+      int i = 0;
+
+      while (cls_info[i] != NULL)
+	{
+	  free_and_init (cls_info[i++]);
+	}
     }
 
   return error;

@@ -10377,11 +10377,29 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
 error:
 
-  cdc_free_extraction_filter ();
+  if (extraction_user != NULL)
+    {
+      for (int i = 0; i < num_extraction_user; i++)
+	{
+	  if (extraction_user[i] != NULL)
+	    {
+	      free_and_init (extraction_user[i]);
+	    }
+	}
+
+      free_and_init (extraction_user);
+    }
+
+  if (extraction_classoids != NULL)
+    {
+      free_and_init (extraction_classoids);
+    }
 
   or_pack_int (reply, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
 }
 
 void
@@ -10455,8 +10473,8 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 
   if (LSA_ISNULL (&cdc_Gl.consumer.next_lsa))
     {
-      /* if server is restarted while cdc is running, and client immediately calls extraction without scdc_find_lsa(), 
-       * LSA validation is needed to perform at client side or somewhere because server has no information about LSAs. it needs to be discussed ( 보류) */
+      /* if server is restarted while cdc is running, and client immediately calls extraction without scdc_find_lsa() */
+
       error_code = cdc_validate_lsa (thread_p, &start_lsa);
       if (error_code != NO_ERROR)
 	{
@@ -10534,13 +10552,7 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-  // 1. producer 정지 및 관련 자료구조 cleanup
-  // 2. consumer 버퍼 정리 및 초기화
   error_code = cdc_cleanup ();
-
-  /* server side, client side finalize is mixed 
-   * server : 전역 변수 초기화 
-   * client : server finalize의 subset */
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
