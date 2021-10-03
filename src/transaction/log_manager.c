@@ -13273,6 +13273,12 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
   return NO_ERROR;
 }
 
+LOG_PAGEID
+cdc_min_log_pageid_to_keep ()
+{
+  return cdc_Gl.consumer.start_lsa.pageid;
+}
+
 #if defined (SERVER_MODE)
 void
 cdc_loginfo_producer_daemon_init ()

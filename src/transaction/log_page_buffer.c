@@ -5969,6 +5969,9 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   char *catmsg;
   int deleted_count = 0;
 
+  LOG_PAGEID cdc_first_pageid = NULL_PAGEID;
+  int min_arv_required_for_cdc;
+
   if (log_max_archives == INT_MAX)
     {
       return 0;			/* none is deleted */
@@ -6055,6 +6058,32 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	    }
 	}
 
+      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+	{
+	  cdc_first_pageid = cdc_min_log_pageid_to_keep ();
+
+	  _er_log_debug (ARG_FILE_LINE, "First log pageid in cdc data is %lld", cdc_first_pageid);
+	  if (cdc_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (cdc_first_pageid))
+	    {
+	      min_arv_required_for_cdc = logpb_get_archive_number (thread_p, cdc_first_pageid);
+
+	      _er_log_debug (ARG_FILE_LINE,
+			     "First archive number used for cdc is %d , for vacuum is %d, last_arv_num_for_syscrashes : %d",
+			     min_arv_required_for_cdc, min_arv_required_for_vacuum,
+			     log_Gl.hdr.last_arv_num_for_syscrashes);
+
+	      if (min_arv_required_for_cdc >= 0)
+		{
+		  last_arv_num_to_delete = MIN (last_arv_num_to_delete, min_arv_required_for_cdc);
+		}
+	      else
+		{
+		  /* Page should be in archive. */
+		  assert (false);
+		}
+	    }
+	}
+
       if (max_count > 0)
 	{
 	  /* check max count for deletion */
@@ -6128,6 +6157,9 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   int min_arv_required_for_vacuum;
   LOG_PAGEID vacuum_first_pageid;
 
+  int min_arv_required_for_cdc;
+  LOG_PAGEID cdc_first_pageid;
+
   if (!vacuum_is_safe_to_remove_archives ())
     {
       /* we don't know yet what is the first log page required by vacuum if vacuum_disable is set to true.
@@ -6187,6 +6219,17 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
       min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
       min_arv_required_for_vacuum--;
       last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_vacuum);
+    }
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      cdc_first_pageid = cdc_min_log_pageid_to_keep ();
+      if (cdc_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (cdc_first_pageid))
+	{
+	  min_arv_required_for_cdc = logpb_get_archive_number (thread_p, cdc_first_pageid);
+	  min_arv_required_for_cdc--;
+	  last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_cdc);
+	}
     }
 
   if (log_Gl.hdr.last_deleted_arv_num + 1 > last_deleted_arv_num)
