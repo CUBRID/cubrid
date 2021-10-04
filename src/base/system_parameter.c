@@ -4474,7 +4474,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LOG_NO_LOGGING,
    PRM_NAME_LOG_NO_LOGGING,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN | PRM_OBSOLETED),
    PRM_BOOLEAN,
    &prm_log_no_logging_flag,
    (void *) &prm_log_no_logging_default,
