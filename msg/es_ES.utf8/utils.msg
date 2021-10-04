@@ -289,7 +289,7 @@ opciones validas:\n\
   -C, --CS-mode                modo de ejecucion cliente-servidor\n\
       --no-check               no verificar una consistencia de la base de datos; estandar: verificar\n\
   -t, --thread-count=COUNT     numero de hilos; estandar: 0(auto)\n\
-  -z, --compress               comprimir volumenes de respaldo; estandar: descomprimir\n\
+      --no-compress            no comprima los volúmenes de respaldo; predeterminado: compresión\n\
       --sleep-msecs=N          dormir N milisecondas para cada 1M leido estandar: 0\n\
   -k, --separate-keys          el archivo de claves (_keys) para TDE no se incluye en el volumen de respaldo, sino que se divide en un archivo\n\
       --page-server            run on the page server; default: runs on the transaction\n

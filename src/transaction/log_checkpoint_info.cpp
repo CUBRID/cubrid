@@ -155,7 +155,7 @@ namespace cublog
   void
   checkpoint_info::load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa)
   {
-    if (tdes.trid != NULL_TRANID && !LSA_ISNULL (&tdes.tail_lsa))
+    if (tdes.trid != NULL_TRANID && !tdes.tail_lsa.is_null () && tdes.commit_abort_lsa.is_null ())
       {
 	m_trans.emplace_back ();
 	tran_info &chkpt_tran = m_trans.back ();
@@ -256,12 +256,16 @@ namespace cublog
       load_checkpoint_topop (tdes);
     };
     log_system_tdes::map_all_tdes (mapper);
+
+    m_snapshot_lsa = log_Gl.append.prev_lsa;
   }
 
   void
   checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa) const
   {
     LOG_TDES *tdes = nullptr;
+
+    start_redo_lsa = m_start_redo_lsa;
 
     /* Add the transactions to the transaction table */
     for (const auto &chkpt : m_trans)
@@ -392,6 +396,8 @@ namespace cublog
   log_lsa
   checkpoint_info::get_snapshot_lsa () const
   {
+    assert (!m_snapshot_lsa.is_null ());
+
     return m_snapshot_lsa;
   }
 

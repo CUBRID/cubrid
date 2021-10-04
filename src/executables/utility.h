@@ -843,14 +843,16 @@ typedef struct _ha_config
 #define PROPERTY_OFF            "off"
 
 
-#define PRINT_SERVICE_NAME	"cubrid service"
-#define PRINT_MASTER_NAME       "cubrid master"
-#define PRINT_SERVER_NAME       "cubrid server"
-#define PRINT_BROKER_NAME       "cubrid broker"
-#define PRINT_MANAGER_NAME      "cubrid manager server"
-#define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
-#define PRINT_JAVASP_NAME       "cubrid javasp"
-#define PRINT_HA_PROCS_NAME     "HA processes"
+#define PRINT_SERVICE_NAME              "cubrid service"
+#define PRINT_MASTER_NAME               "cubrid master"
+#define PRINT_SERVER_NAME               "cubrid server"
+#define PRINT_PAGE_SERVER_NAME          "cubrid page server"
+#define PRINT_TRANSACTION_SERVER_NAME   "cubrid transaction server"
+#define PRINT_BROKER_NAME               "cubrid broker"
+#define PRINT_MANAGER_NAME              "cubrid manager server"
+#define PRINT_HEARTBEAT_NAME            "cubrid heartbeat"
+#define PRINT_JAVASP_NAME               "cubrid javasp"
+#define PRINT_HA_PROCS_NAME             "HA processes"
 
 #define PRINT_CMD_SERVICE       "service"
 #define PRINT_CMD_BROKER        "broker"
@@ -1053,6 +1055,8 @@ typedef struct _ha_config
 #define BACKUP_THREAD_COUNT_L                   "thread-count"
 #define BACKUP_COMPRESS_S                       'z'
 #define BACKUP_COMPRESS_L                       "compress"
+#define BACKUP_NO_COMPRESS_S                    10507
+#define BACKUP_NO_COMPRESS_L                    "no-compress"
 #define BACKUP_EXCEPT_ACTIVE_LOG_S              'e'
 #define BACKUP_EXCEPT_ACTIVE_LOG_L              "except-active-log"
 #define BACKUP_SLEEP_MSECS_S                    10507

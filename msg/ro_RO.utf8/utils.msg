@@ -290,7 +290,7 @@ opţiuni valide:\n\
   -C, --CS-mode                mod de execuţie client-server\n\
       --no-check               nu se efectuează o verificare de consistenţă a bazei de date; implicit: verificare\n\
   -t, --thread-count=NUMAR     număr de fire de excuţie; implicit: 0(auto)\n\
-  -z, --compress               compresia volumelor de backup; implicit: decompresie\n\
+      --no-compress            nu comprimați volumele de rezervă; implicit: compresie\n\
       --sleep-msecs=N          asteapta N milisecunde la fiecare 1MB citit; implicit: 0\n\
   -k, --separate-keys          cheie file (_keys) for TDE is not included in the backup volume, but is separate into a file\n\
       --page-server            run on the page server; default: runs on the transaction\n

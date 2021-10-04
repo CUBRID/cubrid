@@ -85,6 +85,7 @@
 #include "porting.h"
 #include "page_server.hpp"
 #include "server_type.hpp"
+#include "log_manager.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -522,7 +523,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabe
       if (volid >= LOG_DBFIRST_VOLID && volid <= boot_Db_parm->last_volid)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1,
-		  fileio_get_volume_label (volid, PEEK));
+		  fileio_get_volume_label_with_unknown (volid));
 	  return ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
 	}
       else
@@ -1298,6 +1299,8 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
   VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
   char next_vol_fullname[PATH_MAX];	/* Next volume name */
   const char *vlabel;
+
+  assert (!is_tran_server_with_remote_storage ());
 
   /*
    * Don't use volinfo .. or could not find volinfo
@@ -2558,6 +2561,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       dwb_daemons_init ();
     }
+  cdc_daemons_init ();
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
@@ -2898,6 +2902,8 @@ error:
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+  cdc_daemons_destroy ();
+
   pgbuf_daemons_destroy ();
   dwb_daemons_destroy ();
 #endif
@@ -3042,6 +3048,7 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
   int server_mk_vdes = NULL_VOLDES;
   int backup_mk_vdes = NULL_VOLDES;
   int err = NO_ERROR;
+  bool is_tran_active = false;
 
   assert (tde_Cipher.is_loaded);
 
@@ -3119,6 +3126,15 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD, 2, mk_path, mk_path_old);
     }
 
+  if (logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
+			       TRAN_DEFAULT_ISOLATION_LEVEL ()) == NULL_TRAN_INDEX)
+    {
+      assert (false);
+      err = ER_FAILED;
+      goto exit;
+    }
+  is_tran_active = true;
+
   err = tde_copy_keys_file (thread_p, mk_path, r_args->keys_file_path, false, false);
   if (err != NO_ERROR)
     {
@@ -3145,6 +3161,10 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
     }
 
 exit:
+  if (is_tran_active)
+    {
+      xtran_server_abort (thread_p);
+    }
   if (server_mk_vdes != NULL_VOLDES)
     {
       fileio_dismount (thread_p, server_mk_vdes);
@@ -3219,6 +3239,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
+  cdc_daemons_destroy ();
 #endif
 
 #if defined (SA_MODE)
@@ -3825,9 +3846,12 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids,
   bool repair = check_flag & CHECKDB_REPAIR;
   int error_code = NO_ERROR;
 
-  disk_lock_extend ();
-  error_code = boot_check_permanent_volumes (thread_p);
-  disk_unlock_extend ();
+  if (!is_tran_server_with_remote_storage ())
+    {
+      disk_lock_extend ();
+      error_code = boot_check_permanent_volumes (thread_p);
+      disk_unlock_extend ();
+    }
 
   isvalid = disk_check (thread_p, repair);
   if (isvalid != DISK_VALID)

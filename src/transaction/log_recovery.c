@@ -75,7 +75,6 @@ static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, O
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
 static void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
-static TRANID log_rv_get_min_trantable_tranid ();
 
 /*
  * CRASH RECOVERY PROCESS
@@ -335,7 +334,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
        * page
        */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-	      fileio_get_volume_label (rcv_vpid->volid, PEEK));
+	      fileio_get_volume_label_with_unknown (rcv_vpid->volid));
     }
 
 end:
@@ -447,7 +446,7 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 
   if (!VPID_ISNULL (&page_vpid))
     {
-      rcv.pgptr = log_rv_redo_fix_page (thread_p, &page_vpid, rcvindex);
+      rcv.pgptr = log_rv_redo_fix_page (thread_p, &page_vpid);
       if (rcv.pgptr == nullptr)
 	{
 	  /* the page was changed and also deallocated in the meantime, no need to apply redo */
@@ -941,24 +940,6 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
   return false;
 }
 
-TRANID
-log_rv_get_min_trantable_tranid ()
-{
-  TRANID min_tranid = NULL_TRANID;
-  for (int tran_index = 1; tran_index < log_Gl.trantable.num_total_indices; ++tran_index)
-    {
-      const TRANID tranid = log_Gl.trantable.all_tdes[tran_index]->trid;
-      if (tranid != NULL_TRANID)
-	{
-	  if (min_tranid == NULL_TRANID || min_tranid > tranid)
-	    {
-	      min_tranid = tranid;
-	    }
-	}
-    }
-  return min_tranid;
-}
-
 /*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
  *
@@ -1000,7 +981,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   // *INDENT-OFF*
   const auto time_start_setting_up = std::chrono::system_clock::now ();
   // *INDENT-ON*
-  const TRANID min_trantable_tranid = log_rv_get_min_trantable_tranid ();
 
   /* depending on compilation mode and on a system parameter, initialize the
    * infrastructure for parallel log recovery;
@@ -1019,8 +999,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (log_recovery_redo_parallel_count);
-	parallel_recovery_redo.reset (new cublog::
-				      redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+	// *INDENT-OFF*
+	parallel_recovery_redo.reset(
+	    new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+	// *INDENT-ON*
       }
   }
 #endif
@@ -1473,22 +1455,16 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_ABORT:
 	      {
 		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
-		bool free_tran = false;
-		int tran_index = NULL_TRAN_INDEX;
-		if (min_trantable_tranid != NULL_TRANID && tran_id >= min_trantable_tranid)
-		  {
-		    tran_index = logtb_find_tran_index (thread_p, tran_id);
-		  }
-		LOG_TDES *tdes = nullptr;
-		if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
-		  {
-		    tdes = LOG_FIND_TDES (tran_index);
-		    assert (tdes && tdes->state != TRAN_ACTIVE);
-		    free_tran = true;
-		  }
-
 		if (context.is_restore_incomplete ())
 		  {
+		    int tran_index = logtb_find_tran_index (thread_p, tran_id);
+		    LOG_TDES *tdes = NULL;
+		    if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
+		      {
+			tdes = LOG_FIND_TDES (tran_index);
+			assert (tdes && tdes->state != TRAN_ACTIVE);
+		      }
+
 		    /* Need to read the donetime record to find out if we need to stop the recovery at this point. */
 		    redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_DONETIME));
 		    // *INDENT-OFF*
@@ -1513,12 +1489,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 			  {
 			    tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
 			  }
-			free_tran = false;
 		      }
 		  }
-		if (free_tran == true)
+		else
 		  {
-		    logtb_free_tran_index (thread_p, tran_index);
+		    /* completed transactions should have already been cleared from the transaction table
+		     * in the analysis step (see: log_rv_analysis_complete)
+		     */
+		    assert (logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX);
 		  }
 		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_COMMIT_ABORT);
 	      }
@@ -1565,6 +1543,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
+	    case LOG_SUPPLEMENTAL_INFO:
 	    case LOG_END_OF_LOG:
 	    case LOG_SYSOP_ATOMIC_START:
 	      break;
@@ -2420,6 +2399,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_DUMMY_HA_SERVER_STATE:
 		case LOG_DUMMY_OVF_RECORD:
 		case LOG_DUMMY_GENERIC:
+		case LOG_SUPPLEMENTAL_INFO:
 		case LOG_SYSOP_ATOMIC_START:
 		  /* Not for UNDO ... */
 		  /* Break switch to go to previous record */
@@ -2783,6 +2763,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_2PC_START *start_2pc;	/* A 2PC start log record */
   LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit */
   LOG_REC_REPLICATION *repl_log;
+  LOG_REC_SUPPLEMENT *supplement;
 
   int undo_length;		/* Undo length */
   int redo_length;		/* Redo length */
@@ -3051,6 +3032,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_PARTICP_ACK), &log_lsa, log_pgptr);
       break;
 
+    case LOG_SUPPLEMENTAL_INFO:
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SUPPLEMENT), &log_lsa, log_pgptr);
+      supplement = (LOG_REC_SUPPLEMENT *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SUPPLEMENT), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, supplement->length, &log_lsa, log_pgptr);
     case LOG_WILL_COMMIT:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
@@ -3700,21 +3686,19 @@ log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_siz
 }
 
 /*
- * log_rv_redo_fix_page () - fix page for recovery
+ * log_rv_redo_fix_page () - fix page for recovery without upfront reservation check
  *
  * return        : fixed page or NULL
  * thread_p (in) : thread entry
  * vpid_rcv (in) : page identifier
- * rcvindex (in) : recovery index of log record to redo
  */
 PAGE_PTR
-log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex)
+log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv)
 {
   PAGE_PTR page = NULL;
 
   assert (vpid_rcv != NULL && !VPID_ISNULL (vpid_rcv));
 
-  //
   // during recovery, we don't care if a page is deallocated or not, apply the changes regardless. since changes to
   // sector reservation table are applied in parallel with the changes in pages, at times the page may appear to be
   // deallocated (part of an unreserved sector). but the changes were done while the sector was reserved and must be

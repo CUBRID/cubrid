@@ -1901,7 +1901,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   if (vpid->pageid < 0)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
-	      fileio_get_volume_label (vpid->volid, PEEK));
+	      fileio_get_volume_label_with_unknown (vpid->volid));
       return NULL;
     }
 
@@ -2148,7 +2148,7 @@ try_again:
 	  /* caller does not expect any deallocated pages. this is an invalid page. */
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
-		  fileio_get_volume_label (vpid->volid, PEEK));
+		  fileio_get_volume_label_with_unknown (vpid->volid));
 	  /* fall through to unfix */
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  pgbuf_unfix (thread_p, pgptr);
@@ -2157,7 +2157,7 @@ try_again:
 	  /* OLD_PAGE_MAYBE_DEALLOCATED is called when deallocated page may be fixed. The caller wants the page only if
 	   * it is not deallocated. However, if it is deallocated, no error is required. */
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
-		  fileio_get_volume_label (vpid->volid, PEEK));
+		  fileio_get_volume_label_with_unknown (vpid->volid));
 	  /* fall through to unfix */
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  pgbuf_unfix (thread_p, pgptr);
@@ -2561,7 +2561,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "pgbuf_unfix: WARNING: No logging on dirty pageid = %d of Volume = %s.\n Recovery problems"
-		    " may happen\n", bufptr->vpid.pageid, fileio_get_volume_label (bufptr->vpid.volid, PEEK));
+		    " may happen\n", bufptr->vpid.pageid, fileio_get_volume_label_with_unknown (bufptr->vpid.volid));
       /*
        * Do not give warnings on this page any longer. Set the LSA of the
        * buffer for this purposes
@@ -2584,7 +2584,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "pgbuf_unfix: SYSTEM ERROR Freeing too much buffer of pageid = %d of Volume = %s\n",
-		    bufptr->vpid.pageid, fileio_get_volume_label (bufptr->vpid.volid, PEEK));
+		    bufptr->vpid.pageid, fileio_get_volume_label_with_unknown (bufptr->vpid.volid));
     }
 #endif /* CUBRID_DEBUG */
 
@@ -3692,7 +3692,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 	    {
 	      er_stack_push ();
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE, 6, bufptr->vpid.pageid,
-		      fileio_get_volume_label (bufptr->vpid.volid, PEEK), bufptr->oldest_unflush_lsa.pageid,
+		      fileio_get_volume_label_with_unknown (bufptr->vpid.volid), bufptr->oldest_unflush_lsa.pageid,
 		      bufptr->oldest_unflush_lsa.offset, prev_chkpt_redo_lsa->pageid, prev_chkpt_redo_lsa->offset);
 	      er_stack_pop ();
 
@@ -4490,7 +4490,7 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
 	    {
 	      er_stack_push ();
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE, 6, bufptr->vpid.pageid,
-		      fileio_get_volume_label (bufptr->vpid.volid, PEEK), lsa_ptr->pageid, lsa_ptr->offset,
+		      fileio_get_volume_label_with_unknown (bufptr->vpid.volid), lsa_ptr->pageid, lsa_ptr->offset,
 		      log_Gl.chkpt_redo_lsa.pageid, log_Gl.chkpt_redo_lsa.offset);
 	      er_stack_pop ();
 
@@ -4801,7 +4801,7 @@ pgbuf_get_volume_label (PAGE_PTR pgptr)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
 
-  return fileio_get_volume_label (bufptr->vpid.volid, PEEK);
+  return fileio_get_volume_label_with_unknown (bufptr->vpid.volid);
 }
 
 /*
@@ -4867,7 +4867,6 @@ pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  *   return: void
  *   bufptr(in): pointer to buffer page
  *
- * Note: This function is used for debugging.
  */
 STATIC_INLINE void
 pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr)
@@ -4894,6 +4893,12 @@ pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr)
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_1 = 0;
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_2 = 0;
 	  bufptr->iopage_buffer->iopage.prv.tde_nonce = 0;
+	}
+      else
+	{
+	  /* values not reset upon page deallocation */
+	  assert (bufptr->iopage_buffer->iopage.prv.volid == bufptr->vpid.volid);
+	  assert (bufptr->iopage_buffer->iopage.prv.pageid == bufptr->vpid.pageid);
 	}
     }
 }
@@ -5085,7 +5090,7 @@ pgbuf_initialize_bcb_table (void)
       ioptr->iopage.prv.pageid = -1;
       ioptr->iopage.prv.volid = -1;
 
-      ioptr->iopage.prv.ptype = '\0';
+      ioptr->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
       ioptr->iopage.prv.pflag = '\0';
       ioptr->iopage.prv.p_reserve_1 = 0;
       ioptr->iopage.prv.p_reserve_2 = 0;
@@ -5574,7 +5579,7 @@ pgbuf_unlatch_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_HO
       assert (false);
       err = ER_PB_UNFIXED_PAGEPTR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, pgptr, bufptr->vpid.pageid,
-	      fileio_get_volume_label (bufptr->vpid.volid, PEEK));
+	      fileio_get_volume_label_with_unknown (bufptr->vpid.volid));
 
       goto exit_on_error;
     }
@@ -5595,7 +5600,7 @@ pgbuf_unlatch_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_HO
 	  assert (false);
 	  err = ER_PB_UNFIXED_PAGEPTR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, pgptr, bufptr->vpid.pageid,
-		  fileio_get_volume_label (bufptr->vpid.volid, PEEK));
+		  fileio_get_volume_label_with_unknown (bufptr->vpid.volid));
 
 	  goto exit_on_error;
 	}
@@ -6141,7 +6146,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
       /* This situation must not be occurred. */
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3, pgptr, bufptr->vpid.pageid,
-	      fileio_get_volume_label (bufptr->vpid.volid, PEEK));
+	      fileio_get_volume_label_with_unknown (bufptr->vpid.volid));
       bufptr->fcnt = 0;
     }
 
@@ -10452,9 +10457,8 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
     {
       if (valid != DISK_ERROR && !no_error)
 	{
-	  const char *vlabel = fileio_get_volume_label (vpid->volid, PEEK);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
-		  vlabel == NULL ? "(unknown)" : vlabel);
+		  fileio_get_volume_label_with_unknown (vpid->volid));
 
 	  assert (false);
 	}
@@ -10492,7 +10496,7 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
 	      /* This situation must not be occurred. */
 	      assert (false);
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3, pgptr, bufptr->vpid.pageid,
-		      fileio_get_volume_label (bufptr->vpid.volid, PEEK));
+		      fileio_get_volume_label_with_unknown (bufptr->vpid.volid));
 	      PGBUF_BCB_UNLOCK (bufptr);
 
 	      return false;
@@ -10665,7 +10669,7 @@ pgbuf_scramble (FILEIO_PAGE * iopage)
   iopage->prv.pageid = -1;
   iopage->prv.volid = -1;
 
-  iopage->prv.ptype = '\0';
+  iopage->prv.ptype = (unsigned char) PAGE_UNKNOWN;
   iopage->prv.pflag = '\0';
   iopage->prv.p_reserve_1 = 0;
   iopage->prv.p_reserve_2 = 0;
@@ -14222,7 +14226,7 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 #endif /* !NDEBUG */
 
   /* set unknown type */
-  bcb->iopage_buffer->iopage.prv.ptype = (char) PAGE_UNKNOWN;
+  bcb->iopage_buffer->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
   /* clear page flags (now only tde algorithm) */
   bcb->iopage_buffer->iopage.prv.pflag = (unsigned char) 0;
 

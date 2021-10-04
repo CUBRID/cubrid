@@ -50,6 +50,7 @@
 #include "heartbeat.h"
 #include "master_util.h"
 #include "message_catalog.h"
+#include "server_type_enum.hpp"
 #include "utility.h"
 #include "util_support.h"
 #include "porting.h"
@@ -87,7 +88,8 @@ static void process_master_kill (CSS_CONN_ENTRY * conn);
 static void process_master_stop_shutdown (CSS_CONN_ENTRY * conn);
 static void process_master_shutdown (CSS_CONN_ENTRY * conn, int minutes);
 static void process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name, int minutes, int pid);
-static int process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_type);
+static int process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_type,
+				    SERVER_TYPE search_server_type);
 static void process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name);
 static void process_ha_node_info_query (CSS_CONN_ENTRY * conn, int verbose_yn);
 static void process_ha_process_info_query (CSS_CONN_ENTRY * conn, int verbose_yn);
@@ -135,7 +137,6 @@ static bool commdb_Arg_deact_confirm_no_server = false;
 static char *commdb_Arg_host_name = NULL;
 static bool commdb_Arg_ha_start_util_process = false;
 static char *commdb_Arg_ha_util_process_args = NULL;
-
 /*
  * send_request_no_args() - send request without argument
  *   return: request id if success, otherwise 0
@@ -493,7 +494,7 @@ process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name)
  *   server_type(in): COMM_SERVER_TYPE
  */
 static int
-process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_type)
+process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_type, SERVER_TYPE search_server_type)
 {
   char search_pattern[256];
   char *p = NULL;
@@ -510,7 +511,20 @@ process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_t
       switch (server_type)
 	{
 	default:
-	  sprintf (search_pattern, "Server %s (", server);
+	  switch (search_server_type)
+	    {
+	    case SERVER_TYPE_PAGE:
+	      sprintf (search_pattern, "Page-Server %s (", server);
+	      break;
+
+	    case SERVER_TYPE_TRANSACTION:
+	      sprintf (search_pattern, "Transaction-Server %s (", server);
+	      break;
+
+	    default:
+	      sprintf (search_pattern, "Server %s (", server);
+	      break;
+	    }
 	  break;
 	}
       p = strstr (server_info, search_pattern);
@@ -1075,8 +1089,19 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
   if ((commdb_Arg_server_name) && (!commdb_Arg_halt_shutdown))
     {
-      pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER);
-      process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
+      // kill the transaction server first
+      pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_TRANSACTION);
+      if (pid != 0)
+	{
+	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
+	}
+
+      // and then the page server
+      pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_PAGE);
+      if (pid != 0)
+	{
+	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
+	}
     }
 
   if (commdb_Arg_kill_all)

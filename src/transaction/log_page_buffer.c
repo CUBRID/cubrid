@@ -81,6 +81,7 @@
 #include "critical_section.h"
 #include "page_buffer.h"
 #include "page_server.hpp"
+#include "scope_exit.hpp"
 #include "double_write_buffer.h"
 #include "file_io.h"
 #include "disk_manager.h"
@@ -2899,10 +2900,11 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
       TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
       logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
       logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
-      logpb_log ("logpb_next_append_page: set tde_algorithm to appending page (%lld), "
-		 "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
-		 tde_get_algorithm_name (tde_algo));
     }
+
+  logpb_log ("logpb_next_append_page: append the new page (%lld), tde_algorithm = %s\n",
+	     (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
+	     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
 
 #if defined(CUBRID_DEBUG)
   {
@@ -3190,13 +3192,15 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
       logpb_flush_all_append_pages (thread_p);
     }
 
-  logpb_log ("logpb_append_next_record: append a record\n"
-	     "log_Gl.hdr.append_lsa.offset = %d, total record size = %d\n",
-	     log_Gl.hdr.append_lsa.offset,
-	     sizeof (LOG_RECORD_HEADER) + node->data_header_length + node->ulength + node->rlength);
-
   /* to tde-encrypt pages which is being created while appending */
   log_Gl.append.appending_page_tde_encrypted = prior_is_tde_encrypted (node);
+
+  logpb_log ("logpb_append_next_record: append a record\n"
+	     "log_Gl.hdr.append_lsa.offset = %d, total record size = %d, TDE-encryption = %d\n",
+	     log_Gl.hdr.append_lsa.offset,
+	     sizeof (LOG_RECORD_HEADER) + node->data_header_length + node->ulength + node->rlength,
+	     log_Gl.append.appending_page_tde_encrypted);
+
 
   logpb_start_append (thread_p, &node->log_header);
 
@@ -3219,6 +3223,8 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
   logpb_end_append (thread_p, &node->log_header);
 
   log_Gl.append.appending_page_tde_encrypted = false;
+
+  logpb_log ("logpb_append_next_record: append a record end.\n");
 
   return NO_ERROR;
 }
@@ -4449,17 +4455,12 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 	  TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
 	  logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
 	  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
-	  logpb_log ("logpb_start_append: set tde_algorithm to existing page (%lld), "
-		     "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
-		     tde_get_algorithm_name (tde_algo));
-	}
-      else
-	{
-	  logpb_log ("logpb_start_append: tde_algorithm already set to existing page (%lld), "
-		     "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
-		     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
 	}
     }
+
+  logpb_log ("logpb_start_append: start append on the page (%lld), tde_algorithm = %s\n",
+	     (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
+	     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
 
   log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
   *log_rec = *header;
@@ -6927,8 +6928,6 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
 LOG_PAGEID
 logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
-#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
-
   LOG_TDES *tdes;		/* System transaction descriptor */
   LOG_LSA prev_chkpt_lsa;	/* copy of log_Gl.hdr.chkpt_lsa */
   LOG_LSA prev_chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
@@ -6947,7 +6946,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int first_arv_num_not_needed;
   int last_arv_num_not_needed;
   int flushed_page_cnt = 0, vdes;
-  bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+  const bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
   if (is_tran_server_with_remote_storage ())
     {
@@ -7035,8 +7035,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     }
 
   detailed_er_log ("logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
-  if (pgbuf_flush_checkpoint (thread_p, &new_chkpt_lsa, &prev_chkpt_redo_lsa, &oldest_unflushed_lsa, &flushed_page_cnt)
-      != NO_ERROR)
+  if (pgbuf_flush_checkpoint
+      (thread_p, &new_chkpt_lsa, &prev_chkpt_redo_lsa, &oldest_unflushed_lsa, &flushed_page_cnt) != NO_ERROR)
     {
       goto error_cannot_chkpt;
     }
@@ -7049,7 +7049,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   LOG_CS_ENTER (thread_p);
 
-  assert (LSA_LE (&oldest_unflushed_lsa, &new_chkpt_lsa));
+  // assert is in line with what happens in function pgbuf_flush_seq_list where value is collected
+  assert (oldest_unflushed_lsa.is_null ());
 
   new_chkpt_redo_lsa = oldest_unflushed_lsa.is_null ()? new_chkpt_lsa : oldest_unflushed_lsa;
 
@@ -7301,6 +7302,85 @@ error_cannot_chkpt:
   return NULL_PAGEID;
 
 #undef detailed_er_log
+}
+
+/*
+ * log_checkpoint_trantable - execute a transaction table checkpoint;
+ *          wait for log pages to be persisted up to the lsa where where the transaction table
+ *          snapshot was taken; delete previous transaction table checkpoints
+ *
+ * return: error status
+ *
+ */
+int
+logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
+{
+  const bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+
+  if (!is_tran_server_with_remote_storage ())
+    {
+      er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: only allowed on transaction server with remote storage\n");
+      return ER_FAILED;
+    }
+
+  log_lsa trantable_checkpoint_lsa = NULL_LSA;
+  {
+    LOG_CS_ENTER (thread_p);
+    // *INDENT-OFF*
+    scope_exit<std::function<void (void)>> unlock_log_cs_on_exit ([thread_p] ()
+    {
+      LOG_CS_EXIT (thread_p);
+    });
+
+    cublog::checkpoint_info trantable_checkpoint_info;
+    // *INDENT-ON*
+
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: started, loading trantable\n");
+      }
+    LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
+    trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
+
+    // loading the transaction table snapshot ensures also that a snapshot lsa has been set
+    trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
+
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: adding with lsa=%lld|%d\n",
+		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
+      }
+    log_Gl.m_metainfo.add_checkpoint_info (trantable_checkpoint_lsa, std::move (trantable_checkpoint_info));
+
+    log_write_metalog_to_file ();
+
+    // function explicitly needs to be called in critical section-free context
+    LOG_CS_EXIT (thread_p);
+    logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
+    LOG_CS_ENTER (thread_p);
+
+    // drop previous checkpoints and persist to disk
+    if (detailed_logging)
+      {
+	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
+		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
+      }
+    log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
+
+    // - in nominal conditions, there should be at most one previous trantable checkpoint
+    // - in abnormal conditions (such as when the system crashed just after adding a new trantable
+    //    checkpoint and before deleting the outdated checkpoint) there can be at most two
+    assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
+
+    log_write_metalog_to_file ();
+  }
+
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: finished\n");
+    }
+
+  return NO_ERROR;
 }
 
 /*

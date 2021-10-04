@@ -711,6 +711,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REMOTE_STORAGE "remote_storage"
 #define PRM_NAME_DUMP_FILE_CACHE "dump_fileio_cache_after_boot"
 
+#define PRM_NAME_SUPPLEMENTAL_LOG "supplemental_log"
+#define PRM_NAME_CDC_LOGGING_DEBUG "cdc_logging_debug"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2366,7 +2369,7 @@ static UINT64 prm_ddl_audit_log_size_upper = 2147483648ULL;	/* 2G */
 static unsigned int prm_ddl_audit_log_size_flag = 0;
 
 char *PRM_PAGE_SERVER_HOST = NULL;
-static char *prm_page_server_host_default = "";
+static const char *prm_page_server_host_default = "";
 static unsigned int prm_page_server_host_flag = 0;
 
 /* *INDENT-OFF* */
@@ -2424,6 +2427,16 @@ static unsigned int prm_remote_storage_flag = 0;
 static bool prm_dump_file_cache_default = false;
 bool PRM_DUMP_FILE_CACHE_CURRENT_VALUE = prm_dump_file_cache_default;
 static unsigned int prm_dump_file_cache_flag = 0;
+
+int PRM_SUPPLEMENTAL_LOG = 0;
+static int prm_supplemental_log_default = 0;
+static int prm_supplemental_log_lower = 0;
+static int prm_supplemental_log_upper = 2;
+static unsigned int prm_supplemental_log_flag = 0;
+
+bool PRM_CDC_LOGGING_DEBUG = false;
+static bool prm_cdc_logging_debug_default = false;
+static unsigned int prm_cdc_logging_debug_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6273,6 +6286,29 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_SUPPLEMENTAL_LOG,
+   PRM_NAME_SUPPLEMENTAL_LOG,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_INTEGER,
+   &prm_supplemental_log_flag,
+   (void *) &prm_supplemental_log_default,
+   (void *) &PRM_SUPPLEMENTAL_LOG,
+   (void *) &prm_supplemental_log_upper,
+   (void *) &prm_supplemental_log_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CDC_LOGGING_DEBUG,
+   PRM_NAME_CDC_LOGGING_DEBUG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_cdc_logging_debug_flag,
+   (void *) &prm_cdc_logging_debug_default,
+   (void *) &PRM_CDC_LOGGING_DEBUG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

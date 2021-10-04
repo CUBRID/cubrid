@@ -1352,8 +1352,10 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 Impossibile troncare la tabella a causa della chiave primaria a cui si fa riferimento su %1$s. Riprova con l'opzione CASCADE.
+1285 Impossibile eseguire il troncamento a catena perché l'azione ON DELETE della chiave esterna (%1$s) non è impostata su CASCADE.
 
-1284 Ultimo errore
+1286 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
