@@ -302,6 +302,47 @@ make_valid_page_size (int *v)
 int
 createdb (UTIL_FUNCTION_ARG * arg)
 {
+  assert (arg != nullptr);
+
+  if (utility_get_option_bool_value (arg->arg_map, CREATE_REMOTE_STORAGE_S))
+    {
+      return createdb_with_remote_storage (arg);
+    }
+  else
+    {
+      return createdb_with_local_storage (arg);
+    }
+}
+
+/*
+ * createdb_with_remote_storage () - create database, without most physical files that should be on page servers.
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+createdb_with_remote_storage (UTIL_FUNCTION_ARG * arg)
+{
+  const char *database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  const char *cubrid_charset = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+
+  if (database_name == 0 || database_name[0] == 0 || cubrid_charset == 0 || cubrid_charset[0] == 0
+      || utility_get_option_string_table_size (arg_map) != 2)
+    {
+      goto print_create_usage;
+    }
+
+print_create_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+}
+
+/*
+ * createdb_with_local_storage () - create database and all its physical files
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+createdb_with_local_storage (UTIL_FUNCTION_ARG * arg)
+{
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   int status;
