@@ -62,7 +62,7 @@ static void log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * td
 static void log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p);
 static void log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p);
-static void log_recovery_undo (THREAD_ENTRY * thread_p, bool skip_some_page_buffer_flushes);
+static void log_recovery_undo (THREAD_ENTRY * thread_p);
 static bool log_unformat_ahead_volumes (THREAD_ENTRY * thread_p, VOLID volid, VOLID * start_volid);
 static void log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p);
 static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
@@ -806,8 +806,15 @@ log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
 
   if (!context.is_page_server ())
     {
-      log_recovery_undo (thread_p, false);
-      boot_reset_db_parm (thread_p);
+      log_recovery_undo (thread_p);
+
+      /* Flush all dirty pages */
+      logpb_flush_pages_direct (thread_p);
+      logpb_flush_header (thread_p);
+      (void) pgbuf_flush_all (thread_p, NULL_VOLID);
+
+      // Reset boot_Db_parm in case a data volume creation was undone.
+      (void) boot_reset_db_parm (thread_p);
     }
 
   // *INDENT-OFF*
@@ -899,8 +906,6 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   const int sys_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (sys_tran_index == LOG_SYSTEM_TRAN_INDEX && LOG_FIND_TDES (sys_tran_index) != nullptr);
 
-  // TODO: logging has been ignored ?
-
   // recovery analysis phase
   //
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
@@ -917,20 +922,20 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   assert (!chkpt_lsa.is_null ());
 
   log_recovery_context log_rcv_context;
-  // TODO: is media crash check?
   log_rcv_context.init_for_recovery (chkpt_lsa);
 
-  long redo_log_record_count = 0;
+  INT64 redo_log_record_count = 0LL;
   log_recovery_analysis (thread_p, &redo_log_record_count, log_rcv_context);
+  assert (!log_rcv_context.is_restore_incomplete ());
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 3,
 	  (long long) redo_log_record_count, log_rcv_context.get_start_redo_lsa ().pageid,
 	  log_rcv_context.get_end_redo_lsa ().pageid);
-  // analysis changes the transaction index and leaves it dangling in an indefinite state
+  // analysis changes the transaction index and leaves it in an indefinite state
   // therefore reset to system transaction index
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 
-  // make sure the append page is available
-  // needed to read the lsa of the last added log record that is found there
+  // append page is needed for subsequent steps
+  assert (!log_Gl.hdr.append_lsa.is_null ());
   if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
@@ -939,51 +944,49 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
       return;
     }
 
-  // read the end of file record to find out about the previous address
-  assert (log_Gl.append.log_pgptr != nullptr);
-  assert (!log_Gl.hdr.append_lsa.is_null ());
-  assert (!log_rcv_context.is_restore_incomplete ());
-  const LOG_RECORD_HEADER *const log_append_log_header =
-    (const LOG_RECORD_HEADER *) (log_Gl.append.log_pgptr->area + log_Gl.hdr.append_lsa.offset);
-  LOG_RESET_PREV_LSA (&log_append_log_header->back_lsa);
-
-  assert (!log_Gl.append.prev_lsa.is_null ());
-  vacuum_notify_server_crashed (&log_Gl.append.prev_lsa);
-
+  // Finish transactions, in three steps:
+  //   1. First, abort all atomic system operations
+  //   2. Then finish all postpone phases (of both atomic system operations and transactions)
+  //   3. Then undo all transactions that are still active.
+  //
+  // NOTE: no recovery redo phase on transaction server with remote storage
   log_recovery_abort_all_atomic_sysops (thread_p);
 
   log_recovery_finish_all_postpone (thread_p);
 
-  const int err_code_reset_db_parm = boot_reset_db_parm (thread_p);
-  if (err_code_reset_db_parm != NO_ERROR)
+  int error_code = boot_reset_db_parm (thread_p);
+  if (error_code != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_finish_transactions: boot_reset_db_parm");
       // unreachable
       return;
     }
-
-  // NOTE: no recovery redo phase on transaction server with remote storage
 
   // recovery undo phase
   //
   log_Gl.rcv_phase = LOG_RECOVERY_UNDO_PHASE;
+  log_recovery_undo (thread_p);
 
-  log_recovery_undo (thread_p, true);
+  logpb_flush_pages_direct (thread_p);
 
-  const int err_code_reset_db_parm_2 = boot_reset_db_parm (thread_p);
-  if (err_code_reset_db_parm_2 != NO_ERROR)
+  // Reset boot_Db_parm in case a data volume creation was undone.
+  error_code = boot_reset_db_parm (thread_p);
+  if (error_code != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_finish_transactions: boot_reset_db_parm");
       // unreachable
       return;
     }
+
+  assert (!log_Gl.append.prev_lsa.is_null ());
+  vacuum_notify_server_crashed (&log_Gl.append.prev_lsa);
 
   // *INDENT-OFF*
   log_system_tdes::rv_final ();
   // *INDENT-ON*
 
-  const int err_code_locator_initialize = locator_initialize (thread_p);
-  if (err_code_locator_initialize != NO_ERROR)
+  error_code = locator_initialize (thread_p);
+  if (error_code != NO_ERROR)
     {
       assert (false);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_finish_transactions: locator_initialize");
@@ -991,8 +994,8 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
       return;
     }
 
-  const int err_code_heap_class_repr = heap_classrepr_restart_cache ();
-  if (err_code_heap_class_repr != NO_ERROR)
+  error_code = heap_classrepr_restart_cache ();
+  if (error_code != NO_ERROR)
     {
       assert (false);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
@@ -2248,12 +2251,9 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  *
  * return: nothing
  *
- * skip_some_page_buffer_flushes (in) : skip flushes to log page buffer header (mainly needed when
- *               function called in the context of recovering a transaction server with
- *               remote storage)
  */
 static void
-log_recovery_undo (THREAD_ENTRY * thread_p, bool skip_some_page_buffer_flushes)
+log_recovery_undo (THREAD_ENTRY * thread_p)
 {
   LOG_LSA max_undo_lsa;		/* LSA of log record to undo */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -2713,16 +2713,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p, bool skip_some_page_buffer_flushes)
     }
 
   log_zip_free (undo_unzip_ptr);
-
-  /* Flush all dirty pages */
-
-  logpb_flush_pages_direct (thread_p);
-
-  if (!skip_some_page_buffer_flushes)
-    {
-      logpb_flush_header (thread_p);
-      (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-    }
 
   return;
 }

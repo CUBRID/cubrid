@@ -73,12 +73,12 @@ static int log_rv_analysis_2pc_abort_decision (THREAD_ENTRY *thread_p, int tran_
 static int log_rv_analysis_2pc_commit_inform_particps (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
 static int log_rv_analysis_2pc_abort_inform_particps (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
 static int log_rv_analysis_2pc_recv_ack (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
-static int log_rv_analysis_log_end (int tran_id, const LOG_LSA *log_lsa);
+static int log_rv_analysis_log_end (int tran_id, const LOG_LSA *log_lsa, const LOG_PAGE *log_page_p);
 static void log_rv_analysis_record (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA *log_lsa,
 				    LOG_PAGE *log_page_p, LOG_LSA *prev_lsa, log_recovery_context &context);
-static void log_rv_analysis_record_on_page (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id,
-    const LOG_LSA *log_lsa);
-static void log_rv_analysis_record_on_tran (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id,
+static void log_rv_analysis_record_on_page_server (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id,
+    const LOG_LSA *log_lsa, const LOG_PAGE *log_page_p);
+static void log_rv_analysis_record_on_tran_server (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id,
     LOG_LSA *log_lsa, LOG_PAGE *log_page_p, LOG_LSA *prev_lsa,
     log_recovery_context &context);
 static bool log_is_page_of_record_broken (THREAD_ENTRY *thread_p, const LOG_LSA *log_lsa,
@@ -1563,13 +1563,20 @@ log_rv_analysis_2pc_recv_ack (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_
  * Note:
  */
 static int
-log_rv_analysis_log_end (int tran_id, const LOG_LSA *log_lsa)
+log_rv_analysis_log_end (int tran_id, const LOG_LSA *log_lsa, const LOG_PAGE *log_page_p)
 {
   if (is_tran_server_with_remote_storage () || !logpb_is_page_in_archive (log_lsa->pageid))
     {
       /*
        * Reset the log header for the recovery undo operation
        */
+      // log page pointer passed here is that of the last log page - the append page
+      // and the re
+      assert (log_page_p != nullptr);
+      assert (!log_Gl.hdr.append_lsa.is_null ());
+      const LOG_RECORD_HEADER *const log_append_log_header =
+	      (const LOG_RECORD_HEADER *) (log_page_p->area + log_Gl.hdr.append_lsa.offset);
+      LOG_RESET_PREV_LSA (&log_append_log_header->back_lsa);
       LOG_RESET_APPEND_LSA (log_lsa);
       log_Gl.hdr.next_trid = tran_id;
     }
@@ -1591,32 +1598,33 @@ log_rv_analysis_record (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_i
 {
   if (context.is_page_server ())
     {
-      log_rv_analysis_record_on_page (thread_p, log_type, tran_id, log_lsa);
+      log_rv_analysis_record_on_page_server (thread_p, log_type, tran_id, log_lsa, log_page_p);
     }
   else
     {
-      log_rv_analysis_record_on_tran (thread_p, log_type, tran_id, log_lsa, log_page_p, prev_lsa, context);
+      log_rv_analysis_record_on_tran_server (thread_p, log_type, tran_id, log_lsa, log_page_p, prev_lsa, context);
     }
 }
 
 //
-// log_rv_analysis_record_on_page - find the end of log
+// log_rv_analysis_record_on_page_server - find the end of log
 //
 static void
-log_rv_analysis_record_on_page (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id, const LOG_LSA *log_lsa)
+log_rv_analysis_record_on_page_server (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id,
+				       const LOG_LSA *log_lsa, const LOG_PAGE *log_page_p)
 {
   if (log_type == LOG_END_OF_LOG)
     {
-      log_rv_analysis_log_end (tran_id, log_lsa);
+      log_rv_analysis_log_end (tran_id, log_lsa, log_page_p);
     }
 }
 
 //
-// log_rv_analysis_record_on_tran - rebuild the transaction table when the server stopped unexpectedly
+// log_rv_analysis_record_on_tran_server - rebuild the transaction table when the server stopped unexpectedly
 //
 static void
-log_rv_analysis_record_on_tran (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA *log_lsa,
-				LOG_PAGE *log_page_p, LOG_LSA *prev_lsa, log_recovery_context &context)
+log_rv_analysis_record_on_tran_server (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA *log_lsa,
+				       LOG_PAGE *log_page_p, LOG_LSA *prev_lsa, log_recovery_context &context)
 {
   switch (log_type)
     {
@@ -1702,7 +1710,7 @@ log_rv_analysis_record_on_tran (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, in
       break;
 
     case LOG_END_OF_LOG:
-      (void) log_rv_analysis_log_end (tran_id, log_lsa);
+      (void) log_rv_analysis_log_end (tran_id, log_lsa, log_page_p);
       break;
 
     case LOG_SYSOP_ATOMIC_START:
