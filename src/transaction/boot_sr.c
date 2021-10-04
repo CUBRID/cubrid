@@ -5093,6 +5093,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, false, NULL);
 
+  error_code = pgbuf_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* Assign an index to current thread of execution (i.e., a client id) */
 
   tran_index =
@@ -5660,6 +5666,12 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
+
+  error_code = pgbuf_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   spage_boot (thread_p);
   error_code = heap_manager_initialize ();

@@ -1266,6 +1266,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	{
 	  return error_code;
 	}
+
       error_code = log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash,
 					    r_args, init_emergency);
 
