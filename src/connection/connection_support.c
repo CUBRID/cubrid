@@ -3011,15 +3011,7 @@ css_connect_to_master_server (int master_port_id, const char *message_to_master,
 
   response = ntohl (response_buff);
 
-  if (client_mode)
-    {
-      TRACE ("connect_to_master received %d as response from master\n", response);
-    }
-  else
-    {
-      TRACE ("css_connect_to_master_server received %d as response from master\n", response);
-    }
-
+  TRACE ("css_connect_to_master_server received %d as response from master\n", response);
 
   switch (response)
     {
@@ -3171,7 +3163,7 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host
 	  return conn;
 	}
     }
-  else if (client_mode)
+  else
     {
 #if !defined (WINDOWS)
       if (errno == ETIMEDOUT)
