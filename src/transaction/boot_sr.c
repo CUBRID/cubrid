@@ -523,7 +523,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabe
       if (volid >= LOG_DBFIRST_VOLID && volid <= boot_Db_parm->last_volid)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1,
-		  fileio_get_volume_label (volid, PEEK));
+		  fileio_get_volume_label_with_unknown (volid));
 	  return ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
 	}
       else
@@ -1299,6 +1299,8 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
   VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
   char next_vol_fullname[PATH_MAX];	/* Next volume name */
   const char *vlabel;
+
+  assert (!is_tran_server_with_remote_storage ());
 
   /*
    * Don't use volinfo .. or could not find volinfo
@@ -3844,9 +3846,12 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids,
   bool repair = check_flag & CHECKDB_REPAIR;
   int error_code = NO_ERROR;
 
-  disk_lock_extend ();
-  error_code = boot_check_permanent_volumes (thread_p);
-  disk_unlock_extend ();
+  if (!is_tran_server_with_remote_storage ())
+    {
+      disk_lock_extend ();
+      error_code = boot_check_permanent_volumes (thread_p);
+      disk_unlock_extend ();
+    }
 
   isvalid = disk_check (thread_p, repair);
   if (isvalid != DISK_VALID)
