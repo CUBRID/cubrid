@@ -2394,6 +2394,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
+  // Initialize page buffer
+  error_code = pgbuf_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /*
    * How to restart the system ?
    */
@@ -4002,6 +4009,7 @@ void
 boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 			  BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
 {
+  pgbuf_finalize ();
   logtb_finalize_global_unique_stats_table (thread_p);
   locator_finalize (thread_p);
   spage_finalize (thread_p);
