@@ -924,12 +924,9 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   log_recovery_context log_rcv_context;
   log_rcv_context.init_for_recovery (chkpt_lsa);
 
-  INT64 redo_log_record_count = 0LL;
-  log_recovery_analysis (thread_p, &redo_log_record_count, log_rcv_context);
+  INT64 dummy_redo_log_record_count = 0LL;
+  log_recovery_analysis (thread_p, &dummy_redo_log_record_count, log_rcv_context);
   assert (!log_rcv_context.is_restore_incomplete ());
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 3,
-	  (long long) redo_log_record_count, log_rcv_context.get_start_redo_lsa ().pageid,
-	  log_rcv_context.get_end_redo_lsa ().pageid);
   // analysis changes the transaction index and leaves it in an indefinite state
   // therefore reset to system transaction index
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
