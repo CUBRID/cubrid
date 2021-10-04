@@ -335,7 +335,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
        * page
        */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-	      fileio_get_volume_label (rcv_vpid->volid, PEEK));
+	      fileio_get_volume_label_with_unknown (rcv_vpid->volid));
     }
 
 end:
@@ -1019,8 +1019,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (log_recovery_redo_parallel_count);
-	parallel_recovery_redo.reset (new cublog::
-				      redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+	parallel_recovery_redo.
+	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
       }
   }
 #endif

@@ -6323,6 +6323,13 @@ fileio_get_volume_label_by_fd (int vol_fd, bool is_peek)
   return fileio_get_volume_label (fileio_get_volume_id (vol_fd), is_peek);
 }
 
+const char *
+fileio_get_volume_label_with_unknown (VOLID volid)
+{
+  static constexpr char *UNKNOWN_VLABEL = "(UNKNOWN)";
+  const char *vlabel = fileio_get_volume_label (volid, PEEK);
+  return vlabel != nullptr ? vlabel : UNKNOWN_VLABEL;
+}
 
 /*
  * fileio_get_volume_id () - Find volume identifier of a mounted volume given its
