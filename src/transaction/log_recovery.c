@@ -808,11 +808,6 @@ log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
     {
       log_recovery_undo (thread_p);
 
-      /* Flush all dirty pages */
-      logpb_flush_pages_direct (thread_p);
-      logpb_flush_header (thread_p);
-      (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-
       // Reset boot_Db_parm in case a data volume creation was undone.
       (void) boot_reset_db_parm (thread_p);
     }

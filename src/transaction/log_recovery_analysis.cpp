@@ -1565,19 +1565,20 @@ log_rv_analysis_2pc_recv_ack (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_
 static int
 log_rv_analysis_log_end (int tran_id, const LOG_LSA *log_lsa, const LOG_PAGE *log_page_p)
 {
+  assert (log_page_p != nullptr);
   if (is_tran_server_with_remote_storage () || !logpb_is_page_in_archive (log_lsa->pageid))
     {
       /*
        * Reset the log header for the recovery undo operation
        */
+      LOG_RESET_APPEND_LSA (log_lsa);
+
       // log page pointer passed here is that of the last log page - the append page
-      // and the re
-      assert (log_page_p != nullptr);
       assert (!log_Gl.hdr.append_lsa.is_null ());
       const LOG_RECORD_HEADER *const log_append_log_header =
 	      (const LOG_RECORD_HEADER *) (log_page_p->area + log_Gl.hdr.append_lsa.offset);
       LOG_RESET_PREV_LSA (&log_append_log_header->back_lsa);
-      LOG_RESET_APPEND_LSA (log_lsa);
+
       log_Gl.hdr.next_trid = tran_id;
     }
 
