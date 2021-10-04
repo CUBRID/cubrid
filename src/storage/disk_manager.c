@@ -6349,7 +6349,7 @@ disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_NFREE_SECTS, 3,
-		  fileio_get_volume_label (volid, PEEK), disk_Cache->vols[volid].nsect_free, nfree);
+		  fileio_get_volume_label_with_unknown (volid), disk_Cache->vols[volid].nsect_free, nfree);
 	  valid = DISK_INVALID;
 	}
     }
@@ -6365,7 +6365,7 @@ disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
     {
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_VOL_HEADER, 1,
-	      fileio_get_volume_label (volid, PEEK));
+	      fileio_get_volume_label_with_unknown (volid));
       valid = DISK_INVALID;
     }
 
