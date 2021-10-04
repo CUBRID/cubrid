@@ -512,6 +512,7 @@ extern bool fileio_is_volume_exist_and_file (const char *vlabel);
 extern DKNPAGES fileio_get_number_of_volume_pages (int vdes, size_t page_size);
 extern char *fileio_get_volume_label (VOLID volid, bool is_peek);
 extern char *fileio_get_volume_label_by_fd (int vol_fd, bool is_peek);
+extern const char *fileio_get_volume_label_with_unknown (VOLID volid);
 extern VOLID fileio_find_volume_id_with_label (THREAD_ENTRY * thread_p, const char *vlabel);
 extern bool fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid);
 extern bool fileio_is_permanent_volume_descriptor (THREAD_ENTRY * thread_p, int vol_fd);

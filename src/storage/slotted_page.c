@@ -350,7 +350,7 @@ spage_verify_header (PAGE_PTR page_p)
 
       pgbuf_get_vpid (page_p, &vpid);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, vpid.pageid,
-	      fileio_get_volume_label (vpid.volid, PEEK), header_info);
+	      fileio_get_volume_label_with_unknown (vpid.volid), header_info);
       assert (false);
     }
 }
@@ -1230,7 +1230,7 @@ spage_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 
 	  pgbuf_get_vpid (page_p, &vpid);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_WRONG_NUM_SLOTS, 4, vpid.pageid,
-		  fileio_get_volume_label (vpid.volid, PEEK), j, page_header_p->num_records);
+		  fileio_get_volume_label_with_unknown (vpid.volid), j, page_header_p->num_records);
 
 	  assert (false);
 

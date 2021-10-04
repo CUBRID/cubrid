@@ -7414,7 +7414,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 			    tdes->tran_index, (long long int) log_lsa->pageid, log_lsa->offset,
 			    rv_rcvindex_string (rcvindex), rv_err);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
+		      fileio_get_volume_label_with_unknown (rcv_vpid->volid));
 	      assert (false);
 	    }
 	  else if (RCV_IS_BTREE_LOGICAL_LOG (rcvindex) && prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
@@ -7440,7 +7440,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 			    tdes->tran_index, (long long int) log_lsa->pageid, log_lsa->offset,
 			    rv_rcvindex_string (rcvindex), rv_err);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
+		      fileio_get_volume_label_with_unknown (rcv_vpid->volid));
 	      assert (false);
 	    }
 	}
@@ -7490,7 +7490,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 			    tdes->tran_index, (long long int) log_lsa->pageid, log_lsa->offset,
 			    rv_rcvindex_string (rcvindex), rv_err);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
+		      fileio_get_volume_label_with_unknown (rcv_vpid->volid));
 	      assert (false);
 	    }
 
@@ -7506,7 +7506,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
        */
       log_append_compensate (thread_p, rcvindex, rcv_vpid, rcv->offset, NULL, rcv->length, rcv->data, tdes);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-	      fileio_get_volume_label (rcv_vpid->volid, PEEK));
+	      fileio_get_volume_label_with_unknown (rcv_vpid->volid));
       assert (false);
     }
 
@@ -8499,7 +8499,7 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 	{
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-		  fileio_get_volume_label (rcv_vpid.volid, PEEK));
+		  fileio_get_volume_label_with_unknown (rcv_vpid.volid));
 	  return ER_LOG_MAYNEED_MEDIA_RECOVERY;
 	}
       if (rcv.pgptr == NULL)
