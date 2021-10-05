@@ -1352,8 +1352,10 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 No se puede truncar la tabla debido a la clave principal a la que se hace referencia en %1$s. Inténtelo de nuevo con la opción CASCADE.
+1285 No se puede truncar en cascada porque la acción ON DELETE de la clave externa (%1$s) no está establecida en CASCADE.
 
-1284 Ultimo error
+1286 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

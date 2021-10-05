@@ -156,7 +156,13 @@ extern int sm_force_method_link (MOP obj);
 
 extern char *sm_get_method_source_file (MOP obj, const char *name);
 
-extern int sm_truncate_class (MOP class_mop);
+extern int sm_truncate_class (MOP class_mop, const bool is_cascade);
+extern int sm_truncate_using_delete (MOP class_mop);
+extern int sm_truncate_using_destroy_heap (MOP class_mop);
+
+bool sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const class_,
+					    const SM_CLASS_CONSTRAINT * const constraint);
+
 
 extern int sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info, const SM_CLASS_CONSTRAINT * const c);
 extern int sm_save_function_index_info (SM_FUNCTION_INFO ** save_info, SM_FUNCTION_INFO * func_index_info);

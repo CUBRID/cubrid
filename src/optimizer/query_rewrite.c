@@ -1329,8 +1329,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
       found_equality_term = false;	/* 2nd init */
 
       if (expr->info.expr.op == PT_EQ && expr->info.expr.arg1 && expr->info.expr.arg2
-	  && (!pt_is_function_index_expression (expr->info.expr.arg1) || !PT_IS_CONST (expr->info.expr.arg2))
-	  && (!pt_is_function_index_expression (expr->info.expr.arg2) || !PT_IS_CONST (expr->info.expr.arg1)))
+	  && !(pt_is_function_index_expression (expr->info.expr.arg1) && qo_is_reduceable_const (expr->info.expr.arg2))
+	  && !(pt_is_function_index_expression (expr->info.expr.arg2) && qo_is_reduceable_const (expr->info.expr.arg1)))
 	{			/* 'opd = opd' */
 	  found_equality_term = true;	/* pass 2nd phase */
 	  num_check = 2;
@@ -3564,7 +3564,6 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * like, P
 
   /* if success, use like_save. Otherwise, keep like. */
   like_save = pt_semantic_type (parser, like_save, NULL);
-
   if (like_save == NULL || er_errid () != NO_ERROR || pt_has_error (parser))
     {
       like->next = between->next;
@@ -3630,7 +3629,13 @@ qo_check_like_expression_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
       return node;
     }
 
-  if (PT_IS_QUERY (node) || PT_IS_NAME_NODE (node) || PT_IS_DOT_NODE (node))
+  if (PT_IS_QUERY (node) || PT_IS_DOT_NODE (node))
+    {
+      *like_expression_not_safe = true;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  else if (PT_IS_NAME_NODE (node) && node->info.name.correlation_level == 0)
     {
       *like_expression_not_safe = true;
       *continue_walk = PT_STOP_WALK;
@@ -3649,11 +3654,18 @@ qo_check_like_expression_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 static void
 qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 {
+  bool error_saved = false;
   PT_NODE *cnf_node = NULL;
   /* prev node in list which linked by next pointer. */
   PT_NODE *prev = NULL;
   /* prev node in list which linked by or_next pointer. */
   PT_NODE *or_prev = NULL;
+
+  if (er_errid () != NO_ERROR)
+    {
+      er_stack_push ();
+      error_saved = true;
+    }
 
   for (cnf_node = *cnf_list; cnf_node != NULL; cnf_node = cnf_node->next)
     {
@@ -3783,6 +3795,11 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	  or_prev = crt_expr;
 	}
       prev = cnf_node;
+    }
+
+  if (error_saved)
+    {
+      er_stack_pop ();
     }
 }
 
@@ -5471,10 +5488,10 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 static PT_NODE *
 qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *spec, *prev_spec, *expr, *ns, *save_next;
+  PT_NODE *spec, *expr, *ns, *save_next;
   SPEC_ID_INFO info, info_spec;
   RESET_LOCATION_INFO locate_info;
-  bool rewrite_again;
+  bool rewrite_again, is_outer_joined;
 
   if (node->node_type != PT_SELECT)
     {
@@ -5492,23 +5509,13 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     {
       rewrite_again = false;
       /* traverse spec list */
-      prev_spec = NULL;
-      for (spec = node->info.query.q.select.from; spec; prev_spec = spec, spec = spec->next)
+      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
 	{
-	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
-	      || (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && prev_spec))
+	  /* check outer join spec. */
+	  is_outer_joined = mq_is_outer_join_spec (parser, spec);
+	  if (is_outer_joined)
 	    {
-	      if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
-		{
-		  info.id = info_spec.id = spec->info.spec.id;
-		}
-	      else
-		{
-		  info.id = info_spec.id = prev_spec->info.spec.id;
-		}
-
-	      info_spec.appears = false;
-	      info.nullable = false;
+	      info.id = info_spec.id = spec->info.spec.id;
 
 	      /* search where list */
 	      for (expr = node->info.query.q.select.where; expr; expr = expr->next)
@@ -5516,6 +5523,9 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 		  if (expr->node_type == PT_EXPR && expr->info.expr.location == 0 && expr->info.expr.op != PT_IS_NULL
 		      && expr->or_next == NULL && expr->info.expr.op != PT_AND && expr->info.expr.op != PT_OR)
 		    {
+		      info_spec.appears = false;
+		      info.nullable = false;
+
 		      save_next = expr->next;
 		      expr->next = NULL;
 		      (void) parser_walk_tree (parser, expr, NULL, NULL, qo_check_nullable_expr_with_spec, &info);
@@ -5527,12 +5537,15 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 		      if (info_spec.appears && !info.nullable)
 			{
 			  rewrite_again = true;
-			  spec->info.spec.join_type = PT_JOIN_INNER;
+			  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
+			    {
+			      spec->info.spec.join_type = PT_JOIN_INNER;
 
-			  locate_info.start = spec->info.spec.location;
-			  locate_info.end = locate_info.start;
-			  (void) parser_walk_tree (parser, node->info.query.q.select.where, qo_reset_location,
-						   &locate_info, NULL, NULL);
+			      locate_info.start = spec->info.spec.location;
+			      locate_info.end = locate_info.start;
+			      (void) parser_walk_tree (parser, node->info.query.q.select.where, qo_reset_location,
+						       &locate_info, NULL, NULL);
+			    }
 
 			  /* rewrite the following connected right outer join to inner join */
 			  for (ns = spec->next;	/* traverse next spec */

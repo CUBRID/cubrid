@@ -185,6 +185,7 @@ extern void srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 extern void srepl_log_get_append_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
 /* external storage supports */
 extern void ses_posix_write_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ses_posix_read_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -240,4 +241,12 @@ extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, cha
 extern void ssession_stop_attached_threads (void *session);
 
 extern void smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+/*for CDC*/
+extern void slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

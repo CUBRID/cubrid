@@ -259,6 +259,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_template.c
   ${OBJECT_DIR}/quick_fit.c
+  ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/set_object.c
@@ -348,6 +349,14 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_object.h
   )
 
+set(API_SOURCES
+  ${API_DIR}/cubrid_log.c
+  )
+
+set(API_HEADERS
+  ${API_DIR}/cubrid_log.h
+  )
+
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND EXECUTABLE_SOURCES ${EXECUTABLES_DIR}/checksumdb.c)
@@ -427,6 +436,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PROBES_OBJECT}
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
+  ${API_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
@@ -466,6 +476,8 @@ add_library(cubridcs SHARED
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   ${LOADDB_HEADERS}
+  ${API_SOURCES}
+  ${API_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

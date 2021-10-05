@@ -392,6 +392,9 @@ struct json_t;
 #define PT_IS_ORDERBYNUM(n) \
         ( (n) && ((n)->node_type == PT_EXPR && ((n)->info.expr.op == PT_ORDERBY_NUM)) )
 
+#define PT_IS_GROUPBYNUM(n) \
+        ( (n) && ((n)->node_type == PT_FUNCTION && ((n)->info.function.function_type == PT_GROUPBY_NUM)) )
+
 #define PT_IS_DISTINCT(n) \
         ( (n) && PT_IS_QUERY_NODE_TYPE((n)->node_type) && (n)->info.query.all_distinct != PT_ALL )
 
@@ -1176,53 +1179,44 @@ typedef enum
   PT_JOIN_UNION = 0x40		/* 0100 0000 -- not used */
 } PT_JOIN_TYPE;
 
-typedef enum
-{
-  PT_HINT_NONE = 0x00,		/* 0000 0000 *//* no hint */
-  PT_HINT_ORDERED = 0x01,	/* 0000 0001 *//* force join left-to-right */
-  PT_HINT_NO_INDEX_SS = 0x02,	/* 0000 0010 *//* disable index skip scan */
-  PT_HINT_INDEX_SS = 0x04,	/* 0000 0100 *//* enable index skip scan */
-  PT_HINT_SELECT_BTREE_NODE_INFO = 0x08,	/* temporarily use the unused hint PT_HINT_Y */
-  /* SELECT b-tree node information */
-  PT_HINT_USE_NL = 0x10,	/* 0001 0000 *//* force nl-join */
-  PT_HINT_USE_IDX = 0x20,	/* 0010 0000 *//* force idx-join */
-  PT_HINT_USE_MERGE = 0x40,	/* 0100 0000 *//* force m-join */
-  PT_HINT_USE_HASH = 0x80,	/* 1000 0000 -- not used */
-  PT_HINT_RECOMPILE = 0x0100,	/* 0000 0001 0000 0000 *//* recompile */
-  PT_HINT_LK_TIMEOUT = 0x0200,	/* 0000 0010 0000 0000 *//* lock_timeout */
-  PT_HINT_NO_LOGGING = 0x0400,	/* 0000 0100 0000 0000 *//* no_logging */
-  PT_HINT_NO_HASH_LIST_SCAN = 0x0800,	/* 0000 1000 0000 0000 *//* no hash list scan */
-  PT_HINT_QUERY_CACHE = 0x1000,	/* 0001 0000 0000 0000 *//* query_cache */
-  PT_HINT_REEXECUTE = 0x2000,	/* 0010 0000 0000 0000 *//* reexecute */
-  PT_HINT_JDBC_CACHE = 0x4000,	/* 0100 0000 0000 0000 *//* jdbc_cache */
-  PT_HINT_USE_SBR = 0x8000,	/* 1000 0000 0000 0000 *//* statement based replication */
-  PT_HINT_USE_IDX_DESC = 0x10000,	/* 0001 0000 0000 0000 0000 *//* descending index scan */
-  PT_HINT_NO_COVERING_IDX = 0x20000,	/* 0010 0000 0000 0000 0000 *//* do not use covering index scan */
-  PT_HINT_INSERT_MODE = 0x40000,	/* 0100 0000 0000 0000 0000 *//* set insert_executeion_mode */
-  PT_HINT_NO_IDX_DESC = 0x80000,	/* 1000 0000 0000 0000 0000 *//* do not use descending index scan */
-  PT_HINT_NO_MULTI_RANGE_OPT = 0x100000,	/* 0001 0000 0000 0000 0000 0000 */
-  /* do not use multi range optimization */
-  PT_HINT_USE_UPDATE_IDX = 0x200000,	/* 0010 0000 0000 0000 0000 0000 */
-  /* use index for merge update */
-  PT_HINT_USE_INSERT_IDX = 0x400000,	/* 0100 0000 0000 0000 0000 0000 */
-  /* do not generate SORT-LIMIT plan */
-  PT_HINT_NO_SORT_LIMIT = 0x800000,	/* 1000 0000 0000 0000 0000 0000 */
-  PT_HINT_NO_HASH_AGGREGATE = 0x1000000,	/* 0001 0000 0000 0000 0000 0000 0000 */
-  /* no hash aggregate evaluation */
-  PT_HINT_SKIP_UPDATE_NULL = 0x2000000,	/* 0010 0000 0000 0000 0000 0000 0000 */
-  PT_HINT_NO_INDEX_LS = 0x4000000,	/* 0100 0000 0000 0000 0000 0000 0000 *//* enable loose index scan */
-  PT_HINT_INDEX_LS = 0x8000000,	/* 1000 0000 0000 0000 0000 0000 0000 *//* disable loose index scan */
-  PT_HINT_QUERY_NO_CACHE = 0x10000000,	/* 0001 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache */
-  PT_HINT_SELECT_RECORD_INFO = 0x20000000,	/* 0010 0000 0000 0000 0000 0000 0000 0000 */
-  /* SELECT record info from tuple header instead of data */
-  PT_HINT_SELECT_PAGE_INFO = 0x40000000,	/* 0100 0000 0000 0000 0000 0000 0000 0000 */
-  /* SELECT page header information from heap file instead of record data */
-  PT_HINT_SELECT_KEY_INFO = 0x80000000	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
-    /* SELECT key information from index b-tree instead of table record data */
-} PT_HINT_ENUM;
+typedef UINT64 PT_HINT_ENUM;
+#define  PT_HINT_NONE  0x00ULL	/* no hint */
+#define  PT_HINT_ORDERED  0x01ULL	/* force join left-to-right */
+#define  PT_HINT_NO_INDEX_SS  0x02ULL	/* disable index skip scan */
+#define  PT_HINT_INDEX_SS  0x04ULL	/* enable index skip scan */
+#define  PT_HINT_SELECT_BTREE_NODE_INFO  0x08ULL	/* SELECT b-tree node information */
+#define  PT_HINT_USE_NL  0x10ULL	/* force nl-join */
+#define  PT_HINT_USE_IDX  0x20ULL	/* force idx-join */
+#define  PT_HINT_USE_MERGE  0x40ULL	/* force m-join */
+#define  PT_HINT_USE_HASH  0x80ULL	/* not used */
+#define  PT_HINT_RECOMPILE  0x0100ULL	/* recompile */
+#define  PT_HINT_LK_TIMEOUT  0x0200ULL	/* lock_timeout */
+#define  PT_HINT_NO_LOGGING  0x0400ULL	/* no_logging */
+#define  PT_HINT_NO_HASH_LIST_SCAN  0x0800ULL	/* no hash list scan */
+#define  PT_HINT_QUERY_CACHE  0x1000ULL	/* query_cache */
+#define  PT_HINT_REEXECUTE  0x2000ULL	/* reexecute */
+#define  PT_HINT_JDBC_CACHE  0x4000ULL	/* jdbc_cache */
+#define  PT_HINT_USE_SBR  0x8000ULL	/* statement based replication */
+#define  PT_HINT_USE_IDX_DESC  0x10000ULL	/* descending index scan */
+#define  PT_HINT_NO_COVERING_IDX  0x20000ULL	/* do not use covering index scan */
+#define  PT_HINT_INSERT_MODE  0x40000ULL	/* set insert_executeion_mode */
+#define  PT_HINT_NO_IDX_DESC  0x80000ULL	/* do not use descending index scan */
+#define  PT_HINT_NO_MULTI_RANGE_OPT  0x100000ULL	/* do not use multi range optimization */
+#define  PT_HINT_USE_UPDATE_IDX  0x200000ULL	/* use index for merge update */
+#define  PT_HINT_USE_INSERT_IDX  0x400000ULL	/* do not generate SORT-LIMIT plan */
+#define  PT_HINT_NO_SORT_LIMIT  0x800000ULL
+#define  PT_HINT_NO_HASH_AGGREGATE  0x1000000ULL	/* no hash aggregate evaluation */
+#define  PT_HINT_SKIP_UPDATE_NULL  0x2000000ULL
+#define  PT_HINT_NO_INDEX_LS  0x4000000ULL	/* enable loose index scan */
+#define  PT_HINT_INDEX_LS  0x8000000ULL	/* disable loose index scan */
+#define  PT_HINT_NO_SUPPLEMENTAL_LOG  0x10000000ULL	/* Used in DML (only for update delete currently) to avoid adding DML supplemental logs that may be duplicated by DDL */
+#define  PT_HINT_SELECT_RECORD_INFO  0x20000000ULL	/* SELECT record info from tuple header instead of data */
+#define  PT_HINT_SELECT_PAGE_INFO  0x40000000ULL	/* SELECT page header information from heap file instead of record data */
+#define  PT_HINT_SELECT_KEY_INFO  0x80000000ULL	/* SELECT key information from index b-tree instead of table record data */
+#define  PT_HINT_QUERY_NO_CACHE  0x100000000ULL	/* don't use the query cache (unused) */
+#define  PT_HINT_NO_PUSH_PRED  0x200000000ULL	/* do not push predicates */
 
 /* Codes for error messages */
-
 typedef enum
 {
   PT_NO_ERROR = 4000,
@@ -3198,6 +3192,7 @@ struct pt_stored_proc_param_info
 struct pt_truncate_info
 {
   PT_NODE *spec;		/* PT_SPEC */
+  bool is_cascade;		/* whether to truncate cascade FK-referring classes */
 };
 
 /* DO ENTITY INFO */
@@ -3717,6 +3712,29 @@ struct pt_coll_infer
   // *INDENT-ON*
 #endif				// c++
 };
+
+enum cdc_ddl_type
+{
+  CDC_CREATE,
+  CDC_ALTER,
+  CDC_DROP,
+  CDC_RENAME,
+  CDC_TRUNCATE,
+  CDC_TRUNCATE_CASCADE
+};
+typedef enum cdc_ddl_type CDC_DDL_TYPE;
+
+enum cdc_ddl_object_type
+{
+  CDC_TABLE,
+  CDC_INDEX,
+  CDC_SERIAL,
+  CDC_VIEW,
+  CDC_FUNCTION,
+  CDC_PROCEDURE,
+  CDC_TRIGGER
+};
+typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
 

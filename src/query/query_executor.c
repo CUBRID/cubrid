@@ -8773,6 +8773,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
   thread_p->no_logging = (bool) update->no_logging;
 
+  thread_p->no_supplemental_log = (bool) update->no_supplemental_log;
+
   /* get the snapshot, before acquiring locks, since the transaction may be blocked and we need the snapshot when
    * update starts, not later */
   (void) logtb_get_mvcc_snapshot (thread_p);
@@ -9634,6 +9636,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
   thread_p->no_logging = (bool) delete_->no_logging;
+
+  thread_p->no_supplemental_log = (bool) delete_->no_supplemental_log;
 
   /* get the snapshot, before acquiring locks, since the transaction may be blocked and we need the snapshot when
    * delete starts, not later */

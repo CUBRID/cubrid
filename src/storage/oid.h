@@ -28,6 +28,9 @@
 
 #include "storage_common.h"
 #include "dbtype_def.h"
+#ifdef __cplusplus
+#include <functional>
+#endif
 
 #define ROOTCLASS_NAME "Rootclass"	/* Name of Rootclass */
 
@@ -132,6 +135,29 @@
    ((oidp)->slotid | (((unsigned int)(oidp)->pageid) << 8)) ^ \
    ((((unsigned int)(oidp)->pageid) >> 8) | \
     (((unsigned int)(oidp)->volid) << 24)))
+
+#ifdef __cplusplus
+// *INDENT-OFF*
+template <>
+struct std::hash<OID>
+{
+  size_t operator()(const OID& oid) const
+  {
+    return OID_PSEUDO_KEY (&oid);
+  }
+};
+
+inline bool operator==(const OID& oid1, const OID& oid2)
+{
+  return OID_EQ (&oid1, &oid2);
+}
+
+inline bool operator!=(const OID& oid1, const OID& oid2)
+{
+  return !OID_EQ (&oid1, &oid2);
+}
+// *INDENT-ON*
+#endif
 
 #define OID_IS_VIRTUAL_CLASS_OF_DIR_OID(oidp) \
   ((((oidp)->slotid & VIRTUAL_CLASS_DIR_OID_MASK) \
