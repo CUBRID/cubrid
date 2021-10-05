@@ -3016,7 +3016,6 @@ css_connect_to_master_server (int master_port_id, const char *message_to_master,
     {
     case SERVER_ALREADY_EXISTS:
 #if !defined (SERVER_MODE)
-#if defined(CS_MODE)
       if (IS_MASTER_CONN_NAME_HA_COPYLOG (message_to_master))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_COPYLOG_ALREADY_EXISTS, 1,
@@ -3033,7 +3032,6 @@ css_connect_to_master_server (int master_port_id, const char *message_to_master,
 		  GET_REAL_MASTER_CONN_NAME (message_to_master));
 	}
       else
-#endif /* CS_MODE */
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, message_to_master);
 	}
