@@ -15388,11 +15388,19 @@ end:
 
   if (cls_info[0] != NULL && statement->node_type == PT_DROP)
     {
-      int i = 0;
-
-      while (cls_info[i] != NULL)
+      if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
 	{
-	  free_and_init (cls_info[i++]);
+	  /* nothing to drop, and nothing to reserve */
+	  return error;
+	}
+      else
+	{
+	  int i = 0;
+
+	  while (cls_info[i] != NULL)
+	    {
+	      free_and_init (cls_info[i++]);
+	    }
 	}
     }
 
