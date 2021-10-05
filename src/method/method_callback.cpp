@@ -73,6 +73,7 @@ namespace cubmethod
 	break;
       default:
 	assert (false);
+	error = ER_FAILED;
 	break;
       }
 
