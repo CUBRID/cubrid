@@ -17303,7 +17303,6 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   int au_save = 0;
 
-  /* Initialization */
   memset (synonym_downcase_name, '\0', sizeof (char) * SM_MAX_IDENTIFIER_LENGTH);
 
   if (statement)
@@ -17318,7 +17317,8 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* synonym_owner */
-      synonym_owner = db_get_user ();	/* current user OID */
+      synonym_owner = db_get_user ();	/* current user */
+      assert (synonym_owner != NULL);
 
       /* target_name */
       if (statement->info.create_synonym.target_name)
@@ -17353,7 +17353,8 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      /* To Do: Exception handling */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "create public synonym");
+	      error = ER_AU_DBA_ONLY;
 	      goto end;
 	    }
 	}
@@ -17450,7 +17451,6 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   int error = NO_ERROR;
   int au_save = 0;
 
-  /* initialization */
   pr_clear_value (&value);
 
   AU_DISABLE (au_save);
@@ -17542,7 +17542,6 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   ret_obj = dbt_finish_object (obj_tmpl);
   if (ret_obj == NULL)
     {
-      /* To Do: Exception handling */
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }

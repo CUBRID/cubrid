@@ -4037,6 +4037,12 @@ boot_define_synonym (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "is_public_synonym", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = smt_add_attribute (def, "target_name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
     {
@@ -4044,12 +4050,6 @@ boot_define_synonym (MOP class_mop)
     }
 
   error_code = smt_add_attribute (def, "target_owner", AU_USER_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "is_public_synonym", "integer", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -4074,9 +4074,6 @@ boot_define_synonym (MOP class_mop)
       return error_code;
     }
 
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
-
   error_code = db_constrain_non_null (class_mop, "target_name", 0, 1);
   if (error_code != NO_ERROR)
     {
@@ -4088,6 +4085,9 @@ boot_define_synonym (MOP class_mop)
     {
       return error_code;
     }
+
+  /* add index */
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
 
   if (locator_has_heap (class_mop) == NULL)
     {
@@ -5543,9 +5543,9 @@ boot_define_view_synonym (void)
   COLUMN columns[] = {
     {"synonym_name", "varchar(255)"},
     {"synonym_owner_name", "varchar(255)"},
+    {"is_public_synonym", "varchar(3)"},	/* access_modifier */
     {"target_name", "varchar(255)"},
     {"target_owner_name", "varchar(255)"},
-    {"is_public_synonym", "varchar(3)"},	/* access_modifier */
     {"comment", "varchar(2048)"}
   };
 
@@ -5575,15 +5575,15 @@ boot_define_view_synonym (void)
     }
 
   /* Use ORDER BY to get PRIVATE SYNONYM first. */
-  sprintf (stmt, "SELECT [s].[synonym_name], CAST([s].[synonym_owner].[name] AS VARCHAR(255)), [s].[target_name], "
-	   "CAST([s].[target_owner].[name] AS VARCHAR(255)), "
-	   "CASE WHEN [s].[is_public_synonym] = 1 THEN 'YES' ELSE 'NO' END, [s].[comment]"
-	   "FROM [%s] [s]"
+  sprintf (stmt, "SELECT [s].[synonym_name], CAST([s].[synonym_owner].[name] AS VARCHAR(255)), "
+	   "CASE WHEN [s].[is_public_synonym] = 1 THEN 'YES' ELSE 'NO' END, "
+  	   "[s].[target_name], CAST([s].[target_owner].[name] AS VARCHAR(255)), [s].[comment] "
+	   "FROM [%s] [s] "
 	   "WHERE (CURRENT_USER = 'DBA') "
 	   "OR ([s].[is_public_synonym] = 1) "
-	   "OR ([s].[is_public_synonym] = 0 AND [s].[synonym_owner].[name] = CURRENT_USER)"
+	   "OR ([s].[is_public_synonym] = 0 AND [s].[synonym_owner].[name] = CURRENT_USER) "
 	   "OR ([s].[is_public_synonym] = 0 AND [s].[synonym_owner].[name] IN "
-	   "(SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER))"
+	   "(SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER)) "
 	   "ORDER BY [is_public_synonym]", CT_SYNONYM_NAME, AU_USER_CLASS_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
