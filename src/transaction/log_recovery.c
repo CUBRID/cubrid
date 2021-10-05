@@ -959,8 +959,6 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   log_Gl.rcv_phase = LOG_RECOVERY_UNDO_PHASE;
   log_recovery_undo (thread_p);
 
-  logpb_flush_pages_direct (thread_p);
-
   // Reset boot_Db_parm in case a data volume creation was undone.
   error_code = boot_reset_db_parm (thread_p);
   if (error_code != NO_ERROR)
