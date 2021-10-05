@@ -87,7 +87,7 @@ public class SpPrepareTest {
                 int result = 0;
                 Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
                 Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
-                String fiboStmt = "SELECT testFiboSP (?) + testFibo (?);";
+                String fiboStmt = "SELECT testFiboSP (?) + testFiboSP (?);";
                 PreparedStatement stmt = conn.prepareStatement(fiboStmt);
                 stmt.setInt(1, n - 1);
                 stmt.setInt(2, n - 2);

@@ -434,7 +434,7 @@ public class SqlUtil {
     }
 
     private static Time toTime(Object val) {
-        System.out.println("toTime --- " + val);
+        // System.out.println("toTime --- " + val);
         if (val instanceof Long) {
             return new Time((Long) val);
         }
