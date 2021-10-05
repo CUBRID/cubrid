@@ -774,6 +774,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 	  LSA_DIFF_IN_PAGE (&end_redo_lsa, &start_redolsa), num_redo_log_records);
   log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa, stopat);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "REDO");
+
   boot_reset_db_parm (thread_p);
 
   /* Undo phase */
