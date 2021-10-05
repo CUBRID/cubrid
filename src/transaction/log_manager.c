@@ -13349,11 +13349,7 @@ cdc_wakeup_producer ()
 {
   cdc_log ("cdc_wakeup_producer : consumer request the producer to wakeup");
 
-  while (cdc_Gl.producer.state != CDC_PRODUCER_STATE_RUN)
-    {
-      pthread_cond_signal (&cdc_Gl.producer.wait_cond);
-      sleep (1);
-    }
+  pthread_cond_signal (&cdc_Gl.producer.wait_cond);
 }
 
 void
@@ -13983,17 +13979,10 @@ end:
 
   if (cdc_Gl.consumer.request == CDC_REQUEST_CONSUMER_TO_WAIT)
     {
-      cdc_wakeup_producer ();
-
-      cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_NONE;
-
-
-      while (cdc_Gl.consumer.request != CDC_REQUEST_CONSUMER_TO_RUN)
+      while (cdc_Gl.consumer.consumed_queue_size != 0)
 	{
-	  sleep (1);
+	  cdc_wakeup_producer ();
 	}
-
-      cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_NONE;
     }
 
 //  if producer status is wait, and producer queue size is over the limit 
