@@ -10883,14 +10883,13 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  cdc_log ("cdc_loginfo_producer_execute : cdc_Gl.producer.state is in CDC_PRODUCER_STATE_WAIT ");
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
-	  cdc_Gl.producer.request = CDC_REQUEST_NONE;
+	  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
 
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
 	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
-	  cdc_wakeup_consumer ();
 
 	  continue;
 	}
@@ -10899,10 +10898,9 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	{
 	  cdc_log ("cdc_loginfo_producer_execute : produced queue size is over the limit");
 
-	  cdc_pause_consumer ();
-
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
-	  cdc_Gl.producer.request = CDC_REQUEST_NONE;
+
+	  cdc_pause_consumer ();
 
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
@@ -13292,7 +13290,6 @@ cdc_loginfo_producer_daemon_init ()
   pthread_cond_init (&cdc_Gl.producer.wait_cond, NULL);
 
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
-  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
 
   /* *INDENT-OFF* */
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10)); /* 주석 처리  */
@@ -13383,7 +13380,7 @@ void
 cdc_wakeup_consumer ()
 {
   cdc_log ("cdc_wakeup_consumer : producer request the consumer to wakeup");
-  cdc_Gl.consumer.request = CDC_REQUEST_NONE;
+  cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_TO_RUN;
 }
 
 int
@@ -13988,10 +13985,15 @@ end:
     {
       cdc_wakeup_producer ();
 
-      while (cdc_Gl.consumer.request != CDC_REQUEST_NONE)
+      cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_NONE;
+
+
+      while (cdc_Gl.consumer.request != CDC_REQUEST_CONSUMER_TO_RUN)
 	{
 	  sleep (1);
 	}
+
+      cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_NONE;
     }
 
 //  if producer status is wait, and producer queue size is over the limit 
@@ -14008,6 +14010,8 @@ cdc_initialize ()
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;
 
+  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_TO_WAIT;
+  cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_NONE;
   cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
 
   /* *INDENT-OFF* */
