@@ -1804,12 +1804,12 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 static PT_NODE *
 qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *wherep;
+  PT_NODE **wherep;
 
   if (node->node_type == PT_SELECT)
     {
-      wherep = node->info.query.q.select.where;
-      qo_reduce_equality_terms (parser, node, &wherep);
+      wherep = &node->info.query.q.select.where;
+      qo_reduce_equality_terms (parser, node, wherep);
     }
 
   return node;
@@ -7126,7 +7126,18 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       /* reduce equality terms */
       if (*wherep)
 	{
-	  parser_walk_tree (parser, node, NULL, NULL, qo_reduce_equality_terms_post, NULL);
+	  if (PT_IS_SELECT (node))
+	    {
+	      /* for correlated constant value in another subquery
+	       * e.g. select .. from (select 1 col1) a, (select col1 from table) b where a.col1 = b.col1
+	       *      ==> select ... (..) a, (select ... from table where col1 = 1) ...
+	      /* Applies only to SELECT. In other cases, apply later if necessary. */
+	      parser_walk_tree (parser, node, NULL, NULL, qo_reduce_equality_terms_post, NULL);
+	    }
+	  else
+	    {
+	      qo_reduce_equality_terms (parser, node, wherep);
+	    }
 	}
       if (*havingp)
 	{
