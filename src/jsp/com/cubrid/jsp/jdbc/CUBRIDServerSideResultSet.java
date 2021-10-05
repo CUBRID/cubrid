@@ -32,8 +32,6 @@
 package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.impl.SUStatement;
-import cubrid.jdbc.driver.CUBRIDException;
-import cubrid.sql.CUBRIDOID;
 import java.io.InputStream;
 import java.io.Reader;
 import java.math.BigDecimal;
@@ -81,7 +79,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     private boolean isInserting;
     private int currentRowIndex;
 
-    protected CUBRIDServerSideResultSet(CUBRIDServerSideConnection c, CUBRIDServerSideStatement s, int t, int concur)
+    protected CUBRIDServerSideResultSet(
+            CUBRIDServerSideConnection c, CUBRIDServerSideStatement s, int t, int concur)
             throws SQLException {
         connection = c;
         stmt = s;
@@ -139,22 +138,22 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     private void checkRowIsValidForGet() throws SQLException {
         if (currentRowIndex == statementHandler.getTotalTupleNumber() || currentRowIndex == -1) {
-            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_INVALID_ROW,
-                    null);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_ROW, null);
         }
     }
 
     private void checkRowIsValidForUpdate() throws SQLException {
         if (currentRowIndex == statementHandler.getTotalTupleNumber() || currentRowIndex == -1) {
-            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_INVALID_ROW,
-                    null);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_ROW, null);
         }
     }
 
     private void checkColumnIsValid(int columnIndex) throws SQLException {
         if (columnIndex < 1 || columnIndex > statementHandler.getColumnLength()) {
-            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_INVALID_INDEX,
-                    null);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_INDEX, null);
         }
     }
 
@@ -431,8 +430,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     public int findColumn(String columnName) throws SQLException {
         Integer index = statementHandler.getColNameIndex().get(columnName.toLowerCase());
         if (index == null) {
-            CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_INVALID_COLUMN_NAME,
-                    null);
+            CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_COLUMN_NAME, null);
         }
 
         return index.intValue() + 1;
@@ -551,8 +550,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
         clearCurrentRow();
 
         if (row == 0) {
-            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_ARGUMENT_ZERO,
-                    null);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_ARGUMENT_ZERO, null);
         }
 
         int totalTupleNumber = statementHandler.getTotalTupleNumber();
@@ -585,8 +584,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
         int totalTupleNumber = statementHandler.getTotalTupleNumber();
         if (currentRowIndex == -1 || currentRowIndex == totalTupleNumber) {
-            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_INVALID_ROW,
-                    null);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_ROW, null);
         }
 
         currentRowIndex += rows;
@@ -874,17 +873,20 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     }
 
     @Override
-    public void updateAsciiStream(String columnName, InputStream x, int length) throws SQLException {
+    public void updateAsciiStream(String columnName, InputStream x, int length)
+            throws SQLException {
         updateAsciiStream(findColumn(columnName), x, length);
     }
 
     @Override
-    public void updateBinaryStream(String columnName, InputStream x, int length) throws SQLException {
+    public void updateBinaryStream(String columnName, InputStream x, int length)
+            throws SQLException {
         updateBinaryStream(findColumn(columnName), x, length);
     }
 
     @Override
-    public void updateCharacterStream(String columnName, Reader reader, int length) throws SQLException {
+    public void updateCharacterStream(String columnName, Reader reader, int length)
+            throws SQLException {
         updateCharacterStream(findColumn(columnName), reader, length);
     }
 
@@ -1092,15 +1094,12 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     // 3.0
 
     /**
-     * Returns a <code>CUBRIDOID</code> object that represents the OID of the
-     * current cursor.
+     * Returns a <code>CUBRIDOID</code> object that represents the OID of the current cursor.
      *
-     * @return the <code>CUBRIDOID</code> object of the current cursor if OID is
-     *         included, <code>
+     * @return the <code>CUBRIDOID</code> object of the current cursor if OID is included, <code>
      *     null</code> otherwise.
      * @exception SQLException if <code>this</code> object is closed.
-     * @exception SQLException if the current cursor is on beforeFirst, afterLast or
-     *                         the insert row
+     * @exception SQLException if the current cursor is on beforeFirst, afterLast or the insert row
      * @exception SQLException if a database access error occurs
      */
 
@@ -1226,7 +1225,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     /* JDK 1.6 */
     @Override
-    public void updateAsciiStream(String columnLabel, InputStream x, long length) throws SQLException {
+    public void updateAsciiStream(String columnLabel, InputStream x, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
@@ -1244,13 +1244,15 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     /* JDK 1.6 */
     @Override
-    public void updateBinaryStream(int columnIndex, InputStream x, long length) throws SQLException {
+    public void updateBinaryStream(int columnIndex, InputStream x, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
     /* JDK 1.6 */
     @Override
-    public void updateBinaryStream(String columnLabel, InputStream x, long length) throws SQLException {
+    public void updateBinaryStream(String columnLabel, InputStream x, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
@@ -1268,13 +1270,15 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     /* JDK 1.6 */
     @Override
-    public void updateBlob(int columnIndex, InputStream inputStream, long length) throws SQLException {
+    public void updateBlob(int columnIndex, InputStream inputStream, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
     /* JDK 1.6 */
     @Override
-    public void updateBlob(String columnLabel, InputStream inputStream, long length) throws SQLException {
+    public void updateBlob(String columnLabel, InputStream inputStream, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
@@ -1298,7 +1302,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     /* JDK 1.6 */
     @Override
-    public void updateCharacterStream(String columnLabel, Reader reader, long length) throws SQLException {
+    public void updateCharacterStream(String columnLabel, Reader reader, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
@@ -1346,7 +1351,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     /* JDK 1.6 */
     @Override
-    public void updateNCharacterStream(String columnLabel, Reader reader, long length) throws SQLException {
+    public void updateNCharacterStream(String columnLabel, Reader reader, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 

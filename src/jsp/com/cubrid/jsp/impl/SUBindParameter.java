@@ -1,10 +1,12 @@
 package com.cubrid.jsp.impl;
 
-import java.io.UnsupportedEncodingException;
-
 import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorManager;
+import java.io.UnsupportedEncodingException;
+import java.sql.SQLException;
 
 public class SUBindParameter extends SUParameter {
     private static final byte PARAM_MODE_UNKNOWN = 0;
@@ -20,9 +22,9 @@ public class SUBindParameter extends SUParameter {
         isBinded = new boolean[pNumber];
         paramMode = new byte[pNumber];
 
-        clear ();
+        clear();
     }
-    
+
     void clear() {
         for (int i = 0; i < number; i++) {
             isBinded[i] = false;
@@ -51,9 +53,10 @@ public class SUBindParameter extends SUParameter {
         types = null;
     }
 
-    public void setParameter(int index, int bType, Object bValue) {
+    public void setParameter(int index, int bType, Object bValue) throws SQLException {
         if (index < 0 || index >= number) {
-            // TODO: throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_ARGUMENT, null);
         }
 
         types[index] = bType;
@@ -63,9 +66,10 @@ public class SUBindParameter extends SUParameter {
         paramMode[index] |= PARAM_MODE_IN;
     }
 
-    public void setOutParam(int index, int sqlType) {
+    public void setOutParam(int index, int sqlType) throws SQLException {
         if (index < 0 || index >= number) {
-            // TODO: throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_ARGUMENT, null);
         }
 
         paramMode[index] |= PARAM_MODE_OUT;

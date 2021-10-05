@@ -32,7 +32,7 @@
 package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.data.ColumnInfo;
-import com.cubrid.jsp.impl.SUColumnMeta;
+import com.cubrid.jsp.data.ColumnMeta;
 import com.cubrid.jsp.impl.SUStatement;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -47,14 +47,14 @@ import java.util.List;
 public class CUBRIDServerSideResultSetMetaData implements ResultSetMetaData {
 
     private List<ColumnInfo> columnInfos;
-    private List<SUColumnMeta> columnMetas;
+    private List<ColumnMeta> columnMetas;
 
     CUBRIDServerSideResultSetMetaData(SUStatement stmtHandler) {
         this.columnInfos = stmtHandler.getColumnInfo();
 
-        columnMetas = new ArrayList<SUColumnMeta>();
+        columnMetas = new ArrayList<ColumnMeta>();
         for (int i = 0; i < columnInfos.size(); i++) {
-            columnMetas.add(new SUColumnMeta(columnInfos.get(i)));
+            columnMetas.add(new ColumnMeta(columnInfos.get(i)));
         }
     }
 

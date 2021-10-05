@@ -1,10 +1,10 @@
-package com.cubrid.jsp.impl;
+package com.cubrid.jsp.data;
 
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
 import java.sql.ResultSetMetaData;
 
-public class SUColumnMeta {
+public class ColumnMeta {
     private int columnType;
     private int elementType;
     private String columnTypeName;
@@ -13,7 +13,7 @@ public class SUColumnMeta {
     private int columnNull;
     private String columnClassName;
 
-    public SUColumnMeta(ColumnInfo info) {
+    public ColumnMeta(ColumnInfo info) {
         setColumnMeta(info);
     }
 
