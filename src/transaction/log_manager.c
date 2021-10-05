@@ -10876,6 +10876,8 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
   int error = NO_ERROR;
 
+  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
+
   while (cdc_Gl.producer.request != CDC_REQUEST_PRODUCER_TO_BE_DEAD)
     {
       if (cdc_Gl.producer.request == CDC_REQUEST_PRODUCER_TO_WAIT)
@@ -13291,6 +13293,8 @@ cdc_loginfo_producer_daemon_init ()
 
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
 
+  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_TO_WAIT;
+
   /* *INDENT-OFF* */
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10)); /* 주석 처리  */
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (cdc_loginfo_producer_execute);
@@ -13999,9 +14003,9 @@ cdc_initialize ()
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;
 
-  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_TO_WAIT;
+  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
   cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_NONE;
-  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
+  cdc_Gl.producer.state = CDC_PRODUCER_STATE_DEAD;
 
   /* *INDENT-OFF* */
   cdc_Gl.loginfo_queue = new lockfree::circular_queue <CDC_LOGINFO_ENTRY *> (MAX_CDC_LOGINFO_QUEUE_ENTRY);
