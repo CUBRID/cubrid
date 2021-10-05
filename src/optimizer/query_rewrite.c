@@ -7128,10 +7128,12 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	{
 	  if (PT_IS_SELECT (node))
 	    {
-	      /* for correlated constant value in another subquery
+	      /*
+	       * for correlated constant value in another subquery
 	       * e.g. select .. from (select 1 col1) a, (select col1 from table) b where a.col1 = b.col1
-	       *      ==> select ... (..) a, (select ... from table where col1 = 1) ...
-	      /* Applies only to SELECT. In other cases, apply later if necessary. */
+	       *      ==> select ... (..) a, (select ... from table ) b where b.col1 = 1 ...
+	       * Applies only to SELECT. In other cases, apply later if necessary.
+	       */
 	      parser_walk_tree (parser, node, NULL, NULL, qo_reduce_equality_terms_post, NULL);
 	    }
 	  else
