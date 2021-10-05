@@ -18,15 +18,15 @@ public class SUColumnMeta {
     }
 
     /* getter */
-    public int getColumnType () {
+    public int getColumnType() {
         return columnType;
     }
 
-    public int getElementType () {
+    public int getElementType() {
         return elementType;
     }
 
-    public String getColumnTypeName () {
+    public String getColumnTypeName() {
         return columnTypeName;
     }
 
@@ -68,7 +68,7 @@ public class SUColumnMeta {
                     elementType = java.sql.Types.BINARY;
                 }
                 break;
-                
+
             case DBType.DB_VARBIT:
                 elementTypeName = "BIT VARYING";
                 elementType = java.sql.Types.VARBINARY;
@@ -187,7 +187,7 @@ public class SUColumnMeta {
     }
 
     private void setColumnMeta(ColumnInfo info) {
-        columnDisplaySize = getDefaultColumnDisplaySize (info.getColumnType());
+        columnDisplaySize = getDefaultColumnDisplaySize(info.getColumnType());
 
         if (info.getIsNotNull()) {
             columnNull = ResultSetMetaData.columnNoNulls;
@@ -195,7 +195,9 @@ public class SUColumnMeta {
             columnNull = ResultSetMetaData.columnNullable;
         }
 
-        columnClassName = DBType.findFQDN(info.getColumnType(), info.getColumnPrecision(), info.getCollectionType());
+        columnClassName =
+                DBType.findFQDN(
+                        info.getColumnType(), info.getColumnPrecision(), info.getCollectionType());
 
         switch (info.getColumnType()) {
             case DBType.DB_CHAR:
@@ -229,7 +231,7 @@ public class SUColumnMeta {
                     columnDisplaySize = info.getColumnPrecision();
                 }
                 break;
-                
+
             case DBType.DB_VARBIT:
                 columnTypeName = "BIT VARYING";
                 columnType = java.sql.Types.VARBINARY;
@@ -377,8 +379,8 @@ public class SUColumnMeta {
                 break;
         }
     }
-    
-    private int getDefaultColumnDisplaySize (int type) {
+
+    private int getDefaultColumnDisplaySize(int type) {
         /* return default column display size based on column type */
         int size = -1;
 
@@ -387,8 +389,8 @@ public class SUColumnMeta {
                 size = 1;
                 break;
             case DBType.DB_STRING:
-            // case DBType.DB_ENUM:
-            // case DBType.DB_JSON:
+                // case DBType.DB_ENUM:
+                // case DBType.DB_JSON:
                 size = 1;
                 break;
             case DBType.DB_BIT:
@@ -449,16 +451,9 @@ public class SUColumnMeta {
             case DBType.DB_SEQUENCE:
                 size = -1;
                 break;
-            case DBType.DB_NCHAR:
-                size = 1;
-                break;
-            case DBType.DB_VARNCHAR:
-                size = 1;
-                break;
             default:
                 break;
         }
         return size;
     }
-
 }
