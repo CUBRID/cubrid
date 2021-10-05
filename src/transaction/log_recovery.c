@@ -4051,6 +4051,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
   log_Gl.mvcc_table.reset_start_mvccid ();
 
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
+
   /* Abort all atomic system operations that were open when server crashed */
   log_recovery_abort_all_atomic_sysops (thread_p);
 
@@ -5021,6 +5023,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
     }
 
   log_zip_free (undo_unzip_ptr);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "UNDO");
 
   /* Flush all dirty pages */
 
