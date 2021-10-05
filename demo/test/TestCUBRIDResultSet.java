@@ -58,10 +58,8 @@ public class TestCUBRIDResultSet {
             return "f ";
         }
 
-        for (int i = 0; i < expected.length; i++) {
-            if (expected[i].equals(actual[i])) {
-                return "f ";
-            }
+        if (!java.util.Arrays.equals(expected, actual)) {
+            return "f value <" + Arrays.toString(expected) + "," + Arrays.toString(actual) + ">";
         }
 
         return "t ";
@@ -69,11 +67,11 @@ public class TestCUBRIDResultSet {
 
     private static String assertArrayEquals(byte[] expected, byte[] actual) {
         if (expected.length != actual.length) {
-            return "f ";
+            return "f length <" + expected.length + "," + actual.length + ">";
         }
 
         if (!java.util.Arrays.equals(expected, actual)) {
-            return "f ";
+            return "f value <" + Arrays.toString(expected) + "," + Arrays.toString(actual) + ">";
         }
 
         return "t ";
@@ -90,23 +88,23 @@ public class TestCUBRIDResultSet {
                 return "t ";
             }
         }
-        return "f ";
+        return "f <" + expected + "," + actual + ">";
     }
 
     private static String assertEquals(float expected, float actual, float eps) {
-        if (Math.abs(expected - actual) < eps) {
+        if (Math.abs(expected - actual) <= eps) {
             return "t ";
         }
 
-        return "f ";
+        return "f <" + expected + "," + actual + ">";
     }
 
     private static String assertEquals(double expected, double actual, double eps) {
-        if (Math.abs(expected - actual) < eps) {
+        if (Math.abs(expected - actual) <= eps) {
             return "t ";
         }
 
-        return "f ";
+        return "f <" + expected + "," + actual + ">";
     }
 
     /* Test getArray() throws UnsupportedOperationException */
@@ -151,8 +149,8 @@ public class TestCUBRIDResultSet {
 
         ResultSet rs = executeQuery(conn, "select a from %s", TABLE);
         BigDecimal val = rs.getBigDecimal("a");
-        System.out.println(val.doubleValue());
-        // result += assertEquals(123.456, val.doubleValue(),0.001);
+        // System.out.println(val.doubleValue());
+        result += assertEquals(123.456, val.doubleValue(), 0.001);
 
         rs.next();
         result += assertEquals(null, rs.getBigDecimal("a"));
@@ -172,7 +170,7 @@ public class TestCUBRIDResultSet {
         InputStream is = rs.getBinaryStream("a");
         byte[] buff = new byte[256];
         int c = is.read(buff);
-        System.out.println(new String(buff, 0, c));
+        // System.out.println(new String(buff, 0, c));
         result += assertEquals(10, c);
         result += assertArrayEquals("0123456789".getBytes(), Arrays.copyOf(buff, c));
 
@@ -237,7 +235,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
-    /* test blob */
+    /* Test blob and getBytes() */
     public static String test1_09() throws SQLException, IOException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -255,7 +253,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
-    /* test blob */
+    /* test blob and getBytes() */
     public static String test1_10() throws SQLException, IOException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -327,7 +325,7 @@ public class TestCUBRIDResultSet {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         result += assertEquals("2010-01-23", sdf.format(rs.getDate("a", null)));
         result += assertEquals("2010-01-23", sdf.format(rs.getDate(1, null)));
-        System.out.println(rs.getDate("a"));
+        // System.out.println(rs.getDate("a"));
         rs.next();
         result += assertEquals(null, rs.getDate("a"));
         SqlUtil.dropTable(conn, TABLE);
@@ -353,7 +351,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
-    /* test datetime */
+    /* Test datetime */
     public static String test1_16() throws SQLException, IOException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -372,7 +370,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
-    /* test double */
+    /* Test double */
     public static String test1_17() throws SQLException, IOException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -1288,6 +1286,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
+    /* Test clearParameters() */
     public static String test13() throws SQLException {
         String result = "t";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -1307,6 +1306,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
+    /* Test setObject() */
     public static String test14() throws SQLException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -1322,6 +1322,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
+    /* Test setObject() */
     public static String test15() throws SQLException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -1337,6 +1338,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
+    /* Test setObject() */
     public static String test17() throws SQLException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -1356,6 +1358,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
+    /* Test setObject() */
     public static String test18() throws SQLException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -1373,6 +1376,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
+    /* Test setObject() */
     public static String test19() throws SQLException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -1392,6 +1396,7 @@ public class TestCUBRIDResultSet {
         return result;
     }
 
+    /* Test setCharacterStream() */
     public static String test20a() throws SQLException {
         String result = "";
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
@@ -1558,9 +1563,9 @@ public class TestCUBRIDResultSet {
         SqlUtil.createTable(conn, TABLE, "a blob, b clob");
         ResultSet rs = executeQuery(conn, false, "select * from %s", TABLE);
         ResultSetMetaData md = rs.getMetaData();
-        System.out.println(md.getColumnCount());
-        System.out.println(md.getColumnTypeName(1));
-        System.out.println(md.getColumnTypeName(2));
+        // System.out.println(md.getColumnCount());
+        // System.out.println(md.getColumnTypeName(1));
+        // System.out.println(md.getColumnTypeName(2));
     }
     */
 }
