@@ -28,8 +28,10 @@ import java.util.Map;
 
 public class SUStatement {
     public static final int CURSOR_SET = 0, CURSOR_CUR = 1, CURSOR_END = 2;
-
-    private static final byte NORMAL = 0, GET_BY_OID = 1, GET_SCHEMA_INFO = 2, GET_AUTOINCREMENT_KEYS = 3;
+    private static final byte NORMAL = 0,
+            GET_BY_OID = 1,
+            GET_SCHEMA_INFO = 2,
+            GET_AUTOINCREMENT_KEYS = 3;
 
     private static final int DEFAULT_FETCH_SIZE = 100;
 
@@ -55,6 +57,7 @@ public class SUStatement {
 
     /* fetch info */
     FetchInfo fetchInfo; // last fetched result
+    private boolean wasNull = false;
 
     /* related to fetch */
     private int maxFetchSize;
@@ -71,7 +74,8 @@ public class SUStatement {
 
     SUConnection suConn;
 
-    public SUStatement(SUConnection conn, PrepareInfo info, boolean recompile, String sql, byte flag) {
+    public SUStatement(
+            SUConnection conn, PrepareInfo info, boolean recompile, String sql, byte flag) {
         suConn = conn;
 
         sqlStmt = sql;
@@ -97,6 +101,7 @@ public class SUStatement {
 
         maxFetchSize = 0;
         isFetched = false;
+        wasNull = false;
         /*
          * if (info.stmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) { columnNumber =
          * parameterNumber + 1; }
@@ -112,7 +117,12 @@ public class SUStatement {
         isSensitive = false;
     }
 
-    public SUStatement(SUConnection conn, GetSchemaInfo info, String cName, String attributePattern, int type) {
+    public SUStatement(
+            SUConnection conn,
+            GetSchemaInfo info,
+            String cName,
+            String attributePattern,
+            int type) {
         type = GET_SCHEMA_INFO;
         handlerId = -1;
 
@@ -151,7 +161,8 @@ public class SUStatement {
     public void bindValue(int index, int type, Object data) throws SQLException {
         int bindIdx = index - 1;
         if (bindParameter == null || bindIdx < 0 || bindIdx >= parameterNumber) {
-            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_BIND_INDEX, null);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_BIND_INDEX, null);
         }
 
         bindParameter.setParameter(bindIdx, type, data);
@@ -161,7 +172,12 @@ public class SUStatement {
         bindValue(index, DBType.DB_SEQUENCE, values);
     }
 
-    public void execute(int maxRow, int maxField, boolean isExecuteAll, boolean isSensitive, boolean isScrollable)
+    public void execute(
+            int maxRow,
+            int maxField,
+            boolean isExecuteAll,
+            boolean isSensitive,
+            boolean isScrollable)
             throws IOException {
 
         if (type == GET_SCHEMA_INFO) {
@@ -251,14 +267,17 @@ public class SUStatement {
         }
 
         /* need not to send fetch request */
-        if (fetchedStartCursorPosition >= 0 && fetchedStartCursorPosition <= cursorPosition
+        if (fetchedStartCursorPosition >= 0
+                && fetchedStartCursorPosition <= cursorPosition
                 && cursorPosition <= fetchedStartCursorPosition + fetchedTupleNumber) {
             return;
         }
 
         // send fetch request
         try {
-            fetchInfo = suConn.fetch(executeInfo.getResultInfo(0).queryId, cursorPosition, fetchSize, 0);
+            fetchInfo =
+                    suConn.fetch(
+                            executeInfo.getResultInfo(0).queryId, cursorPosition, fetchSize, 0);
             fetchedTupleNumber = fetchInfo.numFetched;
             fetchedStartCursorPosition = fetchInfo.tuples[0].tupleNumber() - 1;
         } catch (Exception e) {
@@ -268,7 +287,8 @@ public class SUStatement {
     }
 
     public void moveCursor(int offset, int origin) {
-        if ((origin != CURSOR_SET && origin != CURSOR_CUR && origin != CURSOR_END) && totalTupleNumber == 0) {
+        if ((origin != CURSOR_SET && origin != CURSOR_CUR && origin != CURSOR_END)
+                && totalTupleNumber == 0) {
             // TODO: error handling
             return;
         }
@@ -282,8 +302,7 @@ public class SUStatement {
 
         if (origin == CURSOR_END && totalTupleNumber != 0) {
             cursorPosition = totalTupleNumber - offset - 1;
-            if (cursorPosition >= 0)
-                return;
+            if (cursorPosition >= 0) return;
             else {
                 // TODO: error handling
                 cursorPosition = currentCursor;
@@ -354,21 +373,27 @@ public class SUStatement {
         SUResultTuple tuples[] = fetchInfo.tuples;
         Object obj;
 
-        if ((tuples == null) || (tuples[cursorPosition - fetchedStartCursorPosition] == null)
-                || ((obj = tuples[cursorPosition - fetchedStartCursorPosition].getAttribute(index)) == null)) {
-            // TODO: error handling
+        if ((tuples == null)
+                || (tuples[cursorPosition - fetchedStartCursorPosition] == null)
+                || ((obj = tuples[cursorPosition - fetchedStartCursorPosition].getAttribute(index))
+                        == null)) {
+            wasNull = true;
             return null;
         }
+        wasNull = false;
 
         return obj;
+    }
+
+    public boolean getWasNull() {
+        return wasNull;
     }
 
     public int getInt(int columnIndex) {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return 0;
+        if (obj == null) return 0;
 
         try {
             return obj.toInt();
@@ -381,8 +406,7 @@ public class SUStatement {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return 0;
+        if (obj == null) return 0;
 
         try {
             return obj.toLong();
@@ -395,8 +419,7 @@ public class SUStatement {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return "";
+        if (obj == null) return "";
 
         return obj.toString();
     }
@@ -405,8 +428,7 @@ public class SUStatement {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return 0.0f;
+        if (obj == null) return 0.0f;
 
         try {
             return obj.toFloat();
@@ -419,8 +441,7 @@ public class SUStatement {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return 0.0;
+        if (obj == null) return 0.0;
 
         try {
             return obj.toDouble();
@@ -433,8 +454,7 @@ public class SUStatement {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return 0;
+        if (obj == null) return 0;
 
         try {
             return obj.toShort();
@@ -447,8 +467,7 @@ public class SUStatement {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return false;
+        if (obj == null) return false;
 
         try {
             return (obj.toInt() == 1) ? true : false;
@@ -460,8 +479,7 @@ public class SUStatement {
     public byte getByte(int columnIndex) {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return ((byte) 0);
+        if (obj == null) return ((byte) 0);
 
         try {
             return obj.toByte();
@@ -473,8 +491,7 @@ public class SUStatement {
     public byte[] getBytes(int columnIndex) {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return null;
+        if (obj == null) return null;
 
         try {
             return obj.toByteArray();
@@ -486,8 +503,7 @@ public class SUStatement {
     public BigDecimal getBigDecimal(int columnIndex) {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return null;
+        if (obj == null) return null;
 
         try {
             return obj.toBigDecimal();
@@ -499,8 +515,7 @@ public class SUStatement {
     public Date getDate(int columnIndex) {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return null;
+        if (obj == null) return null;
 
         try {
             return obj.toDate();
@@ -512,8 +527,7 @@ public class SUStatement {
     public Time getTime(int columnIndex) {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return null;
+        if (obj == null) return null;
 
         try {
             return obj.toTime();
@@ -525,8 +539,7 @@ public class SUStatement {
     public Timestamp getTimestamp(int columnIndex) {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return null;
+        if (obj == null) return null;
 
         try {
             return obj.toTimestamp();
@@ -538,8 +551,7 @@ public class SUStatement {
     public Object getObject(int columnIndex) {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null)
-            return null;
+        if (obj == null) return null;
 
         // TODO: not implemented yet
         try {
@@ -564,5 +576,4 @@ public class SUStatement {
     public int getColumnLength() {
         return columnNumber;
     }
-
 }

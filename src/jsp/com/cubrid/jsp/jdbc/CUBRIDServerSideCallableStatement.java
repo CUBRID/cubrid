@@ -31,11 +31,7 @@
 
 package com.cubrid.jsp.jdbc;
 
-import cubrid.jdbc.jci.UErrorCode;
-import cubrid.jdbc.jci.UStatement;
 import cubrid.sql.CUBRIDTimestamptz;
-
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.math.BigDecimal;
@@ -57,19 +53,24 @@ import java.sql.Timestamp;
 import java.util.Calendar;
 import java.util.Map;
 
-public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedStatement implements CallableStatement {
+public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedStatement
+        implements CallableStatement {
 
-    private boolean wasNull = false;
-
-    protected CUBRIDServerSideCallableStatement(CUBRIDServerSideConnection c, String sql) throws SQLException {
-        super(c, sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY, ResultSet.CLOSE_CURSORS_AT_COMMIT,
+    protected CUBRIDServerSideCallableStatement(CUBRIDServerSideConnection c, String sql)
+            throws SQLException {
+        super(
+                c,
+                sql,
+                ResultSet.TYPE_FORWARD_ONLY,
+                ResultSet.CONCUR_READ_ONLY,
+                ResultSet.CLOSE_CURSORS_AT_COMMIT,
                 Statement.NO_GENERATED_KEYS);
     }
 
     private void beforeGetValue(int index) throws SQLException {
         if (index < 0 || index > statementHandler.getParameterCount()) {
-            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_INVALID_INDEX,
-                    null);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_INDEX, null);
         }
 
         /* check fetch is needed */
@@ -83,7 +84,7 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
     // ==============================================================
 
     public boolean wasNull() throws SQLException {
-        return wasNull;
+        return statementHandler.getWasNull();
     }
 
     public int getInt(int index) throws SQLException {
@@ -326,7 +327,8 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
         throw new SQLException(new UnsupportedOperationException());
     }
 
-    public void setObject(String pName, Object x, int targetSqlType, int scale) throws SQLException {
+    public void setObject(String pName, Object x, int targetSqlType, int scale)
+            throws SQLException {
         throw new SQLException(new UnsupportedOperationException());
     }
 
@@ -354,7 +356,8 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
         throw new SQLException(new UnsupportedOperationException());
     }
 
-    public void setTimestamptz(String pName, CUBRIDTimestamptz x, Calendar cal) throws SQLException {
+    public void setTimestamptz(String pName, CUBRIDTimestamptz x, Calendar cal)
+            throws SQLException {
         throw new SQLException(new UnsupportedOperationException());
     }
 
@@ -478,7 +481,8 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
         throw new SQLException(new UnsupportedOperationException());
     }
 
-    public void registerOutParameter(String pName, int sqlType, String typeName) throws SQLException {
+    public void registerOutParameter(String pName, int sqlType, String typeName)
+            throws SQLException {
         throw new SQLException(new UnsupportedOperationException());
     }
 
@@ -562,7 +566,8 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
     }
 
     /* JDK 1.6 */
-    public void setAsciiStream(String parameterName, InputStream x, long length) throws SQLException {
+    public void setAsciiStream(String parameterName, InputStream x, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
@@ -572,7 +577,8 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
     }
 
     /* JDK 1.6 */
-    public void setBinaryStream(String parameterName, InputStream x, long length) throws SQLException {
+    public void setBinaryStream(String parameterName, InputStream x, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
@@ -587,7 +593,8 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
     }
 
     /* JDK 1.6 */
-    public void setBlob(String parameterName, InputStream inputStream, long length) throws SQLException {
+    public void setBlob(String parameterName, InputStream inputStream, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
@@ -597,7 +604,8 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
     }
 
     /* JDK 1.6 */
-    public void setCharacterStream(String parameterName, Reader reader, long length) throws SQLException {
+    public void setCharacterStream(String parameterName, Reader reader, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
@@ -622,7 +630,8 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
     }
 
     /* JDK 1.6 */
-    public void setNCharacterStream(String parameterName, Reader value, long length) throws SQLException {
+    public void setNCharacterStream(String parameterName, Reader value, long length)
+            throws SQLException {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
