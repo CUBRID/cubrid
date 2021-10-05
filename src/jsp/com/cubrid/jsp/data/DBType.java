@@ -30,6 +30,7 @@
  */
 
 package com.cubrid.jsp.data;
+
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
@@ -74,7 +75,7 @@ public class DBType {
     public static final int DB_DATETIMETZ = 38;
     public static final int DB_DATETIMELTZ = 39;
 
-    static byte getObjectDBtype(Object value) {
+    public static byte getObjectDBtype(Object value) {
         if (value == null) return DB_NULL;
         else if (value instanceof String) return DB_STRING;
         else if (value instanceof Byte) return DB_SHORT;
@@ -106,4 +107,110 @@ public class DBType {
         else return DB_NULL;
     }
 
+    public static String findFQDN(int type, int precesion, int collectionType) {
+        switch (type) {
+            case DBType.DB_NULL:
+                return "null";
+            case DBType.DB_BIT:
+                return (precesion == 8) ? "java.lang.Boolean" : "byte[]";
+            case DBType.DB_VARBIT:
+                return "byte[]";
+            case DBType.DB_CHAR:
+            case DBType.DB_STRING:
+                // case DBType.DB_NCHAR:
+                // case DBType.DB_VARCHAR:
+                // case DBType.DB_VARNCHAR:
+                // case DBType.DB_ENUM:
+                // case DBType.DB_JSON:
+                return "java.lang.String";
+            case DBType.DB_NUMERIC:
+                return "java.math.BigDecimal";
+            case DBType.DB_SHORT:
+                return "java.lang.Short";
+            case DBType.DB_INT:
+                return "java.lang.Integer";
+            case DBType.DB_BIGINT:
+                return "java.lang.Long";
+            case DBType.DB_FLOAT:
+                return "java.lang.Float";
+            case DBType.DB_MONETARY:
+            case DBType.DB_DOUBLE:
+                return "java.lang.Double";
+            case DBType.DB_DATE:
+                return "java.sql.Date";
+            case DBType.DB_TIME:
+                return "java.sql.Time";
+            case DBType.DB_TIMESTAMP:
+            case DBType.DB_DATETIME:
+            case DBType.DB_TIMESTAMPTZ:
+            case DBType.DB_TIMESTAMPLTZ:
+            case DBType.DB_DATETIMETZ:
+            case DBType.DB_DATETIMELTZ:
+                return "java.sql.Timestamp";
+            case DBType.DB_SET:
+            case DBType.DB_SEQUENCE:
+            case DBType.DB_MULTISET:
+                break;
+            case DBType.DB_OBJECT:
+                return "cubrid.sql.CUBRIDOID";
+            case DBType.DB_BLOB:
+                return "java.sql.Blob";
+            case DBType.DB_CLOB:
+                return "java.sql.Clob";
+            default:
+                return "";
+        }
+        switch (collectionType) {
+            case DBType.DB_NULL:
+                return "null";
+            case DBType.DB_BIT:
+                return (precesion == 8) ? "java.lang.Boolean[]" : "byte[][]";
+            case DBType.DB_VARBIT:
+                return "byte[][]";
+            case DBType.DB_CHAR:
+                // case DBType.DB_NCHAR:
+                // case DBType.DB_VARCHAR:
+                // case DBType.DB_VARNCHAR:
+                // case DBType.DB_ENUM:
+                // case DBType.DB_JSON:
+                return "java.lang.String[]";
+            case DBType.DB_NUMERIC:
+                return "java.lang.Double[]";
+            case DBType.DB_SHORT:
+                return "java.lang.Short[]";
+            case DBType.DB_INT:
+                return "java.lang.Integer[]";
+            case DBType.DB_BIGINT:
+                return "java.lang.Long[]";
+            case DBType.DB_FLOAT:
+                return "java.lang.Float[]";
+            case DBType.DB_MONETARY:
+            case DBType.DB_DOUBLE:
+                return "java.lang.Double[]";
+            case DBType.DB_DATE:
+                return "java.sql.Date[]";
+            case DBType.DB_TIME:
+                return "java.sql.Time[]";
+            case DBType.DB_TIMESTAMP:
+            case DBType.DB_DATETIME:
+            case DBType.DB_TIMESTAMPTZ:
+            case DBType.DB_TIMESTAMPLTZ:
+            case DBType.DB_DATETIMETZ:
+            case DBType.DB_DATETIMELTZ:
+                return "java.sql.Timestamp[]";
+            case DBType.DB_SET:
+            case DBType.DB_SEQUENCE:
+            case DBType.DB_MULTISET:
+                break;
+            case DBType.DB_OBJECT:
+                return "cubrid.sql.CUBRIDOID[]";
+            case DBType.DB_BLOB:
+                return "java.sql.Blob[]";
+            case DBType.DB_CLOB:
+                return "java.sql.Clob[]";
+            default:
+                break;
+        }
+        return null;
+    }
 }

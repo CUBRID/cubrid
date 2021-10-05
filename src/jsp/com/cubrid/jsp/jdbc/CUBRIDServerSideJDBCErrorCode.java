@@ -70,7 +70,7 @@ public class CUBRIDServerSideJDBCErrorCode {
     public static final int ER_INVALID_INDEX = -21115;
     public static final int ER_INVALID_COLUMN_NAME = -21116;
     public static final int ER_INVALID_ROW = -21117;
-
+    public static int ER_NOT_COLLECTION = -21121;
     public static int ER_ARGUMENT_ZERO = -21128;
 
     private static HashMap<Integer, String> messageString;
@@ -130,6 +130,7 @@ public class CUBRIDServerSideJDBCErrorCode {
         messageString.put(ER_INVALID_COLUMN_NAME, "The column name is invalid.");
         messageString.put(ER_INVALID_ROW, "Invalid cursor position.");
 
+        messageString.put(ER_NOT_COLLECTION, "The type of the column should be a collection type.");
         messageString.put(ER_ARGUMENT_ZERO, "The argument row can not be zero.");
     }
 }
