@@ -728,7 +728,7 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *message,
   /* timeout in second in css_common_connect() */
   return (css_common_connect
 	  (conn, rid, host_name, DATA_REQUEST, message, length, css_Service_id,
-	   prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), true, true));
+	   prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), true));
 }
 
 /* New style server connection function that uses an explicit port id */
@@ -758,7 +758,7 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id
    */
 
   /* timeout in second in css_common_connect() */
-  if (css_common_connect (conn, rid, host_name, DATA_REQUEST, NULL, 0, port_id, timeout, false, true) == NULL)
+  if (css_common_connect (conn, rid, host_name, DATA_REQUEST, NULL, 0, port_id, timeout, false) == NULL)
     {
       return NULL;
     }
@@ -984,7 +984,7 @@ css_connect_to_master_timeout (const char *host_name, int port_id, int timeout, 
 
   time = ceil (time / 1000);
 
-  return (css_common_connect (conn, rid, host_name, INFO_REQUEST, NULL, 0, port_id, (int) time, true, true));
+  return (css_common_connect (conn, rid, host_name, INFO_REQUEST, NULL, 0, port_id, (int) time, true));
 }
 
 /*

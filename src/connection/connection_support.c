@@ -2959,8 +2959,7 @@ css_conn_entry::init_pending_request ()
 // *INDENT-ON*
 
 CSS_CONN_ENTRY *
-css_connect_to_master_server (int master_port_id, const char *message_to_master, int message_to_master_length,
-			      bool client_mode)
+css_connect_to_master_server (int master_port_id, const char *message_to_master, int message_to_master_length)
 {
   char hname[CUB_MAXHOSTNAMELEN];
   CSS_CONN_ENTRY *conn;
@@ -2997,8 +2996,8 @@ css_connect_to_master_server (int master_port_id, const char *message_to_master,
     }
 
   if (css_common_connect
-      (conn, &rid, hname, connection_protocol, message_to_master, message_to_master_length, master_port_id, 0, true,
-       client_mode) == NULL)
+      (conn, &rid, hname, connection_protocol, message_to_master, message_to_master_length, master_port_id, 0,
+       true) == NULL)
     {
       goto fail_end;
 
@@ -3016,34 +3015,31 @@ css_connect_to_master_server (int master_port_id, const char *message_to_master,
   switch (response)
     {
     case SERVER_ALREADY_EXISTS:
-      if (client_mode)
-	{
+#if !defined (SERVER_MODE)
 #if defined(CS_MODE)
-	  if (IS_MASTER_CONN_NAME_HA_COPYLOG (message_to_master))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_COPYLOG_ALREADY_EXISTS, 1,
-		      GET_REAL_MASTER_CONN_NAME (message_to_master));
-	    }
-	  else if (IS_MASTER_CONN_NAME_HA_APPLYLOG (message_to_master))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_APPLYLOG_ALREADY_EXISTS, 1,
-		      GET_REAL_MASTER_CONN_NAME (message_to_master));
-	    }
-	  else if (IS_MASTER_CONN_NAME_HA_SERVER (message_to_master))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1,
-		      GET_REAL_MASTER_CONN_NAME (message_to_master));
-	    }
-	  else
-#endif /* CS_MODE */
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, message_to_master);
-	    }
+      if (IS_MASTER_CONN_NAME_HA_COPYLOG (message_to_master))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_COPYLOG_ALREADY_EXISTS, 1,
+		  GET_REAL_MASTER_CONN_NAME (message_to_master));
+	}
+      else if (IS_MASTER_CONN_NAME_HA_APPLYLOG (message_to_master))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_APPLYLOG_ALREADY_EXISTS, 1,
+		  GET_REAL_MASTER_CONN_NAME (message_to_master));
+	}
+      else if (IS_MASTER_CONN_NAME_HA_SERVER (message_to_master))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1,
+		  GET_REAL_MASTER_CONN_NAME (message_to_master));
 	}
       else
+#endif /* CS_MODE */
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, message_to_master);
 	}
+#else // SERVER_MODE
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, message_to_master);
+#endif // SERVER_MODE
       goto fail_end;
 
     case SERVER_REQUEST_ACCEPTED_NEW:
@@ -3077,14 +3073,11 @@ css_connect_to_master_server (int master_port_id, const char *message_to_master,
       /* be sure to open the datagram first.  */
       pname = std::filesystem::temp_directory_path ();
 
-      if (client_mode)
-	{
-	  pname += "/csql_tcp_setup_server" + std::to_string (getpid ());
-	}
-      else
-	{
-	  pname += "/cubrid_tcp_setup_server" + std::to_string (getpid ());
-	}
+#if !defined (SERVER_MODE)
+      pname += "/csql_tcp_setup_server" + std::to_string (getpid ());
+#else // SERVER_MODE
+      pname += "/cubrid_tcp_setup_server" + std::to_string (getpid ());
+#endif // SERVER_MODE
       (void) unlink (pname.c_str ());	// make sure file is deleted
       if (!css_tcp_setup_server_datagram (pname.c_str (), &socket_fd))
 	{
@@ -3125,31 +3118,29 @@ fail_end:
 
 CSS_CONN_ENTRY *
 css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host_name,
-		    int connect_type, const char *message, int message_length, int port, int timeout,
-		    bool send_magic, bool client_mode)
+		    int connect_type, const char *message, int message_length, int port, int timeout, bool send_magic)
 {
   SOCKET fd;
 
-  if (client_mode)
-    {
+#if !defined (SERVER_MODE)
 #if !defined (WINDOWS)
-      if (timeout > 0)
-	{
-	  /* timeout in milli-seconds in css_tcp_client_open_with_timeout() */
-	  fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
-	}
-      else
-	{
-	  fd = css_tcp_client_open_with_retry (host_name, port, true);
-	}
-#else /* !WINDOWS */
-      fd = css_tcp_client_open_with_retry (host_name, port, true);
-#endif /* WINDOWS */
+  if (timeout > 0)
+    {
+      /* timeout in milli-seconds in css_tcp_client_open_with_timeout() */
+      fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
     }
   else
     {
-      fd = css_tcp_client_open ((char *) host_name, port);
+      fd = css_tcp_client_open_with_retry (host_name, port, true);
     }
+#else /* !WINDOWS */
+  fd = css_tcp_client_open_with_retry (host_name, port, true);
+#endif /* WINDOWS */
+
+#else // SERVER_MODE
+  fd = css_tcp_client_open ((char *) host_name, port);
+#endif // SERVER_MODE
+
 
   if (!IS_INVALID_SOCKET (fd))
     {

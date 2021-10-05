@@ -958,9 +958,7 @@ css_reestablish_connection_to_master (void)
   std::string message_to_master = css_pack_message_to_master (css_Master_server_name);
   // *INDENT-ON*
 
-  conn =
-    css_connect_to_master_server (css_Master_port_id, message_to_master.c_str (), (int) message_to_master.size (),
-				  false);
+  conn = css_connect_to_master_server (css_Master_port_id, message_to_master.c_str (), (int) message_to_master.size ());
   if (conn != NULL)
     {
       css_Pipe_to_master = conn->fd;
@@ -1364,7 +1362,7 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 
   css_Server_connection_socket = INVALID_SOCKET;
 
-  conn = css_connect_to_master_server (port_id, message_to_master.c_str (), (int) message_to_master.size (), false);
+  conn = css_connect_to_master_server (port_id, message_to_master.c_str (), (int) message_to_master.size ());
   if (conn != NULL)
     {
       /* insert conn into active conn list */

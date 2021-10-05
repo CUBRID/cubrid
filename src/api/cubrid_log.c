@@ -344,8 +344,7 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
     }
 
   if (css_common_connect
-      (g_conn_entry, &rid, host, DATA_REQUEST, dbname, strlen (dbname) + 1, port, g_connection_timeout, true,
-       true) == NULL)
+      (g_conn_entry, &rid, host, DATA_REQUEST, dbname, strlen (dbname) + 1, port, g_connection_timeout, true) == NULL)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
