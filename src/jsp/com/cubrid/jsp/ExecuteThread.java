@@ -429,9 +429,8 @@ public class ExecuteThread extends Thread {
 
         for (int i = 0; i < args.length; i++) {
             int paramType = u.unpackInt();
-            int paramSize = u.unpackInt();
 
-            Value arg = u.unpackValue(paramSize, paramType);
+            Value arg = u.unpackValue(paramType);
             args[i] = (arg);
         }
 
@@ -445,9 +444,8 @@ public class ExecuteThread extends Thread {
             int mode = u.unpackInt();
             int dbType = u.unpackInt();
             int paramType = u.unpackInt();
-            int paramSize = u.unpackInt();
 
-            Value arg = u.unpackValue(paramSize, paramType, mode, dbType);
+            Value arg = u.unpackValue(paramType, mode, dbType);
             args[i] = (arg);
         }
 

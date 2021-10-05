@@ -48,29 +48,25 @@ namespace cubmethod
   void
   dbvalue_java::pack_value_internal (cubpacking::packer &serializator, DB_VALUE &v) const
   {
-    int param_type = db_value_type (&v);
+    int param_type = DB_VALUE_TYPE (&v);
     serializator.pack_int (param_type);
 
     switch (param_type)
       {
       case DB_TYPE_INTEGER:
-	serializator.pack_int (sizeof (int));
 	serializator.pack_int (db_get_int (&v));
 	break;
 
       case DB_TYPE_SHORT:
-	serializator.pack_int (sizeof (int));
 	serializator.pack_short (db_get_short (&v));
 	break;
 
       case DB_TYPE_BIGINT:
-	serializator.pack_int (sizeof (DB_BIGINT));
 	serializator.pack_bigint (db_get_bigint (&v));
 	break;
 
       case DB_TYPE_FLOAT:
       {
-	serializator.pack_int (sizeof (float));
 	// FIXME: update packer
 	// serializator.pack_float (db_get_float (&v));
 	float f = db_get_float (&v);
@@ -82,8 +78,6 @@ namespace cubmethod
 
       case DB_TYPE_DOUBLE:
       {
-	serializator.pack_int (sizeof (double));
-
 	// FIXME: update packer
 	// serializator.pack_double (db_get_double (&v));
 	double d = db_get_double (&v);
@@ -96,7 +90,6 @@ namespace cubmethod
       case DB_TYPE_MONETARY:
       {
 	DB_MONETARY *money = db_get_monetary (&v);
-	serializator.pack_int (sizeof (double));
 
 	OR_BUF or_buf;
 	serializator.delegate_to_or_buf (OR_DOUBLE_SIZE, or_buf);
@@ -111,7 +104,6 @@ namespace cubmethod
       {
 	char str_buf[NUMERIC_MAX_STRING_SIZE];
 	numeric_db_value_print (&v, str_buf);
-	serializator.pack_int (db_get_string_size (&v)); /* dummy length */
 	serializator.pack_c_string (str_buf, strlen (str_buf));
       }
       break;
@@ -122,7 +114,6 @@ namespace cubmethod
       case DB_TYPE_STRING:
 	// TODO: support unicode decomposed string
       {
-	serializator.pack_int (db_get_string_size (&v));
 	serializator.pack_c_string (db_get_string (&v), db_get_string_size (&v));
       }
       break;
@@ -137,7 +128,6 @@ namespace cubmethod
       {
 	int year, month, day;
 	db_date_decode (db_get_date (&v), &month, &day, &year);
-	serializator.pack_int (sizeof (int) * 3);
 	serializator.pack_int (year);
 	serializator.pack_int (month - 1);
 	serializator.pack_int (day);
@@ -148,7 +138,6 @@ namespace cubmethod
       {
 	int hour, min, sec;
 	db_time_decode (db_get_time (&v), &hour, &min, &sec);
-	serializator.pack_int (sizeof (int) * 3);
 	serializator.pack_int (hour);
 	serializator.pack_int (min);
 	serializator.pack_int (sec);
@@ -165,7 +154,6 @@ namespace cubmethod
 	db_date_decode (&date, &month, &day, &year);
 	db_time_decode (&time, &hour, &min, &sec);
 
-	serializator.pack_int (sizeof (int) * 6);
 	serializator.pack_int (year);
 	serializator.pack_int (month - 1);
 	serializator.pack_int (day);
@@ -181,7 +169,6 @@ namespace cubmethod
 	DB_DATETIME *datetime = db_get_datetime (&v);
 	db_datetime_decode (datetime, &month, &day, &year, &hour, &min, &sec, &msec);
 
-	serializator.pack_int (sizeof (int) * 7);
 	serializator.pack_int (year);
 	serializator.pack_int (month - 1);
 	serializator.pack_int (day);
@@ -201,7 +188,6 @@ namespace cubmethod
 
 	DB_VALUE elem_v;
 
-	serializator.pack_int (sizeof (int));
 	serializator.pack_int (ncol);
 	for (int i = 0; i < ncol; i++)
 	  {
@@ -219,7 +205,6 @@ namespace cubmethod
 
       case DB_TYPE_OID:
       {
-	serializator.pack_int (sizeof (OID));
 	OID *oid = db_get_oid (&v);
 	serializator.pack_oid (*oid);
       }
@@ -234,7 +219,6 @@ namespace cubmethod
 	  {
 	    oid = WS_OID (mop);
 	  }
-	serializator.pack_int (sizeof (OID));
 	serializator.pack_oid (*oid);
 #else
 	// TODO: Implement a way to pack DB_TYPE_OBJECT value on Server
@@ -244,7 +228,6 @@ namespace cubmethod
       break;
 
       case DB_TYPE_NULL:
-	serializator.pack_int (0);
 	break;
 
       default:
@@ -261,8 +244,7 @@ namespace cubmethod
 	return 0;
       }
 
-    size_t size = get_packed_value_size_internal (serializator, start_offset, *value);
-    return size;
+    return get_packed_value_size_internal (serializator, start_offset, *value);
   }
 
   void
@@ -282,26 +264,26 @@ namespace cubmethod
   {
     DB_TYPE type = DB_VALUE_TYPE (&v);
 
-    size_t size = start_offset + serializator.get_packed_int_size (start_offset); /* type */
+    size_t size = serializator.get_packed_int_size (start_offset); /* type */
     switch (type)
       {
       case DB_TYPE_INTEGER:
-	size += serializator.get_packed_int_size (size); /* size */
+
 	size += serializator.get_packed_int_size (size);
 	break;
 
       case DB_TYPE_SHORT:
-	size += serializator.get_packed_int_size (size); /* size */
+
 	size += serializator.get_packed_short_size (size);
 	break;
 
       case DB_TYPE_BIGINT:
-	size += serializator.get_packed_int_size (size); /* size */
+
 	size += serializator.get_packed_bigint_size (size);
 	break;
 
       case DB_TYPE_FLOAT:
-	size += serializator.get_packed_int_size (size); /* size */
+
 	size += OR_FLOAT_SIZE;
 
 	// FIXME: no alignment ?
@@ -313,7 +295,7 @@ namespace cubmethod
 
       case DB_TYPE_DOUBLE:
       case DB_TYPE_MONETARY:
-	size += serializator.get_packed_int_size (size); /* size */
+
 	size += OR_DOUBLE_SIZE;
 
 	// FIXME: no alignment
@@ -351,14 +333,14 @@ namespace cubmethod
 
       case DB_TYPE_OID:
       {
-	size += serializator.get_packed_int_size (size); /* size */
+
 	size += serializator.get_packed_oid_size (size);
       }
       break;
 
       case DB_TYPE_OBJECT:
 #if !defined (SERVER_MODE)
-	size += serializator.get_packed_int_size (size); /* size */
+
 	size += serializator.get_packed_oid_size (size);
 #else
 	// TODO: Implement a way to pack DB_TYPE_OBJECT value on Server
@@ -368,14 +350,14 @@ namespace cubmethod
 
       case DB_TYPE_DATE:
       case DB_TYPE_TIME:
-	size += serializator.get_packed_int_size (size); /* size */
+
 	size += serializator.get_packed_int_size (size); /* hour */
 	size += serializator.get_packed_int_size (size); /* min */
 	size += serializator.get_packed_int_size (size); /* sec */
 	break;
 
       case DB_TYPE_TIMESTAMP:
-	size += serializator.get_packed_int_size (size); /* size */
+
 	size += serializator.get_packed_int_size (size); /* year */
 	size += serializator.get_packed_int_size (size); /* month */
 	size += serializator.get_packed_int_size (size); /* day */
@@ -385,7 +367,7 @@ namespace cubmethod
 	break;
 
       case DB_TYPE_DATETIME:
-	size += serializator.get_packed_int_size (size); /* size */
+
 	size += serializator.get_packed_int_size (size); /* year */
 	size += serializator.get_packed_int_size (size); /* month */
 	size += serializator.get_packed_int_size (size); /* day */
@@ -403,7 +385,7 @@ namespace cubmethod
 	int ncol = set_size (set);
 	DB_VALUE elem_v;
 
-	size += serializator.get_packed_int_size (size); /* size */
+
 	size += serializator.get_packed_int_size (size); /* ncol */
 
 	for (int i = 0; i < ncol; i++)
@@ -421,13 +403,12 @@ namespace cubmethod
       break;
 
       case DB_TYPE_NULL:
-	size += serializator.get_packed_int_size (size); /* NULL (0) */
 	break;
       default:
+	assert (false);
 	break;
       }
 
-    size -= start_offset;
     return size;
   }
 
@@ -697,14 +678,14 @@ namespace cubmethod
 
       case DB_TYPE_OBJECT:
       {
-#if !defined (SERVER_MODE)
 	OID oid;
 	deserializator.unpack_oid (oid);
+#if !defined (SERVER_MODE)
 	MOP obj = ws_mop (&oid, NULL);
 	db_make_object (v, obj);
 #else
-	// TODO: Implement a way to pack DB_TYPE_OBJECT value on Server
-	assert (false);
+	// TODO: Implement a way to pack DB_TYPE_OBJECT value on Server?
+	db_make_oid (v, &oid);
 #endif
       }
       break;

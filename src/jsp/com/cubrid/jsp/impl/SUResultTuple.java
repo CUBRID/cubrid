@@ -22,8 +22,7 @@ public class SUResultTuple {
         attributes = new Object[attributeLength];
         for (int i = 0; i < attributeLength; i++) {
             int paramType = unpacker.unpackInt();
-            int paramSize = unpacker.unpackInt();
-            Value v = unpacker.unpackValue(paramSize, paramType);
+            Value v = unpacker.unpackValue(paramType);
             attributes[i] = v;
         }
         // TODO: OID
