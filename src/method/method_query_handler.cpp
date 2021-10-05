@@ -1048,9 +1048,9 @@ namespace cubmethod
     char foreign_key = db_attribute_is_foreign_key (attr);
     char shared = db_attribute_is_shared (attr);
 
-    std::string col_name_string (col_name);
-    std::string attr_name_string (attr_name);
-    std::string class_name_string (class_name);
+    std::string col_name_string (col_name ? col_name : "");
+    std::string attr_name_string (attr_name? attr_name : "");
+    std::string class_name_string (class_name? class_name : "");
 
     std::string default_value_string = get_column_default_as_string (attr);
 

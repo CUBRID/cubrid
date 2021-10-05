@@ -91,6 +91,7 @@ namespace cubmethod
       query_handler (error_context &ctx, int id)
 	: m_id (id), m_error_ctx (ctx)
       {
+	m_is_prepared = false;
 	m_use_plan_cache = false;
       }
       ~query_handler ();

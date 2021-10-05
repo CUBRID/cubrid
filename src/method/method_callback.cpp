@@ -473,28 +473,22 @@ namespace cubmethod
 	  }
       }
 
+    query_handler *handler = new query_handler (m_error_ctx, idx);
+    if (handler == nullptr)
+      {
+	// TODO: error handling
+	return -1;
+      }
+
     if (idx < handler_size)
       {
-	m_query_handlers[idx] = new query_handler (m_error_ctx, idx);
-	if (m_query_handlers[idx] == nullptr)
-	  {
-	    // TODO: error handling
-	    return -1;
-	  }
-	return idx;
+	m_query_handlers[idx] = handler;
       }
     else
       {
-	query_handler *handler = new query_handler (m_error_ctx, idx);
-	if (handler == nullptr)
-	  {
-	    // TODO: error handling
-	    return -1;
-	  }
-
 	m_query_handlers.push_back (handler);
-	return idx;
       }
+    return idx;
   }
 
   query_handler *
