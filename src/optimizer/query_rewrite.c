@@ -1761,7 +1761,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	  /* query with WHERE condition */
 	  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, arg1, arg2,
 							       (temp->info.name.location > 0 ? true : false), 1,
-							       false /* dont_replace */ );
+							       true /* dont_replace */ );
 	}
       *wherep = pt_lambda_with_arg (parser, *wherep, arg1, arg2, (temp->info.name.location > 0 ? true : false), 1,
 				    false /* dont_replace: DEFAULT */ );
