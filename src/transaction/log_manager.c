@@ -4928,7 +4928,7 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
   int length = undo_recdes->length + sizeof (undo_recdes->type);
 
   char *data = (char *) malloc (length);
-  if (data != NULL)
+  if (data == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -4983,8 +4983,9 @@ log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name
 
   data_len = ptr - start_ptr;
 
-
   log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
+
+  free_and_init (supplemental_data);
 
   return NO_ERROR;
 }
@@ -12302,6 +12303,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   OR_CLASSREP *rep = NULL;
   HEAP_CACHE_ATTRINFO attr_info;
+  bool attrinfo_inited = false;
+
   HEAP_ATTRVALUE *heap_value = NULL;
 
   int i = 0;
@@ -12324,6 +12327,9 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
     }
   else
     {
+      /* can not get class schema of classoid due to drop */
+      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
       goto error;
     }
 
@@ -12336,6 +12342,10 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       cdc_log ("cdc_make_dml_loginfo : failed to find class representation ");
 
       goto error;
+    }
+  else
+    {
+      attrinfo_inited = true;
     }
 
   if (undo_recdes != NULL)
@@ -12622,7 +12632,10 @@ error:
       free_and_init (new_values);
     }
 
-  heap_attrinfo_end (thread_p, &attr_info);
+  if (attrinfo_inited)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
 
   return error_code;
 }
