@@ -13334,6 +13334,7 @@ cdc_pause_producer ()
 
   while (cdc_Gl.consumer.request != CDC_REQUEST_PRODUCER_IS_WAITED)
     {
+      pthread_cond_signal (&cdc_Gl.producer.wait_cond);
       sleep (1);
     }
 }
@@ -13353,9 +13354,9 @@ cdc_kill_producer ()
   cdc_log ("cdc_kill_producer : consumer request the producer to be dead");
   cdc_Gl.producer.state = CDC_PRODUCER_STATE_DEAD;
 
-  pthread_cond_signal (&cdc_Gl.producer.wait_cond);
   while (cdc_Gl.consumer.request != CDC_REQUEST_PRODUCER_IS_DEAD)
     {
+      pthread_cond_signal (&cdc_Gl.producer.wait_cond);
       sleep (1);
     }
 }
