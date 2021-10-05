@@ -42,9 +42,26 @@ class log_recovery_context
     log_recovery_context &operator= (log_recovery_context &&) = delete;
 
     // Accessors
-    const log_lsa &get_checkpoint_lsa () const;
-    const log_lsa &get_start_redo_lsa () const;
-    const log_lsa &get_end_redo_lsa () const;
+    inline const log_lsa &get_checkpoint_lsa () const
+    {
+      return m_checkpoint_lsa;
+    }
+
+    inline const log_lsa &get_start_redo_lsa () const
+    {
+      return m_start_redo_lsa;
+    }
+
+    inline const log_lsa &get_end_redo_lsa () const
+    {
+      return m_end_redo_lsa;
+    }
+
+    inline const time_t &get_restore_stop_point () const
+    {
+      return m_restore_stop_point;
+    }
+
     void set_start_redo_lsa (const log_lsa &start_redo_lsa);
     void set_end_redo_lsa (const log_lsa &end_redo_lsa);
 
@@ -61,8 +78,12 @@ class log_recovery_context
     bool is_page_server () const;
 
   private:
+    static constexpr time_t RESTORE_STOP_POINT_NONE = -1;
+
+  private:
     // Restore related members
-    time_t m_restore_stop_point = 0;	      // restore stop point. no stop point if the value is zero
+    // restore stop point; no stop point if the value is the sentinel value
+    time_t m_restore_stop_point = RESTORE_STOP_POINT_NONE;
     bool m_is_restore_from_backup = false;    // true if server is being restored restore from backup
     // false if server is recovering after forced stop
     bool m_is_restore_incomplete = false;     // true if restore is stopped before end of log

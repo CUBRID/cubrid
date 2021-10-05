@@ -1049,7 +1049,7 @@ log_unmount_active_file (THREAD_ENTRY * thread_p)
  *   logpath(in): Directory where the log volumes reside
  *   prefix_logname(in): Name of the log volumes. It must be the same as the
  *                      one given during the creation of the database.
- *   ismedia_crash(in): Are we recovering from media crash ?.
+ *   is_media_crash(in): Are we recovering from media crash ?.
  *   stopat(in): If we are recovering from a media crash, we can stop
  *                      the recovery process at a given time.
  *
@@ -1063,15 +1063,15 @@ log_unmount_active_file (THREAD_ENTRY * thread_p)
  */
 void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
-		int ismedia_crash, BO_RESTART_ARG * r_args)
+		bool is_media_crash, BO_RESTART_ARG * r_args)
 {
   er_log_debug (ARG_FILE_LINE, "LOG INITIALIZE\n" "\tdb_fullname = %s \n" "\tlogpath = %s \n"
 		"\tprefix_logname = %s \n" "\tismedia_crash = %d \n",
 		db_fullname != NULL ? db_fullname : "(UNKNOWN)",
 		logpath != NULL ? logpath : "(UNKNOWN)",
-		prefix_logname != NULL ? prefix_logname : "(UNKNOWN)", ismedia_crash);
+		prefix_logname != NULL ? prefix_logname : "(UNKNOWN)", (int) is_media_crash);
 
-  (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash, r_args, false);
+  (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, is_media_crash, r_args, false);
 
 #if defined(SERVER_MODE)
   log_daemons_init ();
@@ -1104,7 +1104,7 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
  */
 static int
 log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			 const char *prefix_logname, bool ismedia_crash, BO_RESTART_ARG * r_args, bool init_emergency)
+			 const char *prefix_logname, bool is_media_crash, BO_RESTART_ARG * r_args, bool init_emergency)
 {
   LOG_RECORD_HEADER *eof;	/* End of log record */
   REL_FIXUP_FUNCTION *disk_compatibility_functions = NULL;
@@ -1172,7 +1172,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
   if (log_Gl.append.vdes == NULL_VOLDES && !is_tran_server_with_remote_storage ())
     {
-      if (ismedia_crash != false)
+      if (is_media_crash != false)
 	{
 	  /*
 	   * Set an approximate log header to continue the recovery process
@@ -1212,7 +1212,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
   log_Log_header_initialized = true;
 
-  if (ismedia_crash != false && (r_args) && r_args->restore_slave)
+  if (is_media_crash != false && (r_args) && r_args->restore_slave)
     {
       r_args->db_creation = log_Gl.hdr.db_creation;
       LSA_COPY (&r_args->restart_repl_lsa, &log_Gl.hdr.smallest_lsa_at_last_chkpt);
@@ -1266,7 +1266,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	{
 	  return error_code;
 	}
-      error_code = log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash,
+      error_code = log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, is_media_crash,
 					    r_args, init_emergency);
 
       return error_code;
@@ -1394,16 +1394,19 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   /*
    * Was the database system shut down or was it involved in a crash ?
    */
-  if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true)
-      && !is_tran_server_with_remote_storage ())
+  if (!is_tran_server_with_remote_storage ()
+      && init_emergency == false && (log_Gl.hdr.is_shutdown == false || is_media_crash == true))
     {
       /*
        * System was involved in a crash.
        * Execute the recovery process
        */
-      log_recovery (thread_p, ismedia_crash, stopat);
-
-      // todo: TS with remote storage recovery
+      log_recovery (thread_p, is_media_crash, stopat);
+    }
+  else if (is_tran_server_with_remote_storage ()
+	   && init_emergency == false && (log_Gl.m_metainfo.get_clean_shutdown () == false || is_media_crash == true))
+    {
+      log_recovery_finish_transactions (thread_p);
     }
   else
     {
@@ -1827,10 +1830,13 @@ log_final (THREAD_ENTRY * thread_p)
    */
   logpb_flush_pages_direct (thread_p);
 
-  error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
-  if (error_code == NO_ERROR)
+  if (!is_tran_server_with_remote_storage ())
     {
-      error_code = fileio_synchronize_all (thread_p, false);
+      error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
+      if (error_code == NO_ERROR)
+	{
+	  error_code = fileio_synchronize_all (thread_p, false);
+	}
     }
 
   logpb_decache_archive_info (thread_p);
