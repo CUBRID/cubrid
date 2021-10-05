@@ -10509,7 +10509,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
   LOG_RECORD_HEADER *log_rec_header, *nx_rec_header;
 
-  char *tran_user;
+  char *tran_user = NULL;
   int trid;
   int tmpbuf_index = 0;
 
@@ -10518,8 +10518,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
   LOG_RECTYPE log_type;
   LOG_ZIP *supp_zip = NULL;
 
-  char *supplement_data;
-  bool is_alloced = false;
+  char *supplement_data = NULL;
 
   RECDES supp_recdes = RECDES_INITIALIZER;
   RECDES undo_recdes = RECDES_INITIALIZER;
@@ -10837,11 +10836,6 @@ end:
       free_and_init (redo_recdes.data);
     }
 
-  if (is_alloced == true)
-    {
-      free_and_init (supplement_data);
-    }
-
   LSA_COPY (process_lsa, &next_log_rec_lsa);
 
   return error;
@@ -10860,11 +10854,6 @@ error:
   if (redo_recdes.data != NULL)
     {
       free_and_init (redo_recdes.data);
-    }
-
-  if (is_alloced == true)
-    {
-      free_and_init (supplement_data);
     }
 
   LSA_COPY (process_lsa, &cur_log_rec_lsa);
@@ -12289,7 +12278,6 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   CDC_DATAITEM_TYPE dataitem_type = CDC_DML;
   char *ptr, *start_ptr;
-  char *dml_loginfo;
   uint64_t b_classoid = 0;
 
   DB_VALUE *old_values = NULL;
@@ -13890,6 +13878,8 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
   int end = 0;
 
   char *log_infos = NULL;
+  char *temp_log_infos = NULL;
+
   CDC_LOGINFO_ENTRY *consume;
 
   int num_log_info = 0;
@@ -13920,7 +13910,15 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 	{
 	  if (total_length + consume->length + MAX_ALIGNMENT > cdc_Gl.consumer.log_info_size)
 	    {
-	      log_infos = (char *) realloc (log_infos, total_length + consume->length + MAX_ALIGNMENT);
+	      temp_log_infos = (char *) realloc (log_infos, total_length + consume->length + MAX_ALIGNMENT);
+	      if (temp_log_infos == NULL)
+		{
+		  goto end;
+		}
+	      else
+		{
+		  log_infos = temp_log_infos;
+		}
 	    }
 	  memcpy (PTR_ALIGN (log_infos + total_length, MAX_ALIGNMENT), PTR_ALIGN (consume->log_info, MAX_ALIGNMENT),
 		  consume->length);
