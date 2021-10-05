@@ -283,11 +283,13 @@ namespace cubmethod
       case METHOD_CALLBACK_MAKE_OUT_RS:
 	// TODO: not implemented yet
 	assert (false);
+	error = ER_FAILED;
 	break;
 
       default:
 	// TODO: error hanlding
 	assert (false);
+	error = ER_FAILED;
 	break;
       }
 #endif

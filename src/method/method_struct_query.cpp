@@ -246,7 +246,7 @@ namespace cubmethod
   prepare_info::pack (cubpacking::packer &serializator) const
   {
     serializator.pack_int (handle_id);
-    serializator.pack_int ((int) stmt_type);
+    serializator.pack_int (stmt_type);
     serializator.pack_int (num_markers);
     serializator.pack_int (column_infos.size());
     for (int i = 0; i < (int) column_infos.size(); i++)
@@ -258,9 +258,9 @@ namespace cubmethod
   void
   prepare_info::unpack (cubpacking::unpacker &deserializator)
   {
-    int type, num_column_info;
+    int num_column_info;
     deserializator.unpack_int (handle_id);
-    deserializator.unpack_int (type);
+    deserializator.unpack_int (stmt_type);
     deserializator.unpack_int (num_markers);
     deserializator.unpack_int (num_column_info);
 
@@ -272,14 +272,13 @@ namespace cubmethod
 	    column_infos[i].unpack (deserializator);
 	  }
       }
-    stmt_type = (char) type;
   }
 
   size_t
   prepare_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t size = serializator.get_packed_int_size (start_offset); // handle_id
-    size += serializator.get_packed_int_size (size); // type
+    size += serializator.get_packed_int_size (size); // stmt_type
     size += serializator.get_packed_int_size (size); // num_markers
     size += serializator.get_packed_int_size (size); // num_columns
 
@@ -645,9 +644,10 @@ namespace cubmethod
     serializator.pack_int (attributes.size());
 
     dbvalue_java sp_val;
-    for (int i = 0; i < (int) attributes.size(); i++)
+
+    for (const DB_VALUE &attr : attributes)
       {
-	sp_val.value = (DB_VALUE *) &attributes[i];
+	sp_val.value = (DB_VALUE *) &attr;
 	sp_val.pack (serializator);
       }
   }
@@ -668,6 +668,7 @@ namespace cubmethod
 	  {
 	    sp_val.value = &attributes[i];
 	    sp_val.unpack (deserializator);
+	    attributes[i] = *sp_val.value;
 	  }
       }
 
@@ -681,9 +682,9 @@ namespace cubmethod
     size += serializator.get_packed_int_size (size); // num attributes
 
     dbvalue_java sp_val;
-    for (int i = 0; i < (int) attributes.size(); i++)
+    for (const DB_VALUE &attr : attributes)
       {
-	sp_val.value = (DB_VALUE *) &attributes[i];
+	sp_val.value = (DB_VALUE *) &attr;
 	size += sp_val.get_packed_size (serializator, size);
       }
     // TODO: oid
@@ -726,6 +727,4 @@ namespace cubmethod
       }
     return size;
   }
-
-
 }

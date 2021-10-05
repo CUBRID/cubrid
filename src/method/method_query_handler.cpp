@@ -118,7 +118,6 @@ namespace cubmethod
     m_sql_stmt = sql;
     m_query_info_flag = (flag & PREPARE_QUERY_INFO) ? true : false;
     m_is_updatable = (flag & PREPARE_UPDATABLE) ? true : false;
-    m_schema_type = -1;
 
     int error = NO_ERROR;
     prepare_info info;
@@ -183,6 +182,10 @@ namespace cubmethod
 
     if (error == NO_ERROR)
       {
+	/* set max_col_size and max_row */
+	m_max_row = max_row;
+	m_max_col_size = max_col_size;
+
 	/* include column info? */
 	if (db_check_single_query (m_session) != NO_ERROR) /* ER_IT_MULTIPLE_STATEMENT */
 	  {
@@ -430,8 +433,6 @@ namespace cubmethod
 	m_prepare_flag &= ~PREPARE_XASL_CACHE_PINNED;
       }
 
-    m_max_row = max_row;
-    m_max_col_size = max_col_size;
     m_current_result_index = 0;
     m_current_result = &m_q_result[m_current_result_index];
 
@@ -514,9 +515,6 @@ namespace cubmethod
       }
 
     info.num_affected = n;
-
-    m_max_row = max_row;
-    m_max_col_size = max_col_size;
 
     m_has_result_set = true;
 
@@ -698,9 +696,6 @@ namespace cubmethod
 	m_prepare_flag &= ~PREPARE_XASL_CACHE_PINNED;
       }
 
-    m_max_row = max_row;
-    m_max_col_size = max_col_size;
-
     /* init to first query result */
     m_current_result_index = 0;
     m_current_result = &m_q_result[m_current_result_index];
@@ -834,6 +829,7 @@ namespace cubmethod
     query_result q_result;
     q_result.stmt_type = stmt_type;
     q_result.stmt_id = stmt_id;
+
     /* num_q_result can get by m_q_result.size () */
     m_q_result.push_back (q_result);
 
@@ -852,7 +848,6 @@ namespace cubmethod
 	return error;
       }
 
-    // ut_trim;
     char stmt_type = get_stmt_type (sql_stmt_copy);
     str_trim (sql_stmt_copy);
     if (stmt_type != CUBRID_STMT_CALL)

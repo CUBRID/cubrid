@@ -31,7 +31,6 @@
 #include "dbtype.h"
 #include "mem_block.hpp"
 #include "method_query_result.hpp"
-#include "method_schema_info.hpp"
 #include "method_struct_query.hpp"
 
 namespace cubmethod
@@ -107,6 +106,12 @@ namespace cubmethod
 
       void end_qresult (bool is_self_free);
 
+      /* getter */
+      bool is_prepared ();
+      bool get_query_count ();
+
+      std::string get_sql_stmt ();
+
     protected:
       /* prepare */
       int prepare_query (prepare_info &info, int &flag);
@@ -168,10 +173,6 @@ namespace cubmethod
 
       bool m_is_updatable; // TODO: not implemented yet
       bool m_query_info_flag; // TODO: not implemented yet
-
-      /* schema info */
-      schema_info_handler m_schema_info_handler;
-      int m_schema_type; // default: -1
   };
 }		// namespace cubmethod
 #endif				/* _METHOD_QUERY_HPP_ */

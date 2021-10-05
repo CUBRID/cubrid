@@ -78,7 +78,7 @@ namespace cubmethod
     prepare_info ();
 
     int handle_id;
-    char stmt_type;
+    int stmt_type; /* CUBRID_STMT_TYPE */
     int num_markers;
     std::vector<column_info> column_infos; // num_columns = column_infos.size()
 
@@ -93,7 +93,7 @@ namespace cubmethod
   {
     query_result_info ();
 
-    int stmt_type;
+    int stmt_type; /* CUBRID_STMT_TYPE */
     int tuple_count;
     OID ins_oid;
     QUERY_ID query_id;   /* Query Identifier for select */
