@@ -145,7 +145,6 @@ public class CUBRIDServerSideStatement implements Statement {
         if (isClosed() == false) {
             closed = true;
             completeResultSet();
-            connection.removeStatement(this); // remove this statement
             connection = null; // detach with connection
         }
     }

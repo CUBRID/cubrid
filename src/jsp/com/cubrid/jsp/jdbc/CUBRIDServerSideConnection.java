@@ -174,8 +174,8 @@ public class CUBRIDServerSideConnection implements Connection {
             for (Statement s : statements) {
                 s.close();
             }
+            statements.clear();
         }
-        statements.clear();
     }
 
     public boolean isClosed() throws SQLException {
