@@ -4928,7 +4928,7 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
   int length = undo_recdes->length + sizeof (undo_recdes->type);
 
   char *data = (char *) malloc (length);
-  if (data != NULL)
+  if (data == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -4983,8 +4983,9 @@ log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name
 
   data_len = ptr - start_ptr;
 
-
   log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
+
+  free_and_init (supplemental_data);
 
   return NO_ERROR;
 }
@@ -10875,18 +10876,22 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
   int error = NO_ERROR;
 
-  while (cdc_Gl.producer.state != CDC_PRODUCER_STATE_DEAD)
+  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
+
+  while (cdc_Gl.producer.request != CDC_REQUEST_PRODUCER_TO_BE_DEAD)
     {
-      if (cdc_Gl.producer.state == CDC_PRODUCER_STATE_WAIT)
+      if (cdc_Gl.producer.request == CDC_REQUEST_PRODUCER_TO_WAIT)
 	{
 	  cdc_log ("cdc_loginfo_producer_execute : cdc_Gl.producer.state is in CDC_PRODUCER_STATE_WAIT ");
-	  cdc_Gl.consumer.request = CDC_REQUEST_PRODUCER_IS_WAITED;
+
+	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
+	  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
 
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
 	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
-	  cdc_wakeup_consumer ();
+	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
 
 	  continue;
 	}
@@ -10895,11 +10900,15 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	{
 	  cdc_log ("cdc_loginfo_producer_execute : produced queue size is over the limit");
 
+	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
+
 	  cdc_pause_consumer ();
 
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
 	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
+
+	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
 
 	  cdc_Gl.producer.produced_queue_size -= cdc_Gl.consumer.consumed_queue_size;
 	  cdc_Gl.consumer.consumed_queue_size = 0;
@@ -10984,7 +10993,7 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, &process_lsa);
     }
 
-  cdc_Gl.consumer.request = CDC_REQUEST_PRODUCER_IS_DEAD;
+  cdc_Gl.producer.state = CDC_PRODUCER_STATE_DEAD;
 
 end:
 
@@ -12302,6 +12311,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   OR_CLASSREP *rep = NULL;
   HEAP_CACHE_ATTRINFO attr_info;
+  bool attrinfo_inited = false;
+
   HEAP_ATTRVALUE *heap_value = NULL;
 
   int i = 0;
@@ -12324,6 +12335,9 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
     }
   else
     {
+      /* can not get class schema of classoid due to drop */
+      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
       goto error;
     }
 
@@ -12336,6 +12350,10 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       cdc_log ("cdc_make_dml_loginfo : failed to find class representation ");
 
       goto error;
+    }
+  else
+    {
+      attrinfo_inited = true;
     }
 
   if (undo_recdes != NULL)
@@ -12622,7 +12640,10 @@ error:
       free_and_init (new_values);
     }
 
-  heap_attrinfo_end (thread_p, &attr_info);
+  if (attrinfo_inited)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
 
   return error_code;
 }
@@ -13271,7 +13292,8 @@ cdc_loginfo_producer_daemon_init ()
   pthread_cond_init (&cdc_Gl.producer.wait_cond, NULL);
 
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
-  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
+
+  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_TO_WAIT;
 
   /* *INDENT-OFF* */
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10)); /* 주석 처리  */
@@ -13317,9 +13339,10 @@ void
 cdc_pause_producer ()
 {
   cdc_log ("cdc_pause_producer : consumer request the producer to pause");
-  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
 
-  while (cdc_Gl.consumer.request != CDC_REQUEST_PRODUCER_IS_WAITED)
+  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_TO_WAIT;
+
+  while (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
     {
       sleep (1);
     }
@@ -13329,7 +13352,6 @@ void
 cdc_wakeup_producer ()
 {
   cdc_log ("cdc_wakeup_producer : consumer request the producer to wakeup");
-  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
 
   pthread_cond_signal (&cdc_Gl.producer.wait_cond);
 }
@@ -13338,11 +13360,11 @@ void
 cdc_kill_producer ()
 {
   cdc_log ("cdc_kill_producer : consumer request the producer to be dead");
-  cdc_Gl.producer.state = CDC_PRODUCER_STATE_DEAD;
+  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_TO_BE_DEAD;
 
-  pthread_cond_signal (&cdc_Gl.producer.wait_cond);
-  while (cdc_Gl.consumer.request != CDC_REQUEST_PRODUCER_IS_DEAD)
+  while (cdc_Gl.producer.state != CDC_PRODUCER_STATE_DEAD)
     {
+      pthread_cond_signal (&cdc_Gl.producer.wait_cond);
       sleep (1);
     }
 }
@@ -13358,7 +13380,7 @@ void
 cdc_wakeup_consumer ()
 {
   cdc_log ("cdc_wakeup_consumer : producer request the consumer to wakeup");
-  cdc_Gl.consumer.request = CDC_REQUEST_NONE;
+  cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_TO_RUN;
 }
 
 int
@@ -13959,14 +13981,11 @@ end:
   cdc_Gl.consumer.num_log_info = num_log_info;
   LSA_COPY (&cdc_Gl.consumer.next_lsa, start_lsa);	/* stores next lsa to consume */
 
-  while (cdc_Gl.consumer.request == CDC_REQUEST_CONSUMER_TO_WAIT)
+  if (cdc_Gl.consumer.request == CDC_REQUEST_CONSUMER_TO_WAIT)
     {
-
-      cdc_wakeup_producer ();
-
-      if (cdc_Gl.consumer.request == CDC_REQUEST_NONE || cdc_Gl.consumer.consumed_queue_size == 0)
+      while (cdc_Gl.consumer.consumed_queue_size != 0)
 	{
-	  break;
+	  cdc_wakeup_producer ();
 	}
     }
 
@@ -13984,7 +14003,9 @@ cdc_initialize ()
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;
 
-  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
+  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
+  cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_NONE;
+  cdc_Gl.producer.state = CDC_PRODUCER_STATE_DEAD;
 
   /* *INDENT-OFF* */
   cdc_Gl.loginfo_queue = new lockfree::circular_queue <CDC_LOGINFO_ENTRY *> (MAX_CDC_LOGINFO_QUEUE_ENTRY);
