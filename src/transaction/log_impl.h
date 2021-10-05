@@ -826,12 +826,18 @@ typedef enum cdc_producer_state
   CDC_PRODUCER_STATE_DEAD
 } CDC_PRODUCER_STATE;
 
+typedef enum cdc_consumer_request
+{
+  CDC_REQUEST_CONSUMER_TO_WAIT,
+  CDC_REQUEST_CONSUMER_TO_RUN,
+  CDC_REQUEST_CONSUMER_NONE
+} CDC_CONSUMER_REQUEST;
+
 typedef enum cdc_producer_request
 {
-  CDC_REQUEST_PRODUCER_IS_DEAD,
-  CDC_REQUEST_PRODUCER_IS_WAITED,
-  CDC_REQUEST_CONSUMER_TO_WAIT,
-  CDC_REQUEST_NONE
+  CDC_REQUEST_PRODUCER_TO_WAIT,
+  CDC_REQUEST_PRODUCER_TO_BE_DEAD,
+  CDC_REQUEST_PRODUCER_NONE
 } CDC_PRODUCER_REQUEST;
 
 typedef struct cdc_loginfo_entry
@@ -860,7 +866,8 @@ typedef struct cdc_producer
   int num_extraction_class;
   UINT64 *extraction_classoids;
 
-  CDC_PRODUCER_STATE state;
+  volatile CDC_PRODUCER_STATE state;
+  volatile CDC_PRODUCER_REQUEST request;
 
   int produced_queue_size;
 
@@ -887,7 +894,7 @@ typedef struct cdc_consumer
 
   int consumed_queue_size;
 
-  CDC_PRODUCER_REQUEST request;
+  volatile CDC_CONSUMER_REQUEST request;
 
   LOG_LSA start_lsa;		/* first LSA of log info that should be sent */
   LOG_LSA next_lsa;		/* next LSA to be sent to client */
