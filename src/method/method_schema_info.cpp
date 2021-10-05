@@ -18,6 +18,7 @@
 
 #include "method_schema_info.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 

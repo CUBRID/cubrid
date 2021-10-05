@@ -151,7 +151,6 @@ extern int xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, qfile_li
 					       method_sig_list * methsg_list);
 extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize);
 extern int xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout);
-extern int xs_send_status_to_client (THREAD_ENTRY * thread_p, METHOD_CALL_STATUS status);
 
 extern void slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
