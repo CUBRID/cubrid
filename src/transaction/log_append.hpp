@@ -112,8 +112,8 @@ struct log_prior_node
 typedef struct log_prior_lsa_info LOG_PRIOR_LSA_INFO;
 struct log_prior_lsa_info
 {
-  LOG_LSA prior_lsa;
-  LOG_LSA prev_lsa;
+  LOG_LSA prior_lsa;		/* log sequence address of next log entry to be added to the prior list */
+  LOG_LSA prev_lsa;		/* log sequence address of last log record appended to the prior list */
 
   /* list */
   LOG_PRIOR_NODE *prior_list_header = nullptr;

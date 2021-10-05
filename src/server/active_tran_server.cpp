@@ -438,7 +438,7 @@ void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
     }
   else
     {
-      assert (message.size () == db_io_page_size ());
+      assert (db_io_page_size () >= 0 && message.size () == static_cast<std::size_t> (db_io_page_size ()));
       // We have a page.
       auto shared_data_page = std::make_shared<std::string> (std::move (message));
 
