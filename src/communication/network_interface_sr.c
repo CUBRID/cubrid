@@ -83,11 +83,8 @@
 #include "xasl_cache.h"
 #include "elo.h"
 #include "transaction_transient.hpp"
-<<<<<<< HEAD
 #include "method_invoke_group.hpp"
-=======
 #include "log_manager.h"
->>>>>>> upstream/develop
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
