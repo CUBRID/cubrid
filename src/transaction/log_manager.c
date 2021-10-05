@@ -10994,7 +10994,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
     }
 
   cdc_Gl.producer.state = CDC_PRODUCER_STATE_DEAD;
-  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
 
 end:
 
