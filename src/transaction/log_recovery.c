@@ -132,9 +132,7 @@ STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
 
-STATIC_INLINE
-  std::int64_t
-log_cnt_pages_containing_lsa (const log_lsa * plsa1, const log_lsa * plsa2);
+STATIC_INLINE UINT64 log_cnt_pages_containing_lsa (const log_lsa * plsa1, const log_lsa * plsa2);
 
 /*
  * CRASH RECOVERY PROCESS
@@ -6499,7 +6497,7 @@ log_rv_end_simulation (THREAD_ENTRY * thread_p)
 #endif // SA_MODE
 }
 
-std::int64_t
+UINT64
 log_cnt_pages_containing_lsa (const log_lsa * plsa1, const log_lsa * plsa2)
 {
   if (*plsa1 == *plsa2)
