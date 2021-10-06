@@ -132,7 +132,7 @@ STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
 
-STATIC_INLINE UINT64 log_cnt_pages_containing_lsa (const log_lsa * plsa1, const log_lsa * plsa2);
+STATIC_INLINE UINT64 log_cnt_pages_containing_lsa (const log_lsa * from_lsa, const log_lsa * to_lsa);
 
 /*
  * CRASH RECOVERY PROCESS
@@ -6497,18 +6497,18 @@ log_rv_end_simulation (THREAD_ENTRY * thread_p)
 }
 
 static UINT64
-log_cnt_pages_containing_lsa (const log_lsa * plsa1, const log_lsa * plsa2)
+log_cnt_pages_containing_lsa (const log_lsa * from_lsa, const log_lsa * to_lsa)
 {
-  if (*plsa1 == *plsa2)
+  if (*from_lsa == *to_lsa)
     {
       return 0;
     }
-  else if (plsa1->offset == plsa2->offset)
+  else if (from_lsa->offset == to_lsa->offset)
     {
-      return plsa1->pageid - plsa2->pageid;
+      return from_lsa->pageid - to_lsa->pageid;
     }
   else
     {
-      return plsa1->pageid - plsa2->pageid + 1;
+      return from_lsa->pageid - to_lsa->pageid + 1;
     }
 }
