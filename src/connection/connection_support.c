@@ -2971,6 +2971,7 @@ css_connect_to_master_server (int master_port_id, const char *message_to_master,
   std::string pname;
   int datagram_fd, socket_fd;
 #endif
+
   css_Service_id = master_port_id;
   if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
     {
@@ -3000,7 +3001,6 @@ css_connect_to_master_server (int master_port_id, const char *message_to_master,
        true) == NULL)
     {
       goto fail_end;
-
     }
 
   if (css_readn (conn->fd, (char *) &response_buff, sizeof (int), -1) != sizeof (int))
@@ -3072,9 +3072,9 @@ css_connect_to_master_server (int master_port_id, const char *message_to_master,
       pname = std::filesystem::temp_directory_path ();
 
 #if !defined (SERVER_MODE)
-      pname += "/csql_tcp_setup_server" + std::to_string (getpid ());
+      pname += "/client_master_tcp_setup_server" + std::to_string (getpid ());
 #else // SERVER_MODE
-      pname += "/cubrid_tcp_setup_server" + std::to_string (getpid ());
+      pname += "/server_master_tcp_setup_server" + std::to_string (getpid ());
 #endif // SERVER_MODE
       (void) unlink (pname.c_str ());	// make sure file is deleted
       if (!css_tcp_setup_server_datagram (pname.c_str (), &socket_fd))
@@ -3120,25 +3120,18 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host
 {
   SOCKET fd;
 
-#if !defined (SERVER_MODE)
-#if !defined (WINDOWS)
+#if !defined (WINDOWS) && !defined (SERVER_MODE)
   if (timeout > 0)
     {
       /* timeout in milli-seconds in css_tcp_client_open_with_timeout() */
       fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
     }
   else
-    {
-      fd = css_tcp_client_open_with_retry (host_name, port, true);
-    }
-#else /* !WINDOWS */
-  fd = css_tcp_client_open_with_retry (host_name, port, true);
-#endif /* WINDOWS */
-
-#else // SERVER_MODE
-  fd = css_tcp_client_open ((char *) host_name, port);
-#endif // SERVER_MODE
-
+#else /* WINDOWS || SERVER_MODE */
+  {
+    fd = css_tcp_client_open (host_name, port);
+  }
+#endif /* WINDOWS || SERVER_MODE */
 
   if (!IS_INVALID_SOCKET (fd))
     {
@@ -3154,13 +3147,11 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host
     }
   else
     {
-#if !defined (WINDOWS)
       if (errno == ETIMEDOUT)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CONNECT_TIMEDOUT, 2, host_name, timeout);
 	}
-#endif /* !WINDOWS */
-      if (errno != ETIMEDOUT)
+      else
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 1, host_name);
 	}
