@@ -4568,7 +4568,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   int data_header_size = 0;
   LOG_ZIP *undo_unzip_ptr = NULL;
   int cnt_trans_to_undo = 0;
-  LOG_LSA min_lsa;
+  LOG_LSA min_lsa = NULL_LSA;
   bool is_mvcc_op;
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
@@ -4613,7 +4613,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   };
   log_system_tdes::map_all_tdes (count_func);
 
-  min_lsa = NULL_LSA;
   logtb_find_smallest_lsa (thread_p, &min_lsa);
   auto min_lsa_func =[&min_lsa] (LOG_TDES & tdes) {
     if (!LSA_ISNULL (&tdes.head_lsa) && (min_lsa.is_null () || LSA_LT (&tdes.head_lsa, &min_lsa)))
@@ -6497,7 +6496,7 @@ log_rv_end_simulation (THREAD_ENTRY * thread_p)
 #endif // SA_MODE
 }
 
-UINT64
+static UINT64
 log_cnt_pages_containing_lsa (const log_lsa * plsa1, const log_lsa * plsa2)
 {
   if (*plsa1 == *plsa2)
