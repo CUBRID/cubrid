@@ -48,6 +48,7 @@
 #include "object_representation.h"
 #include "perf_monitor.h"
 #include "regu_var.hpp"
+#include "server_type.hpp"
 #include "fault_injection.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
@@ -21824,7 +21825,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
 
       vpid_ptr = recp->data + recp->length - vpid_size;
       OR_GET_VPID (vpid_ptr, &first_overflow_vpid);
-      if (!log_is_in_crash_recovery ()
+      if (!log_is_in_crash_recovery () && get_server_type () == SERVER_TYPE_TRANSACTION
 	  && pgbuf_is_valid_page (thread_p, &first_overflow_vpid, true, NULL, NULL) == DISK_INVALID)
 	{
 	  assert (false);
