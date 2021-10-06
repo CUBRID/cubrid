@@ -10379,6 +10379,8 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
 				     reply_data_size);
+}
+
 scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
