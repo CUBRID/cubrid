@@ -2959,7 +2959,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error = NO_ERROR;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO *cls_info[64];
+  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
   OID *reserved_oid = NULL;
 
   /* save old read fetch instance version */
@@ -3458,7 +3458,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO *cls_info[64];
+  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
   OID *reserved_oid = NULL;
 
   assert (parser->query_id == NULL_QUERY_ID);
@@ -15388,19 +15388,11 @@ end:
 
   if (cls_info[0] != NULL && statement->node_type == PT_DROP)
     {
-      if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
-	{
-	  /* nothing to drop, and nothing to reserve */
-	  return error;
-	}
-      else
-	{
-	  int i = 0;
+      int i = 0;
 
-	  while (cls_info[i] != NULL)
-	    {
-	      free_and_init (cls_info[i++]);
-	    }
+      while (cls_info[i] != NULL)
+	{
+	  free_and_init (cls_info[i++]);
 	}
     }
 
