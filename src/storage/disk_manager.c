@@ -356,6 +356,8 @@ STATIC_INLINE int disk_vhdr_length_of_varfields (const DISK_VOLUME_HEADER * vhdr
 static int disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname);
 static int disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol_fullname);
 static int disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks);
+static void disk_adapt_other_config_volume_full_name_to_local_config (char *local_config_full_name,
+								      const char *other_config_full_name);
 
 static bool disk_cache_load_all_volumes (THREAD_ENTRY * thread_p);
 static bool disk_cache_load_volume (THREAD_ENTRY * thread_p, INT16 volid, void *ignore);
@@ -1205,6 +1207,21 @@ disk_get_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 * next_volid, char *n
   return next_volext_fullname;
 }
 
+void
+disk_adapt_other_config_volume_full_name_to_local_config (char *local_config_full_name,
+							  const char *other_config_full_name)
+{
+  // reconstruct a current-configuration-adapted volume full name
+  // by extracting the file name from the fully qualified name
+  const char *const vol_filename = fileio_get_base_file_name (other_config_full_name);
+
+  // and the rest of the path from the current settings
+  char buf_temp_path[PATH_MAX];
+  const char *const vol_base_path = fileio_get_directory_path (buf_temp_path, boot_db_full_name ());
+
+  fileio_make_volume_ext_given_name (local_config_full_name, vol_base_path, vol_filename);
+}
+
 
 /*
  * disk_rv_redo_dboutside_newvol () - Redo the initialization of a disk from the point of view of operating system
@@ -1215,14 +1232,17 @@ int
 disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_VOLUME_HEADER *vhdr;
-  char *vol_label;
+  const char *vol_fullname_other_or_old_config;
 
   vhdr = (DISK_VOLUME_HEADER *) rcv->data;
-  vol_label = disk_vhdr_get_vol_fullname (vhdr);
+  vol_fullname_other_or_old_config = disk_vhdr_get_vol_fullname (vhdr);
 
-  if (fileio_find_volume_descriptor_with_label (vol_label) == NULL_VOLDES)
+  char buf_vol_full_name[PATH_MAX];
+  disk_adapt_other_config_volume_full_name_to_local_config (buf_vol_full_name, vol_fullname_other_or_old_config);
+
+  if (fileio_find_volume_descriptor_with_label (buf_vol_full_name) == NULL_VOLDES)
     {
-      (void) fileio_format (thread_p, NULL, vol_label, vhdr->volid, DISK_SECTS_NPAGES (vhdr->nsect_total),
+      (void) fileio_format (thread_p, NULL, buf_vol_full_name, vhdr->volid, DISK_SECTS_NPAGES (vhdr->nsect_total),
 			    vhdr->purpose != DB_TEMPORARY_DATA_PURPOSE, false, false, IO_PAGESIZE, 0, false);
       (void) pgbuf_invalidate_all (thread_p, vhdr->volid);
     }
