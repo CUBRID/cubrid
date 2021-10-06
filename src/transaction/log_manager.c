@@ -1077,7 +1077,8 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
   log_daemons_init ();
 #endif // SERVER_MODE
 
-  log_No_logging = prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
+  log_No_logging = false;	// Used to be prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
+  // Having no log is no longer acceptable, because it breaks page server replication.
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && log_No_logging)
     {
