@@ -3541,6 +3541,7 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * up
 
   ptr = or_unpack_int (ptr, &update_info->wait_msecs);
   ptr = or_unpack_int (ptr, &update_info->no_logging);
+  ptr = or_unpack_int (ptr, &update_info->no_supplemental_log);
   ptr = or_unpack_int (ptr, &update_info->num_orderby_keys);
 
   /* restore MVCC condition reevaluation data */
@@ -3594,6 +3595,7 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * de
 
   ptr = or_unpack_int (ptr, &delete_info->wait_msecs);
   ptr = or_unpack_int (ptr, &delete_info->no_logging);
+  ptr = or_unpack_int (ptr, &delete_info->no_supplemental_log);
 
   /* restore MVCC condition reevaluation data */
   ptr = or_unpack_int (ptr, &delete_info->num_reev_classes);

@@ -122,7 +122,7 @@ extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_destroy (const HFID * hfid);
 #endif
-extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid);
+extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const bool force = false);
 extern int heap_reclaim_addresses (const HFID * hfid);
 extern int file_apply_tde_to_class_files (const OID * class_oid);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
@@ -293,6 +293,7 @@ extern int repl_set_info (REPL_INFO * repl_info);
 
 extern int logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr);
 
+extern int log_supplement_statement (int ddl_type, int objtype, OID * classoid, OID * objoid, const char *stmt_text);
 
 extern bool histo_is_supported (void);
 extern int histo_start (bool for_all_trans);

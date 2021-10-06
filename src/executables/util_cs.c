@@ -130,11 +130,11 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   bool no_check = false;
   bool check = true;
   int backup_num_threads;
-  bool compress_flag;
+  bool no_compress_flag;
   bool sa_mode;
   bool separate_keys;
-  FILEIO_ZIP_METHOD backup_zip_method = FILEIO_ZIP_NONE_METHOD;
-  FILEIO_ZIP_LEVEL backup_zip_level = FILEIO_ZIP_NONE_LEVEL;
+  FILEIO_ZIP_METHOD backup_zip_method = FILEIO_ZIP_LZ4_METHOD;
+  FILEIO_ZIP_LEVEL backup_zip_level = FILEIO_ZIP_LZ4_DEFAULT_LEVEL;
   bool skip_activelog = false;
   int sleep_msecs;
   struct stat st_buf;
@@ -159,7 +159,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   no_check = utility_get_option_bool_value (arg_map, BACKUP_NO_CHECK_S);
   check = !no_check;
   backup_num_threads = utility_get_option_int_value (arg_map, BACKUP_THREAD_COUNT_S);
-  compress_flag = utility_get_option_bool_value (arg_map, BACKUP_COMPRESS_S);
+  no_compress_flag = utility_get_option_bool_value (arg_map, BACKUP_NO_COMPRESS_S);
 
   // BACKUP_EXCEPT_ACTIVE_LOG_S is obsoleted. This means backup will always include active log.
   skip_activelog = false;
@@ -190,10 +190,10 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       goto print_backup_usage;
     }
 
-  if (compress_flag)
+  if (no_compress_flag)
     {
-      backup_zip_method = FILEIO_ZIP_LZ4_METHOD;
-      backup_zip_level = FILEIO_ZIP_LZ4_DEFAULT_LEVEL;
+      backup_zip_method = FILEIO_ZIP_NONE_METHOD;
+      backup_zip_level = FILEIO_ZIP_NONE_LEVEL;
     }
 
   /* extra validation */
