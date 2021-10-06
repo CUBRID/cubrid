@@ -132,6 +132,10 @@ STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
 
+STATIC_INLINE
+  std::int64_t
+log_cnt_pages_containing_lsa (const log_lsa * plsa1, const log_lsa * plsa2);
+
 /*
  * CRASH RECOVERY PROCESS
  */
@@ -772,7 +776,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_REDO_STARTED, 2,
-	  LSA_DIFF_IN_PAGE (&end_redo_lsa, &start_redolsa), num_redo_log_records);
+	  log_cnt_pages_containing_lsa (&end_redo_lsa, &start_redolsa), num_redo_log_records);
 
   log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa, stopat);
 
@@ -4623,8 +4627,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   // *INDENT-ON*
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_UNDO_STARTED, 2,
-	  LSA_DIFF_IN_PAGE (&max_undo_lsa, &min_lsa), cnt_trans_to_undo);
-  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+	  log_cnt_pages_containing_lsa (&max_undo_lsa, &min_lsa), cnt_trans_to_undo);
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
@@ -6494,4 +6497,21 @@ log_rv_end_simulation (THREAD_ENTRY * thread_p)
 #if defined (SA_MODE)
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 #endif // SA_MODE
+}
+
+std::int64_t
+log_cnt_pages_containing_lsa (const log_lsa * plsa1, const log_lsa * plsa2)
+{
+  if (*plsa1 == *plsa2)
+    {
+      return 0;
+    }
+  else if (plsa1->offset == plsa2->offset)
+    {
+      return plsa1->pageid - plsa2->pageid;
+    }
+  else
+    {
+      return plsa1->pageid - plsa2->pageid + 1;
+    }
 }
