@@ -3120,18 +3120,23 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host
 {
   SOCKET fd;
 
-#if !defined (WINDOWS) && !defined (SERVER_MODE)
+#if !defined (SERVER_MODE)
+#if !defined (WINDOWS)
   if (timeout > 0)
     {
       /* timeout in milli-seconds in css_tcp_client_open_with_timeout() */
       fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
     }
   else
-#else /* WINDOWS || SERVER_MODE */
-  {
-    fd = css_tcp_client_open (host_name, port);
-  }
-#endif /* WINDOWS || SERVER_MODE */
+    {
+      fd = css_tcp_client_open_with_retry (host_name, port, true);
+    }
+#else /* !WINDOWS */
+  fd = css_tcp_client_open_with_retry (host_name, port, true);
+#endif /* WINDOWS */
+#else // SERVER_MODE
+  fd = css_tcp_client_open_with_retry (host_name, port, true);
+#endif // SERVER_MODE
 
   if (!IS_INVALID_SOCKET (fd))
     {
