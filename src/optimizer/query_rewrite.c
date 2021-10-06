@@ -1300,7 +1300,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   PT_NODE *join_term, *join_term_list, *s_name1, *s_name2;
   PT_NAME_SPEC_INFO info1, info2;
   int spec1_cnt, spec2_cnt;
-  bool found_equality_term, found_join_term, is_from_derived_table = false;
+  bool found_equality_term, found_join_term;
   PT_NODE *spec, *derived_table, *attr, *col;
   int i, num_check, idx;
   PT_NODE *save_where_next;
@@ -1314,7 +1314,6 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
   while ((expr = *wherep))
     {
-      is_from_derived_table = false;
       col = NULL;		/* init - reserve for constant column of derived-table */
 
       /* check for 1st phase; keep out OR conjunct; 1st init */
@@ -1439,8 +1438,6 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		  /* do not reduce PT_NAME that belongs to PT_NODE_LIST to PT_VALUE */
 		  if (attr && col && !PT_IS_VALUE_QUERY (col) && qo_is_reduceable_const (col))
 		    {
-		      is_from_derived_table = true;
-
 		      /* add additional equailty-term; is reduced */
 		      PT_NODE *expr_copy = parser_copy_tree (parser, expr);
 		      PT_EXPR_INFO_SET_FLAG (expr_copy, PT_EXPR_INFO_DO_NOT_AUTOPARAM);
@@ -1504,12 +1501,6 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
       /* save reduced join terms */
       for (temp = *wherep; temp; temp = temp->next)
 	{
-	  if (is_from_derived_table)
-	    {
-	      /* skip and go ahead  */
-	      continue;
-	    }
-
 	  if (temp == expr)
 	    {
 	      /* this is the working equality_term, skip and go ahead */
