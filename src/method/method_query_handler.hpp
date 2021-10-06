@@ -107,9 +107,10 @@ namespace cubmethod
 
       void end_qresult (bool is_self_free);
 
-      /* getter */
+      /* getter : TODO for statement handler cache */
       bool is_prepared ();
       bool get_query_count ();
+      bool has_result_set ();
 
       std::string get_sql_stmt ();
 
@@ -153,7 +154,6 @@ namespace cubmethod
       /* prepare info */
       std::string m_sql_stmt; /* sql statement literal */
       int m_prepare_flag;
-      DB_QUERY_TYPE *columns;	/* columns */
       CUBRID_STMT_TYPE m_stmt_type; /* statement type */
       DB_SESSION *m_session;
       bool m_is_prepared;
