@@ -18,6 +18,7 @@
 
 #include "method_query_util.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 #include "dbtype.h"
