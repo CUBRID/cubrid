@@ -5571,8 +5571,8 @@ boot_define_view_synonym (void)
     }
 
   /* Use ORDER BY to get PRIVATE SYNONYM first. */
-  sprintf (stmt, "SELECT [s].[synonym_name], CAST([s].[synonym_owner].[name] AS VARCHAR(255)), "
-	   "CASE WHEN [s].[is_public_synonym] = 1 THEN 'YES' ELSE 'NO' END, "
+  sprintf (stmt, "SELECT [s].[name], CAST([s].[owner].[name] AS VARCHAR(255)), "
+	   "CASE WHEN [s].[is_public] = 1 THEN 'YES' ELSE 'NO' END, "
 	   "[s].[target_name], CAST([s].[target_owner].[name] AS VARCHAR(255)), [s].[comment] "
 	   "FROM [%s] [s] "
 	   "WHERE (CURRENT_USER = 'DBA') "
