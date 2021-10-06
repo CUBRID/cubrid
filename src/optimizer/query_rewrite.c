@@ -1434,7 +1434,15 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		    {
 		      ;		/* step to next */
 		    }
-
+		  /* replace a constant value for a substitutable node which is set to PT_NAME_INFO_CONSTANT */
+		  if (col->node_type == PT_NAME || col->node_type == PT_DOT_)
+		    {
+		      col = pt_get_end_path_node (col);
+		      if (PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT))
+			{
+			  col = col->info.name.constant_value;
+			}
+		    }
 		  /* do not reduce PT_NAME that belongs to PT_NODE_LIST to PT_VALUE */
 		  if (attr && col && !PT_IS_VALUE_QUERY (col) && qo_is_reduceable_const (col))
 		    {

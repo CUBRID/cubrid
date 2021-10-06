@@ -2545,6 +2545,7 @@ struct pt_name_info
   PT_TYPE_ENUM virt_type_enum;	/* type of oid's in ldb for proxies. */
   PT_MISC_TYPE meta_class;	/* 0 or PT_META or PT_PARAMETER or PT_CLASS */
   PT_NODE *default_value;	/* PT_VALUE the default value of the attribute */
+  PT_NODE *constant_value;     /* constant value derived from qo_reduce_equality_terms () */
   unsigned int custom_print;
   unsigned short correlation_level;	/* for correlated attributes */
   char hidden_column;		/* used for updates and deletes for the class OID column */
