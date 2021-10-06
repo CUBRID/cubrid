@@ -17382,8 +17382,8 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
       AU_DISABLE (au_save);
 
       /* A synonym is created by inserting a synonym object into the _db_synonym class. */
-      error = do_create_synonym_internal (synonym_downcase_name, synonym_owner, target_name, target_owner,
-					  is_public_synonym, comment);
+      error = do_create_synonym_internal (synonym_downcase_name, synonym_owner, is_public_synonym,
+					  target_name, target_owner, comment);
 
       AU_ENABLE (au_save);
     }
@@ -17440,8 +17440,8 @@ do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   A synonym is created by inserting a synonym object into the _db_synonym class.
  */
 static int
-do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
-			    DB_OBJECT * target_owner, const int is_public_synonym, const char *comment)
+do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const int is_public_synonym,
+			    const char *target_name, DB_OBJECT * target_owner, const char *comment)
 {
   DB_OBJECT *class_obj = NULL;
   DB_OTMPL *obj_tmpl = NULL;
@@ -17474,7 +17474,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 
   /* synonym_name */
   db_make_string (&value, synonym_name);
-  error = dbt_put_internal (obj_tmpl, "synonym_name", &value);
+  error = dbt_put_internal (obj_tmpl, "name", &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
     {
@@ -17485,7 +17485,18 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 
   /* synonym_owner */
   db_make_object (&value, synonym_owner);
-  error = dbt_put_internal (obj_tmpl, "synonym_owner", &value);
+  error = dbt_put_internal (obj_tmpl, "owner", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+
+  /* is_public_synonym */
+  db_make_int (&value, is_public_synonym);
+  error = dbt_put_internal (obj_tmpl, "is_public", &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
     {
@@ -17508,17 +17519,6 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   /* target_owner */
   db_make_object (&value, target_owner);
   error = dbt_put_internal (obj_tmpl, "target_owner", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      goto end;
-    }
-
-  /* is_public_synonym */
-  db_make_int (&value, is_public_synonym);
-  error = dbt_put_internal (obj_tmpl, "is_public_synonym", &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
     {

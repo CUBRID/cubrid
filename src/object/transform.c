@@ -414,11 +414,11 @@ static CT_ATTR ct_partition_atts[] = {
 };
 
 static CT_ATTR ct_synonym_atts[] = {
-  {"synonym_name", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"synonym_owner_name", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"class_name", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"class_owner_name", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"is_public_synonym", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"name", NULL_ATTRID, DB_TYPE_VARCHAR},
+  {"owner", NULL_ATTRID, DB_TYPE_OBJECT},
+  {"is_public", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"target_name", NULL_ATTRID, DB_TYPE_VARCHAR},
+  {"target_owner", NULL_ATTRID, DB_TYPE_OBJECT},
   {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 

@@ -3394,7 +3394,7 @@ au_drop_user (MOP user)
      * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
      */
-    "_db_class", "db_trigger", "db_serial", NULL
+    "_db_class", "db_trigger", "db_serial", "_db_synonym", NULL
   };
   char query_buf[1024];
 
@@ -3423,7 +3423,7 @@ au_drop_user (MOP user)
       goto error;
     }
 
-  /* check if user owns class/vclass/trigger/serial */
+  /* check if user owns class/vclass/trigger/serial/synonym */
   for (i = 0; class_name[i] != NULL; i++)
     {
       sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", class_name[i]);

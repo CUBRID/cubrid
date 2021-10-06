@@ -164,8 +164,9 @@ extern int do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
 
-static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
-				       DB_OBJECT * target_owner, const int is_public_synonym, const char *comment);
+static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
+				       const int is_public_synonym, const char *target_name,
+				       DB_OBJECT * target_owner, const char *comment);
 
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
