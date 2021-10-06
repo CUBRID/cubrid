@@ -698,6 +698,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PAGE_SERVER_HOSTS "page_server_hosts"
 #define PRM_NAME_SERVER_TYPE "server_type"
+#define PRM_NAME_TRANSACTION_SERVER_TYPE "transaction_server_type"
 
 #define PRM_NAME_ER_LOG_PRIOR_TRANSFER "er_log_prior_transfer"
 #define PRM_NAME_ER_LOG_COMM_REQUEST "er_log_comm_request"
@@ -2378,6 +2379,12 @@ static int prm_server_type_default = (int) server_type_config::TRANSACTION;
 static int prm_server_type_lower = (int) server_type_config::TRANSACTION;
 static int prm_server_type_upper = (int) server_type_config::SINGLE_NODE;
 static unsigned int prm_server_type_flag = 0;
+
+int PRM_TRANSACTION_SERVER_TYPE = (int) transaction_server_type_config::ACTIVE;
+static int prm_transaction_server_type_default = (int) transaction_server_type_config::ACTIVE;
+static int prm_transaction_server_type_lower = (int) transaction_server_type_config::ACTIVE;
+static int prm_transaction_server_type_upper = (int) transaction_server_type_config::STANDBY;
+static unsigned int prm_transaction_server_type_flag = 0;
 /* *INDENT-ON* */
 
 bool PRM_ER_LOG_PRIOR_TRANSFER = false;
@@ -6154,6 +6161,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TRANSACTION_SERVER_TYPE,
+   PRM_NAME_TRANSACTION_SERVER_TYPE,
+   (PRM_FOR_SERVER),
+   PRM_KEYWORD,
+   &prm_transaction_server_type_flag,
+   (void *) &prm_transaction_server_type_default,
+   (void *) &PRM_TRANSACTION_SERVER_TYPE,
+   (void *) &prm_transaction_server_type_upper,
+   (void *) &prm_transaction_server_type_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_ER_LOG_PRIOR_TRANSFER,
    PRM_NAME_ER_LOG_PRIOR_TRANSFER,
    (PRM_FOR_SERVER | PRM_HIDDEN),
@@ -6487,6 +6506,12 @@ static KEYVAL server_type_words[] = {
   {server_type_config_to_string (server_type_config::TRANSACTION), (int) server_type_config::TRANSACTION},
   {server_type_config_to_string (server_type_config::PAGE), (int) server_type_config::PAGE},
   {server_type_config_to_string (server_type_config::SINGLE_NODE), (int) server_type_config::SINGLE_NODE}
+};
+
+static KEYVAL transaction_server_type_words[] = {
+  {transaction_server_type_config_to_string (transaction_server_type_config::ACTIVE), (int) transaction_server_type_config::ACTIVE},
+  {transaction_server_type_config_to_string (transaction_server_type_config::REPLICA), (int) transaction_server_type_config::REPLICA},
+  {transaction_server_type_config_to_string (transaction_server_type_config::STANDBY), (int) transaction_server_type_config::STANDBY}
 };
 /* *INDENT-ON* */
 
@@ -8440,6 +8465,12 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	{
 	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, server_type_words, DIM (server_type_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_TRANSACTION_SERVER_TYPE) == 0)
+	{
+	  keyvalp =
+	    prm_keyword (PRM_GET_INT (prm->value), NULL, transaction_server_type_words,
+			 DIM (transaction_server_type_words));
+	}
       else
 	{
 	  assert (false);
@@ -9955,6 +9986,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_SERVER_TYPE) == 0)
 	  {
 	    keyvalp = prm_keyword (-1, value, server_type_words, DIM (server_type_words));
+	  }
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_TRANSACTION_SERVER_TYPE) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, transaction_server_type_words, DIM (transaction_server_type_words));
 	  }
 	else
 	  {
