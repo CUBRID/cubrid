@@ -151,6 +151,9 @@ dblink_make_cci_value (DB_VALUE * cci_value, T_CCI_U_TYPE utype, void *val, int 
 
   switch (utype)
     {
+    case CCI_U_TYPE_SHORT:
+      error = db_make_short (cci_value, *(short *) val);
+      break;
     case CCI_U_TYPE_BIGINT:
       error = db_make_bigint (cci_value, *(DB_BIGINT *) val);
       break;
@@ -361,6 +364,7 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
       type = vd->dbval_ptr[i].domain.general_info.type;
       switch (type)
 	{
+	case DB_TYPE_SHORT:
 	case DB_TYPE_INTEGER:
 	  a_type = CCI_A_TYPE_INT;
 	  u_type = CCI_U_TYPE_BIGINT;
@@ -455,6 +459,10 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
 	  tz_datetimeltz_to_local (datetime, &dt_local);
 	  DATETIME_DECODE (cci_date, dt_local, month, day, year, hh, mm, ss, ms);
 	  value = &cci_date;
+	  break;
+	case DB_TYPE_NULL:
+	  value = NULL;
+	  u_type = CCI_U_TYPE_NULL;
 	  break;
 	default:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 0);
@@ -650,6 +658,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  break;
 	case CCI_U_TYPE_BIGINT:
 	case CCI_U_TYPE_INT:
+	case CCI_U_TYPE_SHORT:
 	case CCI_U_TYPE_FLOAT:
 	case CCI_U_TYPE_DOUBLE:
 	case CCI_U_TYPE_MONETARY:

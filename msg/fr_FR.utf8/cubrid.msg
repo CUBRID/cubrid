@@ -1355,7 +1355,24 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1284 Impossible de tronquer la table en raison de la clé primaire référencée sur %1$s. Essayez à nouveau avec l'option CASCADE.
 1285 Impossible de tronquer en cascade car l'action ON DELETE de la clé étrangère (%1$s) n'est pas définie sur CASCADE.
 
-1286 Dernière erreur
+1296 dblink - %1$s
+1297 dblink - invalid number of columns specified.
+1298 dblink - catalog _db_server class not found.
+1299 dblink - server "%1$s" not found.
+1300 dblink - server "%1$s" already exists.
+1301 dblink - Cannot update server object.
+1302 dblink - unsupported type.
+1303 dblink - invalid bind param.
+1304 dblink - password length exceeds max size.
+1305 dblink - encrypted password length is incorrect.
+1306 dblink - the checksum of the encrypted password does not match.
+1307 dblink - invalid cipher string format.
+1308 dblink - Failed to decryption password. error=%1$d".
+1309 dblink - Failed to encryption password. error=%1$d".
+1310 dblink - Multiple "%1$s" Server found.
+1311 dblink - Not allowed "%1$s" Server. 
+
+1312 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1820,6 +1837,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Nombre d'arguments inattendu %1$d.
 304 Impossible de trouver une signature compatible pour la fonction %1$s()
 305 La signature %1$s n'est pas compatible avec les arguments de la fonction.
+306 dblink - Les informations requises sont manquantes.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

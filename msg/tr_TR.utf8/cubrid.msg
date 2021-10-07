@@ -1355,7 +1355,24 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1284 %1$s üzerinde başvurulan birincil anahtar nedeniyle tablo kesilemiyor. CASCADE seçeneği ile tekrar deneyiniz.
 1285 Yabancı anahtarın ON DELETE eylemi (%1$s) CASCADE olarak ayarlanmadığından kademeli kesilemiyor.
 
-1286 Son Hata
+1296 dblink - %1$s
+1297 dblink - invalid number of columns specified.
+1298 dblink - catalog _db_server class not found.
+1299 dblink - server "%1$s" not found.
+1300 dblink - server "%1$s" already exists.
+1301 dblink - Cannot update server object.
+1302 dblink - unsupported type.
+1303 dblink - invalid bind param.
+1304 dblink - password length exceeds max size.
+1305 dblink - encrypted password length is incorrect.
+1306 dblink - the checksum of the encrypted password does not match.
+1307 dblink - invalid cipher string format.
+1308 dblink - Failed to decryption password. error=%1$d".
+1309 dblink - Failed to encryption password. error=%1$d".
+1310 dblink - Multiple "%1$s" Server found.
+1311 dblink - Not allowed "%1$s" Server. 
+
+1312 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1820,6 +1837,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Beklenmeyen argüman sayısı %1$d.
 304 %1$s() fonksiyonu için uyumlu bir imza bulunamadı
 305 İmza %1$s, argümanları ile uyumlu değildir.
+306 dblink - Gerekli bilgiler eksik.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

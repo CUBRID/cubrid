@@ -1355,7 +1355,24 @@ $ LOADDB
 1284 Die Tabelle kann aufgrund des Primärschlüssels, auf den in %1$s verwiesen wird, nicht abgeschnitten werden. Versuchen Sie es erneut mit der Option CASCADE.
 1285 Abschneiden in Kaskade nicht möglich, da die Aktion ON DELETE des Fremdschlüssels (%1$s) nicht auf CASCADE gesetzt ist.
 
-1286 Letzter Fehler
+1296 dblink - %1$s
+1297 dblink - invalid number of columns specified.
+1298 dblink - catalog _db_server class not found.
+1299 dblink - server "%1$s" not found.
+1300 dblink - server "%1$s" already exists.
+1301 dblink - Cannot update server object.
+1302 dblink - unsupported type.
+1303 dblink - invalid bind param.
+1304 dblink - password length exceeds max size.
+1305 dblink - encrypted password length is incorrect.
+1306 dblink - the checksum of the encrypted password does not match.
+1307 dblink - invalid cipher string format.
+1308 dblink - Failed to decryption password. error=%1$d".
+1309 dblink - Failed to encryption password. error=%1$d".
+1310 dblink - Multiple "%1$s" Server found.
+1311 dblink - Not allowed "%1$s" Server. 
+
+1312 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -1820,6 +1837,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unerwartete Anzahl von Argumenten %1$d.
 304 Konnte keine kompatible Signatur für die Funktion finden %1$s().
 305 Die Signatur %1$s ist nicht mit Funktionsargumenten kompatibel.
+306 dblink - Erforderliche Informationen fehlen.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.
