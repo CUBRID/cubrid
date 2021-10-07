@@ -10298,6 +10298,20 @@ ssession_stop_attached_threads (void *session)
   session_stop_attached_threads (session);
 }
 
+static bool
+cdc_check_client_connection ()
+{
+  if (css_check_conn (&cdc_Gl.conn) == NO_ERROR)
+    {
+      /* existing connection is alive */
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
 void
 scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -10316,6 +10330,25 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       error_code = ER_CDC_NOT_AVAILABLE;
       goto error;
     }
+
+  if (cdc_Gl.conn.fd != -1 && thread_p->conn_entry->fd != cdc_Gl.conn.fd)
+    {
+      if (cdc_check_client_connection ())
+	{
+	  error_code = ER_CDC_NOT_AVAILABLE;	/* mutlti connection */
+	  goto error;
+	}
+      else
+	{
+	  if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	    {
+	      cdc_pause_producer ();
+	    }
+	}
+    }
+
+  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
+  cdc_Gl.conn.status = thread_p->conn_entry->status;
 
   ptr = or_unpack_int (request, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
@@ -10553,6 +10586,9 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   int error_code;
 
   error_code = cdc_cleanup ();
+
+  cdc_Gl.conn.fd = -1;
+  cdc_Gl.conn.status = CONN_CLOSED;
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));

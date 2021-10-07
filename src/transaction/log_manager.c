@@ -14000,6 +14000,9 @@ end:
 int
 cdc_initialize ()
 {
+  cdc_Gl.conn.fd = -1;
+  cdc_Gl.conn.status = CONN_CLOSED;
+
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;
 
