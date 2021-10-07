@@ -6766,6 +6766,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
   PT_NODE **orderby_for_p;
   PT_NODE **show_argp;
   bool call_auto_parameterize = false;
+  bool *is_first_select = (bool *)arg;
 
   dummy = NULL;
   wherep = havingp = startwithp = connectbyp = aftercbfilterp = &dummy;
@@ -7128,12 +7129,21 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	  if (PT_IS_SELECT (node))
 	    {
 	      /*
+	       * It is correct that qo_reduce_equality_terms() is called in the post order.
 	       * for correlated constant value in another subquery
 	       * e.g. select .. from (select 1 col1) a, (select col1 from table) b where a.col1 = b.col1
 	       *      ==> select ... (..) a, (select ... from table ) b where b.col1 = 1 ...
 	       * Applies only to SELECT. In other cases, apply later if necessary.
 	       */
-	      parser_walk_tree (parser, node, NULL, NULL, qo_reduce_equality_terms_post, NULL);
+	      if (*is_first_select)
+		{
+		  parser_walk_tree (parser, node, NULL, NULL, qo_reduce_equality_terms_post, NULL);
+		  *is_first_select = false;
+		}
+	      else
+		{
+		  /* do noting */
+		}
 	    }
 	  else
 	    {
@@ -7916,5 +7926,6 @@ qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
 PT_NODE *
 mq_optimize (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  return parser_walk_tree (parser, statement, qo_optimize_queries, NULL, qo_optimize_queries_post, NULL);
+  bool is_first_select = true;
+  return parser_walk_tree (parser, statement, qo_optimize_queries, &is_first_select, qo_optimize_queries_post, NULL);
 }
