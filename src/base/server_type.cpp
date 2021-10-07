@@ -181,12 +181,27 @@ void finalize_server_type ()
 
 bool is_active_transaction_server ()
 {
-  return g_transaction_server_type == transaction_server_type::PASSIVE;
+  return is_transaction_server() && g_transaction_server_type == transaction_server_type::ACTIVE;
+}
+
+bool is_page_server ()
+{
+  return g_server_type == SERVER_TYPE_PAGE;
 }
 
 bool is_passive_transaction_server ()
 {
-  return g_transaction_server_type == transaction_server_type::PASSIVE;
+  return is_transaction_server() && g_transaction_server_type == transaction_server_type::PASSIVE;
+}
+
+bool is_passive_server ()
+{
+  return is_page_server () || is_passive_transaction_server ();
+}
+
+bool is_transaction_server ()
+{
+  return g_server_type == SERVER_TYPE_TRANSACTION;
 }
 
 bool is_tran_server_with_remote_storage ()

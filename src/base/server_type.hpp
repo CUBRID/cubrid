@@ -26,7 +26,10 @@ void finalize_server_type ();
 SERVER_TYPE get_server_type ();
 transaction_server_type get_transaction_server_type ();
 bool is_active_transaction_server();
+bool is_page_server ();
 bool is_passive_transaction_server();
+bool is_passive_server ();
+bool is_transaction_server ();
 bool is_tran_server_with_remote_storage ();
 void set_server_type (SERVER_TYPE type);
 
