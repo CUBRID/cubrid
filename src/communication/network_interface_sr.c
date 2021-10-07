@@ -10331,11 +10331,13 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
+  assert (thread_p->conn_entry->fd != cdc_Gl.conn.fd);
+
   if (cdc_Gl.conn.fd != -1 && thread_p->conn_entry->fd != cdc_Gl.conn.fd)
     {
       if (cdc_check_client_connection ())
 	{
-	  error_code = ER_CDC_NOT_AVAILABLE;	/* mutlti connection */
+	  error_code = ER_CDC_NOT_AVAILABLE;	/* multi connection */
 	  goto error;
 	}
       else
