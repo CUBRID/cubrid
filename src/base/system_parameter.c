@@ -2374,16 +2374,16 @@ static const char *prm_page_server_host_default = "";
 static unsigned int prm_page_server_host_flag = 0;
 
 /* *INDENT-OFF* */
-int PRM_SERVER_TYPE = (int) server_type_config::TRANSACTION;
 static int prm_server_type_default = (int) server_type_config::TRANSACTION;
 static int prm_server_type_lower = (int) server_type_config::TRANSACTION;
 static int prm_server_type_upper = (int) server_type_config::SINGLE_NODE;
+int PRM_SERVER_TYPE = prm_server_type_default;
 static unsigned int prm_server_type_flag = 0;
 
-int PRM_TRANSACTION_SERVER_TYPE = (int) transaction_server_type_config::ACTIVE;
 static int prm_transaction_server_type_default = (int) transaction_server_type_config::ACTIVE;
 static int prm_transaction_server_type_lower = (int) transaction_server_type_config::ACTIVE;
 static int prm_transaction_server_type_upper = (int) transaction_server_type_config::STANDBY;
+int PRM_TRANSACTION_SERVER_TYPE = prm_transaction_server_type_default;
 static unsigned int prm_transaction_server_type_flag = 0;
 /* *INDENT-ON* */
 
@@ -8467,9 +8467,8 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_TRANSACTION_SERVER_TYPE) == 0)
 	{
-	  keyvalp =
-	    prm_keyword (PRM_GET_INT (prm->value), NULL, transaction_server_type_words,
-			 DIM (transaction_server_type_words));
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, transaction_server_type_words,
+				 DIM (transaction_server_type_words));
 	}
       else
 	{

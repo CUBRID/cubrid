@@ -137,12 +137,14 @@ int init_server_type (const char *db_name)
 
   if (er_code == NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n", server_type_to_string (get_server_type ()));
-
       if (g_server_type == SERVER_TYPE_TRANSACTION)
 	{
-	  er_log_debug (ARG_FILE_LINE, "Transaction server type: %s\n",
+	  er_log_debug (ARG_FILE_LINE, "Starting server type: %s transaction\n",
 			transaction_server_type_to_string (get_transaction_server_type()));
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n", server_type_to_string (get_server_type ()));
 	}
     }
   else
