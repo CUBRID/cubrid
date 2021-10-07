@@ -83,16 +83,6 @@
 #include "server_support.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
-#ifdef PACKET_TRACE
-#define TRACE(string, arg)					\
-	do {							\
-		er_log_debug(ARG_FILE_LINE, string, arg);	\
-	}							\
-	while(0);
-#else /* PACKET_TRACE */
-#define TRACE(string, arg)
-#endif /* PACKET_TRACE */
-
 /* data wait queue */
 typedef struct css_wait_queue_entry
 {
