@@ -3394,7 +3394,7 @@ au_drop_user (MOP user)
      * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
      */
-    "_db_class", "db_trigger", "db_serial", NULL
+    "_db_class", "db_trigger", "db_serial", "_db_server", NULL
   };
   char query_buf[1024];
 
