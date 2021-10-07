@@ -13076,13 +13076,45 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string_with_length (ptr, db_get_string (new_value), db_get_string_size (new_value) - 1);
       break;
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (new_value));
       break;
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      {
+	int size;
+	char *result = NULL;
+	const char *temp_string = NULL;
+
+	temp_string = db_get_nchar (new_value, &size);
+	size = db_get_string_size (new_value);
+
+	if (temp_string != NULL)
+	  {
+	    result = (char *) malloc (size + 4);
+	    if (result == NULL)
+	      {
+		return ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
+
+	    snprintf (result, size + 4, "N'%s", temp_string);
+	    result[size + 2] = '\'';
+	    result[size + 3] = '\0';
+	  }
+
+	func_type = 7;
+	ptr = or_pack_int (ptr, func_type);
+	ptr = or_pack_string (ptr, result);
+
+	if (result != NULL)
+	  {
+	    free_and_init (result);
+	  }
+
+	break;
+      }
 #define TOO_BIG_TO_MATTER       1024
     case DB_TYPE_TIME:
       db_make_char (&format, strlen (time_format), time_format,
