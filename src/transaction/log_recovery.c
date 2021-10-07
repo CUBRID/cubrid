@@ -4608,10 +4608,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
   /* Print undo recovery information */
   // *INDENT-OFF*
-  auto count_func =[&cnt_trans_to_undo] (LOG_TDES & tdes) {
-    cnt_trans_to_undo++;
-  };
-  log_system_tdes::map_all_tdes (count_func);
+  cnt_trans_to_undo = logtb_get_number_assigned_tran_indices();
+  cnt_trans_to_undo += log_system_tdes::tdes_count();
 
   logtb_find_smallest_lsa (thread_p, &min_lsa);
   auto min_lsa_func =[&min_lsa] (LOG_TDES & tdes) {
