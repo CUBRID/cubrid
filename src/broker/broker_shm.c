@@ -555,6 +555,10 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
 
   shm_as_p->shard_flag = br_info_p->shard_flag;
 
+  strcpy (shm_as_p->cgw_link_server, br_info_p->cgw_link_server);
+  strcpy (shm_as_p->cgw_link_dsn, br_info_p->cgw_link_dsn);
+  strcpy (shm_as_p->cgw_link_connection_url, br_info_p->cgw_link_connection_url);
+
   if (shm_as_p->shard_flag == OFF)
     {
       assert (shm_proxy_p == NULL);
@@ -949,6 +953,9 @@ get_appl_server_name (int appl_server_type)
     {
       return APPL_SERVER_CAS_MYSQL_NAME;
     }
-
+  else if (appl_server_type == APPL_SERVER_CAS_CGW)
+    {
+      return APPL_SERVER_CAS_CGW_NAME;
+    }
   return APPL_SERVER_CAS_NAME;
 }

@@ -1674,7 +1674,17 @@
 #define ER_DBLINK_SERVER_MULTIPLE_FOUND             -1310
 #define ER_DBLINK_SERVER_ALTER_NOT_ALLOWED          -1311
 
-#define ER_LAST_ERROR                               -1312
+#define ER_CGW_NATIVE_ODBC                          -1320
+#define ER_CGW_NUM_BIND                             -1321
+#define ER_CGW_INVALID_HANDLE                       -1322
+#define ER_CGW_TYPE_CONVERSION                      -1323
+#define ER_CGW_NOT_SUPPORTED_TYPE                   -1324
+#define ER_CGW_INVALID_STMT_HANDLE                  -1325
+#define ER_CGW_INVALID_SQLHDBC_HANDLE               -1326
+#define ER_CGW_NOT_EXIST_LINK_NAME                  -1327
+#define ER_CGW_INVALID_NUMERIC_VALUE                -1328
+
+#define ER_LAST_ERROR                               -1329
 
 /*
  * CAUTION!

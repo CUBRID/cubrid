@@ -632,6 +632,10 @@ struct t_shm_appl_server
   sem_t acl_sem;
 #endif
 
+  char cgw_link_server[CGW_LINK_SERVER_NAME_LEN];
+  char cgw_link_dsn[CGW_LINK_DSN_NAME_LEN];
+  char cgw_link_connection_url[CGW_LINK_CONNECTION_URL_LEN];
+
   ACCESS_INFO access_info[ACL_MAX_ITEM_COUNT];
 
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];

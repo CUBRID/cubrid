@@ -1372,7 +1372,18 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1309 dblink - Failed to encryption password. error=%1$d".
 1310 dblink - Multiple "%1$s" Server found.
 1311 dblink - Not allowed "%1$s" Server. 
-1312 Last Error
+
+1320 [%1$5.5s] %2$s (%3$d)
+1321 Parameter binding error.
+1322 Invalid ODBC handle.
+1323 Type conversion error.
+1324 Not supperted data type.
+1325 Invalid Statement handle.
+1326 Invalid db connection handle.
+1327 Both dsn name and link server connection url do not exist.
+1328 Invalid numeric value.
+
+13296 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

@@ -35,10 +35,13 @@
 #define	APPL_SERVER_CAS_ORACLE    1
 #define APPL_SERVER_CAS_MYSQL51   2
 #define APPL_SERVER_CAS_MYSQL     3
+#define APPL_SERVER_CAS_CGW       4
 
 #define IS_APPL_SERVER_TYPE_CAS(x)	\
         ((x == APPL_SERVER_CAS) || (x == APPL_SERVER_CAS_ORACLE) || \
-            (x == APPL_SERVER_CAS_MYSQL51) || (x == APPL_SERVER_CAS_MYSQL))
+            (x == APPL_SERVER_CAS_MYSQL51) || (x == APPL_SERVER_CAS_MYSQL) || \
+            (x == APPL_SERVER_CAS_CGW))
+
 #define IS_NOT_APPL_SERVER_TYPE_CAS(x)	!IS_APPL_SERVER_TYPE_CAS(x)
 
 #define APPL_SERVER_CAS_TYPE_NAME               "CAS"
@@ -46,6 +49,7 @@
 #define APPL_SERVER_CAS_MYSQL_TYPE_NAME         "CAS_MYSQL"
 #define APPL_SERVER_CAS_MYSQL51_TYPE_NAME       "CAS_MYSQL51"
 #define APPL_SERVER_CAS_MYSQL61_TYPE_NAME       "CAS_MYSQL61"
+#define APPL_SERVER_CAS_CGW_TYPE_NAME           "CAS_CGW"
 
 #define MAX_BROKER_NUM          50
 
@@ -106,6 +110,10 @@
 #define BROKER_INFO_NAME_MAX             (BROKER_INFO_PATH_MAX)
 
 #define DEFAULT_SSL_MODE                 "OFF"
+
+#define CGW_LINK_SERVER_NAME_LEN	 256
+#define CGW_LINK_DSN_NAME_LEN		 256
+#define CGW_LINK_CONNECTION_URL_LEN      2048
 
 enum t_sql_log_mode_value
 {
@@ -280,6 +288,10 @@ struct t_broker_info
   /* to here, these are used only in shard */
 
   char use_SSL;
+
+  char cgw_link_server[CGW_LINK_SERVER_NAME_LEN];
+  char cgw_link_dsn[CGW_LINK_DSN_NAME_LEN];
+  char cgw_link_connection_url[CGW_LINK_CONNECTION_URL_LEN];
 };
 
 extern int broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
