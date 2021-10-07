@@ -6766,7 +6766,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
   PT_NODE **orderby_for_p;
   PT_NODE **show_argp;
   bool call_auto_parameterize = false;
-  bool *is_first_select = (bool *)arg;
+  bool *is_first_select = (bool *) arg;
 
   dummy = NULL;
   wherep = havingp = startwithp = connectbyp = aftercbfilterp = &dummy;
