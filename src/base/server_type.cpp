@@ -180,7 +180,6 @@ void finalize_server_type ()
 }
 
 bool is_active_transaction_server ()
-
 {
   return g_transaction_server_type == transaction_server_type::PASSIVE;
 }
