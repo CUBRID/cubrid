@@ -60,19 +60,19 @@
 
 
 typedef struct t_col_binder T_COL_BINDER;
-struct t_col_binder 
+struct t_col_binder
 {
-  void                *data_buffer;           /* display buffer   */
-  SQLLEN              indPtr;                 /* size or null     */
-  SQLLEN	          col_data_type;               /* type of column   */
-  SQLULEN         col_size;
-  struct t_col_binder  *next;                 /* linked list      */
+  void *data_buffer;		/* display buffer   */
+  SQLLEN indPtr;		/* size or null     */
+  SQLLEN col_data_type;		/* type of column   */
+  SQLULEN col_size;
+  struct t_col_binder *next;	/* linked list      */
 };
 
 typedef enum
 {
-        MINUS,
-        PLUS
+  MINUS,
+  PLUS
 } sign;
 
 typedef struct t_odbc_col_info T_ODBC_COL_INFO;
@@ -99,48 +99,49 @@ struct t_odbc_col_info
 
 typedef union odbc_bind_info ODBC_BIND_INFO;
 union odbc_bind_info
-  {
+{
   char *string_val;
-  SQLSMALLINT         smallInt_val;
-  SQLINTEGER          integer_val;
-  SQLREAL             real_val;
-  SQLDOUBLE           double_val;                /* bit type of column   */
-  SQLBIGINT           bigint_val;               /* _int64 of column */
-  char                time_stemp_str_val[50];
+  SQLSMALLINT smallInt_val;
+  SQLINTEGER integer_val;
+  SQLREAL real_val;
+  SQLDOUBLE double_val;		/* bit type of column   */
+  SQLBIGINT bigint_val;		/* _int64 of column */
+  char time_stemp_str_val[50];
 
 #if (ODBCVER >= 0x0300)
-  SQL_DATE_STRUCT     ds_val;                     /* DATE Type        */
-  SQL_TIME_STRUCT     ts_val;                     /* TIME Type        */
-  SQL_TIMESTAMP_STRUCT tss_val;                   /* TIMESTAMP Type   */
-  SQL_NUMERIC_STRUCT  ns_val;
+  SQL_DATE_STRUCT ds_val;	/* DATE Type        */
+  SQL_TIME_STRUCT ts_val;	/* TIME Type        */
+  SQL_TIMESTAMP_STRUCT tss_val;	/* TIMESTAMP Type   */
+  SQL_NUMERIC_STRUCT ns_val;
 #endif
-  };
+};
 
 extern void test_log (char *fmt, ...);
 
 
 extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT col_num, T_COL_BINDER ** col_binding);
-extern void cgw_cleanup_binder (T_COL_BINDER *pFirstBinding);
+extern void cgw_cleanup_binder (T_COL_BINDER * pFirstBinding);
 
 extern int cgw_init_odbc_handle (void);
 extern int cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool valid_handle);
 extern int cgw_get_driver_info (SQLHDBC hdbc, int info_type, void *driver_info, int size);
 
 // db connection functions
-extern int cgw_database_connect (const char * dsn,  const char * connect_url);
+extern int cgw_database_connect (const char *dsn, const char *connect_url);
 extern void cgw_database_disconnect (void);
 extern int cgw_is_database_connected (void);
 
 // Prepare funtions
-extern int cgw_sql_prepare (SQLHSTMT hstmt, SQLCHAR *sql_stmt);
-extern int cgw_get_col_num (SQLHSTMT hstmt, SQLSMALLINT *col_num);
+extern int cgw_sql_prepare (SQLHSTMT hstmt, SQLCHAR * sql_stmt);
+extern int cgw_get_col_num (SQLHSTMT hstmt, SQLSMALLINT * col_num);
 extern int cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_INFO * col_info);
 
 // Execute funtions
 extern int cgw_set_commit_mode (SQLHDBC hdbc, bool auto_commit);
 extern int cgw_execute (T_SRV_HANDLE * srv_handle);
 extern int cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_type);
-extern int cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, void **argv, ODBC_BIND_INFO **ret_val, T_NET_BUF * net_buf);
+extern int cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, void **argv, ODBC_BIND_INFO ** ret_val,
+				T_NET_BUF * net_buf);
 
 // Resultset funtions
 extern int cgw_cursor_close (SQLHSTMT hstmt);
