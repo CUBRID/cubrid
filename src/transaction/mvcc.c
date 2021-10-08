@@ -306,7 +306,7 @@ mvcc_is_not_deleted_for_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec
  * page_p (in)	      : Heap page pointer.
  */
 MVCC_SATISFIES_VACUUM_RESULT
-mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCCID oldest_mvccid)
+mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, const MVCC_REC_HEADER * rec_header, MVCCID oldest_mvccid)
 {
   if (!MVCC_IS_HEADER_DELID_VALID (rec_header) || MVCC_IS_REC_DELETED_SINCE_MVCCID (rec_header, oldest_mvccid))
     {

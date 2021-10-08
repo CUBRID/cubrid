@@ -2560,7 +2560,7 @@ spage_update_record_after_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPA
  * Note: This function do not update the type of the record. If it is changed, it must be handled by the caller
  */
 int
-spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, const RECDES * record_descriptor_p)
+spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, RECDES * record_descriptor_p)
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p;

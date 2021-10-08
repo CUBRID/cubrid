@@ -106,7 +106,7 @@ extern int spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID sl
 extern int spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, RECDES * recdes);
 extern PGSLOTID spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid);
 extern PGSLOTID spage_delete_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid);
-extern int spage_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, const RECDES * recdes);
+extern int spage_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, RECDES * recdes);
 extern void spage_update_record_type (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, INT16 type);
 extern bool spage_is_updatable (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int recdes_length);
 extern bool spage_is_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
