@@ -4547,7 +4547,7 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 static void
 log_recovery_undo (THREAD_ENTRY * thread_p)
 {
-  LOG_LSA max_undo_lsa;		/* LSA of log record to undo */
+  LOG_LSA max_undo_lsa = NULL_LSA;	/* LSA of log record to undo */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
   LOG_LSA log_lsa;
@@ -4603,8 +4603,18 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
    * GO BACKWARDS, undoing records
    */
 
+  // *INDENT-OFF*
+  auto max_undo_lsa_func = [&max_undo_lsa] (const log_tdes & tdes)
+    {
+      if (LSA_LT (&max_undo_lsa, &tdes.undo_nxlsa))
+        {
+          max_undo_lsa = tdes.undo_nxlsa;
+        }
+    };
+  // *INDENT-ON*
+
   /* Find the largest LSA to undo */
-  log_find_unilaterally_largest_undo_lsa (thread_p, max_undo_lsa);
+  logtb_rv_map_undo_tdes (thread_p, max_undo_lsa_func);
 
   /* Print undo recovery information */
   // *INDENT-OFF*
@@ -5022,7 +5032,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    }
 
 	  /* Find the next log record to undo */
-	  log_find_unilaterally_largest_undo_lsa (thread_p, max_undo_lsa);
+	  max_undo_lsa = NULL_LSA;
+	  logtb_rv_map_undo_tdes (thread_p, max_undo_lsa_func);
 	}
     }
 
