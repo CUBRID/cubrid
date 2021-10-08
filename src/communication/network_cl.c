@@ -2229,8 +2229,9 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 
   if (net_Server_name[0] == '\0')
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
       error = ER_NET_SERVER_CRASHED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
     }
   else
     {
