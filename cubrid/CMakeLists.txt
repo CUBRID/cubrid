@@ -275,6 +275,7 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_query_util.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp
+  ${METHOD_DIR}/method_struct_oid_info.cpp
   ${METHOD_DIR}/method_struct_query.cpp
   ${METHOD_DIR}/method_struct_schema_info.cpp
   ${METHOD_DIR}/method_scan.cpp
