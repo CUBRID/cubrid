@@ -3099,6 +3099,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_diff_rec;
   bool is_mvcc_op = false;
+  TSC_TICKS info_logging_start_time;
+  TSCTIMEVAL info_logging_elapsed_time;
+  int info_logging_interval_in_secs = 0;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -3140,6 +3143,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
       return;
     }
 
+  info_logging_interval_in_secs = prm_get_integer_value (PRM_ID_DETAILED_RECOVERY_LOGGING_INTERVAL);
+  if (info_logging_interval_in_secs > 0 && info_logging_interval_in_secs < 5)
+    {
+      info_logging_interval_in_secs = 5;
+    }
+  tsc_start_time_usec (&info_logging_start_time);
+
   while (!LSA_ISNULL (&lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
@@ -3155,6 +3165,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
 	      return;
+	    }
+	}
+
+      if (info_logging_interval_in_secs > 0)
+	{
+	  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
+	  if (info_logging_elapsed_time.tv_sec >= info_logging_interval_in_secs)
+	    {
+	      tsc_start_time_usec (&info_logging_start_time);
 	    }
 	}
 
@@ -4572,6 +4591,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   bool is_mvcc_op;
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
+  TSC_TICKS info_logging_start_time;
+  TSCTIMEVAL info_logging_elapsed_time;
+  int info_logging_interval_in_secs = 0;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -4644,6 +4666,13 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
       return;
     }
 
+  info_logging_interval_in_secs = prm_get_integer_value (PRM_ID_DETAILED_RECOVERY_LOGGING_INTERVAL);
+  if (info_logging_interval_in_secs > 0 && info_logging_interval_in_secs < 5)
+    {
+      info_logging_interval_in_secs = 5;
+    }
+  tsc_start_time_usec (&info_logging_start_time);
+
   while (!LSA_ISNULL (&max_undo_lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
@@ -4654,6 +4683,15 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo");
 	  return;
+	}
+
+      if (info_logging_interval_in_secs > 0)
+	{
+	  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
+	  if (info_logging_elapsed_time.tv_sec >= info_logging_interval_in_secs)
+	    {
+	      tsc_start_time_usec (&info_logging_start_time);
+	    }
 	}
 
       /* Check all log records in this phase */

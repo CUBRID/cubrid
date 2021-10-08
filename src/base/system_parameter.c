@@ -695,6 +695,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_SUPPLEMENTAL_LOG "supplemental_log"
 #define PRM_NAME_CDC_LOGGING_DEBUG "cdc_logging_debug"
 
+#define PRM_NAME_DETAILED_RECOVERY_LOGGING_INTERVAL "detailed_recovery_logging_interval"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2356,6 +2358,12 @@ static unsigned int prm_supplemental_log_flag = 0;
 bool PRM_CDC_LOGGING_DEBUG = false;
 static bool prm_cdc_logging_debug_default = false;
 static unsigned int prm_cdc_logging_debug_flag = 0;
+
+int PRM_DETAILED_RECOVERY_LOGGING_INTERVAL = 0;
+static int prm_detailed_recovery_logging_interval_default = 0;
+static int prm_detailed_recovery_logging_interval_lower = 0;
+static int prm_detailed_recovery_logging_interval_upper = 3600;
+static unsigned int prm_detailed_recovery_logging_interval_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6072,7 +6080,19 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DETAILED_RECOVERY_LOGGING_INTERVAL,
+   PRM_NAME_DETAILED_RECOVERY_LOGGING_INTERVAL,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_detailed_recovery_logging_interval_flag,
+   (void *) &prm_detailed_recovery_logging_interval_default,
+   (void *) &PRM_DETAILED_RECOVERY_LOGGING_INTERVAL,
+   (void *) &prm_detailed_recovery_logging_interval_upper,
+   (void *) &prm_detailed_recovery_logging_interval_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
