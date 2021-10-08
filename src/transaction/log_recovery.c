@@ -6513,10 +6513,6 @@ log_cnt_pages_containing_lsa (const log_lsa * from_lsa, const log_lsa * to_lsa)
     {
       return 0;
     }
-  else if (from_lsa->offset == to_lsa->offset)
-    {
-      return from_lsa->pageid - to_lsa->pageid;
-    }
   else
     {
       return from_lsa->pageid - to_lsa->pageid + 1;
