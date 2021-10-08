@@ -4614,7 +4614,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   // *INDENT-ON*
 
   /* Find the largest LSA to undo */
-  logtb_rv_map_undo_tdes (thread_p, max_undo_lsa_func);
+  logtb_rv_read_only_map_undo_tdes (thread_p, max_undo_lsa_func);
 
   /* Print undo recovery information */
   // *INDENT-OFF*
@@ -5033,7 +5033,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 	  /* Find the next log record to undo */
 	  max_undo_lsa = NULL_LSA;
-	  logtb_rv_map_undo_tdes (thread_p, max_undo_lsa_func);
+	  logtb_rv_read_only_map_undo_tdes (thread_p, max_undo_lsa_func);
 	}
     }
 

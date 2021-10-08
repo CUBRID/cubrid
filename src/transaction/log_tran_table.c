@@ -4163,8 +4163,11 @@ logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p)
   return r;
 }
 
+/*
+ * logtb_rv_read_only_map_undo_tdes - map func to all tdes to abort in the UNOO recovery phase.
+ */
 void
-logtb_rv_map_undo_tdes (THREAD_ENTRY * thread_p, const std::function < void (const log_tdes &) > map_func)
+logtb_rv_read_only_map_undo_tdes (THREAD_ENTRY * thread_p, const std::function < void (const log_tdes &) > map_func)
 {
   // *INDENT-OFF*
   int i;
