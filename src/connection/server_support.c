@@ -1392,8 +1392,8 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_NO_MASTER, 0);
-      return ER_NET_NO_MASTER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, message_to_master.c_str () + 1);
+      return ERR_CSS_ERROR_DURING_SERVER_CONNECT;
     }
 
 shutdown:
