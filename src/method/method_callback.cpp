@@ -20,13 +20,24 @@
 
 #include "dbi.h"
 #include "method_def.hpp"
+#include "method_query_util.hpp"
+#include "method_struct_oid_info.hpp"
 #include "network_interface_cl.h"
+
+#include "object_primitive.h"
+#include "oid.h"
 
 namespace cubmethod
 {
   callback_handler::callback_handler (int max_query_handler)
   {
     m_query_handlers.resize (max_query_handler, nullptr);
+    m_oid_handler = new oid_handler (m_error_ctx);
+  }
+
+  callback_handler::~callback_handler ()
+  {
+    delete m_oid_handler;
   }
 
   void
@@ -36,6 +47,25 @@ namespace cubmethod
     m_host = host;
   }
 
+  template<typename ... Args>
+  int
+  callback_handler::send_packable_object_to_server (Args &&... args)
+  {
+    packing_packer packer;
+    cubmem::extensible_block eb;
+
+    packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
+
+    int error = net_client_send_data (m_host, m_rid, eb.get_ptr (), packer.get_current_size ());
+    if (error != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
+
+    return NO_ERROR;
+  }
+
+  /*
   int
   callback_handler::send_packable_object_to_server (cubpacking::packable_object &object)
   {
@@ -47,11 +77,12 @@ namespace cubmethod
     int error = net_client_send_data (m_host, m_rid, eb.get_ptr (), packer.get_current_size ());
     if (error != NO_ERROR)
       {
-	return ER_FAILED;
+  return ER_FAILED;
       }
 
     return NO_ERROR;
   }
+  */
 
   int
   callback_handler::callback_dispatch (packing_unpacker &unpacker)
@@ -70,6 +101,15 @@ namespace cubmethod
 	break;
       case METHOD_CALLBACK_QUERY_EXECUTE:
 	error = execute (unpacker);
+	break;
+      case METHOD_CALLBACK_OID_GET:
+	error = oid_get (unpacker);
+	break;
+      case METHOD_CALLBACK_OID_SET:
+	error = oid_put (unpacker);
+	break;
+      case METHOD_CALLBACK_OID_CMD:
+	error = oid_cmd (unpacker);
 	break;
       default:
 	assert (false);
@@ -128,7 +168,8 @@ namespace cubmethod
     return error;
   }
 
-  int callback_handler::schema_info (packing_unpacker &unpacker)
+  int
+  callback_handler::schema_info (packing_unpacker &unpacker)
   {
     // TODO
     int error = NO_ERROR;
@@ -173,11 +214,13 @@ namespace cubmethod
     return error;
   }
 
-#if 0
   int
-  callback_handler::oid_get (OID oid)
+  callback_handler::oid_get (packing_unpacker &unpacker)
   {
     int error = NO_ERROR;
+
+    OID oid = OID_INITIALIZER;
+    unpacker.unpack_oid (oid);
 
     DB_OBJECT *obj = db_object (&oid);
     error = check_object (obj);
@@ -186,116 +229,158 @@ namespace cubmethod
 	// TODO : error handling
       }
 
-    // get attr name
-    std::string class_name;
+    /* set attribute names */
     std::vector<std::string> attr_names;
-
-    const char *cname = db_get_class_name (obj);
-    if (cname != NULL)
+    if (!unpacker.is_ended())
       {
-	class_name.assign (cname);
+	/* get attributes name from arguments */
+	int num_attr = 0;
+	unpacker.unpack_int (num_attr);
+
+	std::string name;
+	for (int i = 0; i < num_attr; i++)
+	  {
+	    unpacker.unpack_string (name);
+	    attr_names.emplace_back (name);
+	  }
       }
 
-    // error = oid_attr_info_set (net_buf, obj, attr_num, attr_name);
-    if (error < 0)
-      {
-
-      }
-    /*
-    if (oid_data_set (obj, attr_num, attr_name) < 0)
-    {
-
-    }
-    */
-
+    oid_get_info info = m_oid_handler->oid_get (obj, attr_names);
+    error = send_packable_object_to_server (info);
     return error;
   }
 
   int
-  callback_handler::oid_put (OID oid)
+  callback_handler::oid_put (packing_unpacker &unpacker)
   {
-    int error = NO_ERROR;
+    oid_put_request request;
+    request.unpack (unpacker);
 
-    DB_OBJECT *obj = db_object (&oid);
-    error = check_object (obj);
+    DB_OBJECT *obj = db_object (&request.oid);
+    int error = check_object (obj);
     if (error < 0)
       {
 	// TODO : error handling
       }
 
-    DB_OTMPL *otmpl = dbt_edit_object (obj);
-    if (otmpl == NULL)
-      {
-	// TODO : error handling
-	error = db_error_code ();
-      }
+    int result = m_oid_handler->oid_put (obj, request.attr_names, request.db_values);
 
-    /* TODO */
+    error = send_packable_object_to_server (result);
+    return error;
+  }
 
-    obj = dbt_finish_object (otmpl);
+  int
+  callback_handler::oid_cmd (packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+
+    int cmd = OID_CMD_FIRST;
+    unpacker.unpack_int (cmd);
+
+    OID oid = OID_INITIALIZER;
+    unpacker.unpack_oid (oid);
+
+    DB_OBJECT *obj = db_object (&oid);
     if (obj == NULL)
       {
-	// TODO : error handling
-	error = db_error_code ();
+	// TODO: error handling
+	// CAS_ER_OBJECT
       }
-    return error;
-  }
 
-  int
-  callback_handler::oid_cmd (char cmd, OID oid)
-  {
-    // TODO
-    int error = NO_ERROR;
-    DB_OBJECT *obj = db_object (&oid);
-
+    std::string res_msg;
     if (cmd != OID_IS_INSTANCE)
       {
 	error = check_object (obj);
 	if (error < 0)
 	  {
 	    // TODO : error handling
+	    return error;
 	  }
       }
 
     if (cmd == OID_DROP)
       {
-
+	error = db_drop (obj);
       }
     else if (cmd == OID_IS_INSTANCE)
       {
-
+	if (obj == NULL)
+	  {
+	    error = 0;
+	  }
+	else
+	  {
+	    er_clear();
+	    if (db_is_instance (obj) > 0)
+	      {
+		error = 1;
+	      }
+	    else
+	      {
+		error = db_error_code ();
+		if (error == ER_HEAP_UNKNOWN_OBJECT)
+		  {
+		    error = 0;
+		  }
+	      }
+	  }
       }
     else if (cmd == OID_LOCK_READ)
       {
-
+	if (obj == NULL)
+	  {
+	    // TODO : error handling
+	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	  }
+	error = db_lock_read (obj);
       }
     else if (cmd == OID_LOCK_WRITE)
       {
-
+	if (obj == NULL)
+	  {
+	    // TODO : error handling
+	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	  }
+	error = db_lock_write (obj);
       }
     else if (cmd == OID_CLASS_NAME)
       {
-
+	if (obj == NULL)
+	  {
+	    // TODO : error handling
+	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	  }
+	char *class_name = (char *) db_get_class_name (obj);
+	if (class_name == NULL)
+	  {
+	    error = db_error_code ();
+	    class_name = (char *) "";
+	  }
+	else
+	  {
+	    error = NO_ERROR;
+	  }
+	res_msg.assign (class_name);
       }
     else
       {
-
+	// TODO : error handling
+	// ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
       }
 
     if (error < 0)
       {
-
+	// TODO : error handling
+	// ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       }
     else
       {
-	if (cmd == OID_CLASS_NAME)
-	  {
-
-	  }
+	error = send_packable_object_to_server (error, res_msg);
       }
     return error;
   }
 
+#if 0
 //////////////////////////////////////////////////////////////////////////
 // Collection
 //////////////////////////////////////////////////////////////////////////
