@@ -178,4 +178,3 @@ namespace cubmethod
     return scan_code;
   }
 }
-
