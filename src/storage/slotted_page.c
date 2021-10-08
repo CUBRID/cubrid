@@ -193,8 +193,8 @@ static int spage_add_new_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPAGE_H
 static int spage_take_slot_in_use (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPAGE_HEADER * page_header_p,
 				   PGSLOTID slot_id, SPAGE_SLOT * slot_p, int *out_space_p);
 
-static int spage_check_record_for_insert (RECDES * record_descriptor_p);
-static int spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdes, void *slotptr);
+static int spage_check_record_for_insert (const RECDES * record_descriptor_p);
+static int spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const RECDES * recdes, void *slotptr);
 static bool spage_is_record_located_at_end (SPAGE_HEADER * page_header_p, SPAGE_SLOT * slot_p);
 static void spage_reduce_a_slot (PAGE_PTR page_p);
 
@@ -223,7 +223,7 @@ static INLINE bool spage_is_unknown_slot (PGSLOTID slotid, SPAGE_HEADER * sphdr,
   __attribute__ ((ALWAYS_INLINE));
 static INLINE SPAGE_SLOT *spage_find_slot (PAGE_PTR pgptr, SPAGE_HEADER * sphdr, PGSLOTID slotid,
 					   bool is_unknown_slot_check) __attribute__ ((ALWAYS_INLINE));
-static INLINE int spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdes,
+static INLINE int spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const RECDES * recdes,
 					      PGSLOTID * slotid, void **slotptr, int *used_space)
   __attribute__ ((ALWAYS_INLINE));
 static SCAN_CODE spage_get_record_data (PAGE_PTR pgptr, SPAGE_SLOT * sptr, RECDES * recdes, bool ispeeking);
@@ -1751,7 +1751,7 @@ spage_find_empty_slot_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slo
  *   record_descriptor_p(in):
  */
 static int
-spage_check_record_for_insert (RECDES * record_descriptor_p)
+spage_check_record_for_insert (const RECDES * record_descriptor_p)
 {
   if (record_descriptor_p->length > spage_max_record_size ())
     {
@@ -1760,7 +1760,11 @@ spage_check_record_for_insert (RECDES * record_descriptor_p)
 
   if (record_descriptor_p->type == REC_MARKDELETED || record_descriptor_p->type == REC_DELETED_WILL_REUSE)
     {
-      record_descriptor_p->type = REC_HOME;
+      // Having deleted type record until this point is not something that is acceptable. Hopefully it never happens.
+      // Replace someday const_cast with a safe-guard that record type is not deleted. Or don't.
+      // *INDENT-OFF*
+      const_cast<RECDES *> (record_descriptor_p)->type = REC_HOME;
+      // *INDENT-ON*
     }
 
   return SP_SUCCESS;
@@ -1775,7 +1779,7 @@ spage_check_record_for_insert (RECDES * record_descriptor_p)
  *   out_slot_id_p(out): Slot identifier
  */
 int
-spage_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_descriptor_p, PGSLOTID * out_slot_id_p)
+spage_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, const RECDES * record_descriptor_p, PGSLOTID * out_slot_id_p)
 {
   SPAGE_SLOT *slot_p;
   int used_space;
@@ -1807,7 +1811,7 @@ spage_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_descript
  *   out_used_space_p(out): Pointer to int
  */
 STATIC_INLINE int
-spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_descriptor_p,
+spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, const RECDES * record_descriptor_p,
 			    PGSLOTID * out_slot_id_p, void **out_slot_p, int *out_used_space_p)
 {
   SPAGE_SLOT *slot_p;
@@ -1847,7 +1851,7 @@ spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * r
  *   slot_p(in): Pointer to slotted array
  */
 static int
-spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_descriptor_p, void *slot_p)
+spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p, const RECDES * record_descriptor_p, void *slot_p)
 {
   SPAGE_SLOT *tmp_slot_p;
 
@@ -1908,7 +1912,7 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_des
  *       fit on the page, such effect is returned.
  */
 int
-spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, RECDES * record_descriptor_p)
+spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, const RECDES * record_descriptor_p)
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p;
@@ -1968,7 +1972,8 @@ spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, REC
  *       Otherwise, the slots will be moved.
  */
 int
-spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, RECDES * record_descriptor_p)
+spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
+			   const RECDES * record_descriptor_p)
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p;
@@ -2560,7 +2565,7 @@ spage_update_record_after_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPA
  * Note: This function do not update the type of the record. If it is changed, it must be handled by the caller
  */
 int
-spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, RECDES * record_descriptor_p)
+spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, const RECDES * record_descriptor_p)
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p;

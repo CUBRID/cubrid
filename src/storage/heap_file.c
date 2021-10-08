@@ -907,9 +907,12 @@ static MVCC_SATISFIES_VACUUM_RESULT heap_rv_check_satisfies_vacuum_on_undo (THRE
 static void heap_rv_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, PAGE_PTR pgptr, PGLENGTH offset,
 				       int rv_length, const char *rv_data);
 static int heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid,
-						 const RECDES & peek_recdes, MVCC_REC_HEADER & rec_header
-						 int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, RECDES *),
+						 const RECDES & peek_recdes, MVCC_REC_HEADER & rec_header,
+						 int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, const RECDES *),
 						 LOG_RCVINDEX rcvindex);
+static int heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
+					      int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, const RECDES *),
+					      LOG_RCVINDEX rcvindex, bool skip_home_rec);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -16239,7 +16242,7 @@ heap_rv_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, PAGE_
 static int
 heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid,
 				      const RECDES & peek_recdes, MVCC_REC_HEADER & rec_header,
-				      int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, RECDES *),
+				      int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, const RECDES *),
 				      LOG_RCVINDEX rcvindex)
 {
   // *INDENT-OFF*
@@ -16288,7 +16291,7 @@ heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, P
 // version links have to be vacuumed.
 static int
 heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
-				   int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, RECDES *),
+				   int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, const RECDES *),
 				   LOG_RCVINDEX rcvindex, bool skip_home_rec)
 {
   assert (rcv != NULL);
