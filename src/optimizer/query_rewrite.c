@@ -1307,6 +1307,16 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   bool copy_arg2;
   PT_NODE *dt1, *dt2;
 
+  /* check whether the function has already been called. */
+  if (node->flag.do_reduce_equality_terms)
+    {
+      return;
+    }
+  else
+    {
+      node->flag.do_reduce_equality_terms = true;
+    }
+
   /* init */
   orgp = wherep;
   accumulator = NULL;
@@ -6766,7 +6776,6 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
   PT_NODE **orderby_for_p;
   PT_NODE **show_argp;
   bool call_auto_parameterize = false;
-  bool *is_first_select = (bool *) arg;
 
   dummy = NULL;
   wherep = havingp = startwithp = connectbyp = aftercbfilterp = &dummy;
@@ -7135,15 +7144,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	       *      ==> select ... (..) a, (select ... from table ) b where b.col1 = 1 ...
 	       * Applies only to SELECT. In other cases, apply later if necessary.
 	       */
-	      if (*is_first_select)
-		{
-		  parser_walk_tree (parser, node, NULL, NULL, qo_reduce_equality_terms_post, NULL);
-		  *is_first_select = false;
-		}
-	      else
-		{
-		  /* do noting */
-		}
+	       parser_walk_tree (parser, node, NULL, NULL, qo_reduce_equality_terms_post, NULL);
 	    }
 	  else
 	    {
@@ -7926,6 +7927,5 @@ qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
 PT_NODE *
 mq_optimize (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  bool is_first_select = true;
-  return parser_walk_tree (parser, statement, qo_optimize_queries, &is_first_select, qo_optimize_queries_post, NULL);
+  return parser_walk_tree (parser, statement, qo_optimize_queries, NULL, qo_optimize_queries_post, NULL);
 }
