@@ -318,8 +318,7 @@ namespace cubmethod
     if (nbytes != PACKET_SIZE)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	error = er_errid ();
-	return error;
+	return ER_SP_NETWORK_ERROR;
       }
 #endif
     return error;
@@ -401,6 +400,11 @@ namespace cubmethod
 	    {
 	      /* not found, new cursor is created */
 	      cursor = m_cursor_map[qid] = new query_cursor (m_group->get_thread_entry(), qid);
+	      if (cursor == nullptr)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		}
 	    }
 	  else
 	    {
@@ -409,6 +413,7 @@ namespace cubmethod
 	      cursor->close ();
 	      cursor->reset (qid);
 	    }
+
 	  cursor->open ();
 	}
 
