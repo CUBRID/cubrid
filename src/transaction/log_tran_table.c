@@ -4192,9 +4192,9 @@ logtb_rv_read_only_map_undo_tdes (THREAD_ENTRY * thread_p, const std::function <
   /* Check system worker transactions. */
   // *INDENT-OFF*
   log_system_tdes::map_all_tdes (map_func);
+  // *INDENT-ON*
 
   TR_TABLE_CS_EXIT (thread_p);
-  // *INDENT-ON*
 }
 
 /*
