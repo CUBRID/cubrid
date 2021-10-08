@@ -1112,7 +1112,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      char schema_name[schema_name_len];
 	      memset(schema_name, 0, schema_name_len);
 
-	      printf (schema_name, "%s.%s", user_name, argument);
+	      sprintf (schema_name, "%s.%s", user_name, argument);
 	      csql_help_schema (schema_name);
             }
           else
