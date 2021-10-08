@@ -7144,7 +7144,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	       *      ==> select ... (..) a, (select ... from table ) b where b.col1 = 1 ...
 	       * Applies only to SELECT. In other cases, apply later if necessary.
 	       */
-	       parser_walk_tree (parser, node, NULL, NULL, qo_reduce_equality_terms_post, NULL);
+	      parser_walk_tree (parser, node, NULL, NULL, qo_reduce_equality_terms_post, NULL);
 	    }
 	  else
 	    {
