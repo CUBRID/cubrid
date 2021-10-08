@@ -183,7 +183,7 @@ void finalize_server_type ()
 
 bool is_active_transaction_server ()
 {
-  return is_transaction_server() && g_transaction_server_type == transaction_server_type::ACTIVE;
+  return is_transaction_server () && g_transaction_server_type == transaction_server_type::ACTIVE;
 }
 
 bool is_page_server ()
@@ -193,7 +193,7 @@ bool is_page_server ()
 
 bool is_passive_transaction_server ()
 {
-  return is_transaction_server() && g_transaction_server_type == transaction_server_type::PASSIVE;
+  return is_transaction_server () && g_transaction_server_type == transaction_server_type::PASSIVE;
 }
 
 bool is_passive_server ()

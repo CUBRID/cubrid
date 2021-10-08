@@ -21,9 +21,9 @@
 
 #include "server_type_enum.hpp"
 
-bool is_active_transaction_server();
+bool is_active_transaction_server ();
 bool is_page_server ();
-bool is_passive_transaction_server();
+bool is_passive_transaction_server ();
 bool is_passive_server ();
 bool is_transaction_server ();
 bool is_tran_server_with_remote_storage ();
