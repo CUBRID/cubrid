@@ -10349,6 +10349,8 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	{
 	  cdc_pause_producer ();
 	}
+
+      LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
     }
 
   cdc_Gl.conn.fd = thread_p->conn_entry->fd;

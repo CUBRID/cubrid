@@ -10963,12 +10963,8 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  tmp->log_info = log_info_entry.log_info;
 	  LSA_COPY (&tmp->next_lsa, &process_lsa);
 
-	  pthread_mutex_lock (&cdc_Gl.queue_consume_lock);
-
 	  if (cdc_Gl.is_queue_reinitialized)
 	    {
-	      pthread_mutex_unlock (&cdc_Gl.queue_consume_lock);
-
 	      free_and_init (tmp->log_info);
 	      free_and_init (tmp);
 
@@ -10983,8 +10979,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  cdc_Gl.producer.produced_queue_size += tmp->length;
 
 	  LSA_COPY (&cdc_Gl.last_loginfo_queue_lsa, &cur_log_rec_lsa);
-
-	  pthread_mutex_unlock (&cdc_Gl.queue_consume_lock);
 
 	  cdc_log ("cdc_loginfo_producer_execute : log info is produced on LOG_LSA (%lld | %d)",
 		   LSA_AS_ARGS (&process_lsa));
@@ -13604,7 +13598,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       while (LSA_LE (&next_consume_lsa, start_lsa))
 	{
 	  cdc_Gl.loginfo_queue->consume (consume);
-	  cdc_Gl.loginfo_queue_size += consume->length;
+	  cdc_Gl.consumer.consumed_queue_size += consume->length;
 	  LSA_COPY (&next_consume_lsa, &consume->next_lsa);
 
 	  if (consume->log_info != NULL)
@@ -14087,7 +14081,8 @@ cdc_cleanup ()
 	}
     }
 
-  cdc_Gl.loginfo_queue_size = 0;
+  cdc_Gl.consumer.consumed_queue_size = 0;
+  cdc_Gl.producer.produced_queue_size = 0;
 
   LSA_SET_NULL (&cdc_Gl.first_loginfo_queue_lsa);
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
@@ -14095,13 +14090,27 @@ cdc_cleanup ()
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
 
   /*communication buffer from server to client initialization */
-  cdc_Gl.consumer.log_info_size = 0;
-  cdc_Gl.consumer.num_log_info = 0;
+  cdc_cleanup_consumer ();
+
+  return NO_ERROR;
+}
+
+void
+cdc_cleanup_consumer ()
+{
+  if (cdc_Gl.consumer.log_info_size != 0)
+    {
+      cdc_Gl.consumer.log_info_size = 0;
+      cdc_Gl.consumer.num_log_info = 0;
+
+      if (cdc_Gl.consumer.log_info != NULL)
+	{
+	  free_and_init (cdc_Gl.consumer.log_info);
+	}
+    }
 
   LSA_SET_NULL (&cdc_Gl.consumer.start_lsa);
   LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
-
-  return NO_ERROR;
 }
 
 int
