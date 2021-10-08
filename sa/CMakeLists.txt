@@ -326,7 +326,7 @@ set(JSP_HEADERS
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_scan.cpp
-  ${METHOD_DIR}/method_invoke.cpp
+  ${METHOD_DIR}/method_invoke_builtin.cpp
   ${METHOD_DIR}/method_invoke_java.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp

@@ -18,3 +18,62 @@
 
 #include "method_invoke.hpp"
 
+#include <algorithm>
+
+#include "method_struct_invoke.hpp"
+#include "method_invoke_group.hpp"
+#include "packer.hpp"
+
+#if defined (SERVER_MODE)
+#include "method_connection.hpp"
+#include "method_struct_query.hpp"
+#endif
+
+namespace cubmethod
+{
+  method_invoke_builtin::method_invoke_builtin (method_invoke_group *group, method_sig_node *method_sig)
+    : method_invoke (group, method_sig)
+  {
+    //
+  }
+
+  int method_invoke_builtin::invoke (cubthread::entry *thread_p, std::vector <DB_VALUE> &arg_base)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    cubmethod::header header (METHOD_REQUEST_INVOKE /* default */, m_group->get_id());
+    cubmethod::invoke_builtin arg (m_method_sig);
+    error = method_send_data_to_client (thread_p, header, arg);
+#endif
+    return error;
+  }
+
+  int
+  method_invoke_builtin::get_return (cubthread::entry *thread_p, std::vector <DB_VALUE> &arg_base, DB_VALUE &result)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    db_value_clear (&result);
+
+    auto get_method_result = [&] (cubmem::block & b)
+    {
+      int e = NO_ERROR;
+      packing_unpacker unpacker (b.ptr, (size_t) b.dim);
+      int status;
+      unpacker.unpack_int (status);
+      if (status == METHOD_SUCCESS)
+	{
+	  unpacker.unpack_db_value (result);
+	}
+      else
+	{
+	  unpacker.unpack_int (e);	/* er_errid */
+	}
+      return e;
+    };
+
+    error = xs_receive (thread_p, get_method_result);
+#endif
+    return error;
+  }
+} // namespace cubmethod
