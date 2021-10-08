@@ -901,6 +901,8 @@ typedef struct cdc_consumer
 
 typedef struct cdc_global
 {
+  css_conn_entry conn;
+
   CDC_PRODUCER producer;
   CDC_CONSUMER consumer;
 
@@ -910,12 +912,9 @@ typedef struct cdc_global
 
   LOG_LSA first_loginfo_queue_lsa;
   LOG_LSA last_loginfo_queue_lsa;
-  uint64_t loginfo_queue_size;
 
   bool is_queue_reinitialized;
 
-  pthread_mutex_t queue_consume_lock;
-  pthread_cond_t queue_consume_cond;
 } CDC_GLOBAL;
 
 /* will be moved to new file for CDC */
