@@ -177,4 +177,19 @@ namespace cubmethod
 
     return scan_code;
   }
+
+  std::vector<DB_VALUE>
+  query_cursor::get_current_tuple ()
+  {
+    return m_current_tuple;
+  }
+
+  void clear ();
+
+  int
+  query_cursor::get_current_index ()
+  {
+    return m_current_row_index;
+  }
+
 }

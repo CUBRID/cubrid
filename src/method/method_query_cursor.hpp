@@ -57,18 +57,10 @@ namespace cubmethod
       SCAN_CODE prev_row ();
       SCAN_CODE next_row ();
 
-      std::vector<DB_VALUE> get_current_tuple ()
-      {
-	return m_current_tuple;
-      }
-
       void clear ();
 
-      int get_current_index ()
-      {
-	return m_current_row_index;
-      }
-
+      int get_current_index ();
+      std::vector<DB_VALUE> get_current_tuple ();
       int get_tuple_value (int index, DB_VALUE &result);
       int get_current_oid (DB_VALUE &value);
 
