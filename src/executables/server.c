@@ -348,7 +348,7 @@ argument_handler (int argc, char **argv)
           // *INDENT-OFF*
           else
             {
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 0);	// error that the type is not valid
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 1, optarg);	// error that the type is not valid
               return ER_INVALID_SERVER_TYPE_ARGUMENT;
             }
           break;
@@ -422,6 +422,8 @@ main (int argc, char **argv)
     ret_val = argument_handler (argc, argv);
     if (ret_val != NO_ERROR)
       {
+        PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
+        fflush (stderr);
         return ret_val;
       }
 
