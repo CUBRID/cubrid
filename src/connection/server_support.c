@@ -1390,6 +1390,11 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 	  css_setup_server_loop ();
 	}
     }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_NO_MASTER, 0);
+      return ER_NET_NO_MASTER;
+    }
 
 shutdown:
   /*
