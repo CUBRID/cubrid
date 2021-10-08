@@ -4618,17 +4618,18 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
   /* Print undo recovery information */
   // *INDENT-OFF*
-  cnt_trans_to_undo = logtb_get_number_assigned_tran_indices();
-  cnt_trans_to_undo += log_system_tdes::tdes_count();
+  logtb_rv_read_only_map_undo_tdes (thread_p, [&cnt_trans_to_undo] (const LOG_TDES & tdes)
+    {
+      cnt_trans_to_undo++;
+    });
 
-  logtb_find_smallest_lsa (thread_p, &min_lsa);
-  auto min_lsa_func =[&min_lsa] (LOG_TDES & tdes) {
-    if (!LSA_ISNULL (&tdes.head_lsa) && (min_lsa.is_null () || LSA_LT (&tdes.head_lsa, &min_lsa)))
+  logtb_rv_read_only_map_undo_tdes (thread_p, [&min_lsa] (const LOG_TDES & tdes) {
+    assert (!tdes.head_lsa.is_null());
+    if (min_lsa.is_null () || LSA_LT (&tdes.head_lsa, &min_lsa))
       {
         min_lsa = tdes.head_lsa;
       }
-  };
-  log_system_tdes::map_all_tdes (min_lsa_func);
+  });
   // *INDENT-ON*
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_UNDO_STARTED, 2,

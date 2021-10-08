@@ -246,12 +246,6 @@ log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
     }
 }
 
-size_t
-log_system_tdes::tdes_count ()
-{
-  return systb_System_tdes.size();
-}
-
 void
 log_system_tdes::map_all_tdes (const map_func &func)
 {
