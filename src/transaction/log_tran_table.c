@@ -1059,9 +1059,8 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
   if (logtb_is_system_worker_tranid (trid))
     {
       // *INDENT-OFF*
-      tdes = log_system_tdes::rv_get_or_alloc_tdes (trid);
+      tdes = log_system_tdes::rv_get_or_alloc_tdes (trid, *log_lsa);
       // *INDENT-ON*
-      LSA_COPY (&tdes->head_lsa, log_lsa);
       return tdes;
     }
 
