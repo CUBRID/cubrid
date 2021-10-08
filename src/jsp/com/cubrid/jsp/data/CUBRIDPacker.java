@@ -59,7 +59,7 @@ public class CUBRIDPacker {
     }
 
     public void packInt(int value) {
-        ensureSpace (Integer.BYTES);
+        ensureSpace(Integer.BYTES);
         align(DataUtilities.INT_ALIGNMENT);
         buffer.putInt(value);
     }
@@ -98,13 +98,10 @@ public class CUBRIDPacker {
         packCString(value.getBytes(charset));
     }
 
-    private static final int OID_SIZE = Integer.BYTES + Short.BYTES * 2;
-    public void packOID (SOID oid) {
-        align(DataUtilities.INT_ALIGNMENT);
-        ensureSpace (OID_SIZE);
-        buffer.putInt(oid.pageId);
-        buffer.putShort(oid.slotId);
-        buffer.putShort(oid.volId);
+    public void packOID(SOID oid) {
+        packInt(oid.pageId);
+        packShort(oid.slotId);
+        packShort(oid.volId);
     }
 
     public void packCString(byte[] value) {
@@ -223,7 +220,7 @@ public class CUBRIDPacker {
         int currentPosition = buffer.position();
         int newPosition = DataUtilities.alignedPosition(buffer, size);
 
-        ensureSpace (newPosition - currentPosition);
+        ensureSpace(newPosition - currentPosition);
         if (newPosition - currentPosition > 0) {
             buffer.position(newPosition);
         }

@@ -41,4 +41,16 @@ public class SOID {
         slotId = unpacker.unpackShort();
         volId = unpacker.unpackShort();
     }
+
+    public SOID(int pid, short sid, short vid) {
+        pageId = pid;
+        slotId = sid;
+        volId = vid;
+    }
+
+    public SOID(byte[] boid) {
+        pageId = DataUtilities.bytes2int(boid, 0);
+        slotId = DataUtilities.bytes2short(boid, 4);
+        volId = DataUtilities.bytes2short(boid, 6);
+    }
 }

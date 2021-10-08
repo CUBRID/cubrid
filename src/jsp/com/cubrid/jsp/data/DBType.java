@@ -99,7 +99,7 @@ public class DBType {
                 return DB_TIMESTAMP;
             }
             return DB_DATETIME;
-        } else if (value instanceof CUBRIDOID || value instanceof SOID) return DB_OBJECT;
+        } else if (value instanceof CUBRIDOID) return DB_OBJECT;
         else if (value instanceof CUBRIDBlob) return DB_BLOB;
         else if (value instanceof CUBRIDClob) return DB_CLOB;
         else if (value instanceof Object[]) return DB_SEQUENCE;

@@ -206,21 +206,8 @@ public class CUBRIDUnpacker {
             case DBType.DB_OID:
             case DBType.DB_OBJECT:
                 {
-                    int page = unpackInt();
-                    short slot = unpackShort();
-                    short vol = unpackShort();
-
-                    byte[] bOID = new byte[DataUtilities.OID_BYTE_SIZE];
-                    bOID[0] = ((byte) ((page >>> 24) & 0xFF));
-                    bOID[1] = ((byte) ((page >>> 16) & 0xFF));
-                    bOID[2] = ((byte) ((page >>> 8) & 0xFF));
-                    bOID[3] = ((byte) ((page >>> 0) & 0xFF));
-                    bOID[4] = ((byte) ((slot >>> 8) & 0xFF));
-                    bOID[5] = ((byte) ((slot >>> 0) & 0xFF));
-                    bOID[6] = ((byte) ((vol >>> 8) & 0xFF));
-                    bOID[7] = ((byte) ((vol >>> 0) & 0xFF));
-
-                    arg = new OidValue(bOID);
+                    SOID soid = new SOID(this);
+                    arg = new OidValue(soid);
                 }
                 break;
             case DBType.DB_NULL:
@@ -313,21 +300,8 @@ public class CUBRIDUnpacker {
                 break;
             case DBType.DB_OBJECT:
                 {
-                    int page = unpackInt();
-                    short slot = unpackShort();
-                    short vol = unpackShort();
-
-                    byte[] bOID = new byte[DataUtilities.OID_BYTE_SIZE];
-                    bOID[0] = ((byte) ((page >>> 24) & 0xFF));
-                    bOID[1] = ((byte) ((page >>> 16) & 0xFF));
-                    bOID[2] = ((byte) ((page >>> 8) & 0xFF));
-                    bOID[3] = ((byte) ((page >>> 0) & 0xFF));
-                    bOID[4] = ((byte) ((slot >>> 8) & 0xFF));
-                    bOID[5] = ((byte) ((slot >>> 0) & 0xFF));
-                    bOID[6] = ((byte) ((vol >>> 8) & 0xFF));
-                    bOID[7] = ((byte) ((vol >>> 0) & 0xFF));
-
-                    arg = new OidValue(bOID, mode, dbType);
+                    SOID oid = new SOID(this);
+                    arg = new OidValue(oid, mode, dbType);
                 }
                 break;
             case DBType.DB_NULL:
