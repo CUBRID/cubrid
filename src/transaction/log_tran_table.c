@@ -4169,7 +4169,6 @@ logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p)
 void
 logtb_rv_read_only_map_undo_tdes (THREAD_ENTRY * thread_p, const std::function < void (const log_tdes &) > map_func)
 {
-  // *INDENT-OFF*
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
 
@@ -4189,6 +4188,7 @@ logtb_rv_read_only_map_undo_tdes (THREAD_ENTRY * thread_p, const std::function <
 	}
     }
   /* Check system worker transactions. */
+  // *INDENT-OFF*
   log_system_tdes::map_all_tdes (map_func);
 
   TR_TABLE_CS_EXIT (thread_p);
