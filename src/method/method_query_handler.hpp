@@ -27,6 +27,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 #include "dbtype.h"
 #include "mem_block.hpp"
@@ -93,6 +94,7 @@ namespace cubmethod
       {
 	m_is_prepared = false;
 	m_use_plan_cache = false;
+	m_is_occupied = false;
       }
       ~query_handler ();
 
@@ -107,12 +109,20 @@ namespace cubmethod
 
       void end_qresult (bool is_self_free);
 
+      void reset (); /* called after 1 iteration on method scan */
+
       /* getter : TODO for statement handler cache */
-      bool is_prepared ();
+      bool is_prepared ()
+      {
+	return m_is_prepared;
+      }
       bool get_query_count ();
       bool has_result_set ();
 
       std::string get_sql_stmt ();
+      bool get_is_occupied ();
+      void set_is_occupied (bool flag);
+      bool get_prepare_info (prepare_info &info);
 
     protected:
       /* prepare */
@@ -171,6 +181,9 @@ namespace cubmethod
       std::vector<query_result> m_q_result;
       query_result *m_current_result;
       int m_current_result_index; // It has a value of -1 when no queries have been executed
+
+      /* statement handler cache */
+      bool m_is_occupied; // Is occupied by CUBRIDServerSideStatement
 
       bool m_is_updatable; // TODO: not implemented yet
       bool m_query_info_flag; // TODO: not implemented yet

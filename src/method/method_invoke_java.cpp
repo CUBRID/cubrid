@@ -114,6 +114,7 @@ namespace cubmethod
 	  }
       }
     while (error_code == NO_ERROR && start_code == SP_CODE_INTERNAL_JDBC);
+
 #endif
     return error_code;
   }

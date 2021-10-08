@@ -86,7 +86,7 @@ namespace cubmethod
 #endif
 
       void set_server_info (int rc, char *host);
-      void free_query_handle_all ();
+      void free_query_handle_all (bool is_free);
 
     private:
       int check_object (DB_OBJECT *obj);
@@ -94,7 +94,11 @@ namespace cubmethod
       /* ported from cas_handle */
       int new_query_handler ();
       query_handler *find_query_handler (int id);
-      void free_query_handle (int id);
+      void free_query_handle (int id, bool is_free);
+
+      /* statement handler cache */
+      std::multimap <std::string, int> m_query_handler_map;
+      int find_query_handler_cache (std::string &sql);
 
       int send_packable_object_to_server (cubpacking::packable_object &object);
 

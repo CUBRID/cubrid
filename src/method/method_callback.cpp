@@ -89,22 +89,41 @@ namespace cubmethod
     unpacker.unpack_string (sql);
     unpacker.unpack_int (flag);
 
-    int handle_id = new_query_handler ();
+    /* find in m_query_handler_map */
+    query_handler *handler = nullptr;
+    for (auto it = m_query_handler_map.lower_bound(sql); it != m_query_handler_map.upper_bound(sql); it++) 
+    {
+        handler = find_query_handler (it->second);
+        if (handler != nullptr && handler->get_is_occupied() == false) {
+          prepare_info info;
+          handler->get_prepare_info (info);
+          handler->set_is_occupied (true);
+          info.handle_id = it->second;
+          int error = send_packable_object_to_server (info);
+          return error;
+        }
+    }
+
+    /* not found in statement handler */
+    int handle_id = new_query_handler (); /* new handler */
     if (handle_id < 0)
       {
-	// TODO
-	// error handling
+  // TODO
+  // error handling
       }
 
-    query_handler *handler = find_query_handler (handle_id);
+    handler = find_query_handler (handle_id);
     if (handler == nullptr)
       {
-	// TODO
-	// error handling
+  // TODO
+  // error handling
       }
 
     prepare_info info = handler->prepare (sql, flag);
     info.handle_id = handle_id;
+    
+    // add to statement handler cache
+    m_query_handler_map.emplace (sql, handle_id);
 
     int error = send_packable_object_to_server (info);
     return error;
@@ -503,7 +522,7 @@ namespace cubmethod
   }
 
   void
-  callback_handler::free_query_handle (int id)
+  callback_handler::free_query_handle (int id, bool is_free)
   {
     if (id < 0 || id >= (int) m_query_handlers.size())
       {
@@ -512,17 +531,24 @@ namespace cubmethod
 
     if (m_query_handlers[id] != nullptr)
       {
+  if (is_free)
+  {
 	delete m_query_handlers[id];
-	m_query_handlers[id] = nullptr;
+  m_query_handlers[id] = nullptr;
+  }
+  else
+  {
+    m_query_handlers[id]->reset ();
+  }
       }
   }
 
   void
-  callback_handler::free_query_handle_all ()
+  callback_handler::free_query_handle_all (bool is_free)
   {
     for (int i = 0; i < (int) m_query_handlers.size(); i++)
       {
-	free_query_handle (i);
+	free_query_handle (i, is_free);
       }
   }
 }

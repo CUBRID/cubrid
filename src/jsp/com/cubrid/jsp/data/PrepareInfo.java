@@ -14,7 +14,7 @@ public class PrepareInfo {
         numParameters = unpacker.unpackInt();
 
         int columnSize = unpacker.unpackInt();
-        columnInfos = new ArrayList<ColumnInfo>(columnSize);
+        columnInfos = new ArrayList<ColumnInfo>();
         if (columnSize > 0)
         {
             for(int i = 0; i < columnSize; i++)

@@ -12,7 +12,7 @@ public class ExecuteInfo {
     public ExecuteInfo (CUBRIDUnpacker unpacker) {
         numAffected = unpacker.unpackInt();
         int numQueryResult = unpacker.unpackInt();
-        qresultInfos = new ArrayList<QueryResultInfo>(numQueryResult);
+        qresultInfos = new ArrayList<QueryResultInfo>();
         if (numQueryResult > 0)
         {
             for(int i = 0; i < numQueryResult; i++)
@@ -23,7 +23,7 @@ public class ExecuteInfo {
         }
 
         int columnSize = unpacker.unpackInt();
-        columnInfos = new ArrayList<ColumnInfo>(columnSize);
+        columnInfos = new ArrayList<ColumnInfo>();
         if (columnSize > 0)
         {
             for(int i = 0; i < columnSize; i++)

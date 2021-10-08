@@ -7,7 +7,6 @@ import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorManager;
 import java.io.UnsupportedEncodingException;
 import java.sql.SQLException;
-
 public class SUBindParameter extends SUParameter {
     private static final byte PARAM_MODE_UNKNOWN = 0;
     private static final byte PARAM_MODE_IN = 1;

@@ -77,7 +77,7 @@ static int method_end (packing_unpacker &unpacker, method_server_conn_info &conn
 
 void method_reset ()
 {
-  handler.free_query_handle_all ();
+  handler.free_query_handle_all (false);
 }
 
 /*

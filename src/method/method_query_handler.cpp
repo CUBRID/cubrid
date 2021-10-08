@@ -90,6 +90,12 @@ namespace cubmethod
     close_and_free_session ();
   }
 
+  /* called after 1 iteration on method scan */
+  void query_handler::reset () {
+    end_qresult (false);
+	m_is_occupied = false;
+  }
+
   next_result_info
   query_handler::next_result (int flag)
   {
@@ -111,6 +117,27 @@ namespace cubmethod
     copied = false;
     include_oid = false;
   }
+
+	bool query_handler::get_is_occupied () {
+	return m_is_occupied;
+	}
+
+	void query_handler::set_is_occupied (bool flag) {
+		m_is_occupied = flag;
+	}
+
+	bool query_handler::get_prepare_info (prepare_info& info) 
+	{
+		if (is_prepared())
+		{
+		query_result &qresult = m_q_result[0]; /* only one result */
+		info.stmt_type = qresult.stmt_type;
+		info.num_markers = m_num_markers;
+		int error = set_prepare_column_list_info (info.column_infos, qresult);
+		return true;
+		}
+		return false;
+	}
 
   prepare_info
   query_handler::prepare (std::string sql, int flag)
@@ -137,6 +164,8 @@ namespace cubmethod
 	info.stmt_type = qresult.stmt_type;
 	info.num_markers = m_num_markers;
 	error = set_prepare_column_list_info (info.column_infos, qresult);
+
+	m_is_occupied = true;
       }
     else
       {
@@ -556,9 +585,9 @@ namespace cubmethod
     if (is_self_free)
       {
 	m_q_result.clear ();
+	m_current_result_index = -1;
       }
 
-    m_current_result_index = -1;
     m_current_result = NULL;
     m_has_result_set = false;
   }
