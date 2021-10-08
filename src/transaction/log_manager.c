@@ -13418,7 +13418,7 @@ cdc_daemons_init ()
 void
 cdc_daemons_destroy ()
 {
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0 || cdc_Loginfo_producer_daemon == NULL)
     {
       return;
     }
