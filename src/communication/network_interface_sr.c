@@ -10331,21 +10331,23 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
-  assert (thread_p->conn_entry->fd != cdc_Gl.conn.fd);
-
-  if (cdc_Gl.conn.fd != -1 && thread_p->conn_entry->fd != cdc_Gl.conn.fd)
+  /* scdc_start_session more than once without scdc_end_session */
+  if (cdc_Gl.conn.fd != -1)
     {
-      if (cdc_check_client_connection ())
+      if (thread_p->conn_entry->fd != cdc_Gl.conn.fd)
 	{
-	  error_code = ER_CDC_NOT_AVAILABLE;	/* multi connection */
-	  goto error;
-	}
-      else
-	{
-	  if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	  /* check if existing connection is alive */
+	  if (cdc_check_client_connection ())
 	    {
-	      cdc_pause_producer ();
+	      error_code = ER_CDC_NOT_AVAILABLE;
+	      goto error;
 	    }
+	}
+
+      /* if existing session is dead, then pause loginfo producer thread (cdc). */
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
 	}
     }
 
