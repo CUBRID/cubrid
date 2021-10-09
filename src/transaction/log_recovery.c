@@ -3099,7 +3099,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_diff_rec;
   bool is_mvcc_op = false;
-  TSC_TICKS info_logging_start_time;
+  TSC_TICKS info_logging_start_time, info_logging_check_time;
   TSCTIMEVAL info_logging_elapsed_time;
   int info_logging_interval_in_secs = 0;
 
@@ -3148,7 +3148,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
     {
       info_logging_interval_in_secs = 5;
     }
-  tsc_start_time_usec (&info_logging_start_time);
+  if (info_logging_interval_in_secs > 0)
+    {
+      tsc_start_time_usec (&info_logging_start_time);
+      tsc_start_time_usec (&info_logging_check_time);
+    }
 
   while (!LSA_ISNULL (&lsa))
     {
@@ -3168,12 +3172,29 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    }
 	}
 
+      usleep (400000);
+      /* PRM_ID_DETAILED_RECOVERY_LOGGING_INTERVAL > 0 */
       if (info_logging_interval_in_secs > 0)
 	{
-	  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
+	  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_check_time);
 	  if (info_logging_elapsed_time.tv_sec >= info_logging_interval_in_secs)
 	    {
-	      tsc_start_time_usec (&info_logging_start_time);
+	      UINT64 done_page_cnt = log_lsa.pageid - start_redolsa->pageid;
+	      UINT64 total_page_cnt = end_redo_lsa->pageid - start_redolsa->pageid;
+	      if (done_page_cnt > 0 && total_page_cnt > 0)
+		{
+		  double elapsed_time;
+		  double progress = double (done_page_cnt) / (total_page_cnt);
+
+		  tsc_start_time_usec (&info_logging_check_time);
+		  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
+
+		  elapsed_time = info_logging_elapsed_time.tv_sec + (info_logging_elapsed_time.tv_usec / 1000000.0);
+
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_REDO_PROGRESS, 5,
+			  done_page_cnt, total_page_cnt, progress * 100, elapsed_time,
+			  (elapsed_time / done_page_cnt) * (total_page_cnt - done_page_cnt));
+		}
 	    }
 	}
 
@@ -4588,10 +4609,11 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   LOG_ZIP *undo_unzip_ptr = NULL;
   int cnt_trans_to_undo = 0;
   LOG_LSA min_lsa = NULL_LSA;
+  LOG_LSA max_lsa = NULL_LSA;
   bool is_mvcc_op;
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
-  TSC_TICKS info_logging_start_time;
+  TSC_TICKS info_logging_start_time, info_logging_check_time;
   TSCTIMEVAL info_logging_elapsed_time;
   int info_logging_interval_in_secs = 0;
 
@@ -4637,6 +4659,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
   /* Find the largest LSA to undo */
   logtb_rv_read_only_map_undo_tdes (thread_p, max_undo_lsa_func);
+  max_lsa = max_undo_lsa;
 
   /* Print undo recovery information */
   // *INDENT-OFF*
@@ -4671,7 +4694,11 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
     {
       info_logging_interval_in_secs = 5;
     }
-  tsc_start_time_usec (&info_logging_start_time);
+  if (info_logging_interval_in_secs > 0)
+    {
+      tsc_start_time_usec (&info_logging_start_time);
+      tsc_start_time_usec (&info_logging_check_time);
+    }
 
   while (!LSA_ISNULL (&max_undo_lsa))
     {
@@ -4685,13 +4712,30 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  return;
 	}
 
+      usleep (400000);
+      /* PRM_ID_DETAILED_RECOVERY_LOGGING_INTERVAL != 0 */
       if (info_logging_interval_in_secs > 0)
 	{
-	  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
-	  if (info_logging_elapsed_time.tv_sec >= info_logging_interval_in_secs)
-	    {
-	      tsc_start_time_usec (&info_logging_start_time);
-	    }
+	  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_check_time);
+	  //if (info_logging_elapsed_time.tv_sec >= info_logging_interval_in_secs)
+	  {
+	    UINT64 done_page_cnt = max_lsa.pageid - log_lsa.pageid;
+	    UINT64 total_page_cnt = max_lsa.pageid - min_lsa.pageid;
+	    if (done_page_cnt > 0 && total_page_cnt > 0)
+	      {
+		double elapsed_time;
+		double progress = double (done_page_cnt) / (total_page_cnt);
+
+		tsc_start_time_usec (&info_logging_check_time);
+		tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
+
+		elapsed_time = info_logging_elapsed_time.tv_sec + (info_logging_elapsed_time.tv_usec / 1000000.0);
+
+		er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_UNDO_PROGRESS, 5,
+			done_page_cnt, total_page_cnt, progress * 100, elapsed_time,
+			(elapsed_time / done_page_cnt) * (total_page_cnt - done_page_cnt));
+	      }
+	  }
 	}
 
       /* Check all log records in this phase */
