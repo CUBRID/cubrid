@@ -838,7 +838,7 @@ static void heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, 
 static int heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
-static int heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, RECDES * recdes_p);
+static int heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, const RECDES * recdes_p);
 static void heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
 				      RECDES * old_recdes_p, RECDES * new_recdes_p, LOG_RCVINDEX rcvindex);
 
@@ -16240,7 +16240,7 @@ heap_rv_undo_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 /*
  * heap_rv_redo_update () - Redo the update of an object
  *   return: int
- *   rcv(in): Recovrery structure
+ *   rcv(in): Recovery structure
  */
 int
 heap_rv_redo_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
@@ -22437,7 +22437,7 @@ exit:
  *   returns: error code or NO_ERROR
  */
 static int
-heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, RECDES * recdes_p)
+heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, const RECDES * recdes_p)
 {
   int scancode;
   INT16 old_record_type;
