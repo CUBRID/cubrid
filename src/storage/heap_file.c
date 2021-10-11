@@ -16183,16 +16183,21 @@ heap_rv_redo_mark_reusable_slot (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
   return NO_ERROR;
 }
 
-// !! careful handling recdes argument; data must be copied before making any changes
 static RECDES
 heap_rcv_to_recdes (const LOG_RCV & rcv)
 {
+  // !! careful handling the returned recdes.
+  //    - record data is not aligned, so reading from it may fail.
+  //    - record data points directly into log and should not be modified.
+  //      unfortunately recdes does not offer an option to keep data const.
+  //
+
   assert (rcv.data != NULL);
   assert ((size_t) rcv.length > sizeof (INT16));
 
   RECDES recdes;
   recdes.type = *(INT16 *) rcv.data;
-  recdes.data = (char *) rcv.data + sizeof (INT16);	// do not change this recdes!
+  recdes.data = (char *) rcv.data + sizeof (INT16);	// promise not to make any changes!
   recdes.area_size = 0;
   recdes.length = rcv.length - (int) sizeof (INT16);
   return recdes;
@@ -16201,112 +16206,71 @@ heap_rcv_to_recdes (const LOG_RCV & rcv)
 static PGSLOTID
 heap_rcv_to_slotid (const LOG_RCV & rcv)
 {
+  // Recovery offset field may decorate the slotid with some flags. Return just the slotid.
   PGSLOTID slotid = rcv.offset;
   return slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
 }
 
-static MVCC_SATISFIES_VACUUM_RESULT
-heap_rv_check_satisfies_vacuum_on_undo (THREAD_ENTRY * thread_p, const MVCC_REC_HEADER & rec_header)
-{
-  if (log_is_in_crash_recovery ())
-    {
-      /* always clear flags when recovering from crash - all the objects are visible anyway */
-      if (MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_INSID))
-	{
-	  /* Note: PREV_VERSION flag should be set only if VALID_INSID flag is set  */
-	  return VACUUM_RECORD_DELETE_INSID_PREV_VER;
-	}
-      else
-	{
-	  assert (!MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION));
-	  return VACUUM_RECORD_CANNOT_VACUUM;
-	}
-    }
-  else
-    {
-      MVCC_SATISFIES_VACUUM_RESULT can_vacuum =
-	mvcc_satisfies_vacuum (thread_p, &rec_header, log_Gl.mvcc_table.get_global_oldest_visible ());
-      /* it is impossible to restore a record that should be removed by vacuum */
-      assert (can_vacuum != VACUUM_RECORD_REMOVE);
-      return can_vacuum;
-    }
-}
-
 //
-static void
-heap_rv_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, PAGE_PTR pgptr, PGLENGTH offset,
-			   int rv_length, const char *rv_data)
-{
-  log_append_compensate (thread_p, rcvindex, pgbuf_get_vpid_ptr (pgptr), offset, pgptr, rv_length, rv_data,
-			 LOG_FIND_CURRENT_TDES (thread_p));
-}
+// !!!
+// Sometimes undoing delete/update may bring back MVCCID's that should have been vacuum.
+// 
+// How does this happen:
+//    1. A heap record is inserted or updated. The modifier transaction commits and the insert MVCCID becomes
+//       vacuum-able.
+//
+//    2. A second transaction either physically deletes the heap record or it replaces it with a newer version.
+//       In the undo log record of this changes, the saved log record contains the insert MVCCID of the first
+//       transaction.
+//
+//    3. Vacuum process the log record from the first change. It tries to vacuum the MVCCID of first modifier
+//       transaction, but it cannot find it and skips it.
+//
+//    4. The second modifier transaction is aborted and rollbacks the record. It would now restore the heap record
+//       containing the MVCCID that was supposed to be vacuumed. But vacuum already moved on and it would the
+//       MVCCID remains uncleaned. In this case, the transaction doing the rollback becomes responsible of also
+//       cleaning the MVCCID that may have been skipped by the vacuum process.
+//
+// The operations in the second step that may cause this situation is always a heap update operation. There may be
+// several undo scenarios based on the type of the record before and after update:
+//
+//    1. Updating a REC_HOME record => heap_rv_undo_update.
+//    2. Updating a REC_NEWHOME without moving it => heap_rv_undo_update.
+//    3. Moving a REC_NEWHOME record during the update. The REC_NEWHOME is physically deleted => heap_rv_undo_delete.
+//    4. Updating an overflow record; header is found in first overflow page => heap_rv_undo_ovf_update.
+//
+// heap_rv_undo_update/heap_rv_undo_delete handling is very similar; they're implemented as
+// heap_rv_undo_with_vacuum_internal.
+//
+// heap_rv_undo_ovf_update is called after the actual update of data and all it does is cleanup MVCC data.
+// 
+// All undo cases require manual handling of compensation logging; normally compensate log records are logged with the
+// undo data of the log record that it compensates. To replicate correctly, the compensation log records must also
+// reflect the MVCC info cleaning.
+//
 
 // *INDENT-OFF*
-// Vacuum the insert ID & previous link from the input record descriptor, apply change in page and log for
-// compensation
 static int
-heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid,
-				      const RECDES & peek_recdes, MVCC_REC_HEADER & rec_header,
-				      std::function<bool(PGSLOTID, const RECDES *)> &apply_fun,
-				      LOG_RCVINDEX rcvindex)
-{
-  /* the undo/redo record was qualified to have its insid and prev version vacuumed;
-   * do this here because it is possible that vacuum have missed it during update/delete operation */
-  assert (MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION));
-
-  // Build a copy recdes that can be modified
-  auto copy_recdes_data_uptr = std::make_unique<char[]> (IO_MAX_PAGE_SIZE);
-  std::memcpy (copy_recdes_data_uptr.get (), peek_recdes.data, peek_recdes.length);
-  RECDES copy_recdes = peek_recdes;
-  copy_recdes.data = copy_recdes_data_uptr.get ();
-	  
-  // Update recdes header
-  const int error_code = or_mvcc_set_header (&copy_recdes, &rec_header);
-  if (error_code != NO_ERROR)
-    {
-      assert_release (false);
-      return error_code;
-    }
-
-  // Update record in page
-  if (!apply_fun (slotid, &copy_recdes))
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
-
-  // Log the change
-  auto rv_data_uptr = std::make_unique<char []> (IO_MAX_PAGE_SIZE);
-  constexpr int RECTYPE_SIZE = (int) sizeof (copy_recdes.type);
-  std::memcpy (rv_data_uptr.get (), &copy_recdes.type, RECTYPE_SIZE);
-  std::memcpy (rv_data_uptr.get () + RECTYPE_SIZE, copy_recdes.data, copy_recdes.length);
-  int rv_length = RECTYPE_SIZE + copy_recdes.length;
-  heap_rv_append_compensate (thread_p, rcvindex, pgptr, slotid, rv_length, rv_data_uptr.get ());
-
-  pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
-
-  return NO_ERROR;
-}
-
-// Sometimes undoing delete new homes or undoing updates (both homes or new homes) may bring back MVCCID's that have
-// been vacuumed. They have to be vacuumed again.
-// heap_rv_undo_with_vacuum_internal is an implementation common to both cases checking if insert MVCCID and previous
-// version links have to be vacuumed.
-static int
-heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
-				   std::function<bool(PGSLOTID, const RECDES *)> &apply_fun,
+heap_rv_undo_with_vacuum_internal (THREAD_ENTRY *thread_p, const LOG_RCV *rcv,
+				   std::function<bool (PGSLOTID, const RECDES *)> &apply_fun,
 				   LOG_RCVINDEX rcvindex, bool skip_home_rec)
 {
+  // Check if record must be vacuumed and:
+  //
+  //  a) If yes, vacuum, apply change with vacuumed heap record and log the change.
+  //  b) If no, apply the change with the logged heap record and log the change.
+  //
+
   assert (rcv != NULL);
 
   const RECDES peek_recdes = heap_rcv_to_recdes (*rcv);
   const PGSLOTID slotid = heap_rcv_to_slotid (*rcv);
   int error_code = NO_ERROR;
 
-  // Pre-condition: only some time of heap records are in danger of resurrecting vacuumed MVCCID's.
+  // Pre-condition: only some type of heap records are in danger of resurrecting vacuumed MVCCID's.
   if ((!skip_home_rec && peek_recdes.type == REC_HOME) || peek_recdes.type == REC_NEWHOME)
     {
-      // Need to check if vacuum may be applied
+      // Need to check if vacuum may be applied; get the record header for MVCC information.
       MVCC_REC_HEADER rec_header;
 
       // To read header, we need an aligned record descriptor data; peek_recdes data is not aligned.
@@ -16344,7 +16308,93 @@ heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
 
   return NO_ERROR;
 }
+
+static int
+heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid,
+				      const RECDES & peek_recdes, MVCC_REC_HEADER & rec_header,
+				      std::function<bool(PGSLOTID, const RECDES *)> &apply_fun,
+				      LOG_RCVINDEX rcvindex)
+{
+  // Remove insert MVCCID & previous link from the input record descriptor, apply the change and then append a
+  // compensate log record with the new heap record.
+  assert (MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION));
+
+  // Build a copy recdes that can be modified
+  auto copy_recdes_data_uptr = std::make_unique<char[]> (IO_MAX_PAGE_SIZE);
+  std::memcpy (copy_recdes_data_uptr.get (), peek_recdes.data, peek_recdes.length);
+  RECDES copy_recdes = peek_recdes;
+  copy_recdes.data = copy_recdes_data_uptr.get ();
+	  
+  // Update recdes header
+  const int error_code = or_mvcc_set_header (&copy_recdes, &rec_header);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      return error_code;
+    }
+
+  // Update record in page
+  if (!apply_fun (slotid, &copy_recdes))
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  // Log the change
+  auto rv_data_uptr = std::make_unique<char []> (IO_MAX_PAGE_SIZE);
+  constexpr int RECTYPE_SIZE = (int) sizeof (copy_recdes.type);
+  std::memcpy (rv_data_uptr.get (), &copy_recdes.type, RECTYPE_SIZE);
+  std::memcpy (rv_data_uptr.get () + RECTYPE_SIZE, copy_recdes.data, copy_recdes.length);
+  int rv_length = RECTYPE_SIZE + copy_recdes.length;
+  heap_rv_append_compensate (thread_p, rcvindex, pgptr, slotid, rv_length, rv_data_uptr.get ());
+
+  pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
+
+  return NO_ERROR;
+}
 // *INDENT-ON*
+
+static MVCC_SATISFIES_VACUUM_RESULT
+heap_rv_check_satisfies_vacuum_on_undo (THREAD_ENTRY * thread_p, const MVCC_REC_HEADER & rec_header)
+{
+  //
+  // Check if the insert MVCCID (and previous version link) may be cleaned during undo.
+  // 
+  //    1. During recovery any MVCCID may be cleaned.
+  //    2. During online transaction rollback, clean only MVCCID's older than global oldest visible MVCCID.
+  //
+  if (log_is_in_crash_recovery ())
+    {
+      /* always clear flags when recovering from crash - all the objects are visible anyway */
+      if (MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_INSID))
+	{
+	  /* Note: PREV_VERSION flag should be set only if VALID_INSID flag is set  */
+	  return VACUUM_RECORD_DELETE_INSID_PREV_VER;
+	}
+      else
+	{
+	  assert (!MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION));
+	  return VACUUM_RECORD_CANNOT_VACUUM;
+	}
+    }
+  else
+    {
+      MVCC_SATISFIES_VACUUM_RESULT can_vacuum =
+	mvcc_satisfies_vacuum (thread_p, &rec_header, log_Gl.mvcc_table.get_global_oldest_visible ());
+      /* it is impossible to restore a record that should be removed by vacuum */
+      assert (can_vacuum != VACUUM_RECORD_REMOVE);
+      return can_vacuum;
+    }
+}
+
+static void
+heap_rv_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, PAGE_PTR pgptr, PGLENGTH offset,
+			   int rv_length, const char *rv_data)
+{
+  // Helper function to append log compensation with fewer arguments.
+  log_append_compensate (thread_p, rcvindex, pgbuf_get_vpid_ptr (pgptr), offset, pgptr, rv_length, rv_data,
+			 LOG_FIND_CURRENT_TDES (thread_p));
+}
 
 /*
  * heap_rv_undo_delete () - Undo the deletion of an object
@@ -16356,8 +16406,8 @@ heap_rv_undo_delete (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   // Do undo and check if vacuum is needed.
   // Arguments explained:
-  //    - Record must be inserted, therefore spage_insert_for_recovery and RVHF_COMPENSATE_WITH_INSERT
-  //    - Only REC_NEWHOME are susceptible to physical delete on MVCC operations. true to skip REC_HOME records.
+  //    - Record must be inserted => spage_insert_for_recovery and RVHF_COMPENSATE_WITH_INSERT
+  //    - Only REC_NEWHOME are susceptible to physical delete on MVCC operations => true to skip REC_HOME records.
   std::function < bool (PGSLOTID, const RECDES *) > apply_fun =
     [&thread_p, &rcv] (PGSLOTID slotid, const RECDES * recdes)
   {
@@ -16376,7 +16426,7 @@ heap_rv_undo_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   // Do undo and check if vacuum is needed.
   // Arguments explained:
-  //    - Record must be updated, therefore spage_update & RVHF_COMPENSATE_WITH_UPDATE
+  //    - Record must be updated, therefore heap_update_physical & RVHF_COMPENSATE_WITH_UPDATE
   //    - Both REC_HOME and REC_NEWHOME are susceptible to physical update on MVCC operations. false to include
   //      REC_HOME records in the vacuum check
   std::function < bool (PGSLOTID, const RECDES *) > apply_fun =
@@ -25318,6 +25368,9 @@ heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   MVCC_REC_HEADER rec_header;
 
+  // This is called after the actual update; if an insert MVCCID was resurrected, it must be cleaned up and the change
+  // must be logged to be replicated.
+
   if (heap_get_mvcc_rec_header_from_overflow (rcv->pgptr, &rec_header, NULL) != NO_ERROR)
     {
       assert_release (false);
@@ -25326,18 +25379,19 @@ heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 
   if (heap_rv_check_satisfies_vacuum_on_undo (thread_p, rec_header) == VACUUM_RECORD_DELETE_INSID_PREV_VER)
     {
-      /* the undo/redo record was qualified to have its insid and prev version vacuumed;
-       * do this here because it is possible that vacuum have missed it during update/delete operation */
+      // Remove insert MVCCID and previous link
       assert (MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION));
       MVCC_SET_INSID (&rec_header, MVCCID_ALL_VISIBLE);
       LSA_SET_NULL (&rec_header.prev_version_lsa);
 
+      // Update header
       if (heap_set_mvcc_rec_header_on_overflow (rcv->pgptr, &rec_header) != NO_ERROR)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
 	}
 
+      // Add log record
       heap_rv_append_compensate (thread_p, RVVAC_REMOVE_OVF_INSID, rcv->pgptr, 0 /* does not matter */ , 0, NULL);
     }
   else
