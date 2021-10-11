@@ -72,6 +72,7 @@
 #include "string_buffer.hpp"
 #include "tde.h"
 
+#include <functional>
 #include <set>
 
 #if !defined(SERVER_MODE)
@@ -838,7 +839,7 @@ static void heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, 
 static int heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
-static int heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, RECDES * recdes_p);
+static int heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, const RECDES * recdes_p);
 static void heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
 				      RECDES * old_recdes_p, RECDES * new_recdes_p, LOG_RCVINDEX rcvindex);
 
@@ -905,14 +906,16 @@ static PGSLOTID heap_rcv_to_slotid (const LOG_RCV & rcv);
 static MVCC_SATISFIES_VACUUM_RESULT heap_rv_check_satisfies_vacuum_on_undo (THREAD_ENTRY * thread_p,
 									    const MVCC_REC_HEADER & rec_header);
 static void heap_rv_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, PAGE_PTR pgptr, PGLENGTH offset,
-				       int rv_length, const char *rv_data);
-static int heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid,
-						 const RECDES & peek_recdes, MVCC_REC_HEADER & rec_header,
-						 int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, const RECDES *),
-						 LOG_RCVINDEX rcvindex);
+// *INDENT-OFF*
+static int heap_rv_vacuum_and_append_compensate (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, PGSLOTID slotid,
+                                                 const RECDES &peek_recdes, MVCC_REC_HEADER &rec_header,
+						 std::function<bool (PGSLOTID, const RECDES *)> &apply_fun,
+                                                 LOG_RCVINDEX rcvindex);
 static int heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
-					      int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, const RECDES *),
+					      std::function<bool (PGSLOTID, const RECDES *)> &apply_fun,
 					      LOG_RCVINDEX rcvindex, bool skip_home_rec);
+// *INDENT-ON*
+				       int rv_length, const char *rv_data);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -16237,15 +16240,15 @@ heap_rv_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, PAGE_
 			 LOG_FIND_CURRENT_TDES (thread_p));
 }
 
+// *INDENT-OFF*
 // Vacuum the insert ID & previous link from the input record descriptor, apply change in page and log for
 // compensation
 static int
 heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid,
 				      const RECDES & peek_recdes, MVCC_REC_HEADER & rec_header,
-				      int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, const RECDES *),
+				      std::function<bool(PGSLOTID, const RECDES *)> &apply_fun,
 				      LOG_RCVINDEX rcvindex)
 {
-  // *INDENT-OFF*
   /* the undo/redo record was qualified to have its insid and prev version vacuumed;
    * do this here because it is possible that vacuum have missed it during update/delete operation */
   assert (MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION));
@@ -16265,7 +16268,7 @@ heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, P
     }
 
   // Update record in page
-  if (spage_func (thread_p, pgptr, slotid, &copy_recdes) != SP_SUCCESS)
+  if (!apply_fun (slotid, &copy_recdes))
     {
       assert_release (false);
       return ER_FAILED;
@@ -16282,7 +16285,6 @@ heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, P
   pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
 
   return NO_ERROR;
-  // *INDENT-ON*
 }
 
 // Sometimes undoing delete new homes or undoing updates (both homes or new homes) may bring back MVCCID's that have
@@ -16291,10 +16293,9 @@ heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, P
 // version links have to be vacuumed.
 static int
 heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
-				   int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, const RECDES *),
+				   std::function<bool (PGSLOTID, const RECDES *)> &apply_fun,
 				   LOG_RCVINDEX rcvindex, bool skip_home_rec)
 {
-  // *INDENT-OFF*
   assert (rcv != NULL);
 
   const RECDES peek_recdes = heap_rcv_to_recdes (*rcv);
@@ -16308,13 +16309,11 @@ heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
       MVCC_REC_HEADER rec_header;
 
       // To read header, we need an aligned record descriptor data; peek_recdes data is not aligned.
-      RECDES aligned_header_recdes;
+      RECDES aligned_header_recdes = peek_recdes;
       alignas (MAX_ALIGNMENT) char header_buffer[OR_MVCC_MAX_HEADER_SIZE];
       aligned_header_recdes.data = header_buffer;
       aligned_header_recdes.length = std::min (peek_recdes.length, OR_MVCC_MAX_HEADER_SIZE);
       std::memcpy (aligned_header_recdes.data, peek_recdes.data, aligned_header_recdes.length);
-      aligned_header_recdes.type = peek_recdes.type;
-      aligned_header_recdes.area_size = NULL;
 
       error_code = or_mvcc_get_header (&aligned_header_recdes, &rec_header);
       if (error_code != NO_ERROR)
@@ -16327,13 +16326,13 @@ heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
 	{
 	  // Modify record and log the change.
 	  return heap_rv_vacuum_and_append_compensate (thread_p, rcv->pgptr, slotid, peek_recdes, rec_header,
-						       spage_func, rcvindex);
+						       apply_fun, rcvindex);
 	}
     }
 
   // No vacuum was done
   // Update record in page
-  if (spage_func (thread_p, rcv->pgptr, slotid, const_cast<RECDES *> (&peek_recdes)) != SP_SUCCESS)
+  if (!apply_fun (slotid, &peek_recdes))
     {
       assert_release (false);
       return ER_FAILED;
@@ -16343,8 +16342,8 @@ heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
   heap_rv_append_compensate (thread_p, rcvindex, rcv->pgptr, slotid, rcv->length, rcv->data);
 
   return NO_ERROR;
-  // *INDENT-ON*
 }
+// *INDENT-ON*
 
 /*
  * heap_rv_undo_delete () - Undo the deletion of an object
@@ -16358,8 +16357,12 @@ heap_rv_undo_delete (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
   // Arguments explained:
   //    - Record must be inserted, therefore spage_insert_for_recovery and RVHF_COMPENSATE_WITH_INSERT
   //    - Only REC_NEWHOME are susceptible to physical delete on MVCC operations. true to skip REC_HOME records.
-  return heap_rv_undo_with_vacuum_internal (thread_p, rcv, spage_insert_for_recovery, RVHF_COMPENSATE_WITH_INSERT,
-					    true);
+  std::function < bool (PGSLOTID, const RECDES *) > apply_fun =
+    [&thread_p, &rcv] (PGSLOTID slotid, const RECDES * recdes)
+  {
+    return spage_insert_for_recovery (thread_p, rcv->pgptr, slotid, recdes) == SP_SUCCESS;
+  };
+  return heap_rv_undo_with_vacuum_internal (thread_p, rcv, apply_fun, RVHF_COMPENSATE_WITH_INSERT, true);
 }
 
 /*
@@ -16375,7 +16378,12 @@ heap_rv_undo_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
   //    - Record must be updated, therefore spage_update & RVHF_COMPENSATE_WITH_UPDATE
   //    - Both REC_HOME and REC_NEWHOME are susceptible to physical update on MVCC operations. false to include
   //      REC_HOME records in the vacuum check
-  return heap_rv_undo_with_vacuum_internal (thread_p, rcv, spage_update, RVHF_COMPENSATE_WITH_UPDATE, false);
+  std::function < bool (PGSLOTID, const RECDES *) > apply_fun =
+    [&thread_p, &rcv] (PGSLOTID slotid, const RECDES * recdes)
+  {
+    return heap_update_physical (thread_p, rcv->pgptr, slotid, recdes) == NO_ERROR;
+  };
+  return heap_rv_undo_with_vacuum_internal (thread_p, rcv, apply_fun, RVHF_COMPENSATE_WITH_UPDATE, false);
 }
 
 /*
@@ -22578,7 +22586,7 @@ exit:
  *   returns: error code or NO_ERROR
  */
 static int
-heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, RECDES * recdes_p)
+heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, const RECDES * recdes_p)
 {
   int scancode;
   INT16 old_record_type;
