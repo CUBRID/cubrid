@@ -47,6 +47,7 @@
 #include "network.h"
 #include "environment_variable.h"
 #include "boot_sr.h"
+#include "scope_exit.hpp"
 #include "system_parameter.h"
 #include "server_type.hpp"
 #include "perf_monitor.h"
@@ -350,14 +351,12 @@ argument_handler (int argc, char **argv)
 	  {
 	    // error that the type is not valid
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 1, optarg);
-	    PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
 	    return ER_INVALID_SERVER_TYPE_ARGUMENT;
 	  }
 	  break;
 	default:
 	  // invalid server option
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1, argv[optind - 1]);
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
 	  return ER_INVALID_SERVER_OPTION;
 	}
     }
@@ -418,7 +417,13 @@ main (int argc, char **argv)
       }
     thread_initialize_manager (thread_p);
     fprintf (stdout, "\nThis may take a long time depending on the amount " "of recovery works to do.\n");
-
+    // *INDENT-OFF*
+    scope_exit <std::function<void (void)>> print_on_exit ([thread_p] ()
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
+      fflush (stderr);
+    });
+    // *INDENT-ON*
     /* save executable path */
     binary_name = basename (argv[0]);
     (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
@@ -426,7 +431,6 @@ main (int argc, char **argv)
     ret_val = argument_handler (argc, argv);
     if (ret_val != NO_ERROR)
       {
-	fflush (stderr);
 	return ret_val;
       }
 
