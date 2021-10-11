@@ -16313,6 +16313,8 @@ heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
       aligned_header_recdes.data = header_buffer;
       aligned_header_recdes.length = std::min (peek_recdes.length, OR_MVCC_MAX_HEADER_SIZE);
       std::memcpy (aligned_header_recdes.data, peek_recdes.data, aligned_header_recdes.length);
+      aligned_header_recdes.type = peek_recdes.type;
+      aligned_header_recdes.area_size = NULL;
 
       error_code = or_mvcc_get_header (&aligned_header_recdes, &rec_header);
       if (error_code != NO_ERROR)
