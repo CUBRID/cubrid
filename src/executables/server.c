@@ -346,13 +346,13 @@ argument_handler (int argc, char **argv)
             {
               set_server_type (SERVER_TYPE_PAGE);
             }
-          // *INDENT-ON*
 	  else
-	  {
-	    // error that the type is not valid
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 1, optarg);
-	    return ER_INVALID_SERVER_TYPE_ARGUMENT;
-	  }
+	    {
+	      // error that the type is not valid
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 1, optarg);
+	      return ER_INVALID_SERVER_TYPE_ARGUMENT;
+	    }
+	  // *INDENT-ON*
 	  break;
 	default:
 	  // invalid server option
