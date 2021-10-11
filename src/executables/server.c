@@ -336,26 +336,30 @@ argument_handler (int argc, char **argv)
       switch (option_key)
 	{
 	case SERVER_TYPE_SHORT:
-	  // *INDENT-ON*
-	  if (std::strcmp (optarg, server_type_to_string (SERVER_TYPE_TRANSACTION)) == 0)
-	    {
-	      set_server_type (SERVER_TYPE_TRANSACTION);
-	    }
-	  else if (std::strcmp (optarg, server_type_to_string (SERVER_TYPE_PAGE)) == 0)
-	    {
-	      set_server_type (SERVER_TYPE_PAGE);
-	    }
           // *INDENT-OFF*
-          else
+          if (std::strcmp (optarg, server_type_to_string (SERVER_TYPE_TRANSACTION)) == 0)
             {
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 1, optarg);	// error that the type is not valid
-              return ER_INVALID_SERVER_TYPE_ARGUMENT;
+              set_server_type (SERVER_TYPE_TRANSACTION);
             }
-          break;
-        default:
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1, optarg);	// invalid server option
-          return ER_INVALID_SERVER_OPTION;
-        }
+          else if (std::strcmp (optarg, server_type_to_string (SERVER_TYPE_PAGE)) == 0)
+            {
+              set_server_type (SERVER_TYPE_PAGE);
+            }
+          // *INDENT-ON*
+	  else
+	  {
+	    // error that the type is not valid
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 1, optarg);
+	    PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
+	    return ER_INVALID_SERVER_TYPE_ARGUMENT;
+	  }
+	  break;
+	default:
+	  // invalid server option
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1, argv[optind - 1]);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
+	  return ER_INVALID_SERVER_OPTION;
+	}
     }
   if (argc - optind == 1)
     {
@@ -403,14 +407,14 @@ main (int argc, char **argv)
   {				/* to make indent happy */
     if (argc < 2)
       {
-        PRINT_AND_LOG_ERR_MSG ("Usage: server databasename\n");
-        return 1;
+	PRINT_AND_LOG_ERR_MSG ("Usage: server databasename\n");
+	return 1;
       }
 
     if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
       {
-        PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
-        return 1;
+	PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
+	return 1;
       }
     thread_initialize_manager (thread_p);
     fprintf (stdout, "\nThis may take a long time depending on the amount " "of recovery works to do.\n");
@@ -422,9 +426,8 @@ main (int argc, char **argv)
     ret_val = argument_handler (argc, argv);
     if (ret_val != NO_ERROR)
       {
-        PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
-        fflush (stderr);
-        return ret_val;
+	fflush (stderr);
+	return ret_val;
       }
 
 #if !defined(WINDOWS)
