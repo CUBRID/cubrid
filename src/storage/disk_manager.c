@@ -1207,24 +1207,39 @@ disk_get_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 * next_volid, char *n
   return next_volext_fullname;
 }
 
+/*
+ * disk_adapt_other_config_volume_full_name_to_local_config - adapt the full volume path and name
+ *                      coming, possibly, from an old or different config to the current config
+ */
 void
 disk_adapt_other_config_volume_full_name_to_local_config (char *local_config_full_name,
 							  const char *other_config_full_name)
 {
+  assert (local_config_full_name != nullptr);
+
   // reconstruct a current-configuration-adapted volume full name
   // by extracting the file name from the fully qualified name
   const char *const vol_filename = fileio_get_base_file_name (other_config_full_name);
+  if (vol_filename == nullptr || vol_filename[0] == '\0')
+    {
+      local_config_full_name[0] = '\0';
+    }
+  else
+    {
+      // and the rest of the path from the current settings
+      char buf_temp_path[PATH_MAX];
+      const char *const vol_base_path = fileio_get_directory_path (buf_temp_path, boot_db_full_name ());
 
-  // and the rest of the path from the current settings
-  char buf_temp_path[PATH_MAX];
-  const char *const vol_base_path = fileio_get_directory_path (buf_temp_path, boot_db_full_name ());
-
-  fileio_make_volume_ext_given_name (local_config_full_name, vol_base_path, vol_filename);
+      fileio_make_volume_ext_given_name (local_config_full_name, vol_base_path, vol_filename);
+    }
 }
 
 
 /*
- * disk_rv_redo_dboutside_newvol () - Redo the initialization of a disk from the point of view of operating system
+ * disk_rv_redo_dboutside_newvol () - Redo the initialization of a disk from the point of view of the operating system;
+ *                    the log record contains a full path and name which will be adapted to the current config by
+ *                    stripping the old base path and replacing it with the current config's path
+ *
  *   return: NO_ERROR
  *   rcv(in): Recovery structure
  */
@@ -1232,13 +1247,13 @@ int
 disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_VOLUME_HEADER *vhdr;
-  const char *vol_fullname_other_or_old_config;
+  const char *vol_fullname_other_config;
 
   vhdr = (DISK_VOLUME_HEADER *) rcv->data;
-  vol_fullname_other_or_old_config = disk_vhdr_get_vol_fullname (vhdr);
+  vol_fullname_other_config = disk_vhdr_get_vol_fullname (vhdr);
 
   char buf_vol_full_name[PATH_MAX];
-  disk_adapt_other_config_volume_full_name_to_local_config (buf_vol_full_name, vol_fullname_other_or_old_config);
+  disk_adapt_other_config_volume_full_name_to_local_config (buf_vol_full_name, vol_fullname_other_config);
 
   if (fileio_find_volume_descriptor_with_label (buf_vol_full_name) == NULL_VOLDES)
     {
@@ -1427,6 +1442,20 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
       /* there, I fixed it */
     }
 
+  const char *const other_config_vol_fullname = disk_vhdr_get_vol_fullname (volheader);
+  char buf_new_full_name[PATH_MAX];
+  disk_adapt_other_config_volume_full_name_to_local_config (buf_new_full_name, other_config_vol_fullname);
+  (void) disk_vhdr_set_vol_fullname (volheader, buf_new_full_name);
+
+  // might be useless; there is a separate log record that performs link between volumes
+  const char *const other_config_next_vol_fullname = disk_vhdr_get_next_vol_fullname (volheader);
+  if (other_config_next_vol_fullname != nullptr && *other_config_next_vol_fullname != '\0')
+    {
+      disk_adapt_other_config_volume_full_name_to_local_config (buf_new_full_name, other_config_next_vol_fullname);
+      disk_vhdr_set_next_vol_fullname (volheader, buf_new_full_name);
+    }
+  // volume header page is already marked dirty
+
   disk_log ("disk_rv_redo_format", "second call for volume %d at lsa %lld|%d, free = %d, total = %d, max = %d",
 	    volheader->volid, PGBUF_PAGE_LSA_AS_ARGS (copy_rcv.pgptr), nsect_free, volheader->nsect_total,
 	    volheader->nsect_max);
@@ -1504,14 +1533,13 @@ disk_rv_undoredo_set_creation_time (THREAD_ENTRY * thread_p, const LOG_RCV * rcv
 {
   DISK_VOLUME_HEADER *vhdr;
   DISK_RECV_CHANGE_CREATION *change;
-  int ret = NO_ERROR;
 
   vhdr = (DISK_VOLUME_HEADER *) rcv->pgptr;
   change = (DISK_RECV_CHANGE_CREATION *) rcv->data;
 
   memcpy (&vhdr->db_creation, &change->db_creation, sizeof (change->db_creation));
   memcpy (&vhdr->chkpt_lsa, &change->chkpt_lsa, sizeof (change->chkpt_lsa));
-  ret = disk_vhdr_set_vol_fullname (vhdr, change->vol_fullname);
+  (void) disk_vhdr_set_vol_fullname (vhdr, change->vol_fullname);
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -1551,7 +1579,9 @@ disk_rv_undoredo_link (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
   link = (DISK_RECV_LINK_PERM_VOLUME *) rcv->data;
 
   vhdr->next_volid = link->next_volid;
-  ret = disk_vhdr_set_next_vol_fullname (vhdr, link->next_vol_fullname);
+  char buf_new_full_name[PATH_MAX];
+  disk_adapt_other_config_volume_full_name_to_local_config (buf_new_full_name, link->next_vol_fullname);
+  ret = disk_vhdr_set_next_vol_fullname (vhdr, buf_new_full_name);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
@@ -5326,7 +5356,6 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
 {
   int length_diff;
   int length_to_move;
-  int ret = NO_ERROR;
 
   length_diff = vhdr->offset_to_vol_remarks;
 
@@ -5348,7 +5377,7 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
 
   (void) memcpy (disk_vhdr_get_vol_fullname (vhdr), vol_fullname,
 		 MIN ((ssize_t) strlen (vol_fullname) + 1, DB_MAX_PATH_LENGTH));
-  return ret;
+  return NO_ERROR;
 }
 
 /*
@@ -5362,7 +5391,6 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
 {
   int length_diff;
   int length_to_move;
-  int ret = NO_ERROR;
   int next_vol_fullname_size;
 
   if (next_vol_fullname == NULL)
@@ -5395,7 +5423,7 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
 
   (void) memcpy (disk_vhdr_get_next_vol_fullname (vhdr), next_vol_fullname, next_vol_fullname_size);
 
-  return ret;
+  return NO_ERROR;
 }
 
 /*
@@ -5932,7 +5960,7 @@ disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp)
 {
   int ret = NO_ERROR;
 
-  ret = (fileio_map_mounted (thread_p, disk_dump_goodvol_all, NULL) == true ? NO_ERROR : ER_FAILED);
+  ret = (fileio_map_mounted (thread_p, disk_dump_goodvol_all, fp) == true ? NO_ERROR : ER_FAILED);
 
   return ret;
 }
@@ -5941,12 +5969,13 @@ disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp)
  * disk_dump_goodvol_all () -  Dump all information of given volume
  *   return: true
  *   volid(in): Permanent volume identifier
- *   ignore(in):
+ *   fp(in): file pointer
  */
 static bool
-disk_dump_goodvol_all (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
+disk_dump_goodvol_all (THREAD_ENTRY * thread_p, INT16 volid, void *fp)
 {
-  (void) disk_dump_volume_system_info (thread_p, stdout, volid);
+  FILE *const fp_or_stdout = (fp != nullptr) ? (FILE *) fp : stdout;
+  (void) disk_dump_volume_system_info (thread_p, fp_or_stdout, volid);
 
   return true;
 }
