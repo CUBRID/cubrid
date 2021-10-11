@@ -418,10 +418,13 @@ main (int argc, char **argv)
     thread_initialize_manager (thread_p);
     fprintf (stdout, "\nThis may take a long time depending on the amount " "of recovery works to do.\n");
     // *INDENT-OFF*
-    scope_exit <std::function<void (void)>> print_on_exit ([thread_p] ()
+    scope_exit <std::function<void (void)>> print_err_on_exit ([&ret_val] ()
     {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
-      fflush (stderr);
+      if (ret_val != 0)
+        {
+          PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
+          fflush (stderr);
+        }
     });
     // *INDENT-ON*
     /* save executable path */
