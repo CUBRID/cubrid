@@ -906,16 +906,17 @@ static PGSLOTID heap_rcv_to_slotid (const LOG_RCV & rcv);
 static MVCC_SATISFIES_VACUUM_RESULT heap_rv_check_satisfies_vacuum_on_undo (THREAD_ENTRY * thread_p,
 									    const MVCC_REC_HEADER & rec_header);
 static void heap_rv_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, PAGE_PTR pgptr, PGLENGTH offset,
+				       int rv_length, const char *rv_data);
+
 // *INDENT-OFF*
 static int heap_rv_vacuum_and_append_compensate (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, PGSLOTID slotid,
                                                  const RECDES &peek_recdes, MVCC_REC_HEADER &rec_header,
-						 std::function<bool (PGSLOTID, const RECDES *)> &apply_fun,
+						 std::function<bool(PGSLOTID, const RECDES *)> &apply_fun,
                                                  LOG_RCVINDEX rcvindex);
 static int heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
-					      std::function<bool (PGSLOTID, const RECDES *)> &apply_fun,
+					      std::function<bool(PGSLOTID, const RECDES *)> &apply_fun,
 					      LOG_RCVINDEX rcvindex, bool skip_home_rec);
 // *INDENT-ON*
-				       int rv_length, const char *rv_data);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -16293,7 +16294,7 @@ heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, P
 // version links have to be vacuumed.
 static int
 heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
-				   std::function<bool (PGSLOTID, const RECDES *)> &apply_fun,
+				   std::function<bool(PGSLOTID, const RECDES *)> &apply_fun,
 				   LOG_RCVINDEX rcvindex, bool skip_home_rec)
 {
   assert (rcv != NULL);
