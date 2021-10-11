@@ -6326,7 +6326,7 @@ fileio_get_volume_label_by_fd (int vol_fd, bool is_peek)
 const char *
 fileio_get_volume_label_with_unknown (VOLID volid)
 {
-  static constexpr char *UNKNOWN_VLABEL = "(UNKNOWN)";
+  static constexpr char UNKNOWN_VLABEL[] = "(UNKNOWN)";
   const char *vlabel = fileio_get_volume_label (volid, PEEK);
   return vlabel != nullptr ? vlabel : UNKNOWN_VLABEL;
 }
