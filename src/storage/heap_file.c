@@ -16188,7 +16188,7 @@ static RECDES
 heap_rcv_to_recdes (const LOG_RCV & rcv)
 {
   assert (rcv.data != NULL);
-  assert (rcv.length > sizeof (INT16));
+  assert ((size_t) rcv.length > sizeof (INT16));
 
   RECDES recdes;
   recdes.type = *(INT16 *) rcv.data;
