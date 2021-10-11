@@ -1390,6 +1390,11 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 	  css_setup_server_loop ();
 	}
     }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+      status = ERR_CSS_ERROR_DURING_SERVER_CONNECT;
+    }
 
 shutdown:
   /*

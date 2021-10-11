@@ -1077,7 +1077,8 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
   log_daemons_init ();
 #endif // SERVER_MODE
 
-  log_No_logging = prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
+  log_No_logging = false;	// Used to be prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
+  // Having no log is no longer acceptable, because it breaks page server replication.
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && log_No_logging)
     {
@@ -1854,12 +1855,8 @@ log_final (THREAD_ENTRY * thread_p)
       LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt, &log_Gl.hdr.chkpt_lsa);
 
       // mark and persist that transaction server with remote storage has been correctly closed
-      if (is_tran_server_with_remote_storage ())
-	{
-	  log_Gl.m_metainfo.set_clean_shutdown (true);
-
-	  log_write_metalog_to_file ();
-	}
+      log_Gl.m_metainfo.set_clean_shutdown (true);
+      log_write_metalog_to_file ();
     }
   else
     {
