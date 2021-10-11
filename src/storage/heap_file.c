@@ -16294,6 +16294,7 @@ heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
 				   int (*spage_func) (THREAD_ENTRY *, PAGE_PTR, PGSLOTID, const RECDES *),
 				   LOG_RCVINDEX rcvindex, bool skip_home_rec)
 {
+  // *INDENT-OFF*
   assert (rcv != NULL);
 
   const RECDES peek_recdes = heap_rcv_to_recdes (*rcv);
@@ -16305,7 +16306,15 @@ heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
     {
       // Need to check if vacuum may be applied
       MVCC_REC_HEADER rec_header;
-      error_code = or_mvcc_get_header (&peek_recdes, &rec_header);
+
+      // To read header, we need an aligned record descriptor data; peek_recdes data is not aligned.
+      RECDES aligned_header_recdes;
+      alignas (MAX_ALIGNMENT) char header_buffer[OR_MVCC_MAX_HEADER_SIZE];
+      aligned_header_recdes.data = header_buffer;
+      aligned_header_recdes.length = std::min (peek_recdes.length, OR_MVCC_MAX_HEADER_SIZE);
+      std::memcpy (aligned_header_recdes.data, peek_recdes.data, aligned_header_recdes.length);
+
+      error_code = or_mvcc_get_header (&aligned_header_recdes, &rec_header);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
@@ -16322,18 +16331,17 @@ heap_rv_undo_with_vacuum_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv,
 
   // No vacuum was done
   // Update record in page
-  // *INDENT-OFF*
   if (spage_func (thread_p, rcv->pgptr, slotid, const_cast<RECDES *> (&peek_recdes)) != SP_SUCCESS)
     {
       assert_release (false);
       return ER_FAILED;
     }
-  // *INDENT-ON*
 
   // Log the change
   heap_rv_append_compensate (thread_p, rcvindex, rcv->pgptr, slotid, rcv->length, rcv->data);
 
   return NO_ERROR;
+  // *INDENT-ON*
 }
 
 /*
