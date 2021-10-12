@@ -47,7 +47,6 @@
 #include "network.h"
 #include "environment_variable.h"
 #include "boot_sr.h"
-#include "scope_exit.hpp"
 #include "system_parameter.h"
 #include "server_type.hpp"
 #include "perf_monitor.h"
