@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Taşma anahtar dosyası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Yeni bir taşma sayfası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Boş bir taşma sayfayı sil. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Oturum kurtarma başlatılır. Uygulanacak günlük kayıt sayısı: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 Oturum kurtarma başlatılır.
 1129 Oturum kurtarma bitti.
 1130 İşlem kilit sayıları %1$d aştığı için işlem iptal edilir.
 1131 Dahili hata: Sayfa %1$d hacmi "%2$s"de bozulabilir.\n%3$s

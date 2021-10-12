@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Erstellung der Überlauf Schlüsseldatei. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Erstellung einer neuen Überlaufseite. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Eine leere Überlaufseite wird gelöscht. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log-Wiederherstellung gestartet. Anzahl der anzuwendenden Log-Einträge: %1$lld. Log Seite: %2$lld ~ %3$lld.
+1128 Log-Wiederherstellung gestartet.
 1129 Log-Wiederherstellung beendet.
 1130 Transaktion wird abgebrochen, weil die Anzahl der Transaktionssperre %1$d überschreitet.
 1131 Interner Fehler: Die Seite %1$d des Volumen "%2$s" könnte beschädigt sein.\n%3$s
