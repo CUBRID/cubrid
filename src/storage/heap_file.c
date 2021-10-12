@@ -22846,9 +22846,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
       && context->recdes_p->type != REC_ASSIGN_ADDRESS)
     {
       (void) log_append_supplemental_lsa (thread_p,
-					  thread_p->
-					  do_trigger_involved ? LOG_SUPPLEMENT_TRIGGER_INSERT : LOG_SUPPLEMENT_INSERT,
-					  &context->class_oid, NULL, &context->supp_redo_lsa);
+					  thread_p->do_trigger_involved ? LOG_SUPPLEMENT_TRIGGER_INSERT :
+					  LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
     }
 
 
@@ -23026,9 +23025,8 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   if (context->do_supplemental_log == true)
     {
       (void) log_append_supplemental_lsa (thread_p,
-					  thread_p->
-					  do_trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE : LOG_SUPPLEMENT_DELETE,
-					  &context->class_oid, &context->supp_undo_lsa, NULL);
+					  thread_p->do_trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE :
+					  LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa, NULL);
     }
 
 
@@ -23268,9 +23266,9 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   if (context->do_supplemental_log == true)
     {
       (void) log_append_supplemental_lsa (thread_p,
-					  thread_p->
-					  do_trigger_involved ? LOG_SUPPLEMENT_TRIGGER_UPDATE : LOG_SUPPLEMENT_UPDATE,
-					  &context->class_oid, &context->supp_undo_lsa, &context->supp_redo_lsa);
+					  thread_p->do_trigger_involved ? LOG_SUPPLEMENT_TRIGGER_UPDATE :
+					  LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
+					  &context->supp_redo_lsa);
     }
 
 
