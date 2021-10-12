@@ -16318,6 +16318,7 @@ heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, P
   // Remove insert MVCCID & previous link from the input record descriptor, apply the change and then append a
   // compensate log record with the new heap record.
   assert (MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION));
+  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
 
   // Build a copy recdes that can be modified
   auto copy_recdes_data_uptr = std::make_unique<char[]> (IO_MAX_PAGE_SIZE);
