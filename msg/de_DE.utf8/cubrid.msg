@@ -1354,8 +1354,13 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 Die Tabelle kann aufgrund des Primärschlüssels, auf den in %1$s verwiesen wird, nicht abgeschnitten werden. Versuchen Sie es erneut mit der Option CASCADE.
 1285 Abschneiden in Kaskade nicht möglich, da die Aktion ON DELETE des Fremdschlüssels (%1$s) nicht auf CASCADE gesetzt ist.
+1296 Log-Rückgewinnung: Die ANALYSIS-Phase ist gestartet.
+1297 Log-Rückgewinnung: REDO Phase ist gestartet. Log Seiten zu wiederholen: %1$lld, Log-Aufzeichnungen zu wiederholen: %2$lld.
+1298 Log-Rückgewinnung: UNDO Phase ist gestartet. Log Seiten, die rückgängig gemacht werden sollen: %1$lld, Transaktionen, die rückgängig gemacht werden: %2$d.
+1299 Log Wiederherstellung: %1$s Phase ist fertig.
+1300 Log Wiederherstellung: %1$s Phase ist beendet.
 
-1286 Letzter Fehler
+1301 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

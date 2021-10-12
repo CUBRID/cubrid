@@ -1354,8 +1354,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1283 Error reserved for scalability development.
 1284 Cannot truncate the table due to the primary key referred to on %1$s. Try again with CASCADE option.
 1285 Cannot cascade truncate because the ON DELETE action of the foreign key (%1$s) is not set to CASCADE.
+1296 Log recovery: ANALYSIS Phase is started.
+1297 Log recovery: REDO Phase is started. Log pages to redo: %1$lld, Log records to redo: %2$lld.
+1298 Log recovery: UNDO Phase is started. Log pages to undo: %1$lld, transactions to undo: %2$d.
+1299 Log recovery: %1$s Phase is being finished up.
+1300 Log recovery: %1$s Phase is finished.
 
-1286 Last Error
+1301 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

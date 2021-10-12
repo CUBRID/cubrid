@@ -1355,8 +1355,13 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 由于在 %1$s 上引用了主键，因此无法截断表。 使用 CASCADE 选项重试。
 1285 无法级联截断，因为外键 (%1$s) 的 ON DELETE 操作未设置为 CASCADE。
+1296 日志恢复: 开始分析阶段。
+1297 日志恢复: REDO阶段开始。 重做日志页面: %1$lld，重做日志记录: %2$lld。
+1298 日志恢复: 启动 UNDE 阶段。 要撤消的日志页面: %1$lld，要撤消的事务处理: %2$d。
+1299 日志恢复: %1$s 阶段已完成。
+1300 日志恢复: %1$s 阶段已完成。
 
-1286 最后一个错误.
+1301 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

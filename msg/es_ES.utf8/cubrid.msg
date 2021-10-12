@@ -1354,8 +1354,13 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1283 Error reserved for scalability development.
 1284 No se puede truncar la tabla debido a la clave principal a la que se hace referencia en %1$s. Inténtelo de nuevo con la opción CASCADE.
 1285 No se puede truncar en cascada porque la acción ON DELETE de la clave externa (%1$s) no está establecida en CASCADE.
+1296 Registro de registro: se inicia la fase de análisis.
+1297 Registro de registro: se inicia la fase rehacer. Páginas de registro para rehacer: %1$lld, registros de registro para rehacer: %2$lld.
+1298 Registro de registro: se inicia la fase de deshacer. Páginas de registro para deshacer: %1$lld, transacciones para deshacer: %2$d.
+1299 Registro de registro: %1$s fase se está acabando.
+1300 Registro de registro: %1$s fase se termina.
 
-1286 Ultimo error
+1301 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

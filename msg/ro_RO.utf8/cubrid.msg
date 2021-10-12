@@ -1354,8 +1354,13 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1283 Error reserved for scalability development.
 1284 Nu se poate tăia tabelul din cauza cheii principale menționate în %1$s. Încercați din nou cu opțiunea CASCADE.
 1285 Nu se poate trunchia în cascadă deoarece acțiunea ON DELETE a cheii externe (%1$s) nu este setată la CASCADE.
+1296 Recuperarea logului: Faza de analiză este pornită.
+1297 Recuperarea jurnalului: Faza redo este pornită. Jurnal Pagini la Redo: %1$lld, înregistrări jurnal la redo: %2$lld.
+1298 Recuperarea jurnalului: Faza de anulare este pornită. Jurnal Pagini pentru a anula: %1$lld, tranzacții pentru a anula: %2$d.
+1299 Recuperarea jurnalului: %1$S este terminat.
+1300 Recuperarea jurnalului: %1$S este terminată.
 
-1286 Ultima eroare
+1301 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

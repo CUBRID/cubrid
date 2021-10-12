@@ -1354,8 +1354,13 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1283 Error reserved for scalability development.
 1284 Impossible de tronquer la table en raison de la clé primaire référencée sur %1$s. Essayez à nouveau avec l'option CASCADE.
 1285 Impossible de tronquer en cascade car l'action ON DELETE de la clé étrangère (%1$s) n'est pas définie sur CASCADE.
+1296 Récupération des billes : la phase d'ANALYSE commence.
+1297 Récupération des logs : la phase REDO est lancée. Pages de log à refaire : %1$lld, enregistrements de log à refaire : %2$lld.
+1298 Récupération des logs : la phase de la DEOD est lancée. Pages de journal à défaire : %1$lld, transactions à défaire : %2$d.
+1299 Récupération des logs : %1$s La phase est en cours d'achèvement.
+1300 Récupération des billes : %1$s La phase est terminée.
 
-1286 Dernière erreur
+1301 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

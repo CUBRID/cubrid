@@ -1346,7 +1346,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1275 Error reserved for scalability development.
 1276 Error reserved for scalability development.
 1277 Error reserved for scalability development.
-1278 Error reserved for scalability development.
+12t8 Error reserved for scalability development.
 1279 Error reserved for scalability development.
 1280 Error reserved for scalability development.
 1281 Error reserved for scalability development.
@@ -1354,8 +1354,13 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1283 Error reserved for scalability development.
 1284 %1$s üzerinde başvurulan birincil anahtar nedeniyle tablo kesilemiyor. CASCADE seçeneği ile tekrar deneyiniz.
 1285 Yabancı anahtarın ON DELETE eylemi (%1$s) CASCADE olarak ayarlanmadığından kademeli kesilemiyor.
+1296 Günlük kurtarma: ANALİZ Aşaması başlatıldı.
+1297 Günlük kurtarma: REDO Aşaması başlatıldı. Yeniden yapılacak günlük sayfaları: %1$lld, Yeniden yapılacak günlük kayıtları: %2$lld.
+1298 Günlük kurtarma: GERİ AL Aşaması başlatıldı. Geri alınacak günlük sayfaları: %1$lld, geri alınacak işlemler: %2$d.
+1299 Günlük kurtarma: %1$s Aşama tamamlanıyor.
+1300 Günlük kurtarma: %1$s Aşama tamamlandı.
 
-1286 Son Hata
+1301 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
