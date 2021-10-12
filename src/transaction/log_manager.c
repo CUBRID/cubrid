@@ -10772,6 +10772,12 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	      cdc_make_dml_loginfo (thread_p, trid, tran_user,
 				    rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_UPDATE : CDC_TRIGGER_UPDATE, classoid,
 				    &undo_recdes, &redo_recdes, log_info_entry);
+
+	    if (error == ER_CDC_IGNORE_LOG_INFO)
+	      {
+		goto end;
+	      }
+
 	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
 	      {
 		goto error;
@@ -12501,6 +12507,13 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	      changed_col_idx[cnt++] = i;	//TODO: replace i with def_order to reduce memory alloc and copy 
 	    }
 	}
+
+      if (cnt == 0)
+	{
+	  error_code = ER_CDC_IGNORE_LOG_INFO;
+	  goto error;
+	}
+
       num_change_col = cnt;
       ptr = or_pack_int (ptr, num_change_col);
       for (i = 0; i < num_change_col; i++)
