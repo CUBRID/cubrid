@@ -774,7 +774,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_REDO_STARTED, 2,
-	  log_cnt_pages_containing_lsa (&end_redo_lsa, &start_redolsa), num_redo_log_records);
+	  log_cnt_pages_containing_lsa (&start_redolsa, &end_redo_lsa), num_redo_log_records);
 
   log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa, stopat);
 
@@ -4684,7 +4684,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   total_page_cnt = log_cnt_pages_containing_lsa (&min_lsa, &max_lsa);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_UNDO_STARTED, 2,
-	  log_cnt_pages_containing_lsa (&max_undo_lsa, &min_lsa), cnt_trans_to_undo);
+	  log_cnt_pages_containing_lsa (&min_lsa, &max_undo_lsa), cnt_trans_to_undo);
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
@@ -6599,12 +6599,12 @@ log_rv_end_simulation (THREAD_ENTRY * thread_p)
 static UINT64
 log_cnt_pages_containing_lsa (const log_lsa * from_lsa, const log_lsa * to_lsa)
 {
-  if (*from_lsa == *to_lsa)
+  if (*to_lsa == *from_lsa)
     {
       return 0;
     }
   else
     {
-      return from_lsa->pageid - to_lsa->pageid + 1;
+      return to_lsa->pageid - from_lsa->pageid + 1;
     }
 }
