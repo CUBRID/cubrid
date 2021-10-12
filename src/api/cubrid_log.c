@@ -43,6 +43,7 @@
 #include "object_representation.h"
 #include "dbi.h"
 #include "dbtype_def.h"
+#include "porting.h"
 
 #define CUBRID_LOG_ERROR_HANDLING(e, v) \
   do\
@@ -517,11 +518,14 @@ cubrid_log_error:
 }
 
 static int
-cubrid_log_db_login (char *dbname, char *username, char *password)
+cubrid_log_db_login (char *hostname, char *dbname, char *username, char *password)
 {
   MOP user;
+  char dbname_at_hostname[CUB_MAXHOSTNAMELEN + MAX_DBNAME_LEN] = { '\0', };
 
-  if (db_restart ("cubrid_log_api", 0, dbname) != NO_ERROR)
+  snprintf (dbname_at_hostname, sizeof (dbname_at_hostname), "%s@%s", dbname, hostname);
+
+  if (db_restart ("cubrid_log_api", 0, dbname_at_hostname) != NO_ERROR)
     {
       return CUBRID_LOG_FAILED_LOGIN;
     }
@@ -607,7 +611,7 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *p
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PASSWORD, trace_errbuf);
     }
 
-  if (cubrid_log_db_login (dbname, id, password) != CUBRID_LOG_SUCCESS)
+  if (cubrid_log_db_login (host, dbname, id, password) != CUBRID_LOG_SUCCESS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, trace_errbuf);
     }
