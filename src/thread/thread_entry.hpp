@@ -276,6 +276,7 @@ namespace cubthread
 
       /* for supplemental log */
       bool no_supplemental_log;
+      bool do_trigger_involved;
       bool is_cdc_daemon;
 
 #if !defined(NDEBUG)

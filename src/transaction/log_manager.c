@@ -4882,6 +4882,7 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
   switch (rec_type)
     {
     case LOG_SUPPLEMENT_INSERT:
+    case LOG_SUPPLEMENT_TRIGGER_INSERT:
       assert (redo_lsa != NULL);
 
       size = sizeof (OID) + sizeof (LOG_LSA);
@@ -4891,6 +4892,7 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
       break;
 
     case LOG_SUPPLEMENT_UPDATE:
+    case LOG_SUPPLEMENT_TRIGGER_UPDATE:
       assert (undo_lsa != NULL && redo_lsa != NULL);
 
       size = sizeof (OID) + sizeof (LOG_LSA) + sizeof (LOG_LSA);
@@ -4901,6 +4903,7 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
       break;
 
     case LOG_SUPPLEMENT_DELETE:
+    case LOG_SUPPLEMENT_TRIGGER_DELETE:
       assert (undo_lsa != NULL);
 
       size = sizeof (OID) + sizeof (LOG_LSA);
@@ -10722,6 +10725,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 		break;
 	      }
 	  case LOG_SUPPLEMENT_INSERT:
+	  case LOG_SUPPLEMENT_TRIGGER_INSERT:
 	    memcpy (&classoid, supplement_data, sizeof (OID));
 
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
@@ -10737,8 +10741,9 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	      }
 
 	    error =
-	      cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_INSERT, classoid, NULL, &redo_recdes,
-				    log_info_entry);
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user,
+				    rec_type == LOG_SUPPLEMENT_INSERT ? CDC_INSERT : CDC_TRIGGER_INSERT, classoid, NULL,
+				    &redo_recdes, log_info_entry);
 
 	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
 	      {
@@ -10747,6 +10752,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	    break;
 	  case LOG_SUPPLEMENT_UPDATE:
+	  case LOG_SUPPLEMENT_TRIGGER_UPDATE:
 	    memcpy (&classoid, supplement_data, sizeof (OID));
 
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
@@ -10762,8 +10768,10 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 		goto error;
 	      }
 
-	    error = cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_UPDATE, classoid, &undo_recdes, &redo_recdes,
-					  log_info_entry);
+	    error =
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user,
+				    rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_UPDATE : CDC_TRIGGER_UPDATE, classoid,
+				    &undo_recdes, &redo_recdes, log_info_entry);
 	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
 	      {
 		goto error;
@@ -10771,6 +10779,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	    break;
 	  case LOG_SUPPLEMENT_DELETE:
+	  case LOG_SUPPLEMENT_TRIGGER_DELETE:
 	    memcpy (&classoid, supplement_data, sizeof (OID));
 
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
@@ -10786,8 +10795,9 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	      }
 
 	    error =
-	      cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_DELETE, classoid, &undo_recdes, NULL,
-				    log_info_entry);
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user,
+				    rec_type == LOG_SUPPLEMENT_DELETE ? CDC_DELETE : CDC_TRIGGER_DELETE, classoid,
+				    &undo_recdes, NULL, log_info_entry);
 
 	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
 	      {
@@ -12458,6 +12468,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   switch (dml_type)
     {
     case CDC_INSERT:
+    case CDC_TRIGGER_INSERT:
       /*insert */
       num_change_col = attr_info.num_values;
       ptr = or_pack_int (ptr, dml_type);
@@ -12479,6 +12490,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       ptr = or_pack_int (ptr, num_cond_col);
       break;
     case CDC_UPDATE:
+    case CDC_TRIGGER_UPDATE:
       /*update */
       ptr = or_pack_int (ptr, dml_type);
       ptr = or_pack_int64 (ptr, b_classoid);
@@ -12546,6 +12558,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	}
       break;
     case CDC_DELETE:
+    case CDC_TRIGGER_DELETE:
       /*delete */
       ptr = or_pack_int (ptr, dml_type);
       ptr = or_pack_int64 (ptr, b_classoid);

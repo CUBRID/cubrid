@@ -945,6 +945,9 @@ typedef enum cdc_dml_type
   CDC_INSERT = 0,
   CDC_UPDATE,
   CDC_DELETE,
+  CDC_TRIGGER_INSERT,
+  CDC_TRIGGER_UPDATE,
+  CDC_TRIGGER_DELETE
 } CDC_DML_TYPE;
 
 /*Data structure for CDC interface end */

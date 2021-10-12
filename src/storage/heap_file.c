@@ -22842,18 +22842,21 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
       perfmon_inc_stat (thread_p, PSTAT_HEAP_ASSIGN_INSERTS);
     }
 
+  if (context->do_supplemental_log && !LSA_ISNULL (&context->supp_redo_lsa)
+      && context->recdes_p->type != REC_ASSIGN_ADDRESS)
+    {
+      (void) log_append_supplemental_lsa (thread_p,
+					  thread_p->
+					  do_trigger_involved ? LOG_SUPPLEMENT_TRIGGER_INSERT : LOG_SUPPLEMENT_INSERT,
+					  &context->class_oid, NULL, &context->supp_redo_lsa);
+    }
+
+
 error:
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
-
-  if (context->do_supplemental_log && !LSA_ISNULL (&context->supp_redo_lsa)
-      && context->recdes_p->type != REC_ASSIGN_ADDRESS)
-    {
-      (void) log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL,
-					  &context->supp_redo_lsa);
-    }
 
   /* all ok */
   return rc;
@@ -23020,6 +23023,15 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       goto error;
     }
 
+  if (context->do_supplemental_log == true)
+    {
+      (void) log_append_supplemental_lsa (thread_p,
+					  thread_p->
+					  do_trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE : LOG_SUPPLEMENT_DELETE,
+					  &context->class_oid, &context->supp_undo_lsa, NULL);
+    }
+
+
 error:
 
   /* unfix or keep home page */
@@ -23038,12 +23050,6 @@ error:
 
   /* unfix pages */
   heap_unfix_watchers (thread_p, context);
-
-  if (context->do_supplemental_log == true)
-    {
-      (void) log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa,
-					  NULL);
-    }
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_DELETE_END (&context->class_oid, (rc != NO_ERROR));
@@ -23261,8 +23267,10 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   if (context->do_supplemental_log == true)
     {
-      (void) log_append_supplemental_lsa (thread_p, LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
-					  &context->supp_redo_lsa);
+      (void) log_append_supplemental_lsa (thread_p,
+					  thread_p->
+					  do_trigger_involved ? LOG_SUPPLEMENT_TRIGGER_UPDATE : LOG_SUPPLEMENT_UPDATE,
+					  &context->class_oid, &context->supp_undo_lsa, &context->supp_redo_lsa);
     }
 
 
