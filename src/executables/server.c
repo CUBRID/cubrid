@@ -349,14 +349,14 @@ argument_handler (int argc, char **argv)
 	    {
 	      // error that the type is not valid
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 1, optarg);
-	      return 1;
+	      return EXIT_FAILURE;
 	    }
 	  // *INDENT-ON*
 	  break;
 	default:
 	  // invalid server option
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1, argv[optind - 1]);
-	  return 1;
+	  return EXIT_FAILURE;
 	}
     }
   if (argc - optind == 1)
@@ -366,10 +366,10 @@ argument_handler (int argc, char **argv)
   else
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-      return 1;
+      return EXIT_FAILURE;
     }
 
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 /*
@@ -429,11 +429,11 @@ main (int argc, char **argv)
 #endif
 
     status = argument_handler (argc, argv);
-    if (status == 0)
+    if (status == EXIT_SUCCESS)
       {
 	status = net_server_start (thread_p, database_name);
       }
-    if (status != 0)
+    if (status != EXIT_SUCCESS)
       {
 	PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
 	fflush (stderr);
