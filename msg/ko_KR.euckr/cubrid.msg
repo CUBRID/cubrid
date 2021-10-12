@@ -1354,11 +1354,11 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 %1$s 의 기본키는 외래키 참조로 인해 truncate될 수 없습니다.
 1285 외래키 (%1$s) 의 ON DELETE action이 CASCADE가 아니기 때문에 truncate할 수 없습니다.
-1296 Log recovery: ANALYSIS 페이즈가 시작되었습니다.
-1297 Log recovery: REDO 페이즈가 시작되었습니다. redo할 로그 페이지 수: %1$lld, redo할 로그 레코드 수: %2$lld.
-1298 Log recovery: UNDO 페이즈가 시작되었습니다. undo할 로그 페이지 수: %1$lld, undo할 트랜잭션 수: %2$d.
-1299 Log recovery: %1$s 페이즈를 마무리 중입니다.
-1300 Log recovery: %1$s 페이즈가 끝났습니다.
+1296 Log recovery: ANALYSIS 단계가 시작되었습니다.
+1297 Log recovery: REDO 단계가 시작되었습니다. redo할 로그 페이지 수: %1$lld, redo할 로그 레코드 수: %2$lld.
+1298 Log recovery: UNDO 단계가 시작되었습니다. undo할 로그 페이지 수: %1$lld, undo할 트랜잭션 수: %2$d.
+1299 Log recovery: %1$s 단계를 마무리 중입니다.
+1300 Log recovery: %1$s 단계가 끝났습니다.
 
 1301 마지막 에러
 

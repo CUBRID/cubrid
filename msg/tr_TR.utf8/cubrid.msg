@@ -1346,7 +1346,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1275 Error reserved for scalability development.
 1276 Error reserved for scalability development.
 1277 Error reserved for scalability development.
-12t8 Error reserved for scalability development.
+1278 Error reserved for scalability development.
 1279 Error reserved for scalability development.
 1280 Error reserved for scalability development.
 1281 Error reserved for scalability development.
