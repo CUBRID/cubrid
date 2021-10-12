@@ -3201,8 +3201,6 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   boot_check_db_at_num_shutdowns (true);
 #endif /* CUBRID_DEBUG */
 
-  disk_dump_all (thread_p, stdout);
-
   sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
 
   /* Shutdown the system with the system transaction */
