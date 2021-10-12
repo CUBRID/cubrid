@@ -16325,6 +16325,7 @@ heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, P
   std::memcpy (copy_recdes_data_uptr.get (), peek_recdes.data, peek_recdes.length);
   RECDES copy_recdes = peek_recdes;
   copy_recdes.data = copy_recdes_data_uptr.get ();
+  copy_recdes.area_size = copy_recdes.length;
 	  
   // Update recdes header
   const int error_code = or_mvcc_set_header (&copy_recdes, &rec_header);
