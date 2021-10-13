@@ -74,6 +74,7 @@
 #endif /* WINDOWS */
 #include "connection_list_cl.h"
 #include "connection_cl.h"
+#include "connection_support.h"
 #include "master_util.h"
 
 #if defined(HPUX)
@@ -703,66 +704,6 @@ begin:
 }
 
 /*
- * css_common_connect () - actually try to make a connection to a server
- *   return:
- *   host_name(in):
- *   conn(in/out):
- *   connect_type(in):
- *   server_name(in):
- *   server_name_length(in):
- *   port(in):
- *   timeout(in): timeout in seconds
- *   rid(out):
- */
-CSS_CONN_ENTRY *
-css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type, const char *message,
-		    int message_length, int port, int timeout, unsigned short *rid, bool send_magic)
-{
-  SOCKET fd;
-
-#if !defined (WINDOWS)
-  if (timeout > 0)
-    {
-      /* timeout in milli-seconds in css_tcp_client_open_with_timeout() */
-      fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
-    }
-  else
-    {
-      fd = css_tcp_client_open_with_retry (host_name, port, true);
-    }
-#else /* !WINDOWS */
-  fd = css_tcp_client_open_with_retry (host_name, port, true);
-#endif /* WINDOWS */
-
-  if (!IS_INVALID_SOCKET (fd))
-    {
-      conn->fd = fd;
-
-      if (send_magic == true && css_send_magic (conn) != NO_ERRORS)
-	{
-	  return NULL;
-	}
-
-      if (css_send_request (conn, connect_type, rid, message, message_length) == NO_ERRORS)
-	{
-	  return conn;
-	}
-    }
-#if !defined (WINDOWS)
-  else if (errno == ETIMEDOUT)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CONNECT_TIMEDOUT, 2, host_name, timeout);
-    }
-#endif /* !WINDOWS */
-  else
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 1, host_name);
-    }
-
-  return NULL;
-}
-
-/*
  * css_server_connect () - actually try to make a connection to a server
  *   return:
  *   host_name(in):
@@ -785,8 +726,9 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *message,
     }
 
   /* timeout in second in css_common_connect() */
-  return (css_common_connect (host_name, conn, DATA_REQUEST, message, length, css_Service_id,
-			      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true));
+  return (css_common_connect
+	  (conn, rid, host_name, DATA_REQUEST, message, length, css_Service_id,
+	   prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), true));
 }
 
 /* New style server connection function that uses an explicit port id */
@@ -816,7 +758,7 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id
    */
 
   /* timeout in second in css_common_connect() */
-  if (css_common_connect (host_name, conn, DATA_REQUEST, NULL, 0, port_id, timeout, rid, false) == NULL)
+  if (css_common_connect (conn, rid, host_name, DATA_REQUEST, NULL, 0, port_id, timeout, false) == NULL)
     {
       return NULL;
     }
@@ -843,156 +785,6 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id
     }
 
   return return_status;
-}
-
-/*
- * css_connect_to_master_server () - connect to the master from the server
- *   return:
- *   master_port_id(in):
- *   message_to_master(in): server name and other info
- *   message_to_master_length(in):
- */
-CSS_CONN_ENTRY *
-css_connect_to_master_server (int master_port_id, const char *message_to_master, int message_to_master_length)
-{
-  char hname[CUB_MAXHOSTNAMELEN];
-  CSS_CONN_ENTRY *conn;
-  unsigned short rid;
-  int response, response_buff;
-  int server_port_id;
-  int connection_protocol;
-#if !defined(WINDOWS)
-  std::string pname;
-  int datagram_fd, socket_fd;
-#endif
-
-  css_Service_id = master_port_id;
-  if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
-    {
-      return NULL;
-    }
-
-  conn = css_make_conn (0);
-  if (conn == NULL)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, message_to_master);
-      return NULL;
-    }
-
-  /* select the connection protocol, for PC's this will always be new */
-  connection_protocol = ((css_Server_use_new_connection_protocol) ? SERVER_REQUEST_NEW : SERVER_REQUEST);
-
-  if (css_common_connect (hname, conn, connection_protocol, message_to_master, message_to_master_length,
-			  master_port_id, 0, &rid, true) == NULL)
-    {
-      goto fail_end;
-    }
-
-  if (css_readn (conn->fd, (char *) &response_buff, sizeof (int), -1) != sizeof (int))
-    {
-      goto fail_end;
-    }
-
-  response = ntohl (response_buff);
-
-  TRACE ("connect_to_master received %d as response from master\n", response);
-
-  switch (response)
-    {
-    case SERVER_ALREADY_EXISTS:
-#if defined(CS_MODE)
-      if (IS_MASTER_CONN_NAME_HA_COPYLOG (message_to_master))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_COPYLOG_ALREADY_EXISTS, 1,
-		  GET_REAL_MASTER_CONN_NAME (message_to_master));
-	}
-      else if (IS_MASTER_CONN_NAME_HA_APPLYLOG (message_to_master))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_APPLYLOG_ALREADY_EXISTS, 1,
-		  GET_REAL_MASTER_CONN_NAME (message_to_master));
-	}
-      else if (IS_MASTER_CONN_NAME_HA_SERVER (message_to_master))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1,
-		  GET_REAL_MASTER_CONN_NAME (message_to_master));
-	}
-      else
-#endif /* CS_MODE */
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, message_to_master);
-	}
-
-      goto fail_end;
-
-    case SERVER_REQUEST_ACCEPTED_NEW:
-      /*
-       * Master requests a new-style connect, must go get our port id and set up our connection socket.
-       * For drivers, we don't need a connection socket and we don't want to allocate a bunch of them.
-       * Let a flag variable control whether or not we actually create one of these.
-       */
-      if (css_Server_inhibit_connection_socket)
-	{
-	  server_port_id = -1;
-	}
-      else
-	{
-	  server_port_id = css_open_server_connection_socket ();
-	}
-
-      response = htonl (server_port_id);
-      css_net_send (conn, (char *) &response, sizeof (int), -1);
-
-      /* this connection remains our only contact with the master */
-      return conn;
-
-    case SERVER_REQUEST_ACCEPTED:
-#if defined(WINDOWS)
-      /* Windows can't handle this style of connection at all */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, message_to_master);
-
-      goto fail_end;
-#else /* WINDOWS */
-      /* send the "pathname" for the datagram */
-      /* be sure to open the datagram first.  */
-      pname = std::filesystem::temp_directory_path ();
-      pname += "/csql_tcp_setup_server" + std::to_string (getpid ());
-      (void) unlink (pname.c_str ());	// make sure file is deleted
-
-      if (!css_tcp_setup_server_datagram (pname.c_str (), &socket_fd))
-	{
-	  (void) unlink (pname.c_str ());
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
-			       message_to_master);
-	  goto fail_end;
-	}
-      if (css_send_data (conn, rid, pname.c_str (), pname.length () + 1) != NO_ERRORS)
-	{
-	  (void) unlink (pname.c_str ());
-	  close (socket_fd);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
-			       message_to_master);
-	  goto fail_end;
-	}
-      if (!css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
-	{
-	  (void) unlink (pname.c_str ());
-	  css_free_conn (conn);
-	  close (socket_fd);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
-			       message_to_master);
-	  return NULL;
-	}
-      // success
-      (void) unlink (pname.c_str ());
-      css_free_conn (conn);
-      close (socket_fd);
-      return (css_make_conn (datagram_fd));
-#endif /* WINDOWS */
-    }
-
-fail_end:
-  css_free_conn (conn);
-  return NULL;
 }
 
 /*
@@ -1192,7 +984,7 @@ css_connect_to_master_timeout (const char *host_name, int port_id, int timeout, 
 
   time = ceil (time / 1000);
 
-  return (css_common_connect (host_name, conn, INFO_REQUEST, NULL, 0, port_id, (int) time, rid, true));
+  return (css_common_connect (conn, rid, host_name, INFO_REQUEST, NULL, 0, port_id, (int) time, true));
 }
 
 /*
