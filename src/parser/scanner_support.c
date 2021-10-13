@@ -117,10 +117,10 @@ pt_makename_trim_as_identifier (char *name)
       && ((name[0] == '[' && name[len - 1] == ']') || (name[0] == '`' && name[len - 1] == '`')
 	  || (name[0] == '"' && name[len - 1] == '"')))
     {
-      chBk = tmp_name[len - 1];
-      tmp_name[len - 1] = '\0';
+      chBk = name[len - 1];
+      name[len - 1] = '\0';
       pnew = pt_makename (name + 1);
-      tmp_name[len - 1] = chBk;
+      name[len - 1] = chBk;
 
       return pnew;
     }
@@ -160,9 +160,13 @@ pt_nextchar (void)
 
 // ctshim //========================================================
 static void debug_hint_print (PT_HINT * hint_table);
-static bool use_new_hint_test = false;	// debug
 
 #if defined(NEW_HINT_PARSING)
+#define __HINT_TEST__
+#ifdef __HINT_TEST__
+static bool use_new_hint_test = true;	// debug
+#endif
+
 struct parser_hint_list
 {
   int max_cnt;
@@ -284,9 +288,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 #if !defined(NEW_HINT_PARSING)
       if (stristr (text, hint_table[i].tokens))
 #else
+#if defined(__HINT_TEST__)
       bool is_hit = use_new_hint_test ? gl_parser_hint.hit[i] : (stristr (text, hint_table[i].tokens) != NULL);
       if (is_hit)
-	//if (gl_parser_hint.hit[i])
+#else
+      if (gl_parser_hint.hit[i])
+#endif
 #endif
 	{
 	  // ctshim     
@@ -904,12 +911,6 @@ get_hint_args_func (unsigned char *arg_start, unsigned char *arg_end, unsigned c
   unsigned char *temp;
   PT_NODE *arg;
 
-  arg = parser_new_node (this_parser, PT_NAME);
-  if (!arg)
-    {
-      return;
-    }
-
   /* trim space around found spec name */
   while ((arg_start < arg_end) && IS_WHITE_SPACE (*arg_start))
     {
@@ -921,20 +922,38 @@ get_hint_args_func (unsigned char *arg_start, unsigned char *arg_end, unsigned c
       arg_end--;
     }
 
-  if (arg_dot && !IS_HINT_ON_TABLE (hint_table->hint))
+  if (arg_start == arg_end)
+    {
+      return;
+    }
+
+  arg = parser_new_node (this_parser, PT_NAME);
+  if (!arg)
+    {
+      return;
+    }
+
+  if (!arg_dot || IS_HINT_ON_TABLE (hint_table->hint))
+    {
+      ch_backup = *arg_end;	// backup
+      *arg_end = '\0';
+      arg->info.name.original = pt_makename_trim_as_identifier ((char *) arg_start);
+      *arg_end = ch_backup;	// restore     
+    }
+  else
     {
       *arg_dot = '\0';
 
       /* trim space around found spec name */
       temp = arg_dot - 1;
-      while ((temp > arg_start) && IS_WHITE_SPACE (temp[-1]))
+      while ((temp > arg_start) && IS_WHITE_SPACE (temp[0]))
 	{
 	  temp--;
 	}
-      ch_backup = *temp;	// backup
-      *temp = '\0';
+      ch_backup = temp[1];	// backup
+      temp[1] = '\0';
       arg->info.name.resolved = pt_makename_trim_as_identifier ((char *) arg_start);
-      *temp = ch_backup;
+      temp[1] = ch_backup;
 
       *arg_dot++ = '.';		// restore
 
@@ -947,13 +966,6 @@ get_hint_args_func (unsigned char *arg_start, unsigned char *arg_end, unsigned c
       *arg_end = '\0';
       arg->info.name.original = pt_makename_trim_as_identifier ((char *) arg_dot);
       *arg_end = ch_backup;	// restore
-    }
-  else
-    {
-      ch_backup = *arg_end;	// backup
-      *arg_end = '\0';
-      arg->info.name.original = pt_makename_trim_as_identifier ((char *) arg_start);
-      *arg_end = ch_backup;	// restore     
     }
 
   arg->info.name.meta_class = PT_HINT_NAME;
@@ -1197,7 +1209,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
   bool start_flag = true;
   unsigned char *h_str = (unsigned char *) text + 1;	// skip '+'
 
-#if 1				// for testing code
+#if defined(__HINT_TEST__)	// for testing code
   if (text[1] != '+')
     {
       use_new_hint_test = false;
@@ -1205,9 +1217,12 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
     }
 
   h_str++;
+  text++;			// skip secondary '+'
+
   use_new_hint_test = true;
-  printf ("\n(HINT STRING) %s\n", text + 1);
 #endif
+
+  printf ("\n(HINT STRING) %s\n", text);
 
   memset (gl_parser_hint.hit, 0x00, gl_parser_hint.max_cnt * sizeof (bool));
 
