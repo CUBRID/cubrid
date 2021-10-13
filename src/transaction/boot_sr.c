@@ -169,6 +169,7 @@ char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";
 /*
  * database parameter variables that do not change over time
  */
+static char boot_Db_directory_path[PATH_MAX];
 static char boot_Db_full_name[PATH_MAX];
 static OID boot_Header_oid;	/* Location of parameters */
 static BOOT_DB_PARM boot_Struct_db_parm;	/* The structure */
@@ -477,6 +478,17 @@ const char *
 boot_db_name (void)
 {
   return fileio_get_base_file_name (boot_Db_full_name);
+}
+
+/*
+ * boot_db_directory_path - fully qualified path to the database files
+ *
+ * NOTE: value of global var is initialized together with boot Db full name
+ */
+const char *
+boot_db_directory_path ()
+{
+  return boot_Db_directory_path;
 }
 
 /*
@@ -1497,7 +1509,6 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
   volatile int dbtxt_vdes = NULL_VOLDES;
-  char db_pathbuf[PATH_MAX];
   char vol_real_path[PATH_MAX];
   char log_pathbuf[PATH_MAX];
   char lob_pathbuf[LOB_PATH_PREFIX_MAX + PATH_MAX];
@@ -1601,7 +1612,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
    * absolute pathnames
    */
 
-  memset (db_pathbuf, 0, sizeof (db_pathbuf));
+  memset (boot_Db_directory_path, 0, sizeof (boot_Db_directory_path));
   memset (log_pathbuf, 0, sizeof (log_pathbuf));
   memset (lob_pathbuf, 0, sizeof (lob_pathbuf));
 
@@ -1619,8 +1630,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, db_path);
       goto exit_on_error;
     }
-  boot_remove_useless_path_separator (db_path, db_pathbuf);
-  db_path = db_pathbuf;
+  boot_remove_useless_path_separator (db_path, boot_Db_directory_path);
+  db_path = nullptr;		// unused henceforth
 
   /*
    * for log path,
@@ -1687,7 +1698,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   /*
    * Compose the full name of the database
    */
-  if (snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_pathbuf, PATH_SEPARATOR,
+  if (snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", boot_Db_directory_path, PATH_SEPARATOR,
 		client_credential->get_db_name ()) < 0)
     {
       assert_release (false);
@@ -1858,7 +1869,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   if ((int) strlen (boot_Db_full_name) > DB_MAX_PATH_LENGTH - 1)
     {
       /* db_path + db_name is too long */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4, db_pathbuf,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4, boot_Db_directory_path,
 	      client_credential->get_db_name (), strlen (boot_Db_full_name), DB_MAX_PATH_LENGTH - 1);
       goto exit_on_error;
     }
@@ -1907,12 +1918,12 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	  if (db == NULL)
 	    {
 	      db =
-		cfg_add_db (&dir, client_credential->get_db_name (), db_pathbuf, log_pathbuf, lob_pathbuf,
+		cfg_add_db (&dir, client_credential->get_db_name (), boot_Db_directory_path, log_pathbuf, lob_pathbuf,
 			    db_path_info->db_host);
 	    }
 	  else
 	    {
-	      cfg_update_db (db, db_pathbuf, log_pathbuf, lob_pathbuf, db_path_info->db_host);
+	      cfg_update_db (db, boot_Db_directory_path, log_pathbuf, lob_pathbuf, db_path_info->db_host);
 	    }
 
 	  if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->lobpath == NULL
@@ -2220,7 +2231,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   boot_Host_name[CUB_MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
 
-  COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), db->pathname, db_name);
+  boot_remove_useless_path_separator (db->pathname, boot_Db_directory_path);
+  COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), boot_Db_directory_path, db_name);
   error_code = boot_make_session_server_key ();
   if (error_code != NO_ERROR)
     {
@@ -4915,7 +4927,8 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
       /*
        * Compose the full name of the database and find location of logs
        */
-      COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), db->pathname, db_name);
+      boot_remove_useless_path_separator (db->pathname, boot_Db_directory_path);
+      COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), boot_Db_directory_path, db_name);
     }
 
   if (boot_volume_info_log_path (log_path) == NULL)
@@ -5603,7 +5616,8 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 	}
     }
 
-  COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), db->pathname, db_name);
+  boot_remove_useless_path_separator (db->pathname, boot_Db_directory_path);
+  COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), boot_Db_directory_path, db_name);
 
   if (boot_volume_info_log_path (log_path) == NULL)
     {

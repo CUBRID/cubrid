@@ -116,6 +116,7 @@ extern void xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_in
 #endif /* SERVER_MODE */
 
 extern const char *boot_db_name (void);
+extern const char *boot_db_directory_path ();
 extern const char *boot_db_full_name (void);
 #if !defined(CS_MODE)
 extern const char *boot_get_lob_path (void);
