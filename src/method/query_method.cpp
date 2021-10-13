@@ -267,9 +267,7 @@ method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 
   DB_VALUE result;
   db_make_null (&result);
-  method_send_value_to_server (conn_info.rc, conn_info.host, conn_info.server_name, result); // send dummy
-
-  return NO_ERROR;
+  return method_send_value_to_server (conn_info.rc, conn_info.host, conn_info.server_name, result); // send dummy
 }
 
 /*
