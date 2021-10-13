@@ -4681,10 +4681,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   });
   // *INDENT-ON*
 
-  total_page_cnt = log_cnt_pages_containing_lsa (&min_lsa, &max_lsa);
+  total_page_cnt = log_cnt_pages_containing_lsa (&min_lsa, &max_undo_lsa);
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_UNDO_STARTED, 2,
-	  log_cnt_pages_containing_lsa (&min_lsa, &max_undo_lsa), cnt_trans_to_undo);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_UNDO_STARTED, 2, total_page_cnt, cnt_trans_to_undo);
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
