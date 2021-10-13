@@ -5592,8 +5592,6 @@ fileio_get_max_name (const char *given_path_p, long int *file_name_max_p, long i
 const char *
 fileio_get_base_file_name (const char *full_name_p)
 {
-  assert (full_name_p != nullptr);
-
   const char *no_path_name_p;
 
   no_path_name_p = strrchr (full_name_p, PATH_SEPARATOR);
