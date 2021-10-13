@@ -208,7 +208,7 @@ public class SpPrepareTest {
                 query = String.format("select %s from %s where %s = ?", select_list, from, where);
             }
             PreparedStatement pstmt = conn.prepareStatement(query);
-            if (!where.isEmpty()) {
+            if (where != null && !where.isEmpty()) {
                 pstmt.setString(1, value);
             }
             ResultSet rs = pstmt.executeQuery();
