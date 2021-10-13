@@ -439,6 +439,7 @@ main (int argc, char **argv)
 	fflush (stderr);
       }
   }
+  er_final (ER_ALL_FINAL);
 #if defined(WINDOWS)
   __except (CreateMiniDump (GetExceptionInformation (), argv[1]))
   {
