@@ -36,6 +36,8 @@ public class TestCUBRIDPreparedStatement {
             PreparedStatement stmt = conn.prepareStatement("insert into t1 (a) values (?)");
             stmt.setInt(1, 10);
             stmt.executeUpdate();
+        } catch (Exception e) {
+            return "f";
         } finally {
             SqlUtil.dropTable(conn, "t1");
         }
@@ -50,6 +52,8 @@ public class TestCUBRIDPreparedStatement {
             PreparedStatement stmt = conn.prepareStatement("insert into t1 (a) values (?)");
             stmt.setClob(1, new StringReader("0123456789"), 5);
             stmt.executeUpdate();
+        } catch (Exception e) {
+            return "f";
         } finally {
             SqlUtil.dropTable(conn, "t1");
         }
@@ -64,6 +68,8 @@ public class TestCUBRIDPreparedStatement {
             PreparedStatement stmt = conn.prepareStatement("insert into t1 (a) values (?)");
             stmt.setBlob(1, new ByteArrayInputStream("0123456789".getBytes()), 5);
             stmt.executeUpdate();
+        } catch (Exception e) {
+            return "f";
         } finally {
             SqlUtil.dropTable(conn, "t1");
         }
@@ -81,6 +87,8 @@ public class TestCUBRIDPreparedStatement {
             stmt.setInt(1, 20);
             stmt.addBatch();
             stmt.clearBatch();
+        } catch (Exception e) {
+            return "f";
         } finally {
             SqlUtil.dropTable(conn, "t1");
         }
