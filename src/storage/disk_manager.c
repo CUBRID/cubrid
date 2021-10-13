@@ -1227,10 +1227,7 @@ disk_adapt_other_config_volume_full_name_to_local_config (char *local_config_ful
   else
     {
       // and the rest of the path from the current settings
-      char buf_temp_path[PATH_MAX];
-      const char *const vol_base_path = fileio_get_directory_path (buf_temp_path, boot_db_full_name ());
-
-      fileio_make_volume_ext_given_name (local_config_full_name, vol_base_path, vol_filename);
+      fileio_make_volume_ext_given_name (local_config_full_name, boot_db_directory_path (), vol_filename);
     }
 }
 

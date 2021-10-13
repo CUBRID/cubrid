@@ -481,6 +481,17 @@ boot_db_name (void)
 }
 
 /*
+ * boot_db_directory_path - fully qualified path to the database files
+ *
+ * NOTE: value of global var is initialized together with boot Db full name
+ */
+const char *
+boot_db_directory_path ()
+{
+  return boot_Db_directory_path;
+}
+
+/*
  * boot_db_full_name () - return current database full name.
  *
  * return : database full name
