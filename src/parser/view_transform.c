@@ -1398,7 +1398,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
   cpi.check_xxxnum = !is_only_spec;
-  cpi.check_analytic = false;	/* analytic functions are not pushable */
+  cpi.check_analytic = true;	/* analytic functions are not pushable */
 
   cpi.method_found = false;
   cpi.query_found = false;
@@ -1417,7 +1417,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
   cpi.check_xxxnum = !is_only_spec;
-  cpi.check_analytic = false;	/* analytic functions are pushable */
+  cpi.check_analytic = true;	/* analytic functions are not pushable */
 
   cpi.method_found = false;
   cpi.query_found = false;
@@ -1688,7 +1688,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
       else
 	{
 	  /* determine if class_spec is the only spec in the statement */
-	  is_only_spec = true; /* (statement_spec->next == NULL ? true : false); */
+	  is_only_spec = (statement_spec->next == NULL ? true : false);
 
 	  /* determine if spec is outer joined */
 	  is_outer_joined = mq_is_outer_join_spec (parser, class_spec);
