@@ -5930,7 +5930,7 @@ disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp)
 {
   int ret = NO_ERROR;
 
-  ret = (fileio_map_mounted (thread_p, disk_dump_goodvol_all, fp) == true ? NO_ERROR : ER_FAILED);
+  ret = (fileio_map_mounted (thread_p, disk_dump_goodvol_all, NULL) == true ? NO_ERROR : ER_FAILED);
 
   return ret;
 }
@@ -5939,13 +5939,12 @@ disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp)
  * disk_dump_goodvol_all () -  Dump all information of given volume
  *   return: true
  *   volid(in): Permanent volume identifier
- *   fp(in): file pointer
+ *   ignore(in):
  */
 static bool
-disk_dump_goodvol_all (THREAD_ENTRY * thread_p, INT16 volid, void *fp)
+disk_dump_goodvol_all (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
 {
-  FILE *const fp_or_stdout = (fp != nullptr) ? (FILE *) fp : stdout;
-  (void) disk_dump_volume_system_info (thread_p, fp_or_stdout, volid);
+  (void) disk_dump_volume_system_info (thread_p, stdout, volid);
 
   return true;
 }
