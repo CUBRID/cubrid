@@ -29,9 +29,11 @@
 #include <string>
 
 SERVER_TYPE get_value_from_config (server_type_config parameter_value);
+transaction_server_type get_value_from_config (transaction_server_type_config parameter_value);
 void setup_tran_server_params_on_single_node_config ();
 
 static SERVER_TYPE g_server_type = SERVER_TYPE_UNKNOWN;
+static transaction_server_type g_transaction_server_type = transaction_server_type::ACTIVE;
 #if !defined(NDEBUG)
 static bool g_server_type_initialized = false;
 #endif
@@ -39,6 +41,11 @@ static bool g_server_type_initialized = false;
 SERVER_TYPE get_server_type ()
 {
   return g_server_type;
+}
+
+transaction_server_type get_transaction_server_type ()
+{
+  return g_transaction_server_type;
 }
 
 SERVER_TYPE get_value_from_config (server_type_config parameter_value)
@@ -50,6 +57,24 @@ SERVER_TYPE get_value_from_config (server_type_config parameter_value)
       break;
     case server_type_config::PAGE:
       return SERVER_TYPE_PAGE;
+      break;
+    default:
+      assert (false);
+    }
+}
+
+transaction_server_type get_value_from_config (transaction_server_type_config parameter_value)
+{
+  switch (parameter_value)
+    {
+    case transaction_server_type_config::ACTIVE:
+      return transaction_server_type::ACTIVE;
+      break;
+    case transaction_server_type_config::REPLICA:
+      return transaction_server_type::PASSIVE;
+      break;
+    case transaction_server_type_config::STANDBY:
+      return transaction_server_type::PASSIVE;
       break;
     default:
       assert (false);
@@ -76,6 +101,8 @@ int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
   server_type_config parameter_value = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+  g_transaction_server_type = get_value_from_config ((transaction_server_type_config) prm_get_integer_value (
+				      PRM_ID_TRANSACTION_SERVER_TYPE));
   if (g_server_type == SERVER_TYPE_UNKNOWN)
     {
       if (parameter_value == server_type_config::SINGLE_NODE)
@@ -110,7 +137,15 @@ int init_server_type (const char *db_name)
 
   if (er_code == NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n", server_type_to_string (get_server_type ()));
+      if (g_server_type == SERVER_TYPE_TRANSACTION)
+	{
+	  er_log_debug (ARG_FILE_LINE, "Starting server type: %s transaction\n",
+			transaction_server_type_to_string (get_transaction_server_type()));
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n", server_type_to_string (get_server_type ()));
+	}
     }
   else
     {
@@ -144,6 +179,31 @@ void finalize_server_type ()
     {
       assert (get_server_type () == SERVER_TYPE_UNKNOWN);
     }
+}
+
+bool is_active_transaction_server ()
+{
+  return is_transaction_server () && g_transaction_server_type == transaction_server_type::ACTIVE;
+}
+
+bool is_page_server ()
+{
+  return g_server_type == SERVER_TYPE_PAGE;
+}
+
+bool is_passive_transaction_server ()
+{
+  return is_transaction_server () && g_transaction_server_type == transaction_server_type::PASSIVE;
+}
+
+bool is_passive_server ()
+{
+  return is_page_server () || is_passive_transaction_server ();
+}
+
+bool is_transaction_server ()
+{
+  return g_server_type == SERVER_TYPE_TRANSACTION;
 }
 
 bool is_tran_server_with_remote_storage ()
