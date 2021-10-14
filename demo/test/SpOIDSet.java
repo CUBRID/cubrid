@@ -37,15 +37,8 @@ import java.util.*;
 
 public class SpOIDSet {
 
-    public static CUBRIDOID testoid1(CUBRIDOID oid) {
-        return oid;
-    }
-
-    public static java.lang.Object[] testoid3(java.lang.Object[] set) {
-        return set;
-    }
-
-    public static String testoid2(CUBRIDOID oid) {
+    /* from SpTest6.testoid2 */
+    public static String testoid1(CUBRIDOID oid) {
         Connection conn = null;
         Statement stmt = null;
         String ret = "";
@@ -60,14 +53,13 @@ public class SpOIDSet {
             conn.setAutoCommit(false);
             ret = ret + oid.getTableName() + " | ";
             ret = ret + oid.isInstance() + " | ";
-            CUBRIDResultSet rs = (CUBRIDResultSet) oid.getValues(attrs);
-            int i = 0;
+            ResultSet rs = (ResultSet) oid.getValues(attrs);
             while (rs.next()) {
                 ret = ret + " || " + rs.getString(1);
             }
             oid.setValues(attrs, values);
             oid.getValues(attrs);
-            rs = (CUBRIDResultSet) oid.getValues(attrs);
+            rs = (ResultSet) oid.getValues(attrs);
             while (rs.next()) {
                 ret = ret + " || " + rs.getString(1);
             }
@@ -82,7 +74,8 @@ public class SpOIDSet {
         return "";
     }
 
-    public static CUBRIDOID testoid4(String query) {
+    /* from SpTest6.testoid4 */
+    public static CUBRIDOID testoid2(String query) {
         Connection conn = null;
         Statement stmt = null;
         String ret = "";
@@ -111,12 +104,10 @@ public class SpOIDSet {
         return null;
     }
 
-    public static void ptestoid2(CUBRIDOID[] oid) {}
-
+    /* from SpTest6.ptestoid1 */
     public static void ptestoid1(CUBRIDOID[] oid, String query) {
         Connection conn = null;
         Statement stmt = null;
-        String ret = "";
 
         try {
             Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
@@ -138,6 +129,7 @@ public class SpOIDSet {
         }
     }
 
+    /* from SpTest6.ptestoid3 */
     public static void ptestoid3(cubrid.sql.CUBRIDOID[][] set, cubrid.sql.CUBRIDOID aoid) {
         Connection conn = null;
         Statement stmt = null;
@@ -163,22 +155,7 @@ public class SpOIDSet {
         }
     }
 
-    public static Object[] testset1(Object[] set) {
-        return set;
-    }
-
-    public static String[] testset2(String[] set) {
-        return set;
-    }
-
-    public static int[] testset3(int[] set) {
-        return set;
-    }
-
-    public static Integer[] testset4(Integer[] set) {
-        return set;
-    }
-
+    /* from SpTest6.testset5 */
     public static void testset5(Integer[][] set) {
         for (int i = 0; i < set[0].length; i++) {
             set[0][i] = new Integer(set[0][i].intValue() + 10);

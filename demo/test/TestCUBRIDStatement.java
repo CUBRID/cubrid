@@ -79,7 +79,7 @@ public class TestCUBRIDStatement {
                 return "f";
             }
             String str = rs.getString("a");
-            if ("012345" != str) {
+            if ("012345".equals(str) == false) {
                 return "f";
             }
 

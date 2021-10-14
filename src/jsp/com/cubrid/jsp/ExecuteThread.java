@@ -54,6 +54,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ExecuteThread extends Thread {
+
+    // TODO: get charset from DB Server
     public static String charSet = "UTF-8"; // System.getProperty("file.encoding");
 
     private static final int REQ_CODE_INVOKE_SP = 0x01;

@@ -41,6 +41,6 @@ namespace cubmethod
 
     DB_VALUE *value;
   };
-}
+} // namespace cubmethod
 
-#endif
+#endif // _METHOD_STRUCT_VALUE_HPP_
