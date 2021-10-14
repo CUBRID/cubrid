@@ -1387,8 +1387,8 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
       return false;
     }
 
-  /* check for aggregate or orderby_for */
-  if (pt_has_aggregate (parser, query) || query->info.query.orderby_for)
+  /* check for aggregate or orderby_for or analytic */
+  if (pt_has_aggregate (parser, query) || query->info.query.orderby_for || pt_has_analytic (parser, query))
     {
       /* not pushable */
       return false;
@@ -1398,16 +1398,14 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
   cpi.check_xxxnum = !is_only_spec;
-  cpi.check_analytic = true;	/* analytic functions are not pushable */
 
   cpi.method_found = false;
   cpi.query_found = false;
   cpi.xxxnum_found = false;
-  cpi.analytic_found = false;
 
   parser_walk_tree (parser, query->info.query.q.select.list, pt_check_pushable, (void *) &cpi, NULL, NULL);
 
-  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found || cpi.analytic_found)
+  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
     {
       /* query not pushable */
       return false;
@@ -1417,16 +1415,14 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
   cpi.check_xxxnum = !is_only_spec;
-  cpi.check_analytic = true;	/* analytic functions are not pushable */
 
   cpi.method_found = false;
   cpi.query_found = false;
   cpi.xxxnum_found = false;
-  cpi.analytic_found = false;
 
   parser_walk_tree (parser, query->info.query.q.select.where, pt_check_pushable, (void *) &cpi, NULL, NULL);
 
-  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found || cpi.analytic_found)
+  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
     {
       /* query not pushable */
       return false;
