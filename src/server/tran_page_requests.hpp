@@ -16,10 +16,10 @@
  *
  */
 
-#ifndef _ATS_PS_REQUEST_HPP_
-#define _ATS_PS_REQUEST_HPP_
+#ifndef _TRAN_PAGE_REQUESTS_HPP_
+#define _TRAN_PAGE_REQUESTS_HPP_
 
-enum class ats_to_ps_request
+enum class tran_to_page_request
 {
   GET_BOOT_INFO,
   SEND_LOG_PRIOR_LIST,
@@ -28,7 +28,7 @@ enum class ats_to_ps_request
   SEND_DISCONNECT_MSG
 };
 
-enum class ps_to_ats_request
+enum class page_to_tran_request
 {
   SEND_BOOT_INFO,
   SEND_SAVED_LSA,
@@ -36,5 +36,5 @@ enum class ps_to_ats_request
   SEND_DATA_PAGE
 };
 
-#endif // !_ATS_PS_REQUEST_IDS_HPP_
+#endif // !_TRAN_PAGE_REQUESTS_HPP_
 
