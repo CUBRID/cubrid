@@ -3173,7 +3173,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    }
 	}
 
-      usleep (400000);
       /* PRM_ID_DETAILED_RECOVERY_LOGGING_INTERVAL > 0 */
       if (info_logging_interval_in_secs > 0)
 	{
@@ -4717,7 +4716,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  return;
 	}
 
-      usleep (400000);
       /* PRM_ID_DETAILED_RECOVERY_LOGGING_INTERVAL != 0 */
       if (info_logging_interval_in_secs > 0)
 	{
