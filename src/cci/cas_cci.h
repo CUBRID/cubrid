@@ -96,6 +96,9 @@
 #define CCI_GET_RESULT_INFO_IS_SHARED(RES_INFO, INDEX)	\
 		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].is_shared)
 
+#define CCI_GET_RESULT_INFO_CHARSET(RES_INFO, INDEX)	\
+		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].charset)
+
 #define CCI_IS_SET_TYPE(TYPE)	\
 	(((((TYPE) & CCI_CODE_COLLECTION) == CCI_CODE_SET) || ((TYPE) == CCI_U_TYPE_SET)) ? 1 : 0)
 
@@ -682,7 +685,21 @@ typedef struct
   char is_reverse_index;
   char is_reverse_unique;
   char is_shared;
+  int charset;
 } T_CCI_COL_INFO;
+
+typedef enum
+{
+  CCI_CHARSET_ERROR = -2,
+  CCI_CHARSET_NONE = -1,
+  CCI_CHARSET_ASCII,		/* US English charset, ASCII encoding */
+  CCI_CHARSET_RAW_BITS,		/* Uninterpreted bits, Raw encoding */
+  CCI_CHARSET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
+  CCI_CHARSET_ISO88591,		/* Latin 1 charset, ISO 8859 encoding */
+  CCI_CHARSET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
+  CCI_CHARSET_UTF8,		/* UNICODE charset, UTF-8 encoding */
+  CCI_CHARSET_LAST
+} T_CCI_CHARSET_TYPE;
 
 typedef enum
 {
