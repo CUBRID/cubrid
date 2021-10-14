@@ -1354,6 +1354,13 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1283 Error reserved for scalability development.
 1284 Impossibile troncare la tabella a causa della chiave primaria a cui si fa riferimento su %1$s. Riprova con l'opzione CASCADE.
 1285 Impossibile eseguire il troncamento a catena perché l'azione ON DELETE della chiave esterna (%1$s) non è impostata su CASCADE.
+1297 _db_synonym class not found.
+1298 db_synonym vclass not found.
+1299 Public ynonym [%1$s].[%2$s] not found.
+1300 Private synonym [%1$s].[%2$s] not found.
+1301 Public synonym [%1$s].[%2$s] already exist.
+1302 Private synonym [%1$s].[%2$s] already exist.
+1303 Cannot update synonym [%1$s].[%2$s].
 
 1286 Ultimo errore
 

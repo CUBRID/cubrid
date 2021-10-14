@@ -1354,8 +1354,15 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 %1$s sで参照されている主キーが原因で、テーブルを切り捨てることができません。 CASCADEオプションを使用して再試行してください。
 1285 外部キー（%1$s）のON DELETEアクションがCASCADEに設定されていないため、切り捨てをカスケードできません。
+1297 _db_synonym class not found.
+1298 db_synonym vclass not found.
+1299 Public ynonym [%1$s].[%2$s] not found.
+1300 Private synonym [%1$s].[%2$s] not found.
+1301 Public synonym [%1$s].[%2$s] already exist.
+1302 Private synonym [%1$s].[%2$s] already exist.
+1303 Cannot update synonym [%1$s].[%2$s].
 
-1286 ラストエラー
+1304 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

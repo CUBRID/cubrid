@@ -3009,6 +3009,125 @@ sm_is_system_class (MOP op)
 }
 
 /*
+ * sm_is_system_class_by_name () - Checks whether the class name is
+ *    the same as the system class name.
+ * return: bool
+ * name(in): class name
+ */
+bool
+sm_is_system_class_by_name (const char *name)
+{
+  const char **ptr = NULL;
+
+  const char *system_classes[] = {
+    /* 
+     * authorization classes
+     *
+     * AU_ROOT_CLASS_NAME     = CT_ROOT_NAME
+     * AU_OLD_ROOT_CLASS_NAME = CT_AUTHORIZATIONS_NAME
+     * AU_USER_CLASS_NAME     = CT_USER_NAME
+     * AU_PASSWORD_CLASS_NAME = CT_PASSWORD_NAME
+     * AU_AUTH_CLASS_NAME     = CT_AUTHORIZATION_NAME
+     * AU_GRANT_CLASS_NAME
+     */
+
+    AU_ROOT_CLASS_NAME,		// "db_root"
+    AU_USER_CLASS_NAME,		// "db_user"
+    AU_PASSWORD_CLASS_NAME,	// "db_password"
+    AU_AUTH_CLASS_NAME,		// "db_authorization"
+    AU_OLD_ROOT_CLASS_NAME,	// "db_authorizations"
+
+    /* currently, not implemented */
+    AU_GRANT_CLASS_NAME,	// "db_grant"
+    
+    /* 
+     * catalog classes
+     */
+    CT_CLASS_NAME,		// "_db_class"
+    CT_ATTRIBUTE_NAME,		// "_db_attribute"
+    CT_DOMAIN_NAME,		// "_db_domain"
+    CT_METHOD_NAME,		// "_db_method"
+    CT_METHSIG_NAME,		// "_db_meth_sig"
+    CT_METHARG_NAME,		// "_db_meth_arg"
+    CT_METHFILE_NAME,		// "_db_meth_file"
+    CT_QUERYSPEC_NAME,		// "_db_query_spec"
+    CT_INDEX_NAME,		// "_db_index"
+    CT_INDEXKEY_NAME,		// "_db_index_key"
+    CT_DATATYPE_NAME,		// "_db_data_type"
+    CT_CLASSAUTH_NAME,		// "_db_auth"
+    CT_PARTITION_NAME,		// "_db_partition"
+    CT_STORED_PROC_NAME,	// "_db_stored_procedure"
+    CT_STORED_PROC_ARGS_NAME,	// "_db_stored_procedure_args"
+    CT_SERIAL_NAME,		// "db_serial"
+    CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
+    CT_COLLATION_NAME,		// "_db_collation"
+    CT_CHARSET_NAME,		// "_db_charset"
+    CT_SYNONYM_NAME,		// "_db_synonym"
+
+    CT_TRIGGER_NAME,		// "db_trigger"
+
+    /* currently, not implemented */
+    CT_RESOLUTION_NAME,		// "_db_resolution"
+
+    /*
+     * catalog vclasses
+     */
+    CTV_CLASS_NAME,		// "db_class"
+    CTV_SUPER_CLASS_NAME,	// "db_direct_super_class"
+    CTV_VCLASS_NAME,		// "db_vclass"
+    CTV_ATTRIBUTE_NAME,		// "db_attribute"
+    CTV_ATTR_SD_NAME,		// "db_attr_setdomain_elm"
+    CTV_METHOD_NAME,		// "db_method"
+    CTV_METHARG_NAME,		// "db_meth_arg"
+    CTV_METHARG_SD_NAME,	// "db_meth_arg_setdomain_elm"
+    CTV_METHFILE_NAME,		// "db_meth_file"
+    CTV_INDEX_NAME,		// "db_index"
+    CTV_INDEXKEY_NAME,		// "db_index_key"
+    CTV_AUTH_NAME,		// "db_auth"
+    CTV_TRIGGER_NAME,		// "db_trig"
+    CTV_PARTITION_NAME,		// "db_partition"
+    CTV_STORED_PROC_NAME,	// "db_stored_procedure"
+    CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
+    CTV_DB_COLLATION_NAME,	// "db_collation"
+    CTV_DB_CHARSET_NAME,	// "db_charset"
+    CTV_SYNONYM_NAME,		// "db_synonym"
+
+    NULL
+  };
+
+  /* Rootclass */
+  if (strncmp (name, ROOTCLASS_NAME, SM_MAX_IDENTIFIER_LENGTH) == 0)
+    {
+      return true;
+    }
+
+  /* dual */
+  if (strncmp (name, CT_DUAL_NAME, SM_MAX_IDENTIFIER_LENGTH) == 0)
+    {
+      return true;
+    }
+
+  if (strncmp (name, "_db_", sizeof ("_db_") - 1) != 0
+      && strncmp (name, "db_", sizeof ("db_") - 1) != 0)
+    {
+      return false;
+    }
+
+  ptr = system_classes;
+  while (*ptr)
+    {
+      if (strncmp (name, *ptr, SM_MAX_IDENTIFIER_LENGTH) == 0)
+	{
+	  return true;
+	}
+
+      ptr++;
+    }
+
+  return false;
+}
+
+/*
  * sm_is_reuse_oid_class() - Tests the reuse OID class flag of a class object.
  *   return: true if class is an OID reusable class. otherwise, false
  *   op(in): class object

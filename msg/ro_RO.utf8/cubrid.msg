@@ -1354,8 +1354,15 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1283 Error reserved for scalability development.
 1284 Nu se poate tăia tabelul din cauza cheii principale menționate în %1$s. Încercați din nou cu opțiunea CASCADE.
 1285 Nu se poate trunchia în cascadă deoarece acțiunea ON DELETE a cheii externe (%1$s) nu este setată la CASCADE.
+1297 _db_synonym class not found.
+1298 db_synonym vclass not found.
+1299 Public ynonym [%1$s].[%2$s] not found.
+1300 Private synonym [%1$s].[%2$s] not found.
+1301 Public synonym [%1$s].[%2$s] already exist.
+1302 Private synonym [%1$s].[%2$s] already exist.
+1303 Cannot update synonym [%1$s].[%2$s].
 
-1286 Ultima eroare
+1304 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

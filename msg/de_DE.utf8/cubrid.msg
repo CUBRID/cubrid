@@ -1354,8 +1354,15 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 Die Tabelle kann aufgrund des Primärschlüssels, auf den in %1$s verwiesen wird, nicht abgeschnitten werden. Versuchen Sie es erneut mit der Option CASCADE.
 1285 Abschneiden in Kaskade nicht möglich, da die Aktion ON DELETE des Fremdschlüssels (%1$s) nicht auf CASCADE gesetzt ist.
+1297 _db_synonym class not found.
+1298 db_synonym vclass not found.
+1299 Public ynonym [%1$s].[%2$s] not found.
+1300 Private synonym [%1$s].[%2$s] not found.
+1301 Public synonym [%1$s].[%2$s] already exist.
+1302 Private synonym [%1$s].[%2$s] already exist.
+1303 Cannot update synonym [%1$s].[%2$s].
 
-1286 Letzter Fehler
+1304 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

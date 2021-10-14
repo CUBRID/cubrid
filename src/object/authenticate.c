@@ -8718,6 +8718,49 @@ au_check_serial_authorization (MOP serial_object)
   return ret_val;
 }
 
+/*
+ * au_check_synonym_authorization () - check whether the current user is able to
+ *    modify synonym object or not.
+ * return: error code
+ *    ER_QPROC_CANNOT_UPDATE_SYNONYM
+ * synonym_object(in): synonym object pointer
+ */
+int
+au_check_synonym_authorization (MOP synonym_object)
+{
+  DB_VALUE creator_val;
+  MOP creator;
+  DB_SET *groups;
+  int ret_val;
+
+  CHECK_1ARG_ERROR (synonym_object);
+
+  ret_val = db_get (synonym_object, "owner", &creator_val);
+
+  if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
+    {
+      return ret_val;
+    }
+
+  creator = db_get_object (&creator_val);
+
+  ret_val = ER_QPROC_CANNOT_UPDATE_SYNONYM;
+
+  if (ws_is_same_object (creator, Au_user) || au_is_dba_group_member (Au_user))
+    {
+      ret_val = NO_ERROR;
+    }
+
+  if (ret_val != NO_ERROR)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ret_val, 0);
+    }
+
+  pr_clear_value (&creator_val);
+
+  return ret_val;
+}
+
 const char *
 au_get_public_user_name (void)
 {

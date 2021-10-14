@@ -5570,17 +5570,15 @@ boot_define_view_synonym (void)
 	}
     }
 
-  /* Use ORDER BY to get PRIVATE SYNONYM first. */
   sprintf (stmt, "SELECT [s].[name], CAST([s].[owner].[name] AS VARCHAR(255)), "
 	   "CASE WHEN [s].[is_public] = 1 THEN 'YES' ELSE 'NO' END, "
 	   "[s].[target_name], CAST([s].[target_owner].[name] AS VARCHAR(255)), [s].[comment] "
 	   "FROM [%s] [s] "
-	   "WHERE (CURRENT_USER = 'DBA') "
-	   "OR ([s].[is_public] = 1) "
-	   "OR ([s].[is_public] = 0 AND [s].[owner].[name] = CURRENT_USER) "
-	   "OR ([s].[is_public] = 0 AND [s].[owner].[name] IN "
-	   "(SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER)) "
-	   "ORDER BY [is_public]", CT_SYNONYM_NAME, AU_USER_CLASS_NAME);
+	   "WHERE CURRENT_USER IN (SELECT 'DBA' UNION ALL "
+	   "SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) "
+	   "OR [s].[owner].[name] IN (SELECT CURRENT_USER UNION ALL "
+	   "SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) "
+	   "OR [s].[is_public] = 1 ", CT_SYNONYM_NAME, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)

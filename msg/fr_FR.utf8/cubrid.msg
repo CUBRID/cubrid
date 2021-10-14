@@ -1354,8 +1354,15 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1283 Error reserved for scalability development.
 1284 Impossible de tronquer la table en raison de la clé primaire référencée sur %1$s. Essayez à nouveau avec l'option CASCADE.
 1285 Impossible de tronquer en cascade car l'action ON DELETE de la clé étrangère (%1$s) n'est pas définie sur CASCADE.
+1297 _db_synonym class not found.
+1298 db_synonym vclass not found.
+1299 Public ynonym [%1$s].[%2$s] not found.
+1300 Private synonym [%1$s].[%2$s] not found.
+1301 Public synonym [%1$s].[%2$s] already exist.
+1302 Private synonym [%1$s].[%2$s] already exist.
+1303 Cannot update synonym [%1$s].[%2$s].
 
-1286 Dernière erreur
+1304 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

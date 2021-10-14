@@ -1354,8 +1354,15 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 %1$s 의 기본키는 외래키 참조로 인해 truncate될 수 없습니다.
 1285 외래키 (%1$s) 의 ON DELETE action이 CASCADE가 아니기 때문에 truncate할 수 없습니다.
+1297 _db_synonym class not found.
+1298 db_synonym vclass not found.
+1299 Public ynonym [%1$s].[%2$s] not found.
+1300 Private synonym [%1$s].[%2$s] not found.
+1301 Public synonym [%1$s].[%2$s] already exist.
+1302 Private synonym [%1$s].[%2$s] already exist.
+1303 Cannot update synonym [%1$s].[%2$s].
 
-1286 마지막 에러
+1304 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
