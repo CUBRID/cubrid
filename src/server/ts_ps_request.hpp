@@ -16,19 +16,24 @@
  *
  */
 
-#ifndef _ATS_PS_REQUEST_HPP_
-#define _ATS_PS_REQUEST_HPP_
+#ifndef _TS_PS_REQUEST_HPP_
+#define _TS_PS_REQUEST_HPP_
 
-enum class ats_to_ps_request
+enum class ts_to_ps_request
 {
+  // Common
   GET_BOOT_INFO,
-  SEND_LOG_PRIOR_LIST,
   SEND_LOG_PAGE_FETCH,
   SEND_DATA_PAGE_FETCH,
-  SEND_DISCONNECT_MSG
+  SEND_DISCONNECT_MSG,
+
+  // Active only
+  SEND_LOG_PRIOR_LIST,
+
+  // Passive only
 };
 
-enum class ps_to_ats_request
+enum class ps_to_ts_request
 {
   SEND_BOOT_INFO,
   SEND_SAVED_LSA,
@@ -36,5 +41,5 @@ enum class ps_to_ats_request
   SEND_DATA_PAGE
 };
 
-#endif // !_ATS_PS_REQUEST_IDS_HPP_
+#endif // !_TS_PS_REQUEST_HPP_
 

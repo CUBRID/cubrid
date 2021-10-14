@@ -77,7 +77,7 @@
 #endif
 #include "active_tran_server.hpp"
 #include "page_broker.hpp"
-#include "ats_ps_request.hpp"
+#include "ts_ps_request.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
 #include "page_server.hpp"
@@ -2100,7 +2100,7 @@ request_log_page_from_page_server (LOG_PAGEID log_pageid)
   if (ats_Gl.get_log_page_broker ().register_entry (log_pageid) == page_broker_register_entry_state::ADDED)
     {
       // First to add an entry must also sent the request to the page server
-      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
+      ats_Gl.push_request (ts_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
         {
@@ -4148,7 +4148,7 @@ logpb_send_flushed_lsa_to_ats ()
     }
   // *INDENT-OFF*
   std::string message (reinterpret_cast<const char *> (&saved_lsa), sizeof (saved_lsa));
-  ps_Gl.push_request_to_active_tran_server (ps_to_ats_request::SEND_SAVED_LSA, std::move (message));
+  ps_Gl.push_request_to_active_tran_server (ps_to_ts_request::SEND_SAVED_LSA, std::move (message));
   // *INDENT-ON*
 }
 #endif // SERVER_MODE
