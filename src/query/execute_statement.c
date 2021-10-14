@@ -17873,7 +17873,7 @@ do_get_synonym (const char *name, const char *owner_name, const int is_public)
 
       if (db_query_get_tuple_value (query_result, 0, &value) == NO_ERROR)
 	{
-          synonym_object = db_get_object (&value);
+	  synonym_object = db_get_object (&value);
 	}
     }
   else
