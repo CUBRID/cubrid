@@ -18,13 +18,10 @@
 
 #include "active_tran_server.hpp"
 
-#include "communication_server_channel.hpp"
-#include "disk_manager.h"
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_prior_send.hpp"
-#include "memory_alloc.h"
 #include "server_type.hpp"
 #include "system_parameter.h"
 
@@ -32,10 +29,9 @@
 #include <cstring>
 #include <functional>
 #include <string>
+#include <utility>
 
 active_tran_server ats_Gl;
-
-static void assert_is_active_tran_server ();
 
 bool
 active_tran_server::uses_remote_storage () const
@@ -107,10 +103,4 @@ active_tran_server::get_request_handlers ()
 			 data_page_handler_value });
 
   return handlers_map;
-}
-
-void
-assert_is_active_tran_server ()
-{
-  assert (get_server_type () == SERVER_TYPE::SERVER_TYPE_TRANSACTION);
 }

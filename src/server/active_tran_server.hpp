@@ -19,27 +19,12 @@
 #ifndef _ACTIVE_TRAN_SERVER_HPP_
 #define _ACTIVE_TRAN_SERVER_HPP_
 
-#include "communication_node.hpp"
-#include "page_broker.hpp"
-#include "request_sync_client_server.hpp"
-#include "server_type.hpp"
-#include "tran_page_requests.hpp"
 #include "tran_server.hpp"
-
-#include <memory>
-#include <string>
-#include <vector>
-
-// forward declaration
-namespace cubpacking
-{
-  class unpacker;
-}
 
 class active_tran_server : public tran_server
 {
   public:
-    bool uses_remote_storage () const override;
+    bool uses_remote_storage () const final;
 
   private:
     void on_boot () final;
