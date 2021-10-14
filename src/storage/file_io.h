@@ -83,7 +83,8 @@
 #define FILEIO_SUFFIX_LOGARCHIVE     "_lgar"
 #define FILEIO_SUFFIX_TMP_LOGARCHIVE "_lgar_t"
 #define FILEIO_SUFFIX_LOGINFO        "_lginf"
-#define FILEIO_SUFFIX_LOGMETA        "_lgmeta"
+#define FILEIO_SUFFIX_LOGMETA_TRAN   "_lgmeta_tran"	/* for: transaction server */
+#define FILEIO_SUFFIX_LOGMETA        "_lgmeta"	/* for: non-scalable config, page server */
 #define FILEIO_SUFFIX_BACKUP         "_bk"
 #define FILEIO_SUFFIX_BACKUP_VOLINFO "_bkvinf"
 #define FILEIO_VOLEXT_PREFIX         "_x"

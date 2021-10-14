@@ -316,7 +316,9 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 
 static int log_create_metalog_file ();
+static int log_create_metalog_file_with_arg (const cublog::meta & metalog);
 static int log_read_metalog_from_file ();
+static int log_read_metalog_from_file_with_create ();
 
 /*for CDC */
 static int cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry);
@@ -1141,7 +1143,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       log_final (thread_p);
     }
 
-  error_code = log_read_metalog_from_file ();
+  error_code = log_read_metalog_from_file_with_create ();
   if (error_code != NO_ERROR && !init_emergency)
     {
       // Unable to mount meta log
@@ -10593,6 +10595,13 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 int
 log_create_metalog_file ()
 {
+  return log_create_metalog_file_with_arg (log_Gl.m_metainfo);
+}
+
+// Create meta log volume with specific argument
+int
+log_create_metalog_file_with_arg (const cublog::meta & metalog)
+{
   FILE *fp = fopen (log_Name_metainfo, "w");
   if (!fp)
     {
@@ -10601,10 +10610,38 @@ log_create_metalog_file ()
       return ER_BO_CANNOT_CREATE_VOL;
     }
 
-  log_Gl.m_metainfo.flush_to_file (fp);
+  metalog.flush_to_file (fp);
   fclose (fp);
 
   return NO_ERROR;
+}
+
+// At initialization time, metalog is created if not found. Needed in the contest of booting up
+// a pristine active/passive transaction server.
+int
+log_read_metalog_from_file_with_create ()
+{
+  int err_code = NO_ERROR;
+
+  // TODO: replace with test for file existence to avoid having to read twice
+  err_code = log_read_metalog_from_file ();
+  if (err_code != NO_ERROR)
+    {
+      // should not be called in a a non booting-up scenario
+      assert (log_Gl.m_metainfo.get_checkpoint_count () == 0);
+      cublog::meta dummy_metalog;
+      // mark a clean shutdown to avoid recovery afterwards when file is loaded back into the global variable
+      dummy_metalog.set_clean_shutdown (true);
+      err_code = log_create_metalog_file_with_arg (dummy_metalog);
+      if (err_code != NO_ERROR)
+	{
+	  return err_code;
+	}
+      // load back into the global variable
+      err_code = log_read_metalog_from_file ();
+    }
+
+  return err_code;
 }
 
 // Get meta log from disk to log_Gl
