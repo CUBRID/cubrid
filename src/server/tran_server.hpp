@@ -24,7 +24,7 @@
 #include "page_broker.hpp"
 #include "request_sync_client_server.hpp"
 #include "server_type.hpp"
-#include "ts_ps_request.hpp"
+#include "tran_page_requests.hpp"
 
 #include <memory>
 #include <string>
@@ -75,7 +75,7 @@ class tran_server
 
     void disconnect_page_server ();
     bool is_page_server_connected () const;
-    void push_request (ts_to_ps_request reqid, std::string &&payload);
+    void push_request (tran_to_page_request reqid, std::string &&payload);
 
     virtual bool uses_remote_storage () const;
 
@@ -85,8 +85,8 @@ class tran_server
     page_broker<data_page_type> &get_data_page_broker ();
 
   protected:
-    using page_server_conn_t = cubcomm::request_sync_client_server<ts_to_ps_request, ps_to_ts_request, std::string>;
-    using request_handlers_map_t = std::map<ps_to_ts_request, typename page_server_conn_t::incoming_request_handler_t>;
+    using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
+    using request_handlers_map_t = std::map<page_to_tran_request, typename page_server_conn_t::incoming_request_handler_t>;
 
   protected:
 

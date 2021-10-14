@@ -56,23 +56,23 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   m_active_tran_server_conn.reset (new active_tran_server_conn_t (std::move (chn),
   {
     {
-      ts_to_ps_request::GET_BOOT_INFO,
+      tran_to_page_request::GET_BOOT_INFO,
       std::bind (&page_server::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
     },
     {
-      ts_to_ps_request::SEND_LOG_PRIOR_LIST,
+      tran_to_page_request::SEND_LOG_PRIOR_LIST,
       std::bind (&page_server::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
     },
     {
-      ts_to_ps_request::SEND_LOG_PAGE_FETCH,
+      tran_to_page_request::SEND_LOG_PAGE_FETCH,
       std::bind (&page_server::receive_log_page_fetch, std::ref (*this), std::placeholders::_1)
     },
     {
-      ts_to_ps_request::SEND_DATA_PAGE_FETCH,
+      tran_to_page_request::SEND_DATA_PAGE_FETCH,
       std::bind (&page_server::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
     },
     {
-      ts_to_ps_request::SEND_DISCONNECT_MSG,
+      tran_to_page_request::SEND_DISCONNECT_MSG,
       std::bind (&page_server::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
     },
   }));
@@ -156,10 +156,10 @@ void page_server::receive_boot_info_request (cubpacking::unpacker &upk)
   response_message.reserve (sizeof (nvols_perm));
   response_message.append (reinterpret_cast<const char *> (&nvols_perm), sizeof (nvols_perm));
 
-  m_active_tran_server_conn->push (ps_to_ts_request::SEND_BOOT_INFO, std::move (response_message));
+  m_active_tran_server_conn->push (page_to_tran_request::SEND_BOOT_INFO, std::move (response_message));
 }
 
-void page_server::push_request_to_active_tran_server (ps_to_ts_request reqid, std::string &&payload)
+void page_server::push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload)
 {
   assert_page_server_type ();
   assert (is_active_tran_server_connected ());
@@ -180,7 +180,7 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
     }
 
   std::string message (buffer, buffer_size);
-  m_active_tran_server_conn->push (ps_to_ts_request::SEND_LOG_PAGE, std::move (message));
+  m_active_tran_server_conn->push (page_to_tran_request::SEND_LOG_PAGE, std::move (message));
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
@@ -224,7 +224,7 @@ void page_server::on_data_page_read_result (const FILEIO_PAGE *io_page, int erro
 	}
     }
 
-  m_active_tran_server_conn->push (ps_to_ts_request::SEND_DATA_PAGE, std::move (message));
+  m_active_tran_server_conn->push (page_to_tran_request::SEND_DATA_PAGE, std::move (message));
 }
 
 cublog::replicator &

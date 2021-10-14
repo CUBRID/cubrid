@@ -21,7 +21,7 @@
 
 #include "async_page_fetcher.hpp"
 #include "request_sync_client_server.hpp"
-#include "ts_ps_request.hpp"
+#include "tran_page_requests.hpp"
 
 #include <memory>
 
@@ -48,7 +48,7 @@ class page_server
     void set_active_tran_server_connection (cubcomm::channel &&chn);
     void disconnect_active_tran_server ();
     bool is_active_tran_server_connected () const;
-    void push_request_to_active_tran_server (ps_to_ts_request reqid, std::string &&payload);
+    void push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload);
 
     cublog::replicator &get_replicator ();
     void start_log_replicator (const log_lsa &start_lsa);
@@ -59,7 +59,7 @@ class page_server
 
   private:
     using active_tran_server_conn_t =
-	    cubcomm::request_sync_client_server<ps_to_ts_request, ts_to_ps_request, std::string>;
+	    cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
     void receive_boot_info_request (cubpacking::unpacker &upk);
     void receive_log_prior_list (cubpacking::unpacker &upk);

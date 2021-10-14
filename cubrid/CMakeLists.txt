@@ -364,8 +364,8 @@ set(SERVER_SOURCES
   )
 set(SERVER_HEADERS
   ${SERVER_DIR}/active_tran_server.hpp
-  ${SERVER_DIR}/ts_ps_request.hpp
   ${SERVER_DIR}/page_server.hpp
+  ${SERVER_DIR}/tran_page_requests.hpp
   ${SERVER_DIR}/tran_server.hpp
   )
 

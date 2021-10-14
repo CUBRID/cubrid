@@ -8025,7 +8025,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
   cublog::lsa_utils::pack (pac, lsa);
 
   std::string message (buffer.get (), size);
-  ats_Gl.push_request (ts_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
+  ats_Gl.push_request (tran_to_page_request::SEND_DATA_PAGE_FETCH, std::move (message));
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
     {
       _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sent request for Page to Page Server. VPID: %d|%d\n", VPID_AS_ARGS (vpid));

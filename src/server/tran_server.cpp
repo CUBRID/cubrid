@@ -237,7 +237,7 @@ tran_server::get_boot_info_from_page_server ()
 {
   assert (!m_is_boot_info_received);
 
-  push_request (ts_to_ps_request::GET_BOOT_INFO, std::string ()); // empty message
+  push_request (tran_to_page_request::GET_BOOT_INFO, std::string ()); // empty message
 
   std::unique_lock<std::mutex> ulock (m_boot_info_mutex);
   m_boot_info_condvar.wait (ulock, [this] { return m_is_boot_info_received; });
@@ -303,7 +303,7 @@ tran_server::disconnect_page_server ()
     {
       er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
 		    m_page_server_conn_vec[i]->get_underlying_channel_id ());
-      m_page_server_conn_vec[i]->push (ts_to_ps_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
+      m_page_server_conn_vec[i]->push (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
     }
   m_page_server_conn_vec.clear ();
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
@@ -352,7 +352,7 @@ tran_server::uses_remote_storage () const
 }
 
 void
-tran_server::push_request (ts_to_ps_request reqid, std::string &&payload)
+tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 {
   if (!is_page_server_connected ())
     {

@@ -19,7 +19,7 @@
 #ifndef _TS_PS_REQUEST_HPP_
 #define _TS_PS_REQUEST_HPP_
 
-enum class ts_to_ps_request
+enum class tran_to_page_request
 {
   // Common
   GET_BOOT_INFO,
@@ -33,7 +33,7 @@ enum class ts_to_ps_request
   // Passive only
 };
 
-enum class ps_to_ts_request
+enum class page_to_tran_request
 {
   SEND_BOOT_INFO,
   SEND_SAVED_LSA,
