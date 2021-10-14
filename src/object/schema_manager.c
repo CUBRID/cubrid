@@ -3039,7 +3039,7 @@ sm_is_system_class_by_name (const char *name)
 
     /* currently, not implemented */
     AU_GRANT_CLASS_NAME,	// "db_grant"
-    
+
     /* 
      * catalog classes
      */
@@ -3107,8 +3107,7 @@ sm_is_system_class_by_name (const char *name)
       return true;
     }
 
-  if (strncmp (name, "_db_", sizeof ("_db_") - 1) != 0
-      && strncmp (name, "db_", sizeof ("db_") - 1) != 0)
+  if (strncmp (name, "_db_", sizeof ("_db_") - 1) != 0 && strncmp (name, "db_", sizeof ("db_") - 1) != 0)
     {
       return false;
     }
