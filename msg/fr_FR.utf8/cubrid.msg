@@ -1341,7 +1341,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1270 %1$s cannot be executed on a server with remote storage enabled.
 1271 Command cannot be executed on a server with remote storage enabled.
 1272 Error connecting with the active transaction server.
-1273 Invalid server type provided, -t or --type should be followed either by 'transaction' or 'page'.
+1273 Invalid server type '%s', -t or --type should be followed either by 'transaction' or 'page'.
 1274 Invalid server option "%s".
 1275 Error reserved for scalability development.
 1276 Error reserved for scalability development.

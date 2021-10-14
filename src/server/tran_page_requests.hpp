@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef _TS_PS_REQUEST_HPP_
-#define _TS_PS_REQUEST_HPP_
+#ifndef _TRAN_PAGE_REQUESTS_HPP_
+#define _TRAN_PAGE_REQUESTS_HPP_
 
 enum class tran_to_page_request
 {
@@ -41,5 +41,5 @@ enum class page_to_tran_request
   SEND_DATA_PAGE
 };
 
-#endif // !_TS_PS_REQUEST_HPP_
+#endif // !_TRAN_PAGE_REQUESTS_HPP_
 
