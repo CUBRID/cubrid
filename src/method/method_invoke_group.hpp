@@ -52,20 +52,6 @@ namespace cubmethod
   // forward declarations
   class method_invoke;
 
-  class method_connection
-  {
-    public:
-      method_connection (METHOD_TYPE m_type);
-
-      using request_prepare_func = std::function <int (cubthread::entry *thread_p, cubmem::block &)>;
-      using request_invoke_func = std::function <int (cubthread::entry *thread_p, cubmem::block &)>;
-
-      request_prepare_func m_prepare_func;
-
-    private:
-      METHOD_TYPE m_type;
-  };
-
   class method_invoke_group
   {
     public:
