@@ -695,7 +695,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_SUPPLEMENTAL_LOG "supplemental_log"
 #define PRM_NAME_CDC_LOGGING_DEBUG "cdc_logging_debug"
 
-#define PRM_NAME_DETAILED_RECOVERY_LOGGING_INTERVAL "detailed_recovery_logging_interval"
+#define PRM_NAME_DETAILED_RECOVERY_LOGGING_INTERVAL "recovery_progress_logging_interval"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
