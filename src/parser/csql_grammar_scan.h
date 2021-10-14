@@ -66,11 +66,7 @@ extern "C"
   extern char *pt_makename (const char *name);
   extern void pt_fix_left_parens (void);
 
-#define NEW_HINT_PARSING
-#if defined(NEW_HINT_PARSING)
   extern void pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[]);
-#endif
-
   extern void pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hint,
 			     bool prev_is_white_char);
   extern void pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node);

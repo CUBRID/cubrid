@@ -99,7 +99,6 @@ pt_trim_as_identifier (char *name)
     }
 }
 
-#if defined(NEW_HINT_PARSING)
 /*
  * pt_makename_trim_as_identifier () - trim double quotes,
  *            square brackets, or backtick symbol
@@ -129,7 +128,6 @@ pt_makename_trim_as_identifier (char *name)
       return pt_makename (name);
     }
 }
-#endif
 
 /*
  * pt_parser_line_col () - set line and column of node allocated to
@@ -160,12 +158,6 @@ pt_nextchar (void)
 
 // ctshim //========================================================
 static void debug_hint_print (PT_HINT * hint_table);
-
-#if defined(NEW_HINT_PARSING)
-#define __HINT_TEST__
-#ifdef __HINT_TEST__
-static bool use_new_hint_test = true;	// debug
-#endif
 
 struct parser_hint_list
 {
@@ -246,7 +238,6 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 
   was_initialized = 1;
 }
-#endif
 
 /*
  * pt_cleanup_hint () - cleanup hint arg_list
@@ -285,16 +276,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
   /* read hint info */
   for (i = 0; hint_table[i].tokens; i++)
     {
-#if !defined(NEW_HINT_PARSING)
-      if (stristr (text, hint_table[i].tokens))
-#else
-#if defined(__HINT_TEST__)
-      bool is_hit = use_new_hint_test ? gl_parser_hint.hit[i] : (stristr (text, hint_table[i].tokens) != NULL);
-      if (is_hit)
-#else
       if (gl_parser_hint.hit[i])
-#endif
-#endif
 	{
 	  // ctshim     
 	  debug_hint_print (hint_table + i);
@@ -685,223 +667,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 #endif
 }
 
-/*
- * pt_check_hint () - search hint comment from hint table
- *   text(in): hint comment
- *   hint_table(in): hint info structure list
- *   result_hint(in): found result
- *   prev_is_white_char(in): flag indicates prev char
- */
-void
-#if defined(NEW_HINT_PARSING)
-pt_check_hint_old (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hint, bool prev_is_white_char)
-#else
-pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hint, bool prev_is_white_char)
-#endif
-{
-  int i, j, len, count;
-  PT_HINT_ENUM hint;
-  char hint_buf[JP_MAXNAME];
-  char *hint_p, *arg_start, *arg_end, *temp;
-  PT_NODE *arg;
-  bool has_parenthesis;
-
-#if 1				// for testing code
-  printf ("\n(HINT STRING) %s\n", text);
-#endif
-  for (i = 0; hint_table[i].tokens; i++)
-    {
-      count = 0;		/* init */
-      hint = PT_HINT_NONE;	/* init */
-      strncpy (hint_buf, text, JP_MAXNAME);
-      hint_buf[JP_MAXNAME - 1] = '\0';
-      hint_p = ustr_casestr (hint_buf, hint_table[i].tokens);
-
-      while (hint_p)
-	{
-	  has_parenthesis = false;
-	  len = (int) strlen (hint_table[i].tokens);
-	  /* check token before */
-	  if ((count == 0 && (prev_is_white_char || (hint_p > hint_buf && IS_WHITE_CHAR (*(hint_p - 1)))))
-	      || IS_WHITE_CHAR (*(hint_p - 1)))
-	    {
-	      hint_p += len;	/* consume token */
-	      /* check token after */
-	      if (IS_WHITE_CHAR (*(hint_p)))
-		{		/* no arguments */
-		  /* found specified hint */
-		  hint = hint_table[i].hint;
-		}
-	      else if (*(hint_p) == '(')
-		{		/* need to check for argument */
-		  has_parenthesis = true;
-		  hint_p++;	/* consume '(' */
-		  arg_start = hint_p;
-		  arg_end = strstr (arg_start, ")");
-		  /* check arguments */
-		  if (arg_end && ((len = CAST_STRLEN (arg_end - arg_start)) > 0))
-		    {
-		      for (j = 0; j < len; j++)
-			{
-			  if (hint_p[j] == '(')
-			    {
-			      /* illegal hint expression */
-			      break;
-			    }
-			  if (hint_p[j] == ',')
-			    {	/* found delimiter */
-			      hint_p[j] = '\0';	/* replace ',' */
-			      /* trim space around found spec name */
-			      for (; arg_start < &(hint_p[j]); arg_start++)
-				{
-				  if (!IS_WHITE_CHAR (*arg_start))
-				    {
-				      break;
-				    }
-				}
-			      for (temp = &(hint_p[j - 1]); temp > arg_start; temp--)
-				{
-				  if (!IS_WHITE_CHAR (*temp))
-				    {
-				      break;
-				    }
-				  *temp = '\0';	/* counsume space */
-				}
-			      /* add specified spec */
-			      if (arg_start < &(hint_p[j]))
-				{
-				  arg = parser_new_node (this_parser, PT_NAME);
-				  if (arg)
-				    {
-				      temp = strstr (arg_start, ".");
-				      if (temp && temp < &(hint_p[j]) && !IS_HINT_ON_TABLE (hint_table[i].hint))
-					{
-					  *temp = '\0';
-					  arg->info.name.resolved = pt_trim_as_identifier (arg_start);
-					  arg->info.name.resolved = pt_makename (arg->info.name.resolved);
-					  *temp++ = '.';
-					  arg->info.name.original = pt_trim_as_identifier (temp);
-					  arg->info.name.original = pt_makename (arg->info.name.original);
-					}
-				      else
-					{
-					  arg->info.name.original = pt_trim_as_identifier (arg_start);
-					  arg->info.name.original = pt_makename (arg->info.name.original);
-					}
-				      arg->info.name.meta_class = PT_HINT_NAME;
-				      hint_table[i].arg_list = parser_append_node (arg, hint_table[i].arg_list);
-				    }
-				}
-			      arg_start = &(hint_p[j + 1]);
-			    }
-			}	/* for (j = ... ) */
-
-		      if (j < len)
-			{
-			  /* error occurs. free alloced nodes */
-			  if (hint_table[i].arg_list)
-			    {
-			      parser_free_tree (this_parser, hint_table[i].arg_list);
-			      hint_table[i].arg_list = NULL;
-			    }
-			  /* consume illegal hint expression */
-			  hint_p += j + 1;
-			}
-		      else
-			{	/* OK */
-			  /* check last argument */
-			  hint_p[j] = '\0';	/* replace ')' */
-			  /* trim space around found spec name */
-			  for (; arg_start < &(hint_p[j]); arg_start++)
-			    {
-			      if (!IS_WHITE_CHAR (*arg_start))
-				{
-				  break;
-				}
-			    }
-			  for (temp = &(hint_p[j - 1]); temp > arg_start; temp--)
-			    {
-			      if (!IS_WHITE_CHAR (*temp))
-				{
-				  break;
-				}
-			      *temp = '\0';	/* counsume space */
-			    }
-			  if (arg_start < &(hint_p[j]))
-			    {
-			      arg = parser_new_node (this_parser, PT_NAME);
-			      if (arg)
-				{
-				  temp = strstr (arg_start, ".");
-				  if (temp && temp < &(hint_p[j]) && !IS_HINT_ON_TABLE (hint_table[i].hint))
-				    {
-				      *temp = '\0';
-				      arg->info.name.resolved = pt_trim_as_identifier (arg_start);
-				      arg->info.name.resolved = pt_makename (arg->info.name.resolved);
-				      *temp++ = '.';
-				      arg->info.name.original = pt_trim_as_identifier (temp);
-				      arg->info.name.original = pt_makename (arg->info.name.original);
-				    }
-				  else
-				    {
-				      arg->info.name.original = pt_trim_as_identifier (arg_start);
-				      arg->info.name.original = pt_makename (arg->info.name.original);
-				    }
-				  arg->info.name.meta_class = PT_HINT_NAME;
-				  hint_table[i].arg_list = parser_append_node (arg, hint_table[i].arg_list);
-				}
-			    }
-
-			  hint_p += len;	/* consume arguments */
-			  hint_p++;	/* consume ')' */
-			}
-		    }
-
-		  /* found specified hint */
-		  if (hint_table[i].arg_list)
-		    {
-		      hint = hint_table[i].hint;
-		    }
-		  else if (has_parenthesis && IS_HINT_ON_TABLE (hint_table[i].hint))
-		    {
-		      /*
-		       * INDEX_SS() or INDEX_LS() means do not apply
-		       * hint, use special node to mark this.
-		       */
-		      arg = parser_new_node (this_parser, PT_VALUE);
-		      if (arg)
-			{
-			  arg->type_enum = PT_TYPE_NULL;
-			}
-		      hint_table[i].arg_list = arg;
-		    }
-		}
-	    }
-	  else
-	    {
-	      /* not found specified hint */
-	      hint_p += len;	/* consume token */
-	    }
-
-	  /* check for found specified hint */
-	  if (hint & hint_table[i].hint)
-	    {
-	      /* save hint and immediately stop */
-	      *result_hint = (PT_HINT_ENUM) (*result_hint | hint);
-	      break;
-	    }
-
-	  count++;
-
-	  /* step to next */
-	  hint_p = ustr_casestr (hint_p, hint_table[i].tokens);
-
-	}			/* while (hint_p) */
-    }				/* for (i = ... ) */
-}
-
-
-#if defined(NEW_HINT_PARSING)
 
 //=============================================================================
 static void
@@ -1209,23 +974,9 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
   bool start_flag = true;
   unsigned char *h_str = (unsigned char *) text + 1;	// skip '+'
 
-#if defined(__HINT_TEST__)	// for testing code
-  if (text[1] != '+')
-    {
-      use_new_hint_test = false;
-      return pt_check_hint_old (text, hint_table, result_hint, false);
-    }
-
-  h_str++;
-  text++;			// skip secondary '+'
-
-  use_new_hint_test = true;
-#endif
-
   printf ("\n(HINT STRING) %s\n", text);
 
   memset (gl_parser_hint.hit, 0x00, gl_parser_hint.max_cnt * sizeof (bool));
-
 
   *result_hint = PT_HINT_NONE;
   while (IS_WHITE_SPACE (*h_str))
@@ -1275,7 +1026,6 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 	}
     }
 }
-#endif // #if defined(NEW_HINT_PARSING)
 
 static void
 debug_hint_print (PT_HINT * hint_table)
