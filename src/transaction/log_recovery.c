@@ -3193,7 +3193,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		  elapsed_time = info_logging_elapsed_time.tv_sec + (info_logging_elapsed_time.tv_usec / 1000000.0);
 
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_REDO_PROGRESS, 5,
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PROGRESS, 6, "REDO",
 			  done_page_cnt, total_page_cnt, progress * 100, elapsed_time,
 			  (elapsed_time / done_page_cnt) * (total_page_cnt - done_page_cnt));
 		}
@@ -4736,7 +4736,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		  elapsed_time = info_logging_elapsed_time.tv_sec + (info_logging_elapsed_time.tv_usec / 1000000.0);
 
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_UNDO_PROGRESS, 5,
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PROGRESS, 6, "UNDO",
 			  done_page_cnt, total_page_cnt, progress * 100, elapsed_time,
 			  (elapsed_time / read_page_cnt) * (total_page_cnt - done_page_cnt));
 		}
