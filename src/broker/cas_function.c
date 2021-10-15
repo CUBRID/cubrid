@@ -337,16 +337,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   net_arg_get_str (&sql_stmt, &sql_size, argv[0]);
 
-  if (sql_stmt == NULL || sql_size <= 0)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
-    }
-  else
-    {
-      logddl_set_sql_text (sql_stmt, (int) strlen (sql_stmt));
-    }
+  logddl_set_sql_text (sql_stmt, (int) strlen (sql_stmt));
 
   net_arg_get_char (flag, argv[1]);
   if (argc > 2)
