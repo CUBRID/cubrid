@@ -41,12 +41,31 @@
 
 #define IS_WHITE_CHAR(c) \
                     ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\0')
-
+#define IS_WHITE_SPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
 
 #define IS_HINT_ON_TABLE(h) \
   		((h) & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
 
 static char *pt_trim_as_identifier (char *name);
+
+#define PRINT_HIT_HINT_INFO	/* When declared, matching hint information is output to the screen. */
+#if defined(PRINT_HIT_HINT_INFO)
+static void debug_hit_hint_print (PT_HINT * hint_table);
+#define PRINT_HIT_HINT(...)  printf(__VA_ARGS__)
+#else
+#define  debug_hit_hint_print(hint)
+#define PRINT_HIT_HINT(...)
+#endif
+
+struct parser_hint_list
+{
+  int max_cnt;
+  int *length;
+  bool *hit;
+#define HINT_CHAR_SIZE (129)
+  u_char lead_offset[129];
+};
+static struct parser_hint_list gl_parser_hint = { 0x00, 0x00, 0x00, 0 };
 
 int parser_input_host_index = 0;
 int parser_statement_OK = 0;
@@ -156,21 +175,6 @@ pt_nextchar (void)
   return c;
 }
 
-// ctshim //========================================================
-static void debug_hint_print (PT_HINT * hint_table);
-
-struct parser_hint_list
-{
-  int max_cnt;
-  int *length;
-  bool *hit;
-#define HINT_CHAR_SIZE (129)
-  u_char lead_offset[129];
-};
-static struct parser_hint_list gl_parser_hint = { 0x00, 0x00, 0x00, 0 };
-
-#define IS_WHITE_SPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
-
 static int
 hint_token_cmp (const void *a, const void *b)
 {
@@ -269,17 +273,15 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 {
   int i;
 
-  // ctshim    
-#if 1				// for testing code
-  printf ("(HINT START) ");
-#endif
+  // ctshim   
+  PRINT_HIT_HINT ("(HINT START) ");
+
   /* read hint info */
   for (i = 0; hint_table[i].tokens; i++)
     {
       if (gl_parser_hint.hit[i])
 	{
-	  // ctshim     
-	  debug_hint_print (hint_table + i);
+	  debug_hit_hint_print (hint_table + i);
 
 	  switch (hint_table[i].hint)
 	    {
@@ -662,9 +664,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
     }				/* for (i = ... ) */
 
   // ctshim   
-#if 1				// for testing code
-  printf ("  (HINT END)\n");
-#endif
+  PRINT_HIT_HINT ("  (HINT END)\n");
 }
 
 
@@ -974,7 +974,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
   bool start_flag = true;
   unsigned char *h_str = (unsigned char *) text + 1;	// skip '+'
 
-  printf ("\n(HINT STRING) %s\n", text);
+  PRINT_HIT_HINT ("\n(HINT STRING) %s\n", text);
 
   memset (gl_parser_hint.hit, 0x00, gl_parser_hint.max_cnt * sizeof (bool));
 
@@ -1027,8 +1027,9 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
     }
 }
 
+#if defined(PRINT_HIT_HINT_INFO)
 static void
-debug_hint_print (PT_HINT * hint_table)
+debug_hit_hint_print (PT_HINT * hint_table)
 {
   PT_NODE *px;
 
@@ -1056,14 +1057,19 @@ debug_hint_print (PT_HINT * hint_table)
 	  printf ("%s", "***");
 	}
       else
-	assert (0);
+	{
+	  assert (0);
+	}
 
       px = px->next;
       if (px)
-	printf (", ");
+	{
+	  printf (", ");
+	}
 
     }
   while (px);
 
   printf (")");
 }
+#endif
