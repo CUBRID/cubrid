@@ -24,6 +24,10 @@
 class active_tran_server : public tran_server
 {
   public:
+    active_tran_server () : tran_server (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)
+    {
+    }
+
     bool uses_remote_storage () const final;
 
   private:

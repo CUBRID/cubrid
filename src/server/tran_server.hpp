@@ -62,7 +62,11 @@ namespace cubpacking
 class tran_server
 {
   public:
-    tran_server () = default;
+    tran_server () = delete;
+    tran_server (cubcomm::server_server conn_type)
+      : m_conn_type (conn_type)
+    {
+    }
     tran_server (const tran_server &) = delete;
     tran_server (tran_server &&) = delete;
 
