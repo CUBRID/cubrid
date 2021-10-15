@@ -124,6 +124,9 @@ namespace cubpacking
       std::size_t get_packed_buffer_size (const char *stream, const std::size_t length, const std::size_t curr_offset) const;
       void pack_buffer_with_length (const char *stream, const std::size_t length);
 
+      void pack_overloaded (const cubmem::block &blk);
+      size_t get_packed_size_overloaded (const cubmem::block &blk, size_t curr_offset);
+
       // template function to pack object as int type
       template <typename T>
       void pack_to_int (const T &t);
@@ -216,6 +219,9 @@ namespace cubpacking
 
       void peek_unpack_buffer_length (int &value);
       void unpack_buffer_with_length (char *stream, const std::size_t max_length);
+
+      void peek_unpack_block_length (int &value);
+      void unpack_overloaded (cubmem::block &blk);
 
       void unpack_oid (OID &oid);
       void unpack_overloaded (OID &oid);

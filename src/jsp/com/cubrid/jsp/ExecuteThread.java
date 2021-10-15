@@ -37,9 +37,9 @@ import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
-import cubrid.jdbc.driver.CUBRIDConnectionDefault;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -54,7 +54,9 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ExecuteThread extends Thread {
-    private String charSet = System.getProperty("file.encoding");
+
+    // TODO: get charset from DB Server
+    public static String charSet = "UTF-8"; // System.getProperty("file.encoding");
 
     private static final int REQ_CODE_INVOKE_SP = 0x01;
     private static final int REQ_CODE_RESULT = 0x02;
@@ -71,7 +73,7 @@ public class ExecuteThread extends Thread {
 
     private long id;
     private Socket client;
-    private CUBRIDConnectionDefault connection = null;
+    private CUBRIDServerSideConnection connection = null;
     private String threadName = null;
 
     private DataInputStream input;
@@ -107,7 +109,7 @@ public class ExecuteThread extends Thread {
     }
 
     public void closeJdbcConnection() throws IOException, SQLException {
-        if (connection != null && compareStatus(ExecuteThreadStatus.CALL)) {
+        if (connection != null) {
             connection.close();
             setStatus(ExecuteThreadStatus.INVOKE);
         }
@@ -123,12 +125,19 @@ public class ExecuteThread extends Thread {
         client = null;
         output = null;
         connection = null;
-        charSet = null;
+        // charSet = null;
+    }
+
+    public Connection createConnection() {
+        if (this.connection == null) {
+            this.connection = new CUBRIDServerSideConnection(this);
+        }
+        return this.connection;
     }
 
     public void setJdbcConnection(Connection con) throws IOException {
-        this.connection = (CUBRIDConnectionDefault) con;
-        sendCommand(null);
+        this.connection = (CUBRIDServerSideConnection) con;
+        // sendCommand(null);
     }
 
     public Connection getJdbcConnection() {
@@ -152,7 +161,7 @@ public class ExecuteThread extends Thread {
     }
 
     public void setCharSet(String conCharsetName) {
-        this.charSet = conCharsetName;
+        // this.charSet = conCharsetName;
     }
 
     @Override
@@ -258,7 +267,17 @@ public class ExecuteThread extends Thread {
     }
 
     private int listenCommand() throws Exception {
-        if (input == null || this.connection != null) {
+        receiveBuffer();
+
+        /* read header */
+        int command = unpacker.unpackInt();
+
+        setStatus(ExecuteThreadStatus.IDLE);
+        return command;
+    }
+
+    public CUBRIDUnpacker receiveBuffer() throws IOException {
+        if (input == null) {
             input = new DataInputStream(new BufferedInputStream(this.client.getInputStream()));
         }
 
@@ -273,11 +292,7 @@ public class ExecuteThread extends Thread {
         readbuffer.put(bytes);
         readbuffer.flip(); /* prepare to read */
 
-        /* read header */
-        int command = unpacker.unpackInt();
-
-        setStatus(ExecuteThreadStatus.IDLE);
-        return command;
+        return unpacker;
     }
 
     private void processPrepare() throws Exception {
@@ -416,9 +431,8 @@ public class ExecuteThread extends Thread {
 
         for (int i = 0; i < args.length; i++) {
             int paramType = u.unpackInt();
-            int paramSize = u.unpackInt();
 
-            Value arg = u.unpackValue(paramSize, paramType);
+            Value arg = u.unpackValue(paramType);
             args[i] = (arg);
         }
 
@@ -432,9 +446,8 @@ public class ExecuteThread extends Thread {
             int mode = u.unpackInt();
             int dbType = u.unpackInt();
             int paramType = u.unpackInt();
-            int paramSize = u.unpackInt();
 
-            Value arg = u.unpackValue(paramSize, paramType, mode, dbType);
+            Value arg = u.unpackValue(paramType, mode, dbType);
             args[i] = (arg);
         }
 

@@ -142,7 +142,7 @@ public class Server {
             RuntimeMXBean runtimeMxBean = ManagementFactory.getRuntimeMXBean();
             jvmArguments = runtimeMxBean.getInputArguments();
         }
-        
+
         return jvmArguments;
     }
 

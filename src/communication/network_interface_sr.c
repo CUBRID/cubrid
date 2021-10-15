@@ -10282,15 +10282,15 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     }
 
   /* *INDENT-OFF* */
-  cubmethod::method_invoke_group method_group (&sig_list);
+  cubmethod::method_invoke_group method_group (thread_p, &sig_list);
   /* *INDENT-ON* */
 
-  method_group.begin (thread_p);
+  method_group.begin ();
 
   int error_code = method_group.prepare (args);
   if (error_code != NO_ERROR)
     {
-      (void) return_error_to_client (thread_p, rid);
+      return_error_to_client (thread_p, rid);
     }
 
   /* *INDENT-OFF* */
@@ -10301,14 +10301,19 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   char *reply_data = NULL;
   int reply_data_size = 0;
 
+  DB_VALUE ret_value;
+  db_make_null (&ret_value);
+
   error_code = method_group.execute (args);
   if (error_code == NO_ERROR)
     {
-      DB_VALUE & ret_value = method_group.get_return_value (0);
+      ret_value = method_group.get_return_value (0);
 
       method_sig_node *sig = sig_list.method_sig;
 
-      std::vector < DB_VALUE * >out_args;
+      /* *INDENT-OFF* */
+      std::vector <DB_VALUE *> out_args;
+      /* *INDENT-ON* */
       for (int i = 0; i < sig->num_method_args; i++)
 	{
 	  if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
@@ -10321,6 +10326,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	  out_args.push_back (&val);
 	}
 
+      //int total_size = packer.get_packed_int_size (0);
       int total_size = packer.get_packed_db_value_size (ret_value, 0);
       total_size += packer.get_packed_int_size (total_size);
     /* *INDENT-OFF* */
@@ -10334,6 +10340,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
       packer.set_buffer (eb.get_ptr (), total_size);
 
       /* result */
+      //packer.pack_int (error_code);
       packer.pack_db_value (ret_value);
 
       /* output parameters */
@@ -10351,7 +10358,8 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     }
   else
     {
-      (void) return_error_to_client (thread_p, rid);
+      reply_data = NULL;
+      reply_data_size = 0;
     }
 
   // clear
@@ -10363,14 +10371,17 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   method_group.end ();
   sig_list.freemem ();
 
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
-
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr = or_pack_int (reply, reply_data_size);
+  char *ptr = or_pack_int (reply, (int) END_CALLBACK);
+  ptr = or_pack_int (ptr, reply_data_size);
   ptr = or_pack_int (ptr, error_code);
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
 				     reply_data_size);
+}
+
+void
 scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;

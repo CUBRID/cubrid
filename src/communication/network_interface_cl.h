@@ -326,6 +326,8 @@ extern int net_client_request_with_callback (int request, char *argbuf, int args
 					     char *databuf1, int datasize1, char *databuf2, int datasize2,
 					     char **replydata_ptr1, int *replydatasize_ptr1, char **replydata_ptr2,
 					     int *replydatasize_ptr2, char **replydata_ptr3, int *replydatasize_ptr3);
+extern int net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					       char **replydata_ptr, int *replydatasize_ptr);
 extern int net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize, char *replybuf,
 					int replysize, char **logpg_area_buf, bool verbose);
 extern int net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, char *argbuf, int argsize,

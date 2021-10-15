@@ -170,26 +170,4 @@ ALTER CLASS [game] ADD CONSTRAINT [fk_game_event_code] FOREIGN KEY(event_code) R
 
 ALTER CLASS [game] ADD CONSTRAINT [fk_game_athlete_code] FOREIGN KEY(athlete_code) REFERENCES athlete ON DELETE RESTRICT ON UPDATE RESTRICT ;
 
-CREATE OR REPLACE FUNCTION hello() RETURN STRING AS LANGUAGE JAVA NAME 'SpPrepareTest.testHello() return java.lang.String';
-CREATE OR REPLACE FUNCTION testPlusSP(a INT, b INT) RETURN int as language java name 'SpPrepareTest.testWithoutJDBC(int, int) return int';
-CREATE OR REPLACE FUNCTION testFiboSP(n INT) RETURN int as language java name 'SpPrepareTest.testFibo(int) return int';
-CREATE OR REPLACE FUNCTION testInsert(val INT, del INT) RETURN int as language java name 'SpPrepareTest.testInsert(int, int) return int';
-CREATE OR REPLACE FUNCTION testSubquery(select_list string, from_claus string, where_claus string, val string) RETURN string as language java name 'SpPrepareTest.testSubquery(java.lang.String, java.lang.String, java.lang.String, java.lang.String) return java.lang.String';
-CREATE OR REPLACE FUNCTION testSubquery2(select_list string, from_claus string, where_claus string, val string) RETURN string as language java name 'SpPrepareTest.testSubquery2(java.lang.String, java.lang.String, java.lang.String, java.lang.String) return java.lang.String';
-CREATE OR REPLACE FUNCTION testDummy(n INT) RETURN int as language java name 'SpPrepareTest.testDummy(int) return int';
-CREATE OR REPLACE FUNCTION TestReturnString() RETURN STRING AS LANGUAGE JAVA NAME 'SpPrepareTest.testReturnString() return java.lang.String';
-
-CREATE OR REPLACE FUNCTION tIntConst() RETURN int as language java name 'SpTypeTest.testRIntConst() return int';
-
-CREATE OR REPLACE FUNCTION tInt(i int) RETURN int as language java name 'SpTypeTest.testInt(int) return int';
-CREATE OR REPLACE FUNCTION tInt2(i int) RETURN int as language java name 'SpTypeTest.testInt2(int) return int';
-CREATE OR REPLACE FUNCTION tIntTwo(i int, j int) RETURN int as language java name 'SpTypeTest.testIntArgs(int, int) return int';
-
-CREATE OR REPLACE PROCEDURE tIntOut(i OUT int) as language java name 'SpTypeTest.testOutInt(int[] o)';
-CREATE OR REPLACE PROCEDURE tIntOut2(i OUT int) as language java name 'SpTypeTest.testOutInt2(int[] o)';
-
-CREATE OR REPLACE FUNCTION tFloat(f float) RETURN float as language java name 'SpTypeTest.testFloat(float) return float';
-CREATE OR REPLACE FUNCTION tDobule(d double) RETURN double as language java name 'SpTypeTest.testDouble(double) return double';
-CREATE OR REPLACE FUNCTION tString(s string) RETURN STRING as language java name 'SpTypeTest.testString(java.lang.String) return java.lang.String';
-
 COMMIT WORK;

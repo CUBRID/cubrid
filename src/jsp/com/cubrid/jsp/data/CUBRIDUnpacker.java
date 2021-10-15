@@ -97,10 +97,14 @@ public class CUBRIDUnpacker {
 
     public String unpackCString() {
         int len = unpackStringSize();
-
-        byte[] str = new byte[len];
-        buffer.get(str);
-        return new String(str);
+        if (len > 0) {
+            byte[] str = new byte[len];
+            buffer.get(str);
+            align(DataUtilities.INT_ALIGNMENT);
+            return new String(str);
+        } else {
+            return "";
+        }
     }
 
     public byte[] unpackCStringByteArray() {
@@ -120,7 +124,7 @@ public class CUBRIDUnpacker {
         return len;
     }
 
-    public Value unpackValue(int paramSize, int paramType) throws TypeMismatchException {
+    public Value unpackValue(int paramType) throws TypeMismatchException {
         Value arg = null;
         switch (paramType) {
             case DBType.DB_SHORT:
@@ -229,8 +233,7 @@ public class CUBRIDUnpacker {
         return arg;
     }
 
-    public Value unpackValue(int paramSize, int paramType, int mode, int dbType)
-            throws TypeMismatchException {
+    public Value unpackValue(int paramType, int mode, int dbType) throws TypeMismatchException {
         Value arg = null;
         switch (paramType) {
             case DBType.DB_SHORT:
@@ -341,9 +344,8 @@ public class CUBRIDUnpacker {
         Value[] args = new Value[paramCount];
         for (int i = 0; i < paramCount; i++) {
             int paramType = unpackInt();
-            int paramSize = unpackInt();
             // FIXME: dbType=0 is dummy, it is from legacy code. I'm not sure about it
-            Value arg = unpackValue(paramSize, paramType, Value.IN, 0);
+            Value arg = unpackValue(paramType, Value.IN, 0);
             args[i] = (arg);
         }
         return args;

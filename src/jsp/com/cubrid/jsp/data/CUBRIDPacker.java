@@ -59,6 +59,7 @@ public class CUBRIDPacker {
     }
 
     public void packInt(int value) {
+        ensureSpace (Integer.BYTES);
         align(DataUtilities.INT_ALIGNMENT);
         buffer.putInt(value);
     }
@@ -97,22 +98,31 @@ public class CUBRIDPacker {
         packCString(value.getBytes(charset));
     }
 
+    private static final int OID_SIZE = Integer.BYTES + Short.BYTES * 2;
+    public void packOID (SOID oid) {
+        align(DataUtilities.INT_ALIGNMENT);
+        ensureSpace (OID_SIZE);
+        buffer.putInt(oid.pageId);
+        buffer.putShort(oid.slotId);
+        buffer.putShort(oid.volId);
+    }
+
     public void packCString(byte[] value) {
         int len = value.length;
         if (len < DataUtilities.MAX_SMALL_STRING_SIZE) {
             ensureSpace(value.length + 1); // str + len
             buffer.put((byte) len);
             buffer.put(value);
+            align(DataUtilities.INT_ALIGNMENT);
         } else {
-            ensureSpace(value.length + 1 + 4); // str + LARGE_STRING_CODE + len
+            ensureSpace(value.length + 1 + Integer.BYTES); // str + LARGE_STRING_CODE + len
             buffer.put((byte) DataUtilities.LARGE_STRING_CODE);
 
             align(DataUtilities.INT_ALIGNMENT);
             buffer.putInt(len);
             buffer.put(value);
+            align(DataUtilities.INT_ALIGNMENT);
         }
-
-        align(DataUtilities.INT_ALIGNMENT);
     }
 
     // TODO: legacy implementation, this function will be modified
@@ -212,6 +222,8 @@ public class CUBRIDPacker {
     private void align(int size) {
         int currentPosition = buffer.position();
         int newPosition = DataUtilities.alignedPosition(buffer, size);
+
+        ensureSpace (newPosition - currentPosition);
         if (newPosition - currentPosition > 0) {
             buffer.position(newPosition);
         }
@@ -223,7 +235,7 @@ public class CUBRIDPacker {
         if (buffer.remaining() > size) {
             return;
         }
-        int newCapacity = (int) (buffer.capacity() * EXPAND_FACTOR);
+        int newCapacity = (buffer.capacity() * EXPAND_FACTOR);
         while (newCapacity < (buffer.capacity() + size)) {
             newCapacity *= EXPAND_FACTOR;
         }
