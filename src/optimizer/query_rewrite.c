@@ -102,6 +102,15 @@ static void qo_do_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NO
 static void qo_do_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
+#define QO_CHECK_AND_REDUCE_EQUALITY_TERMS(parser, node, where) \
+  do { \
+      if (!node->flag.done_reduce_equality_terms) \
+      { \
+          node->flag.done_reduce_equality_terms = true; \
+          qo_reduce_equality_terms (parser, node, where); \
+      } \
+  } while (0)
+
 /*
  * qo_find_best_path_type () -
  *   return: PT_NODE *
@@ -1307,16 +1316,6 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   bool copy_arg2;
   PT_NODE *dt1, *dt2;
 
-  /* check whether the function has already been called. */
-  if (node->flag.do_reduce_equality_terms)
-    {
-      return;
-    }
-  else
-    {
-      node->flag.do_reduce_equality_terms = true;
-    }
-
   /* init */
   orgp = wherep;
   accumulator = NULL;
@@ -1818,7 +1817,7 @@ qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
   if (node->node_type == PT_SELECT)
     {
       wherep = &node->info.query.q.select.where;
-      qo_reduce_equality_terms (parser, node, wherep);
+      QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, wherep);
     }
 
   return node;
@@ -7140,20 +7139,23 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	      /*
 	       * It is correct that qo_reduce_equality_terms() is called in the post order.
 	       * for correlated constant value in another subquery
-	       * e.g. select .. from (select 1 col1) a, (select col1 from table) b where a.col1 = b.col1
-	       *      ==> select ... (..) a, (select ... from table ) b where b.col1 = 1 ...
+	       * e.g. select .. from (select col1 .. where col1 =1) a,
+	       *                     (select col1 from table) b where a.col1 = b.col1
+	       *      ==>
+	       *      select .. from (select 1 .. where col1 =1) a, <== 1st replace
+	       *                     (select col1 from table) b where 1 = b.col1 <== 2nd replace
 	       * Applies only to SELECT. In other cases, apply later if necessary.
 	       */
 	      parser_walk_tree (parser, node, NULL, NULL, qo_reduce_equality_terms_post, NULL);
 	    }
 	  else
 	    {
-	      qo_reduce_equality_terms (parser, node, wherep);
+	      QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, wherep);
 	    }
 	}
       if (*havingp)
 	{
-	  qo_reduce_equality_terms (parser, node, havingp);
+	  QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, havingp);
 	}
 
       /* we don't reduce equality terms for startwith and connectby. This optimization for every A after a statement
@@ -7163,19 +7165,19 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
        * from all levels, column A being different. */
       if (*aftercbfilterp)
 	{
-	  qo_reduce_equality_terms (parser, node, aftercbfilterp);
+	  QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, aftercbfilterp);
 	}
       if (*merge_upd_wherep)
 	{
-	  qo_reduce_equality_terms (parser, node, merge_upd_wherep);
+	  QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, merge_upd_wherep);
 	}
       if (*merge_ins_wherep)
 	{
-	  qo_reduce_equality_terms (parser, node, merge_ins_wherep);
+	  QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, merge_ins_wherep);
 	}
       if (*merge_del_wherep)
 	{
-	  qo_reduce_equality_terms (parser, node, merge_del_wherep);
+	  QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, merge_del_wherep);
 	}
 
       /* convert terms of the form 'const op attr' to 'attr op const' */
