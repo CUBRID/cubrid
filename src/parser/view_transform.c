@@ -96,12 +96,10 @@ typedef struct check_pushable_info
   bool check_query;
   bool check_method;
   bool check_xxxnum;
-  bool check_analytic;
 
   bool query_found;
   bool method_found;
   bool xxxnum_found;		/* rownum, inst_num(), orderby_num(), groupby_num() */
-  bool analytic_found;
 } CHECK_PUSHABLE_INFO;
 
 static unsigned int top_cycle = 0;
@@ -2710,20 +2708,13 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 	      cinfop->xxxnum_found = true;	/* not pushable */
 	    }
 	}
-      else if (tree->info.function.analytic.is_analytic == true)
-	{
-	  if (cinfop->check_analytic)
-	    {
-	      cinfop->analytic_found = true;	/* not pushable */
-	    }
-	}
       break;
 
     default:
       break;
     }				/* switch (tree->node_type) */
 
-  if (cinfop->query_found || cinfop->method_found || cinfop->xxxnum_found || cinfop->analytic_found)
+  if (cinfop->query_found || cinfop->method_found || cinfop->xxxnum_found )
     {
       /* not pushable */
       /* do not need to traverse anymore */
