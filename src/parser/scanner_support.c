@@ -48,7 +48,7 @@
 
 static char *pt_trim_as_identifier (char *name);
 
-#define PRINT_HIT_HINT_INFO	/* When declared, matching hint information is output to the screen. */
+//#define PRINT_HIT_HINT_INFO   /* When declared, matching hint information is output to the screen. */
 #if defined(PRINT_HIT_HINT_INFO)
 static void debug_hit_hint_print (PT_HINT * hint_table);
 #define PRINT_HIT_HINT(...)  printf(__VA_ARGS__)
@@ -57,15 +57,8 @@ static void debug_hit_hint_print (PT_HINT * hint_table);
 #define PRINT_HIT_HINT(...)
 #endif
 
-struct parser_hint_list
-{
-  int max_cnt;
-  int *length;
-  bool *hit;
-#define HINT_CHAR_SIZE (129)
-  u_char lead_offset[129];
-};
-static struct parser_hint_list gl_parser_hint = { 0x00, 0x00, 0x00, 0 };
+#define HINT_LEAD_CHAR_SIZE (129)
+static u_char hint_table_lead_offset[HINT_LEAD_CHAR_SIZE] = { 0, };
 
 int parser_input_host_index = 0;
 int parser_statement_OK = 0;
@@ -198,7 +191,7 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 
   int i;
 
-  memset (gl_parser_hint.lead_offset, 0x00, sizeof (gl_parser_hint.lead_offset));
+  memset (hint_table_lead_offset, 0x00, sizeof (hint_table_lead_offset));
   for (i = 0; hint_table[i].tokens; i++)
     {
 #ifndef NDEBUG
@@ -208,36 +201,28 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 	  assert (toupper (*p) == *p);
 	}
 #endif
-      gl_parser_hint.lead_offset[(unsigned char) (hint_table[i].tokens[0])]++;
+      hint_table[i].is_hit = false;
+      hint_table[i].length = (int) strlen (hint_table[i].tokens);
+      hint_table_lead_offset[(unsigned char) (hint_table[i].tokens[0])]++;
     }
-
-  gl_parser_hint.max_cnt = i;
-  gl_parser_hint.hit = (bool *) calloc (gl_parser_hint.max_cnt, sizeof (bool));
-  gl_parser_hint.length = (int *) calloc (gl_parser_hint.max_cnt, sizeof (int));
-  assert (gl_parser_hint.hit && gl_parser_hint.length);
 
   // ordering by asc 
-  qsort (hint_table, gl_parser_hint.max_cnt, sizeof (hint_table[0]), &hint_token_cmp);
-  // fill length
-  for (i = 0; hint_table[i].tokens; i++)
-    {
-      gl_parser_hint.length[i] = (int) strlen (hint_table[i].tokens);
-    }
+  qsort (hint_table, i, sizeof (hint_table[0]), &hint_token_cmp);
 
   // Cumulative Distribution Counting
   int sum = 0;
-  int tCnt = gl_parser_hint.lead_offset[0];
-  for (i = 0; i < HINT_CHAR_SIZE; i++)
+  int tCnt = hint_table_lead_offset[0];
+  for (i = 0; i < HINT_LEAD_CHAR_SIZE; i++)
     {
-      tCnt = gl_parser_hint.lead_offset[i];
-      gl_parser_hint.lead_offset[i] = sum;
+      tCnt = hint_table_lead_offset[i];
+      hint_table_lead_offset[i] = sum;
       sum += tCnt;
     }
 
   // Copy for lower character
   for (i = 'A'; i <= 'Z'; i++)
     {
-      gl_parser_hint.lead_offset[i + 32 /*('a'-'A') */ ] = gl_parser_hint.lead_offset[i];
+      hint_table_lead_offset[i + 32 /*('a'-'A') */ ] = hint_table_lead_offset[i];
     }
 
   was_initialized = 1;
@@ -273,13 +258,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 {
   int i;
 
-  // ctshim   
-  PRINT_HIT_HINT ("(HINT START) ");
+  PRINT_HIT_HINT ("(HINT HIT) ");
 
   /* read hint info */
   for (i = 0; hint_table[i].tokens; i++)
     {
-      if (gl_parser_hint.hit[i])
+      if (hint_table[i].is_hit)
 	{
 	  debug_hit_hint_print (hint_table + i);
 
@@ -663,8 +647,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	}
     }				/* for (i = ... ) */
 
-  // ctshim   
-  PRINT_HIT_HINT ("  (HINT END)\n");
 }
 
 
@@ -775,7 +757,7 @@ find_hint_token (PT_HINT hint_table[], unsigned char *string)
     }
 
   matched_idx = 0;
-  for (i = gl_parser_hint.lead_offset[*string]; hint_table[i].tokens; i++)
+  for (i = hint_table_lead_offset[*string]; hint_table[i].tokens; i++)
     {
       if (matched_idx > 0)
 	{
@@ -785,8 +767,8 @@ find_hint_token (PT_HINT hint_table[], unsigned char *string)
 	    }
 	}
 
-      len = gl_parser_hint.length[i];
-      cmp = hint_case_cmp ((char *) string, hint_table[i].tokens, gl_parser_hint.length[i], matched_idx);
+      len = hint_table[i].length;
+      cmp = hint_case_cmp ((char *) string, hint_table[i].tokens, len, matched_idx);
       if (cmp == 0)
 	{
 	  if (string[len] == '\0' || IS_WHITE_SPACE (string[len]) || string[len] == '(')
@@ -821,7 +803,7 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
   if (*in != '(')
     {
       /* found specified hint */
-      gl_parser_hint.hit[hint_idx] = true;
+      hint_table[hint_idx].is_hit = true;
       *result_hint |= hint_table[hint_idx].hint;
       return instr;
     }
@@ -835,7 +817,7 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
   bool is_illegal_expression = false;
   bool is_first_hit = false;
 
-  if (gl_parser_hint.hit[hint_idx] == false)
+  if (hint_table[hint_idx].is_hit == false)
     {
       is_first_hit = true;
     }
@@ -862,7 +844,7 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 		  arg->type_enum = PT_TYPE_NULL;
 		}
 	      hint_table[hint_idx].arg_list = arg;
-	      gl_parser_hint.hit[hint_idx] = true;
+	      hint_table[hint_idx].is_hit = true;
 	      *result_hint |= hint_table[hint_idx].hint;
 	    }
 	}
@@ -919,7 +901,7 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 	  if (is_first_hit && !is_illegal_expression)
 	    {
 	      get_hint_args_func (sp, in, dot_ptr, &(hint_table[hint_idx]));
-	      gl_parser_hint.hit[hint_idx] = true;
+	      hint_table[hint_idx].is_hit = true;
 	      *result_hint |= hint_table[hint_idx].hint;
 	    }
 
@@ -950,7 +932,7 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 	      arg->type_enum = PT_TYPE_NULL;
 	    }
 	  hint_table[hint_idx].arg_list = arg;
-	  gl_parser_hint.hit[hint_idx] = true;
+	  hint_table[hint_idx].is_hit = true;
 	  *result_hint |= hint_table[hint_idx].hint;
 	}
 #endif
@@ -976,7 +958,11 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 
   PRINT_HIT_HINT ("\n(HINT STRING) %s\n", text);
 
-  memset (gl_parser_hint.hit, 0x00, gl_parser_hint.max_cnt * sizeof (bool));
+  // reset hit info.
+  for (int i = 0; hint_table[i].tokens; i++)
+    {
+      hint_table[i].is_hit = false;
+    }
 
   *result_hint = PT_HINT_NONE;
   while (IS_WHITE_SPACE (*h_str))
@@ -1005,7 +991,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 	{
 	  h_str++;
 	}
-      else if (gl_parser_hint.lead_offset[h_str[0]] >= gl_parser_hint.lead_offset[h_str[0] + 1])
+      else if (hint_table_lead_offset[h_str[0]] >= hint_table_lead_offset[h_str[0] + 1])
 	{
 	  start_flag = false;
 	  h_str++;
@@ -1020,7 +1006,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 	    }
 	  else
 	    {
-	      h_str += gl_parser_hint.length[hint_idx];
+	      h_str += hint_table[hint_idx].length;
 	      h_str = read_hint_args (h_str, hint_table, hint_idx, result_hint);
 	    }
 	}
