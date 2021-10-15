@@ -3144,7 +3144,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
       return;
     }
 
-  info_logging_interval_in_secs = prm_get_integer_value (PRM_ID_DETAILED_RECOVERY_LOGGING_INTERVAL);
+  info_logging_interval_in_secs = prm_get_integer_value (PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL);
   if (info_logging_interval_in_secs > 0 && info_logging_interval_in_secs < 5)
     {
       info_logging_interval_in_secs = 5;
@@ -3173,7 +3173,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    }
 	}
 
-      /* PRM_ID_DETAILED_RECOVERY_LOGGING_INTERVAL > 0 */
+      /* PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL > 0 */
       if (info_logging_interval_in_secs > 0)
 	{
 	  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_check_time);
@@ -4693,7 +4693,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
       return;
     }
 
-  info_logging_interval_in_secs = prm_get_integer_value (PRM_ID_DETAILED_RECOVERY_LOGGING_INTERVAL);
+  info_logging_interval_in_secs = prm_get_integer_value (PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL);
   if (info_logging_interval_in_secs > 0 && info_logging_interval_in_secs < 5)
     {
       info_logging_interval_in_secs = 5;
@@ -4716,7 +4716,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  return;
 	}
 
-      /* PRM_ID_DETAILED_RECOVERY_LOGGING_INTERVAL != 0 */
+      /* PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL != 0 */
       if (info_logging_interval_in_secs > 0)
 	{
 	  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_check_time);
