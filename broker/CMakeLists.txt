@@ -299,6 +299,7 @@ else(UNIX)
     ${CUB_CAS_CGW_SOURCES}
     PROPERTIES LANGUAGE CXX
   )
+  list(APPEND CUB_CAS_CGW_SOURCES ${BASE_DIR}/chartype.c)
   list(APPEND CUB_CAS_CGW_SOURCES ${BASE_DIR}/porting.c)
   list(APPEND CUB_CAS_CGW_SOURCES ${BROKER_DIR}/broker_list.c)
   list(APPEND CUB_CAS_CGW_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
