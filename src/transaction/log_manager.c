@@ -1143,7 +1143,15 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       log_final (thread_p);
     }
 
-  error_code = log_read_metalog_from_file_with_create ();
+  if (is_tran_server_with_remote_storage ())
+    {
+      // allow creation of metalog on-the-fly
+      error_code = log_read_metalog_from_file_with_create ();
+    }
+  else
+    {
+      error_code = log_read_metalog_from_file ();
+    }
   if (error_code != NO_ERROR && !init_emergency)
     {
       // Unable to mount meta log
@@ -10617,30 +10625,28 @@ log_create_metalog_file_with_arg (const cublog::meta & metalog)
 }
 
 // At initialization time, metalog is created if not found. Needed in the contest of booting up
-// a pristine active/passive transaction server.
+// an empty active transaction server with remote storage.
 int
 log_read_metalog_from_file_with_create ()
 {
   int err_code = NO_ERROR;
+  struct stat sb;
 
-  // TODO: replace with test for file existence to avoid having to read twice
-  err_code = log_read_metalog_from_file ();
-  if (err_code != NO_ERROR)
+  if (stat (log_Name_metainfo, &sb) != 0)
     {
       // should not be called in a a non booting-up scenario
       assert (log_Gl.m_metainfo.get_checkpoint_count () == 0);
-      cublog::meta dummy_metalog;
+      cublog::meta clean_metalog;
       // mark a clean shutdown to avoid recovery afterwards when file is loaded back into the global variable
-      dummy_metalog.set_clean_shutdown (true);
-      err_code = log_create_metalog_file_with_arg (dummy_metalog);
+      clean_metalog.set_clean_shutdown (true);
+      err_code = log_create_metalog_file_with_arg (clean_metalog);
       if (err_code != NO_ERROR)
 	{
 	  return err_code;
 	}
-      // load back into the global variable
-      err_code = log_read_metalog_from_file ();
     }
 
+  err_code = log_read_metalog_from_file ();
   return err_code;
 }
 

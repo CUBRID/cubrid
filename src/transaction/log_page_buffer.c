@@ -6872,7 +6872,7 @@ logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, co
    */
   fileio_make_log_active_name (log_Name_active, log_Path, log_Prefix);
   fileio_make_log_info_name (log_Name_info, log_Path, log_Prefix);
-  fileio_make_log_metainfo_name (log_Name_metainfo, log_Path, log_Prefix);
+  fileio_make_log_metainfo_name (log_Name_metainfo, log_Path, log_Prefix, is_tran_server_with_remote_storage ());
   fileio_make_backup_volume_info_name (log_Name_bkupinfo, log_Path, log_Prefix);
   fileio_make_volume_info_name (log_Name_volinfo, db_fullname);
   fileio_make_log_archive_temp_name (log_Name_bg_archive, log_Archive_path, log_Prefix);
@@ -9411,7 +9411,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   /*
    * Copy log meta-information file
    */
-  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
+  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname, false);
   // *INDENT-OFF*
   try
     {
@@ -9994,7 +9994,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
   /*
    * Rename the log meta file
    */
-  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
+  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname, false);
   if (fileio_rename (LOG_DBLOG_METAINFO_VOLID, log_Name_metainfo, to_volname) == NULL)
     {
       error_code = ER_FAILED;
