@@ -16227,9 +16227,9 @@ heap_rcv_to_slotid (const LOG_RCV & rcv)
 //       transaction, but it cannot find it and skips it.
 //
 //    4. The second modifier transaction is aborted and rollbacks the record. It would now restore the heap record
-//       containing the MVCCID that was supposed to be vacuumed. But vacuum already moved on and it would the
-//       MVCCID remains uncleaned. In this case, the transaction doing the rollback becomes responsible of also
-//       cleaning the MVCCID that may have been skipped by the vacuum process.
+//       containing the MVCCID that was supposed to be vacuumed. But vacuum already moved on and it would leave the
+//       MVCCID uncleaned. In this case, the transaction doing the rollback becomes responsible of also cleaning the
+//       MVCCID that may have been skipped by the vacuum process.
 //
 // The operations in the second step that may cause this situation is always a heap update operation. There may be
 // several undo scenarios based on the type of the record before and after update:
@@ -16326,7 +16326,7 @@ heap_rv_vacuum_and_append_compensate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, P
   RECDES copy_recdes = peek_recdes;
   copy_recdes.data = copy_recdes_data_uptr.get ();
   copy_recdes.area_size = copy_recdes.length;
-	  
+
   // Update recdes header
   const int error_code = or_mvcc_set_header (&copy_recdes, &rec_header);
   if (error_code != NO_ERROR)
