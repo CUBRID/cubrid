@@ -5417,6 +5417,11 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
       /* Initialize the transaction table */
       logtb_define_trantable (thread_p, -1, -1);
+      error_code = pgbuf_initialize ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
 
       /* The database pagesize is set by log_get_io_page_size */
 
@@ -5473,6 +5478,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
       (void) boot_remove_all_temp_volumes (thread_p, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION);
       boot_server_status (BOOT_SERVER_UP);
       log_final (thread_p);
+      pgbuf_finalize ();
 
     }
 
