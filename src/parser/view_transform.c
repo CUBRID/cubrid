@@ -2714,7 +2714,7 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
       break;
     }				/* switch (tree->node_type) */
 
-  if (cinfop->query_found || cinfop->method_found || cinfop->xxxnum_found )
+  if (cinfop->query_found || cinfop->method_found || cinfop->xxxnum_found)
     {
       /* not pushable */
       /* do not need to traverse anymore */
