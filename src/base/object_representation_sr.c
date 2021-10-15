@@ -4253,7 +4253,7 @@ or_replace_rep_id (RECDES * record, int repid)
  * mvcc_header (out)	: MVCC Record header.
  */
 int
-or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
+or_mvcc_get_header (const RECDES * record, MVCC_REC_HEADER * mvcc_header)
 {
   OR_BUF buf;
   int rc = NO_ERROR;

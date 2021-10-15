@@ -1413,8 +1413,6 @@ net_server_start (THREAD_ENTRY * thread_p, const char *server_name)
 
   if (error != NO_ERROR)
     {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
-      fflush (stderr);
       status = 2;
     }
 

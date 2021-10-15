@@ -37,6 +37,8 @@ namespace cublog
       void load_from_file (std::FILE *stream);       // load meta from meta log file
       void flush_to_file (std::FILE *stream) const;  // write meta to disk
 
+      bool is_loaded_from_file () const;
+
       size_t get_packed_size (cubpacking::packer &serializer, std::size_t start_offset = 0) const;
       void pack (cubpacking::packer &serializer) const;
       void unpack (cubpacking::unpacker &deserializer);
@@ -48,6 +50,7 @@ namespace cublog
       void set_clean_shutdown (bool a_clean_shutdown);
 
       const checkpoint_info *get_checkpoint_info (const log_lsa &checkpoint_lsa) const;
+      std::tuple<log_lsa,  const checkpoint_info *> get_highest_lsa_checkpoint_info () const;
       void add_checkpoint_info (const log_lsa &chkpt_lsa, checkpoint_info &&chkpt_info);
       void add_checkpoint_info (const log_lsa &chkpt_lsa, const checkpoint_info &chkpt_info);
       size_t remove_checkpoint_info_before_lsa (const log_lsa &target_lsa);
@@ -57,6 +60,8 @@ namespace cublog
       using checkpoint_container_t = std::map<log_lsa, checkpoint_info>;
 
     private:
+      bool m_loaded_from_file = false;
+
       /* flag parallel to 'log global header is shutdown':
        *  - false: server has not been clean shut down
        *  - true: has been clean shut down

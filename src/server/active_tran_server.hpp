@@ -19,11 +19,11 @@
 #ifndef _ACTIVE_TRAN_SERVER_HPP_
 #define _ACTIVE_TRAN_SERVER_HPP_
 
-#include "ats_ps_request.hpp"
 #include "communication_node.hpp"
 #include "page_broker.hpp"
 #include "request_sync_client_server.hpp"
 #include "server_type.hpp"
+#include "tran_page_requests.hpp"
 
 #include <memory>
 #include <string>
@@ -60,11 +60,11 @@ class active_tran_server
 
     bool uses_remote_storage () const;
 
-    void push_request (ats_to_ps_request reqid, std::string &&payload);
+    void push_request (tran_to_page_request reqid, std::string &&payload);
 
   private:
     using page_server_conn_t =
-	    cubcomm::request_sync_client_server<ats_to_ps_request, ps_to_ats_request, std::string>;
+	    cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
 
   private:
     int connect_to_page_server (const cubcomm::node &node, const char *db_name);

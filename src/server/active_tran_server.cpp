@@ -242,7 +242,7 @@ active_tran_server::get_boot_info_from_page_server ()
 {
   assert (!m_is_boot_info_received);
 
-  push_request (ats_to_ps_request::GET_BOOT_INFO, std::string ()); // empty message
+  push_request (tran_to_page_request::GET_BOOT_INFO, std::string ()); // empty message
 
   std::unique_lock<std::mutex> ulock (m_boot_info_mutex);
   m_boot_info_condvar.wait (ulock, [this] { return m_is_boot_info_received; });
@@ -294,25 +294,25 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
   m_page_server_conn_vec.emplace_back (new page_server_conn_t (std::move (srv_chn),
   {
     {
-      ps_to_ats_request::SEND_BOOT_INFO,
+      page_to_tran_request::SEND_BOOT_INFO,
       std::bind (&active_tran_server::receive_boot_info, std::ref (*this), std::placeholders::_1)
     },
     {
-      ps_to_ats_request::SEND_SAVED_LSA,
+      page_to_tran_request::SEND_SAVED_LSA,
       std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1)
     },
     {
-      ps_to_ats_request::SEND_LOG_PAGE,
+      page_to_tran_request::SEND_LOG_PAGE,
       std::bind (&active_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1)
     },
     {
-      ps_to_ats_request::SEND_DATA_PAGE,
+      page_to_tran_request::SEND_DATA_PAGE,
       std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1)
     },
   }));
 
   log_Gl.m_prior_sender.add_sink (std::bind (&active_tran_server::push_request, std::ref (*this),
-				  ats_to_ps_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1));
+				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1));
 
   return NO_ERROR;
 }
@@ -329,7 +329,7 @@ active_tran_server::disconnect_page_server ()
     {
       er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
 		    m_page_server_conn_vec[i]->get_underlying_channel_id ());
-      m_page_server_conn_vec[i]->push (ats_to_ps_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
+      m_page_server_conn_vec[i]->push (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
     }
   m_page_server_conn_vec.clear ();
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
@@ -380,7 +380,7 @@ active_tran_server::uses_remote_storage () const
 }
 
 void
-active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload)
+active_tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 {
   if (!is_page_server_connected ())
     {
@@ -438,7 +438,7 @@ void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
     }
   else
     {
-      assert (message.size () == db_io_page_size ());
+      assert (db_io_page_size () >= 0 && message.size () == static_cast<std::size_t> (db_io_page_size ()));
       // We have a page.
       auto shared_data_page = std::make_shared<std::string> (std::move (message));
 

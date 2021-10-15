@@ -274,7 +274,7 @@ extern OR_CLASSREP **or_get_all_representation (RECDES * record, bool do_indexes
 
 extern int or_replace_rep_id (RECDES * record, int repid);
 
-extern int or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
+extern int or_mvcc_get_header (const RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
 extern int or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
 extern int or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit,
 			       int variable_offset_size);

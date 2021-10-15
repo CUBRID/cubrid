@@ -35,6 +35,19 @@ enum class server_type_config
   SINGLE_NODE,
 };
 
+enum class transaction_server_type
+{
+  ACTIVE,
+  PASSIVE,
+};
+
+enum class transaction_server_type_config
+{
+  ACTIVE,
+  REPLICA,
+  STANDBY,
+};
+
 constexpr const char *
 server_type_to_string (SERVER_TYPE type)
 {
@@ -64,6 +77,36 @@ server_type_config_to_string (server_type_config type)
       return "transaction";
     case server_type_config::SINGLE_NODE:
       return "single_node";
+    default:
+      assert (false);
+    }
+}
+
+constexpr const char *
+transaction_server_type_to_string (transaction_server_type type)
+{
+  switch (type)
+    {
+    case transaction_server_type::ACTIVE:
+      return "active";
+    case transaction_server_type::PASSIVE:
+      return "passive";
+    default:
+      assert (false);
+    }
+}
+
+constexpr const char *
+transaction_server_type_config_to_string (transaction_server_type_config type)
+{
+  switch (type)
+    {
+    case transaction_server_type_config::ACTIVE:
+      return "active";
+    case transaction_server_type_config::REPLICA:
+      return "replica";
+    case transaction_server_type_config::STANDBY:
+      return "standby";
     default:
       assert (false);
     }

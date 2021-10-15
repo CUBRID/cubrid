@@ -8771,7 +8771,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
-  thread_p->no_logging = (bool) update->no_logging;
+  thread_p->no_logging = false;	// Used to be: (bool) update->no_logging;
 
   thread_p->no_supplemental_log = (bool) update->no_supplemental_log;
 
@@ -9635,7 +9635,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
-  thread_p->no_logging = (bool) delete_->no_logging;
+  thread_p->no_logging = false;	// Used to be: (bool) delete_->no_logging;
 
   thread_p->no_supplemental_log = (bool) delete_->no_supplemental_log;
 
@@ -10919,7 +10919,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   TP_DOMAIN *result_domain;
   bool has_user_format;
 
-  thread_p->no_logging = (bool) insert->no_logging;
+  thread_p->no_logging = false;	// Used to be: (bool) insert->no_logging;
 
   aptr = xasl->aptr_list;
   val_no = insert->num_vals;
