@@ -3181,22 +3181,17 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    {
 	      UINT64 done_page_cnt = log_lsa.pageid - start_redolsa->pageid;
 
-	      assert (total_page_cnt >= done_page_cnt);
+	      double elapsed_time;
+	      double progress = double (done_page_cnt) / (total_page_cnt);
 
-	      if (done_page_cnt > 0)
-		{
-		  double elapsed_time;
-		  double progress = double (done_page_cnt) / (total_page_cnt);
+	      tsc_start_time_usec (&info_logging_check_time);
+	      tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
 
-		  tsc_start_time_usec (&info_logging_check_time);
-		  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
+	      elapsed_time = info_logging_elapsed_time.tv_sec + (info_logging_elapsed_time.tv_usec / 1000000.0);
 
-		  elapsed_time = info_logging_elapsed_time.tv_sec + (info_logging_elapsed_time.tv_usec / 1000000.0);
-
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PROGRESS, 6, "REDO",
-			  done_page_cnt, total_page_cnt, progress * 100, elapsed_time,
-			  (elapsed_time / done_page_cnt) * (total_page_cnt - done_page_cnt));
-		}
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PROGRESS, 6, "REDO",
+		      done_page_cnt, total_page_cnt, progress * 100, elapsed_time,
+		      done_page_cnt == 0 ? -1.00 : (elapsed_time / done_page_cnt) * (total_page_cnt - done_page_cnt));
 	    }
 	}
 
@@ -4723,23 +4718,17 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  if (info_logging_elapsed_time.tv_sec >= info_logging_interval_in_secs)
 	    {
 	      UINT64 done_page_cnt = max_lsa.pageid - log_lsa.pageid;
+	      double elapsed_time;
+	      double progress = double (done_page_cnt) / (total_page_cnt);
 
-	      assert (total_page_cnt >= done_page_cnt);
+	      tsc_start_time_usec (&info_logging_check_time);
+	      tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
 
-	      if (done_page_cnt > 0 && read_page_cnt > 0)
-		{
-		  double elapsed_time;
-		  double progress = double (done_page_cnt) / (total_page_cnt);
+	      elapsed_time = info_logging_elapsed_time.tv_sec + (info_logging_elapsed_time.tv_usec / 1000000.0);
 
-		  tsc_start_time_usec (&info_logging_check_time);
-		  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
-
-		  elapsed_time = info_logging_elapsed_time.tv_sec + (info_logging_elapsed_time.tv_usec / 1000000.0);
-
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PROGRESS, 6, "UNDO",
-			  done_page_cnt, total_page_cnt, progress * 100, elapsed_time,
-			  (elapsed_time / read_page_cnt) * (total_page_cnt - done_page_cnt));
-		}
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PROGRESS, 6, "UNDO",
+		      done_page_cnt, total_page_cnt, progress * 100, elapsed_time,
+		      read_page_cnt == 0 ? -1.0 : (elapsed_time / read_page_cnt) * (total_page_cnt - done_page_cnt));
 	    }
 
 	  read_page_cnt++;
