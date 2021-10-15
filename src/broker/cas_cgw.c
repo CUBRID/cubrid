@@ -71,7 +71,7 @@ cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool valid_handle)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_HANDLE, 0);
 	  return ER_CGW_INVALID_HANDLE;
 	}
-      return -1;
+      return ER_FAILED;
     }
 
   if (local_odbc_handle->henv == NULL || local_odbc_handle->hdbc == NULL || local_odbc_handle->hstmt == NULL)
@@ -81,7 +81,7 @@ cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool valid_handle)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_HANDLE, 0);
 	  return ER_CGW_INVALID_HANDLE;
 	}
-      return -1;
+      return ER_FAILED;
     }
   else
     {
@@ -192,11 +192,11 @@ cgw_database_connect (const char *dsn, const char *connect_url)
 
   cgw_link_server_info (local_odbc_handle->hdbc);
 
-  return 0;
+  return NO_ERROR;
 
 ODBC_ERROR:
   is_database_connected = -1;
-  return -1;
+  return ER_FAILED;
 }
 
 int
@@ -225,11 +225,11 @@ cgw_execute (T_SRV_HANDLE * srv_handle)
 	       err_code = SQLExecDirect (srv_handle->cgw_handle->hstmt, (SQLCHAR *) srv_handle->sql_stmt, SQL_NTS));
     }
 
-  return 0;
+  return NO_ERROR;
 
 ODBC_ERROR:
 
-  return -1;
+  return ER_FAILED;
 }
 
 int
@@ -272,7 +272,7 @@ cgw_row_data (SQLHSTMT hstmt, int cursor_pos)
   return no_data;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 int
@@ -287,7 +287,7 @@ cgw_cursor_close (SQLHSTMT hstmt)
   return err_code;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 INT64
@@ -300,7 +300,7 @@ cgw_row_count (SQLHSTMT hstmt)
   return low_count;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 int
@@ -495,7 +495,7 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * pFirstBinding, int cursor_pos
 	}
     }
 
-  return 0;
+  return NO_ERROR;
 }
 
 int
@@ -594,7 +594,7 @@ cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_I
   return err_code;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 static char
@@ -831,10 +831,10 @@ cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_t
 	}
     }
 
-  return 0;
+  return NO_ERROR;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 int
@@ -855,7 +855,7 @@ cgw_set_commit_mode (SQLHDBC hdbc, bool auto_commit)
   return err_code;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 static int
@@ -879,10 +879,10 @@ cgw_get_stmt_Info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type)
   net_buf_cp_int (net_buf, srv_cache_time.sec, NULL);	// cache_time
   net_buf_cp_int (net_buf, srv_cache_time.usec, NULL);	// cache_time
 
-  return 0;
+  return NO_ERROR;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 
@@ -1223,10 +1223,10 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT col_num, T_COL_BINDER ** col_bindi
 	}
     }
 
-  return 0;
+  return NO_ERROR;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 
@@ -1786,7 +1786,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
   return data_size;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 int
@@ -1802,7 +1802,7 @@ cgw_sql_prepare (SQLHSTMT hstmt, SQLCHAR * sql_stmt)
   return (int) err_code;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 int
@@ -1815,7 +1815,7 @@ cgw_get_col_num (SQLHSTMT hstmt, SQLSMALLINT * col_num)
   return (int) err_code;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 int
@@ -1855,7 +1855,7 @@ cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, void **argv,
 
   *ret_val = bind_value_list;
 
-  return 0;
+  return NO_ERROR;
 }
 
 int
@@ -1882,7 +1882,7 @@ cgw_get_row_count (SQLHSTMT hstmt)
   return (INT64) row_count;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 static int
@@ -1943,7 +1943,7 @@ make_str_to_numeric (SQL_NUMERIC_STRUCT * numeric, char *string)
       return ER_CGW_INVALID_NUMERIC_VALUE;
     }
 
-  return 0;
+  return NO_ERROR;
 }
 
 static int
@@ -1958,7 +1958,7 @@ hex_to_numeric_val (SQL_NUMERIC_STRUCT * numeric, char *hexstr)
   slen = strlen (hexstr);
   if (slen < 1)
     {
-      return -1;
+      return ER_FAILED;
     }
 
   loop = (slen % 2) + (slen / 2);
@@ -1970,7 +1970,7 @@ hex_to_numeric_val (SQL_NUMERIC_STRUCT * numeric, char *hexstr)
 	  error = hex_to_char (*(hexstr), &ms_val);
 	  if (error < 0)
 	    {
-	      return -1;
+	      return ER_FAILED;
 	    }
 	  numeric->val[i] = ms_val;
 	  break;
@@ -1980,13 +1980,13 @@ hex_to_numeric_val (SQL_NUMERIC_STRUCT * numeric, char *hexstr)
 	  error = hex_to_char (*(hexstr + (slen - 2)), &ms_val);
 	  if (error < 0)
 	    {
-	      return -1;
+	      return ER_FAILED;
 	    }
 
 	  error = hex_to_char (*(hexstr + slen - 1), &ls_val);
 	  if (error < 0)
 	    {
-	      return -1;
+	      return ER_FAILED;
 	    }
 
 	  numeric->val[i] = (ms_val << 4) | (ls_val);
@@ -1994,13 +1994,13 @@ hex_to_numeric_val (SQL_NUMERIC_STRUCT * numeric, char *hexstr)
       slen -= 2;
     }
 
-  return 0;
+  return NO_ERROR;
 }
 
 static int
 hex_to_char (char c, unsigned char *result)
 {
-  int error = 0;
+  int error = NO_ERROR;
 
   if (c >= '0' && c <= '9')
     *result = c - '0';
@@ -2009,7 +2009,7 @@ hex_to_char (char c, unsigned char *result)
   else if (c >= 'A' && c <= 'F')
     *result = c - 'A' + 10;
   else
-    error = -1;
+    error = ER_FAILED;
 
   return error;
 }
@@ -2063,7 +2063,7 @@ cgw_free_stmt (SQLHSTMT hstmt, int option)
   return err_code;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 int
@@ -2089,7 +2089,7 @@ cgw_endtran (SQLHDBC hdbc, int tran_type)
   return err_code;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 int
@@ -2105,7 +2105,7 @@ cgw_init_odbc_handle (void)
 
   memset (local_odbc_handle, 0x0, sizeof (T_CGW_HANDLE));
 
-  return 0;
+  return NO_ERROR;
 }
 
 int
@@ -2116,10 +2116,10 @@ cgw_get_driver_info (SQLHDBC hdbc, int info_type, void *driver_info, int size)
 
   CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLGetInfo (hdbc, info_type, driver_info, size, &len));
 
-  return 0;
+  return NO_ERROR;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 
@@ -2355,7 +2355,7 @@ cgw_set_stmt_attr (SQLHSTMT hstmt, SQLINTEGER attr, SQLPOINTER val, SQLINTEGER l
   return err_code;
 
 ODBC_ERROR:
-  return -1;
+  return ER_FAILED;
 }
 
 static void
