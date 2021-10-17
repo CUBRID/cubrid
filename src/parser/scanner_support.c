@@ -949,7 +949,7 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
  *   prev_is_white_char(in): -
  */
 void
-pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hint, bool)
+pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hint)
 {
   unsigned char *hint_p;
   int hint_idx;
@@ -1021,11 +1021,11 @@ debug_hit_hint_print (PT_HINT * hint_table)
 
   if (hint_table->arg_list == NULL)
     {
-      printf (" %s ", hint_table->tokens);
+      fprintf (stdout, " %s ", hint_table->tokens);
       return;
     }
 
-  printf (" %s(", hint_table->tokens);
+  fprintf (stdout, " %s(", hint_table->tokens);
 
   px = hint_table->arg_list;
   do
@@ -1033,14 +1033,18 @@ debug_hit_hint_print (PT_HINT * hint_table)
       if (px->node_type == PT_NAME)
 	{
 	  if (px->info.name.resolved)
-	    printf ("[%s].[%s]", px->info.name.resolved, px->info.name.original);
+	    {
+	      fprintf (stdout, "[%s].[%s]", px->info.name.resolved, px->info.name.original);
+	    }
 	  else
-	    printf ("[%s]", px->info.name.original);
+	    {
+	      fprintf (stdout, "[%s]", px->info.name.original);
+	    }
 	}
       else if (px->node_type == PT_VALUE)
 	{
 	  assert (px->type_enum == PT_TYPE_NULL);
-	  printf ("%s", "***");
+	  fprintf (stdout, "%s", "***");
 	}
       else
 	{
@@ -1050,12 +1054,12 @@ debug_hit_hint_print (PT_HINT * hint_table)
       px = px->next;
       if (px)
 	{
-	  printf (", ");
+	  fprintf (stdout, ", ");
 	}
 
     }
   while (px);
 
-  printf (")");
+  fprintf (stdout, ")");
 }
 #endif
