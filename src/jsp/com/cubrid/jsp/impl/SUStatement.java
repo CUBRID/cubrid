@@ -10,11 +10,14 @@ import com.cubrid.jsp.data.PrepareInfo;
 import com.cubrid.jsp.data.QueryResultInfo;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConstants;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorManager;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideOID;
 import com.cubrid.jsp.value.Value;
 import cubrid.jdbc.jci.CUBRIDCommandType;
+import cubrid.sql.CUBRIDOID;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.Date;
@@ -108,7 +111,8 @@ public class SUStatement {
          */
     }
 
-    public SUStatement(SUConnection conn, GetByOIDInfo info, String attributeName[]) {
+    public SUStatement(
+            SUConnection conn, GetByOIDInfo info, CUBRIDOID oid, String attributeName[]) {
         type = GET_BY_OID;
         handlerId = -1;
 
@@ -311,17 +315,22 @@ public class SUStatement {
         }
     }
 
-    public SOID executeInsert() throws IOException {
-        /*
-         * if (commandTypeIs != CUBRIDCommandType.CUBRID_STMT_INSERT) {
-         * errorHandler.setErrorCode(UErrorCode.ER_CMD_IS_NOT_INSERT); return null; }
-         */
-        execute(0, 0, false, false, false);
+    public CUBRIDOID executeInsert(CUBRIDServerSideConnection con) throws SQLException {
+        if (commandType != CUBRIDCommandType.CUBRID_STMT_INSERT) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_CMD_IS_NOT_INSERT, null);
+        }
+
+        try {
+            execute(0, 0, false, false, false);
+        } catch (IOException e) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, null);
+        }
 
         if (executeInfo != null && executeInfo.getResultInfo(0) != null) {
-            // TODO
-            // return resultInfo[0].getCUBRIDOID();
-            return null;
+            SOID oid = executeInfo.getResultInfo(0).getCUBRIDOID();
+            return new CUBRIDServerSideOID(con, oid);
         }
 
         return null;
@@ -543,6 +552,45 @@ public class SUStatement {
 
         try {
             return obj.toTimestamp();
+        } catch (TypeMismatchException e) {
+            return null;
+        }
+    }
+
+    public CUBRIDOID getColumnOID(int columnIndex) {
+        int idx = columnIndex - 1;
+        Value obj = (Value) beforeGetTuple(idx);
+        if (obj == null) return null;
+
+        try {
+            return obj.toOid();
+        } catch (TypeMismatchException e) {
+            return null;
+        }
+    }
+
+    public CUBRIDOID getCursorOID() {
+        SUResultTuple tuples[] = fetchInfo.tuples;
+        SUResultTuple currentTuple = null;
+
+        if ((tuples == null)
+                || (tuples[cursorPosition - fetchedStartCursorPosition] == null)
+                || ((currentTuple = tuples[cursorPosition - fetchedStartCursorPosition]) == null)) {
+            return null;
+        }
+
+        SOID soid = currentTuple.getOID();
+        return new CUBRIDServerSideOID(suConn, soid);
+    }
+
+    public Object getCollection(int columnIndex) {
+        int idx = columnIndex - 1;
+        Value obj = (Value) beforeGetTuple(idx);
+        if (obj == null) return null;
+
+        try {
+            // TODO: check needed
+            return obj.toObject();
         } catch (TypeMismatchException e) {
             return null;
         }

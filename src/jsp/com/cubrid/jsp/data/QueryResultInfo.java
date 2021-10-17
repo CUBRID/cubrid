@@ -1,5 +1,7 @@
 package com.cubrid.jsp.data;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideOID;
 import cubrid.jdbc.jci.CUBRIDCommandType;
+import cubrid.sql.CUBRIDOID;
 
 public class QueryResultInfo {
     public int stmtType;
@@ -28,5 +30,9 @@ public class QueryResultInfo {
 
     public int getResultCount () {
         return tupleCount;
+    }
+
+    public SOID getCUBRIDOID () {
+        return insOid;
     }
 }

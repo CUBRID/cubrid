@@ -23,4 +23,20 @@ public class CUBRIDServerSideConstants {
             EXEC_FLAG_HOLDABLE_RESULT = 0x20,
             EXEC_FLAG_GET_GENERATED_KEYS = 0x40;
     public static final int CURSOR_SET = 0, CURSOR_CUR = 1, CURSOR_END = 2;
+
+    /* oid commands */
+    public static final byte DROP_BY_OID = 1,
+    IS_INSTANCE = 2,
+    GET_READ_LOCK_BY_OID = 3,
+    GET_WRITE_LOCK_BY_OID = 4,
+    GET_CLASS_NAME_BY_OID = 5;
+
+    /* collection commands */
+    public static final byte GET_COLLECTION_VALUE = 1,
+    GET_SIZE_OF_COLLECTION = 2,
+    DROP_ELEMENT_IN_SET = 3,
+    ADD_ELEMENT_TO_SET = 4,
+    DROP_ELEMENT_IN_SEQUENCE = 5,
+    INSERT_ELEMENT_INTO_SEQUENCE = 6,
+    PUT_ELEMENT_ON_SEQUENCE = 7;
 }

@@ -44,23 +44,27 @@ namespace cubthread
 
 namespace cubmethod
 {
-  //////////////////////////////////////////////////////////////////////////
-  // Interface to communicate with CAS
-  //////////////////////////////////////////////////////////////////////////
-  using xs_callback_func = std::function <int (cubmem::block &)>;
+  #if defined (SERVER_MODE) 
+    //////////////////////////////////////////////////////////////////////////
+    // Interface to communicate with CAS
+    //////////////////////////////////////////////////////////////////////////
+    using xs_callback_func = std::function <int (cubmem::block &)>;
+    using xs_callback_func_with_sock = std::function <int (SOCKET socket, cubmem::block &)>;
 
-  int xs_send (cubthread::entry *thread_p, cubmem::block &mem);
-  int xs_receive (cubthread::entry *thread_p, const xs_callback_func &func);
+    int xs_send (cubthread::entry *thread_p, cubmem::block &mem);
+    int xs_receive (cubthread::entry *thread_p, const xs_callback_func &func);
+    int xs_receive (cubthread::entry *thread_p, SOCKET socket, const xs_callback_func_with_sock &func);
 
-  template <typename ... Args>
-  int method_send_data_to_client (cubthread::entry *thread_p, Args &&... args)
-  {
-    packing_packer packer;
-    cubmem::extensible_block eb;
-    packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
-    cubmem::block b (packer.get_current_size (), eb.get_ptr ());
-    return xs_send (thread_p, b);
-  }
+    template <typename ... Args>
+    int method_send_data_to_client (cubthread::entry *thread_p, Args &&... args)
+    {
+      packing_packer packer;
+      cubmem::extensible_block eb;
+      packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
+      cubmem::block b (packer.get_current_size (), eb.get_ptr ());
+      return xs_send (thread_p, b);
+    }
+  #endif
 
   //////////////////////////////////////////////////////////////////////////
   // Interface to communicate with Java SP Server

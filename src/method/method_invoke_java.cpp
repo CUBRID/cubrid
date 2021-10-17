@@ -25,12 +25,14 @@
 #include "method_connection.hpp"
 #include "method_struct_invoke.hpp"
 #include "method_struct_value.hpp"
+#include "method_struct_oid_info.hpp"
 #include "method_invoke_group.hpp"
 #include "method_struct_query.hpp"
 #include "log_impl.h"
 
 namespace cubmethod
 {
+
   method_invoke_java::method_invoke_java (method_invoke_group *group, method_sig_node *method_sig)
     : method_invoke (group, method_sig)
   {
@@ -217,16 +219,17 @@ namespace cubmethod
   }
 
   int
-  method_invoke_java::callback_dispatch (cubthread::entry &thread_ref, cubmem::extensible_block &blk)
+  method_invoke_java::callback_dispatch (cubthread::entry &thread_ref, cubmem::extensible_block &ext_blk)
   {
     int error = NO_ERROR;
 
 #if defined (SERVER_MODE)
     packing_unpacker unpacker;
-    unpacker.set_buffer (blk.get_ptr (), blk.get_size ());
+    unpacker.set_buffer (ext_blk.get_ptr (), ext_blk.get_size ());
 
     int code;
     unpacker.unpack_int (code);
+    cubmem::block blk (ext_blk.get_size(), ext_blk.get_ptr());
 
     switch (code)
       {
@@ -236,31 +239,19 @@ namespace cubmethod
       */
 
       case METHOD_CALLBACK_GET_DB_PARAMETER:
-      {
-	cubmem::block dummy;
-	error = callback_get_db_parameter (dummy);
-      }
+      error = callback_get_db_parameter (blk);
       break;
 
       case METHOD_CALLBACK_QUERY_PREPARE:
-      {
-	cubmem::block bb (blk.get_size(), blk.get_ptr());
-	error = callback_prepare (thread_ref, bb);
-      }
+      error = callback_prepare (thread_ref, blk);
       break;
 
       case METHOD_CALLBACK_QUERY_EXECUTE:
-      {
-	cubmem::block bb (blk.get_size(), blk.get_ptr());
-	error = callback_execute (thread_ref, bb);
-      }
+      error = callback_execute (thread_ref, blk);
       break;
 
       case METHOD_CALLBACK_FETCH:
-      {
-	cubmem::block bb (blk.get_size(), blk.get_ptr());
-	error = callback_fetch (thread_ref, bb);
-      }
+      error = callback_fetch (thread_ref, blk);
       break;
 
       case METHOD_CALLBACK_GET_SCHEMA_INFO:
@@ -268,15 +259,28 @@ namespace cubmethod
 	assert (false);
 	break;
 
+      case METHOD_CALLBACK_OID_GET:
+      error = callback_oid_get (thread_ref, blk);
+      break;
+
+      case METHOD_CALLBACK_OID_PUT:
+      error = callback_oid_put (thread_ref, blk);
+      break;
+
+      case METHOD_CALLBACK_OID_CMD:
+      error = callback_oid_cmd (thread_ref, blk);
+      break;
+      
+      case METHOD_CALLBACK_COLLECTION:
+      error = callback_collection_cmd (thread_ref, blk);
+      break;
+
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
       case METHOD_CALLBACK_NEXT_RESULT:
       case METHOD_CALLBACK_CURSOR:
       case METHOD_CALLBACK_CURSOR_CLOSE:
       case METHOD_CALLBACK_EXECUTE_BATCH:
       case METHOD_CALLBACK_EXECUTE_ARRAY:
-      case METHOD_CALLBACK_OID_GET:
-      case METHOD_CALLBACK_OID_SET:
-      case METHOD_CALLBACK_OID_CMD:
       case METHOD_CALLBACK_LOB_NEW:
       case METHOD_CALLBACK_LOB_WRITE:
       case METHOD_CALLBACK_LOB_READ:
@@ -481,4 +485,120 @@ namespace cubmethod
 #endif
     return error;
   }
+
+  int
+  method_invoke_java::callback_oid_get (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    OID oid = OID_INITIALIZER;
+    unpacker.unpack_oid (oid);
+
+    packing_packer packer;
+    cubmem::extensible_block eb;
+
+    INT64 id = (INT64) this;
+    cubmethod::header header (METHOD_CALLBACK_OID_GET /* default */, id);
+    error = method_send_data_to_client (&thread_ref, oid);
+    if (error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+#endif
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_oid_put (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code;
+    oid_put_request request;
+
+    unpacker.unpack_int (code);
+    request.unpack (unpacker);
+
+    INT64 id = (INT64) this;
+    cubmethod::header header (METHOD_CALLBACK_OID_PUT /* default */, id);
+    error = method_send_data_to_client (&thread_ref, header, code, request);
+    if (error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+#endif
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_oid_cmd (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code, command;
+    OID oid;
+
+    unpacker.unpack_int (code);
+    unpacker.unpack_int (command);
+    unpacker.unpack_oid (oid);
+
+    INT64 id = (INT64) this;
+    cubmethod::header header (METHOD_CALLBACK_OID_CMD /* default */, id);
+    error = method_send_data_to_client (&thread_ref, header, code, command, oid);
+    if (error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+#endif
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_collection_cmd (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code;
+    collection_cmd_request request;
+
+    unpacker.unpack_int (code);
+    request.unpack (unpacker);
+
+    INT64 id = (INT64) this;
+    cubmethod::header header (METHOD_CALLBACK_OID_PUT /* default */, id);
+    error = method_send_data_to_client (&thread_ref, header, code, request);
+    if (error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+#endif
+    return error;
+  }
+
+  int 
+  method_invoke_java::bypass_block (SOCKET socket, cubmem::block & b)
+  {
+    return method_send_buffer_to_java (socket, b);
+  }
+
 } // namespace cubmethod

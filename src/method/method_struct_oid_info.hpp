@@ -48,6 +48,25 @@ namespace cubmethod
     std::vector<std::string> attr_names;
     std::vector<DB_VALUE> db_values;
 
+    oid_put_request ();
+    ~oid_put_request ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+  };
+
+  struct collection_cmd_request : public cubpacking::packable_object
+  {
+    int command;
+    OID oid;
+    int index; // -1 for set, 0 >= for sequence
+    std::string attr_name;
+    DB_VALUE value;
+
+    collection_cmd_request ();
+    ~collection_cmd_request ();
+
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;

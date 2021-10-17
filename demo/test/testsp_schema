@@ -47,6 +47,7 @@ CREATE OR REPLACE FUNCTION TC_S8() RETURN STRING as language java name 'test.Tes
 CREATE OR REPLACE FUNCTION TC_S9() RETURN STRING as language java name 'test.TestCUBRIDStatement.test9() return java.lang.String';
 CREATE OR REPLACE FUNCTION TC_S10() RETURN STRING as language java name 'test.TestCUBRIDStatement.test10() return java.lang.String';
 CREATE OR REPLACE FUNCTION TC_S11() RETURN STRING as language java name 'test.TestCUBRIDStatement.test11() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_S12() RETURN STRING as language java name 'test.TestCUBRIDStatement.test12() return java.lang.String';
 CREATE OR REPLACE FUNCTION TC_S16() RETURN STRING as language java name 'test.TestCUBRIDStatement.test16() return java.lang.String';
 CREATE OR REPLACE FUNCTION TC_S17() RETURN STRING as language java name 'test.TestCUBRIDStatement.test17() return java.lang.String';
 
@@ -122,5 +123,16 @@ CREATE OR REPLACE FUNCTION TC_R1_30() RETURN STRING as language java name 'test.
 CREATE OR REPLACE FUNCTION TC_R2() RETURN STRING as language java name 'test.TestCUBRIDResultSet.test2() return java.lang.String';
 CREATE OR REPLACE FUNCTION TC_R3() RETURN STRING as language java name 'test.TestCUBRIDResultSet.test3() return java.lang.String';
 
+/* CUBRIDOID Test */
+CREATE OR REPLACE FUNCTION TC_OID1() RETURN STRING as language java name 'test.TestCUBRIDOID.test1() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_OID2() RETURN STRING as language java name 'test.TestCUBRIDOID.test2() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_OID3() RETURN STRING as language java name 'test.TestCUBRIDOID.test3() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_OID4() RETURN STRING as language java name 'test.TestCUBRIDOID.test4() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_OID5() RETURN STRING as language java name 'test.TestCUBRIDOID.test5() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_OID6() RETURN STRING as language java name 'test.TestCUBRIDOID.test6() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_OID7() RETURN STRING as language java name 'test.TestCUBRIDOID.test7() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_OID8() RETURN STRING as language java name 'test.TestCUBRIDOID.test8() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_OID9() RETURN STRING as language java name 'test.TestCUBRIDOID.test9() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_OID10() RETURN STRING as language java name 'test.TestCUBRIDOID.test10() return java.lang.String';
 
 COMMIT WORK;

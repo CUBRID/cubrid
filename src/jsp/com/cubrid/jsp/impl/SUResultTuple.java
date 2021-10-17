@@ -44,6 +44,10 @@ public class SUResultTuple {
         return attributes[tIndex];
     }
 
+    SOID getOID() {
+        return oid;
+    }
+
     boolean oidIsIncluded() {
         if (oid == null) return false;
         return true;
@@ -59,7 +63,7 @@ public class SUResultTuple {
         attributes[tIndex] = data;
     }
 
-    void setOid(SOID o) {
+    void setOID(SOID o) {
         oid = o;
     }
 

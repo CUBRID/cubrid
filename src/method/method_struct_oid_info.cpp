@@ -18,6 +18,8 @@
 
 #include "method_struct_oid_info.hpp"
 
+#include "oid.h"
+#include "dbtype.h"
 namespace cubmethod
 {
 
@@ -123,6 +125,19 @@ namespace cubmethod
 // OID PUT
 //////////////////////////////////////////////////////////////////////////
 
+  oid_put_request::oid_put_request ()
+  {
+    oid = OID_INITIALIZER;
+  }
+
+  oid_put_request::~oid_put_request()
+  {
+    for (int i = 0; i < (int) db_values.size(); i++)
+      {
+        db_value_clear (&db_values[i]);
+      }
+  }
+
   void
   oid_put_request::pack (cubpacking::packer &serializator) const
   {
@@ -131,11 +146,6 @@ namespace cubmethod
     for (int i = 0; i < (int) attr_names.size(); i++)
       {
 	serializator.pack_string (attr_names[i]);
-      }
-
-    serializator.pack_int (db_values.size());
-    for (int i = 0; i < (int) db_values.size(); i++)
-      {
 	serializator.pack_db_value (db_values[i]);
       }
   }
@@ -150,19 +160,10 @@ namespace cubmethod
     if (num_attr_name > 0)
       {
 	attr_names.resize (num_attr_name);
+	db_values.resize (num_attr_name);
 	for (int i = 0; i < (int) num_attr_name; i++)
 	  {
 	    deserializator.unpack_string (attr_names[i]);
-	  }
-      }
-
-    int num_db_values;
-    deserializator.unpack_int (num_db_values);
-    if (num_db_values > 0)
-      {
-	db_values.resize (num_db_values);
-	for (int i = 0; i < (int) num_db_values; i++)
-	  {
 	    deserializator.unpack_db_value (db_values[i]);
 	  }
       }
@@ -172,23 +173,62 @@ namespace cubmethod
   oid_put_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
 
-    size_t size = serializator.get_packed_oid_size (start_offset); // attr_names.size()
-
+    size_t size = serializator.get_packed_oid_size (start_offset);
     size += serializator.get_packed_int_size (size); // attr_names.size()
     if (attr_names.size() > 0)
       {
 	for (int i = 0; i < (int) attr_names.size(); i++)
 	  {
 	    size += serializator.get_packed_string_size (attr_names[i], size);
+      size += serializator.get_packed_db_value_size (db_values[i], size);
 	  }
       }
+    return size;
+  }
 
-    size += serializator.get_packed_int_size (size); // num_values
-    for (int i = 0; i < (int) db_values.size(); i++)
-      {
-	size += serializator.get_packed_db_value_size (db_values[i], size);
-      }
+//////////////////////////////////////////////////////////////////////////
+// COLLECTION COMMAND
+//////////////////////////////////////////////////////////////////////////
 
+  collection_cmd_request::collection_cmd_request ()
+  {
+    oid = OID_INITIALIZER;
+    index = -1;
+  }
+
+  collection_cmd_request::~collection_cmd_request()
+  {
+    db_value_clear (&value);
+  }
+
+  void
+  collection_cmd_request::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (command);
+    serializator.pack_oid (oid);
+    serializator.pack_int (index);
+    serializator.pack_string (attr_name);
+    serializator.pack_db_value (value);
+  }
+
+  void
+  collection_cmd_request::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_int (command);
+    deserializator.unpack_oid (oid);
+    deserializator.unpack_int (index);
+    deserializator.unpack_string (attr_name);
+    deserializator.unpack_db_value (value);
+  }
+
+  size_t
+  collection_cmd_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // command
+    size += serializator.get_packed_oid_size (size); // oid
+    size += serializator.get_packed_int_size (size); // index
+	  size += serializator.get_packed_string_size (attr_name, size);
+    size += serializator.get_packed_db_value_size (value, size);
     return size;
   }
 }

@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import test.SqlUtil.Arg;
+import cubrid.sql.CUBRIDOID;
 
 /*
  * CREATE TABLE test ( val INT );
@@ -253,10 +254,8 @@ public class TestCUBRIDStatement {
         return "t";
     }
 
-    // TODO
-    /*
     public static String test12() {
-           Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+        Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
     	Statement stmt = conn.createStatement();
     	SqlUtil.createTable(conn, "t1", "a int auto_increment", "b int");
     	try {
@@ -267,7 +266,6 @@ public class TestCUBRIDStatement {
 
            return "t";
     }
-       */
 
     // TODO stmt.getStatementType() is not a standard
     /*

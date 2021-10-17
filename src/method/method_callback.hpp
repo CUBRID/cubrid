@@ -51,6 +51,19 @@ namespace cubmethod
     OID_CMD_LAST = OID_CLASS_NAME
   };
 
+  enum COLLECTION_CMD
+  {
+    COL_CMD_FIRST = 1,
+    COL_GET = 1,
+    COL_SIZE = 2,
+    COL_SET_DROP = 3,
+    COL_SET_ADD = 4,
+    COL_SEQ_DROP = 5,
+    COL_SEQ_INSERT = 6,
+    COL_SEQ_PUT = 7,
+    COL_CMD_LAST = COL_SEQ_PUT
+  };
+
   struct lob_handle
   {
     int db_type;
@@ -71,25 +84,31 @@ namespace cubmethod
       int execute (packing_unpacker &unpacker);
       int schema_info (packing_unpacker &unpacker);
 
-      /* handle by OID */
+      /* handle related to OID */
       int oid_get (packing_unpacker &unpacker);
       int oid_put (packing_unpacker &unpacker);
       int oid_cmd (packing_unpacker &unpacker);
 
-// TODO: implement remaining functions on another issues
-#if 0
-      int collection_cmd (char cmd, OID oid, int seq_index, std::string attr_name);
-      int col_get (DB_COLLECTION *col, char col_type, char ele_type, DB_DOMAIN *ele_domain);
+      int collection_cmd (packing_unpacker &unpacker);
+
+      void set_server_info (int rc, char *host);
+      void free_query_handle_all ();
+
+    protected:
+      int col_get (DB_COLLECTION *col, DB_TYPE col_type, DB_TYPE ele_type, DB_DOMAIN *ele_domain);
       int col_size (DB_COLLECTION *col);
       int col_set_drop (DB_COLLECTION *col, DB_VALUE *ele_val);
+      int col_set_add (DB_COLLECTION *col, DB_VALUE *ele_val);
+      int col_seq_drop (DB_COLLECTION *col, int seq_index);
+      int col_seq_insert (DB_COLLECTION *col, int seq_index, DB_VALUE *ele_val);
+      int col_seq_put (DB_COLLECTION *col, int seq_index, DB_VALUE *ele_val);
 
+// TODO: implement remaining functions on another issues
+#if 0
       int lob_new (DB_TYPE lob_type);
       int lob_write (DB_VALUE *lob_dbval, int64_t offset, int size,  char *data);
       int lob_read (DB_TYPE lob_type);
 #endif
-
-      void set_server_info (int rc, char *host);
-      void free_query_handle_all ();
 
     private:
       int check_object (DB_OBJECT *obj);

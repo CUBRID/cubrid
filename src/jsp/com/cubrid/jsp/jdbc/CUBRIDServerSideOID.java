@@ -2,6 +2,7 @@ package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.data.SOID;
+import com.cubrid.jsp.impl.SUConnection;
 import com.cubrid.jsp.impl.SUStatement;
 import cubrid.sql.CUBRIDOID;
 import java.io.IOException;
@@ -13,15 +14,37 @@ import java.util.StringTokenizer;
 
 public class CUBRIDServerSideOID implements CUBRIDOID {
     private CUBRIDServerSideConnection connection;
+    private SUConnection requestHandler;
+
     private SOID oid;
     private boolean isClosed;
 
     /*
      * Just for Driver's uses. DO NOT create an object with this constructor!
      */
-    public CUBRIDServerSideOID(Connection con, SOID o) {
-        connection = (CUBRIDServerSideConnection) con;
+    public CUBRIDServerSideOID(CUBRIDServerSideConnection con, SOID o) {
+        connection = con;
+        requestHandler = con.getSUConnection();
         oid = o;
+        isClosed = false;
+    }
+
+    public CUBRIDServerSideOID(CUBRIDServerSideConnection con, byte[] o) {
+        connection = con;
+        requestHandler = con.getSUConnection();
+        oid = new SOID(o);
+        isClosed = false;
+    }
+
+    public CUBRIDServerSideOID(SUConnection suConn, SOID o) {
+        requestHandler = suConn;
+        oid = o;
+        isClosed = false;
+    }
+
+    public CUBRIDServerSideOID(SUConnection suConn, byte[] o) {
+        requestHandler = suConn;
+        oid = new SOID(o);
         isClosed = false;
     }
 
@@ -34,7 +57,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
 
     public ResultSet getValues(String attrNames[]) throws SQLException {
         try {
-            SUStatement stmtImpl = connection.getSUConnection().getByOID(oid, attrNames);
+            SUStatement stmtImpl = requestHandler.getByOID(this, attrNames);
             return new CUBRIDServerSideResultSet(stmtImpl);
         } catch (IOException e) {
             // TODO: is correct?
@@ -51,31 +74,58 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         if (attrNames.length != values.length) {
             throw new IllegalArgumentException();
         }
-
-        connection.getSUConnection().putByOID(this, attrNames, values);
+        try {
+            requestHandler.putByOID(this, attrNames, values);
+        } catch (IOException e) {
+            // TODO: is correct?
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+        }
     }
 
     public void remove() throws SQLException {
-        connection.getSUConnection().oidCmd(this, CUBRIDServerSideConstants.DROP_BY_OID);
+        try {
+            requestHandler.oidCmd(this, CUBRIDServerSideConstants.DROP_BY_OID);
+        } catch (IOException e) {
+            // TODO: is correct?
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+        }
     }
 
     public boolean isInstance() throws SQLException {
+        try {
         Object instance_obj =
-                connection.getSUConnection().oidCmd(this, CUBRIDServerSideConstants.IS_INSTANCE);
-        if (instance_obj == null) {
-            return false;
+                requestHandler.oidCmd(this, CUBRIDServerSideConstants.IS_INSTANCE);
+            if (instance_obj == null) {
+                return false;
+            }
+        } catch (IOException e) {
+            // TODO: is correct?
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
         }
         return true;
     }
 
     public void setReadLock() throws SQLException {
-        // connection.getSUConnection().oidCmd(this,
-        // CUBRIDServerSideConstants.GET_READ_LOCK_BY_OID);
+        try {
+            requestHandler.oidCmd(this, CUBRIDServerSideConstants.GET_READ_LOCK_BY_OID);
+        } catch (IOException e) {
+            // TODO: is correct?
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+        }
     }
 
     public void setWriteLock() throws SQLException {
-        // connection.getSUConnection().oidCmd(this,
-        // CUBRIDServerSideConstants.GET_WRITE_LOCK_BY_OID);
+        try {
+            requestHandler.oidCmd(this, CUBRIDServerSideConstants.GET_WRITE_LOCK_BY_OID);
+        } catch (IOException e) {
+            // TODO: is correct?
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+        }
     }
 
     public void addToSet(String attrName, Object value) throws SQLException {
@@ -83,7 +133,13 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
             throw new IllegalArgumentException();
         }
 
-        // connection.getSUConnection().addElementToSet(this, attrName, value);
+        try {
+            requestHandler.addElementToSet(this, attrName, value);
+        } catch (IOException e) {
+            // TODO: is correct?
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+        }
     }
 
     public void removeFromSet(String attrName, Object value) throws SQLException {
@@ -91,7 +147,13 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
             throw new IllegalArgumentException();
         }
 
-        // connection.getSUConnection().dropElementInSet(this, attrName, value);
+        try {
+            requestHandler.dropElementInSet(this, attrName, value);
+        } catch (IOException e) {
+            // TODO: is correct?
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+        }
     }
 
     public void addToSequence(String attrName, int index, Object value) throws SQLException {
@@ -99,7 +161,13 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
             throw new IllegalArgumentException();
         }
 
-        // connection.getSUConnection().insertElementIntoSequence(this, attrName, index, value);
+        try {
+            requestHandler.insertElementIntoSequence(this, attrName, index, value);
+        } catch (IOException e) {
+            // TODO: is correct?
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+        }
     }
 
     public void putIntoSequence(String attrName, int index, Object value) throws SQLException {
@@ -107,7 +175,13 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
             throw new IllegalArgumentException();
         }
 
-        // connection.getSUConnection().putElementInSequence(this, attrName, index, value);
+        try {
+            requestHandler.putElementInSequence(this, attrName, index, value);
+        } catch (IOException e) {
+            // TODO: is correct?
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+        }
     }
 
     public void removeFromSequence(String attrName, int index) throws SQLException {
@@ -115,7 +189,13 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
             throw new IllegalArgumentException();
         }
 
-        // connection.getSUConnection().dropElementInSequence(this, attrName, index);
+        try {
+            requestHandler.dropElementInSequence(this, attrName, index);
+        } catch (IOException e) {
+            // TODO: is correct?
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+        }
     }
 
     public String getOidString() throws SQLException {
@@ -145,12 +225,18 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
     }
 
     public synchronized String getTableName() throws SQLException {
-        String tablename =
-                (String)
-                        connection
-                                .getSUConnection()
-                                .oidCmd(this, CUBRIDServerSideConstants.GET_CLASS_NAME_BY_OID);
-        return tablename;
+        try {
+            String tablename =
+            (String)
+                    connection
+                            .getSUConnection()
+                            .oidCmd(this, CUBRIDServerSideConstants.GET_CLASS_NAME_BY_OID);
+            return tablename;
+        } catch (IOException e) {
+            // TODO: is correct?
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+        }
     }
 
     public static CUBRIDOID getNewInstance(Connection con, String oidStr) throws SQLException {
@@ -165,7 +251,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
             short vol = Short.parseShort(oidStringArray.nextToken());
 
             SOID sOid = new SOID(page, slot, vol);
-            return new CUBRIDServerSideOID(con, sOid);
+            return new CUBRIDServerSideOID((CUBRIDServerSideConnection) con, sOid);
         } catch (NoSuchElementException e) {
             throw new IllegalArgumentException();
         }
@@ -178,17 +264,5 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         isClosed = true;
         connection = null;
         oid = null;
-    }
-
-    private int bytes2int(byte[] b, int startIndex) {
-        int data = 0;
-        int endIndex = startIndex + 4;
-
-        for (int i = startIndex; i < endIndex; i++) {
-            data <<= 8;
-            data |= (b[i] & 0xff);
-        }
-
-        return data;
     }
 }

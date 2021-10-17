@@ -234,6 +234,18 @@ public class SqlUtil {
         }
     }
 
+    public static ResultSet executeQuery(
+            Connection conn, boolean doNext, String templ, Object... args) throws SQLException {
+
+        ResultSet rs = SqlUtil.executeQuery(conn, templ, args);
+
+        if (doNext) {
+            rs.next();
+        }
+
+        return rs;
+    }
+
     public static void insertRow(Connection conn, String table, Arg... args) throws SQLException {
         StringBuilder sb1 = new StringBuilder();
         StringBuilder sb2 = new StringBuilder();
