@@ -236,7 +236,6 @@ int
 cgw_row_data (SQLHSTMT hstmt, int cursor_pos)
 {
   SQLRETURN err_code;
-  int fetch_cursor_pos = 0;
   int fetchOperation = SQL_FETCH_FIRST;
   int fetch_offset = 0;
   int no_data;
@@ -522,19 +521,9 @@ cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_I
   // is_shared            1
 
   SQLRETURN err_code;
-  char odbc_datatype = 0;
   SQLSMALLINT col_name_length = 0;
-  int attr_name_length = 1;
-  char attr_name[ATTR_NAME_LEN + 1] = { 0, };
-  SQLSMALLINT class_name_length = 1;
-  int default_value_length = 0;
-  char default_value[DEFAULT_VALUE_LEN + 1] = { 0, };
-
-
-  SQLSMALLINT sNumResults = 0;
+  SQLSMALLINT class_name_length = 0;
   SQLLEN odbc_data_type = 0;
-  char charset = 0;
-  SQLLEN is_auto_increment = 0;
 
   memset (col_info, 0x0, sizeof (T_ODBC_COL_INFO));
 
@@ -801,9 +790,6 @@ cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_t
 
   SQLRETURN err_code;
   char cache_reusable = 0;	// not support 
-  int num_result_set = 1;
-  char include_culumn_info = 0;
-  int shard_id = -2;
   SQLLEN total_row_count = 0;
 
 
@@ -896,9 +882,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT col_num, T_COL_BINDER ** col_bindi
   SQLSMALLINT col_data_type, col_decimal_digits, nullable;
   SQLULEN col_size, bind_col_size;
   SQLCHAR col_name[64];
-  SQLLEN disp_size;
-
-
+  
   for (col = 1; col <= col_num; col++)
     {
       this_col_binding = (T_COL_BINDER *) (malloc (sizeof (T_COL_BINDER)));
@@ -1285,7 +1269,6 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
   char type;
   int err_code = 0;
   int data_size;
-  int ret = 0;
   SQLLEN indPtr = 0;
   SQLSMALLINT c_data_type;
   SQLSMALLINT sql_bind_type;
@@ -1951,7 +1934,6 @@ hex_to_numeric_val (SQL_NUMERIC_STRUCT * numeric, char *hexstr)
 {
   size_t slen = 0;
   size_t loop = 0;
-  // int len;
   int error;
   unsigned char ms_val = 0, ls_val = 0;
 
