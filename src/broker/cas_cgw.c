@@ -874,7 +874,7 @@ ODBC_ERROR:
 
 
 int
-cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT col_num, T_COL_BINDER ** col_binding)
+cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_binding)
 {
   SQLRETURN err_code;
   SQLSMALLINT col;
@@ -884,7 +884,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT col_num, T_COL_BINDER ** col_bindi
   SQLULEN col_size, bind_col_size;
   SQLCHAR col_name[COL_NAME_LEN];
 
-  for (col = 1; col <= col_num; col++)
+  for (col = 1; col <= num_col; col++)
     {
       this_col_binding = (T_COL_BINDER *) (malloc (sizeof (T_COL_BINDER)));
       if (!(this_col_binding))
@@ -1789,11 +1789,11 @@ ODBC_ERROR:
 }
 
 int
-cgw_get_col_num (SQLHSTMT hstmt, SQLSMALLINT * col_num)
+cgw_get_num_col (SQLHSTMT hstmt, SQLSMALLINT * num_col)
 {
   SQLRETURN err_code;
 
-  CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, col_num));
+  CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, num_col));
 
   return (int) err_code;
 

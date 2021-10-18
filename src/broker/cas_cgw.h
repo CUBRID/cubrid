@@ -119,7 +119,7 @@ union odbc_bind_info
 extern void test_log (char *fmt, ...);
 
 
-extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT col_num, T_COL_BINDER ** col_binding);
+extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_binding);
 extern void cgw_cleanup_binder (T_COL_BINDER * pFirstBinding);
 
 extern int cgw_init_odbc_handle (void);
@@ -133,7 +133,7 @@ extern int cgw_is_database_connected (void);
 
 // Prepare funtions
 extern int cgw_sql_prepare (SQLHSTMT hstmt, SQLCHAR * sql_stmt);
-extern int cgw_get_col_num (SQLHSTMT hstmt, SQLSMALLINT * col_num);
+extern int cgw_get_num_col (SQLHSTMT hstmt, SQLSMALLINT * num_col);
 extern int cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_INFO * col_info);
 
 // Execute funtions

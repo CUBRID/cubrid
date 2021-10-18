@@ -5798,7 +5798,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   char fetch_end_flag = 0;
   char sensitive_flag = fetch_flag & CCI_FETCH_SENSITIVE;
   SQLLEN row_count;
-  SQLSMALLINT col_count;
+  SQLSMALLINT num_cols;
   T_COL_BINDER *pFirstBinding;
   int total_tuple_num = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
@@ -5841,14 +5841,14 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       return 0;
     }
 
-  err_code = cgw_get_col_num (srv_handle->cgw_handle->hstmt, &col_count);
+  err_code = cgw_get_num_col (srv_handle->cgw_handle->hstmt, &num_cols);
 
   if (err_code < 0)
     {
       return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
     }
 
-  err_code = cgw_col_bindings (srv_handle->cgw_handle->hstmt, col_count, &pFirstBinding);
+  err_code = cgw_col_bindings (srv_handle->cgw_handle->hstmt, num_cols, &pFirstBinding);
 
   if (err_code < 0)
     {
@@ -7673,9 +7673,8 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
   int err_code;
   int result_cache_lifetime = -1;
   char updatable_flag = prepare_flag & CCI_PREPARE_UPDATABLE;
-  int num_cols = 0;
   char *class_name = NULL;
-  SQLSMALLINT col_num;
+  SQLSMALLINT num_cols;
   int num_col_offset = 0;
   int i = 1;
   T_ODBC_COL_INFO col_info;
@@ -7688,15 +7687,15 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
 	}
 
       net_buf_cp_byte (net_buf, updatable_flag);	// updatable_flag
-      net_buf_cp_int (net_buf, num_cols, &num_col_offset);	// num_cols
+      net_buf_cp_int (net_buf, (int) num_cols, &num_col_offset);	// num_cols
 
-      err_code = cgw_get_col_num (hstmt, &col_num);
+      err_code = cgw_get_num_col (hstmt, &num_cols);
       if (err_code < 0)
 	{
 	  return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	}
 
-      for (i = 1; i <= col_num; i++)
+      for (i = 1; i <= num_cols; i++)
 	{
 	  cgw_get_col_info (hstmt, net_buf, i, &col_info);
 
@@ -7708,7 +7707,7 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
 				   client_version);
 	}
 
-      net_buf_overwrite_int (net_buf, num_col_offset, (int) col_num);	// num_cols
+      net_buf_overwrite_int (net_buf, num_col_offset, (int) num_cols);	// num_cols
     }
   else if (stmt_type == CUBRID_STMT_CALL || stmt_type == CUBRID_STMT_GET_STATS || stmt_type == CUBRID_STMT_EVALUATE)
     {
