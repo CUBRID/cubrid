@@ -966,6 +966,9 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   log_Gl.rcv_phase = LOG_RECOVERY_UNDO_PHASE;
   log_recovery_undo (thread_p);
 
+  // when dangling transactions are encountered during undo, compensation log records
+  // might be added - eg: log_rv_undo_record;
+  // request a flush such that all log pages are up to date
   logpb_flush_pages_direct (thread_p);
 
   // Reset boot_Db_parm in case a data volume creation was undone.

@@ -38,10 +38,10 @@ namespace cubpacking
 
 // Transaction server class hierarchies:
 //
-//                            tran_server
-//                               /   \
-//                              /     \
-//                             /       \
+//                              tran_server
+//                               /      |
+//                              /       |
+//                             /        |
 //             active_tran_server     passive_tran_server
 //
 //

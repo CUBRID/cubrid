@@ -3400,6 +3400,10 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
 }
 
+/*
+ * logpb_skip_flush_append_pages - TODO, reason
+ *
+ */
 static void
 logpb_skip_flush_append_pages ()
 {
