@@ -613,7 +613,7 @@ extern "C"
   extern bool pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id);
   extern PT_NODE *pt_sort_spec_list_to_name_node_list (PARSER_CONTEXT * parser, PT_NODE * sort_spec_list);
 
-  extern DB_OBJECT *pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node);
+  extern MOP pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial);
   extern int pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_node, PT_NODE * coll_node,
 						 int *charset, int *coll_id);
   extern bool pt_get_collation_info (const PT_NODE * node, PT_COLL_INFER * coll_infer);

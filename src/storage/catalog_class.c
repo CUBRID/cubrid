@@ -4916,9 +4916,6 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
   const char *class_name = "_db_collation";
-  /* Start of change for POC *
-  const char *class_name = "dba._db_collation";
-  /* End of change for POC */
 
   int i;
   int error = NO_ERROR;

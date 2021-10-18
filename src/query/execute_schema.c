@@ -10600,7 +10600,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	}
     }
 
-  /* attribute type changed, and auto_increment is set to use(unchanged), update max_val in _db_serial according to new
+  /* attribute type changed, and auto_increment is set to use(unchanged), update max_val in db_serial according to new
    * type */
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED)
       && is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_DIFF))

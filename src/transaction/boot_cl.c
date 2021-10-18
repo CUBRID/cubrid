@@ -204,7 +204,6 @@ static int boot_define_view_index_key (void);
 static int boot_define_view_authorization (void);
 static int boot_define_view_trigger (void);
 static int boot_define_view_partition (void);
-static int boot_define_view_serial (void);
 static int boot_define_view_stored_procedure (void);
 static int boot_define_view_stored_procedure_arguments (void);
 static int boot_define_view_db_collation (void);
@@ -3235,9 +3234,16 @@ boot_define_serial (MOP class_mop)
   unsigned char num[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   DB_VALUE default_value;
   int error_code = NO_ERROR;
-  const char *pk_col_names[] = { "name", NULL };
+  const char *pk_col_names[] = { "orig_name", NULL };
+  const char *index_col_names[] = { "name", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
+
+  error_code = smt_add_attribute (def, "orig_name", "string", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   error_code = smt_add_attribute (def, "name", "string", NULL);
   if (error_code != NO_ERROR)
@@ -3313,6 +3319,12 @@ boot_define_serial (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "orig_class_name", "string", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = smt_add_attribute (def, "class_name", "string", NULL);
   if (error_code != NO_ERROR)
     {
@@ -3354,8 +3366,21 @@ boot_define_serial (MOP class_mop)
       return error_code;
     }
 
-  /* add index */
+  /* add primary key */
   error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL, pk_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* add index */
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "name", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5174,87 +5199,6 @@ boot_define_view_partition (void)
 }
 
 /*
- * boot_define_view_serial :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_serial (void)
-{
-  MOP class_mop;
-  COLUMN columns[] = {
-    {"name", "string"},
-    {"owner", "string"},
-    {"current_val", "numeric(38,0)"},
-    {"increment_val", "numeric(38,0)"},
-    {"max_val", "numeric(38,0)"},
-    {"min_val", "numeric(38,0)"},
-    {"cyclic", "integer"},
-    {"started", "integer"},
-    {"class_name", "string"},
-    {"att_name", "string"},
-    {"cached_num", "integer"},
-    {"comment", "varchar(1024)"}
-  };
-
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  /* Initialization */
-  memset (stmt, '\0', sizeof (char) * 2048);
-
-  class_mop = db_create_vclass (CTV_SERIAL_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name, columns[i].type, NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
-
-  /*
-  "WHERE CURRENT_USER IN (SELECT 'DBA' UNION ALL "
-  "SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) "
-  "OR [s].[owner].[name] IN (SELECT CURRENT_USER UNION ALL "
-  "SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) "
-  */
-  sprintf (stmt, "SELECT SUBSTRING_INDEX([s].[name], '.', -1), [s].[owner].[name], [s].[current_val], "
-	   "[s].[increment_val], [s].[max_val], [s].[min_val], [s].[cyclic], [s].[started], "
-	   "SUBSTRING_INDEX([s].[class_name], '.', -1), [s].[att_name], [s].[cached_num], [s].[comment] "
-	   "FROM [%s] [s] ", CT_SERIAL_NAME, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
-
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * boot_define_view_stored_procedure :
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
@@ -5556,7 +5500,6 @@ catcls_vclass_install (void)
     {"CTV_AUTH_NAME", boot_define_view_authorization},
     {"CTV_TRIGGER_NAME", boot_define_view_trigger},
     {"CTV_PARTITION_NAME", boot_define_view_partition},
-    {"CTV_SERIAL_NAME", boot_define_view_serial},
     {"CTV_STORED_PROC_NAME", boot_define_view_stored_procedure},
     {"CTV_STORED_PROC_ARGS_NAME", boot_define_view_stored_procedure_arguments},
     {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation},
@@ -5679,9 +5622,8 @@ boot_destroy_catalog_classes (void)
     CTV_ATTRIBUTE_NAME, CTV_ATTR_SD_NAME, CTV_METHOD_NAME,
     CTV_METHARG_NAME, CTV_METHARG_SD_NAME, CTV_METHFILE_NAME,
     CTV_INDEX_NAME, CTV_INDEXKEY_NAME, CTV_AUTH_NAME,
-    CTV_TRIGGER_NAME, CTV_PARTITION_NAME, CTV_SERIAL_NAME,
-    CTV_STORED_PROC_NAME, CTV_STORED_PROC_ARGS_NAME, CT_COLLATION_NAME,
-    NULL
+    CTV_TRIGGER_NAME, CTV_PARTITION_NAME, CTV_STORED_PROC_NAME,
+    CTV_STORED_PROC_ARGS_NAME, CT_COLLATION_NAME, NULL
   };
 
   /* check if catalog exists */

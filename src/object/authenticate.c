@@ -5406,7 +5406,10 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
   MOP serial_class_mop;
   DB_IDENTIFIER serial_obj_id;
   const char *serial_name = NULL, *owner_name = NULL;
+  char orig_serial_name[SM_MAX_ORIG_IDENTIFIER_LENGTH + 2];
   int error = NO_ERROR;
+
+  memset (orig_serial_name, '\0', sizeof (char) * (SM_MAX_ORIG_IDENTIFIER_LENGTH + 2));
 
   db_make_null (returnval);
 
@@ -5424,12 +5427,14 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
       return;
     }
 
+  sm_get_schema_name (serial_name, owner_name, orig_serial_name, SM_MAX_ORIG_IDENTIFIER_LENGTH + 2);
+
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
+  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, orig_serial_name);
   if (serial_object == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, orig_serial_name);
       db_make_error (returnval, ER_QPROC_SERIAL_NOT_FOUND);
       return;
     }

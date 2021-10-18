@@ -4014,7 +4014,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 #else	/* !SA_MODE */	       /* SERVER_MODE */
       if (committed)
 	{
-	  /* There is one unique index that can be modified with no MVCCID being generated: _db_serial primary key. This
+	  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This
 	   * could happen in a transaction that only does a create serial and commits. Next code makes sure serial
 	   * index statistics are reflected. */
 	  BTID serial_index_btid = BTID_INITIALIZER;
