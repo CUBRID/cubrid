@@ -1223,8 +1223,8 @@ cgw_cleanup_binder (T_COL_BINDER * pFirstBinding)
   while (pFirstBinding)
     {
       this_col_binding = pFirstBinding->next;
-      free (pFirstBinding->data_buffer);
-      free (pFirstBinding);
+      FREE_MEM (pFirstBinding->data_buffer);
+      FREE_MEM (pFirstBinding);
       pFirstBinding = this_col_binding;
     }
 
@@ -2029,8 +2029,7 @@ cgw_cleanup_handle (T_CGW_HANDLE * handle)
       handle->henv = NULL;
     }
 
-  free (handle);
-  handle = NULL;
+  FREE_MEM (handle);
 
   local_odbc_handle = NULL;
 }
