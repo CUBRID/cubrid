@@ -45,13 +45,11 @@ namespace cubpacking
 //             active_tran_server     passive_tran_server
 //
 //
-// tran_server_abstract:
-//   the base class that defines the public interface for the engine and contains all the common parts for
-//   passive/active transaction server.
-//
 // tran_server:
-//   template class derived from tran_server_abstract, that also includes all connection handling that is common to
-//   passive and active tran servers.
+//   the base class that defines the common public interface for the transaction servers. The common parts are:
+//      - Connection management
+//      - Page brokers
+//      - Booting
 //
 // active_tran_server:
 //   class derived from tran_server that is specific only to active transaction server.

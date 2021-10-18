@@ -28,13 +28,13 @@ class active_tran_server : public tran_server
     {
     }
 
-    bool uses_remote_storage () const final;
+    bool uses_remote_storage () const final override;
 
   private:
-    void on_boot () final;
-    bool get_remote_storage_config () final;
+    void on_boot () final override;
+    bool get_remote_storage_config () final override;
 
-    request_handlers_map_t get_request_handlers () final;
+    request_handlers_map_t get_request_handlers () final override;
 
     void receive_saved_lsa (cubpacking::unpacker &upk);
 

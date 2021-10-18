@@ -168,6 +168,7 @@ tran_server::init_page_server_hosts (const char *db_name)
       else
 	{
 	  // no page server, local storage
+	  assert (is_active_transaction_server ());
 	  return NO_ERROR;
 	}
     }
