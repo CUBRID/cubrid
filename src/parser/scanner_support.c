@@ -46,15 +46,15 @@
 #define IS_HINT_ON_TABLE(h) \
   		((h) & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
 
-static char *pt_trim_as_identifier (char *name);
-
 //#define PRINT_HIT_HINT_INFO   /* When declared, matching hint information is output to the screen. */
 #if defined(PRINT_HIT_HINT_INFO)
 static void debug_hit_hint_print (PT_HINT * hint_table);
-#define PRINT_HIT_HINT(...)  printf(__VA_ARGS__)
+#define PRINT_HIT_HINT(...)  fprintf(stdout, __VA_ARGS__)
+#define END_HIT_PRINT() fflush(stdout)
 #else
 #define  debug_hit_hint_print(hint)
 #define PRINT_HIT_HINT(...)
+#define END_HIT_PRINT()
 #endif
 
 #define HINT_LEAD_CHAR_SIZE (129)
@@ -82,34 +82,6 @@ pt_makename (const char *name)
   return pt_append_string (this_parser, NULL, name);
 }
 
-/*
- * pt_trim_as_identifier () - trim double quotes,
- *            square brackets, or backtick symbol
- *   return:
- *   name(in):
- */
-static char *
-pt_trim_as_identifier (char *name)
-{
-  char *tmp_name;
-  size_t len;
-
-  len = strlen (name);
-  if (len >= 2
-      && ((name[0] == '[' && name[len - 1] == ']') || (name[0] == '`' && name[len - 1] == '`')
-	  || (name[0] == '"' && name[len - 1] == '"')))
-    {
-      tmp_name = pt_makename (name);
-      tmp_name[len - 1] = '\0';
-      tmp_name += 1;
-
-      return tmp_name;
-    }
-  else
-    {
-      return name;
-    }
-}
 
 /*
  * pt_makename_trim_as_identifier () - trim double quotes,
@@ -647,6 +619,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	}
     }				/* for (i = ... ) */
 
+  END_HIT_PRINT ();
 }
 
 
@@ -763,7 +736,7 @@ find_hint_token (PT_HINT hint_table[], unsigned char *string)
 	{
 	  if (memcmp (hint_table[i - 1].tokens, hint_table[i].tokens, matched_idx) != 0)
 	    {
-	      matched_idx = 0;
+	      return -1;
 	    }
 	}
 
