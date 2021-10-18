@@ -1363,10 +1363,10 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
     }
 
   /* check for joins */
-  if (!is_only_spec && query->info.query.q.select.from && query->info.query.q.select.from->next)
+/*  if (!is_only_spec && query->info.query.q.select.from && query->info.query.q.select.from->next)
     {
       /* parent statement and subquery both have joins; not pushable */
-      return false;
+/*      return false;
     }
 
   /* check for CONNECT BY */
