@@ -154,17 +154,20 @@ namespace cubmethod
 
     DB_VALUE *attr_val = NULL;
     int i = 0;
-    for (std::string &name : attr_names)
+
+    for (int i = 0; i < attr_names.size(); i++)
       {
-	char attr_type = get_attr_type (obj, name.c_str ());
+	const char *attr_name = attr_names[i].c_str ();
+	char attr_type = get_attr_type (obj, attr_name);
 	attr_val = &attr_values[i];
 
-	error = dbt_put (otmpl, name.c_str (), attr_val);
+	error = dbt_put (otmpl, attr_name, attr_val);
 	if (error < 0)
 	  {
 	    // TODO: error handling
 	    db_value_clear (attr_val);
 	    dbt_abort_object (otmpl);
+	    return error;
 	  }
 
 	db_value_clear (attr_val);

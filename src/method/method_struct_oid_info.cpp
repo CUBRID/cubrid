@@ -20,6 +20,8 @@
 
 #include "oid.h"
 #include "dbtype.h"
+#include "method_struct_value.hpp"
+
 namespace cubmethod
 {
 
@@ -128,6 +130,7 @@ namespace cubmethod
   oid_put_request::oid_put_request ()
   {
     oid = OID_INITIALIZER;
+    is_compatible_java = false;
   }
 
   oid_put_request::~oid_put_request()
@@ -143,10 +146,24 @@ namespace cubmethod
   {
     serializator.pack_oid (oid);
     serializator.pack_int (attr_names.size());
-    for (int i = 0; i < (int) attr_names.size(); i++)
+
+    if (is_compatible_java)
       {
-	serializator.pack_string (attr_names[i]);
-	serializator.pack_db_value (db_values[i]);
+	dbvalue_java sp_val;
+	for (int i = 0; i < (int) attr_names.size(); i++)
+	  {
+	    serializator.pack_string (attr_names[i]);
+	    sp_val.value = (DB_VALUE *) &db_values[i];
+	    sp_val.pack (serializator);
+	  }
+      }
+    else
+      {
+	for (int i = 0; i < (int) attr_names.size(); i++)
+	  {
+	    serializator.pack_string (attr_names[i]);
+	    serializator.pack_db_value (db_values[i]);
+	  }
       }
   }
 
@@ -161,10 +178,23 @@ namespace cubmethod
       {
 	attr_names.resize (num_attr_name);
 	db_values.resize (num_attr_name);
-	for (int i = 0; i < (int) num_attr_name; i++)
+	if (is_compatible_java)
 	  {
-	    deserializator.unpack_string (attr_names[i]);
-	    deserializator.unpack_db_value (db_values[i]);
+	    dbvalue_java sp_val;
+	    for (int i = 0; i < (int) num_attr_name; i++)
+	      {
+		deserializator.unpack_string (attr_names[i]);
+		sp_val.value = &db_values[i];
+		sp_val.unpack (deserializator);
+	      }
+	  }
+	else
+	  {
+	    for (int i = 0; i < (int) num_attr_name; i++)
+	      {
+		deserializator.unpack_string (attr_names[i]);
+		deserializator.unpack_db_value (db_values[i]);
+	      }
 	  }
       }
   }
@@ -177,10 +207,23 @@ namespace cubmethod
     size += serializator.get_packed_int_size (size); // attr_names.size()
     if (attr_names.size() > 0)
       {
-	for (int i = 0; i < (int) attr_names.size(); i++)
+	if (is_compatible_java)
 	  {
-	    size += serializator.get_packed_string_size (attr_names[i], size);
-	    size += serializator.get_packed_db_value_size (db_values[i], size);
+	    dbvalue_java sp_val;
+	    for (int i = 0; i < (int) attr_names.size(); i++)
+	      {
+		size += serializator.get_packed_string_size (attr_names[i], size);
+		sp_val.value = (DB_VALUE *) &db_values[i];
+		size += sp_val.get_packed_size (serializator, size);
+	      }
+	  }
+	else
+	  {
+	    for (int i = 0; i < (int) attr_names.size(); i++)
+	      {
+		size += serializator.get_packed_string_size (attr_names[i], size);
+		size += serializator.get_packed_db_value_size (db_values[i], size);
+	      }
 	  }
       }
     return size;
@@ -208,7 +251,17 @@ namespace cubmethod
     serializator.pack_oid (oid);
     serializator.pack_int (index);
     serializator.pack_string (attr_name);
-    serializator.pack_db_value (value);
+
+    if (is_compatible_java)
+      {
+	dbvalue_java sp_val;
+	sp_val.value = (DB_VALUE *) &value;
+	sp_val.pack (serializator);
+      }
+    else
+      {
+	serializator.pack_db_value (value);
+      }
   }
 
   void
@@ -218,7 +271,17 @@ namespace cubmethod
     deserializator.unpack_oid (oid);
     deserializator.unpack_int (index);
     deserializator.unpack_string (attr_name);
-    deserializator.unpack_db_value (value);
+
+    if (is_compatible_java)
+      {
+	dbvalue_java sp_val;
+	sp_val.value = (DB_VALUE *) &value;
+	sp_val.unpack (deserializator);
+      }
+    else
+      {
+	deserializator.unpack_db_value (value);
+      }
   }
 
   size_t
@@ -228,7 +291,18 @@ namespace cubmethod
     size += serializator.get_packed_oid_size (size); // oid
     size += serializator.get_packed_int_size (size); // index
     size += serializator.get_packed_string_size (attr_name, size);
-    size += serializator.get_packed_db_value_size (value, size);
+
+    if (is_compatible_java)
+      {
+	dbvalue_java sp_val;
+	sp_val.value = (DB_VALUE *) &value;
+	size += sp_val.get_packed_size (serializator, size);
+      }
+    else
+      {
+	size += serializator.get_packed_db_value_size (value, size);
+      }
+
     return size;
   }
 }

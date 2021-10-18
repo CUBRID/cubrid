@@ -220,7 +220,7 @@ public class SUConnection {
     // UFunctionCode.RELATED_TO_OID
     public Object oidCmd(CUBRIDOID oid, int command) throws IOException {
         CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
-        packer.packInt(SUFunctionCode.PUT_BY_OID.getCode());
+        packer.packInt(SUFunctionCode.RELATED_TO_OID.getCode());
         packer.packInt(command);
         packer.packOID(new SOID(oid.getOID()));
 

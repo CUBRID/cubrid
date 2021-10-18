@@ -25,7 +25,8 @@ public class SUResultTuple {
             Value v = unpacker.unpackValue(paramType);
             attributes[i] = v;
         }
-        // TODO: OID
+
+        oid = unpacker.unpackOID();
     }
 
     void close() {

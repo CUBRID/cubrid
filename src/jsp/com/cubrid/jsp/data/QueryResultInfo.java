@@ -6,6 +6,7 @@ public class QueryResultInfo {
     public int stmtType;
     public int tupleCount;
     public SOID insOid;
+    public boolean isOIDIncluded;
     public long queryId; /* Query Identifier for select */
 
     public QueryResultInfo(CUBRIDUnpacker unpacker) {
@@ -13,6 +14,7 @@ public class QueryResultInfo {
         tupleCount = unpacker.unpackInt();
 
         insOid = new SOID(unpacker);
+        isOIDIncluded = (unpacker.unpackInt() == 1);
         queryId = unpacker.unpackBigint();
     }
 

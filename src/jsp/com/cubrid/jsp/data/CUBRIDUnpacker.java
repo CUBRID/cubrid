@@ -124,6 +124,14 @@ public class CUBRIDUnpacker {
         return len;
     }
 
+    public SOID unpackOID() {
+        align(DataUtilities.INT_ALIGNMENT);
+        int pageId = buffer.getInt();
+        short slotId = buffer.getShort();
+        short volId = buffer.getShort();
+        return new SOID(pageId, slotId, volId);
+    }
+
     public Value unpackValue(int paramType) throws TypeMismatchException {
         Value arg = null;
         switch (paramType) {

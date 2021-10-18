@@ -111,6 +111,9 @@ namespace cubmethod
       case METHOD_CALLBACK_OID_CMD:
 	error = oid_cmd (unpacker);
 	break;
+      case METHOD_CALLBACK_COLLECTION:
+	error = collection_cmd (unpacker);
+	break;
       default:
 	assert (false);
 	error = ER_FAILED;

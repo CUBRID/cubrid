@@ -49,8 +49,15 @@ public class SOID {
     }
 
     public SOID(byte[] boid) {
-        pageId = DataUtilities.bytes2int(boid, 0);
-        slotId = DataUtilities.bytes2short(boid, 4);
-        volId = DataUtilities.bytes2short(boid, 6);
+        if (boid != null) {
+            pageId = DataUtilities.bytes2int(boid, 0);
+            slotId = DataUtilities.bytes2short(boid, 4);
+            volId = DataUtilities.bytes2short(boid, 6);
+        } else {
+            // invalid value, OID_INITIALIZER
+            pageId = -1;
+            slotId = -1;
+            volId = -1;
+        }
     }
 }

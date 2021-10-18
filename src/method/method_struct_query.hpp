@@ -96,6 +96,7 @@ namespace cubmethod
     int stmt_type; /* CUBRID_STMT_TYPE */
     int tuple_count;
     OID ins_oid;
+    bool include_oid;
     QUERY_ID query_id;   /* Query Identifier for select */
 
     void pack (cubpacking::packer &serializator) const override;
@@ -160,6 +161,7 @@ namespace cubmethod
   {
     result_tuple_info ();
     result_tuple_info (int index, std::vector<DB_VALUE> &attributes);
+    result_tuple_info (int idx, std::vector<DB_VALUE> &attr, OID &oid_val);
     result_tuple_info (result_tuple_info &&other);
 
     ~result_tuple_info ();

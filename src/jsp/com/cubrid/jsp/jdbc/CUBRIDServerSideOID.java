@@ -207,16 +207,18 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
     }
 
     public byte[] getOID() {
-        byte[] bOID = new byte[DataUtilities.OID_BYTE_SIZE];
-        bOID[0] = ((byte) ((oid.pageId >>> 24) & 0xFF));
-        bOID[1] = ((byte) ((oid.pageId >>> 16) & 0xFF));
-        bOID[2] = ((byte) ((oid.pageId >>> 8) & 0xFF));
-        bOID[3] = ((byte) ((oid.pageId >>> 0) & 0xFF));
-        bOID[4] = ((byte) ((oid.slotId >>> 8) & 0xFF));
-        bOID[5] = ((byte) ((oid.slotId >>> 0) & 0xFF));
-        bOID[6] = ((byte) ((oid.volId >>> 8) & 0xFF));
-        bOID[7] = ((byte) ((oid.volId >>> 0) & 0xFF));
-
+        byte[] bOID = null;
+        if (oid != null) {
+            bOID = new byte[DataUtilities.OID_BYTE_SIZE];
+            bOID[0] = ((byte) ((oid.pageId >>> 24) & 0xFF));
+            bOID[1] = ((byte) ((oid.pageId >>> 16) & 0xFF));
+            bOID[2] = ((byte) ((oid.pageId >>> 8) & 0xFF));
+            bOID[3] = ((byte) ((oid.pageId >>> 0) & 0xFF));
+            bOID[4] = ((byte) ((oid.slotId >>> 8) & 0xFF));
+            bOID[5] = ((byte) ((oid.slotId >>> 0) & 0xFF));
+            bOID[6] = ((byte) ((oid.volId >>> 8) & 0xFF));
+            bOID[7] = ((byte) ((oid.volId >>> 0) & 0xFF));
+        }
         return bOID;
     }
 
@@ -228,9 +230,8 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         try {
             String tablename =
                     (String)
-                            connection
-                                    .getSUConnection()
-                                    .oidCmd(this, CUBRIDServerSideConstants.GET_CLASS_NAME_BY_OID);
+                            requestHandler.oidCmd(
+                                    this, CUBRIDServerSideConstants.GET_CLASS_NAME_BY_OID);
             return tablename;
         } catch (IOException e) {
             // TODO: is correct?

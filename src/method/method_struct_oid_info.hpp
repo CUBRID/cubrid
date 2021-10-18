@@ -48,6 +48,8 @@ namespace cubmethod
     std::vector<std::string> attr_names;
     std::vector<DB_VALUE> db_values;
 
+    bool is_compatible_java; // unused for packing
+
     oid_put_request ();
     ~oid_put_request ();
 
@@ -62,7 +64,10 @@ namespace cubmethod
     OID oid;
     int index; // -1 for set, 0 >= for sequence
     std::string attr_name;
+    bool is_from_java;
     DB_VALUE value;
+
+    bool is_compatible_java; // unused for packing
 
     collection_cmd_request ();
     ~collection_cmd_request ();

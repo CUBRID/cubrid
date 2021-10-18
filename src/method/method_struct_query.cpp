@@ -317,6 +317,7 @@ namespace cubmethod
     ins_oid.pageid = 0;
     ins_oid.slotid = 0;
     ins_oid.volid = 0;
+    include_oid = false;
   }
 
   void
@@ -325,6 +326,7 @@ namespace cubmethod
     serializator.pack_int (stmt_type);
     serializator.pack_int (tuple_count);
     serializator.pack_oid (ins_oid);
+    serializator.pack_bool (include_oid);
     serializator.pack_bigint (query_id);
   }
 
@@ -334,6 +336,7 @@ namespace cubmethod
     deserializator.unpack_int (stmt_type);
     deserializator.unpack_int (tuple_count);
     deserializator.unpack_oid (ins_oid);
+    deserializator.unpack_bool (include_oid);
 
     uint64_t qid;
     deserializator.unpack_bigint (qid);
@@ -346,6 +349,7 @@ namespace cubmethod
     size_t size = serializator.get_packed_int_size (start_offset); // stmt_type
     size += serializator.get_packed_int_size (size); // tuple_count
     size += serializator.get_packed_oid_size (size); // ins_oid
+    size += serializator.get_packed_bool_size (size); // include_oid
     size += serializator.get_packed_bigint_size (size); // query_id
     return size;
   }
@@ -356,6 +360,8 @@ namespace cubmethod
     fprintf (stdout, "stmt_type: %d\n", stmt_type);
     fprintf (stdout, "tuple_count: %d\n", tuple_count);
     fprintf (stdout, "ins_oid (%d, %d, %d)\n", ins_oid.pageid, ins_oid.slotid, ins_oid.volid);
+    fprintf (stdout, "include_oid: %d\n", include_oid);
+    fprintf (stdout, "query_id: %lld\n", query_id);
   }
 
   void
@@ -612,12 +618,18 @@ namespace cubmethod
   result_tuple_info::result_tuple_info (int idx, std::vector<DB_VALUE> &attr)
   {
     index = idx;
-
     attributes.resize (attr.size());
     for (int i = 0; i < (int) attributes.size(); i++)
       {
 	attributes[i] = attr[i];
       }
+    oid = OID_INITIALIZER;
+  }
+
+  result_tuple_info::result_tuple_info (int idx, std::vector<DB_VALUE> &attr, OID &oid_val)
+    : result_tuple_info (idx, attr)
+  {
+    COPY_OID (&oid, &oid_val);
   }
 
   result_tuple_info::result_tuple_info (result_tuple_info &&other)
@@ -650,6 +662,8 @@ namespace cubmethod
 	sp_val.value = (DB_VALUE *) &attr;
 	sp_val.pack (serializator);
       }
+
+    serializator.pack_oid (oid);
   }
 
   void
@@ -672,7 +686,7 @@ namespace cubmethod
 	  }
       }
 
-    // TODO: oid
+    deserializator.unpack_oid (oid);
   }
 
   size_t
@@ -687,7 +701,8 @@ namespace cubmethod
 	sp_val.value = (DB_VALUE *) &attr;
 	size += sp_val.get_packed_size (serializator, size);
       }
-    // TODO: oid
+
+    size += serializator.get_packed_oid_size (size); // oid
     return size;
   }
 

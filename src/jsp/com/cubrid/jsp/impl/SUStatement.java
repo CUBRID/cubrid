@@ -47,6 +47,8 @@ public class SUStatement {
     private int parameterNumber;
     private byte commandType;
     private byte firstStmtType;
+
+    private List<ColumnInfo> columnInfos = null;
     private HashMap<String, Integer> colNameToIndex = null;
     private SUBindParameter bindParameter = null;
 
@@ -213,7 +215,8 @@ public class SUStatement {
         return colNameToIndex;
     }
 
-    private void setColumnInfo(List<ColumnInfo> columnInfos) {
+    private void setColumnInfo(List<ColumnInfo> infos) {
+        columnInfos = infos;
         columnNumber = columnInfos.size();
         colNameToIndex = new HashMap<String, Integer>(columnNumber);
         for (int i = 0; i < columnInfos.size(); i++) {
@@ -225,10 +228,14 @@ public class SUStatement {
     }
 
     public List<ColumnInfo> getColumnInfo() {
-        if (executeInfo == null) {
-            return null;
+        if (columnInfos != null) {
+            return columnInfos;
         }
-        return executeInfo.columnInfos;
+
+        if (executeInfo == null) {
+            return executeInfo.columnInfos;
+        }
+        return null;
     }
 
     private void setExecuteFlags(int maxRow, boolean isExecuteAll, boolean isSensitive) {
@@ -371,12 +378,10 @@ public class SUStatement {
     // The following is to get Result Tuple Values
     // ==============================================================
 
-    private Object beforeGetTuple(int index) {
+    private Object beforeGetTuple(int index) throws SQLException {
         if (index < 0 || index >= columnNumber) {
-            // TODO: error handling
-            // errorHandler.setErrorCode(UErrorCode.ER_COLUMN_INDEX);
-            // CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_COLUMN_INDEX);
-            return null;
+            CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COLUMN_INDEX, null);
         }
 
         SUResultTuple tuples[] = fetchInfo.tuples;
@@ -398,7 +403,7 @@ public class SUStatement {
         return wasNull;
     }
 
-    public int getInt(int columnIndex) {
+    public int getInt(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
@@ -411,7 +416,7 @@ public class SUStatement {
         }
     }
 
-    public long getLong(int columnIndex) {
+    public long getLong(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
@@ -424,7 +429,7 @@ public class SUStatement {
         }
     }
 
-    public String getString(int columnIndex) {
+    public String getString(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
@@ -433,7 +438,7 @@ public class SUStatement {
         return obj.toString();
     }
 
-    public float getFloat(int columnIndex) {
+    public float getFloat(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
@@ -446,7 +451,7 @@ public class SUStatement {
         }
     }
 
-    public double getDouble(int columnIndex) {
+    public double getDouble(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
@@ -459,7 +464,7 @@ public class SUStatement {
         }
     }
 
-    public short getShort(int columnIndex) {
+    public short getShort(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
@@ -472,7 +477,7 @@ public class SUStatement {
         }
     }
 
-    public boolean getBoolean(int columnIndex) {
+    public boolean getBoolean(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
 
         Value obj = (Value) beforeGetTuple(idx);
@@ -485,7 +490,7 @@ public class SUStatement {
         }
     }
 
-    public byte getByte(int columnIndex) {
+    public byte getByte(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
         if (obj == null) return ((byte) 0);
@@ -497,7 +502,7 @@ public class SUStatement {
         }
     }
 
-    public byte[] getBytes(int columnIndex) {
+    public byte[] getBytes(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
         if (obj == null) return null;
@@ -509,7 +514,7 @@ public class SUStatement {
         }
     }
 
-    public BigDecimal getBigDecimal(int columnIndex) {
+    public BigDecimal getBigDecimal(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
         if (obj == null) return null;
@@ -521,7 +526,7 @@ public class SUStatement {
         }
     }
 
-    public Date getDate(int columnIndex) {
+    public Date getDate(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
         if (obj == null) return null;
@@ -533,7 +538,7 @@ public class SUStatement {
         }
     }
 
-    public Time getTime(int columnIndex) {
+    public Time getTime(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
         if (obj == null) return null;
@@ -545,7 +550,7 @@ public class SUStatement {
         }
     }
 
-    public Timestamp getTimestamp(int columnIndex) {
+    public Timestamp getTimestamp(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
         if (obj == null) return null;
@@ -557,7 +562,7 @@ public class SUStatement {
         }
     }
 
-    public CUBRIDOID getColumnOID(int columnIndex) {
+    public CUBRIDOID getColumnOID(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
         if (obj == null) return null;
@@ -569,7 +574,11 @@ public class SUStatement {
         }
     }
 
-    public CUBRIDOID getCursorOID() {
+    public CUBRIDOID getCursorOID() throws SQLException {
+
+        /* fetch tuples including OID */
+        fetch();
+
         SUResultTuple tuples[] = fetchInfo.tuples;
         SUResultTuple currentTuple = null;
 
@@ -583,7 +592,7 @@ public class SUStatement {
         return new CUBRIDServerSideOID(suConn, soid);
     }
 
-    public Object getCollection(int columnIndex) {
+    public Object getCollection(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
         if (obj == null) return null;
@@ -596,7 +605,7 @@ public class SUStatement {
         }
     }
 
-    public Object getObject(int columnIndex) {
+    public Object getObject(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
         if (obj == null) return null;

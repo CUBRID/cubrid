@@ -22,6 +22,8 @@
 #include "object_representation.h"	/* OR_ */
 
 #include "connection_support.h"
+#include "dbtype_def.h"
+
 #include "method_connection.hpp"
 #include "method_struct_invoke.hpp"
 #include "method_struct_value.hpp"
@@ -394,16 +396,18 @@ namespace cubmethod
       execute_info info;
       info.unpack (unpacker);
 
-      if (info.qresult_infos[0].stmt_type == CUBRID_STMT_SELECT)
+      query_result_info &current_result_info = info.qresult_infos[0];
+      if (current_result_info.stmt_type == CUBRID_STMT_SELECT)
 	{
-	  std::uint64_t qid = info.qresult_infos[0].query_id;
+	  std::uint64_t qid = current_result_info.query_id;
 	  const auto &iter = m_cursor_map.find (qid);
 
 	  query_cursor *cursor = nullptr;
 	  if (iter == m_cursor_map.end ())
 	    {
 	      /* not found, new cursor is created */
-	      cursor = m_cursor_map[qid] = new query_cursor (m_group->get_thread_entry(), qid);
+	      bool is_oid_included = current_result_info.include_oid;
+	      cursor = m_cursor_map[qid] = new query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
 	      if (cursor == nullptr)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
@@ -475,7 +479,17 @@ namespace cubmethod
 
 	    int tuple_index = cursor->get_current_index ();
 	    std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
-	    info.tuples.emplace_back (tuple_index, tuple_values);
+
+	    if (cursor->get_is_oid_included())
+	      {
+		OID *oid = cursor->get_current_oid ();
+		std::vector<DB_VALUE> sub_vector = {tuple_values.begin() + 1, tuple_values.end ()};
+		info.tuples.emplace_back (tuple_index, sub_vector, *oid);
+	      }
+	    else
+	      {
+		info.tuples.emplace_back (tuple_index, tuple_values);
+	      }
 	    i++;
 	  }
 
@@ -501,7 +515,7 @@ namespace cubmethod
     cubmem::extensible_block eb;
 
     INT64 id = (INT64) this;
-    cubmethod::header header (METHOD_CALLBACK_OID_GET /* default */, id);
+    cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
     error = method_send_data_to_client (&thread_ref, oid);
     if (error != NO_ERROR)
       {
@@ -523,12 +537,15 @@ namespace cubmethod
 
     int code;
     oid_put_request request;
+    request.is_compatible_java = true;
 
     unpacker.unpack_int (code);
     request.unpack (unpacker);
 
     INT64 id = (INT64) this;
-    cubmethod::header header (METHOD_CALLBACK_OID_PUT /* default */, id);
+    cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
+
+    request.is_compatible_java = false;
     error = method_send_data_to_client (&thread_ref, header, code, request);
     if (error != NO_ERROR)
       {
@@ -556,7 +573,7 @@ namespace cubmethod
     unpacker.unpack_oid (oid);
 
     INT64 id = (INT64) this;
-    cubmethod::header header (METHOD_CALLBACK_OID_CMD /* default */, id);
+    cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
     error = method_send_data_to_client (&thread_ref, header, code, command, oid);
     if (error != NO_ERROR)
       {
@@ -578,12 +595,14 @@ namespace cubmethod
 
     int code;
     collection_cmd_request request;
+    request.is_compatible_java = true;
 
     unpacker.unpack_int (code);
     request.unpack (unpacker);
 
     INT64 id = (INT64) this;
-    cubmethod::header header (METHOD_CALLBACK_OID_PUT /* default */, id);
+    cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
+    request.is_compatible_java = false;
     error = method_send_data_to_client (&thread_ref, header, code, request);
     if (error != NO_ERROR)
       {

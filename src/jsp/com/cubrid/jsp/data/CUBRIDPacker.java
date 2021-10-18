@@ -43,6 +43,7 @@ public class CUBRIDPacker {
     private ByteBuffer buffer;
 
     public CUBRIDPacker(ByteBuffer buffer) {
+        buffer.clear();
         this.buffer = buffer;
     }
 
@@ -59,8 +60,8 @@ public class CUBRIDPacker {
     }
 
     public void packInt(int value) {
-        ensureSpace(Integer.BYTES);
         align(DataUtilities.INT_ALIGNMENT);
+        ensureSpace(Integer.BYTES);
         buffer.putInt(value);
     }
 
@@ -99,6 +100,8 @@ public class CUBRIDPacker {
     }
 
     public void packOID(SOID oid) {
+        align(DataUtilities.INT_ALIGNMENT);
+        ensureSpace(Integer.BYTES + Short.BYTES + Short.BYTES);
         packInt(oid.pageId);
         packShort(oid.slotId);
         packShort(oid.volId);
@@ -156,7 +159,6 @@ public class CUBRIDPacker {
             packString(result.toString(), charset);
         } else if (result instanceof java.sql.Timestamp) {
             packInt(ret_type);
-
             if (ret_type == DBType.DB_DATETIME) {
                 packString(result.toString());
             } else {
