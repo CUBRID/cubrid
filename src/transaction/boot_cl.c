@@ -3235,7 +3235,7 @@ boot_define_serial (MOP class_mop)
   DB_VALUE default_value;
   int error_code = NO_ERROR;
   const char *pk_col_names[] = { "orig_name", NULL };
-  const char *index_col_names[] = { "name", NULL };
+  const char *index_col_names[] = { "name", "owner", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -3367,14 +3367,14 @@ boot_define_serial (MOP class_mop)
     }
 
   /* add primary key */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL, pk_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_name", pk_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
   /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, NULL, index_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;

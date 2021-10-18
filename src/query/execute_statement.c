@@ -850,22 +850,22 @@ end:
  * Note:
  */
 int
-do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_name, const char *att_name)
+do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *orig_class_name, const char *att_name)
 {
   int error = NO_ERROR;
   DB_OBJECT *serial_object = NULL;
   DB_VALUE value;
   DB_OTMPL *obj_tmpl = NULL;
-  char *serial_name = NULL;
+  char *dot = NULL;
+  char *orig_serial_name = NULL;
+  const char *serial_name = NULL;
+  const char *class_name = NULL;
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
   size_t name_len;
   int save;
   bool au_disable_flag = false;
 
-  if (!serial_obj || !class_name || !att_name)
-    {
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
+  CHECK_3ARGS_ERROR (serial_obj, orig_class_name, att_name);
 
   db_make_null (&value);
 
@@ -873,16 +873,16 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   sm_downcase_name (att_name, att_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
   att_name = att_downcase_name;
 
-  /* serial_name : <class_name>_ai_<att_name> */
-  name_len = (strlen (class_name) + strlen (att_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
-  serial_name = (char *) malloc (name_len);
-  if (serial_name == NULL)
+  /* orig_serial_name : <orig_class_name>_ai_<att_name> */
+  name_len = (strlen (orig_class_name) + strlen (att_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
+  orig_serial_name = (char *) malloc (name_len);
+  if (orig_serial_name == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, name_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
+  SET_AUTO_INCREMENT_SERIAL_NAME (orig_serial_name, orig_class_name, att_name);
 
   AU_DISABLE (save);
   au_disable_flag = true;
@@ -911,16 +911,54 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
       goto update_auto_increment_error;
     }
 
+  /* orig_name */
+  db_make_string (&value, orig_serial_name);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ORIG_NAME, &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+     goto update_auto_increment_error;
+    }
+
   /* name */
+  dot = strchr ((char *) orig_serial_name, '.');
+  if (dot != NULL)
+    {
+      serial_name = dot + 1;
+    }
+  else
+    {
+      serial_name = orig_serial_name;
+    }
+
   db_make_string (&value, serial_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
+  pr_clear_value (&value);
   if (error != NO_ERROR)
     {
       goto update_auto_increment_error;
     }
 
-  /* class name */
+  /* orig_class_name */
+  db_make_string (&value, orig_class_name);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ORIG_CLASS_NAME, &value);
   pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto update_auto_increment_error;
+    }
+
+  /* class_name */
+  dot = strchr ((char *) orig_class_name, '.');
+  if (dot != NULL)
+    {
+      class_name = dot + 1;
+    }
+  else
+    {
+      class_name = orig_class_name;
+    }
+
   db_make_string (&value, class_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
   pr_clear_value (&value);
@@ -950,13 +988,16 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
       goto update_auto_increment_error;
     }
 
-  free_and_init (serial_name);
+  free_and_init (orig_serial_name);
+  serial_name = NULL;
+
   return NO_ERROR;
 
 update_auto_increment_error:
-  if (serial_name)
+  if (orig_serial_name)
     {
-      free_and_init (serial_name);
+      free_and_init (orig_serial_name);
+      serial_name = NULL;
     }
 
   if (au_disable_flag == true)
@@ -2353,7 +2394,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error = db_get (serial_object, SERIAL_ATTR_CLASS_NAME, &class_name_val);
+  error = db_get (serial_object, SERIAL_ATTR_ORIG_CLASS_NAME, &class_name_val);
   if (error < 0)
     {
       goto end;
@@ -2865,18 +2906,22 @@ end:
 int
 do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  DB_OBJECT *serial_class = NULL, *serial_object = NULL;
+  MOP serial_class = NULL;
+  MOP serial_obj = NULL;
   DB_IDENTIFIER serial_obj_id;
-  DB_VALUE class_name_val;
-  char *orig_serial_name;
+
+  DB_VALUE orig_class_name_val;
+  char *orig_serial_name = NULL;
+
   int error = NO_ERROR;
-  int save;
+  int save = 0;
   bool au_disable_flag = false;
 
   CHECK_MODIFICATION_ERROR ();
+  CHECK_2ARGS_ERROR (parser, statement);
 
-  db_make_null (&class_name_val);
   OID_SET_NULL (&serial_obj_id);
+  db_make_null (&orig_class_name_val);
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -2888,8 +2933,8 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   orig_serial_name = (char *) PT_NODE_SR_NAME (statement);
 
-  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class, orig_serial_name);
-  if (serial_object == NULL)
+  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, orig_serial_name);
+  if (serial_obj == NULL)
     {
       if (statement->info.serial.if_exists)
 	{
@@ -2901,24 +2946,24 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error = db_get (serial_object, SERIAL_ATTR_CLASS_NAME, &class_name_val);
+  error = db_get (serial_obj, SERIAL_ATTR_ORIG_CLASS_NAME, &orig_class_name_val);
   if (error < 0)
     {
       goto end;
     }
 
-  if (!DB_IS_NULL (&class_name_val))
+  if (!DB_IS_NULL (&orig_class_name_val))
     {
       error = ER_QPROC_CANNOT_UPDATE_SERIAL;
       PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_SERIAL_IS_AUTO_INCREMENT_OBJ, orig_serial_name);
-      pr_clear_value (&class_name_val);
+      pr_clear_value (&orig_class_name_val);
       goto end;
     }
 
   /*
    * check if user is creator or DBA
    */
-  error = au_check_serial_authorization (serial_object);
+  error = au_check_serial_authorization (serial_obj);
   if (error != NO_ERROR)
     {
       if (error == ER_QPROC_CANNOT_UPDATE_SERIAL)
@@ -2931,7 +2976,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_DISABLE (save);
   au_disable_flag = true;
 
-  error = db_drop (serial_object);
+  error = db_drop (serial_obj);
   if (error < 0)
     {
       goto end;

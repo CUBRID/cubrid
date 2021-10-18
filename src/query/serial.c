@@ -53,6 +53,7 @@ static int rc;
 /* attribute of db_serial class */
 typedef enum
 {
+  SERIAL_ATTR_ORIG_NAME_INDEX,
   SERIAL_ATTR_NAME_INDEX,
   SERIAL_ATTR_OWNER_INDEX,
   SERIAL_ATTR_CURRENT_VAL_INDEX,
@@ -61,6 +62,7 @@ typedef enum
   SERIAL_ATTR_MIN_VAL_INDEX,
   SERIAL_ATTR_CYCLIC_INDEX,
   SERIAL_ATTR_STARTED_INDEX,
+  SERIAL_ATTR_ORIG_CLASS_NAME_INDEX,
   SERIAL_ATTR_CLASS_NAME_INDEX,
   SERIAL_ATTR_ATT_NAME_INDEX,
   SERIAL_ATTR_CACHED_NUM_INDEX,
@@ -555,7 +557,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
 
   attr_info_p = &attr_info;
 
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX, attrid) != NO_ERROR)
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_ORIG_NAME_INDEX, attrid) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -678,7 +680,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       cached_num = db_get_int (val);
     }
 
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX, attrid) != NO_ERROR)
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_ORIG_NAME_INDEX, attrid) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -1218,7 +1220,11 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
 	  goto exit_on_error;
 	}
 
-      if (strcmp (attr_name_p, SERIAL_ATTR_NAME) == 0)
+      if (strcmp (attr_name_p, SERIAL_ATTR_ORIG_NAME) == 0)
+	{
+	  serial_Attrs_id[SERIAL_ATTR_ORIG_NAME_INDEX] = i;
+	}
+      else if (strcmp (attr_name_p, SERIAL_ATTR_NAME) == 0)
 	{
 	  serial_Attrs_id[SERIAL_ATTR_NAME_INDEX] = i;
 	}
@@ -1249,6 +1255,10 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
       else if (strcmp (attr_name_p, SERIAL_ATTR_STARTED) == 0)
 	{
 	  serial_Attrs_id[SERIAL_ATTR_STARTED_INDEX] = i;
+	}
+      else if (strcmp (attr_name_p, SERIAL_ATTR_ORIG_CLASS_NAME) == 0)
+	{
+	  serial_Attrs_id[SERIAL_ATTR_ORIG_CLASS_NAME_INDEX] = i;
 	}
       else if (strcmp (attr_name_p, SERIAL_ATTR_CLASS_NAME) == 0)
 	{
