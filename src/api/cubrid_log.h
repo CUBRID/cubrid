@@ -66,7 +66,7 @@
 #define CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM      (1)
 #define CUBRID_LOG_SUCCESS_WITH_ADJUSTED_LSA    (2)
 
-#define MAX_DBNAME_LEN  64
+#define CUBRID_LOG_MAX_DBNAME_LEN  64
 
 typedef struct ddl DDL;
 struct ddl

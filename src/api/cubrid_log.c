@@ -521,7 +521,7 @@ static int
 cubrid_log_db_login (char *hostname, char *dbname, char *username, char *password)
 {
   MOP user;
-  char dbname_at_hostname[CUB_MAXHOSTNAMELEN + MAX_DBNAME_LEN] = { '\0', };
+  char dbname_at_hostname[CUB_MAXHOSTNAMELEN + CUBRID_LOG_MAX_DBNAME_LEN + 2] = { '\0', };
 
   snprintf (dbname_at_hostname, sizeof (dbname_at_hostname), "%s@%s", dbname, hostname);
 
