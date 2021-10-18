@@ -852,8 +852,9 @@ cgw_get_stmt_Info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type)
   SQLLEN tuple_count = 0;
   T_OBJECT ins_oid;
   CACHE_TIME srv_cache_time;
+  char statement_type = (char) stmt_type;
 
-  net_buf_cp_byte (net_buf, stmt_type);	// stmt_type
+  net_buf_cp_byte (net_buf, statement_type);	// stmt_type
 
   CHK_ERR (hstmt, SQL_HANDLE_STMT, SQLRowCount (hstmt, &tuple_count));
   net_buf_cp_int (net_buf, (int) tuple_count, NULL);	// tuple_count
