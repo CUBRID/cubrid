@@ -88,7 +88,7 @@ cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool valid_handle)
       *cgw_handle = local_odbc_handle;
     }
 
-  return 0;
+  return NO_ERROR;
 }
 
 int
