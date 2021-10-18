@@ -757,7 +757,7 @@ find_hint_token (PT_HINT hint_table[], unsigned char *string)
     }
 
   matched_idx = 0;
-  for (i = hint_table_lead_offset[*string]; hint_table[i].tokens; i++)
+  for (i = hint_table_lead_offset[*string]; i < hint_table_lead_offset[*string + 1]; i++)
     {
       if (matched_idx > 0)
 	{
@@ -792,13 +792,6 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
   unsigned char *sp, delimeter;
   unsigned char *in = instr;
   unsigned char *dot_ptr = 0x00;
-
-#if 0				//
-  while (IS_WHITE_SPACE (*in))
-    {
-      in++;
-    }
-#endif
 
   if (*in != '(')
     {
