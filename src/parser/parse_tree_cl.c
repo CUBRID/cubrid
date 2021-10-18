@@ -655,6 +655,7 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
 	  if (temp->node_type == PT_NAME)
 	    {
 	      PT_NAME_INFO_SET_FLAG (temp, PT_NAME_INFO_CONSTANT);
+	      temp->info.name.constant_value = lambda_arg->tree;
 	    }
 
 	  return tree_or_name;
