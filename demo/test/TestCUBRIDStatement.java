@@ -1,5 +1,6 @@
 package test;
 
+import com.cubrid.jsp.jdbc.CUBRIDServerSideStatement;
 import cubrid.sql.CUBRIDOID;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -253,12 +254,14 @@ public class TestCUBRIDStatement {
         return "t";
     }
 
-    public static String test12() {
+    public static String test12() throws SQLException {
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
         Statement stmt = conn.createStatement();
         SqlUtil.createTable(conn, "t1", "a int auto_increment", "b int");
         try {
-            CUBRIDOID oid = stmt.executeInsert("insert into t1 (b) values (1)");
+            CUBRIDOID oid =
+                    ((CUBRIDServerSideStatement) stmt)
+                            .executeInsert("insert into t1 (b) values (1)");
         } finally {
             SqlUtil.dropTable(conn, "t1");
         }

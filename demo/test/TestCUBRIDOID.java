@@ -1,5 +1,6 @@
 package test;
 
+import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideOID;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import cubrid.sql.CUBRIDOID;
@@ -18,14 +19,13 @@ import test.SqlUtil.Arg;
 public class TestCUBRIDOID {
 
     public static String test1() throws SQLException {
-        Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
 
         byte[] data = new byte[] {1, 2, 3, 4, 5, 6, 7, 8};
 
         String result = "";
 
-        CUBRIDOID oid = new CUBRIDServerSideOID(conn, data);
+        CUBRIDOID oid = new CUBRIDServerSideOID((CUBRIDServerSideConnection) conn, data);
         result += TestUtil.assertArrayEquals(data, oid.getOID());
 
         CUBRIDOID oid2 = new CUBRIDServerSideOID(oid);
@@ -121,7 +121,6 @@ public class TestCUBRIDOID {
     public static String test5() throws SQLException {
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
 
-        String result = "";
         SqlUtil.createTable(conn, "t1", "a int", "b varchar(10)");
         conn.setHoldability(ResultSet.CLOSE_CURSORS_AT_COMMIT);
         try {
@@ -134,17 +133,18 @@ public class TestCUBRIDOID {
             rs.next();
             CUBRIDOID oid = ((CUBRIDServerSideResultSet) rs).getOID();
             oid.setReadLock();
+        } catch (Exception e) {
+            return "f";
         } finally {
             SqlUtil.dropTable(conn, "t1");
         }
 
-        return result;
+        return "t";
     }
 
     public static String test6() throws SQLException {
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
 
-        String result = "";
         SqlUtil.createTable(conn, "t1", "a int", "b varchar(10)");
         conn.setHoldability(ResultSet.CLOSE_CURSORS_AT_COMMIT);
         try {
@@ -157,12 +157,13 @@ public class TestCUBRIDOID {
             rs.next();
             CUBRIDOID oid = ((CUBRIDServerSideResultSet) rs).getOID();
             oid.setWriteLock();
-
+        } catch (Exception e) {
+            return "f";
         } finally {
             SqlUtil.dropTable(conn, "t1");
         }
 
-        return result;
+        return "t";
     }
 
     public static String test7() throws SQLException {
@@ -191,7 +192,6 @@ public class TestCUBRIDOID {
     public static String test8() throws SQLException {
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
 
-        String result = "";
         SqlUtil.createTable(conn, "t1", "a set(int)", "b sequence(int)");
         conn.setHoldability(ResultSet.CLOSE_CURSORS_AT_COMMIT);
         try {
@@ -212,12 +212,13 @@ public class TestCUBRIDOID {
             oid.addToSequence("b", 2, 3);
             oid.putIntoSequence("b", 2, 20);
             oid.removeFromSequence("b", 0);
-
+        } catch (Exception e) {
+            return "f";
         } finally {
             SqlUtil.dropTable(conn, "t1");
         }
 
-        return result;
+        return "t";
     }
 
     /* BLOB and CLOB */
