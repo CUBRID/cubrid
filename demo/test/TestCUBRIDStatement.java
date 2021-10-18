@@ -1,14 +1,13 @@
 package test;
 
+import cubrid.sql.CUBRIDOID;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import test.SqlUtil.Arg;
-import cubrid.sql.CUBRIDOID;
 
 /*
  * CREATE TABLE test ( val INT );
@@ -256,15 +255,15 @@ public class TestCUBRIDStatement {
 
     public static String test12() {
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
-    	Statement stmt = conn.createStatement();
-    	SqlUtil.createTable(conn, "t1", "a int auto_increment", "b int");
-    	try {
-    		CUBRIDOID oid = stmt.executeInsert("insert into t1 (b) values (1)");
-    	} finally {
-    		SqlUtil.dropTable(conn, "t1");
-    	}
+        Statement stmt = conn.createStatement();
+        SqlUtil.createTable(conn, "t1", "a int auto_increment", "b int");
+        try {
+            CUBRIDOID oid = stmt.executeInsert("insert into t1 (b) values (1)");
+        } finally {
+            SqlUtil.dropTable(conn, "t1");
+        }
 
-           return "t";
+        return "t";
     }
 
     // TODO stmt.getStatementType() is not a standard

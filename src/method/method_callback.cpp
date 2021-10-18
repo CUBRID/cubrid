@@ -396,34 +396,35 @@ namespace cubmethod
     DB_OBJECT *obj = db_object (&request.oid);
     if (obj == NULL)
       {
-      // TODO: error handling
-      // CAS_ER_OBJECT
+	// TODO: error handling
+	// CAS_ER_OBJECT
       }
 
     error = check_object (obj);
     if (error < 0)
       {
-        // TODO : error handling
-        return error;
+	// TODO : error handling
+	return error;
       }
-    
+
     error = NO_ERROR;
 
-    const char* attr_name = request.attr_name.c_str ();
+    const char *attr_name = request.attr_name.c_str ();
     DB_ATTRIBUTE *attr = db_get_attribute (obj, attr_name);
-    if (attr == NULL) {
-      // TODO: error handling
-      error = db_error_code ();
-    }
+    if (attr == NULL)
+      {
+	// TODO: error handling
+	error = db_error_code ();
+      }
 
     DB_DOMAIN *domain = db_attribute_domain (attr);
     DB_TYPE type = TP_DOMAIN_TYPE (domain);
     if (type != DB_TYPE_SET && type != DB_TYPE_MULTISET && type != DB_TYPE_SEQUENCE)
-    {
-      // TODO: error handling
-      // ERROR_INFO_SET (CAS_ER_NOT_COLLECTION, CAS_ERROR_INDICATOR);
-      return ER_FAILED;
-    }
+      {
+	// TODO: error handling
+	// ERROR_INFO_SET (CAS_ER_NOT_COLLECTION, CAS_ERROR_INDICATOR);
+	return ER_FAILED;
+      }
 
     int dummy1;
     short dummy2;
@@ -431,25 +432,25 @@ namespace cubmethod
     DB_TYPE elem_type = (DB_TYPE) get_set_domain (domain, dummy1, dummy2, dummy3);
     DB_DOMAIN *elem_domain = db_domain_set (domain);
     if (elem_type <= 0)
-    {
-      // TODO: error handling
-      // ERROR_INFO_SET (CAS_ER_COLLECTION_DOMAIN, CAS_ERROR_INDICATOR);
-      return ER_FAILED;
-    }
+      {
+	// TODO: error handling
+	// ERROR_INFO_SET (CAS_ER_COLLECTION_DOMAIN, CAS_ERROR_INDICATOR);
+	return ER_FAILED;
+      }
 
     DB_VALUE val;
     error = db_get (obj, attr_name, &val);
     if (error < 0)
-    {
-      // TODO: error handling
-      return error;
-    }
+      {
+	// TODO: error handling
+	return error;
+      }
 
     DB_COLLECTION *collection = NULL;
     if (db_value_type (&val) != DB_TYPE_NULL)
-    {
-      collection = db_get_collection (&val);
-    }
+      {
+	collection = db_get_collection (&val);
+      }
 
     error = NO_ERROR; // reset error
 
@@ -458,59 +459,59 @@ namespace cubmethod
     int &seq_index = request.index;
 
     switch (cmd)
-    {
+      {
       case COL_GET:
-        /* TODO: not implemented at Server-Side JDBC */
-        error = ER_FAILED;
-        break;
+	/* TODO: not implemented at Server-Side JDBC */
+	error = ER_FAILED;
+	break;
       case COL_SIZE:
-        error = col_size (collection); // error is col_size
-        break;
+	error = col_size (collection); // error is col_size
+	break;
       case COL_SET_DROP:
-        error = col_set_drop (collection, &elem_value);
-        break;
+	error = col_set_drop (collection, &elem_value);
+	break;
       case COL_SET_ADD:
-        error = col_set_add (collection, &elem_value);
-        break;
+	error = col_set_add (collection, &elem_value);
+	break;
       case COL_SEQ_DROP:
-        error = col_seq_drop (collection, seq_index);
-        break;
+	error = col_seq_drop (collection, seq_index);
+	break;
       case COL_SEQ_INSERT:
-        error = col_seq_insert(collection, seq_index, &elem_value);
-        break;
+	error = col_seq_insert (collection, seq_index, &elem_value);
+	break;
       case COL_SEQ_PUT:
-        error = col_seq_put(collection, seq_index, &elem_value);
-        break;
+	error = col_seq_put (collection, seq_index, &elem_value);
+	break;
       default:
-      assert (false); // invalid command
-      error = ER_FAILED;
-      break;
-    }
+	assert (false); // invalid command
+	error = ER_FAILED;
+	break;
+      }
 
     /* db_put */
     switch (cmd)
-    {
+      {
       case COL_SET_DROP:
       case COL_SET_ADD:
       case COL_SEQ_DROP:
       case COL_SEQ_INSERT:
       case COL_SEQ_PUT:
-            if (error >= 0)
-            {
-              db_put (obj, attr_name, &val);
-            }
-            break;
+	if (error >= 0)
+	  {
+	    db_put (obj, attr_name, &val);
+	  }
+	break;
       default:
-      assert (false); // invalid command
-      error = ER_FAILED;
-      break;
-    }
+	assert (false); // invalid command
+	error = ER_FAILED;
+	break;
+      }
 
     db_col_free (collection);
     db_value_clear (&val);
 
     error = send_packable_object_to_server (error);
-    return error;  
+    return error;
   }
 
   int
@@ -544,25 +545,25 @@ namespace cubmethod
     return NO_ERROR;
   }
 
-  int 
+  int
   callback_handler::col_set_add (DB_COLLECTION *col, DB_VALUE *ele_val)
   {
     int error = NO_ERROR;
-    
+
     if (col != NULL)
-    {
-      error = db_set_add (col, ele_val);
-      if (error < 0)
       {
-        // TODO: error handling
-        return ER_FAILED;
+	error = db_set_add (col, ele_val);
+	if (error < 0)
+	  {
+	    // TODO: error handling
+	    return ER_FAILED;
+	  }
       }
-    }
 
     return NO_ERROR;
   }
 
-  int 
+  int
   callback_handler::col_seq_drop (DB_COLLECTION *col, int seq_index)
   {
     if (col != NULL)
@@ -577,43 +578,43 @@ namespace cubmethod
     return NO_ERROR;
   }
 
-  int 
+  int
   callback_handler::col_seq_insert (DB_COLLECTION *col, int seq_index, DB_VALUE *ele_val)
   {
     int error = NO_ERROR;
-    
+
     if (col != NULL)
-    {
-      error = db_seq_insert (col, seq_index - 1, ele_val);
-      if (error < 0)
       {
-        // TODO: error handling
-        return ER_FAILED;
+	error = db_seq_insert (col, seq_index - 1, ele_val);
+	if (error < 0)
+	  {
+	    // TODO: error handling
+	    return ER_FAILED;
+	  }
       }
-    }
 
     return NO_ERROR;
   }
 
-  int 
+  int
   callback_handler::col_seq_put (DB_COLLECTION *col, int seq_index, DB_VALUE *ele_val)
   {
     int error = NO_ERROR;
-    
+
     if (col != NULL)
-    {
-      error = db_seq_put (col, seq_index - 1, ele_val);
-      if (error < 0)
       {
-        // TODO: error handling
-        return ER_FAILED;
+	error = db_seq_put (col, seq_index - 1, ele_val);
+	if (error < 0)
+	  {
+	    // TODO: error handling
+	    return ER_FAILED;
+	  }
       }
-    }
 
     return NO_ERROR;
   }
 
-#if 0 
+#if 0
 
 //////////////////////////////////////////////////////////////////////////
 // LOB

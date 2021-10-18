@@ -95,8 +95,8 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
 
     public boolean isInstance() throws SQLException {
         try {
-        Object instance_obj =
-                requestHandler.oidCmd(this, CUBRIDServerSideConstants.IS_INSTANCE);
+            Object instance_obj =
+                    requestHandler.oidCmd(this, CUBRIDServerSideConstants.IS_INSTANCE);
             if (instance_obj == null) {
                 return false;
             }
@@ -227,10 +227,10 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
     public synchronized String getTableName() throws SQLException {
         try {
             String tablename =
-            (String)
-                    connection
-                            .getSUConnection()
-                            .oidCmd(this, CUBRIDServerSideConstants.GET_CLASS_NAME_BY_OID);
+                    (String)
+                            connection
+                                    .getSUConnection()
+                                    .oidCmd(this, CUBRIDServerSideConstants.GET_CLASS_NAME_BY_OID);
             return tablename;
         } catch (IOException e) {
             // TODO: is correct?

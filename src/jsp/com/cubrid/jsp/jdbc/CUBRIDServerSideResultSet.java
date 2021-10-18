@@ -95,7 +95,7 @@ public class CUBRIDServerSideResultSet implements ResultSet {
         currentRowIndex = -1;
     }
 
-    protected CUBRIDServerSideResultSet (SUStatement stmt) {
+    protected CUBRIDServerSideResultSet(SUStatement stmt) {
         // TODO
     }
 

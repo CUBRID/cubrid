@@ -31,14 +31,6 @@
 
 package com.cubrid.jsp.data;
 
-import com.cubrid.jsp.value.DoubleValue;
-import com.cubrid.jsp.value.FloatValue;
-import com.cubrid.jsp.value.IntValue;
-import com.cubrid.jsp.value.LongValue;
-import com.cubrid.jsp.value.NullValue;
-import com.cubrid.jsp.value.ShortValue;
-import com.cubrid.jsp.value.StringValue;
-import com.cubrid.jsp.value.Value;
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;

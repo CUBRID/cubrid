@@ -239,20 +239,20 @@ namespace cubmethod
       */
 
       case METHOD_CALLBACK_GET_DB_PARAMETER:
-      error = callback_get_db_parameter (blk);
-      break;
+	error = callback_get_db_parameter (blk);
+	break;
 
       case METHOD_CALLBACK_QUERY_PREPARE:
-      error = callback_prepare (thread_ref, blk);
-      break;
+	error = callback_prepare (thread_ref, blk);
+	break;
 
       case METHOD_CALLBACK_QUERY_EXECUTE:
-      error = callback_execute (thread_ref, blk);
-      break;
+	error = callback_execute (thread_ref, blk);
+	break;
 
       case METHOD_CALLBACK_FETCH:
-      error = callback_fetch (thread_ref, blk);
-      break;
+	error = callback_fetch (thread_ref, blk);
+	break;
 
       case METHOD_CALLBACK_GET_SCHEMA_INFO:
 	// TODO: not implemented yet
@@ -260,20 +260,20 @@ namespace cubmethod
 	break;
 
       case METHOD_CALLBACK_OID_GET:
-      error = callback_oid_get (thread_ref, blk);
-      break;
+	error = callback_oid_get (thread_ref, blk);
+	break;
 
       case METHOD_CALLBACK_OID_PUT:
-      error = callback_oid_put (thread_ref, blk);
-      break;
+	error = callback_oid_put (thread_ref, blk);
+	break;
 
       case METHOD_CALLBACK_OID_CMD:
-      error = callback_oid_cmd (thread_ref, blk);
-      break;
-      
+	error = callback_oid_cmd (thread_ref, blk);
+	break;
+
       case METHOD_CALLBACK_COLLECTION:
-      error = callback_collection_cmd (thread_ref, blk);
-      break;
+	error = callback_collection_cmd (thread_ref, blk);
+	break;
 
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
       case METHOD_CALLBACK_NEXT_RESULT:
@@ -504,9 +504,9 @@ namespace cubmethod
     cubmethod::header header (METHOD_CALLBACK_OID_GET /* default */, id);
     error = method_send_data_to_client (&thread_ref, oid);
     if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
+      {
+	return ER_FAILED;
+      }
 
     error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
 #endif
@@ -531,9 +531,9 @@ namespace cubmethod
     cubmethod::header header (METHOD_CALLBACK_OID_PUT /* default */, id);
     error = method_send_data_to_client (&thread_ref, header, code, request);
     if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
+      {
+	return ER_FAILED;
+      }
 
     error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
 #endif
@@ -559,9 +559,9 @@ namespace cubmethod
     cubmethod::header header (METHOD_CALLBACK_OID_CMD /* default */, id);
     error = method_send_data_to_client (&thread_ref, header, code, command, oid);
     if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
+      {
+	return ER_FAILED;
+      }
 
     error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
 #endif
@@ -586,17 +586,17 @@ namespace cubmethod
     cubmethod::header header (METHOD_CALLBACK_OID_PUT /* default */, id);
     error = method_send_data_to_client (&thread_ref, header, code, request);
     if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
+      {
+	return ER_FAILED;
+      }
 
     error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
 #endif
     return error;
   }
 
-  int 
-  method_invoke_java::bypass_block (SOCKET socket, cubmem::block & b)
+  int
+  method_invoke_java::bypass_block (SOCKET socket, cubmem::block &b)
   {
     return method_send_buffer_to_java (socket, b);
   }

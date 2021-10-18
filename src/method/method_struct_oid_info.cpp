@@ -134,7 +134,7 @@ namespace cubmethod
   {
     for (int i = 0; i < (int) db_values.size(); i++)
       {
-        db_value_clear (&db_values[i]);
+	db_value_clear (&db_values[i]);
       }
   }
 
@@ -180,7 +180,7 @@ namespace cubmethod
 	for (int i = 0; i < (int) attr_names.size(); i++)
 	  {
 	    size += serializator.get_packed_string_size (attr_names[i], size);
-      size += serializator.get_packed_db_value_size (db_values[i], size);
+	    size += serializator.get_packed_db_value_size (db_values[i], size);
 	  }
       }
     return size;
@@ -227,7 +227,7 @@ namespace cubmethod
     size_t size = serializator.get_packed_int_size (start_offset); // command
     size += serializator.get_packed_oid_size (size); // oid
     size += serializator.get_packed_int_size (size); // index
-	  size += serializator.get_packed_string_size (attr_name, size);
+    size += serializator.get_packed_string_size (attr_name, size);
     size += serializator.get_packed_db_value_size (value, size);
     return size;
   }

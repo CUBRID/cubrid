@@ -26,17 +26,17 @@ public class CUBRIDServerSideConstants {
 
     /* oid commands */
     public static final byte DROP_BY_OID = 1,
-    IS_INSTANCE = 2,
-    GET_READ_LOCK_BY_OID = 3,
-    GET_WRITE_LOCK_BY_OID = 4,
-    GET_CLASS_NAME_BY_OID = 5;
+            IS_INSTANCE = 2,
+            GET_READ_LOCK_BY_OID = 3,
+            GET_WRITE_LOCK_BY_OID = 4,
+            GET_CLASS_NAME_BY_OID = 5;
 
     /* collection commands */
     public static final byte GET_COLLECTION_VALUE = 1,
-    GET_SIZE_OF_COLLECTION = 2,
-    DROP_ELEMENT_IN_SET = 3,
-    ADD_ELEMENT_TO_SET = 4,
-    DROP_ELEMENT_IN_SEQUENCE = 5,
-    INSERT_ELEMENT_INTO_SEQUENCE = 6,
-    PUT_ELEMENT_ON_SEQUENCE = 7;
+            GET_SIZE_OF_COLLECTION = 2,
+            DROP_ELEMENT_IN_SET = 3,
+            ADD_ELEMENT_TO_SET = 4,
+            DROP_ELEMENT_IN_SEQUENCE = 5,
+            INSERT_ELEMENT_INTO_SEQUENCE = 6,
+            PUT_ELEMENT_ON_SEQUENCE = 7;
 }
