@@ -1313,7 +1313,6 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
       {
 	char *value;
 	int val_size;
-	bool is_composed = false;
 
 	net_arg_get_str (&value, &val_size, net_value);
 
