@@ -321,14 +321,24 @@ createdb (UTIL_FUNCTION_ARG * arg)
 int
 createdb_with_remote_storage (UTIL_FUNCTION_ARG * arg)
 {
+  assert (arg != nullptr);
+
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+
   const char *database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   const char *cubrid_charset = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+  const char *volume_path = utility_get_option_string_value (arg_map, CREATE_FILE_PATH_S, 0);
+  const char *lob_path = utility_get_option_string_value (arg_map, CREATE_LOB_PATH_S, 0);
+  const char *host_name = utility_get_option_string_value (arg_map, CREATE_SERVER_NAME_S, 0);
 
   if (database_name == 0 || database_name[0] == 0 || cubrid_charset == 0 || cubrid_charset[0] == 0
       || utility_get_option_string_table_size (arg_map) != 2)
     {
       goto print_create_usage;
     }
+
+  const char *output_file_name = utility_get_option_string_value (arg_map, CREATE_OUTPUT_FILE_S, 0);
+  const char *log_path = utility_get_option_string_value (arg_map, CREATE_LOG_PATH_S, 0);
 
 print_create_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_USAGE),
