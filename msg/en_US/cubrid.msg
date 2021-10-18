@@ -1377,7 +1377,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1321 Parameter binding error.
 1322 Invalid ODBC handle.
 1323 Type conversion error.
-1324 Not supperted data type.
+1324 Not supported data type.
 1325 Invalid Statement handle.
 1326 Invalid db connection handle.
 1327 Both dsn name and link server connection url do not exist.
