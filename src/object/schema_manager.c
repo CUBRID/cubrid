@@ -2861,7 +2861,8 @@ sm_mark_system_class_for_catalog (void)
     CTV_METHARG_NAME, CTV_METHARG_SD_NAME, CTV_METHFILE_NAME,
     CTV_INDEX_NAME, CTV_INDEXKEY_NAME, CTV_AUTH_NAME,
     CTV_TRIGGER_NAME, CTV_STORED_PROC_NAME, CTV_STORED_PROC_ARGS_NAME,
-    CTV_PARTITION_NAME, CT_COLLATION_NAME, NULL
+    CTV_PARTITION_NAME, CTV_SERIAL_NAME, CT_COLLATION_NAME,
+    NULL
   };
 
   for (i = 0; classes[i] != NULL; i++)
@@ -3080,7 +3081,7 @@ sm_is_system_class_by_name (const char * class_name)
     CT_STORED_PROC_NAME,	// "_db_stored_procedure"
     CT_STORED_PROC_ARGS_NAME,	// "_db_stored_procedure_args"
     CT_PARTITION_NAME,		// "_db_partition"
-    CT_SERIAL_NAME,		// "db_serial"
+    CT_SERIAL_NAME,		// "_db_serial"
     CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
     CT_COLLATION_NAME,		// "_db_collation"
     CT_USER_NAME,		// "db_user"
@@ -3109,6 +3110,7 @@ sm_is_system_class_by_name (const char * class_name)
     CTV_STORED_PROC_NAME,	// "db_stored_procedure"
     CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
     CTV_PARTITION_NAME,		// "db_partition"
+    CTV_SERIAL_NAME,		// "db_serial"
     CTV_DB_COLLATION_NAME,	// "db_collation"
     CTV_DB_CHARSET_NAME		// "db_charset"
   };

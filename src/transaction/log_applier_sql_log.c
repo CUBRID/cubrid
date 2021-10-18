@@ -362,7 +362,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
   int result;
 
-  if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial") != 0)
+  if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "_db_serial") != 0)
     {
       /* ordinary tables */
       string_buffer update_strbuf;
@@ -387,7 +387,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
     }
   else
     {
-      /* db_serial */
+      /* _db_serial */
       DB_VALUE *cur_value = sl_find_att_value ("current_val", inst_tp->assignments, inst_tp->nassigns);
       DB_VALUE *incr_value = sl_find_att_value ("increment_val", inst_tp->assignments, inst_tp->nassigns);
 

@@ -474,7 +474,7 @@ enum btree_op_purpose
   BTREE_OP_INSERT_MARK_DELETED,	/* Mark object as deleted. This is used on a unique index of a non-MVCC class. It is
 				 * very similar to BTREE_OP_INSERT_MVCC_DELID. The differences are: 1. The context they
 				 * are used for. MVCC delete is used to delete from MVCC-enabled classes. Mark deleted
-				 * is used for unique indexes of MVCC-disabled classes like db_serial. 2. Mark deleted
+				 * is used for unique indexes of MVCC-disabled classes like _db_serial. 2. Mark deleted
 				 * is followed by a postpone operation which removes the object after commit. 3. Mark
 				 * deleted is not vacuumed. Object will be "cleaned" on commit/rollback. */
   BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE,	/* Undo of physical delete. */

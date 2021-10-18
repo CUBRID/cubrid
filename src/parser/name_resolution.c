@@ -1852,7 +1852,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      assert (!PT_SPEC_IS_DERIVED (spec) || !PT_SPEC_IS_CTE (spec));
 			      flat = spec->info.spec.flat_entity_list;
 
-			      if (pt_str_compare (attr->info.name.original, flat->info.name.resolved, CASE_INSENSITIVE)
+			      if (pt_dot_compare (attr->info.name.original, flat->info.name.resolved, CASE_INSENSITIVE)
 				  == 0)
 				{
 				  /* find spec set attr's spec_id */
@@ -5474,7 +5474,7 @@ pt_is_correlation_name (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * nam)
 
       if (specs->info.spec.range_var
 	  && ((nam->info.name.meta_class != PT_META_CLASS) || (specs->info.spec.meta_class == PT_META_CLASS))
-	  && pt_str_compare (nam->info.name.original, specs->info.spec.range_var->info.name.original,
+	  && pt_dot_compare (nam->info.name.original, specs->info.spec.range_var->info.name.original,
 			     CASE_INSENSITIVE) == 0)
 	{
 	  if (!owner)
@@ -5488,7 +5488,7 @@ pt_is_correlation_name (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * nam)
 	      entity_name = specs->info.spec.entity_name;
 	      if (entity_name && entity_name->node_type == PT_NAME && entity_name->info.name.resolved
 		  /* actual class ownership test is done for spec no need to repeat that here. */
-		  && (pt_str_compare (entity_name->info.name.resolved, owner->info.name.original, CASE_INSENSITIVE) ==
+		  && (pt_dot_compare (entity_name->info.name.resolved, owner->info.name.original, CASE_INSENSITIVE) ==
 		      0))
 		{
 		  return specs;
@@ -7097,6 +7097,58 @@ pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag)
 }
 
 /*
+ * pt_dot_compare () -
+ *   return: 0 if two strings followed first '.' are equal.
+ *           1 if not equal
+ *   p(in): A string
+ *   q(in): A string
+ *
+ * Note :
+ * two NULL strings are considered a match.
+ * two strings of length zero match
+ * A NULL string does NOT match a zero length string
+ */
+int
+pt_dot_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag)
+{
+  char *dot;
+
+  if (!p && !q)
+    {
+      return 0;
+    }
+  if (!p || !q)
+    {
+      return 1;
+    }
+
+  /* search the first dot,
+   * * which is supposed to mean user-name */
+  dot = strchr ((char *) p, '.');
+  if (dot != NULL)
+    {
+      p = dot + 1;
+    }
+
+  /* search the first dot,
+   * * which is supposed to mean user-name */
+  dot = strchr ((char *) q, '.');
+  if (dot != NULL)
+    {
+      q = dot + 1;
+    }
+
+  if (case_flag == CASE_INSENSITIVE)
+    {
+      return intl_identifier_casecmp (p, q);
+    }
+  else
+    {
+      return intl_identifier_cmp (p, q);
+    }
+}
+
+/*
  * pt_get_unique_exposed_name () -
  *   return:
  *
@@ -8166,7 +8218,9 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       PT_NODE *cte_name = cte->info.cte.name;
       assert (cte_name != NULL);
 
-      if (pt_name_equal (parser, cte_name, node->info.spec.entity_name))
+      if (pt_name_equal (parser, cte_name, node->info.spec.entity_name)
+	  || !pt_dot_compare (cte_name->info.name.original, node->info.spec.entity_name->info.name.original,
+	  CASE_INSENSITIVE))
 	{
 	  node->info.spec.cte_name = node->info.spec.entity_name;
 	  node->info.spec.entity_name = NULL;

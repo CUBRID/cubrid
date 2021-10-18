@@ -2735,7 +2735,7 @@ create_stmt
 	| CREATE 					/* 1 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_TRIGGER); }	/* 2 */
 	  TRIGGER 					/* 3 */
-	  identifier 					/* 4 */
+	  class_name 					/* 4 */
 	  opt_status					/* 5 */
 	  opt_priority					/* 6 */
 	  trigger_time 					/* 7 */
@@ -2772,7 +2772,7 @@ create_stmt
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); }	/* 2 */
 	  SERIAL 					/* 3 */
 		{ pop_msg(); }				/* 4 */
-	  identifier 					/* 5 */
+	  class_name 					/* 5 */
 	  opt_serial_option_list			/* 6 */
 	  opt_comment_spec				/* 7 */
 		{{
@@ -3944,7 +3944,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP TRIGGER identifier_list
+	| DROP TRIGGER class_name_list
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_TRIGGER);
@@ -3988,7 +3988,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP SERIAL opt_if_exists identifier
+	| DROP SERIAL opt_if_exists class_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERIAL);
@@ -5002,9 +5002,13 @@ class_name
 			      }
 			
 			    char *schema_name = NULL;
-			    schema_name = pt_append_string (this_parser, NULL, user_name);
+			    char user_downcase_name[SM_MAX_IDENTIFIER_LENGTH + 2];
+			    memset (user_downcase_name, '\0', sizeof(char) * (SM_MAX_IDENTIFIER_LENGTH + 2));
+			    intl_identifier_lower (user_name, user_downcase_name);
+			    schema_name = pt_append_string (this_parser, NULL, user_downcase_name);
  			    schema_name = pt_append_string (this_parser, schema_name, ".");
  			    schema_name = pt_append_string (this_parser, schema_name, name_node->info.name.original);
+
 			    name_node->info.name.original = schema_name;
 			  }
 			/* End of change for POC */
@@ -6664,7 +6668,7 @@ show_stmt
 	  opt_full
 	  COLUMNS
 	  of_from_in
-	  identifier
+	  class_name
 		{{
 
 			const bool is_full_syntax = ($2 == 1);
@@ -6683,7 +6687,7 @@ show_stmt
 	  opt_full
 	  COLUMNS
 	  of_from_in
-	  identifier
+	  class_name
 	  LIKE
 	  expression_
 		{{
@@ -6705,7 +6709,7 @@ show_stmt
 	  opt_full
 	  COLUMNS
 	  of_from_in
-	  identifier
+	  class_name
 	  WHERE
 	  search_condition
 		{{
@@ -6724,7 +6728,7 @@ show_stmt
 
 		DBG_PRINT}}
 	| of_describe_desc_explain
-	  identifier
+	  class_name
 		{{
 
 			PT_NODE *node = NULL;
@@ -6738,7 +6742,7 @@ show_stmt
 
 		DBG_PRINT}}
 	| of_describe_desc_explain
-	  identifier
+	  class_name
 	  identifier
 		{{
 
@@ -6753,7 +6757,7 @@ show_stmt
 
 		DBG_PRINT}}
 	| of_describe_desc_explain
-	  identifier
+	  class_name
 	  char_string_literal
 		{{
 
@@ -6823,7 +6827,7 @@ show_stmt
 	| SHOW
 	  CREATE
 	  TABLE
-	  identifier
+	  class_name
 		{{
 
 			PT_NODE *node = NULL;
@@ -6836,7 +6840,7 @@ show_stmt
 	| SHOW
 	  CREATE
 	  VIEW
-	  identifier
+	  class_name
 		{{
 
 			PT_NODE *node = NULL;
@@ -6882,7 +6886,7 @@ show_stmt
 	| SHOW
 	  of_index_indexes_keys
 	  of_from_in
-	  identifier
+	  class_name
 		{{
 
 			PT_NODE *node = NULL;
@@ -6990,7 +6994,7 @@ show_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| SHOW show_type_id_dot_id OF identifier DOT identifier
+	| SHOW show_type_id_dot_id OF class_name DOT identifier
 		{{
 			int type = $2;
 			PT_NODE *node, *args = $4;
@@ -8699,7 +8703,7 @@ inherit_resolution_list
 	;
 
 inherit_resolution
-	: opt_class identifier OF identifier AS identifier
+	: opt_class identifier OF class_name AS identifier
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RESOLUTION);
@@ -11233,7 +11237,7 @@ event_type
 	;
 
 event_target
-	: ON_ identifier '(' identifier ')'
+	: ON_ class_name '(' identifier ')'
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_EVENT_TARGET);
@@ -11248,7 +11252,7 @@ event_target
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ON_ identifier
+	| ON_ class_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_EVENT_TARGET);
@@ -14372,7 +14376,7 @@ index_name_keylimit
 	;
 
 index_name
-	: class_name paren_plus
+	: identifier paren_plus
 		{{
 
 			PT_NODE *node = $1;
@@ -14382,7 +14386,7 @@ index_name
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| class_name paren_minus
+	| identifier paren_minus
 		{{
 
 			PT_NODE *node = $1;
@@ -14392,7 +14396,7 @@ index_name
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| class_name
+	| identifier
 		{{
 
 			PT_NODE *node = $1;
