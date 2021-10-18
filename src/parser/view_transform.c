@@ -1393,7 +1393,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
   /* check inst num or orderby_num */
   if (pt_has_inst_in_where_and_select_list (parser, query))
     {
-      return 0;
+      return false;
     }
 
   /* check select list */
