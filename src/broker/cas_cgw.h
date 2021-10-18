@@ -53,10 +53,10 @@
 #include "tz_support.h"
 
 
-#define COL_NAME_LEN               (64)
-#define DEFAULT_VALUE_LEN          (64)
-#define ATTR_NAME_LEN              (64)
-#define CLASS_NAME_LEN             (64)
+#define COL_NAME_LEN               (255)
+#define DEFAULT_VALUE_LEN          (255)
+#define ATTR_NAME_LEN              (255)
+#define CLASS_NAME_LEN             (255)
 
 
 typedef struct t_col_binder T_COL_BINDER;

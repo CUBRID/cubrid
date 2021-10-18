@@ -881,7 +881,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT col_num, T_COL_BINDER ** col_bindi
   SQLSMALLINT col_name_len;
   SQLSMALLINT col_data_type, col_decimal_digits, nullable;
   SQLULEN col_size, bind_col_size;
-  SQLCHAR col_name[64];
+  SQLCHAR col_name[COL_NAME_LEN];
 
   for (col = 1; col <= col_num; col++)
     {
