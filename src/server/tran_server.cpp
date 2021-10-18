@@ -16,12 +16,12 @@
  *
  */
 
-#include "active_tran_server.hpp"
+#include "tran_server.hpp"
 
+#include "communication_server_channel.hpp"
+#include "disk_manager.h"
 #include "error_manager.h"
-#include "log_impl.h"
-#include "log_lsa.hpp"
-#include "log_prior_send.hpp"
+#include "memory_alloc.h"
 #include "server_type.hpp"
 #include "system_parameter.h"
 
@@ -29,27 +29,20 @@
 #include <cstring>
 #include <functional>
 #include <string>
-#include <utility>
 
-active_tran_server ats_Gl;
+static void assert_is_tran_server ();
 
-==== BASE ====
-static void assert_is_active_tran_server ();
-
-active_tran_server::~active_tran_server ()
+tran_server::~tran_server ()
 {
-  if (get_server_type () == SERVER_TYPE_TRANSACTION && is_page_server_connected ())
+  assert (is_transaction_server () || !is_page_server_connected ());
+  if (is_transaction_server () && is_page_server_connected ())
     {
       disconnect_page_server ();
-    }
-  else
-    {
-      assert (m_page_server_conn_vec.empty ());
     }
 }
 
 int
-active_tran_server::parse_server_host (const std::string &host)
+tran_server::parse_server_host (const std::string &host)
 {
   std::string m_ps_hostname;
   auto col_pos = host.find (":");
@@ -87,7 +80,7 @@ active_tran_server::parse_server_host (const std::string &host)
 }
 
 int
-active_tran_server::parse_page_server_hosts_config (std::string &hosts)
+tran_server::parse_page_server_hosts_config (std::string &hosts)
 {
   auto col_pos = hosts.find (":");
 
@@ -121,7 +114,7 @@ active_tran_server::parse_page_server_hosts_config (std::string &hosts)
 }
 
 int
-active_tran_server::boot (const char *db_name)
+tran_server::boot (const char *db_name)
 {
   int error = init_page_server_hosts (db_name);
   if (error != NO_ERROR)
@@ -130,17 +123,20 @@ active_tran_server::boot (const char *db_name)
       return error;
     }
 
-  if (m_uses_remote_storage)
+  if (uses_remote_storage ())
     {
       get_boot_info_from_page_server ();
     }
+
+  on_boot ();
+
   return NO_ERROR;
 }
 
 int
-active_tran_server::init_page_server_hosts (const char *db_name)
+tran_server::init_page_server_hosts (const char *db_name)
 {
-  assert_is_active_tran_server ();
+  assert_is_tran_server ();
   assert (m_page_server_conn_vec.empty ());
   /*
    * Specified behavior:
@@ -158,13 +154,13 @@ active_tran_server::init_page_server_hosts (const char *db_name)
   // read raw config
   //
   std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
-  m_uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
+  bool uses_remote_storage = get_remote_storage_config ();
 
   // check config validity
   //
   if (!hosts.length ())
     {
-      if (m_uses_remote_storage)
+      if (uses_remote_storage)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG, 0);
 	  return ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG;
@@ -172,6 +168,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
       else
 	{
 	  // no page server, local storage
+	  assert (is_active_transaction_server ());
 	  return NO_ERROR;
 	}
     }
@@ -218,7 +215,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
     }
   // validate connections vs. config
   //
-  if (valid_connection_count == 0 && m_uses_remote_storage)
+  if (valid_connection_count == 0 && uses_remote_storage)
     {
       assert (exit_code != NO_ERROR);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_PAGE_SERVER_CONNECTION, 0);
@@ -232,16 +229,16 @@ active_tran_server::init_page_server_hosts (const char *db_name)
       exit_code = NO_ERROR;
     }
   er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
-		m_uses_remote_storage ? "remote" : "local");
+		uses_remote_storage ? "remote" : "local");
   return exit_code;
 }
 
 void
-active_tran_server::get_boot_info_from_page_server ()
+tran_server::get_boot_info_from_page_server ()
 {
   assert (!m_is_boot_info_received);
 
-  push_request (ats_to_ps_request::GET_BOOT_INFO, std::string ()); // empty message
+  push_request (tran_to_page_request::GET_BOOT_INFO, std::string ()); // empty message
 
   std::unique_lock<std::mutex> ulock (m_boot_info_mutex);
   m_boot_info_condvar.wait (ulock, [this] { return m_is_boot_info_received; });
@@ -249,7 +246,7 @@ active_tran_server::get_boot_info_from_page_server ()
 }
 
 int
-active_tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_name)
+tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_name)
 {
   auto ps_conn_error_lambda = [&node] ()
   {
@@ -257,13 +254,13 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
     return ER_NET_PAGESERVER_CONNECTION;
   };
 
-  assert_is_active_tran_server ();
+  assert_is_tran_server ();
 
   // connect to page server
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
   cubcomm::server_channel srv_chn (db_name, SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
 
-  srv_chn.set_channel_name ("ATS_PS_comm");
+  srv_chn.set_channel_name ("TS_PS_comm");
 
   css_error_code comm_error_code = srv_chn.connect (node.get_host ().c_str (), node.get_port (),
 				   CMD_SERVER_SERVER_CONNECT);
@@ -272,7 +269,7 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
       return ps_conn_error_lambda ();
     }
 
-  if (!srv_chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)))
+  if (!srv_chn.send_int (static_cast<int> (m_conn_type)))
     {
       return ps_conn_error_lambda ();
     }
@@ -282,7 +279,7 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
     {
       return ps_conn_error_lambda ();
     }
-  if (returned_code != static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER))
+  if (returned_code != static_cast<int> (m_conn_type))
     {
       return ps_conn_error_lambda ();
     }
@@ -290,37 +287,16 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
   er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
 
-  m_page_server_conn_vec.emplace_back (new page_server_conn_t (std::move (srv_chn),
-  {
-    {
-      ps_to_ats_request::SEND_BOOT_INFO,
-      std::bind (&active_tran_server::receive_boot_info, std::ref (*this), std::placeholders::_1)
-    },
-    {
-      ps_to_ats_request::SEND_SAVED_LSA,
-      std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1)
-    },
-    {
-      ps_to_ats_request::SEND_LOG_PAGE,
-      std::bind (&active_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1)
-    },
-    {
-      ps_to_ats_request::SEND_DATA_PAGE,
-      std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1)
-    },
-  }));
-
-  log_Gl.m_prior_sender.add_sink (std::bind (&active_tran_server::push_request, std::ref (*this),
-				  ats_to_ps_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1));
+  m_page_server_conn_vec.emplace_back (new page_server_conn_t (std::move (srv_chn), get_request_handlers ()));
 
   return NO_ERROR;
 }
 
 void
-active_tran_server::disconnect_page_server ()
+tran_server::disconnect_page_server ()
 {
-  assert_is_active_tran_server ();
-  const int payload = static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER);
+  assert_is_tran_server ();
+  const int payload = static_cast<int> (m_conn_type);
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
   er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
 
@@ -328,117 +304,154 @@ active_tran_server::disconnect_page_server ()
     {
       er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
 		    m_page_server_conn_vec[i]->get_underlying_channel_id ());
-      m_page_server_conn_vec[i]->push (ats_to_ps_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
+      m_page_server_conn_vec[i]->push (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
     }
   m_page_server_conn_vec.clear ();
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
 }
 
 bool
-active_tran_server::is_page_server_connected () const
+tran_server::is_page_server_connected () const
 {
-  assert_is_active_tran_server ();
+  assert_is_tran_server ();
 
   return !m_page_server_conn_vec.empty ();
 }
 
 void
-active_tran_server::init_page_brokers ()
+tran_server::init_page_brokers ()
 {
   m_log_page_broker.reset (new page_broker<log_page_type> ());
   m_data_page_broker.reset (new page_broker<data_page_type> ());
 }
 
 void
-active_tran_server::finalize_page_brokers ()
+tran_server::finalize_page_brokers ()
 {
   m_log_page_broker.reset ();
   m_data_page_broker.reset ();
 }
 
 page_broker<log_page_type> &
-active_tran_server::get_log_page_broker ()
+tran_server::get_log_page_broker ()
 {
   assert (m_log_page_broker);
   return *m_log_page_broker;
 }
 
 page_broker<data_page_type> &
-active_tran_server::get_data_page_broker ()
+tran_server::get_data_page_broker ()
 {
   assert (m_data_page_broker);
   return *m_data_page_broker;
 }
 
-==== BASE ====
 bool
-active_tran_server::uses_remote_storage () const
+tran_server::uses_remote_storage () const
 {
-  return m_uses_remote_storage;
-}
-
-bool
-active_tran_server::get_remote_storage_config ()
-{
-  m_uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
-  return m_uses_remote_storage;
+  return false;
 }
 
 void
-active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
+tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
+{
+  if (!is_page_server_connected ())
+    {
+      return;
+    }
+
+  m_page_server_conn_vec[0]->push (reqid, std::move (payload));
+}
+
+void
+tran_server::receive_log_page (cubpacking::unpacker &upk)
 {
   std::string message;
-  log_lsa saved_lsa;
-
   upk.unpack_string (message);
-  assert (sizeof (log_lsa) == message.size ());
-  std::memcpy (&saved_lsa, message.c_str (), sizeof (log_lsa));
 
-  if (log_Gl.m_max_ps_flushed_lsa < saved_lsa)
+  int error_code;
+  std::memcpy (&error_code, message.c_str (), sizeof (error_code));
+
+  if (error_code == NO_ERROR)
     {
-      log_Gl.update_max_ps_flushed_lsa (saved_lsa);
+      auto shared_log_page = std::make_shared<log_page_owner> (message.c_str () + sizeof (error_code));
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
+			 shared_log_page->get_id ());
+	}
+      m_log_page_broker->set_page (shared_log_page->get_id (), std::move (shared_log_page));
     }
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+  else
     {
-      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Error code: %d\n", error_code);
+	}
     }
 }
 
 void
-active_tran_server::on_boot ()
+tran_server::receive_data_page (cubpacking::unpacker &upk)
 {
-  assert (is_active_transaction_server ());
+  std::string message;
+  upk.unpack_string (message);
 
-  cublog::prior_sender::sink_hook sink =
-	  std::bind (&active_tran_server::push_request, std::ref (*this), tran_to_page_request::SEND_LOG_PRIOR_LIST,
-		     std::placeholders::_1);
+  // The message is either an error code or the content of the data page
+  if (message.size () == sizeof (int))
+    {
+      // We have an error.
+      int error_code;
+      std::memcpy (&error_code, message.c_str (), sizeof (error_code));
 
-  log_Gl.m_prior_sender.add_sink (sink);
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d \n", error_code);
+	}
+    }
+  else
+    {
+      assert (db_io_page_size () >= 0 && message.size () == static_cast<std::size_t> (db_io_page_size ()));
+      // We have a page.
+      auto shared_data_page = std::make_shared<std::string> (std::move (message));
+
+      auto io_page = reinterpret_cast<const FILEIO_PAGE *> (shared_data_page->c_str ());
+      VPID id;
+      id.pageid = io_page->prv.pageid;
+      id.volid = io_page->prv.volid;
+
+      m_data_page_broker->set_page (id, std::move (shared_data_page));
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, LSA: %lld|%d \n",
+			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
+	}
+    }
 }
 
-active_tran_server::request_handlers_map_t
-active_tran_server::get_request_handlers ()
+void
+tran_server::receive_boot_info (cubpacking::unpacker &upk)
 {
-  using map_value_t = request_handlers_map_t::value_type;
+  std::string message;
+  upk.unpack_string (message);
 
-  map_value_t boot_info_handler_value =
-	  std::make_pair (page_to_tran_request::SEND_BOOT_INFO,
-			  std::bind (&active_tran_server::receive_boot_info, std::ref (*this), std::placeholders::_1));
-  map_value_t saved_lsa_handler_value =
-	  std::make_pair (page_to_tran_request::SEND_SAVED_LSA,
-			  std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1));
-  map_value_t log_page_handler_value =
-	  std::make_pair (page_to_tran_request::SEND_LOG_PAGE,
-			  std::bind (&active_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1));
-  map_value_t data_page_handler_value =
-	  std::make_pair (page_to_tran_request::SEND_DATA_PAGE,
-			  std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1));
+  assert (message.size () == sizeof (DKNVOLS));
+  DKNVOLS nvols_perm;
+  std::memcpy (&nvols_perm, message.c_str (), sizeof (nvols_perm));
 
-  std::map<page_to_tran_request, std::function<void (cubpacking::unpacker &upk)>> handlers_map;
+  disk_set_page_server_perm_volume_count (nvols_perm);
 
-  handlers_map.insert ({ boot_info_handler_value, saved_lsa_handler_value, log_page_handler_value,
-			 data_page_handler_value });
+  {
+    std::unique_lock<std::mutex> ulock (m_boot_info_mutex);
+    m_is_boot_info_received = true;
+  }
+  m_boot_info_condvar.notify_one ();
+}
 
-  return handlers_map;
+void
+assert_is_tran_server ()
+{
+  assert (get_server_type () == SERVER_TYPE::SERVER_TYPE_TRANSACTION);
 }

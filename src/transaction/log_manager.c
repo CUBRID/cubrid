@@ -9000,6 +9000,14 @@ log_rv_dump_hexa (FILE * fp, int length, void *data)
   log_hexa_dump (fp, length, data);
 }
 
+int
+log_rv_nop (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
+{
+  // No actual change, but page still has to be marked as dirty because LSA will be set regardless.
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
 /*
  * log_rv_outside_noop_redo - NO-OP of an outside REDO
  *
