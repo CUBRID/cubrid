@@ -316,7 +316,6 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 
 static int log_create_metalog_file ();
-static int log_create_metalog_file_with_arg (const cublog::meta & metalog);
 static int log_read_metalog_from_file ();
 static int log_read_metalog_from_file_with_create ();
 
@@ -10603,13 +10602,6 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 int
 log_create_metalog_file ()
 {
-  return log_create_metalog_file_with_arg (log_Gl.m_metainfo);
-}
-
-// Create meta log volume with specific argument
-int
-log_create_metalog_file_with_arg (const cublog::meta & metalog)
-{
   FILE *fp = fopen (log_Name_metainfo, "w");
   if (!fp)
     {
@@ -10618,7 +10610,7 @@ log_create_metalog_file_with_arg (const cublog::meta & metalog)
       return ER_BO_CANNOT_CREATE_VOL;
     }
 
-  metalog.flush_to_file (fp);
+  log_Gl.m_metainfo.flush_to_file (fp);
   fclose (fp);
 
   return NO_ERROR;
@@ -10630,23 +10622,22 @@ int
 log_read_metalog_from_file_with_create ()
 {
   int err_code = NO_ERROR;
-  struct stat sb;
 
-  if (stat (log_Name_metainfo, &sb) != 0)
+  struct stat dummy_stat_buf;
+  if (stat (log_Name_metainfo, &dummy_stat_buf) != 0)
     {
       // should not be called in a a non booting-up scenario
-      assert (log_Gl.m_metainfo.get_checkpoint_count () == 0);
-      cublog::meta clean_metalog;
-      // mark a clean shutdown to avoid recovery afterwards when file is loaded back into the global variable
-      clean_metalog.set_clean_shutdown (true);
-      err_code = log_create_metalog_file_with_arg (clean_metalog);
-      if (err_code != NO_ERROR)
-	{
-	  return err_code;
-	}
+      assert (!log_Gl.m_metainfo.is_loaded_from_file ());
+      // empty/idle metalog; no subsequent recovery is needed; make sure that does not happen
+      log_Gl.m_metainfo.set_clean_shutdown (true);
+
+      err_code = log_create_metalog_file ();
+    }
+  else
+    {
+      err_code = log_read_metalog_from_file ();
     }
 
-  err_code = log_read_metalog_from_file ();
   return err_code;
 }
 
