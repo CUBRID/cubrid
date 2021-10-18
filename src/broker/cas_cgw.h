@@ -58,6 +58,7 @@
 #define ATTR_NAME_LEN              (255)
 #define CLASS_NAME_LEN             (255)
 
+#define DECIMAL_DIGIT_MAX_LEN      (20)  /* 9223372036854775807 (7FFF FFFF FFFF FFFF)*/
 
 typedef struct t_col_binder T_COL_BINDER;
 struct t_col_binder

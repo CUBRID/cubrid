@@ -43,7 +43,7 @@ T_CGW_HANDLE *local_odbc_handle = NULL;
 int is_database_connected = -1;
 
 static void cgw_error_msg (SQLHANDLE hHandle, SQLSMALLINT hType, RETCODE retcode);
-static int make_str_to_numeric (SQL_NUMERIC_STRUCT * numeric, char *string);
+static int numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string);
 static int hex_to_numeric_val (SQL_NUMERIC_STRUCT * numeric, char *hexstr);
 static int hex_to_char (char c, unsigned char *result);
 static int cgw_get_stmt_Info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type);
@@ -1383,7 +1383,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	    strcpy (num_str, &tmp[0]);
 	  }
 
-	err_code = make_str_to_numeric (&value_list->ns_val, num_str);
+	err_code = numeric_string_adjust (&value_list->ns_val, num_str);
 	if (err_code < 0)
 	  {
 	    goto ODBC_ERROR;
@@ -1869,11 +1869,11 @@ ODBC_ERROR:
 }
 
 static int
-make_str_to_numeric (SQL_NUMERIC_STRUCT * numeric, char *string)
+numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string)
 {
   char *pt, *pt2;
-  char hexstr[17] = { 0 };
-  char num_val[21] = { 0 };
+  char hexstr[SQL_MAX_NUMERIC_LEN + 1] = { 0 };
+  char num_val[DECIMAL_DIGIT_MAX_LEN + 1] = { 0 };
   short i;
   int num_add_zero;
   UINT64 number = 0;
