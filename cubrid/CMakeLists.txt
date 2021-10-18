@@ -360,11 +360,13 @@ set(TRANSACTION_HEADERS
 set(SERVER_SOURCES
   ${SERVER_DIR}/active_tran_server.cpp
   ${SERVER_DIR}/page_server.cpp
+  ${SERVER_DIR}/tran_server.cpp
   )
 set(SERVER_HEADERS
   ${SERVER_DIR}/active_tran_server.hpp
   ${SERVER_DIR}/page_server.hpp
   ${SERVER_DIR}/tran_page_requests.hpp
+  ${SERVER_DIR}/tran_server.hpp
   )
 
 set(STORAGE_SOURCES

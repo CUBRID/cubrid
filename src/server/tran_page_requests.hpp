@@ -21,11 +21,16 @@
 
 enum class tran_to_page_request
 {
+  // Common
   GET_BOOT_INFO,
-  SEND_LOG_PRIOR_LIST,
   SEND_LOG_PAGE_FETCH,
   SEND_DATA_PAGE_FETCH,
-  SEND_DISCONNECT_MSG
+  SEND_DISCONNECT_MSG,
+
+  // Active only
+  SEND_LOG_PRIOR_LIST,
+
+  // Passive only
 };
 
 enum class page_to_tran_request

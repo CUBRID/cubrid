@@ -19,80 +19,26 @@
 #ifndef _ACTIVE_TRAN_SERVER_HPP_
 #define _ACTIVE_TRAN_SERVER_HPP_
 
-#include "communication_node.hpp"
-#include "page_broker.hpp"
-#include "request_sync_client_server.hpp"
-#include "server_type.hpp"
-#include "tran_page_requests.hpp"
+#include "tran_server.hpp"
 
-#include <memory>
-#include <string>
-#include <vector>
-
-// forward declaration
-namespace cubpacking
-{
-  class unpacker;
-}
-
-class active_tran_server
+class active_tran_server : public tran_server
 {
   public:
-    active_tran_server () = default;
-    active_tran_server (const active_tran_server &) = delete;
-    active_tran_server (active_tran_server &&) = delete;
+    active_tran_server () : tran_server (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)
+    {
+    }
 
-    ~active_tran_server ();
-
-    active_tran_server &operator = (const active_tran_server &) = delete;
-    active_tran_server &operator = (active_tran_server &&) = delete;
-
-    int boot (const char *db_name);
-
-    void disconnect_page_server ();
-    bool is_page_server_connected () const;
-
-    void init_page_brokers ();
-    void finalize_page_brokers ();
-
-    page_broker<log_page_type> &get_log_page_broker ();
-    page_broker<data_page_type> &get_data_page_broker ();
-
-    bool uses_remote_storage () const;
-
-    void push_request (tran_to_page_request reqid, std::string &&payload);
+    bool uses_remote_storage () const final override;
 
   private:
-    using page_server_conn_t =
-	    cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
+    void on_boot () final override;
+    bool get_remote_storage_config () final override;
 
-  private:
-    int connect_to_page_server (const cubcomm::node &node, const char *db_name);
+    request_handlers_map_t get_request_handlers () final override;
 
-    int init_page_server_hosts (const char *db_name);
-    void get_boot_info_from_page_server ();
-
-    int parse_server_host (const std::string &host);
-    int parse_page_server_hosts_config (std::string &hosts);
-    void receive_boot_info (cubpacking::unpacker &upk);
     void receive_saved_lsa (cubpacking::unpacker &upk);
-    void receive_log_page (cubpacking::unpacker &upk);
-    void receive_data_page (cubpacking::unpacker &upk);
 
   private:
-    // communication with page server
-    std::string m_ps_hostname;
-    int m_ps_port = -1;
-
-    std::vector<std::unique_ptr<page_server_conn_t>> m_page_server_conn_vec;
-
-    std::unique_ptr<page_broker<log_page_type>> m_log_page_broker;
-    std::unique_ptr<page_broker<data_page_type>> m_data_page_broker;
-    std::vector<cubcomm::node> m_connection_list;
-
-    std::mutex m_boot_info_mutex;
-    std::condition_variable m_boot_info_condvar;
-    bool m_is_boot_info_received = false;
 
     bool m_uses_remote_storage = false;
 };
