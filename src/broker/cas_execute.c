@@ -5797,7 +5797,6 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   int net_buf_size;
   char fetch_end_flag = 0;
   char sensitive_flag = fetch_flag & CCI_FETCH_SENSITIVE;
-  DB_OBJECT *db_obj;
   SQLLEN row_count;
   SQLSMALLINT col_count;
   T_COL_BINDER *pFirstBinding;
@@ -5920,8 +5919,6 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
 
   srv_handle->cursor_pos = cursor_pos;
-
-  db_obj = NULL;
 
   cgw_cleanup_binder (pFirstBinding);
 
@@ -6123,7 +6120,6 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 
   srv_handle->cursor_pos = cursor_pos;
 
-  db_obj = NULL;
   return 0;
 }
 
