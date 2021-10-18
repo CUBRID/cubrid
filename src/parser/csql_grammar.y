@@ -2772,7 +2772,7 @@ create_stmt
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); }	/* 2 */
 	  SERIAL 					/* 3 */
 		{ pop_msg(); }				/* 4 */
-	  class_name 					/* 5 */
+	  identifier  					/* 5 */
 	  opt_serial_option_list			/* 6 */
 	  opt_comment_spec				/* 7 */
 		{{
@@ -3988,7 +3988,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP SERIAL opt_if_exists class_name
+	| DROP SERIAL opt_if_exists identifier
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERIAL);
