@@ -1016,6 +1016,8 @@ static unsigned int prm_bt_index_scan_oid_order_flag = 0;
 int PRM_BOSR_MAXTMP_PAGES = INT_MIN;
 static int prm_bosr_maxtmp_pages = -1;	/* Infinite */
 static unsigned int prm_bosr_maxtmp_flag = 0;
+static unsigned int prm_bosr_maxtmp_lower = 64 * ((int) (sizeof(UINT64) * CHAR_BIT)); /* DISK_MIN_VOLUME_SECTS * DISK_SECTOR_NAPGES */
+static unsigned int prm_bosr_maxtmp_upper = SECTID_MAX;
 
 int PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL = 0;
 static unsigned int prm_lk_timeout_message_dump_level_flag = 0;
@@ -2627,13 +2629,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_BOSR_MAXTMP_PAGES,
-   PRM_NAME_BOSR_MAXTMP_PAGES,	/* todo: change me */
+   PRM_NAME_BOSR_MAXTMP_PAGES,	
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    &prm_bosr_maxtmp_flag,
    (void *) &prm_bosr_maxtmp_pages,
    (void *) &PRM_BOSR_MAXTMP_PAGES,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_bosr_maxtmp_upper, (void *) &prm_bosr_maxtmp_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

@@ -29,6 +29,7 @@
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
+#include <math.h>
 
 #if !defined (WINDOWS)
 #include <sys/types.h>
@@ -1694,10 +1695,18 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   assert (disk_Cache->owner_extend == thread_get_entry_index (thread_p));
 
   /* expand */
-  /* what is the desired remaining free after expand? */
-  target_free = MAX ((DKNSECTS) (total * 0.01), DISK_MIN_VOLUME_SECTS);
-  /* what is the desired expansion? do not expand less than intention. */
-  nsect_extend = MAX (target_free - free, 0) + intention;
+  if (voltype == DB_TEMPORARY_VOLTYPE)
+    {
+      nsect_extend = intention;
+    }
+  else
+    {
+      /* what is the desired remaining free after expand? */
+      target_free = MAX ((DKNSECTS) (total * 0.01), DISK_MIN_VOLUME_SECTS);
+      /* what is the desired expansion? do not expand less than intention. */
+      nsect_extend = MAX (target_free - free, 0) + intention;
+    }
+
   if (nsect_extend <= 0)
     {
       /* no expand needed */
@@ -4410,28 +4419,37 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       /* if we want to allocate temporary files, we have two options: preallocated permanent volumes (but with the
        * purpose of temporary files) or temporary volumes. try first the permanent volumes */
 
-      extend_info = &disk_Cache->temp_purpose_info.extend_info;
-
-      if (disk_Cache->temp_purpose_info.nsect_perm_free > 0)
+      if (disk_Cache->temp_purpose_info.nsect_perm_free >= context->n_cache_reserve_remaining)
 	{
 	  disk_reserve_from_cache_vols (DB_PERMANENT_VOLTYPE, context);
-	}
-      if (context->n_cache_reserve_remaining <= 0)
-	{
-	  /* found enough sectors */
-	  assert (context->n_cache_reserve_remaining == 0);
-	  disk_cache_unlock_reserve_for_purpose (context->purpose);
-	  return NO_ERROR;
+          if (context->n_cache_reserve_remaining <= 0)
+	    {
+	      /* found enough sectors */
+	      assert (context->n_cache_reserve_remaining == 0);
+	      disk_cache_unlock_reserve_for_purpose (context->purpose);
+	      return NO_ERROR;
+	    }
 	}
 
       /* reserve sectors from temporary volumes */
       extend_info = &disk_Cache->temp_purpose_info.extend_info;
-      if (extend_info->nsect_total - extend_info->nsect_free + context->n_cache_reserve_remaining
-	  >= disk_Temp_max_sects)
+      if (extend_info->nsect_free >= context->n_cache_reserve_remaining)
+	{
+	  disk_reserve_from_cache_vols (extend_info->voltype, context);
+          if (context->n_cache_reserve_remaining <= 0)
+	    {
+	      /* found enough sectors */
+	      assert (context->n_cache_reserve_remaining == 0);
+	      disk_cache_unlock_reserve_for_purpose (context->purpose);
+	      return NO_ERROR;
+	    }
+         }
+
+      if (extend_info->nsect_total + context->n_cache_reserve_remaining >= disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
 	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1, disk_Temp_max_sects);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1, disk_Temp_max_sects * DISK_SECTOR_NPAGES);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);
 	  return ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED;
 	}
@@ -4941,7 +4959,8 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
     }
   else
     {
-      disk_Temp_max_sects = disk_Temp_max_sects / DISK_SECTOR_NPAGES;
+      disk_Temp_max_sects = ceil (disk_Temp_max_sects / (double) DISK_SECTOR_NPAGES);
+      disk_Temp_max_sects = ceil (disk_Temp_max_sects / (double) DISK_MIN_VOLUME_SECTS) * DISK_MIN_VOLUME_SECTS;
     }
 
   disk_Logging = prm_get_bool_value (PRM_ID_DISK_LOGGING);
