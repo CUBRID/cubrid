@@ -104,7 +104,7 @@ cgw_database_connect (const char *dsn, const char *connect_url)
   if (local_odbc_handle == NULL)
     {
       err_code = cgw_init_odbc_handle ();
-      if (err_code != NULL)
+      if (err_code < 0)
 	{
 	  goto ODBC_ERROR;
 	}
