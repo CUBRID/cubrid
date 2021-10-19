@@ -508,15 +508,15 @@ namespace cubmethod
     packing_unpacker unpacker;
     unpacker.set_buffer (blk.ptr, blk.dim);
 
-    OID oid = OID_INITIALIZER;
-    unpacker.unpack_oid (oid);
+    int code;
+    oid_get_request request;
 
-    packing_packer packer;
-    cubmem::extensible_block eb;
+    unpacker.unpack_int (code);
+    request.unpack (unpacker);
 
     INT64 id = (INT64) this;
     cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
-    error = method_send_data_to_client (&thread_ref, oid);
+    error = method_send_data_to_client (&thread_ref, header, code, request);
     if (error != NO_ERROR)
       {
 	return ER_FAILED;

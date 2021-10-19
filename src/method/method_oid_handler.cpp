@@ -35,11 +35,63 @@ namespace cubmethod
     //
   }
 
+//////////////////////////////////////////////////////////////////////////
+// OID
+//////////////////////////////////////////////////////////////////////////
+
+  int
+  oid_handler::check_object (DB_OBJECT *obj)
+  {
+    int error = NO_ERROR;
+
+    if (obj == NULL)
+      {
+	// TODO : error handling
+      }
+
+    er_clear ();
+    error = db_is_instance (obj);
+    if (error < 0)
+      {
+	return error;
+      }
+    else if (error > 0)
+      {
+	return 0;
+      }
+    else
+      {
+	error = db_error_code ();
+	if (error < 0)
+	  {
+	    return error;
+	  }
+
+	// TODO : error handling
+	// return CAS_ER_OBJECT;
+      }
+
+    return error;
+  }
+
   oid_get_info
-  oid_handler::oid_get (DB_OBJECT *obj, std::vector<std::string> &attr_names)
+  oid_handler::oid_get (OID &oid, std::vector<std::string> &attr_names)
   {
     int error = NO_ERROR;
     oid_get_info info;
+
+    DB_OBJECT *obj = db_object (&oid);
+    if (obj == NULL)
+      {
+	// TODO: error handling
+	// CAS_ER_OBJECT
+      }
+
+    error = check_object (obj);
+    if (error < 0)
+      {
+	// TODO : error handling
+      }
 
     // set attribute names
     if (attr_names.empty())
@@ -52,7 +104,6 @@ namespace cubmethod
 	    attr_names.emplace_back (name);
 	  }
       }
-    info.attr_names = std::move (attr_names);
 
     // set attribute column info
     for (std::string &attr_name : attr_names)
@@ -116,32 +167,47 @@ namespace cubmethod
       }
 
     // set class name
-    std::string &class_name = info.class_name;
     const char *cname = db_get_class_name (obj);
     if (cname != NULL)
       {
-	class_name.assign (cname);
+	info.class_name.assign (cname);
       }
+
+    // set attr names
+    info.attr_names = std::move (attr_names);
 
     // set OID data
     DB_VALUE val;
-    for (std::string &attr_name : attr_names)
+    for (std::string &attr_name : info.attr_names)
       {
 	if (db_get (obj, attr_name.c_str (), &val) < 0)
 	  {
 	    db_make_null (&val);
 	  }
 	info.db_values.push_back (val);
-	db_value_clear (&val);
       }
 
     return info;
   }
 
   int
-  oid_handler::oid_put (DB_OBJECT *obj, std::vector<std::string> &attr_names, std::vector<DB_VALUE> &attr_values)
+  oid_handler::oid_put (OID &oid, std::vector<std::string> &attr_names, std::vector<DB_VALUE> &attr_values)
   {
     int error = NO_ERROR;
+
+    DB_OBJECT *obj = db_object (&oid);
+    if (obj == NULL)
+      {
+	// TODO: error handling
+	// CAS_ER_OBJECT
+      }
+
+    error = check_object (obj);
+    if (error < 0)
+      {
+	// TODO : error handling
+      }
+
     DB_OTMPL *otmpl = dbt_edit_object (obj);
     if (otmpl == NULL)
       {
@@ -155,7 +221,7 @@ namespace cubmethod
     DB_VALUE *attr_val = NULL;
     int i = 0;
 
-    for (int i = 0; i < attr_names.size(); i++)
+    for (int i = 0; i < (int) attr_names.size(); i++)
       {
 	const char *attr_name = attr_names[i].c_str ();
 	char attr_type = get_attr_type (obj, attr_name);
@@ -182,6 +248,330 @@ namespace cubmethod
 
     return error;
   }
+
+  int
+  oid_handler::oid_cmd (OID &oid, int cmd, std::string &res)
+  {
+    int error = NO_ERROR;
+
+    DB_OBJECT *obj = db_object (&oid);
+    if (obj == NULL)
+      {
+	// TODO: error handling
+	// CAS_ER_OBJECT
+      }
+
+    if (cmd != OID_IS_INSTANCE)
+      {
+	error = check_object (obj);
+	if (error < 0)
+	  {
+	    // TODO : error handling
+	    return error;
+	  }
+      }
+
+    if (cmd == OID_DROP)
+      {
+	error = db_drop (obj);
+      }
+    else if (cmd == OID_IS_INSTANCE)
+      {
+	if (obj == NULL)
+	  {
+	    error = 0;
+	  }
+	else
+	  {
+	    er_clear();
+	    if (db_is_instance (obj) > 0)
+	      {
+		error = 1;
+	      }
+	    else
+	      {
+		error = db_error_code ();
+		if (error == ER_HEAP_UNKNOWN_OBJECT)
+		  {
+		    error = 0;
+		  }
+	      }
+	  }
+      }
+    else if (cmd == OID_LOCK_READ)
+      {
+	if (obj == NULL)
+	  {
+	    // TODO : error handling
+	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	  }
+	error = db_lock_read (obj);
+      }
+    else if (cmd == OID_LOCK_WRITE)
+      {
+	if (obj == NULL)
+	  {
+	    // TODO : error handling
+	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	  }
+	error = db_lock_write (obj);
+      }
+    else if (cmd == OID_CLASS_NAME)
+      {
+	if (obj == NULL)
+	  {
+	    // TODO : error handling
+	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	  }
+	char *class_name = (char *) db_get_class_name (obj);
+	if (class_name == NULL)
+	  {
+	    error = db_error_code ();
+	    class_name = (char *) "";
+	  }
+	else
+	  {
+	    error = NO_ERROR;
+	  }
+	res.assign (class_name);
+      }
+    else
+      {
+	// TODO : error handling
+	// ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+      }
+
+    return error;
+  }
+
+//////////////////////////////////////////////////////////////////////////
+// Collection
+//////////////////////////////////////////////////////////////////////////
+
+  int
+  oid_handler::collection_cmd (OID &oid, int cmd, int seq_index, std::string &attr_name, DB_VALUE &elem_value)
+  {
+    int error = NO_ERROR;
+
+    DB_OBJECT *obj = db_object (&oid);
+    if (obj == NULL)
+      {
+	// TODO: error handling
+	// CAS_ER_OBJECT
+      }
+
+    error = check_object (obj);
+    if (error < 0)
+      {
+	// TODO : error handling
+      }
+
+    error = NO_ERROR;
+
+    const char *name = attr_name.c_str ();
+    DB_ATTRIBUTE *attr = db_get_attribute (obj, name);
+    if (attr == NULL)
+      {
+	// TODO: error handling
+	error = db_error_code ();
+      }
+
+    DB_DOMAIN *domain = db_attribute_domain (attr);
+    DB_TYPE type = TP_DOMAIN_TYPE (domain);
+    if (type != DB_TYPE_SET && type != DB_TYPE_MULTISET && type != DB_TYPE_SEQUENCE)
+      {
+	// TODO: error handling
+	// ERROR_INFO_SET (CAS_ER_NOT_COLLECTION, CAS_ERROR_INDICATOR);
+	return ER_FAILED;
+      }
+
+    int dummy1;
+    short dummy2;
+    char dummy3;
+    DB_TYPE elem_type = (DB_TYPE) get_set_domain (domain, dummy1, dummy2, dummy3);
+    DB_DOMAIN *elem_domain = db_domain_set (domain);
+    if (elem_type <= 0)
+      {
+	// TODO: error handling
+	// ERROR_INFO_SET (CAS_ER_COLLECTION_DOMAIN, CAS_ERROR_INDICATOR);
+	return ER_FAILED;
+      }
+
+    DB_VALUE val;
+    error = db_get (obj, name, &val);
+    if (error < 0)
+      {
+	// TODO: error handling
+	return error;
+      }
+
+    DB_COLLECTION *collection = NULL;
+    if (db_value_type (&val) != DB_TYPE_NULL)
+      {
+	collection = db_get_collection (&val);
+      }
+
+    error = NO_ERROR; // reset error
+
+    switch (cmd)
+      {
+      case COL_GET:
+	/* TODO: not implemented at Server-Side JDBC */
+	error = ER_FAILED;
+	break;
+      case COL_SIZE:
+	error = col_size (collection); // error is col_size
+	break;
+      case COL_SET_DROP:
+	error = col_set_drop (collection, &elem_value);
+	break;
+      case COL_SET_ADD:
+	error = col_set_add (collection, &elem_value);
+	break;
+      case COL_SEQ_DROP:
+	error = col_seq_drop (collection, seq_index);
+	break;
+      case COL_SEQ_INSERT:
+	error = col_seq_insert (collection, seq_index, &elem_value);
+	break;
+      case COL_SEQ_PUT:
+	error = col_seq_put (collection, seq_index, &elem_value);
+	break;
+      default:
+	assert (false); // invalid command
+	error = ER_FAILED;
+	break;
+      }
+
+    /* db_put */
+    switch (cmd)
+      {
+      case COL_SET_DROP:
+      case COL_SET_ADD:
+      case COL_SEQ_DROP:
+      case COL_SEQ_INSERT:
+      case COL_SEQ_PUT:
+	if (error >= 0)
+	  {
+	    db_put (obj, name, &val);
+	  }
+	break;
+      default:
+	assert (false); // invalid command
+	error = ER_FAILED;
+	break;
+      }
+
+    db_col_free (collection);
+    db_value_clear (&val);
+
+    return error;
+  }
+
+
+  int
+  oid_handler::col_set_drop (DB_COLLECTION *col, DB_VALUE *ele_val)
+  {
+    if (col != NULL)
+      {
+	int error = db_set_drop (col, ele_val);
+	if (error < 0)
+	  {
+	    // TODO: error handling
+	    return ER_FAILED;
+	  }
+      }
+    return NO_ERROR;
+  }
+
+  int
+  oid_handler::col_set_add (DB_COLLECTION *col, DB_VALUE *ele_val)
+  {
+    int error = NO_ERROR;
+
+    if (col != NULL)
+      {
+	error = db_set_add (col, ele_val);
+	if (error < 0)
+	  {
+	    // TODO: error handling
+	    return ER_FAILED;
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
+  int
+  oid_handler::col_seq_drop (DB_COLLECTION *col, int seq_index)
+  {
+    if (col != NULL)
+      {
+	int error = db_seq_drop (col, seq_index - 1);
+	if (error < 0)
+	  {
+	    // TODO: error handling
+	    return ER_FAILED;
+	  }
+      }
+    return NO_ERROR;
+  }
+
+  int
+  oid_handler::col_seq_insert (DB_COLLECTION *col, int seq_index, DB_VALUE *ele_val)
+  {
+    int error = NO_ERROR;
+
+    if (col != NULL)
+      {
+	error = db_seq_insert (col, seq_index - 1, ele_val);
+	if (error < 0)
+	  {
+	    // TODO: error handling
+	    return ER_FAILED;
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
+  int
+  oid_handler::col_seq_put (DB_COLLECTION *col, int seq_index, DB_VALUE *ele_val)
+  {
+    int error = NO_ERROR;
+
+    if (col != NULL)
+      {
+	error = db_seq_put (col, seq_index - 1, ele_val);
+	if (error < 0)
+	  {
+	    // TODO: error handling
+	    return ER_FAILED;
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
+  int
+  oid_handler::col_size (DB_COLLECTION *col)
+  {
+    int col_size;
+    if (col == NULL)
+      {
+	col_size = -1;
+      }
+    else
+      {
+	col_size = db_col_size (col);
+      }
+
+    return col_size;
+  }
+
+//////////////////////////////////////////////////////////////////////////
+// MISC
+//////////////////////////////////////////////////////////////////////////
 
   char
   oid_handler::get_attr_type (DB_OBJECT *obj, const char *attr_name)

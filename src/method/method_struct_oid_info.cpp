@@ -29,6 +29,64 @@ namespace cubmethod
 // OID GET
 //////////////////////////////////////////////////////////////////////////
 
+  oid_get_request::oid_get_request ()
+  {
+    oid = OID_INITIALIZER;
+  }
+
+  void
+  oid_get_request::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_oid (oid);
+    serializator.pack_int (attr_names.size());
+
+    for (int i = 0; i < (int) attr_names.size(); i++)
+      {
+	serializator.pack_string (attr_names[i]);
+      }
+  }
+
+  void
+  oid_get_request::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_oid (oid);
+
+    int num_attr_name;
+    deserializator.unpack_int (num_attr_name);
+    if (num_attr_name > 0)
+      {
+	attr_names.resize (num_attr_name);
+	for (int i = 0; i < (int) num_attr_name; i++)
+	  {
+	    deserializator.unpack_string (attr_names[i]);
+	  }
+      }
+  }
+
+  size_t
+  oid_get_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_oid_size (start_offset);
+    size += serializator.get_packed_int_size (size); // attr_names.size()
+    if (attr_names.size() > 0)
+      {
+	for (int i = 0; i < (int) attr_names.size(); i++)
+	  {
+	    size += serializator.get_packed_string_size (attr_names[i], size);
+	  }
+      }
+
+    return size;
+  }
+  
+  oid_get_info::~oid_get_info ()
+  {
+    for (int i = 0; i < (int) db_values.size(); i++)
+      {
+	db_value_clear (&db_values[i]);
+      }
+  }
+
   void
   oid_get_info::pack (cubpacking::packer &serializator) const
   {
@@ -39,16 +97,18 @@ namespace cubmethod
 	serializator.pack_string (attr_names[i]);
       }
 
+    serializator.pack_int (db_values.size());
+    dbvalue_java sp_val;
+    for (int i = 0; i < (int) db_values.size(); i++)
+      {
+	sp_val.value = (DB_VALUE *) &db_values[i];
+	sp_val.pack (serializator);
+      }
+
     serializator.pack_int (column_infos.size());
     for (int i = 0; i < (int) column_infos.size(); i++)
       {
 	column_infos[i].pack (serializator);
-      }
-
-    serializator.pack_int (db_values.size());
-    for (int i = 0; i < (int) db_values.size(); i++)
-      {
-	serializator.pack_db_value (db_values[i]);
       }
   }
 
@@ -68,6 +128,19 @@ namespace cubmethod
 	  }
       }
 
+    int num_db_values;
+    deserializator.unpack_int (num_db_values);
+    if (num_db_values > 0)
+      {
+	db_values.resize (num_db_values);
+	dbvalue_java sp_val;
+	for (int i = 0; i < (int) num_db_values; i++)
+	  {
+	    sp_val.value = &db_values[i];
+	    sp_val.unpack (deserializator);
+	  }
+      }
+
     int num_column_info;
     deserializator.unpack_int (num_column_info);
     if (num_column_info > 0)
@@ -76,17 +149,6 @@ namespace cubmethod
 	for (int i = 0; i < (int) num_column_info; i++)
 	  {
 	    column_infos[i].unpack (deserializator);
-	  }
-      }
-
-    int num_db_values;
-    deserializator.unpack_int (num_db_values);
-    if (num_db_values > 0)
-      {
-	db_values.resize (num_db_values);
-	for (int i = 0; i < (int) num_db_values; i++)
-	  {
-	    deserializator.unpack_db_value (db_values[i]);
 	  }
       }
   }
@@ -105,19 +167,24 @@ namespace cubmethod
 	  }
       }
 
-    size += serializator.get_packed_int_size (size); // num_columns
+    size += serializator.get_packed_int_size (size); // db_values.size()
+    if (db_values.size() > 0)
+      {
+	dbvalue_java sp_val;
+	for (int i = 0; i < (int) db_values.size(); i++)
+	  {
+	    sp_val.value = (DB_VALUE *) &db_values[i];
+	    size += sp_val.get_packed_size (serializator, size);
+	  }
+      }
+
+    size += serializator.get_packed_int_size (size); // column_infos.size();
     if (column_infos.size() > 0)
       {
 	for (int i = 0; i < (int) column_infos.size(); i++)
 	  {
 	    size += column_infos[i].get_packed_size (serializator, size);
 	  }
-      }
-
-    size += serializator.get_packed_int_size (size); // num_values
-    for (int i = 0; i < (int) db_values.size(); i++)
-      {
-	size += serializator.get_packed_db_value_size (db_values[i], size);
       }
 
     return size;

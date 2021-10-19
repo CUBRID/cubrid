@@ -30,12 +30,27 @@
 
 namespace cubmethod
 {
+  struct oid_get_request : public cubpacking::packable_object
+  {
+    OID oid;
+    std::vector<std::string> attr_names;
+
+    oid_get_request ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+  };
+
   struct oid_get_info : public cubpacking::packable_object
   {
     std::string class_name;
     std::vector<std::string> attr_names;
-    std::vector<column_info> column_infos;
     std::vector<DB_VALUE> db_values;
+    std::vector<column_info> column_infos;
+
+    oid_get_info () = default;
+    ~oid_get_info ();
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;

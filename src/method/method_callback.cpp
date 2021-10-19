@@ -182,73 +182,17 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // OID
 //////////////////////////////////////////////////////////////////////////
-  int
-  callback_handler::check_object (DB_OBJECT *obj)
-  {
-    // TODO
-    int error = NO_ERROR;
-
-    if (obj == NULL)
-      {
-
-      }
-
-    er_clear ();
-    error = db_is_instance (obj);
-    if (error < 0)
-      {
-	return error;
-      }
-    else if (error > 0)
-      {
-	return 0;
-      }
-    else
-      {
-	error = db_error_code ();
-	if (error < 0)
-	  {
-	    return error;
-	  }
-
-	// return CAS_ER_OBJECT;
-      }
-
-    return error;
-  }
 
   int
   callback_handler::oid_get (packing_unpacker &unpacker)
   {
     int error = NO_ERROR;
 
-    OID oid = OID_INITIALIZER;
-    unpacker.unpack_oid (oid);
+    oid_get_request request;
+    request.unpack (unpacker);
 
-    DB_OBJECT *obj = db_object (&oid);
-    error = check_object (obj);
-    if (error < 0)
-      {
-	// TODO : error handling
-      }
+    oid_get_info info = m_oid_handler->oid_get (request.oid, request.attr_names);
 
-    /* set attribute names */
-    std::vector<std::string> attr_names;
-    if (!unpacker.is_ended())
-      {
-	/* get attributes name from arguments */
-	int num_attr = 0;
-	unpacker.unpack_int (num_attr);
-
-	std::string name;
-	for (int i = 0; i < num_attr; i++)
-	  {
-	    unpacker.unpack_string (name);
-	    attr_names.emplace_back (name);
-	  }
-      }
-
-    oid_get_info info = m_oid_handler->oid_get (obj, attr_names);
     error = send_packable_object_to_server (info);
     return error;
   }
@@ -259,118 +203,22 @@ namespace cubmethod
     oid_put_request request;
     request.unpack (unpacker);
 
-    DB_OBJECT *obj = db_object (&request.oid);
-    int error = check_object (obj);
-    if (error < 0)
-      {
-	// TODO : error handling
-      }
-
-    int result = m_oid_handler->oid_put (obj, request.attr_names, request.db_values);
-
-    error = send_packable_object_to_server (result);
+    int result = m_oid_handler->oid_put (request.oid, request.attr_names, request.db_values);
+    int error = send_packable_object_to_server (result);
     return error;
   }
 
   int
   callback_handler::oid_cmd (packing_unpacker &unpacker)
   {
-    int error = NO_ERROR;
-
     int cmd = OID_CMD_FIRST;
     unpacker.unpack_int (cmd);
 
     OID oid = OID_INITIALIZER;
     unpacker.unpack_oid (oid);
 
-    DB_OBJECT *obj = db_object (&oid);
-    if (obj == NULL)
-      {
-	// TODO: error handling
-	// CAS_ER_OBJECT
-      }
-
-    std::string res_msg;
-    if (cmd != OID_IS_INSTANCE)
-      {
-	error = check_object (obj);
-	if (error < 0)
-	  {
-	    // TODO : error handling
-	    return error;
-	  }
-      }
-
-    if (cmd == OID_DROP)
-      {
-	error = db_drop (obj);
-      }
-    else if (cmd == OID_IS_INSTANCE)
-      {
-	if (obj == NULL)
-	  {
-	    error = 0;
-	  }
-	else
-	  {
-	    er_clear();
-	    if (db_is_instance (obj) > 0)
-	      {
-		error = 1;
-	      }
-	    else
-	      {
-		error = db_error_code ();
-		if (error == ER_HEAP_UNKNOWN_OBJECT)
-		  {
-		    error = 0;
-		  }
-	      }
-	  }
-      }
-    else if (cmd == OID_LOCK_READ)
-      {
-	if (obj == NULL)
-	  {
-	    // TODO : error handling
-	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
-	  }
-	error = db_lock_read (obj);
-      }
-    else if (cmd == OID_LOCK_WRITE)
-      {
-	if (obj == NULL)
-	  {
-	    // TODO : error handling
-	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
-	  }
-	error = db_lock_write (obj);
-      }
-    else if (cmd == OID_CLASS_NAME)
-      {
-	if (obj == NULL)
-	  {
-	    // TODO : error handling
-	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
-	  }
-	char *class_name = (char *) db_get_class_name (obj);
-	if (class_name == NULL)
-	  {
-	    error = db_error_code ();
-	    class_name = (char *) "";
-	  }
-	else
-	  {
-	    error = NO_ERROR;
-	  }
-	res_msg.assign (class_name);
-      }
-    else
-      {
-	// TODO : error handling
-	// ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
-      }
-
+    std::string res; // result for OID_CLASS_NAME
+    int error = m_oid_handler->oid_cmd (oid, cmd, res);
     if (error < 0)
       {
 	// TODO : error handling
@@ -378,7 +226,7 @@ namespace cubmethod
       }
     else
       {
-	error = send_packable_object_to_server (error, res_msg);
+	error = send_packable_object_to_server (error, res);
       }
     return error;
   }
@@ -390,231 +238,22 @@ namespace cubmethod
   int
   callback_handler::collection_cmd (packing_unpacker &unpacker)
   {
-    int error = NO_ERROR;
-
     // args
     collection_cmd_request request;
     request.unpack (unpacker);
 
-    DB_OBJECT *obj = db_object (&request.oid);
-    if (obj == NULL)
-      {
-	// TODO: error handling
-	// CAS_ER_OBJECT
-      }
-
-    error = check_object (obj);
+    int error = m_oid_handler->collection_cmd (request.oid, request.command, request.index, request.attr_name,
+		request.value);
     if (error < 0)
       {
 	// TODO : error handling
-	return error;
-      }
-
-    error = NO_ERROR;
-
-    const char *attr_name = request.attr_name.c_str ();
-    DB_ATTRIBUTE *attr = db_get_attribute (obj, attr_name);
-    if (attr == NULL)
-      {
-	// TODO: error handling
-	error = db_error_code ();
-      }
-
-    DB_DOMAIN *domain = db_attribute_domain (attr);
-    DB_TYPE type = TP_DOMAIN_TYPE (domain);
-    if (type != DB_TYPE_SET && type != DB_TYPE_MULTISET && type != DB_TYPE_SEQUENCE)
-      {
-	// TODO: error handling
-	// ERROR_INFO_SET (CAS_ER_NOT_COLLECTION, CAS_ERROR_INDICATOR);
-	return ER_FAILED;
-      }
-
-    int dummy1;
-    short dummy2;
-    char dummy3;
-    DB_TYPE elem_type = (DB_TYPE) get_set_domain (domain, dummy1, dummy2, dummy3);
-    DB_DOMAIN *elem_domain = db_domain_set (domain);
-    if (elem_type <= 0)
-      {
-	// TODO: error handling
-	// ERROR_INFO_SET (CAS_ER_COLLECTION_DOMAIN, CAS_ERROR_INDICATOR);
-	return ER_FAILED;
-      }
-
-    DB_VALUE val;
-    error = db_get (obj, attr_name, &val);
-    if (error < 0)
-      {
-	// TODO: error handling
-	return error;
-      }
-
-    DB_COLLECTION *collection = NULL;
-    if (db_value_type (&val) != DB_TYPE_NULL)
-      {
-	collection = db_get_collection (&val);
-      }
-
-    error = NO_ERROR; // reset error
-
-    int cmd = request.command;
-    DB_VALUE &elem_value = request.value;
-    int &seq_index = request.index;
-
-    switch (cmd)
-      {
-      case COL_GET:
-	/* TODO: not implemented at Server-Side JDBC */
-	error = ER_FAILED;
-	break;
-      case COL_SIZE:
-	error = col_size (collection); // error is col_size
-	break;
-      case COL_SET_DROP:
-	error = col_set_drop (collection, &elem_value);
-	break;
-      case COL_SET_ADD:
-	error = col_set_add (collection, &elem_value);
-	break;
-      case COL_SEQ_DROP:
-	error = col_seq_drop (collection, seq_index);
-	break;
-      case COL_SEQ_INSERT:
-	error = col_seq_insert (collection, seq_index, &elem_value);
-	break;
-      case COL_SEQ_PUT:
-	error = col_seq_put (collection, seq_index, &elem_value);
-	break;
-      default:
-	assert (false); // invalid command
-	error = ER_FAILED;
-	break;
-      }
-
-    /* db_put */
-    switch (cmd)
-      {
-      case COL_SET_DROP:
-      case COL_SET_ADD:
-      case COL_SEQ_DROP:
-      case COL_SEQ_INSERT:
-      case COL_SEQ_PUT:
-	if (error >= 0)
-	  {
-	    db_put (obj, attr_name, &val);
-	  }
-	break;
-      default:
-	assert (false); // invalid command
-	error = ER_FAILED;
-	break;
-      }
-
-    db_col_free (collection);
-    db_value_clear (&val);
-
-    error = send_packable_object_to_server (error);
-    return error;
-  }
-
-  int
-  callback_handler::col_size (DB_COLLECTION *col)
-  {
-    int col_size;
-    if (col == NULL)
-      {
-	col_size = -1;
+	// ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       }
     else
       {
-	col_size = db_col_size (col);
+	error = send_packable_object_to_server (error);
       }
-
-    return col_size;
-  }
-
-  int
-  callback_handler::col_set_drop (DB_COLLECTION *col, DB_VALUE *ele_val)
-  {
-    if (col != NULL)
-      {
-	int error = db_set_drop (col, ele_val);
-	if (error < 0)
-	  {
-	    // TODO: error handling
-	    return ER_FAILED;
-	  }
-      }
-    return NO_ERROR;
-  }
-
-  int
-  callback_handler::col_set_add (DB_COLLECTION *col, DB_VALUE *ele_val)
-  {
-    int error = NO_ERROR;
-
-    if (col != NULL)
-      {
-	error = db_set_add (col, ele_val);
-	if (error < 0)
-	  {
-	    // TODO: error handling
-	    return ER_FAILED;
-	  }
-      }
-
-    return NO_ERROR;
-  }
-
-  int
-  callback_handler::col_seq_drop (DB_COLLECTION *col, int seq_index)
-  {
-    if (col != NULL)
-      {
-	int error = db_seq_drop (col, seq_index - 1);
-	if (error < 0)
-	  {
-	    // TODO: error handling
-	    return ER_FAILED;
-	  }
-      }
-    return NO_ERROR;
-  }
-
-  int
-  callback_handler::col_seq_insert (DB_COLLECTION *col, int seq_index, DB_VALUE *ele_val)
-  {
-    int error = NO_ERROR;
-
-    if (col != NULL)
-      {
-	error = db_seq_insert (col, seq_index - 1, ele_val);
-	if (error < 0)
-	  {
-	    // TODO: error handling
-	    return ER_FAILED;
-	  }
-      }
-
-    return NO_ERROR;
-  }
-
-  int
-  callback_handler::col_seq_put (DB_COLLECTION *col, int seq_index, DB_VALUE *ele_val)
-  {
-    int error = NO_ERROR;
-
-    if (col != NULL)
-      {
-	error = db_seq_put (col, seq_index - 1, ele_val);
-	if (error < 0)
-	  {
-	    // TODO: error handling
-	    return ER_FAILED;
-	  }
-      }
-
-    return NO_ERROR;
+    return error;
   }
 
 #if 0
