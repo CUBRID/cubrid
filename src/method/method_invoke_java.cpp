@@ -482,6 +482,7 @@ namespace cubmethod
 
 	    if (cursor->get_is_oid_included())
 	      {
+    /* FIXME!!: For more optimized way, refactoring method_query_cursor is needed */
 		OID *oid = cursor->get_current_oid ();
 		std::vector<DB_VALUE> sub_vector = {tuple_values.begin() + 1, tuple_values.end ()};
 		info.tuples.emplace_back (tuple_index, sub_vector, *oid);
