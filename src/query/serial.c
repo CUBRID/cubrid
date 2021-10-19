@@ -50,7 +50,7 @@ static int rv;
 static int rc;
 #endif /* !SERVER_MODE */
 
-/* attribute of db_serial class */
+/* attribute of _db_serial class */
 typedef enum
 {
   SERIAL_ATTR_ORIG_NAME_INDEX,
@@ -471,7 +471,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 	  return error;
 	}
 
-      /* cur_val of db_serial is updated to last_cached_val of entry */
+      /* cur_val of _db_serial is updated to last_cached_val of entry */
       error = serial_update_cur_val_of_serial (thread_p, entry);
       if (error != NO_ERROR)
 	{
@@ -498,7 +498,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 
 /*
  * serial_update_cur_val_of_serial () -
- *                cur_val of db_serial is updated to last_cached_val of entry
+ *                cur_val of _db_serial is updated to last_cached_val of entry
  *   return: NO_ERROR, or ER_status
  *   entry(in)    :
  */

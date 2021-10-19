@@ -2771,7 +2771,7 @@ sm_rename_class (MOP op, const char *new_name)
 		      DB_VALUE name_val;
 		      const char *class_name;
 
-		      if (db_get (att->auto_increment, "class_name", &name_val) != NO_ERROR)
+		      if (db_get (att->auto_increment, "orig_class_name", &name_val) != NO_ERROR)
 			{
 			  break;
 			}
@@ -3142,7 +3142,7 @@ sm_is_system_class_by_name (const char *name)
     CT_PARTITION_NAME,		// "_db_partition"
     CT_STORED_PROC_NAME,	// "_db_stored_procedure"
     CT_STORED_PROC_ARGS_NAME,	// "_db_stored_procedure_args"
-    CT_SERIAL_NAME,		// "db_serial"
+    CT_SERIAL_NAME,		// "_db_serial"
     CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
     CT_COLLATION_NAME,		// "_db_collation"
     CT_CHARSET_NAME,		// "_db_charset"
@@ -3169,6 +3169,7 @@ sm_is_system_class_by_name (const char *name)
     CTV_AUTH_NAME,		// "db_auth"
     CTV_TRIGGER_NAME,		// "db_trig"
     CTV_PARTITION_NAME,		// "db_partition"
+    CTV_SERIAL_NAME,            // "db_serial"
     CTV_STORED_PROC_NAME,	// "db_stored_procedure"
     CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
     CTV_DB_COLLATION_NAME,	// "db_collation"
@@ -13327,7 +13328,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	  DB_VALUE name_val;
 	  const char *class_name;
 
-	  error = db_get (att->auto_increment, "class_name", &name_val);
+	  error = db_get (att->auto_increment, SERIAL_ATTR_ORIG_CLASS_NAME, &name_val);
 	  if (error == NO_ERROR)
 	    {
 	      class_name = db_get_string (&name_val);

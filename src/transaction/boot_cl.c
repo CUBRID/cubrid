@@ -5199,6 +5199,77 @@ boot_define_view_partition (void)
 }
 
 /*
+ * boot_define_view_serial :
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ */
+static int
+boot_define_view_serial (void)
+{
+  MOP class_mop;
+  COLUMN columns[] = {
+    {"name", "string"},
+    {"owner", CT_USER_NAME},
+    {"current_val", "numeric(38,0)"},
+    {"increment_val", "numeric(38,0)"},
+    {"max_val", "numeric(38,0)"},
+    {"min_val", "numeric(38,0)"},
+    {"cyclic", "integer"},
+    {"started", "integer"},
+    {"class_name", "string"},
+    {"att_name", "string"},
+    {"cached_num", "integer"},
+    {"comment", "varchar(1024)"}
+  };
+  int num_cols = sizeof (columns) / sizeof (columns[0]);
+  int i;
+  char stmt[2048];
+  int error_code = NO_ERROR;
+
+  class_mop = db_create_vclass (CTV_SERIAL_NAME);
+  if (class_mop == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      return error_code;
+    }
+
+  for (i = 0; i < num_cols; i++)
+    {
+      error_code = db_add_attribute (class_mop, columns[i].name, columns[i].type, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  sprintf (stmt, "SELECT [s].[name], [s].[owner], [s].[current_val], [s].[increment_val], [s].[max_val], "
+	   "[s].[min_val], [s].[cyclic], [s].[started], [s].[class_name], [s].[att_name], [s].[cached_num], "
+	   "[s].[comment] "
+	   "FROM [%s] [s] ", CT_SERIAL_NAME);
+
+  error_code = db_add_query_spec (class_mop, stmt);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * boot_define_view_stored_procedure :
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
@@ -5500,6 +5571,7 @@ catcls_vclass_install (void)
     {"CTV_AUTH_NAME", boot_define_view_authorization},
     {"CTV_TRIGGER_NAME", boot_define_view_trigger},
     {"CTV_PARTITION_NAME", boot_define_view_partition},
+    {"CTV_SERIAL_NAME", boot_define_view_serial},
     {"CTV_STORED_PROC_NAME", boot_define_view_stored_procedure},
     {"CTV_STORED_PROC_ARGS_NAME", boot_define_view_stored_procedure_arguments},
     {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation},

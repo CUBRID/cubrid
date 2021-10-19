@@ -654,7 +654,7 @@ do_create_serial_internal (MOP * serial_object, const char *orig_serial_name, DB
 
   db_make_null (&value);
 
-  /* temporarily disable authorization to access db_serial class */
+  /* temporarily disable authorization to access _db_serial class */
   AU_DISABLE (au_save);
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
@@ -1790,7 +1790,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  /* now create serial object which is insert into db_serial */
+  /* now create serial object which is insert into _db_serial */
   AU_DISABLE (save);
   au_disable_flag = true;
 
@@ -1875,7 +1875,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
     }
 
   /*
-   * find db_serial
+   * find _db_serial
    */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -2121,7 +2121,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   assert_release (att->info.attr_def.auto_increment != NULL);
   assert (serial_object != NULL);
 
-  /* find db_serial */
+  /* find _db_serial */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
     {
@@ -2226,7 +2226,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
       goto end;
     }
 
-  /* update serial object in db_serial */
+  /* update serial object in _db_serial */
   AU_DISABLE (save);
   au_disable_flag = true;
 
@@ -2753,7 +2753,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       goto end;
     }
-  /* now update serial object in db_serial */
+  /* now update serial object in _db_serial */
   AU_DISABLE (save);
   au_disable_flag = true;
 

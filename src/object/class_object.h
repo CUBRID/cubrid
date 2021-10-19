@@ -462,7 +462,7 @@ struct sm_attribute
 
   struct tr_schema_cache *triggers;	/* trigger cache */
 
-  MOP auto_increment;		/* instance of db_serial */
+  MOP auto_increment;		/* instance of _db_serial */
   int storage_order;		/* storage order number */
   const char *comment;
 };

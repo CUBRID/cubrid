@@ -603,7 +603,7 @@ emit_class_owner (print_output & output_ctx, MOP class_)
 }
 
 /*
- * export_serial - export db_serial
+ * export_serial - export _db_serial
  *    return: NO_ERROR if successful, error code otherwise
  *    output_ctx(in/out): output context
  */
@@ -624,7 +624,7 @@ export_serial (print_output & output_ctx)
    */
   const char *query =
     "select [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], " "[cyclic], "
-    "[started], " "[cached_num], " "[comment] " "from [db_serial] where [class_name] is null and [att_name] is null";
+    "[started], " "[cached_num], " "[comment] " "from [_db_serial] where [class_name] is null and [att_name] is null";
 
   db_make_null (&diff_value);
   db_make_null (&answer_value);
@@ -794,7 +794,7 @@ export_serial (print_output & output_ctx)
 	  desc_value_print (output_ctx, &values[SERIAL_COMMENT]);
 	}
       output_ctx (";\n");
-      output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
+      output_ctx ("call [change_serial_owner] ('%s', '%s') on class [_db_serial];\n\n",
 		  db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
 
       db_value_clear (&diff_value);
@@ -894,7 +894,7 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
 	{
-	  fprintf (stderr, " Check the value of db_serial object.\n");
+	  fprintf (stderr, " Check the value of _db_serial object.\n");
 	}
     }
 
