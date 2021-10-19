@@ -31,7 +31,7 @@
 #define TIMESTAMP_DATA_PRECISION_LEN       (3)
 
 #define ODBC_SQLSUCCESS(rc) ((rc == SQL_SUCCESS) || (rc == SQL_SUCCESS_WITH_INFO) )
-#define CHK_ERR(h, ht, x)   {   RETCODE rc = x;\
+#define SQL_CHK_ERR(h, ht, x)   {   RETCODE rc = x;\
                                 if (rc != SQL_SUCCESS) \
                                 { \
                                     cgw_error_msg (h, ht, rc); \
@@ -115,7 +115,7 @@ cgw_database_connect (const char *dsn, const char *connect_url)
       goto ODBC_ERROR;
     }
 
-  CHK_ERR (local_odbc_handle->henv,
+  SQL_CHK_ERR (local_odbc_handle->henv,
 	   SQL_HANDLE_ENV,
 	   err_code = SQLSetEnvAttr (local_odbc_handle->henv, SQL_ATTR_ODBC_VERSION, (SQLPOINTER) SQL_OV_ODBC3, 0));
 
@@ -125,11 +125,11 @@ cgw_database_connect (const char *dsn, const char *connect_url)
       goto ODBC_ERROR;
     }
 
-  CHK_ERR (local_odbc_handle->henv,
+  SQL_CHK_ERR (local_odbc_handle->henv,
 	   SQL_HANDLE_ENV,
 	   err_code = SQLAllocHandle (SQL_HANDLE_DBC, local_odbc_handle->henv, &local_odbc_handle->hdbc));
 
-  CHK_ERR (local_odbc_handle->hdbc,
+  SQL_CHK_ERR (local_odbc_handle->hdbc,
 	   SQL_HANDLE_ENV,
 	   err_code = SQLSetConnectAttr (local_odbc_handle->hdbc, SQL_LOGIN_TIMEOUT, (SQLPOINTER) 5, 0));
 
@@ -138,7 +138,7 @@ cgw_database_connect (const char *dsn, const char *connect_url)
       strcpy (connect_str, "DSN=");
       strcat (connect_str, dsn);
 
-      CHK_ERR (local_odbc_handle->hdbc,
+      SQL_CHK_ERR (local_odbc_handle->hdbc,
 	       SQL_HANDLE_DBC,
 	       err_code = SQLDriverConnect (local_odbc_handle->hdbc,
 					    NULL,
@@ -151,7 +151,7 @@ cgw_database_connect (const char *dsn, const char *connect_url)
   else if (connect_url != NULL && strlen (connect_url) > 0)
     {
 
-      CHK_ERR (local_odbc_handle->hdbc,
+      SQL_CHK_ERR (local_odbc_handle->hdbc,
 	       SQL_HANDLE_DBC,
 	       err_code = SQLDriverConnect (local_odbc_handle->hdbc,
 					    NULL,
@@ -170,7 +170,7 @@ cgw_database_connect (const char *dsn, const char *connect_url)
 
   if (ODBC_SQLSUCCESS (err_code))
     {
-      CHK_ERR (local_odbc_handle->hdbc,
+      SQL_CHK_ERR (local_odbc_handle->hdbc,
 	       SQL_HANDLE_DBC,
 	       err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &local_odbc_handle->hstmt));
 
@@ -178,13 +178,13 @@ cgw_database_connect (const char *dsn, const char *connect_url)
 
   if (ODBC_SQLSUCCESS (err_code))
     {
-      CHK_ERR (local_odbc_handle->hdbc,
+      SQL_CHK_ERR (local_odbc_handle->hdbc,
 	       SQL_HANDLE_DBC,
 	       err_code = SQLSetStmtAttr (local_odbc_handle->hstmt,
 					  SQL_ATTR_CURSOR_TYPE, (SQLPOINTER) SQL_CURSOR_STATIC, SQL_IS_INTEGER));
     }
 
-  CHK_ERR (local_odbc_handle->hdbc,
+  SQL_CHK_ERR (local_odbc_handle->hdbc,
 	   SQL_HANDLE_DBC,
 	   err_code = SQLAllocHandle (SQL_HANDLE_DESC, local_odbc_handle->hdbc, &local_odbc_handle->hdesc));
 
@@ -207,19 +207,19 @@ cgw_execute (T_SRV_HANDLE * srv_handle)
   if (srv_handle->num_markers > 0)
     {
       SQLSMALLINT num_param;
-      CHK_ERR (srv_handle->cgw_handle->hstmt,
+      SQL_CHK_ERR (srv_handle->cgw_handle->hstmt,
 	       SQL_HANDLE_STMT, err_code = SQLNumParams (srv_handle->cgw_handle->hstmt, &num_param));
 
-      CHK_ERR (srv_handle->cgw_handle->hstmt,
+      SQL_CHK_ERR (srv_handle->cgw_handle->hstmt,
 	       SQL_HANDLE_STMT,
 	       err_code = SQLPrepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) srv_handle->sql_stmt, SQL_NTS));
 
-      CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT, err_code = SQLExecute (srv_handle->cgw_handle->hstmt));
+      SQL_CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT, err_code = SQLExecute (srv_handle->cgw_handle->hstmt));
 
     }
   else
     {
-      CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT,
+      SQL_CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT,
 	       err_code = SQLExecDirect (srv_handle->cgw_handle->hstmt, (SQLCHAR *) srv_handle->sql_stmt, SQL_NTS));
     }
 
@@ -279,7 +279,7 @@ cgw_cursor_close (SQLHSTMT hstmt)
 
   if (hstmt)
     {
-      CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLCloseCursor (hstmt));
+      SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLCloseCursor (hstmt));
     }
   return err_code;
 
@@ -293,7 +293,7 @@ cgw_row_count (SQLHSTMT hstmt)
   SQLLEN low_count;
   SQLRETURN err_code;
 
-  CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLRowCount (hstmt, &low_count));
+  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLRowCount (hstmt, &low_count));
   return low_count;
 
 ODBC_ERROR:
@@ -511,36 +511,36 @@ cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_I
   col_info->is_foreign_key = 0;
   col_info->is_shared = 0;
 
-  CHK_ERR (hstmt,
+  SQL_CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_CONCISE_TYPE, NULL, 0, NULL, &odbc_data_type));
 
-  CHK_ERR (hstmt,
+  SQL_CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_SCALE, NULL, 0, NULL, &col_info->scale));
 
-  CHK_ERR (hstmt,
+  SQL_CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_PRECISION, NULL, 0, NULL, &col_info->precision));
 
-  CHK_ERR (hstmt,
+  SQL_CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt,
 				       col_num,
 				       SQL_DESC_NAME,
 				       col_info->col_name, sizeof (col_info->col_name), &col_name_length, NULL));
 
-  CHK_ERR (hstmt,
+  SQL_CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt,
 				       col_num,
 				       SQL_DESC_TABLE_NAME,
 				       col_info->class_name, sizeof (col_info->class_name), &class_name_length, NULL));
 
-  CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_NULLABLE, NULL, 0,	// Note count of bytes!
+  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_NULLABLE, NULL, 0,	// Note count of bytes!
 							       NULL, &col_info->is_not_null));
 
-  CHK_ERR (hstmt,
+  SQL_CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt,
 				       col_num,
@@ -753,7 +753,7 @@ cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_t
   SQLLEN total_row_count = 0;
 
 
-  CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT,
+  SQL_CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT,
 	   err_code = SQLRowCount (srv_handle->cgw_handle->hstmt, &total_row_count));
 
   srv_handle->tuple_count = (int) total_row_count;
@@ -788,12 +788,12 @@ cgw_set_commit_mode (SQLHDBC hdbc, bool auto_commit)
   SQLRETURN err_code = 0;
   if (auto_commit)
     {
-      CHK_ERR (hdbc, SQL_HANDLE_DBC,
+      SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC,
 	       err_code = SQLSetConnectAttr (hdbc, SQL_ATTR_AUTOCOMMIT, (SQLPOINTER *) SQL_AUTOCOMMIT_ON, SQL_NTS));
     }
   else
     {
-      CHK_ERR (hdbc, SQL_HANDLE_DBC,
+      SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC,
 	       err_code = SQLSetConnectAttr (hdbc, SQL_ATTR_AUTOCOMMIT, (SQLPOINTER *) SQL_AUTOCOMMIT_OFF, SQL_NTS));
     }
 
@@ -813,7 +813,7 @@ cgw_get_stmt_Info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type)
 
   net_buf_cp_byte (net_buf, statement_type);
 
-  CHK_ERR (hstmt, SQL_HANDLE_STMT, SQLRowCount (hstmt, &tuple_count));
+  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, SQLRowCount (hstmt, &tuple_count));
   net_buf_cp_int (net_buf, (int) tuple_count, NULL);
 
   memset (&ins_oid, 0, sizeof (T_OBJECT));
@@ -862,7 +862,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	}
       last_col_binding = this_col_binding;
 
-      CHK_ERR (hstmt,
+      SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
 	       err_code = SQLDescribeCol (hstmt,
 					  col,
@@ -893,7 +893,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -910,7 +910,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -920,7 +920,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	  break;
 	case SQL_NUMERIC:
 	  this_col_binding->data_buffer = (SQL_NUMERIC_STRUCT *) malloc (bind_col_size);
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -935,7 +935,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -951,7 +951,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -966,7 +966,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -981,7 +981,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -996,7 +996,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -1011,7 +1011,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -1029,7 +1029,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -1045,7 +1045,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -1062,7 +1062,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -1079,7 +1079,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -1094,7 +1094,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -1109,7 +1109,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -1127,7 +1127,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -1142,7 +1142,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 	      goto ODBC_ERROR;
 	    }
 
-	  CHK_ERR (hstmt,
+	  SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
 		   err_code = SQLBindCol (hstmt,
 					  col,
@@ -1256,7 +1256,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
 	value_list->string_val = value;
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1279,7 +1279,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
 	value_list->string_val = value;
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1351,7 +1351,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	sql_bind_type = SQL_DECIMAL;
 
 	indPtr = sizeof (value_list->ns_val);
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1361,23 +1361,23 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 					      value_list->ns_val.precision,
 					      value_list->ns_val.scale, &value_list->ns_val, 0, (SQLLEN *) & indPtr));
 
-	CHK_ERR (handle->hdesc,
+	SQL_CHK_ERR (handle->hdesc,
 		 SQL_HANDLE_DESC,
 		 err_code =
 		 SQLSetDescField (handle->hdesc, bind_num, SQL_DESC_TYPE, (SQLPOINTER) SQL_C_NUMERIC, SQL_NTS));
 
-	CHK_ERR (handle->hdesc,
+	SQL_CHK_ERR (handle->hdesc,
 		 SQL_HANDLE_DESC,
 		 err_code =
 		 SQLSetDescField (handle->hdesc, bind_num, SQL_DESC_PRECISION,
 				  (SQLPOINTER) value_list->ns_val.precision, 0));
 
-	CHK_ERR (handle->hdesc,
+	SQL_CHK_ERR (handle->hdesc,
 		 SQL_HANDLE_DESC,
 		 err_code =
 		 SQLSetDescField (handle->hdesc, bind_num, SQL_DESC_SCALE, (SQLPOINTER) value_list->ns_val.scale, 0));
 
-	CHK_ERR (handle->hdesc,
+	SQL_CHK_ERR (handle->hdesc,
 		 SQL_HANDLE_DESC,
 		 err_code =
 		 SQLSetDescField (handle->hdesc, bind_num, SQL_DESC_DATA_PTR, (SQLPOINTER) & value_list->ns_val, 0));
@@ -1394,7 +1394,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
 	value_list->bigint_val = bi_val;
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1414,7 +1414,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	value_list->integer_val = i_val;
 
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1433,7 +1433,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	sql_bind_type = SQL_SMALLINT;
 	value_list->smallInt_val = s_val;
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1451,7 +1451,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	sql_bind_type = SQL_REAL;
 	value_list->real_val = f_val;
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1468,7 +1468,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	sql_bind_type = SQL_DOUBLE;
 	value_list->double_val = d_val;
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1488,7 +1488,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	value_list->ds_val.month = month;
 	value_list->ds_val.day = day;
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1510,7 +1510,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	value_list->ts_val.minute = mm;
 	value_list->ts_val.second = ss;
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1549,7 +1549,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
 	sprintf (value_list->time_stemp_str_val, "%d-%d-%d %d:%d:%d", yr, mon, day, hh, mm, ss);
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1604,7 +1604,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
 	sprintf (value_list->time_stemp_str_val, "%d-%d-%d %d:%d:%d", yr, mon, day, hh, mm, ss);
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1634,7 +1634,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
 	sprintf (value_list->time_stemp_str_val, "%d-%d-%d %d:%d:%d.%d", yr, mon, day, hh, mm, ss, ms);
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1683,7 +1683,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
 	sprintf (value_list->time_stemp_str_val, "%d-%d-%d %d:%d:%d.%d", yr, mon, day, hh, mm, ss, ms);
 
-	CHK_ERR (handle->hstmt,
+	SQL_CHK_ERR (handle->hstmt,
 		 SQL_HANDLE_STMT,
 		 err_code = SQLBindParameter (handle->hstmt,
 					      bind_num,
@@ -1734,7 +1734,7 @@ cgw_sql_prepare (SQLHSTMT hstmt, SQLCHAR * sql_stmt)
 {
   SQLRETURN err_code;
 
-  CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLPrepare (hstmt, sql_stmt, SQL_NTS));
+  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLPrepare (hstmt, sql_stmt, SQL_NTS));
 
   return (int) err_code;
 
@@ -1747,7 +1747,7 @@ cgw_get_num_col (SQLHSTMT hstmt, SQLSMALLINT * num_col)
 {
   SQLRETURN err_code;
 
-  CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, num_col));
+  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, num_col));
 
   return (int) err_code;
 
@@ -1809,7 +1809,7 @@ cgw_get_row_count (SQLHSTMT hstmt)
 
   if (hstmt)
     {
-      CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLRowCount (hstmt, &row_count));
+      SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLRowCount (hstmt, &row_count));
     }
   else
     {
@@ -2001,11 +2001,11 @@ cgw_endtran (SQLHDBC hdbc, int tran_type)
 
   if (tran_type == CCI_TRAN_COMMIT)
     {
-      CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLEndTran (SQL_HANDLE_DBC, hdbc, SQL_COMMIT));
+      SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLEndTran (SQL_HANDLE_DBC, hdbc, SQL_COMMIT));
     }
   else
     {
-      CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLEndTran (SQL_HANDLE_DBC, hdbc, SQL_ROLLBACK));
+      SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLEndTran (SQL_HANDLE_DBC, hdbc, SQL_ROLLBACK));
     }
 
   return err_code;
@@ -2036,7 +2036,7 @@ cgw_get_driver_info (SQLHDBC hdbc, SQLUSMALLINT info_type, void *driver_info, SQ
   SQLRETURN err_code;
   SQLSMALLINT len;
 
-  CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLGetInfo (hdbc, info_type, driver_info, size, &len));
+  SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLGetInfo (hdbc, info_type, driver_info, size, &len));
 
   return NO_ERROR;
 
@@ -2269,7 +2269,7 @@ cgw_set_stmt_attr (SQLHSTMT hstmt, SQLINTEGER attr, SQLPOINTER val, SQLINTEGER l
 {
   SQLRETURN err_code;
 
-  CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLSetStmtAttr (hstmt, attr, val, len));
+  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLSetStmtAttr (hstmt, attr, val, len));
 
   return err_code;
 
