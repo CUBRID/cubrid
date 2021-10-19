@@ -237,7 +237,7 @@ cgw_row_data (SQLHSTMT hstmt, int cursor_pos)
   SQLRETURN err_code;
   int fetchOperation = SQL_FETCH_FIRST;
   int fetch_offset = 0;
-  int no_data;
+  int no_data = 0;
 
   if (cursor_pos == 1)
     {
@@ -261,10 +261,6 @@ cgw_row_data (SQLHSTMT hstmt, int cursor_pos)
   if (err_code == SQL_NO_DATA_FOUND)
     {
       no_data = SQL_NO_DATA_FOUND;
-    }
-  else
-    {
-      no_data = 0;
     }
 
   return no_data;
