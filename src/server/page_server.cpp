@@ -86,7 +86,7 @@ void page_server::disconnect_active_tran_server ()
       return;
     }
   er_log_debug (ARG_FILE_LINE, "Page server disconnected from active transaction server with channel id: %s.\n",
-		m_active_tran_server_conn->get_underlying_channel_id ());
+		m_active_tran_server_conn->get_underlying_channel_id ().c_str ());
   m_active_tran_server_conn.reset (nullptr);
 }
 
