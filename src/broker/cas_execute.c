@@ -1322,7 +1322,179 @@ ux_get_last_insert_id (T_NET_BUF * net_buf)
   return NO_ERROR;
 }
 
-#if !defined (CAS_FOR_CGW)
+#if defined (CAS_FOR_CGW)
+int
+ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
+		T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable)
+{
+  int err_code = 0;
+  int num_bind = 0;
+  T_BROKER_VERSION client_version = req_info->client_version;
+  char stmt_type;
+  INT64 n;
+  ODBC_BIND_INFO *bind_data_list = NULL;
+
+  if (srv_handle->is_prepared == FALSE)
+    {
+      err_code = cgw_sql_prepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) srv_handle->sql_stmt);
+
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
+    }
+
+  num_bind = srv_handle->num_markers;
+
+  if (num_bind > 0)
+    {
+      err_code = cgw_make_bind_value (srv_handle->cgw_handle, num_bind, argc, argv, &bind_data_list, net_buf);
+      if (err_code < 0)
+	{
+	  if (err_code == -1)
+	    err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
+    }
+
+  if (srv_handle->is_prepared == FALSE)
+    {
+      err_code = cgw_sql_prepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) srv_handle->sql_stmt);
+
+      if (err_code != SQL_SUCCESS && err_code != SQL_SUCCESS_WITH_INFO)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
+
+      err_code = cgw_set_commit_mode (srv_handle->cgw_handle->hdbc, srv_handle->auto_commit_mode);
+      if (err_code != NO_ERROR)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
+    }
+  srv_handle->is_from_current_transaction = true;
+
+  err_code = cgw_set_commit_mode (srv_handle->cgw_handle->hdbc, srv_handle->auto_commit_mode);
+  if (err_code != NO_ERROR)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto execute_error;
+    }
+
+  err_code = cgw_execute (srv_handle);
+  if (err_code < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto execute_error;
+    }
+  n = cgw_row_count (srv_handle->cgw_handle->hstmt);
+
+  stmt_type = get_stmt_type (srv_handle->sql_stmt);
+  srv_handle->stmt_type = stmt_type;
+  update_query_execution_count (as_info, stmt_type);
+
+  if (n < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto execute_error;
+    }
+
+  if (max_row > 0 && stmt_type == CUBRID_STMT_SELECT && *clt_cache_reusable == FALSE)
+    {
+      n = MIN (n, max_row);
+    }
+
+  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
+    }
+
+  srv_handle->max_col_size = max_col_size;
+  srv_handle->num_q_result = 1;
+  srv_handle->cur_result_index = 1;
+  srv_handle->max_row = max_row;
+
+  if (do_commit_after_execute (*srv_handle))
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+
+
+  if (bind_data_list)
+    {
+      FREE_MEM (bind_data_list);
+    }
+
+  err_code = cgw_set_execute_info (srv_handle, net_buf, srv_handle->stmt_type);
+  if (err_code != NO_ERROR)
+    {
+      goto execute_error;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V2))
+    {
+      int result_cache_lifetime = -1;
+      char include_column_info;
+
+      if (srv_handle->num_q_result == 1)
+	{
+	  include_column_info = 0;
+	}
+      else
+	{
+	  include_column_info = 1;
+	}
+
+      net_buf_cp_byte (net_buf, include_column_info);
+
+      if (include_column_info == 1)
+	{
+	  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
+	  net_buf_cp_byte (net_buf, srv_handle->stmt_type);
+	  net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+
+	  err_code =
+	    cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, stmt_type, client_version, net_buf);
+	  if (err_code != NO_ERROR)
+	    {
+	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	      goto execute_error;
+	    }
+	}
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_int (net_buf, shm_shard_id, NULL);
+    }
+
+  return err_code;
+
+execute_error:
+  NET_BUF_ERR_SET (net_buf);
+
+  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
+    }
+  if (srv_handle->auto_commit_mode)
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+
+  errors_in_transaction++;
+
+  if (bind_data_list)
+    {
+      FREE_MEM (bind_data_list);
+    }
+  return err_code;
+}
+#else /* CAS_FOR_CGW */
+
 int
 ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
 	    T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable)
