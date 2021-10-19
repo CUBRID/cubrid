@@ -62,11 +62,11 @@ static INTL_CODESET client_charset = INTL_CODESET_NONE;
 
 
 int
-cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool valid_handle)
+cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool is_connected)
 {
   if (local_odbc_handle == NULL)
     {
-      if (valid_handle)
+      if (is_connected)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_HANDLE, 0);
 	  return ER_CGW_INVALID_HANDLE;
@@ -76,7 +76,7 @@ cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool valid_handle)
 
   if (local_odbc_handle->henv == NULL || local_odbc_handle->hdbc == NULL || local_odbc_handle->hstmt == NULL)
     {
-      if (valid_handle)
+      if (is_connected)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_HANDLE, 0);
 	  return ER_CGW_INVALID_HANDLE;

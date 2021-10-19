@@ -124,7 +124,7 @@ extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER *
 extern void cgw_cleanup_binder (T_COL_BINDER * pFirstBinding);
 
 extern int cgw_init_odbc_handle (void);
-extern int cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool valid_handle);
+extern int cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool is_connected);
 extern int cgw_get_driver_info (SQLHDBC hdbc, SQLUSMALLINT info_type, void *driver_info, SQLSMALLINT size);
 
 // db connection functions
