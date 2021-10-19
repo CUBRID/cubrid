@@ -58,7 +58,7 @@
 #define ATTR_NAME_LEN              (255)
 #define CLASS_NAME_LEN             (255)
 
-#define DECIMAL_DIGIT_MAX_LEN      (20)  /* 9223372036854775807 (7FFF FFFF FFFF FFFF)*/
+#define DECIMAL_DIGIT_MAX_LEN      (20)	/* 9223372036854775807 (7FFF FFFF FFFF FFFF) */
 
 typedef struct t_col_binder T_COL_BINDER;
 struct t_col_binder
@@ -153,6 +153,5 @@ extern int cgw_row_data (SQLHSTMT hstmt, int cursor_pos);
 extern int cgw_set_stmt_attr (SQLHSTMT hstmt, SQLINTEGER attr, SQLPOINTER val, SQLINTEGER len);
 extern int cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * pFirstBinding, int cursor_pos);
 
-extern int cgw_free_stmt (SQLHSTMT hstmt, SQLUSMALLINT option);
 extern int cgw_endtran (SQLHDBC hdbc, int tran_type);
 #endif /* _CAS_CGW_H_ */

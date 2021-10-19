@@ -2032,19 +2032,6 @@ cgw_cleanup_handle (T_CGW_HANDLE * handle)
 }
 
 int
-cgw_free_stmt (SQLHSTMT hstmt, SQLUSMALLINT option)
-{
-  SQLRETURN err_code;
-
-  CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLFreeStmt (hstmt, option));
-
-  return err_code;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-int
 cgw_endtran (SQLHDBC hdbc, int tran_type)
 {
   SQLRETURN err_code;
