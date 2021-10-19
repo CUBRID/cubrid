@@ -317,6 +317,7 @@ static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, voi
 
 static int log_create_metalog_file ();
 static int log_read_metalog_from_file ();
+static int log_read_metalog_from_file_with_create ();
 
 /*for CDC */
 static int cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry);
@@ -1141,7 +1142,15 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       log_final (thread_p);
     }
 
-  error_code = log_read_metalog_from_file ();
+  if (is_tran_server_with_remote_storage ())
+    {
+      // allow creation of metalog on-the-fly
+      error_code = log_read_metalog_from_file_with_create ();
+    }
+  else
+    {
+      error_code = log_read_metalog_from_file ();
+    }
   if (error_code != NO_ERROR && !init_emergency)
     {
       // Unable to mount meta log
@@ -10613,6 +10622,35 @@ log_create_metalog_file ()
   fclose (fp);
 
   return NO_ERROR;
+}
+
+// At initialization time, metalog is created if not found. Needed in the contest of booting up
+// an empty active transaction server with remote storage.
+int
+log_read_metalog_from_file_with_create ()
+{
+  int err_code = NO_ERROR;
+
+  struct stat dummy_stat_buf;
+  if (stat (log_Name_metainfo, &dummy_stat_buf) != 0)
+    {
+      // should not be called in a a non booting-up scenario
+      assert (!log_Gl.m_metainfo.is_loaded_from_file ());
+      // empty/idle metalog; no subsequent recovery is needed; make sure that does not happen
+      log_Gl.m_metainfo.set_clean_shutdown (true);
+
+      err_code = log_create_metalog_file ();
+
+      // creation of an empty metalog file happens early during the log initialization process
+      // later on, there is a sequence where the clean shutdown flag is set to false such that
+      // an accidental server crash is correctly flagged
+    }
+  else
+    {
+      err_code = log_read_metalog_from_file ();
+    }
+
+  return err_code;
 }
 
 // Get meta log from disk to log_Gl

@@ -56,6 +56,7 @@ namespace cublog
   void
   meta::unpack (cubpacking::unpacker &deserializer)
   {
+    assert (m_checkpoints.empty ());
     size_t size;
     deserializer.unpack_bool (m_clean_shutdown);
     deserializer.unpack_from_int (size);
