@@ -1344,6 +1344,7 @@ static bool
 mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_spec)
 {
   CHECK_PUSHABLE_INFO cpi;
+  PT_NODE *spec = NULL;
 
   /* check nulls */
   if (query == NULL)
@@ -1362,11 +1363,14 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
       return false;
     }
 
-  /* check for joins */
-/*  if (!is_only_spec && query->info.query.q.select.from && query->info.query.q.select.from->next)
+  /* determine if spec is outer joined */
+  for (spec = query->info.query.q.select.from; spec; spec = spec->next)
     {
-      /* parent statement and subquery both have joins; not pushable */
-/*      return false;
+      if (mq_is_outer_join_spec (parser, spec))
+	{
+	  /* subquery have outer joins; not pushable */
+	  return false;
+	}
     }
 
   /* check for CONNECT BY */
