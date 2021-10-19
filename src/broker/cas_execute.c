@@ -1171,9 +1171,6 @@ int
 ux_end_tran (int tran_type, bool reset_con_status)
 {
   int err_code = 0;
-#if defined(CAS_FOR_CGW)
-  T_CGW_HANDLE *cgw_handle;
-#endif /* CAS_FOR_CGW */
 
 #ifndef LIBCAS_FOR_JSP
   if (!as_info->cur_statement_pooling)
@@ -1257,18 +1254,13 @@ ux_end_tran (int tran_type, bool reset_con_status)
 #endif /* CAS_FOR_CGW */
 
 #if defined(CAS_FOR_CGW)
-  err_code = cgw_get_handle (&cgw_handle, false);
-  if (err_code < 0)
+  T_CGW_HANDLE *cgw_handle = NULL;
+  cgw_get_handle (&cgw_handle, false);
+  if (cgw_handle)
     {
-      err_code = 0;
+      cgw_endtran (cgw_handle->hdbc, tran_type);
     }
-  else
-    {
-      if (cgw_handle)
-	{
-	  cgw_endtran (cgw_handle->hdbc, tran_type);
-	}
-    }
+  err_code = 0;
 #endif
 
   return err_code;
