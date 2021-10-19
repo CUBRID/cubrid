@@ -7631,7 +7631,7 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
   int result_cache_lifetime = -1;
   char updatable_flag = prepare_flag & CCI_PREPARE_UPDATABLE;
   char *class_name = NULL;
-  SQLSMALLINT num_cols;
+  SQLSMALLINT num_cols = 0;
   int num_col_offset = 0;
   int i = 1;
   T_ODBC_COL_INFO col_info;
