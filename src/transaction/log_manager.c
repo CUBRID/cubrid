@@ -10632,6 +10632,10 @@ log_read_metalog_from_file_with_create ()
       log_Gl.m_metainfo.set_clean_shutdown (true);
 
       err_code = log_create_metalog_file ();
+
+      // creation of an empty metalog file happens early during the log initialization process
+      // later on, there is a sequence where the clean shutdown flag is set to false such that
+      // an accidental server crash is correctly flagged
     }
   else
     {
