@@ -9,14 +9,12 @@ public class ExecuteInfo {
     public List<QueryResultInfo> qresultInfos = null;
     public List<ColumnInfo> columnInfos = null;
 
-    public ExecuteInfo (CUBRIDUnpacker unpacker) {
+    public ExecuteInfo(CUBRIDUnpacker unpacker) {
         numAffected = unpacker.unpackInt();
         int numQueryResult = unpacker.unpackInt();
         qresultInfos = new ArrayList<QueryResultInfo>();
-        if (numQueryResult > 0)
-        {
-            for(int i = 0; i < numQueryResult; i++)
-            {
+        if (numQueryResult > 0) {
+            for (int i = 0; i < numQueryResult; i++) {
                 QueryResultInfo qInfo = new QueryResultInfo(unpacker);
                 qresultInfos.add(qInfo);
             }
@@ -24,17 +22,15 @@ public class ExecuteInfo {
 
         int columnSize = unpacker.unpackInt();
         columnInfos = new ArrayList<ColumnInfo>();
-        if (columnSize > 0)
-        {
-            for(int i = 0; i < columnSize; i++)
-            {
+        if (columnSize > 0) {
+            for (int i = 0; i < columnSize; i++) {
                 ColumnInfo cInfo = new ColumnInfo(unpacker);
                 columnInfos.add(cInfo);
             }
         }
     }
 
-    public QueryResultInfo getResultInfo (int idx) {
+    public QueryResultInfo getResultInfo(int idx) {
         if (idx < 0 || idx >= qresultInfos.size()) {
             return null;
         }
@@ -43,7 +39,7 @@ public class ExecuteInfo {
 
     public int getResultInfoSize() {
         if (qresultInfos != null) {
-            return qresultInfos.size ();
+            return qresultInfos.size();
         }
         return 0;
     }

@@ -97,14 +97,14 @@ namespace cubmethod
       void free_query_handle (int id, bool is_free);
 
       /* statement handler cache */
-      std::multimap <std::string, int> m_query_handler_map;
       int find_query_handler_cache (std::string &sql);
-
-      int send_packable_object_to_server (cubpacking::packable_object &object);
 
       /* server info */
       int m_rid; // method callback's rid
       char *m_host;
+      int send_packable_object_to_server (cubpacking::packable_object &object);
+
+      std::multimap <std::string, int> m_query_handler_map;
 
       error_context m_error_ctx;
       std::vector<query_handler *> m_query_handlers;

@@ -182,6 +182,12 @@ method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddat
   return error;
 }
 
+/*
+ * method_prepare_arguments () - Stores at DB_VALUE arguments (runtime_args) for C Method
+ *   return:
+ *   unpacker (in)     : unpacker
+ *   conn_info (in)   : enquiry return code, host name, server name
+ */
 static int
 method_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 {
@@ -216,6 +222,12 @@ method_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &c
   return NO_ERROR;
 }
 
+/*
+ * method_invoke_builtin () - Invoke C Method with runtime arguments
+ *   return:
+ *   unpacker (in)     : unpacker
+ *   conn_info (in)   : enquiry return code, host name, server name
+ */
 static int
 method_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 {
@@ -263,7 +275,7 @@ method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 static int
 method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 {
-  method_reset ();
+  handler.free_query_handle_all ();
 
   DB_VALUE result;
   db_make_null (&result);

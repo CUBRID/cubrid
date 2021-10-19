@@ -91,9 +91,10 @@ namespace cubmethod
   }
 
   /* called after 1 iteration on method scan */
-  void query_handler::reset () {
+  void query_handler::reset ()
+  {
     end_qresult (false);
-	m_is_occupied = false;
+    m_is_occupied = false;
   }
 
   next_result_info
@@ -118,26 +119,28 @@ namespace cubmethod
     include_oid = false;
   }
 
-	bool query_handler::get_is_occupied () {
-	return m_is_occupied;
-	}
+  bool query_handler::get_is_occupied ()
+  {
+    return m_is_occupied;
+  }
 
-	void query_handler::set_is_occupied (bool flag) {
-		m_is_occupied = flag;
-	}
+  void query_handler::set_is_occupied (bool flag)
+  {
+    m_is_occupied = flag;
+  }
 
-	bool query_handler::get_prepare_info (prepare_info& info) 
-	{
-		if (is_prepared())
-		{
-		query_result &qresult = m_q_result[0]; /* only one result */
-		info.stmt_type = qresult.stmt_type;
-		info.num_markers = m_num_markers;
-		int error = set_prepare_column_list_info (info.column_infos, qresult);
-		return true;
-		}
-		return false;
-	}
+  bool query_handler::get_prepare_info (prepare_info &info)
+  {
+    if (is_prepared())
+      {
+	query_result &qresult = m_q_result[0]; /* only one result */
+	info.stmt_type = qresult.stmt_type;
+	info.num_markers = m_num_markers;
+	int error = set_prepare_column_list_info (info.column_infos, qresult);
+	return true;
+      }
+    return false;
+  }
 
   prepare_info
   query_handler::prepare (std::string sql, int flag)

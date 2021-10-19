@@ -91,37 +91,38 @@ namespace cubmethod
 
     /* find in m_query_handler_map */
     query_handler *handler = nullptr;
-    for (auto it = m_query_handler_map.lower_bound(sql); it != m_query_handler_map.upper_bound(sql); it++) 
-    {
-        handler = find_query_handler (it->second);
-        if (handler != nullptr && handler->get_is_occupied() == false) {
-          prepare_info info;
-          handler->get_prepare_info (info);
-          handler->set_is_occupied (true);
-          info.handle_id = it->second;
-          int error = send_packable_object_to_server (info);
-          return error;
-        }
-    }
+    for (auto it = m_query_handler_map.lower_bound (sql); it != m_query_handler_map.upper_bound (sql); it++)
+      {
+	handler = find_query_handler (it->second);
+	if (handler != nullptr && handler->get_is_occupied() == false)
+	  {
+	    prepare_info info;
+	    handler->get_prepare_info (info);
+	    handler->set_is_occupied (true);
+	    info.handle_id = it->second;
+	    int error = send_packable_object_to_server (info);
+	    return error;
+	  }
+      }
 
     /* not found in statement handler */
     int handle_id = new_query_handler (); /* new handler */
     if (handle_id < 0)
       {
-  // TODO
-  // error handling
+	// TODO
+	// error handling
       }
 
     handler = find_query_handler (handle_id);
     if (handler == nullptr)
       {
-  // TODO
-  // error handling
+	// TODO
+	// error handling
       }
 
     prepare_info info = handler->prepare (sql, flag);
     info.handle_id = handle_id;
-    
+
     // add to statement handler cache
     m_query_handler_map.emplace (sql, handle_id);
 
@@ -531,15 +532,15 @@ namespace cubmethod
 
     if (m_query_handlers[id] != nullptr)
       {
-  if (is_free)
-  {
-	delete m_query_handlers[id];
-  m_query_handlers[id] = nullptr;
-  }
-  else
-  {
-    m_query_handlers[id]->reset ();
-  }
+	if (is_free)
+	  {
+	    delete m_query_handlers[id];
+	    m_query_handlers[id] = nullptr;
+	  }
+	else
+	  {
+	    m_query_handlers[id]->reset ();
+	  }
       }
   }
 
