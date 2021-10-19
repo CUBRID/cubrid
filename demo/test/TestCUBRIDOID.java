@@ -6,6 +6,7 @@ import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import cubrid.sql.CUBRIDOID;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -339,6 +340,40 @@ public class TestCUBRIDOID {
             } catch (Exception e) {
                 result += TestUtil.assertTrue(true);
             }
+
+        } finally {
+            SqlUtil.dropTable(conn, "t1");
+        }
+
+        return result;
+    }
+
+    public static String test11() throws SQLException {
+        Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+
+        String result = "";
+        SqlUtil.createTable(conn, "t1", "a int", "b string");
+
+        try {
+            PreparedStatement stmt = conn.prepareStatement("insert into t1 values (?, ?)");
+            stmt.setInt(1, 50);
+            stmt.setString(2, "cubrid");
+            stmt.execute();
+            stmt.close();
+
+            Statement stmt2 =
+                    conn.createStatement(
+                            ResultSet.TYPE_SCROLL_SENSITIVE, ResultSet.CONCUR_UPDATABLE);
+            ResultSet rs = stmt2.executeQuery("select t1 from t1");
+            rs.next();
+            CUBRIDOID oid = ((CUBRIDServerSideResultSet) rs).getOID();
+            ResultSet rs2 = oid.getValues(new String[] {"a", "b"});
+            rs2.next();
+            Integer i = rs2.getInt(1);
+            result += TestUtil.assertEquals(50, i);
+
+            String str = rs2.getString(2);
+            result += TestUtil.assertEquals("cubrid", str);
 
         } finally {
             SqlUtil.dropTable(conn, "t1");

@@ -145,7 +145,7 @@ public class TestCUBRIDPreparedStatement {
             stmt.execute();
             ResultSet rs = SqlUtil.executeQuery(conn, "select * from t1");
             rs.next();
-            if ((byte) 10 == rs.getObject("a")) {
+            if ((byte) 10 == (byte) rs.getObject("a")) {
                 return "f";
             }
         } finally {
