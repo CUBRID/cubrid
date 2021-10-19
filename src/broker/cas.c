@@ -1664,6 +1664,7 @@ cas_free (bool from_sighandler)
 #ifdef MEM_DEBUG
   int fd;
 #endif
+  int max_process_size;
 
   if (from_sighandler)
     {
