@@ -275,7 +275,7 @@ method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 static int
 method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 {
-  handler.free_query_handle_all ();
+  handler.free_query_handle_all (false);
 
   DB_VALUE result;
   db_make_null (&result);
