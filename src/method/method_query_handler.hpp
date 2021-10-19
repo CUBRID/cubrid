@@ -182,13 +182,10 @@ namespace cubmethod
       query_result *m_current_result;
       int m_current_result_index; // It has a value of -1 when no queries have been executed
 
-      <<<<<<< HEAD
       /* statement handler cache */
       bool m_is_occupied; // Is occupied by CUBRIDServerSideStatement
 
-      =======
-	      >>>>>>> upstream/feature/javasp_redesign
-	      bool m_is_updatable; // TODO: not implemented yet
+      bool m_is_updatable; // TODO: not implemented yet
       bool m_query_info_flag; // TODO: not implemented yet
   };
 }		// namespace cubmethod
