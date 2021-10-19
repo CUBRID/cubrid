@@ -180,7 +180,7 @@ public class SUConnection {
         CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
         packer.packInt(SUFunctionCode.GET_BY_OID.getCode());
         packer.packOID(new SOID(oid.getOID()));
-
+        packer.packInt(attributeName.length);
         for (int i = 0; attributeName != null && i < attributeName.length; i++) {
             if (attributeName[i] != null) {
                 packer.packString(attributeName[i]);

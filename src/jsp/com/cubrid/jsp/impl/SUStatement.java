@@ -63,6 +63,7 @@ public class SUStatement {
     /* fetch info */
     FetchInfo fetchInfo; // last fetched result
     private boolean wasNull = false;
+    SUResultTuple tuples[] = null;
 
     /* related to fetch */
     private int maxFetchSize;
@@ -121,6 +122,19 @@ public class SUStatement {
         fetchSize = 1;
         maxFetchSize = 0;
         isSensitive = false;
+
+        columnNumber = info.columnInfos.size();
+
+        fetchedStartCursorPosition = cursorPosition = 0;
+
+        totalTupleNumber = 1;
+        tuples = new SUResultTuple[totalTupleNumber];
+        tuples[0] = new SUResultTuple(1, columnNumber);
+        tuples[0].setOID(new SOID(oid.getOID()));
+
+        for (int i = 0; i < columnNumber; i++) {
+            tuples[0].setAttribute(i, info.dbValues.get(i));
+        }
     }
 
     public SUStatement(
@@ -384,7 +398,12 @@ public class SUStatement {
                     CUBRIDServerSideJDBCErrorCode.ER_COLUMN_INDEX, null);
         }
 
-        SUResultTuple tuples[] = fetchInfo.tuples;
+        if (type == NORMAL) {
+            tuples = fetchInfo.tuples; // get tuples from fetchInfo
+        } else {
+            // GET_BY_OID initialized 1 tuple at constructor
+        }
+
         Object obj;
 
         if ((tuples == null)
@@ -579,7 +598,7 @@ public class SUStatement {
         /* fetch tuples including OID */
         fetch();
 
-        SUResultTuple tuples[] = fetchInfo.tuples;
+        tuples = fetchInfo.tuples;
         SUResultTuple currentTuple = null;
 
         if ((tuples == null)

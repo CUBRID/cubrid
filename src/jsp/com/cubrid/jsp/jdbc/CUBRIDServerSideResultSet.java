@@ -96,7 +96,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     }
 
     protected CUBRIDServerSideResultSet(SUStatement stmt) {
-        // TODO
+        statementHandler = stmt;
+        currentRowIndex = -1;
     }
 
     public boolean isUpdatable() {
