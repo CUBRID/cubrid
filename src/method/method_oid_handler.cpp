@@ -142,7 +142,7 @@ namespace cubmethod
 	    db_value_clear (&path_val);
 	  }
 
-	int db_type = DB_TYPE_NULL, set_type, precision = 0;
+	int db_type = DB_TYPE_NULL, set_type = DB_TYPE_NULL, precision = 0;
 	short scale = 0;
 	char charset = 0;
 	if (attr != NULL)

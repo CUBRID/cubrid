@@ -78,7 +78,7 @@ namespace cubmethod
 
     return size;
   }
-  
+
   oid_get_info::~oid_get_info ()
   {
     for (int i = 0; i < (int) db_values.size(); i++)
