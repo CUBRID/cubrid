@@ -1055,7 +1055,6 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   char stmt_type;
   int num_bind;
   T_BROKER_VERSION client_version = req_info->client_version;
-  int is_first_out = 0;
   int result_cache_lifetime;
 
   if ((flag & CCI_PREPARE_UPDATABLE) && (flag & CCI_PREPARE_HOLDABLE))
@@ -1670,7 +1669,6 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 {
   int err_code = 0;
   int num_bind = 0;
-  DB_QUERY_RESULT *result = NULL;
   T_BROKER_VERSION client_version = req_info->client_version;
   char stmt_type;
   INT64 n;
@@ -1742,11 +1740,6 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   if (n < 0)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-    }
-
-  if (n < 0)
-    {
-      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);	// airnet check
       goto execute_error;
     }
 
@@ -1766,21 +1759,6 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
 
-
-#if 0
-  if (has_stmt_result_set (srv_handle->stmt_type) == true)
-    {
-      srv_handle->has_result_set = true;
-
-      if (srv_handle->is_holdable == true)
-	{
-	  srv_handle->q_result->is_holdable = true;
-#if !defined(LIBCAS_FOR_JSP)
-	  as_info->num_holdable_results++;
-#endif
-	}
-    }
-#endif
 
   if (do_commit_after_execute (*srv_handle))	// airnet check
     {

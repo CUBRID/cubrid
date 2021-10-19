@@ -861,8 +861,9 @@ cas_main (void)
   };
   FN_RETURN fn_ret = FN_KEEP_CONN;
   char client_ip_str[16];
+#if !defined(CAS_FOR_CGW)
   bool is_new_connection;
-
+#endif /* !CAS_FOR_CGW */
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
 #if defined(CAS_FOR_ORACLE)
@@ -1663,7 +1664,6 @@ cas_free (bool from_sighandler)
 #ifdef MEM_DEBUG
   int fd;
 #endif
-  int max_process_size;
 
   if (from_sighandler)
     {

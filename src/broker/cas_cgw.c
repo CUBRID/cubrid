@@ -203,8 +203,6 @@ int
 cgw_execute (T_SRV_HANDLE * srv_handle)
 {
   SQLRETURN err_code;
-  bool fNoData = false;
-  int bind_num = 0;
 
   if (srv_handle->num_markers > 0)
     {
