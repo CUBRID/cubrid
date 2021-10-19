@@ -1779,9 +1779,6 @@ cgw_sql_prepare (SQLHSTMT hstmt, SQLCHAR * sql_stmt)
 
   CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLPrepare (hstmt, sql_stmt, SQL_NTS));
 
-  SQLSMALLINT maxColLen;
-  cgw_get_driver_info (local_odbc_handle->hdbc, SQL_MAX_COLUMN_NAME_LEN, &maxColLen, 255);
-
   return (int) err_code;
 
 ODBC_ERROR:
@@ -2035,7 +2032,7 @@ cgw_cleanup_handle (T_CGW_HANDLE * handle)
 }
 
 int
-cgw_free_stmt (SQLHSTMT hstmt, int option)
+cgw_free_stmt (SQLHSTMT hstmt, SQLUSMALLINT option)
 {
   SQLRETURN err_code;
 
@@ -2090,7 +2087,7 @@ cgw_init_odbc_handle (void)
 }
 
 int
-cgw_get_driver_info (SQLHDBC hdbc, int info_type, void *driver_info, int size)
+cgw_get_driver_info (SQLHDBC hdbc, SQLUSMALLINT info_type, void *driver_info, SQLSMALLINT size)
 {
   SQLRETURN err_code;
   SQLSMALLINT len;

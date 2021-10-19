@@ -125,7 +125,7 @@ extern void cgw_cleanup_binder (T_COL_BINDER * pFirstBinding);
 
 extern int cgw_init_odbc_handle (void);
 extern int cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool valid_handle);
-extern int cgw_get_driver_info (SQLHDBC hdbc, int info_type, void *driver_info, int size);
+extern int cgw_get_driver_info (SQLHDBC hdbc, SQLUSMALLINT info_type, void *driver_info, SQLSMALLINT size);
 
 // db connection functions
 extern int cgw_database_connect (const char *dsn, const char *connect_url);
@@ -153,6 +153,6 @@ extern int cgw_row_data (SQLHSTMT hstmt, int cursor_pos);
 extern int cgw_set_stmt_attr (SQLHSTMT hstmt, SQLINTEGER attr, SQLPOINTER val, SQLINTEGER len);
 extern int cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * pFirstBinding, int cursor_pos);
 
-extern int cgw_free_stmt (SQLHSTMT hstmt, int option);
+extern int cgw_free_stmt (SQLHSTMT hstmt, SQLUSMALLINT option);
 extern int cgw_endtran (SQLHDBC hdbc, int tran_type);
 #endif /* _CAS_CGW_H_ */
