@@ -311,10 +311,10 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * pFirstBinding, int cursor_pos
   SQL_TIME_STRUCT *time;
   SQL_TIMESTAMP_STRUCT *timestamp;
 
-  net_buf_cp_int (net_buf, cursor_pos, NULL);	//  row index
+  net_buf_cp_int (net_buf, cursor_pos, NULL);
 
   memset ((char *) &tuple_obj, 0, sizeof (T_OBJECT));
-  net_buf_cp_object (net_buf, &tuple_obj);	// oid
+  net_buf_cp_object (net_buf, &tuple_obj);
 
   for (this_col_binding = pFirstBinding; this_col_binding; this_col_binding = this_col_binding->next)
     {
@@ -322,7 +322,6 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * pFirstBinding, int cursor_pos
 	{
 	  str_len = this_col_binding->indPtr;
 
-	  // col data
 	  switch (this_col_binding->col_data_type)
 	    {
 	    case SQL_UNKNOWN_TYPE:
@@ -498,26 +497,6 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * pFirstBinding, int cursor_pos
 int
 cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_INFO * col_info)
 {
-  //datatype              1
-  //scale                 2
-  //precision             4
-  //col_name_length       4
-  // col_name             
-  // attr_name_length     4
-  // attr_name
-  // class_name_length    4
-  // class_name   
-  // is_not_null          1
-  // default_value_length 4
-  // default_value
-  // is_auto_increment    1
-  // is_unique_key        1
-  // is_primary_key       1
-  // is_reverse_index     1
-  // is_reverse_unique    1
-  // is_foreign_key       1
-  // is_shared            1
-
   SQLRETURN err_code;
   SQLSMALLINT col_name_length = 0;
   SQLSMALLINT class_name_length = 0;
@@ -532,23 +511,18 @@ cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_I
   col_info->is_foreign_key = 0;
   col_info->is_shared = 0;
 
-  // datatype
   CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_CONCISE_TYPE, NULL, 0, NULL, &odbc_data_type));
 
-  // scale
   CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_SCALE, NULL, 0, NULL, &col_info->scale));
 
-  // precision
   CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_PRECISION, NULL, 0, NULL, &col_info->precision));
 
-
-  // col name
   CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt,
@@ -556,7 +530,6 @@ cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_I
 				       SQL_DESC_NAME,
 				       col_info->col_name, sizeof (col_info->col_name), &col_name_length, NULL));
 
-  // class_name
   CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt,
@@ -564,11 +537,9 @@ cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_I
 				       SQL_DESC_TABLE_NAME,
 				       col_info->class_name, sizeof (col_info->class_name), &class_name_length, NULL));
 
-  // is_not_null
   CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_NULLABLE, NULL, 0,	// Note count of bytes!
 							       NULL, &col_info->is_not_null));
 
-  // is_auto_increment
   CHK_ERR (hstmt,
 	   SQL_HANDLE_STMT,
 	   err_code = SQLColAttribute (hstmt,
@@ -777,17 +748,8 @@ cgw_get_charset (void)
 int
 cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_type)
 {
-  // total_row_count 4
-  // cache_reusable 1
-  // num_result_set(num_query) 4
-  // st stmt_info [...] 
-  // st inserted_oid_info 8
-  // include_culumn_info  1
-  // culumn_info (if include_culumn_info=1)
-  // shard_id     4
-
   SQLRETURN err_code;
-  char cache_reusable = 0;	// not support 
+  char cache_reusable = 0;
   SQLLEN total_row_count = 0;
 
 
@@ -801,11 +763,10 @@ cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_t
       total_row_count = MIN (total_row_count, srv_handle->max_row);
     }
 
-  net_buf_cp_int (net_buf, (int) total_row_count, NULL);	// total_row_count
-  net_buf_cp_byte (net_buf, (int) cache_reusable);	// cache_reusable
-  net_buf_cp_int (net_buf, (int) srv_handle->num_q_result, NULL);	// num_result_set 
+  net_buf_cp_int (net_buf, (int) total_row_count, NULL);
+  net_buf_cp_byte (net_buf, (int) cache_reusable);
+  net_buf_cp_int (net_buf, (int) srv_handle->num_q_result, NULL);
 
-  // stmt info [..]
   for (int i = 0; i < srv_handle->num_q_result; i++)
     {
       err_code = cgw_get_stmt_Info (srv_handle->cgw_handle->hstmt, net_buf, stmt_type);
@@ -845,24 +806,22 @@ ODBC_ERROR:
 static int
 cgw_get_stmt_Info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type)
 {
-  // stmt_type 1
-  // tuple_count (res_count) 4
   SQLLEN tuple_count = 0;
   T_OBJECT ins_oid;
   CACHE_TIME srv_cache_time;
   char statement_type = (char) stmt_type;
 
-  net_buf_cp_byte (net_buf, statement_type);	// stmt_type
+  net_buf_cp_byte (net_buf, statement_type);
 
   CHK_ERR (hstmt, SQL_HANDLE_STMT, SQLRowCount (hstmt, &tuple_count));
-  net_buf_cp_int (net_buf, (int) tuple_count, NULL);	// tuple_count
+  net_buf_cp_int (net_buf, (int) tuple_count, NULL);
 
   memset (&ins_oid, 0, sizeof (T_OBJECT));
-  net_buf_cp_object (net_buf, &ins_oid);	// inserted oid
+  net_buf_cp_object (net_buf, &ins_oid);
 
   CACHE_TIME_RESET (&srv_cache_time);
-  net_buf_cp_int (net_buf, srv_cache_time.sec, NULL);	// cache_time
-  net_buf_cp_int (net_buf, srv_cache_time.usec, NULL);	// cache_time
+  net_buf_cp_int (net_buf, srv_cache_time.sec, NULL);
+  net_buf_cp_int (net_buf, srv_cache_time.usec, NULL);
 
   return NO_ERROR;
 
@@ -1196,8 +1155,8 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
 #if (ODBCVER >= 0x0350)
 	case SQL_GUID:
 #endif
-	  //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 0);
-	  //goto ODBC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 0);
+	  goto ODBC_ERROR;
 	  break;
 	default:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 0);
@@ -1912,7 +1871,7 @@ numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string)
       return ER_CGW_INVALID_NUMERIC_VALUE;
     }
 
-  sprintf (hexstr, "%llX", number);	//convert number to hex
+  sprintf (hexstr, "%llX", number);
 
   error = hex_to_numeric_val (numeric, hexstr);
   if (error < 0)
@@ -2097,7 +2056,7 @@ get_datatype_size (SQLSMALLINT s_type, SQLULEN chars)
       if (chars > 16777215)
 	chars = 16777215 + 1;
       else
-	chars++;		// include terminating '\0'
+	chars++;
       break;
     case SQL_WCHAR:
     case SQL_WVARCHAR:
@@ -2159,7 +2118,6 @@ get_datatype_size (SQLSMALLINT s_type, SQLULEN chars)
     case SQL_TYPE_DATE:
       chars = sizeof (SQL_DATE_STRUCT);
       break;
-      // MyOdbc 3.51.09 contains a bug that prevents times to be returned?!
     case SQL_TYPE_TIME:
       chars = sizeof (TIME_STRUCT);
       break;
@@ -2240,7 +2198,6 @@ get_c_type (SQLSMALLINT s_type)
     case SQL_DOUBLE:
       c_type = SQL_C_DOUBLE;
       break;
-      // odbc 2.x
     case SQL_DATE:
       c_type = SQL_C_DATE;
       break;
@@ -2250,7 +2207,6 @@ get_c_type (SQLSMALLINT s_type)
     case SQL_TIMESTAMP:
       c_type = SQL_C_TIMESTAMP;
       break;
-      // odbc 3.x
 #if (ODBCVER >= 0x0300)
     case SQL_TYPE_DATE:
       c_type = SQL_C_TYPE_DATE;

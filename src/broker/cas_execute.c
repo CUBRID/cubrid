@@ -970,13 +970,13 @@ prepare_result_set:
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
 
-  net_buf_cp_int (net_buf, srv_h_id, NULL);	//server_handle_id 
+  net_buf_cp_int (net_buf, srv_h_id, NULL);
 
   result_cache_lifetime = get_client_result_cache_lifetime (session, stmt_id);
-  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);	// result_cache_lifetime
+  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 
-  net_buf_cp_byte (net_buf, stmt_type);	// stmt_type
-  net_buf_cp_int (net_buf, num_markers, NULL);	// num_bind
+  net_buf_cp_byte (net_buf, stmt_type);
+  net_buf_cp_int (net_buf, num_markers, NULL);
 
   q_result = (T_QUERY_RESULT *) malloc (sizeof (T_QUERY_RESULT));
   if (q_result == NULL)
@@ -1040,14 +1040,6 @@ int
 ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 		unsigned int query_seq_num)
 {
-  // server_handle_id             4
-  // result_cache_lifetime        4
-  // stmt_type                    1
-  // num_bind                     4
-  // updatable_flag               1
-  // num_cols                     4
-  // st column_info [...]
-
   T_SRV_HANDLE *srv_handle = NULL;
   int srv_h_id = -1;
   int err_code;
@@ -1093,9 +1085,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
 
   if (flag & CCI_PREPARE_QUERY_INFO)
     {
-      //cas_log_query_info_init (srv_handle->id, FALSE);
       srv_handle->query_info_flag = TRUE;
-      // not support flag
     }
   else
     {
@@ -1104,7 +1094,6 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
 
   if (flag & CCI_PREPARE_UPDATABLE)
     {
-      // not support flag
       srv_handle->is_updatable = TRUE;
     }
   else
@@ -1112,12 +1101,6 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
       srv_handle->is_updatable = FALSE;
     }
 
-  if (flag & CCI_PREPARE_CALL)
-    {
-      // not support flag
-    }
-
-// prepare_result_set:
   num_markers = get_num_markers (sql_stmt);
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
@@ -1135,16 +1118,16 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
       goto prepare_error;
     }
 
-  net_buf_cp_int (net_buf, srv_h_id, NULL);	//  server_handle_id
+  net_buf_cp_int (net_buf, srv_h_id, NULL);
 
-  result_cache_lifetime = -1;	// not support
-  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);	// result_cache_lifetime
+  result_cache_lifetime = -1;
+  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 
   stmt_type = get_stmt_type (sql_stmt);
-  net_buf_cp_byte (net_buf, stmt_type);	// stmt_type
+  net_buf_cp_byte (net_buf, stmt_type);
 
   num_bind = get_num_markers (sql_stmt);
-  net_buf_cp_int (net_buf, num_bind, NULL);	// num_bind
+  net_buf_cp_int (net_buf, num_bind, NULL);
 
   err_code = cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, stmt_type, client_version, net_buf);
 
@@ -1587,7 +1570,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
     }
   else
     {
-      net_buf_cp_byte (net_buf, 0);	// cache_reusable
+      net_buf_cp_byte (net_buf, 0);
     }
 
   err_code = execute_info_set (srv_handle, net_buf, client_version, flag);
@@ -1760,7 +1743,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   srv_handle->max_row = max_row;
 
 
-  if (do_commit_after_execute (*srv_handle))	// airnet check
+  if (do_commit_after_execute (*srv_handle))
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -4107,10 +4090,10 @@ prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, ch
   class_name_len = strlen (class_name_p);
 
   net_buf_cp_int (net_buf, attr_name_len + 1, NULL);
-  net_buf_cp_str (net_buf, attr_name_p, attr_name_len + 1);	// attr_name
+  net_buf_cp_str (net_buf, attr_name_p, attr_name_len + 1);
 
   net_buf_cp_int (net_buf, class_name_len + 1, NULL);
-  net_buf_cp_str (net_buf, class_name_p, class_name_len + 1);	// class_name
+  net_buf_cp_str (net_buf, class_name_p, class_name_len + 1);
 
   if (is_non_null >= 1)
     {
@@ -4121,7 +4104,7 @@ prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, ch
       is_non_null = 0;
     }
 
-  net_buf_cp_byte (net_buf, is_non_null);	// is_not_null
+  net_buf_cp_byte (net_buf, is_non_null);
 
   if (client_version < CAS_MAKE_VER (8, 3, 0))
     {
@@ -7644,10 +7627,6 @@ static int
 cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_type,
 				  T_BROKER_VERSION client_version, T_NET_BUF * net_buf)
 {
-  // updatable_flag               1
-  // num_cols                     4
-  // st column_info [...]
-
   int err_code;
   int result_cache_lifetime = -1;
   char updatable_flag = prepare_flag & CCI_PREPARE_UPDATABLE;
@@ -7664,8 +7643,8 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
 	  updatable_flag = TRUE;
 	}
 
-      net_buf_cp_byte (net_buf, updatable_flag);	// updatable_flag
-      net_buf_cp_int (net_buf, (int) num_cols, &num_col_offset);	// num_cols
+      net_buf_cp_byte (net_buf, updatable_flag);
+      net_buf_cp_int (net_buf, (int) num_cols, &num_col_offset);
 
       err_code = cgw_get_num_col (hstmt, &num_cols);
       if (err_code < 0)
@@ -7685,7 +7664,7 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
 				   client_version);
 	}
 
-      net_buf_overwrite_int (net_buf, num_col_offset, (int) num_cols);	// num_cols
+      net_buf_overwrite_int (net_buf, num_col_offset, (int) num_cols);
     }
   else if (stmt_type == CUBRID_STMT_CALL || stmt_type == CUBRID_STMT_GET_STATS || stmt_type == CUBRID_STMT_EVALUATE)
     {
@@ -7752,10 +7731,10 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	  return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	}
 
-      net_buf_cp_byte (net_buf, updatable_flag);	// updatable_flag
+      net_buf_cp_byte (net_buf, updatable_flag);
 
       num_cols = 0;
-      net_buf_cp_int (net_buf, num_cols, &num_col_offset);	// num_cols
+      net_buf_cp_int (net_buf, num_cols, &num_col_offset);
       for (col = column_info; col != NULL; col = db_query_format_next (col))
 	{
 	  char set_type;
@@ -7864,7 +7843,6 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	  /* precision = DB_MAX_STRING_LENGTH; */
 #endif /* !LIBCAS_FOR_JSP */
 
-	  // column_info [..]
 	  set_column_info (net_buf, cas_type, scale, precision, charset, col_name, attr_name, class_name,
 			   (char) db_query_format_is_non_null (col), client_version);
 
@@ -7918,15 +7896,15 @@ execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_BROKER_VERSI
   int retval = 0;
   CACHE_TIME srv_cache_time;
 
-  net_buf_cp_int (net_buf, srv_handle->num_q_result, NULL);	// num_result_set
+  net_buf_cp_int (net_buf, srv_handle->num_q_result, NULL);
 
   for (i = 0; i < srv_handle->num_q_result; i++)
     {
       stmt_type = srv_handle->q_result[i].stmt_type;
       tuple_count = srv_handle->q_result[i].tuple_count;
 
-      net_buf_cp_byte (net_buf, stmt_type);	// stmt_type
-      net_buf_cp_int (net_buf, tuple_count, NULL);	//tuple_count (res_count)
+      net_buf_cp_byte (net_buf, stmt_type);
+      net_buf_cp_int (net_buf, tuple_count, NULL);
 
       if (stmt_type == CUBRID_STMT_INSERT && srv_handle->q_result[i].result != NULL)
 	{
