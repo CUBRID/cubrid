@@ -844,7 +844,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 
   for (col = 1; col <= num_cols; col++)
     {
-      this_col_binding = (T_COL_BINDER *) (malloc (sizeof (T_COL_BINDER)));
+      this_col_binding = (T_COL_BINDER *) (MALLOC (sizeof (T_COL_BINDER)));
       if (!(this_col_binding))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -888,7 +888,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	case SQL_WVARCHAR:
 	case SQL_WLONGVARCHAR:
 	case SQL_DECIMAL:
-	  this_col_binding->data_buffer = (char *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (char *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -904,7 +904,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 					      bind_col_size, &this_col_binding->indPtr));
 	  break;
 	case SQL_REAL:
-	  this_col_binding->data_buffer = (float *) malloc (sizeof (float));
+	  this_col_binding->data_buffer = (float *) MALLOC (sizeof (float));
 
 	  if (!(this_col_binding->data_buffer))
 	    {
@@ -921,7 +921,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 					      (sizeof (float)), &this_col_binding->indPtr));
 	  break;
 	case SQL_NUMERIC:
-	  this_col_binding->data_buffer = (SQL_NUMERIC_STRUCT *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (SQL_NUMERIC_STRUCT *) MALLOC (bind_col_size);
 	  SQL_CHK_ERR (hstmt,
 		       SQL_HANDLE_STMT,
 		       err_code = SQLBindCol (hstmt,
@@ -931,7 +931,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 					      &this_col_binding->indPtr));
 	  break;
 	case SQL_INTEGER:
-	  this_col_binding->data_buffer = (int *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (int *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -948,7 +948,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	  break;
 
 	case SQL_SMALLINT:
-	  this_col_binding->data_buffer = (short *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (short *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -964,7 +964,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 					      &this_col_binding->indPtr));
 	  break;
 	case SQL_TINYINT:
-	  this_col_binding->data_buffer = (char *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (char *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -980,7 +980,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 					      &this_col_binding->indPtr));
 	  break;
 	case SQL_FLOAT:
-	  this_col_binding->data_buffer = (float *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (float *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -996,7 +996,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 					      &this_col_binding->indPtr));
 	  break;
 	case SQL_DOUBLE:
-	  this_col_binding->data_buffer = (double *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (double *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -1012,7 +1012,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 					      &this_col_binding->indPtr));
 	  break;
 	case SQL_BIGINT:
-	  this_col_binding->data_buffer = (DB_BIGINT *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (DB_BIGINT *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -1030,7 +1030,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 
 #if (ODBCVER >= 0x0300)
 	case SQL_DATETIME:
-	  this_col_binding->data_buffer = (TIMESTAMP_STRUCT *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (TIMESTAMP_STRUCT *) MALLOC (bind_col_size);
 
 	  if (!(this_col_binding->data_buffer))
 	    {
@@ -1048,7 +1048,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	  break;
 #else
 	case SQL_DATE:
-	  this_col_binding->data_buffer = (SQL_DATE_STRUCT *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (SQL_DATE_STRUCT *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -1065,7 +1065,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	  break;
 #endif
 	case SQL_TIMESTAMP:
-	  this_col_binding->data_buffer = (TIMESTAMP_STRUCT *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (TIMESTAMP_STRUCT *) MALLOC (bind_col_size);
 
 	  if (!(this_col_binding->data_buffer))
 	    {
@@ -1083,7 +1083,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	  break;
 #if (ODBCVER >= 0x0300)
 	case SQL_TYPE_TIMESTAMP:
-	  this_col_binding->data_buffer = (TIMESTAMP_STRUCT *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (TIMESTAMP_STRUCT *) MALLOC (bind_col_size);
 
 	  if (!(this_col_binding->data_buffer))
 	    {
@@ -1100,7 +1100,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 					      &this_col_binding->indPtr));
 	  break;
 	case SQL_TYPE_DATE:
-	  this_col_binding->data_buffer = (DATE_STRUCT *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (DATE_STRUCT *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -1116,7 +1116,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 					      &this_col_binding->indPtr));
 	  break;
 	case SQL_TYPE_TIME:
-	  this_col_binding->data_buffer = (TIME_STRUCT *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (TIME_STRUCT *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -1135,7 +1135,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 
 	case SQL_VARBINARY:
 	case SQL_BINARY:
-	  this_col_binding->data_buffer = (SQLCHAR *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (SQLCHAR *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -1151,7 +1151,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 					      &this_col_binding->indPtr));
 	  break;
 	case SQL_BIT:
-	  this_col_binding->data_buffer = (SQLCHAR *) malloc (bind_col_size);
+	  this_col_binding->data_buffer = (SQLCHAR *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
