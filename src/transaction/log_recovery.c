@@ -3191,7 +3191,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PROGRESS, 6, "REDO",
 		      done_page_cnt, total_page_cnt, progress * 100, elapsed_time,
-		      done_page_cnt == 0 ? -1.00 : (elapsed_time / done_page_cnt) * (total_page_cnt - done_page_cnt));
+		      done_page_cnt == 0 ? -1.0 : (elapsed_time / done_page_cnt) * (total_page_cnt - done_page_cnt));
 	    }
 	}
 
