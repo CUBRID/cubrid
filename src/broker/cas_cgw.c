@@ -762,7 +762,7 @@ cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_t
     }
 
   net_buf_cp_int (net_buf, (int) total_row_count, NULL);
-  net_buf_cp_byte (net_buf, (int) cache_reusable);
+  net_buf_cp_byte (net_buf, cache_reusable);
   net_buf_cp_int (net_buf, (int) srv_handle->num_q_result, NULL);
 
   for (int i = 0; i < srv_handle->num_q_result; i++)
