@@ -1390,7 +1390,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       goto execute_error;
     }
-  n = cgw_row_count (srv_handle->cgw_handle->hstmt);
+  n = cgw_get_row_count (srv_handle->cgw_handle->hstmt);
 
   stmt_type = get_stmt_type (srv_handle->sql_stmt);
   srv_handle->stmt_type = stmt_type;

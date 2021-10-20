@@ -1825,7 +1825,7 @@ cgw_is_database_connected ()
   return is_database_connected;
 }
 
-INT64
+SQLLEN
 cgw_get_row_count (SQLHSTMT hstmt)
 {
   SQLLEN row_count = 0;
@@ -1840,7 +1840,7 @@ cgw_get_row_count (SQLHSTMT hstmt)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
       return ER_CGW_INVALID_STMT_HANDLE;
     }
-  return (INT64) row_count;
+  return row_count;
 
 ODBC_ERROR:
   return ER_FAILED;
