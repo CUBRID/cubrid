@@ -11083,6 +11083,10 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       query_flag = DEFAULT_EXEC_MODE;
       /* Do not update LAST_INSERT_ID during executing a trigger. */
+      if (do_Trigger_involved == true)
+	{
+	  query_flag |= TRIGGER_IS_INVOLVED;
+	}
 
       if (parser->flag.is_auto_commit)
 	{
