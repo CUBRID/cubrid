@@ -1407,11 +1407,6 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       n = MIN (n, max_row);
     }
 
-  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
-    {
-      srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
-    }
-
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
   srv_handle->cur_result_index = 1;
@@ -1476,10 +1471,6 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 execute_error:
   NET_BUF_ERR_SET (net_buf);
 
-  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
-    {
-      srv_handle->prepare_flag &= ~CCI_PREPARE_XASL_CACHE_PINNED;
-    }
   if (srv_handle->auto_commit_mode)
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
