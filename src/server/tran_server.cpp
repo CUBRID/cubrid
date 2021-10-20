@@ -288,6 +288,7 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
 		srv_chn.get_channel_id ().c_str ());
 
   m_page_server_conn_vec.emplace_back (new page_server_conn_t (std::move (srv_chn), get_request_handlers ()));
+  m_page_server_conn_vec.back ()->start ();
 
   return NO_ERROR;
 }

@@ -2633,6 +2633,7 @@ css_process_server_server_connect (SOCKET master_fd)
 	}
       // *INDENT-ON*
       ps_Gl.set_active_tran_server_connection (std::move (chn));
+      ps_Gl.start ();
       break;
     default:
       assert (false);
