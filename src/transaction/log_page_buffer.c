@@ -3391,6 +3391,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 {
   if (is_tran_server_with_remote_storage ())
     {
+      // log pages are not written to local disk; they are written by page server
+      // skip flushing - aka: pretend that flushing has happened
+
       logpb_skip_flush_append_pages ();
       return NO_ERROR;
     }
@@ -3400,6 +3403,11 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
 }
 
+/*
+ * logpb_skip_flush_append_pages - Skip flushing append pages to disk.
+ *                  Set nxio_lsa and reset flush page count directly.
+ *
+ */
 static void
 logpb_skip_flush_append_pages ()
 {

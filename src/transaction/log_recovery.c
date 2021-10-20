@@ -898,6 +898,8 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   assert (is_tran_server_with_remote_storage ());
   assert (log_Gl.m_metainfo.is_loaded_from_file ());
 
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
   const int sys_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (sys_tran_index == LOG_SYSTEM_TRAN_INDEX && LOG_FIND_TDES (sys_tran_index) != nullptr);
 
@@ -906,7 +908,12 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
   // start with what metalog tells us
-  const auto[chkpt_lsa, chkpt_info] = log_Gl.m_metainfo.get_highest_lsa_checkpoint_info ();
+  // *INDENT-OFF*
+  const auto highest_lsa_chkpt_info = log_Gl.m_metainfo.get_highest_lsa_checkpoint_info ();
+  const log_lsa chkpt_lsa = std::get<log_lsa>(highest_lsa_chkpt_info);
+  const cublog::checkpoint_info *const chkpt_info = std::get<1>(highest_lsa_chkpt_info);
+  // *INDENT-ON*
+
   if (chkpt_info == nullptr)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
@@ -958,6 +965,11 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   //
   log_Gl.rcv_phase = LOG_RECOVERY_UNDO_PHASE;
   log_recovery_undo (thread_p);
+
+  // when dangling transactions are encountered during undo, compensation log records
+  // might be added - eg: log_rv_undo_record;
+  // request a flush such that all log pages are up to date
+  logpb_flush_pages_direct (thread_p);
 
   // Reset boot_Db_parm in case a data volume creation was undone.
   error_code = boot_reset_db_parm (thread_p);
