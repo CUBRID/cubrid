@@ -4,5 +4,5 @@
 	branch = develop
 [submodule "cubrid-jdbc"]
 	path = cubrid-jdbc
-	url = https://github.com/hgryoo/cubrid-jdbc
-	branch = support_oid
+	url = https://github.com/cubrid/cubrid-jdbc
+	branch = feature/javasp_redesign
