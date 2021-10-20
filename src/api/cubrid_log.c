@@ -41,6 +41,7 @@
 #include "network.h"
 #include "object_representation.h"
 #include "dbi.h"
+#include "server_type_enum.hpp"
 
 #define CUBRID_LOG_ERROR_HANDLING(e, v) \
   (err_code) = (e); \
@@ -336,6 +337,7 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
   int err_code;
 
   char trace_errbuf[1024];
+  std::string msg;
 
   g_conn_entry = css_make_conn (INVALID_SOCKET);
   if (g_conn_entry == NULL)
@@ -343,8 +345,12 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
 
+  //client should connect to Transaction server
+  msg = ((char) SERVER_TYPE_TRANSACTION) + '0';
+  msg.append (dbname, std::strlen (dbname) + 1);
   if (css_common_connect
-      (g_conn_entry, &rid, host, DATA_REQUEST, dbname, strlen (dbname) + 1, port, g_connection_timeout, true) == NULL)
+      (g_conn_entry, &rid, host, DATA_REQUEST, msg.c_str (), msg.length () + 1, port, g_connection_timeout,
+       true) == NULL)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
