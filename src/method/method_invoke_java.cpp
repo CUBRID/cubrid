@@ -27,6 +27,7 @@
 #include "method_connection.hpp"
 #include "method_struct_invoke.hpp"
 #include "method_struct_value.hpp"
+#include "method_struct_lob_info.hpp"
 #include "method_struct_oid_info.hpp"
 #include "method_invoke_group.hpp"
 #include "method_struct_query.hpp"
@@ -277,15 +278,23 @@ namespace cubmethod
 	error = callback_collection_cmd (thread_ref, blk);
 	break;
 
+      case METHOD_CALLBACK_LOB_NEW:
+	error = callback_lob_new (thread_ref, blk);
+	break;
+      case METHOD_CALLBACK_LOB_WRITE:
+	error = callback_lob_write (thread_ref, blk);
+	break;
+      case METHOD_CALLBACK_LOB_READ:
+	error = callback_lob_read (thread_ref, blk);
+	break;
+
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
       case METHOD_CALLBACK_NEXT_RESULT:
       case METHOD_CALLBACK_CURSOR:
       case METHOD_CALLBACK_CURSOR_CLOSE:
       case METHOD_CALLBACK_EXECUTE_BATCH:
       case METHOD_CALLBACK_EXECUTE_ARRAY:
-      case METHOD_CALLBACK_LOB_NEW:
-      case METHOD_CALLBACK_LOB_WRITE:
-      case METHOD_CALLBACK_LOB_READ:
+
       case METHOD_CALLBACK_MAKE_OUT_RS:
 	// TODO: not implemented yet
 	assert (false);
@@ -482,7 +491,7 @@ namespace cubmethod
 
 	    if (cursor->get_is_oid_included())
 	      {
-    /* FIXME!!: For more optimized way, refactoring method_query_cursor is needed */
+		/* FIXME!!: For more optimized way, refactoring method_query_cursor is needed */
 		OID *oid = cursor->get_current_oid ();
 		std::vector<DB_VALUE> sub_vector = {tuple_values.begin() + 1, tuple_values.end ()};
 		info.tuples.emplace_back (tuple_index, sub_vector, *oid);
@@ -613,6 +622,103 @@ namespace cubmethod
     error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
 #endif
     return error;
+  }
+
+  int
+  method_invoke_java::callback_lob_new (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code, lob_type;
+    unpacker.unpack_int (code);
+    unpacker.unpack_int (lob_type);
+
+    lob_info info;
+    int error = m_lob_handler.lob_new ((DB_TYPE) lob_type, info);
+    if (error < 0)
+      {
+	// TODO: error handling
+      }
+
+    error = send_packable_object_to_java (info);
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_lob_read (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code;
+    lob_info info;
+    INT64 offset;
+    int size;
+
+    unpacker.unpack_all (code, info, offset, size);
+
+    DB_VALUE lob_value;
+    db_make_elo (&lob_value, info.db_type, info.lob_handle);
+
+    DB_BIGINT size_read;
+    cubmem::extensible_block eb;
+    int error = m_lob_handler.lob_read (&lob_value, offset, size, eb, size_read);
+    if (error < 0)
+      {
+	// TODO: error handling
+      }
+
+    cubmem::block lob_blk ((size_t) size_read, eb.get_ptr());
+    error = send_packable_object_to_java (lob_blk);
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_lob_write (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code;
+    lob_info info;
+    INT64 offset;
+
+    cubmem::block lob_blk = m_lob_handler.get_lob_buffer ();
+
+    unpacker.unpack_all (code, info, offset, lob_blk);
+
+    DB_VALUE lob_value;
+    db_make_elo (&lob_value, info.db_type, info.lob_handle);
+
+    DB_BIGINT size_written = 0;
+    int error = m_lob_handler.lob_write (&lob_value, offset, lob_blk, size_written);
+    if (error < 0)
+      {
+	// TODO: error handling
+      }
+
+    error = send_packable_object_to_java (size_written);
+    return error;
+  }
+
+  template<typename ... Args>
+  int
+  method_invoke_java::send_packable_object_to_java (Args &&... args)
+  {
+    packing_packer packer;
+    cubmem::extensible_block eb;
+
+    packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
+
+    cubmem::block blk (eb.get_size(), eb.get_ptr());
+    int error = method_send_buffer_to_java (m_sock_fd, blk);
+    if (error != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
+
+    return NO_ERROR;
   }
 
   int
