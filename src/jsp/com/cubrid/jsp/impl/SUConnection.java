@@ -47,18 +47,14 @@ import com.cubrid.jsp.jdbc.CUBRIDServerSideConstants;
 import cubrid.sql.CUBRIDOID;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
 
 public class SUConnection {
 
-    List<SUStatement> stmts = null;
     ExecuteThread thread = null;
     ByteBuffer outputBuffer = ByteBuffer.allocate(4096);
 
     public SUConnection(ExecuteThread t) {
         thread = t;
-        stmts = new ArrayList<SUStatement>();
     }
 
     public CUBRIDUnpacker request(ByteBuffer buffer) throws IOException {
@@ -98,7 +94,6 @@ public class SUConnection {
             stmt = new SUStatement(this, info, false, sql, flag);
         }
 
-        stmts.add(stmt);
         return stmt;
     }
 
@@ -245,7 +240,7 @@ public class SUConnection {
             return unpacker.unpackCString();
         }
 
-        return result;
+        return null;
     }
 
     // UFunctionCode.RELATED_TO_COLLECTION

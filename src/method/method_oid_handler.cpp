@@ -162,7 +162,6 @@ namespace cubmethod
 	      }
 	  }
 
-	// column_info info (db_type, set_type, scale, prec, charset, attr_name);
 	info.column_infos.emplace_back (db_type, set_type, scale, precision, charset, attr_name);
       }
 
