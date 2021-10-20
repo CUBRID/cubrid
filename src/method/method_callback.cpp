@@ -317,8 +317,7 @@ namespace cubmethod
     query_handler *handler = new query_handler (m_error_ctx, idx);
     if (handler == nullptr)
       {
-	// TODO: error handling
-	return -1;
+	return ER_FAILED;
       }
 
     if (idx < handler_size)

@@ -47,7 +47,7 @@ namespace cubmethod
       int open ();
       void close ();
 
-      void reset (QUERY_ID query_id);
+      int reset (QUERY_ID query_id);
 
       int first ();
       int last ();
