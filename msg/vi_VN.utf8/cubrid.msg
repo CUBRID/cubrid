@@ -1354,15 +1354,23 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1283 Error reserved for scalability development.
 1284 Cannot truncate the table due to the primary key referred to on %1$s. Try again with CASCADE option.
 1285 Cannot cascade truncate because the ON DELETE action of the foreign key (%1$s) is not set to CASCADE.
-1297 _db_synonym class not found.
-1298 db_synonym vclass not found.
-1299 Public ynonym [%1$s].[%2$s] not found.
-1300 Private synonym [%1$s].[%2$s] not found.
-1301 Public synonym [%1$s].[%2$s] already exist.
-1302 Private synonym [%1$s].[%2$s] already exist.
-1303 Cannot update synonym [%1$s].[%2$s].
 
-1304 Last Error
+$
+$ I have spaced them out to avoid error number conflicts with other PR.
+$ I will correct it after merging it into feature branch.
+$
+1400 Cannot use system class/vclass name as synonym name.
+1401 Public synonym of %1$s cannot exist.
+1402 Creating private synonym for other user can only be performed by DBA or a DBA group member.
+1403 _db_synonym class not found.
+1404 db_synonym vclass not found.
+1405 Public synonym %1$s.%2$s not found.
+1406 Private synonym %1$s.%2$s not found.
+1407 Public synonym %1$s.%2$s already exist.
+1408 Private synonym %1$s.%2$s already exist.
+1409 Cannot update synonym %1$s.%2$s.
+
+1500 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

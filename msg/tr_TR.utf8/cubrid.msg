@@ -1354,15 +1354,23 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1283 Error reserved for scalability development.
 1284 %1$s üzerinde başvurulan birincil anahtar nedeniyle tablo kesilemiyor. CASCADE seçeneği ile tekrar deneyiniz.
 1285 Yabancı anahtarın ON DELETE eylemi (%1$s) CASCADE olarak ayarlanmadığından kademeli kesilemiyor.
-1297 _db_synonym class not found.
-1298 db_synonym vclass not found.
-1299 Public ynonym [%1$s].[%2$s] not found.
-1300 Private synonym [%1$s].[%2$s] not found.
-1301 Public synonym [%1$s].[%2$s] already exist.
-1302 Private synonym [%1$s].[%2$s] already exist.
-1303 Cannot update synonym [%1$s].[%2$s].
 
-1304 Son Hata
+$
+$ I have spaced them out to avoid error number conflicts with other PR.
+$ I will correct it after merging it into feature branch.
+$
+1400 Cannot use system class/vclass name as synonym name.
+1401 Public synonym of %1$s cannot exist.
+1402 Creating private synonym for other user can only be performed by DBA or a DBA group member.
+1403 _db_synonym class not found.
+1404 db_synonym vclass not found.
+1405 Public synonym %1$s.%2$s not found.
+1406 Private synonym %1$s.%2$s not found.
+1407 Public synonym %1$s.%2$s already exist.
+1408 Private synonym %1$s.%2$s already exist.
+1409 Cannot update synonym %1$s.%2$s.
+
+1500 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

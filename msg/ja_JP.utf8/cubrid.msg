@@ -1354,15 +1354,23 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 %1$s sで参照されている主キーが原因で、テーブルを切り捨てることができません。 CASCADEオプションを使用して再試行してください。
 1285 外部キー（%1$s）のON DELETEアクションがCASCADEに設定されていないため、切り捨てをカスケードできません。
-1297 _db_synonym class not found.
-1298 db_synonym vclass not found.
-1299 Public ynonym [%1$s].[%2$s] not found.
-1300 Private synonym [%1$s].[%2$s] not found.
-1301 Public synonym [%1$s].[%2$s] already exist.
-1302 Private synonym [%1$s].[%2$s] already exist.
-1303 Cannot update synonym [%1$s].[%2$s].
 
-1304 ラストエラー
+$
+$ I have spaced them out to avoid error number conflicts with other PR.
+$ I will correct it after merging it into feature branch.
+$
+1400 Cannot use system class/vclass name as synonym name.
+1401 Public synonym of %1$s cannot exist.
+1402 Creating private synonym for other user can only be performed by DBA or a DBA group member.
+1403 _db_synonym class not found.
+1404 db_synonym vclass not found.
+1405 Public synonym %1$s.%2$s not found.
+1406 Private synonym %1$s.%2$s not found.
+1407 Public synonym %1$s.%2$s already exist.
+1408 Private synonym %1$s.%2$s already exist.
+1409 Cannot update synonym %1$s.%2$s.
+
+1500 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

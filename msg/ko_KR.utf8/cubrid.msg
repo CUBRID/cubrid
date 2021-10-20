@@ -1354,15 +1354,23 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 %1$s 의 기본키는 외래키 참조로 인해 truncate될 수 없습니다.
 1285 외래키 (%1$s) 의 ON DELETE action이 CASCADE가 아니기 때문에 truncate할 수 없습니다.
-1297 _db_synonym class not found.
-1298 db_synonym vclass not found.
-1299 Public ynonym [%1$s].[%2$s] not found.
-1300 Private synonym [%1$s].[%2$s] not found.
-1301 Public synonym [%1$s].[%2$s] already exist.
-1302 Private synonym [%1$s].[%2$s] already exist.
-1303 Cannot update synonym [%1$s].[%2$s].
 
-1304 마지막 에러
+$
+$ I have spaced them out to avoid error number conflicts with other PR.
+$ I will correct it after merging it into feature branch.
+$
+1400 Synonym 이름으로 System 테이블/뷰의 이름을 사용할 수 없습니다.
+1401 %2$s의 Public Synonym은 존재할 수 없습니다.
+1402 DBA 또는 DBA 그룹의 멤버 사용자만 다른 사용자의 Private Synonym을 생성할 수 있습니다.
+1403 _db_synonym 시스템 테이블이 존재하지 않습니다.
+1404 db_synonym 시스템 뷰가 존재하지 않습니다.
+1405 Public Synonym %1$s.%2$s이 존재하지 않습니다.
+1406 Private Synonym %1$s.%2$s이 존재하지 않습니다.
+1407 Public Synonym %1$s.%2$s이 이미 존재합니다.
+1408 Private Synonym %1$s.%2$s이 이미 존재합니다.
+1409 Synonym %1$s.%2$s을 변경할 수 없습니다.
+
+1500 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

@@ -1657,18 +1657,23 @@
 #define ER_CDC_LOGINFO_ENTRY_GENERATED              -1294
 #define ER_CDC_IGNORE_LOG_INFO                      -1295
 
-#define ER_QPROC_CANNOT_USE_CATALOG_NAME            -1296
-#define ER_QPROC_CANNOT_PUBLIC_SYNONYM_FOR_USER     -1297
-#define ER_QPROC_CANNOT_PRIAVTE_SYNONYM_FOR_USER    -1298
-#define ER_QPROC_DB_SYNONYM_CLASS_NOT_FOUND         -1299
-#define ER_QPROC_DB_SYNONYM_VCLASS_NOT_FOUND        -1300
-#define ER_QPROC_PUBLIC_SYNONYM_NOT_FOUND           -1301
-#define ER_QPROC_PRIVATE_SYNONYM_NOT_FOUND          -1302
-#define ER_QPROC_PUBLIC_SYNONYM_ALREADY_EXIST       -1303
-#define ER_QPROC_PRIVATE_SYNONYM_ALREADY_EXIST      -1304
-#define ER_QPROC_CANNOT_UPDATE_SYNONYM              -1305
+/*
+ * I have spaced them out to avoid error number conflicts with other PR.
+ * I will correct it after merging it into feature branch.
+ *
+ */
+#define ER_QPROC_CANNOT_USE_CATALOG_NAME            -1400
+#define ER_QPROC_CANNOT_EXIST_PUBLIC_SYNONYM        -1401
+#define ER_QPROC_CANNOT_PRIAVTE_SYNONYM_FOR_USER    -1402
+#define ER_QPROC_DB_SYNONYM_CLASS_NOT_FOUND         -1403
+#define ER_QPROC_DB_SYNONYM_VCLASS_NOT_FOUND        -1404
+#define ER_QPROC_PUBLIC_SYNONYM_NOT_FOUND           -1405
+#define ER_QPROC_PRIVATE_SYNONYM_NOT_FOUND          -1406
+#define ER_QPROC_PUBLIC_SYNONYM_ALREADY_EXIST       -1407
+#define ER_QPROC_PRIVATE_SYNONYM_ALREADY_EXIST      -1408
+#define ER_QPROC_CANNOT_UPDATE_SYNONYM              -1409
 
-#define ER_LAST_ERROR                               -1306
+#define ER_LAST_ERROR                               -1500
 
 /*
  * CAUTION!

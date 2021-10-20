@@ -17281,7 +17281,7 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  * return: error code
  *    ER_AU_DBA_ONLY
  *    ER_QPROC_CANNOT_USE_CATALOG_NAME
- *    ER_QPROC_CANNOT_PUBLIC_SYNONYM_FOR_USER
+ *    ER_QPROC_CANNOT_EXIST_PUBLIC_SYNONYM
  *    ER_QPROC_CANNOT_PRIAVTE_SYNONYM_FOR_USER
  *    ER_QPROC_PUBLIC_SYNONYM_ALREADY_EXIST
  *    ER_QPROC_PRIVATE_SYNONYM_ALREADY_EXIST
@@ -17352,8 +17352,8 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* cannot create public synonym for user. */
       if (synonym_owner)
 	{
-	  error = ER_QPROC_CANNOT_PUBLIC_SYNONYM_FOR_USER;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "create", au_get_user_name (synonym_owner));
+	  error = ER_QPROC_CANNOT_EXIST_PUBLIC_SYNONYM;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, au_get_user_name (synonym_owner));
 	  goto end;
 	}
 
@@ -17625,7 +17625,7 @@ end:
  * do_drop_synonym () - drop synonym.
  * return: error code
  *    ER_AU_DBA_ONLY
- *    ER_QPROC_CANNOT_PUBLIC_SYNONYM_FOR_USER
+ *    ER_QPROC_CANNOT_EXIST_PUBLIC_SYNONYM
  *    ER_QPROC_CANNOT_UPDATE_SYNONYM
  * parser(in): parser context
  * statement(in): parse tree of a statement
@@ -17707,8 +17707,8 @@ do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* cannot drop public synonym for user. */
 	  if (synonym_owner)
 	    {
-	      error = ER_QPROC_CANNOT_PUBLIC_SYNONYM_FOR_USER;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "drop", au_get_user_name (synonym_owner));
+	      error = ER_QPROC_CANNOT_EXIST_PUBLIC_SYNONYM;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, au_get_user_name (synonym_owner));
 	      goto end;
 	    }
 

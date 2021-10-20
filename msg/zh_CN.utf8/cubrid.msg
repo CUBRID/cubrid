@@ -1355,15 +1355,23 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 由于在 %1$s 上引用了主键，因此无法截断表。 使用 CASCADE 选项重试。
 1285 无法级联截断，因为外键 (%1$s) 的 ON DELETE 操作未设置为 CASCADE。
-1297 _db_synonym class not found.
-1298 db_synonym vclass not found.
-1299 Public ynonym [%1$s].[%2$s] not found.
-1300 Private synonym [%1$s].[%2$s] not found.
-1301 Public synonym [%1$s].[%2$s] already exist.
-1302 Private synonym [%1$s].[%2$s] already exist.
-1303 Cannot update synonym [%1$s].[%2$s].
 
-1304 最后一个错误.
+$
+$ I have spaced them out to avoid error number conflicts with other PR.
+$ I will correct it after merging it into feature branch.
+$
+1400 Cannot use system class/vclass name as synonym name.
+1401 Public synonym of %1$s cannot exist.
+1402 Creating private synonym for other user can only be performed by DBA or a DBA group member.
+1403 _db_synonym class not found.
+1404 db_synonym vclass not found.
+1405 Public synonym %1$s.%2$s not found.
+1406 Private synonym %1$s.%2$s not found.
+1407 Public synonym %1$s.%2$s already exist.
+1408 Private synonym %1$s.%2$s already exist.
+1409 Cannot update synonym %1$s.%2$s.
+
+1500 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
