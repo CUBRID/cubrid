@@ -74,7 +74,7 @@ typedef enum
 {
   MINUS,
   PLUS
-} sign;
+} SIGN;
 
 typedef struct t_odbc_col_info T_ODBC_COL_INFO;
 struct t_odbc_col_info
