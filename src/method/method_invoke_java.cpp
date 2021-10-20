@@ -352,13 +352,8 @@ namespace cubmethod
 
     auto get_prepare_info = [&] (cubmem::block & b)
     {
-      packing_unpacker unpacker (b.ptr, (size_t) b.dim);
-
-      prepare_info info;
-      info.unpack (unpacker);
-      // info.dump ();
-      error = method_send_buffer_to_java (m_group->get_socket (), b);
-      return error;
+      int err = method_send_buffer_to_java (m_group->get_socket (), b);
+      return err;
     };
     error = xs_receive (&thread_ref, get_prepare_info);
 #endif
@@ -376,8 +371,7 @@ namespace cubmethod
     int code;
     execute_request request;
 
-    unpacker.unpack_int (code);
-    request.unpack (unpacker);
+    unpacker.unpack_all (code, request);
     request.has_parameter = 1;
 
     packing_packer packer;
@@ -393,36 +387,42 @@ namespace cubmethod
     {
       packing_unpacker unpacker (b.ptr, (size_t) b.dim);
 
-      execute_info info;
-      info.unpack (unpacker);
+      int res_code;
+      unpacker.unpack_int (res_code);
 
-      query_result_info &current_result_info = info.qresult_infos[0];
-      if (current_result_info.stmt_type == CUBRID_STMT_SELECT)
+      if (res_code == METHOD_RESPONSE_SUCCESS)
 	{
-	  std::uint64_t qid = current_result_info.query_id;
-	  const auto &iter = m_cursor_map.find (qid);
+	  execute_info info;
+	  info.unpack (unpacker);
 
-	  query_cursor *cursor = nullptr;
-	  if (iter == m_cursor_map.end ())
+	  query_result_info &current_result_info = info.qresult_infos[0];
+	  if (current_result_info.stmt_type == CUBRID_STMT_SELECT)
 	    {
-	      /* not found, new cursor is created */
-	      bool is_oid_included = current_result_info.include_oid;
-	      cursor = m_cursor_map[qid] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
-	      if (cursor == nullptr)
+	      std::uint64_t qid = current_result_info.query_id;
+	      const auto &iter = m_cursor_map.find (qid);
+
+	      query_cursor *cursor = nullptr;
+	      if (iter == m_cursor_map.end ())
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
-		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		  /* not found, new cursor is created */
+		  bool is_oid_included = current_result_info.include_oid;
+		  cursor = m_cursor_map[qid] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
+		  if (cursor == nullptr)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
+		      return ER_OUT_OF_VIRTUAL_MEMORY;
+		    }
 		}
-	    }
-	  else
-	    {
-	      /* found, cursur is reset */
-	      cursor = iter->second;
-	      cursor->close ();
-	      cursor->reset (qid);
-	    }
+	      else
+		{
+		  /* found, cursur is reset */
+		  cursor = iter->second;
+		  cursor->close ();
+		  cursor->reset (qid);
+		}
 
-	  cursor->open ();
+	      cursor->open ();
+	    }
 	}
 
       error = method_send_buffer_to_java (m_group->get_socket(), b);

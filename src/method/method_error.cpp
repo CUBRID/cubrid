@@ -18,3 +18,46 @@
 
 #include "method_error.hpp"
 
+namespace cubmethod
+{
+  error_context::error_context ()
+  {
+    clear ();
+  }
+
+  bool
+  error_context::has_error ()
+  {
+    return (err_id != 0);
+  }
+
+  void
+  error_context::clear ()
+  {
+    err_id = 0;
+    err_string.clear ();
+    err_file.clear ();
+    err_line = 0;
+  }
+
+  int
+  error_context::get_error ()
+  {
+    return err_id;
+  }
+
+  std::string
+  error_context::get_error_msg ()
+  {
+    return err_string;
+  }
+
+  void
+  error_context::set_error (int number, const char *msg, const char *file, int line)
+  {
+    err_id = number;
+    err_string.assign (msg ? msg : "");
+    err_file.assign (file ? file : "");
+    err_line = line;
+  }
+} // namespace cubmethod

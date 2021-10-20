@@ -110,10 +110,10 @@ namespace cubmethod
       }
     else
       {
-	// TODO: error handling: free and close schema info results and set error on error context
 	close_and_free_session ();
-	//err_code = ERROR_INFO_SET (CAS_ER_SCHEMA_TYPE, CAS_ERROR_INDICATOR);
-	// goto schema_info_error;
+
+	// TODO: proper error code
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_SCHEMA_TYPE, NULL, __FILE__, __LINE__);
       }
 
     return info;
@@ -127,17 +127,17 @@ namespace cubmethod
     m_session = db_open_buffer (sql_stmt.c_str());
     if (!m_session)
       {
-	// TODO: error handling
 	lang_set_parser_use_client_charset (true);
-	// return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     int stmt_id = db_compile_statement (m_session);
     if (stmt_id < 0)
       {
-	// TODO: error handling
 	close_and_free_session ();
-	return stmt_id;
+	m_error_ctx.set_error (stmt_id, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     DB_QUERY_RESULT *result = NULL;
@@ -148,9 +148,9 @@ namespace cubmethod
 
     if (num_result < 0)
       {
-	// TDOO: error handling
 	close_and_free_session ();
-	return stmt_id;
+	m_error_ctx.set_error (stmt_id, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     query_result &q_result = m_q_result;

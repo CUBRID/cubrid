@@ -33,7 +33,6 @@ package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.Server;
 import cubrid.jdbc.driver.CUBRIDException;
-import cubrid.jdbc.jci.UError;
 
 public class CUBRIDServerSideJDBCErrorManager {
     public static CUBRIDException createCUBRIDException(int errCode, Throwable t) {

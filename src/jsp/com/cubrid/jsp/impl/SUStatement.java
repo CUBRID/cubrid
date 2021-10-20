@@ -198,7 +198,7 @@ public class SUStatement {
             boolean isExecuteAll,
             boolean isSensitive,
             boolean isScrollable)
-            throws IOException {
+            throws IOException, SQLException {
 
         if (type == GET_SCHEMA_INFO) {
             return;

@@ -37,13 +37,6 @@
 
 namespace cubmethod
 {
-  struct lob_handle
-  {
-    int db_type;
-    INT64 lob_size;
-    int locator_size;
-    char *locator;
-  };
   class callback_handler
   {
     public:

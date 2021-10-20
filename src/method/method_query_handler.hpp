@@ -30,6 +30,7 @@
 
 #include "dbtype.h"
 #include "mem_block.hpp"
+#include "method_error.hpp"
 #include "method_query_result.hpp"
 #include "method_struct_query.hpp"
 
@@ -74,8 +75,6 @@ namespace cubmethod
     int set_prepare_call_info (int num_args);
   };
 
-  class error_context;
-
   /*
    * cubmethod::query_handler
    *
@@ -93,6 +92,8 @@ namespace cubmethod
       {
 	m_is_prepared = false;
 	m_use_plan_cache = false;
+
+	m_max_row = -1;
       }
       ~query_handler ();
 

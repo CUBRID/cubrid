@@ -46,32 +46,31 @@ namespace cubmethod
 
     if (obj == NULL)
       {
-	// TODO : error handling
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     er_clear ();
     error = db_is_instance (obj);
     if (error < 0)
       {
-	return error;
+	m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
     else if (error > 0)
       {
 	return 0;
       }
-    else
-      {
-	error = db_error_code ();
-	if (error < 0)
-	  {
-	    return error;
-	  }
 
-	// TODO : error handling
-	// return CAS_ER_OBJECT;
+    error = db_error_code ();
+    if (error < 0)
+      {
+	m_error_ctx.set_error (db_error_code(), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
-    return error;
+    m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
+    return ER_FAILED;
   }
 
   oid_get_info
@@ -416,6 +415,7 @@ namespace cubmethod
       {
       case COL_GET:
 	/* TODO: not implemented at Server-Side JDBC */
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_NOT_IMPLEMENTED, NULL, __FILE__, __LINE__);
 	error = ER_FAILED;
 	break;
       case COL_SIZE:
@@ -456,8 +456,7 @@ namespace cubmethod
 	  }
 	break;
       default:
-	assert (false); // invalid command
-	error = ER_FAILED;
+	/* do nothing */
 	break;
       }
 
