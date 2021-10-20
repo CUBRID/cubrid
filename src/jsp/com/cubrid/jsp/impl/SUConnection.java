@@ -180,13 +180,18 @@ public class SUConnection {
         CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
         packer.packInt(SUFunctionCode.GET_BY_OID.getCode());
         packer.packOID(new SOID(oid.getOID()));
-        packer.packInt(attributeName.length);
-        for (int i = 0; attributeName != null && i < attributeName.length; i++) {
-            if (attributeName[i] != null) {
-                packer.packString(attributeName[i]);
-            } else {
-                packer.packString("");
+
+        if (attributeName != null) {
+            packer.packInt(attributeName.length);
+            for (int i = 0; i < attributeName.length; i++) {
+                if (attributeName[i] != null) {
+                    packer.packString(attributeName[i]);
+                } else {
+                    packer.packString("");
+                }
             }
+        } else {
+            packer.packInt(0);
         }
 
         CUBRIDUnpacker unpacker = request(outputBuffer);
@@ -201,16 +206,21 @@ public class SUConnection {
         CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
         packer.packInt(SUFunctionCode.PUT_BY_OID.getCode());
         packer.packOID(new SOID(oid.getOID()));
-        packer.packInt(attributeName.length);
-        for (int i = 0; attributeName != null && i < attributeName.length; i++) {
-            if (attributeName[i] != null) {
-                packer.packString(attributeName[i]);
-            } else {
-                packer.packString("");
-            }
 
-            int type = DBType.getObjectDBtype(values[i]);
-            packer.packValue(values[i], type, "UTF-8");
+        if (attributeName != null) {
+            packer.packInt(attributeName.length);
+            for (int i = 0; i < attributeName.length; i++) {
+                if (attributeName[i] != null) {
+                    packer.packString(attributeName[i]);
+                } else {
+                    packer.packString("");
+                }
+
+                int type = DBType.getObjectDBtype(values[i]);
+                packer.packValue(values[i], type, "UTF-8");
+            }
+        } else {
+            packer.packInt(0);
         }
 
         CUBRIDUnpacker unpacker = request(outputBuffer);
