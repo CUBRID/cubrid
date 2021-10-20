@@ -271,11 +271,13 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_invoke_builtin.cpp
   ${METHOD_DIR}/method_invoke_group.cpp
   ${METHOD_DIR}/method_invoke_java.cpp
+  ${METHOD_DIR}/method_lob_handler.cpp
   ${METHOD_DIR}/method_query_cursor.cpp
   ${METHOD_DIR}/method_query_util.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp
   ${METHOD_DIR}/method_struct_oid_info.cpp
+  ${METHOD_DIR}/method_struct_lob_info.cpp
   ${METHOD_DIR}/method_struct_query.cpp
   ${METHOD_DIR}/method_struct_schema_info.cpp
   ${METHOD_DIR}/method_scan.cpp
