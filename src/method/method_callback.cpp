@@ -32,12 +32,15 @@ namespace cubmethod
   callback_handler::callback_handler (int max_query_handler)
   {
     m_query_handlers.resize (max_query_handler, nullptr);
-    m_oid_handler = new oid_handler (m_error_ctx);
+    m_oid_handler = nullptr;
   }
 
   callback_handler::~callback_handler ()
   {
-    delete m_oid_handler;
+    if (m_oid_handler)
+      {
+	delete m_oid_handler;
+      }
   }
 
   void
@@ -184,6 +187,20 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 
   int
+  callback_handler::new_oid_handler ()
+  {
+    if (m_oid_handler == nullptr)
+      {
+	m_oid_handler = new (std::nothrow) oid_handler (m_error_ctx);
+	if (m_oid_handler == nullptr)
+	  {
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
+      }
+    return NO_ERROR;
+  }
+
+  int
   callback_handler::oid_get (packing_unpacker &unpacker)
   {
     int error = NO_ERROR;
@@ -191,9 +208,12 @@ namespace cubmethod
     oid_get_request request;
     request.unpack (unpacker);
 
-    oid_get_info info = m_oid_handler->oid_get (request.oid, request.attr_names);
-
-    error = send_packable_object_to_server (info);
+    error = new_oid_handler ();
+    if (error == NO_ERROR)
+      {
+	oid_get_info info = m_oid_handler->oid_get (request.oid, request.attr_names);
+	error = send_packable_object_to_server (info);
+      }
     return error;
   }
 
@@ -203,8 +223,12 @@ namespace cubmethod
     oid_put_request request;
     request.unpack (unpacker);
 
-    int result = m_oid_handler->oid_put (request.oid, request.attr_names, request.db_values);
-    int error = send_packable_object_to_server (result);
+    int error = new_oid_handler ();
+    if (error == NO_ERROR)
+      {
+	int result = m_oid_handler->oid_put (request.oid, request.attr_names, request.db_values);
+	error = send_packable_object_to_server (result);
+      }
     return error;
   }
 
@@ -218,16 +242,22 @@ namespace cubmethod
     unpacker.unpack_oid (oid);
 
     std::string res; // result for OID_CLASS_NAME
-    int error = m_oid_handler->oid_cmd (oid, cmd, res);
-    if (error < 0)
+
+    int error = new_oid_handler ();
+    if (error == NO_ERROR)
       {
-	// TODO : error handling
-	// ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	int error = m_oid_handler->oid_cmd (oid, cmd, res);
+	if (error < 0)
+	  {
+	    // TODO : error handling
+	    // ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  }
+	else
+	  {
+	    error = send_packable_object_to_server (error, res);
+	  }
       }
-    else
-      {
-	error = send_packable_object_to_server (error, res);
-      }
+
     return error;
   }
 

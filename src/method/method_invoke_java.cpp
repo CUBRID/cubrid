@@ -407,7 +407,7 @@ namespace cubmethod
 	    {
 	      /* not found, new cursor is created */
 	      bool is_oid_included = current_result_info.include_oid;
-	      cursor = m_cursor_map[qid] = new query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
+	      cursor = m_cursor_map[qid] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
 	      if (cursor == nullptr)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
@@ -482,7 +482,7 @@ namespace cubmethod
 
 	    if (cursor->get_is_oid_included())
 	      {
-    /* FIXME!!: For more optimized way, refactoring method_query_cursor is needed */
+		/* FIXME!!: For more optimized way, refactoring method_query_cursor is needed */
 		OID *oid = cursor->get_current_oid ();
 		std::vector<DB_VALUE> sub_vector = {tuple_values.begin() + 1, tuple_values.end ()};
 		info.tuples.emplace_back (tuple_index, sub_vector, *oid);

@@ -313,7 +313,7 @@ public class SUStatement {
 
     public void moveCursor(int offset, int origin) {
         if ((origin != CURSOR_SET && origin != CURSOR_CUR && origin != CURSOR_END)
-                && totalTupleNumber == 0) {
+                || totalTupleNumber == 0) {
             // TODO: error handling
             return;
         }

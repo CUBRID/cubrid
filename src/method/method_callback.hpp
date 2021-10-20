@@ -81,6 +81,8 @@ namespace cubmethod
       query_handler *find_query_handler (int id);
       void free_query_handle (int id);
 
+      int new_oid_handler ();
+
       template<typename ... Args>
       int send_packable_object_to_server (Args &&... args);
 
