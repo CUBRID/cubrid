@@ -647,6 +647,7 @@ static char
 cgw_odbc_type_to_charset (SQLLEN odbc_type)
 {
   char code_set = CCI_U_TYPE_UNKNOWN;
+
   switch (odbc_type)
     {
     case SQL_CHAR:
@@ -784,6 +785,7 @@ int
 cgw_set_commit_mode (SQLHDBC hdbc, bool auto_commit)
 {
   SQLRETURN err_code = 0;
+
   if (auto_commit)
     {
       SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC,
