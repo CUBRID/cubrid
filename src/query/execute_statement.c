@@ -17271,7 +17271,10 @@ do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int error = NO_ERROR;
+  int error = ER_QPROC_NOT_SUPPORT;
+  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "ALTER SYNONYM");
+
+  /* To do. */
 
   return error;
 }
@@ -17817,7 +17820,10 @@ end:
 int
 do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int error = NO_ERROR;
+  int error = ER_QPROC_NOT_SUPPORT;
+  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "RENAME SYNONYM");
+
+  /* To do. */
 
   return error;
 }

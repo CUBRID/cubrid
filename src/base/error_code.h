@@ -1672,6 +1672,7 @@
 #define ER_QPROC_PUBLIC_SYNONYM_ALREADY_EXIST       -1407
 #define ER_QPROC_PRIVATE_SYNONYM_ALREADY_EXIST      -1408
 #define ER_QPROC_CANNOT_UPDATE_SYNONYM              -1409
+#define ER_QPROC_NOT_SUPPORT                        -1410
 
 #define ER_LAST_ERROR                               -1500
 

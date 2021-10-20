@@ -1369,6 +1369,7 @@ $
 1407 Public synonym %1$s.%2$s already exist.
 1408 Private synonym %1$s.%2$s already exist.
 1409 Cannot update synonym %1$s.%2$s.
+1410 %1$s is not yet supported.
 
 1500 Last Error
 
