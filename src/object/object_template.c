@@ -2376,6 +2376,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
   MOBJ mobj = NULL;
   char *mem;
   int i;
+  bool is_trigger_involved = cdc_Trigger_involved;
 
   /* have we already been here ? */
   if (template_ptr->traversal == obj_Template_traversal)
@@ -2658,6 +2659,16 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	}
       else
 	{
+	  if (trstate->triggers != NULL)
+	    {
+	      error = locator_flush_instance (OBT_BASE_OBJECT (template_ptr));
+	      if (error != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	    }
+
 	  if (event == TR_EVENT_INSERT)
 	    {
 	      error = tr_after_object (trstate, object, NULL);
@@ -2702,6 +2713,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
        */
       ws_decache (object);
     }
+
+  cdc_Trigger_involved = is_trigger_involved;
 
   /*
    * check for unique constraint violations.

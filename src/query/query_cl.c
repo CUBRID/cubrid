@@ -36,6 +36,7 @@
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
 #include "xasl.h"
+#include "execute_statement.h"
 
 /*
  * prepare_query () - Prepares a query for later (and repetitive)
@@ -161,6 +162,16 @@ prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, i
       *result = NULL;
 
       return NO_ERROR;
+    }
+
+  if (do_Trigger_involved)
+    {
+      cdc_Trigger_involved = true;
+      flag |= TRIGGER_IS_INVOLVED;
+    }
+  else
+    {
+      cdc_Trigger_involved = false;
     }
 
   query_timeout = tran_get_query_timeout ();

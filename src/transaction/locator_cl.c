@@ -4104,15 +4104,6 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	  mop_toid = mop_toid->next;
 	}
 
-      for (i = 0; i < mflush->mobjs->num_objs; i++)
-	{
-	  obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, i);
-	  if (do_Trigger_involved)
-	    {
-	      LC_ONEOBJ_SET_DO_TRIGGER_INVOLVED (obj);
-	    }
-	}
-
       /* Force the flushing area */
       content_size = CAST_BUFLEN (mflush->recdes.data - mflush->copy_area->mem);
       assert (content_size >= 0);
@@ -4885,6 +4876,12 @@ locator_mflush (MOP mop, void *mf)
   if (has_unique_index)
     {
       LC_ONEOBJ_SET_HAS_UNIQUE_INDEX (mflush->obj);
+    }
+
+  if (cdc_Trigger_involved)
+    {
+      LC_ONEOBJ_SET_DO_TRIGGER_INVOLVED (mflush->obj);
+      cdc_Trigger_involved = false;
     }
 
   HFID_COPY (&mflush->obj->hfid, hfid);

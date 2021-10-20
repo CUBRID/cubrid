@@ -10768,10 +10768,21 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 		goto error;
 	      }
 
-	    error =
-	      cdc_make_dml_loginfo (thread_p, trid, tran_user,
-				    rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_UPDATE : CDC_TRIGGER_UPDATE, classoid,
-				    &undo_recdes, &redo_recdes, log_info_entry);
+	    if (undo_recdes.type == 1)
+	      {
+		error =
+		  cdc_make_dml_loginfo (thread_p, trid, tran_user,
+					rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_INSERT : CDC_TRIGGER_INSERT, classoid,
+					NULL, &redo_recdes, log_info_entry);
+
+	      }
+	    else
+	      {
+		error =
+		  cdc_make_dml_loginfo (thread_p, trid, tran_user,
+					rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_UPDATE : CDC_TRIGGER_UPDATE, classoid,
+					&undo_recdes, &redo_recdes, log_info_entry);
+	      }
 
 	    if (error == ER_CDC_IGNORE_LOG_INFO)
 	      {

@@ -2943,6 +2943,8 @@ end:
 
 bool do_Trigger_involved;
 
+bool cdc_Trigger_involved = false;
+
 /*
  * do_statement() -
  *   return: Error code
@@ -11081,10 +11083,6 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       query_flag = DEFAULT_EXEC_MODE;
       /* Do not update LAST_INSERT_ID during executing a trigger. */
-      if (do_Trigger_involved == true)
-	{
-	  query_flag |= TRIGGER_IS_INVOLVED;
-	}
 
       if (parser->flag.is_auto_commit)
 	{
@@ -13329,6 +13327,9 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* the do_Trigger_involved will be set as true when execute trigger statement. it will not be set back. we need to
    * keep its value to update last insert id. */
   is_trigger_involved = do_Trigger_involved;
+
+  cdc_Trigger_involved = do_Trigger_involved;
+
   if (!do_Trigger_involved)
     {
       obt_begin_insert_values ();

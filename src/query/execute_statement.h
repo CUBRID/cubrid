@@ -58,6 +58,8 @@ typedef int (PT_DO_FUNC) (PARSER_CONTEXT *, PT_NODE *);
 
 extern bool do_Trigger_involved;
 
+extern bool cdc_Trigger_involved;
+
 extern int do_alter (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement);
