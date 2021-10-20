@@ -832,7 +832,7 @@ ODBC_ERROR:
 
 
 int
-cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_binding)
+cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding)
 {
   SQLRETURN err_code;
   SQLSMALLINT col;
@@ -842,7 +842,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_bindi
   SQLULEN col_size, bind_col_size;
   SQLCHAR col_name[COL_NAME_LEN];
 
-  for (col = 1; col <= num_col; col++)
+  for (col = 1; col <= num_cols; col++)
     {
       this_col_binding = (T_COL_BINDER *) (malloc (sizeof (T_COL_BINDER)));
       if (!(this_col_binding))

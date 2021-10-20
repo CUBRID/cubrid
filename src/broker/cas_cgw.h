@@ -120,7 +120,7 @@ union odbc_bind_info
 extern void test_log (char *fmt, ...);
 
 
-extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_col, T_COL_BINDER ** col_binding);
+extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding);
 extern void cgw_cleanup_binder (T_COL_BINDER * pFirstBinding);
 
 extern int cgw_init_odbc_handle (void);
