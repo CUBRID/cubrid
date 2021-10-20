@@ -125,7 +125,9 @@ int init_server_type (const char *db_name)
 #endif
   if (g_server_type == SERVER_TYPE_TRANSACTION)
     {
-      er_code = ats_Gl.boot (db_name);
+      assert (ats_Gl == nullptr);
+      ats_Gl.reset (new active_tran_server ());
+      er_code = ats_Gl->boot (db_name);
     }
   else
     {
@@ -140,7 +142,7 @@ int init_server_type (const char *db_name)
       if (g_server_type == SERVER_TYPE_TRANSACTION)
 	{
 	  er_log_debug (ARG_FILE_LINE, "Starting server type: %s transaction\n",
-			transaction_server_type_to_string (get_transaction_server_type()));
+			transaction_server_type_to_string (get_transaction_server_type ()));
 	}
       else
 	{
@@ -169,7 +171,8 @@ void finalize_server_type ()
 {
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      ats_Gl.disconnect_page_server ();
+      ats_Gl->disconnect_page_server ();
+      ats_Gl.reset (nullptr);
     }
   else if (get_server_type () == SERVER_TYPE_PAGE)
     {
@@ -212,7 +215,7 @@ bool is_tran_server_with_remote_storage ()
 
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      return ats_Gl.uses_remote_storage ();
+      return ats_Gl->uses_remote_storage ();
     }
   return false;
 }

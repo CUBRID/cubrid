@@ -2382,7 +2382,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
       // Log page broker is required to load log header.
-      ats_Gl.init_page_brokers ();
+      ats_Gl->init_page_brokers ();
     }
 #endif
 
@@ -3245,7 +3245,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
     }
   else if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      ats_Gl.finalize_page_brokers ();
+      ats_Gl->finalize_page_brokers ();
     }
 #endif
 

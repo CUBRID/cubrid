@@ -43,7 +43,7 @@ class active_tran_server : public tran_server
     bool m_uses_remote_storage = false;
 };
 
-extern active_tran_server ats_Gl;
+extern std::unique_ptr<active_tran_server> ats_Gl;
 
 #endif // !_ACTIVE_TRAN_SERVER_HPP_
 
