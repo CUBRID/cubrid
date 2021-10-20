@@ -1767,11 +1767,11 @@ ODBC_ERROR:
 }
 
 int
-cgw_get_num_col (SQLHSTMT hstmt, SQLSMALLINT * num_col)
+cgw_get_num_cols (SQLHSTMT hstmt, SQLSMALLINT * num_cols)
 {
   SQLRETURN err_code;
 
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, num_col));
+  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, num_cols));
 
   return (int) err_code;
 

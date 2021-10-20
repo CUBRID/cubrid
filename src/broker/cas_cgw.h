@@ -134,7 +134,7 @@ extern int cgw_is_database_connected (void);
 
 // Prepare funtions
 extern int cgw_sql_prepare (SQLHSTMT hstmt, SQLCHAR * sql_stmt);
-extern int cgw_get_num_col (SQLHSTMT hstmt, SQLSMALLINT * num_col);
+extern int cgw_get_num_cols (SQLHSTMT hstmt, SQLSMALLINT * num_cols);
 extern int cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_INFO * col_info);
 
 // Execute funtions

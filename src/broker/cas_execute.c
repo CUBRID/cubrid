@@ -5781,7 +5781,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       return 0;
     }
 
-  err_code = cgw_get_num_col (srv_handle->cgw_handle->hstmt, &num_cols);
+  err_code = cgw_get_num_cols (srv_handle->cgw_handle->hstmt, &num_cols);
 
   if (err_code < 0)
     {
@@ -7625,7 +7625,7 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
       net_buf_cp_byte (net_buf, updatable_flag);
       net_buf_cp_int (net_buf, (int) num_cols, &num_col_offset);
 
-      err_code = cgw_get_num_col (hstmt, &num_cols);
+      err_code = cgw_get_num_cols (hstmt, &num_cols);
       if (err_code < 0)
 	{
 	  return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
