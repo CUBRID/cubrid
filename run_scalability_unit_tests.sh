@@ -1,3 +1,4 @@
+#!/bin/bash
 #
 #  Copyright 2008 Search Solution Corporation
 #  Copyright 2016 CUBRID Corporation
@@ -16,14 +17,22 @@
 #
 #
 
-# A-Z
-./test_checkpoint_info
-./test_log_page_fetcher
-./test_data_page_fetcher
-./test_log_page_broker
-./test_log_lsa_utils
-./test_meta_log
-./test_prior_list_serialize
-./test_prior_sendrecv
-./test_request_cs
-./test_log_recovery_parallel [ci]
+declare -i global_error_code=0
+
+function run_test() {
+  ${@} || global_error_code=$?
+}
+
+run_test ./test_checkpoint_info
+run_test ./test_log_page_fetcher
+run_test ./test_data_page_fetcher
+run_test ./test_log_page_broker
+run_test ./test_log_lsa_utils
+run_test ./test_meta_log
+run_test ./test_prior_list_serialize
+run_test ./test_prior_sendrecv
+run_test ./test_request_cs
+run_test ./test_log_recovery_parallel [ci]
+
+exit $global_error_code
+
