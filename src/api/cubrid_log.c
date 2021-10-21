@@ -337,7 +337,9 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
   int err_code;
 
   char trace_errbuf[1024];
+  // *INDENT-OFF*
   std::string msg;
+  // *INDENT-ON*
 
   g_conn_entry = css_make_conn (INVALID_SOCKET);
   if (g_conn_entry == NULL)
@@ -346,11 +348,9 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
     }
 
   //client should connect to Transaction server
-  msg = ((char) SERVER_TYPE_TRANSACTION) + '0';
-  msg.append (dbname, std::strlen (dbname) + 1);
+  msg = css_build_message_for_server_connection (dbname, SERVER_TYPE_TRANSACTION);
   if (css_common_connect
-      (g_conn_entry, &rid, host, DATA_REQUEST, msg.c_str (), msg.length () + 1, port, g_connection_timeout,
-       true) == NULL)
+      (g_conn_entry, &rid, host, DATA_REQUEST, msg.c_str (), msg.length (), port, g_connection_timeout, true) == NULL)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
