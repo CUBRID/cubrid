@@ -55,6 +55,7 @@ static void cgw_cleanup_handle (T_CGW_HANDLE * handle);
 static void cgw_set_charset (char charset);
 static char cgw_get_charset (void);
 static void cgw_link_server_info (SQLHDBC hdbc);
+static bool cgw_is_support_datatype (SQLSMALLINT data_type);
 
 static SQLSMALLINT get_c_type (SQLSMALLINT s_type);
 static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars);
@@ -876,19 +877,11 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 
       this_col_binding->col_data_type = col_data_type;
       this_col_binding->col_size = bind_col_size;
-
       this_col_binding->next = NULL;
 
-      switch (col_data_type)
+      if (cgw_is_support_datatype (col_data_type))
 	{
-	case SQL_CHAR:
-	case SQL_VARCHAR:
-	case SQL_LONGVARCHAR:
-	case SQL_WCHAR:
-	case SQL_WVARCHAR:
-	case SQL_WLONGVARCHAR:
-	case SQL_DECIMAL:
-	  this_col_binding->data_buffer = (char *) MALLOC (bind_col_size);
+	  this_col_binding->data_buffer = MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -900,285 +893,13 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 		       err_code = SQLBindCol (hstmt,
 					      col,
 					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer,
-					      bind_col_size, &this_col_binding->indPtr));
-	  break;
-	case SQL_REAL:
-	  this_col_binding->data_buffer = (float *) MALLOC (sizeof (float));
-
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      SQL_C_FLOAT,
-					      (SQLPOINTER) this_col_binding->data_buffer,
-					      (sizeof (float)), &this_col_binding->indPtr));
-	  break;
-	case SQL_NUMERIC:
-	  this_col_binding->data_buffer = (SQL_NUMERIC_STRUCT *) MALLOC (bind_col_size);
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
+					      (SQLPOINTER) this_col_binding->data_buffer, bind_col_size,
 					      &this_col_binding->indPtr));
-	  break;
-	case SQL_INTEGER:
-	  this_col_binding->data_buffer = (int *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-
-	case SQL_SMALLINT:
-	  this_col_binding->data_buffer = (short *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-	case SQL_TINYINT:
-	  this_col_binding->data_buffer = (char *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-	case SQL_FLOAT:
-	  this_col_binding->data_buffer = (float *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-	case SQL_DOUBLE:
-	  this_col_binding->data_buffer = (double *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-	case SQL_BIGINT:
-	  this_col_binding->data_buffer = (DB_BIGINT *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-
-#if (ODBCVER >= 0x0300)
-	case SQL_DATETIME:
-	  this_col_binding->data_buffer = (TIMESTAMP_STRUCT *) MALLOC (bind_col_size);
-
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-#else
-	case SQL_DATE:
-	  this_col_binding->data_buffer = (SQL_DATE_STRUCT *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-#endif
-	case SQL_TIMESTAMP:
-	  this_col_binding->data_buffer = (TIMESTAMP_STRUCT *) MALLOC (bind_col_size);
-
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-#if (ODBCVER >= 0x0300)
-	case SQL_TYPE_TIMESTAMP:
-	  this_col_binding->data_buffer = (TIMESTAMP_STRUCT *) MALLOC (bind_col_size);
-
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-	case SQL_TYPE_DATE:
-	  this_col_binding->data_buffer = (DATE_STRUCT *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-	case SQL_TYPE_TIME:
-	  this_col_binding->data_buffer = (TIME_STRUCT *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-#endif
-
-	case SQL_VARBINARY:
-	case SQL_BINARY:
-	  this_col_binding->data_buffer = (SQLCHAR *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-	case SQL_BIT:
-	  this_col_binding->data_buffer = (SQLCHAR *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, 0,
-					      &this_col_binding->indPtr));
-	  break;
-
-	case SQL_UNKNOWN_TYPE:
-	case SQL_LONGVARBINARY:
-#if (ODBCVER >= 0x0350)
-	case SQL_GUID:
-#endif
+	}
+      else
+	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 0);
 	  goto ODBC_ERROR;
-	  break;
-	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 0);
-	  goto ODBC_ERROR;
-	  break;
 	}
     }
 
@@ -2329,5 +2050,57 @@ cgw_link_server_info (SQLHDBC hdbc)
       cgw_get_driver_info (hdbc, SQL_ODBC_VER, odbc_version, sizeof (odbc_version));
       cas_log_write_and_end (0, false, "ODBC Version : %s", odbc_version);
     }
+}
 
+static bool
+cgw_is_support_datatype (SQLSMALLINT data_type)
+{
+  bool support_data_type = true;
+
+  switch (data_type)
+    {
+    case SQL_CHAR:
+    case SQL_VARCHAR:
+    case SQL_LONGVARCHAR:
+    case SQL_WCHAR:
+    case SQL_WVARCHAR:
+    case SQL_WLONGVARCHAR:
+    case SQL_DECIMAL:
+    case SQL_REAL:
+    case SQL_NUMERIC:
+    case SQL_INTEGER:
+    case SQL_SMALLINT:
+    case SQL_TINYINT:
+    case SQL_FLOAT:
+    case SQL_DOUBLE:
+    case SQL_BIGINT:
+#if (ODBCVER >= 0x0300)
+    case SQL_DATETIME:
+#else
+    case SQL_DATE:
+#endif
+    case SQL_TIMESTAMP:
+#if (ODBCVER >= 0x0300)
+    case SQL_TYPE_TIMESTAMP:
+    case SQL_TYPE_DATE:
+    case SQL_TYPE_TIME:
+#endif
+      support_data_type = true;
+      break;
+    case SQL_VARBINARY:
+    case SQL_BINARY:
+    case SQL_BIT:
+    case SQL_UNKNOWN_TYPE:
+    case SQL_LONGVARBINARY:
+#if (ODBCVER >= 0x0350)
+    case SQL_GUID:
+#endif
+      support_data_type = false;
+      break;
+    default:
+      support_data_type = false;
+      break;
+    }
+
+  return support_data_type;
 }
