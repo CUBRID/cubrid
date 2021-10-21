@@ -93,8 +93,16 @@ namespace cubmethod
 	m_is_prepared = false;
 	m_use_plan_cache = false;
 
+	m_session = nullptr;
+	m_current_result = nullptr;
+
+	m_num_markers = -1;
+	m_max_col_size = -1;
 	m_max_row = -1;
+
+	m_has_result_set = false;
       }
+
       ~query_handler ();
 
       /* request */

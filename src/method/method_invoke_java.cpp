@@ -293,7 +293,7 @@ namespace cubmethod
 	break;
 
       default:
-	// TODO: error hanlding
+	// TODO: error handling?
 	assert (false);
 	error = ER_FAILED;
 	break;
@@ -459,9 +459,8 @@ namespace cubmethod
     const auto &iter = m_cursor_map.find (qid);
     if (iter == m_cursor_map.end ())
       {
-	/* error */
-	// TODO: error handling
-	error = ER_FAILED;
+	// TODO: proper error handling
+	error = method_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error");
       }
     else
       {
@@ -494,7 +493,7 @@ namespace cubmethod
 	    i++;
 	  }
 
-	error = method_send_data_to_java (m_group->get_socket (), info);
+	error = method_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_SUCCESS, info);
       }
 
 #endif

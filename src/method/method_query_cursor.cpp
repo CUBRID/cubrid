@@ -34,7 +34,7 @@ namespace cubmethod
     m_is_oid_included = is_oid_included;
   }
 
-  void
+  int
   query_cursor::reset (QUERY_ID query_id)
   {
     if (query_id == NULL_QUERY_ID)
@@ -104,7 +104,7 @@ namespace cubmethod
 	    TP_DOMAIN *domain = m_list_id->type_list.domp[i];
 	    if (domain == NULL || domain->type == NULL)
 	      {
-		//TODO: error handling
+		//TODO: error handling?
 		qfile_close_scan (m_thread, &m_scan_id);
 	      }
 
@@ -155,7 +155,7 @@ namespace cubmethod
 		TP_DOMAIN *domain = m_list_id->type_list.domp[i];
 		if (domain == NULL || domain->type == NULL)
 		  {
-		    //TODO: error handling
+		    //TODO: error handling?
 		    qfile_close_scan (m_thread, &m_scan_id);
 		    return S_ERROR;
 		  }

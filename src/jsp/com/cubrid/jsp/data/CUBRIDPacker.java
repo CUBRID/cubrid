@@ -215,7 +215,10 @@ public class CUBRIDPacker {
             for (int i = 0; i < arr.length; i++) {
                 packValue(arr[i], ret_type, charset);
             }
-        } else ;
+        } else {
+            // FIXME: treat as NULL
+            packInt(DBType.DB_NULL);
+        }
     }
 
     private void align(int size) {

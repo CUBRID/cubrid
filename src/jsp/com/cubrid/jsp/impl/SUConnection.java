@@ -174,7 +174,7 @@ public class SUConnection {
 
     // UFunctionCode.FETCH
     public FetchInfo fetch(long queryId, int currentRowIndex, int fetchSize, int fetchFlag)
-            throws IOException, TypeMismatchException {
+            throws IOException, TypeMismatchException, SQLException {
         CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
         packer.packInt(SUFunctionCode.FETCH.getCode());
         packer.packBigInt(queryId);
@@ -183,6 +183,14 @@ public class SUConnection {
         packer.packInt(fetchFlag);
 
         CUBRIDUnpacker unpacker = request(outputBuffer);
+
+        int responseCode = unpacker.unpackInt();
+        if (responseCode != 0) {
+            String errorMsg = unpacker.unpackCString();
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_DBMS, errorMsg, null);
+        }
+
         FetchInfo info = new FetchInfo(unpacker);
         return info;
     }
@@ -352,7 +360,8 @@ public class SUConnection {
     }
 
     public void insertElementIntoSequence(
-            CUBRIDOID oid, String attributeName, int index, Object value) throws IOException, SQLException {
+            CUBRIDOID oid, String attributeName, int index, Object value)
+            throws IOException, SQLException {
         collectionCmd(
                 CUBRIDServerSideConstants.INSERT_ELEMENT_INTO_SEQUENCE,
                 oid,
@@ -371,7 +380,8 @@ public class SUConnection {
                 index);
     }
 
-    public int getSizeOfCollection(CUBRIDOID oid, String attributeName) throws IOException, SQLException {
+    public int getSizeOfCollection(CUBRIDOID oid, String attributeName)
+            throws IOException, SQLException {
         int size = 0;
         CUBRIDUnpacker unpacker =
                 collectionCmd(
