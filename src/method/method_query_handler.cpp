@@ -271,7 +271,7 @@ namespace cubmethod
     bool is_prepare = m_is_prepared;
 
     // 1) check is prepared
-    int stmt_id, stmt_type;
+    int stmt_id = -1, stmt_type = CUBRID_STMT_NONE;
     if (is_prepare == true)
       {
 	stmt_id = m_q_result[0].stmt_id;
@@ -330,7 +330,7 @@ namespace cubmethod
 		db_session_set_xasl_cache_pinned (m_session, true, recompile);
 	      }
 
-	    int stmt_id = db_compile_statement (m_session);
+	    stmt_id = db_compile_statement (m_session);
 	    if (stmt_id == 0)
 	      {
 		break;
