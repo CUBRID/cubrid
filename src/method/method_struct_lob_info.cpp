@@ -17,36 +17,55 @@
  */
 
 #include "method_struct_lob_info.hpp"
-
+#include "elo.h"
 namespace cubmethod
 {
+  lob_info::lob_info ()
+  {
+    elo_init_structure (&lob_handle);
+  }
+
   void
   lob_info::pack (cubpacking::packer &serializator) const
   {
     serializator.pack_int ((int) db_type);
-    if (lob_handle != NULL)
+    serializator.pack_bigint (lob_handle.size);
+    if (lob_handle.locator)
       {
-	serializator.pack_bigint (lob_handle->size);
-	serializator.pack_c_string (lob_handle->locator, strlen (lob_handle->locator) + 1);
+	serializator.pack_c_string (lob_handle.locator, strlen (lob_handle.locator) + 1);
       }
   }
 
   void
   lob_info::unpack (cubpacking::unpacker &deserializator)
   {
-    lob_handle = NULL;
-    // TODO
+    int type;
+    deserializator.unpack_int (type);
+    db_type = (DB_TYPE) type;
+
+    int64_t lob_size;
+    deserializator.unpack_bigint (lob_size);
+
+    cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+    deserializator.unpack_string_to_memblock (blk);
+
+    elo_init_structure (&lob_handle);
+    lob_handle.size = lob_size;
+    lob_handle.type = ELO_FBO;
+    lob_handle.locator = blk.release_ptr ();
   }
 
   size_t
   lob_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t size = serializator.get_packed_int_size (start_offset); // db_type
-    if (lob_handle != NULL)
+    size += serializator.get_packed_bigint_size (size); // lob_size
+
+    if (lob_handle.locator)
       {
-	size += serializator.get_packed_bigint_size (size); // lob_size
 	size += serializator.get_packed_c_string_size (lob_handle->locator, strlen (lob_handle->locator) + 1, size); // lob_size
       }
+
     return size;
   }
 }

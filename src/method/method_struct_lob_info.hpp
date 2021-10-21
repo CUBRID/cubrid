@@ -35,7 +35,7 @@ namespace cubmethod
     lob_info () = default;
 
     DB_TYPE db_type;
-    DB_ELO *lob_handle;
+    DB_ELO lob_handle;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
