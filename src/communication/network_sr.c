@@ -1420,7 +1420,6 @@ net_server_start (THREAD_ENTRY * thread_p, const char *server_name)
       status = 2;
     }
 
-  cubthread::finalize ();
   cubthread::internal_tasks_worker_pool::finalize ();
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();

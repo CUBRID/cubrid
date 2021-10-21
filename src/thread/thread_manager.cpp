@@ -663,3 +663,8 @@ void thread_initialize_manager (THREAD_ENTRY *&thread_p)
 {
   cubthread::initialize (thread_p);
 }
+
+void thread_finalize_manager ()
+{
+  cubthread::finalize ();
+}
