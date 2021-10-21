@@ -5738,7 +5738,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   char fetch_end_flag = 0;
   SQLLEN row_count;
   SQLSMALLINT num_cols;
-  T_COL_BINDER *pFirstBinding;
+  T_COL_BINDER *first_col_binding;
   int total_tuple_num = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
 
@@ -5788,7 +5788,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       goto fetch_error;
     }
 
-  err_code = cgw_col_bindings (srv_handle->cgw_handle->hstmt, num_cols, &pFirstBinding);
+  err_code = cgw_col_bindings (srv_handle->cgw_handle->hstmt, num_cols, &first_col_binding);
 
   if (err_code < 0)
     {
@@ -5830,7 +5830,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	  break;
 	}
 
-      err_code = cgw_cur_tuple (net_buf, pFirstBinding, cursor_pos);
+      err_code = cgw_cur_tuple (net_buf, first_col_binding, cursor_pos);
       if (err_code < 0)
 	{
 	  goto fetch_error;
@@ -5861,12 +5861,12 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 
   srv_handle->cursor_pos = cursor_pos;
 
-  cgw_cleanup_binder (pFirstBinding);
+  cgw_cleanup_binder (first_col_binding);
 
   return 0;
 
 fetch_error:
-  cgw_cleanup_binder (pFirstBinding);
+  cgw_cleanup_binder (first_col_binding);
 
   return err_code;
 }

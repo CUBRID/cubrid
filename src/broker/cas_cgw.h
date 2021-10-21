@@ -121,7 +121,7 @@ extern void test_log (char *fmt, ...);
 
 
 extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding);
-extern void cgw_cleanup_binder (T_COL_BINDER * pFirstBinding);
+extern void cgw_cleanup_binder (T_COL_BINDER * first_col_binding);
 
 extern int cgw_init_odbc_handle (void);
 extern int cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool is_connected);
@@ -149,7 +149,7 @@ extern int cgw_cursor_close (SQLHSTMT hstmt);
 extern SQLLEN cgw_get_row_count (SQLHSTMT hstmt);
 extern int cgw_row_data (SQLHSTMT hstmt, int cursor_pos);
 extern int cgw_set_stmt_attr (SQLHSTMT hstmt, SQLINTEGER attr, SQLPOINTER val, SQLINTEGER len);
-extern int cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * pFirstBinding, int cursor_pos);
+extern int cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor_pos);
 
 extern int cgw_endtran (SQLHDBC hdbc, int tran_type);
 #endif /* _CAS_CGW_H_ */

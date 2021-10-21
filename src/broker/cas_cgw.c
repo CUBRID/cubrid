@@ -299,7 +299,7 @@ ODBC_ERROR:
 }
 
 int
-cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * pFirstBinding, int cursor_pos)
+cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor_pos)
 {
   DB_BIGINT bigint = 0;
   T_OBJECT tuple_obj;
@@ -314,7 +314,7 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * pFirstBinding, int cursor_pos
   memset ((char *) &tuple_obj, 0, sizeof (T_OBJECT));
   net_buf_cp_object (net_buf, &tuple_obj);
 
-  for (this_col_binding = pFirstBinding; this_col_binding; this_col_binding = this_col_binding->next)
+  for (this_col_binding = first_col_binding; this_col_binding; this_col_binding = this_col_binding->next)
     {
       if (this_col_binding->indPtr != SQL_NULL_DATA)
 	{
@@ -911,18 +911,17 @@ ODBC_ERROR:
 
 
 void
-cgw_cleanup_binder (T_COL_BINDER * pFirstBinding)
+cgw_cleanup_binder (T_COL_BINDER * first_col_binding)
 {
   T_COL_BINDER *this_col_binding;
 
-  while (pFirstBinding)
+  while (first_col_binding)
     {
-      this_col_binding = pFirstBinding->next;
-      FREE_MEM (pFirstBinding->data_buffer);
-      FREE_MEM (pFirstBinding);
-      pFirstBinding = this_col_binding;
+      this_col_binding = first_col_binding->next;
+      FREE_MEM (first_col_binding->data_buffer);
+      FREE_MEM (first_col_binding);
+      first_col_binding = this_col_binding;
     }
-
 }
 
 void
