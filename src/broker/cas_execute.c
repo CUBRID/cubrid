@@ -5736,7 +5736,6 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   int num_tuple;
   int net_buf_size;
   char fetch_end_flag = 0;
-  char sensitive_flag = fetch_flag & CCI_FETCH_SENSITIVE;
   SQLLEN row_count;
   SQLSMALLINT num_cols;
   T_COL_BINDER *pFirstBinding;
@@ -5748,12 +5747,12 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       return ERROR_INFO_SET (CAS_ER_NO_MORE_RESULT_SET, CAS_ERROR_INDICATOR);
     }
 
-  sensitive_flag = FALSE;
   row_count = cgw_get_row_count (srv_handle->cgw_handle->hstmt);
 
   if (row_count < 0)
     {
-      return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto fetch_error;
     }
 
   if (cursor_pos <= row_count)
@@ -5785,14 +5784,16 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 
   if (err_code < 0)
     {
-      return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto fetch_error;
     }
 
   err_code = cgw_col_bindings (srv_handle->cgw_handle->hstmt, num_cols, &pFirstBinding);
 
   if (err_code < 0)
     {
-      return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto fetch_error;
     }
 
   if (cas_shard_flag == ON)
@@ -5813,7 +5814,8 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       err_code = cgw_row_data (srv_handle->cgw_handle->hstmt, cursor_pos);
       if (err_code < 0)
 	{
-	  return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
 	}
 
       if (err_code == SQL_NO_DATA_FOUND)
@@ -5831,8 +5833,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       err_code = cgw_cur_tuple (net_buf, pFirstBinding, cursor_pos);
       if (err_code < 0)
 	{
-	  cgw_cleanup_binder (pFirstBinding);
-	  return err_code;
+	  goto fetch_error;
 	}
 
       num_tuple++;
@@ -5863,6 +5864,11 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   cgw_cleanup_binder (pFirstBinding);
 
   return 0;
+
+fetch_error:
+  cgw_cleanup_binder (pFirstBinding);
+
+  return err_code;
 }
 #endif /* CAS_FOR_CGW */
 
