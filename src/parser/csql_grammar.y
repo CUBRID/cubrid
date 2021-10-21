@@ -18234,7 +18234,6 @@ boolean_factor
 predicate
 	: EXISTS expression_
 		{{
-
 			$$ = parser_make_expression (this_parser, PT_EXISTS, $2, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
