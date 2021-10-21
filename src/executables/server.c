@@ -438,6 +438,7 @@ main (int argc, char **argv)
 	PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
 	fflush (stderr);
       }
+    cubthread::finalize ();
     er_final (ER_ALL_FINAL);
   }
 #if defined(WINDOWS)
