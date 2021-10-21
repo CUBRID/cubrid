@@ -11,6 +11,15 @@ matrix:
 install:
   - cinst ant -i
 
+clone_script:
+- cmd: >-
+    git clone -q --branch=%APPVEYOR_REPO_BRANCH% https://github.com/%APPVEYOR_REPO_NAME%.git %APPVEYOR_BUILD_FOLDER%
+    cd %APPVEYOR_BUILD_FOLDER%
+    git checkout -qf %APPVEYOR_REPO_COMMIT%
+    git submodule sync
+    git submodule update --init
+    git rm -f cubridmanager
+
 build_script:
   - cmake -E make_directory build
   - cmake -E chdir build cmake -G "%CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ..
