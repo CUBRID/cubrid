@@ -78,6 +78,13 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   }));
 }
 
+void page_server::start ()
+{
+  assert (m_active_tran_server_conn != nullptr);
+
+  m_active_tran_server_conn->start ();
+}
+
 void page_server::disconnect_active_tran_server ()
 {
   if (m_active_tran_server_conn == nullptr)

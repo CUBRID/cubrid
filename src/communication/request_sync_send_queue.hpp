@@ -251,6 +251,8 @@ namespace cubcomm
   void
   request_queue_autosend<ReqQueue>::start_thread ()
   {
+    assert (false == m_thread.joinable ());
+
     m_shutdown = false;
     m_thread = std::thread (&request_queue_autosend<ReqQueue>::loop_send_requests, std::ref (*this));
   }
