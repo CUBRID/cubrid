@@ -27,8 +27,7 @@
 #include "cas_util.h"
 #include "cas_log.h"
 
-#define TIMESTAMP_DATA_LEN                 (23)	// 2021-09-09 09:39:54.123
-#define TIMESTAMP_DATA_PRECISION_LEN       (3)
+#define LONGVARCHAR_MAX_SIZE 16*1024*1024
 
 #define ODBC_SQLSUCCESS(rc) ((rc == SQL_SUCCESS) || (rc == SQL_SUCCESS_WITH_INFO) )
 #define SQL_CHK_ERR(h, ht, x)   {   RETCODE rc = x;\
@@ -55,7 +54,7 @@ static void cgw_cleanup_handle (T_CGW_HANDLE * handle);
 static void cgw_set_charset (char charset);
 static char cgw_get_charset (void);
 static void cgw_link_server_info (SQLHDBC hdbc);
-static bool cgw_is_support_datatype (SQLSMALLINT data_type);
+static bool cgw_is_support_datatype (SQLSMALLINT data_type, SQLLEN type_size);
 
 static SQLSMALLINT get_c_type (SQLSMALLINT s_type);
 static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars);
@@ -875,12 +874,12 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 
       bind_col_size = get_datatype_size (col_data_type, col_size);
 
-      this_col_binding->col_data_type = col_data_type;
-      this_col_binding->col_size = bind_col_size;
-      this_col_binding->next = NULL;
-
-      if (cgw_is_support_datatype (col_data_type))
+      if (cgw_is_support_datatype (col_data_type, bind_col_size))
 	{
+	  this_col_binding->col_data_type = col_data_type;
+	  this_col_binding->col_size = bind_col_size;
+	  this_col_binding->next = NULL;
+
 	  this_col_binding->data_buffer = MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
@@ -1797,18 +1796,10 @@ get_datatype_size (SQLSMALLINT s_type, SQLULEN chars)
     case SQL_CHAR:
     case SQL_VARCHAR:
     case SQL_LONGVARCHAR:
-      if (chars > 16777215)
-	chars = 16777215 + 1;
-      else
-	chars++;
-      break;
     case SQL_WCHAR:
     case SQL_WVARCHAR:
     case SQL_WLONGVARCHAR:
-      if (chars > 16777215)
-	chars = 16777215 + 1;
-      else
-	chars++;
+      chars++;
       break;
 #if (ODBCVER >= 0x0350)
     case SQL_GUID:
@@ -2052,7 +2043,7 @@ cgw_link_server_info (SQLHDBC hdbc)
 }
 
 static bool
-cgw_is_support_datatype (SQLSMALLINT data_type)
+cgw_is_support_datatype (SQLSMALLINT data_type, SQLLEN type_size)
 {
   bool support_data_type = true;
 
@@ -2084,7 +2075,14 @@ cgw_is_support_datatype (SQLSMALLINT data_type)
     case SQL_TYPE_DATE:
     case SQL_TYPE_TIME:
 #endif
-      support_data_type = true;
+      if (data_type == SQL_LONGVARCHAR && type_size > LONGVARCHAR_MAX_SIZE)
+	{
+	  support_data_type = false;
+	}
+      else
+	{
+	  support_data_type = true;
+	}
       break;
     case SQL_VARBINARY:
     case SQL_BINARY:
