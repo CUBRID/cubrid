@@ -1056,7 +1056,7 @@ process_class (int cl_no)
   time_t start = 0;
 #endif
   int total;
-  LC_FETCH_VERSION_TYPE fetch_type = dirty_flag ? LC_FETCH_DIRTY_VERSION : LC_FETCH_MVCC_VERSION;
+  LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
 
   /*
    * Only process classes that were requested or classes that were
