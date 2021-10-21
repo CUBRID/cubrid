@@ -438,7 +438,9 @@ main (int argc, char **argv)
 	PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
 	fflush (stderr);
       }
+    // *INDENT-OFF*
     cubthread::finalize ();
+    // *INDENT-ON*
     er_final (ER_ALL_FINAL);
   }
 #if defined(WINDOWS)
