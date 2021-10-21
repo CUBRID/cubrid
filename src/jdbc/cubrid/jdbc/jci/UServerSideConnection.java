@@ -45,12 +45,12 @@ import cubrid.jdbc.driver.CUBRIDException;
 
 public class UServerSideConnection extends UConnection {
 	public final static int INVOKE = 2;
-	
+
 	private final static byte CAS_CLIENT_SERVER_SIDE_JDBC = 6;
-	
+
 	private Thread curThread;
 	private UStatementHandlerCache stmtHandlerCache;
-	
+
 	public UServerSideConnection(Socket socket, Thread curThread) throws CUBRIDException {
 		errorHandler = new UError(this);
 		try {
@@ -62,54 +62,50 @@ public class UServerSideConnection extends UConnection {
 
 			needReconnection = false;
 			lastAutoCommit = false;
-			
+
 			/* initialize default info */
 			driverInfo[5] = CAS_CLIENT_SERVER_SIDE_JDBC;
-			initBrokerInfo ();
-			initCasInfo ();
+			initBrokerInfo();
+			initCasInfo();
 
 			this.curThread = curThread;
-			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread", "setCharSet",
-					new Class[] { String.class }, this.curThread,
+			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread", "setCharSet", new Class[] { String.class }, this.curThread,
 					new Object[] { connectionProperties.getCharSet() });
-			
-			stmtHandlerCache = new UStatementHandlerCache ();
+
+			stmtHandlerCache = new UStatementHandlerCache();
 		} catch (IOException e) {
 			UJciException je = new UJciException(UErrorCode.ER_CONNECTION);
 			je.toUError(errorHandler);
 			throw new CUBRIDException(errorHandler, e);
 		}
 	}
-	
-	private void initBrokerInfo () {
+
+	private void initBrokerInfo() {
 		brokerInfo = new byte[BROKER_INFO_SIZE];
 		brokerInfo[BROKER_INFO_DBMS_TYPE] = DBMS_CUBRID;
 		brokerInfo[BROKER_INFO_RESERVED4] = 0;
 		brokerInfo[BROKER_INFO_STATEMENT_POOLING] = 1;
 		brokerInfo[BROKER_INFO_CCI_PCONNECT] = 0;
-		brokerInfo[BROKER_INFO_PROTO_VERSION] 
-				= CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
-		brokerInfo[BROKER_INFO_FUNCTION_FLAG] 
-				= CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT;
+		brokerInfo[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
+		brokerInfo[BROKER_INFO_FUNCTION_FLAG] = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT;
 		brokerInfo[BROKER_INFO_RESERVED2] = 0;
 		brokerInfo[BROKER_INFO_RESERVED3] = 0;
 
 		brokerVersion = makeProtoVersion(CAS_PROTOCOL_VERSION);
 	}
-	
-	private void initCasInfo () {
+
+	private void initCasInfo() {
 		casInfo = new byte[CAS_INFO_SIZE];
 		casInfo[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
 		casInfo[CAS_INFO_RESERVED_1] = 0;
 		casInfo[CAS_INFO_RESERVED_2] = 0;
 		casInfo[CAS_INFO_ADDITIONAL_FLAG] = 0;
 	}
-	
+
 	@Override
 	public void setCharset(String newCharsetName) {
 		if (UJCIUtil.isServerSide()) {
-			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread", "setCharSet",
-					new Class[] { String.class }, this.curThread,
+			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread", "setCharSet", new Class[] { String.class }, this.curThread,
 					new Object[] { newCharsetName });
 		}
 	}
@@ -117,8 +113,7 @@ public class UServerSideConnection extends UConnection {
 	@Override
 	public void setZeroDateTimeBehavior(String behavior) {
 		if (UJCIUtil.isServerSide()) {
-			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
-					"setZeroDateTimeBehavior", new Class[] { String.class },
+			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread", "setZeroDateTimeBehavior", new Class[] { String.class },
 					this.curThread, new Object[] { behavior });
 		}
 	}
@@ -126,8 +121,7 @@ public class UServerSideConnection extends UConnection {
 	@Override
 	public void setResultWithCUBRIDTypes(String support) {
 		if (UJCIUtil.isServerSide()) {
-			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
-					"setResultWithCUBRIDTypes", new Class[] { String.class },
+			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread", "setResultWithCUBRIDTypes", new Class[] { String.class },
 					this.curThread, new Object[] { support });
 		}
 	}
@@ -173,27 +167,40 @@ public class UServerSideConnection extends UConnection {
 		} catch (Exception e) {
 		}
 	}
-	
+
 	@Override
 	protected void closeInternal() {
 		if (client != null) {
 			stmtHandlerCache.clearStatus();
 			disconnect();
-			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread", "setStatus",
-					new Class[] { Integer.class }, this.curThread,
-					new Object[] { INVOKE });
+            int currentStatus =
+                    (Integer)
+                            UJCIUtil.invoke(
+                                    "com.cubrid.jsp.ExecuteThread",
+                                    "getStatus",
+                                    new Class[] {},
+                                    this.curThread,
+                                    new Object[] {});
+            if (currentStatus != INVOKE) {
+                disconnect();
+                UJCIUtil.invoke(
+                        "com.cubrid.jsp.ExecuteThread",
+                        "setStatus",
+                        new Class[] {Integer.class},
+                        this.curThread,
+                        new Object[] {INVOKE});
+            }
 		}
 	}
-	
+
 	@Override
-	protected UStatement prepareInternal(String sql, byte flag, boolean recompile)
-			throws IOException, UJciException {
+	protected UStatement prepareInternal(String sql, byte flag, boolean recompile) throws IOException, UJciException {
 		UStatement preparedStmt = null;
-		
-		List<UStatementHandlerCacheEntry> entries = stmtHandlerCache.getEntry(sql);	
+
+		List<UStatementHandlerCacheEntry> entries = stmtHandlerCache.getEntry(sql);
 		/* try to find cached UStatement */
-	
-		for (UStatementHandlerCacheEntry e: entries) {
+
+		for (UStatementHandlerCacheEntry e : entries) {
 			if (e.isAvailable()) {
 				preparedStmt = e.getStatement();
 				preparedStmt.initToReuse();
@@ -202,18 +209,18 @@ public class UServerSideConnection extends UConnection {
 				return preparedStmt;
 			}
 		}
-		
+
 		/* if entry not found, create new UStatement */
 		if (preparedStmt == null) {
 			UStatement newStmt = super.prepareInternal(sql, flag, recompile);
-			entries.add(new UStatementHandlerCacheEntry (newStmt));
+			entries.add(new UStatementHandlerCacheEntry(newStmt));
 			preparedStmt = newStmt;
 		}
-		
+
 		return preparedStmt;
 	}
-	
-	public void destroy () {
+
+	public void destroy() {
 		stmtHandlerCache.destroy();
 	}
 }
