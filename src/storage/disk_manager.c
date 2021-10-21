@@ -4963,7 +4963,7 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
     }
   else
     {
-      disk_Temp_max_sects < (DISK_MIN_VOLUME_SECTS * DISK_SECTOR_NPAGES) ? (DISK_MIN_VOLUME_SECTS * DISK_SECTOR_NPAGES) : disk_Temp_max_sects;
+      disk_Temp_max_sects = MAX (DISK_MIN_VOLUME_SECTS * DISK_SECTOR_NPAGES, disk_Temp_max_sects);
       disk_Temp_max_sects = ceil (disk_Temp_max_sects / (double) DISK_SECTOR_NPAGES);
       disk_Temp_max_sects = ceil (disk_Temp_max_sects / (double) DISK_MIN_VOLUME_SECTS) * DISK_MIN_VOLUME_SECTS;
     }
