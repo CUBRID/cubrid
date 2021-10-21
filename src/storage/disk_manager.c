@@ -4419,7 +4419,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       /* if we want to allocate temporary files, we have two options: preallocated permanent volumes (but with the
        * purpose of temporary files) or temporary volumes. try first the permanent volumes */
 
-      if (disk_Cache->temp_purpose_info.nsect_perm_free >= context->n_cache_reserve_remaining)
+      if (disk_Cache->temp_purpose_info.nsect_perm_free > 0)
 	{
 	  disk_reserve_from_cache_vols (DB_PERMANENT_VOLTYPE, context);
           if (context->n_cache_reserve_remaining <= 0)
