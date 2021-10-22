@@ -9,7 +9,8 @@ matrix:
   fast_finish: true
 
 install:
-- cmd: choco install -y ant --package-parameters="/User"
+- ps: choco install ant --ignore-dependencies
+- ps: $env:ANT_PATH="C:\ProgramData\chocolatey\lib\ant\bin\ant"
 
 clone_script:
 - ps: >-
