@@ -244,7 +244,7 @@ namespace cubmethod
   {
     int error = NO_ERROR;
     int num_q_result = m_q_result.size();
-    OID ins_oid;
+    OID ins_oid = OID_INITIALIZER;
     DB_OBJECT *ins_obj_p;
 
     qinfo.resize (num_q_result);
@@ -291,6 +291,7 @@ namespace cubmethod
 	result_info.stmt_type = qresult.stmt_type;
 	result_info.tuple_count = qresult.tuple_count;
 
+	result_info.include_oid = qresult.include_oid; // TODO
 	if (qresult.result && qresult.result->type == T_SELECT)
 	  {
 	    result_info.query_id = qres->res.s.query_id;
@@ -1157,8 +1158,7 @@ namespace cubmethod
 
   void query_handler::set_dbobj_to_oid (DB_OBJECT *obj, OID *oid)
   {
-    OID *objs_oid;
-    objs_oid = db_identifier (obj);
+    OID *objs_oid = db_identifier (obj);
 
     assert (oid != NULL);
 

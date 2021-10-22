@@ -31,10 +31,49 @@
 
 package com.cubrid.jsp.data;
 
+import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.value.NullValue;
+import com.cubrid.jsp.value.Value;
+import java.util.ArrayList;
+import java.util.List;
+
 public class GetByOIDInfo {
 
-    public GetByOIDInfo (CUBRIDUnpacker unpacker) {
-        // TODO
-        throw new UnsupportedOperationException();
+    public String className = null;
+    public List<String> attrNames = null;
+    public List<ColumnInfo> columnInfos = null;
+    public List<Value> dbValues = null;
+
+    public GetByOIDInfo(CUBRIDUnpacker unpacker) {
+
+        className = unpacker.unpackCString();
+
+        attrNames = new ArrayList<String>();
+        columnInfos = new ArrayList<ColumnInfo>();
+        dbValues = new ArrayList<Value>();
+
+        int numAttrNames = unpacker.unpackInt();
+        for (int i = 0; i < numAttrNames; i++) {
+            String name = unpacker.unpackCString();
+            attrNames.add(name);
+        }
+
+        int numValues = unpacker.unpackInt();
+        for (int i = 0; i < numValues; i++) {
+            int paramType = unpacker.unpackInt();
+            Value v = null;
+            try {
+                v = unpacker.unpackValue(paramType);
+            } catch (TypeMismatchException e) {
+                v = new NullValue();
+            }
+            dbValues.add(v);
+        }
+
+        int numColumnInfos = unpacker.unpackInt();
+        for (int i = 0; i < numColumnInfos; i++) {
+            ColumnInfo cInfo = new ColumnInfo(unpacker);
+            columnInfos.add(cInfo);
+        }
     }
 }

@@ -96,6 +96,12 @@ namespace cubmethod
       int callback_prepare (cubthread::entry &thread_ref, cubmem::block &blk);
       int callback_execute (cubthread::entry &thread_ref, cubmem::block &blk);
       int callback_fetch (cubthread::entry &thread_ref, cubmem::block &blk);
+      int callback_oid_get (cubthread::entry &thread_ref, cubmem::block &blk);
+      int callback_oid_put (cubthread::entry &thread_ref, cubmem::block &blk);
+      int callback_oid_cmd (cubthread::entry &thread_ref, cubmem::block &blk);
+      int callback_collection_cmd (cubthread::entry &thread_ref, cubmem::block &blk);
+
+      static int bypass_block (SOCKET socket, cubmem::block &b);
 
       std::unordered_map <std::uint64_t, query_cursor *> m_cursor_map;
       SOCKET m_sock_fd = INVALID_SOCKET;

@@ -32,26 +32,29 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideOID;
 import cubrid.sql.CUBRIDOID;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class OidValue extends Value {
-    private byte[] oidValue = null;
+    private SOID oidValue = null;
     private CUBRIDOID oidObject = null;
 
-    public OidValue(byte[] oid) {
-        this.oidValue = oid;
+    public OidValue(SOID oid) {
+        oidValue = oid;
     }
 
     public OidValue(CUBRIDOID oid) {
-        this.oidValue = oid.getOID();
+        byte[] bOid = oid.getOID();
+        oidValue = new SOID(bOid);
         this.oidObject = oid;
     }
 
-    public OidValue(byte[] oid, int mode, int dbType) {
+    public OidValue(SOID oid, int mode, int dbType) {
         super(mode);
         this.oidValue = oid;
         this.dbType = dbType;
@@ -60,7 +63,8 @@ public class OidValue extends Value {
     public OidValue(CUBRIDOID oid, int mode, int dbType) {
         super(mode);
         this.oidObject = oid;
-        this.oidValue = oid.getOID();
+        byte[] bOid = oid.getOID();
+        oidValue = new SOID(bOid);
         this.dbType = dbType;
     }
 
@@ -80,8 +84,7 @@ public class OidValue extends Value {
                 CUBRIDServerSideConnection con =
                         (CUBRIDServerSideConnection)
                                 DriverManager.getConnection("jdbc:default:connection:");
-                // TODO:
-                // oidObject = new CUBRIDOID(con, oidValue);
+                oidObject = new CUBRIDServerSideOID(con, oidValue);
             } catch (SQLException e) {
                 oidObject = null;
             }

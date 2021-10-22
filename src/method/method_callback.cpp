@@ -20,13 +20,27 @@
 
 #include "dbi.h"
 #include "method_def.hpp"
+#include "method_query_util.hpp"
+#include "method_struct_oid_info.hpp"
 #include "network_interface_cl.h"
+
+#include "object_primitive.h"
+#include "oid.h"
 
 namespace cubmethod
 {
   callback_handler::callback_handler (int max_query_handler)
   {
     m_query_handlers.resize (max_query_handler, nullptr);
+    m_oid_handler = nullptr;
+  }
+
+  callback_handler::~callback_handler ()
+  {
+    if (m_oid_handler)
+      {
+	delete m_oid_handler;
+      }
   }
 
   void
@@ -36,6 +50,25 @@ namespace cubmethod
     m_host = host;
   }
 
+  template<typename ... Args>
+  int
+  callback_handler::send_packable_object_to_server (Args &&... args)
+  {
+    packing_packer packer;
+    cubmem::extensible_block eb;
+
+    packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
+
+    int error = net_client_send_data (m_host, m_rid, eb.get_ptr (), packer.get_current_size ());
+    if (error != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
+
+    return NO_ERROR;
+  }
+
+  /*
   int
   callback_handler::send_packable_object_to_server (cubpacking::packable_object &object)
   {
@@ -47,11 +80,12 @@ namespace cubmethod
     int error = net_client_send_data (m_host, m_rid, eb.get_ptr (), packer.get_current_size ());
     if (error != NO_ERROR)
       {
-	return ER_FAILED;
+  return ER_FAILED;
       }
 
     return NO_ERROR;
   }
+  */
 
   int
   callback_handler::callback_dispatch (packing_unpacker &unpacker)
@@ -70,6 +104,18 @@ namespace cubmethod
 	break;
       case METHOD_CALLBACK_QUERY_EXECUTE:
 	error = execute (unpacker);
+	break;
+      case METHOD_CALLBACK_OID_GET:
+	error = oid_get (unpacker);
+	break;
+      case METHOD_CALLBACK_OID_PUT:
+	error = oid_put (unpacker);
+	break;
+      case METHOD_CALLBACK_OID_CMD:
+	error = oid_cmd (unpacker);
+	break;
+      case METHOD_CALLBACK_COLLECTION:
+	error = collection_cmd (unpacker);
 	break;
       default:
 	assert (false);
@@ -148,7 +194,8 @@ namespace cubmethod
     return error;
   }
 
-  int callback_handler::schema_info (packing_unpacker &unpacker)
+  int
+  callback_handler::schema_info (packing_unpacker &unpacker)
   {
     // TODO
     int error = NO_ERROR;
@@ -158,161 +205,79 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // OID
 //////////////////////////////////////////////////////////////////////////
+
   int
-  callback_handler::check_object (DB_OBJECT *obj)
+  callback_handler::new_oid_handler ()
   {
-    // TODO
-    int error = NO_ERROR;
-
-    if (obj == NULL)
+    if (m_oid_handler == nullptr)
       {
-
-      }
-
-    er_clear ();
-    error = db_is_instance (obj);
-    if (error < 0)
-      {
-	return error;
-      }
-    else if (error > 0)
-      {
-	return 0;
-      }
-    else
-      {
-	error = db_error_code ();
-	if (error < 0)
+	m_oid_handler = new (std::nothrow) oid_handler (m_error_ctx);
+	if (m_oid_handler == nullptr)
 	  {
-	    return error;
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
 	  }
-
-	// return CAS_ER_OBJECT;
       }
-
-    return error;
-  }
-
-#if 0
-  int
-  callback_handler::oid_get (OID oid)
-  {
-    int error = NO_ERROR;
-
-    DB_OBJECT *obj = db_object (&oid);
-    error = check_object (obj);
-    if (error < 0)
-      {
-	// TODO : error handling
-      }
-
-    // get attr name
-    std::string class_name;
-    std::vector<std::string> attr_names;
-
-    const char *cname = db_get_class_name (obj);
-    if (cname != NULL)
-      {
-	class_name.assign (cname);
-      }
-
-    // error = oid_attr_info_set (net_buf, obj, attr_num, attr_name);
-    if (error < 0)
-      {
-
-      }
-    /*
-    if (oid_data_set (obj, attr_num, attr_name) < 0)
-    {
-
-    }
-    */
-
-    return error;
+    return NO_ERROR;
   }
 
   int
-  callback_handler::oid_put (OID oid)
+  callback_handler::oid_get (packing_unpacker &unpacker)
   {
     int error = NO_ERROR;
 
-    DB_OBJECT *obj = db_object (&oid);
-    error = check_object (obj);
-    if (error < 0)
-      {
-	// TODO : error handling
-      }
+    oid_get_request request;
+    request.unpack (unpacker);
 
-    DB_OTMPL *otmpl = dbt_edit_object (obj);
-    if (otmpl == NULL)
+    error = new_oid_handler ();
+    if (error == NO_ERROR)
       {
-	// TODO : error handling
-	error = db_error_code ();
-      }
-
-    /* TODO */
-
-    obj = dbt_finish_object (otmpl);
-    if (obj == NULL)
-      {
-	// TODO : error handling
-	error = db_error_code ();
+	oid_get_info info = m_oid_handler->oid_get (request.oid, request.attr_names);
+	error = send_packable_object_to_server (info);
       }
     return error;
   }
 
   int
-  callback_handler::oid_cmd (char cmd, OID oid)
+  callback_handler::oid_put (packing_unpacker &unpacker)
   {
-    // TODO
-    int error = NO_ERROR;
-    DB_OBJECT *obj = db_object (&oid);
+    oid_put_request request;
+    request.unpack (unpacker);
 
-    if (cmd != OID_IS_INSTANCE)
+    int error = new_oid_handler ();
+    if (error == NO_ERROR)
       {
-	error = check_object (obj);
+	int result = m_oid_handler->oid_put (request.oid, request.attr_names, request.db_values);
+	error = send_packable_object_to_server (result);
+      }
+    return error;
+  }
+
+  int
+  callback_handler::oid_cmd (packing_unpacker &unpacker)
+  {
+    int cmd = OID_CMD_FIRST;
+    unpacker.unpack_int (cmd);
+
+    OID oid = OID_INITIALIZER;
+    unpacker.unpack_oid (oid);
+
+    std::string res; // result for OID_CLASS_NAME
+
+    int error = new_oid_handler ();
+    if (error == NO_ERROR)
+      {
+	int error = m_oid_handler->oid_cmd (oid, cmd, res);
 	if (error < 0)
 	  {
 	    // TODO : error handling
+	    // ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  }
-      }
-
-    if (cmd == OID_DROP)
-      {
-
-      }
-    else if (cmd == OID_IS_INSTANCE)
-      {
-
-      }
-    else if (cmd == OID_LOCK_READ)
-      {
-
-      }
-    else if (cmd == OID_LOCK_WRITE)
-      {
-
-      }
-    else if (cmd == OID_CLASS_NAME)
-      {
-
-      }
-    else
-      {
-
-      }
-
-    if (error < 0)
-      {
-
-      }
-    else
-      {
-	if (cmd == OID_CLASS_NAME)
+	else
 	  {
-
+	    error = send_packable_object_to_server (error, res);
 	  }
       }
+
     return error;
   }
 
@@ -320,75 +285,28 @@ namespace cubmethod
 // Collection
 //////////////////////////////////////////////////////////////////////////
 
-
   int
-  callback_handler::col_get (DB_COLLECTION *col, char col_type, char ele_type, DB_DOMAIN *ele_domain)
+  callback_handler::collection_cmd (packing_unpacker &unpacker)
   {
-    int error = NO_ERROR;
-    int col_size, i;
+    // args
+    collection_cmd_request request;
+    request.unpack (unpacker);
 
-    if (col == NULL)
+    int error = m_oid_handler->collection_cmd (request.oid, request.command, request.index, request.attr_name,
+		request.value);
+    if (error < 0)
       {
-	col_size = -1;
+	// TODO : error handling
+	// ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       }
     else
       {
-	col_size = db_col_size (col);
+	error = send_packable_object_to_server (error);
       }
-
-    // net_buf_column_info_set
-
-    DB_VALUE ele_val;
-    if (col_size > 0)
-      {
-	for (i = 0; i < col_size; i++)
-	  {
-	    if (db_col_get (col, i, &ele_val) < 0)
-	      {
-		db_make_null (&ele_val);
-	      }
-	    // dbval_to_net_buf (&ele_val, net_buf, 1, 0, 0);
-	    // db_value_clear (&ele_val);
-	  }
-      }
-
     return error;
   }
 
-  int
-  callback_handler::col_size (DB_COLLECTION *col)
-  {
-    int error = NO_ERROR;
-    int col_size;
-    if (col == NULL)
-      {
-	col_size = -1;
-      }
-    else
-      {
-	col_size = db_col_size (col);
-      }
-
-    //net_buf_cp_int (net_buf, 0, NULL);	/* result code */
-    //net_buf_cp_int (net_buf, col_size, NULL);	/* result msg */
-
-    return error;
-  }
-
-  int
-  callback_handler::col_set_drop (DB_COLLECTION *col, DB_VALUE *ele_val)
-  {
-    if (col != NULL)
-      {
-	int error = db_set_drop (col, ele_val);
-	if (error < 0)
-	  {
-	    // TODO: error handling
-	    return ER_FAILED;
-	  }
-      }
-    return NO_ERROR;
-  }
+#if 0
 
 //////////////////////////////////////////////////////////////////////////
 // LOB

@@ -32,6 +32,7 @@
 package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.impl.SUStatement;
+import cubrid.sql.CUBRIDOID;
 import java.io.InputStream;
 import java.io.Reader;
 import java.math.BigDecimal;
@@ -91,6 +92,11 @@ public class CUBRIDServerSideResultSet implements ResultSet {
         concurrency = concur;
 
         isInserting = false;
+        currentRowIndex = -1;
+    }
+
+    protected CUBRIDServerSideResultSet(SUStatement stmt) {
+        statementHandler = stmt;
         currentRowIndex = -1;
     }
 
@@ -1102,12 +1108,9 @@ public class CUBRIDServerSideResultSet implements ResultSet {
      * @exception SQLException if the current cursor is on beforeFirst, afterLast or the insert row
      * @exception SQLException if a database access error occurs
      */
-
-    /* TODO: OID is not implmented yet */
-    /*
     public CUBRIDOID getOID(int columnIndex) throws SQLException {
-        CUBRIDOID value = null;
-        return value;
+        beforeGetValue(columnIndex);
+        return statementHandler.getColumnOID(columnIndex);
     }
 
     public CUBRIDOID getOID(String columnName) throws SQLException {
@@ -1115,15 +1118,13 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     }
 
     public CUBRIDOID getOID() throws SQLException {
-        CUBRIDOID value = null;
+        CUBRIDOID value = statementHandler.getCursorOID();
         return value;
     }
-    */
 
-    /* TODO: Collection is not implmented yet */
     public Object getCollection(int columnIndex) throws SQLException {
-        Object value = null;
-        return value;
+        beforeGetValue(columnIndex);
+        return statementHandler.getCollection(columnIndex);
     }
 
     public Object getCollection(String columnName) throws SQLException {

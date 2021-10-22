@@ -669,7 +669,8 @@ public class TestCUBRIDPreparedStatement {
 
     public static String test18() throws SQLException {
         Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
-        SqlUtil.createTable(conn, "t1", "int");
+        // SqlUtil.createTable(conn, "t1", "int"); // semantic error case
+        SqlUtil.createTable(conn, "t1", "a int");
         try {
             PreparedStatement stmt = conn.prepareStatement("select * from t1");
             ResultSetMetaData md = stmt.getMetaData();
