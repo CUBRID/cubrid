@@ -55,7 +55,6 @@
 #include "trigger_manager.h"
 #include "view_transform.h"
 #include "network_interface_cl.h"
-#include "execute_statement.h"
 
 #include "dbtype.h"
 
