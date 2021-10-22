@@ -4419,10 +4419,10 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       /* if we want to allocate temporary files, we have two options: preallocated permanent volumes (but with the
        * purpose of temporary files) or temporary volumes. try first the permanent volumes */
 
-      if (disk_Cache->temp_purpose_info.nsect_perm_free >= context->n_cache_reserve_remaining)
+      if (disk_Cache->temp_purpose_info.nsect_perm_free > 0)
 	{
 	  disk_reserve_from_cache_vols (DB_PERMANENT_VOLTYPE, context);
-          if (context->n_cache_reserve_remaining <= 0)
+	  if (context->n_cache_reserve_remaining <= 0)
 	    {
 	      /* found enough sectors */
 	      assert (context->n_cache_reserve_remaining == 0);
@@ -4436,20 +4436,21 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       if (extend_info->nsect_free >= context->n_cache_reserve_remaining)
 	{
 	  disk_reserve_from_cache_vols (extend_info->voltype, context);
-          if (context->n_cache_reserve_remaining <= 0)
+	  if (context->n_cache_reserve_remaining <= 0)
 	    {
 	      /* found enough sectors */
 	      assert (context->n_cache_reserve_remaining == 0);
 	      disk_cache_unlock_reserve_for_purpose (context->purpose);
 	      return NO_ERROR;
 	    }
-         }
+	}
 
       if (extend_info->nsect_total + context->n_cache_reserve_remaining >= disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
 	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1, disk_Temp_max_sects * DISK_SECTOR_NPAGES);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1, 
+		  disk_Temp_max_sects * DISK_SECTOR_NPAGES);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);
 	  return ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED;
 	}
@@ -4957,13 +4958,9 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
     {
       disk_Temp_max_sects = SECTID_MAX;	/* infinite */
     }
-  else if (disk_Temp_max_sects == 0)
-    {
-      disk_Temp_max_sects = 0;
-    }
   else
     {
-      disk_Temp_max_sects < (DISK_MIN_VOLUME_SECTS * DISK_SECTOR_NPAGES) ? (DISK_MIN_VOLUME_SECTS * DISK_SECTOR_NPAGES) : disk_Temp_max_sects;
+      disk_Temp_max_sects = MAX(DISK_MIN_VOLUME_SECTS * DISK_SECTOR_NPAGES, disk_Temp_max_sects);
       disk_Temp_max_sects = ceil (disk_Temp_max_sects / (double) DISK_SECTOR_NPAGES);
       disk_Temp_max_sects = ceil (disk_Temp_max_sects / (double) DISK_MIN_VOLUME_SECTS) * DISK_MIN_VOLUME_SECTS;
     }
