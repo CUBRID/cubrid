@@ -284,19 +284,6 @@ ODBC_ERROR:
   return ER_FAILED;
 }
 
-INT64
-cgw_row_count (SQLHSTMT hstmt)
-{
-  SQLLEN low_count;
-  SQLRETURN err_code;
-
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLRowCount (hstmt, &low_count));
-  return low_count;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
 int
 cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor_pos)
 {
@@ -1021,7 +1008,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 						  bind_num,
 						  SQL_PARAM_INPUT,
 						  c_data_type,
-						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0, &indPtr));
+						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0, NULL));
       }
       break;
 

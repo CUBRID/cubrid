@@ -1045,7 +1045,6 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   int err_code;
   int num_markers;
   char stmt_type;
-  int num_bind;
   T_BROKER_VERSION client_version = req_info->client_version;
   int result_cache_lifetime;
 
@@ -1126,8 +1125,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   stmt_type = get_stmt_type (sql_stmt);
   net_buf_cp_byte (net_buf, stmt_type);
 
-  num_bind = get_num_markers (sql_stmt);
-  net_buf_cp_int (net_buf, num_bind, NULL);
+  net_buf_cp_int (net_buf, num_markers, NULL);
 
   err_code = cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, stmt_type, client_version, net_buf);
 
