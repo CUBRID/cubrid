@@ -441,6 +441,18 @@ css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, 
 
   return rc;
 }
+// *INDENT-OFF*
+std::string
+css_build_message_for_server_connection (const char *server_name, SERVER_TYPE server_type)
+{
+  std::string msg;
+
+  msg = ((char) server_type) + '0';
+  msg.append (server_name, std::strlen (server_name) + 1);
+
+  return msg;
+}
+// *INDENT-ON*
 
 /*
  * css_receive_request () - "blocking" read for a new request
@@ -808,7 +820,9 @@ css_connect_to_cubrid_server (char *host_name, char *server_name, SERVER_TYPE se
   char *error_area;
   int error_length;
   int timeout = -1;
+  // *INDENT-OFF*
   std::string msg;
+  // *INDENT-ON*
 
   conn = css_make_conn (-1);
   if (conn == NULL)
@@ -823,8 +837,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name, SERVER_TYPE se
    * character to the numer related to the server type enum value, the rest of the
    * buffer space is used to copy the server name.
    */
-  msg = ((char) server_type) + '0';
-  msg.append (server_name, std::strlen (server_name) + 1);
+  msg = css_build_message_for_server_connection (server_name, server_type);
   retry_count = 0;
   if (css_server_connect (host_name, conn, msg.c_str (), &rid) == NULL)
     {
