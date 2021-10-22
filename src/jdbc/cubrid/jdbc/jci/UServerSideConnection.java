@@ -172,7 +172,6 @@ public class UServerSideConnection extends UConnection {
 	protected void closeInternal() {
 		if (client != null) {
 			stmtHandlerCache.clearStatus();
-			disconnect();
             int currentStatus =
                     (Integer)
                             UJCIUtil.invoke(
