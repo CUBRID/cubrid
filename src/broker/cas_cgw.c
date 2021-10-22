@@ -59,7 +59,7 @@ static bool cgw_is_support_datatype (SQLSMALLINT data_type, SQLLEN type_size);
 
 static SQLSMALLINT get_c_type (SQLSMALLINT s_type);
 static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars);
-static INTL_CODESET client_charset = INTL_CODESET_NONE;
+static INTL_CODESET client_charset = INTL_CODESET_UTF8;
 
 
 int
@@ -132,8 +132,7 @@ cgw_database_connect (const char *dsn, const char *connect_url)
 
   SQL_CHK_ERR (local_odbc_handle->hdbc,
 	       SQL_HANDLE_ENV,
-	       err_code =
-	       SQLSetConnectAttr (local_odbc_handle->hdbc, SQL_LOGIN_TIMEOUT, (SQLPOINTER) LOGIN_TIME_OUT, 0));
+	       err_code = SQLSetConnectAttr (local_odbc_handle->hdbc, SQL_LOGIN_TIMEOUT, (SQLPOINTER) LOGIN_TIME_OUT, 0));
 
   if (dsn != NULL && strlen (dsn) > 0)
     {
