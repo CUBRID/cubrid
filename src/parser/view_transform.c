@@ -96,12 +96,10 @@ typedef struct check_pushable_info
   bool check_query;
   bool check_method;
   bool check_xxxnum;
-  bool check_analytic;
 
   bool query_found;
   bool method_found;
   bool xxxnum_found;		/* rownum, inst_num(), orderby_num(), groupby_num() */
-  bool analytic_found;
 } CHECK_PUSHABLE_INFO;
 
 static unsigned int top_cycle = 0;
@@ -1387,8 +1385,8 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
       return false;
     }
 
-  /* check for aggregate or orderby_for */
-  if (pt_has_aggregate (parser, query) || query->info.query.orderby_for)
+  /* check for aggregate or orderby_for or analytic */
+  if (pt_has_aggregate (parser, query) || query->info.query.orderby_for || pt_has_analytic (parser, query))
     {
       /* not pushable */
       return false;
@@ -1398,16 +1396,14 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
   cpi.check_xxxnum = !is_only_spec;
-  cpi.check_analytic = false;	/* analytic functions are pushable */
 
   cpi.method_found = false;
   cpi.query_found = false;
   cpi.xxxnum_found = false;
-  cpi.analytic_found = false;
 
   parser_walk_tree (parser, query->info.query.q.select.list, pt_check_pushable, (void *) &cpi, NULL, NULL);
 
-  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found || cpi.analytic_found)
+  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
     {
       /* query not pushable */
       return false;
@@ -1417,16 +1413,14 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
   cpi.check_xxxnum = !is_only_spec;
-  cpi.check_analytic = false;	/* analytic functions are pushable */
 
   cpi.method_found = false;
   cpi.query_found = false;
   cpi.xxxnum_found = false;
-  cpi.analytic_found = false;
 
   parser_walk_tree (parser, query->info.query.q.select.where, pt_check_pushable, (void *) &cpi, NULL, NULL);
 
-  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found || cpi.analytic_found)
+  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
     {
       /* query not pushable */
       return false;
@@ -2714,20 +2708,13 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 	      cinfop->xxxnum_found = true;	/* not pushable */
 	    }
 	}
-      else if (tree->info.function.analytic.is_analytic == true)
-	{
-	  if (cinfop->check_analytic)
-	    {
-	      cinfop->analytic_found = true;	/* not pushable */
-	    }
-	}
       break;
 
     default:
       break;
     }				/* switch (tree->node_type) */
 
-  if (cinfop->query_found || cinfop->method_found || cinfop->xxxnum_found || cinfop->analytic_found)
+  if (cinfop->query_found || cinfop->method_found || cinfop->xxxnum_found)
     {
       /* not pushable */
       /* do not need to traverse anymore */
