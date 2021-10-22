@@ -132,7 +132,8 @@ cgw_database_connect (const char *dsn, const char *connect_url)
 
   SQL_CHK_ERR (local_odbc_handle->hdbc,
 	       SQL_HANDLE_ENV,
-	       err_code = SQLSetConnectAttr (local_odbc_handle->hdbc, SQL_LOGIN_TIMEOUT, (SQLPOINTER) LOGIN_TIME_OUT, 0));
+	       err_code =
+	       SQLSetConnectAttr (local_odbc_handle->hdbc, SQL_LOGIN_TIMEOUT, (SQLPOINTER) LOGIN_TIME_OUT, 0));
 
   if (dsn != NULL && strlen (dsn) > 0)
     {
