@@ -1801,11 +1801,18 @@ boot_define_class (MOP class_mop)
   SM_TEMPLATE *def;
   char domain_string[32];
   int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "class_name", NULL };
+  const char *pk_col_names[2] = { "orig_class_name", NULL };
+  const char *index_col_names[2] = { "class_name", "owner" };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "class_of", "object", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "orig_class_name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -1969,8 +1976,15 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
+  /* add primary key */
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, "pk__db_class_class_name", pk_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, NULL, index_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5206,6 +5220,8 @@ boot_define_view_partition (void)
 static int
 boot_define_view_serial (void)
 {
+#define QUERY_BUFFER_SIZE 2048
+
   MOP class_mop;
   COLUMN columns[] = {
     {"name", "string"},
@@ -5223,7 +5239,7 @@ boot_define_view_serial (void)
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
-  char stmt[2048];
+  char stmt[QUERY_BUFFER_SIZE];
   int error_code = NO_ERROR;
 
   class_mop = db_create_vclass (CTV_SERIAL_NAME);
@@ -5242,6 +5258,8 @@ boot_define_view_serial (void)
 	  return error_code;
 	}
     }
+
+  memset (stmt, '\0', sizeof(char) * QUERY_BUFFER_SIZE);
 
   sprintf (stmt, "SELECT [s].[name], [s].[owner], [s].[current_val], [s].[increment_val], [s].[max_val], "
 	   "[s].[min_val], [s].[cyclic], [s].[started], [s].[class_name], [s].[att_name], [s].[cached_num], "

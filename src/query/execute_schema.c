@@ -8568,6 +8568,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   int error = NO_ERROR;
   DB_CTMPL *ctemplate = NULL;
   DB_OBJECT *class_obj = NULL;
+  const char *orig_class_name = NULL;
   const char *class_name = NULL;
   const char *create_like = NULL;
   SM_CLASS *source_class = NULL;
@@ -8596,7 +8597,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   tbl_opt_comment = comment_node = NULL;
   tbl_opt_encrypt = encrypt_node = NULL;
 
-  class_name = node->info.create_entity.entity_name->info.name.original;
+  orig_class_name = node->info.create_entity.entity_name->info.name.original;
 
   if (node->info.create_entity.create_like != NULL)
     {
@@ -8645,7 +8646,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     {
     case PT_CLASS:
 
-      if (node->info.create_entity.if_not_exists == 1 && db_find_class (class_name))
+      if (node->info.create_entity.if_not_exists == 1 && db_find_class (orig_class_name))
 	{
 	  goto error_exit;
 	}
@@ -8741,11 +8742,11 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (create_like)
 	{
-	  ctemplate = dbt_copy_class (class_name, create_like, &source_class);
+	  ctemplate = dbt_copy_class (orig_class_name, create_like, &source_class);
 	}
       else
 	{
-	  ctemplate = dbt_create_class (class_name);
+	  ctemplate = dbt_create_class (orig_class_name);
 	}
       break;
 
@@ -8757,17 +8758,17 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       do_rollback_on_error = true;
 
-      if (node->info.create_entity.or_replace && db_find_class (class_name))
+      if (node->info.create_entity.or_replace && db_find_class (orig_class_name))
 	{
 	  /* drop existing view */
-	  if (do_is_partitioned_subclass (NULL, class_name, NULL))
+	  if (do_is_partitioned_subclass (NULL, orig_class_name, NULL))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_PARTITION_REQUEST, 0);
 	      error = er_errid ();
 	      goto error_exit;
 	    }
 
-	  error = drop_class_name (class_name, false);
+	  error = drop_class_name (orig_class_name, false);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -8782,7 +8783,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      ctemplate = dbt_create_vclass (class_name);
+      ctemplate = dbt_create_vclass (orig_class_name);
       break;
 
     default:
@@ -8999,7 +9000,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   if (create_select)
     {
       error =
-	execute_create_select_query (parser, class_name, create_select, node->info.create_entity.create_select_action,
+	execute_create_select_query (parser, orig_class_name, create_select, node->info.create_entity.create_select_action,
 				     query_columns, node);
       if (error != NO_ERROR)
 	{

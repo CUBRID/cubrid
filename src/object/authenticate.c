@@ -1547,7 +1547,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
     }
 
   db_make_string (&class_name_val, sm_get_ch_name (class_mop));
-  db_class_inst = obj_find_unique (db_class, "class_name", &class_name_val, AU_FETCH_READ);
+  db_class_inst = obj_find_unique (db_class, "orig_class_name", &class_name_val, AU_FETCH_READ);
   if (db_class_inst == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2014,21 +2014,29 @@ end:
 int
 au_delete_auth_of_dropping_table (const char *class_name)
 {
-  int error = NO_ERROR, save;
-  const char *sql_query =
-    "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[class_of] IN" " (SELECT [cl] FROM " CT_CLASS_NAME
-    " [cl] WHERE [class_name] = ?);";
+#define QUERY_BUFFER_SIZE 2048
+
+  char sql_query[QUERY_BUFFER_SIZE];
+
   DB_VALUE val;
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   int stmt_id;
 
+  int error = NO_ERROR;
+  int save = 0;
+
   db_make_null (&val);
 
-  /* Disable the checking for internal authorization object access */
-  AU_DISABLE (save);
+  CHECK_1ARG_ERROR (class_name);
 
-  assert (class_name != NULL);
+  memset (sql_query, '\0', sizeof(char) * QUERY_BUFFER_SIZE);
+  sprintf (sql_query,
+  	   "DELETE FROM %s [a] WHERE [a].[class_of] IN ("
+	     "SELECT [c] FROM %s [c] WHERE [orig_class_name] = ? "
+	   ")", CT_CLASSAUTH_NAME, CT_CLASS_NAME);
+
+  AU_DISABLE (save);
 
   session = db_open_buffer_local (sql_query);
   if (session == NULL)
@@ -5427,7 +5435,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
       return;
     }
 
-  sm_get_schema_name (serial_name, owner_name, orig_serial_name, SM_MAX_ORIG_IDENTIFIER_LENGTH + 2);
+  sm_get_user_specified_name (serial_name, owner_name, orig_serial_name, SM_MAX_ORIG_IDENTIFIER_LENGTH + 2);
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 

@@ -2177,46 +2177,80 @@ sm_downcase_name (const char *name, char *buf, int maxlen)
 }
 
 void
-sm_get_schema_name (const char *name, const char *owner_name, char *orig_name, size_t orig_name_alloc_size)
+sm_get_user_specified_name (const char *name, const char *owner_name, char *orig_name, size_t orig_name_alloc_size)
 {
-  char name_buf[SM_MAX_IDENTIFIER_LENGTH + 2];
-  char owner_name_buf[SM_MAX_IDENTIFIER_LENGTH + 2];
-
   size_t name_size = 0;
   size_t owner_name_size = 0;
   size_t orig_name_size = 0;
 
-  if (name == NULL || owner_name == NULL)
+  if (name == NULL || name[0] == '\0')
     {
-      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
     }
 
-  memset (name_buf, '\0', sizeof (char) * (SM_MAX_IDENTIFIER_LENGTH + 2));
-  memset (owner_name_buf, '\0', sizeof (char) * (SM_MAX_IDENTIFIER_LENGTH + 2));
+  if (sm_is_system_class_by_name (name))
+    {
+      name_size = intl_identifier_lower_string_size (name);
+      orig_name_size = name_size + 2;
+
+      if (orig_name)
+	{
+	  assert (orig_name_alloc_size >= orig_name_size);
+	  memset (orig_name, '\0', sizeof (char) * orig_name_alloc_size);
+	}
+      else
+        {
+	  orig_name = (char *) db_ws_alloc (sizeof (char) * orig_name_size);
+	  if (orig_name == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, orig_name_size);
+	      return;
+	    }
+
+	  memset (orig_name, '\0', sizeof (char) * orig_name_size);
+	}
+
+      snprintf (orig_name, orig_name_size, "%s", name);
+
+      return;
+    }
+
+  /*
+   * It comes here when the name is not in the system class/vclass name.
+   * If so, owner_name must not be null.
+   * If owner_name is null, the current user name is stored.
+   *
+   */
+
+  if (owner_name == NULL)
+    {
+      owner_name = au_user_name ();
+    }
 
   name_size = intl_identifier_lower_string_size (name);
   owner_name_size = intl_identifier_lower_string_size (owner_name);
-
-  assert (name_size > 0 && name_size < SM_MAX_IDENTIFIER_LENGTH);
-  assert (owner_name_size > 0 && owner_name_size < SM_MAX_IDENTIFIER_LENGTH);
-
   orig_name_size = name_size + 1 + owner_name_size + 2;
 
-  if (orig_name == NULL)
+  if (orig_name)
     {
-      orig_name = (char *) db_ws_alloc (sizeof (char) * orig_name_size);
-      memset (orig_name, 0, sizeof (char) * orig_name_size);
+      assert (orig_name_alloc_size >= orig_name_size);
+      memset (orig_name, '\0', sizeof (char) * orig_name_alloc_size);
     }
   else
     {
-      assert (orig_name_alloc_size >= orig_name_size);
+      orig_name = (char *) db_ws_alloc (sizeof (char) * orig_name_size);
+      if (orig_name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, orig_name_size);
+	  return;
+	}
 
-      memset (orig_name, '\0', sizeof (char) * orig_name_alloc_size);
+      memset (orig_name, '\0', sizeof (char) * orig_name_size);
     }
 
-  intl_identifier_lower (name, name_buf);
-  intl_identifier_lower (owner_name, owner_name_buf);
-  snprintf(orig_name, orig_name_size, "%s.%s", owner_name, name);
+  snprintf (orig_name, orig_name_size, "%s.%s", owner_name, name);
+
+  return;
 }
 
 /*
@@ -3095,15 +3129,26 @@ sm_is_system_class (MOP op)
 /*
  * sm_is_system_class_by_name () - Checks whether the class name is
  *    the same as the system class name.
- * return: bool
+ * return: int
  * name(in): class name
  */
-bool
+int
 sm_is_system_class_by_name (const char *name)
 {
   const char **ptr = NULL;
 
+  int error = NO_ERROR;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      error = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
   const char *system_classes[] = {
+    ROOTCLASS_NAME,		// "Rootclass"
+
     /* 
      * authorization classes
      *
@@ -3146,6 +3191,7 @@ sm_is_system_class_by_name (const char *name)
     CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
     CT_COLLATION_NAME,		// "_db_collation"
     CT_CHARSET_NAME,		// "_db_charset"
+    CT_DUAL_NAME		// "dual"
 
     CT_TRIGGER_NAME,		// "db_trigger"
 
@@ -3178,21 +3224,9 @@ sm_is_system_class_by_name (const char *name)
     NULL
   };
 
-  /* Rootclass */
-  if (strncmp (name, ROOTCLASS_NAME, SM_MAX_IDENTIFIER_LENGTH) == 0)
-    {
-      return true;
-    }
-
-  /* dual */
-  if (strncmp (name, CT_DUAL_NAME, SM_MAX_IDENTIFIER_LENGTH) == 0)
-    {
-      return true;
-    }
-
   if (strncmp (name, "_db_", sizeof ("_db_") - 1) != 0 && strncmp (name, "db_", sizeof ("db_") - 1) != 0)
     {
-      return false;
+      return FALSE;
     }
 
   ptr = system_classes;
@@ -3200,13 +3234,13 @@ sm_is_system_class_by_name (const char *name)
     {
       if (strncmp (name, *ptr, SM_MAX_IDENTIFIER_LENGTH) == 0)
 	{
-	  return true;
+	  return TRUE;
 	}
 
       ptr++;
     }
 
-  return false;
+  return FALSE;
 }
 
 /*

@@ -9328,7 +9328,7 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial)
       owner_name = db_get_user_name ();
     }
 
-  sm_get_schema_name (serial_name, owner_name, orig_serial_name_buf, SM_MAX_ORIG_IDENTIFIER_LENGTH + 2);
+  sm_get_user_specified_name (serial_name, owner_name, orig_serial_name_buf, SM_MAX_ORIG_IDENTIFIER_LENGTH + 2);
   orig_serial_name = orig_serial_name_buf;
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
