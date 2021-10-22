@@ -4881,7 +4881,6 @@ locator_mflush (MOP mop, void *mf)
   if (WS_ISTRIGGER (mop))
     {
       LC_ONEOBJ_SET_DO_TRIGGER_INVOLVED (mflush->obj);
-      cdc_Trigger_involved = false;
     }
 
   HFID_COPY (&mflush->obj->hfid, hfid);
