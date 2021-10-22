@@ -145,7 +145,7 @@ dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
 }
 
 static int
-dblink_make_cci_value (DB_VALUE * cci_value, T_CCI_U_TYPE utype, void *val, int prec, int len)
+dblink_make_cci_value (DB_VALUE * cci_value, T_CCI_U_TYPE utype, void *val, int prec, int len, int codeset)
 {
   int error;
 
@@ -170,16 +170,18 @@ dblink_make_cci_value (DB_VALUE * cci_value, T_CCI_U_TYPE utype, void *val, int 
       error = db_make_monetary (cci_value, db_get_currency_default (), *(double *) val);
       break;
     case CCI_U_TYPE_STRING:
-      error = db_make_varchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      error =
+	db_make_varchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
     case CCI_U_TYPE_VARNCHAR:
-      error = db_make_varnchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      error =
+	db_make_varnchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
     case CCI_U_TYPE_CHAR:
-      error = db_make_char (cci_value, prec, (DB_CONST_C_CHAR) val, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      error = db_make_char (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
     case CCI_U_TYPE_NCHAR:
-      error = db_make_nchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      error = db_make_nchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
     default:
       assert (false);
@@ -602,7 +604,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
   QPROC_DB_VALUE_LIST valptrp;
   T_CCI_COL_INFO *col_info = (T_CCI_COL_INFO *) scan_info->col_info;
 
-  INTL_CODESET codeset;
+  int codeset;
 
   col_cnt = scan_info->col_cnt;
 
@@ -651,6 +653,8 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
       utype = dblink_get_basic_utype (CCI_GET_RESULT_INFO_TYPE (col_info, col_no));
       value = &cci_data;
 
+      codeset = col_info[col_no - 1].charset;
+
       switch (utype)
 	{
 	case CCI_U_TYPE_NULL:
@@ -669,7 +673,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	      return S_ERROR;
 	    }
 	  NULL_CHECK (ind);
-	  error = dblink_make_cci_value (&cci_value, utype, value, prec, ind);
+	  error = dblink_make_cci_value (&cci_value, utype, value, prec, ind, codeset);
 	  break;
 
 	case CCI_U_TYPE_NUMERIC:
@@ -680,8 +684,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	      return S_ERROR;
 	    }
 	  NULL_CHECK (ind);
-	  codeset = (INTL_CODESET) valptrp->val->data.enumeration.str_val.info.codeset;
-	  error = numeric_coerce_string_to_num ((char *) value, ind, codeset, &cci_value);
+	  error = numeric_coerce_string_to_num ((char *) value, ind, (INTL_CODESET) codeset, &cci_value);
 	  break;
 
 	case CCI_U_TYPE_STRING:
@@ -707,7 +710,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	    }
 	  else
 	    {
-	      error = dblink_make_cci_value (&cci_value, utype, value, prec, ind);
+	      error = dblink_make_cci_value (&cci_value, utype, value, prec, ind, codeset);
 	    }
 	  break;
 
