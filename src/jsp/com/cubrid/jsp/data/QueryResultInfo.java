@@ -1,17 +1,20 @@
 package com.cubrid.jsp.data;
+
 import cubrid.jdbc.jci.CUBRIDCommandType;
 
 public class QueryResultInfo {
     public int stmtType;
     public int tupleCount;
     public SOID insOid;
-    public long queryId;   /* Query Identifier for select */
+    public boolean isOIDIncluded;
+    public long queryId; /* Query Identifier for select */
 
-    public QueryResultInfo (CUBRIDUnpacker unpacker) {
+    public QueryResultInfo(CUBRIDUnpacker unpacker) {
         stmtType = unpacker.unpackInt();
         tupleCount = unpacker.unpackInt();
 
-        insOid = new SOID (unpacker);
+        insOid = new SOID(unpacker);
+        isOIDIncluded = (unpacker.unpackInt() == 1);
         queryId = unpacker.unpackBigint();
     }
 
@@ -26,7 +29,11 @@ public class QueryResultInfo {
         }
     }
 
-    public int getResultCount () {
+    public int getResultCount() {
         return tupleCount;
+    }
+
+    public SOID getCUBRIDOID() {
+        return insOid;
     }
 }

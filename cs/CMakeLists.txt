@@ -287,11 +287,13 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
+  ${METHOD_DIR}/method_oid_handler.cpp
   ${METHOD_DIR}/method_query_handler.cpp
   ${METHOD_DIR}/method_query_result.cpp
   ${METHOD_DIR}/method_query_util.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp
+  ${METHOD_DIR}/method_struct_oid_info.cpp
   ${METHOD_DIR}/method_struct_query.cpp
   ${METHOD_DIR}/method_struct_schema_info.cpp
   ${METHOD_DIR}/method_schema_info.cpp

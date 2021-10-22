@@ -42,7 +42,7 @@ namespace cubmethod
   class query_cursor
   {
     public:
-      query_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
+      query_cursor (cubthread::entry *thread_p, QUERY_ID query_id, bool is_oid_included);
 
       int open ();
       void close ();
@@ -61,8 +61,9 @@ namespace cubmethod
 
       int get_current_index ();
       std::vector<DB_VALUE> get_current_tuple ();
+      OID *get_current_oid ();
       int get_tuple_value (int index, DB_VALUE &result);
-      int get_current_oid (DB_VALUE &value);
+      bool get_is_oid_included ();
 
     private:
       cubthread::entry *m_thread;
@@ -75,7 +76,7 @@ namespace cubmethod
       int m_current_row_index;
 
       // bool is_updatable;		/* Cursor updatable ? */
-      bool is_oid_included;		/* Cursor has first hidden oid col. */
+      bool m_is_oid_included;		/* Cursor has first hidden oid col. */
   };
 }		// namespace cubmethod
 

@@ -43,6 +43,7 @@ public class CUBRIDPacker {
     private ByteBuffer buffer;
 
     public CUBRIDPacker(ByteBuffer buffer) {
+        buffer.clear();
         this.buffer = buffer;
     }
 
@@ -59,8 +60,8 @@ public class CUBRIDPacker {
     }
 
     public void packInt(int value) {
-        ensureSpace (Integer.BYTES);
         align(DataUtilities.INT_ALIGNMENT);
+        ensureSpace(Integer.BYTES);
         buffer.putInt(value);
     }
 
@@ -98,13 +99,12 @@ public class CUBRIDPacker {
         packCString(value.getBytes(charset));
     }
 
-    private static final int OID_SIZE = Integer.BYTES + Short.BYTES * 2;
-    public void packOID (SOID oid) {
+    public void packOID(SOID oid) {
         align(DataUtilities.INT_ALIGNMENT);
-        ensureSpace (OID_SIZE);
-        buffer.putInt(oid.pageId);
-        buffer.putShort(oid.slotId);
-        buffer.putShort(oid.volId);
+        ensureSpace(Integer.BYTES + Short.BYTES + Short.BYTES);
+        packInt(oid.pageId);
+        packShort(oid.slotId);
+        packShort(oid.volId);
     }
 
     public void packCString(byte[] value) {
@@ -159,7 +159,6 @@ public class CUBRIDPacker {
             packString(result.toString(), charset);
         } else if (result instanceof java.sql.Timestamp) {
             packInt(ret_type);
-
             if (ret_type == DBType.DB_DATETIME) {
                 packString(result.toString());
             } else {
@@ -223,7 +222,7 @@ public class CUBRIDPacker {
         int currentPosition = buffer.position();
         int newPosition = DataUtilities.alignedPosition(buffer, size);
 
-        ensureSpace (newPosition - currentPosition);
+        ensureSpace(newPosition - currentPosition);
         if (newPosition - currentPosition > 0) {
             buffer.position(newPosition);
         }

@@ -33,6 +33,7 @@ package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.data.DBType;
 import cubrid.jdbc.jci.CUBRIDCommandType;
+import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamptz;
 import java.io.IOException;
 import java.io.InputStream;
@@ -209,6 +210,23 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
                     CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
         }
+    }
+
+    /**
+     * Executes an SQL <code>INSERT</code> statement in <code>this PreparedStatement</code> object
+     * and returns a <code>CUBRIDOID</code> object that represents the OID of the object inserted by
+     * the statement.
+     *
+     * @return a <code>CUBRIDOID</code> object that represents the OID of the object inserted by the
+     *     statement.
+     * @exception SQLException if <code>this</code> object is closed.
+     * @exception SQLException if the statement in <code>this PreparedStatement</code> object is not
+     *     an SQL <code>INSERT</code> statement.
+     * @exception SQLException if a database access error occurs
+     */
+    @Override
+    public CUBRIDOID executeInsert(String sql) throws SQLException {
+        return super.executeInsert(sql);
     }
 
     @Override

@@ -18,18 +18,20 @@
 
 #include "method_query_cursor.hpp"
 
+#include "dbtype.h"
+#include "dbtype_def.h"
 #include "list_file.h"
 #include "log_impl.h"
 #include "query_manager.h"
 #include "object_representation.h"
-#include "dbtype.h"
 
 namespace cubmethod
 {
-  query_cursor::query_cursor (THREAD_ENTRY *thread_p, QUERY_ID query_id)
+  query_cursor::query_cursor (THREAD_ENTRY *thread_p, QUERY_ID query_id, bool is_oid_included)
   {
     m_thread = thread_p;
     reset (query_id);
+    m_is_oid_included = is_oid_included;
   }
 
   void
@@ -97,7 +99,7 @@ namespace cubmethod
 
 	for (int i = 0; i < m_list_id->type_list.type_cnt; i++)
 	  {
-	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
+	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value_r (tuple_record.tpl, i, &ptr, &length);
 	    OR_BUF_INIT (buf, ptr, length);
 
 	    TP_DOMAIN *domain = m_list_id->type_list.domp[i];
@@ -145,32 +147,33 @@ namespace cubmethod
 
 	for (int i = 0; i < m_list_id->type_list.type_cnt; i++)
 	  {
-	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
-	    OR_BUF_INIT (buf, ptr, length);
-
-	    TP_DOMAIN *domain = m_list_id->type_list.domp[i];
-	    if (domain == NULL || domain->type == NULL)
-	      {
-		//TODO: error handling
-		qfile_close_scan (m_thread, &m_scan_id);
-	      }
-
 	    DB_VALUE *value = &m_current_tuple[i];
-	    PR_TYPE *pr_type = domain->type;
-
 	    db_make_null (value);
+
+	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
 	    if (flag == V_BOUND)
 	      {
+		TP_DOMAIN *domain = m_list_id->type_list.domp[i];
+		if (domain == NULL || domain->type == NULL)
+		  {
+		    //TODO: error handling
+		    qfile_close_scan (m_thread, &m_scan_id);
+		    return S_ERROR;
+		  }
+
+		PR_TYPE *pr_type = domain->type;
+		if (pr_type == NULL)
+		  {
+		    return S_ERROR;
+		  }
+
+		OR_BUF_INIT (buf, ptr, length);
+
 		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
 		  {
 		    scan_code = S_ERROR;
 		    break;
 		  }
-	      }
-	    else
-	      {
-		/* If value is NULL, properly initialize the result */
-		db_value_domain_init (value, pr_type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	      }
 	  }
       }
@@ -192,4 +195,25 @@ namespace cubmethod
     return m_current_row_index;
   }
 
+  OID *
+  query_cursor::get_current_oid ()
+  {
+    if (m_is_oid_included)
+      {
+	DB_VALUE *first_value = &m_current_tuple[0];
+	DB_TYPE type = DB_VALUE_DOMAIN_TYPE (first_value);
+
+	if (type == DB_TYPE_OID)
+	  {
+	    return db_get_oid (first_value);
+	  }
+      }
+    return NULL;
+  }
+
+  bool
+  query_cursor::get_is_oid_included ()
+  {
+    return m_is_oid_included;
+  }
 }

@@ -22,15 +22,19 @@
 #include "object_representation.h"	/* OR_ */
 
 #include "connection_support.h"
+#include "dbtype_def.h"
+
 #include "method_connection.hpp"
 #include "method_struct_invoke.hpp"
 #include "method_struct_value.hpp"
+#include "method_struct_oid_info.hpp"
 #include "method_invoke_group.hpp"
 #include "method_struct_query.hpp"
 #include "log_impl.h"
 
 namespace cubmethod
 {
+
   method_invoke_java::method_invoke_java (method_invoke_group *group, method_sig_node *method_sig)
     : method_invoke (group, method_sig)
   {
@@ -217,16 +221,17 @@ namespace cubmethod
   }
 
   int
-  method_invoke_java::callback_dispatch (cubthread::entry &thread_ref, cubmem::extensible_block &blk)
+  method_invoke_java::callback_dispatch (cubthread::entry &thread_ref, cubmem::extensible_block &ext_blk)
   {
     int error = NO_ERROR;
 
 #if defined (SERVER_MODE)
     packing_unpacker unpacker;
-    unpacker.set_buffer (blk.get_ptr (), blk.get_size ());
+    unpacker.set_buffer (ext_blk.get_ptr (), ext_blk.get_size ());
 
     int code;
     unpacker.unpack_int (code);
+    cubmem::block blk (ext_blk.get_size(), ext_blk.get_ptr());
 
     switch (code)
       {
@@ -236,36 +241,40 @@ namespace cubmethod
       */
 
       case METHOD_CALLBACK_GET_DB_PARAMETER:
-      {
-	cubmem::block dummy;
-	error = callback_get_db_parameter (dummy);
-      }
-      break;
+	error = callback_get_db_parameter (blk);
+	break;
 
       case METHOD_CALLBACK_QUERY_PREPARE:
-      {
-	cubmem::block bb (blk.get_size(), blk.get_ptr());
-	error = callback_prepare (thread_ref, bb);
-      }
-      break;
+	error = callback_prepare (thread_ref, blk);
+	break;
 
       case METHOD_CALLBACK_QUERY_EXECUTE:
-      {
-	cubmem::block bb (blk.get_size(), blk.get_ptr());
-	error = callback_execute (thread_ref, bb);
-      }
-      break;
+	error = callback_execute (thread_ref, blk);
+	break;
 
       case METHOD_CALLBACK_FETCH:
-      {
-	cubmem::block bb (blk.get_size(), blk.get_ptr());
-	error = callback_fetch (thread_ref, bb);
-      }
-      break;
+	error = callback_fetch (thread_ref, blk);
+	break;
 
       case METHOD_CALLBACK_GET_SCHEMA_INFO:
 	// TODO: not implemented yet
 	assert (false);
+	break;
+
+      case METHOD_CALLBACK_OID_GET:
+	error = callback_oid_get (thread_ref, blk);
+	break;
+
+      case METHOD_CALLBACK_OID_PUT:
+	error = callback_oid_put (thread_ref, blk);
+	break;
+
+      case METHOD_CALLBACK_OID_CMD:
+	error = callback_oid_cmd (thread_ref, blk);
+	break;
+
+      case METHOD_CALLBACK_COLLECTION:
+	error = callback_collection_cmd (thread_ref, blk);
 	break;
 
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
@@ -274,9 +283,6 @@ namespace cubmethod
       case METHOD_CALLBACK_CURSOR_CLOSE:
       case METHOD_CALLBACK_EXECUTE_BATCH:
       case METHOD_CALLBACK_EXECUTE_ARRAY:
-      case METHOD_CALLBACK_OID_GET:
-      case METHOD_CALLBACK_OID_SET:
-      case METHOD_CALLBACK_OID_CMD:
       case METHOD_CALLBACK_LOB_NEW:
       case METHOD_CALLBACK_LOB_WRITE:
       case METHOD_CALLBACK_LOB_READ:
@@ -390,16 +396,18 @@ namespace cubmethod
       execute_info info;
       info.unpack (unpacker);
 
-      if (info.qresult_infos[0].stmt_type == CUBRID_STMT_SELECT)
+      query_result_info &current_result_info = info.qresult_infos[0];
+      if (current_result_info.stmt_type == CUBRID_STMT_SELECT)
 	{
-	  std::uint64_t qid = info.qresult_infos[0].query_id;
+	  std::uint64_t qid = current_result_info.query_id;
 	  const auto &iter = m_cursor_map.find (qid);
 
 	  query_cursor *cursor = nullptr;
 	  if (iter == m_cursor_map.end ())
 	    {
 	      /* not found, new cursor is created */
-	      cursor = m_cursor_map[qid] = new query_cursor (m_group->get_thread_entry(), qid);
+	      bool is_oid_included = current_result_info.include_oid;
+	      cursor = m_cursor_map[qid] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
 	      if (cursor == nullptr)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
@@ -471,7 +479,18 @@ namespace cubmethod
 
 	    int tuple_index = cursor->get_current_index ();
 	    std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
-	    info.tuples.emplace_back (tuple_index, tuple_values);
+
+	    if (cursor->get_is_oid_included())
+	      {
+		/* FIXME!!: For more optimized way, refactoring method_query_cursor is needed */
+		OID *oid = cursor->get_current_oid ();
+		std::vector<DB_VALUE> sub_vector = {tuple_values.begin() + 1, tuple_values.end ()};
+		info.tuples.emplace_back (tuple_index, sub_vector, *oid);
+	      }
+	    else
+	      {
+		info.tuples.emplace_back (tuple_index, tuple_values);
+	      }
 	    i++;
 	  }
 
@@ -481,4 +500,125 @@ namespace cubmethod
 #endif
     return error;
   }
+
+  int
+  method_invoke_java::callback_oid_get (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code;
+    oid_get_request request;
+
+    unpacker.unpack_int (code);
+    request.unpack (unpacker);
+
+    INT64 id = (INT64) this;
+    cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
+    error = method_send_data_to_client (&thread_ref, header, code, request);
+    if (error != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
+
+    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+#endif
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_oid_put (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code;
+    oid_put_request request;
+    request.is_compatible_java = true;
+
+    unpacker.unpack_int (code);
+    request.unpack (unpacker);
+
+    INT64 id = (INT64) this;
+    cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
+
+    request.is_compatible_java = false;
+    error = method_send_data_to_client (&thread_ref, header, code, request);
+    if (error != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
+
+    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+#endif
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_oid_cmd (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code, command;
+    OID oid;
+
+    unpacker.unpack_int (code);
+    unpacker.unpack_int (command);
+    unpacker.unpack_oid (oid);
+
+    INT64 id = (INT64) this;
+    cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
+    error = method_send_data_to_client (&thread_ref, header, code, command, oid);
+    if (error != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
+
+    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+#endif
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_collection_cmd (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code;
+    collection_cmd_request request;
+    request.is_compatible_java = true;
+
+    unpacker.unpack_int (code);
+    request.unpack (unpacker);
+
+    INT64 id = (INT64) this;
+    cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
+    request.is_compatible_java = false;
+    error = method_send_data_to_client (&thread_ref, header, code, request);
+    if (error != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
+
+    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+#endif
+    return error;
+  }
+
+  int
+  method_invoke_java::bypass_block (SOCKET socket, cubmem::block &b)
+  {
+    return method_send_buffer_to_java (socket, b);
+  }
+
 } // namespace cubmethod

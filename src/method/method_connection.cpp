@@ -21,16 +21,18 @@
 #if defined (SERVER_MODE)
 #include "network.h" /* METHOD_CALL */
 #include "network_interface_sr.h" /* xs_receive_data_from_client() */
-#include "object_representation.h" /* OR_ */
 #include "server_support.h"	/* css_send_reply_and_data_to_client(), css_get_comm_request_id() */
-#include "jsp_comm.h" /* jsp_writen() */
 #endif
+
+#include "object_representation.h" /* OR_ */
+#include "jsp_comm.h" /* jsp_writen() */
 
 namespace cubmethod
 {
 //////////////////////////////////////////////////////////////////////////
 // General interface to communicate with CAS
 //////////////////////////////////////////////////////////////////////////
+#if defined (SERVER_MODE)
   int xs_send (cubthread::entry *thread_p, cubmem::block &mem)
   {
     OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
@@ -64,6 +66,21 @@ namespace cubmethod
     free_and_init (buffer.ptr);
     return error;
   }
+
+  int xs_receive (cubthread::entry *thread_p, SOCKET socket, const xs_callback_func_with_sock &func)
+  {
+    cubmem::block buffer (0, nullptr);
+
+    int error = xs_receive_data_from_client (thread_p, &buffer.ptr, (int *) &buffer.dim);
+    if (error == NO_ERROR)
+      {
+	error = func (socket, buffer);
+      }
+
+    free_and_init (buffer.ptr);
+    return error;
+  }
+#endif
 
   //////////////////////////////////////////////////////////////////////////
   // Interface to communicate with Java SP Server

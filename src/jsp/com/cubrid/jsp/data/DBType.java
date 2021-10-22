@@ -75,7 +75,7 @@ public class DBType {
     public static final int DB_DATETIMETZ = 38;
     public static final int DB_DATETIMELTZ = 39;
 
-    public static byte getObjectDBtype(Object value) {
+    public static int getObjectDBtype(Object value) {
         if (value == null) return DB_NULL;
         else if (value instanceof String) return DB_STRING;
         else if (value instanceof Byte) return DB_SHORT;
@@ -99,7 +99,7 @@ public class DBType {
                 return DB_TIMESTAMP;
             }
             return DB_DATETIME;
-        } else if (value instanceof CUBRIDOID || value instanceof SOID) return DB_OBJECT;
+        } else if (value instanceof CUBRIDOID) return DB_OBJECT;
         else if (value instanceof CUBRIDBlob) return DB_BLOB;
         else if (value instanceof CUBRIDClob) return DB_CLOB;
         else if (value instanceof Object[]) return DB_SEQUENCE;

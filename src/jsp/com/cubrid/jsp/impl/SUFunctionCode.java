@@ -28,38 +28,38 @@
  * OF SUCH DAMAGE.
  *
  */
+
 package com.cubrid.jsp.impl;
 
-/** 
- *  NOTE: This enumeration is ported from UFunctionCode in cubrid-jdbc.
- *      Only commands necessary for Server-side JDBC are defined.
- *      If there is a command required for Server-side JDBC in the command added in UFunctionCode, it should be added below.
- **/
+/**
+ * NOTE: This enumeration is ported from UFunctionCode in cubrid-jdbc. Only commands necessary for
+ * Server-side JDBC are defined. If there is a command required for Server-side JDBC in the command
+ * added in UFunctionCode, it should be added below.
+ */
 public enum SUFunctionCode {
-
     PREPARE(2),
     EXECUTE(3),
     GET_DB_PARAMETER(4),
-    
-    /** 
-     * This command is not actually supported already
-     * It just returns tuple count that you can retrieve from the EXECUTE command 
-     **/
+
+    /**
+     * This command is not actually supported already It just returns tuple count that you can
+     * retrieve from the EXECUTE command
+     */
     // CURSOR(7),
     FETCH(8),
     GET_SCHEMA_INFO(9),
     GET_BY_OID(10),
     PUT_BY_OID(11),
 
-    /** 
+    /**
      * The result of this command can be obtained from DB Server when starting the Java SP Server
-     **/
+     */
     // GET_DB_VERSION(15),
     RELATED_TO_OID(17),
     RELATED_TO_COLLECTION(18),
     NEXT_RESULT(19),
     EXECUTE_BATCH_STATEMENT(20),
-    EXECUTE_BATCH_PREPAREDSTATEMENT(21), 
+    EXECUTE_BATCH_PREPAREDSTATEMENT(21),
     CURSOR_UPDATE(22),
     MAKE_OUT_RS(33),
 
@@ -70,12 +70,10 @@ public enum SUFunctionCode {
     READ_LOB(37),
     PREPARE_AND_EXECUTE(41),
 
-    /** 
-     * The CURSOR will manage at the DB Server
-     **/
+    /** The CURSOR will manage at the DB Server */
     // CURSOR_CLOSE(42),
 
-    LAST_FUNCTION_CODE (-1);
+    LAST_FUNCTION_CODE(-1);
 
     private int code;
 
