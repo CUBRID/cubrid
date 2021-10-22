@@ -739,21 +739,20 @@ logtb_get_system_tdes (THREAD_ENTRY *thread_p)
 LOG_TDES *
 logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LOG_LSA *log_lsa)
 {
-  std::unique_ptr<log_tdes> tdes {new log_tdes ()};		/* Transaction descriptor */
-
   assert (trid != NULL_TRANID);
 
   if (trid < NULL_TRANID)
     {
       LOG_TDES *const sys_tdes = new log_tdes ();
-      tdes->topops.last = -1;
-      LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
-      LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+      sys_tdes->topops.last = -1;
+      LSA_SET_NULL (&sys_tdes->rcv.sysop_start_postpone_lsa);
+      LSA_SET_NULL (&sys_tdes->rcv.atomic_sysop_start_lsa);
       sys_tdes->trid = trid;
       tran_map.insert (std::pair<TRANID, log_tdes *> (trid, sys_tdes));
       return sys_tdes;
     }
 
+  log_tdes *const tdes = new log_tdes ();
   for (int i = 1; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       if (log_Gl.trantable.all_tdes[i] == NULL)
@@ -770,12 +769,12 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LO
 	  tdes->topops.last = -1;
 	  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 	  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
-	  tran_map.insert (std::pair<TRANID, log_tdes *> (trid, tdes.get ()));
-	  return tdes.release ();
+	  tran_map.insert (std::pair<TRANID, log_tdes *> (trid, tdes));
+	  return tdes;
 	}
     }
   assert (false);
-  return tdes.release ();
+  return tdes;
 }
 
 void
