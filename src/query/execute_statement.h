@@ -33,7 +33,7 @@
 #include "dbi.h"
 #include "parser.h"
 
-#define CDC_TRIGGER_BACKUP(is_trigger_involved) \
+#define CDC_TRIGGER_GLOBAL_INFO_BACKUP(is_trigger_involved) \
   do \
     { \
       if (prm_get_integer_value(PRM_ID_SUPPLEMENTAL_LOG)) \
@@ -43,7 +43,7 @@
     } \
   while (0)
 
-#define CDC_TRIGGER_RESTORE(is_trigger_involved) \
+#define CDC_TRIGGER_GLOBAL_INFO_RESTORE(is_trigger_involved) \
   do \
     { \
       if (prm_get_integer_value(PRM_ID_SUPPLEMENTAL_LOG)) \

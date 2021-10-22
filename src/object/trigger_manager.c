@@ -5087,6 +5087,10 @@ tr_execute_activities (TR_STATE * state, DB_TRIGGER_TIME tr_time, DB_OBJECT * cu
   int status;
   bool rejected;
 
+  bool is_trigger_involved = false;
+
+  CDC_TRIGGER_GLOBAL_INFO_BACKUP (&is_trigger_involved);
+
   for (t = state->triggers, next = NULL; t != NULL && error == NO_ERROR; t = next)
     {
       next = t->next;
@@ -5112,6 +5116,8 @@ tr_execute_activities (TR_STATE * state, DB_TRIGGER_TIME tr_time, DB_OBJECT * cu
 
       /* else the trigger isn't ready yet, leave it on the list */
     }
+
+  CDC_TRIGGER_GLOBAL_INFO_RESTORE (is_trigger_involved);
 
   return error;
 }
@@ -5562,14 +5568,11 @@ int
 tr_before_object (TR_STATE * state, DB_OBJECT * current, DB_OBJECT * temp)
 {
   int error = NO_ERROR;
-  bool is_trigger_involved = false;
 
   if (!TR_EXECUTION_ENABLED)
     {
       return NO_ERROR;
     }
-
-  CDC_TRIGGER_BACKUP (&is_trigger_involved);
 
   if (state)
     {
@@ -5579,8 +5582,6 @@ tr_before_object (TR_STATE * state, DB_OBJECT * current, DB_OBJECT * temp)
 	  tr_abort (state);
 	}
     }
-
-  CDC_TRIGGER_RESTORE (is_trigger_involved);
 
   return error;
 }
@@ -5614,14 +5615,11 @@ int
 tr_after_object (TR_STATE * state, DB_OBJECT * current, DB_OBJECT * temp)
 {
   int error = NO_ERROR;
-  bool is_trigger_involved = false;
 
   if (!TR_EXECUTION_ENABLED)
     {
       return NO_ERROR;
     }
-
-  CDC_TRIGGER_BACKUP (&is_trigger_involved);
 
   if (state)
     {
@@ -5645,8 +5643,6 @@ tr_after_object (TR_STATE * state, DB_OBJECT * current, DB_OBJECT * temp)
 	  tr_finish (state);
 	}
     }
-
-  CDC_TRIGGER_RESTORE (is_trigger_involved);
 
   return error;
 }
