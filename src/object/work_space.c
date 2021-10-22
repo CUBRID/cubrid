@@ -54,6 +54,7 @@
 #include "server_interface.h"
 #include "view_transform.h"
 #include "dbtype.h"
+#include "execute_statement.h"
 
 extern unsigned int db_on_server;
 
@@ -260,6 +261,8 @@ ws_make_mop (const OID * oid)
       op->label_value_list = NULL;
       /* Initialize mvcc snapshot version to be sure it doesn't match with current mvcc snapshot version. */
       op->mvcc_snapshot_version = ws_get_mvcc_snapshot_version () - 1;
+
+      op->trigger_involved = 0;
 
       /* this is NULL only for the Null_object hack */
       if (oid != NULL)
@@ -1632,6 +1635,12 @@ ws_dirty (MOP op)
     }
 
   WS_SET_DIRTY (op);
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      WS_SET_TRIGGER (op);
+    }
+
   /*
    * add_class_object makes sure each class' dirty list (even an empty one)
    * is always terminated by the magical Null_object. Therefore, this test
@@ -5068,6 +5077,12 @@ bool
 ws_is_same_object (MOP mop1, MOP mop2)
 {
   return (mop1 == mop2);
+}
+
+bool
+ws_is_trigger_involved ()
+{
+  return cdc_Trigger_involved;
 }
 
 /*

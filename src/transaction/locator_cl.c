@@ -4878,7 +4878,7 @@ locator_mflush (MOP mop, void *mf)
       LC_ONEOBJ_SET_HAS_UNIQUE_INDEX (mflush->obj);
     }
 
-  if (cdc_Trigger_involved)
+  if (WS_ISTRIGGER (mop))
     {
       LC_ONEOBJ_SET_DO_TRIGGER_INVOLVED (mflush->obj);
       cdc_Trigger_involved = false;

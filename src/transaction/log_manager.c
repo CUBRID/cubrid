@@ -10768,13 +10768,16 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 		goto error;
 	      }
 
-	    if (undo_recdes.type == 1)
+	    if (undo_recdes.type == REC_ASSIGN_ADDRESS)
 	      {
+		/* This occurs when series of logs are appended like
+		 * INSERT record for reserve OID (REC_ASSIGN_ADDRESS) then UPDATE to some record.
+		 * And this is a sequence for INSERT a record with OID reservation.
+		 * undo record with REC_ASSIGN_ADDRESS type has no undo image to extract, so this will be treated as INSERT */
 		error =
 		  cdc_make_dml_loginfo (thread_p, trid, tran_user,
 					rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_INSERT : CDC_TRIGGER_INSERT, classoid,
 					NULL, &redo_recdes, log_info_entry);
-
 	      }
 	    else
 	      {

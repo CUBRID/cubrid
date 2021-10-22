@@ -164,7 +164,7 @@ prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, i
       return NO_ERROR;
     }
 
-  if (do_Trigger_involved)
+  if (do_Trigger_involved && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
     {
       cdc_Trigger_involved = true;
       flag |= TRIGGER_IS_INVOLVED;

@@ -16077,6 +16077,8 @@ check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, PT_NODE * st
   PT_NODE *flat = NULL;
   DB_OBJECT *class_ = NULL;
 
+  bool is_trigger_involved = cdc_Trigger_involved;
+
   /* Prepare a trigger state for any triggers that must be raised in this statement */
 
   state = NULL;
@@ -16146,6 +16148,8 @@ check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, PT_NODE * st
       result = tr_before (state);
       if (result == NO_ERROR)
 	{
+	  cdc_Trigger_involved = is_trigger_involved;
+
 	  result = do_check_internal_statements (parser, statement, do_func);
 	  if (result < NO_ERROR)
 	    {
