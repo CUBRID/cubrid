@@ -44,6 +44,7 @@
 #include "system_parameter.h"
 #include "locator_cl.h"
 #include "transaction_cl.h"
+#include "execute_statement.h"
 
 #include "dbtype.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -5561,11 +5562,14 @@ int
 tr_before_object (TR_STATE * state, DB_OBJECT * current, DB_OBJECT * temp)
 {
   int error = NO_ERROR;
+  bool is_trigger_involved = false;
 
   if (!TR_EXECUTION_ENABLED)
     {
       return NO_ERROR;
     }
+
+  CDC_TRIGGER_BACKUP (&is_trigger_involved);
 
   if (state)
     {
@@ -5575,6 +5579,8 @@ tr_before_object (TR_STATE * state, DB_OBJECT * current, DB_OBJECT * temp)
 	  tr_abort (state);
 	}
     }
+
+  CDC_TRIGGER_RESTORE (is_trigger_involved);
 
   return error;
 }
@@ -5608,11 +5614,14 @@ int
 tr_after_object (TR_STATE * state, DB_OBJECT * current, DB_OBJECT * temp)
 {
   int error = NO_ERROR;
+  bool is_trigger_involved = false;
 
   if (!TR_EXECUTION_ENABLED)
     {
       return NO_ERROR;
     }
+
+  CDC_TRIGGER_BACKUP (&is_trigger_involved);
 
   if (state)
     {
@@ -5636,6 +5645,8 @@ tr_after_object (TR_STATE * state, DB_OBJECT * current, DB_OBJECT * temp)
 	  tr_finish (state);
 	}
     }
+
+  CDC_TRIGGER_RESTORE (is_trigger_involved);
 
   return error;
 }

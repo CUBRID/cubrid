@@ -2376,7 +2376,6 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
   MOBJ mobj = NULL;
   char *mem;
   int i;
-  bool is_trigger_involved = cdc_Trigger_involved;
 
   /* have we already been here ? */
   if (template_ptr->traversal == obj_Template_traversal)
@@ -2524,8 +2523,6 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	    }
 	}
     }
-
-  cdc_Trigger_involved = is_trigger_involved;
 
   /* Apply the assignments */
   for (i = 0; i < template_ptr->nassigns && error == NO_ERROR; i++)

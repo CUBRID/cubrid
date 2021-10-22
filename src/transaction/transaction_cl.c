@@ -56,7 +56,6 @@
 #include "db.h"			/* for db_Connect_status */
 #include "porting.h"
 #include "network_interface_cl.h"
-#include "execute_statement.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -1102,7 +1101,6 @@ tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type)
 {
   LOG_LSA savept_lsa;
   int error_code = NO_ERROR;
-  bool is_trigger_involved = cdc_Trigger_involved;
 
   /* Flush all dirty objects */
   if (ws_need_flush ())
@@ -1134,8 +1132,6 @@ tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type)
 	  return error_code;
 	}
     }
-
-  cdc_Trigger_involved = is_trigger_involved;
 
   return error_code;
 }

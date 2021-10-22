@@ -33,6 +33,26 @@
 #include "dbi.h"
 #include "parser.h"
 
+#define CDC_TRIGGER_BACKUP(is_trigger_involved) \
+  do \
+    { \
+      if (prm_get_integer_value(PRM_ID_SUPPLEMENTAL_LOG)) \
+        { \
+          *(is_trigger_involved) = cdc_Trigger_involved; \
+        } \
+    } \
+  while (0)
+
+#define CDC_TRIGGER_RESTORE(is_trigger_involved) \
+  do \
+    { \
+      if (prm_get_integer_value(PRM_ID_SUPPLEMENTAL_LOG)) \
+        { \
+          cdc_Trigger_involved = (is_trigger_involved); \
+        } \
+    } \
+  while (0)
+
 extern int do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_name, const char *att_name);
 extern int do_reset_auto_increment_serial (MOP serial_obj);
 

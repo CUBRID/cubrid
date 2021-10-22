@@ -12524,6 +12524,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
       if (cnt == 0)
 	{
+	  /* This is due to update log record appended by trigger savepoint */
 	  error_code = ER_CDC_IGNORE_LOG_INFO;
 	  goto error;
 	}

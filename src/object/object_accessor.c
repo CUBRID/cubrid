@@ -2100,8 +2100,6 @@ obj_delete (MOP op)
   bool unpin_on_error = false;
   TR_STATE *trstate = NULL;
 
-  bool is_trigger_involved = cdc_Trigger_involved;
-
   /* op must be an object */
   if (op != NULL)
     {
@@ -2213,8 +2211,6 @@ obj_delete (MOP op)
 	    }
 	}
     }
-
-  cdc_Trigger_involved = is_trigger_involved;
 
   /*
    * Unpin this now since the remaining operations will mark the instance as
