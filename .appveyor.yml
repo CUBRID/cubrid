@@ -9,7 +9,7 @@ matrix:
   fast_finish: true
 
 install:
-  - cinst ant -i
+- cmd: choco install -y ant --package-parameters="/User"
 
 clone_script:
 - ps: >-
