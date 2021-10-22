@@ -28,6 +28,7 @@
 #include "cas_log.h"
 
 #define LONGVARCHAR_MAX_SIZE 16*1024*1024
+#define LOGIN_TIME_OUT       5
 
 #define ODBC_SQLSUCCESS(rc) ((rc == SQL_SUCCESS) || (rc == SQL_SUCCESS_WITH_INFO) )
 #define SQL_CHK_ERR(h, ht, x)   {   RETCODE rc = x;\
@@ -131,7 +132,8 @@ cgw_database_connect (const char *dsn, const char *connect_url)
 
   SQL_CHK_ERR (local_odbc_handle->hdbc,
 	       SQL_HANDLE_ENV,
-	       err_code = SQLSetConnectAttr (local_odbc_handle->hdbc, SQL_LOGIN_TIMEOUT, (SQLPOINTER) 5, 0));
+	       err_code =
+	       SQLSetConnectAttr (local_odbc_handle->hdbc, SQL_LOGIN_TIMEOUT, (SQLPOINTER) LOGIN_TIME_OUT, 0));
 
   if (dsn != NULL && strlen (dsn) > 0)
     {
