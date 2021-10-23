@@ -7280,22 +7280,24 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
  *       Before return, the thread releases hash_anchor->hash_mutex.
  */
 static int
-pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
+pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * const hash_anchor, const VPID * const vpid)
 {
 #if defined(SERVER_MODE)
   PGBUF_BUFFER_LOCK *cur_buffer_lock;
   THREAD_ENTRY *cur_thrd_entry;
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
+  int pgbuf_lock_state = -1;
 
   /* the caller is holding hash_anchor->hash_mutex */
   /* check whether the page is in the Buffer Lock Chain */
 
-  if (thread_p == NULL)
-    {
-      assert (thread_p != NULL);
-      thread_p = thread_get_thread_entry_info ();
-    }
+  // TODO: superfluous check
+//  if (thread_p == NULL)
+//    {
+//      assert (thread_p != NULL);
+//      thread_p = thread_get_thread_entry_info ();
+//    }
 
   cur_thrd_entry = thread_p;
   cur_buffer_lock = hash_anchor->lock_next;
@@ -7314,14 +7316,13 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 	    {
 	      /* interrupt operation */
 	      THREAD_ENTRY *thrd_entry, *prev_thrd_entry = NULL;
-	      int r;
 
 	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
 		{
 		  tsc_getticks (&start_tick);
 		}
 
-	      r = pthread_mutex_lock (&hash_anchor->hash_mutex);
+	      (void) pthread_mutex_lock (&hash_anchor->hash_mutex);
 
 	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
 		{
@@ -7345,38 +7346,50 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 			{
 			  prev_thrd_entry->next_wait_thrd = thrd_entry->next_wait_thrd;
 			}
-
 		      thrd_entry->next_wait_thrd = NULL;
-		      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 
-		      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_PAGES);	/* monitoring */
-		      return PGBUF_LOCK_WAITER;
+		      //pthread_mutex_unlock (&hash_anchor->hash_mutex);
+
+		      //perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_PAGES);      /* monitoring */
+		      //return PGBUF_LOCK_WAITER;
+		      break;
 		    }
 		  prev_thrd_entry = thrd_entry;
 		  thrd_entry = thrd_entry->next_wait_thrd;
 		}
-	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	      (void) pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	    }
 	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_PAGES);	/* monitoring */
-	  return PGBUF_LOCK_WAITER;
+	  //return PGBUF_LOCK_WAITER;
+	  pgbuf_lock_state = PGBUF_LOCK_WAITER;
+	  break;
 	}
       cur_buffer_lock = cur_buffer_lock->lock_next;
     }
 
-  /* buf_lock_table is implemented to have one entry for each thread. At first design, it had one entry for each
-   * thread. cur_thrd_entry->index : thread entry index cur_thrd_entry->tran_index : transaction entry index */
+  if (pgbuf_lock_state != PGBUF_LOCK_WAITER)
+    {
+      /* buf_lock_table is implemented to have one entry for each thread. At first design, it had one entry for each
+       * thread. cur_thrd_entry->index : thread entry index cur_thrd_entry->tran_index : transaction entry index */
 
-  /* vpid is not found in the Buffer Lock Chain */
-  cur_buffer_lock = &(pgbuf_Pool.buf_lock_table[cur_thrd_entry->index]);
-  cur_buffer_lock->vpid = *vpid;
-  cur_buffer_lock->next_wait_thrd = NULL;
-  cur_buffer_lock->lock_next = hash_anchor->lock_next;
-  hash_anchor->lock_next = cur_buffer_lock;
-  pthread_mutex_unlock (&hash_anchor->hash_mutex);
-#endif /* SERVER_MODE */
+      /* vpid is not found in the Buffer Lock Chain */
+      cur_buffer_lock = &(pgbuf_Pool.buf_lock_table[cur_thrd_entry->index]);
+      cur_buffer_lock->vpid = *vpid;
+      cur_buffer_lock->next_wait_thrd = NULL;
+      cur_buffer_lock->lock_next = hash_anchor->lock_next;
+      hash_anchor->lock_next = cur_buffer_lock;
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_PAGES);	/* monitoring */
+      //return PGBUF_LOCK_HOLDER;
+      pgbuf_lock_state = PGBUF_LOCK_HOLDER;
+    }
 
+  assert (pgbuf_lock_state != -1);
+  return pgbuf_lock_state;
+#else
   perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_PAGES);	/* monitoring */
   return PGBUF_LOCK_HOLDER;
+#endif /* SERVER_MODE */
 }
 
 /*
