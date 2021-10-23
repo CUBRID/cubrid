@@ -107,6 +107,32 @@ public class CUBRIDPacker {
         packShort(oid.volId);
     }
 
+    public void packBytes(byte[] bytes) {
+        align(DataUtilities.INT_ALIGNMENT);
+        ensureSpace(Integer.BYTES + bytes.length);
+
+        if (bytes == null) {
+            buffer.putInt(0);
+        } else {
+            buffer.putInt(bytes.length);
+            buffer.put(bytes);
+            align(DataUtilities.INT_ALIGNMENT);
+        }
+    }
+
+    public void packBytes(byte[] bytes, int offset, int len) {
+        align(DataUtilities.INT_ALIGNMENT);
+        ensureSpace(Integer.BYTES + len);
+
+        if (bytes == null) {
+            buffer.putInt(0);
+        } else {
+            buffer.putInt(len);
+            buffer.put(bytes, offset, len);
+            align(DataUtilities.INT_ALIGNMENT);
+        }
+    }
+
     public void packCString(byte[] value) {
         int len = value.length;
         if (len < DataUtilities.MAX_SMALL_STRING_SIZE) {

@@ -40,13 +40,17 @@ import com.cubrid.jsp.data.ExecuteInfo;
 import com.cubrid.jsp.data.FetchInfo;
 import com.cubrid.jsp.data.GetByOIDInfo;
 import com.cubrid.jsp.data.GetSchemaInfo;
+import com.cubrid.jsp.data.LobHandleInfo;
 import com.cubrid.jsp.data.PrepareInfo;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConstants;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorManager;
 import cubrid.sql.CUBRIDOID;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -319,6 +323,57 @@ public class SUConnection {
     }
 
     // UFunctionCode.NEW_LOB
+    public LobHandleInfo lobNew(int lobType) throws IOException {
+        CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
+        packer.packInt(SUFunctionCode.NEW_LOB.getCode());
+        packer.packInt(lobType);
+
+        CUBRIDUnpacker unpacker = request(outputBuffer);
+        LobHandleInfo info = new LobHandleInfo(unpacker);
+        return info;
+    }
+
     // UFunctionCode.WRITE_LOB
+    public int lobWrite(LobHandleInfo lobHandle, long offset, byte[] buf, int start, int len)
+            throws IOException {
+        CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
+        packer.packInt(SUFunctionCode.WRITE_LOB.getCode());
+        lobHandle.pack(packer);
+        packer.packBigInt(offset);
+        packer.packBytes(buf, start, len);
+
+        CUBRIDUnpacker unpacker = request(outputBuffer);
+        int result = unpacker.unpackInt();
+        return result;
+    }
+
     // UFunctionCode.READ_LOB
+    public int lobRead(LobHandleInfo lobHandle, long offset, byte[] buf, int start, int len)
+            throws IOException, SQLException {
+        CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
+        packer.packInt(SUFunctionCode.READ_LOB.getCode());
+        lobHandle.pack(packer);
+        packer.packBigInt(offset);
+        packer.packInt(len);
+
+        CUBRIDUnpacker unpacker = request(outputBuffer);
+
+        int result = unpacker.unpackInt();
+        if (result < 0) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_UNKNOWN, null);
+        } else {
+            byte[] readBuf = unpacker.unpackBytes();
+            System.arraycopy(readBuf, 0, buf, start, len);
+        }
+
+        return result;
+    }
+
+    public String getCharSet() {
+        if (thread != null) {
+            thread.getCharSet();
+        }
+        return null;
+    }
 }

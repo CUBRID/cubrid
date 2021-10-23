@@ -164,6 +164,10 @@ public class ExecuteThread extends Thread {
         // this.charSet = conCharsetName;
     }
 
+    public String getCharSet() {
+        return this.charSet;
+    }
+
     @Override
     public void run() {
         /* main routine handling stored procedure */

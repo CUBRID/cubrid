@@ -70,8 +70,14 @@ public class CUBRIDServerSideJDBCErrorCode {
     public static final int ER_INVALID_INDEX = -21115;
     public static final int ER_INVALID_COLUMN_NAME = -21116;
     public static final int ER_INVALID_ROW = -21117;
-    public static int ER_NOT_COLLECTION = -21121;
-    public static int ER_ARGUMENT_ZERO = -21128;
+
+    public static final int ER_INVALID_VALUE = -21120;
+
+    public static final int ER_NOT_COLLECTION = -21121;
+    public static final int ER_ARGUMENT_ZERO = -21128;
+
+    public static final int ER_LOB_POS_INVALID = -21139;
+    public static final int ER_LOB_IS_NOT_WRITEABLE = -21140;
 
     private static HashMap<Integer, String> messageString;
 
@@ -132,5 +138,9 @@ public class CUBRIDServerSideJDBCErrorCode {
 
         messageString.put(ER_NOT_COLLECTION, "The type of the column should be a collection type.");
         messageString.put(ER_ARGUMENT_ZERO, "The argument row can not be zero.");
+        messageString.put(ER_INVALID_VALUE, "The argument is invalid.");
+
+        messageString.put(ER_LOB_POS_INVALID, "Lob position to write is invalid.");
+        messageString.put(ER_LOB_IS_NOT_WRITEABLE, "Lob is not writable.");
     }
 }

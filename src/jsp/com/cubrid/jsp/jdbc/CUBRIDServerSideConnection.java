@@ -34,6 +34,8 @@ package com.cubrid.jsp.jdbc;
 import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.data.DBParameterInfo;
 import com.cubrid.jsp.impl.SUConnection;
+import cubrid.jdbc.driver.CUBRIDServerSideBlob;
+import cubrid.jdbc.driver.CUBRIDServerSideClob;
 import cubrid.jdbc.jci.CUBRIDIsolationLevel;
 import java.io.IOException;
 import java.sql.Array;
@@ -167,9 +169,15 @@ public class CUBRIDServerSideConnection implements Connection {
     }
 
     public void close() throws SQLException {
-        /* Becuase It is assume that Java SP Server always connecting with DB Server directly, It should not be closed */
+        /*
+         * Becuase It is assume that Java SP Server always connecting with DB Server
+         * directly, It should not be closed
+         */
         /* Here, only the JDBC resources are cleaned up */
-        /* The connection is not actually terminated or database resources such as query handlers and result sets are removed. */
+        /*
+         * The connection is not actually terminated or database resources such as query
+         * handlers and result sets are removed.
+         */
         if (statements != null) {
             for (Statement s : statements) {
                 s.close();
@@ -346,16 +354,16 @@ public class CUBRIDServerSideConnection implements Connection {
 
     /* JDK 1.6 */
     public Clob createClob() throws SQLException {
-        // TODO: not implemented yet
-        // Clob clob = new CUBRIDClob(this, getUConnection().getCharset());
-        throw new SQLException(new UnsupportedOperationException());
+        // TODO: not implemented yet?
+        Clob clob = new CUBRIDServerSideClob(this, thread.getCharSet());
+        return clob;
     }
 
     /* JDK 1.6 */
     public Blob createBlob() throws SQLException {
-        // TODO: not implemented yet
-        // Blob blob = new CUBRIDBlob(this);
-        throw new SQLException(new UnsupportedOperationException());
+        // TODO: not implemented yet?
+        Blob blob = new CUBRIDServerSideBlob(this);
+        return blob;
     }
 
     /* JDK 1.6 */

@@ -32,7 +32,9 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.impl.SUConnection;
 import java.math.BigDecimal;
+import java.sql.Clob;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -269,5 +271,13 @@ public class StringValue extends Value {
 
     public Short[] toShortObjArray() throws TypeMismatchException {
         return new Short[] {toShortObject()};
+    }
+
+    public Clob toClob(SUConnection conn) throws TypeMismatchException {
+        return new CUBRIDServerSideClob(conn, ((String) data).getBytes(), conn.getCharSet(), false);
+    }
+
+    public Clob[] toClobArray(SUConnection conn) throws TypeMismatchException {
+        return new Clob[] {toClob(conn)};
     }
 }

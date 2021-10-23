@@ -20,6 +20,8 @@ import cubrid.jdbc.jci.CUBRIDCommandType;
 import cubrid.sql.CUBRIDOID;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.sql.Blob;
+import java.sql.Clob;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -624,17 +626,46 @@ public class SUStatement {
         }
     }
 
+    public Clob getClob(int columnIndex, SUConnection conn) throws SQLException {
+        int idx = columnIndex - 1;
+        Value obj = (Value) beforeGetTuple(idx);
+        if (obj == null) {
+            return null;
+        } else {
+            try {
+                return obj.toClob(conn);
+            } catch (TypeMismatchException e) {
+                return null;
+            }
+        }
+    }
+
+    public Blob getBlob(int columnIndex, SUConnection conn) throws SQLException {
+        int idx = columnIndex - 1;
+        Value obj = (Value) beforeGetTuple(idx);
+        if (obj == null) {
+            return null;
+        } else {
+            try {
+                return obj.toBlob(conn);
+            } catch (TypeMismatchException e) {
+                return null;
+            }
+        }
+    }
+
     public Object getObject(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
         if (obj == null) return null;
 
-        // TODO: not implemented yet
+        Object retValue = null;
         try {
-            return obj.toObject();
+            retValue = obj.toObject();
         } catch (TypeMismatchException e) {
-            return null;
         }
+
+        return retValue;
     }
 
     public int getParameterCount() {

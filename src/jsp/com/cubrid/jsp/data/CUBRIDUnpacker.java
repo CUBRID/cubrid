@@ -132,6 +132,19 @@ public class CUBRIDUnpacker {
         return new SOID(pageId, slotId, volId);
     }
 
+    public byte[] unpackBytes() {
+        align(DataUtilities.INT_ALIGNMENT);
+        int actual_len = buffer.getInt();
+
+        if (actual_len > 0) {
+            byte[] res = new byte[actual_len];
+            buffer.get(res, 0, actual_len);
+        }
+
+        align(DataUtilities.INT_ALIGNMENT);
+        return null;
+    }
+
     public Value unpackValue(int paramType) throws TypeMismatchException {
         Value arg = null;
         switch (paramType) {
@@ -217,6 +230,14 @@ public class CUBRIDUnpacker {
                     SOID soid = new SOID(this);
                     arg = new OidValue(soid);
                 }
+                break;
+            case DBType.DB_CLOB:
+                // TODO:
+                break;
+            case DBType.DB_BLOB:
+                // TODO:
+                LobHandleInfo lobInfo = new LobHandleInfo(this);
+                arg = new BlobValue(lobInfo);
                 break;
             case DBType.DB_NULL:
                 arg = new NullValue();

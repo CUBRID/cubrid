@@ -33,6 +33,8 @@ package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.impl.SUStatement;
 import cubrid.sql.CUBRIDOID;
+import java.io.Closeable;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.math.BigDecimal;
@@ -52,8 +54,10 @@ import java.sql.SQLXML;
 import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 /**
@@ -79,6 +83,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     private boolean isInserting;
     private int currentRowIndex;
+
+    protected ArrayList<Object> streams = new ArrayList<Object>();
 
     protected CUBRIDServerSideResultSet(
             CUBRIDServerSideConnection c, CUBRIDServerSideStatement s, int t, int concur)
@@ -173,8 +179,23 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     }
 
     protected void clearCurrentRow() throws SQLException {
-        // TODO: clear for Streams (CLOB, BLOB, AsciiStream, BinaryStream)
+        Iterator<Object> iter = streams.iterator();
+        try {
+            while (iter.hasNext()) {
+                Object stream = iter.next();
+                if (stream instanceof Closeable) {
+                    ((Closeable) stream).close();
+                }
+                iter.remove();
+            }
+        } catch (IOException e) {
+        }
+
         // TODO: clear for variables related to updatable
+    }
+
+    private void addStream(Object s) throws SQLException {
+        streams.add(s);
     }
 
     // ==============================================================
@@ -299,9 +320,21 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     @Override
     public InputStream getAsciiStream(int columnIndex) throws SQLException {
-        // TODO: not implemented yet, related to CLOB, BLOB
+        InputStream stream = null;
         beforeGetValue(columnIndex);
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        Object obj = statementHandler.getObject(columnIndex);
+        if (obj != null) {
+            if (obj instanceof Clob) {
+                Clob clob = (Clob) obj;
+                stream = clob.getAsciiStream();
+                addStream(stream);
+            } else if (obj instanceof String) {
+                String str = (String) obj;
+                stream = new CUBRIDInputStream(str.getBytes());
+                addStream(stream);
+            }
+        }
+        return stream;
     }
 
     @Override
@@ -311,9 +344,22 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     @Override
     public InputStream getBinaryStream(int columnIndex) throws SQLException {
-        // TODO: not implemented yet, related to CLOB, BLOB
+        InputStream stream = null;
         beforeGetValue(columnIndex);
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        Object obj = statementHandler.getObject(columnIndex);
+        if (obj != null) {
+            if (obj instanceof Blob) {
+                Blob clob = (Blob) obj;
+                stream = clob.getBinaryStream();
+                addStream(stream);
+            } else if (obj instanceof byte[]) {
+                byte[] bytes = (byte[]) obj;
+                stream = new CUBRIDInputStream(bytes);
+                addStream(stream);
+            }
+        }
+
+        return stream;
     }
 
     @Override
@@ -445,9 +491,23 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     @Override
     public Reader getCharacterStream(int columnIndex) throws SQLException {
-        // TODO: not implemented yet, related to CLOB, BLOB
+        Reader stream = null;
         beforeGetValue(columnIndex);
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        Object obj = statementHandler.getObject(columnIndex);
+        if (obj != null) {
+            if (obj instanceof Clob) {
+                Clob clob = (Clob) obj;
+                stream = clob.getCharacterStream();
+                addStream(stream);
+            } else if (obj instanceof String) {
+                String str = (String) obj;
+                byte[] bytes = str.getBytes();
+                stream = new CUBRIDReader(new String(b, "ISO-8859-1"));
+                addStream(stream);
+            }
+        }
+
+        return stream;
     }
 
     @Override
@@ -688,9 +748,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
         throw new SQLException(new java.lang.UnsupportedOperationException());
 
         /*
-        boolean b = false;
-        return b;
-        */
+         * boolean b = false; return b;
+         */
     }
 
     private void updateValue(int columnIndex, Object value) throws SQLException {
@@ -976,14 +1035,14 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     @Override
     public Blob getBlob(int columnIndex) throws SQLException {
-        // TODO: not implemented yet
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        beforeGetValue(columnIndex);
+        return statementHandler.getBlob(columnIndex);
     }
 
     @Override
     public Clob getClob(int columnIndex) throws SQLException {
-        // TODO: not implemented yet
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        beforeGetValue(columnIndex);
+        return statementHandler.getClob(columnIndex);
     }
 
     @Override

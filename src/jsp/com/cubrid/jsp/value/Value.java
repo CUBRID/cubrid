@@ -32,8 +32,11 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.impl.SUConnection;
 import cubrid.sql.CUBRIDOID;
 import java.math.BigDecimal;
+import java.sql.Blob;
+import java.sql.Clob;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.Time;
@@ -309,6 +312,30 @@ public abstract class Value {
     }
 
     public ResultSet[][] toResultSetArrayArray() throws TypeMismatchException {
+        throw new TypeMismatchException();
+    }
+
+    public Clob toClob(SUConnection conn) throws TypeMismatchException {
+        throw new TypeMismatchException();
+    }
+
+    public Clob[] toClobArray(SUConnection conn) throws TypeMismatchException {
+        throw new TypeMismatchException();
+    }
+
+    public Clob[][] toClobArrayArray(SUConnection conn) throws TypeMismatchException {
+        throw new TypeMismatchException();
+    }
+
+    public Blob toBlob(SUConnection conn) throws TypeMismatchException {
+        throw new TypeMismatchException();
+    }
+
+    public Blob[] toBlobArray(SUConnection conn) throws TypeMismatchException {
+        throw new TypeMismatchException();
+    }
+
+    public Blob[][] toBlobArrayArray(SUConnection conn) throws TypeMismatchException {
         throw new TypeMismatchException();
     }
 
