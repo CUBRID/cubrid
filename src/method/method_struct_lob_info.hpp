@@ -32,7 +32,7 @@ namespace cubmethod
 {
   struct lob_info : public cubpacking::packable_object
   {
-    lob_info () = default;
+    lob_info ();
 
     DB_TYPE db_type;
     DB_ELO lob_handle;

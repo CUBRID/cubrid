@@ -640,8 +640,10 @@ namespace cubmethod
       {
 	// TODO: error handling
       }
-
-    error = send_packable_object_to_java (info);
+    else
+      {
+	error = send_packable_object_to_java (info);
+      }
     return error;
   }
 
@@ -659,7 +661,7 @@ namespace cubmethod
     unpacker.unpack_all (code, info, offset, size);
 
     DB_VALUE lob_value;
-    db_make_elo (&lob_value, info.db_type, info.lob_handle);
+    db_make_elo (&lob_value, info.db_type, &info.lob_handle);
 
     DB_BIGINT size_read;
     cubmem::extensible_block eb;
@@ -668,9 +670,11 @@ namespace cubmethod
       {
 	// TODO: error handling
       }
-
-    cubmem::block lob_blk ((size_t) size_read, eb.get_ptr());
-    error = send_packable_object_to_java (lob_blk);
+    else
+      {
+	cubmem::block lob_blk ((size_t) size_read, eb.get_ptr());
+	error = send_packable_object_to_java (lob_blk);
+      }
     return error;
   }
 
@@ -689,7 +693,7 @@ namespace cubmethod
     unpacker.unpack_all (code, info, offset, lob_blk);
 
     DB_VALUE lob_value;
-    db_make_elo (&lob_value, info.db_type, info.lob_handle);
+    db_make_elo (&lob_value, info.db_type, &info.lob_handle);
 
     DB_BIGINT size_written = 0;
     int error = m_lob_handler.lob_write (&lob_value, offset, lob_blk, size_written);
@@ -697,8 +701,10 @@ namespace cubmethod
       {
 	// TODO: error handling
       }
-
-    error = send_packable_object_to_java (size_written);
+    else
+      {
+	error = send_packable_object_to_java (size_written);
+      }
     return error;
   }
 

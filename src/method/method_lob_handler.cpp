@@ -57,7 +57,7 @@ namespace cubmethod
 
     // TODO: return elo
     info.db_type = lob_type;
-    info.lob_handle = elo;
+    db_elo_copy_structure (elo, &info.lob_handle);
 
     db_value_clear (&lob_dbval);
     return error;

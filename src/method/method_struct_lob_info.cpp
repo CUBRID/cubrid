@@ -17,7 +17,9 @@
  */
 
 #include "method_struct_lob_info.hpp"
+
 #include "elo.h"
+#include "memory_private_allocator.hpp"
 namespace cubmethod
 {
   lob_info::lob_info ()
@@ -30,9 +32,10 @@ namespace cubmethod
   {
     serializator.pack_int ((int) db_type);
     serializator.pack_bigint (lob_handle.size);
+    serializator.pack_bool (lob_handle.locator ? true : false);
     if (lob_handle.locator)
       {
-	serializator.pack_c_string (lob_handle.locator, strlen (lob_handle.locator) + 1);
+	serializator.pack_buffer_with_length (lob_handle.locator, strlen (lob_handle.locator) + 1);
       }
   }
 
@@ -46,13 +49,19 @@ namespace cubmethod
     int64_t lob_size;
     deserializator.unpack_bigint (lob_size);
 
-    cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
-    deserializator.unpack_string_to_memblock (blk);
+    bool has_lob = false;
+    deserializator.unpack_bool (has_lob);
 
-    elo_init_structure (&lob_handle);
-    lob_handle.size = lob_size;
-    lob_handle.type = ELO_FBO;
-    lob_handle.locator = blk.release_ptr ();
+    if (has_lob)
+      {
+	cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+	deserializator.unpack_string_to_memblock (blk);
+
+	elo_init_structure (&lob_handle);
+	lob_handle.size = lob_size;
+	lob_handle.type = ELO_FBO;
+	lob_handle.locator = blk.release_ptr ();
+      }
   }
 
   size_t
@@ -60,10 +69,10 @@ namespace cubmethod
   {
     size_t size = serializator.get_packed_int_size (start_offset); // db_type
     size += serializator.get_packed_bigint_size (size); // lob_size
-
+    size += serializator.get_packed_bool_size (size); // has_lob
     if (lob_handle.locator)
       {
-	size += serializator.get_packed_c_string_size (lob_handle->locator, strlen (lob_handle->locator) + 1, size); // lob_size
+	size += serializator.get_packed_c_string_size (lob_handle.locator, strlen (lob_handle.locator) + 1, size); // lob_size
       }
 
     return size;
