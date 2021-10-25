@@ -5738,6 +5738,11 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	}
 
       ws_dirty (class_mop);
+
+      if (locator_flush_class (class_mop) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
   assert (!OID_ISNULL (sm_ch_rep_dir (class_obj)));

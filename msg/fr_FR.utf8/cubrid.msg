@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Création du fichier de clé de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
 1126 Création d'une nouvelle page de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
 1127 Suppression d'une page de débordement vide. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
-1128 Reprise du journal est démarré. Le nombre d'enregistrements de journal à appliquer: %1$lld. Page du jurnal: %2$lld ~ %3$lld.
+1128 Reprise du journal est démarré.
 1129 Reprise du journal est finie.
 1130 Transaction est abandonnée parce que nombre de verrous de la transaction dépasse %1$d.
 1131 Erreur interne: La page %1$d du volume "%2$s" peut être corrompue.\n%3$s
@@ -1352,8 +1352,16 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 Impossible de tronquer la table en raison de la clé primaire référencée sur %1$s. Essayez à nouveau avec l'option CASCADE.
+1285 Impossible de tronquer en cascade car l'action ON DELETE de la clé étrangère (%1$s) n'est pas définie sur CASCADE.
+1296 Récupération des billes : la phase d'ANALYSE commence.
+1297 Récupération des logs : la phase REDO est lancée. Pages de log à refaire : %1$lld, enregistrements de log à refaire : %2$lld.
+1298 Récupération des logs : la phase de la DEOD est lancée. Pages de journal à défaire : %1$lld, transactions à défaire : %2$d.
+1299 Récupération des logs : %1$s La phase est en cours d'achèvement.
+1300 Récupération des billes : %1$s La phase est terminée.
+1301 Récupération du journal : %1$s progrès : (%2$lld/%3$lld), %4$.2f pourcent, temps écoulé : %5$.2f (s), temps restant estimé : %6$.2f (s).
 
-1284 Dernière erreur
+1302 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

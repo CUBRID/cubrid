@@ -9041,7 +9041,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case PT_TO_CHAR:
-      if (PT_IS_CHAR_STRING_TYPE (arg1_type))
+      if (PT_IS_CHAR_STRING_TYPE (arg1_type) && PT_IS_NULL_NODE (arg2))
 	{
 	  arg1->line_number = node->line_number;
 	  arg1->column_number = node->column_number;

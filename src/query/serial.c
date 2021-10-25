@@ -584,6 +584,11 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
       goto exit_on_error;
     }
 
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
+    {
+      log_append_supplemental_serial (thread_p, db_get_string (&key_val), entry->cached_num, NULL, &entry->oid);
+    }
+
   pr_clear_value (&key_val);
 
   heap_attrinfo_end (thread_p, attr_info_p);
@@ -811,6 +816,11 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
+    }
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
+    {
+      log_append_supplemental_serial (thread_p, db_get_string (&key_val), entry->cached_num, NULL, &entry->oid);
     }
 
   /* copy result value */
