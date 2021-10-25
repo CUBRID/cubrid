@@ -7089,7 +7089,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   }
 
   // Flush meta log (and checkpoint info) to disk
-  log_write_metalog_to_file ();
+  log_write_metalog_to_file (false);
   detailed_er_log ("logpb_checkpoint: wrote metalog containing checkpoint information.\n");
 
   /*
@@ -7360,7 +7360,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
       }
     log_Gl.m_metainfo.add_checkpoint_info (trantable_checkpoint_lsa, std::move (trantable_checkpoint_info));
 
-    log_write_metalog_to_file ();
+    log_write_metalog_to_file (false);
 
     // function explicitly needs to be called in critical section-free context
     LOG_CS_EXIT (thread_p);
@@ -7380,7 +7380,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     //    checkpoint and before deleting the outdated checkpoint) there can be at most two
     assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
 
-    log_write_metalog_to_file ();
+    log_write_metalog_to_file (false);
   }
 
   if (detailed_logging)

@@ -56,6 +56,7 @@ namespace cublog
   void
   meta::unpack (cubpacking::unpacker &deserializer)
   {
+    assert (m_checkpoints.empty ());
     size_t size;
     deserializer.unpack_bool (m_clean_shutdown);
     deserializer.unpack_from_int (size);
@@ -103,7 +104,7 @@ namespace cublog
   }
 
   void
-  meta::flush_to_file (std::FILE *stream) const
+  meta::flush_to_file (std::FILE *stream, bool clean_after_flush)
   {
     cubpacking::packer serializer;
     size_t size = static_cast<unsigned> (get_packed_size (serializer, 0));
@@ -126,6 +127,11 @@ namespace cublog
 	return;
       }
     std::fflush (stream);
+
+    if (clean_after_flush)
+      {
+	clean_contents ();
+      }
   }
 
   void
@@ -203,5 +209,13 @@ namespace cublog
   meta::get_checkpoint_count () const
   {
     return m_checkpoints.size ();
+  }
+
+  void
+  meta::clean_contents ()
+  {
+    m_loaded_from_file = false;
+    m_clean_shutdown = false;
+    m_checkpoints.clear ();
   }
 }

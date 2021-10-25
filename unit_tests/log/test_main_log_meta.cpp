@@ -42,7 +42,7 @@ class meta_file
     std::FILE *m_file;
 };
 static void match_meta_log (const cublog::meta &left, const cublog::meta &right);
-static void match_meta_log_after_flush_and_load (const cublog::meta &meta_log, meta_file &mf);
+static void match_meta_log_after_flush_and_load (cublog::meta &meta_log, meta_file &mf);
 static void match_checkpoint_info (const cublog::checkpoint_info *left, const cublog::checkpoint_info *right);
 
 using test_chkpt_lsa_and_info_t = std::pair<log_lsa, cublog::checkpoint_info>;
@@ -168,10 +168,10 @@ match_meta_log (const cublog::meta &left, const cublog::meta &right)
 }
 
 void
-match_meta_log_after_flush_and_load (const cublog::meta &meta_log, meta_file &mf)
+match_meta_log_after_flush_and_load (cublog::meta &meta_log, meta_file &mf)
 {
   std::rewind (mf.get_file ());
-  meta_log.flush_to_file (mf.get_file ());
+  meta_log.flush_to_file (mf.get_file (), false);
 
   mf.reload ();
   cublog::meta meta_log_from_file;

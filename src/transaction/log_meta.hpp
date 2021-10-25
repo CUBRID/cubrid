@@ -35,13 +35,9 @@ namespace cublog
       ~meta () = default;
 
       void load_from_file (std::FILE *stream);       // load meta from meta log file
-      void flush_to_file (std::FILE *stream) const;  // write meta to disk
+      void flush_to_file (std::FILE *stream, bool clean_after_flush);  // write meta to disk
 
       bool is_loaded_from_file () const;
-
-      size_t get_packed_size (cubpacking::packer &serializer, std::size_t start_offset = 0) const;
-      void pack (cubpacking::packer &serializer) const;
-      void unpack (cubpacking::unpacker &deserializer);
 
       inline bool get_clean_shutdown () const
       {
@@ -55,6 +51,13 @@ namespace cublog
       void add_checkpoint_info (const log_lsa &chkpt_lsa, const checkpoint_info &chkpt_info);
       size_t remove_checkpoint_info_before_lsa (const log_lsa &target_lsa);
       size_t get_checkpoint_count () const;
+
+    private:
+      size_t get_packed_size (cubpacking::packer &serializer, std::size_t start_offset = 0) const override;
+      void pack (cubpacking::packer &serializer) const override;
+      void unpack (cubpacking::unpacker &deserializer) override;
+
+      void clean_contents ();
 
     private:
       using checkpoint_container_t = std::map<log_lsa, checkpoint_info>;

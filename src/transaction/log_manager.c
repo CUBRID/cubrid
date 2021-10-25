@@ -1470,7 +1470,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       // if needed, mark that transaction server with remote storage is running and persist the value
       log_Gl.m_metainfo.set_clean_shutdown (false);
 
-      log_write_metalog_to_file ();
+      log_write_metalog_to_file (false);
     }
 
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
@@ -1865,7 +1865,7 @@ log_final (THREAD_ENTRY * thread_p)
 
       // mark and persist that transaction server with remote storage has been correctly closed
       log_Gl.m_metainfo.set_clean_shutdown (true);
-      log_write_metalog_to_file ();
+      log_write_metalog_to_file (true);
     }
   else
     {
@@ -10618,7 +10618,7 @@ log_create_metalog_file ()
       return ER_BO_CANNOT_CREATE_VOL;
     }
 
-  log_Gl.m_metainfo.flush_to_file (fp);
+  log_Gl.m_metainfo.flush_to_file (fp, false);
   fclose (fp);
 
   return NO_ERROR;
@@ -10671,7 +10671,7 @@ log_read_metalog_from_file ()
 
 // Write meta log from log_Gl to disk
 void
-log_write_metalog_to_file ()
+log_write_metalog_to_file (bool clean_after_write)
 {
   FILE *const fp = fopen (log_Name_metainfo, "r+");
   if (fp == nullptr)
@@ -10681,7 +10681,7 @@ log_write_metalog_to_file ()
     }
   else
     {
-      log_Gl.m_metainfo.flush_to_file (fp);
+      log_Gl.m_metainfo.flush_to_file (fp, clean_after_write);
       fclose (fp);
     }
 }
