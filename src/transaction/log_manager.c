@@ -4930,6 +4930,7 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
   char *data = (char *) malloc (length);
   if (data == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -4969,6 +4970,7 @@ log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name
   supplemental_data = (char *) malloc (data_len + MAX_ALIGNMENT);
   if (supplemental_data == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, data_len + MAX_ALIGNMENT);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -10540,6 +10542,8 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
   if (nx_rec_header->type == LOG_END_OF_LOG || LSA_ISNULL (&log_rec_header->forw_lsa))
     {
       CDC_UPDATE_TEMP_LOGPAGE (thread_p, process_lsa, log_page_p);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_NULL_EXTRACTION_LSA, 0);
       error = ER_CDC_NULL_EXTRACTION_LSA;
       goto error;
     }
@@ -10656,6 +10660,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	supplement_data = (char *) malloc (supplement_length);
 	if (supplement_data == NULL)
 	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, supplement_length);
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto error;
 	  }
@@ -10726,6 +10731,8 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
 	      {
+		error = ER_CDC_IGNORE_LOG_INFO;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
 		goto end;
 	      }
 
@@ -10751,7 +10758,9 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
 	      {
-		break;
+		error = ER_CDC_IGNORE_LOG_INFO;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
+		goto end;
 	      }
 
 	    memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
@@ -10775,7 +10784,9 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
 	      {
-		break;
+		error = ER_CDC_IGNORE_LOG_INFO;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
+		goto end;
 	      }
 
 	    memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
@@ -10955,6 +10966,8 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	      cdc_log
 		("cdc_loginfo_producer_execute : failed to allocate memory for log info entry of LOG_LSA (%lld | %d)",
 		 LSA_AS_ARGS (&process_lsa));
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CDC_LOGINFO_ENTRY));
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      continue;
 	    }
@@ -11350,6 +11363,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			cdc_log ("cdc_get_recdes : failed to allocate memory for redo data on recovery index:%d",
 				 rcvindex);
+
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, redo_length);
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 			goto error;
 		      }
@@ -11363,6 +11378,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    redo_zip_ptr = log_append_get_zip_redo (thread_p);
 		    if (redo_zip_ptr == NULL)
 		      {
+
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, IO_PAGESIZE);
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 			goto error;
 		      }
@@ -11398,6 +11415,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		redo_recdes->data = (char *) malloc (redo_recdes->length + MAX_ALIGNMENT);
 		if (redo_recdes->data == NULL)
 		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			    redo_recdes->length + MAX_ALIGNMENT);
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 		    goto error;
 		  }
@@ -11427,6 +11446,9 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    undo_data = (char *) malloc (tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type));
 		    if (undo_data == NULL)
 		      {
+
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type));
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 			goto error;
 		      }
@@ -11448,6 +11470,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		if (redo_data == NULL)
 		  {
 		    cdc_log ("cdc_get_recdes : failed to allocate memory for redo data on recovery index:%d", rcvindex);
+
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, redo_length);
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 		    goto error;
 		  }
@@ -11461,6 +11485,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    if (redo_zip_ptr == NULL)
 		      {
 			cdc_log ("cdc_get_recdes : failed to get memory of redo zip on recovery index:%d", rcvindex);
+
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, IO_PAGESIZE);
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 			goto error;
 		      }
@@ -11501,6 +11527,9 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		  {
 		    cdc_log ("cdc_get_recdes : failed to allocate memory for redo_recdes->data on recovery index:%d",
 			     rcvindex);
+
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			    redo_recdes->length + MAX_ALIGNMENT);
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 		    goto error;
 		  }
@@ -11548,6 +11577,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			cdc_log ("cdc_get_recdes : failed to allocate memory for redo data on recovery index:%d",
 				 rcvindex);
+
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, redo_length);
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 
 			goto error;
@@ -11564,6 +11595,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			cdc_log ("cdc_get_recdes : failed to get memory for redo zip on recovery index:%d", rcvindex);
 
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, IO_PAGESIZE);
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 
 			goto error;
@@ -11596,6 +11628,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		redo_recdes->data = (char *) malloc (redo_recdes->length);
 		if (redo_recdes->data == NULL)
 		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, redo_recdes->length);
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 		    goto error;
 		  }
@@ -11625,6 +11658,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    undo_data = (char *) malloc (tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type));
 		    if (undo_data == NULL)
 		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				tmp_undo_recdes.length + sizeof (tmp_undo_recdes.type));
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 			goto error;
 		      }
@@ -11653,6 +11688,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		      {
 			cdc_log ("cdc_get_recdes : failed to allocate memory for redo data on recovery index:%d",
 				 rcvindex);
+
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, redo_length);
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 			goto error;
 		      }
@@ -11667,6 +11704,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		    if (redo_zip_ptr == NULL)
 		      {
 			cdc_log ("cdc_get_recdes : failed to get memory for redo zip on recovery index:%d", rcvindex);
+
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, IO_PAGESIZE);
 			error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 			goto error;
 		      }
@@ -11709,6 +11748,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		  {
 		    cdc_log ("cdc_get_recdes : failed to allocate memory for redo_recdes->data on recovery index:%d",
 			     rcvindex);
+
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, redo_recdes->length);
 		    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 		    goto error;
 		  }
@@ -11875,6 +11916,7 @@ cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
   data = (char *) malloc (length);
   if (data == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto end;
     }
@@ -11887,6 +11929,7 @@ cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
       zip_ptr = log_zip_alloc (IO_MAX_PAGE_SIZE);
       if (zip_ptr == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, IO_MAX_PAGE_SIZE);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
@@ -11915,6 +11958,7 @@ cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
   *outdata = (char *) malloc (length);
   if (*outdata == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto end;
     }
@@ -11999,6 +12043,8 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
 		{
 		  cdc_log ("cdc_get_overflow_recdes : failed to allocate memory for overflow data ");
 		  /* malloc failed */
+
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (OVF_PAGE_LIST));
 		  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto end;
 		}
@@ -12045,6 +12091,8 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
 	  if (ovf_list_data == NULL)
 	    {
 	      cdc_log ("cdc_get_overflow_recdes : failed to allocate memory for overflow data ");
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (OVF_PAGE_LIST));
 	      /* malloc failed */
 	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto end;
@@ -12102,6 +12150,7 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
     {
       cdc_log ("cdc_get_overflow_recdes : failed to allocate memory for record descriptor for overflow data");
       /* malloc failed: clear linked-list */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 
       goto end;
@@ -12229,6 +12278,7 @@ cdc_make_error_loginfo (int trid, char *user, CDC_DML_TYPE dml_type, OID classoi
   loginfo_buf = (char *) malloc ((defalut_length * 2) + MAX_ALIGNMENT);
   if (loginfo_buf == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, defalut_length * 2 + MAX_ALIGNMENT);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -12251,6 +12301,7 @@ cdc_make_error_loginfo (int trid, char *user, CDC_DML_TYPE dml_type, OID classoi
   if (dml_entry->log_info == NULL)
     {
       cdc_log ("cdc_make_error_loginfo : failed to allocate memory for log info in dml log entry");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, dml_entry->length);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -12259,6 +12310,7 @@ cdc_make_error_loginfo (int trid, char *user, CDC_DML_TYPE dml_type, OID classoi
 
   free_and_init (loginfo_buf);
 
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LOGINFO_ENTRY_GENERATED, 1, "DML ERROR");
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
 
 error:
@@ -12361,6 +12413,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       if (old_values == NULL)
 	{
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (DB_VALUE) * attr_info.num_values);
 	  goto error;
 	}
 
@@ -12393,6 +12447,9 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       if (new_values == NULL)
 	{
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (DB_VALUE) * attr_info.num_values);
+
 	  goto error;
 	}
 
@@ -12438,6 +12495,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   if (loginfo_buf == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, record_length * 5 + MAX_ALIGNMENT);
       goto error;
     }
 
@@ -12445,6 +12503,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   if (changed_col_idx == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, attr_info.num_values);
       goto error;
     }
 
@@ -12598,11 +12657,14 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   if (dml_entry->log_info == NULL)
     {
       cdc_log ("cdc_make_dml_loginfo : failed to allocate memory for log info in dml log entry");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, dml_entry->length);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
 
   memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LOGINFO_ENTRY_GENERATED, 1, "DML");
   error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
 
   cdc_log ("cdc_make_dml_loginfo : success to generated dml log info. length:%d", dml_entry->length);
@@ -12674,6 +12736,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
       if (oid_is_system_class (&classoid) || !cdc_is_filtered_class (classoid))
 	{
 	  error_code = ER_CDC_IGNORE_LOG_INFO;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
 	  goto error;
 	}
     }
@@ -12698,6 +12761,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
   loginfo_buf = (char *) malloc (loginfo_length * 2 + MAX_ALIGNMENT);
   if (loginfo_buf == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, loginfo_length * 2 + MAX_ALIGNMENT);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -12720,6 +12784,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
   ddl_entry->log_info = (char *) malloc (ddl_entry->length);
   if (ddl_entry->log_info == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, ddl_entry->length);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -12730,6 +12795,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
 
   cdc_log ("cdc_make_ddl_loginfo : success to generated ddl log info. length:%d", ddl_entry->length);
 
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LOGINFO_ENTRY_GENERATED, 1, "DDL");
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
 
 error:
@@ -12773,6 +12839,7 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   loginfo_buf = (char *) malloc (length * 2 + MAX_ALIGNMENT);
   if (loginfo_buf == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length * 2 + MAX_ALIGNMENT);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -12791,6 +12858,8 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   if (dcl_entry->log_info == NULL)
     {
       cdc_log ("cdc_make_dcl_loginfo : failed to allocate memory for log info in dcl entry", trid, user, dcl_type);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, dcl_entry->length);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -12800,6 +12869,7 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   free_and_init (loginfo_buf);
   cdc_log ("cdc_make_dcl_loginfo : success to generated dcl log info. length:%d", dcl_entry->length);
 
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LOGINFO_ENTRY_GENERATED, 1, "DCL");
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
 
 error:
@@ -12827,6 +12897,7 @@ cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY 
   loginfo_buf = (char *) malloc (length * 2 + MAX_ALIGNMENT);
   if (loginfo_buf == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length * 2 + MAX_ALIGNMENT);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -12843,6 +12914,7 @@ cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY 
   timer_entry->log_info = (char *) malloc (timer_entry->length);
   if (timer_entry->log_info == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, timer_entry->length);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -12852,6 +12924,8 @@ cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY 
   free_and_init (loginfo_buf);
 
   cdc_log ("cdc_make_timer_loginfo : success to generated timer log info. length:%d", timer_entry->length);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LOGINFO_ENTRY_GENERATED, 1, "TIMER");
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
 
 error:
@@ -12893,6 +12967,7 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa
 	      *user = (char *) malloc (supplement->length + 1);
 	      if (*user == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, supplement->length + 1);
 		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
 
@@ -12905,6 +12980,7 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa
 	}
       else if (log_rec_hdr->type == LOG_ABORT && log_rec_hdr->trid == trid)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_TRANSACTION, 1, trid);
 	  return ER_CDC_IGNORE_TRANSACTION;
 	}
 
@@ -13034,6 +13110,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 	    result = (char *) malloc (length);
 	    if (result == NULL)
 	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
 		return ER_OUT_OF_VIRTUAL_MEMORY;
 	      }
 	  }
@@ -13091,6 +13168,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 	    result = (char *) malloc (size + 4);
 	    if (result == NULL)
 	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size + 4);
 		return ER_OUT_OF_VIRTUAL_MEMORY;
 	      }
 
@@ -13421,16 +13499,19 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
   int begin = log_Gl.hdr.last_deleted_arv_num;
   int end = log_Gl.hdr.nxarv_num - 1;
   char arv_name[PATH_MAX];
-  LOG_ARV_HEADER *arv_hdr;
+  LOG_ARV_HEADER *arv_hdr = NULL;
   int num_arvs = end - begin;
 
   time_t active_start_time = 0;
   time_t archive_start_time = 0;
   int target_arv_num = -1;
 
-  LOG_LSA ret_lsa;
+  LOG_LSA ret_lsa = LSA_INITIALIZER;
   bool is_found = false;
 
+  char input_time_buf[CTIME_MAX];
+  char output_time_buf[CTIME_MAX];
+  time_t input_time = *time;
   int error = NO_ERROR;
 
   /*
@@ -13464,6 +13545,11 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 	      LSA_COPY (start_lsa, &nxio_lsa);
 	      *time = 0;	/* can not know time of latest log */
 	      is_found = true;
+
+	      ctime_r (&input_time, input_time_buf);
+	      ctime_r (time, output_time_buf);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf, output_time_buf);
+
 	      error = ER_CDC_ADJUSTED_LSA;
 	    }
 	}
@@ -13494,12 +13580,21 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 		  LSA_COPY (start_lsa, &ret_lsa);
 		  *time = archive_start_time;
 		  is_found = true;
+
+		  ctime_r (&input_time, input_time_buf);
+		  ctime_r (time, output_time_buf);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf, output_time_buf);
 		  error = ER_CDC_ADJUSTED_LSA;
 		}
 	      else
 		{
 		  if ((error = cdc_get_lsa_with_start_point (thread_p, time, &ret_lsa)) != NO_ERROR)
 		    {
+
+		      ctime_r (&input_time, input_time_buf);
+		      ctime_r (time, output_time_buf);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf,
+			      output_time_buf);
 		      error = ER_CDC_ADJUSTED_LSA;
 		    }
 		  else
@@ -13520,6 +13615,10 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 		  *time = active_start_time;
 		  LSA_COPY (start_lsa, &ret_lsa);
 		  is_found = true;
+
+		  ctime_r (&input_time, input_time_buf);
+		  ctime_r (time, output_time_buf);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf, output_time_buf);
 		  error = ER_CDC_ADJUSTED_LSA;
 		}
 	      else
@@ -13529,6 +13628,10 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 		  LSA_COPY (start_lsa, &nxio_lsa);
 		  *time = 0;	/* can not know time of latest log */
 		  is_found = true;
+
+		  ctime_r (&input_time, input_time_buf);
+		  ctime_r (time, output_time_buf);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf, output_time_buf);
 		  error = ER_CDC_ADJUSTED_LSA;
 		}
 	    }
@@ -13567,11 +13670,13 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 
   if (LSA_ISNULL (lsa))
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_LOG_LSA, LSA_AS_ARGS (lsa));
       return ER_CDC_INVALID_LOG_LSA;
     }
 
   if (lsa->pageid >= LOGPAGEID_MAX)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_LOG_LSA, LSA_AS_ARGS (lsa));
       return ER_CDC_INVALID_LOG_LSA;
     }
 
@@ -13597,6 +13702,7 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
       LSA_COPY (&process_lsa, &log_rec_header->forw_lsa);
     }
 
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_LOG_LSA, LSA_AS_ARGS (lsa));
   return ER_CDC_INVALID_LOG_LSA;
 }
 
@@ -13689,6 +13795,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;
   int vdes;
 
+  char ctime_buf[CTIME_MAX];
   int error_code;
 
   LOG_LSA process_lsa;
@@ -13741,6 +13848,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 		  LOG_ARCHIVE_CS_EXIT (thread_p);
 		  LOG_CS_EXIT (thread_p);
 
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, 0LL, 0LL, arv_name);
 		  return ER_LOG_READ;
 		}
 
@@ -13800,7 +13908,10 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	{
 	  if (LSA_ISNULL (&forw_lsa))
 	    {
-	      return ER_FAILED;
+	      ctime_r (time, ctime_buf);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
+
+	      return ER_CDC_LSA_NOT_FOUND;
 	    }
 
 	  if ((error_code = logpb_fetch_page (thread_p, &forw_lsa, LOG_CS_SAFE_READER, log_pgptr)) != NO_ERROR)
@@ -13810,6 +13921,9 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	}
       LSA_COPY (&process_lsa, &forw_lsa);
     }
+
+  ctime_r (time, ctime_buf);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
 
   return ER_CDC_LSA_NOT_FOUND;
 }
@@ -13839,6 +13953,7 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
   log_page_p->hdr.offset = NULL_OFFSET;
   bool is_active = false;
 
+  char ctime_buf[CTIME_MAX];
   int error = NO_ERROR;
 
   if (LSA_ISNULL (start_lsa))
@@ -13892,6 +14007,9 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 	{
 	  if (LSA_ISNULL (&forw_lsa))
 	    {
+	      ctime_r (time, ctime_buf);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
+
 	      return ER_CDC_LSA_NOT_FOUND;
 	    }
 
@@ -13904,7 +14022,10 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
       LSA_COPY (&process_lsa, &forw_lsa);
     }
 
-  return ER_FAILED;
+  ctime_r (time, ctime_buf);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
+
+  return ER_CDC_LSA_NOT_FOUND;
 }
 
 int
@@ -13934,6 +14055,8 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
   int num_log_info = 0;
   int total_length = 0;
 
+  char ctime_buf[CTIME_MAX];
+
   begin = (int) time (NULL);
 
   while (cdc_Gl.loginfo_queue->is_empty ())
@@ -13942,6 +14065,11 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
       end = (int) time (NULL);
       if ((end - begin) >= cdc_Gl.consumer.extraction_timeout)
 	{
+	  time_t timeout = end - begin;
+
+	  ctime_r (&timeout, ctime_buf);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_EXTRACTION_TIMEOUT, 1, ctime_buf);
+
 	  return ER_CDC_EXTRACTION_TIMEOUT;
 	}
     }
