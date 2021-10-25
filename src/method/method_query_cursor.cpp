@@ -27,8 +27,9 @@
 
 namespace cubmethod
 {
-  query_cursor::query_cursor (THREAD_ENTRY *thread_p, QUERY_ID query_id, bool is_oid_included)
+  query_cursor::query_cursor (cubthread::entry *thread_p, QUERY_ID query_id, bool is_oid_included)
   {
+    m_query_id = query_id;
     m_thread = thread_p;
     reset (query_id);
     m_is_oid_included = is_oid_included;
@@ -54,6 +55,7 @@ namespace cubmethod
 	    m_list_id = query_entry_p->list_id;
 	    m_current_row_index = 0;
 	    m_current_tuple.resize (m_list_id->type_list.type_cnt);
+	    qfile_update_qlist_count (m_thread, m_list_id, 1);
 	  }
       }
     else
@@ -214,5 +216,11 @@ namespace cubmethod
   query_cursor::get_is_oid_included ()
   {
     return m_is_oid_included;
+  }
+
+  QUERY_ID
+  query_cursor::get_query_id ()
+  {
+    return m_query_id;
   }
 }

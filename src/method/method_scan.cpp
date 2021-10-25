@@ -130,6 +130,7 @@ namespace cubscan
     {
       SCAN_CODE scan_code = S_SUCCESS;
 
+
       scan_code = get_single_tuple ();
       if (scan_code == S_SUCCESS && m_method_group->prepare (m_arg_vector) != NO_ERROR)
 	{
@@ -157,7 +158,7 @@ namespace cubscan
 	      db_value_clear (&result);
 	    }
 
-	  m_method_group->reset ();
+	  m_method_group->reset (false);
 	}
 
       // clear

@@ -18,6 +18,8 @@
 
 #include "method_invoke.hpp"
 
+#include <functional>
+
 #include "jsp_comm.h"		/* common communcation functions for javasp */
 #include "object_representation.h"	/* OR_ */
 
@@ -32,6 +34,10 @@
 #include "method_struct_query.hpp"
 #include "log_impl.h"
 
+#if defined (SERVER_MODE)
+#include "server_support.h"
+#endif // SERVER_MODE
+
 namespace cubmethod
 {
 
@@ -43,16 +49,7 @@ namespace cubmethod
 
   method_invoke_java::~method_invoke_java ()
   {
-#if defined (SERVER_MODE)
-    query_cursor *cursor = nullptr;
-    for (auto &cursor_iter: m_cursor_map)
-      {
-	cursor = cursor_iter.second;
-	cursor->close ();
-	delete cursor;
-      }
-    m_cursor_map.clear ();
-#endif
+    //
   }
 
   int method_invoke_java::invoke (cubthread::entry *thread_p, std::vector <DB_VALUE> &arg_base)
@@ -120,6 +117,33 @@ namespace cubmethod
     while (error_code == NO_ERROR && start_code == SP_CODE_INTERNAL_JDBC);
 #endif
     return error_code;
+  }
+
+  int method_invoke_java::reset (cubthread::entry *thread_p)
+  {
+    int error = NO_ERROR;
+
+#if defined (SERVER_MODE)
+    query_cursor *cursor = nullptr;
+
+    for (const auto &cursor_iter: m_cursor_map)
+      {
+	cursor = cursor_iter.second;
+	cursor->close ();
+	error += xqmgr_end_query (thread_p, cursor->get_query_id ());
+	delete cursor;
+      }
+    m_cursor_map.clear ();
+#endif
+
+    if (error > 0)
+      {
+	return ER_FAILED;
+      }
+    else
+      {
+	return NO_ERROR;
+      }
   }
 
   int method_invoke_java::alloc_response (cubmem::extensible_block &blk)
@@ -397,25 +421,25 @@ namespace cubmethod
 	    {
 	      std::uint64_t qid = current_result_info.query_id;
 	      const auto &iter = m_cursor_map.find (qid);
+	      if (iter != m_cursor_map.end ())
+		{
+		  assert (false); // should not happen
+
+		  query_cursor *cursor = iter->second;
+		  cursor->close ();
+		  xqmgr_end_query (&thread_ref, cursor->get_query_id ());
+		  delete cursor;
+		  m_cursor_map.erase (iter);
+		}
 
 	      query_cursor *cursor = nullptr;
-	      if (iter == m_cursor_map.end ())
+	      // not found, new cursor is created
+	      bool is_oid_included = current_result_info.include_oid;
+	      cursor = m_cursor_map[qid] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
+	      if (cursor == nullptr)
 		{
-		  /* not found, new cursor is created */
-		  bool is_oid_included = current_result_info.include_oid;
-		  cursor = m_cursor_map[qid] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
-		  if (cursor == nullptr)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
-		      return ER_OUT_OF_VIRTUAL_MEMORY;
-		    }
-		}
-	      else
-		{
-		  /* found, cursur is reset */
-		  cursor = iter->second;
-		  cursor->close ();
-		  cursor->reset (qid);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
 
 	      cursor->open ();

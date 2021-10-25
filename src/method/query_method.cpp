@@ -107,6 +107,31 @@ method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p,
 }
 
 /*
+ * method_send_value_to_server () - Send an error indication to the server
+ *   return:
+ *   rc(in)     : enquiry return code
+ *   host(in)   : host name
+ *   server_name(in)    : server name
+ */
+template<typename ... Args>
+int
+method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p, Args &&... args)
+{
+  packing_packer packer;
+  cubmem::extensible_block ext_blk;
+  int code = METHOD_SUCCESS;
+  packer.set_buffer_and_pack_all (ext_blk, std::forward<Args> (args)...);
+  int error = net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
+  if (error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+
+/*
  * method_send_error_to_server () - Send an error indication to the server
  *   return:
  *   rc (in)     : enquiry return code
@@ -277,9 +302,11 @@ method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 {
   handler.free_query_handle_all (false);
 
-  DB_VALUE result;
-  db_make_null (&result);
-  return method_send_value_to_server (conn_info.rc, conn_info.host, conn_info.server_name, result); // send dummy
+  //DB_VALUE result;
+  //db_make_null (&result);
+  // return method_send_value_to_server (conn_info.rc, conn_info.host, conn_info.server_name, NO_ERROR); // send dummy
+
+  return NO_ERROR;
 }
 
 /*
