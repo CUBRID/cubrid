@@ -1354,15 +1354,15 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1283 Error reserved for scalability development.
 1284 Cannot truncate the table due to the primary key referred to on %1$s. Try again with CASCADE option.
 1285 Cannot cascade truncate because the ON DELETE action of the foreign key (%1$s) is not set to CASCADE.
-1286 Cannot find the log lsa at the time to extract for CDC. (input time : %1$s).
-1287 Timed out attempting to extract log item for CDC. (timeout : %1$d sec(s)).
-1288 There is no log info to extract from lsa. (lsa : %1$lld|%2$d).
-1289 Skip producing log info for invalid transaction (trid : %1$d)
-1290 Invalid log lsa (%1$lld|%2$d) to extract log info in CDC.
-1291 Cannot connect to CDC daemon server. Try again with setting 'supplemental_log=1' parameter.
+1286 Cannot find the log lsa at the time to extract. (input time : %1$s).
+1287 Timed out attempting to extract log info. (timeout : %1$d sec(s))
+1288 There is no log info to extract from lsa. (lsa : %1$lld|%2$d)
+1289 Skip producing log info for invalid transaction. (trid : %1$d)
+1290 Invalid log lsa (%1$lld|%2$d) to extract log info.
+1291 Cannot connect to server for extracting log info. Try again with setting 'supplemental_log' parameter.
 1292 Cannot find the log lsa at the time (%1$s). Log lsa is adjusted to the time (%2$s).
 1293 Cannot get log page while producing log infos. Log lsa to generate log info indicates NULL.
-1294 Log info at log lsa (%1$lld|%2$d) is generated.
+1294 Log info has been generated. (type : "%1$s").
 1295 Skip producing log info for invalid table. (classoid : %1$d|%2$d|%3$d)
 
 1296 Last Error
