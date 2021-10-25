@@ -237,16 +237,6 @@ namespace cubmethod
 #if defined (SERVER_MODE)
     cubmethod::header header (METHOD_REQUEST_END, get_id());
     error = method_send_data_to_client (m_thread_p, header);
-
-    if (error == NO_ERROR)
-      {
-	// TODO: proper return from query_method?
-	auto get_dummy = [&] (cubmem::block & b)
-	{
-	  return NO_ERROR;
-	};
-	error = xs_receive (m_thread_p, get_dummy);
-      }
 #endif
 
     return error;
