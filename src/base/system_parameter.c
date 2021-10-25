@@ -6052,7 +6052,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_SUPPLEMENTAL_LOG,
    PRM_NAME_SUPPLEMENTAL_LOG,
-   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER),
    PRM_INTEGER,
    &prm_supplemental_log_flag,
    (void *) &prm_supplemental_log_default,
