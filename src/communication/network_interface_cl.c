@@ -10512,10 +10512,12 @@ method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE
 						      OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
   if (req_error != NO_ERROR)
     {
-      return req_error;
+      if (req_error != ER_SP_EXECUTE_ERROR)
+	{
+	  return req_error;
+	}
     }
 
-  int rc = NO_ERROR;
   int a, b, c;
   char *ptr = or_unpack_int (reply, &a);
   ptr = or_unpack_int (ptr, &b);
@@ -10533,39 +10535,53 @@ method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE
   if (data_reply != NULL)
     {
       packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-
-      /* result */
-      unpacker.unpack_db_value (result);
-
-      /* output parameters */
-      int arg_size = 0;
-      unpacker.unpack_int (arg_size);
-
-      method_sig_node *sig = sig_list.method_sig;
-      DB_VALUE temp;
-      for (int i = 0; i < sig->num_method_args; i++)
+      if (req_error == NO_ERROR)
 	{
-	  if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
+	  /* result */
+	  unpacker.unpack_db_value (result);
+
+	  /* output parameters */
+	  int arg_size = 0;
+	  unpacker.unpack_int (arg_size);
+
+	  method_sig_node *sig = sig_list.method_sig;
+	  DB_VALUE temp;
+	  for (int i = 0; i < sig->num_method_args; i++)
 	    {
-	      continue;
+	      if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
+		{
+		  continue;
+		}
+
+	      if (sig->arg_info.arg_type[i] == DB_TYPE_RESULTSET)	// && !is_prepare_call[call_cnt])
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
+		  return er_errid ();
+		}
+
+	      int pos = sig->method_arg_pos[i];
+	      unpacker.unpack_db_value (temp);
+
+	      db_value_clear (args[pos]);
+	      db_value_clone (&temp, args[pos]);
+	      db_value_clear (&temp);
 	    }
 
-	  int pos = sig->method_arg_pos[i];
-	  unpacker.unpack_db_value (temp);
-
-	  db_value_clear (args[pos]);
-	  db_value_clone (&temp, args[pos]);
-	  db_value_clear (&temp);
+	  free_and_init (data_reply);
 	}
-
-      free_and_init (data_reply);
+      else
+	{
+	  std::string error_msg;
+	  unpacker.unpack_string (error_msg);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, error_msg.c_str ());
+	}
     }
   else
     {
       db_make_null (&result);
     }
 
-  return rc;
+  return req_error;
 #else /* CS_MODE */
   return NO_ERROR;
 #endif /* !CS_MODE */

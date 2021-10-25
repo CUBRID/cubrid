@@ -2371,6 +2371,7 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 	      {
 		// TODO: error?
 	      }
+	    ptr = or_unpack_int (ptr, &error);
 	  }
 	  break;
 

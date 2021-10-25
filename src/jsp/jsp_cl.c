@@ -547,7 +547,6 @@ jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
       vc = vc->next;
     }
 
-  vc = statement->info.method_call.arg_list;
   if (error == NO_ERROR)
     {
       /* Save the method result. */
@@ -564,6 +563,7 @@ jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   db_value_clear (&ret_value);
+
   return error;
 }
 
