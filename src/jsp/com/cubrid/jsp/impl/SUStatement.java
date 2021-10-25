@@ -108,10 +108,10 @@ public class SUStatement {
         maxFetchSize = 0;
         isFetched = false;
         wasNull = false;
-        /*
-         * if (info.stmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) { columnNumber =
-         * parameterNumber + 1; }
-         */
+
+        if (commandType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+            columnNumber = parameterNumber + 1;
+        }
     }
 
     public SUStatement(
@@ -215,13 +215,13 @@ public class SUStatement {
         resultIndex = -1;
 
         fetchedStartCursorPosition = cursorPosition = -1;
-        /*
-         * TODO if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
-         * cursorPosition = 0; } else
-         */
-        {
+
+        if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+            cursorPosition = 0;
+        } else {
             cursorPosition = -1;
         }
+
         totalTupleNumber = executeInfo.numAffected;
     }
 
@@ -639,6 +639,16 @@ public class SUStatement {
         } catch (TypeMismatchException e) {
             return null;
         }
+    }
+
+    public void registerOutParameter(int index, int sqlType) throws SQLException {
+        int idx = index - 1;
+        if (idx < 0 || idx >= parameterNumber) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_BIND_INDEX, null);
+        }
+
+        bindParameter.setOutParam(idx, sqlType);
     }
 
     public int getParameterCount() {

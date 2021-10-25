@@ -27,6 +27,16 @@
 
 namespace cubmethod
 {
+  prepare_call_info::prepare_call_info ()
+  {
+    //
+  }
+
+  prepare_call_info::~prepare_call_info ()
+  {
+    clear ();
+  }
+
   int
   prepare_call_info::set_is_first_out (std::string &sql_stmt)
   {
@@ -45,6 +55,15 @@ namespace cubmethod
       }
 
     return NO_ERROR;
+  }
+
+  void
+  prepare_call_info::clear ()
+  {
+    for (int i = 0; i < dbval_args.size(); i++)
+      {
+	db_value_clear (&dbval_args[i]);
+      }
   }
 
   int
@@ -82,6 +101,7 @@ namespace cubmethod
   {
     end_qresult (false);
     m_is_occupied = false;
+    m_prepare_call_info.clear ();
   }
 
   next_result_info

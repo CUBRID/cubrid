@@ -373,30 +373,31 @@ namespace cubmethod
     serializator.pack_int (is_forward_only);
     serializator.pack_int (has_parameter);
 
-    if (has_parameter == 2)
+    if (has_parameter > 0)
       {
 	serializator.pack_int (param_values.size());
 
 	dbvalue_java sp_val;
 	for (int i = 0; i < (int) param_values.size(); i++)
 	  {
-	    sp_val.value = (DB_VALUE *) &param_values[i];
-	    sp_val.pack (serializator);
-	  }
-      }
-    else if (has_parameter == 1)
-      {
-	serializator.pack_int (param_values.size());
-	for (int i = 0; i < (int) param_values.size(); i++)
-	  {
-	    serializator.pack_db_value (param_values[i]);
+	    if (has_parameter == 2)
+	      {
+		sp_val.value = (DB_VALUE *) &param_values[i];
+		sp_val.pack (serializator);
+		serializator.pack_int (param_modes[i]);
+	      }
+	    else if (has_parameter == 1)
+	      {
+		serializator.pack_db_value (param_values[i]);
+		serializator.pack_int (param_modes[i]);
+	      }
 	  }
       }
   }
 
   execute_request::~execute_request()
   {
-
+    clear ();
   }
 
   void
@@ -408,28 +409,28 @@ namespace cubmethod
     deserializator.unpack_int (is_forward_only);
     deserializator.unpack_int (has_parameter);
 
-    if (has_parameter == 2)
+    int parameter_cnt;
+    if (has_parameter > 0)
       {
-	int parameter_cnt;
 	deserializator.unpack_int (parameter_cnt);
+
+	param_values.resize (parameter_cnt);
+	param_modes.resize (parameter_cnt);
 
 	dbvalue_java sp_val;
-	param_values.resize (parameter_cnt);
 	for (int i = 0; i < parameter_cnt; i++)
 	  {
-	    sp_val.value = &param_values[i];
-	    sp_val.unpack (deserializator);
-	  }
-      }
-    else if (has_parameter == 1)
-      {
-	int parameter_cnt;
-	deserializator.unpack_int (parameter_cnt);
-
-	param_values.resize (parameter_cnt);
-	for (int i = 0; i < parameter_cnt; i++)
-	  {
-	    deserializator.unpack_db_value (param_values[i]);
+	    if (has_parameter == 2)
+	      {
+		sp_val.value = &param_values[i];
+		sp_val.unpack (deserializator);
+		deserializator.unpack_int (param_modes[i]);
+	      }
+	    else if (has_parameter == 1)
+	      {
+		deserializator.unpack_db_value (param_values[i]);
+		deserializator.unpack_int (param_modes[i]);
+	      }
 	  }
       }
   }
@@ -443,23 +444,24 @@ namespace cubmethod
     size += serializator.get_packed_int_size (size); // is_forward_only
     size += serializator.get_packed_int_size (size); // has_parameter
 
-    if (has_parameter == 2)
+    if (has_parameter > 0)
       {
 	size += serializator.get_packed_int_size (size); // param_values.size()
 	dbvalue_java sp_val;
 
 	for (int i = 0; i < (int) param_values.size(); i++)
 	  {
-	    sp_val.value = (DB_VALUE *) &param_values[i];
-	    size += sp_val.get_packed_size (serializator, size);
-	  }
-      }
-    else if (has_parameter == 1)
-      {
-	size += serializator.get_packed_int_size (size); // param_values.size()
-	for (int i = 0; i < (int) param_values.size(); i++)
-	  {
-	    size += serializator.get_packed_db_value_size (param_values[i], size);
+	    if (has_parameter == 2)
+	      {
+		sp_val.value = (DB_VALUE *) &param_values[i];
+		size += sp_val.get_packed_size (serializator, size);
+		size += serializator.get_packed_int_size (size);
+	      }
+	    else if (has_parameter == 1)
+	      {
+		size += serializator.get_packed_db_value_size (param_values[i], size);
+		size += serializator.get_packed_int_size (size);
+	      }
 	  }
       }
 

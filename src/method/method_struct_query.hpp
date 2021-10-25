@@ -117,6 +117,7 @@ namespace cubmethod
     int is_forward_only;
     int has_parameter; // 2: params are for Java, 1: params are for cubrid, 0: no params
     std::vector<DB_VALUE> param_values;
+    std::vector<int> param_modes;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
