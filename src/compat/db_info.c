@@ -526,17 +526,6 @@ db_is_system_class_by_name (const char *name)
   return sm_is_system_class_by_name (name);
 }
 
-void
-db_get_user_specified_name (const char *name, const char *owner_name, char *orig_name, size_t orig_name_alloc_size)
-{
-  if (name == NULL || name[0] == '\0')
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-    }
-
-  sm_get_user_specified_name (name, owner_name, orig_name, orig_name_alloc_size);
-}
-
 /*
  * db_is_deleted() - This function is used to determine whether or not the
  *    database object associated with an object handle has been deleted.

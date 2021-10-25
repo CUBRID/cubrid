@@ -1147,9 +1147,8 @@ typedef enum
  *    attribute name, method name, or any other named entity in the schema.
  */
 #define SM_MAX_IDENTIFIER_LENGTH 255
-#define SM_MAX_ORIG_IDENTIFIER_LENGTH 255 + 1 + 255
 
-#define SERIAL_ATTR_ORIG_NAME       "orig_name"
+#define SERIAL_ATTR_FULL_NAME       "full_name"
 #define SERIAL_ATTR_NAME            "name"
 #define SERIAL_ATTR_OWNER           "owner"
 #define SERIAL_ATTR_CURRENT_VAL     "current_val"
@@ -1158,7 +1157,7 @@ typedef enum
 #define SERIAL_ATTR_MIN_VAL         "min_val"
 #define SERIAL_ATTR_CYCLIC          "cyclic"
 #define SERIAL_ATTR_STARTED         "started"
-#define SERIAL_ATTR_ORIG_CLASS_NAME "orig_class_name"
+#define SERIAL_ATTR_CLASS_FULL_NAME "class_full_name"
 #define SERIAL_ATTR_CLASS_NAME      "class_name"
 #define SERIAL_ATTR_ATT_NAME        "att_name"
 #define SERIAL_ATTR_CACHED_NUM      "cached_num"

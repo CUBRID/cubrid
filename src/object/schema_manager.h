@@ -209,6 +209,7 @@ extern SM_CLASS_CONSTRAINT *sm_class_constraints (MOP classop);
 
 /* Locator support functions */
 extern const char *sm_ch_name (const MOBJ clobj);
+extern const char *sm_ch_simple_name (const MOBJ clobj);
 extern HFID *sm_ch_heap (MOBJ clobj);
 extern OID *sm_ch_rep_dir (MOBJ clobj);
 
@@ -216,7 +217,7 @@ extern bool sm_has_indexes (MOBJ class_);
 
 /* Interpreter support functions */
 extern void sm_downcase_name (const char *name, char *buf, int maxlen);
-extern void sm_get_user_specified_name (const char *name, const char *owner_name, char *orig_name, size_t orig_name_alloc_size);
+extern const char *sm_simple_name (const char *name);
 extern MOP sm_find_class (const char *name);
 extern MOP sm_find_class_with_purpose (const char *name, bool for_update);
 

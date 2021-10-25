@@ -1048,6 +1048,11 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
+  /* simple name */
+  attr_val_p = &attrs[12].value;
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_SIMPLE_NAME_INDEX].length, true, NULL, 0);
+  db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
+
   /* (class_of) */
   if (catcls_find_class_oid_by_class_name (thread_p, db_get_string (&attrs[11].value), &class_oid) != NO_ERROR)
     {

@@ -6582,6 +6582,7 @@ classobj_make_class (const char *name)
   class_->header.ch_obj_header.chn = NULL_CHN;	/* start with NULL chn ? */
   class_->header.ch_type = SM_META_CLASS;
   class_->header.ch_name = NULL;
+  class_->header.ch_simple_name = NULL;
   /* shouldn't know how to initialize these, either need external init function */
   OID_SET_NULL (&(class_->header.ch_rep_dir));
   HFID_SET_NULL (&(class_->header.ch_heap));
@@ -6651,6 +6652,8 @@ classobj_make_class (const char *name)
 	  db_ws_free (class_);
 	  class_ = NULL;
 	}
+
+      class_->header.ch_simple_name = sm_simple_name (class_->header.ch_name);
     }
 
   return (class_);
@@ -6669,6 +6672,13 @@ classobj_free_class (SM_CLASS * class_)
     {
       return;
     }
+
+  /*
+   * ch_thin_name points after dot(".") in ch_name.
+   * So, ch_thin_name should be initialized to NULL and only ch_name should be freed.
+   *
+   */
+  class_->header.ch_simple_name = NULL;
 
   ws_free_string_and_init (class_->header.ch_name);
   ws_free_string_and_init (class_->loader_commands);

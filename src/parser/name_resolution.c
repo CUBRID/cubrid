@@ -9292,8 +9292,7 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial)
 {
   const char *serial_name = NULL;
   const char *owner_name = NULL;
-  const char *orig_serial_name = NULL;
-  char orig_serial_name_buf[SM_MAX_ORIG_IDENTIFIER_LENGTH + 2];
+  char full_name[SERIAL_NAME_MAX_LENGTH];
 
   MOP serial_class;
   MOP serial_obj;
@@ -9304,8 +9303,6 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial)
       er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return NULL;
     }
-
-  memset (orig_serial_name_buf, '\0', sizeof (char) * (SM_MAX_ORIG_IDENTIFIER_LENGTH + 2));
 
   if (PT_IS_DOT_NODE (serial))
     {
@@ -9328,14 +9325,15 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial)
       owner_name = db_get_user_name ();
     }
 
-  sm_get_user_specified_name (serial_name, owner_name, orig_serial_name_buf, SM_MAX_ORIG_IDENTIFIER_LENGTH + 2);
-  orig_serial_name = orig_serial_name_buf;
+  /* Get full name. */
+  memset (full_name, '\0', sizeof (char) * SERIAL_NAME_MAX_LENGTH);
+  snprintf (full_name, SERIAL_NAME_MAX_LENGTH, "%s.%s", owner_name, serial_name);
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
-  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, orig_serial_name);
+  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, full_name);
   if (serial_obj == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, orig_serial_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, full_name);
     }
 
   return serial_obj;

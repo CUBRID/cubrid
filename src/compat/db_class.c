@@ -72,27 +72,14 @@ db_create_class (const char *name)
   SM_TEMPLATE *def = NULL;
   MOP class_;
   OID class_oid = OID_INITIALIZER;
-  char orig_class_name_buf[SM_MAX_ORIG_IDENTIFIER_LENGTH + 2];
-  const char *orig_class_name = NULL;
 
   CHECK_CONNECT_NULL ();
   CHECK_1ARG_NULL (name);
   CHECK_MODIFICATION_NULL ();
 
-  memset (orig_class_name_buf, '\0', sizeof (char) * (SM_MAX_ORIG_IDENTIFIER_LENGTH + 2));
-
-  if (strchr ((char *) name, '.') == NULL)
-    {
-      sm_get_user_specified_name (name, db_get_user_name (), orig_class_name_buf, (SM_MAX_ORIG_IDENTIFIER_LENGTH + 2));
-      orig_class_name = orig_class_name_buf;
-    }
-  else
-    {
-      orig_class_name = name;
-    }
-
   class_ = NULL;
-  def = smt_def_class (orig_class_name);
+
+  def = smt_def_class (name);
   if (def != NULL)
     {
       /* Reserve class name. We don't expect failures. */

@@ -2038,6 +2038,7 @@ sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid)
   sm_Root_class.header.ch_obj_header.chn = 0;
   sm_Root_class.header.ch_type = SM_META_ROOT;
   sm_Root_class.header.ch_name = (char *) sm_Root_class_name;
+  sm_Root_class.header.ch_simple_name = (char *) sm_Root_class_name;
 
   OID_SET_NULL (&(sm_Root_class.header.ch_rep_dir));	/* is dummy */
 
@@ -2176,81 +2177,20 @@ sm_downcase_name (const char *name, char *buf, int maxlen)
   intl_identifier_lower (name, buf);
 }
 
-void
-sm_get_user_specified_name (const char *name, const char *owner_name, char *orig_name, size_t orig_name_alloc_size)
+const char *
+sm_simple_name (const char *name)
 {
-  size_t name_size = 0;
-  size_t owner_name_size = 0;
-  size_t orig_name_size = 0;
+  const char *dot;
 
-  if (name == NULL || name[0] == '\0')
+  dot = strchr (name, '.');
+  if (dot != NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-    }
-
-  if (sm_is_system_class_by_name (name))
-    {
-      name_size = intl_identifier_lower_string_size (name);
-      orig_name_size = name_size + 2;
-
-      if (orig_name)
-	{
-	  assert (orig_name_alloc_size >= orig_name_size);
-	  memset (orig_name, '\0', sizeof (char) * orig_name_alloc_size);
-	}
-      else
-        {
-	  orig_name = (char *) db_ws_alloc (sizeof (char) * orig_name_size);
-	  if (orig_name == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, orig_name_size);
-	      return;
-	    }
-
-	  memset (orig_name, '\0', sizeof (char) * orig_name_size);
-	}
-
-      snprintf (orig_name, orig_name_size, "%s", name);
-
-      return;
-    }
-
-  /*
-   * It comes here when the name is not in the system class/vclass name.
-   * If so, owner_name must not be null.
-   * If owner_name is null, the current user name is stored.
-   *
-   */
-
-  if (owner_name == NULL)
-    {
-      owner_name = au_user_name ();
-    }
-
-  name_size = intl_identifier_lower_string_size (name);
-  owner_name_size = intl_identifier_lower_string_size (owner_name);
-  orig_name_size = name_size + 1 + owner_name_size + 2;
-
-  if (orig_name)
-    {
-      assert (orig_name_alloc_size >= orig_name_size);
-      memset (orig_name, '\0', sizeof (char) * orig_name_alloc_size);
+      return dot + 1;
     }
   else
     {
-      orig_name = (char *) db_ws_alloc (sizeof (char) * orig_name_size);
-      if (orig_name == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, orig_name_size);
-	  return;
-	}
-
-      memset (orig_name, '\0', sizeof (char) * orig_name_size);
+      return name;
     }
-
-  snprintf (orig_name, orig_name_size, "%s.%s", owner_name, name);
-
-  return;
 }
 
 /*
@@ -2713,39 +2653,6 @@ sm_rename_class (MOP op, const char *new_name)
   int is_partition = 0;
 /*  TR_STATE *trstate; */
 
-  /* Start of change for POC *
-  const char *old_ch_name = NULL;
-  const char *new_ch_name = NULL;
-  const char *class_name = NULL;
-  const char *owner_name = NULL;
-
-  char *schema_name = NULL;
-
-  int class_name_len = 0;
-  int owner_name_size = 0;
-  int orig_name_size = 0;
-
-  old_ch_name = class_->header.ch_name;
-  if (strstr(old_ch_name, ".") != NULL && db_is_system_class (op) == FALSE)
-    {
-      class_name = strstr(old_ch_name, ".") + 1;
-      owner_name = au_get_user_name(owner);
-
-      class_name_len = strlen(class_name);
-      owner_name_size = strlen(owner_name);
-      orig_name_size = owner_name_size + 1 + class_name_len + 1;
-
-      assert (orig_name_size <= SM_MAX_IDENTIFIER_LENGTH);
-
-      schema_name = (char *) db_ws_alloc (sizeof(char) * orig_name_size);
-      memset(schema_name, 0, orig_name_size);
-      sprintf (schema_name, "%s.%s", owner_name, class_name);
-
-      sm_rename_class (classmop, schema_name);
-      ws_free_string_and_init(schema_name);
-    }
-  /* End of change for POC */
-
   /* make sure this gets into the server table with no capitalization */
   sm_downcase_name (new_name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
@@ -2805,7 +2712,7 @@ sm_rename_class (MOP op, const char *new_name)
 		      DB_VALUE name_val;
 		      const char *class_name;
 
-		      if (db_get (att->auto_increment, "orig_class_name", &name_val) != NO_ERROR)
+		      if (db_get (att->auto_increment, "class_full_name", &name_val) != NO_ERROR)
 			{
 			  break;
 			}
@@ -3147,8 +3054,6 @@ sm_is_system_class_by_name (const char *name)
     }
 
   const char *system_classes[] = {
-    ROOTCLASS_NAME,		// "Rootclass"
-
     /* 
      * authorization classes
      *
@@ -3191,7 +3096,6 @@ sm_is_system_class_by_name (const char *name)
     CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
     CT_COLLATION_NAME,		// "_db_collation"
     CT_CHARSET_NAME,		// "_db_charset"
-    CT_DUAL_NAME		// "dual"
 
     CT_TRIGGER_NAME,		// "db_trigger"
 
@@ -3223,6 +3127,16 @@ sm_is_system_class_by_name (const char *name)
 
     NULL
   };
+
+  if (strncmp (name, ROOTCLASS_NAME, sizeof (ROOTCLASS_NAME) - 1) == 0)
+    {
+      return TRUE;
+    }
+
+  if (strncmp (name, CT_DUAL_NAME, sizeof (CT_DUAL_NAME) - 1) == 0)
+    {
+      return TRUE;
+    }
 
   if (strncmp (name, "_db_", sizeof ("_db_") - 1) != 0 && strncmp (name, "db_", sizeof ("db_") - 1) != 0)
     {
@@ -5059,6 +4973,29 @@ sm_ch_name (const MOBJ clobj)
     }
 
   return ch_name;
+}
+
+const char *
+sm_ch_simple_name (const MOBJ clobj)
+{
+  SM_CLASS_HEADER *header;
+  const char *ch_simple_name = NULL;
+
+  if (clobj != NULL)
+    {
+      header = (SM_CLASS_HEADER *) clobj;
+      ch_simple_name = header->ch_simple_name;
+
+      assert (header->ch_type == SM_META_ROOT || header->ch_type == SM_META_CLASS);
+#if !defined(NDEBUG)
+      if (header->ch_type == SM_META_CLASS)
+	{
+	  assert (ch_simple_name != NULL);
+	}
+#endif
+    }
+
+  return ch_simple_name;
 }
 
 /*
@@ -13362,7 +13299,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	  DB_VALUE name_val;
 	  const char *class_name;
 
-	  error = db_get (att->auto_increment, SERIAL_ATTR_ORIG_CLASS_NAME, &name_val);
+	  error = db_get (att->auto_increment, SERIAL_ATTR_CLASS_FULL_NAME, &name_val);
 	  if (error == NO_ERROR)
 	    {
 	      class_name = db_get_string (&name_val);
@@ -14313,6 +14250,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 #define MAX_ATTR_IN_AUTO_GEN_NAME 30
   const char **ptr;
   char *name = NULL;
+  const char *class_simple_name = sm_simple_name (class_name);
   int name_length = 0;
   bool do_desc;
   int error = NO_ERROR;
@@ -14331,19 +14269,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
-
-      /* Start of change for POC */
-      const char *orig_class_name = strstr(class_name, ".");
-
-      if (orig_class_name == NULL)
-        {
-	  orig_class_name = class_name;
-	}
-      else
-        {
-	  orig_class_name += 1;
-	}
-      /* End of change for POC */
 
       switch (type)
 	{
@@ -14378,11 +14303,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
        *  Count the number of characters that we'll need for the name
        */
       name_length = strlen (prefix);
-      // name_length += strlen (class_name);	/* class name */
-
-      /* Start of change for POC */
-      name_length += strlen (orig_class_name);
-      /* End of change for POC */
+      name_length += strlen (class_simple_name);	/* class name */
 
       for (ptr = att_names; *ptr != NULL; ptr++)
 	{
@@ -14430,11 +14351,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (name_length + 1));
 	      goto exit;
 	    }
-	  // strcpy (name_all, class_name);
-
-          /* Start of change for POC */
-          strcpy (name_all, orig_class_name);
-          /* End of change for POC */
+	  strcpy (name_all, class_simple_name);
 
 	  for (ptr = att_names, i = 0; i < n_attrs; ptr++, i++)
 	    {
@@ -14460,28 +14377,15 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  att_name_prefix_size = size_class_and_attrs / (n_attrs + 1);
 	  class_name_prefix_size = att_name_prefix_size;
 
-          /*
-	  if (strlen (class_name) < class_name_prefix_size)
+	  if (strlen (class_simple_name) < class_name_prefix_size)
 	    {
-	      class_name_prefix_size = strlen (class_name);
+	      class_name_prefix_size = strlen (class_simple_name);
 	    }
-	  */
-
-	  /* Start of change for POC */
-	  if (strlen (orig_class_name) < class_name_prefix_size)
-	    {
-	      class_name_prefix_size = strlen (orig_class_name);
-	    }
-          /* End of change for POC */
 	  else
 	    {
 	      char class_name_trunc[DB_MAX_IDENTIFIER_LENGTH];
 
-	      // strncpy (class_name_trunc, class_name, class_name_prefix_size);
-
-	      /* Start of change for POC */
-	      strncpy (class_name_trunc, orig_class_name, class_name_prefix_size);
-              /* End of change for POC */
+	      strncpy (class_name_trunc, class_simple_name, class_name_prefix_size);
 
 	      class_name_trunc[class_name_prefix_size] = '\0';
 
@@ -14511,11 +14415,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  strcpy (name, prefix);
 
 	  /* Class name */
-	  // strncat (name, class_name, class_name_prefix_size);
-
-	  /* Start of change for POC */
-	  strncat (name, orig_class_name, class_name_prefix_size);
-          /* End of change for POC */
+	  strncat (name, class_simple_name, class_name_prefix_size);
 
 	  /* separated list of attribute names */
 	  k = 0;

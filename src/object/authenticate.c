@@ -1547,7 +1547,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
     }
 
   db_make_string (&class_name_val, sm_get_ch_name (class_mop));
-  db_class_inst = obj_find_unique (db_class, "orig_class_name", &class_name_val, AU_FETCH_READ);
+  db_class_inst = obj_find_unique (db_class, "class_full_name", &class_name_val, AU_FETCH_READ);
   if (db_class_inst == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2033,7 +2033,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
   memset (sql_query, '\0', sizeof(char) * QUERY_BUFFER_SIZE);
   sprintf (sql_query,
   	   "DELETE FROM %s [a] WHERE [a].[class_of] IN ("
-	     "SELECT [c] FROM %s [c] WHERE [orig_class_name] = ? "
+	     "SELECT [c] FROM %s [c] WHERE [class_full_name] = ? "
 	   ")", CT_CLASSAUTH_NAME, CT_CLASS_NAME);
 
   AU_DISABLE (save);
@@ -5131,6 +5131,8 @@ au_change_owner (MOP classmop, MOP owner)
   SM_CLASS *class_;
   int save;
   SM_ATTRIBUTE *attr;
+  char full_name[DB_MAX_IDENTIFIER_LENGTH];
+  const char *simple_name = NULL;
 
   AU_DISABLE (save);
   if (!au_is_dba_group_member (Au_user))
@@ -5163,38 +5165,17 @@ au_change_owner (MOP classmop, MOP owner)
 	  class_->owner = owner;
 	  error = locator_flush_class (classmop);
 
-	  /* Start of change for POC */
-	  const char *old_ch_name = NULL;
-	  const char *new_ch_name = NULL;
-          const char *class_name = NULL;
-	  const char *owner_name = NULL;
-
-	  char *schema_name = NULL;
-
-	  int class_name_len = 0;
-	  int owner_name_len = 0;
-	  int schema_name_len = 0;
-
-          old_ch_name = class_->header.ch_name;
-	  if (strstr(old_ch_name, ".") != NULL && db_is_system_class (classmop) == FALSE)
+	  simple_name = sm_ch_simple_name ((MOBJ) class_);
+	  if (db_is_system_class_by_name (simple_name) == FALSE)
 	    {
-	      class_name = strstr(old_ch_name, ".") + 1;
-	      owner_name = au_get_user_name(owner);
+	      /* Get original name. */
+	      memset (full_name, '\0', sizeof (char) * DB_MAX_IDENTIFIER_LENGTH);
+	      snprintf (full_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", au_get_user_name(owner), simple_name);
 
-	      class_name_len = strlen(class_name);
-	      owner_name_len = strlen(owner_name);
-	      schema_name_len = owner_name_len + 1 + class_name_len + 1;
-
-	      assert (schema_name_len <= SM_MAX_IDENTIFIER_LENGTH);
-
-	      schema_name = (char *) db_ws_alloc (sizeof(char) * schema_name_len);
-	      memset(schema_name, 0, schema_name_len);
-	      sprintf (schema_name, "%s.%s", owner_name, class_name);
-	
-	      sm_rename_class (classmop, schema_name);
-	      ws_free_string_and_init(schema_name);
+	      /* Change original name. */
+	      sm_rename_class (classmop, full_name);
+	      
 	    }
-	  /* End of change for POC */
 	}
     }
 exit_on_error:
@@ -5414,10 +5395,9 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
   MOP serial_class_mop;
   DB_IDENTIFIER serial_obj_id;
   const char *serial_name = NULL, *owner_name = NULL;
-  char orig_serial_name[SM_MAX_ORIG_IDENTIFIER_LENGTH + 2];
-  int error = NO_ERROR;
+  char full_name[DB_MAX_IDENTIFIER_LENGTH];
 
-  memset (orig_serial_name, '\0', sizeof (char) * (SM_MAX_ORIG_IDENTIFIER_LENGTH + 2));
+  int error = NO_ERROR;
 
   db_make_null (returnval);
 
@@ -5435,14 +5415,16 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
       return;
     }
 
-  sm_get_user_specified_name (serial_name, owner_name, orig_serial_name, SM_MAX_ORIG_IDENTIFIER_LENGTH + 2);
+  /* Get full name. */
+  memset (full_name, '\0', sizeof (char) * DB_MAX_IDENTIFIER_LENGTH);
+  snprintf (full_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", owner_name, serial_name);
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, orig_serial_name);
+  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, full_name);
   if (serial_object == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, orig_serial_name);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, full_name);
       db_make_error (returnval, ER_QPROC_SERIAL_NOT_FOUND);
       return;
     }

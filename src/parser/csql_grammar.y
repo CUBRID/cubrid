@@ -763,6 +763,7 @@ int g_original_buffer_len;
 %type <node> identifier_list
 %type <node> opt_bracketed_identifier_list
 %type <node> index_column_identifier_list
+%type <node> identifier_without_dot
 %type <node> identifier
 %type <node> index_column_identifier
 %type <node> string_literal_or_input_hv
@@ -4947,35 +4948,59 @@ only_all_class_spec
 	;
 
 class_name
-	: identifier DOT identifier
+	: identifier_without_dot DOT identifier_without_dot
 		{{
 
-			PT_NODE *user_node = $1;
-			PT_NODE *name_node = $3;
+			PT_NODE *user = $1;
+			PT_NODE *name = $3;
+			const char *user_name = NULL;
+			const char *simple_name = NULL;
+			const char *full_name = NULL;
 
-			if (name_node != NULL && user_node != NULL)
+			assert (user != NULL && user->node_type == PT_NAME);
+			assert (name != NULL && name->node_type == PT_NAME);
+
+			simple_name = name->info.name.original;
+			if (db_is_system_class_by_name (simple_name) == FALSE)
 			  {
-			    name_node->info.name.resolved = pt_append_string (this_parser, NULL,
-			                                                      user_node->info.name.original);
+			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
+			    user_name = name->info.name.resolved;
+
+			    full_name = pt_append_string (this_parser, NULL, user_name);
+			    full_name = pt_append_string (this_parser, full_name, ".");
+			    full_name = pt_append_string (this_parser, full_name, simple_name);
+			    name->info.name.original = full_name;
 			  }
-			if (user_node != NULL)
-			  {
-			    parser_free_tree (this_parser, user_node);
-			  }
 
-			char *user_specified_name = NULL;
-			db_get_user_specified_name (name_node->info.name.original, name_node->info.name.resolved, user_specified_name, NULL);
+			parser_free_tree (this_parser, user);
 
-			name_node->info.name.original = pt_append_string (this_parser, NULL, user_specified_name);
-
-			$$ = name_node;
+			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| identifier
+	| identifier_without_dot
 		{{
-			
-			$$ = $1;
+
+			PT_NODE *name = $1;
+			const char *user_name = NULL;
+			const char *simple_name = NULL;
+			const char *full_name = NULL;
+
+			assert (name != NULL && name->node_type == PT_NAME);
+
+			simple_name = name->info.name.original;
+			if (db_is_system_class_by_name (simple_name) == FALSE)
+			  {
+			    name->info.name.resolved = pt_append_string (this_parser, NULL, db_get_user_name ());
+			    user_name = name->info.name.resolved;
+
+			    full_name = pt_append_string (this_parser, NULL, user_name);
+			    full_name = pt_append_string (this_parser, full_name, ".");
+			    full_name = pt_append_string (this_parser, full_name, simple_name);
+			    name->info.name.original = full_name;
+			  }
+
+			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -21377,6 +21402,31 @@ simple_path_id_list
 		{{
 
 			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+identifier_without_dot
+	: identifier
+		{{
+
+			PT_NODE *p = $1;
+
+			if (p)
+			  {
+			    const char *name = p->info.name.original;
+
+			    /* Check if it contains DOT(.) */
+			    if (name != NULL && strchr (name, '.') != NULL)
+			      {
+				PT_ERRORf (this_parser, p,
+					   "Identifier name %s not allowed. It cannot contain DOT(.).",
+					   name);
+			      }
+			  }
+
+			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
