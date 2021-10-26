@@ -30,26 +30,18 @@ namespace cubmethod
   int
   prepare_call_info::set_is_first_out (std::string &sql_stmt)
   {
-    char *tmp = sql_stmt.data ();
     if (!sql_stmt.empty() && sql_stmt[0] == '?')
       {
 	is_first_out = true;
-	int i;
-	for (i = 0; i < (int) sql_stmt.size(); i++)
-	  {
-	    if (sql_stmt[i] == '=')
-	      {
-		break;
-	      }
-	  }
 
+	std::size_t found = sql_stmt.find ('=');
 	/* '=' is not found */
-	if (i == (int) sql_stmt.size())
+	if (found == std::string::npos)
 	  {
 	    return ER_FAILED;
 	  }
 
-	sql_stmt = sql_stmt.substr (i);
+	sql_stmt = sql_stmt.substr (found);
       }
 
     return NO_ERROR;
