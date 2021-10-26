@@ -125,10 +125,10 @@ namespace cubmethod
 	    info.handle_id = it->second;
 	    break;
 	  }
-  else
-    {
-	handler = nullptr;
-    }
+	else
+	  {
+	    handler = nullptr;
+	  }
       }
 
     bool is_cache_used = false;
