@@ -95,7 +95,6 @@ typedef struct check_pushable_info
 {
   bool check_query;
   bool check_method;
-
   bool query_found;
   bool method_found;
 } CHECK_PUSHABLE_INFO;
@@ -1399,7 +1398,6 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
   /* check select list */
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
-
   cpi.method_found = false;
   cpi.query_found = false;
 
@@ -1414,7 +1412,6 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
   /* check where clause */
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
-
   cpi.method_found = false;
   cpi.query_found = false;
 
@@ -2689,7 +2686,6 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 	  cinfop->method_found = true;	/* not pushable */
 	}
       break;
-
     default:
       break;
     }				/* switch (tree->node_type) */
