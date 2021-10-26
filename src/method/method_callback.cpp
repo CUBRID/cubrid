@@ -114,23 +114,50 @@ namespace cubmethod
     int flag;
     unpacker.unpack_all (sql, flag);
 
-    int handle_id = new_query_handler ();
-    if (handle_id < 0)
+    /* find in m_query_handler_map */
+    prepare_info info;
+    query_handler *handler = nullptr;
+    for (auto it = m_query_handler_map.lower_bound (sql); it != m_query_handler_map.upper_bound (sql); it++)
       {
-	// TODO: proper error code
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
-	return ER_FAILED;
+	handler = find_query_handler (it->second);
+	if (handler != nullptr && handler->get_is_occupied() == false)
+	  {
+	    info.handle_id = it->second;
+	    break;
+	  }
+	else
+	  {
+	    handler = nullptr;
+	  }
       }
 
-    query_handler *handler = find_query_handler (handle_id);
-    if (handler == nullptr)
+    bool is_cache_used = false;
+    if (handler != nullptr)
       {
-	// TODO: proper error code
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	handler->get_prepare_info (info);
+	handler->set_is_occupied (true);
+	is_cache_used = true;
       }
-    prepare_info info = handler->prepare (sql, flag);
-    info.handle_id = handle_id;
+    else
+      {
+	/* not found in statement handler */
+	int handle_id = new_query_handler (); /* new handler */
+	if (handle_id < 0)
+	  {
+	    // TODO: proper error code
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
+	  }
 
+	handler = find_query_handler (handle_id);
+	if (handler == nullptr)
+	  {
+	    // TODO: proper error code
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	  }
+	info = handler->prepare (sql, flag);
+	info.handle_id = handle_id;
+      }
 
     if (m_error_ctx.has_error())
       {
@@ -138,6 +165,11 @@ namespace cubmethod
       }
     else
       {
+	// add to statement handler cache
+	if (is_cache_used == false)
+	  {
+	    m_query_handler_map.emplace (sql, info.handle_id);
+	  }
 	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
       }
   }
@@ -343,7 +375,7 @@ namespace cubmethod
   }
 
   void
-  callback_handler::free_query_handle (int id)
+  callback_handler::free_query_handle (int id, bool is_free)
   {
     if (id < 0 || id >= (int) m_query_handlers.size())
       {
@@ -352,17 +384,24 @@ namespace cubmethod
 
     if (m_query_handlers[id] != nullptr)
       {
-	delete m_query_handlers[id];
-	m_query_handlers[id] = nullptr;
+	if (is_free)
+	  {
+	    delete m_query_handlers[id];
+	    m_query_handlers[id] = nullptr;
+	  }
+	else
+	  {
+	    m_query_handlers[id]->reset ();
+	  }
       }
   }
 
   void
-  callback_handler::free_query_handle_all ()
+  callback_handler::free_query_handle_all (bool is_free)
   {
     for (int i = 0; i < (int) m_query_handlers.size(); i++)
       {
-	free_query_handle (i);
+	free_query_handle (i, is_free);
       }
   }
 }

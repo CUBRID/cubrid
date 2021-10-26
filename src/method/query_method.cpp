@@ -75,6 +75,11 @@ static int method_callback (packing_unpacker &unpacker, method_server_conn_info 
 static int method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info);
 #endif
 
+void method_reset ()
+{
+  handler.free_query_handle_all (false);
+}
+
 /*
  * method_send_value_to_server () - Send an error indication to the server
  *   return:
@@ -270,7 +275,7 @@ method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 static int
 method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 {
-  handler.free_query_handle_all ();
+  handler.free_query_handle_all (false);
 
   DB_VALUE result;
   db_make_null (&result);

@@ -57,15 +57,18 @@ namespace cubmethod
       int collection_cmd (packing_unpacker &unpacker);
 
       void set_server_info (int rc, char *host);
-      void free_query_handle_all ();
+      void free_query_handle_all (bool is_free);
 
     private:
       /* ported from cas_handle */
       int new_query_handler ();
       query_handler *find_query_handler (int id);
-      void free_query_handle (int id);
+      void free_query_handle (int id, bool is_free);
 
       int new_oid_handler ();
+
+      /* statement handler cache */
+      int find_query_handler_cache (std::string &sql);
 
       template<typename ... Args>
       int send_packable_object_to_server (Args &&... args);
@@ -73,6 +76,8 @@ namespace cubmethod
       /* server info */
       int m_rid; // method callback's rid
       char *m_host;
+
+      std::multimap <std::string, int> m_query_handler_map;
 
       error_context m_error_ctx;
 
