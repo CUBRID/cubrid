@@ -8672,70 +8672,53 @@ error:
 /*
  *  Check whether the log active too sane to recreate
  */
-int
-log_is_active_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
-		    bool & is_sane)
+bool
+log_is_active_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname)
 {
   LOG_HEADER hdr;
-  LOG_PAGE log_page;
-  int vdes = NULL_VOLDES;
-  REL_FIXUP_FUNCTION *disk_compatibility_functions = NULL;
   REL_COMPATIBILITY compat;
+  bool is_corrupted = false;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  LOG_PAGE *log_pgptr = NULL;
   int error_code = NO_ERROR;
 
-  is_sane = true;
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
-  if (logpb_exist_log (thread_p, db_full_name, logpath, prefix_logname) == false)
+  error_code = logpb_fetch_header_from_active_log (thread_p, db_fullname, logpath, prefix_logname, &hdr, log_pgptr);
+  if (error_code != NO_ERROR)
     {
-      is_sane = false;
-      goto exit;
+      return false;
     }
 
-  vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
-  if (vdes == NULL_VOLDES)
+  error_code = logpb_page_check_corruption (thread_p, log_pgptr, &is_corrupted);
+  if (error_code != NO_ERROR || is_corrupted == true)
     {
-      error_code = ER_IO_MOUNT_FAIL;
-      goto exit;
-    }
-
-  /* TODO: 로그정보들이 초기화되어 있지 않은 상태에서 읽어오는게 불가능 */
-  logpb_fetch_header_with_buffer (thread_p, &hdr, &log_page);
-  error_code = logpb_page_check_corruption (thread_p, &log_page, &is_sane);
-  if (error_code != NO_ERROR || is_sane == false)
-    {
-      goto exit;
+      return false;
     }
 
   /* These three below are cases in which log_initialize_internal() fails */
   if (hdr.db_iopagesize != IO_PAGESIZE || hdr.db_logpagesize != LOG_PAGESIZE)
     {
+      /* it has a side effect that initializes page sizes of server, but it doesn't matter */
       if (db_set_page_size (log_Gl.hdr.db_iopagesize, log_Gl.hdr.db_logpagesize) != NO_ERROR)
 	{
-	  is_sane = false;
-	  goto exit;
+	  return false;
 	}
     }
 
-  compat = rel_get_disk_compatible (hdr.db_compatibility, &disk_compatibility_functions);
+  compat = rel_get_disk_compatible (hdr.db_compatibility, NULL);
   if (compat != REL_FULLY_COMPATIBLE)
     {
-      is_sane = false;
-      goto exit;
+      return false;
     }
 
   if (rel_is_log_compatible (hdr.db_release, rel_release_string ()) != true)
     {
-      is_sane = false;
-      goto exit;
+      return false;
     }
 
-exit:
-  if (vdes != NULL_VOLDES)
-    {
-      fileio_dismount (thread_p, vdes);
-    }
-
-  return error_code;
+  return true;
 }
 
 /*

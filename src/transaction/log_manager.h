@@ -149,6 +149,8 @@ extern int log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 				     char *redo_rcv_data);
 extern int log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, DKNPAGES log_npages, FILE * outfp);
+extern bool log_is_active_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+				const char *prefix_logname);
 extern PGLENGTH log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				      const char *prefix_logname);
 extern int log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
