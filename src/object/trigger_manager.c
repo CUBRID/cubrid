@@ -5089,7 +5089,7 @@ tr_execute_activities (TR_STATE * state, DB_TRIGGER_TIME tr_time, DB_OBJECT * cu
 
   bool is_trigger_involved = false;
 
-  CDC_TRIGGER_INVOLVED_BACKUP (&is_trigger_involved);
+  CDC_TRIGGER_INVOLVED_BACKUP (is_trigger_involved);
 
   for (t = state->triggers, next = NULL; t != NULL && error == NO_ERROR; t = next)
     {

@@ -10780,9 +10780,8 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 		assert (rec_type == LOG_SUPPLEMENT_TRIGGER_UPDATE);
 
 		error =
-		  cdc_make_dml_loginfo (thread_p, trid, tran_user,
-					rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_INSERT : CDC_TRIGGER_INSERT, classoid,
-					NULL, &redo_recdes, log_info_entry);
+		  cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_TRIGGER_INSERT, classoid, NULL, &redo_recdes,
+					log_info_entry);
 	      }
 	    else
 	      {

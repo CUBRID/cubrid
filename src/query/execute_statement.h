@@ -38,7 +38,7 @@
     { \
       if (prm_get_integer_value(PRM_ID_SUPPLEMENTAL_LOG)) \
         { \
-          *(is_trigger_involved) = cdc_Trigger_involved; \
+          (is_trigger_involved) = cdc_Trigger_involved; \
         } \
     } \
   while (0)
