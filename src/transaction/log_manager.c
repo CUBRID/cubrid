@@ -10773,7 +10773,12 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 		/* This occurs when series of logs are appended like
 		 * INSERT record for reserve OID (REC_ASSIGN_ADDRESS) then UPDATE to some record.
 		 * And this is a sequence for INSERT a record with OID reservation.
-		 * undo record with REC_ASSIGN_ADDRESS type has no undo image to extract, so this will be treated as INSERT */
+		 * undo record with REC_ASSIGN_ADDRESS type has no undo image to extract, so this will be treated as INSERT
+		 * CUBRID engine used to do INSERT a record like this way,
+		 * for instance CREATE a class or INSERT a record by trigger execution */
+
+		assert (rec_type == LOG_SUPPLEMENT_TRIGGER_UPDATE);
+
 		error =
 		  cdc_make_dml_loginfo (thread_p, trid, tran_user,
 					rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_INSERT : CDC_TRIGGER_INSERT, classoid,
@@ -12524,7 +12529,9 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
       if (cnt == 0)
 	{
-	  /* This is due to update log record appended by trigger savepoint */
+	  /* This is due to update log record appended by trigger savepoint.
+	   * It is not sure why update log is appended by trigger savepoint */
+
 	  error_code = ER_CDC_IGNORE_LOG_INFO;
 	  goto error;
 	}

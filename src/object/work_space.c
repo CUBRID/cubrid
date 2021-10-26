@@ -1638,7 +1638,7 @@ ws_dirty (MOP op)
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
     {
-      WS_SET_TRIGGER (op);
+      WS_SET_TRIGGER_INVOLVED (op);
     }
 
   /*

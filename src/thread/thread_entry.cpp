@@ -259,7 +259,7 @@ namespace cubthread
 
     no_supplemental_log = false;
 
-    do_trigger_involved = false;
+    trigger_involved = false;
 
     is_cdc_daemon = false;
 

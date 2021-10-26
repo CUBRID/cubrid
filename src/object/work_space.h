@@ -398,9 +398,9 @@ struct ws_statistics
     } \
   while (0)
 
-#define WS_ISTRIGGER(mop) ((mop)->trigger_involved)
+#define WS_IS_TRIGGER_INVOLVED(mop) ((mop)->trigger_involved)
 
-#define WS_SET_TRIGGER(mop) \
+#define WS_SET_TRIGGER_INVOLVED(mop) \
   do \
     { \
       if (ws_is_trigger_involved ()) \

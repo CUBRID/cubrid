@@ -4878,9 +4878,9 @@ locator_mflush (MOP mop, void *mf)
       LC_ONEOBJ_SET_HAS_UNIQUE_INDEX (mflush->obj);
     }
 
-  if (WS_ISTRIGGER (mop))
+  if (WS_IS_TRIGGER_INVOLVED (mop))
     {
-      LC_ONEOBJ_SET_DO_TRIGGER_INVOLVED (mflush->obj);
+      LC_ONEOBJ_SET_TRIGGER_INVOLVED (mflush->obj);
     }
 
   HFID_COPY (&mflush->obj->hfid, hfid);

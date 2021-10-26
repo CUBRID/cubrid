@@ -2943,6 +2943,9 @@ end:
 
 bool do_Trigger_involved;
 
+/* do_Trigger_involved does not accurately distinguish
+ * whether the corresponding query is a trigger syntax.
+ * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
 bool cdc_Trigger_involved = false;
 
 /*
