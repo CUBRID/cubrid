@@ -125,13 +125,18 @@ namespace cubmethod
 	    info.handle_id = it->second;
 	    break;
 	  }
+  else
+    {
 	handler = nullptr;
+    }
       }
 
+    bool is_cache_used = false;
     if (handler != nullptr)
       {
 	handler->get_prepare_info (info);
 	handler->set_is_occupied (true);
+	is_cache_used = true;
       }
     else
       {
@@ -161,7 +166,10 @@ namespace cubmethod
     else
       {
 	// add to statement handler cache
-	m_query_handler_map.emplace (sql, handler->get_id());
+	if (is_cache_used == false)
+	  {
+	    m_query_handler_map.emplace (sql, info.handle_id);
+	  }
 	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
       }
   }

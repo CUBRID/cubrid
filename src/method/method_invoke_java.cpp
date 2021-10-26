@@ -349,13 +349,10 @@ namespace cubmethod
     INT64 id = (INT64) this;
     cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
     error = method_send_data_to_client (&thread_ref, header, code, sql, flag);
-
-    auto get_prepare_info = [&] (cubmem::block & b)
+    if (error == NO_ERROR)
     {
-      int err = method_send_buffer_to_java (m_group->get_socket (), b);
-      return err;
-    };
-    error = xs_receive (&thread_ref, get_prepare_info);
+      error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+    }
 #endif
     return error;
   }
