@@ -30,6 +30,7 @@
 
 #include "dbtype.h"
 #include "mem_block.hpp"
+#include "method_error.hpp"
 #include "method_query_result.hpp"
 #include "method_struct_query.hpp"
 
@@ -74,8 +75,6 @@ namespace cubmethod
     int set_prepare_call_info (int num_args);
   };
 
-  class error_context;
-
   /*
    * cubmethod::query_handler
    *
@@ -93,7 +92,17 @@ namespace cubmethod
       {
 	m_is_prepared = false;
 	m_use_plan_cache = false;
+
+	m_session = nullptr;
+	m_current_result = nullptr;
+
+	m_num_markers = -1;
+	m_max_col_size = -1;
+	m_max_row = -1;
+
+	m_has_result_set = false;
       }
+
       ~query_handler ();
 
       /* request */
@@ -130,7 +139,7 @@ namespace cubmethod
       bool has_stmt_result_set (char stmt_type);
 
       /* column info */
-      int set_prepare_column_list_info (std::vector<column_info> &infos, query_result &result);
+      void set_prepare_column_list_info (std::vector<column_info> &infos, query_result &result);
       column_info set_column_info (int dbType, int setType, short scale, int prec, char charset, const char *col_name,
 				   const char *attr_name,
 				   const char *class_name, char is_non_null);

@@ -30,34 +30,21 @@ namespace cubmethod
   int
   prepare_call_info::set_is_first_out (std::string &sql_stmt)
   {
-    int error = NO_ERROR;
-
-    char *tmp = sql_stmt.data ();
     if (!sql_stmt.empty() && sql_stmt[0] == '?')
       {
 	is_first_out = true;
-	int i;
-	for (i = 0; i < (int) sql_stmt.size(); i++)
-	  {
-	    if (sql_stmt[i] == '=')
-	      {
-		break;
-	      }
-	  }
 
+	std::size_t found = sql_stmt.find ('=');
 	/* '=' is not found */
-	if (i == (int) sql_stmt.size())
+	if (found == std::string::npos)
 	  {
-	    // TODO: error handling
-	    // error = CAS_ER_INVALID_CALL_STMT;
-	    error = ER_FAILED;
-	    return error;
+	    return ER_FAILED;
 	  }
 
-	sql_stmt = sql_stmt.substr (i);
+	sql_stmt = sql_stmt.substr (found);
       }
 
-    return error;
+    return NO_ERROR;
   }
 
   int
@@ -136,13 +123,11 @@ namespace cubmethod
 
 	info.stmt_type = qresult.stmt_type;
 	info.num_markers = m_num_markers;
-	error = set_prepare_column_list_info (info.column_infos, qresult);
+	set_prepare_column_list_info (info.column_infos, qresult);
       }
     else
       {
-	// TODO: error handling
 	close_and_free_session ();
-	m_num_errors++;
       }
 
     return info;
@@ -156,24 +141,17 @@ namespace cubmethod
     // 0) clear qresult
     end_qresult (false);
 
-    // TODO
     execute_info info;
     if (m_prepare_flag & PREPARE_CALL)
       {
 	error = execute_internal_call (info, flag, max_col_size, max_row, bind_values);
+	// TODO: copy param_mode
       }
     else if (flag & EXEC_QUERY_ALL)
       {
+	// TODO: savepoint
 	bool is_savepoint = false;
 	error = execute_internal_all (info, flag, max_col_size, max_row, bind_values);
-	if (error != NO_ERROR)
-	  {
-	    if (m_prepare_flag & PREPARE_XASL_CACHE_PINNED)
-	      {
-		db_session_set_xasl_cache_pinned (m_session, false, false);
-		m_prepare_flag &= ~PREPARE_XASL_CACHE_PINNED;
-	      }
-	  }
       }
     else
       {
@@ -182,8 +160,11 @@ namespace cubmethod
 
     if (error == NO_ERROR)
       {
-	/* set max_col_size and max_row */
-	m_max_row = max_row;
+	/* set max_col_size */
+	if (m_max_row == -1)
+	  {
+	    m_max_row = max_row;
+	  }
 	m_max_col_size = max_col_size;
 
 	/* include column info? */
@@ -191,17 +172,16 @@ namespace cubmethod
 	  {
 	    info.stmt_type = m_q_result[0].stmt_type;
 	    info.num_markers = m_num_markers;
-	    error = set_prepare_column_list_info (info.column_infos, *m_current_result);
-	    if (error != NO_ERROR)
-	      {
-		// TODO: error handling
-	      }
+	    set_prepare_column_list_info (info.column_infos, *m_current_result);
 	  }
       }
-
-    if (error != NO_ERROR)
+    else
       {
-
+	if (m_prepare_flag & PREPARE_XASL_CACHE_PINNED)
+	  {
+	    db_session_set_xasl_cache_pinned (m_session, false, false);
+	    m_prepare_flag &= ~PREPARE_XASL_CACHE_PINNED;
+	  }
       }
 
     return info;
@@ -279,7 +259,7 @@ namespace cubmethod
     bool is_prepare = m_is_prepared;
 
     // 1) check is prepared
-    int stmt_id, stmt_type;
+    int stmt_id = -1, stmt_type = CUBRID_STMT_NONE;
     if (is_prepare == true)
       {
 	stmt_id = m_q_result[0].stmt_id;
@@ -291,10 +271,8 @@ namespace cubmethod
 	m_session = db_open_buffer (m_sql_stmt.c_str ());
 	if (!m_session)
 	  {
-	    // TODO: error handling
-	    error = db_error_code ();
-	    return error;
-	    //goto execute_error;
+	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
       }
 
@@ -304,21 +282,11 @@ namespace cubmethod
     assert (num_bind == (int) bind_values.size ());
     if (num_bind > 0)
       {
-	/* Do we need this?
-	error = make_bind_value (num_bind, &value_list, DB_TYPE_NULL);
-	if (error < 0)
-	{
-	  // TODO: error handling
-	  return error;
-	}
-	*/
-
 	error = set_host_variables (num_bind, bind_values.data ());
 	if (error != NO_ERROR)
 	  {
-	    // TODO: error handling
-	    //err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	    //goto execute_error;
+	    m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
       }
 
@@ -326,18 +294,10 @@ namespace cubmethod
     db_rewind_statement (m_session);
 
     // always auto_commit_mode == false
-    char savepoint[PATH_MAX];
-    bool is_savepoint = false;
     if (db_statement_count (m_session) > 1)
       {
-	static unsigned long long savepoint_count = 0;
-
-	// snprintf (savepoint, BROKER_PATH_MAX, "__MSS$%20lld__", savepoint_count++);
-	/* TODO: savepoint needed? */
-	/*
-	db_savepoint_transaction (savepoint);
-	is_savepoint = true;
-	*/
+	// TODo: savepoint is needed?
+	// I'm not sure that savepoint is needed for Method.
       }
 
     while (1)
@@ -358,24 +318,22 @@ namespace cubmethod
 		db_session_set_xasl_cache_pinned (m_session, true, recompile);
 	      }
 
-	    int stmt_id = db_compile_statement (m_session);
+	    stmt_id = db_compile_statement (m_session);
 	    if (stmt_id == 0)
 	      {
 		break;
 	      }
 	    else if (stmt_id < 0)
 	      {
-		// TODO: error handling
-		error = stmt_id;
-		return error;
+		m_error_ctx.set_error (stmt_id, NULL, __FILE__, __LINE__);
+		return ER_FAILED;
 	      }
 
 	    stmt_type = db_get_statement_type (m_session, stmt_id);
 	    if (stmt_type < 0)
 	      {
-		// TODO: error handling
-		error = stmt_id;
-		return error;
+		m_error_ctx.set_error (stmt_type, NULL, __FILE__, __LINE__);
+		return ER_FAILED;
 	      }
 	  }
 
@@ -383,8 +341,8 @@ namespace cubmethod
 	int n = db_execute_and_keep_statement (m_session, stmt_id, &result);
 	if (n < 0)
 	  {
-	    // TODO: error handling
-	    error = n;
+	    m_error_ctx.set_error (n, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
 	else if (result != NULL)
 	  {
@@ -394,7 +352,7 @@ namespace cubmethod
 
 	if (max_row > 0 && db_get_statement_type (m_session, stmt_id) == CUBRID_STMT_SELECT)
 	  {
-	    // TODO: max_row
+	    // TODO: max_row?
 	  }
 
 	if (is_first_stmt == true)
@@ -438,11 +396,6 @@ namespace cubmethod
     m_current_result = &m_q_result[m_current_result_index];
 
     error = set_qresult_info (info.qresult_infos);
-    if (error != NO_ERROR)
-      {
-	// TODO : error handling
-	// goto execute_error;
-      }
     return error;
   }
 
@@ -459,15 +412,6 @@ namespace cubmethod
     assert (num_bind == (int) bind_values.size ());
     if (num_bind > 0)
       {
-	/* Do we need this?
-	error = make_bind_value (num_bind, &value_list, DB_TYPE_NULL);
-	if (error < 0)
-	{
-	  // TODO: error handling
-	  return error;
-	}
-	*/
-
 	if (call_info.is_first_out)
 	  {
 	    error = set_host_variables (num_bind - 1, &bind_values[1]);
@@ -479,8 +423,8 @@ namespace cubmethod
 
 	if (error != NO_ERROR)
 	  {
-	    // TODO: error handling
-	    return error;
+	    m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
       }
 
@@ -489,8 +433,8 @@ namespace cubmethod
     int n = db_execute_and_keep_statement (m_session, stmt_id, &result);
     if (n < 0)
       {
-	// TODO: error handling
-	return n;
+	m_error_ctx.set_error (n, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     if (result != NULL)
@@ -526,13 +470,6 @@ namespace cubmethod
     m_current_result->tuple_count = n;
 
     error = set_qresult_info (info.qresult_infos);
-    if (error != NO_ERROR)
-      {
-	// TODO : error handling
-	// goto execute_error;
-      }
-
-    // TODO
     return error;
   }
 
@@ -586,10 +523,8 @@ namespace cubmethod
 	m_session = db_open_buffer (m_sql_stmt.c_str ());
 	if (!m_session)
 	  {
-	    // TODO: error handling
-	    error = db_error_code ();
-	    return error;
-	    //goto execute_error;
+	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
       }
 
@@ -598,21 +533,9 @@ namespace cubmethod
     assert (num_bind == (int) bind_values.size ());
     if (num_bind > 0)
       {
-	/* Do we need this?
-	error = make_bind_value (num_bind, &value_list, DB_TYPE_NULL);
-	if (error < 0)
-	{
-	  // TODO: error handling
-	  return error;
-	}
-	*/
-
 	error = set_host_variables (num_bind, bind_values.data());
 	if (error != NO_ERROR)
 	  {
-	    // TODO: error handling
-	    //err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	    //goto execute_error;
 	    return error;
 	  }
       }
@@ -628,11 +551,6 @@ namespace cubmethod
 
     if (m_is_prepared == false)
       {
-	if (flag & EXEC_QUERY_INFO)
-	  {
-	    m_query_info_flag = true;
-	  }
-
 	if (m_prepare_flag & PREPARE_XASL_CACHE_PINNED)
 	  {
 	    db_session_set_xasl_cache_pinned (m_session, true, recompile);
@@ -641,20 +559,13 @@ namespace cubmethod
 	stmt_id = db_compile_statement (m_session);
 	if (stmt_id < 0)
 	  {
-	    // TODO: error handling
-	    error = stmt_id;
-	    return error;
+	    m_error_ctx.set_error (stmt_id, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
       }
     else
       {
-	if (flag & EXEC_ONLY_QUERY_PLAN)
-	  {
-	    // TODO
-	    // set_optimization
-	  }
 	stmt_id = m_q_result[0].stmt_id;
-	// m_stmt_id = srv_handle->q_result->stmt_id;?
       }
 
     /* no holdable */
@@ -665,8 +576,9 @@ namespace cubmethod
     int n = db_execute_and_keep_statement (m_session, stmt_id, &result);
     if (n < 0)
       {
-	// TODO: error handling
-	error = n;
+
+	m_error_ctx.set_error (n, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
     else if (result != NULL)
       {
@@ -674,19 +586,9 @@ namespace cubmethod
 	(void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
       }
 
-    if (flag & EXEC_QUERY_INFO)
-      {
-	// TODO: need support?
-      }
-
-    if (n < 0)
-      {
-	// TODO: error handling
-      }
-
     if (max_row > 0 && db_get_statement_type (m_session, stmt_id) == CUBRID_STMT_SELECT)
       {
-	// TODO: max_row
+	// TODO: max_row?
       }
 
     info.num_affected = n;
@@ -707,16 +609,10 @@ namespace cubmethod
 
     if (has_stmt_result_set (m_current_result->stmt_type))
       {
-
 	m_has_result_set = true;
       }
 
     error = set_qresult_info (info.qresult_infos);
-    if (error != NO_ERROR)
-      {
-	// TODO : error handling
-	// goto execute_error;
-      }
     return error;
   }
 
@@ -768,14 +664,11 @@ namespace cubmethod
   int
   query_handler::prepare_query (prepare_info &info, int &flag)
   {
-    int error = NO_ERROR;
-
     m_session = db_open_buffer (m_sql_stmt.c_str());
     if (!m_session)
       {
-	// TODO: error handling
-	error = db_error_code ();
-	return error;
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     flag |= (flag & PREPARE_UPDATABLE) ? PREPARE_INCLUDE_OID : 0;
@@ -802,10 +695,8 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    // TODO: error handling
-	    close_and_free_session ();
-	    error = stmt_id;
-	    return error;
+	    m_error_ctx.set_error (stmt_id, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
 	m_is_prepared = false;
       }
@@ -834,7 +725,7 @@ namespace cubmethod
     /* num_q_result can get by m_q_result.size () */
     m_q_result.push_back (q_result);
 
-    return error;
+    return NO_ERROR;
   }
 
   int
@@ -846,6 +737,7 @@ namespace cubmethod
     error = m_prepare_call_info.set_is_first_out (sql_stmt_copy);
     if (error != NO_ERROR)
       {
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INVALID_CALL_STMT, NULL, __FILE__, __LINE__);
 	return error;
       }
 
@@ -853,25 +745,22 @@ namespace cubmethod
     str_trim (sql_stmt_copy);
     if (stmt_type != CUBRID_STMT_CALL)
       {
-	// TODO: error handling
-	error = ER_FAILED;
-	return error;
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INVALID_CALL_STMT, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     m_session = db_open_buffer (sql_stmt_copy.c_str());
     if (!m_session)
       {
-	// TODO: error handling
-	error = ER_FAILED;
-	return error;
+	m_error_ctx.set_error (db_error_code(), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     int stmt_id = db_compile_statement (m_session);
     if (stmt_id < 0)
       {
-	// TODO: error handling
-	error = ER_FAILED;
-	return error;
+	m_error_ctx.set_error (stmt_id, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     int num_markers = get_num_markers (m_sql_stmt);
@@ -910,11 +799,9 @@ namespace cubmethod
     m_session = NULL;
   }
 
-  int
+  void
   query_handler::set_prepare_column_list_info (std::vector<column_info> &infos, query_result &qresult)
   {
-    int error = NO_ERROR;
-
     qresult.include_oid = false;
 
     if (!qresult.null_type_column.empty())
@@ -942,13 +829,11 @@ namespace cubmethod
 	DB_QUERY_TYPE *db_column_info = db_get_query_type_list (m_session, stmt_id);
 	if (db_column_info == NULL)
 	  {
-	    // TODO: error handling
-	    error = db_error_code ();
+	    m_error_ctx.set_error (db_error_code(), db_error_string (1), __FILE__, __LINE__);
 	  }
 
 	int num_cols = 0;
 	char *col_name = NULL, *class_name = NULL, *attr_name = NULL;
-
 
 	char set_type;
 	int precision = 0;
@@ -1029,8 +914,6 @@ namespace cubmethod
       {
 	//
       }
-
-    return error;
   }
 
   column_info
@@ -1087,7 +970,7 @@ namespace cubmethod
 	    cls_status = db_has_modified_class (m_session, stmt_id);
 	    if (cls_status == DB_CLASS_MODIFIED)
 	      {
-		// TODO: error handling
+		m_error_ctx.set_error (METHOD_CALLBACK_ER_STMT_POOLING, NULL, __FILE__, __LINE__);
 		return err_code;
 	      }
 	    else if (cls_status == DB_CLASS_ERROR)
@@ -1098,13 +981,11 @@ namespace cubmethod
 		  {
 		    err_code = ER_FAILED;
 		  }
-		// TODO: error handling
-		// err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+		m_error_ctx.set_error (err_code, NULL, __FILE__, __LINE__);
 		return err_code;
 	      }
 	  }
-	// TODO: error handling
-	//err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	m_error_ctx.set_error (err_code, NULL, __FILE__, __LINE__);
       }
 
     return err_code;

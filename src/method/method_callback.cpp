@@ -68,33 +68,14 @@ namespace cubmethod
     return NO_ERROR;
   }
 
-  /*
-  int
-  callback_handler::send_packable_object_to_server (cubpacking::packable_object &object)
-  {
-    packing_packer packer;
-    cubmem::extensible_block eb;
-
-    packer.set_buffer_and_pack_all (eb, object);
-
-    int error = net_client_send_data (m_host, m_rid, eb.get_ptr (), packer.get_current_size ());
-    if (error != NO_ERROR)
-      {
-  return ER_FAILED;
-      }
-
-    return NO_ERROR;
-  }
-  */
-
   int
   callback_handler::callback_dispatch (packing_unpacker &unpacker)
   {
     UINT64 id;
-    unpacker.unpack_bigint (id);
-
     int code;
-    unpacker.unpack_int (code);
+    unpacker.unpack_all (id, code);
+
+    m_error_ctx.clear ();
 
     int error = NO_ERROR;
     switch (code)
@@ -131,29 +112,34 @@ namespace cubmethod
   {
     std::string sql;
     int flag;
-
-    unpacker.unpack_string (sql);
-    unpacker.unpack_int (flag);
+    unpacker.unpack_all (sql, flag);
 
     int handle_id = new_query_handler ();
     if (handle_id < 0)
       {
-	// TODO
-	// error handling
+	// TODO: proper error code
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     query_handler *handler = find_query_handler (handle_id);
     if (handler == nullptr)
       {
-	// TODO
-	// error handling
+	// TODO: proper error code
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
       }
-
     prepare_info info = handler->prepare (sql, flag);
     info.handle_id = handle_id;
 
-    int error = send_packable_object_to_server (info);
-    return error;
+
+    if (m_error_ctx.has_error())
+      {
+	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+      }
+    else
+      {
+	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
+      }
   }
 
   int
@@ -165,13 +151,22 @@ namespace cubmethod
     query_handler *handler = find_query_handler (request.handler_id);
     if (handler == nullptr)
       {
-	// TODO
-	// error handling
+	// TODO: proper error code
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     execute_info info = handler->execute (request.param_values, request.execute_flag, request.max_field, -1);
-    int error = send_packable_object_to_server (info);
-    return error;
+
+    if (m_error_ctx.has_error())
+      {
+	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+      }
+    else
+      {
+	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
+      }
+
   }
 
   int
@@ -209,12 +204,23 @@ namespace cubmethod
     request.unpack (unpacker);
 
     error = new_oid_handler ();
-    if (error == NO_ERROR)
+    if (error != NO_ERROR)
+      {
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+      }
+    else
       {
 	oid_get_info info = m_oid_handler->oid_get (request.oid, request.attr_names);
-	error = send_packable_object_to_server (info);
+	if (m_error_ctx.has_error())
+	  {
+	    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	  }
+	else
+	  {
+	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
+	  }
       }
-    return error;
+    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
   int
@@ -224,12 +230,19 @@ namespace cubmethod
     request.unpack (unpacker);
 
     int error = new_oid_handler ();
-    if (error == NO_ERROR)
+    if (error != NO_ERROR)
+      {
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+      }
+    else
       {
 	int result = m_oid_handler->oid_put (request.oid, request.attr_names, request.db_values);
-	error = send_packable_object_to_server (result);
+	if (!m_error_ctx.has_error())
+	  {
+	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, result);
+	  }
       }
-    return error;
+    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
   int
@@ -244,21 +257,19 @@ namespace cubmethod
     std::string res; // result for OID_CLASS_NAME
 
     int error = new_oid_handler ();
-    if (error == NO_ERROR)
+    if (error != NO_ERROR)
       {
-	int error = m_oid_handler->oid_cmd (oid, cmd, res);
-	if (error < 0)
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+      }
+    else
+      {
+	int res_code = m_oid_handler->oid_cmd (oid, cmd, res);
+	if (!m_error_ctx.has_error())
 	  {
-	    // TODO : error handling
-	    // ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	  }
-	else
-	  {
-	    error = send_packable_object_to_server (error, res);
+	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, res_code, res);
 	  }
       }
-
-    return error;
+    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
 //////////////////////////////////////////////////////////////////////////
@@ -272,106 +283,18 @@ namespace cubmethod
     collection_cmd_request request;
     request.unpack (unpacker);
 
-    int error = m_oid_handler->collection_cmd (request.oid, request.command, request.index, request.attr_name,
-		request.value);
-    if (error < 0)
+    int result = m_oid_handler->collection_cmd (request.oid, request.command, request.index, request.attr_name,
+		 request.value);
+
+    if (m_error_ctx.has_error())
       {
-	// TODO : error handling
-	// ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	error = send_packable_object_to_server (error);
+	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, result);
       }
-    return error;
   }
-
-#if 0
-
-//////////////////////////////////////////////////////////////////////////
-// LOB
-//////////////////////////////////////////////////////////////////////////
-
-  int
-  callback_handler::lob_new (DB_TYPE lob_type)
-  {
-    int error = NO_ERROR;
-
-    DB_VALUE lob_dbval;
-    error = db_create_fbo (&lob_dbval, lob_type);
-    if (error < 0)
-      {
-	// TODO : error handling
-	return error;
-      }
-
-    lob_handle lhandle;
-    DB_ELO *elo = db_get_elo (&lob_dbval);
-    if (elo == NULL)
-      {
-	lhandle.lob_size = -1;
-	lhandle.locator_size = 0;
-	lhandle.locator = NULL;
-      }
-    else
-      {
-	lhandle.lob_size = elo->size;
-	lhandle.locator_size = elo->locator ? strlen (elo->locator) + 1 : 0;
-	/* including null character */
-	lhandle.locator = elo->locator;
-      }
-
-    // TODO
-    db_value_clear (&lob_dbval);
-    return error;
-  }
-
-  int
-  callback_handler::lob_write (DB_VALUE *lob_dbval, int64_t offset, int size, char *data)
-  {
-    int error = NO_ERROR;
-
-    DB_ELO *elo = db_get_elo (lob_dbval);
-    DB_BIGINT size_written;
-    error = db_elo_write (elo, offset, data, size, &size_written);
-    if (error < 0)
-      {
-	// TODO : error handling
-	return error;
-      }
-
-    /* set result: on success, bytes written */
-    // net_buf_cp_int (net_buf, (int) size_written, NULL);
-
-    return error;
-  }
-
-  int
-  callback_handler::lob_read (DB_TYPE lob_type)
-  {
-    int error = NO_ERROR;
-    // TODO
-
-    DB_VALUE lob_dbval;
-    DB_ELO *elo = db_get_elo (&lob_dbval);
-
-    /*
-    DB_BIGINT size_read;
-    error = db_elo_read (elo, offset, data, size, &size_read);
-    if (error < 0)
-    {
-        // TODO : error handling
-        return error;
-    }
-    */
-
-    /* set result: on success, bytes read */
-    // net_buf_cp_int (net_buf, (int) size_read, NULL);
-    // net_buf->data_size += (int) size_read;
-
-    return error;
-  }
-#endif
 
 //////////////////////////////////////////////////////////////////////////
 // Managing Query Handler Table
@@ -394,8 +317,7 @@ namespace cubmethod
     query_handler *handler = new query_handler (m_error_ctx, idx);
     if (handler == nullptr)
       {
-	// TODO: error handling
-	return -1;
+	return ER_FAILED;
       }
 
     if (idx < handler_size)
