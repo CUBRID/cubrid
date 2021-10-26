@@ -171,7 +171,7 @@ void
 match_meta_log_after_flush_and_load (cublog::meta &meta_log, meta_file &mf)
 {
   std::rewind (mf.get_file ());
-  meta_log.flush_to_file (mf.get_file (), false);
+  meta_log.flush_to_file (mf.get_file ());
 
   mf.reload ();
   cublog::meta meta_log_from_file;

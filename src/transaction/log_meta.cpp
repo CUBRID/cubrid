@@ -104,7 +104,7 @@ namespace cublog
   }
 
   void
-  meta::flush_to_file (std::FILE *stream, bool clean_after_flush)
+  meta::flush_to_file (std::FILE *stream)
   {
     cubpacking::packer serializer;
     size_t size = static_cast<unsigned> (get_packed_size (serializer, 0));
@@ -127,11 +127,6 @@ namespace cublog
 	return;
       }
     std::fflush (stream);
-
-    if (clean_after_flush)
-      {
-	clear ();
-      }
   }
 
   void
