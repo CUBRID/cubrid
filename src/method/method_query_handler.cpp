@@ -123,7 +123,7 @@ namespace cubmethod
 
 	info.stmt_type = qresult.stmt_type;
 	info.num_markers = m_num_markers;
-	error = set_prepare_column_list_info (info.column_infos, qresult);
+	set_prepare_column_list_info (info.column_infos, qresult);
       }
     else
       {
@@ -172,11 +172,7 @@ namespace cubmethod
 	  {
 	    info.stmt_type = m_q_result[0].stmt_type;
 	    info.num_markers = m_num_markers;
-	    error = set_prepare_column_list_info (info.column_infos, *m_current_result);
-	    if (error != NO_ERROR)
-	      {
-		// TODO: error handling?
-	      }
+	    set_prepare_column_list_info (info.column_infos, *m_current_result);
 	  }
       }
     else
@@ -803,11 +799,9 @@ namespace cubmethod
     m_session = NULL;
   }
 
-  int
+  void
   query_handler::set_prepare_column_list_info (std::vector<column_info> &infos, query_result &qresult)
   {
-    int error = NO_ERROR;
-
     qresult.include_oid = false;
 
     if (!qresult.null_type_column.empty())
@@ -920,8 +914,6 @@ namespace cubmethod
       {
 	//
       }
-
-    return error;
   }
 
   column_info

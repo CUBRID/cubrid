@@ -139,7 +139,7 @@ namespace cubmethod
       bool has_stmt_result_set (char stmt_type);
 
       /* column info */
-      int set_prepare_column_list_info (std::vector<column_info> &infos, query_result &result);
+      void set_prepare_column_list_info (std::vector<column_info> &infos, query_result &result);
       column_info set_column_info (int dbType, int setType, short scale, int prec, char charset, const char *col_name,
 				   const char *attr_name,
 				   const char *class_name, char is_non_null);
