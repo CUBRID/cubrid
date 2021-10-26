@@ -89,7 +89,9 @@ public class Server {
                                     try {
                                         client = serverSocket.accept();
                                         client.setTcpNoDelay(true);
-                                        new ExecuteThread(client).start();
+                                        Thread execThread = new ExecuteThread(client);
+                                        execThread.setContextClassLoader(new StoredProcedureClassLoader());
+                                        execThread.start();
                                     } catch (IOException e) {
                                         log(e);
                                         break;
