@@ -117,7 +117,10 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const
       return NO_ERROR;
     }
 
-  cdc_Trigger_involved = false;
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      cdc_Trigger_involved = false;
+    }
 
   query_timeout = tran_get_query_timeout ();
   /* send XASL file id and host variables to the server and get QFILE_LIST_ID */
