@@ -3019,7 +3019,7 @@ sm_is_system_class_by_name (const char *name)
 {
   const char **ptr = NULL;
 
-  const char *system_classes[] = {
+  static const char *system_classes[] = {
     /* 
      * authorization classes
      *
@@ -4141,11 +4141,21 @@ sm_update_all_catalog_statistics (bool with_fullscan)
   int i;
 
   const char *classes[] = {
-    CT_CLASS_NAME, CT_ATTRIBUTE_NAME, CT_DOMAIN_NAME,
-    CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
-    CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
-    CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
-    CT_COLLATION_NAME, CT_CHARSET_NAME, CT_SYNONYM_NAME,
+    CT_CLASS_NAME,
+    CT_ATTRIBUTE_NAME,
+    CT_DOMAIN_NAME,
+    CT_METHOD_NAME,
+    CT_METHSIG_NAME,
+    CT_METHARG_NAME,
+    CT_METHFILE_NAME,
+    CT_QUERYSPEC_NAME,
+    CT_INDEX_NAME,
+    CT_INDEXKEY_NAME,
+    CT_CLASSAUTH_NAME,
+    CT_DATATYPE_NAME,
+    CT_COLLATION_NAME,
+    CT_CHARSET_NAME,
+    CT_SYNONYM_NAME,
     NULL
   };
 
