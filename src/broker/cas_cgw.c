@@ -29,6 +29,7 @@
 
 #define LONGVARCHAR_MAX_SIZE 16*1024*1024
 #define LOGIN_TIME_OUT       5
+#define NUM_OF_DIGITS(NUMBER) (int)log10(NUMBER) + 1
 
 #define ODBC_SQLSUCCESS(rc) ((rc == SQL_SUCCESS) || (rc == SQL_SUCCESS_WITH_INFO) )
 #define SQL_CHK_ERR(h, ht, x)   {   RETCODE rc = x;\
@@ -56,6 +57,7 @@ static void cgw_set_charset (char charset);
 static char cgw_get_charset (void);
 static void cgw_link_server_info (SQLHDBC hdbc);
 static bool cgw_is_support_datatype (SQLSMALLINT data_type, SQLLEN type_size);
+static int cgw_count_number_of_digits (int num_bits);
 
 static SQLSMALLINT get_c_type (SQLSMALLINT s_type);
 static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars);
@@ -338,12 +340,9 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 	      net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
 	      break;
 	    case SQL_FLOAT:
+	    case SQL_REAL:
 	      net_buf_cp_int (net_buf, NET_SIZE_FLOAT, NULL);
 	      net_buf_cp_float (net_buf, *((float *) this_col_binding->data_buffer));
-	      break;
-	    case SQL_REAL:
-	      net_buf_cp_int (net_buf, NET_SIZE_DOUBLE, NULL);
-	      net_buf_cp_double (net_buf, *((float *) this_col_binding->data_buffer));
 	      break;
 	    case SQL_DOUBLE:
 	      net_buf_cp_int (net_buf, NET_SIZE_DOUBLE, NULL);
@@ -499,6 +498,12 @@ cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_I
 
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
+	       err_code = SQLColAttribute (hstmt,
+					   col_num,
+					   SQL_DESC_NAME,
+					   col_info->col_name, sizeof (col_info->col_name), &col_name_length, NULL));
+  SQL_CHK_ERR (hstmt,
+	       SQL_HANDLE_STMT,
 	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_CONCISE_TYPE, NULL, 0, NULL, &odbc_data_type));
 
   SQL_CHK_ERR (hstmt,
@@ -509,6 +514,16 @@ cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_I
 	       SQL_HANDLE_STMT,
 	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_PRECISION, NULL, 0, NULL, &col_info->precision));
 
+  if (odbc_data_type == SQL_REAL || odbc_data_type == SQL_FLOAT || odbc_data_type == SQL_DOUBLE)
+    {
+      int num = cgw_count_number_of_digits (col_info->precision);
+      if (num < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_PRECISION_VALUE, 1, col_info->col_name);
+	  goto ODBC_ERROR;
+	}
+      col_info->precision = num;
+    }
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
 	       err_code = SQLColAttribute (hstmt,
@@ -564,10 +579,8 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type)
       data_type = CCI_U_TYPE_SHORT;
       break;
     case SQL_FLOAT:
-      data_type = CCI_U_TYPE_FLOAT;
-      break;
     case SQL_REAL:
-      data_type = CCI_U_TYPE_DOUBLE;
+      data_type = CCI_U_TYPE_FLOAT;
       break;
     case SQL_DOUBLE:
       data_type = CCI_U_TYPE_DOUBLE;
@@ -1817,9 +1830,9 @@ get_datatype_size (SQLSMALLINT s_type, SQLULEN chars)
       chars = sizeof (INT64);
       break;
     case SQL_REAL:
+    case SQL_FLOAT:
       chars = sizeof (float);
       break;
-    case SQL_FLOAT:
     case SQL_DOUBLE:
       chars = sizeof (double);
       break;
@@ -2089,4 +2102,23 @@ cgw_is_support_datatype (SQLSMALLINT data_type, SQLLEN type_size)
     }
 
   return support_data_type;
+}
+
+static int
+cgw_count_number_of_digits (int num_bits)
+{
+  int num = 1;
+  INT64 number = 1;
+
+  if (num_bits <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  for (int i = 0; i < num_bits - 1; i++)
+    {
+      number = (number << 1) + 1;
+    }
+
+  return NUM_OF_DIGITS (number);
 }
