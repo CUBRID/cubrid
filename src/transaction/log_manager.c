@@ -8670,7 +8670,25 @@ error:
 }
 
 /*
- *  Check whether the log active too sane to recreate
+ * log_is_active_sane - Check whether the active log volume is sane. Note that it does NOT guarantee that the active log volume is perfectly fine. It checks the existance of the log volume, the checksum of the log header page and compatibility.
+ *
+ * return: whether the active log volume is sane
+ *
+ *   db_fullname(in): Full name of the database
+ *   logpath(in): Directory where the log volumes reside
+ *   prefix_logname(in): Name of the log volumes. It is usually set the same as
+ *                      database name. For example, if the value is equal to
+ *                      "db", the names of the log volumes created are as
+ *                      follow:
+ *                      Active_log      = db_logactive
+ *                      Archive_logs    = db_logarchive.0
+ *                                        db_logarchive.1
+ *                                             .
+ *                                             .
+ *                                             .
+ *                                        db_logarchive.n
+ *                      Log_information = db_loginfo
+ *                      Database Backup = db_backup
  */
 bool
 log_is_active_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname)
