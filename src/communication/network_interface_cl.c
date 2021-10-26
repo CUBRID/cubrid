@@ -10477,12 +10477,14 @@ method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE
 #if defined(CS_MODE)
   char *data_reply = NULL;
   int data_reply_size = 0;
+  int req_error = NO_ERROR;
 
   packing_packer packer;
   cubmem::extensible_block eb;
 
-  int total_size = sig_list.get_packed_size (packer, 0);
-  total_size += packer.get_packed_int_size (total_size);
+  {
+    int total_size = sig_list.get_packed_size (packer, 0);
+    total_size += packer.get_packed_int_size (total_size);
 
   /* *INDENT-OFF* */
   for (DB_VALUE *&value : args)
@@ -10491,11 +10493,11 @@ method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE
     }
   /* *INDENT-ON* */
 
-  eb.extend_to (total_size);
-  packer.set_buffer (eb.get_ptr (), total_size);
+    eb.extend_to (total_size);
+    packer.set_buffer (eb.get_ptr (), total_size);
 
-  sig_list.pack (packer);
-  packer.pack_int (args.size ());
+    sig_list.pack (packer);
+    packer.pack_int (args.size ());
 
   /* *INDENT-OFF* */
   for (DB_VALUE *&value : args)
@@ -10504,81 +10506,81 @@ method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE
     }
   /* *INDENT-ON* */
 
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
+    OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int req_error = net_client_request_method_callback (NET_SERVER_METHOD_FOLD_CONSTANTS, eb.get_ptr (),
-						      (int) packer.get_current_size (), reply,
-						      OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
-  if (req_error != NO_ERROR)
-    {
-      if (req_error != ER_SP_EXECUTE_ERROR)
-	{
-	  return req_error;
-	}
-    }
+    req_error = net_client_request_method_callback (NET_SERVER_METHOD_FOLD_CONSTANTS, eb.get_ptr (),
+							(int) packer.get_current_size (), reply,
+							OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
+    if (req_error != NO_ERROR)
+      {
+	if (req_error != ER_SP_EXECUTE_ERROR)
+	  {
+	    goto cleanup;
+	  }
+      }
 
-  int a, b, c;
-  char *ptr = or_unpack_int (reply, &a);
-  ptr = or_unpack_int (ptr, &b);
-  ptr = or_unpack_int (ptr, &c);
-  /*
-     int data_size;
-     char *ptr = or_unpack_int (reply, &data_size);
-     int rc = ER_FAILED;
-     ptr = or_unpack_int (ptr, &rc);
-     if (rc != NO_ERROR)
-     {
-     free_and_init (data_reply);
-     }
-   */
+    /* consumes dummy reply */
+    int a, b, c;
+    char *ptr = or_unpack_int (reply, &a);
+    ptr = or_unpack_int (ptr, &b);
+    ptr = or_unpack_int (ptr, &c);
+
+    /* receive result values / error */
+    if (data_reply != NULL)
+      {
+	packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+	if (req_error == NO_ERROR)
+	  {
+	    /* result */
+	    unpacker.unpack_db_value (result);
+
+	    /* output parameters */
+	    int arg_size = 0;
+	    unpacker.unpack_int (arg_size);
+
+	    method_sig_node *sig = sig_list.method_sig;
+	    DB_VALUE temp;
+	    for (int i = 0; i < sig->num_method_args; i++)
+	      {
+		if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
+		  {
+		    continue;
+		  }
+
+		if (sig->arg_info.arg_type[i] == DB_TYPE_RESULTSET)	// && !is_prepare_call[call_cnt])
+		  {
+		    req_error = ER_SP_CANNOT_RETURN_RESULTSET;
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, req_error, 0);
+		    goto cleanup;
+		  }
+
+		int pos = sig->method_arg_pos[i];
+		unpacker.unpack_db_value (temp);
+
+		db_value_clear (args[pos]);
+		db_value_clone (&temp, args[pos]);
+		db_value_clear (&temp);
+	      }
+	  }
+	else
+	  {
+	    std::string error_msg;
+	    unpacker.unpack_string (error_msg);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, error_msg.c_str ());
+	  }
+      }
+    else
+      {
+	db_make_null (&result);
+      }
+  }
+
+cleanup:
+
   if (data_reply != NULL)
     {
-      packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-      if (req_error == NO_ERROR)
-	{
-	  /* result */
-	  unpacker.unpack_db_value (result);
-
-	  /* output parameters */
-	  int arg_size = 0;
-	  unpacker.unpack_int (arg_size);
-
-	  method_sig_node *sig = sig_list.method_sig;
-	  DB_VALUE temp;
-	  for (int i = 0; i < sig->num_method_args; i++)
-	    {
-	      if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
-		{
-		  continue;
-		}
-
-	      if (sig->arg_info.arg_type[i] == DB_TYPE_RESULTSET)	// && !is_prepare_call[call_cnt])
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
-		  return er_errid ();
-		}
-
-	      int pos = sig->method_arg_pos[i];
-	      unpacker.unpack_db_value (temp);
-
-	      db_value_clear (args[pos]);
-	      db_value_clone (&temp, args[pos]);
-	      db_value_clear (&temp);
-	    }
-
-	  free_and_init (data_reply);
-	}
-      else
-	{
-	  std::string error_msg;
-	  unpacker.unpack_string (error_msg);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, error_msg.c_str ());
-	}
-    }
-  else
-    {
-      db_make_null (&result);
+      free_and_init (data_reply);
     }
 
   return req_error;

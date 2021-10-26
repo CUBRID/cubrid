@@ -10357,7 +10357,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   else
     {
       assert (er_errid () != NO_ERROR);
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
 
       std::string err_msg (er_msg ());
       int total_size = packer.get_packed_string_size (err_msg, 0);
