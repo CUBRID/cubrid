@@ -8697,16 +8697,6 @@ log_is_active_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char
       return false;
     }
 
-  /* These three below are cases in which log_initialize_internal() fails */
-  if (hdr.db_iopagesize != IO_PAGESIZE || hdr.db_logpagesize != LOG_PAGESIZE)
-    {
-      /* it has a side effect that initializes page sizes of server, but it doesn't matter */
-      if (db_set_page_size (log_Gl.hdr.db_iopagesize, log_Gl.hdr.db_logpagesize) != NO_ERROR)
-	{
-	  return false;
-	}
-    }
-
   compat = rel_get_disk_compatible (hdr.db_compatibility, NULL);
   if (compat != REL_FULLY_COMPATIBLE)
     {
