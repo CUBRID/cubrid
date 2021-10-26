@@ -1282,7 +1282,7 @@ cubrid_log_make_data_item (char **data_info, DATA_ITEM_TYPE data_item_type, CUBR
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : data item type is %d", __func__, convert_data_item_type_to_string (data_item_type));
+      CUBRID_LOG_TRACELOG ("%s : data item type is %s", __func__, convert_data_item_type_to_string (data_item_type));
     }
 
   switch (data_item_type)
