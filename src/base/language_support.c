@@ -4719,7 +4719,7 @@ lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc, const 
   const unsigned char *str1_end, *str2_end;
   const unsigned char *str1_begin, *str2_begin;
   int key_size;
-  const unsigned int *weight = (ignore_trailing_space) ? lang_coll->coll.weights_ti : lang_coll->coll.weights;
+  const unsigned int *weight = lang_coll->coll.weights_ti;
 
   assert (key != NULL);
   assert (byte_size != NULL);
@@ -4811,7 +4811,7 @@ lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc, const
   const unsigned char *str1_begin, *str2_begin;
   unsigned int w1, w2;
   int key_size;
-  const unsigned int *weight = (ignore_trailing_space) ? lang_coll->coll.weights_ti : lang_coll->coll.weights;
+  const unsigned int *weight = lang_coll->coll.weights_ti;
 
   assert (key != NULL);
   assert (byte_size != NULL);
@@ -4917,8 +4917,8 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
 
   for (; str1 < str1_end && str2 < str2_end;)
     {
-      w1 = lang_get_w_first_el (coll, str1, CAST_BUFLEN (str1_end - str1), &str1_next, ignore_trailing_space);
-      w2 = lang_get_w_first_el (coll, str2, CAST_BUFLEN (str2_end - str2), &str2_next, ignore_trailing_space);
+      w1 = lang_get_w_first_el (coll, str1, CAST_BUFLEN (str1_end - str1), &str1_next, true);
+      w2 = lang_get_w_first_el (coll, str2, CAST_BUFLEN (str2_end - str2), &str2_next, true);
 
       if (w1 != w2)
 	{
@@ -4937,9 +4937,9 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
       /* common part plus a character with non-zero weight from str2 */
       while (str2 < str2_end)
 	{
-	  w2 = lang_get_w_first_el (coll, str2, CAST_BUFLEN (str2_end - str2), &str2_next, ignore_trailing_space);
+	  w2 = lang_get_w_first_el (coll, str2, CAST_BUFLEN (str2_end - str2), &str2_next, true);
 	  str2 = str2_next;
-	  if (w2 != 0 && w2 != ASCII_SPACE)
+	  if (w2 != 0)
 	    {
 	      break;
 	    }
@@ -4954,9 +4954,9 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
       /* common part plus a character with non-zero weight from str1 */
       while (str1 < str1_end)
 	{
-	  w1 = lang_get_w_first_el (coll, str1, CAST_BUFLEN (str1_end - str1), &str1_next, ignore_trailing_space);
+	  w1 = lang_get_w_first_el (coll, str1, CAST_BUFLEN (str1_end - str1), &str1_next, true);
 	  str1 = str1_next;
-	  if (w1 != 0 && w2 != ASCII_SPACE)
+	  if (w1 != 0)
 	    {
 	      break;
 	    }
@@ -5073,12 +5073,12 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
       w2 = UCA_GET_L1_W (uca_w_l13_2[ce_index2]);
 
       /* ignore zero weights (unless character is space) */
-      if (w1 == 0 && *str1 != ASCII_SPACE)
+      if (w1 == 0)
 	{
 	  ce_index1++;
 	  num_ce1--;
 
-	  if (w2 == 0 && *str2 != ASCII_SPACE)
+	  if (w2 == 0)
 	    {
 	      ce_index2++;
 	      num_ce2--;
@@ -5086,7 +5086,7 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 
 	  goto read_weights1;
 	}
-      else if (w2 == 0 && *str2 != ASCII_SPACE)
+      else if (w2 == 0)
 	{
 	  ce_index2++;
 	  num_ce2--;
@@ -5194,7 +5194,7 @@ lang_split_key_euckr (const LANG_COLLATION * lang_coll, const bool is_desc, cons
   int key_size, char1_size, char2_size;
   const unsigned char *str1_end, *str2_end;
   const unsigned char *str1_begin, *str2_begin;
-  const unsigned int *weight = (ignore_trailing_space) ? lang_coll->coll.weights_ti : lang_coll->coll.weights;
+  const unsigned int *weight = lang_coll->coll.weights_ti;
 
   assert (key != NULL);
   assert (byte_size != NULL);
@@ -5229,7 +5229,7 @@ lang_split_key_euckr (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 	  str2_next = intl_nextchar_euc (str2, &char2_size);
 	  if (*str2 == ASCII_SPACE || *str2 == 0 || (*str2 == EUC_SPACE && char2_size == 2 && *(str2 + 1) == EUC_SPACE))
 	    {
-	      is_zero_weight = 1;
+	      is_zero_weight = (weight[SPACE] == 0);
 	    }
 	  str2 = str2_next;
 	  if (!is_zero_weight)
@@ -5252,7 +5252,7 @@ lang_split_key_euckr (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 	  str1_next = intl_nextchar_euc (str1, &char1_size);
 	  if (*str1 == ASCII_SPACE || *str1 == 0 || (*str1 == EUC_SPACE && char1_size == 2 && *(str1 + 1) == EUC_SPACE))
 	    {
-	      is_zero_weight = 1;
+	      is_zero_weight = (weight[SPACE] == 0);
 	    }
 	  str1 = str1_next;
 	  if (!is_zero_weight)
