@@ -8670,6 +8670,75 @@ error:
 }
 
 /*
+ *  Check whether the log active too sane to recreate
+ */
+int
+log_is_active_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
+		    bool & is_sane)
+{
+  LOG_HEADER hdr;
+  LOG_PAGE log_page;
+  int vdes = NULL_VOLDES;
+  REL_FIXUP_FUNCTION *disk_compatibility_functions = NULL;
+  REL_COMPATIBILITY compat;
+  int error_code = NO_ERROR;
+
+  is_sane = true;
+
+  if (logpb_exist_log (thread_p, db_full_name, logpath, prefix_logname) == false)
+    {
+      is_sane = false;
+      goto exit;
+    }
+
+  vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
+  if (vdes == NULL_VOLDES)
+    {
+      error_code = ER_IO_MOUNT_FAIL;
+      goto exit;
+    }
+
+  /* TODO: 로그정보들이 초기화되어 있지 않은 상태에서 읽어오는게 불가능 */
+  logpb_fetch_header_with_buffer (thread_p, &hdr, &log_page);
+  error_code = logpb_page_check_corruption (thread_p, &log_page, &is_sane);
+  if (error_code != NO_ERROR || is_sane == false)
+    {
+      goto exit;
+    }
+
+  /* These three below are cases in which log_initialize_internal() fails */
+  if (hdr.db_iopagesize != IO_PAGESIZE || hdr.db_logpagesize != LOG_PAGESIZE)
+    {
+      if (db_set_page_size (log_Gl.hdr.db_iopagesize, log_Gl.hdr.db_logpagesize) != NO_ERROR)
+	{
+	  is_sane = false;
+	  goto exit;
+	}
+    }
+
+  compat = rel_get_disk_compatible (hdr.db_compatibility, &disk_compatibility_functions);
+  if (compat != REL_FULLY_COMPATIBLE)
+    {
+      is_sane = false;
+      goto exit;
+    }
+
+  if (rel_is_log_compatible (hdr.db_release, rel_release_string ()) != true)
+    {
+      is_sane = false;
+      goto exit;
+    }
+
+exit:
+  if (vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, vdes);
+    }
+
+  return error_code;
+}
+
+/*
  * log_recreate - RECREATE THE LOG WITHOUT REMOVING THE DATABASE
  *
  * return:

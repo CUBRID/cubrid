@@ -5632,6 +5632,19 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 
   if (recreate_log == true)
     {
+      bool is_sane = false;
+      error_code = log_is_active_sane (thread_p, boot_Db_full_name, log_path, log_prefix, is_sane);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      if (is_sane)
+	{
+	  error_code = ER_LOG_TOO_SANE_TO_RECREATE;
+	  goto error_exit;
+	}
+
       if (log_npages <= 0)
 	{
 	  /* Use the default that is the size of the database */
