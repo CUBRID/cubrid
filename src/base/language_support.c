@@ -5073,12 +5073,12 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
       w2 = UCA_GET_L1_W (uca_w_l13_2[ce_index2]);
 
       /* ignore zero weights (unless character is space) */
-      if (w1 == 0)
+      if (w1 == 0 && *str1 != ASCII_SPACE)
 	{
 	  ce_index1++;
 	  num_ce1--;
 
-	  if (w2 == 0)
+	  if (w2 == 0 && *str2 != ASCII_SPACE)
 	    {
 	      ce_index2++;
 	      num_ce2--;
@@ -5086,7 +5086,7 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 
 	  goto read_weights1;
 	}
-      else if (w2 == 0)
+      else if (w2 == 0 && *str2 != ASCII_SPACE)
 	{
 	  ce_index2++;
 	  num_ce2--;
