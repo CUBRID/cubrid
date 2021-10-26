@@ -393,6 +393,8 @@ static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, con
 						    const char *db_full_name);
 static int logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path,
 							LOG_HEADER * hdr);
+static void logpb_delete_metainfo_files_internal (THREAD_ENTRY * thread_p, const char *logpath,
+						  const char *prefix_logname);
 #if defined (SERVER_MODE)
 static void logpb_send_flushed_lsa_to_ats ();
 #endif // SERVER_MODE
@@ -10446,9 +10448,32 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 
   fileio_unformat (thread_p, log_Name_active);
   fileio_unformat (thread_p, log_Name_info);
-  fileio_unformat (thread_p, log_Name_metainfo);
+  logpb_delete_metainfo_files_internal (thread_p, logpath, prefix_logname);
 
   return NO_ERROR;
+}
+
+/*
+ * logpb_delete_metainfo_files_internal - delete all existing metainfo volumes found in the log path
+ *
+ * NOTE: a transaction server with remote storage has its own specific metalog file;
+ *      in 'single-node' install mode - where both transaction server and page server
+ *      execute on the same machine, both the regular metalog volume and the transaction server specific
+ *      metalog volume are located in the same directory
+ */
+void
+logpb_delete_metainfo_files_internal (THREAD_ENTRY * thread_p, const char *logpath, const char *prefix_logname)
+{
+  char metainfo_file_name[PATH_MAX];
+  const bool is_ts_with_remote_storage = is_tran_server_with_remote_storage ();
+
+  // own metalog file
+  fileio_make_log_metainfo_name (metainfo_file_name, logpath, prefix_logname, is_ts_with_remote_storage);
+  fileio_unformat (thread_p, metainfo_file_name);
+
+  // other, possibly existing, metalog file
+  fileio_make_log_metainfo_name (metainfo_file_name, logpath, prefix_logname, !is_ts_with_remote_storage);
+  fileio_unformat (thread_p, metainfo_file_name);
 }
 
 /*
