@@ -109,7 +109,7 @@ public class CUBRIDServerSideStatement implements Statement {
         statementHandler = connection.getSUConnection().prepare(sql, prepareFlag, false);
     }
 
-    protected void executeInternal(boolean executeAll) throws IOException {
+    protected void executeInternal(boolean executeAll) throws IOException, SQLException {
         statementHandler.execute(maxRows, maxFieldSize, executeAll, isSensitive(), isScrollable());
     }
 

@@ -2339,8 +2339,7 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 	    if (replydata_size < 0)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
-		error = ER_NET_SERVER_CRASHED;
-		return error;
+		return ER_NET_SERVER_CRASHED;
 	      }
 	    else if (replydata_size > 0)
 	      {
@@ -2348,8 +2347,7 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 		if (replydata == NULL)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) replydata_size);
-		    error = ER_OUT_OF_VIRTUAL_MEMORY;
-		    return error;
+		    return ER_OUT_OF_VIRTUAL_MEMORY;
 		  }
 
 		css_queue_receive_data_buffer (rc, replydata, replydata_size);
@@ -2369,8 +2367,10 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 	      }
 	    else
 	      {
-		// TODO: error?
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
+		return ER_NET_SERVER_DATA_RECEIVE;
 	      }
+	    ptr = or_unpack_int (ptr, &error);
 	  }
 	  break;
 

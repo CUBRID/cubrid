@@ -46,32 +46,31 @@ namespace cubmethod
 
     if (obj == NULL)
       {
-	// TODO : error handling
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     er_clear ();
     error = db_is_instance (obj);
     if (error < 0)
       {
-	return error;
+	m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
     else if (error > 0)
       {
 	return 0;
       }
-    else
-      {
-	error = db_error_code ();
-	if (error < 0)
-	  {
-	    return error;
-	  }
 
-	// TODO : error handling
-	// return CAS_ER_OBJECT;
+    error = db_error_code ();
+    if (error < 0)
+      {
+	m_error_ctx.set_error (db_error_code(), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
-    return error;
+    m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
+    return ER_FAILED;
   }
 
   oid_get_info
@@ -83,14 +82,14 @@ namespace cubmethod
     DB_OBJECT *obj = db_object (&oid);
     if (obj == NULL)
       {
-	// TODO: error handling
-	// CAS_ER_OBJECT
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
+	return info;
       }
 
     error = check_object (obj);
     if (error < 0)
       {
-	// TODO : error handling
+	return info;
       }
 
     // set attribute names
@@ -115,8 +114,8 @@ namespace cubmethod
 	    attr = db_get_attribute (obj, attr_name.c_str ());
 	    if (attr == NULL)
 	      {
-		// TODO: error handling
-		// return db_error_code();
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+		return info;
 	      }
 	  }
 	else
@@ -134,8 +133,8 @@ namespace cubmethod
 		attr = db_get_attribute (path_obj, p + 1);
 		if (attr == NULL)
 		  {
-		    // TODO: error handling
-		    // return db_error_code ();
+		    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+		    return info;
 		  }
 	      }
 	    *p = '.';
@@ -197,22 +196,21 @@ namespace cubmethod
     DB_OBJECT *obj = db_object (&oid);
     if (obj == NULL)
       {
-	// TODO: error handling
-	// CAS_ER_OBJECT
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     error = check_object (obj);
     if (error < 0)
       {
-	// TODO : error handling
+	return ER_FAILED;
       }
 
     DB_OTMPL *otmpl = dbt_edit_object (obj);
     if (otmpl == NULL)
       {
-	return db_error_code ();
-	// TODO: error handling
-	// err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     assert (attr_names.size() == attr_values.size());
@@ -229,7 +227,7 @@ namespace cubmethod
 	error = dbt_put (otmpl, attr_name, attr_val);
 	if (error < 0)
 	  {
-	    // TODO: error handling
+	    m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
 	    db_value_clear (attr_val);
 	    dbt_abort_object (otmpl);
 	    return error;
@@ -241,11 +239,11 @@ namespace cubmethod
     obj = dbt_finish_object (otmpl);
     if (obj == NULL)
       {
-	// TODO: error handling
-	error = db_error_code ();
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
-    return error;
+    return NO_ERROR;
   }
 
   int
@@ -256,8 +254,8 @@ namespace cubmethod
     DB_OBJECT *obj = db_object (&oid);
     if (obj == NULL)
       {
-	// TODO: error handling
-	// CAS_ER_OBJECT
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     if (cmd != OID_IS_INSTANCE)
@@ -265,8 +263,7 @@ namespace cubmethod
 	error = check_object (obj);
 	if (error < 0)
 	  {
-	    // TODO : error handling
-	    return error;
+	    return ER_FAILED;
 	  }
       }
 
@@ -301,8 +298,8 @@ namespace cubmethod
       {
 	if (obj == NULL)
 	  {
-	    // TODO : error handling
-	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
 	error = db_lock_read (obj);
       }
@@ -310,8 +307,8 @@ namespace cubmethod
       {
 	if (obj == NULL)
 	  {
-	    // TODO : error handling
-	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
 	error = db_lock_write (obj);
       }
@@ -319,8 +316,8 @@ namespace cubmethod
       {
 	if (obj == NULL)
 	  {
-	    // TODO : error handling
-	    // ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
 	char *class_name = (char *) db_get_class_name (obj);
 	if (class_name == NULL)
@@ -336,8 +333,8 @@ namespace cubmethod
       }
     else
       {
-	// TODO : error handling
-	// ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     return error;
@@ -355,14 +352,14 @@ namespace cubmethod
     DB_OBJECT *obj = db_object (&oid);
     if (obj == NULL)
       {
-	// TODO: error handling
-	// CAS_ER_OBJECT
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     error = check_object (obj);
     if (error < 0)
       {
-	// TODO : error handling
+	return ER_FAILED;
       }
 
     error = NO_ERROR;
@@ -371,16 +368,15 @@ namespace cubmethod
     DB_ATTRIBUTE *attr = db_get_attribute (obj, name);
     if (attr == NULL)
       {
-	// TODO: error handling
-	error = db_error_code ();
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     DB_DOMAIN *domain = db_attribute_domain (attr);
     DB_TYPE type = TP_DOMAIN_TYPE (domain);
     if (type != DB_TYPE_SET && type != DB_TYPE_MULTISET && type != DB_TYPE_SEQUENCE)
       {
-	// TODO: error handling
-	// ERROR_INFO_SET (CAS_ER_NOT_COLLECTION, CAS_ERROR_INDICATOR);
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_NOT_COLLECTION, NULL, __FILE__, __LINE__);
 	return ER_FAILED;
       }
 
@@ -391,8 +387,7 @@ namespace cubmethod
     DB_DOMAIN *elem_domain = db_domain_set (domain);
     if (elem_type <= 0)
       {
-	// TODO: error handling
-	// ERROR_INFO_SET (CAS_ER_COLLECTION_DOMAIN, CAS_ERROR_INDICATOR);
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_COLLECTION_DOMAIN, NULL, __FILE__, __LINE__);
 	return ER_FAILED;
       }
 
@@ -400,8 +395,8 @@ namespace cubmethod
     error = db_get (obj, name, &val);
     if (error < 0)
       {
-	// TODO: error handling
-	return error;
+	m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     DB_COLLECTION *collection = NULL;
@@ -416,6 +411,7 @@ namespace cubmethod
       {
       case COL_GET:
 	/* TODO: not implemented at Server-Side JDBC */
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_NOT_IMPLEMENTED, NULL, __FILE__, __LINE__);
 	error = ER_FAILED;
 	break;
       case COL_SIZE:
@@ -456,8 +452,7 @@ namespace cubmethod
 	  }
 	break;
       default:
-	assert (false); // invalid command
-	error = ER_FAILED;
+	/* do nothing */
 	break;
       }
 
@@ -476,7 +471,7 @@ namespace cubmethod
 	int error = db_set_drop (col, ele_val);
 	if (error < 0)
 	  {
-	    // TODO: error handling
+	    m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
 	    return ER_FAILED;
 	  }
       }
@@ -493,7 +488,7 @@ namespace cubmethod
 	error = db_set_add (col, ele_val);
 	if (error < 0)
 	  {
-	    // TODO: error handling
+	    m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
 	    return ER_FAILED;
 	  }
       }
@@ -509,7 +504,7 @@ namespace cubmethod
 	int error = db_seq_drop (col, seq_index - 1);
 	if (error < 0)
 	  {
-	    // TODO: error handling
+	    m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
 	    return ER_FAILED;
 	  }
       }
@@ -526,7 +521,7 @@ namespace cubmethod
 	error = db_seq_insert (col, seq_index - 1, ele_val);
 	if (error < 0)
 	  {
-	    // TODO: error handling
+	    m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
 	    return ER_FAILED;
 	  }
       }
@@ -544,7 +539,7 @@ namespace cubmethod
 	error = db_seq_put (col, seq_index - 1, ele_val);
 	if (error < 0)
 	  {
-	    // TODO: error handling
+	    m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
 	    return ER_FAILED;
 	  }
       }

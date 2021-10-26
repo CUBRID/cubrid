@@ -37,13 +37,6 @@
 
 namespace cubmethod
 {
-  struct lob_handle
-  {
-    int db_type;
-    INT64 lob_size;
-    int locator_size;
-    char *locator;
-  };
   class callback_handler
   {
     public:
@@ -62,13 +55,6 @@ namespace cubmethod
       int oid_put (packing_unpacker &unpacker);
       int oid_cmd (packing_unpacker &unpacker);
       int collection_cmd (packing_unpacker &unpacker);
-
-// TODO: implement remaining functions on another issues
-#if 0
-      int lob_new (DB_TYPE lob_type);
-      int lob_write (DB_VALUE *lob_dbval, int64_t offset, int size,  char *data);
-      int lob_read (DB_TYPE lob_type);
-#endif
 
       void set_server_info (int rc, char *host);
       void free_query_handle_all (bool is_free);

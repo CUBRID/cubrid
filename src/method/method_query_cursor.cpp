@@ -34,12 +34,12 @@ namespace cubmethod
     m_is_oid_included = is_oid_included;
   }
 
-  void
+  int
   query_cursor::reset (QUERY_ID query_id)
   {
     if (query_id == NULL_QUERY_ID)
       {
-	// TODO: error handling
+	return ER_QPROC_UNKNOWN_QUERYID;
       }
     else if (query_id < SHRT_MAX)
       {
@@ -47,9 +47,7 @@ namespace cubmethod
 	QMGR_QUERY_ENTRY *query_entry_p = qmgr_get_query_entry (m_thread, query_id, tran_index);
 	if (query_entry_p == NULL)
 	  {
-	    // TODO: error handling
-	    // return ER_QPROC_UNKNOWN_QUERYID;
-	    assert (false);
+	    return ER_QPROC_UNKNOWN_QUERYID;
 	  }
 	else
 	  {
@@ -63,6 +61,7 @@ namespace cubmethod
 	// tfile_vfid_p = (QMGR_TEMP_FILE *) query_id;
 	assert (false);
       }
+    return NO_ERROR;
   }
 
   int
@@ -105,7 +104,7 @@ namespace cubmethod
 	    TP_DOMAIN *domain = m_list_id->type_list.domp[i];
 	    if (domain == NULL || domain->type == NULL)
 	      {
-		//TODO: error handling
+		//TODO: error handling?
 		qfile_close_scan (m_thread, &m_scan_id);
 	      }
 
@@ -156,7 +155,7 @@ namespace cubmethod
 		TP_DOMAIN *domain = m_list_id->type_list.domp[i];
 		if (domain == NULL || domain->type == NULL)
 		  {
-		    //TODO: error handling
+		    //TODO: error handling?
 		    qfile_close_scan (m_thread, &m_scan_id);
 		    return S_ERROR;
 		  }
