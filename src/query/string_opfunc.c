@@ -599,8 +599,9 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 
       if (!ignore_trailing_space)
 	{
-	  ti = (db_string1->domain.char_info.type == DB_TYPE_CHAR
-		|| db_string1->domain.char_info.type == DB_TYPE_NCHAR);
+	  ti = (db_string1->domain.char_info.type == DB_TYPE_CHAR || db_string1->domain.char_info.type == DB_TYPE_NCHAR)
+	    && (db_string2->domain.char_info.type == DB_TYPE_CHAR
+		|| db_string2->domain.char_info.type == DB_TYPE_NCHAR);
 	}
       if (ti)
 	{
@@ -700,7 +701,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
       else
 	{
 	  error_status = QSTR_SPLIT_KEY (collation_id, key_domain->is_desc, string1, size1, string2, size2, &key,
-					 &result_size, ti);
+					 &result_size, true);
 	}
       assert (error_status == NO_ERROR);
 
