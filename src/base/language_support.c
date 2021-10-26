@@ -4939,7 +4939,7 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
 	{
 	  w2 = lang_get_w_first_el (coll, str2, CAST_BUFLEN (str2_end - str2), &str2_next, ignore_trailing_space);
 	  str2 = str2_next;
-	  if (w2 != 0 && w2 != ASCII_SPACE)
+	  if (w2 != 0)
 	    {
 	      break;
 	    }
@@ -4956,7 +4956,7 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
 	{
 	  w1 = lang_get_w_first_el (coll, str1, CAST_BUFLEN (str1_end - str1), &str1_next, ignore_trailing_space);
 	  str1 = str1_next;
-	  if (w1 != 0 && w2 != ASCII_SPACE)
+	  if (w1 != 0)
 	    {
 	      break;
 	    }
@@ -5073,12 +5073,12 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
       w2 = UCA_GET_L1_W (uca_w_l13_2[ce_index2]);
 
       /* ignore zero weights (unless character is space) */
-      if (w1 == 0 && *str1 != ASCII_SPACE)
+      if (w1 == 0)
 	{
 	  ce_index1++;
 	  num_ce1--;
 
-	  if (w2 == 0 && *str2 != ASCII_SPACE)
+	  if (w2 == 0)
 	    {
 	      ce_index2++;
 	      num_ce2--;
@@ -5086,7 +5086,7 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 
 	  goto read_weights1;
 	}
-      else if (w2 == 0 && *str2 != ASCII_SPACE)
+      else if (w2 == 0)
 	{
 	  ce_index2++;
 	  num_ce2--;
@@ -5229,7 +5229,7 @@ lang_split_key_euckr (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 	  str2_next = intl_nextchar_euc (str2, &char2_size);
 	  if (*str2 == ASCII_SPACE || *str2 == 0 || (*str2 == EUC_SPACE && char2_size == 2 && *(str2 + 1) == EUC_SPACE))
 	    {
-	      is_zero_weight = 1;
+	      is_zero_weight = (weight[SPACE] == 0);
 	    }
 	  str2 = str2_next;
 	  if (!is_zero_weight)
@@ -5252,7 +5252,7 @@ lang_split_key_euckr (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 	  str1_next = intl_nextchar_euc (str1, &char1_size);
 	  if (*str1 == ASCII_SPACE || *str1 == 0 || (*str1 == EUC_SPACE && char1_size == 2 && *(str1 + 1) == EUC_SPACE))
 	    {
-	      is_zero_weight = 1;
+	      is_zero_weight = (weight[SPACE] == 0);
 	    }
 	  str1 = str1_next;
 	  if (!is_zero_weight)
