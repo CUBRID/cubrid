@@ -35,7 +35,7 @@ namespace cublog
       ~meta () = default;
 
       void load_from_file (std::FILE *stream);       // load meta from meta log file
-      void flush_to_file (std::FILE *stream);        // write meta to disk
+      void flush_to_file (std::FILE *stream) const;  // write meta to disk
 
       bool is_loaded_from_file () const;
 
