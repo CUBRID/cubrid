@@ -161,7 +161,7 @@ namespace cubmethod
     else
       {
 	// add to statement handler cache
-	m_query_handler_map.emplace (sql, handler);
+	m_query_handler_map.emplace (sql, handler->get_id());
 	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
       }
   }
