@@ -57,7 +57,7 @@ namespace cublog
       void pack (cubpacking::packer &serializer) const override;
       void unpack (cubpacking::unpacker &deserializer) override;
 
-      void clean_contents ();
+      void clear ();
 
     private:
       using checkpoint_container_t = std::map<log_lsa, checkpoint_info>;

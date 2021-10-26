@@ -130,7 +130,7 @@ namespace cublog
 
     if (clean_after_flush)
       {
-	clean_contents ();
+	clear ();
       }
   }
 
@@ -212,7 +212,7 @@ namespace cublog
   }
 
   void
-  meta::clean_contents ()
+  meta::clear ()
   {
     m_loaded_from_file = false;
     m_clean_shutdown = false;
