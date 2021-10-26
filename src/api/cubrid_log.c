@@ -31,8 +31,16 @@
 #include <arpa/inet.h>
 #endif /* WINDOWS */
 
+#if defined(WINDOWS)
+#include <io.h>
+#else /* WINDOWS */
+#include <unistd.h>
+#endif /* WINDOWS */
+
 #include <assert.h>
 #include <limits.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "authenticate.h"
 #include "connection_cl.h"
@@ -45,15 +53,24 @@
 #include "dbtype_def.h"
 #include "porting.h"
 
-#define CUBRID_LOG_ERROR_HANDLING(e, v) \
+#define CUBRID_LOG_TRACELOG(msg, ...) \
+  do \
+    { \
+      if(g_trace_log) \
+        { \
+          cubrid_log_check_tracelog (); \
+          fprintf (g_trace_log,"FILE : %s, LINE : %d\n" msg "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
+        } \
+    } \
+  while(0)
+
+#define CUBRID_LOG_ERROR_HANDLING(e) \
   do\
     {\
       (err_code) = (e); \
       if(g_trace_log)\
         {\
-          sprintf(v, "FILE : %s, LINE : %d \n", __FILE__, __LINE__); \
-          cubrid_log_set_tracelog_pointer (v); \
-          fprintf (g_trace_log, v); \
+          CUBRID_LOG_TRACELOG ("ERROR : (%d) in %s", e, __func__); \
         }\
       goto cubrid_log_error; \
     }\
@@ -90,9 +107,15 @@ int g_extraction_table_count = 0;
 char **g_extraction_user;
 int g_extraction_user_count = 0;
 
+char g_dbname[CUBRID_LOG_MAX_DBNAME_LEN] = "";
+
 FILE *g_trace_log = NULL;
-char g_trace_log_path[PATH_MAX + 1] = "./cubrid_tracelog.err";
+char g_trace_log_base[PATH_MAX + 1] = ".";
+char g_trace_log_path[PATH_MAX + 1] = "";
 int g_trace_log_level = 0;
+int g_trace_log_prev = 0;
+int g_trace_log_curr = 0;
+int g_num_trace_log = 0;
 int64_t g_trace_log_filesize = 10 * 1024 * 1024;	/* 10 MB */
 
 LOG_LSA g_next_lsa = LSA_INITIALIZER;
@@ -102,6 +125,24 @@ int g_log_infos_size = 0;
 
 CUBRID_LOG_ITEM *g_log_items = NULL;
 int g_log_items_count = 0;
+
+char *
+convert_data_item_type_to_string (int data_item_type)
+{
+  switch (data_item_type)
+    {
+    case 0:
+      return "DDL";
+    case 1:
+      return "DML";
+    case 2:
+      return "DCL";
+    case 3:
+      return "TIMER";
+    default:
+      assert (0);
+    }
+}
 
 /*
  * cubrid_log_set_connection_timeout () -
@@ -149,23 +190,57 @@ cubrid_log_set_extraction_timeout (int timeout)
   return CUBRID_LOG_SUCCESS;
 }
 
+static void
+cubrid_log_make_new_tracelog ()
+{
+  if (g_trace_log != NULL)
+    {
+      fclose (g_trace_log);
+    }
+
+  g_trace_log_curr++;
+
+  if (g_num_trace_log == 0)
+    {
+      g_trace_log_prev = 1;
+    }
+
+  if (g_num_trace_log == 2)
+    {
+      char prev_path[PATH_MAX + 1] = "";
+      snprintf (prev_path, PATH_MAX + 1, "%s/%s_tracelog_%d.err", g_trace_log_base, g_dbname, g_trace_log_prev);
+      if (remove (prev_path) != 0)
+	{
+	  return;
+	}
+
+      g_trace_log_prev++;
+    }
+  else
+    {
+      g_num_trace_log++;
+    }
+
+  snprintf (g_trace_log_path, PATH_MAX + 1, "%s/%s_tracelog_%d.err", g_trace_log_base, g_dbname, g_trace_log_curr);
+
+  g_trace_log = fopen (g_trace_log_path, "w+");
+}
+
 /*
  * cubrid_log_set_tracelog_pointer () -
  *   return:
  *   logsize(in):
  */
 static void
-cubrid_log_set_tracelog_pointer (char buf[])
+cubrid_log_check_tracelog ()
 {
   int64_t curr_size = 0;
-  int64_t tracelog_size = 0;
 
   curr_size = ftell (g_trace_log);
-  tracelog_size = strlen (buf);
 
-  if (curr_size + tracelog_size > g_trace_log_filesize)
+  if (curr_size > g_trace_log_filesize)
     {
-      fseek (g_trace_log, 0, SEEK_SET);
+      cubrid_log_make_new_tracelog ();
     }
 }
 
@@ -184,12 +259,22 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
 
-  if (strlen (path) > PATH_MAX)
+  if (path == NULL || strlen (path) > PATH_MAX)
     {
       return CUBRID_LOG_INVALID_PATH;
     }
+  else
+    {
+      struct stat statbuf;
+      stat (path, &statbuf);
 
-  if (level < 0 || level > 2)
+      if (!S_ISDIR (statbuf.st_mode))
+	{
+	  return CUBRID_LOG_INVALID_PATH;
+	}
+    }
+
+  if (level < 0 || level > 3)
     {
       return CUBRID_LOG_INVALID_LEVEL;
     }
@@ -206,14 +291,9 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
 	}
     }
 
-  snprintf (g_trace_log_path, PATH_MAX + 1, "%s", path);
+  snprintf (g_trace_log_base, PATH_MAX + 1, "%s", path);
   g_trace_log_level = level;
   g_trace_log_filesize = filesize * 1024 * 1024;
-  g_trace_log = fopen (path, "a+");
-  if (g_trace_log == NULL)
-    {
-      return CUBRID_LOG_INVALID_PATH;
-    }
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -345,37 +425,35 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
 
-  char trace_errbuf[1024];
-
   g_conn_entry = css_make_conn (INVALID_SOCKET);
   if (g_conn_entry == NULL)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   if (css_common_connect
       (host, g_conn_entry, DATA_REQUEST, dbname, strlen (dbname) + 1, port, g_connection_timeout, &rid, true) == NULL)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   css_queue_user_data_buffer (g_conn_entry, rid, sizeof (int), (char *) &reason);
 
   if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   if (recv_data == NULL || recv_data_size != sizeof (int))
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   reason = ntohl (*(int *) recv_data);
 
   if (reason != SERVER_CONNECTED)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   if (recv_data != NULL && recv_data != (char *) &reason)
@@ -426,8 +504,6 @@ cubrid_log_send_configurations (void)
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
 
-  char trace_errbuf[1024];
-
   request_size = OR_INT_SIZE * 5;
 
   for (i = 0; i < g_extraction_user_count; i++)
@@ -440,7 +516,7 @@ cubrid_log_send_configurations (void)
   a_request = (char *) malloc (request_size + MAX_ALIGNMENT);
   if (a_request == NULL)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC);
     }
 
   request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
@@ -467,28 +543,28 @@ cubrid_log_send_configurations (void)
   if (css_send_request_with_data_buffer
       (g_conn_entry, NET_SERVER_CDC_START_SESSION, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   if (recv_data == NULL || recv_data_size != sizeof (int))
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   or_unpack_int (recv_data, &reply_code);
 
   if (reply_code == ER_CDC_NOT_AVAILABLE)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_UNAVAILABLE_CDC_SERVER, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_UNAVAILABLE_CDC_SERVER);
     }
   else if (reply_code != NO_ERROR)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   free_and_init (a_request);
@@ -569,66 +645,64 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *p
 {
   int err_code;
 
-  char trace_errbuf[1024];
+  strncpy (g_dbname, dbname, PATH_MAX + 1);
 
-  if (g_trace_log == NULL)
+  cubrid_log_make_new_tracelog ();
+
+  if (g_trace_log_level > 0)
     {
-      g_trace_log = fopen (g_trace_log_path, "a+");
-      if (g_trace_log == NULL)
-	{
-	  err_code = CUBRID_LOG_FAILED_CONNECT;
-	  goto cubrid_log_error;
-	}
+      CUBRID_LOG_TRACELOG ("%s : input values are host (%s), port (%d), dbname (%s), id (%s)", __func__, host, port,
+			   dbname, id);
     }
 
   if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE);
     }
 
   if (host == NULL)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_HOST, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_HOST);
     }
 
   if (port < 0 || port > USHRT_MAX)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PORT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PORT);
     }
 
   if (dbname == NULL)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_DBNAME, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_DBNAME);
     }
 
   if (id == NULL)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_ID, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_ID);
     }
 
   if (password == NULL)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PASSWORD, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PASSWORD);
     }
 
   if (cubrid_log_db_login (host, dbname, id, password) != CUBRID_LOG_SUCCESS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN);
     }
 
   if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   if (cubrid_log_connect_server_internal (host, port, dbname) != CUBRID_LOG_SUCCESS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   if (cubrid_log_send_configurations () != CUBRID_LOG_SUCCESS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   g_stage = CUBRID_LOG_STAGE_PREPARATION;
@@ -658,25 +732,28 @@ cubrid_log_find_start_lsa (time_t * timestamp, LOG_LSA * lsa)
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
 
-  char trace_errbuf[1024];
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : input value is timestamp (%lld)", __func__, *timestamp);
+    }
 
   or_pack_int64 (request, (INT64) (*timestamp));
 
   if (css_send_request_with_data_buffer
       (g_conn_entry, NET_SERVER_CDC_FIND_LSA, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   /* extraction timeout will be replaced when it is defined */
   if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   if (recv_data == NULL || recv_data_size != OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE + OR_INT64_SIZE)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   ptr = or_unpack_int (recv_data, &reply_code);
@@ -707,7 +784,13 @@ cubrid_log_find_start_lsa (time_t * timestamp, LOG_LSA * lsa)
     }
   else
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND);
+    }
+
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : output values are timestamp (%lld), lsa (%lld | %d)", __func__, *timestamp,
+			   lsa->pageid, lsa->offset);
     }
 
 cubrid_log_error:
@@ -738,32 +821,40 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
 {
   int err_code;
 
-  char trace_errbuf[1024];
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : input values are timestamp (%lld)", __func__, *timestamp);
+    }
 
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE);
     }
 
   if (timestamp == NULL || *timestamp < 0)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_TIMESTAMP, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_TIMESTAMP);
     }
 
   if (lsa == NULL)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_OUT_PARAM, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_OUT_PARAM);
     }
 
   if (LSA_ISNULL (&g_next_lsa))
     {
       if (cubrid_log_find_start_lsa (timestamp, &g_next_lsa) != CUBRID_LOG_SUCCESS)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND);
 	}
     }
 
   memcpy (lsa, &g_next_lsa, sizeof (uint64_t));
+
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : output values are timestamp (%lld), lsa (%lld)", __func__, *timestamp, g_next_lsa);
+    }
 
   return CUBRID_LOG_SUCCESS;
 
@@ -791,7 +882,10 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
   int err_code;
   int rc = NO_ERROR;
 
-  char trace_errbuf[1024];
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : input value is lsa (%lld | %d)", __func__, next_lsa->pageid, next_lsa->offset);
+    }
 
   or_pack_log_lsa (request, next_lsa);
 
@@ -799,18 +893,18 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
   if (css_send_request_with_data_buffer
       (g_conn_entry, NET_SERVER_CDC_GET_LOGINFO_METADATA, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   /* extraction timeout will be modified when it is defined */
   if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   if (recv_data == NULL || recv_data_size != OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE + OR_INT_SIZE + OR_INT_SIZE)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   ptr = or_unpack_int (recv_data, &reply_code);
@@ -823,11 +917,11 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 	}
       else if (reply_code == ER_CDC_EXTRACTION_TIMEOUT)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_EXTRACTION_TIMEOUT, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_EXTRACTION_TIMEOUT);
 	}
       else if (reply_code == ER_CDC_INVALID_LOG_LSA)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
 	}
     }
 
@@ -846,6 +940,12 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
       goto cubrid_log_end;
     }
 
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : extract infos are next_lsa (%lld | %d), num_infos (%d), total_length (%d)", __func__,
+			   next_lsa->pageid, next_lsa->offset, *num_infos, *total_length);
+    }
+
   if (g_log_infos_size < *total_length)
     {
       char *tmp_log_infos = NULL;
@@ -853,7 +953,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
       tmp_log_infos = (char *) realloc ((void *) g_log_infos, *total_length + MAX_ALIGNMENT);
       if (tmp_log_infos == NULL)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC);
 	}
       else
 	{
@@ -872,20 +972,26 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
       if (css_send_request_with_data_buffer
 	  (g_conn_entry, NET_SERVER_CDC_GET_LOGINFO, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
 	}
 
       /* extraction timeout will be modified when it is defined */
       if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
 	}
 
       if (recv_data == NULL || recv_data_size != *total_length)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT);
 	}
     }
+
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : extraction successed", __func__);
+    }
+
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_end:
@@ -914,8 +1020,6 @@ cubrid_log_make_ddl (char **data_info, DDL * ddl)
 {
   char *ptr;
 
-  char trace_errbuf[1024];
-
   ptr = *data_info;
 
   ptr = or_unpack_int (ptr, &ddl->ddl_type);
@@ -938,8 +1042,6 @@ cubrid_log_make_dml (char **data_info, DML * dml)
   int i, pack_func_code;
   int err_code;
 
-  char trace_errbuf[1024];
-
   ptr = *data_info;
 
   ptr = or_unpack_int (ptr, &dml->dml_type);
@@ -952,7 +1054,7 @@ cubrid_log_make_dml (char **data_info, DML * dml)
       dml->changed_column_index = (int *) malloc (sizeof (int) * dml->num_changed_column);
       if (dml->changed_column_index == NULL)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC);
 	}
 
       for (i = 0; i < dml->num_changed_column; i++)
@@ -963,13 +1065,13 @@ cubrid_log_make_dml (char **data_info, DML * dml)
       dml->changed_column_data = (char **) malloc (sizeof (char *) * dml->num_changed_column);
       if (dml->changed_column_data == NULL)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC);
 	}
 
       dml->changed_column_data_len = (int *) malloc (sizeof (int) * dml->num_changed_column);
       if (dml->changed_column_data_len == NULL)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC);
 	}
 
       for (i = 0; i < dml->num_changed_column; i++)
@@ -1051,7 +1153,7 @@ cubrid_log_make_dml (char **data_info, DML * dml)
       dml->cond_column_index = (int *) malloc (sizeof (int) * dml->num_cond_column);
       if (dml->cond_column_index == NULL)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC);
 	}
 
       for (i = 0; i < dml->num_cond_column; i++)
@@ -1062,13 +1164,13 @@ cubrid_log_make_dml (char **data_info, DML * dml)
       dml->cond_column_data = (char **) malloc (sizeof (char *) * dml->num_cond_column);
       if (dml->cond_column_data == NULL)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC);
 	}
 
       dml->cond_column_data_len = (int *) malloc (sizeof (int) * dml->num_cond_column);
       if (dml->cond_column_data_len == NULL)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC);
 	}
 
       for (i = 0; i < dml->num_cond_column; i++)
@@ -1178,14 +1280,17 @@ cubrid_log_make_data_item (char **data_info, DATA_ITEM_TYPE data_item_type, CUBR
 {
   int err_code;
 
-  char trace_errbuf[1024];
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : data item type is %d", __func__, convert_data_item_type_to_string (data_item_type));
+    }
 
   switch (data_item_type)
     {
     case DATA_ITEM_TYPE_DDL:
       if ((err_code = cubrid_log_make_ddl (data_info, &data_item->ddl)) != CUBRID_LOG_SUCCESS)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (err_code, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (err_code);
 	}
 
       break;
@@ -1193,7 +1298,7 @@ cubrid_log_make_data_item (char **data_info, DATA_ITEM_TYPE data_item_type, CUBR
     case DATA_ITEM_TYPE_DML:
       if ((err_code = cubrid_log_make_dml (data_info, &data_item->dml)) != CUBRID_LOG_SUCCESS)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (err_code, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (err_code);
 	}
 
       break;
@@ -1201,7 +1306,7 @@ cubrid_log_make_data_item (char **data_info, DATA_ITEM_TYPE data_item_type, CUBR
     case DATA_ITEM_TYPE_DCL:
       if ((err_code = cubrid_log_make_dcl (data_info, &data_item->dcl)) != CUBRID_LOG_SUCCESS)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (err_code, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (err_code);
 	}
 
       break;
@@ -1209,7 +1314,7 @@ cubrid_log_make_data_item (char **data_info, DATA_ITEM_TYPE data_item_type, CUBR
     case DATA_ITEM_TYPE_TIMER:
       if ((err_code = cubrid_log_make_timer (data_info, &data_item->timer)) != CUBRID_LOG_SUCCESS)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (err_code, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (err_code);
 	}
 
       break;
@@ -1234,8 +1339,6 @@ cubrid_log_make_log_item (char **log_info, CUBRID_LOG_ITEM * log_item)
   int err_code;
   int rc;
 
-  char trace_errbuf[1024];
-
   ptr = *log_info;
 
   ptr = or_unpack_int (ptr, &log_info_len);
@@ -1247,7 +1350,7 @@ cubrid_log_make_log_item (char **log_info, CUBRID_LOG_ITEM * log_item)
   if ((rc = cubrid_log_make_data_item (&ptr, (DATA_ITEM_TYPE) log_item->data_item_type, &log_item->data_item)) !=
       CUBRID_LOG_SUCCESS)
     {
-      CUBRID_LOG_ERROR_HANDLING (rc, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (rc);
     }
 
   *log_info = ptr;
@@ -1268,7 +1371,11 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
   int err_code;
   int rc;
 
-  char trace_errbuf[1024];
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : input values are num_infos (%d), total_length (%d)", __func__, num_infos,
+			   total_length);
+    }
 
   if (g_log_items_count < num_infos)
     {
@@ -1277,7 +1384,7 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
       tmp_log_items = (CUBRID_LOG_ITEM *) realloc ((void *) g_log_items, sizeof (CUBRID_LOG_ITEM) * num_infos);
       if (tmp_log_items == NULL)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_MALLOC);
 	}
       else
 	{
@@ -1293,7 +1400,7 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
     {
       if ((rc = cubrid_log_make_log_item (&ptr, &g_log_items[i]) != CUBRID_LOG_SUCCESS))
 	{
-	  CUBRID_LOG_ERROR_HANDLING (rc, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (rc);
 	}
 
       g_log_items[i].next = &g_log_items[i + 1];
@@ -1305,6 +1412,11 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
 
   *log_item_list = g_log_items;
   *list_size = num_infos;
+
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : output value is list_size (%d)", __func__, *list_size);
+    }
 
   return CUBRID_LOG_SUCCESS;
 
@@ -1327,16 +1439,19 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
   int err_code;
   int rc;
 
-  char trace_errbuf[1024];
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : current stage (%d), input value is lsa (%lld)", __func__, g_stage, *lsa);
+    }
 
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE);
     }
 
   if (lsa == NULL || log_item_list == NULL || list_size == NULL)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_OUT_PARAM, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_OUT_PARAM);
     }
 
   memcpy (&g_next_lsa, lsa, sizeof (LOG_LSA));
@@ -1345,17 +1460,22 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 
   if (rc != CUBRID_LOG_SUCCESS)
     {
-      CUBRID_LOG_ERROR_HANDLING (rc, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (rc);
     }
 
   if ((rc = cubrid_log_make_log_item_list (num_infos, total_length, log_item_list, list_size)) != CUBRID_LOG_SUCCESS)
     {
-      CUBRID_LOG_ERROR_HANDLING (rc, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (rc);
     }
 
   memcpy (lsa, &g_next_lsa, sizeof (uint64_t));
 
   g_stage = CUBRID_LOG_STAGE_EXTRACTION;
+
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : output value is lsa (%lld), list_size (%d)", __func__, *lsa, *list_size);
+    }
 
   return CUBRID_LOG_SUCCESS;
 
@@ -1368,6 +1488,12 @@ static int
 cubrid_log_clear_data_item (DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * data_item)
 {
   int err_code;
+
+  if (g_trace_log_level > 0)
+    {
+      CUBRID_LOG_TRACELOG ("%s : data item type to clear is %s", __func__,
+			   convert_data_item_type_to_string (data_item_type));
+    }
 
   switch (data_item_type)
     {
@@ -1425,16 +1551,14 @@ cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
   int err_code;
   int rc;
 
-  char trace_errbuf[1024];
-
   if (g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE);
     }
 
   if (log_item_list == NULL)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LOGITEM_LIST, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LOGITEM_LIST);
     }
 
   for (i = 0; i < g_log_items_count; i++)	// if g_log_items_count == 0 then nothing to do
@@ -1443,7 +1567,7 @@ cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
 	   cubrid_log_clear_data_item ((DATA_ITEM_TYPE) g_log_items[i].data_item_type,
 				       &g_log_items[i].data_item)) != CUBRID_LOG_SUCCESS)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DEALLOC, trace_errbuf);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DEALLOC);
 	}
     }
 
@@ -1471,29 +1595,27 @@ cubrid_log_disconnect_server (void)
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
 
-  char trace_errbuf[1024];
-
   if (css_send_request_with_data_buffer
       (g_conn_entry, NET_SERVER_CDC_END_SESSION, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   if (recv_data == NULL || recv_data_size != OR_INT_SIZE)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
   or_unpack_int (recv_data, &reply_code);
 
   if (reply_code != NO_ERROR)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT);
     }
 
   if (recv_data != NULL && recv_data != reply)
@@ -1560,9 +1682,14 @@ cubrid_log_reset_globals (void)
 
   g_extraction_user_count = 0;
 
-  snprintf (g_trace_log_path, PATH_MAX + 1, "%s", "./cubrid_tracelog.err");
+  memset (g_trace_log_path, 0, PATH_MAX + 1);
+  memset (g_trace_log_base, 0, PATH_MAX + 1);
+  snprintf (g_trace_log_base, PATH_MAX + 1, "%s", ".");
   g_trace_log_level = 0;
   g_trace_log_filesize = 10 * 1024 * 1024;
+  g_trace_log_prev = 0;
+  g_trace_log_curr = 0;
+  g_num_trace_log = 0;
 
   g_next_lsa = LSA_INITIALIZER;
 
@@ -1586,16 +1713,14 @@ cubrid_log_finalize (void)
 {
   int err_code;
 
-  char trace_errbuf[1024];
-
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE);
     }
 
   if (cubrid_log_disconnect_server () != CUBRID_LOG_SUCCESS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT, trace_errbuf);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT);
     }
 
   (void) cubrid_log_reset_globals ();
