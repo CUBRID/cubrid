@@ -1360,7 +1360,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1299 Log recovery: %1$s Phase is being finished up.
 1300 Log recovery: %1$s Phase is finished.
 1301 Log recovery: %1$s progress: (%2$lld/%3$lld), %4$.2f percent, elapsed time: %5$.2f (s), estimated remaining time: %6$.2f (s).
-1302 The active log volume ($1%s) is too sane to recreate. Please run without the --recreate-log option or remove the active log volume manually if you REALLY want.
+1302 The active log volume (%1$s) is too sane to recreate. If you remove the active log, it could cause an unexpected and irreversible problem.
 
 1303 Last Error
 

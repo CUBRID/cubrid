@@ -626,6 +626,7 @@ valid options:\n\
 
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Please run without the --recreate-log option or remove the active log volume manually.\n
 60 \
 emergency_patchlog: Patch a database in case of emergency.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\

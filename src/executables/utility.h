@@ -311,6 +311,7 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_PATCHDB */
 typedef enum
 {
+  PATCHDB_RECREATE_FAILURE = 1,
   PATCHDB_MSG_USAGE = 60
 } MSGCAT_PATCHDB_MSG;
 
