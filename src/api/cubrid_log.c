@@ -76,6 +76,10 @@
     }\
   while(0)
 
+#ifndef S_ISDIR
+#define S_ISDIR(mode)  (((mode) & S_IFMT) == S_IFDIR)
+#endif
+
 typedef enum
 {
   CUBRID_LOG_STAGE_CONFIGURATION,
