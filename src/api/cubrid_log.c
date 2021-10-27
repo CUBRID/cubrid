@@ -59,7 +59,8 @@
       if(g_trace_log) \
         { \
           cubrid_log_check_tracelog (); \
-          fprintf (g_trace_log,"FILE : %s, LINE : %d\n" msg "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
+          cubrid_log_get_time (); \
+          fprintf (g_trace_log,"[%s][FILE:%s][LINE:%d]\n" msg "\n", g_curr_time, __FILE__, __LINE__, ##__VA_ARGS__); \
         } \
     } \
   while(0)
@@ -70,7 +71,7 @@
       (err_code) = (e); \
       if(g_trace_log)\
         {\
-          CUBRID_LOG_TRACELOG ("ERROR : (%d) in %s", e, __func__); \
+          CUBRID_LOG_TRACELOG ("[FUNC:%s][ERROR:%d]", __func__, e); \
         }\
       goto cubrid_log_error; \
     }\
@@ -100,6 +101,8 @@ CUBRID_LOG_STAGE g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
 
 CSS_CONN_ENTRY *g_conn_entry;
 
+char g_curr_time[256];
+
 int g_connection_timeout = 300;	/* min/max: -1/360 (sec) */
 int g_extraction_timeout = 300;	/* min/max: -1/360 (sec) */
 int g_max_log_item = 512;	/* min/max: 1/1024 */
@@ -111,14 +114,13 @@ int g_extraction_table_count = 0;
 char **g_extraction_user;
 int g_extraction_user_count = 0;
 
-char g_dbname[CUBRID_LOG_MAX_DBNAME_LEN] = "";
+char g_dbname[CUBRID_LOG_MAX_DBNAME_LEN + 1] = "";
 
 FILE *g_trace_log = NULL;
 char g_trace_log_base[PATH_MAX + 1] = ".";
 char g_trace_log_path[PATH_MAX + 1] = "";
+char g_trace_log_path_prev[PATH_MAX + 1] = "";
 int g_trace_log_level = 0;
-int g_trace_log_prev = 0;
-int g_trace_log_curr = 0;
 int g_num_trace_log = 0;
 int64_t g_trace_log_filesize = 10 * 1024 * 1024;	/* 10 MB */
 
@@ -130,8 +132,33 @@ int g_log_infos_size = 0;
 CUBRID_LOG_ITEM *g_log_items = NULL;
 int g_log_items_count = 0;
 
+static void cubrid_log_check_tracelog ();
+
+static void
+cubrid_log_get_time ()
+{
+  time_t er_time;
+  struct tm er_tm;
+  struct tm *er_tm_p = &er_tm;
+  struct timeval tv;
+
+  er_time = time (NULL);
+
+  er_tm_p = localtime_r (&er_time, &er_tm);
+  if (er_tm_p == NULL)
+    {
+      strcpy (g_curr_time, "00/00/00 00:00:00.000");
+    }
+  else
+    {
+      gettimeofday (&tv, NULL);
+      snprintf (g_curr_time + strftime (g_curr_time, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255, ".%03ld",
+		tv.tv_usec / 1000);
+    }
+}
+
 char *
-convert_data_item_type_to_string (int data_item_type)
+data_item_type_to_string (int data_item_type)
 {
   switch (data_item_type)
     {
@@ -197,54 +224,81 @@ cubrid_log_set_extraction_timeout (int timeout)
 static void
 cubrid_log_make_new_tracelog ()
 {
+  time_t er_time;
+  struct tm er_tm;
+  struct tm *er_tm_p = &er_tm;
+  struct timeval tv;
+
+  char curr_time[256];
+
+  er_time = time (NULL);
+
+  er_tm_p = localtime_r (&er_time, &er_tm);
+  if (er_tm_p == NULL)
+    {
+      strcpy (curr_time, "00000000_0000");
+    }
+  else
+    {
+      strftime (curr_time, sizeof (curr_time), "%Y%m%d_%H%M", er_tm_p);
+    }
+
   if (g_trace_log != NULL)
     {
       fclose (g_trace_log);
-    }
-
-  g_trace_log_curr++;
-
-  if (g_num_trace_log == 0)
-    {
-      g_trace_log_prev = 1;
+      g_trace_log = NULL;
     }
 
   if (g_num_trace_log == 2)
     {
-      char prev_path[PATH_MAX + 1] = "";
-      snprintf (prev_path, PATH_MAX + 1, "%s/%s_tracelog_%d.err", g_trace_log_base, g_dbname, g_trace_log_prev);
-      if (remove (prev_path) != 0)
+      if (remove (g_trace_log_path_prev) != 0)
 	{
 	  return;
 	}
-
-      g_trace_log_prev++;
+      memcpy (g_trace_log_path_prev, g_trace_log_path, PATH_MAX + 1);
     }
   else
     {
+      if (g_num_trace_log != 0)
+	{
+	  memcpy (g_trace_log_path_prev, g_trace_log_path, PATH_MAX + 1);
+	}
+
       g_num_trace_log++;
     }
 
-  snprintf (g_trace_log_path, PATH_MAX + 1, "%s/%s_tracelog_%d.err", g_trace_log_base, g_dbname, g_trace_log_curr);
+  snprintf (g_trace_log_path, PATH_MAX + 1, "%s/%s_cubridlog_%s.err", g_trace_log_base, g_dbname, curr_time);
 
-  g_trace_log = fopen (g_trace_log_path, "w+");
+  g_trace_log = fopen (g_trace_log_path, "a+");
 }
 
-/*
- * cubrid_log_set_tracelog_pointer () -
- *   return:
- *   logsize(in):
- */
 static void
 cubrid_log_check_tracelog ()
 {
   int64_t curr_size = 0;
 
-  curr_size = ftell (g_trace_log);
-
-  if (curr_size > g_trace_log_filesize)
+  if (g_trace_log == NULL)
     {
-      cubrid_log_make_new_tracelog ();
+      if (g_num_trace_log > 0 && strlen (g_trace_log_path) != 0)
+	{
+	  /* if the information of the trace log exists, reuse it
+	   * Not to create multiple tracelog file in one program that calls several series of
+	   * cubrid_log_connect_server - cubrid_log_finalize() */
+
+	  g_trace_log = fopen (g_trace_log_path, "a+");
+	}
+      else
+	{
+	  cubrid_log_make_new_tracelog ();
+	}
+    }
+  else
+    {
+      curr_size = ftell (g_trace_log);
+      if (curr_size >= g_trace_log_filesize)
+	{
+	  cubrid_log_make_new_tracelog ();
+	}
     }
 }
 
@@ -293,6 +347,18 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
 	{
 	  return CUBRID_LOG_INVALID_FILESIZE;
 	}
+    }
+
+  if (g_num_trace_log > 0)
+    {
+      /* These variables are not finalized at cubrid_log_finalize()
+       * for not creating additional tracelog files if cubrid_log_connect_server is called right after
+       * cubrid_log_finalize in the same program */
+
+      memset (g_trace_log_base, 0, PATH_MAX + 1);
+      memset (g_trace_log_path, 0, PATH_MAX + 1);
+      memset (g_trace_log_path_prev, 0, PATH_MAX + 1);
+      g_num_trace_log = 0;
     }
 
   snprintf (g_trace_log_base, PATH_MAX + 1, "%s", path);
@@ -649,14 +715,14 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *p
 {
   int err_code;
 
-  strncpy (g_dbname, dbname, PATH_MAX + 1);
+  strncpy (g_dbname, dbname, CUBRID_LOG_MAX_DBNAME_LEN);
 
-  cubrid_log_make_new_tracelog ();
+  cubrid_log_check_tracelog ();
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : input values are host (%s), port (%d), dbname (%s), id (%s)", __func__, host, port,
-			   dbname, id);
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][INPUT] stage (%d), host (%s), port (%d), dbname (%s), id (%s)", __func__, g_stage,
+			   host, port, dbname, id);
     }
 
   if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
@@ -738,7 +804,7 @@ cubrid_log_find_start_lsa (time_t * timestamp, LOG_LSA * lsa)
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : input value is timestamp (%lld)", __func__, *timestamp);
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][INPUT] timestamp (%lld)", __func__, *timestamp);
     }
 
   or_pack_int64 (request, (INT64) (*timestamp));
@@ -793,7 +859,7 @@ cubrid_log_find_start_lsa (time_t * timestamp, LOG_LSA * lsa)
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : output values are timestamp (%lld), lsa (%lld | %d)", __func__, *timestamp,
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][OUTPUT] timestamp (%lld), lsa (%lld | %d)", __func__, *timestamp,
 			   lsa->pageid, lsa->offset);
     }
 
@@ -827,7 +893,7 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : input values are timestamp (%lld)", __func__, *timestamp);
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][INPUT] stage (%d), timestamp (%lld)", __func__, g_stage, *timestamp);
     }
 
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION)
@@ -857,7 +923,7 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : output values are timestamp (%lld), lsa (%lld)", __func__, *timestamp, g_next_lsa);
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][OUTPUT] timestamp (%lld), lsa (%lld)", __func__, *timestamp, g_next_lsa);
     }
 
   return CUBRID_LOG_SUCCESS;
@@ -888,7 +954,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : input value is lsa (%lld | %d)", __func__, next_lsa->pageid, next_lsa->offset);
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][INPUT] lsa (%lld | %d)", __func__, next_lsa->pageid, next_lsa->offset);
     }
 
   or_pack_log_lsa (request, next_lsa);
@@ -946,8 +1012,8 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : extract infos are next_lsa (%lld | %d), num_infos (%d), total_length (%d)", __func__,
-			   next_lsa->pageid, next_lsa->offset, *num_infos, *total_length);
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][MID] extract infos are next_lsa (%lld | %d), num_infos (%d), total_length (%d)",
+			   __func__, next_lsa->pageid, next_lsa->offset, *num_infos, *total_length);
     }
 
   if (g_log_infos_size < *total_length)
@@ -993,7 +1059,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : extraction successed", __func__);
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][END]", __func__);
     }
 
   return CUBRID_LOG_SUCCESS;
@@ -1286,7 +1352,7 @@ cubrid_log_make_data_item (char **data_info, DATA_ITEM_TYPE data_item_type, CUBR
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : data item type is %s", __func__, convert_data_item_type_to_string (data_item_type));
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][INPUT] data item type (%s)", __func__, data_item_type_to_string (data_item_type));
     }
 
   switch (data_item_type)
@@ -1377,8 +1443,7 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : input values are num_infos (%d), total_length (%d)", __func__, num_infos,
-			   total_length);
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][INPUT] num_infos (%d), total_length (%d)", __func__, num_infos, total_length);
     }
 
   if (g_log_items_count < num_infos)
@@ -1419,7 +1484,7 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : output value is list_size (%d)", __func__, *list_size);
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][OUTPUT] list_size (%d)", __func__, *list_size);
     }
 
   return CUBRID_LOG_SUCCESS;
@@ -1445,7 +1510,7 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : current stage (%d), input value is lsa (%lld)", __func__, g_stage, *lsa);
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][INPUT] current stage (%d), lsa (%lld)", __func__, g_stage, *lsa);
     }
 
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
@@ -1478,7 +1543,7 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : output value is lsa (%lld), list_size (%d)", __func__, *lsa, *list_size);
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][OUTPUT] lsa (%lld), list_size (%d)", __func__, *lsa, *list_size);
     }
 
   return CUBRID_LOG_SUCCESS;
@@ -1495,8 +1560,7 @@ cubrid_log_clear_data_item (DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * da
 
   if (g_trace_log_level > 0)
     {
-      CUBRID_LOG_TRACELOG ("%s : data item type to clear is %s", __func__,
-			   convert_data_item_type_to_string (data_item_type));
+      CUBRID_LOG_TRACELOG ("[FUNC:%s][INPUT] data item type (%s)", __func__, data_item_type_to_string (data_item_type));
     }
 
   switch (data_item_type)
@@ -1629,6 +1693,7 @@ cubrid_log_disconnect_server (void)
 
   if (g_trace_log != NULL)
     {
+      fflush (g_trace_log);
       fclose (g_trace_log);
       g_trace_log = NULL;
     }
@@ -1685,15 +1750,6 @@ cubrid_log_reset_globals (void)
     }
 
   g_extraction_user_count = 0;
-
-  memset (g_trace_log_path, 0, PATH_MAX + 1);
-  memset (g_trace_log_base, 0, PATH_MAX + 1);
-  snprintf (g_trace_log_base, PATH_MAX + 1, "%s", ".");
-  g_trace_log_level = 0;
-  g_trace_log_filesize = 10 * 1024 * 1024;
-  g_trace_log_prev = 0;
-  g_trace_log_curr = 0;
-  g_num_trace_log = 0;
 
   g_next_lsa = LSA_INITIALIZER;
 
