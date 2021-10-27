@@ -301,11 +301,6 @@ static int
 method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 {
   handler.free_query_handle_all (false);
-
-  //DB_VALUE result;
-  //db_make_null (&result);
-  // return method_send_value_to_server (conn_info.rc, conn_info.host, conn_info.server_name, NO_ERROR); // send dummy
-
   return NO_ERROR;
 }
 
