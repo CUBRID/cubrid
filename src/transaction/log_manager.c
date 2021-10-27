@@ -10628,8 +10628,8 @@ log_write_metalog_to_file ()
   FILE *const fp = fopen (log_Name_metainfo, "r+");
   if (fp == nullptr)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
-      assert (false);
+      // er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
+      // assert (false);
     }
   else
     {
