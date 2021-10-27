@@ -27,17 +27,44 @@
 
 namespace cubmethod
 {
+  enum METHOD_CALLBACK_ERROR_CODE
+  {
+    METHOD_CALLBACK_ER_INTERNAL = -10001,
+    METHOD_CALLBACK_ER_NO_MORE_MEMORY = -10002,
+    METHOD_CALLBACK_ER_COMMUNICATION = -10003,
+    METHOD_CALLBACK_ER_ARGS = -10004,
+    METHOD_CALLBACK_ER_TRAN_TYPE = -10005,
+    METHOD_CALLBACK_ER_SRV_HANDLE = -10006,
+    METHOD_CALLBACK_ER_NUM_BIND = -10007,
+    METHOD_CALLBACK_ER_UNKNOWN_U_TYPE = -10008,
+    METHOD_CALLBACK_ER_TYPE_CONVERSION = -10010,
+    METHOD_CALLBACK_ER_PARAM_NAME = -10011,
+    METHOD_CALLBACK_ER_NO_MORE_DATA = -10012,
+    METHOD_CALLBACK_ER_OBJECT = -10013,
+    METHOD_CALLBACK_ER_OPEN_FILE = -10014,
+    METHOD_CALLBACK_ER_SCHEMA_TYPE = -10015,
+    METHOD_CALLBACK_ER_NOT_COLLECTION = -10020,
+    METHOD_CALLBACK_ER_COLLECTION_DOMAIN = -10021,
+    METHOD_CALLBACK_ER_NO_MORE_RESULT_SET = -10022,
+    METHOD_CALLBACK_ER_INVALID_CALL_STMT = -10023,
+    METHOD_CALLBACK_ER_STMT_POOLING = -10024,
+    METHOD_CALLBACK_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED = -10026,
+    METHOD_CALLBACK_ER_NOT_IMPLEMENTED = -10100,
+  };
+
   class error_context
   {
     public:
+      error_context ();
+      bool has_error ();
+      void clear ();
       int get_error ();
-      int set_error (int err_number, int err_indicator, std::string file, int line);
-      int set_error_with_msg (int err_number, int err_indicator, std::string err_msg, std::string err_file, int line,
-			      bool force);
+      std::string get_error_msg ();
+
+      void set_error (int number, const char *msg, const char *file, int line);
 
     private:
-      int err_indicator;
-      int err_number;
+      int err_id;
       std::string err_string;
       std::string err_file;
       int err_line;

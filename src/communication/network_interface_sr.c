@@ -10350,26 +10350,25 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     for (DB_VALUE *value : out_args)
 	{
 	  packer.pack_db_value (*value);	// DB_VALUEs
+    db_value_clear (value);
 	}
     /* *INDENT-ON* */
-
-      reply_data = eb.get_ptr ();
-      reply_data_size = (int) packer.get_current_size ();
     }
   else
     {
-      reply_data = NULL;
-      reply_data_size = 0;
+      assert (er_errid () != NO_ERROR);
+      (void) return_error_to_client (thread_p, rid);
+
+      std::string err_msg (er_msg ());
+      int total_size = packer.get_packed_string_size (err_msg, 0);
+      eb.extend_to (total_size);
+      packer.set_buffer (eb.get_ptr (), total_size);
+
+      packer.pack_string (err_msg);
     }
 
-  // clear
-  for (int i = 0; i < arg_cnt; i++)
-    {
-      db_value_clear (&args[i]);
-    }
-
-  method_group.end ();
-  sig_list.freemem ();
+  reply_data = eb.get_ptr ();
+  reply_data_size = (int) packer.get_current_size ();
 
   OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -10379,6 +10378,15 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
 				     reply_data_size);
+
+  // clear
+  for (int i = 0; i < arg_cnt; i++)
+    {
+      db_value_clear (&args[i]);
+    }
+
+  sig_list.freemem ();
+  method_group.end ();
 }
 
 void

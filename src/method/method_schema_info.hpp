@@ -25,6 +25,7 @@
 
 #include <vector>
 
+#include "method_error.hpp"
 #include "method_struct_schema_info.hpp"
 #include "method_query_result.hpp"
 #include "storage_common.h"
@@ -65,6 +66,11 @@ namespace cubmethod
   class schema_info_handler
   {
     public:
+      schema_info_handler (error_context &ctx)
+	: m_error_ctx (ctx)
+      {
+	//
+      }
       schema_info get_schema_info (int schema_type, std::string &arg1, std::string &arg2, int flag);
 
     protected:
@@ -97,6 +103,8 @@ namespace cubmethod
     private:
 
       void close_and_free_session ();
+
+      error_context &m_error_ctx;
 
       // sch_class_info, sch_queryspec, sch_direct_super_class, sch_primary_key
       DB_SESSION *m_session;

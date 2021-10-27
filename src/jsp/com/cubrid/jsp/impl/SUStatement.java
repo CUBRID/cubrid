@@ -200,7 +200,7 @@ public class SUStatement {
             boolean isExecuteAll,
             boolean isSensitive,
             boolean isScrollable)
-            throws IOException {
+            throws IOException, SQLException {
 
         if (type == GET_SCHEMA_INFO) {
             return;
@@ -305,17 +305,21 @@ public class SUStatement {
             fetchInfo =
                     suConn.fetch(
                             executeInfo.getResultInfo(0).queryId, cursorPosition, fetchSize, 0);
-            fetchedTupleNumber = fetchInfo.numFetched;
-            fetchedStartCursorPosition = fetchInfo.tuples[0].tupleNumber() - 1;
-        } catch (Exception e) {
-            // TODO: error handling
-            throw new SQLException(e);
+        } catch (IOException ioe) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, ioe);
+        } catch (TypeMismatchException te) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_ROW, te);
         }
+
+        fetchedTupleNumber = fetchInfo.numFetched;
+        fetchedStartCursorPosition = fetchInfo.tuples[0].tupleNumber() - 1;
     }
 
     public void moveCursor(int offset, int origin) {
         if ((origin != CURSOR_SET && origin != CURSOR_CUR && origin != CURSOR_END)
-                && totalTupleNumber == 0) {
+                || totalTupleNumber == 0) {
             // TODO: error handling
             return;
         }
@@ -614,6 +618,19 @@ public class SUStatement {
     }
 
     public Object getCollection(int columnIndex) throws SQLException {
+        int idx = columnIndex - 1;
+        Value obj = (Value) beforeGetTuple(idx);
+        if (obj == null) return null;
+
+        try {
+            // TODO: check needed
+            return obj.toObject();
+        } catch (TypeMismatchException e) {
+            return null;
+        }
+    }
+
+    public Object getObject(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
         if (obj == null) return null;

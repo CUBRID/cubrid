@@ -24,6 +24,7 @@
 #include "oid.h" /* oid_Null_oid */
 #include "set_object.h"
 #include "object_representation.h" /* db_string_put_cs_and_collation() */
+#include "object_primitive.h"
 #include "language_support.h" /* lang_* () */
 
 #include "memory_private_allocator.hpp" /* cubmem::PRIVATE_BLOCK_ALLOCATOR */
@@ -543,7 +544,7 @@ namespace cubmethod
 	      }
 	  }
 #endif
-	db_make_string_copy (v, blk.get_ptr ());
+	db_make_string (v, blk.release_ptr ());
 
 	INTL_CODESET codeset;
 	int collation;
@@ -555,6 +556,7 @@ namespace cubmethod
 	collation = LANG_SYS_COLLATION;
 #endif
 	db_string_put_cs_and_collation (v, codeset, collation);
+	v->need_clear = true;
       }
       break;
 
@@ -651,7 +653,7 @@ namespace cubmethod
 		assert (false);
 		break;
 	      }
-	    // db_value_clear (&elem);
+	    pr_clear_value (&elem);
 	  }
 	if (type == DB_TYPE_SET)
 	  {

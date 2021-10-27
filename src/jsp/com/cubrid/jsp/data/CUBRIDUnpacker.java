@@ -132,6 +132,7 @@ public class CUBRIDUnpacker {
         return new SOID(pageId, slotId, volId);
     }
 
+<<<<<<< HEAD
     public byte[] unpackBytes() {
         align(DataUtilities.INT_ALIGNMENT);
         int actual_len = buffer.getInt();
@@ -145,6 +146,8 @@ public class CUBRIDUnpacker {
         return null;
     }
 
+=======
+>>>>>>> upstream/feature/javasp_redesign
     public Value unpackValue(int paramType) throws TypeMismatchException {
         Value arg = null;
         switch (paramType) {

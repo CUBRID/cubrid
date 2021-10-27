@@ -111,15 +111,6 @@ namespace cubscan
 
       // connect
       m_method_group->begin ();
-
-      SCAN_CODE scan_code = S_SUCCESS;
-
-      scan_code = get_single_tuple ();
-      if (scan_code == S_SUCCESS && m_method_group->prepare (m_arg_vector) != NO_ERROR)
-	{
-	  scan_code = S_ERROR;
-	}
-
       return error;
     }
 
@@ -139,7 +130,11 @@ namespace cubscan
     {
       SCAN_CODE scan_code = S_SUCCESS;
 
-      next_value_array (vl);
+      scan_code = get_single_tuple ();
+      if (scan_code == S_SUCCESS && m_method_group->prepare (m_arg_vector) != NO_ERROR)
+	{
+	  scan_code = S_ERROR;
+	}
 
       if (scan_code == S_SUCCESS && m_method_group->execute (m_arg_vector) != NO_ERROR)
 	{
@@ -148,6 +143,7 @@ namespace cubscan
 
       if (scan_code == S_SUCCESS)
 	{
+	  next_value_array (vl);
 	  int num_methods = m_method_group->get_num_methods ();
 	  for (int i = 0; i < num_methods; i++)
 	    {

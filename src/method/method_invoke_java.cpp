@@ -294,15 +294,12 @@ namespace cubmethod
       case METHOD_CALLBACK_CURSOR_CLOSE:
       case METHOD_CALLBACK_EXECUTE_BATCH:
       case METHOD_CALLBACK_EXECUTE_ARRAY:
-
-      case METHOD_CALLBACK_MAKE_OUT_RS:
-	// TODO: not implemented yet
-	assert (false);
+  assert (false);
 	error = ER_FAILED;
 	break;
 
       default:
-	// TODO: error hanlding
+	// TODO: error handling?
 	assert (false);
 	error = ER_FAILED;
 	break;
@@ -358,18 +355,10 @@ namespace cubmethod
     INT64 id = (INT64) this;
     cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
     error = method_send_data_to_client (&thread_ref, header, code, sql, flag);
-
-    auto get_prepare_info = [&] (cubmem::block & b)
-    {
-      packing_unpacker unpacker (b.ptr, (size_t) b.dim);
-
-      prepare_info info;
-      info.unpack (unpacker);
-      // info.dump ();
-      error = method_send_buffer_to_java (m_group->get_socket (), b);
-      return error;
-    };
-    error = xs_receive (&thread_ref, get_prepare_info);
+    if (error == NO_ERROR)
+      {
+	error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+      }
 #endif
     return error;
   }
@@ -385,8 +374,7 @@ namespace cubmethod
     int code;
     execute_request request;
 
-    unpacker.unpack_int (code);
-    request.unpack (unpacker);
+    unpacker.unpack_all (code, request);
     request.has_parameter = 1;
 
     packing_packer packer;
@@ -402,36 +390,42 @@ namespace cubmethod
     {
       packing_unpacker unpacker (b.ptr, (size_t) b.dim);
 
-      execute_info info;
-      info.unpack (unpacker);
+      int res_code;
+      unpacker.unpack_int (res_code);
 
-      query_result_info &current_result_info = info.qresult_infos[0];
-      if (current_result_info.stmt_type == CUBRID_STMT_SELECT)
+      if (res_code == METHOD_RESPONSE_SUCCESS)
 	{
-	  std::uint64_t qid = current_result_info.query_id;
-	  const auto &iter = m_cursor_map.find (qid);
+	  execute_info info;
+	  info.unpack (unpacker);
 
-	  query_cursor *cursor = nullptr;
-	  if (iter == m_cursor_map.end ())
+	  query_result_info &current_result_info = info.qresult_infos[0];
+	  if (current_result_info.stmt_type == CUBRID_STMT_SELECT)
 	    {
-	      /* not found, new cursor is created */
-	      bool is_oid_included = current_result_info.include_oid;
-	      cursor = m_cursor_map[qid] = new query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
-	      if (cursor == nullptr)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
-		  return ER_OUT_OF_VIRTUAL_MEMORY;
+	      std::uint64_t qid = current_result_info.query_id;
+	      const auto &iter = m_cursor_map.find (qid);
+
+	      query_cursor *cursor = nullptr;
+	      if (iter == m_cursor_map.end ())
+    {
+		  /* not found, new cursor is created */
+		  bool is_oid_included = current_result_info.include_oid;
+		  cursor = m_cursor_map[qid] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
+		  if (cursor == nullptr)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
+		      return ER_OUT_OF_VIRTUAL_MEMORY;
+		    }
 		}
-	    }
-	  else
-	    {
-	      /* found, cursur is reset */
-	      cursor = iter->second;
-	      cursor->close ();
-	      cursor->reset (qid);
-	    }
+	      else
+		{
+		  /* found, cursur is reset */
+		  cursor = iter->second;
+		  cursor->close ();
+		  cursor->reset (qid);
+		}
 
-	  cursor->open ();
+	      cursor->open ();
+	    }
 	}
 
       error = method_send_buffer_to_java (m_group->get_socket(), b);
@@ -468,9 +462,8 @@ namespace cubmethod
     const auto &iter = m_cursor_map.find (qid);
     if (iter == m_cursor_map.end ())
       {
-	/* error */
-	// TODO: error handling
-	error = ER_FAILED;
+	// TODO: proper error handling
+	error = method_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error");
       }
     else
       {
@@ -503,7 +496,7 @@ namespace cubmethod
 	    i++;
 	  }
 
-	error = method_send_data_to_java (m_group->get_socket (), info);
+	error = method_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_SUCCESS, info);
       }
 
 #endif

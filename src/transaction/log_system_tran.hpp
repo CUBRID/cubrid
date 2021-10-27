@@ -24,6 +24,7 @@
 #define _LOG_SYSTEM_TRAN_HPP_
 
 #include "storage_common.h"       // TRANID
+#include "log_lsa.hpp"
 
 #include <functional>
 
@@ -50,7 +51,7 @@ class log_system_tdes
     using map_func = std::function<void (log_tdes &)>;
     using rv_delete_if_func = std::function<bool (const log_tdes &)>;
 
-    static log_tdes *rv_get_or_alloc_tdes (TRANID trid);
+    static log_tdes *rv_get_or_alloc_tdes (TRANID trid, const LOG_LSA &log_lsa);
     static log_tdes *rv_get_tdes (TRANID trid);
     static void map_all_tdes (const map_func &func);
 

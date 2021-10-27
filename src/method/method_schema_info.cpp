@@ -110,10 +110,10 @@ namespace cubmethod
       }
     else
       {
-	// TODO: error handling: free and close schema info results and set error on error context
 	close_and_free_session ();
-	//err_code = ERROR_INFO_SET (CAS_ER_SCHEMA_TYPE, CAS_ERROR_INDICATOR);
-	// goto schema_info_error;
+
+	// TODO: proper error code
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_SCHEMA_TYPE, NULL, __FILE__, __LINE__);
       }
 
     return info;
@@ -127,17 +127,17 @@ namespace cubmethod
     m_session = db_open_buffer (sql_stmt.c_str());
     if (!m_session)
       {
-	// TODO: error handling
 	lang_set_parser_use_client_charset (true);
-	// return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     int stmt_id = db_compile_statement (m_session);
     if (stmt_id < 0)
       {
-	// TODO: error handling
 	close_and_free_session ();
-	return stmt_id;
+	m_error_ctx.set_error (stmt_id, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     DB_QUERY_RESULT *result = NULL;
@@ -148,9 +148,9 @@ namespace cubmethod
 
     if (num_result < 0)
       {
-	// TDOO: error handling
 	close_and_free_session ();
-	return stmt_id;
+	m_error_ctx.set_error (stmt_id, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
 
     query_result &q_result = m_q_result;
@@ -651,15 +651,15 @@ namespace cubmethod
 	DB_OBJECT *pktable_obj = db_get_foreign_key_ref_class (fk_const);
 	if (pktable_obj == NULL)
 	  {
-	    // TODO: error handling
-	    return db_error_code ();
+	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
 
 	const char *pktable_name = db_get_class_name (pktable_obj);
 	if (pktable_name == NULL)
 	  {
-	    // TODO: error handling
-	    return db_error_code ();
+	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
 
 	DB_CONSTRAINT *pktable_cons = db_get_constraints (pktable_obj);
@@ -667,65 +667,44 @@ namespace cubmethod
 	error = db_error_code ();
 	if (error != NO_ERROR)
 	  {
-	    // TODO: error handling
-	    return error;
+	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
 
 	DB_CONSTRAINT *pk = db_constraint_find_primary_key (pktable_cons);
 	if (pk == NULL)
 	  {
-	    // TODO: error handling
-	    error = ER_FK_REF_CLASS_HAS_NOT_PK;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Referenced class has no primary key.");
-	    return error;
-	    /*
-	      error =
-	        ERROR_INFO_SET_WITH_MSG (ER_FK_REF_CLASS_HAS_NOT_PK, DBMS_ERROR_INDICATOR,
-	    			     "Referenced class has no primary key.");
-	      goto exit_on_error;
-	    */
+	    m_error_ctx.set_error (ER_FK_REF_CLASS_HAS_NOT_PK, "Referenced class has no primary key.", __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
+
 	const char *pk_name = db_constraint_name (pk);
 	DB_ATTRIBUTE **pk_attr = db_constraint_attributes (pk);
 	if (pk_attr == NULL)
 	  {
-	    // TODO: error handling
-	    error = ER_SM_INVALID_CONSTRAINT;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Primary key has no attribute.");
-	    return error;
-	    /*
-	      error =
-	        ERROR_INFO_SET_WITH_MSG (ER_SM_INVALID_CONSTRAINT, DBMS_ERROR_INDICATOR, "Primary key has no attribute.");
-	      goto exit_on_error;
-	    */
+	    m_error_ctx.set_error (ER_SM_INVALID_CONSTRAINT, "Primary key has no attribute.", __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
 
 	DB_ATTRIBUTE **fk_attr = db_constraint_attributes (fk_const);
 	if (fk_attr == NULL)
 	  {
-	    // TODO: error handling
-	    error = ER_SM_INVALID_CONSTRAINT;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Foreign key has no attribute.");
-	    return error;
-	    /*
-	      error =
-	        ERROR_INFO_SET_WITH_MSG (ER_SM_INVALID_CONSTRAINT, DBMS_ERROR_INDICATOR, "Foreign key has no attribute.");
-	      goto exit_on_error;
-	    */
+	    m_error_ctx.set_error (ER_SM_INVALID_CONSTRAINT, "Foreign key has no attribute.", __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
 
 	for (i = 0; pk_attr[i] != NULL && fk_attr[i] != NULL; i++)
 	  {
-	    // TODO
+	    // TODO: not implemented yet
 	    /*
 	      fk_res =
 	        add_fk_info_result (fk_res, pktable_name, db_attribute_name (pk_attr[i]), fktable_name,
 	    			db_attribute_name (fk_attr[i]), (short) i + 1, fk_info->update_action,
 	    			fk_info->delete_action, fk_info->name, pk_name, FK_INFO_SORT_BY_PKTABLE_NAME);
 	      if (fk_res == NULL)
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
 	        {
-	          error = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-	          goto exit_on_error;
+	    return ER_FAILED;
 	        }
 	    */
 
@@ -737,18 +716,9 @@ namespace cubmethod
 	assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
 	if (pk_attr[i] != NULL || fk_attr[i] != NULL)
 	  {
-	    // TODO: error handling
-	    error = ER_FK_NOT_MATCH_KEY_COUNT;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		    "The number of keys of the foreign key is different from that of the primary key.");
-	    return error;
-	    /*
-	    error =
-	      ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
-	            "The number of keys of the foreign " "key is different from that of the "
-	            "primary key.");
-	    goto exit_on_error;
-	    */
+	    m_error_ctx.set_error (ER_FK_NOT_MATCH_KEY_COUNT,
+				   "The number of keys of the foreign key is different from that of the primary key.", __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
       }
 
@@ -771,8 +741,8 @@ namespace cubmethod
 
     if (error < 0)
       {
-	// TODO: error handling
-	return error;
+	m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
     if (error > 0)
       {
@@ -782,8 +752,8 @@ namespace cubmethod
     error = db_is_vclass (class_obj);
     if (error < 0)
       {
-	// TODO: error handling
-	return error;
+	m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
     if (error > 0)
       {

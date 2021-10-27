@@ -105,10 +105,10 @@ namespace cubmethod
       int callback_lob_read (cubthread::entry &thread_ref, cubmem::block &blk);
       int callback_lob_write (cubthread::entry &thread_ref, cubmem::block &blk);
 
-      static int bypass_block (SOCKET socket, cubmem::block &b);
-
       template<typename ... Args>
       int send_packable_object_to_java (Args &&... args);
+
+      static int bypass_block (SOCKET socket, cubmem::block &b);
 
       std::unordered_map <std::uint64_t, query_cursor *> m_cursor_map;
       lob_handler m_lob_handler;

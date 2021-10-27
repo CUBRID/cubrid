@@ -105,6 +105,7 @@ public class CUBRIDPacker {
         packInt(oid.pageId);
         packShort(oid.slotId);
         packShort(oid.volId);
+<<<<<<< HEAD
     }
 
     public void packBytes(byte[] bytes) {
@@ -131,6 +132,8 @@ public class CUBRIDPacker {
             buffer.put(bytes, offset, len);
             align(DataUtilities.INT_ALIGNMENT);
         }
+=======
+>>>>>>> upstream/feature/javasp_redesign
     }
 
     public void packCString(byte[] value) {
@@ -241,7 +244,10 @@ public class CUBRIDPacker {
             for (int i = 0; i < arr.length; i++) {
                 packValue(arr[i], ret_type, charset);
             }
-        } else ;
+        } else {
+            // FIXME: treat as NULL
+            packInt(DBType.DB_NULL);
+        }
     }
 
     private void align(int size) {
