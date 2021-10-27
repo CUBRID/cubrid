@@ -7637,7 +7637,11 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
 
       for (i = 1; i <= num_cols; i++)
 	{
-	  cgw_get_col_info (hstmt, net_buf, i, &col_info);
+	  err_code = cgw_get_col_info (hstmt, net_buf, i, &col_info);
+	  if (err_code < 0)
+	    {
+	      return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	    }
 
 	  prepare_column_info_set (net_buf, col_info.data_type, col_info.scale, col_info.precision,
 				   col_info.charset, col_info.col_name, col_info.default_value,

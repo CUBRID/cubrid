@@ -1382,7 +1382,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1326 Invalid db connection handle.
 1327 Both dsn name and link server connection url do not exist.
 1328 Invalid numeric value.
-1329 Invalid precision value of "1%s" column.
+1329 Invalid precision value of "%1$s" column.
 
 1330 Last Error
 

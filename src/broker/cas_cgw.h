@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -44,12 +45,10 @@
 #include <sql.h>
 #include <sqlext.h>
 
-//#include "odbc_type_def.h"
 #include "cas_handle.h"
 #include "cas_net_buf.h"
 #include "cas_execute.h"
 #include "dbtype.h"
-#include "unicode_support.h"
 #include "tz_support.h"
 
 
