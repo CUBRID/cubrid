@@ -95,6 +95,7 @@ typedef struct check_pushable_info
 {
   bool check_query;
   bool check_method;
+
   bool query_found;
   bool method_found;
 } CHECK_PUSHABLE_INFO;
@@ -1390,7 +1391,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
     }
 
   /* check inst num or orderby_num */
-  if (pt_has_inst_in_where_and_select_list (parser, query))
+  if (!is_only_spec && pt_has_inst_in_where_and_select_list (parser, query))
     {
       return false;
     }
@@ -1595,7 +1596,7 @@ static PT_NODE *
 mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
 				     PT_NODE * class_, PT_NODE * order_by, int what_for)
 {
-  PT_NODE *tmp_result, *result, *arg1, *arg2, *statement_next;
+  PT_NODE *tmp_result, *result, *arg1, *arg2, *statement_next, *pred;
   PT_NODE *class_spec, *statement_spec = NULL;
   PT_NODE *derived_table, *derived_spec, *derived_class;
   bool is_pushable_query, is_outer_joined;
@@ -1630,23 +1631,28 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	{
 	case PT_SELECT:
 	  statement_spec = tmp_result->info.query.q.select.from;
+	  pred = tmp_result->info.query.q.select.where;
 	  break;
 
 	case PT_UPDATE:
 	  statement_spec = tmp_result->info.update.spec;
+	  pred = tmp_result->info.update.search_cond;
 	  break;
 
 	case PT_DELETE:
 	  statement_spec = tmp_result->info.delete_.spec;
+	  pred = tmp_result->info.delete_.search_cond;
 	  break;
 
 	case PT_INSERT:
 	  /* since INSERT can not have a spec list or statement conditions, there is nothing to check */
 	  statement_spec = tmp_result->info.insert.spec;
+	  pred = NULL;
 	  break;
 
 	case PT_MERGE:
 	  statement_spec = tmp_result->info.merge.into;
+	  pred = tmp_result->info.merge.insert.search_cond;
 	  break;
 
 	default:
@@ -1679,7 +1685,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
       else
 	{
 	  /* determine if class_spec is the only spec in the statement */
-	  is_only_spec = (statement_spec->next == NULL ? true : false);
+	  is_only_spec = ((statement_spec->next == NULL && pred == NULL)? true : false);
 
 	  /* determine if spec is outer joined */
 	  is_outer_joined = mq_is_outer_join_spec (parser, class_spec);
