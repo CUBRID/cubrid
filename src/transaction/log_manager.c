@@ -8721,7 +8721,7 @@ log_is_active_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char
       return false;
     }
 
-  if (rel_is_log_compatible (hdr.db_release, rel_release_string ()) != true)
+  if (rel_is_log_compatible (hdr.db_release, rel_release_string ()) == false)
     {
       return false;
     }
