@@ -2943,6 +2943,11 @@ end:
 
 bool do_Trigger_involved;
 
+/* do_Trigger_involved does not accurately distinguish
+ * whether the corresponding query is a trigger syntax.
+ * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
+bool cdc_Trigger_involved = false;
+
 /*
  * do_statement() -
  *   return: Error code
@@ -13329,6 +13334,9 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* the do_Trigger_involved will be set as true when execute trigger statement. it will not be set back. we need to
    * keep its value to update last insert id. */
   is_trigger_involved = do_Trigger_involved;
+
+  cdc_Trigger_involved = do_Trigger_involved;
+
   if (!do_Trigger_involved)
     {
       obt_begin_insert_values ();

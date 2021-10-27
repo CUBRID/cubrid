@@ -259,6 +259,8 @@ namespace cubthread
 
     no_supplemental_log = false;
 
+    trigger_involved = false;
+
     is_cdc_daemon = false;
 
     end_resource_tracks ();
