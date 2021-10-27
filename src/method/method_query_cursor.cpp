@@ -55,7 +55,8 @@ namespace cubmethod
 	    m_list_id = query_entry_p->list_id;
 	    m_current_row_index = 0;
 	    m_current_tuple.resize (m_list_id->type_list.type_cnt);
-	    qfile_update_qlist_count (m_thread, m_list_id, 1); // m_list_id is going to be destoryed on server-side, so that qlist_count has to be updated
+	    qfile_update_qlist_count (m_thread, m_list_id,
+				      1); // m_list_id is going to be destoryed on server-side, so that qlist_count has to be updated
 	  }
       }
     else
