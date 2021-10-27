@@ -56,9 +56,9 @@
 #define CUBRID_LOG_TRACELOG(msg, ...) \
   do \
     { \
+      cubrid_log_check_tracelog (); \
       if(g_trace_log) \
         { \
-          cubrid_log_check_tracelog (); \
           cubrid_log_get_time (); \
           fprintf (g_trace_log,"[%s][FILE:%s][LINE:%d]\n" msg "\n", g_curr_time, __FILE__, __LINE__, ##__VA_ARGS__); \
         } \
@@ -716,8 +716,6 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *p
   int err_code;
 
   strncpy (g_dbname, dbname, CUBRID_LOG_MAX_DBNAME_LEN);
-
-  cubrid_log_check_tracelog ();
 
   if (g_trace_log_level > 0)
     {
