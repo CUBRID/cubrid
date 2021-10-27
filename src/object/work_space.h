@@ -150,6 +150,7 @@ struct db_object
   unsigned released:1;		/* set by code that knows that an instance can be released, used currently by the
 				 * loader only */
   unsigned decached:1;		/* set if mop is decached by calling ws_decache function */
+  unsigned trigger_involved:1;	/* set if mop is involved in trigger, it is used only for cdc */
 };
 
 
@@ -394,6 +395,22 @@ struct ws_statistics
     { \
       ws_list_free ((DB_LIST *)(list), (LFREEER)(function)); \
       (list) = NULL; \
+    } \
+  while (0)
+
+#define WS_IS_TRIGGER_INVOLVED(mop) ((mop)->trigger_involved)
+
+#define WS_SET_TRIGGER_INVOLVED(mop) \
+  do \
+    { \
+      if (ws_is_trigger_involved ()) \
+        { \
+          (mop)->trigger_involved = 1; \
+        } \
+      else \
+        { \
+          (mop)->trigger_involved = 0; \
+        } \
     } \
   while (0)
 
@@ -672,5 +689,7 @@ extern void ws_move_label_value_list (MOP dest_mop, MOP src_mop);
 extern void ws_remove_label_value_from_mop (MOP mop, DB_VALUE * val);
 extern int ws_add_label_value_to_mop (MOP mop, DB_VALUE * val);
 extern void ws_clean_label_value_list (MOP mop);
+
+extern bool ws_is_trigger_involved ();
 
 #endif /* _WORK_SPACE_H_ */
