@@ -1683,8 +1683,9 @@
 #define ER_CGW_INVALID_SQLHDBC_HANDLE               -1326
 #define ER_CGW_NOT_EXIST_LINK_NAME                  -1327
 #define ER_CGW_INVALID_NUMERIC_VALUE                -1328
+#define ER_CGW_INVALID_PRECISION_VALUE              -1329
 
-#define ER_LAST_ERROR                               -1329
+#define ER_LAST_ERROR                               -1330
 
 /*
  * CAUTION!

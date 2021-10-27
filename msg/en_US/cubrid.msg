@@ -1382,8 +1382,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1326 Invalid db connection handle.
 1327 Both dsn name and link server connection url do not exist.
 1328 Invalid numeric value.
+1329 Invalid precision value of %s column.
 
-1329 Last Error
+1330 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
