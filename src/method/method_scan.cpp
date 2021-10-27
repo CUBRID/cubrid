@@ -130,8 +130,8 @@ namespace cubscan
     {
       SCAN_CODE scan_code = S_SUCCESS;
 
-	  next_value_array (vl);
-	  
+      next_value_array (vl);
+
       scan_code = get_single_tuple ();
       if (scan_code == S_SUCCESS && m_method_group->prepare (m_arg_vector) != NO_ERROR)
 	{
