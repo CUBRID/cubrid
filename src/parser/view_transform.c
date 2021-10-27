@@ -1685,7 +1685,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
       else
 	{
 	  /* determine if class_spec is the only spec in the statement */
-	  is_only_spec = ((statement_spec->next == NULL && pred == NULL)? true : false);
+	  is_only_spec = ((statement_spec->next == NULL && pred == NULL) ? true : false);
 
 	  /* determine if spec is outer joined */
 	  is_outer_joined = mq_is_outer_join_spec (parser, class_spec);
