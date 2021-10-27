@@ -31,58 +31,56 @@
 
 package com.cubrid.jsp.jdbc;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.sql.SQLException;
+import java.io.InputStream;
 
-class CUBRIDServerSideClobOutputStream extends OutputStream {
-    private CUBRIDServerSideClob clob;
-    private long lob_pos;
+/**
+ * Title: CUBRID JDBC Driver Description:
+ *
+ * @version 2.0
+ */
+class CUBRIDServerSideInputStream extends InputStream {
+    /* TODO: this class is ported from CUBRIDInputStream */
 
-    CUBRIDServerSideClobOutputStream(CUBRIDServerSideClob clob, long pos) {
-        this.clob = clob;
-        lob_pos = pos;
+    private int position;
+    private byte[] valueBuffer;
+
+    CUBRIDServerSideInputStream(byte[] v) {
+        valueBuffer = v;
+        position = 0;
     }
 
-    /*
-     * java.io.OutputStream interface
-     */
-
-    public synchronized void write(int b) throws IOException {
-        byte[] buf = new byte[1];
-        buf[0] = (byte) b;
-        write(buf, 0, 1);
+    public synchronized int available() throws java.io.IOException {
+        if (valueBuffer == null) return 0;
+        return valueBuffer.length - position;
     }
 
-    /*
-     * public synchronized void write(byte[] b) throws IOException { write(b, 0,
-     * b.length); }
-     */
+    public synchronized int read() throws java.io.IOException {
+        byte b[] = new byte[1];
+        if (read(b, 0, 1) == -1) return -1;
+        else return b[0];
+    }
 
-    public synchronized void write(byte[] b, int off, int len) throws IOException {
-        if (clob == null) {
-            throw new IOException();
-        }
-
-        if (b == null)
-            throw new NullPointerException();
-        if (off < 0 || len < 0 || off + len > b.length)
+    public synchronized int read(byte[] b, int off, int len) throws java.io.IOException {
+        if (b == null) throw new NullPointerException();
+        else if (off < 0 || off > b.length || len < 0 || off + len > b.length || off + len < 0)
             throw new IndexOutOfBoundsException();
+        else if (len == 0) return 0;
 
-        try {
-            lob_pos += clob.setBytes(lob_pos, b, off, len);
-        } catch (SQLException e) {
-            throw new IOException(e.getMessage());
+        if (valueBuffer == null) return -1;
+
+        int i;
+        for (i = position; i < len + position && i < valueBuffer.length; i++) {
+            b[i - position + off] = valueBuffer[i];
         }
+
+        int temp = position;
+        position = i;
+        if (position == valueBuffer.length) close();
+
+        return i - temp;
     }
 
-    /*
-     * public synchronized void flush() throws IOException { }
-     */
-
-    public synchronized void close() throws IOException {
-        flush();
-        clob.removeFlushableStream(this);
-        clob = null;
+    public synchronized void close() throws java.io.IOException {
+        valueBuffer = null;
     }
 }

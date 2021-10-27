@@ -51,8 +51,6 @@ import cubrid.sql.CUBRIDOID;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
 
 public class SUConnection {
 

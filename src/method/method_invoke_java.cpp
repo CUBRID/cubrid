@@ -294,7 +294,7 @@ namespace cubmethod
       case METHOD_CALLBACK_CURSOR_CLOSE:
       case METHOD_CALLBACK_EXECUTE_BATCH:
       case METHOD_CALLBACK_EXECUTE_ARRAY:
-  assert (false);
+	assert (false);
 	error = ER_FAILED;
 	break;
 
@@ -406,7 +406,7 @@ namespace cubmethod
 
 	      query_cursor *cursor = nullptr;
 	      if (iter == m_cursor_map.end ())
-    {
+		{
 		  /* not found, new cursor is created */
 		  bool is_oid_included = current_result_info.include_oid;
 		  cursor = m_cursor_map[qid] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), qid, is_oid_included);

@@ -29,7 +29,7 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package com.cubrid.jsp.jdbc;
 
 import java.io.IOException;
 import java.io.InputStream;

@@ -34,8 +34,6 @@ package com.cubrid.jsp.jdbc;
 import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.data.DBParameterInfo;
 import com.cubrid.jsp.impl.SUConnection;
-import cubrid.jdbc.driver.CUBRIDServerSideBlob;
-import cubrid.jdbc.driver.CUBRIDServerSideClob;
 import cubrid.jdbc.jci.CUBRIDIsolationLevel;
 import java.io.IOException;
 import java.sql.Array;

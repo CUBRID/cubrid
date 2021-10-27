@@ -105,7 +105,6 @@ public class CUBRIDPacker {
         packInt(oid.pageId);
         packShort(oid.slotId);
         packShort(oid.volId);
-<<<<<<< HEAD
     }
 
     public void packBytes(byte[] bytes) {
@@ -132,8 +131,6 @@ public class CUBRIDPacker {
             buffer.put(bytes, offset, len);
             align(DataUtilities.INT_ALIGNMENT);
         }
-=======
->>>>>>> upstream/feature/javasp_redesign
     }
 
     public void packCString(byte[] value) {

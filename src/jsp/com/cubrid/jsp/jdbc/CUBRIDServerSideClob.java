@@ -29,7 +29,7 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.LobHandleInfo;
@@ -37,6 +37,11 @@ import com.cubrid.jsp.impl.SUConnection;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorManager;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.Flushable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -209,7 +214,7 @@ public class CUBRIDServerSideClob implements Clob {
                     null);
         }
 
-        return new CUBRIDBufferedReader(new CUBRIDServerSideClobReader(this, pos, length), CLOB_MAX_IO_CHARS);
+        return new BufferedReader(new CUBRIDServerSideClobReader(this, pos, length), CLOB_MAX_IO_CHARS);
     }
 
     public InputStream getAsciiStream() throws SQLException {
@@ -218,7 +223,7 @@ public class CUBRIDServerSideClob implements Clob {
                     null);
         }
 
-        return new CUBRIDBufferedInputStream(new CUBRIDServerSideClobInputStream(this), CLOB_MAX_IO_LENGTH);
+        return new BufferedInputStream(new CUBRIDServerSideClobInputStream(this), CLOB_MAX_IO_LENGTH);
     }
 
     public long position(String searchstr, long start) throws SQLException {
@@ -320,7 +325,7 @@ public class CUBRIDServerSideClob implements Clob {
                     .createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_LOB_POS_INVALID, null);
         }
 
-        OutputStream out = new CUBRIDBufferedOutputStream(new CUBRIDServerSideClobOutputStream(this, clobBytePos + 1),
+        OutputStream out = new BufferedOutputStream(new CUBRIDServerSideClobOutputStream(this, clobBytePos + 1),
                 CLOB_MAX_IO_LENGTH);
         addFlushableStream(out);
         return out;
@@ -346,7 +351,7 @@ public class CUBRIDServerSideClob implements Clob {
                     .createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_LOB_POS_INVALID, null);
         }
 
-        Writer out = new CUBRIDBufferedWriter(new CUBRIDServerSideClobWriter(this, pos), CLOB_MAX_IO_CHARS);
+        Writer out = new BufferedWriter(new CUBRIDServerSideClobWriter(this, pos), CLOB_MAX_IO_CHARS);
         addFlushableStream(out);
         return out;
     }
@@ -438,7 +443,13 @@ public class CUBRIDServerSideClob implements Clob {
         }
 
         if (isLobLocator == true) {
-            read_len = conn.lobRead(lobHandle, clobNextReadBytePos, clobByteBuffer, 0, CLOB_MAX_IO_LENGTH);
+            try {
+                read_len = conn.lobRead(lobHandle, clobNextReadBytePos, clobByteBuffer, 0, CLOB_MAX_IO_LENGTH);
+            } catch (IOException e) {
+                // TODO: is correct?
+                throw CUBRIDServerSideJDBCErrorManager
+                        .createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+            }
         } else {
             read_len = lobRead(clobNextReadBytePos, clobByteBuffer, 0, CLOB_MAX_IO_LENGTH);
         }
@@ -571,7 +582,7 @@ public class CUBRIDServerSideClob implements Clob {
         }
     }
 
-    public int setBytes(long pos, byte[] bytes, int offset, int len) throws SQLException {
+    public int setBytes(long pos, byte[] bytes, int offset, int len) throws SQLException , IOException {
         if (conn == null || lobHandle == null) {
             throw new NullPointerException();
         }

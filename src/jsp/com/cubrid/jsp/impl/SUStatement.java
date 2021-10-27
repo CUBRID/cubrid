@@ -643,6 +643,10 @@ public class SUStatement {
         }
     }
 
+    public Clob getClob(int columnIndex, CUBRIDServerSideConnection conn) throws SQLException {
+        return getClob(columnIndex, conn.getSUConnection());
+    }
+
     public Clob getClob(int columnIndex, SUConnection conn) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
@@ -657,6 +661,10 @@ public class SUStatement {
         }
     }
 
+    public Blob getBlob(int columnIndex, CUBRIDServerSideConnection conn) throws SQLException {
+        return getBlob(columnIndex, conn.getSUConnection());
+    }
+
     public Blob getBlob(int columnIndex, SUConnection conn) throws SQLException {
         int idx = columnIndex - 1;
         Value obj = (Value) beforeGetTuple(idx);
@@ -669,20 +677,6 @@ public class SUStatement {
                 return null;
             }
         }
-    }
-
-    public Object getObject(int columnIndex) throws SQLException {
-        int idx = columnIndex - 1;
-        Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null) return null;
-
-        Object retValue = null;
-        try {
-            retValue = obj.toObject();
-        } catch (TypeMismatchException e) {
-        }
-
-        return retValue;
     }
 
     public int getParameterCount() {

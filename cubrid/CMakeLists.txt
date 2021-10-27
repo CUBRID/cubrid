@@ -277,10 +277,7 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp
   ${METHOD_DIR}/method_struct_oid_info.cpp
-<<<<<<< HEAD
   ${METHOD_DIR}/method_struct_lob_info.cpp
-=======
->>>>>>> upstream/feature/javasp_redesign
   ${METHOD_DIR}/method_struct_query.cpp
   ${METHOD_DIR}/method_struct_schema_info.cpp
   ${METHOD_DIR}/method_scan.cpp

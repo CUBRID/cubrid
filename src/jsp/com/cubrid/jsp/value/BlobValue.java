@@ -34,6 +34,7 @@ package com.cubrid.jsp.value;
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideBlob;
 import java.sql.Blob;
 import com.cubrid.jsp.data.LobHandleInfo;
 import java.sql.DriverManager;
@@ -64,7 +65,10 @@ public class BlobValue extends Value {
 
     public Blob toBlob(SUConnection conn) throws TypeMismatchException {
         if (value == null) {
-            value = new CUBRIDServerSideBlob(conn, lobInfo, true);
+            try {
+                value = new CUBRIDServerSideBlob(conn, lobInfo, true);
+            } catch (SQLException e) {
+            }
         }
         return value;
     }
@@ -78,10 +82,10 @@ public class BlobValue extends Value {
     }
 
     public Object toObject() throws TypeMismatchException {
-        return toBlob();
+        return toBlob(((CUBRIDServerSideBlob) value).getStatementHandler());
     }
 
     public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] { toBlob() };
+        return new Object[] { toObject() };
     }
 }

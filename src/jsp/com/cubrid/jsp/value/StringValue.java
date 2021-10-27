@@ -31,11 +31,16 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.data.LobHandleInfo;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.impl.SUConnection;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideClob;
+
 import java.math.BigDecimal;
 import java.sql.Clob;
 import java.sql.Date;
+import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
 
@@ -274,7 +279,11 @@ public class StringValue extends Value {
     }
 
     public Clob toClob(SUConnection conn) throws TypeMismatchException {
-        return new CUBRIDServerSideClob(conn, ((String) data).getBytes(), conn.getCharSet(), false);
+        try {
+            return new CUBRIDServerSideClob(conn, new LobHandleInfo(DBType.DB_CLOB, value.getBytes()), conn.getCharSet(), false);
+        } catch (SQLException e) {
+            return null;
+        }
     }
 
     public Clob[] toClobArray(SUConnection conn) throws TypeMismatchException {

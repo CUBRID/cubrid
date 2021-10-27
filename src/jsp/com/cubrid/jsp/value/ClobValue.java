@@ -33,17 +33,18 @@ package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.impl.SUConnection;
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.data.LobHandleInfo;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideClob;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
-import com.cubrid.jsp.jdbc.CUBRIDServerSideOID;
-import cubrid.sql.CUBRIDOID;
 
 import java.sql.Clob;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class ClobValue extends Value {
+    private LobHandleInfo lobInfo = null;
     private Clob value = null;
 
     public ClobValue(Clob value) {
@@ -57,7 +58,13 @@ public class ClobValue extends Value {
         this.dbType = dbType;
     }
 
-    public Clob toClob(SUConnection conn) throws TypeMismatchException {
+    public Clob toClob(SUConnection conn, String charset) throws TypeMismatchException {
+        if (value == null) {
+            try {
+                value = new CUBRIDServerSideClob(conn, lobInfo, charset, true);
+            } catch (SQLException e) {
+            }
+        }
         return value;
     }
 
@@ -70,10 +77,14 @@ public class ClobValue extends Value {
     }
 
     public Object toObject() throws TypeMismatchException {
-        return toClob();
+        // TODO
+        // return toClob();
+        return null;
     }
 
     public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] { toClob() };
+        // TODO
+        // return new Object[] { toClob() };
+        return null;
     }
 }

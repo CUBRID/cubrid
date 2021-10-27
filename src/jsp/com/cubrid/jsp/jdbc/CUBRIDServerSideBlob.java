@@ -29,7 +29,7 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.LobHandleInfo;
@@ -37,7 +37,9 @@ import com.cubrid.jsp.impl.SUConnection;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorManager;
-import cubrid.jdbc.jci.UUType;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.Flushable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -76,7 +78,8 @@ public class CUBRIDServerSideBlob implements Blob {
     // make a new blob
     public CUBRIDServerSideBlob(Connection conn) throws SQLException {
         if (conn == null) {
-            throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_INVALID_VALUE,
+            null);
         }
 
         SUConnection suConn = ((CUBRIDServerSideConnection) conn).getSUConnection();
@@ -97,7 +100,8 @@ public class CUBRIDServerSideBlob implements Blob {
     // get blob from existing result set
     public CUBRIDServerSideBlob(Connection conn, LobHandleInfo lobHandle, boolean isLobLocator) throws SQLException {
         if (conn == null || lobHandle == null) {
-            throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_INVALID_VALUE,
+                    null);
         }
 
         SUConnection suConn = ((CUBRIDServerSideConnection) conn).getSUConnection();
@@ -110,12 +114,17 @@ public class CUBRIDServerSideBlob implements Blob {
     public CUBRIDServerSideBlob(SUConnection suConn, LobHandleInfo lobHandle, boolean isLobLocator)
             throws SQLException {
         if (conn == null || lobHandle == null) {
-            throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_INVALID_VALUE,
+                    null);
         }
 
         this.conn = suConn;
         isWritable = false;
         this.isLobLocator = isLobLocator;
+    }
+
+    public SUConnection getStatementHandler() {
+        return conn;
     }
 
     /*
@@ -209,7 +218,7 @@ public class CUBRIDServerSideBlob implements Blob {
                     null);
         }
 
-        return new CUBRIDBufferedInputStream(new CUBRIDServerSideBlobInputStream(this, pos, length),
+        return new BufferedInputStream(new CUBRIDServerSideBlobInputStream(this, pos, length),
                 BLOB_MAX_IO_LENGTH);
     }
 
@@ -292,7 +301,7 @@ public class CUBRIDServerSideBlob implements Blob {
                         .createCUBRIDException(CUBRIDServerSideJDBCErrorCode.ER_LOB_POS_INVALID, null);
             }
 
-            OutputStream out = new CUBRIDBufferedOutputStream(new CUBRIDServerSideBlobOutputStream(this, pos),
+            OutputStream out = new BufferedOutputStream(new CUBRIDServerSideBlobOutputStream(this, pos),
                     BLOB_MAX_IO_LENGTH);
             addFlushableStream(out);
             return out;

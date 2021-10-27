@@ -37,6 +37,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
+import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.net.URL;
 import java.sql.Array;
@@ -330,7 +331,7 @@ public class CUBRIDServerSideResultSet implements ResultSet {
                 addStream(stream);
             } else if (obj instanceof String) {
                 String str = (String) obj;
-                stream = new CUBRIDInputStream(str.getBytes());
+                stream = new CUBRIDServerSideInputStream(str.getBytes());
                 addStream(stream);
             }
         }
@@ -354,7 +355,7 @@ public class CUBRIDServerSideResultSet implements ResultSet {
                 addStream(stream);
             } else if (obj instanceof byte[]) {
                 byte[] bytes = (byte[]) obj;
-                stream = new CUBRIDInputStream(bytes);
+                stream = new CUBRIDServerSideInputStream(bytes);
                 addStream(stream);
             }
         }
@@ -502,8 +503,11 @@ public class CUBRIDServerSideResultSet implements ResultSet {
             } else if (obj instanceof String) {
                 String str = (String) obj;
                 byte[] bytes = str.getBytes();
-                stream = new CUBRIDReader(new String(b, "ISO-8859-1"));
-                addStream(stream);
+                try {
+                    stream = new CUBRIDServerSideReader(new String(bytes, "ISO-8859-1"));
+                    addStream(stream);
+                } catch (UnsupportedEncodingException e) {
+                }
             }
         }
 
@@ -1036,13 +1040,13 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     @Override
     public Blob getBlob(int columnIndex) throws SQLException {
         beforeGetValue(columnIndex);
-        return statementHandler.getBlob(columnIndex);
+        return statementHandler.getBlob(columnIndex, connection);
     }
 
     @Override
     public Clob getClob(int columnIndex) throws SQLException {
         beforeGetValue(columnIndex);
-        return statementHandler.getClob(columnIndex);
+        return statementHandler.getClob(columnIndex, connection);
     }
 
     @Override

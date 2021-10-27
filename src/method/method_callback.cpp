@@ -62,12 +62,11 @@ namespace cubmethod
     int error = net_client_send_data (m_host, m_rid, eb.get_ptr (), packer.get_current_size ());
     if (error != NO_ERROR)
       {
-  return ER_FAILED;
+	return ER_FAILED;
       }
 
     return NO_ERROR;
   }
-  */
 
   int
   callback_handler::callback_dispatch (packing_unpacker &unpacker)

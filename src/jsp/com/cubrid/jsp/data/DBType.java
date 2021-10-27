@@ -32,12 +32,12 @@
 package com.cubrid.jsp.data;
 
 import cubrid.jdbc.driver.CUBRIDBinaryString;
-import cubrid.jdbc.driver.CUBRIDBlob;
-import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
 import cubrid.sql.CUBRIDTimestamptz;
 import java.math.BigDecimal;
+import java.sql.Blob;
+import java.sql.Clob;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -100,8 +100,8 @@ public class DBType {
             }
             return DB_DATETIME;
         } else if (value instanceof CUBRIDOID) return DB_OBJECT;
-        else if (value instanceof CUBRIDBlob) return DB_BLOB;
-        else if (value instanceof CUBRIDClob) return DB_CLOB;
+        else if (value instanceof Blob) return DB_BLOB;
+        else if (value instanceof Clob) return DB_CLOB;
         else if (value instanceof Object[]) return DB_SEQUENCE;
         else if (value instanceof CUBRIDBinaryString) return DB_STRING;
         else return DB_NULL;
