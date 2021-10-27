@@ -8715,12 +8715,6 @@ log_is_active_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char
       return false;
     }
 
-  compat = rel_get_disk_compatible (hdr.db_compatibility, NULL);
-  if (compat != REL_FULLY_COMPATIBLE)
-    {
-      return false;
-    }
-
   if (rel_is_log_compatible (hdr.db_release, rel_release_string ()) == false)
     {
       return false;
