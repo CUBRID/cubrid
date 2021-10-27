@@ -33,10 +33,7 @@
 #include "method_invoke_group.hpp"
 #include "method_struct_query.hpp"
 #include "log_impl.h"
-
-#if defined (SERVER_MODE)
-#include "server_support.h"
-#endif // SERVER_MODE
+#include "xserver_interface.h"
 
 namespace cubmethod
 {
