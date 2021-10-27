@@ -8670,7 +8670,7 @@ error:
 }
 
 /*
- * log_is_active_sane - Check whether the active log volume is sane. Note that it does NOT guarantee that the active log volume is perfectly fine. It checks the existance of the log volume, the checksum of the log header page and compatibility.
+ * log_is_active_log_sane - Check whether the active log volume is sane. Note that it does NOT guarantee that the active log volume is perfectly fine. It checks the existance of the log volume, the checksum of the log header page and compatibility.
  *
  * return: whether the active log volume is sane
  *
@@ -8691,7 +8691,8 @@ error:
  *                      Database Backup = db_backup
  */
 bool
-log_is_active_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname)
+log_is_active_log_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+			const char *prefix_logname)
 {
   LOG_HEADER hdr;
   REL_COMPATIBILITY compat;

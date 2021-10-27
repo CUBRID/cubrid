@@ -5632,7 +5632,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 
   if (recreate_log == true)
     {
-      if (log_is_active_sane (thread_p, boot_Db_full_name, log_path, log_prefix))
+      if (log_is_active_log_sane (thread_p, boot_Db_full_name, log_path, log_prefix))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_TOO_SANE_TO_RECREATE, 1, log_path);
 	  error_code = ER_LOG_TOO_SANE_TO_RECREATE;
