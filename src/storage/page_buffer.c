@@ -16056,6 +16056,12 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 
     void execute (cubthread::entry & thread_ref) override
     {
+      if (pgbuf_Page_flush_daemon == nullptr)
+	{
+	  // daemon not fully initialized yet
+	  return;
+	}
+
       // did not timeout, someone requested flush... run at least once
       bool force_one_run = pgbuf_Page_flush_daemon->was_woken_up ();
       bool stop_iteration = false;
