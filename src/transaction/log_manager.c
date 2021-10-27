@@ -8706,17 +8706,23 @@ log_is_active_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char
   error_code = logpb_fetch_header_from_active_log (thread_p, db_fullname, logpath, prefix_logname, &hdr, log_pgptr);
   if (error_code != NO_ERROR)
     {
+      _er_log_debug (ARG_FILE_LINE, "The active log volume (%s) is insane: mounting or fetching header fails.\n",
+		     logpath);
       return false;
     }
 
   error_code = logpb_page_check_corruption (thread_p, log_pgptr, &is_corrupted);
   if (error_code != NO_ERROR || is_corrupted == true)
     {
+      _er_log_debug (ARG_FILE_LINE, "The active log volume (%s) is insane: the header page is corrupted.\n", logpath);
       return false;
     }
 
   if (rel_is_log_compatible (hdr.db_release, rel_release_string ()) == false)
     {
+      _er_log_debug (ARG_FILE_LINE,
+		     "The active log volume (%s) is insane: unmatched release version. database release version: %s, build release version: %s\n",
+		     logpath, hdr.db_release, rel_release_string ());
       return false;
     }
 
