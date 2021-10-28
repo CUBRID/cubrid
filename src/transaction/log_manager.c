@@ -10546,7 +10546,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
     {
       CDC_UPDATE_TEMP_LOGPAGE (thread_p, process_lsa, log_page_p);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_NULL_EXTRACTION_LSA, 0);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NULL_EXTRACTION_LSA, 0);
       error = ER_CDC_NULL_EXTRACTION_LSA;
       goto error;
     }
@@ -10687,6 +10687,9 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 		  {
 		    /* can not find user. It meets abort log. So, ignore the logs from this transaction */
 		    cdc_Gl.producer.tran_ignore.insert (std::make_pair (trid, 1));
+
+		    error = ER_CDC_IGNORE_TRANSACTION;
+		    er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_TRANSACTION, 1, trid);
 		    goto end;
 		  }
 		else
@@ -10736,7 +10739,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
 	      {
 		error = ER_CDC_IGNORE_LOG_INFO;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
+		er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
 		goto end;
 	      }
 
@@ -10765,7 +10768,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
 	      {
 		error = ER_CDC_IGNORE_LOG_INFO;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
+		er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
 		goto end;
 	      }
 
@@ -12608,6 +12611,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	   * It is not sure why update log is appended by trigger savepoint */
 
 	  error_code = ER_CDC_IGNORE_LOG_INFO;
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
 	  goto error;
 	}
 
@@ -12799,7 +12803,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
       if (oid_is_system_class (&classoid) || !cdc_is_filtered_class (classoid))
 	{
 	  error_code = ER_CDC_IGNORE_LOG_INFO;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
 	  goto error;
 	}
     }
@@ -13512,7 +13516,7 @@ cdc_pause_producer ()
       sleep (1);
     }
 
-  cdc_log ("cdc_pause_producer : produer is paused");
+  cdc_log ("cdc_pause_producer : producer is paused");
 }
 
 void
@@ -13612,7 +13616,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 
 	      ctime_r (&input_time, input_time_buf);
 	      ctime_r (time, output_time_buf);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf, output_time_buf);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf, output_time_buf);
 
 	      error = ER_CDC_ADJUSTED_LSA;
 	    }
@@ -13647,7 +13651,8 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 
 		  ctime_r (&input_time, input_time_buf);
 		  ctime_r (time, output_time_buf);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf, output_time_buf);
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf,
+			  output_time_buf);
 		  error = ER_CDC_ADJUSTED_LSA;
 		}
 	      else
@@ -13657,7 +13662,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 
 		      ctime_r (&input_time, input_time_buf);
 		      ctime_r (time, output_time_buf);
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf,
+		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf,
 			      output_time_buf);
 		      error = ER_CDC_ADJUSTED_LSA;
 		    }
@@ -13682,7 +13687,8 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 
 		  ctime_r (&input_time, input_time_buf);
 		  ctime_r (time, output_time_buf);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf, output_time_buf);
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf,
+			  output_time_buf);
 		  error = ER_CDC_ADJUSTED_LSA;
 		}
 	      else
@@ -13695,7 +13701,8 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 
 		  ctime_r (&input_time, input_time_buf);
 		  ctime_r (time, output_time_buf);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf, output_time_buf);
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf,
+			  output_time_buf);
 		  error = ER_CDC_ADJUSTED_LSA;
 		}
 	    }
@@ -13762,7 +13769,7 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 
       if (LSA_EQ (&process_lsa, lsa))
 	{
-	  cdc_log ("cdc_validate_lsa : LOG_LSA (%lld | %d) validation success ", LSA_AS_ARGS (&process_lsa));
+	  cdc_log ("cdc_validate_lsa : LOG_LSA (%lld | %d) validation success ", LSA_AS_ARGS (lsa));
 	  return NO_ERROR;
 	}
 
@@ -13806,7 +13813,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 
       LOG_LSA next_consume_lsa = LSA_INITIALIZER;
       LSA_COPY (&next_consume_lsa, &cdc_Gl.first_loginfo_queue_lsa);
-      while (LSA_LE (&next_consume_lsa, start_lsa))
+      while (LSA_LT (&next_consume_lsa, start_lsa))
 	{
 	  cdc_Gl.loginfo_queue->consume (consume);
 	  cdc_Gl.consumer.consumed_queue_size += consume->length;
@@ -13920,8 +13927,8 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 		  LOG_ARCHIVE_CS_EXIT (thread_p);
 		  LOG_CS_EXIT (thread_p);
 
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, 0LL, 0LL, arv_name);
-		  return ER_LOG_READ;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1, arv_name);
+		  return ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
 		}
 
 	      process_lsa.pageid = arv_hdr->fpageid;
@@ -14140,7 +14147,8 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 	  time_t timeout = end - begin;
 
 	  ctime_r (&timeout, ctime_buf);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_EXTRACTION_TIMEOUT, 1, ctime_buf);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_EXTRACTION_TIMEOUT, 2, ctime_buf,
+		  cdc_Gl.consumer.extraction_timeout);
 
 	  return ER_CDC_EXTRACTION_TIMEOUT;
 	}
@@ -14197,7 +14205,8 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
       end = (int) time (NULL);
       if ((end - begin) >= cdc_Gl.consumer.extraction_timeout)
 	{
-	  cdc_log ("cdc_make_loginfo : finished extraction due to extraction timeout");
+	  cdc_log ("cdc_make_loginfo : finished extraction due to extraction timeout (%lld / %lld)", end - begin,
+		   cdc_Gl.consumer.extraction_timeout);
 	  goto end;
 	}
     }
