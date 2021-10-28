@@ -11140,7 +11140,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
   LOG_LSA current_logrec_lsa;
   LOG_LSA prev_lsa;
 
-  int log_type;
+  LOG_RECTYPE log_type;
 
   int is_zipped_redo = false;
   int is_unzipped_redo = false;
