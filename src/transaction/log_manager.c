@@ -1265,6 +1265,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * page size
        */
       logpb_finalize_pool (thread_p);
+      log_Gl.m_metainfo.clear ();
       log_unmount_active_file (thread_p);
       log_Gl.append.vdes = NULL_VOLDES;
 
@@ -1879,6 +1880,8 @@ log_final (THREAD_ENTRY * thread_p)
 
   /* Undefine page buffer pool and transaction table */
   logpb_finalize_pool (thread_p);
+
+  log_Gl.m_metainfo.clear ();
 
   logtb_undefine_trantable (thread_p);
 
