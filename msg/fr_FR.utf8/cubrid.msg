@@ -663,7 +663,7 @@ $ LOADDB
 593 Une instance virtuelle non modifiable a été réutilisé et ne peut pas être reconstruit.
 594 Une clause d'object_id doit être fournie sans l'aide d'attributs (%1$s) de types de données approximatifs (float ou double).
 595 Le nom de base de données "%1$s" est trop long. Nom de la base doit être inférieure à %2$d caractères.
-596 Les %1$d pages de l'espace temporaire total permis a été dépassée.
+596 Les %1$ld pages de l'espace temporaire total permis a été dépassée.
 597 Nombre de pages pour le fichier de tas %1$d|%2$d|%3$d est inconsistent. \n%4$d et %5$d ont été trouvés selon la chaîne tas et le table des fichiers, respectivement.
 598 Nombre de fichiers est inconsistent. %1$d ont été attendue, %2$d ont été trouvés
 599 Un erreur E/S s'est produite pendant la synchronisation d'état de volume "%1$s".

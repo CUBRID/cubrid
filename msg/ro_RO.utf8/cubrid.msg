@@ -663,7 +663,7 @@ $ LOADDB
 593 O instanţă virtuală neactualizabilă a fost recuperată şi nu poate fi reconstruită.
 594 O clauză object_id trebuie furnizată fără a utiliza atribute (%1$s) de tip de date aproximative (float sau double).
 595 Numele bazei de date "%1$s" este prea lung. Numele bazei de date trebuie să fie mai mic de %2$d caractere.
-596 Cele %1$d pagini de spaţiu temporar total permis au fost depăşite.
+596 Cele %1$ld pagini de spaţiu temporar total permis au fost depăşite.
 597 Numărul de pagini pentru fişierul de heap %1$d|%2$d|%3$d nu este consistent. \n%4$d şi %5$d au fost găsite comform lanţului de heap, respectiv tabelei de fişiere.
 598 Numărul de fişiere nu este consistent. %1$d erau aşteptate, %2$d au fost găsite
 599 O eroare I/O s-a produs la sincronizarea stării volumului "%1$s".

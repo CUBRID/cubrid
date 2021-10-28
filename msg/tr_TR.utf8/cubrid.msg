@@ -663,7 +663,7 @@ $ LOADDB
 593 Olmayan bir güncellenebilir sanal örnek iadesi edilmiş ve yeniden inşa edilemez.
 594 Bir object_id maddesi yaklaşık veri türleri (float ya da double) özellikleri (%1$s) kullanmadan sağlanmalıdır.
 595 Veritabanı adı "%1$s" cok fazla uzun. Veritabanı adı %2$d karakterden daha az olmalıdır.
-596 Toplam geçici alanı sayfaları %1$d verilen izin aşılmıştır.
+596 Toplam geçici alanı sayfaları %1$ld verilen izin aşılmıştır.
 597 %1$d|%2$d|%3$d heap dosyaları için sayfaların sayısı tutarsızdır. \n%4$d ve %5$d sırasıyla, bir yığın zinciri ve dosya tablosuna göre tespit edildi.
 598 Dosyaların sayısı tutarsız. %1$d beklenen, %2$d bulunulan
 599 "%1$s" yoğunluk durumu eşitleme yaparken I/O hatası oluştu .

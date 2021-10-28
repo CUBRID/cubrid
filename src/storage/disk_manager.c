@@ -4435,7 +4435,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       extend_info = &disk_Cache->temp_purpose_info.extend_info;
       if (extend_info->nsect_free >= context->n_cache_reserve_remaining)
 	{
-	  disk_reserve_from_cache_vols (extend_info->voltype, context);
+	  disk_reserve_from_cache_vols (DB_TEMPORARY_VOLTYPE, context);
 	  if (context->n_cache_reserve_remaining <= 0)
 	    {
 	      /* found enough sectors */
@@ -4450,7 +4450,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 	  /* too much temporary space */
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1,
-		  disk_Temp_max_sects * DISK_SECTOR_NPAGES);
+		  (long) disk_Temp_max_sects * DISK_SECTOR_NPAGES);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);
 	  return ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED;
 	}
