@@ -10938,6 +10938,7 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
 
+	  cdc_log ("cdc_loginfo_producer_execute : cdc_Gl.producer.state is in CDC_PRODUCER_STATE_RUN ");
 	  continue;
 	}
 
@@ -10955,6 +10956,8 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
 
+	  cdc_log ("cdc_loginfo_producer_execute : cdc_Gl.producer.state is in CDC_PRODUCER_STATE_RUN ");
+
 	  cdc_Gl.producer.produced_queue_size -= cdc_Gl.consumer.consumed_queue_size;
 	  cdc_Gl.consumer.consumed_queue_size = 0;
 
@@ -10967,7 +10970,13 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
       if (LSA_GE (&cdc_Gl.producer.next_extraction_lsa, &nxio_lsa))
 	{
-	  /* LOG_HA_DUMMY_SERVER_STATUS is appended every 1 seconds and flushed. So it is expected to be woken up by looper within period of looper */
+	  /* LOG_HA_DUMMY_SERVER_STATUS is appended every 1 seconds and flushed.
+	   * So it is expected to be woken up by looper within period of looper */
+
+	  cdc_log
+	    ("cdc_loginfo_producer_execute : next_extraction_lsa (%lld | %d)  is greater or equal than nxio_lsa (%lld | %d)",
+	     LSA_AS_ARGS (&cdc_Gl.producer.next_extraction_lsa), LSA_AS_ARGS (&nxio_lsa));
+
 	  sleep (1);
 
 	  continue;
@@ -10983,6 +10992,10 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       error = cdc_log_extract (thread_p, &process_lsa, &log_info_entry);
       if (!(error == NO_ERROR || error == ER_CDC_LOGINFO_ENTRY_GENERATED))
 	{
+	  cdc_log
+	    ("cdc_loginfo_producer_execute : cdc_log_extract() error(%d) is returned at extracting log from lsa (%lld | %d)",
+	     error, LSA_AS_ARGS (&cur_log_rec_lsa));
+
 	  if (error != ER_CDC_IGNORE_LOG_INFO)
 	    {
 	      continue;
@@ -11181,6 +11194,9 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_hdr), &process_lsa, log_page_p);
 
+      cdc_log ("cdc_get_recdes : reading from undo log lsa:(%lld | %d), undo log record type:%s",
+	       LSA_AS_ARGS (undo_lsa), log_to_string (log_type));
+
       switch (log_type)
 	{
 	case LOG_SUPPLEMENTAL_INFO:
@@ -11352,7 +11368,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_hdr), &process_lsa, log_page_p);
 
       cdc_log ("cdc_get_recdes : reading from redo log lsa:(%lld | %d), redo log record type:%s",
-	       LSA_AS_ARGS (redo_lsa), log_to_string (log_rec_hdr->type));
+	       LSA_AS_ARGS (redo_lsa), log_to_string (log_type));
 
       switch (log_type)
 	{
@@ -12276,7 +12292,9 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 	  if (pk_attr == NULL)
 	    {
 	      cdc_log ("cdc_find_primary_key : failed to allocate memory for primary key attributes");
-	      return ER_FAILED;
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * num_idx_att);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
 	  for (int j = 0; j < num_idx_att; j++)
@@ -12344,7 +12362,6 @@ cdc_make_error_loginfo (int trid, char *user, CDC_DML_TYPE dml_type, OID classoi
 
   free_and_init (loginfo_buf);
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LOGINFO_ENTRY_GENERATED, 1, "DML ERROR");
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
 
 error:
@@ -12711,7 +12728,6 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LOGINFO_ENTRY_GENERATED, 1, "DML");
   error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
 
   cdc_log ("cdc_make_dml_loginfo : success to generated dml log info. length:%d", dml_entry->length);
@@ -12842,7 +12858,6 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
 
   cdc_log ("cdc_make_ddl_loginfo : success to generated ddl log info. length:%d", ddl_entry->length);
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LOGINFO_ENTRY_GENERATED, 1, "DDL");
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
 
 error:
@@ -12916,7 +12931,6 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   free_and_init (loginfo_buf);
   cdc_log ("cdc_make_dcl_loginfo : success to generated dcl log info. length:%d", dcl_entry->length);
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LOGINFO_ENTRY_GENERATED, 1, "DCL");
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
 
 error:
@@ -12972,7 +12986,6 @@ cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY 
 
   cdc_log ("cdc_make_timer_loginfo : success to generated timer log info. length:%d", timer_entry->length);
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LOGINFO_ENTRY_GENERATED, 1, "TIMER");
   return ER_CDC_LOGINFO_ENTRY_GENERATED;
 
 error:
@@ -13498,6 +13511,8 @@ cdc_pause_producer ()
     {
       sleep (1);
     }
+
+  cdc_log ("cdc_pause_producer : produer is paused");
 }
 
 void
@@ -13519,6 +13534,8 @@ cdc_kill_producer ()
       pthread_cond_signal (&cdc_Gl.producer.wait_cond);
       sleep (1);
     }
+
+  cdc_log ("cdc_kill_producer : producer is dead");
 }
 
 void
@@ -13727,6 +13744,8 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
       return ER_CDC_INVALID_LOG_LSA;
     }
 
+  cdc_log ("cdc_validate_lsa : fetch page from LOG_LSA (%lld | %d) to validate ", LSA_AS_ARGS (lsa));
+
   /*fetch log page */
   if (logpb_fetch_page (thread_p, lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
     {
@@ -13743,6 +13762,7 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 
       if (LSA_EQ (&process_lsa, lsa))
 	{
+	  cdc_log ("cdc_validate_lsa : LOG_LSA (%lld | %d) validation success ", LSA_AS_ARGS (&process_lsa));
 	  return NO_ERROR;
 	}
 
@@ -13772,6 +13792,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 
   if (cdc_Gl.producer.produced_queue_size == 0)
     {
+      cdc_log ("cdc_reinitialize_queue : don't need to be reinitialized");
       goto end;
     }
 
@@ -13779,6 +13800,10 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 
   if (LSA_LE (&cdc_Gl.first_loginfo_queue_lsa, start_lsa) && LSA_GT (&cdc_Gl.last_loginfo_queue_lsa, start_lsa))
     {
+      cdc_log
+	("cdc_reinitialize_queue : reconstruct existing log info queue to remove the log infos before the LOG_LSA (%lld | %d)",
+	 LSA_AS_ARGS (start_lsa));
+
       LOG_LSA next_consume_lsa = LSA_INITIALIZER;
       LSA_COPY (&next_consume_lsa, &cdc_Gl.first_loginfo_queue_lsa);
       while (LSA_LE (&next_consume_lsa, start_lsa))
@@ -13798,6 +13823,8 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
     }
   else
     {
+      cdc_log ("cdc_reinitialize_queue : initialize the whole log infos in the queue");
+
       while (!cdc_Gl.loginfo_queue->is_empty ())
 	{
 	  cdc_Gl.loginfo_queue->consume (consume);
@@ -13818,9 +13845,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 
 end:
 
-  cdc_log
-    ("cdc_reinitialize_queue : reconstruct existing log info queue to remove the log infos before the LOG_LSA (%lld | %d)",
-     LSA_AS_ARGS (start_lsa));
+  cdc_log ("cdc_reinitialize_queue : reinitialize end");
 }
 
 /*
@@ -14172,6 +14197,7 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
       end = (int) time (NULL);
       if ((end - begin) >= cdc_Gl.consumer.extraction_timeout)
 	{
+	  cdc_log ("cdc_make_loginfo : finished extraction due to extraction timeout");
 	  goto end;
 	}
     }
@@ -14185,6 +14211,8 @@ end:
 
   if (cdc_Gl.consumer.request == CDC_REQUEST_CONSUMER_TO_WAIT)
     {
+      cdc_log ("cdc_make_loginfo : consumer is requested to wait");
+
       while (cdc_Gl.consumer.consumed_queue_size != 0)
 	{
 	  cdc_wakeup_producer ();
@@ -14267,6 +14295,7 @@ cdc_free_extraction_filter ()
 int
 cdc_cleanup ()
 {
+  cdc_log ("cdc_cleanup () : cleanup start");
   cdc_pause_producer ();
 
   cdc_free_extraction_filter ();
@@ -14300,6 +14329,7 @@ cdc_cleanup ()
   /*communication buffer from server to client initialization */
   cdc_cleanup_consumer ();
 
+  cdc_log ("cdc_cleanup () : cleanup end");
   return NO_ERROR;
 }
 
@@ -14326,7 +14356,8 @@ cdc_finalize ()
 {
   int i = 0;
 
-  /* 서버 버퍼 초기화 (consumer.log_info) */
+  cdc_log ("cdc_finalize () : finalize start");
+
   cdc_free_extraction_filter ();
 
 /* *INDENT-OFF* */
@@ -14369,6 +14400,8 @@ cdc_finalize ()
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
   LSA_SET_NULL (&cdc_Gl.first_loginfo_queue_lsa);
+
+  cdc_log ("cdc_finalize () : finalize end");
 
   return NO_ERROR;
 }
