@@ -57,7 +57,7 @@
   do \
     { \
       cubrid_log_check_tracelog (); \
-      if(g_trace_log) \
+      if(cubrid_log_check_tracelog () != -1) \
         { \
           cubrid_log_get_time (); \
           fprintf (g_trace_log,"[%s][FILE:%s][LINE:%d]\n" msg "\n", g_curr_time, __FILE__, __LINE__, ##__VA_ARGS__); \
@@ -131,8 +131,6 @@ int g_log_infos_size = 0;
 
 CUBRID_LOG_ITEM *g_log_items = NULL;
 int g_log_items_count = 0;
-
-static void cubrid_log_check_tracelog ();
 
 static void
 cubrid_log_get_time ()
@@ -222,6 +220,17 @@ cubrid_log_set_extraction_timeout (int timeout)
 }
 
 static void
+cubrid_log_reset_tracelog ()
+{
+  memset (g_trace_log_base, 0, PATH_MAX + 1);
+  memset (g_trace_log_path, 0, PATH_MAX + 1);
+  memset (g_trace_log_path_prev, 0, PATH_MAX + 1);
+  g_num_trace_log = 0;
+  g_trace_log_level = 0;
+  g_trace_log_filesize = 10 * 1024 * 1024;
+}
+
+static int
 cubrid_log_make_new_tracelog ()
 {
   time_t er_time;
@@ -230,6 +239,11 @@ cubrid_log_make_new_tracelog ()
   struct timeval tv;
 
   char curr_time[256];
+
+  if (g_dbname[0] == '\0')
+    {
+      return -1;
+    }
 
   er_time = time (NULL);
 
@@ -253,7 +267,7 @@ cubrid_log_make_new_tracelog ()
     {
       if (remove (g_trace_log_path_prev) != 0)
 	{
-	  return;
+	  return -1;
 	}
       memcpy (g_trace_log_path_prev, g_trace_log_path, PATH_MAX + 1);
     }
@@ -270,9 +284,15 @@ cubrid_log_make_new_tracelog ()
   snprintf (g_trace_log_path, PATH_MAX + 1, "%s/%s_cubridlog_%s.err", g_trace_log_base, g_dbname, curr_time);
 
   g_trace_log = fopen (g_trace_log_path, "a+");
+  if (g_trace_log == NULL)
+    {
+      return -1;
+    }
+
+  return NO_ERROR;
 }
 
-static void
+static int
 cubrid_log_check_tracelog ()
 {
   int64_t curr_size = 0;
@@ -286,10 +306,14 @@ cubrid_log_check_tracelog ()
 	   * cubrid_log_connect_server - cubrid_log_finalize() */
 
 	  g_trace_log = fopen (g_trace_log_path, "a+");
+	  if (g_trace_log == NULL)
+	    {
+	      return -1;
+	    }
 	}
       else
 	{
-	  cubrid_log_make_new_tracelog ();
+	  return cubrid_log_make_new_tracelog ();
 	}
     }
   else
@@ -297,9 +321,11 @@ cubrid_log_check_tracelog ()
       curr_size = ftell (g_trace_log);
       if (curr_size >= g_trace_log_filesize)
 	{
-	  cubrid_log_make_new_tracelog ();
+	  return cubrid_log_make_new_tracelog ();
 	}
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -354,11 +380,7 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
       /* These variables are not finalized at cubrid_log_finalize()
        * for not creating additional tracelog files if cubrid_log_connect_server is called right after
        * cubrid_log_finalize in the same program */
-
-      memset (g_trace_log_base, 0, PATH_MAX + 1);
-      memset (g_trace_log_path, 0, PATH_MAX + 1);
-      memset (g_trace_log_path_prev, 0, PATH_MAX + 1);
-      g_num_trace_log = 0;
+      cubrid_log_reset_tracelog ();
     }
 
   snprintf (g_trace_log_base, PATH_MAX + 1, "%s", path);
@@ -715,7 +737,19 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *p
 {
   int err_code;
 
-  strncpy (g_dbname, dbname, CUBRID_LOG_MAX_DBNAME_LEN);
+  if (dbname != NULL)
+    {
+      if (g_num_trace_log > 0 && strcmp (dbname, g_dbname) != 0)
+	{
+	  cubrid_log_reset_tracelog ();
+	}
+
+      strncpy (g_dbname, dbname, CUBRID_LOG_MAX_DBNAME_LEN);
+    }
+  else
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_DBNAME);
+    }
 
   if (g_trace_log_level > 0)
     {
@@ -736,11 +770,6 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *id, char *p
   if (port < 0 || port > USHRT_MAX)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PORT);
-    }
-
-  if (dbname == NULL)
-    {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_DBNAME);
     }
 
   if (id == NULL)
