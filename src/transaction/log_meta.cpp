@@ -204,4 +204,12 @@ namespace cublog
   {
     return m_checkpoints.size ();
   }
+
+  void
+  meta::clear ()
+  {
+    m_loaded_from_file = false;
+    m_clean_shutdown = false;
+    m_checkpoints.clear ();
+  }
 }
