@@ -2172,10 +2172,8 @@ sm_downcase_name (const char *name, char *buf, int maxlen)
 const char *
 sm_simple_name (const char *name)
 {
-  const char *dot;
-
-  dot = strchr (name, '.');
-  if (dot != NULL)
+  const char *dot = NULL;
+  if ((dot = strchr (name, '.')))
     {
       return dot + 1;
     }
@@ -2692,6 +2690,7 @@ sm_rename_class (MOP op, const char *new_name)
       else
 	{
 	  class_->header.ch_name = newname;
+	  class_->header.ch_simple_name = sm_simple_name (newname);
 	  error = sm_flush_objects (op);
 
 	  if (error == NO_ERROR)

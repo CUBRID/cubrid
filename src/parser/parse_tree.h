@@ -2536,6 +2536,7 @@ struct pt_name_info
 {
   UINTPTR spec_id;		/* unique identifier for entity specs */
   const char *original;		/* the string of the original name */
+  const char *thin;		/* the string of the thin name */
   const char *resolved;		/* the string of the resolved name */
   DB_OBJECT *db_object;		/* the object, if this is a class or instance */
   int db_object_chn;
@@ -2562,13 +2563,15 @@ struct pt_name_info
 					 * statement processing and execution */
 #define PT_NAME_ALLOW_REUSABLE_OID 512	/* ignore the REUSABLE_OID restrictions for this name */
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from derived spec */
-#define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
-#define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
+#define PT_NAME_FOR_UPDATE	  2048	/* Table name in FOR UPDATE clause */
+#define PT_NAME_DEFAULTF_ACCEPTS  4096	/* name of table/column that default function accepts: real table's, cte's */
+#define PT_NAME_INFO_WITH_OWNER   8192	/* Original name contains owner name. */
+#define PT_NAME_INFO_CURRENT_USER_OWNER 8192	/* Current user is owner. */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
-#define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (short) (f)
-#define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (short) ~(f)
+#define PT_NAME_INFO_SET_FLAG(e, f)     ((e)->info.name.flag |= (short) (f))
+#define PT_NAME_INFO_CLEAR_FLAG(e, f)   ((e)->info.name.flag &= (short) ~(f))
   short location;		/* 0: WHERE; n: join condition of n-th FROM */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
   PT_NODE *indx_key_limit;	/* key limits for index name */

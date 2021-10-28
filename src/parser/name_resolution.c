@@ -4851,6 +4851,32 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
       if (savespec)
 	{
 	  /* if yes, set the resolution and the resolved name */
+
+	  /**
+	  PT_NODE *range_var = savespec->info.spec.range_var;
+	  if (PT_NAME_INFO_IS_FLAGED (range_var, PT_NAME_INFO_CURRENT_USER_OWNER))
+	    {
+	      in_node->info.name.resolved = range_var->info.name.thin;
+	    }
+	  else if (PT_NAME_INFO_IS_FLAGED (range_var, PT_NAME_INFO_WITH_OWNER))
+	    {
+	      const char *current_user_name = db_get_user_name ();
+	      if (strncmp (range_var->info.name.resolved, current_user_name, (sizeof (current_user_name) - 1)) == 0)
+		{
+		  PT_NAME_INFO_SET_FLAG (range_var, PT_NAME_INFO_CURRENT_USER_OWNER);
+		  in_node->info.name.resolved = range_var->info.name.thin;
+		}
+	      else
+		{
+		  in_node->info.name.resolved = range_var->info.name.original;
+		}
+	    }
+	  else
+	    {
+	      in_node->info.name.resolved = range_var->info.name.original;
+	    }
+	  in_node->info.name.partition = range_var->info.name.partition;
+	  /**/
 	  in_node->info.name.resolved = savespec->info.spec.range_var->info.name.original;
 	  in_node->info.name.partition = savespec->info.spec.range_var->info.name.partition;
 
@@ -6188,6 +6214,31 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = p->info.spec.flat_entity_list;
 	  while (q)
 	    {
+	      /**
+	      PT_NODE *range_var = p->info.spec.range_var;
+	      if (PT_NAME_INFO_IS_FLAGED (range_var, PT_NAME_INFO_CURRENT_USER_OWNER))
+		{
+		  q->info.name.resolved = range_var->info.name.thin;
+		}
+	      else if (PT_NAME_INFO_IS_FLAGED (range_var, PT_NAME_INFO_WITH_OWNER))
+		{
+		  const char *current_user_name = db_get_user_name ();
+		  if (strncmp (range_var->info.name.resolved, current_user_name,
+			       (sizeof (current_user_name) - 1)) == 0)
+		    {
+		      PT_NAME_INFO_SET_FLAG (range_var, PT_NAME_INFO_CURRENT_USER_OWNER);
+		      q->info.name.resolved = range_var->info.name.thin;
+		    }
+		  else
+		    {
+		      q->info.name.resolved = range_var->info.name.original;
+		    }
+		}
+	      else
+		{
+		  q->info.name.resolved = range_var->info.name.original;
+		}
+	      /**/
 	      q->info.name.resolved = p->info.spec.range_var->info.name.original;
 	      if (PT_IS_SPEC_REAL_TABLE (p))
 		{

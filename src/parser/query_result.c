@@ -960,10 +960,18 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query, DB_QUERY_TYPE * l
 	    {
 	      if (want_spec_entity_name == true && spec->info.spec.entity_name)
 		{
+		  /**
+		  spec_name = (PT_NAME_INFO_IS_FLAGED (spec->info.spec.entity_name, PT_NAME_INFO_CURRENT_USER_OWNER) ?
+			spec->info.spec.entity_name->info.name.thin : spec->info.spec.entity_name->info.name.original);
+		  /**/
 		  spec_name = spec->info.spec.entity_name->info.name.original;
 		}
 	      else if (want_spec_entity_name == false && spec->info.spec.range_var)
 		{
+		  /**
+		  spec_name = (PT_NAME_INFO_IS_FLAGED (spec->info.spec.range_var, PT_NAME_INFO_CURRENT_USER_OWNER) ?
+			spec->info.spec.range_var->info.name.thin : spec->info.spec.range_var->info.name.original);
+		  /**/
 		  spec_name = spec->info.spec.range_var->info.name.original;
 		}
 	    }
@@ -982,11 +990,19 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query, DB_QUERY_TYPE * l
 	    {
 	      if (want_spec_entity_name == true && spec->info.spec.entity_name)
 		{
+		  /**
+		  spec_name = (PT_NAME_INFO_IS_FLAGED (spec->info.spec.entity_name, PT_NAME_INFO_CURRENT_USER_OWNER) ?
+			spec->info.spec.entity_name->info.name.thin : spec->info.spec.entity_name->info.name.original);
+		  /**/
 		  spec_name = spec->info.spec.entity_name->info.name.original;
 		}
 	      else if (want_spec_entity_name == false && spec->info.spec.range_var)
 		{
-		  spec_name = spec->info.spec.range_var->info.name.original;
+		  /**
+		  spec_name = (PT_NAME_INFO_IS_FLAGED (spec->info.spec.range_var, PT_NAME_INFO_CURRENT_USER_OWNER) ?
+			spec->info.spec.range_var->info.name.thin : spec->info.spec.range_var->info.name.original);
+		  /**/
+  		  spec_name = spec->info.spec.range_var->info.name.original;
 		}
 	    }
 	}

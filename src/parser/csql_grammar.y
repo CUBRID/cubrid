@@ -2714,17 +2714,6 @@ create_stmt
 			if (node)
 			  {
 			    node->info.create_user.user_name = $4;
-
-			    /* Start of change for POC */
-			    if (strstr(node->info.create_user.user_name->info.name.original, ".") != NULL)
-			      {
-				/* To-DOIt is necessary to change the method of handling error messages. */
-				PT_ERRORm (this_parser, node,
-					   MSGCAT_SET_PARSER_SYNTAX,
-					   MSGCAT_SYNTAX_INVALID_CREATE_USER);
-			      }
-			    /* End of change for POC */
-
 			    node->info.create_user.password = $5;
 			    node->info.create_user.groups = $6;
 			    node->info.create_user.members = $7;
@@ -4976,23 +4965,26 @@ user_specified_name_without_dot
 
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
-			const char *user_name = NULL;
-			const char *simple_name = NULL;
-			const char *full_name = NULL;
+			const char *name_buf = NULL;
 
 			assert (user != NULL && user->node_type == PT_NAME);
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			simple_name = name->info.name.original;
-			if (db_is_system_class_by_name (simple_name) == FALSE)
-			  {
-			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
-			    user_name = name->info.name.resolved;
+			/* Owner name. */
+			name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
+			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_WITH_OWNER);
 
-			    full_name = pt_append_string (this_parser, NULL, user_name);
-			    full_name = pt_append_string (this_parser, full_name, ".");
-			    full_name = pt_append_string (this_parser, full_name, simple_name);
-			    name->info.name.original = full_name;
+			/* Name without owner name. */
+			name->info.name.thin = name->info.name.original;
+
+			/* Name without owner name.
+			 * System class/vclass has no owner_name. */
+			if (db_is_system_class_by_name (name->info.name.thin) == FALSE)
+			  {
+			    name_buf = pt_append_string (this_parser, NULL, name->info.name.resolved);
+			    name_buf = pt_append_string (this_parser, name_buf, ".");
+			    name_buf = pt_append_string (this_parser, name_buf, name->info.name.thin);
+			    name->info.name.original = name_buf;
 			  }
 
 			parser_free_tree (this_parser, user);
@@ -5005,22 +4997,26 @@ user_specified_name_without_dot
 		{{
 
 			PT_NODE *name = $1;
-			const char *user_name = NULL;
-			const char *simple_name = NULL;
-			const char *full_name = NULL;
+			const char *name_buf = NULL;
 
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			simple_name = name->info.name.original;
-			if (strchr(simple_name, '.') == NULL && db_is_system_class_by_name (simple_name) == FALSE)
-			  {
-			    name->info.name.resolved = pt_append_string (this_parser, NULL, db_get_user_name ());
-			    user_name = name->info.name.resolved;
+			/* Name without owner name. */
+			name->info.name.thin = name->info.name.original;
 
-			    full_name = pt_append_string (this_parser, NULL, user_name);
-			    full_name = pt_append_string (this_parser, full_name, ".");
-			    full_name = pt_append_string (this_parser, full_name, simple_name);
-			    name->info.name.original = full_name;
+			/* Name without owner name.
+			 * System class/vclass has no owner_name. */
+			if (db_is_system_class_by_name (name->info.name.thin) == FALSE)
+			  {
+			    /* Owner name. */
+			    name->info.name.resolved = pt_append_string (this_parser, NULL, db_get_user_name ());
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_WITH_OWNER);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_USER_OWNER);
+
+			    name_buf = pt_append_string (this_parser, NULL, name->info.name.resolved);
+			    name_buf = pt_append_string (this_parser, name_buf, ".");
+			    name_buf = pt_append_string (this_parser, name_buf, name->info.name.thin);
+			    name->info.name.original = name_buf;
 			  }
 
 			$$ = name;
@@ -5045,23 +5041,27 @@ user_specified_name
 
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
-			const char *user_name = NULL;
-			const char *simple_name = NULL;
-			const char *full_name = NULL;
+			const char *name_buf = NULL;
 
 			assert (user != NULL && user->node_type == PT_NAME);
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			simple_name = name->info.name.original;
-			if (strchr(simple_name, '.') == NULL && db_is_system_class_by_name (simple_name) == FALSE)
-			  {
-			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
-			    user_name = name->info.name.resolved;
+			/* Owner name. */
+			name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
+			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_WITH_OWNER);
 
-			    full_name = pt_append_string (this_parser, NULL, user_name);
-			    full_name = pt_append_string (this_parser, full_name, ".");
-			    full_name = pt_append_string (this_parser, full_name, simple_name);
-			    name->info.name.original = full_name;
+			/* Name without owner name. */
+			name->info.name.thin = name->info.name.original;
+
+			/* Name without owner name.
+			 * System class/vclass has no owner_name. */
+			if (strchr(name->info.name.thin, '.') == NULL
+			    && db_is_system_class_by_name (name->info.name.thin) == FALSE)
+			  {
+			    name_buf = pt_append_string (this_parser, NULL, name->info.name.resolved);
+			    name_buf = pt_append_string (this_parser, name_buf, ".");
+			    name_buf = pt_append_string (this_parser, name_buf, name->info.name.thin);
+			    name->info.name.original = name_buf;
 			  }
 
 			parser_free_tree (this_parser, user);
@@ -5074,22 +5074,27 @@ user_specified_name
 		{{
 
 			PT_NODE *name = $1;
-			const char *user_name = NULL;
-			const char *simple_name = NULL;
-			const char *full_name = NULL;
+			const char *name_buf = NULL;
 
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			simple_name = name->info.name.original;
-			if (strchr(simple_name, '.') == NULL && db_is_system_class_by_name (simple_name) == FALSE)
-			  {
-			    name->info.name.resolved = pt_append_string (this_parser, NULL, db_get_user_name ());
-			    user_name = name->info.name.resolved;
+			/* Name without owner name. */
+			name->info.name.thin = name->info.name.original;
 
-			    full_name = pt_append_string (this_parser, NULL, user_name);
-			    full_name = pt_append_string (this_parser, full_name, ".");
-			    full_name = pt_append_string (this_parser, full_name, simple_name);
-			    name->info.name.original = full_name;
+			/* Name without owner name.
+			 * System class/vclass has no owner_name. */
+			if (strchr(name->info.name.thin, '.') == NULL
+			    && db_is_system_class_by_name (name->info.name.thin) == FALSE)
+			  {
+			    /* Owner name. */
+			    name->info.name.resolved = pt_append_string (this_parser, NULL, db_get_user_name ());
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_WITH_OWNER);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_USER_OWNER);
+
+			    name_buf = pt_append_string (this_parser, NULL, name->info.name.resolved);
+			    name_buf = pt_append_string (this_parser, name_buf, ".");
+			    name_buf = pt_append_string (this_parser, name_buf, name->info.name.thin);
+			    name->info.name.original = name_buf;
 			  }
 
 			$$ = name;
