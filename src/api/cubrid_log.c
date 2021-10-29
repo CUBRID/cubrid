@@ -817,11 +817,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   if (reply_code != NO_ERROR)
     {
-      if (reply_code == ER_CDC_NOTHING_TO_RETURN)
-	{
-	  rc = CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM;
-	}
-      else if (reply_code == ER_CDC_EXTRACTION_TIMEOUT)
+      if (reply_code == ER_CDC_EXTRACTION_TIMEOUT)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_EXTRACTION_TIMEOUT, trace_errbuf);
 	}

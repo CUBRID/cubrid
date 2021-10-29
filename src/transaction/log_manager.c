@@ -10803,7 +10803,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 					&undo_recdes, &redo_recdes, log_info_entry);
 	      }
 
-	    if (error == ER_CDC_IGNORE_LOG_INFO)
+	    if (error == ER_CDC_IGNORE_LOG_INFO || error == ER_CDC_IGNORE_LOG_INFO_INTERNAL)
 	      {
 		goto end;
 	      }
@@ -12610,8 +12610,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  /* This is due to update log record appended by trigger savepoint.
 	   * It is not sure why update log is appended by trigger savepoint */
 
-	  error_code = ER_CDC_IGNORE_LOG_INFO;
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
+	  error_code = ER_CDC_IGNORE_LOG_INFO_INTERNAL;
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO_INTERNAL, 0);
 	  goto error;
 	}
 
@@ -13557,7 +13557,7 @@ cdc_wakeup_consumer ()
 }
 
 int
-cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
+cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start_lsa)
 {
   /*
    * 1. get volume list
@@ -13579,7 +13579,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 
   char input_time_buf[CTIME_MAX];
   char output_time_buf[CTIME_MAX];
-  time_t input_time = *time;
+  time_t input_time = *extraction_time;
   int error = NO_ERROR;
 
   /*
@@ -13597,10 +13597,10 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
   else
     {
       /* NO ERROR */
-      if (active_start_time != 0 && active_start_time <= *time)
+      if (active_start_time != 0 && active_start_time <= *extraction_time)
 	{
 	  // active
-	  error = cdc_get_lsa_with_start_point (thread_p, time, &ret_lsa);
+	  error = cdc_get_lsa_with_start_point (thread_p, extraction_time, &ret_lsa);
 	  if (error == NO_ERROR)
 	    {
 	      LSA_COPY (start_lsa, &ret_lsa);
@@ -13611,11 +13611,12 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 	      /* input time is too big to find log, then returns latest log */
 	      LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	      LSA_COPY (start_lsa, &nxio_lsa);
-	      *time = 0;	/* can not know time of latest log */
+
+	      *extraction_time = time (NULL);	/* can not know time of latest log */
 	      is_found = true;
 
 	      ctime_r (&input_time, input_time_buf);
-	      ctime_r (time, output_time_buf);
+	      ctime_r (extraction_time, output_time_buf);
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf, output_time_buf);
 
 	      error = ER_CDC_ADJUSTED_LSA;
@@ -13635,7 +13636,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 		      goto end;
 		    }
 
-		  if (archive_start_time <= *time)
+		  if (archive_start_time <= *extraction_time)
 		    {
 		      target_arv_num = i;
 		      break;
@@ -13646,22 +13647,22 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 		{
 		  /* returns oldest LSA */
 		  LSA_COPY (start_lsa, &ret_lsa);
-		  *time = archive_start_time;
+		  *extraction_time = archive_start_time;
 		  is_found = true;
 
 		  ctime_r (&input_time, input_time_buf);
-		  ctime_r (time, output_time_buf);
+		  ctime_r (extraction_time, output_time_buf);
 		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf,
 			  output_time_buf);
 		  error = ER_CDC_ADJUSTED_LSA;
 		}
 	      else
 		{
-		  if ((error = cdc_get_lsa_with_start_point (thread_p, time, &ret_lsa)) != NO_ERROR)
+		  if ((error = cdc_get_lsa_with_start_point (thread_p, extraction_time, &ret_lsa)) != NO_ERROR)
 		    {
 
 		      ctime_r (&input_time, input_time_buf);
-		      ctime_r (time, output_time_buf);
+		      ctime_r (extraction_time, output_time_buf);
 		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf,
 			      output_time_buf);
 		      error = ER_CDC_ADJUSTED_LSA;
@@ -13681,12 +13682,12 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 	       * returns oldest LSA in active log volume */
 	      if (active_start_time != 0)
 		{
-		  *time = active_start_time;
+		  *extraction_time = active_start_time;
 		  LSA_COPY (start_lsa, &ret_lsa);
 		  is_found = true;
 
 		  ctime_r (&input_time, input_time_buf);
-		  ctime_r (time, output_time_buf);
+		  ctime_r (extraction_time, output_time_buf);
 		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf,
 			  output_time_buf);
 		  error = ER_CDC_ADJUSTED_LSA;
@@ -13696,11 +13697,12 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 		  /* num_arvs ==0 but no time info has been found in active log volume */
 		  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
 		  LSA_COPY (start_lsa, &nxio_lsa);
-		  *time = 0;	/* can not know time of latest log */
+
+		  *extraction_time = time (NULL);	/* can not know time of latest log */
 		  is_found = true;
 
 		  ctime_r (&input_time, input_time_buf);
-		  ctime_r (time, output_time_buf);
+		  ctime_r (extraction_time, output_time_buf);
 		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ADJUSTED_LSA, 2, input_time_buf,
 			  output_time_buf);
 		  error = ER_CDC_ADJUSTED_LSA;
@@ -13712,11 +13714,11 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 end:
   if (is_found)
     {
-      cdc_log ("cdc_find_lsa : find LOG_LSA (%lld | %d) from time (%lld)", LSA_AS_ARGS (start_lsa), *time);
+      cdc_log ("cdc_find_lsa : find LOG_LSA (%lld | %d) from time (%lld)", LSA_AS_ARGS (start_lsa), *extraction_time);
     }
   else
     {
-      cdc_log ("cdc_find_lsa : failed to find LOG_LSA from time (%lld)", *time);
+      cdc_log ("cdc_find_lsa : failed to find LOG_LSA from time (%lld)", *extraction_time);
     }
 
   return error;
@@ -13805,7 +13807,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 
   cdc_Gl.is_queue_reinitialized = true;
 
-  if (LSA_LE (&cdc_Gl.first_loginfo_queue_lsa, start_lsa) && LSA_GT (&cdc_Gl.last_loginfo_queue_lsa, start_lsa))
+  if (LSA_LT (&cdc_Gl.first_loginfo_queue_lsa, start_lsa) && LSA_GE (&cdc_Gl.last_loginfo_queue_lsa, start_lsa))
     {
       cdc_log
 	("cdc_reinitialize_queue : reconstruct existing log info queue to remove the log infos before the LOG_LSA (%lld | %d)",
@@ -13988,7 +13990,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	  if (LSA_ISNULL (&forw_lsa))
 	    {
 	      ctime_r (time, ctime_buf);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
 
 	      return ER_CDC_LSA_NOT_FOUND;
 	    }
@@ -14002,7 +14004,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
     }
 
   ctime_r (time, ctime_buf);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
 
   return ER_CDC_LSA_NOT_FOUND;
 }
@@ -14087,7 +14089,7 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 	  if (LSA_ISNULL (&forw_lsa))
 	    {
 	      ctime_r (time, ctime_buf);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
 
 	      return ER_CDC_LSA_NOT_FOUND;
 	    }
@@ -14102,7 +14104,7 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
     }
 
   ctime_r (time, ctime_buf);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
 
   return ER_CDC_LSA_NOT_FOUND;
 }
@@ -14144,10 +14146,9 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
       end = (int) time (NULL);
       if ((end - begin) >= cdc_Gl.consumer.extraction_timeout)
 	{
-	  time_t timeout = end - begin;
+	  time_t elapsed = end - begin;
 
-	  ctime_r (&timeout, ctime_buf);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_EXTRACTION_TIMEOUT, 2, ctime_buf,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_EXTRACTION_TIMEOUT, 2, elapsed,
 		  cdc_Gl.consumer.extraction_timeout);
 
 	  return ER_CDC_EXTRACTION_TIMEOUT;
