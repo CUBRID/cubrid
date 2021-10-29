@@ -56,3 +56,41 @@ passive_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
       _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
     }
 }
+
+void
+passive_tran_server::on_boot ()
+{
+  assert (is_passive_transaction_server ());
+
+  cublog::prior_sender::sink_hook sink =
+	  std::bind (&passive_tran_server::push_request, std::ref (*this), tran_to_page_request::SEND_LOG_PRIOR_LIST,
+		     std::placeholders::_1);
+
+  log_Gl.m_prior_sender.add_sink (sink);
+}
+
+passive_tran_server::request_handlers_map_t
+passive_tran_server::get_request_handlers ()
+{
+  using map_value_t = request_handlers_map_t::value_type;
+
+  map_value_t boot_info_handler_value =
+	  std::make_pair (page_to_tran_request::SEND_BOOT_INFO,
+			  std::bind (&passive_tran_server::receive_boot_info, std::ref (*this), std::placeholders::_1));
+  map_value_t saved_lsa_handler_value =
+	  std::make_pair (page_to_tran_request::SEND_SAVED_LSA,
+			  std::bind (&passive_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1));
+  map_value_t log_page_handler_value =
+	  std::make_pair (page_to_tran_request::SEND_LOG_PAGE,
+			  std::bind (&passive_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1));
+  map_value_t data_page_handler_value =
+	  std::make_pair (page_to_tran_request::SEND_DATA_PAGE,
+			  std::bind (&passive_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1));
+
+  std::map<page_to_tran_request, std::function<void (cubpacking::unpacker &upk)>> handlers_map;
+
+  handlers_map.insert ({ boot_info_handler_value, saved_lsa_handler_value, log_page_handler_value,
+			 data_page_handler_value });
+
+  return handlers_map;
+}

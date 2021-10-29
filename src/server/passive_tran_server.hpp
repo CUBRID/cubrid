@@ -41,7 +41,7 @@ class passive_tran_server : public tran_server
   private:
 
     bool m_uses_remote_storage = false;
-}
+};
 
 extern passive_tran_server pts_Gl;
 
