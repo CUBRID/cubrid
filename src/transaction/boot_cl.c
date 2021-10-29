@@ -1984,6 +1984,9 @@ boot_define_class (MOP class_mop)
    *   _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
    * in src/storage/btree.c, it becomes assert (false) in the code below.
    * 
+   *   CREATE TABLE t1 (c1 INT);
+   *   RENAME CLASS t1 AS t2;
+   * 
    *   assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
    *           || log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
    * 
