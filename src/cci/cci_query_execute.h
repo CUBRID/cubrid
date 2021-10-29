@@ -225,6 +225,12 @@
 	  (OBJ_VAL).volid = macro_var_volid;		        \
 	} while (0)
 
+#define ADD_ARG_SHORT(BUF, VALUE)			\
+	do {					\
+	  net_buf_cp_int((BUF), NET_SIZE_SHORT);	\
+	  net_buf_cp_short((BUF), (VALUE));	\
+	} while (0)
+
 #define ADD_ARG_INT(BUF, VALUE)			\
 	do {					\
 	  net_buf_cp_int((BUF), NET_SIZE_INT);	\
