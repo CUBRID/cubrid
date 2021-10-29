@@ -10688,8 +10688,6 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 		    /* can not find user. It meets abort log. So, ignore the logs from this transaction */
 		    cdc_Gl.producer.tran_ignore.insert (std::make_pair (trid, 1));
 
-		    error = ER_CDC_IGNORE_TRANSACTION;
-		    er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_TRANSACTION, 1, trid);
 		    goto end;
 		  }
 		else
@@ -10739,7 +10737,8 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
 	      {
 		error = ER_CDC_IGNORE_LOG_INFO;
-		er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
+		cdc_log ("cdc_log_extract : Skip producing log info for an invalid class (%d|%d|%d)",
+			 OID_AS_ARGS (&classoid));
 		goto end;
 	      }
 
@@ -10768,7 +10767,8 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
 	      {
 		error = ER_CDC_IGNORE_LOG_INFO;
-		er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
+		cdc_log ("cdc_log_extract : Skip producing log info for an invalid class (%d|%d|%d)",
+			 OID_AS_ARGS (&classoid));
 		goto end;
 	      }
 
@@ -10821,7 +10821,8 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
 	      {
 		error = ER_CDC_IGNORE_LOG_INFO;
-		er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
+		cdc_log ("cdc_log_extract : Skip producing log info for an invalid class (%d|%d|%d)",
+			 OID_AS_ARGS (&classoid));
 		goto end;
 	      }
 
@@ -12803,7 +12804,8 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
       if (oid_is_system_class (&classoid) || !cdc_is_filtered_class (classoid))
 	{
 	  error_code = ER_CDC_IGNORE_LOG_INFO;
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
+	  cdc_log ("cdc_log_extract : Skip producing log info for an invalid class (%d|%d|%d)",
+		   OID_AS_ARGS (&classoid));
 	  goto error;
 	}
     }
@@ -14148,7 +14150,7 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 	{
 	  time_t elapsed = end - begin;
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_EXTRACTION_TIMEOUT, 2, elapsed,
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_EXTRACTION_TIMEOUT, 2, elapsed,
 		  cdc_Gl.consumer.extraction_timeout);
 
 	  return ER_CDC_EXTRACTION_TIMEOUT;
