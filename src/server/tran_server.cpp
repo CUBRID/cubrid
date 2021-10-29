@@ -34,8 +34,8 @@ static void assert_is_tran_server ();
 
 tran_server::~tran_server ()
 {
-  assert (is_transaction_server () || !is_page_server_connected ());
-  if (is_transaction_server () && is_page_server_connected ())
+  assert (is_transaction_server () || m_page_server_conn_vec.empty ());
+  if (is_transaction_server () && !m_page_server_conn_vec.empty ())
     {
       disconnect_page_server ();
     }

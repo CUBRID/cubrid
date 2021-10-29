@@ -74,4 +74,7 @@ extern int css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short reques
 				    int *rc);
 extern void css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn);
 extern int css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size);
+// *INDENT-OFF*
+extern std::string css_build_message_for_server_connection (const char *server_name, SERVER_TYPE server_type);
+// *INDENT-ON*
 #endif /* _CONNECTION_CL_H_ */
