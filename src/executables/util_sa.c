@@ -1713,7 +1713,7 @@ patchdb (UTIL_FUNCTION_ARG * arg)
   if (error != NO_ERROR)
     {
       fprintf (stderr, "emergency patch fail:%s\n", db_error_string (3));
-      if (ER_LOG_TOO_SANE_TO_RECREATE)
+      if (error == ER_LOG_TOO_SANE_TO_RECREATE)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PATCHDB, PATCHDB_RECREATE_FAILURE));
 	}
