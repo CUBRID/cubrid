@@ -1279,6 +1279,8 @@ typedef struct _ha_config
 #define UNLOAD_PASSWORD_L                       "password"
 #define UNLOAD_KEEP_STORAGE_ORDER_S		11918
 #define UNLOAD_KEEP_STORAGE_ORDER_L		"keep-storage-order"
+#define UNLOAD_LATEST_IMAGE_S                   11919
+#define UNLOAD_LATEST_IMAGE_L                   "latest-image"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

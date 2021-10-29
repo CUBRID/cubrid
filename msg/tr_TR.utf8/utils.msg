@@ -499,6 +499,8 @@ geçerli seçenekler:\n\
   -d, --data-only             dökümü nesneleri yalnızca; varsayılan: şema ve objeler\n\
       --output-prefix=PREFIEX Çıktı dosyaları için PREFIEX; varsayılan: veritabanı adı\n\
       --hash-file=FILE        Karma için FILE varsayılan: tmpnam tarafından oluşturmak ()\n\
+      --latest-image          nesneleri boşaltırken, günlük hacimlerine atıfta bulunmadan (MVCC'yi yok sayarak) veri hacimlerindeki nesnelerin en son görüntüsünü atar\n\
+                              Taahhüt edilmemiş verileri ve vakumlanmayan silinmiş verileri içerebilir; varsayılan: devre dışı\n\
   -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
       --use-delimiter         kullanımı '"' bir tanımlayıcı nereden başlayıp nerede bittiği; varsayılan: kullanmayın\n\
   -S, --SA-mode               stand-alone modu yürütme\n\
