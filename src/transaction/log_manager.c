@@ -10821,7 +10821,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
 	      {
 		error = ER_CDC_IGNORE_LOG_INFO;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
+		er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO, 3, OID_AS_ARGS (&classoid));
 		goto end;
 	      }
 
