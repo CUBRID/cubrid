@@ -495,6 +495,8 @@ options valids:\n\
   -d, --data-only                 sauvegarde seulement les objets; par défaut: schéma et les objets\n\
       --output-prefix=PRÉFIXE     PRÉFIXE pour les fichiers de sortie, par défaut: le nom de de base de données\n\
       --hash-file=FICHIER         FICHIER pour hachage; valeur par défaut: générer par tmpnam ()\n\
+      --latest-image              lors du vidage d'objets, il vide la dernière image des objets dans les volumes de données, sans se référer aux volumes de journaux (ignorant MVCC)\n\
+                                  Cela peut inclure des données non validées et des données supprimées qui ne sont pas aspirées ; par défaut : désactivé\n\
   -v, --verbose                   active les messages verbeux d'état; par défaut: désactivé\n\
       --use-delimiter             utilise '"' dans les endroits où un identificateur commence ou se termine; par défaut: ne pas utiliser\n\
   -S, --SA-mode                   exécution en mode autonome\n\

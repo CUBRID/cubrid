@@ -46,6 +46,7 @@ extern int est_size;
 extern char *hash_filename;
 extern int debug_flag;
 extern bool verbose_flag;
+extern bool latest_image_flag;
 extern bool include_references;
 extern char *output_prefix;
 extern bool do_schema;
