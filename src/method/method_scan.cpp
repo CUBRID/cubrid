@@ -130,6 +130,8 @@ namespace cubscan
     {
       SCAN_CODE scan_code = S_SUCCESS;
 
+      next_value_array (vl);
+
       scan_code = get_single_tuple ();
       if (scan_code == S_SUCCESS && m_method_group->prepare (m_arg_vector) != NO_ERROR)
 	{
@@ -143,7 +145,6 @@ namespace cubscan
 
       if (scan_code == S_SUCCESS)
 	{
-	  next_value_array (vl);
 	  int num_methods = m_method_group->get_num_methods ();
 	  for (int i = 0; i < num_methods; i++)
 	    {
@@ -157,7 +158,7 @@ namespace cubscan
 	      db_value_clear (&result);
 	    }
 
-	  m_method_group->reset ();
+	  m_method_group->reset (false);
 	}
 
       // clear
