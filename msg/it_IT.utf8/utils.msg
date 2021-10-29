@@ -521,6 +521,8 @@ opzioni valide:\n\
   -d, --data-only             dump solo gli oggetti; predefinito: schema e gli oggetti\n\
       --output-prefix=PREFIEX PREFIX per i file di output; predefinito: nome database\n\
       --hash-file=FILE        FILE per hash; predefinito: generato da tmpnam()\n\
+      --latest-image          durante il dump degli oggetti, scarica l'ultima immagine degli oggetti nei volumi di dati, senza fare riferimento ai volumi di registro (ignorando MVCC)\n\
+                              Potrebbe includere dati non impegnati e dati cancellati che non vengono aspirati; predefinito: disabilitato\n\
   -v, --verbose               attivare i messaggi dettagliati di stato; predefinito: non attivo\n\
       --use-delimiter         usa '"' dove un identificatore inizia e termina; predefinito: don't use\n\
   -S, --SA-mode               modalità di esecuzione stand-alone\n\
