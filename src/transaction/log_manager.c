@@ -13044,7 +13044,7 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa
 	}
       else if (log_rec_hdr->type == LOG_ABORT && log_rec_hdr->trid == trid)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_TRANSACTION, 1, trid);
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_TRANSACTION, 1, trid);
 	  return ER_CDC_IGNORE_TRANSACTION;
 	}
 
