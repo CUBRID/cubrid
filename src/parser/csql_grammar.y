@@ -385,6 +385,11 @@ int parse_one_statement (int state);
 static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 					   PT_NODE *node, PT_NODE *coll_node);
 
+static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
+#if 1 // [CBRD-24083]
+#define pt_convert_to_logical_expr(parser,node,a,b)  pt_check_non_logical_expr((parser),(node))
+#endif
+
 
 #define push_msg(a) _push_msg(a, __LINE__)
 
@@ -27601,4 +27606,22 @@ pt_create_paren_expr_list (PT_NODE * exp)
       parser_groupby_exception = PT_EXPR;
     }
   return exp;
+}
+
+static PT_NODE *
+pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+   if(node)
+     {    
+        if (node->type_enum != PT_TYPE_LOGICAL)
+          {
+             PT_ERROR (parser, node, "invalid by [CBRD-24083]"); 
+          }
+        else if(node->node_type == PT_VALUE) 
+          { // if (memcmp(node->info.value.text, "true", 5) == 0 || memcmp(node->info.value.text, "false", 6) == 0)
+             PT_ERROR (parser, node, "invalid by [CBRD-24083]");
+          }
+     }
+
+     return node;
 }
