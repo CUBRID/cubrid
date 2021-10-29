@@ -821,7 +821,7 @@ boot_initialize_lob_path (const char *path_arg, const char *db_path, char *path_
       if (realpath (lob_dir_path, absolute_path_buf) != NULL
 	  && (stat (absolute_path_buf, &stat_buf) == 0 && S_ISDIR (stat_buf.st_mode)))
 #else
-      if (realpath (lob_dir_path, fixed_pathbuf) != NULL)
+      if (realpath (lob_dir_path, absolute_path_buf) != NULL)
 #endif
 	{
 	  // Conversion successful
