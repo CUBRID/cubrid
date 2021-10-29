@@ -1373,7 +1373,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
     }
 
   /* determine if spec is outer joined */
-  for (PT_NODE *spec = query->info.query.q.select.from; spec; spec = spec->next)
+  for (PT_NODE * spec = query->info.query.q.select.from; spec; spec = spec->next)
     {
       if (mq_is_outer_join_spec (parser, spec))
 	{
