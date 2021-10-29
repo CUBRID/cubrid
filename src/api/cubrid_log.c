@@ -56,8 +56,7 @@
 #define CUBRID_LOG_TRACELOG(msg, ...) \
   do \
     { \
-      cubrid_log_check_tracelog (); \
-      if(cubrid_log_check_tracelog () != -1) \
+      if(cubrid_log_check_tracelog () == CUBRID_LOG_SUCCESS) \
         { \
           cubrid_log_get_time (); \
           fprintf (g_trace_log,"[%s][FILE:%s][LINE:%d]\n" msg "\n", g_curr_time, __FILE__, __LINE__, ##__VA_ARGS__); \
@@ -119,7 +118,7 @@ char g_dbname[CUBRID_LOG_MAX_DBNAME_LEN + 1] = "";
 FILE *g_trace_log = NULL;
 char g_trace_log_base[PATH_MAX + 1] = ".";
 char g_trace_log_path[PATH_MAX + 1] = "";
-char g_trace_log_path_prev[PATH_MAX + 1] = "";
+char g_trace_log_path_old[PATH_MAX + 1] = "";
 int g_trace_log_level = 0;
 int g_num_trace_log = 0;
 int64_t g_trace_log_filesize = 10 * 1024 * 1024;	/* 10 MB */
@@ -224,7 +223,7 @@ cubrid_log_reset_tracelog ()
 {
   memset (g_trace_log_base, 0, PATH_MAX + 1);
   memset (g_trace_log_path, 0, PATH_MAX + 1);
-  memset (g_trace_log_path_prev, 0, PATH_MAX + 1);
+  memset (g_trace_log_path_old, 0, PATH_MAX + 1);
   g_num_trace_log = 0;
   g_trace_log_level = 0;
   g_trace_log_filesize = 10 * 1024 * 1024;
@@ -265,17 +264,17 @@ cubrid_log_make_new_tracelog ()
 
   if (g_num_trace_log == 2)
     {
-      if (remove (g_trace_log_path_prev) != 0)
+      if (remove (g_trace_log_path_old) != 0)
 	{
 	  return -1;
 	}
-      memcpy (g_trace_log_path_prev, g_trace_log_path, PATH_MAX + 1);
+      memcpy (g_trace_log_path_old, g_trace_log_path, PATH_MAX + 1);
     }
   else
     {
       if (g_num_trace_log != 0)
 	{
-	  memcpy (g_trace_log_path_prev, g_trace_log_path, PATH_MAX + 1);
+	  memcpy (g_trace_log_path_old, g_trace_log_path, PATH_MAX + 1);
 	}
 
       g_num_trace_log++;
@@ -289,7 +288,7 @@ cubrid_log_make_new_tracelog ()
       return -1;
     }
 
-  return NO_ERROR;
+  return CUBRID_LOG_SUCCESS;
 }
 
 static int
@@ -325,7 +324,40 @@ cubrid_log_check_tracelog ()
 	}
     }
 
-  return NO_ERROR;
+  return CUBRID_LOG_SUCCESS;
+}
+
+static int
+cubrid_log_check_tracelog_file (char *path)
+{
+  struct stat statbuf;
+
+  if (access (path, F_OK) == 0)
+    {
+      /* Check if it is directory */
+      stat (path, &statbuf);
+      if (!S_ISDIR (statbuf.st_mode))
+	{
+	  return CUBRID_LOG_INVALID_PATH;
+	}
+
+      /* Directory exists */
+      if (access (path, W_OK) < 0)
+	{
+	  /* Write permission */
+	  return CUBRID_LOG_NO_FILE_PERMISSION;
+	}
+    }
+  else
+    {
+      /* Directory not exist, then make directory */
+      if (mkdir (path, 0777) < 0)
+	{
+	  return CUBRID_LOG_INVALID_PATH;
+	}
+    }
+
+  return CUBRID_LOG_SUCCESS;
 }
 
 /*
@@ -338,6 +370,8 @@ cubrid_log_check_tracelog ()
 int
 cubrid_log_set_tracelog (char *path, int level, int filesize)
 {
+  int err_code;
+
   if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
@@ -349,16 +383,13 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
     }
   else
     {
-      struct stat statbuf;
-      stat (path, &statbuf);
-
-      if (!S_ISDIR (statbuf.st_mode))
+      if ((err_code = cubrid_log_check_tracelog_file (path)) != CUBRID_LOG_SUCCESS)
 	{
-	  return CUBRID_LOG_INVALID_PATH;
+	  return err_code;
 	}
     }
 
-  if (level < 0 || level > 3)
+  if (level < 0 || level > 2)
     {
       return CUBRID_LOG_INVALID_LEVEL;
     }
