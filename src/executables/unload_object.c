@@ -1056,6 +1056,7 @@ process_class (int cl_no)
   time_t start = 0;
 #endif
   int total;
+  LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
 
   /*
    * Only process classes that were requested or classes that were
@@ -1276,7 +1277,7 @@ process_class (int cl_no)
   while (nobjects != nfetched)
     {
       if (locator_fetch_all
-	  (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area) == NO_ERROR)
+	  (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {

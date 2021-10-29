@@ -520,6 +520,8 @@ gültige Optionen:\n\
   -d, --data-only              nur Objekte exportieren; Standard: Schema und die Objekte\n\
       --output-prefix=PRÄFIX   PRÄFIX für die Ausgangdateien; Standard: Datenbanknamen\n\
       --hash-file=DATEI        Datei für Hash; Standard: erzeugt bei tmpnam()\n\
+      --latest-image           beim Dumpen von Objekten wird das neueste Image von Objekten in Datenvolumes ausgegeben, nicht auf Log-Volumes (ohne MVCC)\n\
+                               Es könnte nicht festgeschriebene Daten und gelöschte Daten enthalten, die nicht bereinigt wurden; Standard: deaktiviert\n\
   -v, --verbose                ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
       --use-delimiter          '"' verwenden, wo ein Identifikator anfängt und endet; Standard: nicht verwenden\n\
   -S, --SA-mode                Stand-Alone-Ausführung\n\
