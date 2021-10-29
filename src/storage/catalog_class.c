@@ -55,7 +55,7 @@
     b = t; \
   } while (0)
 
-#define CATCLS_INDEX_NAME "pk__db_class_class_name"
+#define CATCLS_INDEX_NAME "i__db_class_class_full_name"
 #define CATCLS_INDEX_KEY   11
 
 #define CATCLS_OID_TABLE_SIZE   1024

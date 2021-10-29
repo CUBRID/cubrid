@@ -1801,8 +1801,8 @@ boot_define_class (MOP class_mop)
   SM_TEMPLATE *def;
   char domain_string[32];
   int error_code = NO_ERROR;
-  const char *pk_col_names[2] = { "class_full_name", NULL };
-  const char *index_col_names[3] = { "class_name", "owner", NULL };
+  const char *index1_col_names[2] = { "class_full_name", NULL };
+  const char *index2_col_names[3] = { "class_name", "owner", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -1978,15 +1978,47 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
-  /* add primary key */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, "pk__db_class_class_name", pk_col_names, 0);
+  /* 
+   *   Define the index name so that it always has the same name as the macro variable (CATCLS_INDEX_NAME)
+   * in src/storage/catalog_class.c.
+   *   _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
+   * in src/storage/btree.c, it becomes assert (false) in the code below.
+   * 
+   *   assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
+   *           || log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
+   * 
+   *   All others should be false, and !BTREE_IS_UNIQUE (btid_int->unique_pk) should be true. However,
+   * if there is a primary key or a unique index, !BTREE_IS_UNIQUE (btid_int->unique_pk) also becomes false,
+   * and all are false. In the btree_key_insert_new_key function, analysis should be added to the operation
+   * of the primary key and unique index.
+   *   Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
+   * 
+   */
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, "i__db_class_class_full_name", index1_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, NULL, index_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index2_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "class_of", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "class_full_name", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "class_name", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;
