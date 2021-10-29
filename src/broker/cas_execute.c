@@ -1350,8 +1350,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       err_code = cgw_make_bind_value (srv_handle->cgw_handle, num_bind, argc, argv, &bind_data_list, net_buf);
       if (err_code < 0)
 	{
-	  if (err_code == -1)
-	    err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto execute_error;
 	}
     }

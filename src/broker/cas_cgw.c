@@ -982,7 +982,6 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
     {
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_STRING:
-    case CCI_U_TYPE_ENUM:
       {
 	char *value;
 	int val_size;
@@ -1126,6 +1125,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
       }
       break;
     case CCI_U_TYPE_BIGINT:
+    case CCI_U_TYPE_UBIGINT:
       {
 	DB_BIGINT bi_val;
 	net_arg_get_bigint (&bi_val, net_value);
@@ -1145,6 +1145,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
       }
       break;
     case CCI_U_TYPE_INT:
+    case CCI_U_TYPE_UINT:
       {
 	int i_val;
 
@@ -1167,6 +1168,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
       }
       break;
     case CCI_U_TYPE_SHORT:
+    case CCI_U_TYPE_USHORT:
       {
 	short s_val;
 
@@ -1307,61 +1309,6 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 						  sizeof (value_list->time_stemp_str_val), NULL));
       }
       break;
-      /* Not Support Type */
-    case CCI_U_TYPE_TIMESTAMPTZ:
-    case CCI_U_TYPE_TIMESTAMPLTZ:
-      {
-	short yr, mon, day, hh, mm, ss;
-	DB_DATE date;
-	DB_TIME time;
-	DB_TIMESTAMPTZ ts_tz;
-	TZ_REGION ses_tz_region;
-	char *tz_str_p;
-	int tz_size;
-
-	net_arg_get_timestamptz (&yr, &mon, &day, &hh, &mm, &ss, &tz_str_p, &tz_size, net_value);
-	if (tz_size > CCI_TZ_SIZE)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_TYPE_CONVERSION, 0);
-	    return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	  }
-
-	err_code = db_date_encode (&date, mon, day, yr);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-	err_code = db_time_encode (&time, hh, mm, ss);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-	tz_get_session_tz_region (&ses_tz_region);
-
-	err_code = tz_create_timestamptz (&date, &time, tz_str_p, tz_size, &ses_tz_region, &ts_tz, NULL);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	c_data_type = SQL_C_CHAR;
-	sql_bind_type = SQL_TYPE_TIMESTAMP;
-
-	sprintf (value_list->time_stemp_str_val, "%d-%d-%d %d:%d:%d", yr, mon, day, hh, mm, ss);
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type,
-						  0,
-						  0,
-						  (SQLPOINTER) (&value_list->time_stemp_str_val),
-						  sizeof (value_list->time_stemp_str_val), NULL));
-      }
-      break;
     case CCI_U_TYPE_DATETIME:
       {
 	short yr, mon, day, hh, mm, ss, ms;
@@ -1369,55 +1316,6 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
 	net_arg_get_datetime (&yr, &mon, &day, &hh, &mm, &ss, &ms, net_value);
 	err_code = db_datetime_encode (&dt, mon, day, yr, hh, mm, ss, ms);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	c_data_type = SQL_C_CHAR;
-	sql_bind_type = SQL_TYPE_TIMESTAMP;
-
-	sprintf (value_list->time_stemp_str_val, "%d-%d-%d %d:%d:%d.%d", yr, mon, day, hh, mm, ss, ms);
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type,
-						  0,
-						  0,
-						  (SQLPOINTER) (&value_list->time_stemp_str_val),
-						  sizeof (value_list->time_stemp_str_val), NULL));
-      }
-      break;
-      /* Not Support Type */
-    case CCI_U_TYPE_DATETIMELTZ:
-    case CCI_U_TYPE_DATETIMETZ:
-      {
-	short yr, mon, day, hh, mm, ss, ms;
-	DB_DATETIME dt;
-	DB_DATETIMETZ dt_tz;
-	TZ_REGION ses_tz_region;
-	char *tz_str_p;
-	int tz_size;
-
-	net_arg_get_datetimetz (&yr, &mon, &day, &hh, &mm, &ss, &ms, &tz_str_p, &tz_size, net_value);
-	if (tz_size > CCI_TZ_SIZE)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_TYPE_CONVERSION, 0);
-	    return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	  }
-
-	err_code = db_datetime_encode (&dt, mon, day, yr, hh, mm, ss, ms);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-	tz_get_session_tz_region (&ses_tz_region);
-
-	err_code = tz_create_datetimetz (&dt, tz_str_p, tz_size, &ses_tz_region, &dt_tz, NULL);
 	if (err_code != NO_ERROR)
 	  {
 	    break;
@@ -1453,9 +1351,11 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
     case CCI_U_TYPE_BLOB:
     case CCI_U_TYPE_CLOB:
     case CCI_U_TYPE_JSON:
-    case CCI_U_TYPE_USHORT:
-    case CCI_U_TYPE_UINT:
-    case CCI_U_TYPE_UBIGINT:
+    case CCI_U_TYPE_ENUM:
+    case CCI_U_TYPE_DATETIMELTZ:
+    case CCI_U_TYPE_DATETIMETZ:
+    case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_TIMESTAMPLTZ:
     default:
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 0);
