@@ -9870,6 +9870,8 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
 {
   int error_code = NO_ERROR;
 
+  assert (!log_lsa->is_null ());
+
   if (log_page->hdr.logical_pageid != log_lsa->pageid)
     {
       error_code = logpb_fetch_page (thread_p, log_lsa, LOG_CS_FORCE_USE, log_page);
