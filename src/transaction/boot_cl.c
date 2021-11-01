@@ -231,10 +231,8 @@ static int boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credent
 #endif
 static int boot_client_find_and_cache_class_oids (void);
 
-// *INDENT-OFF*
 static int boot_initialize_path (const char *path_arg, const char *default_path, char *path_out);
 static int boot_initialize_lob_path (const char *path_arg, const char *db_path, char *path_out);
-// *INDENT-ON*
 
 /*
  * boot_client () -
@@ -325,10 +323,6 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 #if defined (CS_MODE)
   char format[BOOT_FORMAT_MAX_LENGTH];
 #endif
-
-  std::string processed_db_path;
-  std::string processed_log_path;
-  std::string processed_lob_path;
 
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
@@ -710,16 +704,15 @@ error_exit:
   return error_code;
 }
 
+// Process the path argument and:
+//
+//	- If no argument is given, use default path. If there is no default path, use working directory as path
+//	- Convert to absolute path
+//	- Remove useless path separators.
+//
 static int
 boot_initialize_path (const char *path_arg, const char *default_path, char *path_out)
 {
-  // Process the path argument and:
-  //
-  //	- If no argument is given, use default path. If there is no default path, use working directory as path
-  //	- Convert to absolute path
-  //	- Remove useless path separators.
-  //
-
   char workdir_buf[PATH_MAX];
   memset (workdir_buf, 0, PATH_MAX);
 
@@ -765,10 +758,10 @@ boot_initialize_path (const char *path_arg, const char *default_path, char *path
   return NO_ERROR;
 }
 
+// Process the path argument and generate a normalized path containing the external storage prefix.
 static int
 boot_initialize_lob_path (const char *path_arg, const char *db_path, char *path_out)
 {
-  // Process the path argument and generate a normalized path containing the external storage prefix.
   char es_path[PATH_MAX];
   ES_TYPE es_type = ES_NONE;
 
@@ -802,7 +795,9 @@ boot_initialize_lob_path (const char *path_arg, const char *db_path, char *path_
   assert (es_type != ES_NONE);
 
   // Get the path without the external storage prefix; the prefix ends with ':'
+  // *INDENT-OFF*
   char *lob_dir_path = std::strchr (es_path, ':');
+  // *INDENT-ON*
   if (lob_dir_path == nullptr)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, es_path);
