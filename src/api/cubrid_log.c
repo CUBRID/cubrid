@@ -798,7 +798,7 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *user, char 
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_DBNAME, "dbname must not be null\n");
     }
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[INPUT] stage (%d), host (%s), port (%d), dbname (%s), user (%s)\n", g_stage, host,
 				 port, dbname, user);
@@ -880,7 +880,7 @@ cubrid_log_find_start_lsa (time_t * timestamp, LOG_LSA * lsa)
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[INPUT] timestamp (%lld)\n", *timestamp);
     }
@@ -941,7 +941,7 @@ cubrid_log_find_start_lsa (time_t * timestamp, LOG_LSA * lsa)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND, "LOG LSA is not found at the time %lld\n", *timestamp);
     }
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[OUTPUT] timestamp (%lld), lsa (%lld | %d)\n", *timestamp, lsa->pageid, lsa->offset);
     }
@@ -974,7 +974,7 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
 {
   int err_code;
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[INPUT] stage (%d), timestamp (%lld)\n", g_stage, *timestamp);
     }
@@ -1008,7 +1008,7 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
 
   memcpy (lsa, &g_next_lsa, sizeof (uint64_t));
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[OUTPUT] timestamp (%lld), lsa (%lld)\n", *timestamp, g_next_lsa);
     }
@@ -1039,7 +1039,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
   int err_code;
   int rc = NO_ERROR;
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[INPUT] lsa (%lld | %d)\n", next_lsa->pageid, next_lsa->offset);
     }
@@ -1105,7 +1105,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
       goto cubrid_log_end;
     }
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[MID] extract infos are next_lsa (%lld | %d), num_infos (%d), total_length (%d)\n",
 				 next_lsa->pageid, next_lsa->offset, *num_infos, *total_length);
@@ -1159,7 +1159,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 	}
     }
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[END]\n");
     }
@@ -1462,7 +1462,7 @@ cubrid_log_make_data_item (char **data_info, DATA_ITEM_TYPE data_item_type, CUBR
 {
   int err_code;
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[INPUT] data item type (%s)\n", data_item_type_to_string (data_item_type));
     }
@@ -1553,7 +1553,7 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
   int err_code;
   int rc;
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[INPUT] num_infos (%d), total_length (%d)\n", num_infos, total_length);
     }
@@ -1596,7 +1596,7 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
   *log_item_list = g_log_items;
   *list_size = num_infos;
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[OUTPUT] list_size (%d)\n", *list_size);
     }
@@ -1622,7 +1622,7 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
   int err_code;
   int rc;
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[INPUT] current stage (%d), lsa (%lld)\n", g_stage, *lsa);
     }
@@ -1660,7 +1660,7 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 
   g_stage = CUBRID_LOG_STAGE_EXTRACTION;
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[OUTPUT] lsa (%lld), list_size (%d)\n", *lsa, *list_size);
     }
@@ -1677,7 +1677,7 @@ cubrid_log_clear_data_item (DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * da
 {
   int err_code;
 
-  if (g_trace_log_level > 0)
+  if (g_trace_log_level == 1)
     {
       CUBRID_LOG_WRITE_TRACELOG ("[INPUT] data item type (%s)\n", data_item_type_to_string (data_item_type));
     }
