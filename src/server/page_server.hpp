@@ -46,6 +46,7 @@ class page_server
     ~page_server ();
 
     void set_active_tran_server_connection (cubcomm::channel &&chn);
+    void set_passive_tran_server_connection (cubcomm::channel &&chn);
     void start ();
     void disconnect_active_tran_server ();
     bool is_active_tran_server_connected () const;
@@ -59,7 +60,7 @@ class page_server
     void finalize_page_fetcher ();
 
   private:
-    using active_tran_server_conn_t =
+    using tran_server_conn_t =
 	    cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
     void receive_boot_info_request (cubpacking::unpacker &upk);
@@ -71,7 +72,8 @@ class page_server
     void on_log_page_read_result (const LOG_PAGE *log_page, int error_code);
     void on_data_page_read_result (const FILEIO_PAGE *page_ptr, int error_code);
 
-    std::unique_ptr<active_tran_server_conn_t> m_active_tran_server_conn;
+    std::unique_ptr<tran_server_conn_t> m_active_tran_server_conn;
+    std::vector<std::unique_ptr<tran_server_conn_t>> m_passive_tran_server_conn;
 
     std::unique_ptr<cublog::replicator> m_replicator;
     std::unique_ptr<cublog::async_page_fetcher> m_page_fetcher;

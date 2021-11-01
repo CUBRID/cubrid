@@ -53,7 +53,40 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 		chn.get_channel_id ().c_str ());
 
   assert (m_active_tran_server_conn == nullptr);
-  m_active_tran_server_conn.reset (new active_tran_server_conn_t (std::move (chn),
+  m_active_tran_server_conn.reset (new tran_server_conn_t (std::move (chn),
+  {
+    {
+      tran_to_page_request::GET_BOOT_INFO,
+      std::bind (&page_server::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      tran_to_page_request::SEND_LOG_PRIOR_LIST,
+      std::bind (&page_server::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      tran_to_page_request::SEND_LOG_PAGE_FETCH,
+      std::bind (&page_server::receive_log_page_fetch, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      tran_to_page_request::SEND_DATA_PAGE_FETCH,
+      std::bind (&page_server::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      tran_to_page_request::SEND_DISCONNECT_MSG,
+      std::bind (&page_server::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+    },
+  }));
+}
+
+void page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
+{
+  assert_page_server_type ();
+
+  chn.set_channel_name ("PTS_PS_comm");
+  er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
+		chn.get_channel_id ().c_str ());
+
+  m_passive_tran_server_conn.emplace_back (new tran_server_conn_t (std::move (chn),
   {
     {
       tran_to_page_request::GET_BOOT_INFO,
