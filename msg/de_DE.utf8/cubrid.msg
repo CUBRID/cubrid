@@ -663,7 +663,7 @@ $ LOADDB
 593 Ein nicht-aktualisierbare virtuelle Instanz wurde zurückgewonnen und kann nicht wieder aufgebaut werden.
 594 Ein object_id Klausel muss ohne Attribute (%1$s) ungefährer Datentypen (float oder double) geliefert werden.
 595 Der Datenbanknamen "%1$s" ist zu lang. Der Name soll weniger als %2$d Zeichen lang sein.
-596 Die %1$d Seiten des gesamten temporären Speichers sind überschritten worden.
+596 Die %1$lld Seiten des gesamten temporären Speichers sind überschritten worden.
 597 Die Seitenanzahl der Heapdatei %1$d|%2$d|%3$d ist inkonsequent. \n%4$d und %5$d wurden gemäß des Heap-Chains und der Dateitabelle, dementsprechend gefunden. 
 598 Anzahl der Dateien ist inkorrect. %1$d waren erwartet, %2$d wurden gefunden
 599 Ein I/O-Fehler trat beim Synchronisieren des Zustand des Datenträgers "%1$s".

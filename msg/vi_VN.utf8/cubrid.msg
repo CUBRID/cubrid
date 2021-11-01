@@ -663,7 +663,7 @@ $ LOADDB
 593 A non-updatable virtual instance has been reclaimed and cannot be rebuilt.
 594 An object_id clause must be supplied without using attributes (%1$s) of approximate data types (float or double).
 595 The database name "%1$s" is too long. Database name should be less than %2$d characters.
-596 The %1$d pages of total temporary space allowed have been exceeded.
+596 The %1$lld pages of total temporary space allowed have been exceeded.
 597 Number of pages for heap file %1$d|%2$d|%3$d is inconsistent. \n%4$d and %5$d were found according to heap chain and file table, respectively.
 598 Number of files is inconsistent. %1$d were expected, %2$d were found
 599 An I/O error occurred while synchronizing state of volume "%1$s".

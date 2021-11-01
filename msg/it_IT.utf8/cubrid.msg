@@ -663,7 +663,7 @@ $ LOADDB
 593 Una istanza virtuale non-aggiornabile è stata recuperata e non può essere ricostruito.
 594 Una clausola object_id deve essere fornita senza l'utilizzo di attributi (%1$s) di tipi di dati approssimativi (float o double).
 595 Il nome del database "%1$s" è troppo lungo. Nome del database deve essere inferiore a %2$d caratteri.
-596 Gli %1$d pagine del totale spazio temporaneo permesso sono stati superati.
+596 Gli %1$lld pagine del totale spazio temporaneo permesso sono stati superati.
 597 Numero di pagine per heapfile %1$d|%2$d|%3$d è incoerente. \n%4$d e %5$d sono stati trovati seconda la catena heap e tabella dei file, rispettivamente.
 598 Numero di file non è coerente. Ci si aspettava %1$d, %2$d sono stati trovati.
 599 Un errore I/O durante lo stato di sincronizzazione del volume "%1$s".

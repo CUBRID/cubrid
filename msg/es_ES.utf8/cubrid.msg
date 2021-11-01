@@ -663,7 +663,7 @@ $ LOADDB
 593 Una instancia virtual no actualizable ha sido reclamada y no puede ser reconstruida.
 594 Una cláusula object_id debe ser suministrada sin utilizar atributos (%1$s) de tipos de datos aproximados (float o double).
 595 El nombre "%1$s" de base de datos es demasiado largo. El nombre de base de datos tiene que ser inferior a %2$d caracteres.
-596 Las %1$d paginas del espacio temporal total permitido han sido excedidas.
+596 Las %1$lld paginas del espacio temporal total permitido han sido excedidas.
 597 Numero de paginas para el archivo de memoria dinamica %1$d|%2$d|%3$d es inconsistente. \n%4$d y %5$d han sido encontradas segun la cadena de memoria dinamica y tabla de archivos, respectivamente. 
 598 Numero de archivos es inconsistente. %1$d esperado, %2$d encontrado
 599 Un error de E/S ha ocurrido mientras sincronizando el estado del volumen "%1$s".
