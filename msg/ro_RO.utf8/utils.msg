@@ -535,6 +535,8 @@ opţiuni valide:\n\
   -d, --data-only                varsă doar obiectele; implicit: schema şi obiectele\n\
       --output-prefix=PREFIEX    PREFIX pentru fişierele de ieşire; implicit: numele bazei de date\n\
       --hash-file=FIŞIER         FIŞIER pentru hash; implicit: generat cu tmpnam()\n\
+      --latest-image             când aruncă obiecte, aruncă cea mai recentă imagine a obiectelor din volumele de date, fără a se referi la volumele de jurnal (ignorând MVCC)\n\
+                                 Ar putea include date neangajate și date șterse care nu sunt aspirate; implicit: dezactivat\n\
   -v, --verbose                  activează mesaje de stare detaliate; implicit: dezactivate\n\
       --use-delimiter            foloseşte '"' unde începe şi se termina un identificator;\n\
                                  implicit: nu se foloseşte delimitator\n\
