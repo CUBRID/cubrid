@@ -387,7 +387,9 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 #if 1 // [CBRD-24083]
-#define pt_convert_to_logical_expr(parser,node,a,b)  pt_check_non_logical_expr((parser),(node))
+#define my_pt_convert_to_logical_expr(parser,node,a,b)  pt_check_non_logical_expr((parser),(node))
+#else
+#define my_pt_convert_to_logical_expr pt_convert_to_logical_expr
 #endif
 
 
@@ -18128,8 +18130,8 @@ table_set_function_call
 search_condition
 	: search_condition OR boolean_term_xor
 		{{
-			PT_NODE *arg1 = pt_convert_to_logical_expr(this_parser, $1, 1,1);
-			PT_NODE *arg2 = pt_convert_to_logical_expr(this_parser, $3, 1,1);
+			PT_NODE *arg1 = my_pt_convert_to_logical_expr(this_parser, $1, 1,1);
+			PT_NODE *arg2 = my_pt_convert_to_logical_expr(this_parser, $3, 1,1);
 			$$ = parser_make_expression (this_parser, PT_OR, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -18137,7 +18139,7 @@ search_condition
 	| boolean_term_xor
 		{{
 
-			$$ = pt_convert_to_logical_expr(this_parser, $1, 1, 1);
+			$$ = my_pt_convert_to_logical_expr(this_parser, $1, 1, 1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -18146,8 +18148,10 @@ search_condition
 boolean_term_xor
 	: boolean_term_xor XOR boolean_term_is
 		{{
-			PT_NODE *arg1 = pt_convert_to_logical_expr(this_parser, $1, 1,1);
-			PT_NODE *arg2 = pt_convert_to_logical_expr(this_parser, $3, 1,1);
+			PT_NODE *arg1 = my_pt_convert_to_logical_expr(this_parser, $1, 1,1);
+			PT_NODE *arg2 = my_pt_convert_to_logical_expr(this_parser, $3, 1,1);
+                        //PT_NODE *arg1 = pt_convert_to_logical_expr(this_parser, $1, 1,1);
+                        //PT_NODE *arg2 = pt_convert_to_logical_expr(this_parser, $3, 1,1);
 			$$ = parser_make_expression (this_parser, PT_XOR, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -18163,7 +18167,8 @@ boolean_term_xor
 boolean_term_is
 	: boolean_term_is is_op boolean
 		{{
-			PT_NODE *arg = pt_convert_to_logical_expr(this_parser, $1, 1,1);
+			PT_NODE *arg = my_pt_convert_to_logical_expr(this_parser, $1, 1,1);
+                        //PT_NODE *arg = pt_convert_to_logical_expr(this_parser, $1, 1,1);
 			$$ = parser_make_expression (this_parser, $2, arg, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -18195,8 +18200,8 @@ is_op
 boolean_term
 	: boolean_term AND boolean_factor
 		{{
-			PT_NODE *arg1 = pt_convert_to_logical_expr(this_parser, $1, 1,1);
-			PT_NODE *arg2 = pt_convert_to_logical_expr(this_parser, $3, 1,1);
+			PT_NODE *arg1 = my_pt_convert_to_logical_expr(this_parser, $1, 1,1);
+			PT_NODE *arg2 = my_pt_convert_to_logical_expr(this_parser, $3, 1,1);
 			$$ = parser_make_expression (this_parser, PT_AND, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -18214,7 +18219,7 @@ boolean_factor
 	: NOT predicate
 		{{
 
-			PT_NODE *arg = pt_convert_to_logical_expr(this_parser, $2, 1,1);
+			PT_NODE *arg = my_pt_convert_to_logical_expr(this_parser, $2, 1,1);
 			$$ = parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -18222,7 +18227,7 @@ boolean_factor
 	| '!' predicate
 		{{
 
-			PT_NODE *arg = pt_convert_to_logical_expr(this_parser, $2, 1,1);
+			PT_NODE *arg = my_pt_convert_to_logical_expr(this_parser, $2, 1,1);
 			$$ = parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -27617,9 +27622,12 @@ pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
           {
              PT_ERROR (parser, node, "invalid by [CBRD-24083]"); 
           }
-        else if(node->node_type == PT_VALUE) 
-          { // if (memcmp(node->info.value.text, "true", 5) == 0 || memcmp(node->info.value.text, "false", 6) == 0)
-             PT_ERROR (parser, node, "invalid by [CBRD-24083]");
+        else if(node->node_type == PT_VALUE)
+          {
+             if (memcmp(node->info.value.text, "true", 5) == 0 || memcmp(node->info.value.text, "false", 6) == 0)
+               {
+                 PT_ERROR (parser, node, "invalid by [CBRD-24083]");
+               }
           }
      }
 
