@@ -1355,7 +1355,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1284 Cannot truncate the table due to the primary key referred to on %1$s. Try again with CASCADE option.
 1285 Cannot cascade truncate because the ON DELETE action of the foreign key (%1$s) is not set to CASCADE.
 1286 Cannot find the log lsa at the time to extract. (input time : %1$s).
-1287 Timed out attempting to extract log info. (elapsed time : %1$d sec(s), extraction timeout : %2$d sec(s))
+1287 Timed out attempting to extract log info. (elapsed time : %1$d sec, extraction timeout : %2$d sec)
 1288 Skip producing log info for unsupported log record internally.
 1289 Skip producing log info for invalid transaction. (trid : %1$d)
 1290 Invalid log lsa (%1$lld|%2$d) to extract log info.
