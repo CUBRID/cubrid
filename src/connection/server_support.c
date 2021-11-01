@@ -2626,7 +2626,7 @@ css_process_server_server_connect (SOCKET master_fd)
     {
     case cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER:
       // *INDENT-OFF*
-      if (!chn.send_int (static_cast <int>(cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)))
+      if (!chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_TRANSACTION_SERVER_CONNECTION, 0);
 	  break;
@@ -2634,6 +2634,15 @@ css_process_server_server_connect (SOCKET master_fd)
       // *INDENT-ON*
       ps_Gl.set_active_tran_server_connection (std::move (chn));
       ps_Gl.start ();
+      break;
+    case cubcomm::server_server::CONNECT_PASSIVE_TRAN_TO_PAGE_SERVER:
+      // *INDENT-OFF*
+      if (!chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_PASSIVE_TRAN_TO_PAGE_SERVER)))
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_TRANSACTION_SERVER_CONNECTION, 0);
+          break;
+        }
+      // *INDENT-ON*
       break;
     default:
       assert (false);

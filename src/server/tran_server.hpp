@@ -96,12 +96,7 @@ class tran_server
     virtual bool get_remote_storage_config () = 0;
     virtual void on_boot () = 0;
 
-    // Common request Handlers
-    void receive_boot_info (cubpacking::unpacker &upk);
-    void receive_log_page (cubpacking::unpacker &upk);
-    void receive_data_page (cubpacking::unpacker &upk);
-
-    virtual request_handlers_map_t get_request_handlers () = 0;
+    virtual request_handlers_map_t get_request_handlers ();
 
   private:
 
@@ -111,7 +106,10 @@ class tran_server
 
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
-
+    // Common request Handlers
+    void receive_boot_info (cubpacking::unpacker &upk);
+    void receive_log_page (cubpacking::unpacker &upk);
+    void receive_data_page (cubpacking::unpacker &upk);
 
   private:
     std::unique_ptr<page_broker<log_page_type>> m_log_page_broker;
