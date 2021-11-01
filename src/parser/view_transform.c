@@ -1603,7 +1603,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
  * (MAINQUERY) It is not pushable(mergeable) in the following cases.
  *  - Class is Spec set(spec set??)
  *  - has CONNECT BY
- *  - has DISTINCT(mainquery) + order by(subquery)
+ *  - has DISTINCT(mainquery) + hidden column(subquery)
  *  - view spec is outer join spec
  *  - subquery check ==> mq_is_pushable_subquery()
  */
@@ -1694,6 +1694,10 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	{
 	  rewrite_as_derived = false;
 	}
+      else if (query_spec->node_type != PT_SELECT)
+	{
+	  rewrite_as_derived = true;
+	}
       /* check for (non-pushable) spec set (spec set??) */
       else if (class_spec->info.spec.entity_name != NULL && class_spec->info.spec.entity_name->node_type == PT_SPEC)
 	{
@@ -1705,7 +1709,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  rewrite_as_derived = true;
 	}
       /* check for DISTINCT + order_by */
-      else if (pt_is_distinct (statement) && query_spec->info.query.order_by)
+      else if (pt_is_distinct (statement) && pt_has_hidden_column (parser, query_spec->info.query.q.select.list))
 	{
 	  rewrite_as_derived = true;
 	}
