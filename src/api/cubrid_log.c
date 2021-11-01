@@ -199,6 +199,8 @@ cubrid_log_reset_tracelog ()
   memset (g_trace_log_path, 0, PATH_MAX + 1);
   memset (g_trace_log_path_old, 0, PATH_MAX + 1);
   memset (g_dbname, 0, CUBRID_LOG_MAX_DBNAME_LEN + 1);
+
+  strcpy (g_trace_log_base, ".");
   g_num_trace_log = 0;
   g_trace_log_level = 0;
   g_trace_log_filesize = 10 * 1024 * 1024;
