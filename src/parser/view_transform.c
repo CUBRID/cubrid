@@ -1705,7 +1705,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  rewrite_as_derived = true;
 	}
       /* check for DISTINCT + order_by */
-      else if (pt_is_distinct (query_spec) && order_by)
+      else if (pt_is_distinct (statement) && query_spec->info.query.order_by)
 	{
 	  rewrite_as_derived = true;
 	}
