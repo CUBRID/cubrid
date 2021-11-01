@@ -31,8 +31,6 @@ class passive_tran_server : public tran_server
   private:
     void on_boot () final override;
     bool get_remote_storage_config () final override;
-
-    request_handlers_map_t get_request_handlers () final override;
 };
 
 #endif // !_passive_tran_server_HPP_
