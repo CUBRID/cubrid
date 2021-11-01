@@ -7392,7 +7392,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, const VPID * const vpid, PAGE_FETCH_MO
   pgbuf_lock_state = PGBUF_LOCK_HOLDER;
 #endif /* SERVER_MODE */
 
-  if (pgbuf_lock_state != PGBUF_LOCK_HOLDER)	// == PGBUF_LOCK_WAITER
+  if (pgbuf_lock_state == PGBUF_LOCK_WAITER)
     {
       if (perf->is_perf_tracking)
 	{
@@ -7766,11 +7766,12 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
       // TODO: try_again = false ?
       return nullptr;
     }
-  else if (lock_page_res != PGBUF_LOCK_HOLDER)	// == PGBUF_LOCK_WAITER
+  else if (lock_page_res == PGBUF_LOCK_WAITER)
     {
       *try_again = true;
       return NULL;
     }
+  assert (lock_page_res == PGBUF_LOCK_HOLDER);
 
   /* Now, the caller is not holding any mutex. */
   bufptr = pgbuf_allocate_bcb (thread_p, vpid);
