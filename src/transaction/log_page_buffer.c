@@ -77,7 +77,7 @@
 #endif
 #include "active_tran_server.hpp"
 #include "page_broker.hpp"
-#include "ats_ps_request.hpp"
+#include "tran_page_requests.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
 #include "page_server.hpp"
@@ -2100,7 +2100,7 @@ request_log_page_from_page_server (LOG_PAGEID log_pageid)
   if (ats_Gl.get_log_page_broker ().register_entry (log_pageid) == page_broker_register_entry_state::ADDED)
     {
       // First to add an entry must also sent the request to the page server
-      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
+      ats_Gl.push_request (tran_to_page_request::SEND_LOG_PAGE_FETCH, std::move (message));
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
         {
@@ -3391,6 +3391,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 {
   if (is_tran_server_with_remote_storage ())
     {
+      // log pages are not written to local disk; they are written by page server
+      // skip flushing - aka: pretend that flushing has happened
+
       logpb_skip_flush_append_pages ();
       return NO_ERROR;
     }
@@ -3400,6 +3403,11 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
 }
 
+/*
+ * logpb_skip_flush_append_pages - Skip flushing append pages to disk.
+ *                  Set nxio_lsa and reset flush page count directly.
+ *
+ */
 static void
 logpb_skip_flush_append_pages ()
 {
@@ -4148,7 +4156,7 @@ logpb_send_flushed_lsa_to_ats ()
     }
   // *INDENT-OFF*
   std::string message (reinterpret_cast<const char *> (&saved_lsa), sizeof (saved_lsa));
-  ps_Gl.push_request_to_active_tran_server (ps_to_ats_request::SEND_SAVED_LSA, std::move (message));
+  ps_Gl.push_request_to_active_tran_server (page_to_tran_request::SEND_SAVED_LSA, std::move (message));
   // *INDENT-ON*
 }
 #endif // SERVER_MODE
@@ -6872,7 +6880,7 @@ logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, co
    */
   fileio_make_log_active_name (log_Name_active, log_Path, log_Prefix);
   fileio_make_log_info_name (log_Name_info, log_Path, log_Prefix);
-  fileio_make_log_metainfo_name (log_Name_metainfo, log_Path, log_Prefix);
+  fileio_make_log_metainfo_name (log_Name_metainfo, log_Path, log_Prefix, is_tran_server_with_remote_storage ());
   fileio_make_backup_volume_info_name (log_Name_bkupinfo, log_Path, log_Prefix);
   fileio_make_volume_info_name (log_Name_volinfo, db_fullname);
   fileio_make_log_archive_temp_name (log_Name_bg_archive, log_Archive_path, log_Prefix);
@@ -9411,7 +9419,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   /*
    * Copy log meta-information file
    */
-  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
+  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname, false);
   // *INDENT-OFF*
   try
     {
@@ -9994,7 +10002,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
   /*
    * Rename the log meta file
    */
-  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
+  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname, false);
   if (fileio_rename (LOG_DBLOG_METAINFO_VOLID, log_Name_metainfo, to_volname) == NULL)
     {
       error_code = ER_FAILED;

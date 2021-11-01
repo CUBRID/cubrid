@@ -336,26 +336,28 @@ argument_handler (int argc, char **argv)
       switch (option_key)
 	{
 	case SERVER_TYPE_SHORT:
-	  // *INDENT-ON*
-	  if (std::strcmp (optarg, server_type_to_string (SERVER_TYPE_TRANSACTION)) == 0)
-	    {
-	      set_server_type (SERVER_TYPE_TRANSACTION);
-	    }
-	  else if (std::strcmp (optarg, server_type_to_string (SERVER_TYPE_PAGE)) == 0)
-	    {
-	      set_server_type (SERVER_TYPE_PAGE);
-	    }
           // *INDENT-OFF*
-          else
+          if (std::strcmp (optarg, server_type_to_string (SERVER_TYPE_TRANSACTION)) == 0)
             {
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 0);	// error that the type is not valid
-              return ER_INVALID_SERVER_TYPE_ARGUMENT;
+              set_server_type (SERVER_TYPE_TRANSACTION);
             }
-          break;
-        default:
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1, optarg);	// invalid server option
-          return ER_INVALID_SERVER_OPTION;
-        }
+          else if (std::strcmp (optarg, server_type_to_string (SERVER_TYPE_PAGE)) == 0)
+            {
+              set_server_type (SERVER_TYPE_PAGE);
+            }
+	  else
+	    {
+	      // error that the type is not valid
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 1, optarg);
+	      return EXIT_FAILURE;
+	    }
+	  // *INDENT-ON*
+	  break;
+	default:
+	  // invalid server option
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1, argv[optind - 1]);
+	  return EXIT_FAILURE;
+	}
     }
   if (argc - optind == 1)
     {
@@ -364,10 +366,10 @@ argument_handler (int argc, char **argv)
   else
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-      return ER_FAILED;
+      return EXIT_FAILURE;
     }
 
-  return NO_ERROR;
+  return EXIT_SUCCESS;
 }
 
 /*
@@ -380,7 +382,7 @@ int
 main (int argc, char **argv)
 {
   char *binary_name;
-  int ret_val = 0;
+  int status = 0;
   THREAD_ENTRY *thread_p = nullptr;
 
 #if defined(WINDOWS)
@@ -403,27 +405,20 @@ main (int argc, char **argv)
   {				/* to make indent happy */
     if (argc < 2)
       {
-        PRINT_AND_LOG_ERR_MSG ("Usage: server databasename\n");
-        return 1;
+	PRINT_AND_LOG_ERR_MSG ("Usage: server databasename\n");
+	return 1;
       }
 
     if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
       {
-        PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
-        return 1;
+	PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
+	return 1;
       }
     thread_initialize_manager (thread_p);
     fprintf (stdout, "\nThis may take a long time depending on the amount " "of recovery works to do.\n");
-
     /* save executable path */
     binary_name = basename (argv[0]);
     (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
-    /* save database name */
-    ret_val = argument_handler (argc, argv);
-    if (ret_val != NO_ERROR)
-      {
-        return ret_val;
-      }
 
 #if !defined(WINDOWS)
     hb_set_exec_path (executable_path);
@@ -433,13 +428,23 @@ main (int argc, char **argv)
     setsid ();
 #endif
 
-    ret_val = net_server_start (thread_p, database_name);
-
+    status = argument_handler (argc, argv);
+    if (status == EXIT_SUCCESS)
+      {
+	status = net_server_start (thread_p, database_name);
+      }
+    if (status != EXIT_SUCCESS)
+      {
+	PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
+	fflush (stderr);
+      }
+    thread_finalize_manager ();
+    er_final (ER_ALL_FINAL);
   }
 #if defined(WINDOWS)
   __except (CreateMiniDump (GetExceptionInformation (), argv[1]))
   {
   }
 #endif
-  return ret_val;
+  return status;
 }

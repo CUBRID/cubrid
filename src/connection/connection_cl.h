@@ -50,12 +50,6 @@ extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
 extern void css_free_conn (CSS_CONN_ENTRY * conn);
 
-extern CSS_CONN_ENTRY *css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
-					   const char *message_to_master, int message_to_master_length, int port,
-					   int timeout, unsigned short *rid, bool send_magic);
-extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *message_to_master,
-						     int message_to_master_length);
-
 extern CSS_CONN_ENTRY *css_find_exception_conn (void);
 extern int css_receive_error (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, int *buffer_size);
 
@@ -80,4 +74,7 @@ extern int css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short reques
 				    int *rc);
 extern void css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn);
 extern int css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size);
+// *INDENT-OFF*
+extern std::string css_build_message_for_server_connection (const char *server_name, SERVER_TYPE server_type);
+// *INDENT-ON*
 #endif /* _CONNECTION_CL_H_ */

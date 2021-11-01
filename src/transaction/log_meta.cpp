@@ -56,6 +56,7 @@ namespace cublog
   void
   meta::unpack (cubpacking::unpacker &deserializer)
   {
+    assert (m_checkpoints.empty ());
     size_t size;
     deserializer.unpack_bool (m_clean_shutdown);
     deserializer.unpack_from_int (size);
@@ -99,6 +100,7 @@ namespace cublog
       }
     cubpacking::unpacker deserializer (charbuf.get (), size);
     unpack (deserializer);
+    m_loaded_from_file = true;
   }
 
   void
@@ -133,6 +135,12 @@ namespace cublog
     m_clean_shutdown = a_clean_shutdown;
   }
 
+  bool
+  meta::is_loaded_from_file () const
+  {
+    return m_loaded_from_file;
+  }
+
   const checkpoint_info *
   meta::get_checkpoint_info (const log_lsa &checkpoint_lsa) const
   {
@@ -144,6 +152,20 @@ namespace cublog
     else
       {
 	return nullptr;
+      }
+  }
+
+  std::tuple<log_lsa, const checkpoint_info *>
+  meta::get_highest_lsa_checkpoint_info () const
+  {
+    if (m_checkpoints.empty ())
+      {
+	return { NULL_LSA, nullptr };
+      }
+    else
+      {
+	const auto &last_tuple = m_checkpoints.rbegin ();
+	return { last_tuple->first, &last_tuple->second };
       }
   }
 
@@ -182,5 +204,13 @@ namespace cublog
   meta::get_checkpoint_count () const
   {
     return m_checkpoints.size ();
+  }
+
+  void
+  meta::clear ()
+  {
+    m_loaded_from_file = false;
+    m_clean_shutdown = false;
+    m_checkpoints.clear ();
   }
 }

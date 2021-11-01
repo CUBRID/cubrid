@@ -5879,10 +5879,11 @@ fileio_make_log_info_name (char *log_info_name_p, const char *log_path_p, const 
 }
 
 void
-fileio_make_log_metainfo_name (char *log_meta_name_p, const char *log_path_p, const char *db_name_p)
+fileio_make_log_metainfo_name (char *log_meta_name_p, const char *log_path_p, const char *db_name_p,
+			       bool tran_server_with_remote_storage)
 {
   sprintf (log_meta_name_p, "%s%s%s%s", log_path_p, FILEIO_PATH_SEPARATOR (log_path_p), db_name_p,
-	   FILEIO_SUFFIX_LOGMETA);
+	   tran_server_with_remote_storage ? FILEIO_SUFFIX_LOGMETA_TRAN : FILEIO_SUFFIX_LOGMETA);
 }
 
 /*
@@ -6326,7 +6327,7 @@ fileio_get_volume_label_by_fd (int vol_fd, bool is_peek)
 const char *
 fileio_get_volume_label_with_unknown (VOLID volid)
 {
-  static constexpr char *UNKNOWN_VLABEL = "(UNKNOWN)";
+  static constexpr char UNKNOWN_VLABEL[] = "(UNKNOWN)";
   const char *vlabel = fileio_get_volume_label (volid, PEEK);
   return vlabel != nullptr ? vlabel : UNKNOWN_VLABEL;
 }

@@ -9,11 +9,14 @@ EXPORTS
 	util_log_write_errid
 	util_log_write_errstr
 	util_log_write_command
-    er_init
+	er_final
+	er_init
+	er_msg
 	er_set
-    getopt_long
-    set_server_type
+	getopt_long
+	set_server_type
 	thread_initialize_manager
+	thread_finalize_manager
 
 ;
 ;   porting.h

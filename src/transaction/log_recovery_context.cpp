@@ -63,7 +63,7 @@ void
 log_recovery_context::set_forced_restore_stop ()
 {
   m_is_restore_incomplete = true;
-  m_restore_stop_point = 0;       // reset time of stop
+  m_restore_stop_point = RESTORE_STOP_POINT_NONE; // reset time of stop
 }
 
 bool
@@ -97,24 +97,6 @@ void
 log_recovery_context::set_start_redo_lsa (const log_lsa &start_redo_lsa)
 {
   m_start_redo_lsa = start_redo_lsa;
-}
-
-const log_lsa &
-log_recovery_context::get_checkpoint_lsa () const
-{
-  return m_checkpoint_lsa;
-}
-
-const log_lsa &
-log_recovery_context::get_start_redo_lsa () const
-{
-  return m_start_redo_lsa;
-}
-
-const log_lsa &
-log_recovery_context::get_end_redo_lsa () const
-{
-  return m_end_redo_lsa;
 }
 
 bool

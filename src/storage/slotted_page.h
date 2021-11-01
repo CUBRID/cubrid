@@ -101,9 +101,9 @@ extern PGNSLOTS spage_number_of_records (PAGE_PTR pgptr);
 extern PGNSLOTS spage_number_of_slots (PAGE_PTR pgptr);
 extern void spage_initialize (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slots_type, unsigned short alignment,
 			      bool safeguard_rvspace);
-extern int spage_insert (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdes, PGSLOTID * slotid);
-extern int spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, RECDES * recdes);
-extern int spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, RECDES * recdes);
+extern int spage_insert (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const RECDES * recdes, PGSLOTID * slotid);
+extern int spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, const RECDES * recdes);
+extern int spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, const RECDES * recdes);
 extern PGSLOTID spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid);
 extern PGSLOTID spage_delete_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid);
 extern int spage_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, const RECDES * recdes);

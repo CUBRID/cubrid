@@ -75,7 +75,6 @@ static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, O
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
 static void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
-static TRANID log_rv_get_min_trantable_tranid ();
 
 /*
  * CRASH RECOVERY PROCESS
@@ -682,12 +681,10 @@ log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log_reader & l
  *
  */
 void
-log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
+log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
 {
   LOG_TDES *rcv_tdes;		/* Tran. descriptor for the recovery phase */
-  int rcv_tran_index;		/* Saved transaction index */
   LOG_RECORD_HEADER *eof;	/* End of the log record */
-  int tran_index;
   INT64 num_redo_log_records;
   int error_code = NO_ERROR;
 
@@ -697,16 +694,15 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   /* Save the transaction index and find the transaction descriptor */
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  rcv_tdes = LOG_FIND_TDES (tran_index);
+  const int rcv_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);	/* Saved transaction index */
+  rcv_tdes = LOG_FIND_TDES (rcv_tran_index);
   if (rcv_tdes == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, rcv_tran_index);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:LOG_FIND_TDES");
       return;
     }
 
-  rcv_tran_index = tran_index;
   rcv_tdes->state = TRAN_RECOVERY;
 
   if (LOG_HAS_LOGGING_BEEN_IGNORED ())
@@ -719,12 +715,9 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       log_Gl.hdr.has_logging_been_skipped = false;
     }
 
-  er_log_debug (ARG_FILE_LINE, "RECOVERY: start with %lld|%d and stop at %lld", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa),
-		stopat != NULL ? *stopat : -1);
-
   /* Find the starting LSA for the analysis phase */
 
-  if (ismedia_crash != false)
+  if (is_media_crash != false)
     {
       /* Media crash means restore from backup. */
       LOG_LSA chkpt_lsa = log_Gl.hdr.chkpt_lsa;
@@ -738,6 +731,10 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       // Recovery after unexpected stop or crash
       context.init_for_recovery (log_Gl.hdr.chkpt_lsa);
     }
+  er_log_debug (ARG_FILE_LINE, "RECOVERY: start with %lld|%d and stop at %lld %s",
+		LSA_AS_ARGS (&context.get_start_redo_lsa ()), context.get_restore_stop_point (),
+		is_media_crash ? "(media crash)" : "");
+
 
   /* Notify vacuum it may need to recover the lost block data.
    * There are two possible cases here:
@@ -810,7 +807,9 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   if (!context.is_page_server ())
     {
       log_recovery_undo (thread_p);
-      boot_reset_db_parm (thread_p);
+
+      // Reset boot_Db_parm in case a data volume creation was undone.
+      (void) boot_reset_db_parm (thread_p);
     }
 
   // *INDENT-OFF*
@@ -885,6 +884,132 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 }
 
 /*
+ * log_recovery_finish_transactions - transaction server with remote storage needs to rebuild the
+ *                    transaction table information at the time of the crash and finalize transactions;
+ *                    this starts with the last available transaction table snapshot and performing recovery
+ *                    analysis from that LSA followed by undo
+ *
+ * return: nothing
+ *
+ */
+void
+log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
+{
+  assert (is_tran_server_with_remote_storage ());
+  assert (log_Gl.m_metainfo.is_loaded_from_file ());
+
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  const int sys_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (sys_tran_index == LOG_SYSTEM_TRAN_INDEX && LOG_FIND_TDES (sys_tran_index) != nullptr);
+
+  // recovery analysis phase
+  //
+  log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
+
+  // start with what metalog tells us
+  // *INDENT-OFF*
+  const auto highest_lsa_chkpt_info = log_Gl.m_metainfo.get_highest_lsa_checkpoint_info ();
+  const log_lsa chkpt_lsa = std::get<log_lsa>(highest_lsa_chkpt_info);
+  const cublog::checkpoint_info *const chkpt_info = std::get<1>(highest_lsa_chkpt_info);
+  // *INDENT-ON*
+
+  if (chkpt_info == nullptr)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery_finish_transactions: no checkpoint found; control should not end up here");
+      // unreachable
+      return;
+    }
+  assert (!chkpt_lsa.is_null ());
+
+  log_recovery_context log_rcv_context;
+  log_rcv_context.init_for_recovery (chkpt_lsa);
+
+  INT64 dummy_redo_log_record_count = 0LL;
+  log_recovery_analysis (thread_p, &dummy_redo_log_record_count, log_rcv_context);
+  assert (!log_rcv_context.is_restore_incomplete ());
+  // analysis changes the transaction index and leaves it in an indefinite state
+  // therefore reset to system transaction index
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
+
+  // append page is needed for subsequent steps
+  assert (!log_Gl.hdr.append_lsa.is_null ());
+  if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery_finish_transactions: logpb_fetch_start_append_page");
+      // unreachable
+      return;
+    }
+
+  // Finish transactions, in three steps:
+  //   1. First, abort all atomic system operations
+  //   2. Then finish all postpone phases (of both atomic system operations and transactions)
+  //   3. Then undo all transactions that are still active.
+  //
+  // NOTE: no recovery redo phase on transaction server with remote storage
+  log_recovery_abort_all_atomic_sysops (thread_p);
+
+  log_recovery_finish_all_postpone (thread_p);
+
+  int error_code = boot_reset_db_parm (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_finish_transactions: boot_reset_db_parm");
+      // unreachable
+      return;
+    }
+
+  // recovery undo phase
+  //
+  log_Gl.rcv_phase = LOG_RECOVERY_UNDO_PHASE;
+  log_recovery_undo (thread_p);
+
+  // when dangling transactions are encountered during undo, compensation log records
+  // might be added - eg: log_rv_undo_record;
+  // request a flush such that all log pages are up to date
+  logpb_flush_pages_direct (thread_p);
+
+  // Reset boot_Db_parm in case a data volume creation was undone.
+  error_code = boot_reset_db_parm (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_finish_transactions: boot_reset_db_parm");
+      // unreachable
+      return;
+    }
+
+  assert (!log_Gl.append.prev_lsa.is_null ());
+  vacuum_notify_server_crashed (&log_Gl.append.prev_lsa);
+
+  // *INDENT-OFF*
+  log_system_tdes::rv_final ();
+  // *INDENT-ON*
+
+  error_code = locator_initialize (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_finish_transactions: locator_initialize");
+      // unreachable
+      return;
+    }
+
+  error_code = heap_classrepr_restart_cache ();
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery_finish_transactions: heap_classrepr_restart_cache");
+      // unreachable
+      return;
+    }
+
+  // final recovery phase flag is set in the caller
+}
+
+/*
  * log_recovery_needs_skip_logical_redo - Check whether we need to skip logical redo.
  *
  * return: true if skip logical redo, false otherwise
@@ -941,24 +1066,6 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
   return false;
 }
 
-TRANID
-log_rv_get_min_trantable_tranid ()
-{
-  TRANID min_tranid = NULL_TRANID;
-  for (int tran_index = 1; tran_index < log_Gl.trantable.num_total_indices; ++tran_index)
-    {
-      const TRANID tranid = log_Gl.trantable.all_tdes[tran_index]->trid;
-      if (tranid != NULL_TRANID)
-	{
-	  if (min_tranid == NULL_TRANID || min_tranid > tranid)
-	    {
-	      min_tranid = tranid;
-	    }
-	}
-    }
-  return min_tranid;
-}
-
 /*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
  *
@@ -1000,7 +1107,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   // *INDENT-OFF*
   const auto time_start_setting_up = std::chrono::system_clock::now ();
   // *INDENT-ON*
-  const TRANID min_trantable_tranid = log_rv_get_min_trantable_tranid ();
 
   /* depending on compilation mode and on a system parameter, initialize the
    * infrastructure for parallel log recovery;
@@ -1019,8 +1125,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	reusable_jobs.initialize (log_recovery_redo_parallel_count);
-	parallel_recovery_redo.
-	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+	// *INDENT-OFF*
+	parallel_recovery_redo.reset(
+	    new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+	// *INDENT-ON*
       }
   }
 #endif
@@ -2607,13 +2715,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
     }
 
   log_zip_free (undo_unzip_ptr);
-
-  /* Flush all dirty pages */
-
-  logpb_flush_pages_direct (thread_p);
-
-  logpb_flush_header (thread_p);
-  (void) pgbuf_flush_all (thread_p, NULL_VOLID);
 
   return;
 }

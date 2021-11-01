@@ -317,6 +317,7 @@ static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, voi
 
 static int log_create_metalog_file ();
 static int log_read_metalog_from_file ();
+static int log_read_metalog_from_file_with_create ();
 
 /*for CDC */
 static int cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry);
@@ -1049,7 +1050,7 @@ log_unmount_active_file (THREAD_ENTRY * thread_p)
  *   logpath(in): Directory where the log volumes reside
  *   prefix_logname(in): Name of the log volumes. It must be the same as the
  *                      one given during the creation of the database.
- *   ismedia_crash(in): Are we recovering from media crash ?.
+ *   is_media_crash(in): Are we recovering from media crash ?.
  *   stopat(in): If we are recovering from a media crash, we can stop
  *                      the recovery process at a given time.
  *
@@ -1063,21 +1064,22 @@ log_unmount_active_file (THREAD_ENTRY * thread_p)
  */
 void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
-		int ismedia_crash, BO_RESTART_ARG * r_args)
+		bool is_media_crash, BO_RESTART_ARG * r_args)
 {
   er_log_debug (ARG_FILE_LINE, "LOG INITIALIZE\n" "\tdb_fullname = %s \n" "\tlogpath = %s \n"
 		"\tprefix_logname = %s \n" "\tismedia_crash = %d \n",
 		db_fullname != NULL ? db_fullname : "(UNKNOWN)",
 		logpath != NULL ? logpath : "(UNKNOWN)",
-		prefix_logname != NULL ? prefix_logname : "(UNKNOWN)", ismedia_crash);
+		prefix_logname != NULL ? prefix_logname : "(UNKNOWN)", (int) is_media_crash);
 
-  (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash, r_args, false);
+  (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, is_media_crash, r_args, false);
 
 #if defined(SERVER_MODE)
   log_daemons_init ();
 #endif // SERVER_MODE
 
-  log_No_logging = prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
+  log_No_logging = false;	// Used to be prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
+  // Having no log is no longer acceptable, because it breaks page server replication.
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && log_No_logging)
     {
@@ -1104,7 +1106,7 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
  */
 static int
 log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			 const char *prefix_logname, bool ismedia_crash, BO_RESTART_ARG * r_args, bool init_emergency)
+			 const char *prefix_logname, bool is_media_crash, BO_RESTART_ARG * r_args, bool init_emergency)
 {
   LOG_RECORD_HEADER *eof;	/* End of log record */
   REL_FIXUP_FUNCTION *disk_compatibility_functions = NULL;
@@ -1140,7 +1142,15 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       log_final (thread_p);
     }
 
-  error_code = log_read_metalog_from_file ();
+  if (is_tran_server_with_remote_storage ())
+    {
+      // allow creation of metalog on-the-fly
+      error_code = log_read_metalog_from_file_with_create ();
+    }
+  else
+    {
+      error_code = log_read_metalog_from_file ();
+    }
   if (error_code != NO_ERROR && !init_emergency)
     {
       // Unable to mount meta log
@@ -1172,7 +1182,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
   if (log_Gl.append.vdes == NULL_VOLDES && !is_tran_server_with_remote_storage ())
     {
-      if (ismedia_crash != false)
+      if (is_media_crash != false)
 	{
 	  /*
 	   * Set an approximate log header to continue the recovery process
@@ -1212,7 +1222,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
   log_Log_header_initialized = true;
 
-  if (ismedia_crash != false && (r_args) && r_args->restore_slave)
+  if (is_media_crash != false && (r_args) && r_args->restore_slave)
     {
       r_args->db_creation = log_Gl.hdr.db_creation;
       LSA_COPY (&r_args->restart_repl_lsa, &log_Gl.hdr.smallest_lsa_at_last_chkpt);
@@ -1255,6 +1265,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * page size
        */
       logpb_finalize_pool (thread_p);
+      log_Gl.m_metainfo.clear ();
       log_unmount_active_file (thread_p);
       log_Gl.append.vdes = NULL_VOLDES;
 
@@ -1266,8 +1277,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	{
 	  return error_code;
 	}
-
-      error_code = log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash,
+      error_code = log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, is_media_crash,
 					    r_args, init_emergency);
 
       return error_code;
@@ -1395,16 +1405,19 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   /*
    * Was the database system shut down or was it involved in a crash ?
    */
-  if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true)
-      && !is_tran_server_with_remote_storage ())
+  if (!is_tran_server_with_remote_storage ()
+      && init_emergency == false && (log_Gl.hdr.is_shutdown == false || is_media_crash == true))
     {
       /*
        * System was involved in a crash.
        * Execute the recovery process
        */
-      log_recovery (thread_p, ismedia_crash, stopat);
-
-      // todo: TS with remote storage recovery
+      log_recovery (thread_p, is_media_crash, stopat);
+    }
+  else if (is_tran_server_with_remote_storage ()
+	   && init_emergency == false && (log_Gl.m_metainfo.get_clean_shutdown () == false || is_media_crash == true))
+    {
+      log_recovery_finish_transactions (thread_p);
     }
   else
     {
@@ -1828,10 +1841,13 @@ log_final (THREAD_ENTRY * thread_p)
    */
   logpb_flush_pages_direct (thread_p);
 
-  error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
-  if (error_code == NO_ERROR)
+  if (!is_tran_server_with_remote_storage ())
     {
-      error_code = fileio_synchronize_all (thread_p, false);
+      error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
+      if (error_code == NO_ERROR)
+	{
+	  error_code = fileio_synchronize_all (thread_p, false);
+	}
     }
 
   logpb_decache_archive_info (thread_p);
@@ -1849,12 +1865,8 @@ log_final (THREAD_ENTRY * thread_p)
       LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt, &log_Gl.hdr.chkpt_lsa);
 
       // mark and persist that transaction server with remote storage has been correctly closed
-      if (is_tran_server_with_remote_storage ())
-	{
-	  log_Gl.m_metainfo.set_clean_shutdown (true);
-
-	  log_write_metalog_to_file ();
-	}
+      log_Gl.m_metainfo.set_clean_shutdown (true);
+      log_write_metalog_to_file ();
     }
   else
     {
@@ -1868,6 +1880,8 @@ log_final (THREAD_ENTRY * thread_p)
 
   /* Undefine page buffer pool and transaction table */
   logpb_finalize_pool (thread_p);
+
+  log_Gl.m_metainfo.clear ();
 
   logtb_undefine_trantable (thread_p);
 
@@ -8998,6 +9012,14 @@ log_rv_dump_hexa (FILE * fp, int length, void *data)
   log_hexa_dump (fp, length, data);
 }
 
+int
+log_rv_nop (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
+{
+  // No actual change, but page still has to be marked as dirty because LSA will be set regardless.
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
 /*
  * log_rv_outside_noop_redo - NO-OP of an outside REDO
  *
@@ -9848,6 +9870,8 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
 {
   int error_code = NO_ERROR;
 
+  assert (!log_lsa->is_null ());
+
   if (log_page->hdr.logical_pageid != log_lsa->pageid)
     {
       error_code = logpb_fetch_page (thread_p, log_lsa, LOG_CS_FORCE_USE, log_page);
@@ -10603,6 +10627,35 @@ log_create_metalog_file ()
   fclose (fp);
 
   return NO_ERROR;
+}
+
+// At initialization time, metalog is created if not found. Needed in the contest of booting up
+// an empty active transaction server with remote storage.
+int
+log_read_metalog_from_file_with_create ()
+{
+  int err_code = NO_ERROR;
+
+  struct stat dummy_stat_buf;
+  if (stat (log_Name_metainfo, &dummy_stat_buf) != 0)
+    {
+      // should not be called in a a non booting-up scenario
+      assert (!log_Gl.m_metainfo.is_loaded_from_file ());
+      // empty/idle metalog; no subsequent recovery is needed; make sure that does not happen
+      log_Gl.m_metainfo.set_clean_shutdown (true);
+
+      err_code = log_create_metalog_file ();
+
+      // creation of an empty metalog file happens early during the log initialization process
+      // later on, there is a sequence where the clean shutdown flag is set to false such that
+      // an accidental server crash is correctly flagged
+    }
+  else
+    {
+      err_code = log_read_metalog_from_file ();
+    }
+
+  return err_code;
 }
 
 // Get meta log from disk to log_Gl

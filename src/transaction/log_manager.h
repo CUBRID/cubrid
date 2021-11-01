@@ -71,7 +71,7 @@ extern int log_get_num_pages_for_creation (int db_npages);
 extern int log_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 		       const char *prefix_logname, DKNPAGES npages);
 extern void log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			    const char *prefix_logname, int ismedia_crash, bo_restart_arg * r_args);
+			    const char *prefix_logname, bool is_media_crash, bo_restart_arg * r_args);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int log_update_compatibility_and_release (THREAD_ENTRY * thread_p, float compatibility, char release[]);
 #endif
@@ -156,6 +156,7 @@ extern int log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char
 extern int log_rv_copy_char (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void log_rv_dump_char (FILE * fp, int length, void *data);
 extern void log_rv_dump_hexa (FILE * fp, int length, void *data);
+extern int log_rv_nop (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages);

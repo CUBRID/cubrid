@@ -253,7 +253,10 @@ namespace cubcomm
   template <typename MsgId>
   request_server<MsgId>::request_server (request_server &&other)
   {
-    assert (!other.m_thread.joinable ());   // cannot move if thread is started
+    // only movable if in idle phase
+    assert (!m_thread.joinable ());
+    assert (!other.m_thread.joinable ());
+
     m_channel = std::move (other.m_channel);
     m_request_handlers = std::move (other.m_request_handlers);
   }

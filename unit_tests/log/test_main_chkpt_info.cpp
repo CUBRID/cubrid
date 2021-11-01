@@ -160,7 +160,7 @@ TEST_CASE ("Test load and recovery on empty tran table", "")
 int
 search_for_id (TRANID id)
 {
-  for (size_t i = 0; i < log_Gl.trantable.num_total_indices; i++)
+  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
     {
       if (log_Gl.trantable.all_tdes[i]->trid == id)
 	{
@@ -206,36 +206,45 @@ check_recovery (checkpoint_info obj)
 	  continue;
 	}
 
-      std::map<TRANID, log_tdes *>::const_iterator tdes_after = tran_map.find (tdes->trid);
+      std::map<TRANID, log_tdes *>::const_iterator tdes_after_iter = tran_map.find (tdes->trid);
+      log_tdes *const tdes_after = tdes_after_iter->second;
       if (tdes->tail_lsa == NULL_LSA)
 	{
-	  REQUIRE (tdes_after == tran_map.end ());
+	  REQUIRE (tdes_after_iter == tran_map.end ());
 	  continue;
 	}
-      REQUIRE (tdes_after != tran_map.end ());
-      if (tdes->state == TRAN_ACTIVE || tdes->state == TRAN_UNACTIVE_ABORTED)
+      REQUIRE (tdes_after_iter != tran_map.end ());
+      if ((tdes->state == TRAN_UNACTIVE_COMMITTED || tdes->state == TRAN_UNACTIVE_ABORTED)
+	  && !tdes->commit_abort_lsa.is_null ())
 	{
-	  REQUIRE (tdes_after->second->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED);
+	  REQUIRE (tdes_after->state == TRAN_RECOVERY);
+	  continue;
 	}
       else
 	{
-	  REQUIRE (tdes_after->second->state == tdes->state);
+	  if (tdes->state == TRAN_ACTIVE || tdes->state == TRAN_UNACTIVE_ABORTED)
+	    {
+	      REQUIRE (tdes_after->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED);
+	    }
+	  else
+	    {
+	      REQUIRE (tdes_after->state == tdes->state);
+	    }
 	}
 
-      full_compare_tdes (tdes, tdes_after->second, tdes->state == TRAN_UNACTIVE_ABORTED);
+      full_compare_tdes (tdes, tdes_after, tdes->state == TRAN_UNACTIVE_ABORTED);
 
       //check tdes sysop
       if (tdes->rcv.sysop_start_postpone_lsa == NULL_LSA &&
 	  tdes->rcv.atomic_sysop_start_lsa == NULL_LSA)
 	{
-	  REQUIRE (tdes_after->second->topops.last == -1);
+	  REQUIRE (tdes_after->topops.last == -1);
 	}
       else
 	{
-	  REQUIRE (tdes_after->second->topops.last == 0);
-	  REQUIRE (tdes->rcv.sysop_start_postpone_lsa == tdes_after->second->rcv.sysop_start_postpone_lsa);
-	  REQUIRE (tdes->rcv.atomic_sysop_start_lsa == tdes_after->second->rcv.atomic_sysop_start_lsa);
-
+	  REQUIRE (tdes_after->topops.last == 0);
+	  REQUIRE (tdes->rcv.sysop_start_postpone_lsa == tdes_after->rcv.sysop_start_postpone_lsa);
+	  REQUIRE (tdes->rcv.atomic_sysop_start_lsa == tdes_after->rcv.atomic_sysop_start_lsa);
 	}
     }
 
@@ -264,7 +273,6 @@ check_recovery (checkpoint_info obj)
 	    }
 	  REQUIRE (itr->second->rcv.sysop_start_postpone_lsa == tdes_after->second->rcv.sysop_start_postpone_lsa);
 	  REQUIRE (itr->second->rcv.atomic_sysop_start_lsa == tdes_after->second->rcv.atomic_sysop_start_lsa);
-
 	}
     }
 }
@@ -438,11 +446,12 @@ LOG_TDES *
 test_env_chkpt::generate_tdes (int index)
 {
   LOG_TDES *tdes = new log_tdes ();
+
   tdes->trid = index + 1;
   tdes->tran_index = index + 1;
 
   tdes->tail_lsa = generate_log_lsa ();
-  tdes->isloose_end = std::rand () % 2;
+  tdes->isloose_end = (bool) (std::rand () % 2);
   tdes->head_lsa = generate_log_lsa ();
   if (index < TRAN_UNACTIVE_UNKNOWN)
     {
@@ -453,11 +462,11 @@ test_env_chkpt::generate_tdes (int index)
       tdes->state    = static_cast<TRAN_STATE> (std::rand () % TRAN_UNACTIVE_UNKNOWN);
     }
 
-
   tdes->undo_nxlsa = generate_log_lsa ();
   tdes->posp_nxlsa = generate_log_lsa ();
   tdes->savept_lsa = generate_log_lsa ();
   tdes->tail_topresult_lsa = generate_log_lsa ();
+  tdes->commit_abort_lsa = NULL_LSA;
   tdes->rcv.tran_start_postpone_lsa = generate_log_lsa ();
   tdes->wait_msecs = rand () % MAX_RAND;
   tdes->client_id  = rand () % MAX_RAND;
@@ -482,14 +491,15 @@ test_env_chkpt::generate_tdes (int index)
 void
 test_env_chkpt::generate_tran_table ()
 {
-  log_Gl.trantable.num_total_indices = 18;
+  log_Gl.trantable.num_total_indices = 20;
   int size = log_Gl.trantable.num_total_indices * sizeof (*log_Gl.trantable.all_tdes);
   log_Gl.trantable.all_tdes = (LOG_TDES **) malloc (size);
 
   log_tdes *tdes;
   int tran_index = 0;
-  log_Gl.trantable.all_tdes[tran_index] = generate_tdes (tran_index);
-  tran_index++;
+
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  ++tran_index;
 
   // Generate with NULL_TRANID
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
@@ -497,6 +507,7 @@ test_env_chkpt::generate_tran_table ()
   ++tran_index;
 
   // Generate with NULL tail
+  //
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->tail_lsa = NULL_LSA;
   tdes->rcv.atomic_sysop_start_lsa = NULL_LSA;
@@ -504,58 +515,89 @@ test_env_chkpt::generate_tran_table ()
   ++tran_index;
 
   // Generate with (almost) every state
+  //
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_ACTIVE;
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_COMMITTED;
+  tdes->commit_abort_lsa = NULL_LSA;
   ++tran_index;
+
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_COMMITTED;
+  // should be skipped by checkpoint
+  tdes->commit_abort_lsa = generate_log_lsa ();
+  ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_ABORTED;
+  tdes->commit_abort_lsa = NULL_LSA;
   ++tran_index;
+
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_ABORTED;
+  // should be skipped by checkpoint
+  tdes->commit_abort_lsa = generate_log_lsa ();
+  ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_2PC_PREPARE;
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES;
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_2PC_ABORT_DECISION;
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_2PC_COMMIT_DECISION;
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS;
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
   ++tran_index;
+
   // Generate topops
+  //
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = 0;
   tdes->rcv.sysop_start_postpone_lsa = NULL_LSA;
   tdes->rcv.atomic_sysop_start_lsa = NULL_LSA;
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = 1;
   tdes->rcv.sysop_start_postpone_lsa = {1, 1};
   tdes->rcv.atomic_sysop_start_lsa = NULL_LSA;
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = 2;
   tdes->rcv.sysop_start_postpone_lsa = NULL_LSA;
   tdes->rcv.atomic_sysop_start_lsa = {1, 1};
   ++tran_index;
+
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = 3;
   tdes->rcv.sysop_start_postpone_lsa = {1, 1};
@@ -565,15 +607,16 @@ test_env_chkpt::generate_tran_table ()
 
   // Generate system tdes with and without topops
   tran_index = -2;
-  tdes = generate_tdes (tran_index);
+  systb_System_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = -1;
-  systb_System_tdes[tran_index] = tdes;
+  tdes->rcv.sysop_start_postpone_lsa = {1, 1};
+  tdes->rcv.atomic_sysop_start_lsa = {1, 1};
+
   tran_index = -3;
-  tdes = generate_tdes (tran_index);
+  systb_System_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = 0;
   tdes->rcv.sysop_start_postpone_lsa = {1, 1};
   tdes->rcv.atomic_sysop_start_lsa = {1, 1};
-  systb_System_tdes[tran_index] = tdes;
 }
 
 //
@@ -696,21 +739,20 @@ logtb_get_system_tdes (THREAD_ENTRY *thread_p)
 LOG_TDES *
 logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LOG_LSA *log_lsa)
 {
-  LOG_TDES *tdes = new log_tdes ();		/* Transaction descriptor */
-
   assert (trid != NULL_TRANID);
 
   if (trid < NULL_TRANID)
     {
-      LOG_TDES *sys_tdes = new log_tdes ();
-      tdes->topops.last = -1;
-      LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
-      LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+      LOG_TDES *const sys_tdes = new log_tdes ();
+      sys_tdes->topops.last = -1;
+      LSA_SET_NULL (&sys_tdes->rcv.sysop_start_postpone_lsa);
+      LSA_SET_NULL (&sys_tdes->rcv.atomic_sysop_start_lsa);
       sys_tdes->trid = trid;
       tran_map.insert (std::pair<TRANID, log_tdes *> (trid, sys_tdes));
       return sys_tdes;
     }
 
+  log_tdes *const tdes = new log_tdes ();
   for (int i = 1; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       if (log_Gl.trantable.all_tdes[i] == NULL)
