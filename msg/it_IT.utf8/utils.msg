@@ -289,7 +289,7 @@ opzioni valide:\n\
   -C, --CS-mode                modalità di esecuzione client-server\n\
       --no-check               non controllare la consistenza del database; predefinito: controlla\n\
   -t, --thread-count=COUNT     COUNT numero threads; predefinito: 0(auto)\n\
-  -z, --compress               compress volumi backup; predefinito: uncompress\n\
+      --no-compress            non comprimere i volumi di backup; default: compressione\n\
       --sleep-msecs=N          aspetta N millisecondi per 1M read; predefinito: 0\n\
   -k, --separate-keys          keys file (_keys) per TDE non è incluso nel volume di backup, ma è invece separato in un file\n
 71 Argomenti incompatibili, \"%1$s\", e \"%2$s\"\n
@@ -521,6 +521,8 @@ opzioni valide:\n\
   -d, --data-only             dump solo gli oggetti; predefinito: schema e gli oggetti\n\
       --output-prefix=PREFIEX PREFIX per i file di output; predefinito: nome database\n\
       --hash-file=FILE        FILE per hash; predefinito: generato da tmpnam()\n\
+      --latest-image          durante il dump degli oggetti, scarica l'ultima immagine degli oggetti nei volumi di dati, senza fare riferimento ai volumi di registro (ignorando MVCC)\n\
+                              Potrebbe includere dati non impegnati e dati cancellati che non vengono aspirati; predefinito: disabilitato\n\
   -v, --verbose               attivare i messaggi dettagliati di stato; predefinito: non attivo\n\
       --use-delimiter         usa '"' dove un identificatore inizia e termina; predefinito: don't use\n\
   -S, --SA-mode               modalità di esecuzione stand-alone\n\

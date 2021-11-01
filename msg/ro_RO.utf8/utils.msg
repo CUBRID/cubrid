@@ -290,7 +290,7 @@ opţiuni valide:\n\
   -C, --CS-mode                mod de execuţie client-server\n\
       --no-check               nu se efectuează o verificare de consistenţă a bazei de date; implicit: verificare\n\
   -t, --thread-count=NUMAR     număr de fire de excuţie; implicit: 0(auto)\n\
-  -z, --compress               compresia volumelor de backup; implicit: decompresie\n\
+      --no-compress            nu comprimați volumele de rezervă; implicit: compresie\n\
       --sleep-msecs=N          asteapta N milisecunde la fiecare 1MB citit; implicit: 0\n\
   -k, --separate-keys          cheie file (_keys) for TDE is not included in the backup volume, but is separate into a file\n
 71 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
@@ -535,6 +535,8 @@ opţiuni valide:\n\
   -d, --data-only                varsă doar obiectele; implicit: schema şi obiectele\n\
       --output-prefix=PREFIEX    PREFIX pentru fişierele de ieşire; implicit: numele bazei de date\n\
       --hash-file=FIŞIER         FIŞIER pentru hash; implicit: generat cu tmpnam()\n\
+      --latest-image             când aruncă obiecte, aruncă cea mai recentă imagine a obiectelor din volumele de date, fără a se referi la volumele de jurnal (ignorând MVCC)\n\
+                                 Ar putea include date neangajate și date șterse care nu sunt aspirate; implicit: dezactivat\n\
   -v, --verbose                  activează mesaje de stare detaliate; implicit: dezactivate\n\
       --use-delimiter            foloseşte '"' unde începe şi se termina un identificator;\n\
                                  implicit: nu se foloseşte delimitator\n\

@@ -289,7 +289,7 @@ opciones validas:\n\
   -C, --CS-mode                modo de ejecucion cliente-servidor\n\
       --no-check               no verificar una consistencia de la base de datos; estandar: verificar\n\
   -t, --thread-count=COUNT     numero de hilos; estandar: 0(auto)\n\
-  -z, --compress               comprimir volumenes de respaldo; estandar: descomprimir\n\
+      --no-compress            no comprima los volúmenes de respaldo; predeterminado: compresión\n\
       --sleep-msecs=N          dormir N milisecondas para cada 1M leido estandar: 0\n\
   -k, --separate-keys          el archivo de claves (_keys) para TDE no se incluye en el volumen de respaldo, sino que se divide en un archivo\n
 71 Argumentos incompatibles, \"%1$s\", y \"%2$s\"\n
@@ -521,6 +521,8 @@ opciones validas:\n\
   -d, --data-only             botar solo objetos; estandar: esquema y objetos\n\
       --output-prefix=PREFIEX PREFIJO para archivos de salida; estandar: el nombre de la base de datos\n\
       --hash-file=FILE        ARCHIVO para hash; estandar: generar por tmpnam()\n\
+      --latest-image          al volcar objetos, vuelca la última imagen de los objetos en los volúmenes de datos, sin hacer referencia a los volúmenes de registro (ignorando MVCC)\n\
+                              Podría incluir datos no confirmados y datos eliminados que no se vacían; predeterminado: deshabilitado\n\
   -v, --verbose               habilitar mensajes de estado verbose; estandar: inhabilitado\n\
       --use-delimiter         utilizar '"' donde un identificador empieza y acaba; estandar: no utilizar\n\
   -S, --SA-mode               modo de ejecucion independiente\n\

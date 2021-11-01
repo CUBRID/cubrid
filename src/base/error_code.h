@@ -1643,7 +1643,28 @@
 #define ER_SCALABILITY_DEV_RESERVED_ERROR19         -1282
 #define ER_SCALABILITY_DEV_RESERVED_ERROR20         -1283
 
-#define ER_LAST_ERROR                               -1284
+#define ER_TRUNCATE_PK_REFERRED                     -1284
+#define ER_TRUNCATE_CANT_CASCADE                    -1285
+
+#define ER_CDC_LSA_NOT_FOUND                        -1286
+#define ER_CDC_EXTRACTION_TIMEOUT                   -1287
+#define ER_CDC_NOTHING_TO_RETURN                    -1288
+#define ER_CDC_IGNORE_TRANSACTION                   -1289
+#define ER_CDC_INVALID_LOG_LSA                      -1290
+#define ER_CDC_NOT_AVAILABLE                        -1291
+#define ER_CDC_ADJUSTED_LSA                         -1292
+#define ER_CDC_NULL_EXTRACTION_LSA                  -1293
+#define ER_CDC_LOGINFO_ENTRY_GENERATED              -1294
+#define ER_CDC_IGNORE_LOG_INFO                      -1295
+#define ER_LOG_RECOVERY_ANALYSIS_STARTED            -1296
+#define ER_LOG_RECOVERY_REDO_STARTED                -1297
+#define ER_LOG_RECOVERY_UNDO_STARTED                -1298
+#define ER_LOG_RECOVERY_PHASE_FINISHING_UP          -1299
+#define ER_LOG_RECOVERY_PHASE_FINISHED              -1300
+#define ER_LOG_RECOVERY_PROGRESS                    -1301
+
+
+#define ER_LAST_ERROR                               -1302
 
 /*
  * CAUTION!

@@ -265,15 +265,4 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVFL_TRACKER_HEAP_REUSE \
    || (idx) == RVFL_TRACKER_UNREGISTER)
 
-#define RCV_IS_NEW_PAGE_INIT(idx) \
-  ((idx) == RVPGBUF_NEW_PAGE \
-   || (idx) == RVDK_FORMAT \
-   || (idx) == RVDK_INITMAP \
-   || (idx) == RVHF_NEWPAGE \
-   || (idx) == RVEH_INIT_BUCKET \
-   || (idx) == RVEH_INIT_NEW_DIR_PAGE \
-   || (idx) == RVBT_GET_NEWPAGE \
-   || (idx) == RVCT_NEWPAGE \
-   || (idx) == RVHF_CREATE_HEADER)
-
 #endif /* _RECOVERY_H_ */

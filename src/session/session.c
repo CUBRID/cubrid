@@ -2394,7 +2394,7 @@ session_preserve_temporary_files (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY *
 	    {
 	      if (!tfile_vfid_p->preserved)
 		{
-	          file_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
+		  file_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
 		  tfile_vfid_p->preserved = true;
 		}
 	    }
@@ -2544,6 +2544,34 @@ session_load_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qentr
       sentry_p = sentry_p->next;
     }
   return ER_FAILED;
+}
+
+/*
+ * session_remove_query_entry_all () - remove all query entries from the session
+ * thread_p (in) : active thread
+ */
+void
+session_remove_query_entry_all (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = NULL;
+  SESSION_QUERY_ENTRY *sentry_p = NULL, *prev = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return;
+    }
+
+  sentry_p = state_p->queries;
+  while (sentry_p != NULL)
+    {
+      session_free_sentry_data (thread_p, sentry_p);
+      prev = sentry_p;
+      sentry_p = sentry_p->next;
+
+      free_and_init (prev);
+    }
+  state_p->queries = NULL;
 }
 
 /*

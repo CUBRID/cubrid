@@ -289,7 +289,7 @@ geçerli opsiyonlar:\n\
   -C, --CS-mode                istemci-sunucu modunda yürütme\n\
       --no-check               veritabanının tutarlılığını kontrol etmez; varsayılan: kontrol edin\n\
   -t, --thread-count=COUNT     Konu sayısı; Varsayılan olarak: 0 (otomatik)\n\
-  -z, --compress               yedekleme birimleri sıkıştırmak; varsayılan: sıkıştırmayı açma\n\
+      --no-compress            yedekleme birimlerini sıkıştırmayın; varsayılan: sıkıştırma\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
   -k, --separate-keys          TDE için anahtarlar dosyası (_keys) yedekleme birimine dahil değildir, bunun yerine bir dosyaya ayrılmıştır\n
 71 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
@@ -521,6 +521,8 @@ geçerli seçenekler:\n\
   -d, --data-only             dökümü nesneleri yalnızca; varsayılan: şema ve objeler\n\
       --output-prefix=PREFIEX Çıktı dosyaları için PREFIEX; varsayılan: veritabanı adı\n\
       --hash-file=FILE        Karma için FILE varsayılan: tmpnam tarafından oluşturmak ()\n\
+      --latest-image          nesneleri boşaltırken, günlük hacimlerine atıfta bulunmadan (MVCC'yi yok sayarak) veri hacimlerindeki nesnelerin en son görüntüsünü atar\n\
+                              Taahhüt edilmemiş verileri ve vakumlanmayan silinmiş verileri içerebilir; varsayılan: devre dışı\n\
   -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
       --use-delimiter         kullanımı '"' bir tanımlayıcı nereden başlayıp nerede bittiği; varsayılan: kullanmayın\n\
   -S, --SA-mode               stand-alone modu yürütme\n\

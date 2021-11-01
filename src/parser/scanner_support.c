@@ -281,7 +281,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      break;
 #endif /* 0 */
 	    case PT_HINT_RECOMPILE:	/* recompile */
-	      node->recompile = 1;
+	      node->flag.recompile = 1;
 	      break;
 	    case PT_HINT_LK_TIMEOUT:	/* lock timeout */
 	      if (node->node_type == PT_SELECT)
@@ -338,34 +338,36 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  if (node->info.query.qcache_hint)
 		    {
 		      if (atoi (node->info.query.qcache_hint->info.name.original))
-			node->info.query.do_cache = 1;
+			node->info.query.flag.do_cache = 1;
 		      else
-			node->info.query.do_not_cache = 1;
+			node->info.query.flag.do_not_cache = 1;
 		    }
 		  else
 		    {
-		      node->info.query.do_cache = 1;
+		      node->info.query.flag.do_cache = 1;
 		    }
 		}
 	      hint_table[i].arg_list = NULL;
 	      break;
+#if 0
 	    case PT_HINT_QUERY_NO_CACHE:
 	      if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 		{
 		  node->info.query.hint = (PT_HINT_ENUM) (node->info.query.hint | hint_table[i].hint);
 		  node->info.query.qcache_hint = hint_table[i].arg_list;
 		  /* force not use the query cache */
-		  node->info.query.reexecute = 1;
-		  node->info.query.do_cache = 0;
-		  node->info.query.do_not_cache = 1;
+		  node->info.query.flag.reexecute = 1;
+		  node->info.query.flag.do_cache = 0;
+		  node->info.query.flag.do_not_cache = 1;
 		}
 	      hint_table[i].arg_list = NULL;
 	      break;
+#endif
 	    case PT_HINT_REEXECUTE:	/* reexecute */
 	      if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 		{
 		  node->info.query.hint = (PT_HINT_ENUM) (node->info.query.hint | hint_table[i].hint);
-		  node->info.query.reexecute = 1;
+		  node->info.query.flag.reexecute = 1;
 		}
 	      break;
 	    case PT_HINT_JDBC_CACHE:	/* jdbc cache */
@@ -443,6 +445,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 		}
 	      break;
+	    case PT_HINT_NO_PUSH_PRED:
+	      if (node->node_type == PT_SELECT)
+		{
+		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+		}
+	      break;
 	    case PT_HINT_SKIP_UPDATE_NULL:
 	      if (node->node_type == PT_ALTER)
 		{
@@ -502,6 +510,16 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.insert.hint = (PT_HINT_ENUM) (node->info.insert.hint | hint_table[i].hint);
 		}
 	      else if (node->node_type == PT_DELETE)
+		{
+		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+		}
+	      break;
+	    case PT_HINT_NO_SUPPLEMENTAL_LOG:	/* statement-based replication */
+	      if (node->node_type == PT_DELETE)
 		{
 		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
 		}

@@ -61,6 +61,7 @@ extern "C"
     HIDDEN_CLASSOID_NAME
   } VIEW_HANDLING;
 
+  extern void csql_yyset_lineno (int line_number);
   extern size_t json_table_column_count;
 
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
@@ -83,7 +84,8 @@ extern "C"
 
   extern PT_NODE *parser_create_node (const PARSER_CONTEXT * parser);
   extern PT_NODE *parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node);
-  extern PT_NODE *parser_init_node (PT_NODE * node);
+  extern PT_NODE *parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
+  extern PT_NODE *parser_reinit_node (PT_NODE * node);
   extern void parser_free_node_resources (PT_NODE * node);
   extern void parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node);
   extern void parser_free_tree (PARSER_CONTEXT * parser, PT_NODE * tree);
@@ -185,6 +187,8 @@ extern "C"
   extern bool pt_is_reserved_word (const char *s);
   extern bool pt_is_keyword (const char *s);
   extern bool pt_is_const_expr_node (PT_NODE * node);
+
+  extern FUNCTION_MAP *pt_find_function_name (const char *name);
 
   extern PT_NODE *pt_add_row_oid (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern PT_NODE *pt_add_row_oid_name (PARSER_CONTEXT * parser, PT_NODE * stmt);
@@ -288,8 +292,8 @@ extern "C"
 
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern int pt_identifier_or_keyword (const char *text);
-#endif				/* ENABLE_UNUSED_FUNCTION */
   extern KEYWORD_RECORD *pt_get_keyword_rec (int *rec_count);
+#endif				/* ENABLE_UNUSED_FUNCTION */
   extern int pt_type_generic_func (PARSER_CONTEXT * parser, PT_NODE * node);
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern void pt_string_to_data_type (PARSER_CONTEXT * parser, const char *s, PT_NODE * node);
@@ -433,6 +437,7 @@ extern "C"
   extern PT_NODE *pt_is_analytic_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_inst_or_orderby_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						  int *continue_walk);
+  extern PT_NODE *pt_is_inst_or_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_inst_or_orderby_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						       int *continue_walk);
   extern PT_NODE *pt_is_pseudocolumn_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -503,7 +508,7 @@ extern "C"
 
   extern PT_NODE *pt_get_next_error (PT_NODE * errors, int *stmt_no, int *line_no, int *col_no, const char **msg);
   extern void pt_reset_error (PARSER_CONTEXT * parser);
-  extern int pt_has_error (const PARSER_CONTEXT * parser);
+#define pt_has_error(parser) ( (parser) && ((parser)->error_msgs || (parser)->flag.has_internal_error))
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern bool pt_column_updatable (PARSER_CONTEXT * parser, PT_NODE * query);
@@ -520,6 +525,9 @@ extern "C"
   extern bool pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
+  extern bool pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node);
 
   extern void pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node);
   extern void pt_set_expected_domain (PT_NODE * node, TP_DOMAIN * domain);

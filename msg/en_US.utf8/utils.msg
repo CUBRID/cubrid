@@ -289,7 +289,7 @@ valid options:\n\
   -C, --CS-mode                client-server mode execution\n\
       --no-check               don't check a consistency of the database; default: check\n\
   -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
-  -z, --compress               compress backup volumes; default: uncompress\n\
+      --no-compress            don't compress backup volumes; default: compression\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
   -k, --separate-keys          keys file (_keys) for TDE is not included in the backup volume, but is separated into a file instead\n
 71 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
@@ -522,6 +522,8 @@ valid options:\n\
   -d, --data-only             dump objects only; default: schema and objects\n\
       --output-prefix=PREFIEX PREFIX for output files; default: the database name\n\
       --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
+      --latest-image          when dumping objects, it dumps the latest image of objects in data volumes, not referring to log volumes (ignoring MVCC)\n\
+                              It could include uncommitted data and deleted data which is not vacuummed; default: disabled\n\
   -v, --verbose               enable verbose status messages; default: disabled\n\
       --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
   -S, --SA-mode               stand-alone mode execution\n\

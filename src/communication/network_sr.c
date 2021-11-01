@@ -58,6 +58,7 @@
 #endif
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "session.h"
 
 enum net_req_act
 {
@@ -901,6 +902,30 @@ net_server_init (void)
   req_p->processing_function = svacuum_dump;
   req_p->name = "NET_SERVER_VACUUM_DUMP";
 
+  req_p = &net_Requests[NET_SERVER_SUPPLEMENT_STMT];
+  req_p->processing_function = slog_supplement_statement;
+  req_p->name = "NET_SERVER_SUPPLEMENT_STMT";
+
+  /* for CDC */
+  req_p = &net_Requests[NET_SERVER_CDC_START_SESSION];
+  req_p->processing_function = scdc_start_session;
+  req_p->name = "NET_SERVER_CDC_START_SESSION";
+
+  req_p = &net_Requests[NET_SERVER_CDC_FIND_LSA];
+  req_p->processing_function = scdc_find_lsa;
+  req_p->name = "NET_SERVER_CDC_FIND_LSA";
+
+  req_p = &net_Requests[NET_SERVER_CDC_GET_LOGINFO_METADATA];
+  req_p->processing_function = scdc_get_loginfo_metadata;
+  req_p->name = "NET_SERVER_CDC_GET_LOGINFO_METADATA";
+
+  req_p = &net_Requests[NET_SERVER_CDC_GET_LOGINFO];
+  req_p->processing_function = scdc_get_loginfo;
+  req_p->name = "NET_SERVER_CDC_GET_LOGINFO";
+
+  req_p = &net_Requests[NET_SERVER_CDC_END_SESSION];
+  req_p->processing_function = scdc_end_session;
+  req_p->name = "NET_SERVER_CDC_END_SESSION";
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1274,6 +1299,7 @@ loop:
   if (tran_index != NULL_TRAN_INDEX)
     {
       (void) xboot_unregister_client (thread_p, tran_index);
+      session_remove_query_entry_all (thread_p);
     }
   css_free_conn (conn_p);
 

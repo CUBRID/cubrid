@@ -3912,6 +3912,8 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
   /* no_logging */
   ptr = or_pack_int (ptr, update_info->no_logging);
 
+  ptr = or_pack_int (ptr, update_info->no_supplemental_log);
+
   /* num_orderby_keys */
   ptr = or_pack_int (ptr, update_info->num_orderby_keys);
 
@@ -3954,6 +3956,8 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
   ptr = or_pack_int (ptr, delete_info->wait_msecs);
 
   ptr = or_pack_int (ptr, delete_info->no_logging);
+
+  ptr = or_pack_int (ptr, delete_info->no_supplemental_log);
 
   /* mvcc condition reevaluation data */
   ptr = or_pack_int (ptr, delete_info->num_reev_classes);
@@ -5207,7 +5211,7 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
     }
   ptr = or_pack_int (ptr, offset);
 
-  ptr = or_pack_int (ptr, aggregate->accumulator.curr_cnt);
+  ptr = or_pack_int64 (ptr, aggregate->accumulator.curr_cnt);
 
   offset = xts_save_aggregate_type (aggregate->next);
   if (offset == ER_FAILED)
@@ -6121,6 +6125,7 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
 	   + PTR_SIZE		/* assignments */
 	   + OR_INT_SIZE	/* wait_msecs */
 	   + OR_INT_SIZE	/* no_logging */
+	   + OR_INT_SIZE	/* no_supplemental_log */
 	   + OR_INT_SIZE	/* num_orderby_keys */
 	   + OR_INT_SIZE	/* num_assign_reev_classes */
 	   + OR_INT_SIZE	/* num_cond_reev_classes */
@@ -6143,6 +6148,7 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
 	   + OR_INT_SIZE	/* num_classes */
 	   + OR_INT_SIZE	/* wait_msecs */
 	   + OR_INT_SIZE	/* no_logging */
+	   + OR_INT_SIZE	/* no_supplemental_log */
 	   + OR_INT_SIZE	/* num_cond_reev_classes */
 	   + PTR_SIZE);		/* mvcc_cond_reev_classes */
 

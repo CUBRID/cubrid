@@ -289,7 +289,7 @@ backupdb: 备份一个数据库.\n\
   -C, --CS-mode                客户端-服务器模式执行\n\
       --no-check               不检测数据库的一致性; 默认: 检测\n\
   -t, --thread-count=COUNT     线程数; 默认: 0(auto)\n\
-  -z, --compress               压缩备份卷; 默认: 不压缩\n\
+      --no-compress            不要压缩备份卷；默认值：压缩\n\
       --sleep-msecs=N          每读 1M 休眠 N  毫秒; 默认: 0\n\
   -k, --separate-keys          TDE的密钥文件（_keys）不包含在备份卷中，而是被分成一个文件\n
 71 不兼容的参数, \"%1$s\", 和 \"%2$s\"\n
@@ -521,6 +521,8 @@ unloaddb: 从数据库导出对象和结构.\n\
   -d, --data-only             只转储对象; 默认: 结构和对象\n\
       --output-prefix=PREFIEX 指定输出文件的前缀; 默认: 数据库名\n\
       --hash-file=FILE        指定hash文件名称; 默认: 由 tmpnam() 生成\n\
+      --latest-image          转储对象时，它转储数据卷中对象的最新图像，而不是指日志卷（忽略 MVCC）\n\
+                              它可能包括未提交的数据和未清除的已删除数据； 默认值：禁用\n\
   -v, --verbose               开启详细状态信息; 默认: 不可用\n\
       --use-delimiter         用 '"' 作为一个标示符的开始和结束; 默认: 不使用\n\
   -S, --SA-mode               单机模式执行\n\

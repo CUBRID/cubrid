@@ -71,6 +71,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/fixed_alloc.c
+  ${BASE_DIR}/filesys_temp.cpp
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/memory_alloc.c
@@ -133,6 +134,8 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/filesys.hpp
+  ${BASE_DIR}/filesys_temp.hpp
   ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_address_marker.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
@@ -294,6 +297,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_template.c
   ${OBJECT_DIR}/quick_fit.c
+  ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/set_object.c
@@ -632,6 +636,7 @@ if(UNIX)
   # find out what this means:
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubridsa PUBLIC stdc++fs)
 endif(UNIX)
 
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)

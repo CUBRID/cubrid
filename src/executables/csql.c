@@ -46,6 +46,8 @@
 
 #include "authenticate.h"
 #include "csql.h"
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 #include "system_parameter.h"
 #include "message_catalog.h"
 #include "porting.h"
@@ -1020,7 +1022,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
-	      au_disable ();
+	      au_sysadm_disable ();
 	    }
 	  csql_Database_connected = true;
 
@@ -1609,64 +1611,41 @@ error:
 static void
 csql_print_buffer (void)
 {
-  char *cmd = NULL;
-  char *fname = (char *) NULL;	/* pointer to temp file name */
-  FILE *fp = (FILE *) NULL;	/* pointer to stream */
+  /* create an unique file in tmp folder and open it */
+  auto[filename, fileptr] = filesys::open_temp_file ("csql_");
 
-  /* create a temp file and open it */
-
-  fname = tmpnam ((char *) NULL);
-  if (fname == NULL)
+  if (!fileptr)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return;
     }
-
-  fp = fopen (fname, "w");
-  if (fp == NULL)
-    {
-      csql_Error_code = CSQL_ERR_OS_ERROR;
-      goto error;
-    }
+  filesys::auto_delete_file file_del (filename.c_str ());	//deletes file at scope end
+  filesys::auto_close_file file (fileptr);	//closes file at scope end (before the above file deleter); forget about fp from now on
 
   /* write the content of editor to the temp file */
-  if (csql_edit_write_file (fp) == CSQL_FAILURE)
+  if (csql_edit_write_file (file.get ()) == CSQL_FAILURE)
     {
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return;
     }
-
-  fclose (fp);
-  fp = (FILE *) NULL;
+  fflush (file.get ());
 
   /* invoke the print command */
-  cmd = csql_get_tmp_buf (1 + strlen (csql_Print_cmd) + 3 + strlen (fname));
+  char *cmd = csql_get_tmp_buf (1 + strlen (csql_Print_cmd) + 3 + filename.size ());
   if (cmd == NULL)
     {
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return;
     }
   /*
    * Parenthesize the print command and supply its input through stdin,
    * just in case it's a pipe or something odd.
    */
-  sprintf (cmd, "(%s) <%s", csql_Print_cmd, fname);
+  sprintf (cmd, "(%s) <%s", csql_Print_cmd, filename.c_str ());
   csql_invoke_system (cmd);
 
-  unlink (fname);
-
   csql_display_msg (csql_get_message (CSQL_STAT_EDITOR_PRINTED_TEXT));
-
-  return;
-
-error:
-  if (fp != NULL)
-    {
-      fclose (fp);
-    }
-  if (fname != NULL)
-    {
-      unlink (fname);
-    }
-  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
 }
 
 /*
@@ -1838,6 +1817,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
   logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
   logddl_set_commit_mode (csql_is_auto_commit_requested (csql_arg));
+
+  if (csql_Is_interactive)
+    {
+      csql_yyset_lineno (1);
+    }
 
   /* execute the statements one-by-one */
   for (num_stmts = 0; num_stmts < total; num_stmts++)
@@ -2895,7 +2879,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_disable ();
+      au_sysadm_disable ();
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */

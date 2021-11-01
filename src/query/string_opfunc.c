@@ -54,6 +54,8 @@
 #include "es_common.h"
 #include "db_elo.h"
 #include "string_regex.hpp"
+#include "tz_support.h"
+#include "util_func.h"
 
 #include <algorithm>
 #include <string>
@@ -597,38 +599,47 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
       /* We need to implicitly trim both strings since we don't want padding for the result (its of varying type) and
        * since padding can mask the logical end of both of the strings.  Trimming depends on codeset. */
 
-      if (pad_size == 1)
+      if (!ignore_trailing_space)
 	{
-	  for (t = string1 + (size1 - 1); t >= string1 && *t == pad[0]; t--, size1--)
-	    {
-	      ;
-	    }
-	  for (t = string2 + (size2 - 1); t >= string2 && *t == pad[0]; t--, size2--)
-	    {
-	      ;
-	    }
+	  ti = (db_string1->domain.char_info.type == DB_TYPE_CHAR || db_string1->domain.char_info.type == DB_TYPE_NCHAR)
+	    && (db_string2->domain.char_info.type == DB_TYPE_CHAR
+		|| db_string2->domain.char_info.type == DB_TYPE_NCHAR);
 	}
-      else
+      if (ti)
 	{
-	  assert (pad_size == 2);
-
-	  for (t = string1 + (size1 - 2); t >= string1 && *t == pad[0] && *(t + 1) == pad[1];
-	       t--, t--, size1--, size1--)
+	  if (pad_size == 1)
 	    {
-	      ;
+	      for (t = string1 + (size1 - 1); t >= string1 && *t == pad[0]; t--, size1--)
+		{
+		  ;
+		}
+	      for (t = string2 + (size2 - 1); t >= string2 && *t == pad[0]; t--, size2--)
+		{
+		  ;
+		}
 	    }
-
-	  for (t = string2 + (size2 - 2); t >= string2 && *t == pad[0] && *(t + 1) == pad[1];
-	       t--, t--, size2--, size2--)
+	  else
 	    {
-	      ;
-	    }
+	      assert (pad_size == 2);
 
-	  if (codeset == INTL_CODESET_KSC5601_EUC)
-	    {
-	      /* trim also ASCII space */
-	      intl_pad_char (INTL_CODESET_ISO88591, pad, &pad_size);
-	      goto trim_again;
+	      for (t = string1 + (size1 - 2); t >= string1 && *t == pad[0] && *(t + 1) == pad[1];
+		   t--, t--, size1--, size1--)
+		{
+		  ;
+		}
+
+	      for (t = string2 + (size2 - 2); t >= string2 && *t == pad[0] && *(t + 1) == pad[1];
+		   t--, t--, size2--, size2--)
+		{
+		  ;
+		}
+
+	      if (codeset == INTL_CODESET_KSC5601_EUC)
+		{
+		  /* trim also ASCII space */
+		  intl_pad_char (INTL_CODESET_ISO88591, pad, &pad_size);
+		  goto trim_again;
+		}
 	    }
 	}
 
@@ -691,13 +702,8 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 	}
       else
 	{
-	  if (!ignore_trailing_space)
-	    {
-	      ti = (db_string1->domain.char_info.type == DB_TYPE_CHAR
-		    || db_string1->domain.char_info.type == DB_TYPE_NCHAR);
-	    }
 	  error_status = QSTR_SPLIT_KEY (collation_id, key_domain->is_desc, string1, size1, string2, size2, &key,
-					 &result_size, ti);
+					 &result_size, true);
 	}
       assert (error_status == NO_ERROR);
 
@@ -13205,7 +13211,8 @@ db_sys_datetime (DB_VALUE * result_datetime)
   int error_status = NO_ERROR;
   DB_DATETIME datetime;
 
-  struct timeb tloc;
+  time_t sec;
+  int millisec;
   struct tm *c_time_struct, tm_val;
 
   assert (result_datetime != (DB_VALUE *) NULL);
@@ -13213,14 +13220,9 @@ db_sys_datetime (DB_VALUE * result_datetime)
   /* now return null */
   db_value_domain_init (result_datetime, DB_TYPE_DATETIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-  if (ftime (&tloc) != 0)
-    {
-      error_status = ER_SYSTEM_DATE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      return error_status;
-    }
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
 
-  c_time_struct = localtime_r (&tloc.time, &tm_val);
+  c_time_struct = localtime_r (&sec, &tm_val);
   if (c_time_struct == NULL)
     {
       error_status = ER_SYSTEM_DATE;
@@ -13229,7 +13231,7 @@ db_sys_datetime (DB_VALUE * result_datetime)
     }
 
   db_datetime_encode (&datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday, c_time_struct->tm_year + 1900,
-		      c_time_struct->tm_hour, c_time_struct->tm_min, c_time_struct->tm_sec, tloc.millitm);
+		      c_time_struct->tm_hour, c_time_struct->tm_min, c_time_struct->tm_sec, millisec);
   db_make_datetime (result_datetime, &datetime);
 
   return error_status;
@@ -13250,20 +13252,16 @@ db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval)
 {
   int error_status = NO_ERROR;
   DB_DATETIME datetime;
-  struct timeb tloc;
+  time_t sec;
+  int millisec;
   struct tm *c_time_struct, tm_val;
 
   assert (dt_dbval != NULL);
   assert (ts_dbval != NULL);
 
-  if (ftime (&tloc) != 0)
-    {
-      error_status = ER_SYSTEM_DATE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      return error_status;
-    }
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
 
-  c_time_struct = localtime_r (&tloc.time, &tm_val);
+  c_time_struct = localtime_r (&sec, &tm_val);
   if (c_time_struct == NULL)
     {
       error_status = ER_SYSTEM_DATE;
@@ -13272,10 +13270,10 @@ db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval)
     }
 
   db_datetime_encode (&datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday, c_time_struct->tm_year + 1900,
-		      c_time_struct->tm_hour, c_time_struct->tm_min, c_time_struct->tm_sec, tloc.millitm);
+		      c_time_struct->tm_hour, c_time_struct->tm_min, c_time_struct->tm_sec, millisec);
 
   db_make_datetime (dt_dbval, &datetime);
-  db_make_timestamp (ts_dbval, (DB_TIMESTAMP) tloc.time);
+  db_make_timestamp (ts_dbval, (DB_TIMESTAMP) sec);
 
   return error_status;
 }
@@ -13287,24 +13285,12 @@ db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval)
 int
 db_sys_timezone (DB_VALUE * result_timezone)
 {
-  int error_status = NO_ERROR;
-  struct timeb tloc;
-
   assert (result_timezone != (DB_VALUE *) NULL);
 
   /* now return null */
   db_value_domain_init (result_timezone, DB_TYPE_INTEGER, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-  /* Need checking error */
-
-  if (ftime (&tloc) == -1)
-    {
-      error_status = ER_SYSTEM_DATE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      return error_status;
-    }
-
-  db_make_int (result_timezone, tloc.timezone);
+  db_make_int (result_timezone, tz_get_offset_in_mins ());
   return NO_ERROR;
 }
 

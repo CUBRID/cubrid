@@ -717,6 +717,11 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	    }
 	  level++;
 	}
+      if (node && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+	{
+	  /* An error is meaningful only when it cannot be found in all scopes. */
+	  er_clear ();
+	}
     }
   else
     {
@@ -1104,6 +1109,7 @@ pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 PT_NODE *
 pt_set_is_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  bool do_not_replace_orderby = (bool *) arg ? *((bool *) arg) : false;
   if (!node)
     {
       return node;
@@ -1114,6 +1120,11 @@ pt_set_is_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       /* Reset query id # */
       node->info.query.id = (UINTPTR) node;
       node->info.query.is_view_spec = 1;
+
+      if (do_not_replace_orderby)
+	{
+	  node->flag.do_not_replace_orderby = 1;
+	}
     }
 
   return node;
@@ -1525,7 +1536,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 	{
 	  if (DB_IS_DATETIME_DEFAULT_EXPR (attr->default_value.default_expr.default_expr_type))
 	    {
-	      node->si_datetime = true;
+	      node->flag.si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
 	      break;
 	    }
@@ -6379,7 +6390,7 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 		    }
 		  else
 		    {
-		      parser_init_node (attr_name);
+		      parser_reinit_node (attr_name);
 		      attr_name->node_type = PT_DOT_;
 		      attr_name->info.dot.arg1 = dot_arg1;
 		      attr_name->info.dot.arg2 = dot_arg2;
@@ -7479,7 +7490,6 @@ pt_create_pt_expr_equal_node (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE *
       return NULL;
     }
 
-  parser_init_node (expr);
   expr->type_enum = PT_TYPE_LOGICAL;
   expr->info.expr.op = PT_EQ;
   expr->info.expr.arg1 = arg1;
@@ -7511,7 +7521,6 @@ pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec, NATURAL_JOIN_ATTR_IN
       return NULL;
     }
 
-  parser_init_node (name);
   name->info.name.original = pt_append_string (parser, NULL, attr->name);
   name->type_enum = attr->type_enum;
   name->info.name.meta_class = attr->meta_class;
@@ -7559,7 +7568,6 @@ pt_create_pt_expr_and_node (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * a
       return NULL;
     }
 
-  parser_init_node (expr);
   expr->type_enum = PT_TYPE_LOGICAL;
   expr->info.expr.op = PT_AND;
   expr->info.expr.arg1 = arg1;

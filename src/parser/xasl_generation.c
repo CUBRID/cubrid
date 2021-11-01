@@ -491,6 +491,9 @@ static int pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info
 static int pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** build_attrs,
 				       PT_NODE ** probe_attrs, PT_NODE ** pred_without_HQ);
 
+static int pt_split_pred_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** pred_without_HQ,
+				 PT_NODE ** pred_with_HQ);
+
 static int pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, QO_XASL_INDEX_INFO * index_pred,
 			      PT_NODE * pred, PT_NODE ** pred_attrs, int **pred_offsets);
 static int pt_get_pred_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred, PT_NODE ** pred_attrs);
@@ -656,7 +659,8 @@ static XASL_NODE *
 pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * select_xasl)
 {
   XASL_NODE *xasl, *xptr;
-  PT_NODE *from, *where, *if_part, *instnum_part, *build_attrs = NULL, *probe_attrs = NULL, *pred_without_HQ = NULL;
+  PT_NODE *from, *where, *if_part, *instnum_part, *build_attrs = NULL, *probe_attrs = NULL;
+  PT_NODE *pred_with_HQ = NULL, *pred_without_HQ = NULL;
   QPROC_DB_VALUE_LIST dblist1, dblist2;
   CONNECTBY_PROC_NODE *connect_by;
   int level, flag;
@@ -702,7 +706,13 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
       PT_NODE *save_where, *save_from;
 
       save_where = select_node->info.query.q.select.where;
-      select_node->info.query.q.select.where = select_node->info.query.q.select.connect_by;
+      where = select_node->info.query.q.select.connect_by;
+
+      /* Separate the predicate related to the HQ. */
+      /* pred_with_HQ is appended to if_pred instead of data filter. */
+      pt_split_pred_for_HQ (parser, where, &pred_without_HQ, &pred_with_HQ);
+
+      select_node->info.query.q.select.where = pred_with_HQ ? pred_without_HQ : where;
       save_from = select_node->info.query.q.select.from->next;
       select_node->info.query.q.select.from->next = NULL;
 
@@ -713,11 +723,26 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 
       if (xasl == NULL)
 	{
+	  parser_free_tree (parser, pred_without_HQ);
+	  parser_free_tree (parser, pred_with_HQ);
 	  PT_INTERNAL_ERROR (parser, "generate hq xasl");
 	  return NULL;
 	}
 
       connect_by->single_table_opt = true;
+
+      /* pred_with_HQ is appended to if_pred */
+      from = select_node->info.query.q.select.from;
+      where = pred_with_HQ;
+      while (from)
+	{
+	  pt_to_pred_terms (parser, where, from->info.spec.id, &xasl->if_pred);
+	  from = from->next;
+	}
+      pt_to_pred_terms (parser, where, 0, &xasl->if_pred);
+
+      parser_free_tree (parser, pred_without_HQ);
+      parser_free_tree (parser, pred_with_HQ);
     }
   else
     {
@@ -3007,6 +3032,51 @@ exit_on_error:
 }
 
 /*
+ * pt_split_pred_for_HQ () - Split the predicate into two lists without destroying
+ *      the original list for HQ
+ *   return:
+ *   parser(in):
+ *   pred(in):
+ *   pred_without_HQ(out):
+ *   pred_with_HQ(out):
+ */
+static int
+pt_split_pred_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** pred_without_HQ, PT_NODE ** pred_with_HQ)
+{
+  PT_NODE *node = NULL, *save_next = NULL;
+  bool is_hierarchical_op;
+
+  if (pred)
+    {
+      /* Traverse pred */
+      for (node = pred; node; node = node->next)
+	{
+	  /* save and cut-off node link */
+	  save_next = node->next;
+	  node->next = NULL;
+
+	  /* find Reserved words for HQ */
+	  is_hierarchical_op = false;
+	  parser_walk_tree (parser, node, pt_find_hq_op_except_prior, &is_hierarchical_op, NULL, NULL);;
+
+	  if (!is_hierarchical_op)
+	    {
+	      *pred_without_HQ = parser_append_node (parser_copy_tree (parser, node), *pred_without_HQ);
+	    }
+	  else
+	    {
+	      *pred_with_HQ = parser_append_node (parser_copy_tree (parser, node), *pred_with_HQ);
+	    }
+
+	  /* restore node link */
+	  node->next = save_next;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * pt_split_hash_attrs_for_HQ () - Split the attr_list into two lists without destroying
  *      the original list for HQ
  *   return:
@@ -3371,7 +3441,7 @@ pt_set_is_system_generated_stmt (PARSER_CONTEXT * parser, PT_NODE * tree, void *
       bool is_system_generated_stmt;
 
       is_system_generated_stmt = *(bool *) void_arg;
-      tree->is_system_generated_stmt = is_system_generated_stmt;
+      tree->flag.is_system_generated_stmt = is_system_generated_stmt;
     }
 
   return tree;
@@ -3499,17 +3569,10 @@ pt_find_hq_op_except_prior (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 {
   bool *is_hierarchical_op = (bool *) arg;
 
-  if (node->node_type != PT_EXPR)
+  if (node->node_type == PT_EXPR && PT_CHECK_HQ_OP_EXCEPT_PRIOR (node->info.expr.op))
     {
+      *is_hierarchical_op = true;
       *continue_walk = PT_STOP_WALK;
-    }
-  else
-    {
-      if (PT_CHECK_HQ_OP_EXCEPT_PRIOR (node->info.expr.op))
-	{
-	  *is_hierarchical_op = true;
-	  *continue_walk = PT_STOP_WALK;
-	}
     }
 
   return node;
@@ -4232,9 +4295,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	   * needs for a "select count(distinct foo)" query, which adds a lot of unnecessary overhead. */
 	  aggregate_list->option = Q_ALL;
 
-	  aggregate_list->domain = &tp_Integer_domain;
-	  regu_dbval_type_init (aggregate_list->accumulator.value, DB_TYPE_INTEGER);
-	  regu_dbval_type_init (aggregate_list->accumulator.value2, DB_TYPE_INTEGER);
+	  aggregate_list->domain = &tp_Bigint_domain;
+	  regu_dbval_type_init (aggregate_list->accumulator.value, DB_TYPE_BIGINT);
+	  regu_dbval_type_init (aggregate_list->accumulator.value2, DB_TYPE_BIGINT);
 	  aggregate_list->opr_dbtype = DB_TYPE_INTEGER;
 
 	  regu_alloc (aggregate_list->operands);
@@ -6119,7 +6182,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  regu->domain = pt_xasl_node_to_domain (parser, node);
 	}
 
-      if (regu->domain == NULL && (parser->set_host_var == 1 || typ != DB_TYPE_NULL))
+      if (regu->domain == NULL && (parser->flag.set_host_var == 1 || typ != DB_TYPE_NULL))
 	{
 	  /* if the host var DB_VALUE was initialized before, use its domain for regu variable */
 	  TP_DOMAIN *domain;
@@ -6170,7 +6233,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
       else
 	{
 	  exptyp = TP_DOMAIN_TYPE (regu->domain);
-	  if (parser->set_host_var == 0 && typ == DB_TYPE_NULL)
+	  if (parser->flag.set_host_var == 0 && typ == DB_TYPE_NULL)
 	    {
 	      /* If the host variable was not given before by the user, preset it by the expected domain. When the user
 	       * set the host variable, its value will be casted to this domain if necessary. */
@@ -13107,7 +13170,7 @@ pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NOD
     }
 
   /* move ORDER SIBLINGS BY column list in the CONNECT BY xasl if order_by was not cut out because of aggregates */
-  if (xasl->orderby_list != NULL && select_node->info.query.order_siblings == 1)
+  if (xasl->orderby_list != NULL && select_node->info.query.flag.order_siblings == 1)
     {
       connect_by_xasl->orderby_list = pt_to_order_siblings_by (parser, xasl, connect_by_xasl);
       if (!connect_by_xasl->orderby_list)
@@ -13494,8 +13557,9 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 
       for (i = 0, node = node_list->info.node_list.list; i < list_len && node; ++i, node = node->next)
 	{
-	  new_node_list[i].node_type = PT_NODE_LIST;	/* type must be set before init */
-	  parser_init_node (&new_node_list[i]);
+	  new_node_list[i].node_type = PT_NODE_LIST;
+	  parser_reinit_node (&new_node_list[i]);	/* type must be set before init */
+
 	  new_node_list[i].info.node_list.list = node;
 	  PT_SET_VALUE_QUERY (&new_node_list[i]);
 
@@ -13588,7 +13652,7 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 	      assert (col->type_enum != PT_TYPE_NULL);
 #endif
 
-	      if (skip_hidden && col->is_hidden_column && i > 0)
+	      if (skip_hidden && col->flag.is_hidden_column && i > 0)
 		{
 		  /* we don't need this node; also, we assume the first column of the subquery is NOT hidden */
 		  continue;
@@ -14760,6 +14824,12 @@ pt_analytic_to_metadomain (ANALYTIC_TYPE * func_p, PT_NODE * sort_list, ANALYTIC
       func_meta->key[func_meta->key_size] = idx;
       func_meta->key_size++;
       func_meta->level++;
+
+      if (func_meta->key_size >= ANALYTIC_OPT_MAX_FUNCTIONS)
+	{
+	  /* no more space in  index */
+	  return false;
+	}
     }
 
   /* all ok */
@@ -15445,6 +15515,13 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool *
   for (func_p = info->head_list, sort_list = info->sort_lists; func_p != NULL && sort_list != NULL;
        func_p = func_p->next, sort_list = sort_list->next, af_count++)
     {
+      if (af_count >= ANALYTIC_OPT_MAX_FUNCTIONS)
+	{
+	  /* analytic function index overflow, we'll do it the old fashioned way */
+	  *no_optimization = true;
+	  return NULL;
+	}
+
       if (!pt_analytic_to_metadomain (func_p, sort_list->info.pointer.node, &af_meta[af_count], sc_index, &sc_count))
 	{
 	  /* sort spec index overflow, we'll do it the old fashioned way */
@@ -15809,7 +15886,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  /* determine where we're storing the first tuple of each group */
 	  if (buildlist->g_hash_eligible)
 	    {
-	      if (select_node->info.query.q.select.group_by->with_rollup)
+	      if (select_node->info.query.q.select.group_by->flag.with_rollup)
 		{
 		  /* if using rollup groups, we must output the first tuple of each group so rollup will be correctly
 		   * handled during sort */
@@ -15963,7 +16040,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
       buildlist->g_agg_list = aggregate;
 
-      buildlist->g_with_rollup = select_node->info.query.q.select.group_by->with_rollup;
+      buildlist->g_with_rollup = select_node->info.query.q.select.group_by->flag.with_rollup;
     }
   else
     {
@@ -16501,7 +16578,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       xasl->iscan_oid_order = ((orderby_skip) ? false : prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER));
 
       /* save single tuple info */
-      if (select_node->info.query.single_tuple == 1)
+      if (select_node->info.query.flag.single_tuple == 1)
 	{
 	  xasl->is_single_tuple = true;
 	}
@@ -16825,7 +16902,7 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
       XASL_CLEAR_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
 
       /* save single tuple info */
-      if (node->info.query.single_tuple == 1)
+      if (node->info.query.flag.single_tuple == 1)
 	{
 	  xasl->is_single_tuple = true;
 	}
@@ -16948,7 +17025,7 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   if (recursive_part_xasl == NULL && non_recursive_part_xasl != NULL)
     {
       /* save single tuple info, cardinality, limit... from non_recursive_part */
-      if (non_recursive_part->info.query.single_tuple == 1)
+      if (non_recursive_part->info.query.flag.single_tuple == 1)
 	{
 	  xasl->is_single_tuple = true;
 	}
@@ -17108,7 +17185,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
-      && !select_node->is_system_generated_stmt
+      && !select_node->flag.is_system_generated_stmt
       && !((spec = select_node->info.query.q.select.from) != NULL
 	   && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
     {
@@ -17307,7 +17384,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
   bool query_Plan_dump_fp_open = false;
 
   /* we should propagate abort error from the server */
-  if (!parser->abort && (PT_IS_QUERY (node) || node->node_type == PT_CTE))
+  if (!parser->flag.abort && (PT_IS_QUERY (node) || node->node_type == PT_CTE))
     {
       /* check for cached query xasl */
       for (query = query_list; query; query = query->next)
@@ -17499,7 +17576,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
   else
     {
       /* if the previous request to get a driver caused a deadlock following message would make confuse */
-      if (!parser->abort && !pt_has_error (parser))
+      if (!parser->flag.abort && !pt_has_error (parser))
 	{
 	  PT_INTERNAL_ERROR (parser, "generate xasl");
 	}
@@ -18358,7 +18435,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (xasl)
     {
-      if (parser->return_generated_keys)
+      if (parser->flag.return_generated_keys)
 	{
 	  XASL_SET_FLAG (xasl, XASL_RETURN_GENERATED_KEYS);
 	}
@@ -19108,10 +19185,10 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
       return NO_ERROR;
     }
 
-  select_stmt->is_system_generated_stmt = node->is_system_generated_stmt;
+  select_stmt->flag.is_system_generated_stmt = node->flag.is_system_generated_stmt;
 
   select_stmt->info.query.q.select.hint = (PT_HINT_ENUM) (select_stmt->info.query.q.select.hint | hint_flags);
-  select_stmt->recompile = node->recompile;
+  select_stmt->flag.recompile = node->flag.recompile;
 
   if (hint_flags & PT_HINT_ORDERED)
     {
@@ -20279,6 +20356,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
       delete_->no_logging = (statement->info.delete_.hint & PT_HINT_NO_LOGGING);
+      delete_->no_supplemental_log = (statement->info.delete_.hint & PT_HINT_NO_SUPPLEMENTAL_LOG);
     }
 
   if (pt_has_error (parser) || error < 0)
@@ -20955,6 +21033,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	}
     }
   update->no_logging = (statement->info.update.hint & PT_HINT_NO_LOGGING);
+  update->no_supplemental_log = (statement->info.update.hint & PT_HINT_NO_SUPPLEMENTAL_LOG);
 
   /* iterate through classes and check constants */
   for (p = from, cls_idx = num_classes; p; p = p->next)
@@ -21424,7 +21503,7 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 {
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (parser->abort)
+  if (parser->flag.abort)
     {
       *continue_walk = PT_STOP_WALK;
       return (node);
@@ -21483,7 +21562,7 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (parser->abort)
+  if (parser->flag.abort)
     {
       *continue_walk = PT_STOP_WALK;
       return node;
@@ -21571,14 +21650,14 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   node->next = NULL;
   parser->dbval_cnt = 0;
 
-  is_system_generated_stmt = node->is_system_generated_stmt;
+  is_system_generated_stmt = node->flag.is_system_generated_stmt;
 
   node = parser_walk_tree (parser, node, pt_flush_class_and_null_xasl, NULL, pt_set_is_system_generated_stmt,
 			   &is_system_generated_stmt);
 
   /* During the above parser_walk_tree the request to get a driver may cause a deadlock. We give up the following steps
    * and propagate the error messages */
-  if (parser->abort || node == NULL)
+  if (parser->flag.abort || node == NULL)
     {
       return NULL;
     }
@@ -24775,7 +24854,7 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_NO_STRICT_OID_CHECK);
 
   /* we don't need to keep this query */
-  statement->cannot_prepare = 1;
+  statement->flag.cannot_prepare = 1;
 
   /* set index hint */
   if (info->hint & PT_HINT_USE_UPDATE_IDX)
@@ -24843,7 +24922,7 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   corr_subq->info.query.q.select.flavor = PT_USER_SELECT;
   corr_subq->info.query.is_subquery = PT_IS_SUBQUERY;
   corr_subq->info.query.correlation_level = 1;
-  corr_subq->info.query.single_tuple = 1;
+  corr_subq->info.query.flag.single_tuple = 1;
 
   /* set index hint */
   if (info->hint & PT_HINT_USE_INSERT_IDX)
@@ -24903,7 +24982,7 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   PT_SELECT_INFO_SET_FLAG (subq, PT_SELECT_INFO_IS_MERGE_QUERY);
 
   /* we don't need to keep this query */
-  subq->cannot_prepare = 1;
+  subq->flag.cannot_prepare = 1;
 
   return subq;
 

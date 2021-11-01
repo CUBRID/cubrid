@@ -289,7 +289,7 @@ options valides:\n\
   -C, --CS-mode                exécution en mode client-serveur\n\
       --no-check               ne vérifie pas la cohérence de la base de données; par défaut: vérifier\n\
   -t, --thread-count=NOMBRE    NOMBRE de fils d'exécution; par défaut: 0 (auto)\n\
-  -z, --compress               comprimer les volumes de sauvegarde; par défaut: décompresser\n\
+      --no-compress            ne compressez pas les volumes de sauvegarde ; par défaut : compression\n\
       --sleep-msecs=N          veille N millisecondes par 1M lit; par défaut: 0\n\
   -k, --separate-keys          fichier de clés (_keys) pour TDE n'est pas inclus dans le volume de sauvegarde, mais est séparé dans un fichier à la place\n
 71 Arguments incompatibles, \"%1$s\", et \"%2$s\"\n
@@ -524,6 +524,8 @@ options valids:\n\
   -d, --data-only                 sauvegarde seulement les objets; par défaut: schéma et les objets\n\
       --output-prefix=PRÉFIXE     PRÉFIXE pour les fichiers de sortie, par défaut: le nom de de base de données\n\
       --hash-file=FICHIER         FICHIER pour hachage; valeur par défaut: générer par tmpnam ()\n\
+      --latest-image              lors du vidage d'objets, il vide la dernière image des objets dans les volumes de données, sans se référer aux volumes de journaux (ignorant MVCC)\n\
+                                  Cela peut inclure des données non validées et des données supprimées qui ne sont pas aspirées ; par défaut : désactivé\n\
   -v, --verbose                   active les messages verbeux d'état; par défaut: désactivé\n\
       --use-delimiter             utilise '"' dans les endroits où un identificateur commence ou se termine; par défaut: ne pas utiliser\n\
   -S, --SA-mode                   exécution en mode autonome\n\

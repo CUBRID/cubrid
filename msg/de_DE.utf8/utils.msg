@@ -288,8 +288,8 @@ gültige Optionen:\n\
   -S, --SA-mode                Stand-Alone-Ausführung\n\
   -C, --CS-mode                Client-Server-Ausführung\n\
       --no-check               Konsistenz der Datenbank nicht überprüfen; Standard: prüfen\n\
-  -t, --thread-count=ANZAHL     Anzahl der Threads; Standard: 0(auto)\n\
-  -z, --compress               Backupdatenträger komprimieren; Standard: nicht komprimiert\n\
+  -t, --thread-count=ANZAHL    Anzahl der Threads; Standard: 0(auto)\n\
+      --no-compress            komprimieren Sie keine Backup-Volumes; Standard: Komprimierung\n\
       --sleep-msecs=N          N Millisekunden per gelesenen 1M schlafen; Standard: 0\n\
   -k, --separate-keys          Schlüsseldatei (_keys) für TDE ist nicht im Sicherungsvolume enthalten, sondern wird stattdessen in eine Datei aufgeteilt\n
 71 Nicht kompatible Argumente, \"%1$s\", und \"%2$s\"\n
@@ -520,6 +520,8 @@ gültige Optionen:\n\
   -d, --data-only              nur Objekte exportieren; Standard: Schema und die Objekte\n\
       --output-prefix=PRÄFIX   PRÄFIX für die Ausgangdateien; Standard: Datenbanknamen\n\
       --hash-file=DATEI        Datei für Hash; Standard: erzeugt bei tmpnam()\n\
+      --latest-image           beim Dumpen von Objekten wird das neueste Image von Objekten in Datenvolumes ausgegeben, nicht auf Log-Volumes (ohne MVCC)\n\
+                               Es könnte nicht festgeschriebene Daten und gelöschte Daten enthalten, die nicht bereinigt wurden; Standard: deaktiviert\n\
   -v, --verbose                ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
       --use-delimiter          '"' verwenden, wo ein Identifikator anfängt und endet; Standard: nicht verwenden\n\
   -S, --SA-mode                Stand-Alone-Ausführung\n\
