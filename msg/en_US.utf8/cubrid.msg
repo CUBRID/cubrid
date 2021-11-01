@@ -1363,7 +1363,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1292 Cannot find the log lsa at the time (%1$s). Log lsa is adjusted to the time (%2$s).
 1293 Cannot get log page while producing log infos. Log lsa to generate log info indicates NULL.
 1294 Log info has been generated. (type : "%1$s").
-1295 Skip producing log info for invalid table. (classoid : %1$d|%2$d|%3$d)
+1295 Skip producing log info for invalid table. (class OID : %1$d|%2$d|%3$d)
 
 1296 Last Error
 
