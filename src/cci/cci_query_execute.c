@@ -6563,22 +6563,16 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
     }
 
   bind_value->u_type = u_type;
-  if (u_type == CCI_U_TYPE_SHORT)
-    {
-      bind_value->u_type = CCI_U_TYPE_INT;
-    }
-  else if (u_type == CCI_U_TYPE_USHORT)
-    {
-      bind_value->u_type = CCI_U_TYPE_UINT;
-    }
 
   switch (u_type)
     {
-    case CCI_U_TYPE_SHORT:
     case CCI_U_TYPE_INT:
-    case CCI_U_TYPE_USHORT:
     case CCI_U_TYPE_UINT:
       bind_value->size = NET_SIZE_INT;
+      break;
+    case CCI_U_TYPE_SHORT:
+    case CCI_U_TYPE_USHORT:
+      bind_value->size = NET_SIZE_SHORT;
       break;
     case CCI_U_TYPE_BIGINT:
     case CCI_U_TYPE_UBIGINT:
@@ -6704,9 +6698,7 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, T_CCI_U_TYPE u_type, void *value, in
 	}
       break;
     case CCI_U_TYPE_INT:
-    case CCI_U_TYPE_SHORT:
     case CCI_U_TYPE_UINT:
-    case CCI_U_TYPE_USHORT:
       if (value == NULL)
 	{
 	  ADD_ARG_INT (net_buf, 0);
@@ -6714,6 +6706,17 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, T_CCI_U_TYPE u_type, void *value, in
       else
 	{
 	  ADD_ARG_INT (net_buf, *((int *) value));
+	}
+      break;
+    case CCI_U_TYPE_SHORT:
+    case CCI_U_TYPE_USHORT:
+      if (value == NULL)
+	{
+	  ADD_ARG_SHORT (net_buf, 0);
+	}
+      else
+	{
+	  ADD_ARG_SHORT (net_buf, *((short *) value));
 	}
       break;
     case CCI_U_TYPE_FLOAT:
