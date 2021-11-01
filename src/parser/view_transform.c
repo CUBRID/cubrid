@@ -1453,7 +1453,7 @@ static PT_NODE *
 mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec, PT_NODE * class_)
 {
   PT_NODE *order, *val;
-  PT_NODE *attributes, *attr;
+  PT_NODE *attributes, *attr, *prev_order;
   PT_NODE *node, *result;
   PT_NODE *save_data_type;
   int attr_count;
@@ -1481,6 +1481,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       attr_count++;
     }
 
+  prev_order = NULL;
   /* update the position number of order by clause */
   for (order = statement->info.query.order_by; order != NULL; order = order->next)
     {
@@ -1541,6 +1542,18 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       /* if attr is not found in output list, append a hidden column at the end of the output list. */
       if (node == NULL)
 	{
+	  if (prev_order == NULL)
+	    {
+	      // need to free order
+	      statement->info.query.order_by = order->next;
+	    }
+	  else
+	    {
+	      // need to free order
+	      prev_order->next = order->next;
+	    }
+
+	  /* //temporarily remove routines
 	  result = parser_copy_tree (parser, attr);
 	  if (result == NULL)
 	    {
@@ -1548,14 +1561,18 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	      return NULL;
 	    }
 	  /* mark as a hidden column */
-	  result->flag.is_hidden_column = 1;
+	  /* result->flag.is_hidden_column = 1;
 	  parser_append_node (result, statement->info.query.q.select.list);
 
 	  /* update position number of order by clause */
-	  val->info.value.data_value.i = i;
+	  /*val->info.value.data_value.i = i;
 	  val->info.value.db_value.data.i = i;
 	  val->info.value.text = NULL;
-	  order->info.sort_spec.pos_descr.pos_no = i;
+	  order->info.sort_spec.pos_descr.pos_no = i; */
+	}
+      else
+	{
+	  prev_order = order;
 	}
 
       attr->data_type = save_data_type;
@@ -1709,7 +1726,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  rewrite_as_derived = true;
 	}
       /* check for DISTINCT + order_by */
-      else if (pt_is_distinct (statement) && pt_has_hidden_column (parser, query_spec->info.query.q.select.list))
+      else if (pt_is_distinct (tmp_result) && pt_has_hidden_column (parser, query_spec->info.query.q.select.list))
 	{
 	  rewrite_as_derived = true;
 	}
