@@ -33,10 +33,6 @@ class passive_tran_server : public tran_server
     bool get_remote_storage_config () final override;
 
     request_handlers_map_t get_request_handlers () final override;
-
-  private:
-
-    bool m_uses_remote_storage = false;
 };
 
 #endif // !_passive_tran_server_HPP_
