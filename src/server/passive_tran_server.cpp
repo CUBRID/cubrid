@@ -21,52 +21,16 @@
 #include "log_impl.h"
 #include "system_parameter.h"
 
-passive_tran_server pts_Gl;
-
-bool
-passive_tran_server::uses_remote_storage () const
-{
-  return m_uses_remote_storage;
-}
-
 bool
 passive_tran_server::get_remote_storage_config ()
 {
-  m_uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
-  return m_uses_remote_storage;
-}
-
-void
-passive_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
-{
-  std::string message;
-  log_lsa saved_lsa;
-
-  upk.unpack_string (message);
-  assert (sizeof (log_lsa) == message.size ());
-  std::memcpy (&saved_lsa, message.c_str (), sizeof (log_lsa));
-
-  if (log_Gl.m_max_ps_flushed_lsa < saved_lsa)
-    {
-      log_Gl.update_max_ps_flushed_lsa (saved_lsa);
-    }
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
-    {
-      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
-    }
+  return false;
 }
 
 void
 passive_tran_server::on_boot ()
 {
   assert (is_passive_transaction_server ());
-
-  cublog::prior_sender::sink_hook sink =
-	  std::bind (&passive_tran_server::push_request, std::ref (*this), tran_to_page_request::SEND_LOG_PRIOR_LIST,
-		     std::placeholders::_1);
-
-  log_Gl.m_prior_sender.add_sink (sink);
 }
 
 passive_tran_server::request_handlers_map_t
@@ -77,9 +41,6 @@ passive_tran_server::get_request_handlers ()
   map_value_t boot_info_handler_value =
 	  std::make_pair (page_to_tran_request::SEND_BOOT_INFO,
 			  std::bind (&passive_tran_server::receive_boot_info, std::ref (*this), std::placeholders::_1));
-  map_value_t saved_lsa_handler_value =
-	  std::make_pair (page_to_tran_request::SEND_SAVED_LSA,
-			  std::bind (&passive_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1));
   map_value_t log_page_handler_value =
 	  std::make_pair (page_to_tran_request::SEND_LOG_PAGE,
 			  std::bind (&passive_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1));
@@ -89,8 +50,7 @@ passive_tran_server::get_request_handlers ()
 
   std::map<page_to_tran_request, std::function<void (cubpacking::unpacker &upk)>> handlers_map;
 
-  handlers_map.insert ({ boot_info_handler_value, saved_lsa_handler_value, log_page_handler_value,
-			 data_page_handler_value });
+  handlers_map.insert ({ boot_info_handler_value, log_page_handler_value, data_page_handler_value });
 
   return handlers_map;
 }

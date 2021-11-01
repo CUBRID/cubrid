@@ -28,21 +28,15 @@ class passive_tran_server : public tran_server
     {
     }
 
-    bool uses_remote_storage () const final override;
-
   private:
     void on_boot () final override;
     bool get_remote_storage_config () final override;
 
     request_handlers_map_t get_request_handlers () final override;
 
-    void receive_saved_lsa (cubpacking::unpacker &upk);
-
   private:
 
     bool m_uses_remote_storage = false;
 };
-
-extern passive_tran_server pts_Gl;
 
 #endif // !_passive_tran_server_HPP_
