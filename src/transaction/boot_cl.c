@@ -3418,7 +3418,7 @@ boot_define_serial (MOP class_mop)
     }
 
   /* add primary key */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_name", pk_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, "pk__db_serial_full_name", pk_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3468,12 +3468,6 @@ boot_define_serial (MOP class_mop)
     }
 
   error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
   if (error_code != NO_ERROR)
     {
       return error_code;

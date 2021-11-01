@@ -3129,7 +3129,13 @@ sm_is_system_class_by_name (const char *name)
       return TRUE;
     }
 
-  if (strncmp (name, "_db_", sizeof ("_db_") - 1) != 0 && strncmp (name, "db_", sizeof ("db_") - 1) != 0)
+  /*
+   * To reduce unnecessary operations, the result of the operation is used as a constant.
+   * - strlen ("_db_") : 4
+   * - strlen ("db_")  : 3
+   *
+   */
+  if (strncmp (name, "_db_", 4) != 0 && strncmp (name, "db_", 3) != 0)
     {
       return FALSE;
     }

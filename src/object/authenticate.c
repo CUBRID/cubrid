@@ -1592,7 +1592,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
   const char *sql_query =
     "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
     " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?"
-    " AND [au].[class_of].[class_name] = ? AND [au].[auth_type] = ?";
+    " AND [au].[class_of].[class_full_name] = ? AND [au].[auth_type] = ?";
   enum
   {
     INDEX_FOR_GRANTEE_NAME = 0,
