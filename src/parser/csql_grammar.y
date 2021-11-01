@@ -27617,7 +27617,15 @@ static PT_NODE *
 pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 {
    if(node)
-     {    
+     {  
+        if (node->node_type == PT_NAME)      
+          {
+             PT_ERROR (parser, node, "invalid by [CBRD-24083]"); 
+             return node;
+          }
+
+        return pt_convert_to_logical_expr(parser, node, 1, 1);
+#if 0        
         if (node->type_enum != PT_TYPE_LOGICAL)
           {
              PT_ERROR (parser, node, "invalid by [CBRD-24083]"); 
@@ -27629,6 +27637,7 @@ pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
                  PT_ERROR (parser, node, "invalid by [CBRD-24083]");
                }
           }
+#endif          
      }
 
      return node;
