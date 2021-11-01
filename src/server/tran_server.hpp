@@ -96,7 +96,7 @@ class tran_server
     virtual bool get_remote_storage_config () = 0;
     virtual void on_boot () = 0;
 
-    virtual request_handlers_map_t get_request_handlers () = 0;
+    virtual request_handlers_map_t get_request_handlers ();
 
   private:
 
