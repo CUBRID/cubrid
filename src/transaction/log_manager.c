@@ -10538,9 +10538,8 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
   tmpbuf_index = process_lsa->pageid % 2;
 
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, process_lsa);
-  nx_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_rec_header->forw_lsa);
 
-  if (nx_rec_header->type == LOG_END_OF_LOG || LSA_ISNULL (&log_rec_header->forw_lsa))
+  if (log_rec_header->type == LOG_END_OF_LOG || LSA_ISNULL (&log_rec_header->forw_lsa))
     {
       CDC_UPDATE_TEMP_LOGPAGE (thread_p, process_lsa, log_page_p);
       error = ER_CDC_NULL_EXTRACTION_LSA;
