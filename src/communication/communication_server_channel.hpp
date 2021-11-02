@@ -32,7 +32,8 @@ namespace cubcomm
 {
   enum class server_server //server to server commands
   {
-    CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER, // active transaction to page server
+    CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER,   // active transaction to page server
+    CONNECT_PASSIVE_TRAN_TO_PAGE_SERVER,  // passive transaction to page server
   };
 
   class server_channel : public channel
