@@ -626,6 +626,7 @@ cub_commdb: 这个工具不赞成使用. 用 'cubrid' 命令来代替.\n\
 39 选项 -i(--immediately) 必须与选项 --deact-stop-all 一起使用.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 请在没有 --recreate-log 选项的情况下运行或手动删除活动日志卷。\n
 60 \
 emergency_patchlog: 紧急情况下修补一个数据库.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\

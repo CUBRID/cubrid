@@ -626,6 +626,7 @@ geçerli seçenekler:\n\
 39 -i(--immediately) opsiyon seçeneği --deact-stop-all ile birlikte kullanılmalıdır.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Lütfen --recreate-log seçeneği olmadan çalıştırın veya etkin günlük birimini manuel olarak kaldırın.\n
 60 \
 emergency_patchlog: Patch acil durumlarda bir veritabanı.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\

@@ -625,6 +625,7 @@ gültige Optionen:\n\
 39 -i(--immediately) option muss mit --deact-stop-all verwendet werden.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Bitte ohne die Option --recreate-log ausführen oder das aktive Protokoll-Volume manuell entfernen.\n
 60 \
 emergency_patchlog: Eine Datenbank im Notfall patchen.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\

@@ -1360,8 +1360,9 @@ $ LOADDB
 1299 Log Wiederherstellung: %1$s Phase ist fertig.
 1300 Log Wiederherstellung: %1$s Phase ist beendet.
 1301 Log Wiederherstellung: %1$s Fortschritt: (%2$lld/%3$lld), %4$.2f Prozent, verstrichene Zeit: %5$.2f (s), geschätzte Restzeit: %6$.2f (s).
+1302 Das aktive Protokollvolumen (%1$s) ist zu normal, um es neu zu erstellen. Wenn Sie das aktive Protokoll entfernen, kann dies zu einem unerwarteten und irreversiblen Problem führen.
 
-1302 Letzter Fehler
+1303 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

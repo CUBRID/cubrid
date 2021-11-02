@@ -641,6 +641,7 @@ opţiuni valide:\n\
 39 Opţiunea -i(--immediately) trebuie folosită împreună cu opţiunea --deact-stop-all.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Rulați fără opțiunea --recreate-log sau eliminați manual volumul de jurnal activ.\n
 60 \
 emergency_patchlog: Efectuează un patch asupra bazei de date în caz de urgenţă.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\

@@ -1360,8 +1360,9 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1299 Registro de registro: %1$s fase se está acabando.
 1300 Registro de registro: %1$s fase se termina.
 1301 Registro de registro: %1$s progreso: (%2$lld/%3$lld), %4$.2f por ciento, tiempo transcurrido: %5$.2f (s), tiempo resistente estimado: %6$.2f (s).
+1302 El volumen de registro activo (%1$s) está demasiado sano para volver a crearlo. Si elimina el registro activo, podría causar un problema inesperado e irreversible.
 
-1302 Ultimo error
+1303 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

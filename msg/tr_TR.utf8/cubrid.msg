@@ -1360,8 +1360,9 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1299 Günlük kurtarma: %1$s Aşama tamamlanıyor.
 1300 Günlük kurtarma: %1$s Aşama tamamlandı.
 1301 Günlük kurtarma: %1$s ilerleme: (%2$lld/%3$lld), %4$.2f, geçen süre: %5$.2f (s), tahmini kalan süre: %6$.2f (s).
+1302 Etkin günlük hacmi (%1$s) yeniden oluşturulamayacak kadar makul. Etkin günlüğü kaldırırsanız, beklenmeyen ve geri dönüşü olmayan bir soruna neden olabilir.
 
-1302 Son Hata
+1303 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
