@@ -1470,8 +1470,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       // if needed, mark that transaction server with remote storage is running and persist the value
       log_Gl.m_metainfo.set_clean_shutdown (false);
-
-      log_write_metalog_to_file ();
+      log_write_metalog_to_file (true);
     }
 
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
@@ -1866,7 +1865,7 @@ log_final (THREAD_ENTRY * thread_p)
 
       // mark and persist that transaction server with remote storage has been correctly closed
       log_Gl.m_metainfo.set_clean_shutdown (true);
-      log_write_metalog_to_file ();
+      log_write_metalog_to_file (false);
     }
   else
     {
@@ -10611,7 +10610,10 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
   return error_code;
 }
 
-// Create the meta log volume
+/*
+ * log_create_metalog_file - create the meta log volume
+ *
+ */
 int
 log_create_metalog_file ()
 {
@@ -10629,8 +10631,11 @@ log_create_metalog_file ()
   return NO_ERROR;
 }
 
-// At initialization time, metalog is created if not found. Needed in the contest of booting up
-// an empty active transaction server with remote storage.
+/*
+ * log_read_metalog_from_file_with_create -  at initialization time, metalog is created if not found
+ *        Needed in the context of booting up an empty active transaction server with remote storage
+ *
+ */
 int
 log_read_metalog_from_file_with_create ()
 {
@@ -10658,7 +10663,10 @@ log_read_metalog_from_file_with_create ()
   return err_code;
 }
 
-// Get meta log from disk to log_Gl
+/*
+ * log_read_metalog_from_file - get meta log from disk to log_Gl
+ *
+ */
 int
 log_read_metalog_from_file ()
 {
@@ -10674,14 +10682,18 @@ log_read_metalog_from_file ()
   return NO_ERROR;
 }
 
-// Write meta log from log_Gl to disk
+/*
+ * log_write_metalog_to_file - Write meta log from log_Gl to disk
+ *
+ */
 void
-log_write_metalog_to_file ()
+log_write_metalog_to_file (bool file_open_is_fatal)
 {
   FILE *const fp = fopen (log_Name_metainfo, "r+");
   if (fp == nullptr)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
+      const er_severity severity = file_open_is_fatal ? ER_FATAL_ERROR_SEVERITY : ER_ERROR_SEVERITY;
+      er_set (severity, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
       assert (false);
     }
   else
