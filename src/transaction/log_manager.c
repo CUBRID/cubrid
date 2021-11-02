@@ -10685,6 +10685,7 @@ log_read_metalog_from_file ()
 /*
  * log_write_metalog_to_file - Write meta log from log_Gl to disk
  *
+ * file_open_is_fatal (in): treat failure to open file as fatal error or not
  */
 void
 log_write_metalog_to_file (bool file_open_is_fatal)
@@ -10694,7 +10695,6 @@ log_write_metalog_to_file (bool file_open_is_fatal)
     {
       const er_severity severity = file_open_is_fatal ? ER_FATAL_ERROR_SEVERITY : ER_ERROR_SEVERITY;
       er_set (severity, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
-      assert (false);
     }
   else
     {
