@@ -1455,7 +1455,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   PT_NODE *order, *val;
   PT_NODE *attributes, *attr, *prev_order;
   PT_NODE *node, *result;
-  PT_NODE *save_data_type;
+  PT_NODE *save_data_type, *free_node = NULL, *save_next;
   int attr_count;
   int i;
 
@@ -1542,33 +1542,43 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       /* if attr is not found in output list, append a hidden column at the end of the output list. */
       if (node == NULL)
 	{
-	  if (prev_order == NULL)
+	  if (pt_is_distinct (statement))
 	    {
-	      // need to free order
-	      statement->info.query.order_by = order->next;
+	      /* remove unnecessary order */
+	      if (prev_order == NULL)
+		{
+		  statement->info.query.order_by = order->next;
+		}
+	      else
+		{
+		  prev_order->next = order->next;
+		}
+	      /* free order */
+	      save_next = order->next;
+	      order->next = NULL;
+	      parser_append_node (order, free_node);
+	      order->next = save_next;
 	    }
 	  else
 	    {
-	      // need to free order
-	      prev_order->next = order->next;
+	      /* add column of order to select list */
+	      result = parser_copy_tree (parser, attr);
+	      if (result == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		  return NULL;
+		}
+	      /* mark as a hidden column */
+	      result->flag.is_hidden_column = 1;
+	      parser_append_node (result, statement->info.query.q.select.list);
+
+	      /* update position number of order by clause */
+	      val->info.value.data_value.i = i;
+	      val->info.value.db_value.data.i = i;
+	      val->info.value.text = NULL;
+	      order->info.sort_spec.pos_descr.pos_no = i;
 	    }
 
-	  /* //temporarily remove routines
-	  result = parser_copy_tree (parser, attr);
-	  if (result == NULL)
-	    {
-	      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
-	      return NULL;
-	    }
-	  /* mark as a hidden column */
-	  /* result->flag.is_hidden_column = 1;
-	  parser_append_node (result, statement->info.query.q.select.list);
-
-	  /* update position number of order by clause */
-	  /*val->info.value.data_value.i = i;
-	  val->info.value.db_value.data.i = i;
-	  val->info.value.text = NULL;
-	  order->info.sort_spec.pos_descr.pos_no = i; */
 	}
       else
 	{
@@ -1576,6 +1586,11 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	}
 
       attr->data_type = save_data_type;
+    }
+
+  if (free_node != NULL)
+    {
+      parser_free_tree (parser, free_node);
     }
 
   return statement;
@@ -1722,11 +1737,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	}
       /* check for CONNECT BY */
       else if (tmp_result->info.query.q.select.connect_by)
-	{
-	  rewrite_as_derived = true;
-	}
-      /* check for DISTINCT + order_by */
-      else if (pt_is_distinct (tmp_result) && pt_has_hidden_column (parser, query_spec->info.query.q.select.list))
 	{
 	  rewrite_as_derived = true;
 	}
