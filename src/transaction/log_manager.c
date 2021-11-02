@@ -13964,7 +13964,6 @@ cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info)
   return NO_ERROR;
 }
 
-/* 버퍼 realloc 고려 (consumer.log_info) */
 int
 cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 {
@@ -14000,8 +13999,13 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
   while (cdc_Gl.loginfo_queue->is_empty () == false && (num_log_info < cdc_Gl.consumer.max_log_item))
     {
       /* *INDENT-OFF* */
-      cdc_Gl.loginfo_queue->consume (consume);
+      if (cdc_Gl.loginfo_queue->consume (consume) == false)
+        {
+          /* consume failed, queue is blocked by producer */
+          continue;
+        }
       /* *INDENT-ON* */
+
       if (LSA_GE (&consume->next_lsa, start_lsa))
 	{
 	  if (total_length + consume->length + MAX_ALIGNMENT > cdc_Gl.consumer.log_info_size)
