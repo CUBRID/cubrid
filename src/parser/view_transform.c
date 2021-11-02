@@ -1635,7 +1635,6 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
  * (MAINQUERY) It is not pushable(mergeable) in the following cases.
  *  - Class is Spec set(spec set??)
  *  - has CONNECT BY
- *  - has DISTINCT(mainquery) + hidden column(subquery)
  *  - view spec is outer join spec
  *  - subquery check ==> mq_is_pushable_subquery()
  */
