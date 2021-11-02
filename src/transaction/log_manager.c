@@ -10694,7 +10694,6 @@ log_write_metalog_to_file (bool file_open_is_fatal)
     {
       const er_severity severity = file_open_is_fatal ? ER_FATAL_ERROR_SEVERITY : ER_ERROR_SEVERITY;
       er_set (severity, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
-      assert (false);
     }
   else
     {
