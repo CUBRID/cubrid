@@ -10685,6 +10685,7 @@ log_read_metalog_from_file ()
 /*
  * log_write_metalog_to_file - Write meta log from log_Gl to disk
  *
+ * file_open_is_fatal (in): treat failure to open file as fatal error or not
  */
 void
 log_write_metalog_to_file (bool file_open_is_fatal)
