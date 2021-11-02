@@ -3122,28 +3122,6 @@ pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_has_hidden_column () - check if tree has an hidden_column
- *   node : select i from t order by j ==> select i, j ..<== j is hidden column derived from 'order by'
- *   return: true if tree has nullable term
- *   parser(in):
- *   node(in):
- */
-bool
-pt_has_hidden_column (PARSER_CONTEXT * parser, PT_NODE * node)
-{
-  PT_NODE *col;
-
-  for (col = node; col; col = col->next)
-    {
-      if (col->flag.is_hidden_column)
-	{
-	  return true;
-	}
-    }
-  return false;
-}
-
-/*
  * pt_insert_host_var () - insert a host_var into a list based on
  *                         its ordinal position
  *   return: a list of PT_HOST_VAR type nodes

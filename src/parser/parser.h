@@ -528,7 +528,6 @@ extern "C"
   extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
   extern bool pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node);
-  extern bool pt_has_hidden_column (PARSER_CONTEXT * parser, PT_NODE * node);
 
   extern void pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node);
   extern void pt_set_expected_domain (PT_NODE * node, TP_DOMAIN * domain);
