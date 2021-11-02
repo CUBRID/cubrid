@@ -1253,6 +1253,45 @@ cas_main (void)
 		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info, cas_info_size,
 				 err_info.err_indicator, err_info.err_number, db_err_msg);
 
+#if defined (CAS_FOR_CGW)
+		if (db_err_msg == NULL)
+		  {
+		    if (shm_appl->cgw_link_dsn != NULL && strlen (shm_appl->cgw_link_dsn) > 0)
+		      {
+			snprintf (msg_buf, LINE_MAX, "connect dsn %s, error:%d", shm_appl->cgw_link_dsn,
+				  err_info.err_number);
+		      }
+		    else if (shm_appl->cgw_link_connection_url != NULL
+			     && strlen (shm_appl->cgw_link_connection_url) > 0)
+		      {
+			snprintf (msg_buf, LINE_MAX, "connect url %s, error:%d", shm_appl->cgw_link_connection_url,
+				  err_info.err_number);
+		      }
+		    else
+		      {
+			snprintf (msg_buf, LINE_MAX, "connect error:%d", err_info.err_number);
+		      }
+		  }
+		else
+		  {
+		    if (shm_appl->cgw_link_dsn != NULL && strlen (shm_appl->cgw_link_dsn) > 0)
+		      {
+			snprintf (msg_buf, LINE_MAX, "connect dsn %s, error:%d, %s", shm_appl->cgw_link_dsn,
+				  err_info.err_number, db_err_msg);
+		      }
+		    else if (shm_appl->cgw_link_connection_url != NULL
+			     && strlen (shm_appl->cgw_link_connection_url) > 0)
+		      {
+			snprintf (msg_buf, LINE_MAX, "connect url %s, error:%d, %s", shm_appl->cgw_link_connection_url,
+				  err_info.err_number, db_err_msg);
+		      }
+		    else
+		      {
+			snprintf (msg_buf, LINE_MAX, "connect error:%d, %s", shm_appl->cgw_link_connection_url,
+				  err_info.err_number, db_err_msg);
+		      }
+		  }
+#else
 		if (db_err_msg == NULL)
 		  {
 		    snprintf (msg_buf, LINE_MAX, "connect db %s user %s url %s, error:%d.", db_name, db_user, url,
@@ -1263,7 +1302,7 @@ cas_main (void)
 		    snprintf (msg_buf, LINE_MAX, "connect db %s user %s url %s, error:%d, %s", db_name, db_user, url,
 			      err_info.err_number, db_err_msg);
 		  }
-
+#endif /* CAS_FOR_CGW */
 		cas_log_write_and_end (0, false, msg_buf);
 		cas_slow_log_write_and_end (NULL, 0, msg_buf);
 
@@ -1306,7 +1345,14 @@ cas_main (void)
 	    cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s" " session id %u", as_info->database_name,
 				   as_info->database_host, db_user, url, session_id);
 #else
-	    cas_log_write_and_end (0, false, "connect db %s user %s url %s", db_name, db_user, url);
+	    if (shm_appl->cgw_link_dsn != NULL && strlen (shm_appl->cgw_link_dsn) > 0)
+	      {
+		cas_log_write_and_end (0, false, "connect dsn %s", shm_appl->cgw_link_dsn);
+	      }
+	    else
+	      {
+		cas_log_write_and_end (0, false, "connect url %s", shm_appl->cgw_link_connection_url);
+	      }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
