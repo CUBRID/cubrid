@@ -101,12 +101,12 @@
 typedef struct boot_db_path_info BOOT_DB_PATH_INFO;
 struct boot_db_path_info
 {
-  char *db_path;
-  char *vol_path;
-  char *log_path;
-  char *lob_path;
-  char *db_host;
-  char *db_comments;
+  const char *db_path;
+  const char *vol_path;
+  const char *log_path;
+  const char *lob_path;
+  const char *db_host;
+  const char *db_comments;
 };
 
 /*
@@ -154,6 +154,15 @@ extern char boot_Host_name[CUB_MAXHOSTNAMELEN];
 
 #define LOB_PATH_PREFIX_MAX     ES_URI_PREFIX_MAX
 #define LOB_PATH_DEFAULT_PREFIX ES_POSIX_PATH_PREFIX
+#define ES_DEFAULT_TYPE         ES_POSIX
+
+// Inline functions
+inline void COMPOSE_FULL_NAME (char *buf, size_t buf_size, const char *path, const char *name);
+inline void boot_remove_useless_path_separator (const char *path, char *new_path);
+
+//
+// Inline implementation
+//
 
 /* Compose the full name of a database */
 
@@ -174,5 +183,99 @@ COMPOSE_FULL_NAME (char *buf, size_t buf_size, const char *path, const char *nam
     {
       abort ();
     }
+}
+
+/*
+ * boot_remove_useless_path_separator () - Remove useless PATH_SEPARATOR in path string
+ *
+ * return : true or false(in case of fail)
+ *
+ *   path(in): Original path.
+ *   new_path(out): Transformed path.
+ *
+ * Note: This function removes useless PATH_SEPARATOR in path string.
+ *       For example,
+ *       /home3/CUBRID/DB/               -->  /home3/CUBRID/DB
+ *       C:\CUBRID\\\Databases\\         -->  C:\CUBRID\Databases
+ *       \\pooh\user\                    -->  \\pooh\user
+ *
+ *       After transform..
+ *       If new path string is "/" or "\", don't remove the last slash.
+ *       It is survived.
+ */
+inline void
+boot_remove_useless_path_separator (const char *path, char *new_path)
+{
+  int slash_num = 0;		/* path separator counter */
+
+  /* path must be not null */
+  assert (path != NULL);
+  assert (new_path != NULL);
+
+  /*
+   * Before transform.
+   *   / h o m e 3 / / w o r k / c u b r i d / / / w o r k /
+   *
+   * After transform.
+   *   / h o m e 3   / w o r k / c u b r i d     / w o r k
+   */
+
+  /* Consume the preceding continuous slash chars. */
+  while (*path == PATH_SEPARATOR)
+    {
+      slash_num++;
+      path++;
+    }
+
+  /* If there is preceding consumed slash, append PATH_SEPARATOR */
+  if (slash_num)
+    {
+      *new_path++ = PATH_SEPARATOR;
+#if defined(WINDOWS)
+      /*
+       * In Windows/NT,
+       * If first duplicated PATH_SEPARATORs are appeared, they are survived.
+       * For example,
+       * \\pooh\user\ -> \\pooh\user(don't touch the first duplicated PATH_SEPARATORs)
+       */
+      if (slash_num > 1)
+	{
+	  *new_path++ = PATH_SEPARATOR;
+	}
+#endif /* WINDOWS */
+    }
+
+  /* Initialize separator counter again. */
+  slash_num = 0;
+
+  /*
+   * If current character is PATH_SEPARATOR,
+   *    skip after increasing separator counter.
+   * If current character is normal character, copy to new_path.
+   */
+  while (*path)
+    {
+      if (*path == PATH_SEPARATOR)
+	{
+	  slash_num++;
+	}
+      else
+	{
+	  /*
+	   * If there is consumed slash, append PATH_SEPARATOR.
+	   * Initialize separator counter.
+	   */
+	  if (slash_num)
+	    {
+	      *new_path++ = PATH_SEPARATOR;
+	      slash_num = 0;
+	    }
+	  *new_path++ = *path;
+	}
+      path++;
+    }
+
+  /* Assure null terminated string */
+  *new_path = '\0';
 }
 #endif /* _BOOT_H_ */
