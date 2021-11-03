@@ -1556,7 +1556,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	      /* free order */
 	      save_next = order->next;
 	      order->next = NULL;
-	      parser_append_node (order, free_node);
+	      free_node = parser_append_node (order, free_node);
 	      order->next = save_next;
 	    }
 	  else
