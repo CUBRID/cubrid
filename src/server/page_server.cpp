@@ -106,9 +106,11 @@ void page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
     },
     {
       tran_to_page_request::SEND_DISCONNECT_MSG,
-      std::bind (&page_server::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::receive_disconnect_request_from_pts, std::ref (*this), std::placeholders::_1)
     },
   }));
+
+  m_passive_tran_server_conn.back ()->start ();
 }
 
 void page_server::start ()
@@ -130,11 +132,33 @@ void page_server::disconnect_active_tran_server ()
   m_active_tran_server_conn.reset (nullptr);
 }
 
+void page_server::disconnect_passive_tran_server ()
+{
+  if (m_passive_tran_server_conn.empty ())
+    {
+      er_log_debug (ARG_FILE_LINE, "Page server was never connected with an passive transaction server.\n");
+      return;
+    }
+  for (size_t i = 0; i < m_passive_tran_server_conn.size (); i++)
+    {
+      er_log_debug (ARG_FILE_LINE, "Page server disconnected from passive transaction server with channel id: %s.\n",
+		    m_passive_tran_server_conn[i]->get_underlying_channel_id ().c_str ());
+    }
+  m_passive_tran_server_conn.clear ();
+}
+
 bool page_server::is_active_tran_server_connected () const
 {
   assert_page_server_type ();
 
   return m_active_tran_server_conn != nullptr;
+}
+
+bool page_server::is_passive_tran_server_connected () const
+{
+  assert_page_server_type ();
+
+  return !m_passive_tran_server_conn.empty ();
 }
 
 void page_server::receive_log_prior_list (cubpacking::unpacker &upk)
@@ -185,6 +209,13 @@ void page_server::receive_disconnect_request (cubpacking::unpacker &upk)
 {
   //start a thread to destroy the ATS to PS connection object
   std::thread disconnect_thread (&page_server::disconnect_active_tran_server, std::ref (*this));
+  disconnect_thread.detach ();
+}
+
+void page_server::receive_disconnect_request_from_pts (cubpacking::unpacker &upk)
+{
+  //start a thread to destroy the ATS to PS connection object
+  std::thread disconnect_thread (&page_server::disconnect_passive_tran_server, std::ref (*this));
   disconnect_thread.detach ();
 }
 
