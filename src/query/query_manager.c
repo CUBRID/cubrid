@@ -2308,7 +2308,7 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
       oid_block_p = tmp_oid_block_p;
       for (i = 0, tmp_oid_p = oid_block_p->oid_array; i < oid_block_p->last_oid_idx; i++, tmp_oid_p++)
 	{
-	  if (oid_compare (class_oid_p, tmp_oid_p) == 0)
+	  if (oid_is_equal_value (class_oid_p, tmp_oid_p))
 	    {
 	      found = true;
 	      break;

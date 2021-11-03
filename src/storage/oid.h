@@ -92,6 +92,7 @@
     (oidp)->volid = NULL_VOLID; \
   } while(0)
 
+#define oid_is_equal_value(oid1, oid2)  OID_EQ((oid1), (oid2))
 #define OID_EQ(oidp1, oidp2) \
   ((oidp1) == (oidp2) || ((oidp1)->pageid == (oidp2)->pageid && \
 			  (oidp1)->slotid == (oidp2)->slotid && \
