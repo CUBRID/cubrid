@@ -252,36 +252,18 @@ oid_compare (const void *a, const void *b)
     }
 
   diff = oid1_p->volid - oid2_p->volid;
-  if (diff > 0)
+  if (diff)
     {
-      return 1;
-    }
-  else if (diff < 0)
-    {
-      return -1;
+      return diff;
     }
 
   diff = oid1_p->pageid - oid2_p->pageid;
-  if (diff > 0)
+  if (diff)
     {
-      return 1;
-    }
-  else if (diff < 0)
-    {
-      return -1;
+      return diff;
     }
 
-  diff = oid1_p->slotid - oid2_p->slotid;
-  if (diff > 0)
-    {
-      return 1;
-    }
-  else if (diff < 0)
-    {
-      return -1;
-    }
-
-  return 0;
+  return oid1_p->slotid - oid2_p->slotid;
 }
 
 /*
