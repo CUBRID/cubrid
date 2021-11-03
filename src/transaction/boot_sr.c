@@ -2221,6 +2221,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
+  // Initialize page buffer
+  error_code = pgbuf_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /*
    * How to restart the system ?
    */
@@ -2372,6 +2379,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * Now restart the recovery manager and execute any recovery actions
    */
 
+#if defined (SERVER_MODE)
+  // Initialize page buffer daemons first to allow page flushing in background.
+  pgbuf_daemons_init ();
+  if (!is_tran_server_with_remote_storage ())
+    {
+      dwb_daemons_init ();
+    }
+#endif
+
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
   error_code = boot_after_copydb (thread_p);	// only does something if this is first boot after copydb
@@ -2382,12 +2398,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  pgbuf_daemons_init ();
+  // Reset highest evicted LSA
   pgbuf_highest_evicted_lsa_init ();
-  if (!is_tran_server_with_remote_storage ())
-    {
-      dwb_daemons_init ();
-    }
+
   cdc_daemons_init ();
 #endif /* SERVER_MODE */
 
@@ -3823,6 +3836,7 @@ void
 boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 			  BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
 {
+  pgbuf_finalize ();
   logtb_finalize_global_unique_stats_table (thread_p);
   locator_finalize (thread_p);
   spage_finalize (thread_p);
@@ -4907,6 +4921,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, false, NULL);
 
+  error_code = pgbuf_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* Assign an index to current thread of execution (i.e., a client id) */
 
   tran_index =
@@ -5225,6 +5245,11 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
       /* Initialize the transaction table */
       logtb_define_trantable (thread_p, -1, -1);
+      error_code = pgbuf_initialize ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
 
       /* The database pagesize is set by log_get_io_page_size */
 
@@ -5281,6 +5306,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
       (void) boot_remove_all_temp_volumes (thread_p, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION);
       boot_server_status (BOOT_SERVER_UP);
       log_final (thread_p);
+      pgbuf_finalize ();
 
     }
 
@@ -5475,6 +5501,12 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
+
+  error_code = pgbuf_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   spage_boot (thread_p);
   error_code = heap_manager_initialize ();
