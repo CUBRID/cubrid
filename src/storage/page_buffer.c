@@ -16029,12 +16029,6 @@ pgbuf_get_page_flush_interval (bool & is_timed_wait, cubthread::delta_time & per
 static void
 pgbuf_page_maintenance_execute (cubthread::entry & thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED ())
-    {
-      // wait for boot to finish
-      return;
-    }
-
   /* page buffer maintenance thread adjust quota's based on thread activity. */
   pgbuf_adjust_quotas (&thread_ref);
 
@@ -16062,11 +16056,11 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 
     void execute (cubthread::entry & thread_ref) override
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-        {
-          // wait for boot to finish
-          return;
-        }
+      if (pgbuf_Page_flush_daemon == nullptr)
+	{
+	  // daemon not fully initialized yet
+	  return;
+	}
 
       // did not timeout, someone requested flush... run at least once
       bool force_one_run = pgbuf_Page_flush_daemon->was_woken_up ();
@@ -16106,12 +16100,6 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 static void
 pgbuf_page_post_flush_execute (cubthread::entry & thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED ())
-    {
-      // wait for boot to finish
-      return;
-    }
-
   /* assign flushed pages */
   if (pgbuf_assign_flushed_pages (&thread_ref))
     {
@@ -16147,12 +16135,6 @@ class pgbuf_flush_control_daemon_task : public cubthread::entry_task
 
     void execute (cubthread::entry & thread_ref) override
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-        {
-          // wait for boot to finish
-          return;
-        }
-
       if (m_first_run)
         {
           gettimeofday (&m_end, NULL);

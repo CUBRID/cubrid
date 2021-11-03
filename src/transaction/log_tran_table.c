@@ -481,11 +481,6 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
     {
       goto error;
     }
-  error_code = pgbuf_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
   error_code = file_manager_init ();
   if (error_code != NO_ERROR)
     {
@@ -574,7 +569,6 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 
   log_Gl.mvcc_table.finalize ();
   lock_finalize ();
-  pgbuf_finalize ();
   file_manager_final ();
 
   if (log_Gl.trantable.area != NULL)
