@@ -354,7 +354,8 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
     }
 
   if (css_common_connect
-      (host, g_conn_entry, DATA_REQUEST, dbname, strlen (dbname) + 1, port, g_connection_timeout, &rid, true) == NULL)
+      (host, g_conn_entry, DATA_REQUEST, dbname, (int) strlen (dbname) + 1, port, g_connection_timeout, &rid,
+       true) == NULL)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, trace_errbuf);
     }
@@ -462,7 +463,7 @@ cubrid_log_send_configurations (void)
       ptr = or_pack_int64 (ptr, (INT64) g_extraction_table[i]);
     }
 
-  request_size = ptr - request;
+  request_size = (int) (ptr - request);
 
   if (css_send_request_with_data_buffer
       (g_conn_entry, NET_SERVER_CDC_START_SESSION, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
@@ -914,8 +915,6 @@ cubrid_log_make_ddl (char **data_info, DDL * ddl)
 {
   char *ptr;
 
-  char trace_errbuf[1024];
-
   ptr = *data_info;
 
   ptr = or_unpack_int (ptr, &ddl->ddl_type);
@@ -1011,7 +1010,7 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	    case 5:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
-	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = (int) strlen (dml->changed_column_data[i]);
 	      break;
 	    case 6:
 	      assert (0);	// unused pack func code: or_pack_stream()
@@ -1026,14 +1025,14 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 		}
 	      else
 		{
-		  dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
+		  dml->changed_column_data_len[i] = (int) strlen (dml->changed_column_data[i]);
 		}
 	      break;
 
 	    case 8:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
-	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = (int) strlen (dml->changed_column_data[i]);
 	      break;
 
 	    default:
@@ -1110,7 +1109,7 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	    case 5:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
-	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = (int) strlen (dml->cond_column_data[i]);
 	      break;
 	    case 6:
 	      assert (0);	// unused pack func code: or_pack_stream()
@@ -1119,13 +1118,13 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	    case 7:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
-	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = (int) strlen (dml->cond_column_data[i]);
 	      break;
 
 	    case 8:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
-	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = (int) strlen (dml->cond_column_data[i]);
 	      break;
 
 	    default:
@@ -1407,10 +1406,6 @@ cubrid_log_clear_data_item (DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * da
     }
 
   return CUBRID_LOG_SUCCESS;
-
-cubrid_log_error:
-
-  return err_code;
 }
 
 /*
