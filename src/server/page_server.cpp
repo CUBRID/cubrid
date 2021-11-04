@@ -52,7 +52,7 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
 		chn.get_channel_id ().c_str ());
 
-  if (m_active_tran_server_conn)
+  if (m_active_tran_server_conn != nullptr)
     {
       // ATS must have crashed without disconnecting from us. Destroy old connection to create a new one.
       disconnect_active_tran_server ();
