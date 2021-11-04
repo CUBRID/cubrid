@@ -270,7 +270,7 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_XA_END_TRAN */
   fn_con_close,			/* CAS_FC_CON_CLOSE */
   fn_check_cas,			/* CAS_FC_CHECK_CAS */
-  fn_make_out_rs,		/* CAS_FC_MAKE_OUT_RS */
+  fn_not_supported,		/* CAS_FC_MAKE_OUT_RS */
   fn_not_supported,		/* CAS_FC_GET_GENERATED_KEYS */
   fn_not_supported,		/* CAS_FC_LOB_NEW */
   fn_not_supported,		/* CAS_FC_LOB_WRITE */
@@ -866,6 +866,11 @@ cas_main (void)
 #endif /* !CAS_FOR_CGW */
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
+#if defined(CAS_FOR_CGW)
+  char odbc_resolved_url[CGW_LINK_URL_MAX_LEN] = { 0, };
+  char odbc_connect_url[CGW_LINK_URL_MAX_LEN] = { 0, };
+#endif
+
 #if defined(CAS_FOR_ORACLE)
   cas_bi_set_dbms_type (CAS_DBMS_ORACLE);
 #elif defined(CAS_FOR_MYSQL)
@@ -1237,7 +1242,19 @@ cas_main (void)
 #if !defined (CAS_FOR_CGW)
 	    err_code = ux_database_connect (db_name, db_user, db_passwd, &db_err_msg);
 #else
-	    err_code = cgw_database_connect (shm_appl->cgw_link_dsn, shm_appl->cgw_link_connection_url);
+	    snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, ODBC_CONNECT_URL_FORMAT,
+		      shm_appl->cgw_link_odbc_driver_name,
+		      shm_appl->cgw_link_server_ip,
+		      shm_appl->cgw_link_server_port,
+		      db_name, db_user, db_passwd, shm_appl->cgw_link_connect_url_property);
+
+	    snprintf (odbc_resolved_url, CGW_LINK_URL_MAX_LEN, ODBC_CONNECT_URL_FORMAT,
+		      shm_appl->cgw_link_odbc_driver_name,
+		      shm_appl->cgw_link_server_ip,
+		      shm_appl->cgw_link_server_port,
+		      db_name, db_user, "********", shm_appl->cgw_link_connect_url_property);
+
+	    err_code = cgw_database_connect (odbc_connect_url);
 #endif /* !CAS_FOR_CGW */
 
 	    if (err_code < 0)
@@ -1256,40 +1273,12 @@ cas_main (void)
 #if defined (CAS_FOR_CGW)
 		if (db_err_msg == NULL)
 		  {
-		    if (shm_appl->cgw_link_dsn != NULL && strlen (shm_appl->cgw_link_dsn) > 0)
-		      {
-			snprintf (msg_buf, LINE_MAX, "connect dsn %s, error:%d", shm_appl->cgw_link_dsn,
-				  err_info.err_number);
-		      }
-		    else if (shm_appl->cgw_link_connection_url != NULL
-			     && strlen (shm_appl->cgw_link_connection_url) > 0)
-		      {
-			snprintf (msg_buf, LINE_MAX, "connect url %s, error:%d", shm_appl->cgw_link_connection_url,
-				  err_info.err_number);
-		      }
-		    else
-		      {
-			snprintf (msg_buf, LINE_MAX, "connect error:%d", err_info.err_number);
-		      }
+		    snprintf (msg_buf, LINE_MAX, "connect url %s, error:%d", odbc_resolved_url, err_info.err_number);
 		  }
 		else
 		  {
-		    if (shm_appl->cgw_link_dsn != NULL && strlen (shm_appl->cgw_link_dsn) > 0)
-		      {
-			snprintf (msg_buf, LINE_MAX, "connect dsn %s, error:%d, %s", shm_appl->cgw_link_dsn,
-				  err_info.err_number, db_err_msg);
-		      }
-		    else if (shm_appl->cgw_link_connection_url != NULL
-			     && strlen (shm_appl->cgw_link_connection_url) > 0)
-		      {
-			snprintf (msg_buf, LINE_MAX, "connect url %s, error:%d, %s", shm_appl->cgw_link_connection_url,
-				  err_info.err_number, db_err_msg);
-		      }
-		    else
-		      {
-			snprintf (msg_buf, LINE_MAX, "connect error:%d, %s", shm_appl->cgw_link_connection_url,
-				  err_info.err_number, db_err_msg);
-		      }
+		    snprintf (msg_buf, LINE_MAX, "connect url %s, error:%d, %s", odbc_resolved_url,
+			      err_info.err_number, db_err_msg);
 		  }
 #else
 		if (db_err_msg == NULL)
@@ -1345,14 +1334,9 @@ cas_main (void)
 	    cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s" " session id %u", as_info->database_name,
 				   as_info->database_host, db_user, url, session_id);
 #else
-	    if (shm_appl->cgw_link_dsn != NULL && strlen (shm_appl->cgw_link_dsn) > 0)
-	      {
-		cas_log_write_and_end (0, false, "connect dsn %s", shm_appl->cgw_link_dsn);
-	      }
-	    else
-	      {
-		cas_log_write_and_end (0, false, "connect url %s", shm_appl->cgw_link_connection_url);
-	      }
+	    cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s", db_name,
+				   shm_appl->cgw_link_server_ip, db_user, odbc_resolved_url);
+
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)

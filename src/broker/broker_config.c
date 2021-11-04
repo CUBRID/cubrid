@@ -218,8 +218,10 @@ const char *broker_keywords[] = {
   "SERVICE",
   "SSL",
   "CGW_LINK_SERVER",
-  "CGW_LINK_DSN",
-  "CGW_LINK_CONNECTION_URL",
+  "CGW_LINK_SERVER_IP",
+  "CGW_LINK_SERVER_PORT",
+  "CGW_LINK_ODBC_DRIVER_NAME",
+  "CGW_LINK_CONNECT_URL_PROPERTY",
   "SOURCE_ENV",
   /* Below is a keyword referenced from the source code, although it is not in the manual. */
   "APPL_SERVER",
@@ -554,9 +556,15 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       strcpy (br_info[num_brs].cgw_link_server,
 	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER", DEFAULT_EMPTY_STRING, &lineno));
-      strcpy (br_info[num_brs].cgw_link_dsn, ini_getstr (ini, sec_name, "CGW_LINK_DSN", DEFAULT_EMPTY_STRING, &lineno));
-      strcpy (br_info[num_brs].cgw_link_connection_url,
-	      ini_getstr (ini, sec_name, "CGW_LINK_CONNECTION_URL", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_server_ip,
+	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER_IP", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_server_port,
+	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER_PORT", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_odbc_driver_name,
+	      ini_getstr (ini, sec_name, "CGW_LINK_ODBC_DRIVER_NAME", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_connect_url_property,
+	      ini_getstr (ini, sec_name, "CGW_LINK_CONNECT_URL_PROPERTY", DEFAULT_EMPTY_STRING, &lineno));
+
 
       br_info[num_brs].appl_server =
 	get_conf_value (ini_getstr (ini, sec_name, "APPL_SERVER", DEFAULT_APPL_SERVER, &lineno), tbl_appl_server);

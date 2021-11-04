@@ -95,12 +95,12 @@ cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool is_connected)
 }
 
 int
-cgw_database_connect (const char *dsn, const char *connect_url)
+cgw_database_connect (const char *connect_url)
 {
   SQLRETURN err_code;
-  SQLCHAR out_connect_str[CGW_LINK_CONNECTION_URL_LEN + 1];
+  SQLCHAR out_connect_str[CGW_LINK_URL_MAX_LEN + 1];
   SQLSMALLINT out_connect_str_len;
-  char connect_str[CGW_LINK_CONNECTION_URL_LEN + 1] = { 0, };
+  char connect_str[CGW_LINK_URL_MAX_LEN + 1] = { 0, };
 
   cgw_cleanup_handle (local_odbc_handle);
 
@@ -137,24 +137,8 @@ cgw_database_connect (const char *dsn, const char *connect_url)
 	       err_code =
 	       SQLSetConnectAttr (local_odbc_handle->hdbc, SQL_LOGIN_TIMEOUT, (SQLPOINTER) LOGIN_TIME_OUT, 0));
 
-  if (dsn != NULL && strlen (dsn) > 0)
+  if (connect_url != NULL && strlen (connect_url) > 0)
     {
-      strcpy (connect_str, "DSN=");
-      strcat (connect_str, dsn);
-
-      SQL_CHK_ERR (local_odbc_handle->hdbc,
-		   SQL_HANDLE_DBC,
-		   err_code = SQLDriverConnect (local_odbc_handle->hdbc,
-						NULL,
-						(SQLCHAR *) connect_str,
-						SQL_NTS,
-						out_connect_str,
-						(SQLSMALLINT) sizeof (out_connect_str),
-						&out_connect_str_len, SQL_DRIVER_NOPROMPT));
-    }
-  else if (connect_url != NULL && strlen (connect_url) > 0)
-    {
-
       SQL_CHK_ERR (local_odbc_handle->hdbc,
 		   SQL_HANDLE_DBC,
 		   err_code = SQLDriverConnect (local_odbc_handle->hdbc,

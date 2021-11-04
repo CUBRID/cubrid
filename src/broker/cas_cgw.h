@@ -58,6 +58,7 @@
 #define CLASS_NAME_LEN             (255)
 
 #define DECIMAL_DIGIT_MAX_LEN      (20)	/* 9223372036854775807 (7FFF FFFF FFFF FFFF) */
+#define ODBC_CONNECT_URL_FORMAT    "DRIVER={%s};SERVER=%s;Port=%s;DATABASE=%s;USER=%s;PASSWORD=%s;%s"
 
 typedef struct t_col_binder T_COL_BINDER;
 struct t_col_binder
@@ -127,7 +128,7 @@ extern int cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool is_connected);
 extern int cgw_get_driver_info (SQLHDBC hdbc, SQLUSMALLINT info_type, void *driver_info, SQLSMALLINT size);
 
 // db connection functions
-extern int cgw_database_connect (const char *dsn, const char *connect_url);
+extern int cgw_database_connect (const char *connect_url);
 extern void cgw_database_disconnect (void);
 extern int cgw_is_database_connected (void);
 

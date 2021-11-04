@@ -633,8 +633,10 @@ struct t_shm_appl_server
 #endif
 
   char cgw_link_server[CGW_LINK_SERVER_NAME_LEN];
-  char cgw_link_dsn[CGW_LINK_DSN_NAME_LEN];
-  char cgw_link_connection_url[CGW_LINK_CONNECTION_URL_LEN];
+  char cgw_link_server_ip[CGW_LINK_SERVER_IP_LEN];
+  char cgw_link_server_port[CGW_LINK_SERVER_PORT_LEN];
+  char cgw_link_odbc_driver_name[CGW_LINK_ODBC_DRIVER_NAME_LEN];
+  char cgw_link_connect_url_property[CGW_LINK_CONNECT_URL_PROPERTY_LEN];
 
   ACCESS_INFO access_info[ACL_MAX_ITEM_COUNT];
 

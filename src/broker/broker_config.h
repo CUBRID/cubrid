@@ -112,8 +112,15 @@
 #define DEFAULT_SSL_MODE                 "OFF"
 
 #define CGW_LINK_SERVER_NAME_LEN	 256
-#define CGW_LINK_DSN_NAME_LEN		 256
-#define CGW_LINK_CONNECTION_URL_LEN      2048
+#define CGW_LINK_SERVER_IP_LEN		 32
+#define CGW_LINK_SERVER_PORT_LEN	 10
+#define CGW_LINK_ODBC_DRIVER_NAME_LEN	 256
+#define CGW_LINK_CONNECT_URL_PROPERTY_LEN	512
+#define CGW_LINK_URL_MAX_LEN	         (CGW_LINK_SERVER_IP_LEN           \
+                                          + CGW_LINK_SERVER_PORT_LEN       \
+                                          + CGW_LINK_ODBC_DRIVER_NAME_LEN  \
+                                          + CGW_LINK_CONNECT_URL_PROPERTY_LEN)     \
+
 
 enum t_sql_log_mode_value
 {
@@ -290,8 +297,10 @@ struct t_broker_info
   char use_SSL;
 
   char cgw_link_server[CGW_LINK_SERVER_NAME_LEN];
-  char cgw_link_dsn[CGW_LINK_DSN_NAME_LEN];
-  char cgw_link_connection_url[CGW_LINK_CONNECTION_URL_LEN];
+  char cgw_link_server_ip[CGW_LINK_SERVER_IP_LEN];
+  char cgw_link_server_port[CGW_LINK_SERVER_PORT_LEN];
+  char cgw_link_odbc_driver_name[CGW_LINK_ODBC_DRIVER_NAME_LEN];
+  char cgw_link_connect_url_property[CGW_LINK_CONNECT_URL_PROPERTY_LEN];
 };
 
 extern int broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,

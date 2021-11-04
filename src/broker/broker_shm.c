@@ -556,8 +556,10 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
   shm_as_p->shard_flag = br_info_p->shard_flag;
 
   strcpy (shm_as_p->cgw_link_server, br_info_p->cgw_link_server);
-  strcpy (shm_as_p->cgw_link_dsn, br_info_p->cgw_link_dsn);
-  strcpy (shm_as_p->cgw_link_connection_url, br_info_p->cgw_link_connection_url);
+  strcpy (shm_as_p->cgw_link_server_ip, br_info_p->cgw_link_server_ip);
+  strcpy (shm_as_p->cgw_link_server_port, br_info_p->cgw_link_server_port);
+  strcpy (shm_as_p->cgw_link_odbc_driver_name, br_info_p->cgw_link_odbc_driver_name);
+  strcpy (shm_as_p->cgw_link_connect_url_property, br_info_p->cgw_link_connect_url_property);
 
   if (shm_as_p->shard_flag == OFF)
     {
