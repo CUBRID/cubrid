@@ -1226,6 +1226,7 @@ uso: %1$s tde OPERACIÓN (-s|-n|-d|-c) [OPCIÓN] database-name\n\
 \n\
 opciones válidas:\n\
     -p, --dba-password=PASS     contraseña del usuario DBA; le preguntará si no especifica\n\
+\n\
 OPERACIONES: se debe dar una de las operaciones, y son exclusivas\n\
     -s, --show-keys             imprime la información de la clave establecida en la base de datos y el archivo de clave (_keys)\n\
     -n, --generate-new-key      genera una nueva clave en el archivo de claves (_keys); recuento máximo: 128\n\

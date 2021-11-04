@@ -1225,6 +1225,7 @@ Verwendung: %1$s tde OPERATION (-s|-n|-d|-c) [OPTION] Datenbankname\n\
 \n\
 gültige Optionen:\n\
     -p, --dba-password=PASS-Passwort    des DBA-Benutzers; wird gefragt, wenn nicht angegeben wird\n\
+\n\
 OPERATIONEN: Eine der Operationen muss angegeben werden und sie sind exklusiv\n\
     -s, --show-keys                     druckt Schlüsselinformationen, die in der Datenbank und in der Schlüsseldatei (_keys) festgelegt sind\n\
     -n, --generate-new-key              generiert einen neuen Schlüssel in der Schlüsseldatei (_keys); maximale Anzahl: 128\n\
