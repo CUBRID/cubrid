@@ -4486,10 +4486,8 @@ pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM 
 
   CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
 
-#if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE, "TDE: pgbuf_set_tde_algorithm(): VPID = %d|%d, tde_algorithm = %s\n", iopage->prv.volid,
-		iopage->prv.pageid, tde_get_algorithm_name (tde_algo));
-#endif /* !NDEBUG */
+  tde_er_log ("TDE: pgbuf_set_tde_algorithm(): VPID = %d|%d, tde_algorithm = %s\n", iopage->prv.volid,
+	      iopage->prv.pageid, tde_get_algorithm_name (tde_algo));
 
   if (!skip_logging)
     {
@@ -14010,9 +14008,8 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 #if !defined(NDEBUG)
   if (bcb->iopage_buffer->iopage.prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "TDE: pgbuf_dealloc_page(): clear tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
-		    VPID_AS_ARGS (&bcb->vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (page_dealloc)));
+      tde_er_log ("TDE: pgbuf_dealloc_page(): clear tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
+		  VPID_AS_ARGS (&bcb->vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (page_dealloc)));
     }
 #endif /* !NDEBUG */
 
@@ -14089,9 +14086,8 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 #if !defined(NDEBUG)
   if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "TDE: pgbuf_rv_dealloc_page(): reset tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
-		    VPID_AS_ARGS (&vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (page_deallocated)));
+      tde_er_log ("TDE: pgbuf_rv_dealloc_page(): reset tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
+		  VPID_AS_ARGS (&vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (page_deallocated)));
     }
 #endif /* !NDEBUG */
 
@@ -14129,9 +14125,8 @@ pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 #if !defined(NDEBUG)
   if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "TDE: pgbuf_rv_dealloc_page(): reset tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
-		    VPID_AS_ARGS (&vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (rcv->pgptr)));
+      tde_er_log ("TDE: pgbuf_rv_dealloc_page(): reset tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
+		  VPID_AS_ARGS (&vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (rcv->pgptr)));
     }
 #endif /* !NDEBUG */
 
