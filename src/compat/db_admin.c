@@ -259,12 +259,12 @@ db_init (const char *program, int print_version, const char *dbname, const char 
   client_credential.program_name = program;
   client_credential.process_id = -1;
 
-  db_path_info.db_path = (char *) db_path;
-  db_path_info.vol_path = (char *) vol_path;
-  db_path_info.log_path = (char *) log_path;
-  db_path_info.lob_path = (char *) lob_path;
-  db_path_info.db_host = (char *) host_name;
-  db_path_info.db_comments = (char *) comments;
+  db_path_info.db_path = db_path;
+  db_path_info.vol_path = vol_path;
+  db_path_info.log_path = log_path;
+  db_path_info.lob_path = lob_path;
+  db_path_info.db_host = host_name;
+  db_path_info.db_comments = comments;
 
   error = boot_initialize_client (&client_credential, &db_path_info, (bool) overwrite, addmore_vols_file, npages,
 				  (PGLENGTH) desired_pagesize, log_npages, (PGLENGTH) desired_log_page_size,

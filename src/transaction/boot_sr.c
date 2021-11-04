@@ -218,7 +218,6 @@ static int boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_C
 static int boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log_path,
 				    const char *log_prefix, bool dirty_rem, bool force_delete);
 static char *boot_volume_info_log_path (char *log_path);
-static void boot_remove_useless_path_separator (const char *path, char *new_path);
 static void boot_ctrl_c_in_init_server (int ignore_signo);
 
 #if defined(CUBRID_DEBUG)
@@ -591,100 +590,6 @@ xboot_add_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_in
     }
   assert (volid != NULL_VOLID);
   return volid;
-}
-
-/*
- * boot_remove_useless_path_separator () - Remove useless PATH_SEPARATOR in path string
- *
- * return : true or false(in case of fail)
- *
- *   path(in): Original path.
- *   new_path(out): Transformed path.
- *
- * Note: This function removes useless PATH_SEPARATOR in path string.
- *       For example,
- *       /home3/CUBRID/DB/               -->  /home3/CUBRID/DB
- *       C:\CUBRID\\\Databases\\         -->  C:\CUBRID\Databases
- *       \\pooh\user\                    -->  \\pooh\user
- *
- *       After transform..
- *       If new path string is "/" or "\", don't remove the last slash.
- *       It is survived.
- */
-static void
-boot_remove_useless_path_separator (const char *path, char *new_path)
-{
-  int slash_num = 0;		/* path separator counter */
-
-  /* path must be not null */
-  assert (path != NULL);
-  assert (new_path != NULL);
-
-  /*
-   * Before transform.
-   *   / h o m e 3 / / w o r k / c u b r i d / / / w o r k /
-   *
-   * After transform.
-   *   / h o m e 3   / w o r k / c u b r i d     / w o r k
-   */
-
-  /* Consume the preceding continuous slash chars. */
-  while (*path == PATH_SEPARATOR)
-    {
-      slash_num++;
-      path++;
-    }
-
-  /* If there is preceding consumed slash, append PATH_SEPARATOR */
-  if (slash_num)
-    {
-      *new_path++ = PATH_SEPARATOR;
-#if defined(WINDOWS)
-      /*
-       * In Windows/NT,
-       * If first duplicated PATH_SEPARATORs are appeared, they are survived.
-       * For example,
-       * \\pooh\user\ -> \\pooh\user(don't touch the first duplicated PATH_SEPARATORs)
-       */
-      if (slash_num > 1)
-	{
-	  *new_path++ = PATH_SEPARATOR;
-	}
-#endif /* WINDOWS */
-    }
-
-  /* Initialize separator counter again. */
-  slash_num = 0;
-
-  /*
-   * If current character is PATH_SEPARATOR,
-   *    skip after increasing separator counter.
-   * If current character is normal character, copy to new_path.
-   */
-  while (*path)
-    {
-      if (*path == PATH_SEPARATOR)
-	{
-	  slash_num++;
-	}
-      else
-	{
-	  /*
-	   * If there is consumed slash, append PATH_SEPARATOR.
-	   * Initialize separator counter.
-	   */
-	  if (slash_num)
-	    {
-	      *new_path++ = PATH_SEPARATOR;
-	      slash_num = 0;
-	    }
-	  *new_path++ = *path;
-	}
-      path++;
-    }
-
-  /* Assure null terminated string */
-  *new_path = '\0';
 }
 
 /*
@@ -1510,20 +1415,14 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   DB_INFO *dir = NULL;
   volatile int dbtxt_vdes = NULL_VOLDES;
   char vol_real_path[PATH_MAX];
-  char log_pathbuf[PATH_MAX];
-  char lob_pathbuf[LOB_PATH_PREFIX_MAX + PATH_MAX];
   char dbtxt_label[PATH_MAX];
-  char fixed_pathbuf[PATH_MAX];
   char original_namebuf[PATH_MAX];
 #if defined (NDEBUG)
   char format[BOOT_FORMAT_MAX_LENGTH];
 #endif
   int error_code;
   void (*old_ctrl_c_handler) (int sig_no) = SIG_ERR;
-  struct stat stat_buf;
   bool is_exist_volume;
-  const char *db_path, *log_path, *lob_path;
-  char *p;
   THREAD_ENTRY *thread_p = NULL;
 
   assert (client_credential != NULL);
@@ -1607,93 +1506,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       goto exit_on_error;
     }
 
-  /*
-   * Make sure that the db_path and log_path and lob_path are the canonicalized
-   * absolute pathnames
-   */
-
-  memset (boot_Db_directory_path, 0, sizeof (boot_Db_directory_path));
-  memset (log_pathbuf, 0, sizeof (log_pathbuf));
-  memset (lob_pathbuf, 0, sizeof (lob_pathbuf));
-
-  /*
-   * for db path,
-   * convert to absolute path, remove useless PATH_SEPARATOR
-   */
-  db_path = db_path_info->db_path;
-  if (realpath (db_path, fixed_pathbuf) != NULL)
-    {
-      db_path = fixed_pathbuf;
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, db_path);
-      goto exit_on_error;
-    }
-  boot_remove_useless_path_separator (db_path, boot_Db_directory_path);
-  db_path = nullptr;		// unused henceforth
-
-  /*
-   * for log path,
-   * convert to absolute path, remove useless PATH_SEPARATOR
-   */
-  log_path = db_path_info->log_path;
-  if (realpath (log_path, fixed_pathbuf) != NULL)
-    {
-      log_path = fixed_pathbuf;
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, log_path);
-      goto exit_on_error;
-    }
-  boot_remove_useless_path_separator (log_path, log_pathbuf);
-
-  /*
-   * for lob path,
-   * convert to absolute path, remove useless PATH_SEPARATOR
-   */
-  lob_path = db_path_info->lob_path;
-  if (es_get_type (lob_path) == ES_NONE)
-    {
-      snprintf (lob_pathbuf, sizeof (lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, lob_path);
-      p = strchr (lob_pathbuf, ':') + 1;
-    }
-  else
-    {
-      p = strchr (strcpy (lob_pathbuf, lob_path), ':') + 1;
-    }
-  lob_path = p;
-
-  if (lob_path == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, lob_pathbuf);
-      return NULL_TRAN_INDEX;
-    }
-
-  if (es_get_type (lob_pathbuf) == ES_POSIX)
-    {
-#if defined (WINDOWS)
-      if (realpath (lob_path, fixed_pathbuf) != NULL
-	  && (stat (fixed_pathbuf, &stat_buf) == 0 && S_ISDIR (stat_buf.st_mode)))
-#else
-      if (realpath (lob_path, fixed_pathbuf) != NULL)
-#endif
-	{
-	  lob_path = fixed_pathbuf;
-	}
-      else
-	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lob_path);
-	  if (mkdir (lob_path, 0777) < 0)
-	    {
-	      cub_dirname_r (lob_path, fixed_pathbuf, PATH_MAX);
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", fixed_pathbuf);
-	      goto exit_on_error;
-	    }
-	}
-      boot_remove_useless_path_separator (lob_path, p);
-    }
+  strncpy_bufsize (boot_Db_directory_path, db_path_info->db_path);
 
   /*
    * Compose the full name of the database
@@ -1831,7 +1644,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 
   error_code =
-    logpb_check_exist_any_volumes (thread_p, boot_Db_full_name, log_pathbuf, log_prefix, vol_real_path,
+    logpb_check_exist_any_volumes (thread_p, boot_Db_full_name, db_path_info->log_path, log_prefix, vol_real_path,
 				   &is_exist_volume);
   if (error_code != NO_ERROR || is_exist_volume)
     {
@@ -1848,6 +1661,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	}
       else
 	{
+	  struct stat stat_buf;
 	  if (stat (vol_real_path, &stat_buf) != 0	/* file not exist */
 	      || S_ISDIR (stat_buf.st_mode))
 	    {			/* is directory */
@@ -1884,7 +1698,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     {
       tran_index =
 	boot_create_all_volumes (thread_p, client_credential, db_path_info->db_comments, db_npages, file_addmore_vols,
-				 log_pathbuf, (const char *) log_prefix, log_npages, client_lock_wait,
+				 db_path_info->log_path, (const char *) log_prefix, log_npages, client_lock_wait,
 				 client_isolation);
 
       if (tran_index != NULL_TRAN_INDEX && !boot_Init_server_is_canceled)
@@ -1918,12 +1732,13 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	  if (db == NULL)
 	    {
 	      db =
-		cfg_add_db (&dir, client_credential->get_db_name (), boot_Db_directory_path, log_pathbuf, lob_pathbuf,
-			    db_path_info->db_host);
+		cfg_add_db (&dir, client_credential->get_db_name (), boot_Db_directory_path, db_path_info->log_path,
+			    db_path_info->lob_path, db_path_info->db_host);
 	    }
 	  else
 	    {
-	      cfg_update_db (db, boot_Db_directory_path, log_pathbuf, lob_pathbuf, db_path_info->db_host);
+	      cfg_update_db (db, boot_Db_directory_path, db_path_info->log_path, db_path_info->lob_path,
+			     db_path_info->db_host);
 	    }
 
 	  if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->lobpath == NULL
@@ -1965,7 +1780,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 
   if (tran_index == NULL_TRAN_INDEX || boot_Init_server_is_canceled)
     {
-      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name, log_pathbuf, (const char *) log_prefix, true, true);
+      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name, db_path_info->log_path, (const char *) log_prefix,
+				      true, true);
       if (boot_Init_server_is_canceled)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -2406,6 +2222,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
+  // Initialize page buffer
+  error_code = pgbuf_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /*
    * How to restart the system ?
    */
@@ -2557,6 +2380,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * Now restart the recovery manager and execute any recovery actions
    */
 
+#if defined (SERVER_MODE)
+  // Initialize page buffer daemons first to allow page flushing in background.
+  pgbuf_daemons_init ();
+  if (!is_tran_server_with_remote_storage ())
+    {
+      dwb_daemons_init ();
+    }
+#endif
+
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
   error_code = boot_after_copydb (thread_p);	// only does something if this is first boot after copydb
@@ -2567,12 +2399,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  pgbuf_daemons_init ();
+  // Reset highest evicted LSA
   pgbuf_highest_evicted_lsa_init ();
-  if (!is_tran_server_with_remote_storage ())
-    {
-      dwb_daemons_init ();
-    }
+
   cdc_daemons_init ();
 #endif /* SERVER_MODE */
 
@@ -4008,6 +3837,7 @@ void
 boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 			  BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
 {
+  pgbuf_finalize ();
   logtb_finalize_global_unique_stats_table (thread_p);
   locator_finalize (thread_p);
   spage_finalize (thread_p);
@@ -5092,6 +4922,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, false, NULL);
 
+  error_code = pgbuf_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* Assign an index to current thread of execution (i.e., a client id) */
 
   tran_index =
@@ -5410,6 +5246,11 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
       /* Initialize the transaction table */
       logtb_define_trantable (thread_p, -1, -1);
+      error_code = pgbuf_initialize ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
 
       /* The database pagesize is set by log_get_io_page_size */
 
@@ -5466,6 +5307,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
       (void) boot_remove_all_temp_volumes (thread_p, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION);
       boot_server_status (BOOT_SERVER_UP);
       log_final (thread_p);
+      pgbuf_finalize ();
 
     }
 
@@ -5660,6 +5502,12 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
+
+  error_code = pgbuf_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   spage_boot (thread_p);
   error_code = heap_manager_initialize ();

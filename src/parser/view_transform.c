@@ -95,11 +95,9 @@ typedef struct check_pushable_info
 {
   bool check_query;
   bool check_method;
-  bool check_xxxnum;
 
   bool query_found;
   bool method_found;
-  bool xxxnum_found;		/* rownum, inst_num(), orderby_num(), groupby_num() */
 } CHECK_PUSHABLE_INFO;
 
 static unsigned int top_cycle = 0;
@@ -1392,18 +1390,21 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
       return false;
     }
 
+  /* check inst num or orderby_num */
+  if (!is_only_spec && pt_has_inst_in_where_and_select_list (parser, query))
+    {
+      return false;
+    }
+
   /* check select list */
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
-  cpi.check_xxxnum = !is_only_spec;
-
   cpi.method_found = false;
   cpi.query_found = false;
-  cpi.xxxnum_found = false;
 
   parser_walk_tree (parser, query->info.query.q.select.list, pt_check_pushable, (void *) &cpi, NULL, NULL);
 
-  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
+  if (cpi.method_found || cpi.query_found)
     {
       /* query not pushable */
       return false;
@@ -1412,15 +1413,12 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
   /* check where clause */
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
-  cpi.check_xxxnum = !is_only_spec;
-
   cpi.method_found = false;
   cpi.query_found = false;
-  cpi.xxxnum_found = false;
 
   parser_walk_tree (parser, query->info.query.q.select.where, pt_check_pushable, (void *) &cpi, NULL, NULL);
 
-  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
+  if (cpi.method_found || cpi.query_found)
     {
       /* query not pushable */
       return false;
@@ -1598,7 +1596,7 @@ static PT_NODE *
 mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
 				     PT_NODE * class_, PT_NODE * order_by, int what_for)
 {
-  PT_NODE *tmp_result, *result, *arg1, *arg2, *statement_next;
+  PT_NODE *tmp_result, *result, *arg1, *arg2, *statement_next, *pred;
   PT_NODE *class_spec, *statement_spec = NULL;
   PT_NODE *derived_table, *derived_spec, *derived_class;
   bool is_pushable_query, is_outer_joined;
@@ -1633,23 +1631,28 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	{
 	case PT_SELECT:
 	  statement_spec = tmp_result->info.query.q.select.from;
+	  pred = tmp_result->info.query.q.select.where;
 	  break;
 
 	case PT_UPDATE:
 	  statement_spec = tmp_result->info.update.spec;
+	  pred = tmp_result->info.update.search_cond;
 	  break;
 
 	case PT_DELETE:
 	  statement_spec = tmp_result->info.delete_.spec;
+	  pred = tmp_result->info.delete_.search_cond;
 	  break;
 
 	case PT_INSERT:
 	  /* since INSERT can not have a spec list or statement conditions, there is nothing to check */
 	  statement_spec = tmp_result->info.insert.spec;
+	  pred = NULL;
 	  break;
 
 	case PT_MERGE:
 	  statement_spec = tmp_result->info.merge.into;
+	  pred = tmp_result->info.merge.insert.search_cond;
 	  break;
 
 	default:
@@ -1682,7 +1685,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
       else
 	{
 	  /* determine if class_spec is the only spec in the statement */
-	  is_only_spec = (statement_spec->next == NULL ? true : false);
+	  is_only_spec = ((statement_spec->next == NULL && pred == NULL) ? true : false);
 
 	  /* determine if spec is outer joined */
 	  is_outer_joined = mq_is_outer_join_spec (parser, class_spec);
@@ -2689,32 +2692,11 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 	  cinfop->method_found = true;	/* not pushable */
 	}
       break;
-
-    case PT_EXPR:
-      if (tree->info.expr.op == PT_ROWNUM || tree->info.expr.op == PT_INST_NUM || tree->info.expr.op == PT_ORDERBY_NUM)
-	{
-	  if (cinfop->check_xxxnum)
-	    {
-	      cinfop->xxxnum_found = true;	/* not pushable */
-	    }
-	}
-      break;
-
-    case PT_FUNCTION:
-      if (tree->info.function.function_type == PT_GROUPBY_NUM)
-	{
-	  if (cinfop->check_xxxnum)
-	    {
-	      cinfop->xxxnum_found = true;	/* not pushable */
-	    }
-	}
-      break;
-
     default:
       break;
     }				/* switch (tree->node_type) */
 
-  if (cinfop->query_found || cinfop->method_found || cinfop->xxxnum_found)
+  if (cinfop->query_found || cinfop->method_found)
     {
       /* not pushable */
       /* do not need to traverse anymore */
