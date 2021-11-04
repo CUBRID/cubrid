@@ -90,7 +90,7 @@ void page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
   {
     {
       tran_to_page_request::GET_BOOT_INFO,
-      std::bind (&page_server::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::receive_boot_info_request_from_pts, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_LOG_PRIOR_LIST,
@@ -228,6 +228,18 @@ void page_server::receive_boot_info_request (cubpacking::unpacker &upk)
   response_message.append (reinterpret_cast<const char *> (&nvols_perm), sizeof (nvols_perm));
 
   m_active_tran_server_conn->push (page_to_tran_request::SEND_BOOT_INFO, std::move (response_message));
+}
+
+void page_server::receive_boot_info_request_from_pts (cubpacking::unpacker &upk)
+{
+  assert (is_passive_tran_server_connected());
+  DKNVOLS nvols_perm = disk_get_perm_volume_count ();
+
+  std::string response_message;
+  response_message.reserve (sizeof (nvols_perm));
+  response_message.append (reinterpret_cast<const char *> (&nvols_perm), sizeof (nvols_perm));
+
+  m_passive_tran_server_conn[0]->push (page_to_tran_request::SEND_BOOT_INFO, std::move (response_message));
 }
 
 void page_server::push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload)

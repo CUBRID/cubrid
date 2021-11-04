@@ -66,6 +66,7 @@ class page_server
 	    cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
     void receive_boot_info_request (cubpacking::unpacker &upk);
+    void receive_boot_info_request_from_pts (cubpacking::unpacker &upk);
     void receive_log_prior_list (cubpacking::unpacker &upk);
     void receive_log_page_fetch (cubpacking::unpacker &upk);
     void receive_data_page_fetch (cubpacking::unpacker &upk);
