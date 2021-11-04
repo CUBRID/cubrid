@@ -1743,7 +1743,7 @@ prior_list_deserialize (const std::string &str, log_prior_node *&head, log_prior
 static void
 prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes)
 {
-  assertm (get_server_type () == SERVER_TYPE_TRANSACTION, "Log append can be executed only on transaction server");
+  assertm (is_active_transaction_server (), "Log append can be executed only on active transaction server");
   /* Does the new log record fit in this page ? */
   log_prior_lsa_append_advance_when_doesnot_fit (sizeof (LOG_RECORD_HEADER));
 

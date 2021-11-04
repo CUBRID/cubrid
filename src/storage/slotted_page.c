@@ -5276,7 +5276,5 @@ spage_need_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 bool
 spage_is_save_space_disabled ()
 {
-  const bool during_crash_recovery = log_is_in_crash_recovery ();
-  const bool in_page_server (get_server_type () == SERVER_TYPE_PAGE);
-  return during_crash_recovery || in_page_server;
+  return log_is_in_crash_recovery () || is_passive_server ();
 }

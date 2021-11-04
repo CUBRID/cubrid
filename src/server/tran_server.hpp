@@ -124,4 +124,6 @@ class tran_server
     bool m_is_boot_info_received = false;
 };
 
+extern std::unique_ptr<tran_server> ts_Gl;
+
 #endif // !_tran_server_HPP_

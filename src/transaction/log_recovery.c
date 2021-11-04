@@ -785,7 +785,7 @@ log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
   LSA_COPY (&log_Gl.final_restored_lsa, &log_Gl.hdr.append_lsa);
 #endif /* SERVER_MODE */
 
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+  if (is_active_transaction_server ())
     {
       log_append_empty_record (thread_p, LOG_DUMMY_CRASH_RECOVERY, NULL);
     }

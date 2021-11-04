@@ -1737,7 +1737,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	    }
 	  else
 	    {
-	      cfg_update_db (db, boot_Db_directory_path, db_path_info->log_path, db_path_info->lob_path, db_path_info->db_host);
+	      cfg_update_db (db, boot_Db_directory_path, db_path_info->log_path, db_path_info->lob_path,
+			     db_path_info->db_host);
 	    }
 
 	  if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->lobpath == NULL
@@ -2197,7 +2198,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
       // Log page broker is required to load log header.
-      ats_Gl.init_page_brokers ();
+      ts_Gl->init_page_brokers ();
     }
 #endif
 
@@ -2405,7 +2406,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+  if (is_active_transaction_server ())
     {
       error_code = vacuum_boot (thread_p);
       if (error_code != NO_ERROR)
@@ -2415,12 +2416,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
       else
 	{
-	  er_log_debug (ARG_FILE_LINE, "Vacuum was started on the transaction server.");
+	  er_log_debug (ARG_FILE_LINE, "Vacuum was started on the active transaction server.");
 	}
     }
   else
     {
-      er_log_debug (ARG_FILE_LINE, "Vacuum was not started on the page server.");
+      er_log_debug (ARG_FILE_LINE, "Vacuum was not started on the passive server.");
     }
 
 #if defined (SERVER_MODE)
@@ -2633,7 +2634,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif
 
   /* read only mode ? */
-  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) || get_server_type () == SERVER_TYPE_PAGE)
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) || is_passive_server ())
     {
       logtb_disable_update (NULL);
     }
@@ -3073,7 +3074,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
     }
   else if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      ats_Gl.finalize_page_brokers ();
+      ts_Gl->finalize_page_brokers ();
     }
 #endif
 

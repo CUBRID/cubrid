@@ -31,8 +31,6 @@
 #include <string>
 #include <utility>
 
-active_tran_server ats_Gl;
-
 bool
 active_tran_server::uses_remote_storage () const
 {
