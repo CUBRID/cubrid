@@ -1366,8 +1366,6 @@ cubrid_log_error:
 static int
 cubrid_log_clear_data_item (DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * data_item)
 {
-  int err_code;
-
   switch (data_item_type)
     {
     case DATA_ITEM_TYPE_DDL:
