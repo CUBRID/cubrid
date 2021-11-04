@@ -1164,8 +1164,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 
   query_p->includes_tde_class = XASL_IS_FLAGED (xasl_p, XASL_INCLUDES_TDE_CLASS);
 
-  tde_er_log ("TDE: qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
-
+  tde_er_log ("qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
 
   if (flag & RETURN_GENERATED_KEYS)
     {

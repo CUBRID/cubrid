@@ -4086,7 +4086,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   if (file_get_tde_algorithm_internal (fhead) != TDE_ALGORITHM_NONE)
     {
       tde_er_log
-	("TDE: file_destroy(): clear tde bit in pflag in all user pages, VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
+	("file_destroy(): clear tde bit in pflag in all user pages, VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
 	 VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
 	 tde_get_algorithm_name (file_get_tde_algorithm_internal (fhead)));
     }
@@ -5359,7 +5359,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	if (tde_algo != prev_tde_algo)
 	  {
 	    tde_er_log
-	      ("TDE: file_alloc(): set tde bit in pflag, VFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s, previous tde algorithm of the page = %s\n",
+	      ("file_alloc(): set tde bit in pflag, VFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s, previous tde algorithm of the page = %s\n",
 	       VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_out), tde_get_algorithm_name (tde_algo),
 	       tde_get_algorithm_name (prev_tde_algo));
 	  }
@@ -5762,7 +5762,7 @@ file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo)
       break;
     }
 
-  tde_er_log ("TDE: file_set_tde_algorithm_internal(): VFID = %d|%d, tde_algorithm = %s\n",
+  tde_er_log ("file_set_tde_algorithm_internal(): VFID = %d|%d, tde_algorithm = %s\n",
 	      VFID_AS_ARGS (&fhead->self), tde_get_algorithm_name (tde_algo));
 }
 
@@ -5885,7 +5885,7 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
       return NO_ERROR;
     }
 
-  tde_er_log ("TDE: file_apply_tde_algorithm(): VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
+  tde_er_log ("file_apply_tde_algorithm(): VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
 	      VFID_AS_ARGS (&fhead->self), fhead->n_page_user, tde_get_algorithm_name (tde_algo));
 
   error_code = file_set_tde_algorithm (thread_p, vfid, tde_algo);
