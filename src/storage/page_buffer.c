@@ -350,7 +350,6 @@ pgbuf_bcb_flag_is_invalid_victim (int flag)
 /* buffer lock return value */
 enum PGBUF_LOCK_MODE
 {
-  PGBUF_LOCK_UNKNOWN = -1,
   PGBUF_LOCK_WAITER = 0,
   PGBUF_LOCK_HOLDER,
 };
@@ -1996,12 +1995,7 @@ try_again:
 	  /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
 	   * released in pgbuf_lock_page (). */
 	  const PGBUF_LOCK_MODE lock_page_res = pgbuf_lock_page (thread_p, vpid, fetch_mode, hash_anchor, &perf);
-	  if (lock_page_res == PGBUF_LOCK_UNKNOWN)
-	    {
-	      ASSERT_ERROR ();
-	      return nullptr;
-	    }
-	  else if (lock_page_res == PGBUF_LOCK_WAITER)
+	  if (lock_page_res == PGBUF_LOCK_WAITER)
 	    {
 	      goto try_again;
 	    }
@@ -7377,7 +7371,7 @@ static PGBUF_LOCK_MODE
 pgbuf_lock_page (THREAD_ENTRY * const thread_p, const VPID * const vpid, PAGE_FETCH_MODE fetch_mode,
 		 PGBUF_BUFFER_HASH * const hash_anchor, PGBUF_FIX_PERF * perf)
 {
-  PGBUF_LOCK_MODE pgbuf_lock_state = PGBUF_LOCK_UNKNOWN;
+  PGBUF_LOCK_MODE pgbuf_lock_state = PGBUF_LOCK_HOLDER;	// optimistic state; might be invalidated upfront
 
 #if defined(SERVER_MODE)
   PGBUF_BUFFER_LOCK *cur_buffer_lock;
@@ -7430,8 +7424,9 @@ pgbuf_lock_page (THREAD_ENTRY * const thread_p, const VPID * const vpid, PAGE_FE
 	}
       cur_buffer_lock = cur_buffer_lock->lock_next;
     }
+  assert ((pgbuf_lock_state == PGBUF_LOCK_WAITER) != (cur_buffer_lock == nullptr));	// xor
 
-  if (pgbuf_lock_state != PGBUF_LOCK_WAITER)
+  if (pgbuf_lock_state == PGBUF_LOCK_HOLDER && cur_buffer_lock == nullptr)
     {
       /* buf_lock_table is implemented to have one entry for each thread. At first design, it had one entry for each
        * thread. thread_p->index : thread entry index thread_p->tran_index : transaction entry index */
@@ -7450,7 +7445,6 @@ pgbuf_lock_page (THREAD_ENTRY * const thread_p, const VPID * const vpid, PAGE_FE
   pgbuf_lock_state = PGBUF_LOCK_HOLDER;
 #endif /* SERVER_MODE */
 
-  assert (pgbuf_lock_state != PGBUF_LOCK_UNKNOWN);
   pgbuf_perf_register_page_lock (fetch_mode, pgbuf_lock_state, perf);
 
   return pgbuf_lock_state;
