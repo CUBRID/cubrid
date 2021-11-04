@@ -2086,7 +2086,7 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
     }
   else
     {
-      err_code = ux_check_connection ();	// airnet check
+      err_code = ux_check_connection ();
       cas_log_write (0, true, "check_cas %d", err_code);
     }
 
