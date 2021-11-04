@@ -1025,6 +1025,7 @@ static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribut
 static INLINE bool pgbuf_is_temporary_volume (VOLID volid) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_initialize_bcb_table (void);
 static int pgbuf_initialize_hash_table (void);
+static void pgbuf_initialize_lock_table_entry (PGBUF_BUFFER_LOCK & a_buffer_lock, const VPID & a_vpid);
 static int pgbuf_initialize_lock_table (void);
 static int pgbuf_initialize_lru_list (void);
 static int pgbuf_initialize_aout_list (void);
@@ -1058,8 +1059,12 @@ STATIC_INLINE int pgbuf_insert_into_hash_chain (THREAD_ENTRY * thread_p, PGBUF_B
 						PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
+static void pgbuf_buffer_lock_enlist_thread (THREAD_ENTRY * const thread_p, PGBUF_BUFFER_LOCK * const buffer_lock);
+static void pgbuf_buffer_lock_delist_thread (THREAD_ENTRY * const thread_p, PGBUF_BUFFER_LOCK * const buffer_lock);
 static PGBUF_LOCK_MODE pgbuf_lock_page (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
 					PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf);
+static void pgbuf_perf_register_page_lock (PAGE_FETCH_MODE fetch_mode, PGBUF_LOCK_MODE pgbuf_lock_state,
+					   PGBUF_FIX_PERF * perf);
 static int pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid,
 			      int need_hash_mutex);
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
@@ -1968,54 +1973,64 @@ try_again:
 	   * page. */
 	}
     }
-  else if (fetch_mode == OLD_PAGE_IF_IN_BUFFER)
-    {
-      /* we don't need to fix page */
-      pthread_mutex_unlock (&hash_anchor->hash_mutex);
-      return NULL;
-    }
   else
     {
-      // TODO: more accurate comments
-      /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
-       * released in pgbuf_lock_page (). */
-      const PGBUF_LOCK_MODE lock_page_res = pgbuf_lock_page (thread_p, vpid, fetch_mode, hash_anchor, &perf);
-      if (lock_page_res == PGBUF_LOCK_UNKNOWN)
+      /* The page is not found in the hash chain the caller is holding hash_anchor->hash_mutex */
+
+      if (er_errid () != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
+	  // error searching the hash chain
+	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  return nullptr;
 	}
-      else if (lock_page_res == PGBUF_LOCK_WAITER)
-	{
-	  goto try_again;
-	}
-      assert (lock_page_res == PGBUF_LOCK_HOLDER);
 
-      bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, fetch_mode);
-      if (bufptr == NULL)
+      if (fetch_mode == OLD_PAGE_IF_IN_BUFFER)
 	{
-	  ASSERT_ERROR ();
-	  // TODO: more explanatory comments
-	  /*
-	   * Now, caller is not holding any mutex.
-	   * the last argument of pgbuf_unlock_page () is true that
-	   * means hash_mutex must be held before unlocking page.
-	   */
-	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
+	  /* we don't need to fix page */
+	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	  return NULL;
 	}
-      buf_lock_acquired = true;
+      else
+	{
+	  /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
+	   * released in pgbuf_lock_page (). */
+	  const PGBUF_LOCK_MODE lock_page_res = pgbuf_lock_page (thread_p, vpid, fetch_mode, hash_anchor, &perf);
+	  if (lock_page_res == PGBUF_LOCK_UNKNOWN)
+	    {
+	      ASSERT_ERROR ();
+	      return nullptr;
+	    }
+	  else if (lock_page_res == PGBUF_LOCK_WAITER)
+	    {
+	      goto try_again;
+	    }
+	  assert (lock_page_res == PGBUF_LOCK_HOLDER);
+
+	  bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, fetch_mode);
+	  if (bufptr == NULL)
+	    {
+	      ASSERT_ERROR ();
+	      /*
+	       * No mutex is held. The last argument of pgbuf_unlock_page is true because hash_mutex
+	       * must be locked before unlocking page.
+	       */
+	      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
+	      return NULL;
+	    }
+	  buf_lock_acquired = true;
 
 #if defined(ENABLE_SYSTEMTAP)
-      if (fetch_mode == NEW_PAGE && pgbuf_hit == false)
-	{
-	  pgbuf_hit = true;
-	}
-      if (fetch_mode != NEW_PAGE)
-	{
-	  CUBRID_PGBUF_MISS ();
-	}
+	  if (fetch_mode == NEW_PAGE && pgbuf_hit == false)
+	    {
+	      pgbuf_hit = true;
+	    }
+	  if (fetch_mode != NEW_PAGE)
+	    {
+	      CUBRID_PGBUF_MISS ();
+	    }
 #endif /* ENABLE_SYSTEMTAP */
+	}
     }
   assert (!pgbuf_bcb_is_direct_victim (bufptr));
 
@@ -5157,6 +5172,19 @@ pgbuf_initialize_hash_table (void)
 }
 
 /*
+ * pgbuf_initialize_lock_table_entry - Initializes page buffer lock
+ */
+void
+pgbuf_initialize_lock_table_entry (PGBUF_BUFFER_LOCK & a_buffer_lock, const VPID & a_vpid)
+{
+  a_buffer_lock.vpid = a_vpid;
+  a_buffer_lock.lock_next = nullptr;
+#if defined(SERVER_MODE)
+  a_buffer_lock.next_wait_thrd = nullptr;
+#endif
+}
+
+/*
  * pgbuf_initialize_lock_table () - Initializes page buffer lock table
  *   return: NO_ERROR, or ER_code
  */
@@ -5186,11 +5214,7 @@ pgbuf_initialize_lock_table (void)
   /* initialize each entry of the buffer lock table */
   for (i = 0; i < thrd_num_total; i++)
     {
-      VPID_SET_NULL (&pgbuf_Pool.buf_lock_table[i].vpid);
-      pgbuf_Pool.buf_lock_table[i].lock_next = NULL;
-#if defined(SERVER_MODE)
-      pgbuf_Pool.buf_lock_table[i].next_wait_thrd = NULL;
-#endif /* SERVER_MODE */
+      pgbuf_initialize_lock_table_entry (pgbuf_Pool.buf_lock_table[i], VPID_INITIALIZER);
     }
 
   return NO_ERROR;
@@ -7288,6 +7312,56 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 }
 
 /*
+ * pgbuf_buffer_lock_enlist_thread - enlist 'this thread' as a new waiting thread at the head of the
+ *              page's buffer lock chain
+ */
+#if defined(SERVER_MODE)
+void
+pgbuf_buffer_lock_enlist_thread (THREAD_ENTRY * const thread_p, PGBUF_BUFFER_LOCK * const buffer_lock)
+{
+  thread_p->next_wait_thrd = buffer_lock->next_wait_thrd;
+  buffer_lock->next_wait_thrd = thread_p;
+}
+#endif
+
+/*
+ * pgbuf_buffer_lock_delist_thread - search 'this thread' and delist from the page's buffer lock chain
+ *
+ * NOTE: function post-conditions 'this thread' must have been found in the page's buffer lock chain
+ */
+#if defined(SERVER_MODE)
+void
+pgbuf_buffer_lock_delist_thread (THREAD_ENTRY * const thread_p, PGBUF_BUFFER_LOCK * const buffer_lock)
+{
+  THREAD_ENTRY *thrd_entry = buffer_lock->next_wait_thrd;
+  THREAD_ENTRY *prev_thrd_entry = nullptr;
+  bool thrd_found = false;
+
+  while (thrd_entry != nullptr)
+    {
+      if (thrd_entry == thread_p)
+	{
+	  if (prev_thrd_entry == nullptr)
+	    {
+	      buffer_lock->next_wait_thrd = thrd_entry->next_wait_thrd;
+	    }
+	  else
+	    {
+	      prev_thrd_entry->next_wait_thrd = thrd_entry->next_wait_thrd;
+	    }
+	  thrd_entry->next_wait_thrd = nullptr;
+	  thrd_found = true;
+	  break;
+	}
+      prev_thrd_entry = thrd_entry;
+      thrd_entry = thrd_entry->next_wait_thrd;
+    }
+
+  assert (thrd_found);
+}
+#endif
+
+/*
  * pgbuf_lock_page () - Puts a buffer lock on the buffer lock chain
  *   return: If success, PGBUF_LOCK_HOLDER, otherwise PGBUF_LOCK_WAITER
  *   vpid(in):
@@ -7310,36 +7384,25 @@ pgbuf_lock_page (THREAD_ENTRY * const thread_p, const VPID * const vpid, PAGE_FE
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
 
-  // TODO: more accurate comments
-  /* The page is not found in the hash chain the caller is holding hash_anchor->hash_mutex */
-  if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
-    {
-      pthread_mutex_unlock (&hash_anchor->hash_mutex);
-      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
-      return PGBUF_LOCK_UNKNOWN;
-    }
-
   /* the caller is holding hash_anchor->hash_mutex */
   /* check whether the page is in the Buffer Lock Chain */
 
   cur_buffer_lock = hash_anchor->lock_next;
 
-  /* find vpid in buffer lock chain; entry being the result of indexing via a hash, there might be vpid collisions */
+  /* find vpid in buffer lock chain; entry being the result of indexing via a hash, vpid collisions are possible */
   while (cur_buffer_lock != NULL)
     {
       if (VPID_EQ (&(cur_buffer_lock->vpid), vpid))
 	{
 	  /* found page, enlist this thread at the head of the page's buffer lock chain
 	   * as a waiting thread */
-	  thread_p->next_wait_thrd = cur_buffer_lock->next_wait_thrd;
-	  cur_buffer_lock->next_wait_thrd = thread_p;
+	  pgbuf_buffer_lock_enlist_thread (thread_p, cur_buffer_lock);
 
 	  pgbuf_sleep (thread_p, &hash_anchor->hash_mutex);
 
 	  if (thread_p->resume_status != THREAD_PGBUF_RESUMED)
 	    {
 	      /* interrupt operation */
-	      THREAD_ENTRY *thrd_entry, *prev_thrd_entry = NULL;
 
 	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
 		{
@@ -7356,29 +7419,9 @@ pgbuf_lock_page (THREAD_ENTRY * const thread_p, const VPID * const vpid, PAGE_FE
 		  perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
 		}
 
-	      thrd_entry = cur_buffer_lock->next_wait_thrd;
-
 	      /* search 'this thread' again, other threads might have enlisted as well in the meantime;
-	       * de-enlist from the page's buffer lock chain */
-	      while (thrd_entry != NULL)
-		{
-		  if (thrd_entry == thread_p)
-		    {
-		      if (prev_thrd_entry == NULL)
-			{
-			  cur_buffer_lock->next_wait_thrd = thrd_entry->next_wait_thrd;
-			}
-		      else
-			{
-			  prev_thrd_entry->next_wait_thrd = thrd_entry->next_wait_thrd;
-			}
-		      thrd_entry->next_wait_thrd = NULL;
-
-		      break;
-		    }
-		  prev_thrd_entry = thrd_entry;
-		  thrd_entry = thrd_entry->next_wait_thrd;
-		}
+	       * delist from the page's buffer lock chain */
+	      pgbuf_buffer_lock_delist_thread (thread_p, cur_buffer_lock);
 	      (void) pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	    }
 	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_PAGES);	/* monitoring */
@@ -7395,23 +7438,33 @@ pgbuf_lock_page (THREAD_ENTRY * const thread_p, const VPID * const vpid, PAGE_FE
 
       /* vpid is not found in the Buffer Lock Chain */
       cur_buffer_lock = &(pgbuf_Pool.buf_lock_table[thread_p->index]);
-      cur_buffer_lock->vpid = *vpid;
-      cur_buffer_lock->next_wait_thrd = NULL;
-      cur_buffer_lock->lock_next = hash_anchor->lock_next;
+      pgbuf_initialize_lock_table_entry (*cur_buffer_lock, *vpid);
+
       hash_anchor->lock_next = cur_buffer_lock;
-      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+      (void) pthread_mutex_unlock (&hash_anchor->hash_mutex);
       perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_PAGES);	/* monitoring */
       pgbuf_lock_state = PGBUF_LOCK_HOLDER;
     }
-  assert (pgbuf_lock_state != PGBUF_LOCK_UNKNOWN);
 #else
   perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_PAGES);	/* monitoring */
   pgbuf_lock_state = PGBUF_LOCK_HOLDER;
 #endif /* SERVER_MODE */
 
-  if (pgbuf_lock_state == PGBUF_LOCK_WAITER)
+  assert (pgbuf_lock_state != PGBUF_LOCK_UNKNOWN);
+  pgbuf_perf_register_page_lock (fetch_mode, pgbuf_lock_state, perf);
+
+  return pgbuf_lock_state;
+}
+
+/*
+ * pgbuf_perf_register_page_lock -
+ */
+void
+pgbuf_perf_register_page_lock (PAGE_FETCH_MODE fetch_mode, PGBUF_LOCK_MODE pgbuf_lock_state, PGBUF_FIX_PERF * perf)
+{
+  if (perf->is_perf_tracking)
     {
-      if (perf->is_perf_tracking)
+      if (pgbuf_lock_state == PGBUF_LOCK_WAITER)
 	{
 	  tsc_getticks (&perf->end_tick);
 	  tsc_elapsed_time_usec (&perf->tv_diff, perf->end_tick, perf->start_tick);
@@ -7426,24 +7479,23 @@ pgbuf_lock_page (THREAD_ENTRY * const thread_p, const VPID * const vpid, PAGE_FE
 	      perf->perf_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 	    }
 	}
-
-      return pgbuf_lock_state;
-    }
-  assert (pgbuf_lock_state == PGBUF_LOCK_HOLDER);
-
-  if (perf->is_perf_tracking && perf->perf_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT
-      && perf->perf_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
-    {
-      if (fetch_mode == NEW_PAGE)
-	{
-	  perf->perf_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
-	}
       else
 	{
-	  perf->perf_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
+	  assert (pgbuf_lock_state == PGBUF_LOCK_HOLDER);
+	  if (perf->perf_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT
+	      && perf->perf_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
+	    {
+	      if (fetch_mode == NEW_PAGE)
+		{
+		  perf->perf_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
+		}
+	      else
+		{
+		  perf->perf_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
+		}
+	    }
 	}
     }
-  return pgbuf_lock_state;
 }
 
 /*
