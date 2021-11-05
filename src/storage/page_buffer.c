@@ -352,6 +352,7 @@ enum PGBUF_LOCK_MODE
 {
   PGBUF_LOCK_WAITER = 0,
   PGBUF_LOCK_HOLDER,
+  PGBUF_LOCK_NOT_NEEDED,
 };
 
 /* constants to indicate the content state of buffers */
@@ -1994,6 +1995,11 @@ try_again:
       /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
        * released in pgbuf_lock_page (). */
       const PGBUF_LOCK_MODE lock_page_res = pgbuf_lock_page (thread_p, vpid, fetch_mode, hash_anchor, &perf);
+      if (lock_page_res == PGBUF_LOCK_NOT_NEEDED)
+	{
+	  return nullptr;
+	}
+
       if (lock_page_res == PGBUF_LOCK_WAITER)
 	{
 	  // page was loaded by some other thread; search hash chain again
@@ -7425,6 +7431,12 @@ pgbuf_lock_page (THREAD_ENTRY * const thread_p, const VPID * const vpid, PAGE_FE
     }
   assert ((pgbuf_lock_state == PGBUF_LOCK_WAITER) != (cur_buffer_lock == nullptr));	// xor
 
+  if (fetch_mode == OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT)
+    {
+      return PGBUF_LOCK_NOT_NEEDED;
+    }
+
+  /* page not already in the process of being loaded/retrieved, register ourselves as the lock holder */
   if (pgbuf_lock_state == PGBUF_LOCK_HOLDER && cur_buffer_lock == nullptr)
     {
       /* buf_lock_table is implemented to have one entry for each thread. At first design, it had one entry for each
