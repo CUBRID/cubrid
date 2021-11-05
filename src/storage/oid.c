@@ -246,11 +246,6 @@ oid_compare (const void *a, const void *b)
   const OID *oid2_p = (const OID *) b;
   int diff;
 
-  if (oid1_p == oid2_p)
-    {
-      return 0;
-    }
-
   diff = oid1_p->volid - oid2_p->volid;
   if (diff)
     {

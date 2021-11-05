@@ -94,41 +94,29 @@
 
 #define oid_is_equal_value(oid1, oid2)  OID_EQ((oid1), (oid2))
 #define OID_EQ(oidp1, oidp2) \
-  ((oidp1) == (oidp2) || ((oidp1)->pageid == (oidp2)->pageid && \
-			  (oidp1)->slotid == (oidp2)->slotid && \
-			  (oidp1)->volid  == (oidp2)->volid))
+  ( (oidp1)->pageid == (oidp2)->pageid && \
+    (oidp1)->slotid == (oidp2)->slotid && \
+    (oidp1)->volid  == (oidp2)->volid )
 
 #define OID_GT(oidp1, oidp2) \
-  ((oidp1) != (oidp2) &&						      \
-   ((oidp1)->volid > (oidp2)->volid ||					      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid > (oidp2)->pageid) ||\
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid > (oidp2)->slotid)))
+   ( ((oidp1)->volid != (oidp2)->volid) ? ((oidp1)->volid > (oidp2)->volid)          \
+        : ((oidp1)->pageid != (oidp2)->pageid) ? ((oidp1)->pageid > (oidp2)->pageid) \
+        : ((oidp1)->slotid > (oidp2)->slotid) )
 
 #define OID_GTE(oidp1, oidp2) \
-  ((oidp1) == (oidp2) ||						      \
-   ((oidp1)->volid > (oidp2)->volid ||					      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid > (oidp2)->pageid) ||\
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid > (oidp2)->slotid) ||				      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid == (oidp2)->slotid)))
+   ( ((oidp1)->volid != (oidp2)->volid) ? ((oidp1)->volid > (oidp2)->volid)          \
+        : ((oidp1)->pageid != (oidp2)->pageid) ? ((oidp1)->pageid > (oidp2)->pageid) \
+        : ((oidp1)->slotid >= (oidp2)->slotid) )
 
 #define OID_LT(oidp1, oidp2) \
-  ((oidp1) != (oidp2) &&						      \
-   ((oidp1)->volid < (oidp2)->volid ||					      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid < (oidp2)->pageid) ||\
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid < (oidp2)->slotid)))
+   ( ((oidp1)->volid != (oidp2)->volid) ? ((oidp1)->volid < (oidp2)->volid)          \
+        : ((oidp1)->pageid != (oidp2)->pageid) ? ((oidp1)->pageid < (oidp2)->pageid) \
+        : ((oidp1)->slotid < (oidp2)->slotid) )
 
 #define OID_LTE(oidp1, oidp2) \
-  ((oidp1) == (oidp2) ||						      \
-   ((oidp1)->volid < (oidp2)->volid ||					      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid < (oidp2)->pageid) ||\
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid < (oidp2)->slotid) ||				      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid == (oidp2)->slotid)))
+   ( ((oidp1)->volid != (oidp2)->volid) ? ((oidp1)->volid < (oidp2)->volid)          \
+        : ((oidp1)->pageid != (oidp2)->pageid) ? ((oidp1)->pageid < (oidp2)->pageid) \
+        : ((oidp1)->slotid <= (oidp2)->slotid) )
 
 /* It is used for hashing purposes */
 #define OID_PSEUDO_KEY(oidp) \
