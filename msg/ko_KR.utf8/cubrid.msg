@@ -1355,24 +1355,40 @@ $ LOADDB
 1284 %1$s 의 기본키는 외래키 참조로 인해 truncate될 수 없습니다.
 1285 외래키 (%1$s) 의 ON DELETE action이 CASCADE가 아니기 때문에 truncate할 수 없습니다.
 
-1296 dblink - %1$s
-1297 dblink - 명시된 열의 개수가 올바르지 않습니다.
-1298 dblink - _db_server 카탈로그를 찾을 수 없습니다.
-1299 dblink - "%1$s" 서버를 찾을 수 없습니다.
-1300 dblink - "%1$s" 서버는 이미 존재합니다.
-1301 dblink - 서버 객체에 대한 소유권이 없습니다.
-1302 dblink - 지원하지 않는 유형입니다.
-1303 dblink - 유효하지 않은 바인드 파라메터입니다.
-1304 dblink - 암호화할 비밀번호의 길이가 최댓값을 넘어섰습니다.
-1305 dblink - 암호화된 비밀번호의 길이가 올바르지 않습니다.
-1306 dblink - 암호화된 비밀번호의 체크섬이 일치하지 않습니다.
-1307 dblink - 암호 문자열의 형식이 올바르지 않습니다.
-1308 dblink - 암호화된 비밀번호를 복호화하는 데 실패했습니다.. error=%1$d".
-1309 dblink - 비밀번호를 암호화하는 데 실패했습니다. error=%1$d".
-1310 dblink - 이름이 "%1$s"인 서버가 여러 개 있습니다.
-1311 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다. 
+1302 dblink - %1$s
+1303 dblink - 명시된 열의 개수가 올바르지 않습니다.
+1304 dblink - _db_server 카탈로그를 찾을 수 없습니다.
+1305 dblink - "%1$s" 서버를 찾을 수 없습니다.
+1306 dblink - "%1$s" 서버는 이미 존재합니다.
+1307 dblink - 서버 객체에 대한 소유권이 없습니다.
+1308 dblink - 지원하지 않는 유형입니다.
+1309 dblink - 유효하지 않은 바인드 파라메터입니다.
+1310 dblink - 암호화할 비밀번호의 길이가 최댓값을 넘어섰습니다.
+1311 dblink - 암호화된 비밀번호의 길이가 올바르지 않습니다.
+1312 dblink - 암호화된 비밀번호의 체크섬이 일치하지 않습니다.
+1313 dblink - 암호 문자열의 형식이 올바르지 않습니다.
+1314 dblink - 암호화된 비밀번호를 복호화하는 데 실패했습니다.. error=%1$d".
+1315 dblink - 비밀번호를 암호화하는 데 실패했습니다. error=%1$d".
+1316 dblink - 이름이 "%1$s"인 서버가 여러 개 있습니다.
+1317 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다. 
 
-1312 마지막 에러
+1318 [%1$5.5s] %2$s (%3$d)
+1319 매개 변수 바인딩 오류.
+1320 잘못된 ODBC Handle 입니다.
+1321 데이터 형식 변환 오류.
+1322 지원되지 않는 Data Type 입니다.
+1323 잘못된 Statement Handle 입니다.
+1324 Connection Handle이 잘못되었습니다.
+1325 Connection URL이 존재하지 않습니다.
+1326 유효하지 않은 Numeric 값입니다.
+1327 "%1$s" 열의 정밀도 값이 잘못되었습니다.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
