@@ -1424,7 +1424,7 @@ $set 6 MSGCAT_SET_INTERNAL
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
 1 '%1$s'의 문법을 점검해 주십시오. %2$s가(이) 기대됩니다.
- '%1$s'의 문법을 점검해 주십시오. %3$s 안의 %2$s가 기대됩니다.
+2 '%1$s'의 문법을 점검해 주십시오. %3$s 안의 %2$s가 기대됩니다.
 3 토큰 '%1$s'의 정확성을 점검해 주십시오.
 4 'read uncommitted schema'는 허용되지 않습니다.\n대신에 'read committed schema'를 이용 하시기 바랍니다.
 5 최대 문자열 길이는 16383 입니다.
