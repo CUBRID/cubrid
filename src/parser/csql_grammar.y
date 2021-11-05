@@ -28434,6 +28434,67 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
     ctn->c10 = FROM_NUMBER(set_bits);
 }
 
+static bool
+pt_check_one_stmt(char* p)
+{
+    char end;
+    char* t = strchr(p, ';');
+    if(!t)
+     {
+        return true;
+     }
+
+    t++;
+    while (*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n')
+     {
+        t++;
+     }
+    if(*t == '\0')
+       return true;
+
+    while(*p)
+    {
+        if( *p == '[' || *p == '"' || *p == '`' || *p == '\'')
+          {
+                end = (*p == '[') ? ']' : *p;
+                for(p++; *p ; p++)
+                {
+                    if (*p == end)
+                    {
+                       p++;
+                       break;
+                    }
+                }
+          }
+        else if(*p == ';')
+          {
+             p++;
+
+             /* Notice;
+             **   Forces not to have multiple statements.
+             **   Because of this processing, this function will in fact always return true.
+             **   When multiple statements come,
+             **   it is a policy that forces only the first statement to be executed without error handling.
+             **   For this, a single line of code is added below: "*p = '\0'".
+             */
+             *p = '\0';
+
+             break;
+          }
+        else
+          {
+            p++;
+          }
+    }
+
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
+     {
+        p++;
+     }
+
+    return (*p == '\0');
+}
+
 static bool 
 pt_ct_check_select (char* p, char *perr_msg)
 {  
@@ -28447,8 +28508,15 @@ pt_ct_check_select (char* p, char *perr_msg)
    {
         if( strncasecmp(p, "SELECT", 6) == 0 )
         {
-                if( p[6] == ' ' || p[6] == '\t' || p[6] == '\r' || p[6] == '\n' )
-                      return true;
+            if( p[6] == ' ' || p[6] == '\t' || p[6] == '\r' || p[6] == '\n' )
+              {    
+                 if (pt_check_one_stmt(p + 6))
+                   {
+                     return true;
+                   }
+                  /* sprintf(perr_msg, "Only one statement is allowed."); */
+                  return false;
+              }
         }
    }
 
