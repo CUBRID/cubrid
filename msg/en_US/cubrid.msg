@@ -1376,7 +1376,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1314 dblink - Failed to decryption password. error=%1$d".
 1315 dblink - Failed to encryption password. error=%1$d".
 1316 dblink - Multiple "%1$s" Server found.
-1317 dblink - Not allowed "%1$s" Server. 
+1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s] %2$s (%3$d)
 1319 Parameter binding error.
@@ -1859,6 +1859,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unexpected number of arguments %1$d.
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
+306 dblink - Required information is missing.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
