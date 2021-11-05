@@ -1389,10 +1389,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1326 Invalid numeric value.
 1327 Invalid precision value of "%1$s" column.
 
-1228 Error reserved for dblink development.
-1229 Error reserved for dblink development.
-1230 Error reserved for dblink development.
-1231 Error reserved for dblink development.
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
 
 1332 Last Error
 
