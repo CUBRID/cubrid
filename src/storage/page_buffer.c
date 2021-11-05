@@ -1990,41 +1990,40 @@ try_again:
 	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	  return NULL;
 	}
-      else
-	{
-	  /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
-	   * released in pgbuf_lock_page (). */
-	  const PGBUF_LOCK_MODE lock_page_res = pgbuf_lock_page (thread_p, vpid, fetch_mode, hash_anchor, &perf);
-	  if (lock_page_res == PGBUF_LOCK_WAITER)
-	    {
-	      goto try_again;
-	    }
-	  assert (lock_page_res == PGBUF_LOCK_HOLDER);
 
-	  bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, fetch_mode);
-	  if (bufptr == NULL)
-	    {
-	      ASSERT_ERROR ();
-	      /*
-	       * No mutex is held. The last argument of pgbuf_unlock_page is true because hash_mutex
-	       * must be locked before unlocking page.
-	       */
-	      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
-	      return NULL;
-	    }
-	  buf_lock_acquired = true;
+      /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
+       * released in pgbuf_lock_page (). */
+      const PGBUF_LOCK_MODE lock_page_res = pgbuf_lock_page (thread_p, vpid, fetch_mode, hash_anchor, &perf);
+      if (lock_page_res == PGBUF_LOCK_WAITER)
+	{
+	  // page was loaded by some other thread; search hash chain again
+	  goto try_again;
+	}
+      assert (lock_page_res == PGBUF_LOCK_HOLDER);
+
+      bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, fetch_mode);
+      if (bufptr == NULL)
+	{
+	  ASSERT_ERROR ();
+	  /*
+	   * No mutex is held. The last argument of pgbuf_unlock_page is true because hash_mutex
+	   * must be locked before unlocking page.
+	   */
+	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
+	  return NULL;
+	}
+      buf_lock_acquired = true;
 
 #if defined(ENABLE_SYSTEMTAP)
-	  if (fetch_mode == NEW_PAGE && pgbuf_hit == false)
-	    {
-	      pgbuf_hit = true;
-	    }
-	  if (fetch_mode != NEW_PAGE)
-	    {
-	      CUBRID_PGBUF_MISS ();
-	    }
-#endif /* ENABLE_SYSTEMTAP */
+      if (fetch_mode == NEW_PAGE && pgbuf_hit == false)
+	{
+	  pgbuf_hit = true;
 	}
+      if (fetch_mode != NEW_PAGE)
+	{
+	  CUBRID_PGBUF_MISS ();
+	}
+#endif /* ENABLE_SYSTEMTAP */
     }
   assert (!pgbuf_bcb_is_direct_victim (bufptr));
 
@@ -7438,11 +7437,9 @@ pgbuf_lock_page (THREAD_ENTRY * const thread_p, const VPID * const vpid, PAGE_FE
       hash_anchor->lock_next = cur_buffer_lock;
       (void) pthread_mutex_unlock (&hash_anchor->hash_mutex);
       perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_PAGES);	/* monitoring */
-      pgbuf_lock_state = PGBUF_LOCK_HOLDER;
     }
 #else
   perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_PAGES);	/* monitoring */
-  pgbuf_lock_state = PGBUF_LOCK_HOLDER;
 #endif /* SERVER_MODE */
 
   pgbuf_perf_register_page_lock (fetch_mode, pgbuf_lock_state, perf);
