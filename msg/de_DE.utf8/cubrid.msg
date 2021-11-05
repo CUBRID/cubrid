@@ -1394,7 +1394,7 @@ $ LOADDB
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
-1302 Letzter Fehler
+1332 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
