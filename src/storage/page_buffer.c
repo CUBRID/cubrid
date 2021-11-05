@@ -1998,6 +1998,7 @@ try_again:
       if (lock_page_res == PGBUF_LOCK_NOT_NEEDED)
 	{
 	  // No need to load the page to page buffer
+	  assert (fetch_mode == OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT);
 	  return nullptr;
 	}
 
