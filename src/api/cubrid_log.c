@@ -268,6 +268,8 @@ cubrid_log_make_new_tracelog ()
       g_num_trace_log++;
     }
 
+  assert (g_num_trace_log <= 2);
+
   return CUBRID_LOG_SUCCESS;
 }
 
