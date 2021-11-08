@@ -74,7 +74,7 @@ typedef struct fh_page_hdr
   FH_FILE_POS page;		/* Hash file page number */
 } FH_PAGE_HDR;
 
-typedef unsigned int (*HASH_FUNC) (const void *info, unsigned int htsize);
+typedef unsigned int (*HASH_FUNC) (const void *info, unsigned int htsize, unsigned int *val_of_hash);
 typedef int (*CMP_FUNC) (const void *key1, const void *key2);
 
 typedef enum

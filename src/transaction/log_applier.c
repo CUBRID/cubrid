@@ -468,7 +468,7 @@ static int la_realloc_recdes_data (RECDES * recdes, int data_size);
 static void la_clear_recdes_pool (void);
 
 static LA_CACHE_PB *la_init_cache_pb (void);
-static unsigned int log_pageid_hash (const void *key, unsigned int htsize);
+static unsigned int log_pageid_hash (const void *key, unsigned int htsize, unsigned int *val_of_hash);
 static int la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size);
 static int la_fetch_log_hdr (LA_ACT_LOG * act_log);
 static int la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbname, bool check_charset);
@@ -2501,16 +2501,20 @@ la_init_cache_pb (void)
  *   ht_size(in): size of hash table
  */
 static unsigned int
-log_pageid_hash (const void *key, unsigned int htsize)
+log_pageid_hash (const void *key, unsigned int htsize, unsigned int *val_of_hash)
 {
   assert (key != NULL);
+  assert (val_of_hash);
 
   if ((*(const LOG_PAGEID *) key) == LOGPB_HEADER_PAGE_ID)
     {
+      *val_of_hash = 0;
       return 0;
     }
 
   assert ((*(const LOG_PAGEID *) key) >= 0);
+
+  *val_of_hash = (*(const LOG_PAGEID *) key);
 
   return (*(const LOG_PAGEID *) key) % htsize;
 }

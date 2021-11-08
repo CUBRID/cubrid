@@ -245,7 +245,7 @@ extern HFID *pgbuf_ordered_null_hfid;
 
 const log_lsa PGBUF_TEMP_LSA = { NULL_LOG_PAGEID - 1, NULL_LOG_OFFSET - 1 };
 
-extern unsigned int pgbuf_hash_vpid (const void *key_vpid, unsigned int htsize);
+extern unsigned int pgbuf_hash_vpid (const void *key_vpid, unsigned int htsize, unsigned int *val_of_hash);
 extern int pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2);
 extern int pgbuf_initialize (void);
 extern void pgbuf_finalize (void);

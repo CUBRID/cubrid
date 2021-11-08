@@ -352,7 +352,6 @@ fh_destroy (FH_TABLE * ht)
 int
 fh_get (FH_TABLE * ht, FH_KEY key, FH_DATA * data)
 {
-  int hash;
   FH_FILE_POS pos;
   int page_no;
   int entry_no;
@@ -364,21 +363,11 @@ fh_get (FH_TABLE * ht, FH_KEY key, FH_DATA * data)
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  hash = (*ht->hfun) (key, ht->size);
-  if (hash < 0)
-    {
-      hash = -hash;
-    }
-  if (hash >= ht->size)
-    {
-      hash = hash % ht->size;
-    }
-
-  /* Determine the page & entry in the hash file */
-  pos = hash;
+  pos = (FH_FILE_POS) (*ht->hfun) (key, ht->size, NULL);
 
   while (pos != INVALID_FILE_POS)
     {
+      /* Determine the page & entry in the hash file */
       page_no = pos / ht->entries_per_page;
       entry_no = pos % ht->entries_per_page;
 
@@ -448,7 +437,6 @@ fh_get (FH_TABLE * ht, FH_KEY key, FH_DATA * data)
 int
 fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data)
 {
-  int hash;
   FH_FILE_POS pos;
   int page_no;
   int entry_no;
@@ -460,21 +448,11 @@ fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data)
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  hash = (*ht->hfun) (key, ht->size);
-  if (hash < 0)
-    {
-      hash = -hash;
-    }
-  if (hash >= ht->size)
-    {
-      hash = hash % ht->size;
-    }
-
-  /* Determine the page & entry in the hash file */
-  pos = hash;
+  pos = (FH_FILE_POS) (*ht->hfun) (key, ht->size, NULL);
 
   do
     {
+      /* Determine the page & entry in the hash file */
       page_no = pos / ht->entries_per_page;
       entry_no = pos % ht->entries_per_page;
 

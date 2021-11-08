@@ -291,13 +291,12 @@ oid_compare (const void *a, const void *b)
  *   htsize(in): Size of hash table
  */
 unsigned int
-oid_hash (const void *key_oid, unsigned int htsize)
+oid_hash (const void *key_oid, unsigned int htsize, unsigned int *val_of_hash)
 {
-  unsigned int hash;
   const OID *oid = (OID *) key_oid;
 
-  hash = OID_PSEUDO_KEY (oid);
-  return (hash % htsize);
+  *val_of_hash = OID_PSEUDO_KEY (oid);
+  return (*val_of_hash % htsize);
 }
 
 /*

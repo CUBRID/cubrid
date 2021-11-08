@@ -48,13 +48,14 @@ struct hentry
   HENTRY_PTR next;		/* Next hash table entry for colisions */
   const void *key;		/* Key associated with entry */
   void *data;			/* Data associated with key entry */
+  unsigned int val_of_hash;	/* for faster compare by u_int */
 };
 
 /* Memory Hash Table */
 typedef struct mht_table MHT_TABLE;
 struct mht_table
 {
-  unsigned int (*hash_func) (const void *key, unsigned int htsize);
+  unsigned int (*hash_func) (const void *key, unsigned int htsize, unsigned int *val_of_hash);
   int (*cmp_func) (const void *key1, const void *key2);
   const char *name;
   HENTRY_PTR *table;		/* The hash table (entries) */
@@ -76,15 +77,15 @@ struct mht_table
 
 extern unsigned int mht_2str_pseudo_key (const void *key, int key_size);
 extern unsigned int mht_1strlowerhash (const void *key, const unsigned int ht_size);
-extern unsigned int mht_1strhash (const void *key, const unsigned int ht_size);
+extern unsigned int mht_1strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash);
 extern unsigned int mht_2strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_3strhash (const void *key, const unsigned int ht_size);
-extern unsigned int mht_4strhash (const void *key, const unsigned int ht_size);
-extern unsigned int mht_5strhash (const void *key, const unsigned int ht_size);
+extern unsigned int mht_4strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash);
+extern unsigned int mht_5strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash);
 extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
 
 extern unsigned int mht_get_hash_number (const int unsigned ht_size, const DB_VALUE * val);
-extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);
+extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size, unsigned int *val_of_hash);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
 extern int mht_compare_identifiers_equal (const void *key1, const void *key2);
 extern int mht_compare_strings_are_equal (const void *key1, const void *key2);
@@ -94,8 +95,10 @@ extern int mht_compare_ptrs_are_equal (const void *key1, const void *key2);
 extern int mht_compare_dbvalues_are_equal (const void *key1, const void *key2);
 
 extern MHT_TABLE *mht_create (const char *name, int est_size,
-			      unsigned int (*hash_func) (const void *key, unsigned int ht_size),
-			      int (*cmp_func) (const void *key1, const void *key2));
+			      unsigned int (*hash_func) (const void *key, unsigned int ht_size,
+							 unsigned int *val_of_hash), int (*cmp_func) (const void *key1,
+												      const void
+												      *key2));
 extern void mht_destroy (MHT_TABLE * ht);
 extern int mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args), void *func_args);
 extern void *mht_get (MHT_TABLE * ht, const void *key);

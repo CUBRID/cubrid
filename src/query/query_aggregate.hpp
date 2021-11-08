@@ -131,12 +131,13 @@ int qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregat
 
 cubquery::aggregate_hash_key *qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals);
 void qdata_free_agg_hkey (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key);
-cubquery::aggregate_hash_value *qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggregate_list_node *g_agg_list);
+cubquery::aggregate_hash_value *qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt,
+    cubxasl::aggregate_list_node *g_agg_list);
 void qdata_free_agg_hvalue (cubthread::entry *thread_p, cubquery::aggregate_hash_value *value);
 int qdata_get_agg_hkey_size (cubquery::aggregate_hash_key *key);
 int qdata_get_agg_hvalue_size (cubquery::aggregate_hash_value *value, bool ret_delta);
 int qdata_free_agg_hentry (const void *key, void *data, void *args);
-unsigned int qdata_hash_agg_hkey (const void *key, unsigned int ht_size);
+unsigned int qdata_hash_agg_hkey (const void *key, unsigned int ht_size, unsigned int *val_of_hash);
 DB_VALUE_COMPARE_RESULT qdata_agg_hkey_compare (cubquery::aggregate_hash_key *ckey1,
     cubquery::aggregate_hash_key *ckey2, int *diff_pos);
 int qdata_agg_hkey_eq (const void *key1, const void *key2);

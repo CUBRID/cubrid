@@ -127,32 +127,25 @@ static unsigned int
 mht_1str_pseudo_key (const void *key, int key_size)
 {
   unsigned const char *byte_p = (unsigned char *) key;
-  unsigned int pseudo_key;
+  unsigned int pseudo_key = 0;
 
   assert (key != NULL);
 
-  for (pseudo_key = 0;; byte_p++)
+  if (key_size == -1)
     {
-      if (key_size == -1)
+      while (*byte_p)
 	{
-	  if (!(*byte_p))
-	    {
-	      break;
-	    }
+	  pseudo_key = (pseudo_key << 5) - pseudo_key + *byte_p;
+	  byte_p++;
 	}
-      else
+    }
+  else
+    {
+      while (key_size > 0)
 	{
-	  if (key_size <= 0)
-	    {
-	      break;
-	    }
-	}
-
-      pseudo_key = (pseudo_key << 5) - pseudo_key + *byte_p;
-
-      if (key_size > 0)
-	{
+	  pseudo_key = (pseudo_key << 5) - pseudo_key + *byte_p;
 	  key_size--;
+	  byte_p++;
 	}
     }
 
@@ -443,11 +436,13 @@ mht_1strlowerhash (const void *key, const unsigned int ht_size)
  * Note: Taken from Gosling's emacs
  */
 unsigned int
-mht_1strhash (const void *key, const unsigned int ht_size)
+mht_1strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash)
 {
   assert (key != NULL);
+  assert (val_of_hash != NULL);
 
-  return mht_1str_pseudo_key (key, -1) % ht_size;
+  *val_of_hash = mht_1str_pseudo_key (key, -1);
+  return *val_of_hash % ht_size;
 }
 
 /*
@@ -501,11 +496,13 @@ mht_3strhash (const void *key, const unsigned int ht_size)
  *       Communications of the ACM, June 1990.
  */
 unsigned int
-mht_4strhash (const void *key, const unsigned int ht_size)
+mht_4strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash)
 {
   assert (key != NULL);
+  assert (val_of_hash != NULL);
 
-  return mht_4str_pseudo_key (key, -1) % ht_size;
+  *val_of_hash = mht_4str_pseudo_key (key, -1);
+  return *val_of_hash % ht_size;
 }
 
 /*
@@ -517,9 +514,13 @@ mht_4strhash (const void *key, const unsigned int ht_size)
  * Note: Based on hash method reported by Diniel J. Bernstein.
  */
 unsigned int
-mht_5strhash (const void *key, const unsigned int ht_size)
+mht_5strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash)
 {
-  return mht_5str_pseudo_key (key, -1) % ht_size;
+  assert (key != NULL);
+  assert (val_of_hash != NULL);
+
+  *val_of_hash = mht_5str_pseudo_key (key, -1);
+  return *val_of_hash % ht_size;
 }
 
 /*
@@ -533,7 +534,7 @@ mht_numhash (const void *key, const unsigned int ht_size)
 {
   assert (key != NULL);
 
-  return (*(const unsigned int *) key) % ht_size;
+  return *(const unsigned int *) key % ht_size;
 }
 
 /*
@@ -543,11 +544,13 @@ mht_numhash (const void *key, const unsigned int ht_size)
  *   ht_size(in): size of hash table
  */
 unsigned int
-mht_ptrhash (const void *key, const unsigned int ht_size)
+mht_ptrhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash)
 {
   assert (key != NULL);
+  assert (val_of_hash != NULL);
 
-  return GET_PTR_FOR_HASH (key) % ht_size;
+  *val_of_hash = GET_PTR_FOR_HASH (key);
+  return *val_of_hash % ht_size;
 }
 
 /*
@@ -890,7 +893,8 @@ mht_calculate_htsize (unsigned int ht_size)
  *       otherwise, FALSE.
  */
 MHT_TABLE *
-mht_create (const char *name, int est_size, unsigned int (*hash_func) (const void *key, unsigned int ht_size),
+mht_create (const char *name, int est_size,
+	    unsigned int (*hash_func) (const void *key, unsigned int ht_size, unsigned int *val_of_hash),
 	    int (*cmp_func) (const void *key1, const void *key2))
 {
   MHT_TABLE *ht;
@@ -1100,11 +1104,16 @@ mht_rehash (MHT_TABLE * ht)
 	{
 	  next_hentry = hentry->next;
 
-	  hash = (*ht->hash_func) (hentry->key, est_size);
+#if 1
+	  hash = hentry->val_of_hash % est_size;
+#else
+	  unsigned int fc_hashval;
+	  hash = (*ht->hash_func) (hentry->key, est_size, &fc_hashval);
 	  if (hash >= est_size)
 	    {
 	      hash %= est_size;
 	    }
+#endif
 
 	  /* Link the new entry with any previous elements */
 	  hentry->next = new_hvector[hash];
@@ -1424,7 +1433,8 @@ mht_get (MHT_TABLE * ht, const void *key)
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  hash = (*ht->hash_func) (key, ht->size);
+  unsigned int val_of_hash;
+  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   if (hash >= ht->size)
     {
       hash %= ht->size;
@@ -1433,7 +1443,11 @@ mht_get (MHT_TABLE * ht, const void *key)
   /* now search the linked list */
   for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
     {
+#if 1
+      if (hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key))
+#else
       if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
+#endif
 	{
 	  mht_adjust_lru_list (ht, hentry);
 
@@ -1500,7 +1514,8 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  hash = (*ht->hash_func) (key, ht->size);
+  unsigned int val_of_hash;
+  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   if (hash >= ht->size)
     {
       hash %= ht->size;
@@ -1509,7 +1524,11 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
   /* now search the linked list */
   for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
     {
+#if 1
+      if (hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key))
+#else
       if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
+#endif
 	{
 	  if (last == NULL)
 	    {
@@ -1644,7 +1663,8 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  hash = (*ht->hash_func) (key, ht->size);
+  unsigned int val_of_hash;
+  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   if (hash >= ht->size)
     {
       hash %= ht->size;
@@ -1655,7 +1675,11 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
       /* Now search the linked list.. Is there any entry with the given key ? */
       for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
 	{
+#if 1
+	  if (hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key))
+#else
 	  if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
+#endif
 	    {
 	      if (opt & MHT_OPT_INSERT_IF_NOT_EXISTS)
 		{
@@ -1712,6 +1736,7 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
    */
 
   hentry->key = key;
+  hentry->val_of_hash = val_of_hash;
   hentry->data = data;
   hentry->act_next = NULL;
   hentry->act_prev = ht->act_tail;
@@ -1842,7 +1867,8 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  hash = (*ht->hash_func) (key, ht->size);
+  unsigned int val_of_hash;
+  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   if (hash >= ht->size)
     {
       hash %= ht->size;
@@ -1853,7 +1879,11 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
       /* now search the linked list */
       for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
 	{
+#if 1
+	  if ((hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key)) && hentry->data == data)
+#else
 	  if ((hentry->key == key || (*ht->cmp_func) (hentry->key, key)) && hentry->data == data)
+#endif
 	    {
 	      /* We found the existing entry. Replace the old data with the new one. */
 	      if (!(opt & MHT_OPT_KEEP_KEY))
@@ -1900,6 +1930,7 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 
   /* link the new entry to the double link list of active entries */
   hentry->key = key;
+  hentry->val_of_hash = val_of_hash;
   hentry->data = data;
   hentry->act_next = NULL;
   hentry->act_prev = ht->act_tail;
@@ -1994,7 +2025,8 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  hash = (*ht->hash_func) (key, ht->size);
+  unsigned int val_of_hash;
+  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   if (hash >= ht->size)
     {
       hash %= ht->size;
@@ -2003,7 +2035,11 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
   /* Now search the linked list.. Is there any entry with the given key ? */
   for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL; prev_hentry = hentry, hentry = hentry->next)
     {
+#if 1
+      if (hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key))
+#else
       if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
+#endif
 	{
 	  /*
 	   * We found the entry
@@ -2118,7 +2154,8 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
   assert (ht != NULL && key != NULL);
 
   /* hash the key and make sure that the return value is between 0 and size of hash table */
-  hash = (*ht->hash_func) (key, ht->size);
+  unsigned int val_of_hash;
+  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   if (hash >= ht->size)
     {
       hash %= ht->size;
@@ -2127,7 +2164,11 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
   /* now search the linked list */
   for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL; prev_hentry = hentry, hentry = hentry->next)
     {
+#if 1
+      if ((hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key)) && hentry->data == data)
+#else
       if ((hentry->key == key || (*ht->cmp_func) (hentry->key, key)) && hentry->data == data)
+#endif
 	{
 	  /*
 	   * We found the entry.

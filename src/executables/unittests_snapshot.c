@@ -105,7 +105,7 @@ logtb_finalize_mvcctable ()
 }
 
 static unsigned int
-logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size)
+logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size, unsigned int *val_of_hash)
 {
   return 0;
 }

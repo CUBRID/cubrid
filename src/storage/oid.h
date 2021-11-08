@@ -236,7 +236,7 @@ extern bool oid_is_db_class (const OID * oid);
 extern bool oid_is_db_attribute (const OID * oid);
 
 extern int oid_compare (const void *oid1, const void *oid2);
-extern unsigned int oid_hash (const void *key_oid, unsigned int htsize);
+extern unsigned int oid_hash (const void *key_oid, unsigned int htsize, unsigned int *val_of_hash);
 extern int oid_compare_equals (const void *key_oid1, const void *key_oid2);
 extern bool oid_check_cached_class_oid (const int cache_id, const OID * oid);
 extern void oid_set_cached_class_oid (const int cache_id, const OID * oid);

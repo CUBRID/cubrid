@@ -191,7 +191,8 @@ xtx_add_lob_locator (cubthread::entry *thread_p, const char *locator, LOB_LOCATO
 
   entry->top = savept;
   entry->m_key = lob_locator_key (locator);
-  entry->key_hash = (int) mht_5strhash (entry->m_key.c_str (), INT_MAX);
+  unsigned int ignore_hashval;
+  entry->key_hash = (int) mht_5strhash (entry->m_key.c_str (), INT_MAX, &ignore_hashval);
 
   savept->state = state;
   savept->savept_lsa = LSA_LT (&tdes->savept_lsa, &tdes->topop_lsa) ? tdes->topop_lsa : tdes->savept_lsa;
@@ -221,7 +222,8 @@ xtx_find_lob_locator (cubthread::entry *thread_p, const char *locator, char *rea
       lob_locator_entry *entry, find;
 
       find.m_key = lob_locator_key (locator);
-      find.key_hash = (int) mht_5strhash (find.m_key.c_str (), INT_MAX);
+      unsigned int ignore_hashval;
+      find.key_hash = (int) mht_5strhash (find.m_key.c_str (), INT_MAX, &ignore_hashval);
       /* Find entry from red-black tree (see base/rb_tree.h) */
       entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
       if (entry != NULL)
@@ -258,7 +260,8 @@ xtx_change_state_of_locator (cubthread::entry *thread_p, const char *locator, co
     }
 
   find.m_key = lob_locator_key (locator);
-  find.key_hash = (int) mht_5strhash (find.m_key.c_str (), INT_MAX);
+  unsigned int ignore_hashval;
+  find.key_hash = (int) mht_5strhash (find.m_key.c_str (), INT_MAX, &ignore_hashval);
   entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
 
   if (entry != NULL)
@@ -320,7 +323,8 @@ xtx_drop_lob_locator (cubthread::entry *thread_p, const char *locator)
     }
 
   find.m_key = lob_locator_key (locator);
-  find.key_hash = (int) mht_5strhash (find.m_key.c_str (), INT_MAX);
+  unsigned int ignore_hashval;
+  find.key_hash = (int) mht_5strhash (find.m_key.c_str (), INT_MAX, &ignore_hashval);
   /* Remove entry that matches 'find' entry from the red-black tree. see base/rb_tree.h for more information */
   entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
   if (entry != NULL)

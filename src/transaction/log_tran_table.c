@@ -119,7 +119,7 @@ static void logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT
 
 static void logtb_tran_free_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats);
 static void logtb_tran_clear_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats);
-static unsigned int logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size);
+static unsigned int logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size, unsigned int *val_of_hash);
 static int logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2);
 static LOG_TRAN_CLASS_COS *logtb_tran_create_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid);
 static LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid);
@@ -3255,13 +3255,17 @@ logtb_tran_clear_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats)
  *   ht_size(in): Size of hash table
  */
 static unsigned int
-logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size)
+logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size, unsigned int *val_of_hash)
 {
+  assert (key != NULL);
+  assert (val_of_hash != NULL);
+
+  *val_of_hash = ((BTID *) key)->vfid.fileid;
   return ((BTID *) key)->vfid.fileid % ht_size;
 }
 
 /*
- * logtb_tran_btid_hash_func() - Comparison function for BTIDs (equal or not)
+ * logtb_tran_btid_hash_cmp_func() - Comparison function for BTIDs (equal or not)
  *   return: 0 not equal, 1 otherwise
  *   key1(in): left key
  *   key2(in): right key
