@@ -44,30 +44,30 @@ page_server::~page_server ()
   assert (m_active_tran_server_conn == nullptr);
 }
 
-page_server::server_server_conn::server_server_conn (cubcomm::channel &chn, page_server *ps)
+page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server *ps)
 {
   m_conn.reset (nullptr);
   m_conn.reset (new tran_server_conn_t (std::move (chn),
   {
     {
       tran_to_page_request::GET_BOOT_INFO,
-      std::bind (&page_server::server_server_conn::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::connection_handler::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_LOG_PRIOR_LIST,
-      std::bind (&page_server::server_server_conn::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::connection_handler::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_LOG_PAGE_FETCH,
-      std::bind (&page_server::server_server_conn::receive_log_page_fetch, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::connection_handler::receive_log_page_fetch, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_DATA_PAGE_FETCH,
-      std::bind (&page_server::server_server_conn::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::connection_handler::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_DISCONNECT_MSG,
-      std::bind (&page_server::server_server_conn::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::connection_handler::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
     },
   }));
 
@@ -76,24 +76,24 @@ page_server::server_server_conn::server_server_conn (cubcomm::channel &chn, page
   m_ps.reset (ps);
 }
 
-std::string page_server::server_server_conn::get_channel_id ()
+std::string page_server::connection_handler::get_channel_id ()
 {
   return m_conn->get_underlying_channel_id ();
 }
 
-void page_server::server_server_conn::push_request (page_to_tran_request id, std::string msg)
+void page_server::connection_handler::push_request (page_to_tran_request id, std::string msg)
 {
   m_conn->push (id, std::move (msg));
 }
 
-void page_server::server_server_conn::receive_log_prior_list (cubpacking::unpacker &upk)
+void page_server::connection_handler::receive_log_prior_list (cubpacking::unpacker &upk)
 {
   std::string message;
   upk.unpack_string (message);
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }
 
-void page_server::server_server_conn::receive_log_page_fetch (cubpacking::unpacker &upk)
+void page_server::connection_handler::receive_log_page_fetch (cubpacking::unpacker &upk)
 {
   LOG_PAGEID pageid;
   std::string message;
@@ -108,12 +108,12 @@ void page_server::server_server_conn::receive_log_page_fetch (cubpacking::unpack
     }
 
   assert (ps_Gl.get_page_fetcher ());
-  ps_Gl.get_page_fetcher ()->fetch_log_page (pageid, std::bind (&page_server::server_server_conn::on_log_page_read_result,
+  ps_Gl.get_page_fetcher ()->fetch_log_page (pageid, std::bind (&page_server::connection_handler::on_log_page_read_result,
       this,
       std::placeholders::_1, std::placeholders::_2));
 }
 
-void page_server::server_server_conn::receive_data_page_fetch (cubpacking::unpacker &upk)
+void page_server::connection_handler::receive_data_page_fetch (cubpacking::unpacker &upk)
 {
   std::string message;
   upk.unpack_string (message);
@@ -127,18 +127,18 @@ void page_server::server_server_conn::receive_data_page_fetch (cubpacking::unpac
 
   assert (ps_Gl.get_page_fetcher ());
   ps_Gl.get_page_fetcher ()->fetch_data_page (vpid, target_repl_lsa,
-      std::bind (&page_server::server_server_conn::on_data_page_read_result,
+      std::bind (&page_server::connection_handler::on_data_page_read_result,
 		 this, std::placeholders::_1, std::placeholders::_2));
 }
 
-void page_server::server_server_conn::receive_disconnect_request (cubpacking::unpacker &upk)
+void page_server::connection_handler::receive_disconnect_request (cubpacking::unpacker &upk)
 {
   //start a thread to destroy the ATS to PS connection object
   std::thread disconnect_thread (&page_server::disconnect_tran_server, std::ref (*m_ps.get ()), this);
   disconnect_thread.detach ();
 }
 
-void page_server::server_server_conn::receive_boot_info_request (cubpacking::unpacker &upk)
+void page_server::connection_handler::receive_boot_info_request (cubpacking::unpacker &upk)
 {
   DKNVOLS nvols_perm = disk_get_perm_volume_count ();
 
@@ -149,7 +149,7 @@ void page_server::server_server_conn::receive_boot_info_request (cubpacking::unp
   m_conn->push (page_to_tran_request::SEND_BOOT_INFO, std::move (response_message));
 }
 
-void page_server::server_server_conn::on_log_page_read_result (const LOG_PAGE *log_page, int error_code)
+void page_server::connection_handler::on_log_page_read_result (const LOG_PAGE *log_page, int error_code)
 {
   char buffer[sizeof (int) + IO_MAX_PAGE_SIZE];
   std::memcpy (buffer, &error_code, sizeof (error_code));
@@ -177,7 +177,7 @@ void page_server::server_server_conn::on_log_page_read_result (const LOG_PAGE *l
     }
 }
 
-void page_server::server_server_conn::on_data_page_read_result (const FILEIO_PAGE *io_page, int error_code)
+void page_server::connection_handler::on_data_page_read_result (const FILEIO_PAGE *io_page, int error_code)
 {
   std::string message;
   if (error_code != NO_ERROR)
@@ -223,7 +223,7 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       disconnect_tran_server (m_active_tran_server_conn.get ());
     }
   assert (m_active_tran_server_conn == nullptr);
-  m_active_tran_server_conn.reset ( new server_server_conn (chn, this));
+  m_active_tran_server_conn.reset ( new connection_handler (chn, this));
 }
 
 void page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
@@ -234,7 +234,7 @@ void page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
 		chn.get_channel_id ().c_str ());
 
-  m_passive_tran_server_conn.emplace_back (new server_server_conn (chn, this));
+  m_passive_tran_server_conn.emplace_back (new connection_handler (chn, this));
 }
 
 void page_server::disconnect_tran_server (void *conn)

@@ -62,15 +62,15 @@ class page_server
 
   private:
 
-    class server_server_conn
+    class connection_handler
     {
 	using tran_server_conn_t =
 		cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
       public:
-	server_server_conn () = default;
-	~server_server_conn () = default;
-	server_server_conn (cubcomm::channel &chn, page_server *ps);
+	connection_handler () = default;
+	~connection_handler () = default;
+	connection_handler (cubcomm::channel &chn, page_server *ps);
 	void push_request (page_to_tran_request id, std::string msg);
 	std::string get_channel_id ();
 
@@ -87,8 +87,8 @@ class page_server
 	std::unique_ptr<page_server> m_ps;
     };
 
-    std::unique_ptr<server_server_conn> m_active_tran_server_conn;
-    std::vector<std::unique_ptr<server_server_conn>> m_passive_tran_server_conn;
+    std::unique_ptr<connection_handler> m_active_tran_server_conn;
+    std::vector<std::unique_ptr<connection_handler>> m_passive_tran_server_conn;
 
     std::unique_ptr<cublog::replicator> m_replicator;
     std::unique_ptr<cublog::async_page_fetcher> m_page_fetcher;
