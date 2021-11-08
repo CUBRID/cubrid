@@ -352,6 +352,7 @@ enum PGBUF_LOCK_MODE
 {
   PGBUF_LOCK_WAITER = 0,
   PGBUF_LOCK_HOLDER,
+  PGBUF_LOCK_NOT_NEEDED,
 };
 
 /* constants to indicate the content state of buffers */
@@ -1994,6 +1995,13 @@ try_again:
       /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
        * released in pgbuf_lock_page (). */
       const PGBUF_LOCK_MODE lock_page_res = pgbuf_lock_page (thread_p, vpid, fetch_mode, hash_anchor, &perf);
+      if (lock_page_res == PGBUF_LOCK_NOT_NEEDED)
+	{
+	  // No need to load the page to page buffer
+	  assert (fetch_mode == OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT);
+	  return nullptr;
+	}
+
       if (lock_page_res == PGBUF_LOCK_WAITER)
 	{
 	  // page was loaded by some other thread; search hash chain again
@@ -7365,6 +7373,9 @@ pgbuf_buffer_lock_delist_thread (THREAD_ENTRY * const thread_p, PGBUF_BUFFER_LOC
  * Note: This function is invoked only when the page is not in the buffer hash
  *       chain. The caller is holding hash_anchor->hash_mutex.
  *       Before return, the thread releases hash_anchor->hash_mutex.
+ * NOTE: function name is misleading; function does not actually lock the page, it merely
+ *       synchronizes (locks) the inter-thread access to the page retrieval (fix) mechanism
+ *
  */
 static PGBUF_LOCK_MODE
 pgbuf_lock_page (THREAD_ENTRY * const thread_p, const VPID * const vpid, PAGE_FETCH_MODE fetch_mode,
@@ -7424,8 +7435,17 @@ pgbuf_lock_page (THREAD_ENTRY * const thread_p, const VPID * const vpid, PAGE_FE
       cur_buffer_lock = cur_buffer_lock->lock_next;
     }
   assert ((pgbuf_lock_state == PGBUF_LOCK_WAITER) != (cur_buffer_lock == nullptr));	// xor
+  const bool not_found_in_buffer_lock_chain = (pgbuf_lock_state == PGBUF_LOCK_HOLDER) && (cur_buffer_lock == nullptr);
 
-  if (pgbuf_lock_state == PGBUF_LOCK_HOLDER && cur_buffer_lock == nullptr)
+  if (not_found_in_buffer_lock_chain && fetch_mode == OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT)
+    {
+      // no need to lock the access to page for loading; because the page does not need to be loaded
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+      return PGBUF_LOCK_NOT_NEEDED;
+    }
+
+  /* page not already in the process of being loaded/retrieved, register ourselves as the access lock holder */
+  if (not_found_in_buffer_lock_chain)
     {
       /* buf_lock_table is implemented to have one entry for each thread. At first design, it had one entry for each
        * thread. thread_p->index : thread entry index thread_p->tran_index : transaction entry index */
@@ -7501,6 +7521,8 @@ pgbuf_perf_register_page_lock (PAGE_FETCH_MODE fetch_mode, PGBUF_LOCK_MODE pgbuf
  *       Before return, the thread releases the hash mutex on the hash
  *       anchor and wakes up all the threads blocked on the queue of the
  *       buffer lock record.
+ * NOTE: function name is misleading; function does not actually unlocks the page, it merely
+ *       synchronizes (unlocks) the inter-thread access to the page retrieval (fix) mechanism
  */
 static int
 pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_hash_mutex)
