@@ -93,10 +93,10 @@ typedef enum mht_put_opt MHT_PUT_OPT;
  * Note: if x is a prime number, the n is prime if X**(n-1) mod n == 1
  */
 
-static unsigned int mht_1str_pseudo_key (const void *key, int key_size);
+static inline unsigned int mht_1str_pseudo_key (const void *key, int key_size);
 static unsigned int mht_3str_pseudo_key (const void *key, int key_size, const unsigned int max_value);
 static unsigned int mht_4str_pseudo_key (const void *key, int key_size);
-static unsigned int mht_5str_pseudo_key (const void *key, int key_size);
+static inline unsigned int mht_5str_pseudo_key (const void *key, int key_size);
 
 static int mht_rehash (MHT_TABLE * ht);
 
@@ -123,7 +123,7 @@ static unsigned int mht_get_linear_hash32 (const unsigned int key, const unsigne
  * Note: It generates a pseudo integer key based on Gosling's emacs hash
  *       function.
  */
-static unsigned int
+static inline unsigned int
 mht_1str_pseudo_key (const void *key, int key_size)
 {
   unsigned const char *byte_p = (unsigned char *) key;
@@ -364,7 +364,7 @@ mht_4str_pseudo_key (const void *key, int key_size)
  *
  * Note: Based on hash method reported by Diniel J. Bernstein.
  */
-static unsigned int
+static inline unsigned int
 mht_5str_pseudo_key (const void *key, int key_size)
 {
   unsigned int hash = 5381;
