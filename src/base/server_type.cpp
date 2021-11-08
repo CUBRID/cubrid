@@ -173,8 +173,7 @@ void finalize_server_type ()
     }
   else if (get_server_type () == SERVER_TYPE_PAGE)
     {
-      ps_Gl.disconnect_active_tran_server ();
-      ps_Gl.disconnect_passive_tran_server ();
+      ps_Gl.disconnect_all_tran_server ();
     }
   else
     {
