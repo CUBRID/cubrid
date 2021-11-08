@@ -1977,7 +1977,7 @@ try_again:
     {
       /* The page is not found in the hash chain the caller is holding hash_anchor->hash_mutex */
 
-      if (er_errid () != NO_ERROR)
+      if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
 	{
 	  // error searching the hash chain
 	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
