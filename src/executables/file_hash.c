@@ -364,6 +364,10 @@ fh_get (FH_TABLE * ht, FH_KEY key, FH_DATA * data)
    * of hash table
    */
   pos = (FH_FILE_POS) (*ht->hfun) (key, ht->size, NULL);
+  if (pos >= ht->size)
+    {
+      pos = pos % ht->size;
+    }
 
   while (pos != INVALID_FILE_POS)
     {
@@ -449,6 +453,10 @@ fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data)
    * of hash table
    */
   pos = (FH_FILE_POS) (*ht->hfun) (key, ht->size, NULL);
+  if (pos >= ht->size)
+    {
+      pos = pos % ht->size;
+    }
 
   do
     {
