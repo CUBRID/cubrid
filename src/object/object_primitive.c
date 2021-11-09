@@ -5408,7 +5408,6 @@ mr_index_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
 static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  DB_VALUE_COMPARE_RESULT c;
   OID o1, o2;
   int oidc;
 
@@ -5420,9 +5419,7 @@ mr_data_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
    * representation of objects is an OID, this is a valid optimization */
 
   oidc = oid_compare (&o1, &o2);
-  c = MR_CMP_RETURN_CODE (oidc);
-
-  return c;
+  return MR_CMP_RETURN_CODE (oidc);
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -6748,7 +6745,6 @@ mr_index_readval_oid (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 static DB_VALUE_COMPARE_RESULT
 mr_index_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  DB_VALUE_COMPARE_RESULT c;
   OID o1, o2;
   int oidc;
 
@@ -6763,15 +6759,12 @@ mr_index_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   COPYMEM (short, &o2.volid, (char *) mem2 + OR_OID_VOLID);
 
   oidc = oid_compare (&o1, &o2);
-  c = MR_CMP_RETURN_CODE (oidc);
-
-  return c;
+  return MR_CMP_RETURN_CODE (oidc);
 }
 
 static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  DB_VALUE_COMPARE_RESULT c;
   OID o1, o2;
   int oidc;
 
@@ -6781,15 +6774,12 @@ mr_data_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
   OR_GET_OID (mem2, &o2);
 
   oidc = oid_compare (&o1, &o2);
-  c = MR_CMP_RETURN_CODE (oidc);
-
-  return c;
+  return MR_CMP_RETURN_CODE (oidc);
 }
 
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  DB_VALUE_COMPARE_RESULT c;
   OID *oid1, *oid2;
   int oidc;
 
@@ -6802,9 +6792,7 @@ mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
     }
 
   oidc = oid_compare (oid1, oid2);
-  c = MR_CMP_RETURN_CODE (oidc);
-
-  return c;
+  return MR_CMP_RETURN_CODE (oidc);
 }
 
 /*
