@@ -214,7 +214,9 @@ cubrid_log_make_new_tracelog ()
   struct tm *er_tm_p = &er_tm;
   struct timeval tv;
 
-  char curr_time[256];
+  int len = 0;
+
+  char curr_time[14];
 
   if (g_dbname[0] == '\0')
     {
@@ -255,7 +257,14 @@ cubrid_log_make_new_tracelog ()
 	}
     }
 
-  snprintf (g_trace_log_path, PATH_MAX + 1, "%s/%s_cubridlog_%s.err", g_trace_log_base, g_dbname, curr_time);
+  len = (int) (strlen (g_trace_log_base) + strlen (g_dbname) + strlen (curr_time)) + 1;
+  if (len > PATH_MAX)
+    {
+      return -1;
+    }
+
+  snprintf (g_trace_log_path, len + 1, "%s%c%s_cubridlog_%s.err", g_trace_log_base, PATH_SEPARATOR, g_dbname,
+	    curr_time);
 
   g_trace_log = fopen (g_trace_log_path, "a+");
   if (g_trace_log == NULL)
@@ -703,7 +712,8 @@ cubrid_log_send_configurations (void)
     }
   else if (reply_code != NO_ERROR)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, NULL);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
+				 "Failed to connect to the server. reply code from server is %d\n", reply_code);
     }
 
   free_and_init (a_request);
