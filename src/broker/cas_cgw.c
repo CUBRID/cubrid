@@ -1994,7 +1994,7 @@ cgw_count_number_of_digits (int num_bits)
   int num = 1;
   INT64 number = 1;
 
-  if (num_bits <= 0)
+  if (num_bits <= 0 || num_bits > 64)
     {
       return ER_FAILED;
     }
