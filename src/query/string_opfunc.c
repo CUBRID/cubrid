@@ -599,38 +599,46 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
       /* We need to implicitly trim both strings since we don't want padding for the result (its of varying type) and
        * since padding can mask the logical end of both of the strings.  Trimming depends on codeset. */
 
-      if (pad_size == 1)
+      if (!ignore_trailing_space)
 	{
-	  for (t = string1 + (size1 - 1); t >= string1 && *t == pad[0]; t--, size1--)
-	    {
-	      ;
-	    }
-	  for (t = string2 + (size2 - 1); t >= string2 && *t == pad[0]; t--, size2--)
-	    {
-	      ;
-	    }
+	  ti = (db_string1->domain.char_info.type == DB_TYPE_CHAR
+		|| db_string1->domain.char_info.type == DB_TYPE_NCHAR);
 	}
-      else
+      if (ti)
 	{
-	  assert (pad_size == 2);
-
-	  for (t = string1 + (size1 - 2); t >= string1 && *t == pad[0] && *(t + 1) == pad[1];
-	       t--, t--, size1--, size1--)
+	  if (pad_size == 1)
 	    {
-	      ;
+	      for (t = string1 + (size1 - 1); t >= string1 && *t == pad[0]; t--, size1--)
+		{
+		  ;
+		}
+	      for (t = string2 + (size2 - 1); t >= string2 && *t == pad[0]; t--, size2--)
+		{
+		  ;
+		}
 	    }
-
-	  for (t = string2 + (size2 - 2); t >= string2 && *t == pad[0] && *(t + 1) == pad[1];
-	       t--, t--, size2--, size2--)
+	  else
 	    {
-	      ;
-	    }
+	      assert (pad_size == 2);
 
-	  if (codeset == INTL_CODESET_KSC5601_EUC)
-	    {
-	      /* trim also ASCII space */
-	      intl_pad_char (INTL_CODESET_ISO88591, pad, &pad_size);
-	      goto trim_again;
+	      for (t = string1 + (size1 - 2); t >= string1 && *t == pad[0] && *(t + 1) == pad[1];
+		   t--, t--, size1--, size1--)
+		{
+		  ;
+		}
+
+	      for (t = string2 + (size2 - 2); t >= string2 && *t == pad[0] && *(t + 1) == pad[1];
+		   t--, t--, size2--, size2--)
+		{
+		  ;
+		}
+
+	      if (codeset == INTL_CODESET_KSC5601_EUC)
+		{
+		  /* trim also ASCII space */
+		  intl_pad_char (INTL_CODESET_ISO88591, pad, &pad_size);
+		  goto trim_again;
+		}
 	    }
 	}
 
@@ -693,13 +701,8 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 	}
       else
 	{
-	  if (!ignore_trailing_space)
-	    {
-	      ti = (db_string1->domain.char_info.type == DB_TYPE_CHAR
-		    || db_string1->domain.char_info.type == DB_TYPE_NCHAR);
-	    }
 	  error_status = QSTR_SPLIT_KEY (collation_id, key_domain->is_desc, string1, size1, string2, size2, &key,
-					 &result_size, ti);
+					 &result_size, true);
 	}
       assert (error_status == NO_ERROR);
 
