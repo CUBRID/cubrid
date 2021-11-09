@@ -100,6 +100,9 @@ static inline unsigned int mht_5str_pseudo_key (const void *key, int key_size);
 
 static int mht_rehash (MHT_TABLE * ht);
 
+static void mht_remove_enrty (MHT_TABLE * ht, HENTRY_PTR prev_hentry, HENTRY_PTR hentry, unsigned int hash);
+static bool mht_add_new_enrty (MHT_TABLE * ht, const void *key, void *data, unsigned int hash,
+			       unsigned int val_of_hash);
 static const void *mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 static const void *mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 static const void *mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
@@ -344,7 +347,7 @@ mht_4str_pseudo_key (const void *key, int key_size)
 	  byte4 = tbl[byte4 ^ *byte_p];
 
 	  byte_p++;
-          key_size--;
+	  key_size--;
 	}
     }
 
@@ -1620,6 +1623,86 @@ mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
   return NULL;
 }
 
+static bool
+mht_add_new_enrty (MHT_TABLE * ht, const void *key, void *data, unsigned int hash, unsigned int val_of_hash)
+{
+  HENTRY_PTR hentry;
+
+  if (ht->nprealloc_entries > 0)
+    {
+      ht->nprealloc_entries--;
+      hentry = ht->prealloc_entries;
+      ht->prealloc_entries = ht->prealloc_entries->next;
+    }
+  else
+    {
+      hentry = (HENTRY_PTR) db_fixed_alloc (ht->heap_id, DB_SIZEOF (HENTRY));
+      if (hentry == NULL)
+	{
+	  return false;
+	}
+    }
+
+  if (ht->build_lru_list)
+    {
+      /* link new entry to LRU list */
+      hentry->lru_next = NULL;
+      hentry->lru_prev = ht->lru_tail;
+      if (ht->lru_tail)
+	{
+	  ht->lru_tail->lru_next = hentry;
+	}
+      ht->lru_tail = hentry;
+      if (ht->lru_head == NULL)
+	{
+	  ht->lru_head = hentry;
+	}
+    }
+
+  /*
+   * Link the new entry to the double link list of active entries and the
+   * hash itself. The previous entry should point to new one.
+   */
+
+  hentry->key = key;
+  hentry->val_of_hash = val_of_hash;
+  hentry->data = data;
+  hentry->act_next = NULL;
+  hentry->act_prev = ht->act_tail;
+  /* Double link tail entry should point to newly created entry */
+  if (ht->act_tail != NULL)
+    {
+      ht->act_tail->act_next = hentry;
+    }
+
+  ht->act_tail = hentry;
+  if (ht->act_head == NULL)
+    {
+      ht->act_head = hentry;
+    }
+
+  /* link to the hash itself */
+  hentry->next = ht->table[hash];
+  if (hentry->next != NULL)
+    {
+      ht->ncollisions++;
+    }
+
+  ht->table[hash] = hentry;
+  ht->nentries++;
+
+  /* Rehash if almost all entries of hash table are used and there are at least * 5% of collisions */
+  if (ht->nentries > ht->rehash_at && ht->ncollisions > (ht->nentries * 0.05))
+    {
+      if (mht_rehash (ht) < 0)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
 /*
  * mht_put_internal - internal function for mht_put(), mht_put_new(), and
  *                    mht_put_data();
@@ -1687,79 +1770,9 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 	}
     }
 
-  /* This is a new entry */
-  if (ht->nprealloc_entries > 0)
+  if (mht_add_new_enrty (ht, key, data, hash, val_of_hash) == false)
     {
-      ht->nprealloc_entries--;
-      hentry = ht->prealloc_entries;
-      ht->prealloc_entries = ht->prealloc_entries->next;
-    }
-  else
-    {
-      hentry = (HENTRY_PTR) db_fixed_alloc (ht->heap_id, DB_SIZEOF (HENTRY));
-      if (hentry == NULL)
-	{
-	  return NULL;
-	}
-    }
-
-  if (ht->build_lru_list)
-    {
-      /* link new entry to LRU list */
-      hentry->lru_next = NULL;
-      hentry->lru_prev = ht->lru_tail;
-      if (ht->lru_tail)
-	{
-	  ht->lru_tail->lru_next = hentry;
-	}
-      ht->lru_tail = hentry;
-      if (ht->lru_head == NULL)
-	{
-	  ht->lru_head = hentry;
-	}
-    }
-
-  /*
-   * Link the new entry to the double link list of active entries and the
-   * hash itself. The previous entry should point to new one.
-   */
-
-  hentry->key = key;
-  hentry->val_of_hash = val_of_hash;
-  hentry->data = data;
-  hentry->act_next = NULL;
-  hentry->act_prev = ht->act_tail;
-  /* Double link tail entry should point to newly created entry */
-  if (ht->act_tail != NULL)
-    {
-      ht->act_tail->act_next = hentry;
-    }
-
-  ht->act_tail = hentry;
-  if (ht->act_head == NULL)
-    {
-      ht->act_head = hentry;
-    }
-
-  hentry->next = ht->table[hash];
-  if (hentry->next != NULL)
-    {
-      ht->ncollisions++;
-    }
-
-  ht->table[hash] = hentry;
-  ht->nentries++;
-
-  /*
-   * Rehash if almost all entries of hash table are used and there are at least
-   * 5% of collisions
-   */
-  if (ht->nentries > ht->rehash_at && ht->ncollisions > (ht->nentries * 0.05))
-    {
-      if (mht_rehash (ht) < 0)
-	{
-	  return NULL;
-	}
+      return NULL;
     }
 
   return (opt & MHT_OPT_INSERT_IF_NOT_EXISTS) ? data : key;
@@ -1882,65 +1895,9 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 	}
     }
 
-  /* get new entry */
-  if (ht->nprealloc_entries > 0)
+  if (mht_add_new_enrty (ht, key, data, hash, val_of_hash) == false)
     {
-      ht->nprealloc_entries--;
-      hentry = ht->prealloc_entries;
-      ht->prealloc_entries = ht->prealloc_entries->next;
-    }
-  else
-    {
-      hentry = (HENTRY_PTR) db_fixed_alloc (ht->heap_id, DB_SIZEOF (HENTRY));
-      if (hentry == NULL)
-	{
-	  return NULL;
-	}
-    }
-
-  if (ht->build_lru_list)
-    {
-      /* link new entry to LRU list */
-      hentry->lru_next = NULL;
-      hentry->lru_prev = ht->lru_tail;
-      if (ht->lru_tail)
-	{
-	  ht->lru_tail->lru_next = hentry;
-	}
-      ht->lru_tail = hentry;
-      if (ht->lru_head == NULL)
-	{
-	  ht->lru_head = hentry;
-	}
-    }
-
-  /* link the new entry to the double link list of active entries */
-  hentry->key = key;
-  hentry->val_of_hash = val_of_hash;
-  hentry->data = data;
-  hentry->act_next = NULL;
-  hentry->act_prev = ht->act_tail;
-  if (ht->act_tail != NULL)
-    {
-      ht->act_tail->act_next = hentry;
-    }
-  ht->act_tail = hentry;
-  if (ht->act_head == NULL)
-    {
-      ht->act_head = hentry;
-    }
-  /* and link to the hash itself */
-  if ((hentry->next = ht->table[hash]) != NULL)
-    {
-      ht->ncollisions++;
-    }
-  ht->table[hash] = hentry;
-  ht->nentries++;
-
-  /* rehash if almost all entries of hash table are used and there are at least 5% of collisions */
-  if (ht->nentries > ht->rehash_at && ht->ncollisions > (ht->nentries * 0.05))
-    {
-      mht_rehash (ht);
+      return NULL;
     }
 
   return key;
@@ -1984,6 +1941,77 @@ mht_put2 (MHT_TABLE * ht, const void *key, void *data)
   return mht_put2_internal (ht, key, data, MHT_OPT_DEFAULT);
 }
 #endif
+
+
+static void
+mht_remove_enrty (MHT_TABLE * ht, HENTRY_PTR prev_hentry, HENTRY_PTR hentry, unsigned int hash)
+{
+
+  if (ht->build_lru_list)
+    {
+      /* remove from LRU list */
+      if (ht->lru_head == ht->lru_tail)
+	{
+	  ht->lru_head = ht->lru_tail = NULL;
+	}
+      else if (ht->lru_head == hentry)
+	{
+	  ht->lru_head = hentry->lru_next;
+	  hentry->lru_next->lru_prev = NULL;
+	}
+      else if (ht->lru_tail == hentry)
+	{
+	  ht->lru_tail = hentry->lru_prev;
+	  hentry->lru_prev->lru_next = NULL;
+	}
+      else
+	{
+	  hentry->lru_prev->lru_next = hentry->lru_next;
+	  hentry->lru_next->lru_prev = hentry->lru_prev;
+	}
+    }
+
+  /* Remove from double link list of active entries */
+  if (ht->act_head == ht->act_tail)
+    {
+      /* Single active element */
+      ht->act_head = ht->act_tail = NULL;
+    }
+  else if (ht->act_head == hentry)
+    {
+      /* Deleting from the head */
+      ht->act_head = hentry->act_next;
+      hentry->act_next->act_prev = NULL;
+    }
+  else if (ht->act_tail == hentry)
+    {
+      /* Deleting from the tail */
+      ht->act_tail = hentry->act_prev;
+      hentry->act_prev->act_next = NULL;
+    }
+  else
+    {
+      /* Deleting from the middle */
+      hentry->act_prev->act_next = hentry->act_next;
+      hentry->act_next->act_prev = hentry->act_prev;
+    }
+
+  /* Remove from the hash */
+  if (prev_hentry != NULL)
+    {
+      prev_hentry->next = hentry->next;
+      ht->ncollisions--;
+    }
+  else if ((ht->table[hash] = hentry->next) != NULL)
+    {
+      ht->ncollisions--;
+    }
+  ht->nentries--;
+  /* Save the entry for future insertions */
+  ht->nprealloc_entries++;
+  hentry->next = ht->prealloc_entries;
+  ht->prealloc_entries = hentry;
+}
 
 /*
  * mht_rem - remove a hash entry
@@ -2040,71 +2068,7 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
 		}
 	    }
 
-	  if (ht->build_lru_list)
-	    {
-	      /* remove from LRU list */
-	      if (ht->lru_head == ht->lru_tail)
-		{
-		  ht->lru_head = ht->lru_tail = NULL;
-		}
-	      else if (ht->lru_head == hentry)
-		{
-		  ht->lru_head = hentry->lru_next;
-		  hentry->lru_next->lru_prev = NULL;
-		}
-	      else if (ht->lru_tail == hentry)
-		{
-		  ht->lru_tail = hentry->lru_prev;
-		  hentry->lru_prev->lru_next = NULL;
-		}
-	      else
-		{
-		  hentry->lru_prev->lru_next = hentry->lru_next;
-		  hentry->lru_next->lru_prev = hentry->lru_prev;
-		}
-	    }
-
-	  /* Remove from double link list of active entries */
-	  if (ht->act_head == ht->act_tail)
-	    {
-	      /* Single active element */
-	      ht->act_head = ht->act_tail = NULL;
-	    }
-	  else if (ht->act_head == hentry)
-	    {
-	      /* Deleting from the head */
-	      ht->act_head = hentry->act_next;
-	      hentry->act_next->act_prev = NULL;
-	    }
-	  else if (ht->act_tail == hentry)
-	    {
-	      /* Deleting from the tail */
-	      ht->act_tail = hentry->act_prev;
-	      hentry->act_prev->act_next = NULL;
-	    }
-	  else
-	    {
-	      /* Deleting from the middle */
-	      hentry->act_prev->act_next = hentry->act_next;
-	      hentry->act_next->act_prev = hentry->act_prev;
-	    }
-
-	  /* Remove from the hash */
-	  if (prev_hentry != NULL)
-	    {
-	      prev_hentry->next = hentry->next;
-	      ht->ncollisions--;
-	    }
-	  else if ((ht->table[hash] = hentry->next) != NULL)
-	    {
-	      ht->ncollisions--;
-	    }
-	  ht->nentries--;
-	  /* Save the entry for future insertions */
-	  ht->nprealloc_entries++;
-	  hentry->next = ht->prealloc_entries;
-	  ht->prealloc_entries = hentry;
-
+	  mht_remove_enrty (ht, prev_hentry, hentry, hash);
 	  return NO_ERROR;
 	}
     }
@@ -2168,66 +2132,7 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
 		}
 	    }
 
-	  if (ht->build_lru_list)
-	    {
-	      /* remove from LRU list */
-	      if (ht->lru_head == ht->lru_tail)
-		{
-		  ht->lru_head = ht->lru_tail = NULL;
-		}
-	      else if (ht->lru_head == hentry)
-		{
-		  ht->lru_head = hentry->lru_next;
-		  hentry->lru_next->lru_prev = NULL;
-		}
-	      else if (ht->lru_tail == hentry)
-		{
-		  ht->lru_tail = hentry->lru_prev;
-		  hentry->lru_prev->lru_next = NULL;
-		}
-	      else
-		{
-		  hentry->lru_prev->lru_next = hentry->lru_next;
-		  hentry->lru_next->lru_prev = hentry->lru_prev;
-		}
-	    }
-
-	  /* remove from double link list of active entries */
-	  if (ht->act_head == ht->act_tail)
-	    {
-	      ht->act_head = ht->act_tail = NULL;
-	    }
-	  else if (ht->act_head == hentry)
-	    {
-	      ht->act_head = hentry->act_next;
-	      hentry->act_next->act_prev = NULL;
-	    }
-	  else if (ht->act_tail == hentry)
-	    {
-	      ht->act_tail = hentry->act_prev;
-	      hentry->act_prev->act_next = NULL;
-	    }
-	  else
-	    {
-	      hentry->act_prev->act_next = hentry->act_next;
-	      hentry->act_next->act_prev = hentry->act_prev;
-	    }
-	  /* remove from the hash */
-	  if (prev_hentry != NULL)
-	    {
-	      prev_hentry->next = hentry->next;
-	      ht->ncollisions--;
-	    }
-	  else if ((ht->table[hash] = hentry->next) != NULL)
-	    {
-	      ht->ncollisions--;
-	    }
-	  ht->nentries--;
-	  /* save the entry for future insertions */
-	  ht->nprealloc_entries++;
-	  hentry->next = ht->prealloc_entries;
-	  ht->prealloc_entries = hentry;
-
+	  mht_remove_enrty (ht, prev_hentry, hentry, hash);
 	  return NO_ERROR;
 	}
     }
