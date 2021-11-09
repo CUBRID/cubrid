@@ -13683,7 +13683,7 @@ cdc_check_lsa_range (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
   cdc_log ("%s : first log lsa from log volume is (%lld|%d) and last lsa is (%lld|%d). input lsa is (%lld|%d)",
 	   __func__, LSA_AS_ARGS (&first_lsa), LSA_AS_ARGS (&nxio_lsa), LSA_AS_ARGS (lsa));
 
-  if (LSA_GE (lsa, &first_lsa) && LSA_LE (lsa, &nxio_lsa))
+  if (LSA_GE (lsa, &first_lsa) && LSA_LT (lsa, &nxio_lsa))
     {
       return NO_ERROR;
     }
