@@ -1707,4 +1707,5 @@
  * details.
  * ER_LAST_ERROR must also be updated.
  */
+
 #endif /* _ERROR_CODE_H_ */
