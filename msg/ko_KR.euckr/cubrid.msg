@@ -1361,7 +1361,39 @@ $ LOADDB
 1300 Log recovery: %1$s 단계가 끝났습니다.
 1301 Log recovery: %1$s 진행도: (%2$lld/%3$lld), %4$.2f 퍼센트, 경과 시간: %5$.2f (s), 추정 남은 시간: %6$.2f (s).
 
-1302 마지막 에러
+1302 dblink - %1$s
+1303 dblink - 명시된 열의 개수가 올바르지 않습니다.
+1304 dblink - _db_server 카탈로그를 찾을 수 없습니다.
+1305 dblink - "%1$s" 서버를 찾을 수 없습니다.
+1306 dblink - "%1$s" 서버는 이미 존재합니다.
+1307 dblink - 서버 객체에 대한 소유권이 없습니다.
+1308 dblink - 지원하지 않는 유형입니다.
+1309 dblink - 유효하지 않은 바인드 파라메터입니다.
+1310 dblink - 암호화할 비밀번호의 길이가 최댓값을 넘어섰습니다.
+1311 dblink - 암호화된 비밀번호의 길이가 올바르지 않습니다.
+1312 dblink - 암호화된 비밀번호의 체크섬이 일치하지 않습니다.
+1313 dblink - 암호 문자열의 형식이 올바르지 않습니다.
+1314 dblink - 암호화된 비밀번호를 복호화하는 데 실패했습니다.. error=%1$d".
+1315 dblink - 비밀번호를 암호화하는 데 실패했습니다. error=%1$d".
+1316 dblink - 이름이 "%1$s"인 서버가 여러 개 있습니다.
+1317 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다.
+1318 [%1$5.5s] %2$s (%3$d)
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Both dsn name and link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1826,6 +1858,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 잘못된 인자 갯수 %1$d.
 304 함수 %1$s()에 대해 호환되는 함수 정의를 찾을 수 없습니다.
 305 함수 인자와 함수 정의 %1$s 은 호환되지 않습니다.
+306 dblink - 필수 정보가 누락되었습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
