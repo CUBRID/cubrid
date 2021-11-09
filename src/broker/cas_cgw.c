@@ -1999,10 +1999,5 @@ cgw_count_number_of_digits (int num_bits)
       return ER_FAILED;
     }
 
-  for (int i = 0; i < num_bits - 1; i++)
-    {
-      number = (number << 1) + 1;
-    }
-
-  return NUM_OF_DIGITS (number);
+  return NUM_OF_DIGITS (pow (2, num_bits) - 1);
 }
