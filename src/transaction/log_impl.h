@@ -1276,6 +1276,7 @@ extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
+extern int logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation

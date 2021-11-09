@@ -23745,7 +23745,8 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 
   for (agg_ptr = agg_list; agg_ptr; agg_ptr = agg_ptr->next)
     {
-      if (!agg_ptr->flag_agg_optimize)
+      if ((agg_ptr->function != PT_COUNT_STAR && !agg_ptr->flag_agg_optimize)
+		|| (spec->where_key || spec->where_pred || spec->where_range))
 	{
 	  /* scan is needed for this aggregate */
 	  *is_scan_needed = true;
@@ -23754,11 +23755,13 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 
       /* Temporary disable count optimization. To enable it just remove these lines and also restore the condition in
        * pt_find_lck_classes and also enable load global statistics in logtb_get_mvcc_snapshot_data. */
+#if 0
       if (agg_ptr->function == PT_COUNT_STAR)
 	{
 	  *is_scan_needed = true;
 	  break;
 	}
+#endif
 
       /* If we deal with a count optimization and the snapshot wasn't already taken then prepare current class for
        * optimization and force a snapshot */

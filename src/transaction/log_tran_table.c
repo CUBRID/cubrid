@@ -126,7 +126,6 @@ static LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_create_btid_unique_stats (THREAD_E
 static int logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_tran_reset_cos_func (THREAD_ENTRY * thread_p, void *data, void *args);
-static int logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p);
 static int logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid);
 static GLOBAL_UNIQUE_STATS *logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
 								 bool load_at_creation);
@@ -3775,7 +3774,7 @@ cleanup:
  *	 count optimization state. This function is used when a snapshot is
  *	 taken.
  */
-static int
+int
 logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
