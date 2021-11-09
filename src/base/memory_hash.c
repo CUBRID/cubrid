@@ -1865,7 +1865,7 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 
   assert (ht != NULL && key != NULL);
 
-  unsigned int val_of_hash;
+  unsigned int val_of_hash = 0;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   /* 
    * In the definition of the mht_create() function, 
@@ -2100,7 +2100,7 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
 
   assert (ht != NULL && key != NULL);
 
-  unsigned int val_of_hash;
+  unsigned int val_of_hash = 0;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   /* 
    * In the definition of the mht_create() function, 
