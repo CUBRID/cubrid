@@ -76,7 +76,7 @@ class mvcctable
     void reset_transaction_lowest_active (int tran_index);
 
     // mvcc_snapshot/mvcc_info functions
-    void build_mvcc_info (log_tdes &tdes);
+    void build_mvcc_info (log_tdes &tdes, bool partitioned);
     void complete_mvcc (int tran_index, MVCCID mvccid, bool committed);
     void complete_sub_mvcc (MVCCID mvccid);
     MVCCID get_new_mvccid ();

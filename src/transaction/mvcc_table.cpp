@@ -221,7 +221,7 @@ mvcctable::finalize ()
 }
 
 void
-mvcctable::build_mvcc_info (log_tdes &tdes)
+mvcctable::build_mvcc_info (log_tdes &tdes, bool partitioned)
 {
   MVCCID tx_lowest_active;
   MVCCID crt_status_lowest_active;
@@ -298,14 +298,15 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
       trans_status.m_active_mvccs.copy_to (tdes.mvccinfo.snapshot.m_active_mvccs,
 					   mvcc_active_tran::copy_safety::THREAD_UNSAFE);
       /* load statistics temporary disabled need to be enabled when activate count optimization */
-#if 0
       /* load global statistics. This must take place here and nowhere else. */
-      if (logtb_load_global_statistics_to_tran (thread_p) != NO_ERROR)
+      if (!partitioned)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
-	  error_code = ER_MVCC_CANT_GET_SNAPSHOT;
+          if (logtb_load_global_statistics_to_tran (thread_get_thread_entry_info())!= NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
+	      return;
+	    }
 	}
-#endif
 
       if (trans_status_version == trans_status.m_version.load ())
 	{
