@@ -1662,11 +1662,6 @@
 #define ER_LOG_RECOVERY_PHASE_FINISHING_UP          -1299
 #define ER_LOG_RECOVERY_PHASE_FINISHED              -1300
 #define ER_LOG_RECOVERY_PROGRESS                    -1301
-#define ER_LOG_TOO_SANE_TO_RECREATE                 -1302
-
-<<<<<<< HEAD
-#define ER_LAST_ERROR                               -1303
-  == == == =
 #define ER_DBLINK                                   -1302
 #define ER_DBLINK_INVALID_COLUMNS_SPECIFIED         -1303
 #define ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND       -1304
@@ -1697,8 +1692,9 @@
 #define ER_DBLINK_DEV_RESERVED_ERROR29              -1329
 #define ER_DBLINK_DEV_RESERVED_ERROR30              -1330
 #define ER_DBLINK_DEV_RESERVED_ERROR31              -1331
-#define ER_LAST_ERROR                               -1332
-  >>>>>>>develop
+#define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
+
+#define ER_LAST_ERROR                               -1333
 /*
  * CAUTION!
  *
