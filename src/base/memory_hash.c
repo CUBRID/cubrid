@@ -1429,7 +1429,7 @@ mht_get (MHT_TABLE * ht, const void *key)
   assert (ht != NULL);
   assert (key != NULL);
 
-  unsigned int val_of_hash;
+  unsigned int val_of_hash = 0;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   /* 
    * In the definition of the mht_create() function, 
@@ -1507,7 +1507,7 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 
   assert (ht != NULL && key != NULL);
 
-  unsigned int val_of_hash;
+  unsigned int val_of_hash = 0;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   /* 
    * In the definition of the mht_create() function, 
@@ -1734,7 +1734,7 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 
   assert (ht != NULL && key != NULL);
 
-  unsigned int val_of_hash;
+  unsigned int val_of_hash = 0;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   /* 
    * In the definition of the mht_create() function, 
@@ -2035,7 +2035,7 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
 
   assert (ht != NULL && key != NULL);
 
-  unsigned int val_of_hash;
+  unsigned int val_of_hash = 0;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
   /* 
    * In the definition of the mht_create() function, 

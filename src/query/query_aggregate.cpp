@@ -2199,7 +2199,7 @@ qdata_hash_agg_hkey (const void *key, unsigned int ht_size, unsigned int *val_of
     }
 
   *val_of_hash = hash_val;
-  return hash_val;
+  return hash_val % ht_size;
 }
 
 /*
