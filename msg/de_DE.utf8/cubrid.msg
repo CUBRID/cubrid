@@ -1329,7 +1329,7 @@ $ LOADDB
 1258 Der in der Datenbank festgelegte Schlüssel von %1$s kann nicht gefunden werden. Die Schlüsseldatei vom Sicherungsvolume wird verwendet.
 1259 Benennen Sie die Schlüsseldatei von "%1$s" in "%2$s" um.
 1260 Kopieren Sie die Schlüsseldatei "%1$s" nach "%2$s".
-1261 Der erste Schlüssel (Schlüsselindex: %1$d, Erstellungszeit: %2$s) in der wiederhergestellten Sicherungsschlüsseldatei wurde festgelegt.
+1261 Der Schlüssel kann zum Zeitpunkt der Wiederherstellung nicht gefunden werden (Schlüsselindex: %1$d, Erstellungszeit: %2$s). Legen Sie den Schlüssel (Schlüsselindex: %3$d) für die Datenbank fest.
 1262 Die Schlüsseldatei ist voll.
 1263 Die Protokollseite kann nicht mit TDE verschlüsselt werden (Seiten-ID: %1$lld). Es wird nicht mehr versucht, diese Seite zu verschlüsseln.
 1264 Error reserved for scalability development.

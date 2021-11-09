@@ -1329,7 +1329,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1258 Impossibile trovare la serie di chiavi nel database da%1$s. Verrà utilizzato il file chiave del volume di backup.
 1259 Rinomina il file della chiave da "%1$s" a "%2$s".
 1260 Copia il file chiave "%1$s" in "%2$s".
-1261 La prima chiave (indice della chiave: %1$d, ora di creazione: %2$s) sul file della chiave di backup ripristinato è stata impostata.
+1261 Impossibile trovare la chiave al momento del ripristino (indice chiave: %1$d, ora di creazione: %2$s). Imposta la chiave (indice chiave: %3$d) per il database.
 1262 Il file della chiave è pieno.
 1263 Impossibile crittografare TDE la pagina di registro (pageid: %1$lld). Non si tenterà più di crittografare questa pagina.
 1264 Error reserved for scalability development.

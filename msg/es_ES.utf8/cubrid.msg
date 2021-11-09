@@ -1329,7 +1329,7 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1258 No se puede encontrar el conjunto de claves en la base de datos de%1$s. Se utilizará el archivo de claves del volumen de copia de seguridad.
 1259 Cambie el nombre del archivo de claves de "%1$s" a "%2$s".
 1260 Copie el archivo de claves "%1$s" en "%2$s".
-1261 Se ha configurado la primera clave (índice de clave: %1$d, hora de creación: %2$s) en el archivo de clave de respaldo restaurado.
+1261 No se puede encontrar la clave en el momento de restaurar (índice de clave: %1$d, hora de creación: %2$s). Establezca la clave (índice de clave: %3$d) para la base de datos.
 1262 El archivo de claves está lleno.
 1263 No se puede cifrar con TDE la página de registro (pageid: %1$lld). Ya no se intentará cifrar esta página.
 1264 Error reserved for scalability development.
