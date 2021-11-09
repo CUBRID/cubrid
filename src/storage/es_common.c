@@ -92,8 +92,8 @@ unsigned int
 es_name_hash_func (int size, const char *name)
 {
   assert (size >= 0);
-  unsigned int ignore_hashval;
-  return (int) mht_5strhash (name, (unsigned int) size, &ignore_hashval);
+  unsigned int unused_val_of_hash;
+  return (int) mht_5strhash (name, (unsigned int) size, &unused_val_of_hash);
 }
 
 /*

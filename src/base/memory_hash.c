@@ -95,7 +95,7 @@ typedef enum mht_put_opt MHT_PUT_OPT;
 
 static inline unsigned int mht_1str_pseudo_key (const void *key, int key_size);
 static unsigned int mht_3str_pseudo_key (const void *key, int key_size, const unsigned int max_value);
-static unsigned int mht_4str_pseudo_key (const void *key, int key_size);
+static inline unsigned int mht_4str_pseudo_key (const void *key, int key_size);
 static inline unsigned int mht_5str_pseudo_key (const void *key, int key_size);
 
 static int mht_rehash (MHT_TABLE * ht);
@@ -265,11 +265,11 @@ mht_3str_pseudo_key (const void *key, int key_size, const unsigned int max_value
  *       Based on Fast Hashing of Variable-Length Text Strings
  *       by Peter K. Pearson Communications of the ACM, June 1990.
  */
-static unsigned int
+static inline unsigned int
 mht_4str_pseudo_key (const void *key, int key_size)
 {
   /* a permutation of values 0 to 255 */
-  unsigned char tbl[] = {
+  static unsigned char tbl[] = {
     166, 231, 148, 061, 050, 131, 000, 057, 126, 223,
     044, 245, 138, 251, 24, 113, 86, 215, 196, 173,
     226, 115, 48, 169, 46, 207, 92, 101, 58, 235,
@@ -313,42 +313,38 @@ mht_4str_pseudo_key (const void *key, int key_size)
 	{
 	  byte_p++;
 	}
+
+      while (*byte_p)
+	{
+	  /*
+	   * Each of the following hash values,
+	   * generates a value between 0 and 255
+	   */
+	  byte1 = tbl[byte1 ^ *byte_p];
+	  byte2 = tbl[byte2 ^ *byte_p];
+	  byte3 = tbl[byte3 ^ *byte_p];
+	  byte4 = tbl[byte4 ^ *byte_p];
+	  byte_p++;
+	}
     }
   else if (key_size > 0)
     {
       byte_p++;
       key_size--;
-    }
 
-  for (;; byte_p++)
-    {
-      if (key_size == -1)
+      while (key_size > 0)
 	{
-	  if (!(*byte_p))
-	    {
-	      break;
-	    }
-	}
-      else
-	{
-	  if (key_size <= 0)
-	    {
-	      break;
-	    }
-	}
+	  /*
+	   * Each of the following hash values,
+	   * generates a value between 0 and 255
+	   */
+	  byte1 = tbl[byte1 ^ *byte_p];
+	  byte2 = tbl[byte2 ^ *byte_p];
+	  byte3 = tbl[byte3 ^ *byte_p];
+	  byte4 = tbl[byte4 ^ *byte_p];
 
-      /*
-       * Each of the following hash values,
-       * generates a value between 0 and 255
-       */
-      byte1 = tbl[byte1 ^ *byte_p];
-      byte2 = tbl[byte2 ^ *byte_p];
-      byte3 = tbl[byte3 ^ *byte_p];
-      byte4 = tbl[byte4 ^ *byte_p];
-
-      if (key_size > 0)
-	{
-	  key_size--;
+	  byte_p++;
+          key_size--;
 	}
     }
 
@@ -1109,10 +1105,11 @@ mht_rehash (MHT_TABLE * ht)
 #else
 	  unsigned int fc_hashval;
 	  hash = (*ht->hash_func) (hentry->key, est_size, &fc_hashval);
-	  if (hash >= est_size)
-	    {
-	      hash %= est_size;
-	    }
+	  /* 
+	   * In the definition of the mht_create() function, 
+	   * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
+	   */
+	  assert (hash < est_size);
 #endif
 
 	  /* Link the new entry with any previous elements */
@@ -1429,16 +1426,13 @@ mht_get (MHT_TABLE * ht, const void *key)
   assert (ht != NULL);
   assert (key != NULL);
 
-  /*
-   * Hash the key and make sure that the return value is between 0 and size
-   * of hash table
-   */
   unsigned int val_of_hash;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
-  if (hash >= ht->size)
-    {
-      hash %= ht->size;
-    }
+  /* 
+   * In the definition of the mht_create() function, 
+   * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
+   */
+  assert (hash < ht->size);
 
   /* now search the linked list */
   for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
@@ -1510,16 +1504,14 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 
   assert (ht != NULL && key != NULL);
 
-  /*
-   * Hash the key and make sure that the return value is between 0 and size
-   * of hash table
-   */
   unsigned int val_of_hash;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
-  if (hash >= ht->size)
-    {
-      hash %= ht->size;
-    }
+  /* 
+   * In the definition of the mht_create() function, 
+   * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
+   */
+  assert (hash < ht->size);
+
 
   /* now search the linked list */
   for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
@@ -1659,16 +1651,13 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 
   assert (ht != NULL && key != NULL);
 
-  /*
-   * Hash the key and make sure that the return value is between 0 and size
-   * of hash table
-   */
   unsigned int val_of_hash;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
-  if (hash >= ht->size)
-    {
-      hash %= ht->size;
-    }
+  /* 
+   * In the definition of the mht_create() function, 
+   * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
+   */
+  assert (hash < ht->size);
 
   if (!(opt & MHT_OPT_INSERT_ONLY))
     {
@@ -1863,16 +1852,13 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 
   assert (ht != NULL && key != NULL);
 
-  /*
-   * Hash the key and make sure that the return value is between 0 and size
-   * of hash table
-   */
   unsigned int val_of_hash;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
-  if (hash >= ht->size)
-    {
-      hash %= ht->size;
-    }
+  /* 
+   * In the definition of the mht_create() function, 
+   * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
+   */
+  assert (hash < ht->size);
 
   if (!(opt & MHT_OPT_INSERT_ONLY))
     {
@@ -2021,16 +2007,13 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
 
   assert (ht != NULL && key != NULL);
 
-  /*
-   * Hash the key and make sure that the return value is between 0 and size
-   * of hash table
-   */
   unsigned int val_of_hash;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
-  if (hash >= ht->size)
-    {
-      hash %= ht->size;
-    }
+  /* 
+   * In the definition of the mht_create() function, 
+   * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
+   */
+  assert (hash < ht->size);
 
   /* Now search the linked list.. Is there any entry with the given key ? */
   for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL; prev_hentry = hentry, hentry = hentry->next)
@@ -2153,13 +2136,13 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
 
   assert (ht != NULL && key != NULL);
 
-  /* hash the key and make sure that the return value is between 0 and size of hash table */
   unsigned int val_of_hash;
   hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
-  if (hash >= ht->size)
-    {
-      hash %= ht->size;
-    }
+  /* 
+   * In the definition of the mht_create() function, 
+   * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
+   */
+  assert (hash < ht->size);
 
   /* now search the linked list */
   for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL; prev_hentry = hentry, hentry = hentry->next)

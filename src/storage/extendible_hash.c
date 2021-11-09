@@ -4212,9 +4212,9 @@ ehash_hash_string_type (char *key_p, char *original_key_p)
   memcpy (&copy_psekey, &hash_key, sizeof (EHASH_HASH_KEY));
   copy_psekey[sizeof (EHASH_HASH_KEY)] = '\0';
 
-  unsigned int ignore_hashval;
+  unsigned int unused_val_of_hash;
   hash_key = 0;
-  byte = mht_1strhash (copy_psekey, 509, &ignore_hashval);
+  byte = mht_1strhash (copy_psekey, 509, &unused_val_of_hash);
   hash_key = hash_key + (byte << (8 * (sizeof (EHASH_HASH_KEY) - 1)));
   byte = mht_2strhash (copy_psekey, 509);
   hash_key = hash_key + (byte << (8 * (sizeof (EHASH_HASH_KEY) - 2)));
