@@ -41,6 +41,7 @@ class print_output;
 struct trigger_description
 {
   char *name;
+  char *simple_name;
   const char *event;
   char *class_name;
   char *attribute;

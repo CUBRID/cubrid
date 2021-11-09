@@ -6954,7 +6954,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   /* ------ SELECT ... WHERE ------- */
   {
     PT_NODE *where_item = NULL;
-    where_item = pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", lower_view_name);
+    where_item = pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", sm_simple_name (lower_view_name));
 
     /* WHERE list should be empty */
     assert (node->info.query.q.select.where == NULL);

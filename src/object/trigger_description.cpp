@@ -44,6 +44,7 @@ static char *get_user_name (DB_OBJECT *user);
 
 trigger_description::trigger_description ()
   : name (0)
+  , simple_name (0)
   , event (0)
   , class_name (0)
   , attribute (0)
@@ -97,6 +98,7 @@ int trigger_description::init (struct db_object *trobj)
 
   /* copy these */
   this->name = object_print::copy_string (trigger->name);
+  this->simple_name = object_print::copy_string (trigger->simple_name);
   this->attribute = object_print::copy_string (trigger->attribute);
   this->comment = object_print::copy_string (trigger->comment);
 

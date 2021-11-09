@@ -6675,12 +6675,11 @@ classobj_free_class (SM_CLASS * class_)
     }
 
   /*
-   * ch_thin_name points after dot(".") in ch_name.
-   * So, ch_thin_name should be initialized to NULL and only ch_name should be freed.
+   * ch_simple_name points after dot(".") in ch_name.
+   * So, ch_simple_name should be initialized to NULL and only ch_name should be freed.
    *
    */
   class_->header.ch_simple_name = NULL;
-
   ws_free_string_and_init (class_->header.ch_name);
   ws_free_string_and_init (class_->loader_commands);
   ws_free_string_and_init (class_->comment);

@@ -5166,7 +5166,7 @@ au_change_owner (MOP classmop, MOP owner)
 	  class_->owner = owner;
 
 	  simple_name = sm_ch_simple_name ((MOBJ) class_);
-	  if (db_is_system_class_by_name (simple_name) == FALSE)
+	  if (db_is_system_class_by_lower_name (simple_name) == FALSE)
 	    {
 	      /* Get original name. */
 	      memset (full_name, '\0', sizeof (char) * DB_MAX_IDENTIFIER_LENGTH);
@@ -5221,7 +5221,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
     }
 
   /* Start of change for POC */
-  if (strstr(class_name, ".") == NULL && IS_CATALOG_CLASS (class_name) != true)
+  if (strstr(class_name, ".") == NULL && db_is_system_class_by_name (class_name) != true)
     {
       const char *user_name = au_user_name();
 
@@ -5229,8 +5229,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
       int class_name_len = strlen(class_name);
       int schema_name_len = user_name_len + 1 + class_name_len + 1;
 
-      char schema_name[schema_name_len];
-      memset(schema_name, 0, schema_name_len);
+      char schema_name[schema_name_len] = { 0 };
 
       sprintf (schema_name, "%s.%s", user_name, class_name);
 
@@ -5584,7 +5583,7 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
     {
       name = db_get_string (class_);
 
-      if (strchr (name, '.') || db_is_system_class_by_name(name))
+      if (strchr (name, '.') || db_is_system_class_by_name (name))
 	{
 	  classmop = sm_find_class (name);
 	}

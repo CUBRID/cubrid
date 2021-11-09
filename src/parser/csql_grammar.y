@@ -573,6 +573,7 @@ int g_original_buffer_len;
 %type <node> user_specified_name_without_dot
 %type <node> user_specified_name
 %type <node> user_specified_name_list
+%type <node> object_name_without_dot
 %type <node> object_name
 %type <node> object_name_list
 %type <node> opt_identifier
@@ -2308,7 +2309,7 @@ session_variable
 get_stmt
 	: GET
 		{ push_msg(MSGCAT_SYNTAX_INVALID_GET_STAT); }
-	  STATISTICS char_string_literal  OF object_name into_clause_opt
+	  STATISTICS char_string_literal  OF user_specified_name into_clause_opt
 		{ pop_msg(); }
 		{{
 
@@ -3277,7 +3278,7 @@ alter_stmt
 		DBG_PRINT}}
 	| ALTER						/* 1 */
 	  TRIGGER					/* 2 */
-	  user_specified_name_list			/* 3 */
+	  user_specified_name				/* 3 */
 	  trigger_status_or_priority_or_change_owner	/* 4 */
 	  opt_comment_spec				/* 5 */
 		{{
@@ -4976,28 +4977,40 @@ user_specified_name_without_dot
 
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
-			const char *name_buf = NULL;
+			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
+			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+			const char *original_name_buf = NULL;
+			int user_name_size = 0;
+			int name_size = 0;
 
 			assert (user != NULL && user->node_type == PT_NAME);
 			assert (name != NULL && name->node_type == PT_NAME);
 
+			user_name_size = intl_identifier_lower_string_size (user->info.name.original);
+			if (user_name_size + 1 > DB_MAX_USER_LENGTH)
+			  {
+			    PT_ERRORf (this_parser, name, "User name cannot exceed %d bytes.", DB_MAX_USER_LENGTH);
+			  }
+			intl_identifier_lower (user->info.name.original, user_name_buf);
+
+			name_size = intl_identifier_lower_string_size (name->info.name.original);
+			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
+			  {
+			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.", DB_MAX_CLASS_LENGTH);
+			  }
+			intl_identifier_lower (name->info.name.original, name_buf);
+
 			/* Name without owner name. */
-			name->info.name.thin = name->info.name.original;
+			name->info.name.thin = pt_append_string (this_parser, NULL, name_buf);
 
 			/* Name without owner name.
 			 * System class/vclass has no owner_name. */
-			if (db_is_system_class_by_name (name->info.name.thin) == FALSE)
+			if (db_is_system_class_by_lower_name (name_buf) == FALSE)
 			  {
-			    name_buf = pt_append_string (this_parser, NULL, user->info.name.original);
-			    name_buf = pt_append_string (this_parser, name_buf, ".");
-			    name_buf = pt_append_string (this_parser, name_buf, name->info.name.thin);
-			    name->info.name.original = name_buf;
-			  }
-
-			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_WITH_OWNER);
-			if (strcasecmp (user->info.name.original, db_get_user_name ()))
-			  {
-			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_USER_OWNER);
+			    original_name_buf = pt_append_string (this_parser, NULL, user_name_buf);
+			    original_name_buf = pt_append_string (this_parser, original_name_buf, ".");
+			    original_name_buf = pt_append_string (this_parser, original_name_buf, name_buf);
+			    name->info.name.original = original_name_buf;
 			  }
 
 			parser_free_tree (this_parser, user);
@@ -5010,26 +5023,36 @@ user_specified_name_without_dot
 		{{
 
 			PT_NODE *name = $1;
-			const char *name_buf = NULL;
+			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
+			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+			const char *original_name_buf = NULL;
+			int user_name_size = 0;
+			int name_size = 0;
 
 			assert (name != NULL && name->node_type == PT_NAME);
 
+			intl_identifier_lower (db_get_user_name (), user_name_buf);
+
+			name_size = intl_identifier_lower_string_size (name->info.name.original);
+			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
+			  {
+			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.", DB_MAX_CLASS_LENGTH);
+			  }
+			intl_identifier_lower (name->info.name.original, name_buf);
+
 			/* Name without owner name. */
-			name->info.name.thin = name->info.name.original;
+			name->info.name.thin = pt_append_string (this_parser, NULL, name_buf);
 
 			/* Name without owner name.
 			 * System class/vclass has no owner_name. */
-			if (db_is_system_class_by_name (name->info.name.thin) == FALSE)
+			if (db_is_system_class_by_lower_name (name_buf) == FALSE)
 			  {
 			    /* Owner name. */
-			    name_buf = pt_append_string (this_parser, NULL, db_get_user_name ());
-			    name_buf = pt_append_string (this_parser, name_buf, ".");
-			    name_buf = pt_append_string (this_parser, name_buf, name->info.name.thin);
-			    name->info.name.original = name_buf;
+			    original_name_buf = pt_append_string (this_parser, NULL, user_name_buf);
+			    original_name_buf = pt_append_string (this_parser, original_name_buf, ".");
+			    original_name_buf = pt_append_string (this_parser, original_name_buf, name_buf);
+			    name->info.name.original = original_name_buf;
 			  }
-
-			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_WITH_OWNER);
-			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_USER_OWNER);
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5053,31 +5076,46 @@ user_specified_name
 
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
-			const char *name_buf = NULL;
+			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
+			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+			const char *original_name_buf = NULL;
 			const char *dot = NULL;
+			int user_name_size = 0;
+			int name_size = 0;
 
 			assert (user != NULL && user->node_type == PT_NAME);
 			assert (name != NULL && name->node_type == PT_NAME);
+
+			user_name_size = intl_identifier_lower_string_size (user->info.name.original);
+			if (user_name_size + 1 > DB_MAX_USER_LENGTH)
+			  {
+			    PT_ERRORf (this_parser, name, "User name cannot exceed %d bytes.", DB_MAX_USER_LENGTH);
+			  }
+			intl_identifier_lower (user->info.name.original, user_name_buf);
 
 			/* Name without owner name. */
 			dot = strchr (name->info.name.original, '.');
 			name->info.name.thin = dot ? dot + 1 : name->info.name.original;
 
+			name_size = intl_identifier_lower_string_size (name->info.name.thin);
+			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
+			  {
+			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.", DB_MAX_CLASS_LENGTH);
+			  }
+			intl_identifier_lower (name->info.name.thin, name_buf);
+
+			/* Name without owner name. */
+			name->info.name.thin = pt_append_string (this_parser, NULL, name_buf);
+
 			/* Name without owner name.
 			 * System class/vclass has no owner_name. */
 			if (dot == NULL
-			    && db_is_system_class_by_name (name->info.name.thin) == FALSE)
+			    && db_is_system_class_by_lower_name (name_buf) == FALSE)
 			  {
-			    name_buf = pt_append_string (this_parser, NULL, user->info.name.original);
-			    name_buf = pt_append_string (this_parser, name_buf, ".");
-			    name_buf = pt_append_string (this_parser, name_buf, name->info.name.thin);
-			    name->info.name.original = name_buf;
-			  }
-
-			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_WITH_OWNER);
-			if (strcasecmp (user->info.name.original, db_get_user_name ()))
-			  {
-			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_USER_OWNER);
+			    original_name_buf = pt_append_string (this_parser, NULL, user_name_buf);
+			    original_name_buf = pt_append_string (this_parser, original_name_buf, ".");
+			    original_name_buf = pt_append_string (this_parser, original_name_buf, name_buf);
+			    name->info.name.original = original_name_buf;
 			  }
 
 			parser_free_tree (this_parser, user);
@@ -5090,28 +5128,41 @@ user_specified_name
 		{{
 
 			PT_NODE *name = $1;
-			const char *name_buf = NULL;
+			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
+			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+			const char *original_name_buf = NULL;
 			const char *dot = NULL;
+			int user_name_size = 0;
+			int name_size = 0;
 
 			assert (name != NULL && name->node_type == PT_NAME);
+
+			intl_identifier_lower (db_get_user_name (), user_name_buf);
 
 			/* Name without owner name. */
 			dot = strchr (name->info.name.original, '.');
 			name->info.name.thin = dot ? dot + 1 : name->info.name.original;
 
+			name_size = intl_identifier_lower_string_size (name->info.name.thin);
+			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
+			  {
+			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.", DB_MAX_CLASS_LENGTH);
+			  }
+			intl_identifier_lower (name->info.name.thin, name_buf);
+
+			/* Name without owner name. */
+			name->info.name.thin = pt_append_string (this_parser, NULL, name_buf);
+
 			/* Name without owner name.
 			 * System class/vclass has no owner_name. */
 			if (dot == NULL
-			    && db_is_system_class_by_name (name->info.name.thin) == FALSE)
+			    && db_is_system_class_by_lower_name (name_buf) == FALSE)
 			  {
-			    name_buf = pt_append_string (this_parser, NULL, db_get_user_name ());
-			    name_buf = pt_append_string (this_parser, name_buf, ".");
-			    name_buf = pt_append_string (this_parser, name_buf, name->info.name.thin);
-			    name->info.name.original = name_buf;
+			    original_name_buf = pt_append_string (this_parser, NULL, user_name_buf);
+			    original_name_buf = pt_append_string (this_parser, original_name_buf, ".");
+			    original_name_buf = pt_append_string (this_parser, original_name_buf, name_buf);
+			    name->info.name.original = original_name_buf;
 			  }
-
-			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_WITH_OWNER);
-			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_USER_OWNER);
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5140,24 +5191,46 @@ user_specified_name_list
 		DBG_PRINT}}
 	;
 
+object_name_without_dot
+	: identifier_without_dot DOT identifier_without_dot
+		{{
+
+			PT_NODE *user = $1;
+			PT_NODE *name = $3;
+
+			assert (user != NULL && user->node_type == PT_NAME);
+			assert (name != NULL && name->node_type == PT_NAME);
+
+			name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
+			parser_free_tree (this_parser, user);
+
+			$$ = name;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| identifier_without_dot
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
 object_name
 	: identifier DOT identifier
 		{{
 
-			PT_NODE *user_node = $1;
-			PT_NODE *name_node = $3;
+			PT_NODE *user = $1;
+			PT_NODE *name = $3;
 
-			if (name_node != NULL && user_node != NULL)
-			  {
-			    name_node->info.name.resolved = pt_append_string (this_parser, NULL,
-									      user_node->info.name.original);
-			  }
-			if (user_node != NULL)
-			  {
-			    parser_free_tree (this_parser, user_node);
-			  }
+			assert (user != NULL && user->node_type == PT_NAME);
+			assert (name != NULL && name->node_type == PT_NAME);
 
-			$$ = name_node;
+			name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
+			parser_free_tree (this_parser, user);
+
+			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -13941,7 +14014,7 @@ from_param
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CLASS identifier
+	| CLASS identifier // user_specified_name? to_be_delete youngjinj
 		{{
 
 			PT_NODE *val = $2;
@@ -19600,9 +19673,47 @@ path_header
 		{{
 
 			PT_NODE *node = $2;
+			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
+			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+			const char *original_name_buf = NULL;
+			int user_name_size = 0;
+			int name_size = 0;
+
 			if (node && node->node_type == PT_NAME)
-			  node->info.name.meta_class = PT_META_CLASS;
+			  {
+			    node->info.name.meta_class = PT_META_CLASS;
+
+			    intl_identifier_lower (db_get_user_name (), user_name_buf);
+
+			    /* Because only identifier exists in path_id rule,
+			     * owner name is not included in PT_NODE of PT_NAME type. */
+			    name_size = intl_identifier_lower_string_size (node->info.name.original);
+			    if (name_size + 1 > DB_MAX_CLASS_LENGTH)
+			      {
+				PT_ERRORf (this_parser, node, "Identifier name cannot exceed %d bytes.", DB_MAX_CLASS_LENGTH);
+			      }
+			    intl_identifier_lower (node->info.name.original, name_buf);
+
+			    /* Name without owner name. */
+			    node->info.name.thin = pt_append_string (this_parser, NULL, name_buf);
+
+			    /* Name without owner name.
+			     * System class/vclass has no owner_name. */
+			    if (db_is_system_class_by_lower_name (name_buf) == FALSE)
+			      {
+				original_name_buf = pt_append_string (this_parser, NULL,  user_name_buf);
+				original_name_buf = pt_append_string (this_parser, original_name_buf, ".");
+				original_name_buf = pt_append_string (this_parser, original_name_buf, name_buf);
+				node->info.name.original = original_name_buf;
+			      }
+			    else
+			      {
+				node->info.name.original = pt_append_string (this_parser, NULL, name_buf);
+			      }
+			  }
+
 			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| path_id
@@ -21594,7 +21705,7 @@ identifier_without_dot
 			    const char *name = p->info.name.original;
 
 			    /* Check if it contains DOT(.) */
-			    if (name != NULL && strchr (name, '.') != NULL)
+			    if (name && strchr (name, '.'))
 			      {
 				PT_ERRORf (this_parser, p,
 					   "Identifier name %s not allowed. It cannot contain DOT(.).",
@@ -21625,6 +21736,7 @@ identifier
 							    str_name, size_in);
 			    p->info.name.original = str_name;
 			  }
+
 			$$ = p;
 
 		DBG_PRINT}}

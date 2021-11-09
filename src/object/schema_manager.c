@@ -2172,15 +2172,9 @@ sm_downcase_name (const char *name, char *buf, int maxlen)
 const char *
 sm_simple_name (const char *name)
 {
-  const char *dot = NULL;
-  if ((dot = strchr (name, '.')))
-    {
-      return dot + 1;
-    }
-  else
-    {
-      return name;
-    }
+  const char *dot = strchr (name, '.');
+
+  return dot ? dot + 1 : name;
 }
 
 /*
@@ -3032,6 +3026,22 @@ sm_is_system_class (MOP op)
  */
 int
 sm_is_system_class_by_name (const char *name)
+{
+  char real_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+
+  sm_downcase_name (name, real_name, SM_MAX_IDENTIFIER_LENGTH);
+
+  return sm_is_system_class_by_lower_name (real_name);
+}
+
+/*
+ * sm_is_system_class_by_lower_name () - Checks whether the class name is
+ *    the same as the system class name.
+ * return: int
+ * name(in): class name
+ */
+int
+sm_is_system_class_by_lower_name (const char *name)
 {
   const char **ptr = NULL;
 

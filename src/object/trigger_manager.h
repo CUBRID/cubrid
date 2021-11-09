@@ -73,6 +73,7 @@ typedef struct tr_trigger
   DB_OBJECT *owner;
   DB_OBJECT *object;
   char *name;
+  char *simple_name;
   double priority;
   DB_TRIGGER_STATUS status;
   DB_TRIGGER_EVENT event;
@@ -201,6 +202,7 @@ typedef enum
  */
 
 extern const char *TR_CLASS_NAME;
+extern const char *TR_ATT_FULL_NAME;
 extern const char *TR_ATT_NAME;
 extern const char *TR_ATT_OWNER;
 extern const char *TR_ATT_EVENT;

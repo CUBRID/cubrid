@@ -128,6 +128,7 @@ static const char *EVAL_PREFIX = "EVALUATE ( ";
 static const char *EVAL_SUFFIX = " ) ";
 
 const char *TR_CLASS_NAME = "db_trigger";
+const char *TR_ATT_FULL_NAME = "full_name";
 const char *TR_ATT_NAME = "name";
 const char *TR_ATT_OWNER = "owner";
 const char *TR_ATT_EVENT = "event";
@@ -399,6 +400,7 @@ tr_make_trigger (void)
   trigger->owner = NULL;
   trigger->object = NULL;
   trigger->name = NULL;
+  trigger->simple_name = NULL;
   trigger->status = TR_STATUS_INVALID;
   trigger->priority = TR_LOWEST_PRIORITY;
   trigger->event = TR_EVENT_NULL;
@@ -440,6 +442,7 @@ tr_clear_trigger (TR_TRIGGER * trigger)
 
   if (trigger->name)
     {
+      trigger->simple_name = NULL;
       free_and_init (trigger->name);
     }
   if (trigger->attribute)
@@ -1031,6 +1034,12 @@ trigger_to_object (TR_TRIGGER * trigger)
     }
 
   db_make_string (&value, trigger->name);
+  if (dbt_put_internal (obt_p, TR_ATT_FULL_NAME, &value) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_string (&value, sm_simple_name (trigger->name));
   if (dbt_put_internal (obt_p, TR_ATT_NAME, &value) != NO_ERROR)
     {
       goto error;
@@ -1181,6 +1190,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
   trigger->owner = NULL;
   trigger->object = object;
   trigger->name = NULL;
+  trigger->simple_name = NULL;
   trigger->status = TR_STATUS_INVALID;
   trigger->priority = TR_LOWEST_PRIORITY;
   trigger->event = TR_EVENT_NULL;
@@ -1220,7 +1230,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
     }
 
   /* NAME */
-  if (db_get (object, TR_ATT_NAME, &value))
+  if (db_get (object, TR_ATT_FULL_NAME, &value))
     {
       goto error;
     }
@@ -1231,6 +1241,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
       if (tmp)
 	{
 	  trigger->name = strdup (tmp);
+	  trigger->simple_name = (char *) sm_simple_name (trigger->name);
 	}
     }
   db_value_clear (&value);
@@ -3960,6 +3971,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
     {
       goto error;
     }
+  trigger->simple_name = (char *) sm_simple_name (trigger->name);
 
   if (attribute != NULL)
     {
@@ -6838,9 +6850,15 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 	    {
 	      oldname = trigger->name;
 	      trigger->name = newname;
-	      db_make_string (&value, newname);
+	      trigger->simple_name = (char *) sm_simple_name (newname);
 	      newname = NULL;
+
+	      db_make_string (&value, trigger->name);
+	      error = db_put_internal (trigger_object, TR_ATT_FULL_NAME, &value);
+
+	      db_make_string (&value, trigger->simple_name);
 	      error = db_put_internal (trigger_object, TR_ATT_NAME, &value);
+
 	      if (error == NO_ERROR)
 		{
 		  error = locator_flush_instance (trigger_object);
@@ -6855,6 +6873,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 		  ASSERT_ERROR ();
 		  newname = trigger->name;
 		  trigger->name = oldname;
+		  trigger->simple_name = (char *) sm_simple_name (oldname);
 		  /* if we can't do this, the transaction better abort */
 		  (void) trigger_table_rename (trigger_object, oldname);
 		  oldname = NULL;
@@ -7291,6 +7310,11 @@ define_trigger_classes (void)
     }
 
   if (dbt_add_attribute (tmp, TR_ATT_OWNER, AU_USER_CLASS_NAME, NULL))
+    {
+      goto tmp_error;
+    }
+
+  if (dbt_add_attribute (tmp, TR_ATT_FULL_NAME, "string", NULL))
     {
       goto tmp_error;
     }
