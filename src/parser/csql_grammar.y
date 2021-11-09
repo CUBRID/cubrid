@@ -4979,7 +4979,8 @@ user_specified_name_without_dot
 			PT_NODE *name = $3;
 			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
 			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
-			const char *original_name_buf = NULL;
+			const char *user_name_ptr = NULL;
+			const char *name_ptr = NULL;
 			int user_name_size = 0;
 			int name_size = 0;
 
@@ -4992,11 +4993,25 @@ user_specified_name_without_dot
 			    PT_ERRORf (this_parser, name, "User name cannot exceed %d bytes.", DB_MAX_USER_LENGTH);
 			  }
 			intl_identifier_lower (user->info.name.original, user_name_buf);
+			name->info.name.resolved = pt_append_string (this_parser, NULL, user_name_buf);
+			parser_free_tree (this_parser, user);
+
+			user_name_ptr = db_get_user_name ();
+			if (user_name_ptr == NULL)
+			  {
+			    PT_ERROR (this_parser, name, "Failed to get current user information.");
+			  }
+			if (pt_str_compare (user_name_ptr, user_name_buf, CASE_INSENSITIVE) == 0)
+			  {
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_OWNER);
+			  }
+			db_string_free (user_name_ptr);
 
 			name_size = intl_identifier_lower_string_size (name->info.name.original);
 			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
 			  {
-			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.", DB_MAX_CLASS_LENGTH);
+			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.",
+				       DB_MAX_CLASS_LENGTH);
 			  }
 			intl_identifier_lower (name->info.name.original, name_buf);
 
@@ -5007,13 +5022,11 @@ user_specified_name_without_dot
 			 * System class/vclass has no owner_name. */
 			if (db_is_system_class_by_lower_name (name_buf) == FALSE)
 			  {
-			    original_name_buf = pt_append_string (this_parser, NULL, user_name_buf);
-			    original_name_buf = pt_append_string (this_parser, original_name_buf, ".");
-			    original_name_buf = pt_append_string (this_parser, original_name_buf, name_buf);
-			    name->info.name.original = original_name_buf;
+			    name_ptr = pt_append_string (this_parser, NULL, user_name_buf);
+			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
+			    name_ptr = pt_append_string (this_parser, name_ptr, name_buf);
+			    name->info.name.original = name_ptr;
 			  }
-
-			parser_free_tree (this_parser, user);
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5025,18 +5038,29 @@ user_specified_name_without_dot
 			PT_NODE *name = $1;
 			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
 			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
-			const char *original_name_buf = NULL;
+			const char *user_name_ptr = NULL;
+			const char *name_ptr = NULL;
 			int user_name_size = 0;
 			int name_size = 0;
 
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			intl_identifier_lower (db_get_user_name (), user_name_buf);
+			user_name_ptr = db_get_user_name ();
+			if (user_name_ptr == NULL)
+			  {
+			    PT_ERROR (this_parser, name, "Failed to get current user information.");
+			  }
+			intl_identifier_lower (user_name_ptr, user_name_buf);
+			name->info.name.resolved = pt_append_string (this_parser, NULL, user_name_buf);
+			db_string_free (user_name_ptr);
+			
+			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_OWNER);
 
 			name_size = intl_identifier_lower_string_size (name->info.name.original);
 			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
 			  {
-			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.", DB_MAX_CLASS_LENGTH);
+			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.",
+				       DB_MAX_CLASS_LENGTH);
 			  }
 			intl_identifier_lower (name->info.name.original, name_buf);
 
@@ -5048,10 +5072,10 @@ user_specified_name_without_dot
 			if (db_is_system_class_by_lower_name (name_buf) == FALSE)
 			  {
 			    /* Owner name. */
-			    original_name_buf = pt_append_string (this_parser, NULL, user_name_buf);
-			    original_name_buf = pt_append_string (this_parser, original_name_buf, ".");
-			    original_name_buf = pt_append_string (this_parser, original_name_buf, name_buf);
-			    name->info.name.original = original_name_buf;
+			    name_ptr = pt_append_string (this_parser, NULL, user_name_buf);
+			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
+			    name_ptr = pt_append_string (this_parser, name_ptr, name_buf);
+			    name->info.name.original = name_ptr;
 			  }
 
 			$$ = name;
@@ -5078,8 +5102,9 @@ user_specified_name
 			PT_NODE *name = $3;
 			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
 			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
-			const char *original_name_buf = NULL;
-			const char *dot = NULL;
+			const char * user_name_ptr = NULL;
+			const char *name_ptr = NULL;
+			const char *dot_ptr = NULL;
 			int user_name_size = 0;
 			int name_size = 0;
 
@@ -5092,15 +5117,28 @@ user_specified_name
 			    PT_ERRORf (this_parser, name, "User name cannot exceed %d bytes.", DB_MAX_USER_LENGTH);
 			  }
 			intl_identifier_lower (user->info.name.original, user_name_buf);
+			parser_free_tree (this_parser, user);
+
+			user_name_ptr = db_get_user_name ();
+			if (user_name_ptr == NULL)
+			  {
+			    PT_ERROR (this_parser, name, "Failed to get current user information.");
+			  }
+			if (pt_str_compare (user_name_ptr, user_name_buf, CASE_INSENSITIVE) == 0)
+			  {
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_OWNER);
+			  }
+			db_string_free (user_name_ptr);
 
 			/* Name without owner name. */
-			dot = strchr (name->info.name.original, '.');
-			name->info.name.thin = dot ? dot + 1 : name->info.name.original;
+			dot_ptr = strchr (name->info.name.original, '.');
+			name->info.name.thin = dot_ptr ? dot_ptr + 1 : name->info.name.original;
 
 			name_size = intl_identifier_lower_string_size (name->info.name.thin);
 			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
 			  {
-			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.", DB_MAX_CLASS_LENGTH);
+			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.",
+				       DB_MAX_CLASS_LENGTH);
 			  }
 			intl_identifier_lower (name->info.name.thin, name_buf);
 
@@ -5109,16 +5147,14 @@ user_specified_name
 
 			/* Name without owner name.
 			 * System class/vclass has no owner_name. */
-			if (dot == NULL
+			if (dot_ptr == NULL
 			    && db_is_system_class_by_lower_name (name_buf) == FALSE)
 			  {
-			    original_name_buf = pt_append_string (this_parser, NULL, user_name_buf);
-			    original_name_buf = pt_append_string (this_parser, original_name_buf, ".");
-			    original_name_buf = pt_append_string (this_parser, original_name_buf, name_buf);
-			    name->info.name.original = original_name_buf;
+			    name_ptr = pt_append_string (this_parser, NULL, user_name_buf);
+			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
+			    name_ptr = pt_append_string (this_parser, name_ptr, name_buf);
+			    name->info.name.original = name_ptr;
 			  }
-
-			parser_free_tree (this_parser, user);
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5130,23 +5166,34 @@ user_specified_name
 			PT_NODE *name = $1;
 			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
 			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
-			const char *original_name_buf = NULL;
-			const char *dot = NULL;
+			const char *user_name_ptr = NULL;
+			const char *name_ptr = NULL;
+			const char *dot_ptr = NULL;
 			int user_name_size = 0;
 			int name_size = 0;
 
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			intl_identifier_lower (db_get_user_name (), user_name_buf);
+			user_name_ptr = db_get_user_name ();
+			if (user_name_ptr == NULL)
+			  {
+			    PT_ERROR (this_parser, name, "Failed to get current user information.");
+			  }
+			intl_identifier_lower (user_name_ptr, user_name_buf);
+			name->info.name.resolved = pt_append_string (this_parser, NULL, user_name_buf);
+			db_string_free (user_name_ptr);
+
+			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_OWNER);
 
 			/* Name without owner name. */
-			dot = strchr (name->info.name.original, '.');
-			name->info.name.thin = dot ? dot + 1 : name->info.name.original;
+			dot_ptr = strchr (name->info.name.original, '.');
+			name->info.name.thin = dot_ptr ? dot_ptr + 1 : name->info.name.original;
 
 			name_size = intl_identifier_lower_string_size (name->info.name.thin);
 			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
 			  {
-			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.", DB_MAX_CLASS_LENGTH);
+			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.",
+				       DB_MAX_CLASS_LENGTH);
 			  }
 			intl_identifier_lower (name->info.name.thin, name_buf);
 
@@ -5155,13 +5202,13 @@ user_specified_name
 
 			/* Name without owner name.
 			 * System class/vclass has no owner_name. */
-			if (dot == NULL
+			if (dot_ptr == NULL
 			    && db_is_system_class_by_lower_name (name_buf) == FALSE)
 			  {
-			    original_name_buf = pt_append_string (this_parser, NULL, user_name_buf);
-			    original_name_buf = pt_append_string (this_parser, original_name_buf, ".");
-			    original_name_buf = pt_append_string (this_parser, original_name_buf, name_buf);
-			    name->info.name.original = original_name_buf;
+			    name_ptr = pt_append_string (this_parser, NULL, user_name_buf);
+			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
+			    name_ptr = pt_append_string (this_parser, name_ptr, name_buf);
+			    name->info.name.original = name_ptr;
 			  }
 
 			$$ = name;
