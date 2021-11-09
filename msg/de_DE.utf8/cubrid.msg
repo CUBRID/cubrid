@@ -1360,6 +1360,7 @@ $ LOADDB
 1299 Log Wiederherstellung: %1$s Phase ist fertig.
 1300 Log Wiederherstellung: %1$s Phase ist beendet.
 1301 Log Wiederherstellung: %1$s Fortschritt: (%2$lld/%3$lld), %4$.2f Prozent, verstrichene Zeit: %5$.2f (s), geschätzte Restzeit: %6$.2f (s).
+
 1302 dblink - %1$s
 1303 dblink - invalid number of columns specified.
 1304 dblink - catalog _db_server class not found.
