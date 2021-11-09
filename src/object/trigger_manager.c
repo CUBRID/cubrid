@@ -44,6 +44,7 @@
 #include "system_parameter.h"
 #include "locator_cl.h"
 #include "transaction_cl.h"
+#include "execute_statement.h"
 
 #include "dbtype.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -5086,6 +5087,10 @@ tr_execute_activities (TR_STATE * state, DB_TRIGGER_TIME tr_time, DB_OBJECT * cu
   int status;
   bool rejected;
 
+  bool is_trigger_involved = false;
+
+  CDC_TRIGGER_INVOLVED_BACKUP (is_trigger_involved);
+
   for (t = state->triggers, next = NULL; t != NULL && error == NO_ERROR; t = next)
     {
       next = t->next;
@@ -5111,6 +5116,8 @@ tr_execute_activities (TR_STATE * state, DB_TRIGGER_TIME tr_time, DB_OBJECT * cu
 
       /* else the trigger isn't ready yet, leave it on the list */
     }
+
+  CDC_TRIGGER_INVOLVED_RESTORE (is_trigger_involved);
 
   return error;
 }

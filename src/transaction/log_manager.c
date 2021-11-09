@@ -4882,6 +4882,7 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
   switch (rec_type)
     {
     case LOG_SUPPLEMENT_INSERT:
+    case LOG_SUPPLEMENT_TRIGGER_INSERT:
       assert (redo_lsa != NULL);
 
       size = sizeof (OID) + sizeof (LOG_LSA);
@@ -4891,6 +4892,7 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
       break;
 
     case LOG_SUPPLEMENT_UPDATE:
+    case LOG_SUPPLEMENT_TRIGGER_UPDATE:
       assert (undo_lsa != NULL && redo_lsa != NULL);
 
       size = sizeof (OID) + sizeof (LOG_LSA) + sizeof (LOG_LSA);
@@ -4901,6 +4903,7 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
       break;
 
     case LOG_SUPPLEMENT_DELETE:
+    case LOG_SUPPLEMENT_TRIGGER_DELETE:
       assert (undo_lsa != NULL);
 
       size = sizeof (OID) + sizeof (LOG_LSA);
@@ -10535,9 +10538,8 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
   tmpbuf_index = process_lsa->pageid % 2;
 
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, process_lsa);
-  nx_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_rec_header->forw_lsa);
 
-  if (nx_rec_header->type == LOG_END_OF_LOG || LSA_ISNULL (&log_rec_header->forw_lsa))
+  if (log_rec_header->type == LOG_END_OF_LOG || LSA_ISNULL (&log_rec_header->forw_lsa))
     {
       CDC_UPDATE_TEMP_LOGPAGE (thread_p, process_lsa, log_page_p);
       error = ER_CDC_NULL_EXTRACTION_LSA;
@@ -10722,6 +10724,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 		break;
 	      }
 	  case LOG_SUPPLEMENT_INSERT:
+	  case LOG_SUPPLEMENT_TRIGGER_INSERT:
 	    memcpy (&classoid, supplement_data, sizeof (OID));
 
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
@@ -10737,8 +10740,9 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	      }
 
 	    error =
-	      cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_INSERT, classoid, NULL, &redo_recdes,
-				    log_info_entry);
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user,
+				    rec_type == LOG_SUPPLEMENT_INSERT ? CDC_INSERT : CDC_TRIGGER_INSERT, classoid, NULL,
+				    &redo_recdes, log_info_entry);
 
 	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
 	      {
@@ -10747,6 +10751,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	    break;
 	  case LOG_SUPPLEMENT_UPDATE:
+	  case LOG_SUPPLEMENT_TRIGGER_UPDATE:
 	    memcpy (&classoid, supplement_data, sizeof (OID));
 
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
@@ -10762,8 +10767,34 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 		goto error;
 	      }
 
-	    error = cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_UPDATE, classoid, &undo_recdes, &redo_recdes,
-					  log_info_entry);
+	    if (undo_recdes.type == REC_ASSIGN_ADDRESS)
+	      {
+		/* This occurs when series of logs are appended like
+		 * INSERT record for reserve OID (REC_ASSIGN_ADDRESS) then UPDATE to some record.
+		 * And this is a sequence for INSERT a record with OID reservation.
+		 * undo record with REC_ASSIGN_ADDRESS type has no undo image to extract, so this will be treated as INSERT
+		 * CUBRID engine used to do INSERT a record like this way,
+		 * for instance CREATE a class or INSERT a record by trigger execution */
+
+		assert (rec_type == LOG_SUPPLEMENT_TRIGGER_UPDATE);
+
+		error =
+		  cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_TRIGGER_INSERT, classoid, NULL, &redo_recdes,
+					log_info_entry);
+	      }
+	    else
+	      {
+		error =
+		  cdc_make_dml_loginfo (thread_p, trid, tran_user,
+					rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_UPDATE : CDC_TRIGGER_UPDATE, classoid,
+					&undo_recdes, &redo_recdes, log_info_entry);
+	      }
+
+	    if (error == ER_CDC_IGNORE_LOG_INFO)
+	      {
+		goto end;
+	      }
+
 	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
 	      {
 		goto error;
@@ -10771,6 +10802,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	    break;
 	  case LOG_SUPPLEMENT_DELETE:
+	  case LOG_SUPPLEMENT_TRIGGER_DELETE:
 	    memcpy (&classoid, supplement_data, sizeof (OID));
 
 	    if (!cdc_is_filtered_class (classoid) || oid_is_system_class (&classoid))
@@ -10786,8 +10818,9 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	      }
 
 	    error =
-	      cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_DELETE, classoid, &undo_recdes, NULL,
-				    log_info_entry);
+	      cdc_make_dml_loginfo (thread_p, trid, tran_user,
+				    rec_type == LOG_SUPPLEMENT_DELETE ? CDC_DELETE : CDC_TRIGGER_DELETE, classoid,
+				    &undo_recdes, NULL, log_info_entry);
 
 	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
 	      {
@@ -12458,6 +12491,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   switch (dml_type)
     {
     case CDC_INSERT:
+    case CDC_TRIGGER_INSERT:
       /*insert */
       num_change_col = attr_info.num_values;
       ptr = or_pack_int (ptr, dml_type);
@@ -12479,6 +12513,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       ptr = or_pack_int (ptr, num_cond_col);
       break;
     case CDC_UPDATE:
+    case CDC_TRIGGER_UPDATE:
       /*update */
       ptr = or_pack_int (ptr, dml_type);
       ptr = or_pack_int64 (ptr, b_classoid);
@@ -12489,6 +12524,16 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	      changed_col_idx[cnt++] = i;	//TODO: replace i with def_order to reduce memory alloc and copy 
 	    }
 	}
+
+      if (cnt == 0)
+	{
+	  /* This is due to update log record appended by trigger savepoint.
+	   * It is not sure why update log is appended by trigger savepoint */
+
+	  error_code = ER_CDC_IGNORE_LOG_INFO;
+	  goto error;
+	}
+
       num_change_col = cnt;
       ptr = or_pack_int (ptr, num_change_col);
       for (i = 0; i < num_change_col; i++)
@@ -12546,6 +12591,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	}
       break;
     case CDC_DELETE:
+    case CDC_TRIGGER_DELETE:
       /*delete */
       ptr = or_pack_int (ptr, dml_type);
       ptr = or_pack_int64 (ptr, b_classoid);
@@ -13917,7 +13963,6 @@ cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info)
   return NO_ERROR;
 }
 
-/* 버퍼 realloc 고려 (consumer.log_info) */
 int
 cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 {
@@ -13953,8 +13998,13 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
   while (cdc_Gl.loginfo_queue->is_empty () == false && (num_log_info < cdc_Gl.consumer.max_log_item))
     {
       /* *INDENT-OFF* */
-      cdc_Gl.loginfo_queue->consume (consume);
+      if (cdc_Gl.loginfo_queue->consume (consume) == false)
+        {
+          /* consume failed, queue is blocked by producer */
+          continue;
+        }
       /* *INDENT-ON* */
+
       if (LSA_GE (&consume->next_lsa, start_lsa))
 	{
 	  if (total_length + consume->length + MAX_ALIGNMENT > cdc_Gl.consumer.log_info_size)
