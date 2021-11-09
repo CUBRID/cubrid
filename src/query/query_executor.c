@@ -23745,7 +23745,8 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 
   for (agg_ptr = agg_list; agg_ptr; agg_ptr = agg_ptr->next)
     {
-      if (!agg_ptr->flag_agg_optimize || spec->pruning_type == DB_PARTITIONED_CLASS)
+      if (!agg_ptr->flag_agg_optimize || spec->pruning_type == DB_PARTITIONED_CLASS
+	  || spec->pruning_type == DB_PARTITION_CLASS)
 	{
 	  /* scan is needed for this aggregate */
 	  *is_scan_needed = true;
