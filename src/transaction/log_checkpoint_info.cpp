@@ -257,7 +257,7 @@ namespace cublog
     };
     log_system_tdes::map_all_tdes (mapper);
 
-    m_snapshot_lsa = log_Gl.append.prev_lsa;
+    m_snapshot_lsa = log_Gl.prior_info.prev_lsa;
   }
 
   void
