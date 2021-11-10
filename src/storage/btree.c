@@ -26762,7 +26762,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	  assert (key_count >= 3);
 
 	  /* Start system operation. */
-	  log_sysop_start (thread_p);
+	  log_sysop_start_atomic (thread_p);
 	  is_system_op_started = true;
 
 	  /* Create two new b-tree pages. */
@@ -27056,7 +27056,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
   if (need_split)
     {
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       is_system_op_started = true;
 
       /* Get a new page */
@@ -30214,7 +30214,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		      && (pgbuf_get_latch_mode (right_page) >= PGBUF_LATCH_WRITE));
 
 	      /* Start system operation. */
-	      log_sysop_start (thread_p);
+	      log_sysop_start_atomic (thread_p);
 	      is_system_op_started = true;
 
 	      /* Merge the three nodes into root node. */
@@ -30458,7 +30458,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 			  && (pgbuf_get_latch_mode (right_page) >= PGBUF_LATCH_WRITE));
 
 		  /* Start system operation. */
-		  log_sysop_start (thread_p);
+		  log_sysop_start_atomic (thread_p);
 		  is_system_op_started = true;
 
 		  save_lsa = *pgbuf_get_lsa (*crt_page);
