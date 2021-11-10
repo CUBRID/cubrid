@@ -1394,7 +1394,9 @@ $ LOADDB
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
-1332 마지막 에러
+1332 액티브 로그 볼륨 (%1$s)에서 문제를 발견할 수 없어 재생성할 수 없습니다. 액티브 로그 볼륨을 제거할 경우에 예측할 수 없는 문제가 발생할 수 있으며, 되돌릴 수 없습니다.
+
+1333 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

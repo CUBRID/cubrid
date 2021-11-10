@@ -1394,7 +1394,9 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
-1332 Ultimo error
+1332 El volumen de registro activo (%1$s) está demasiado sano para volver a crearlo. Si elimina el registro activo, podría causar un problema inesperado e irreversible.
+
+1333 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

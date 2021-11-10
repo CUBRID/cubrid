@@ -1394,7 +1394,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
-1332 Last Error
+1332 The active log volume (%1$s) is too sane to recreate. If you remove the active log, it could cause an unexpected and irreversible problem.
+
+1333 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

@@ -626,6 +626,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' �
 39 -i(--immediately)옵션은 --deact-stop-all 옵션이 지정되어야합니다.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 --recreate-log 옵션 없이 실행하거나 액티브 로그 볼륨을 직접 제거해주세요.\n
 60 \
 emergency_patchlog: 긴급한 상황에서 데이터베이스 로그 패치\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\

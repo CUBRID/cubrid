@@ -1394,7 +1394,9 @@ $ LOADDB
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
-1332 ラストエラー
+1332 アクティブなログボリューム（%1$s）が正常すぎて、再作成できません。 アクティブなログを削除すると、予期しない不可逆的な問題が発生する可能性があります。
+
+1333 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
