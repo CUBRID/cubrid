@@ -8161,9 +8161,21 @@ qo_node_add_sarg (QO_NODE * node, QO_TERM * sarg)
 void
 qo_node_fprint (QO_NODE * node, FILE * f)
 {
+  PT_NODE *entity = QO_NODE_ENTITY_SPEC (node);
+
   if (QO_NODE_NAME (node))
     {
-      fprintf (f, "%s", QO_NODE_NAME (node));
+      if (entity && entity->info.spec.entity_name && entity->info.spec.entity_name->node_type == PT_NAME
+	  && PT_NAME_INFO_IS_FLAGED (entity->info.spec.entity_name, PT_NAME_INFO_RESOLVED_OWNER)
+	  && entity->info.spec.entity_name->info.name.thin
+	  && entity->info.spec.entity_name->info.name.thin[0] != '\0')
+	{
+	  fprintf (f, "%s", entity->info.spec.entity_name->info.name.thin);
+	}
+      else
+        {
+	  fprintf (f, "%s", QO_NODE_NAME (node));
+	}
     }
   fprintf (f, " node[%d]", QO_NODE_IDX (node));
 }

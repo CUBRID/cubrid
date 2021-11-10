@@ -12932,6 +12932,8 @@ static PARSER_VARCHAR *
 pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
+  const char *qualifier_name = NULL;
+  const char *dot_ptr = NULL;
   unsigned int save_custom = parser->custom_print;
 
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
@@ -12978,6 +12980,15 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       /* Print both resolved name and original name If there is a non-zero length resolved name, print it, followed by
        * ".". */
+      if (PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_RESOLVED_OWNER))
+	{
+	  qualifier_name = p->info.name.resolved;
+	}
+      else
+        {
+	  dot_ptr = strchr (p->info.name.resolved, '.');
+	  qualifier_name = dot_ptr ? dot_ptr + 1 : p->info.name.resolved;
+	}
       if ((parser->custom_print & PT_FORCE_ORIGINAL_TABLE_NAME) && (p->info.name.meta_class == PT_NORMAL))
 	{
 	  /* make sure spec_id points to original table */
@@ -12991,12 +13002,12 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	  else
 	    {
-	      q = pt_append_name (parser, q, p->info.name.resolved);
+	      q = pt_append_name (parser, q, qualifier_name);
 	    }
 	}
       else
 	{
-	  q = pt_append_name (parser, q, p->info.name.resolved);
+	  q = pt_append_name (parser, q, qualifier_name);
 	}
       /* this is to catch OID_ATTR's which don't have their meta class set correctly. It should probably not by
        * unconditional. */
@@ -13040,7 +13051,14 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
       /* here we print whatever the length */
       if (p->info.name.original)
 	{
-	  q = pt_append_name (parser, q, p->info.name.original);
+	  if (PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_RESOLVED_OWNER))
+	    {
+	      q = pt_append_name (parser, q, p->info.name.thin);
+	    }
+	  else
+	    {
+	      q = pt_append_name (parser, q, p->info.name.original);
+	    }
 	  if (p->info.name.meta_class == PT_INDEX_NAME)
 	    {
 	      if (p->etc == (void *) PT_IDX_HINT_FORCE)
