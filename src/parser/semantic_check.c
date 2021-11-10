@@ -13067,13 +13067,38 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
   n = p->node_type;
   switch (n)
     {
-      /* if a name, the original and resolved fields must match */
+      /* 
+       * if a name, the original and resolved fields must match
+       *
+       * In order to distinguish User Schema, the original, resolved name may contain a user name
+       * with a dot (.) as a separator. It is not necessary to attach a user name to its own table,
+       * but the user name currently connected internally is attached. So, when comparing original and resolved names,
+       * we need to compare names after dot (.).;plan 
+       * 
+       */
     case PT_NAME:
-      if (pt_str_compare (p->info.name.original, q->info.name.original, CASE_INSENSITIVE))
+      if (PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_RESOLVED_OWNER))
 	{
-	  return 1;
+	  if (pt_dot_compare (p->info.name.thin, q->info.name.original, CASE_INSENSITIVE))
+	    {
+	      return 1;
+	    }
 	}
-      if (pt_str_compare (p->info.name.resolved, q->info.name.resolved, CASE_INSENSITIVE))
+      else if (PT_NAME_INFO_IS_FLAGED (q, PT_NAME_INFO_RESOLVED_OWNER))
+	{
+	  if (pt_dot_compare (p->info.name.original, q->info.name.thin, CASE_INSENSITIVE))
+	    {
+	      return 1;
+	    }
+	}
+      else
+	{
+	  if (pt_dot_compare (p->info.name.original, q->info.name.original, CASE_INSENSITIVE))
+	    {
+	      return 1;
+	    }
+	}
+      if (pt_dot_compare (p->info.name.resolved, q->info.name.resolved, CASE_INSENSITIVE))
 	{
 	  return 1;
 	}

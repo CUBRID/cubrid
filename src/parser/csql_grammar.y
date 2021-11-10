@@ -357,6 +357,7 @@ static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
 static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
 static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p,
 				   const char *str, const int str_size);
+				   
 static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 						const PT_TYPE_ENUM char_type,
 						const char *str,
@@ -4977,56 +4978,42 @@ user_specified_name_without_dot
 
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
-			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
-			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 			const char *user_name_ptr = NULL;
 			const char *name_ptr = NULL;
-			int user_name_size = 0;
-			int name_size = 0;
 
 			assert (user != NULL && user->node_type == PT_NAME);
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			user_name_size = intl_identifier_lower_string_size (user->info.name.original);
-			if (user_name_size + 1 > DB_MAX_USER_LENGTH)
-			  {
-			    PT_ERRORf (this_parser, name, "User name cannot exceed %d bytes.", DB_MAX_USER_LENGTH);
-			  }
-			intl_identifier_lower (user->info.name.original, user_name_buf);
-			name->info.name.resolved = pt_append_string (this_parser, NULL, user_name_buf);
-			parser_free_tree (this_parser, user);
-
+			/* check if resolved-name is the current-user-name. */
 			user_name_ptr = db_get_user_name ();
 			if (user_name_ptr == NULL)
 			  {
-			    PT_ERROR (this_parser, name, "Failed to get current user information.");
+			    PT_ERROR (this_parser, name, "Failed to get current-user-name.");
 			  }
-			if (pt_str_compare (user_name_ptr, user_name_buf, CASE_INSENSITIVE) == 0)
+			if (pt_str_compare (user_name_ptr, user->info.name.original, CASE_INSENSITIVE) == 0)
 			  {
-			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_OWNER);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_RESOLVED_OWNER);
 			  }
-			db_string_free (user_name_ptr);
-
-			name_size = intl_identifier_lower_string_size (name->info.name.original);
-			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
+			else
 			  {
-			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.",
-				       DB_MAX_CLASS_LENGTH);
+			    /* set resolved-name if not current-user-name. */
+			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
 			  }
-			intl_identifier_lower (name->info.name.original, name_buf);
 
-			/* Name without owner name. */
-			name->info.name.thin = pt_append_string (this_parser, NULL, name_buf);
+			/* thin-name does not include user-name. */
+			name->info.name.thin = pt_append_string (this_parser, NULL, name->info.name.original);
 
-			/* Name without owner name.
-			 * System class/vclass has no owner_name. */
-			if (db_is_system_class_by_lower_name (name_buf) == FALSE)
+			/* original-name includes user-name. */
+			if (db_is_system_class_by_name (name->info.name.thin) == FALSE)
 			  {
-			    name_ptr = pt_append_string (this_parser, NULL, user_name_buf);
+			    name_ptr = pt_append_string (this_parser, NULL, user->info.name.original);
 			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
-			    name_ptr = pt_append_string (this_parser, name_ptr, name_buf);
+			    name_ptr = pt_append_string (this_parser, name_ptr, name->info.name.thin);
 			    name->info.name.original = name_ptr;
 			  }
+
+			db_string_free (user_name_ptr);
+			parser_free_tree (this_parser, user);
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5036,47 +5023,32 @@ user_specified_name_without_dot
 		{{
 
 			PT_NODE *name = $1;
-			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
-			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 			const char *user_name_ptr = NULL;
 			const char *name_ptr = NULL;
-			int user_name_size = 0;
-			int name_size = 0;
 
 			assert (name != NULL && name->node_type == PT_NAME);
 
 			user_name_ptr = db_get_user_name ();
 			if (user_name_ptr == NULL)
 			  {
-			    PT_ERROR (this_parser, name, "Failed to get current user information.");
+			    PT_ERROR (this_parser, name, "Failed to get current-user-name.");
 			  }
-			intl_identifier_lower (user_name_ptr, user_name_buf);
-			name->info.name.resolved = pt_append_string (this_parser, NULL, user_name_buf);
-			db_string_free (user_name_ptr);
-			
-			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_OWNER);
+			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_RESOLVED_OWNER);
 
-			name_size = intl_identifier_lower_string_size (name->info.name.original);
-			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
-			  {
-			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.",
-				       DB_MAX_CLASS_LENGTH);
-			  }
-			intl_identifier_lower (name->info.name.original, name_buf);
+			/* thin-name does not include user-name. */
+			name->info.name.thin = pt_append_string (this_parser, NULL, name->info.name.original);
 
-			/* Name without owner name. */
-			name->info.name.thin = pt_append_string (this_parser, NULL, name_buf);
-
-			/* Name without owner name.
-			 * System class/vclass has no owner_name. */
-			if (db_is_system_class_by_lower_name (name_buf) == FALSE)
+			/* original-name includes user-name. */
+			if (db_is_system_class_by_name (name->info.name.thin) == FALSE)
 			  {
 			    /* Owner name. */
-			    name_ptr = pt_append_string (this_parser, NULL, user_name_buf);
+			    name_ptr = pt_append_string (this_parser, NULL, user_name_ptr);
 			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
-			    name_ptr = pt_append_string (this_parser, name_ptr, name_buf);
+			    name_ptr = pt_append_string (this_parser, name_ptr, name->info.name.thin);
 			    name->info.name.original = name_ptr;
 			  }
+
+			db_string_free (user_name_ptr);
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5091,7 +5063,8 @@ user_specified_name_without_dot
  * This is because it contains a dot (.) while saving <owner_name>.<object_name> in info.name.original.
  * In this case, if identifier_without_dot is used, an error occurs.
  * 
- * So, in the case of sql that does not create an object, it is necessary to allow dot(.) to be used in the object name.
+ * So, in the case of sql that does not create an object, it is necessary to allow dot(.) to be used
+ * in the object name.
  * 
  */
 user_specified_name
@@ -5100,61 +5073,45 @@ user_specified_name
 
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
-			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
-			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 			const char * user_name_ptr = NULL;
 			const char *name_ptr = NULL;
 			const char *dot_ptr = NULL;
-			int user_name_size = 0;
-			int name_size = 0;
 
 			assert (user != NULL && user->node_type == PT_NAME);
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			user_name_size = intl_identifier_lower_string_size (user->info.name.original);
-			if (user_name_size + 1 > DB_MAX_USER_LENGTH)
-			  {
-			    PT_ERRORf (this_parser, name, "User name cannot exceed %d bytes.", DB_MAX_USER_LENGTH);
-			  }
-			intl_identifier_lower (user->info.name.original, user_name_buf);
-			parser_free_tree (this_parser, user);
-
+			/* check if resolved-name is the current-user-name. */
 			user_name_ptr = db_get_user_name ();
 			if (user_name_ptr == NULL)
 			  {
-			    PT_ERROR (this_parser, name, "Failed to get current user information.");
+			    PT_ERROR (this_parser, name, "Failed to get current-user-name.");
 			  }
-			if (pt_str_compare (user_name_ptr, user_name_buf, CASE_INSENSITIVE) == 0)
+			if (pt_str_compare (user_name_ptr, user->info.name.original, CASE_INSENSITIVE) == 0)
 			  {
-			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_OWNER);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_RESOLVED_OWNER);
 			  }
-			db_string_free (user_name_ptr);
+			else
+			  {
+			    /* set resolved-name if not current-user-name. */
+			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
+			  }
 
-			/* Name without owner name. */
+			/* thin-name does not include user-name. */
 			dot_ptr = strchr (name->info.name.original, '.');
 			name->info.name.thin = dot_ptr ? dot_ptr + 1 : name->info.name.original;
 
-			name_size = intl_identifier_lower_string_size (name->info.name.thin);
-			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
-			  {
-			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.",
-				       DB_MAX_CLASS_LENGTH);
-			  }
-			intl_identifier_lower (name->info.name.thin, name_buf);
-
-			/* Name without owner name. */
-			name->info.name.thin = pt_append_string (this_parser, NULL, name_buf);
-
-			/* Name without owner name.
-			 * System class/vclass has no owner_name. */
+			/* original-name includes user-name. */
 			if (dot_ptr == NULL
-			    && db_is_system_class_by_lower_name (name_buf) == FALSE)
+			    && db_is_system_class_by_name (name->info.name.thin) == FALSE)
 			  {
-			    name_ptr = pt_append_string (this_parser, NULL, user_name_buf);
+			    name_ptr = pt_append_string (this_parser, NULL, user->info.name.original);
 			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
-			    name_ptr = pt_append_string (this_parser, name_ptr, name_buf);
+			    name_ptr = pt_append_string (this_parser, name_ptr, name->info.name.thin);
 			    name->info.name.original = name_ptr;
 			  }
+
+			db_string_free (user_name_ptr);
+			parser_free_tree (this_parser, user);
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5164,52 +5121,35 @@ user_specified_name
 		{{
 
 			PT_NODE *name = $1;
-			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
-			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 			const char *user_name_ptr = NULL;
 			const char *name_ptr = NULL;
 			const char *dot_ptr = NULL;
-			int user_name_size = 0;
-			int name_size = 0;
 
 			assert (name != NULL && name->node_type == PT_NAME);
 
 			user_name_ptr = db_get_user_name ();
 			if (user_name_ptr == NULL)
 			  {
-			    PT_ERROR (this_parser, name, "Failed to get current user information.");
+			    PT_ERROR (this_parser, name, "Failed to get current-user-name.");
 			  }
-			intl_identifier_lower (user_name_ptr, user_name_buf);
-			name->info.name.resolved = pt_append_string (this_parser, NULL, user_name_buf);
-			db_string_free (user_name_ptr);
+			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_RESOLVED_OWNER);
 
-			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_CURRENT_OWNER);
-
-			/* Name without owner name. */
+			/* thin-name does not include user-name. */
 			dot_ptr = strchr (name->info.name.original, '.');
-			name->info.name.thin = dot_ptr ? dot_ptr + 1 : name->info.name.original;
+			name->info.name.thin = pt_append_string (this_parser, NULL,
+								 (dot_ptr ? dot_ptr + 1 : name->info.name.original));
 
-			name_size = intl_identifier_lower_string_size (name->info.name.thin);
-			if (name_size + 1 > DB_MAX_CLASS_LENGTH)
-			  {
-			    PT_ERRORf (this_parser, name, "Identifier name cannot exceed %d bytes.",
-				       DB_MAX_CLASS_LENGTH);
-			  }
-			intl_identifier_lower (name->info.name.thin, name_buf);
-
-			/* Name without owner name. */
-			name->info.name.thin = pt_append_string (this_parser, NULL, name_buf);
-
-			/* Name without owner name.
-			 * System class/vclass has no owner_name. */
+			/* original-name includes user-name. */
 			if (dot_ptr == NULL
-			    && db_is_system_class_by_lower_name (name_buf) == FALSE)
+			    && db_is_system_class_by_name (name->info.name.thin) == FALSE)
 			  {
-			    name_ptr = pt_append_string (this_parser, NULL, user_name_buf);
+			    name_ptr = pt_append_string (this_parser, NULL, user_name_ptr);
 			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
-			    name_ptr = pt_append_string (this_parser, name_ptr, name_buf);
+			    name_ptr = pt_append_string (this_parser, name_ptr, name->info.name.thin);
 			    name->info.name.original = name_ptr;
 			  }
+
+			db_string_free (user_name_ptr);
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -19746,7 +19686,7 @@ path_header
 
 			    /* Name without owner name.
 			     * System class/vclass has no owner_name. */
-			    if (db_is_system_class_by_lower_name (name_buf) == FALSE)
+			    if (db_is_system_class_by_name (name_buf) == FALSE)
 			      {
 				original_name_buf = pt_append_string (this_parser, NULL,  user_name_buf);
 				original_name_buf = pt_append_string (this_parser, original_name_buf, ".");

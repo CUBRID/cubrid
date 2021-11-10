@@ -1101,7 +1101,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       /* Start of change for POC */
       if (argument[0] != '\0')
         {
-          if (strstr(argument, ".") == NULL && db_is_system_class_by_name (argument) != true)
+          if (strstr(argument, ".") == NULL && sm_is_system_class_by_name (argument) != true)
             {
 	      const char *user_name = db_get_user_name();
 

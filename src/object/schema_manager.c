@@ -3028,21 +3028,6 @@ int
 sm_is_system_class_by_name (const char *name)
 {
   char real_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
-
-  sm_downcase_name (name, real_name, SM_MAX_IDENTIFIER_LENGTH);
-
-  return sm_is_system_class_by_lower_name (real_name);
-}
-
-/*
- * sm_is_system_class_by_lower_name () - Checks whether the class name is
- *    the same as the system class name.
- * return: int
- * name(in): class name
- */
-int
-sm_is_system_class_by_lower_name (const char *name)
-{
   const char **ptr = NULL;
 
   int error = NO_ERROR;
@@ -3053,6 +3038,8 @@ sm_is_system_class_by_lower_name (const char *name)
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
       return error;
     }
+
+  sm_downcase_name (name, real_name, SM_MAX_IDENTIFIER_LENGTH);
 
   const char *system_classes[] = {
     /* 
@@ -3129,12 +3116,12 @@ sm_is_system_class_by_lower_name (const char *name)
     NULL
   };
 
-  if (strncmp (name, ROOTCLASS_NAME, sizeof (ROOTCLASS_NAME) - 1) == 0)
+  if (strncmp (real_name, ROOTCLASS_NAME, sizeof (ROOTCLASS_NAME) - 1) == 0)
     {
       return TRUE;
     }
 
-  if (strncmp (name, CT_DUAL_NAME, sizeof (CT_DUAL_NAME) - 1) == 0)
+  if (strncmp (real_name, CT_DUAL_NAME, sizeof (CT_DUAL_NAME) - 1) == 0)
     {
       return TRUE;
     }
@@ -3145,7 +3132,7 @@ sm_is_system_class_by_lower_name (const char *name)
    * - strlen ("db_")  : 3
    *
    */
-  if (strncmp (name, "_db_", 4) != 0 && strncmp (name, "db_", 3) != 0)
+  if (strncmp (real_name, "_db_", 4) != 0 && strncmp (real_name, "db_", 3) != 0)
     {
       return FALSE;
     }
@@ -3153,7 +3140,7 @@ sm_is_system_class_by_lower_name (const char *name)
   ptr = system_classes;
   while (*ptr)
     {
-      if (strncmp (name, *ptr, SM_MAX_IDENTIFIER_LENGTH) == 0)
+      if (strncmp (real_name, *ptr, SM_MAX_IDENTIFIER_LENGTH) == 0)
 	{
 	  return TRUE;
 	}

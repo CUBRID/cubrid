@@ -516,9 +516,7 @@ db_is_system_class_by_name (const char *name)
 {
   int error = NO_ERROR;
 
-  CHECK_CONNECT_ERROR ();
-
-  if (name == NULL || name[0] == '\0')
+    if (name == NULL || name[0] == '\0')
     {
       error = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -527,24 +525,6 @@ db_is_system_class_by_name (const char *name)
 
   return sm_is_system_class_by_name (name);
 }
-
-int
-db_is_system_class_by_lower_name (const char *name)
-{
-  int error = NO_ERROR;
-
-  CHECK_CONNECT_ERROR ();
-
-  if (name == NULL || name[0] == '\0')
-    {
-      error = ER_OBJ_INVALID_ARGUMENTS;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-      return error;
-    }
-
-  return sm_is_system_class_by_lower_name (name);
-}
-
 /*
  * db_is_deleted() - This function is used to determine whether or not the
  *    database object associated with an object handle has been deleted.

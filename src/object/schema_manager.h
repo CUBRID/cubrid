@@ -133,7 +133,6 @@ extern void sm_mark_system_class_for_catalog (void);
 extern int sm_mark_system_class (MOP classop, int on_or_off);
 extern int sm_is_system_class (MOP op);
 extern int sm_is_system_class_by_name (const char *name);
-extern int sm_is_system_class_by_lower_name (const char *name);
 extern bool sm_is_reuse_oid_class (MOP op);
 extern int sm_check_reuse_oid_class (MOP op);
 extern int sm_is_partitioned_class (MOP op);
