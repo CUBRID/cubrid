@@ -765,7 +765,7 @@ extern SCAN_CODE btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid,
 
 extern int xbtree_get_key_type (THREAD_ENTRY * thread_p, BTID btid, TP_DOMAIN ** key_type);
 
-extern int btree_leaf_get_first_object (BTID_INT * btid, RECDES * recp, OID * oidp, OID * class_oid,
+extern int btree_leaf_get_first_object (const BTID_INT * btid, RECDES * recp, OID * oidp, OID * class_oid,
 					BTREE_MVCC_INFO * mvcc_info);
 extern void btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid, OID * oidp,
 					    OID * class_oidp, BTREE_MVCC_INFO * mvcc_info, int *key_offset,
@@ -795,8 +795,8 @@ extern void btree_rv_read_keybuf_nocopy (THREAD_ENTRY * thread_p, char *datap, i
 extern void btree_rv_read_keybuf_two_objects (THREAD_ENTRY * thread_p, char *datap, int data_size, BTID_INT * btid_int,
 					      BTREE_OBJECT_INFO * first_version, BTREE_OBJECT_INFO * second_version,
 					      OR_BUF * key_buf);
-extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
-				     DB_VALUE * key);
+extern int btree_check_valid_record (THREAD_ENTRY * thread_p, const BTID_INT * btid, RECDES * recp,
+				     BTREE_NODE_TYPE node_type, DB_VALUE * key);
 extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OID * oid, DB_VALUE * keyval,
 				    int n_attrs, OID * pk_cls_oid, BTID * pk_btid, const char *fk_name);
 

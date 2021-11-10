@@ -1265,7 +1265,7 @@ STATIC_INLINE int btree_count_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
 static int btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key, int size,
 				     BTREE_NODE_TYPE node_type, VPID * firstpg_vpid);
-static int btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * firstpg_vpid, DB_VALUE * key,
+static int btree_load_overflow_key (THREAD_ENTRY * thread_p, const BTID_INT * btid, VPID * firstpg_vpid, DB_VALUE * key,
 				    BTREE_NODE_TYPE node_type);
 static int btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, INT16 slot_id,
 				      BTREE_NODE_TYPE node_type);
@@ -1289,7 +1289,7 @@ static void btree_insert_object_ordered_by_oid (THREAD_ENTRY * thread_p, RECDES 
 static int btree_start_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_OBJECT_INFO * object_info,
 				      VPID * first_overflow_vpid, VPID * near_vpid, VPID * new_vpid,
 				      PAGE_PTR * new_page_ptr);
-static int btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * Rec,
+static int btree_read_record_without_decompression (THREAD_ENTRY * thread_p, const BTID_INT * btid, RECDES * Rec,
 						    DB_VALUE * key, void *rec_header, BTREE_NODE_TYPE node_type,
 						    bool * clear_key, int *offset, int copy);
 static PAGE_PTR btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID * near_vpid);
@@ -1357,10 +1357,10 @@ static DISK_ISVALID btree_find_key_from_page (THREAD_ENTRY * thread_p, BTID_INT 
 
 /* Dump & verify routines */
 static void btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr);
-static void btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * rec, int n);
-static void btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * rec, int n,
+static void btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, const BTID_INT * btid, RECDES * rec, int n);
+static void btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, const BTID_INT * btid, RECDES * rec, int n,
 					int print_key);
-static void btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p, BTID_INT * btid,
+static void btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p, const BTID_INT * btid,
 			     const char *btname, PAGE_PTR page_ptr, VPID * pg_vpid, int depth, int level);
 
 static void btree_dump_page_with_subtree (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, PAGE_PTR pg_ptr,
@@ -1371,9 +1371,9 @@ static DB_VALUE *btree_set_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid
 					DB_VALUE * key, bool * clear_midkey);
 static void btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key, VPID * S_vpid, PAGE_PTR S_page,
 			      BTREE_NODE_TYPE node_type);
-static int btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_ptr);
-static int btree_verify_nonleaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_ptr);
-static int btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_ptr);
+static int btree_verify_node (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, PAGE_PTR page_ptr);
+static int btree_verify_nonleaf_node (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, PAGE_PTR page_ptr);
+static int btree_verify_leaf_node (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, PAGE_PTR page_ptr);
 #endif
 
 static void btree_set_unknown_key_error (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, const char *debug_msg);
@@ -1414,7 +1414,7 @@ static INLINE short btree_record_object_get_mvcc_flags (char *data) __attribute_
 static INLINE bool btree_record_object_is_flagged (char *data, short mvcc_flag) __attribute__ ((ALWAYS_INLINE));
 static void btree_leaf_record_handle_first_overflow (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid_int,
 						     char **rv_undo_data_ptr, char **rv_redo_data_ptr);
-static int btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * rec, int offset,
+static int btree_record_get_num_oids (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, RECDES * rec, int offset,
 				      BTREE_NODE_TYPE node_type);
 static int btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec, int oid_offset,
 					      BTREE_NODE_TYPE node_type, int *max_visible_oids,
@@ -1464,11 +1464,11 @@ static DISK_ISVALID btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTI
 						    char *index_name);
 static DISK_ISVALID btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid, BTID * idx_btid,
 							 bool repair);
-static bool btree_node_is_compressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
-static int btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
+static bool btree_node_is_compressed (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr);
+static int btree_node_common_prefix (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr);
 static int btree_recompress_record (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, DB_VALUE * fence_key,
 				    int old_prefix, int new_prefix);
-static int btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
+static int btree_compress_node (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr);
 static const char *node_type_to_string (short node_type);
 static char *key_type_to_string (char *buf, int buf_size, TP_DOMAIN * key_type);
 static int index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * recdes);
@@ -1492,8 +1492,8 @@ static int btree_or_put_mvccinfo (OR_BUF * buf, BTREE_MVCC_INFO * mvcc_info);
 static int btree_or_get_mvccinfo (OR_BUF * buf, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags);
 static int btree_or_put_object (OR_BUF * buf, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
 				BTREE_OBJECT_INFO * object_info);
-static int btree_or_get_object (OR_BUF * buf, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, int after_key_offset,
-				OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info);
+static int btree_or_get_object (OR_BUF * buf, const BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
+				int after_key_offset, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info);
 static char *btree_unpack_object (char *ptr, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, RECDES * record,
 				  int after_key_offset, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info);
 static char *btree_pack_object (char *ptr, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, RECDES * record,
@@ -1728,7 +1728,8 @@ STATIC_INLINE void btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT
 STATIC_INLINE const char *btree_purpose_to_string (BTREE_OP_PURPOSE purpose) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *btree_op_type_to_string (int op_type) __attribute__ ((ALWAYS_INLINE));
 
-static bool btree_is_class_oid_packed (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first);
+static bool btree_is_class_oid_packed (const BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type,
+				       bool is_first);
 static bool btree_is_fixed_size (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first);
 static bool btree_is_insert_data_purpose (BTREE_OP_PURPOSE purpose);
 static bool btree_is_insert_object_purpose (BTREE_OP_PURPOSE purpose);
@@ -2109,8 +2110,8 @@ exit_on_error:
  * Note: The overflow key is loaded from the pages.
  */
 static int
-btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * first_overflow_page_vpid, DB_VALUE * key,
-			 BTREE_NODE_TYPE node_type)
+btree_load_overflow_key (THREAD_ENTRY * thread_p, const BTID_INT * btid, VPID * first_overflow_page_vpid,
+			 DB_VALUE * key, BTREE_NODE_TYPE node_type)
 {
   RECDES rec;
   OR_BUF buf;
@@ -2429,7 +2430,8 @@ btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid
  * mvcc_info (out) : First object MVCC info.
  */
 int
-btree_leaf_get_first_object (BTID_INT * btid, RECDES * recp, OID * oidp, OID * class_oid, BTREE_MVCC_INFO * mvcc_info)
+btree_leaf_get_first_object (const BTID_INT * btid, RECDES * recp, OID * oidp, OID * class_oid,
+			     BTREE_MVCC_INFO * mvcc_info)
 {
   OR_BUF record_buffer;
   int error_code = NO_ERROR;
@@ -2733,7 +2735,7 @@ btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, REC
  * node_type (in)	 : Leaf/overflow node type.
  */
 static int
-btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * rec, int after_key_offset,
+btree_record_get_num_oids (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, RECDES * rec, int after_key_offset,
 			   BTREE_NODE_TYPE node_type)
 {
   int rec_oid_cnt;
@@ -4323,7 +4325,7 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
  *
  */
 static int
-btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec, DB_VALUE * key,
+btree_read_record_without_decompression (THREAD_ENTRY * thread_p, const BTID_INT * btid, RECDES * rec, DB_VALUE * key,
 					 void *rec_header, BTREE_NODE_TYPE node_type, bool * clear_key, int *offset,
 					 int copy_key)
 {
@@ -4632,7 +4634,7 @@ btree_dump_key (FILE * fp, const DB_VALUE * key)
  * Note: Dumps the content of a leaf record, namely key and the set of values for the key.
  */
 static void
-btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * rec, int depth)
+btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, const BTID_INT * btid, RECDES * rec, int depth)
 {
   OR_BUF buf;
   LEAF_REC leaf_record = { {NULL_PAGEID, NULL_VOLID}, 0 };
@@ -4891,7 +4893,8 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, REC
  * Note: Dumps the content of a nonleaf record, namely key and child page identifier.
  */
 static void
-btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * rec, int depth, int print_key)
+btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, const BTID_INT * btid, RECDES * rec, int depth,
+			    int print_key)
 {
   NON_LEAF_REC non_leaf_record;
   int key_len, offset;
@@ -8842,7 +8845,7 @@ btree_print_space (FILE * fp, int n)
  * Note: Dumps the content of the given page of the tree.
  */
 static void
-btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p, BTID_INT * btid, const char *btname,
+btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p, const BTID_INT * btid, const char *btname,
 		 PAGE_PTR page_ptr, VPID * pg_vpid, int depth, int level)
 {
   int key_cnt;
@@ -12322,7 +12325,7 @@ btree_split_next_pivot (BTREE_NODE_SPLIT_INFO * split_info, float new_value, int
 }
 
 static bool
-btree_node_is_compressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
+btree_node_is_compressed (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr)
 {
   int key_cnt;
   RECDES peek_rec;
@@ -12380,7 +12383,7 @@ btree_node_is_compressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
 }
 
 static int
-btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
+btree_node_common_prefix (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr)
 {
   RECDES peek_rec;
   int diff_column;
@@ -12539,7 +12542,7 @@ btree_recompress_record (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * 
 }
 
 static int
-btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
+btree_compress_node (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr)
 {
   int i, key_cnt, diff_column;
   RECDES peek_rec, rec;
@@ -13031,7 +13034,9 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   btree_node_header_redo_log (thread_p, &btid->sys_btid->vfid, P);
 
-  /* find the child page to be followed */
+  /****************************************************************************
+   ***   STEP 6: after split, find the child page to be followed
+   ****************************************************************************/
   c = btree_compare_key (key, sep_key, btid->key_type, 1, 1, NULL);
   assert (c == DB_LT || c == DB_EQ || c == DB_GT);
 
@@ -19438,7 +19443,7 @@ btree_compare_oid (const void *oid_mem1, const void *oid_mem2)
 
 #if !defined(NDEBUG)
 static int
-btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_ptr)
+btree_verify_node (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, PAGE_PTR page_ptr)
 {
   int ret = NO_ERROR;
   int key_cnt;
@@ -19516,7 +19521,7 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
 }
 
 static int
-btree_verify_nonleaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_ptr)
+btree_verify_nonleaf_node (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, PAGE_PTR page_ptr)
 {
   BTREE_NODE_HEADER *header = NULL;
   TP_DOMAIN *key_domain;
@@ -19611,7 +19616,7 @@ btree_verify_nonleaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PT
 }
 
 static int
-btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_ptr)
+btree_verify_leaf_node (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, PAGE_PTR page_ptr)
 {
   BTREE_NODE_HEADER *header = NULL;
   TP_DOMAIN *key_domain;
@@ -21517,8 +21522,8 @@ btree_pack_object (char *ptr, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, RE
  *	 (where second objects starts).
  */
 static int
-btree_or_get_object (OR_BUF * buf, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, int after_key_offset, OID * oid,
-		     OID * class_oid, BTREE_MVCC_INFO * mvcc_info)
+btree_or_get_object (OR_BUF * buf, const BTID_INT * btid_int, BTREE_NODE_TYPE node_type, int after_key_offset,
+		     OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info)
 {
   short mvcc_flags = 0;		/* MVCC flags read from object OID. */
   int error_code = NO_ERROR;	/* Error code. */
@@ -21792,7 +21797,7 @@ btree_compare_btids (void *mem_btid1, void *mem_btid2)
  *			  and if node type is leaf and if key doesn't have overflow pages).
  */
 int
-btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
+btree_check_valid_record (THREAD_ENTRY * thread_p, const BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
 			  DB_VALUE * key)
 {
 #define BTREE_CHECK_VALID_PRINT_REC_MAX_LENGTH 1024
@@ -34739,7 +34744,7 @@ btree_online_index_change_state (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
 // is_first (in)  : is object first in record?
 //
 static bool
-btree_is_class_oid_packed (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first)
+btree_is_class_oid_packed (const BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first)
 {
   // class oid is packed if:
   // 1. index is unique and
