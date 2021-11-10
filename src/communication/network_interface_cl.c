@@ -1914,7 +1914,7 @@ tde_is_loaded (int *is_loaded)
   return NO_ERROR;
 #else /* CS_MODE */
 
-  tde_is_loaded (is_loaded);
+  *is_loaded = tde_is_loaded ();
 
   return NO_ERROR;
 #endif /* !CS_MODE */

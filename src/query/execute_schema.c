@@ -8716,10 +8716,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       if (tbl_opt_encrypt)
 	{
 	  int tde_loaded = 0;
-	  tde_is_loaded (&tde_loaded);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
-	  error = er_errid ();
-	  goto error_exit;
+	  (void) tde_is_loaded (&tde_loaded);
+	  if (!tde_loaded)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+	      error = er_errid ();
+	      goto error_exit;
+	    }
 	}
 
       /* get default value of reuse_oid from system parameter, if don't use table option related reuse_oid */
