@@ -1235,9 +1235,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
     }
   else
     {
-      // topops stack may be also bumped when start atomic system operation is found.
-      // otherwise, it is expected to be empty
-      assert (tdes->topops.last == -1 || !tdes->rcv.atomic_sysop_start_lsa.is_null ());
+      assert (tdes->topops.last == -1);
       tdes->topops.last = -1;
     }
 

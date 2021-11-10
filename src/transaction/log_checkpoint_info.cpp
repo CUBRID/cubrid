@@ -335,14 +335,7 @@ namespace cublog
 	      }
 	  }
 
-	if (tdes->topops.last == -1)
-	  {
-	    tdes->topops.last++;
-	  }
-	else
-	  {
-	    assert (tdes->topops.last == 0);
-	  }
+
 	tdes->rcv.sysop_start_postpone_lsa = sysop.sysop_start_postpone_lsa;
 	tdes->rcv.atomic_sysop_start_lsa = sysop.atomic_sysop_start_lsa;
 	if (!sysop.sysop_start_postpone_lsa.is_null ())
@@ -358,6 +351,16 @@ namespace cublog
 	      }
 	    tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone.sysop_end.lastparent_lsa;
 	    tdes->topops.stack[tdes->topops.last].posp_lsa = sysop_start_postpone.posp_lsa;
+
+	    // When sysop start is found, the system operation level is also bumped
+	    if (tdes->topops.last == -1)
+	      {
+		tdes->topops.last++;
+	      }
+	    else
+	      {
+		assert (tdes->topops.last == 0);
+	      }
 	  }
 	else
 	  {
