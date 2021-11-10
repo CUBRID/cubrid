@@ -214,6 +214,7 @@ test_env_chkpt::find_or_insert_recovery_tdes (TRANID trid)
       // Insert
       log_tdes *tdes = new log_tdes ();
       tdes->topops.last = -1;
+      tdes->topops.stack = nullptr;
       tdes->rcv.sysop_start_postpone_lsa.set_null ();
       tdes->rcv.atomic_sysop_start_lsa.set_null ();
       m_after_tdes_map.insert (std::make_pair (trid, tdes));
@@ -555,7 +556,7 @@ test_env_chkpt::generate_tdes (int index)
 void
 test_env_chkpt::generate_tran_table ()
 {
-  log_Gl.trantable.num_total_indices = 20;
+  log_Gl.trantable.num_total_indices = 21;
   int size = log_Gl.trantable.num_total_indices * sizeof (*log_Gl.trantable.all_tdes);
   log_Gl.trantable.all_tdes = (LOG_TDES **) malloc (size);
 
@@ -666,6 +667,7 @@ test_env_chkpt::generate_tran_table ()
   tdes->topops.last = 3;
   tdes->rcv.sysop_start_postpone_lsa = {1, 1};
   tdes->rcv.atomic_sysop_start_lsa = {1, 1};
+  ++tran_index;
 
   assert (tran_index == log_Gl.trantable.num_total_indices);
 
