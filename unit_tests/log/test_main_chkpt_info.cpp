@@ -207,13 +207,14 @@ check_recovery (checkpoint_info obj)
 	}
 
       std::map<TRANID, log_tdes *>::const_iterator tdes_after_iter = tran_map.find (tdes->trid);
-      log_tdes *const tdes_after = tdes_after_iter->second;
+
       if (tdes->tail_lsa == NULL_LSA)
 	{
 	  REQUIRE (tdes_after_iter == tran_map.end ());
 	  continue;
 	}
       REQUIRE (tdes_after_iter != tran_map.end ());
+      log_tdes *const tdes_after = tdes_after_iter->second;
       if ((tdes->state == TRAN_UNACTIVE_COMMITTED || tdes->state == TRAN_UNACTIVE_ABORTED)
 	  && !tdes->commit_abort_lsa.is_null ())
 	{
@@ -242,7 +243,16 @@ check_recovery (checkpoint_info obj)
 	}
       else
 	{
-	  REQUIRE (tdes_after->topops.last == 0);
+	  // If system operation started postpone, the level is expected to be zero.
+	  // Otherwise, it is expected to be -1
+	  if (tdes->rcv.sysop_start_postpone_lsa.is_null ())
+	    {
+	      REQUIRE (tdes_after->topops.last == -1);
+	    }
+	  else
+	    {
+	      REQUIRE (tdes_after->topops.last == 0);
+	    }
 	  REQUIRE (tdes->rcv.sysop_start_postpone_lsa == tdes_after->rcv.sysop_start_postpone_lsa);
 	  REQUIRE (tdes->rcv.atomic_sysop_start_lsa == tdes_after->rcv.atomic_sysop_start_lsa);
 	}
@@ -366,6 +376,7 @@ test_env_chkpt::generate_log_info_chkpt_trans ()
     {
       chkpt_trans.user_name[i] = 'A' + std::rand () % 20;
     }
+  chkpt_trans.user_name[length] = '\0';
 
   return chkpt_trans;
 }
