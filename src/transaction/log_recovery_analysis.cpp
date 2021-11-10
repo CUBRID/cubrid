@@ -1209,6 +1209,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
 
   if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
     {
+      // topops stack is bumped when system operation start postpone is found.
       assert (tdes->topops.last == 0);
       if (commit_start_postpone)
 	{
@@ -1234,7 +1235,9 @@ log_rv_analysis_sysop_end (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
     }
   else
     {
-      assert (tdes->topops.last == -1);
+      // topops stack may be also bumped when start atomic system operation is found.
+      // otherwise, it is expected to be empty
+      assert (tdes->topops.last == -1 || !tdes->rcv.atomic_sysop_start_lsa.is_null ());
       tdes->topops.last = -1;
     }
 
