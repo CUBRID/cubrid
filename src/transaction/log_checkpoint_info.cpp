@@ -335,7 +335,6 @@ namespace cublog
 	      }
 	  }
 
-
 	tdes->rcv.sysop_start_postpone_lsa = sysop.sysop_start_postpone_lsa;
 	tdes->rcv.atomic_sysop_start_lsa = sysop.atomic_sysop_start_lsa;
 	if (!sysop.sysop_start_postpone_lsa.is_null ())
