@@ -49,12 +49,13 @@ class page_server
 
     void set_active_tran_server_connection (cubcomm::channel &&chn);
     void set_passive_tran_server_connection (cubcomm::channel &&chn);
+    void disconnect_active_tran_server();
     void disconnect_tran_server (connection_handler *conn);
     void disconnect_all_tran_server ();
     bool is_active_tran_server_connected () const;
     bool is_passive_tran_server_connected () const;
     void push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload);
-    cublog::async_page_fetcher *get_page_fetcher ();
+    cublog::async_page_fetcher &get_page_fetcher ();
     cublog::replicator &get_replicator ();
     void start_log_replicator (const log_lsa &start_lsa);
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
