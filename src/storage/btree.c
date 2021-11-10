@@ -12798,6 +12798,82 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   rightcnt = key_cnt - leftcnt;
 
+  /****************************************************************************
+   ***   STEP 5: insert sep_key to P
+   ***           add undo/redo log for page P
+   ***
+   ***    update the parent page P to keep the middle key and to point to
+   ***    pages Q and R.  Remember that this mid key will be on a non leaf page
+   ***    regardless of whether we are splitting a leaf or non leaf page.
+   ****************************************************************************/
+  nleaf_rec.pnt = *R_vpid;
+  key_len = btree_get_disk_size_of_key (sep_key);
+  if (key_len < BTREE_MAX_KEYLEN_INPAGE)
+    {
+      key_type = BTREE_NORMAL_KEY;
+      nleaf_rec.key_len = key_len;
+    }
+  else
+    {
+      key_type = BTREE_OVERFLOW_KEY;
+      nleaf_rec.key_len = -1;
+    }
+
+  ret =
+    btree_write_record (thread_p, btid, &nleaf_rec, sep_key, BTREE_NON_LEAF_NODE, key_type, key_len, false, NULL, NULL,
+			NULL, &rec);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+
+  p_slot_id++;
+
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+  /* add undo/redo logging for page P */
+  assert (p_slot_id > 0);
+  if (spage_insert_at (thread_p, P, p_slot_id, &rec) != SP_SUCCESS)
+    {
+      assert_release (false);
+      ret = ER_FAILED;
+      goto exit_on_error;
+    }
+
+  p_redo_data = PTR_ALIGN (p_redo_data_buf, BTREE_MAX_ALIGN);
+
+  btree_rv_write_log_record (p_redo_data, &p_redo_length, &rec, BTREE_NON_LEAF_NODE);
+  log_append_undoredo_data2 (thread_p, RVBT_NDRECORD_INS, &btid->sys_btid->vfid, P, p_slot_id, sizeof (p_slot_id),
+			     p_redo_length, &p_slot_id, p_redo_data);
+
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+  key_cnt = btree_node_number_of_keys (thread_p, P);
+  assert_release (key_cnt > 0);
+
+  pheader = btree_get_node_header (thread_p, P);
+  if (pheader == NULL)
+    {
+      assert_release (false);
+      ret = ER_FAILED;
+      goto exit_on_error;
+    }
+
+  assert_release (pheader->split_info.pivot >= 0);
+
+  btree_node_header_undo_log (thread_p, &btid->sys_btid->vfid, P);
+
+  btree_split_next_pivot (&pheader->split_info, (float) p_slot_id / key_cnt, key_cnt);
+
+  /* We may need to update the max_key length if the mid key is larger than the max key length. This can happen due to
+   * disk padding when the prefix key length approaches the fixed key length. */
+  sep_key_len = btree_get_disk_size_of_key (sep_key);
+  sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (sep_key_len);
+  pheader->max_key_len = MAX (sep_key_len, pheader->max_key_len);
+
+  btree_node_header_redo_log (thread_p, &btid->sys_btid->vfid, P);
+
   /*********************************************************************
    ***  STEP 2: save undo image of Q
    ***		update Q, R header info
@@ -12957,82 +13033,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   log_append_redo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid, R, -1, DB_PAGESIZE, R);
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
-
-  /****************************************************************************
-   ***   STEP 5: insert sep_key to P
-   ***           add undo/redo log for page P
-   ***
-   ***    update the parent page P to keep the middle key and to point to
-   ***    pages Q and R.  Remember that this mid key will be on a non leaf page
-   ***    regardless of whether we are splitting a leaf or non leaf page.
-   ****************************************************************************/
-  nleaf_rec.pnt = *R_vpid;
-  key_len = btree_get_disk_size_of_key (sep_key);
-  if (key_len < BTREE_MAX_KEYLEN_INPAGE)
-    {
-      key_type = BTREE_NORMAL_KEY;
-      nleaf_rec.key_len = key_len;
-    }
-  else
-    {
-      key_type = BTREE_OVERFLOW_KEY;
-      nleaf_rec.key_len = -1;
-    }
-
-  ret =
-    btree_write_record (thread_p, btid, &nleaf_rec, sep_key, BTREE_NON_LEAF_NODE, key_type, key_len, false, NULL, NULL,
-			NULL, &rec);
-  if (ret != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-
-  p_slot_id++;
-
-  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
-
-  /* add undo/redo logging for page P */
-  assert (p_slot_id > 0);
-  if (spage_insert_at (thread_p, P, p_slot_id, &rec) != SP_SUCCESS)
-    {
-      assert_release (false);
-      ret = ER_FAILED;
-      goto exit_on_error;
-    }
-
-  p_redo_data = PTR_ALIGN (p_redo_data_buf, BTREE_MAX_ALIGN);
-
-  btree_rv_write_log_record (p_redo_data, &p_redo_length, &rec, BTREE_NON_LEAF_NODE);
-  log_append_undoredo_data2 (thread_p, RVBT_NDRECORD_INS, &btid->sys_btid->vfid, P, p_slot_id, sizeof (p_slot_id),
-			     p_redo_length, &p_slot_id, p_redo_data);
-
-  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
-
-  key_cnt = btree_node_number_of_keys (thread_p, P);
-  assert_release (key_cnt > 0);
-
-  pheader = btree_get_node_header (thread_p, P);
-  if (pheader == NULL)
-    {
-      assert_release (false);
-      ret = ER_FAILED;
-      goto exit_on_error;
-    }
-
-  assert_release (pheader->split_info.pivot >= 0);
-
-  btree_node_header_undo_log (thread_p, &btid->sys_btid->vfid, P);
-
-  btree_split_next_pivot (&pheader->split_info, (float) p_slot_id / key_cnt, key_cnt);
-
-  /* We may need to update the max_key length if the mid key is larger than the max key length. This can happen due to
-   * disk padding when the prefix key length approaches the fixed key length. */
-  sep_key_len = btree_get_disk_size_of_key (sep_key);
-  sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (sep_key_len);
-  pheader->max_key_len = MAX (sep_key_len, pheader->max_key_len);
-
-  btree_node_header_redo_log (thread_p, &btid->sys_btid->vfid, P);
 
   /****************************************************************************
    ***   STEP 6: after split, find the child page to be followed
