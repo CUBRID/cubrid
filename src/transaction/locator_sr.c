@@ -5351,7 +5351,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	{
 	  /* Prevent any update on a TDE-encryted class if TDE is not loaded */
 	  or_class_tde_algorithm (recdes, &tde_algo);
-	  if (tde_algo != TDE_ALGORITHM_NONE && !tde_Cipher.is_loaded)
+	  if (tde_algo != TDE_ALGORITHM_NONE && !tde_is_loaded ())
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
 	      error_code = ER_TDE_CIPHER_IS_NOT_LOADED;

@@ -2196,7 +2196,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 	    {
 	      /* This page is tde-ecnrypted page and has not yet decrypted.
 	       * To check consistency, we need to decrypt it */
-	      if (!tde_Cipher.is_loaded)
+	      if (!tde_is_loaded ())
 		{
 		  ptr += LOG_PAGESIZE;
 		  continue;	/* no way to check an encrypted page without tde module */
@@ -11416,7 +11416,7 @@ logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr)
 void
 logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo)
 {
-  assert (tde_Cipher.is_loaded || tde_algo == TDE_ALGORITHM_NONE);
+  assert (tde_is_loaded () || tde_algo == TDE_ALGORITHM_NONE);
   /* clear encrypted flag */
   log_pgptr->hdr.flags &= ~LOG_HDRPAGE_FLAG_ENCRYPTED_MASK;
 

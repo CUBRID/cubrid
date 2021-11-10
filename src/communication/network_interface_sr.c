@@ -2617,7 +2617,7 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  if (!tde_Cipher.is_loaded)
+  if (!tde_is_loaded ())
     {
       (void) return_error_to_client (thread_p, rid);
       area = NULL;

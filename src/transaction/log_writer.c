@@ -895,7 +895,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 		{
 		  logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
 
-		  while (!tde_Cipher.is_loaded)
+		  while (!tde_is_loaded ())
 		    {
 		      error = logwr_load_tde ();
 		      if (error != NO_ERROR)
@@ -960,7 +960,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	    {
 	      logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
 
-	      while (!tde_Cipher.is_loaded)
+	      while (!tde_is_loaded ())
 		{
 		  error = logwr_load_tde ();
 		  if (error != NO_ERROR)
@@ -1948,7 +1948,7 @@ logwr_load_tde (void)
   memcpy (tde_Cipher.data_keys.temp_key, dks.temp_key, TDE_DATA_KEY_LENGTH);
   memcpy (tde_Cipher.data_keys.log_key, dks.log_key, TDE_DATA_KEY_LENGTH);
 
-  tde_Cipher.is_loaded = true;
+  tde_is_loaded () = true;
 
   close (client_sockfd);
   return NO_ERROR;

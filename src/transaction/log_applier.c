@@ -7974,7 +7974,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   error = tde_get_data_keys ();
   if (error == NO_ERROR)
     {
-      tde_Cipher.is_loaded = true;
+      tde_is_loaded () = true;
       error = la_start_dk_sharing ();
       if (error != NO_ERROR)
 	{
@@ -8594,7 +8594,7 @@ la_process_dk_request (void *arg)
 
       if (error == NO_ERROR)
 	{
-	  if (!tde_Cipher.is_loaded)
+	  if (!tde_is_loaded ())
 	    {
 	      error = ER_TDE_CIPHER_IS_NOT_LOADED;
 	    }
