@@ -41,13 +41,15 @@ namespace cubthread
 
 class page_server
 {
+  private:
+    class connection_handler;
   public:
     page_server () = default;
     ~page_server ();
 
     void set_active_tran_server_connection (cubcomm::channel &&chn);
     void set_passive_tran_server_connection (cubcomm::channel &&chn);
-    void disconnect_tran_server (void *conn);
+    void disconnect_tran_server (connection_handler *conn);
     void disconnect_all_tran_server ();
     bool is_active_tran_server_connected () const;
     bool is_passive_tran_server_connected () const;
@@ -61,16 +63,15 @@ class page_server
     void finalize_page_fetcher ();
 
   private:
-
     class connection_handler
     {
 	using tran_server_conn_t =
 		cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
       public:
-	connection_handler () = default;
+	connection_handler () = delete;
 	~connection_handler () = default;
-	connection_handler (cubcomm::channel &chn, page_server *ps);
+	connection_handler (cubcomm::channel &chn, page_server &ps);
 	void push_request (page_to_tran_request id, std::string msg);
 	std::string get_channel_id ();
 
@@ -84,7 +85,7 @@ class page_server
 	void receive_disconnect_request (cubpacking::unpacker &upk);
 
 	std::unique_ptr<tran_server_conn_t> m_conn;
-	std::unique_ptr<page_server> m_ps;
+	page_server &m_ps;
     };
 
     std::unique_ptr<connection_handler> m_active_tran_server_conn;
