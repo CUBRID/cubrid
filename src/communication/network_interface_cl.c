@@ -1908,7 +1908,7 @@ tde_is_loaded (int *is_loaded)
     net_client_request (NET_SERVER_TDE_IS_LOADED, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
-      ptr = or_unpack_int (ptr, is_loaded);
+      ptr = or_unpack_int (reply, is_loaded);
     }
 
   return NO_ERROR;
