@@ -1887,6 +1887,41 @@ tde_get_data_keys ()
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
 /*
+ * tde_is_loaded -
+ *
+ * return:
+ *
+ */
+int
+tde_is_loaded (int *is_loaded)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, area_size;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply, *area;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request (NET_SERVER_TDE_IS_LOADED, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (ptr, is_loaded);
+    }
+
+  return NO_ERROR;
+#else /* CS_MODE */
+
+  tde_is_loaded (is_loaded);
+
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+
+/*
  * tde_get_mk_file_path -
  *
  * return:

@@ -2575,6 +2575,17 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 
 }
 
+void
+stde_is_loaded (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_int (reply, tde_is_loaded ());
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
 /*
  * sfile_apply_tde_to_class_files -
  *
