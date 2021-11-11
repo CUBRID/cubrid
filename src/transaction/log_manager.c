@@ -12614,7 +12614,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       goto error;
     }
 
-  changed_col_idx = (int *) malloc (attr_info.num_values);
+  changed_col_idx = (int *) malloc (sizeof (int) * attr_info.num_values);
   if (changed_col_idx == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -13140,7 +13140,14 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * old_v
 
   assert (new_value != NULL && old_value != NULL);
 
-  return db_value_compare (new_value, old_value) == 0 ? 0 : 1;
+  if (DB_IS_NULL (new_value) && DB_IS_NULL (old_value))
+    {
+      return 0;
+    }
+  else
+    {
+      return db_value_compare (new_value, old_value) == 0 ? 0 : 1;
+    }
 }
 
 static int
@@ -13255,7 +13262,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 
 	snprintf (result + length - 2, 2, "'");
 
-	assert (strlen (result) == (length - 1));
+	assert ((int) strlen (result) == (length - 1));
 
 	ptr = or_pack_int (ptr, func_type);
 	ptr = or_pack_string (ptr, result);
@@ -14353,7 +14360,7 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 
       if (LSA_GE (&consume->next_lsa, start_lsa))
 	{
-	  if (total_length + consume->length + MAX_ALIGNMENT > cdc_Gl.consumer.log_info_size)
+	  if ((int) (total_length + consume->length + MAX_ALIGNMENT) > cdc_Gl.consumer.log_info_size)
 	    {
 	      temp_log_infos = (char *) realloc (log_infos, total_length + consume->length + MAX_ALIGNMENT);
 	      if (temp_log_infos == NULL)
