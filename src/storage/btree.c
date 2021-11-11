@@ -12801,7 +12801,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   rightcnt = key_cnt - leftcnt;
 
   /****************************************************************************
-   ***   STEP 5: insert sep_key to P
+   ***   STEP 2: insert sep_key to P
    ***           add undo/redo log for page P
    ***
    ***    update the parent page P to keep the middle key and to point to
@@ -12877,7 +12877,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_node_header_redo_log (thread_p, &btid->sys_btid->vfid, P);
 
   /*********************************************************************
-   ***  STEP 2: save undo image of Q
+   ***  STEP 3: save undo image of Q
    ***		update Q, R header info
    *********************************************************************/
   /* add undo logging for page Q */
@@ -12945,7 +12945,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   /*******************************************************************
-   ***   STEP 3: move second half of page Q to page R
+   ***   STEP 4: move second half of page Q to page R
    ***           insert fence key to Q
    ***           make redo image for Q
    *******************************************************************/
@@ -13020,7 +13020,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   log_append_redo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid, Q, -1, DB_PAGESIZE, Q);
 
   /***************************************************************************
-   ***   STEP 4: add redo log for R
+   ***   STEP 5: add redo log for R
    ***    Log the second half of page Q for redo purposes on Page R,
    ***    the records on the second half of page Q will be inserted to page R
    ***************************************************************************/
