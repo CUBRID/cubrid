@@ -324,6 +324,8 @@ extern int db_Disable_modifications;
     } \
   while (0)
 
+#define cdc_log(...) if (cdc_Logging) _er_log_debug (ARG_FILE_LINE, "CDC: " __VA_ARGS__)
+
 #define MAX_CDC_LOGINFO_QUEUE_ENTRY  2048
 #define MAX_CDC_LOGINFO_QUEUE_SIZE   32 * 1024 * 1024	/*32 MB */
 #define MAX_CDC_TRAN_USER_TABLE       4000
@@ -985,6 +987,7 @@ extern char log_Name_removed_archive[];
 
 /*CDC global variables */
 extern CDC_GLOBAL cdc_Gl;
+extern bool cdc_Logging;
 
 /* logging */
 #if defined (SA_MODE)
