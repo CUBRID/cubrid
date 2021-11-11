@@ -1920,7 +1920,6 @@ tde_is_loaded (int *is_loaded)
 #endif /* !CS_MODE */
 }
 
-
 /*
  * tde_get_mk_file_path -
  *
