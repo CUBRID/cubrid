@@ -1948,7 +1948,7 @@ logwr_load_tde (void)
   memcpy (tde_Cipher.data_keys.temp_key, dks.temp_key, TDE_DATA_KEY_LENGTH);
   memcpy (tde_Cipher.data_keys.log_key, dks.log_key, TDE_DATA_KEY_LENGTH);
 
-  tde_is_loaded () = true;
+  tde_Cipher.is_loaded = true;
 
   close (client_sockfd);
   return NO_ERROR;
