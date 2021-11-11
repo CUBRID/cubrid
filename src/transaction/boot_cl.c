@@ -706,9 +706,9 @@ error_exit:
 
 // Process the path argument and:
 //
-//	- If no argument is given, use default path. If there is no default path, use working directory as path
-//	- Convert to absolute path
-//	- Remove useless path separators.
+//      - If no argument is given, use default path. If there is no default path, use working directory as path
+//      - Convert to absolute path
+//      - Remove useless path separators.
 //
 static int
 boot_initialize_path (const char *path_arg, const char *default_path, char *path_out)
@@ -752,7 +752,7 @@ boot_initialize_path (const char *path_arg, const char *default_path, char *path
   char remove_useless_sep_buf[PATH_MAX];
   boot_remove_useless_path_separator (path, remove_useless_sep_buf);
   path = remove_useless_sep_buf;
-  
+
   // done
   strcpy (path_out, path);
   return NO_ERROR;
@@ -767,8 +767,7 @@ boot_initialize_lob_path (const char *path_arg, const char *db_path, char *path_
 
   if (path_arg == NULL)
     {
-      snprintf (es_path, sizeof (es_path), "%s%s%clob", LOB_PATH_DEFAULT_PREFIX, db_path,
-		PATH_SEPARATOR);
+      snprintf (es_path, sizeof (es_path), "%s%s%clob", LOB_PATH_DEFAULT_PREFIX, db_path, PATH_SEPARATOR);
       es_type = ES_DEFAULT_TYPE;
     }
   else
