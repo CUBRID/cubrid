@@ -1577,31 +1577,30 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   /*
    * get the database directory information in write mode.
    */
-
-  if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL
-#if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
-/* Temporary fix for NT file locking problem */
-      || (dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label, LOG_DBTXT_VOLID, 2, true)) == NULL_VOLDES
-#endif /* !WINDOWS || DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
-    )
+  if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL)
     {
       goto exit_on_error;
     }
 
-  if (dbtxt_vdes != NULL_VOLDES)
+#if !defined (WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
+  /* Temporary fix for NT file locking problem */
+  dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label, LOG_DBTXT_VOLID, 2, true);
+  if (dbtxt_vdes == NULL_VOLDES)
     {
-      if (cfg_read_directory_ex (dbtxt_vdes, &dir, true) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      goto exit_on_error;
     }
-  else
+  error_code = cfg_read_directory_ex (dbtxt_vdes, &dir, true);
+  if (error_code != NO_ERROR)
     {
-      if (cfg_read_directory (&dir, true) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      goto exit_on_error;
     }
+#else // WINDOWS || DONT_USE_MANDATORY_LOCK_IN_WINDOWS
+  error_code = cfg_read_directory (&dir, true);
+  if (error_code != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+#endif // WINDOWS || DONT_USE_MANDATORY_LOCK_IN_WINDOWS
 
   if (dir != NULL && ((db = cfg_find_db_list (dir, client_credential->get_db_name ())) != NULL))
     {
@@ -1737,7 +1736,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	    }
 	  else
 	    {
-	      cfg_update_db (db, boot_Db_directory_path, db_path_info->log_path, db_path_info->lob_path, db_path_info->db_host);
+	      cfg_update_db (db, boot_Db_directory_path, db_path_info->log_path, db_path_info->lob_path,
+			     db_path_info->db_host);
 	    }
 
 	  if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->lobpath == NULL
