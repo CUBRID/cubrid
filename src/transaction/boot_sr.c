@@ -1737,7 +1737,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	    }
 	  else
 	    {
-	      cfg_update_db (db, boot_Db_directory_path, db_path_info->log_path, db_path_info->lob_path, db_path_info->db_host);
+	      cfg_update_db (db, boot_Db_directory_path, db_path_info->log_path, db_path_info->lob_path,
+			     db_path_info->db_host);
 	    }
 
 	  if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->lobpath == NULL
