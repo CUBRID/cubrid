@@ -257,7 +257,7 @@ namespace cublog
     };
     log_system_tdes::map_all_tdes (mapper);
 
-    m_snapshot_lsa = log_Gl.append.prev_lsa;
+    m_snapshot_lsa = log_Gl.prior_info.prev_lsa;
   }
 
   void
@@ -335,18 +335,20 @@ namespace cublog
 	      }
 	  }
 
-	if (tdes->topops.last == -1)
-	  {
-	    tdes->topops.last++;
-	  }
-	else
-	  {
-	    assert (tdes->topops.last == 0);
-	  }
 	tdes->rcv.sysop_start_postpone_lsa = sysop.sysop_start_postpone_lsa;
 	tdes->rcv.atomic_sysop_start_lsa = sysop.atomic_sysop_start_lsa;
 	if (!sysop.sysop_start_postpone_lsa.is_null ())
 	  {
+	    // Bump the sysop level to save lastparent_lsa and posp_lsa.
+	    if (tdes->topops.last == -1)
+	      {
+		tdes->topops.last++;
+	      }
+	    else
+	      {
+		assert (tdes->topops.last == 0);
+	      }
+
 	    LOG_LSA log_lsa_local = sysop.sysop_start_postpone_lsa;
 	    LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
 	    const int error_code = log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false,
@@ -358,11 +360,6 @@ namespace cublog
 	      }
 	    tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone.sysop_end.lastparent_lsa;
 	    tdes->topops.stack[tdes->topops.last].posp_lsa = sysop_start_postpone.posp_lsa;
-	  }
-	else
-	  {
-	    tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop.atomic_sysop_start_lsa;
-	    tdes->topops.stack[tdes->topops.last].posp_lsa.set_null ();
 	  }
       }
   }

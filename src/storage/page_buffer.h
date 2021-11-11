@@ -170,8 +170,10 @@ typedef enum
   OLD_PAGE_PREVENT_DEALLOC,	/* Fetch existing page and mark its memory buffer, to prevent deallocation. */
   OLD_PAGE_DEALLOCATED,		/* Fetch page that has been deallocated. */
   OLD_PAGE_MAYBE_DEALLOCATED,	/* Fetch page that maybe was deallocated. */
-  RECOVERY_PAGE			/* Fetch page for recovery. The page may be new, or deallocated or normal, everything
+  RECOVERY_PAGE,		/* Fetch page for recovery. The page may be new, or deallocated or normal, everything
 				 * is possible really. */
+  OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT	/* Fetch page for passive transaction server replication. The page is requested from
+					 * page server and is in the process of being added to the page bufffer */
 } PAGE_FETCH_MODE;
 
 /* public page latch mode */

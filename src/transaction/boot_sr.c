@@ -4094,6 +4094,10 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 		  error_code = ER_BO_DIRECTORY_DOESNOT_EXIST;
 		  goto error;
 		}
+	      else
+		{
+		  er_clear ();
+		}
 	    }
 	}
     }
