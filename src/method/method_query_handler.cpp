@@ -27,69 +27,6 @@
 
 namespace cubmethod
 {
-  prepare_call_info::prepare_call_info ()
-  {
-    //
-  }
-
-  prepare_call_info::~prepare_call_info ()
-  {
-    clear ();
-  }
-
-  int
-  prepare_call_info::set_is_first_out (std::string &sql_stmt)
-  {
-    if (!sql_stmt.empty() && sql_stmt[0] == '?')
-      {
-	is_first_out = true;
-
-	std::size_t found = sql_stmt.find ('=');
-	/* '=' is not found */
-	if (found == std::string::npos)
-	  {
-	    return ER_FAILED;
-	  }
-
-	sql_stmt = sql_stmt.substr (found);
-      }
-
-    return NO_ERROR;
-  }
-
-  void
-  prepare_call_info::clear ()
-  {
-    for (int i = 0; i < dbval_args.size(); i++)
-      {
-	db_value_clear (&dbval_args[i]);
-      }
-  }
-
-  int
-  prepare_call_info::set_prepare_call_info (int num_args)
-  {
-    db_make_null (&dbval_ret);
-
-    this->num_args = num_args;
-    if (num_args > 0)
-      {
-	param_mode.resize (num_args);
-	for (int i = 0; i < (int) param_mode.size(); i++)
-	  {
-	    param_mode[i] = 0;
-	  }
-
-	dbval_args.resize (num_args + 1);
-	for (int i = 0; i < (int) dbval_args.size(); i++)
-	  {
-	    db_make_null (&dbval_args[i]);
-	  }
-      }
-
-    return NO_ERROR;
-  }
-
   query_handler::~query_handler ()
   {
     end_qresult (true);
@@ -196,9 +133,14 @@ namespace cubmethod
   }
 
   execute_info
-  query_handler::execute (std::vector<DB_VALUE> &bind_values, int flag, int max_col_size, int max_row)
+  query_handler::execute (const execute_request &request)
   {
     int error = NO_ERROR;
+
+    int flag = request.execute_flag;
+    int max_col_size = request.max_field;
+    int max_row = -1; // TODO
+    const std::vector<DB_VALUE> &bind_values = request.param_values;
 
     // 0) clear qresult
     end_qresult (false);
@@ -207,7 +149,15 @@ namespace cubmethod
     if (m_prepare_flag & PREPARE_CALL)
       {
 	error = execute_internal_call (info, flag, max_col_size, max_row, bind_values);
-	// TODO: copy param_mode
+	if (error == NO_ERROR)
+	  {
+	    assert (m_prepare_call_info.param_modes.size() == request.param_modes.size());
+	    for (int i = 0; i < (int) m_prepare_call_info.param_modes.size(); i++)
+	      {
+		m_prepare_call_info.param_modes[i] = request.param_modes[i];
+	      }
+	    info.call_info = &m_prepare_call_info;
+	  }
       }
     else if (flag & EXEC_QUERY_ALL)
       {
@@ -312,7 +262,7 @@ namespace cubmethod
 
   int
   query_handler::execute_internal_all (execute_info &info, int flag, int max_col_size, int max_row,
-				       std::vector<DB_VALUE> &bind_values)
+				       const std::vector<DB_VALUE> &bind_values)
   {
     int error = NO_ERROR;
 
@@ -344,7 +294,7 @@ namespace cubmethod
     assert (num_bind == (int) bind_values.size ());
     if (num_bind > 0)
       {
-	error = set_host_variables (num_bind, bind_values.data ());
+	error = set_host_variables (num_bind, (DB_VALUE *) bind_values.data ());
 	if (error != NO_ERROR)
 	  {
 	    m_error_ctx.set_error (error, NULL, __FILE__, __LINE__);
@@ -464,7 +414,7 @@ namespace cubmethod
 
   int
   query_handler::execute_internal_call (execute_info &info, int flag, int max_col_size, int max_row,
-					std::vector<DB_VALUE> &bind_values)
+					const std::vector<DB_VALUE> &bind_values)
   {
     int error = NO_ERROR;
 
@@ -476,11 +426,11 @@ namespace cubmethod
       {
 	if (call_info.is_first_out)
 	  {
-	    error = set_host_variables (num_bind - 1, &bind_values[1]);
+	    error = set_host_variables (num_bind - 1, (DB_VALUE *) &bind_values[1]);
 	  }
 	else
 	  {
-	    error = set_host_variables (num_bind, &bind_values[0]);
+	    error = set_host_variables (num_bind, (DB_VALUE *) &bind_values[0]);
 	  }
 
 	if (error != NO_ERROR)
@@ -565,7 +515,7 @@ namespace cubmethod
 
   int
   query_handler::execute_internal (execute_info &info, int flag, int max_col_size, int max_row,
-				   std::vector<DB_VALUE> &bind_values)
+				   const std::vector<DB_VALUE> &bind_values)
   {
     int error = NO_ERROR;
 
@@ -595,7 +545,7 @@ namespace cubmethod
     assert (num_bind == (int) bind_values.size ());
     if (num_bind > 0)
       {
-	error = set_host_variables (num_bind, bind_values.data());
+	error = set_host_variables (num_bind, (DB_VALUE *) bind_values.data());
 	if (error != NO_ERROR)
 	  {
 	    return error;
@@ -803,8 +753,8 @@ namespace cubmethod
 	return error;
       }
 
-    char stmt_type = get_stmt_type (sql_stmt_copy);
     str_trim (sql_stmt_copy);
+    char stmt_type = get_stmt_type (sql_stmt_copy);
     if (stmt_type != CUBRID_STMT_CALL)
       {
 	m_error_ctx.set_error (METHOD_CALLBACK_ER_INVALID_CALL_STMT, NULL, __FILE__, __LINE__);

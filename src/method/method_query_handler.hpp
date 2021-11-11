@@ -37,8 +37,6 @@
 
 namespace cubmethod
 {
-#define CUBRID_STMT_CALL_SP	0x7e
-
   /* PREPARE_FLAG, EXEC_FLAG are ported from cas_cci.h */
   enum PREPARE_FLAG
   {
@@ -61,22 +59,6 @@ namespace cubmethod
 
 #define CLASS_NAME_PATTERN_MATCH 1
 #define ATTR_NAME_PATTERN_MATCH	2
-
-  struct prepare_call_info
-  {
-    prepare_call_info ();
-    ~prepare_call_info ();
-
-    DB_VALUE dbval_ret;
-    int num_args;
-    std::vector<DB_VALUE> dbval_args; /* # of num_args + 1 */
-    std::vector<char> param_mode; /* # of num_args */
-    bool is_first_out;
-
-    int set_is_first_out (std::string &sql_stmt);
-    int set_prepare_call_info (int num_args);
-    void clear ();
-  };
 
   /*
    * cubmethod::query_handler
@@ -111,7 +93,7 @@ namespace cubmethod
 
       /* request */
       prepare_info prepare (std::string sql, int flag);
-      execute_info execute (std::vector<DB_VALUE> &bind_values, int flag, int max_col_size, int max_row);
+      execute_info execute (const execute_request &request);
       next_result_info next_result (int flag);
 
       int get_generated_keys ();
@@ -139,11 +121,12 @@ namespace cubmethod
       int prepare_call (prepare_info &info, int &flag);
 
       /* execute */
-      int execute_internal (execute_info &info, int flag, int max_col_size, int max_row, std::vector<DB_VALUE> &bind_values);
+      int execute_internal (execute_info &info, int flag, int max_col_size, int max_row,
+			    const std::vector<DB_VALUE> &bind_values);
       int execute_internal_call (execute_info &info, int flag, int max_col_size, int max_row,
-				 std::vector<DB_VALUE> &bind_values);
+				 const std::vector<DB_VALUE> &bind_values);
       int execute_internal_all (execute_info &info, int flag, int max_col_size, int max_row,
-				std::vector<DB_VALUE> &bind_values);
+				const std::vector<DB_VALUE> &bind_values);
 
       int set_host_variables (int num_bind, DB_VALUE *value_list);
       bool has_stmt_result_set (char stmt_type);

@@ -30,6 +30,8 @@
 #include "method_struct_oid_info.hpp"
 #include "method_invoke_group.hpp"
 #include "method_struct_query.hpp"
+#include "method_query_util.hpp"
+
 #include "log_impl.h"
 
 namespace cubmethod
@@ -393,7 +395,8 @@ namespace cubmethod
 	  info.unpack (unpacker);
 
 	  query_result_info &current_result_info = info.qresult_infos[0];
-	  if (current_result_info.stmt_type == CUBRID_STMT_SELECT)
+	  int stmt_type = current_result_info.stmt_type;
+	  if (stmt_type == CUBRID_STMT_SELECT)
 	    {
 	      std::uint64_t qid = current_result_info.query_id;
 	      const auto &iter = m_cursor_map.find (qid);
