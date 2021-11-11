@@ -10,7 +10,7 @@ public class SUResultTuple {
     private SOID oid;
     private Object attributes[];
 
-    SUResultTuple(int tupleIndex, int attributeNumber) {
+    public SUResultTuple(int tupleIndex, int attributeNumber) {
         index = tupleIndex;
         attributes = new Object[attributeNumber];
     }
@@ -29,7 +29,7 @@ public class SUResultTuple {
         oid = unpacker.unpackOID();
     }
 
-    void close() {
+    public void close() {
         for (int i = 0; attributes != null && i < attributes.length; i++) {
             attributes[i] = null;
         }
@@ -37,7 +37,7 @@ public class SUResultTuple {
         oid = null;
     }
 
-    Object getAttribute(int tIndex) {
+    public Object getAttribute(int tIndex) {
         /*
          * if (tIndex < 0 || attributes == null || tIndex >= attributes.length)
          * return null;
@@ -45,16 +45,16 @@ public class SUResultTuple {
         return attributes[tIndex];
     }
 
-    SOID getOID() {
+    public SOID getOID() {
         return oid;
     }
 
-    boolean oidIsIncluded() {
+    public boolean oidIsIncluded() {
         if (oid == null) return false;
         return true;
     }
 
-    void setAttribute(int tIndex, Object data) {
+    public void setAttribute(int tIndex, Object data) {
         /*
          * if (wasNull == null || attributes == null || tIndex < 0 || tIndex >
          * wasNull.length - 1 || tIndex > attributes.length - 1) { return; }
@@ -64,11 +64,11 @@ public class SUResultTuple {
         attributes[tIndex] = data;
     }
 
-    void setOID(SOID o) {
+    public void setOID(SOID o) {
         oid = o;
     }
 
-    int tupleNumber() {
+    public int tupleNumber() {
         return index;
     }
 }

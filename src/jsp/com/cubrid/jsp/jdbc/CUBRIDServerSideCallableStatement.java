@@ -32,6 +32,7 @@
 package com.cubrid.jsp.jdbc;
 
 import cubrid.sql.CUBRIDTimestamptz;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.math.BigDecimal;
@@ -65,6 +66,25 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
                 ResultSet.CONCUR_READ_ONLY,
                 ResultSet.CLOSE_CURSORS_AT_COMMIT,
                 Statement.NO_GENERATED_KEYS);
+    }
+
+    @Override
+    protected void prepareInternal(String sql) throws SQLException, IOException {
+        byte prepareFlag = (byte) 0;
+
+        prepareFlag |= CUBRIDServerSideConstants.PREPARE_CALL;
+        if (isUpdatable() || isSensitive()) {
+            prepareFlag |= CUBRIDServerSideConstants.PREPARE_UPDATABLE;
+        }
+
+        /*
+         * NOTE: unsupported query_info and holdable cursor in server-side JDBC if
+         * (false) { // query info prepareFlag |=
+         * CUBRIDServerSideConstants.PREPARE_QUERY_INFO; } if (false) { // is_holdable
+         * prepareFlag |= CUBRIDServerSideConstants.PREPARE_HOLDABLE; }
+         */
+
+        statementHandler = connection.getSUConnection().prepare(sql, prepareFlag, false);
     }
 
     private void beforeGetValue(int index) throws SQLException {

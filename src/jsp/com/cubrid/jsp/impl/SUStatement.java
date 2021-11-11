@@ -8,6 +8,7 @@ import com.cubrid.jsp.data.GetByOIDInfo;
 import com.cubrid.jsp.data.GetSchemaInfo;
 import com.cubrid.jsp.data.PrepareInfo;
 import com.cubrid.jsp.data.QueryResultInfo;
+import com.cubrid.jsp.data.CallInfo;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
@@ -217,7 +218,13 @@ public class SUStatement {
         fetchedStartCursorPosition = cursorPosition = -1;
 
         if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
-            cursorPosition = 0;
+            cursorPosition = 0; // already fetched
+            fetchedStartCursorPosition = 0;
+            fetchedTupleNumber = 1;
+
+            CallInfo callInfo = executeInfo.callInfo;
+            tuples = new SUResultTuple[fetchedTupleNumber];
+            tuples[0] = callInfo.getTuple ();
         } else {
             cursorPosition = -1;
         }
@@ -403,7 +410,9 @@ public class SUStatement {
         }
 
         if (type == NORMAL) {
-            tuples = fetchInfo.tuples; // get tuples from fetchInfo
+            if (commandType != CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+              tuples = fetchInfo.tuples; // get tuples from fetchInfo
+            }
         } else {
             // GET_BY_OID initialized 1 tuple at constructor
         }
