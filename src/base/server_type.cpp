@@ -128,13 +128,13 @@ int init_server_type (const char *db_name)
     {
       assert (ts_Gl == nullptr);
 
-      if (is_active_transaction_server())
+      if (is_active_transaction_server ())
 	{
-	  ts_Gl.reset (new active_tran_server());
+	  ts_Gl.reset (new active_tran_server ());
 	}
-      else if (is_passive_transaction_server())
+      else if (is_passive_transaction_server ())
 	{
-	  ts_Gl.reset (new passive_tran_server());
+	  ts_Gl.reset (new passive_tran_server ());
 	}
       else
 	{
@@ -261,6 +261,31 @@ void finalize_server_type ()
 bool is_tran_server_with_remote_storage ()
 {
   return false;
+}
+
+bool is_active_transaction_server ()
+{
+  return true;
+}
+
+bool is_page_server ()
+{
+  return false;
+}
+
+bool is_passive_transaction_server ()
+{
+  return false;
+}
+
+bool is_passive_server ()
+{
+  return false;
+}
+
+bool is_transaction_server ()
+{
+  return true;
 }
 
 #endif // !SERVER_MODE = SA_MODE

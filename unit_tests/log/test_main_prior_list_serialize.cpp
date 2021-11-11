@@ -330,6 +330,12 @@ get_server_type ()
   return SERVER_TYPE_TRANSACTION;
 }
 
+bool
+is_active_transaction_server ()
+{
+  return true;
+}
+
 PGLENGTH
 db_log_page_size ()
 {
