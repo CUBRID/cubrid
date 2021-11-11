@@ -1209,6 +1209,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
 
   if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
     {
+      // topops stack is bumped when system operation start postpone is found.
       assert (tdes->topops.last == 0);
       if (commit_start_postpone)
 	{
