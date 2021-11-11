@@ -356,6 +356,7 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
   DB_DATE date;
   DB_TIME time;
   T_CCI_DATE cci_date;
+  char num_str[40];
 
   unsigned char type;
 
@@ -367,25 +368,26 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
       switch (type)
 	{
 	case DB_TYPE_SHORT:
+	  a_type = CCI_A_TYPE_INT;
+	  u_type = CCI_U_TYPE_SHORT;
+	  break;
 	case DB_TYPE_INTEGER:
 	  a_type = CCI_A_TYPE_INT;
-	  u_type = CCI_U_TYPE_BIGINT;
+	  u_type = CCI_U_TYPE_INT;
 	  break;
 	case DB_TYPE_BIGINT:
 	  a_type = CCI_A_TYPE_BIGINT;
 	  u_type = CCI_U_TYPE_BIGINT;
 	  break;
 	case DB_TYPE_NUMERIC:
+	  a_type = CCI_A_TYPE_STR;
+	  u_type = CCI_U_TYPE_NUMERIC;
+	  value = (void *) numeric_db_value_print (&vd->dbval_ptr[i], num_str);
+	  break;
 	case DB_TYPE_DOUBLE:
 	case DB_TYPE_FLOAT:
 	  a_type = CCI_A_TYPE_DOUBLE;
 	  u_type = CCI_U_TYPE_DOUBLE;
-	  if (type == DB_TYPE_NUMERIC)
-	    {
-	      numeric_coerce_num_to_double (db_locate_numeric (&vd->dbval_ptr[i]),
-					    vd->dbval_ptr[i].domain.numeric_info.scale, &adouble);
-	      value = &adouble;
-	    }
 	  break;
 	case DB_TYPE_STRING:
 	case DB_TYPE_VARNCHAR:
