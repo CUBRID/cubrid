@@ -257,14 +257,13 @@ cubrid_log_make_new_tracelog ()
 	}
     }
 
-  len = (int) (strlen (g_trace_log_base) + strlen (g_dbname) + strlen (curr_time)) + 1;
+  len = (int) (strlen (g_trace_log_base) + strlen (g_dbname) + strlen (curr_time)) + 17;
   if (len > PATH_MAX)
     {
       return -1;
     }
 
-  snprintf (g_trace_log_path, len + 1, "%s%c%s_cubridlog_%s.err", g_trace_log_base, PATH_SEPARATOR, g_dbname,
-	    curr_time);
+  snprintf (g_trace_log_path, len, "%s%c%s_cubridlog_%s.err", g_trace_log_base, PATH_SEPARATOR, g_dbname, curr_time);
 
   g_trace_log = fopen (g_trace_log_path, "a+");
   if (g_trace_log == NULL)
