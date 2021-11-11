@@ -2236,6 +2236,8 @@ slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 	}
 
       log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
+
+      free_and_init (supplemental_data);
     }
 
 end:
