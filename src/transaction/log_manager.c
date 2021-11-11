@@ -13036,7 +13036,7 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
 	      data = (char *) log_page_p->area + process_lsa.offset;
 	      memcpy (*user, data, supplement->length);
-	      *user[supplement->length] = '\0';
+	      (*user)[supplement->length] = '\0';
 	      return NO_ERROR;
 	    }
 	}
@@ -13739,6 +13739,105 @@ end:
   return error;
 }
 
+static int
+cdc_check_lsa_range (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
+{
+  LOG_PAGE *hdr_pgptr = NULL;
+  LOG_PAGE *log_pgptr = NULL;
+  LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;
+  char hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_hdr_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  int vdes = NULL_VOLDES;
+
+  int begin = log_Gl.hdr.last_deleted_arv_num + 1;
+  int end = log_Gl.hdr.nxarv_num;
+  char arv_name[PATH_MAX] = "\0";
+  LOG_ARV_HEADER *arv_hdr = NULL;
+  int num_arvs = end - begin;
+
+  int error_code = NO_ERROR;
+
+  LOG_LSA first_lsa = LSA_INITIALIZER;
+  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+  LOG_CS_ENTER_READ_MODE (thread_p);
+
+  if (num_arvs == 0)
+    {
+      first_lsa.pageid = log_Gl.hdr.fpageid;
+      first_lsa.offset = 0;
+    }
+  else
+    {
+      LOG_ARCHIVE_CS_ENTER (thread_p);
+      aligned_hdr_pgbuf = PTR_ALIGN (hdr_pgbuf, MAX_ALIGNMENT);
+
+      hdr_pgptr = (LOG_PAGE *) aligned_hdr_pgbuf;
+
+      fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, begin);
+
+      if (fileio_is_volume_exist (arv_name) == true)
+	{
+	  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false);
+	  if (vdes != NULL_VOLDES)
+	    {
+	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, IO_MAX_PAGE_SIZE) == NULL)
+		{
+		  fileio_dismount (thread_p, vdes);
+
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, 0LL, 0LL, arv_name);
+
+		  LOG_ARCHIVE_CS_EXIT (thread_p);
+
+		  LOG_CS_EXIT (thread_p);
+
+		  return ER_LOG_READ;
+		}
+
+	      arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
+	      if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
+		{
+		  fileio_dismount (thread_p, vdes);
+		  LOG_ARCHIVE_CS_EXIT (thread_p);
+		  LOG_CS_EXIT (thread_p);
+
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1, arv_name);
+		  return ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
+		}
+
+	      first_lsa.pageid = arv_hdr->fpageid;
+	      first_lsa.offset = 0;
+
+	      fileio_dismount (thread_p, vdes);
+	      LOG_ARCHIVE_CS_EXIT (thread_p);
+	    }
+	}
+      else
+	{
+	  LOG_ARCHIVE_CS_EXIT (thread_p);
+
+	  first_lsa.pageid = log_Gl.hdr.fpageid;
+	  first_lsa.offset = 0;
+	}
+    }
+
+  LOG_CS_EXIT (thread_p);
+
+  cdc_log ("%s : first log lsa from log volume is (%lld|%d) and last lsa is (%lld|%d). input lsa is (%lld|%d)",
+	   __func__, LSA_AS_ARGS (&first_lsa), LSA_AS_ARGS (&nxio_lsa), LSA_AS_ARGS (lsa));
+
+  if (LSA_GE (lsa, &first_lsa) && LSA_LT (lsa, &nxio_lsa))
+    {
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_CDC_INVALID_LOG_LSA;
+    }
+}
+
 int
 cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 {
@@ -13765,6 +13864,11 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
   if (lsa->pageid >= LOGPAGEID_MAX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_LOG_LSA, LSA_AS_ARGS (lsa));
+      return ER_CDC_INVALID_LOG_LSA;
+    }
+
+  if (cdc_check_lsa_range (thread_p, lsa) != NO_ERROR)
+    {
       return ER_CDC_INVALID_LOG_LSA;
     }
 
