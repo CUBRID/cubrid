@@ -1354,6 +1354,18 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1283 Error reserved for scalability development.
 1284 No se puede truncar la tabla debido a la clave principal a la que se hace referencia en %1$s. Inténtelo de nuevo con la opción CASCADE.
 1285 No se puede truncar en cascada porque la acción ON DELETE de la clave externa (%1$s) no está establecida en CASCADE.
+
+1286 No se puede encontrar el log lsa en el momento de extraerlo. (hora de entrada:%1$s).
+1287 Se agotó el tiempo de espera al intentar extraer información de registro. (tiempo transcurrido:%1$d seg, tiempo de espera de extracción:%2$d seg)
+1288 Omita la producción de información de registro para registros no admitidos internamente.
+1289 Omita la producción de información de registro para transacciones no válidas. (trid:%1$d)
+1290 lsa de registro no válido (%1$lld|%2$d) para extraer información de registro.
+1291 No se puede conectar al servidor para extraer información de registro. Inténtelo de nuevo con la configuración del parámetro 'supplemental_log'.
+1292 No se puede encontrar el log lsa en ese momento (%1$s). Log lsa se ajusta a la hora (%2$s).
+1293 No se puede obtener la página de registro mientras se genera información de registro. Log lsa para generar información de registro indica NULL.
+1294 Se ha generado información de registro. (tipo: "%1$s").
+1295 Omita la producción de información de registro para una tabla no válida. (class OID : %1$d|%2$d|%3$d)
+
 1296 Registro de registro: se inicia la fase de análisis.
 1297 Registro de registro: se inicia la fase rehacer. Páginas de registro para rehacer: %1$lld, registros de registro para rehacer: %2$lld.
 1298 Registro de registro: se inicia la fase de deshacer. Páginas de registro para deshacer: %1$lld, transacciones para deshacer: %2$d.

@@ -1354,6 +1354,18 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1283 Error reserved for scalability development.
 1284 %1$s üzerinde başvurulan birincil anahtar nedeniyle tablo kesilemiyor. CASCADE seçeneği ile tekrar deneyiniz.
 1285 Yabancı anahtarın ON DELETE eylemi (%1$s) CASCADE olarak ayarlanmadığından kademeli kesilemiyor.
+
+1286 Ayıklanacak zamanda log lsa bulunamıyor. (giriş zamanı: %1$s).
+1287 Günlük bilgisi çıkarılmaya çalışılırken zaman aşımına uğradı. (geçen süre: %1$d saniye, çıkarma zaman aşımı: %2$d saniye)
+1288 Dahili olarak desteklenmeyen günlük kaydı için günlük bilgisi oluşturmayı atlayın.
+1289 Geçersiz işlem için günlük bilgisi oluşturmayı atlayın. (üçlü : %1$d)
+1290 Günlük bilgilerini çıkarmak için geçersiz günlük lsa (%1$lld|%2$d).
+1291 Günlük bilgilerini çıkarmak için sunucuya bağlanılamıyor. 'supplemental_log' parametresini ayarlayarak tekrar deneyin.
+1292 O zaman (%1$s) günlük lsa bulunamıyor. Günlük lsa, zamana (%2$s) göre ayarlanır.
+1293 Günlük bilgileri üretilirken günlük sayfası alınamıyor. Günlük bilgisi oluşturmak için log lsa, NULL'u gösterir.
+1294 Günlük bilgisi oluşturuldu. (yazın: "%1$s").
+1295 Geçersiz tablo için günlük bilgisi oluşturmayı atlayın. (sınıf OID : %1$d|%2$d|%3$d)
+
 1296 Günlük kurtarma: ANALİZ Aşaması başlatıldı.
 1297 Günlük kurtarma: REDO Aşaması başlatıldı. Yeniden yapılacak günlük sayfaları: %1$lld, Yeniden yapılacak günlük kayıtları: %2$lld.
 1298 Günlük kurtarma: GERİ AL Aşaması başlatıldı. Geri alınacak günlük sayfaları: %1$lld, geri alınacak işlemler: %2$d.
