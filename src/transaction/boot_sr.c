@@ -84,6 +84,7 @@
 #include "tde.h"
 #include "porting.h"
 #include "page_server.hpp"
+#include "scope_exit.hpp"
 #include "server_type.hpp"
 #include "log_manager.h"
 
@@ -1594,15 +1595,18 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     {
       goto exit_on_error;
     }
-#else // WINDOWS || DONT_USE_MANDATORY_LOCK_IN_WINDOWS
+#else // WINDOWS && DONT_USE_MANDATORY_LOCK_IN_WINDOWS
   error_code = cfg_read_directory (&dir, true);
   if (error_code != NO_ERROR)
     {
       goto exit_on_error;
     }
-#endif // WINDOWS || DONT_USE_MANDATORY_LOCK_IN_WINDOWS
+#endif // WINDOWS && DONT_USE_MANDATORY_LOCK_IN_WINDOWS
 
-  if (dir != NULL && ((db = cfg_find_db_list (dir, client_credential->get_db_name ())) != NULL))
+  assert (dir != NULL);
+
+  db = cfg_find_db_list (dir, client_credential->get_db_name ());
+  if (db != NULL)
     {
       if (db_overwrite == false)
 	{
@@ -1616,7 +1620,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	   * Delete the database.. to make sure that all backups, log archives, and
 	   * so on are removed... then continue...
 	   *
-	   * Note: we do not call xboot_delete since it shuttdown the system and
+	   * Note: we do not call xboot_delete since it shutdown the system and
 	   *       update database.txt that we have a read copy of its content.
 	   */
 
@@ -1638,9 +1642,10 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     {
       fileio_dismount (thread_p, dbtxt_vdes);	/* unlock the directory file */
       dbtxt_vdes = NULL_VOLDES;
-      cfg_free_directory (dir);
-      dir = NULL;
     }
+  cfg_free_directory (dir);
+  dir = NULL;
+  db = NULL;
 
   error_code =
     logpb_check_exist_any_volumes (thread_p, boot_Db_full_name, db_path_info->log_path, log_prefix, vol_real_path,
@@ -1858,6 +1863,78 @@ exit_on_error:
   cubthread::finalize ();
 
   return NULL_TRAN_INDEX;
+}
+
+// xboot_initialize_remote_storage_server - Initialize files for transaction server with remote storage.
+//
+int
+xboot_initialize_remote_storage_server (THREAD_ENTRY * thread_p, const char *dbname,
+					const BOOT_DB_PATH_INFO * db_path_info)
+{
+  int error_code = NO_ERROR;
+
+  //
+  //  Add new entry into databases.txt file.
+  //
+
+  // Get databases file label
+  char dbtxt_label[PATH_MAX];
+  if (cfg_maycreate_get_directory_filename (dbtxt_label) == nullptr)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  // Mount databases file
+  int dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label, LOG_DBTXT_VOLID, 2, true);
+  if (dbtxt_vdes == NULL_VOLDES)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  scope_exit dismount_dbtxt ([thread_p, dbtxt_vdes]
+			     {
+			     fileio_dismount (thread_p, dbtxt_vdes);
+			     }
+  );
+
+  // Load databases directory from file
+  DB_INFO *dir = nullptr;
+  error_code = cfg_read_directory_ex (dbtxt_vdes, &dir, true);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  scope_exit free_dir ([dir]
+		       {
+		       cfg_free_directory (dir);
+		       }
+  );
+
+  // Does a database with the same name already exist?
+  if (cfg_find_db_list (dir, dbname) != NULL)
+    {
+      /* There is a database with the same name and we cannot overwrite it */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, dbname);
+      return ER_BO_DATABASE_EXISTS;
+    }
+
+  // Add database to directory
+  DB_INFO *db =
+    cfg_add_db (&dir, dbname, db_path_info->db_path, db_path_info->log_path, db_path_info->lob_path,
+		db_path_info->db_host);
+  if (db == nullptr || db->name == nullptr || db->pathname == nullptr || db->logpath == nullptr
+      || db->lobpath == nullptr || db->hosts == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
+  // Flush databases directory to file
+  cfg_write_directory_ex (dbtxt_vdes, dir);
+
+  return NO_ERROR;
 }
 
 static int
