@@ -512,13 +512,12 @@ namespace cubmethod
 	      {
 		sp_val.value = (DB_VALUE *) &param_values[i];
 		sp_val.pack (serializator);
-		serializator.pack_int (param_modes[i]);
 	      }
 	    else if (has_parameter == 1)
 	      {
 		serializator.pack_db_value (param_values[i]);
-		serializator.pack_int (param_modes[i]);
 	      }
+	    serializator.pack_int (param_modes[i]);
 	  }
       }
   }
@@ -552,13 +551,12 @@ namespace cubmethod
 	      {
 		sp_val.value = &param_values[i];
 		sp_val.unpack (deserializator);
-		deserializator.unpack_int (param_modes[i]);
 	      }
 	    else if (has_parameter == 1)
 	      {
 		deserializator.unpack_db_value (param_values[i]);
-		deserializator.unpack_int (param_modes[i]);
 	      }
+	    deserializator.unpack_int (param_modes[i]);
 	  }
       }
   }
@@ -583,13 +581,12 @@ namespace cubmethod
 	      {
 		sp_val.value = (DB_VALUE *) &param_values[i];
 		size += sp_val.get_packed_size (serializator, size);
-		size += serializator.get_packed_int_size (size);
 	      }
 	    else if (has_parameter == 1)
 	      {
 		size += serializator.get_packed_db_value_size (param_values[i], size);
-		size += serializator.get_packed_int_size (size);
 	      }
+	    size += serializator.get_packed_int_size (size);
 	  }
       }
 
