@@ -13232,6 +13232,9 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, line);
+
+      db_value_clear (&result);
+
       break;
     case DB_TYPE_TIMESTAMP:
       db_make_char (&format, strlen (timestamp_frmt), timestamp_frmt,
@@ -13244,6 +13247,8 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, line);
+
+      db_value_clear (&result);
 
       break;
     case DB_TYPE_DATETIME:
@@ -13258,6 +13263,8 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, line);
 
+      db_value_clear (&result);
+
       break;
     case DB_TYPE_TIMESTAMPTZ:
       db_make_char (&format, strlen (timestamptz_frmt), timestamptz_frmt,
@@ -13271,6 +13278,8 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, line);
 
+      db_value_clear (&result);
+
       break;
     case DB_TYPE_DATETIMETZ:
       db_make_char (&format, strlen (datetimetz_frmt), datetimetz_frmt,
@@ -13282,6 +13291,8 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, line);
+
+      db_value_clear (&result);
 
       break;
     case DB_TYPE_TIMESTAMPLTZ:
@@ -13298,6 +13309,8 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, line);
 
+      db_value_clear (&result);
+
       break;
     case DB_TYPE_DATETIMELTZ:
       db_make_char (&format, strlen (datetimeltz_frmt), datetimeltz_frmt,
@@ -13310,6 +13323,8 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, line);
+
+      db_value_clear (&result);
 
       break;
     case DB_TYPE_DATE:
@@ -13324,6 +13339,8 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       func_type = 7;
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, line);
+
+      db_value_clear (&result);
 
       break;
     case DB_TYPE_MONETARY:
