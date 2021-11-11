@@ -12654,6 +12654,9 @@ btree_compress_node (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR pa
  * fit into one of the pages after the split, a new page is
  * allocated for the key and its page identifier is returned.
  * The headers of all pages are updated, accordingly.
+ *
+ * Note: log redo records are recorded in parent-child order to avoid deadlocks when applied by
+ * multithreaded passive transaction server replication
  */
 static int
 btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R, VPID * P_vpid,
@@ -12661,7 +12664,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 		  BTREE_INSERT_HELPER * helper, VPID * child_vpid)
 {
   int key_cnt, leftcnt, rightcnt;
-  RECDES peek_rec, rec;
+  RECDES peek_rec, rec, rec_fence;
   NON_LEAF_REC nleaf_rec;
   BTREE_NODE_HEADER *pheader = NULL, *qheader = NULL;
   BTREE_NODE_HEADER right_header_info, *rheader = NULL;
@@ -12671,6 +12674,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   DB_VALUE *sep_key;
   int ret = NO_ERROR;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  char rec_fence_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int key_type;
 
   bool flag_fence_insert = false;
@@ -12693,7 +12697,10 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    ***********************************************************/
   p_redo_data = NULL;
 
-  rec.data = NULL;
+  rec.area_size = DB_PAGESIZE;
+  rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
+  rec_fence.area_size = DB_PAGESIZE;
+  rec_fence.data = PTR_ALIGN (rec_fence_buf, BTREE_MAX_ALIGN);
 
   /* initialize child page identifier */
   VPID_SET_NULL (child_vpid);
@@ -12722,8 +12729,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, Q);
 #endif
-  rec.area_size = DB_PAGESIZE;
-  rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
 
   key_cnt = btree_node_number_of_keys (thread_p, Q);
   if (key_cnt <= 0)
@@ -12773,14 +12778,14 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	{
 	  ret =
 	    btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len, false,
-				&btid->topclass_oid, &dummy_oid, NULL, &rec);
+				&btid->topclass_oid, &dummy_oid, NULL, &rec_fence);
 	  if (ret != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto exit_on_error;
 	    }
 
-	  btree_leaf_set_flag (&rec, BTREE_LEAF_RECORD_FENCE);
+	  btree_leaf_set_flag (&rec_fence, BTREE_LEAF_RECORD_FENCE);
 
 	  flag_fence_insert = true;
 	}
@@ -12954,7 +12959,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     {
       rightsize = j;
       assert (j > 0);
-      if (spage_insert_at (thread_p, R, j++, &rec) != SP_SUCCESS)
+      if (spage_insert_at (thread_p, R, j++, &rec_fence) != SP_SUCCESS)
 	{
 	  ret = ER_FAILED;
 	  goto exit_on_error;
@@ -12996,7 +13001,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   if (flag_fence_insert == true)
     {
       assert (leftcnt + 1 > 0);
-      if (spage_insert_at (thread_p, Q, leftcnt + 1, &rec) != SP_SUCCESS)
+      if (spage_insert_at (thread_p, Q, leftcnt + 1, &rec_fence) != SP_SUCCESS)
 	{
 	  assert_release (false);
 	  ret = ER_FAILED;
