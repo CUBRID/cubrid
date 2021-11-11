@@ -4301,7 +4301,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr,
     }
   assert (!VPID_ISNULL (&last_vpid));
 
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
 
   /* init chain for new page */
   new_page_chain.class_oid = heap_hdr->class_oid;
@@ -4822,7 +4822,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   /* all good, we can deallocate the page */
 
   /* Start changes under the protection of system operation. */
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   is_system_op_started = true;
 
   /* Remove page from statistics in header page. */
