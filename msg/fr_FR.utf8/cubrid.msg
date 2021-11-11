@@ -1329,7 +1329,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1258 Impossible de trouver le jeu de clés sur la base de données à partir de%1$s. Le fichier clé du volume de sauvegarde va être utilisé.
 1259 Renommez le fichier de clé de «%1$s» en «%2$s».
 1260 Copiez le fichier de clé "%1$s" dans "%2$s".
-1261 Impossible de trouver la clé au moment de la restauration (index de clé: %1$d, heure de création: %2$s). Définissez la clé (index de clé: %3$d) pour la base de données.
+1261 La première clé (index de clé : %1$d, heure de création : %2$s) sur le fichier de clé restauré a été définie.
 1262 Le fichier clé est plein.
 1263 Le chiffrement TDE de la page de journal échoue (pageid: %1$lld). Il ne sera plus essayé de crypter cette page.
 1264 Error reserved for scalability development.

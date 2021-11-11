@@ -1221,6 +1221,7 @@ kullanım: %1$s tde İŞLEM (-s|-n|-d|-c) [SEÇENEK] veritabanı-adı\n\
 \n\
 geçerli seçenekler:\n\
     -p, --dba-password=PASS      DBA kullanıcısının şifresi; belirtmezseniz sorulacak\n\
+\n\
 İŞLEMLER: işlemlerden biri verilmelidir ve bunlar özeldir\n\
     -s, --show-keys              veritabanında ve anahtar dosyasında (_keys) ayarlanan anahtar bilgileri yazdırır\n\
     -n, --generate-new-key       anahtar dosyasında (_keys) yeni bir anahtar oluşturur; maksimum sayı: 128\n\

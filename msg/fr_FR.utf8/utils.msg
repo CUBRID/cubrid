@@ -1237,6 +1237,7 @@ utilisation: %1$s tde OPERATION (-s|-n|-d|-c) [OPTION] nom-base de données\n\
 \n\
 options valides:\n\
     -p, --dba-password=PASS 	mot de passe de l'utilisateur DBA; demandera si ne spécifiez pas\n\
+\n\
 OPÉRATIONS: l'une des opérations doit être donnée, et elles sont exclusives\n\
     -s, --show-keys             imprime les informations de clé définies sur la base de données et le fichier de clé (_keys)\n\
     -n, --generate-new-key      génère une nouvelle clé dans le fichier de clé (_keys); nombre maximum: 128\n\
