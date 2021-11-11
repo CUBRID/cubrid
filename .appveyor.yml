@@ -9,7 +9,22 @@ matrix:
   fast_finish: true
 
 install:
-  - cinst ant -i
+- ps: choco install ant --ignore-dependencies --no-progress
+- ps: $env:ANT="C:\ProgramData\chocolatey\bin\ant.exe"
+
+clone_script:
+- ps: >-
+    if(-not $env:APPVEYOR_PULL_REQUEST_NUMBER) {
+      git clone -q --branch=$env:APPVEYOR_REPO_BRANCH https://github.com/$env:APPVEYOR_REPO_NAME.git $env:APPVEYOR_BUILD_FOLDER
+      cd $env:APPVEYOR_BUILD_FOLDER
+      git checkout -qf $env:APPVEYOR_REPO_COMMIT
+    } else {
+      git clone -q https://github.com/$env:APPVEYOR_REPO_NAME.git $env:APPVEYOR_BUILD_FOLDER
+      cd $env:APPVEYOR_BUILD_FOLDER
+      git fetch -q origin +refs/pull/$env:APPVEYOR_PULL_REQUEST_NUMBER/merge:
+      git checkout -qf FETCH_HEAD
+    }
+- cmd: git submodule update --init --recursive && git rm -f cubridmanager
 
 build_script:
   - cmake -E make_directory build
