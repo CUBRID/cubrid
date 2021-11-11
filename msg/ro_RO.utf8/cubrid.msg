@@ -1354,8 +1354,18 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1283 Error reserved for scalability development.
 1284 Nu se poate tăia tabelul din cauza cheii principale menționate în %1$s. Încercați din nou cu opțiunea CASCADE.
 1285 Nu se poate trunchia în cascadă deoarece acțiunea ON DELETE a cheii externe (%1$s) nu este setată la CASCADE.
+1286 Nu se poate găsi jurnalul lsa la momentul extragerii. (timp de introducere: %1$s).
+1287 Timpul expirat încercarea de a extrage informațiile de jurnal. (timp scurs: %1$d sec, expirare extragere: %2$d sec)
+1288 Omiteți producerea informațiilor de jurnal pentru înregistrarea de jurnal neacceptată intern.
+1289 Omiteți producerea informațiilor de jurnal pentru tranzacție nevalidă. (trid: %1$d)
+1290 Lsa de jurnal nevalid (%1$lld|%2$d) pentru a extrage informațiile de jurnal.
+1291 Nu se poate conecta la server pentru extragerea informațiilor de jurnal. Încercați din nou cu setarea parametrului „supplemental_log”.
+1292 Nu se poate găsi jurnalul lsa la momentul respectiv (%1$s). Lsa jurnal este ajustată la timp (%2$s).
+1293 Nu se poate obține pagina de jurnal în timp ce se produc informații de jurnal. Log lsa pentru a genera informații de jurnal indică NULL.
+1294 Informațiile de jurnal au fost generate. (tip: „%1$s”).
+1295 Omiteți producerea informațiilor de jurnal pentru un tabel nevalid. (class OID : %1$d|%2$d|%3$d)
 
-1286 Ultima eroare
+1296 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
