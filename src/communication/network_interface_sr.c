@@ -10486,7 +10486,10 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
 
       cdc_reinitialize_queue (&start_lsa);
 
-      cdc_wakeup_producer ();
+      while (cdc_Gl.producer.state == CDC_PRODUCER_STATE_WAIT)
+        {
+          cdc_wakeup_producer ();
+        }
 
       ptr = or_pack_int (reply, error_code);
       ptr = or_pack_log_lsa (ptr, &start_lsa);

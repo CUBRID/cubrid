@@ -156,6 +156,11 @@ static int rv;
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
+#define CDC_IS_IGNORE_LOGINFO_ERROR(ERROR) \
+   (((ERROR) == ER_CDC_IGNORE_LOG_INFO) \
+    || ((ERROR) == ER_CDC_IGNORE_LOG_INFO_INTERNAL) \
+    || ((ERROR) == ER_CDC_IGNORE_TRANSACTION))
+
 /* struct for active log header scan */
 typedef struct actve_log_header_scan_context ACTIVE_LOG_HEADER_SCAN_CTX;
 struct actve_log_header_scan_context
@@ -10996,7 +11001,7 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	    ("cdc_loginfo_producer_execute : cdc_log_extract() error(%d) is returned at extracting log from lsa (%lld | %d)",
 	     error, LSA_AS_ARGS (&cur_log_rec_lsa));
 
-	  if (error != ER_CDC_IGNORE_LOG_INFO)
+	  if (!CDC_IS_IGNORE_LOGINFO_ERROR (error))
 	    {
 	      continue;
 	    }
@@ -14436,7 +14441,11 @@ int
 cdc_cleanup ()
 {
   cdc_log ("cdc_cleanup () : cleanup start");
-  cdc_pause_producer ();
+
+  if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+    {
+      cdc_pause_producer ();
+    }
 
   cdc_free_extraction_filter ();
 
