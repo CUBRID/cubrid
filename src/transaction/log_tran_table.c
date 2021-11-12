@@ -3948,28 +3948,6 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
  *   thread_p(in): thread entry
  */
 MVCC_SNAPSHOT *
-logtb_get_mvcc_snapshot_partitioned (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-  if (!tdes->is_active_worker_transaction ())
-    {
-      /* System transactions do not have snapshots */
-      return NULL;
-    }
-
-  assert (tdes != NULL);
-
-  if (!tdes->mvccinfo.snapshot.valid)
-    {
-      log_Gl.mvcc_table.build_mvcc_info (*tdes, true);
-    }
-
-  return &tdes->mvccinfo.snapshot;
-
-}
-
-MVCC_SNAPSHOT *
 logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
@@ -3984,7 +3962,7 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 
   if (!tdes->mvccinfo.snapshot.valid)
     {
-      log_Gl.mvcc_table.build_mvcc_info (*tdes, false);
+      log_Gl.mvcc_table.build_mvcc_info (*tdes);
     }
 
   return &tdes->mvccinfo.snapshot;

@@ -221,7 +221,7 @@ mvcctable::finalize ()
 }
 
 void
-mvcctable::build_mvcc_info (log_tdes &tdes, bool partitioned)
+mvcctable::build_mvcc_info (log_tdes &tdes)
 {
   MVCCID tx_lowest_active;
   MVCCID crt_status_lowest_active;
@@ -300,6 +300,11 @@ mvcctable::build_mvcc_info (log_tdes &tdes, bool partitioned)
       /* load statistics temporary disabled need to be enabled when activate count optimization */
       /* load global statistics. This must take place here and nowhere else. */
       tdes.mvccinfo.snapshot.valid = true;
+      /*
+	 snapshot should be set to valid to avoid the endless mvcc_info build
+	 because gtb_load_global_statistics_to_tran calls build_mvcc_info recursively
+	 since the valid flag is false.
+      */
       if (logtb_load_global_statistics_to_tran (thread_get_thread_entry_info())!= NO_ERROR)
         {
           er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
