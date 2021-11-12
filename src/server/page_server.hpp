@@ -41,15 +41,21 @@ namespace cubthread
 
 class page_server
 {
+  private:
+    class connection_handler;
   public:
     page_server () = default;
     ~page_server ();
 
     void set_active_tran_server_connection (cubcomm::channel &&chn);
-    void disconnect_active_tran_server ();
+    void set_passive_tran_server_connection (cubcomm::channel &&chn);
+    void disconnect_active_tran_server();
+    void disconnect_tran_server (connection_handler *conn);
+    void disconnect_all_tran_server ();
     bool is_active_tran_server_connected () const;
+    bool is_passive_tran_server_connected () const;
     void push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload);
-
+    cublog::async_page_fetcher &get_page_fetcher ();
     cublog::replicator &get_replicator ();
     void start_log_replicator (const log_lsa &start_lsa);
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
@@ -58,19 +64,33 @@ class page_server
     void finalize_page_fetcher ();
 
   private:
-    using active_tran_server_conn_t =
-	    cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
+    class connection_handler
+    {
+	using tran_server_conn_t =
+		cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
-    void receive_boot_info_request (cubpacking::unpacker &upk);
-    void receive_log_prior_list (cubpacking::unpacker &upk);
-    void receive_log_page_fetch (cubpacking::unpacker &upk);
-    void receive_data_page_fetch (cubpacking::unpacker &upk);
-    void receive_disconnect_request (cubpacking::unpacker &upk);
+      public:
+	connection_handler () = delete;
+	~connection_handler () = default;
+	connection_handler (cubcomm::channel &chn, page_server &ps);
+	void push_request (page_to_tran_request id, std::string msg);
+	std::string get_channel_id ();
 
-    void on_log_page_read_result (const LOG_PAGE *log_page, int error_code);
-    void on_data_page_read_result (const FILEIO_PAGE *page_ptr, int error_code);
+      private:
+	void on_log_page_read_result (const LOG_PAGE *log_page, int error_code);
+	void on_data_page_read_result (const FILEIO_PAGE *page_ptr, int error_code);
+	void receive_boot_info_request (cubpacking::unpacker &upk);
+	void receive_log_prior_list (cubpacking::unpacker &upk);
+	void receive_log_page_fetch (cubpacking::unpacker &upk);
+	void receive_data_page_fetch (cubpacking::unpacker &upk);
+	void receive_disconnect_request (cubpacking::unpacker &upk);
 
-    std::unique_ptr<active_tran_server_conn_t> m_active_tran_server_conn;
+	std::unique_ptr<tran_server_conn_t> m_conn;
+	page_server &m_ps;
+    };
+
+    std::unique_ptr<connection_handler> m_active_tran_server_conn;
+    std::vector<std::unique_ptr<connection_handler>> m_passive_tran_server_conn;
 
     std::unique_ptr<cublog::replicator> m_replicator;
     std::unique_ptr<cublog::async_page_fetcher> m_page_fetcher;

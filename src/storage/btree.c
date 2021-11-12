@@ -12651,6 +12651,9 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr
  * fit into one of the pages after the split, a new page is
  * allocated for the key and its page identifier is returned.
  * The headers of all pages are updated, accordingly.
+ *
+ * Note: log redo records are recorded in parent-child order to avoid deadlocks when applied by
+ * multithreaded passive transaction server replication
  */
 static int
 btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R, VPID * P_vpid,
@@ -12658,7 +12661,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 		  BTREE_INSERT_HELPER * helper, VPID * child_vpid)
 {
   int key_cnt, leftcnt, rightcnt;
-  RECDES peek_rec, rec;
+  RECDES peek_rec, rec, rec_fence;
   NON_LEAF_REC nleaf_rec;
   BTREE_NODE_HEADER *pheader = NULL, *qheader = NULL;
   BTREE_NODE_HEADER right_header_info, *rheader = NULL;
@@ -12668,6 +12671,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   DB_VALUE *sep_key;
   int ret = NO_ERROR;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  char rec_fence_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int key_type;
 
   bool flag_fence_insert = false;
@@ -12690,7 +12694,10 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    ***********************************************************/
   p_redo_data = NULL;
 
-  rec.data = NULL;
+  rec.area_size = DB_PAGESIZE;
+  rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
+  rec_fence.area_size = DB_PAGESIZE;
+  rec_fence.data = PTR_ALIGN (rec_fence_buf, BTREE_MAX_ALIGN);
 
   /* initialize child page identifier */
   VPID_SET_NULL (child_vpid);
@@ -12719,8 +12726,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, Q);
 #endif
-  rec.area_size = DB_PAGESIZE;
-  rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
 
   key_cnt = btree_node_number_of_keys (thread_p, Q);
   if (key_cnt <= 0)
@@ -12770,14 +12775,14 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	{
 	  ret =
 	    btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len, false,
-				&btid->topclass_oid, &dummy_oid, NULL, &rec);
+				&btid->topclass_oid, &dummy_oid, NULL, &rec_fence);
 	  if (ret != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto exit_on_error;
 	    }
 
-	  btree_leaf_set_flag (&rec, BTREE_LEAF_RECORD_FENCE);
+	  btree_leaf_set_flag (&rec_fence, BTREE_LEAF_RECORD_FENCE);
 
 	  flag_fence_insert = true;
 	}
@@ -12795,168 +12800,8 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   rightcnt = key_cnt - leftcnt;
 
-  /*********************************************************************
-   ***  STEP 2: save undo image of Q
-   ***		update Q, R header info
-   *********************************************************************/
-  /* add undo logging for page Q */
-  log_append_undo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid, Q, -1, DB_PAGESIZE, Q);
-
-  /* We may need to update the max_key length if the mid key is larger than the max key length.  This can happen due to
-   * disk padding when the prefix key length approaches the fixed key length. */
-  sep_key_len = btree_get_disk_size_of_key (sep_key);
-  sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (sep_key_len);
-  qheader->max_key_len = MAX (sep_key_len, qheader->max_key_len);
-
-  /* set rheader max_key_len as qheader max_key_len */
-  right_max_key_len = qheader->max_key_len;
-  right_next_vpid = qheader->next_vpid;
-
-  if (node_type == BTREE_LEAF_NODE)
-    {
-      qheader->next_vpid = *R_vpid;
-    }
-  else
-    {
-      VPID_SET_NULL (&qheader->next_vpid);
-    }
-
-  if (leftcnt == 0)
-    {
-      /* Only key length will exist in page. Set max key length. */
-      /* Max key length would have been set when key is inserted. However, we set it here to suppress assert of
-       * btree_verify_node. */
-      qheader->max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
-    }
-
-  qheader->split_info.index = 1;
-
-  rheader->node_level = qheader->node_level;
-  rheader->max_key_len = right_max_key_len;
-  if (key_cnt - leftcnt == 0 && flag_fence_insert == false)
-    {
-      /* Only key length will exist in page. Set max key length. */
-      /* Max key length would have been set when key is inserted. However, we set it here to suppress assert of
-       * btree_verify_node. */
-      rheader->max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
-    }
-
-  rheader->next_vpid = right_next_vpid;
-
-  if (node_type == BTREE_LEAF_NODE)
-    {
-      rheader->prev_vpid = *Q_vpid;
-    }
-  else
-    {
-      VPID_SET_NULL (&(rheader->prev_vpid));
-    }
-
-  rheader->split_info = qheader->split_info;
-
-  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
-
-  ret = btree_init_node_header (thread_p, &btid->sys_btid->vfid, R, rheader, false);
-  if (ret != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-
-  /*******************************************************************
-   ***   STEP 3: move second half of page Q to page R
-   ***           insert fence key to Q
-   ***           make redo image for Q
-   *******************************************************************/
-  /* lower fence key for R */
-  rightsize = 0;
-  j = 1;
-  if (flag_fence_insert == true)
-    {
-      rightsize = j;
-      assert (j > 0);
-      if (spage_insert_at (thread_p, R, j++, &rec) != SP_SUCCESS)
-	{
-	  ret = ER_FAILED;
-	  goto exit_on_error;
-	}
-    }
-
-  /* move the second half of page Q to page R */
-  for (i = 1; i <= rightcnt; i++, j++)
-    {
-      assert (leftcnt + 1 > 0);
-      if (spage_get_record (thread_p, Q, leftcnt + 1, &peek_rec, PEEK) != S_SUCCESS)
-	{
-	  assert_release (false);
-	  ret = ER_FAILED;
-	  goto exit_on_error;
-	}
-
-      assert (j > 0);
-      if (spage_insert_at (thread_p, R, j, &peek_rec) != SP_SUCCESS)
-	{
-	  assert_release (false);
-	  ret = ER_FAILED;
-	  goto exit_on_error;
-	}
-
-      rightsize = j;
-
-      assert (leftcnt + 1 > 0);
-      if (spage_delete (thread_p, Q, leftcnt + 1) != leftcnt + 1)
-	{
-	  assert_release (false);
-	  ret = ER_FAILED;
-	  goto exit_on_error;
-	}
-    }
-
-  leftsize = leftcnt;
-  /* upper fence key for Q */
-  if (flag_fence_insert == true)
-    {
-      assert (leftcnt + 1 > 0);
-      if (spage_insert_at (thread_p, Q, leftcnt + 1, &rec) != SP_SUCCESS)
-	{
-	  assert_release (false);
-	  ret = ER_FAILED;
-	  goto exit_on_error;
-	}
-      leftsize++;
-    }
-
-  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
-
-  ret = btree_compress_node (thread_p, btid, Q);
-  if (ret != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-
-  /* add redo logging for page Q */
-  log_append_redo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid, Q, -1, DB_PAGESIZE, Q);
-
-  /***************************************************************************
-   ***   STEP 4: add redo log for R
-   ***    Log the second half of page Q for redo purposes on Page R,
-   ***    the records on the second half of page Q will be inserted to page R
-   ***************************************************************************/
-
-  ret = btree_compress_node (thread_p, btid, R);
-  if (ret != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-
-  log_append_redo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid, R, -1, DB_PAGESIZE, R);
-
-  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
-
   /****************************************************************************
-   ***   STEP 5: insert sep_key to P
+   ***   STEP 2: insert sep_key to P
    ***           add undo/redo log for page P
    ***
    ***    update the parent page P to keep the middle key and to point to
@@ -13031,7 +12876,169 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   btree_node_header_redo_log (thread_p, &btid->sys_btid->vfid, P);
 
-  /* find the child page to be followed */
+  /*********************************************************************
+   ***  STEP 3: save undo image of Q
+   ***		update Q, R header info
+   *********************************************************************/
+  /* add undo logging for page Q */
+  log_append_undo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid, Q, -1, DB_PAGESIZE, Q);
+
+  /* We may need to update the max_key length if the mid key is larger than the max key length.  This can happen due to
+   * disk padding when the prefix key length approaches the fixed key length. */
+  sep_key_len = btree_get_disk_size_of_key (sep_key);
+  sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (sep_key_len);
+  qheader->max_key_len = MAX (sep_key_len, qheader->max_key_len);
+
+  /* set rheader max_key_len as qheader max_key_len */
+  right_max_key_len = qheader->max_key_len;
+  right_next_vpid = qheader->next_vpid;
+
+  if (node_type == BTREE_LEAF_NODE)
+    {
+      qheader->next_vpid = *R_vpid;
+    }
+  else
+    {
+      VPID_SET_NULL (&qheader->next_vpid);
+    }
+
+  if (leftcnt == 0)
+    {
+      /* Only key length will exist in page. Set max key length. */
+      /* Max key length would have been set when key is inserted. However, we set it here to suppress assert of
+       * btree_verify_node. */
+      qheader->max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
+    }
+
+  qheader->split_info.index = 1;
+
+  rheader->node_level = qheader->node_level;
+  rheader->max_key_len = right_max_key_len;
+  if (key_cnt - leftcnt == 0 && flag_fence_insert == false)
+    {
+      /* Only key length will exist in page. Set max key length. */
+      /* Max key length would have been set when key is inserted. However, we set it here to suppress assert of
+       * btree_verify_node. */
+      rheader->max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
+    }
+
+  rheader->next_vpid = right_next_vpid;
+
+  if (node_type == BTREE_LEAF_NODE)
+    {
+      rheader->prev_vpid = *Q_vpid;
+    }
+  else
+    {
+      VPID_SET_NULL (&(rheader->prev_vpid));
+    }
+
+  rheader->split_info = qheader->split_info;
+
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+  ret = btree_init_node_header (thread_p, &btid->sys_btid->vfid, R, rheader, false);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+
+  /*******************************************************************
+   ***   STEP 4: move second half of page Q to page R
+   ***           insert fence key to Q
+   ***           make redo image for Q
+   *******************************************************************/
+  /* lower fence key for R */
+  rightsize = 0;
+  j = 1;
+  if (flag_fence_insert == true)
+    {
+      rightsize = j;
+      assert (j > 0);
+      if (spage_insert_at (thread_p, R, j++, &rec_fence) != SP_SUCCESS)
+	{
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+    }
+
+  /* move the second half of page Q to page R */
+  for (i = 1; i <= rightcnt; i++, j++)
+    {
+      assert (leftcnt + 1 > 0);
+      if (spage_get_record (thread_p, Q, leftcnt + 1, &peek_rec, PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+
+      assert (j > 0);
+      if (spage_insert_at (thread_p, R, j, &peek_rec) != SP_SUCCESS)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+
+      rightsize = j;
+
+      assert (leftcnt + 1 > 0);
+      if (spage_delete (thread_p, Q, leftcnt + 1) != leftcnt + 1)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+    }
+
+  leftsize = leftcnt;
+  /* upper fence key for Q */
+  if (flag_fence_insert == true)
+    {
+      assert (leftcnt + 1 > 0);
+      if (spage_insert_at (thread_p, Q, leftcnt + 1, &rec_fence) != SP_SUCCESS)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+      leftsize++;
+    }
+
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+  ret = btree_compress_node (thread_p, btid, Q);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+
+  /* add redo logging for page Q */
+  log_append_redo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid, Q, -1, DB_PAGESIZE, Q);
+
+  /***************************************************************************
+   ***   STEP 5: add redo log for R
+   ***    Log the second half of page Q for redo purposes on Page R,
+   ***    the records on the second half of page Q will be inserted to page R
+   ***************************************************************************/
+
+  ret = btree_compress_node (thread_p, btid, R);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+
+  log_append_redo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid, R, -1, DB_PAGESIZE, R);
+
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+  /****************************************************************************
+   ***   STEP 6: after split, find the child page to be followed
+   ****************************************************************************/
   c = btree_compare_key (key, sep_key, btid->key_type, 1, 1, NULL);
   assert (c == DB_LT || c == DB_EQ || c == DB_GT);
 
@@ -26757,7 +26764,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	  assert (key_count >= 3);
 
 	  /* Start system operation. */
-	  log_sysop_start (thread_p);
+	  log_sysop_start_atomic (thread_p);
 	  is_system_op_started = true;
 
 	  /* Create two new b-tree pages. */
@@ -27051,7 +27058,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
   if (need_split)
     {
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       is_system_op_started = true;
 
       /* Get a new page */
@@ -30209,7 +30216,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		      && (pgbuf_get_latch_mode (right_page) >= PGBUF_LATCH_WRITE));
 
 	      /* Start system operation. */
-	      log_sysop_start (thread_p);
+	      log_sysop_start_atomic (thread_p);
 	      is_system_op_started = true;
 
 	      /* Merge the three nodes into root node. */
@@ -30453,7 +30460,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 			  && (pgbuf_get_latch_mode (right_page) >= PGBUF_LATCH_WRITE));
 
 		  /* Start system operation. */
-		  log_sysop_start (thread_p);
+		  log_sysop_start_atomic (thread_p);
 		  is_system_op_started = true;
 
 		  save_lsa = *pgbuf_get_lsa (*crt_page);

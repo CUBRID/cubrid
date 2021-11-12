@@ -16,30 +16,21 @@
  *
  */
 
-#ifndef _TRAN_PAGE_REQUESTS_HPP_
-#define _TRAN_PAGE_REQUESTS_HPP_
+#ifndef _PASSIVE_TRAN_SERVER_HPP_
+#define _PASSIVE_TRAN_SERVER_HPP_
 
-enum class tran_to_page_request
+#include "tran_server.hpp"
+
+class passive_tran_server : public tran_server
 {
-  // Common
-  GET_BOOT_INFO,
-  SEND_LOG_PAGE_FETCH,
-  SEND_DATA_PAGE_FETCH,
-  SEND_DISCONNECT_MSG,
+  public:
+    passive_tran_server () : tran_server (cubcomm::server_server::CONNECT_PASSIVE_TRAN_TO_PAGE_SERVER)
+    {
+    }
 
-  // Active only
-  SEND_LOG_PRIOR_LIST,
-
-  // Passive only
+  private:
+    void on_boot () final override;
+    bool get_remote_storage_config () final override;
 };
 
-enum class page_to_tran_request
-{
-  SEND_BOOT_INFO,
-  SEND_SAVED_LSA,
-  SEND_LOG_PAGE,
-  SEND_DATA_PAGE
-};
-
-#endif // !_TRAN_PAGE_REQUESTS_HPP_
-
+#endif // !_passive_tran_server_HPP_

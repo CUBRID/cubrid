@@ -56,6 +56,7 @@ namespace cublog
   void
   meta::unpack (cubpacking::unpacker &deserializer)
   {
+    assert (m_checkpoints.empty ());
     size_t size;
     deserializer.unpack_bool (m_clean_shutdown);
     deserializer.unpack_from_int (size);
@@ -203,5 +204,13 @@ namespace cublog
   meta::get_checkpoint_count () const
   {
     return m_checkpoints.size ();
+  }
+
+  void
+  meta::clear ()
+  {
+    m_loaded_from_file = false;
+    m_clean_shutdown = false;
+    m_checkpoints.clear ();
   }
 }

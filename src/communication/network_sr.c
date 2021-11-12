@@ -1347,7 +1347,11 @@ net_server_start (THREAD_ENTRY * thread_p, const char *server_name)
       goto end;
     }
 
-  sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL);
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
+    {
+      status = -1;
+      goto end;
+    }
   sysprm_set_er_log_file (server_name);
 
   if (sync_initialize_sync_stats () != NO_ERROR)
@@ -1416,9 +1420,7 @@ net_server_start (THREAD_ENTRY * thread_p, const char *server_name)
       status = 2;
     }
 
-  cubthread::finalize ();
   cubthread::internal_tasks_worker_pool::finalize ();
-  er_final (ER_ALL_FINAL);
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();
 

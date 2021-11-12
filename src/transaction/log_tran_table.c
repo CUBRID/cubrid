@@ -481,11 +481,6 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
     {
       goto error;
     }
-  error_code = pgbuf_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
   error_code = file_manager_init ();
   if (error_code != NO_ERROR)
     {
@@ -574,7 +569,6 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 
   log_Gl.mvcc_table.finalize ();
   lock_finalize ();
-  pgbuf_finalize ();
   file_manager_final ();
 
   if (log_Gl.trantable.area != NULL)
@@ -1060,7 +1054,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
   if (logtb_is_system_worker_tranid (trid))
     {
       // *INDENT-OFF*
-      return log_system_tdes::rv_get_or_alloc_tdes (trid);
+      return log_system_tdes::rv_get_or_alloc_tdes (trid, *log_lsa);
       // *INDENT-ON*
     }
 
@@ -4151,6 +4145,38 @@ logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p)
   TR_TABLE_CS_EXIT (thread_p);
 
   return r;
+}
+
+/*
+ * logtb_rv_read_only_map_undo_tdes - map func to all tdes to abort in the UNOO recovery phase.
+ */
+void
+logtb_rv_read_only_map_undo_tdes (THREAD_ENTRY * thread_p, const std::function < void (const log_tdes &) > map_func)
+{
+  int i;
+  LOG_TDES *tdes;		/* Transaction descriptor */
+
+  TR_TABLE_CS_ENTER_READ_MODE (thread_p);
+
+  /* Check active transactions. */
+  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+    {
+      if (i != LOG_SYSTEM_TRAN_INDEX)
+	{
+	  tdes = log_Gl.trantable.all_tdes[i];
+	  if (tdes != NULL && tdes->trid != NULL_TRANID
+	      && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED))
+	    {
+	      map_func (*tdes);
+	    }
+	}
+    }
+  /* Check system worker transactions. */
+  // *INDENT-OFF*
+  log_system_tdes::map_all_tdes (map_func);
+  // *INDENT-ON*
+
+  TR_TABLE_CS_EXIT (thread_p);
 }
 
 /*

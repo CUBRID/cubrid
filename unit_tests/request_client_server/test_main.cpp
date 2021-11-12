@@ -885,6 +885,7 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
       { reqids_2_to_1::_2, req_handler_2 }
     })
   };
+  scs_one->start ();
 
   return scs_one;
 }
@@ -913,6 +914,7 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_two (
       { reqids_1_to_2::_1, req_handler_1 }
     })
   };
+  scs_two->start ();
 
   return scs_two;
 }

@@ -393,6 +393,8 @@ static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, con
 						    const char *db_full_name);
 static int logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path,
 							LOG_HEADER * hdr);
+static void logpb_delete_metainfo_files_internal (THREAD_ENTRY * thread_p, const char *logpath,
+						  const char *prefix_logname);
 #if defined (SERVER_MODE)
 static void logpb_send_flushed_lsa_to_ats ();
 #endif // SERVER_MODE
@@ -3391,6 +3393,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 {
   if (is_tran_server_with_remote_storage ())
     {
+      // log pages are not written to local disk; they are written by page server
+      // skip flushing - aka: pretend that flushing has happened
+
       logpb_skip_flush_append_pages ();
       return NO_ERROR;
     }
@@ -3400,6 +3405,11 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
 }
 
+/*
+ * logpb_skip_flush_append_pages - Skip flushing append pages to disk.
+ *                  Set nxio_lsa and reset flush page count directly.
+ *
+ */
 static void
 logpb_skip_flush_append_pages ()
 {
@@ -6872,7 +6882,7 @@ logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, co
    */
   fileio_make_log_active_name (log_Name_active, log_Path, log_Prefix);
   fileio_make_log_info_name (log_Name_info, log_Path, log_Prefix);
-  fileio_make_log_metainfo_name (log_Name_metainfo, log_Path, log_Prefix);
+  fileio_make_log_metainfo_name (log_Name_metainfo, log_Path, log_Prefix, is_tran_server_with_remote_storage ());
   fileio_make_backup_volume_info_name (log_Name_bkupinfo, log_Path, log_Prefix);
   fileio_make_volume_info_name (log_Name_volinfo, db_fullname);
   fileio_make_log_archive_temp_name (log_Name_bg_archive, log_Archive_path, log_Prefix);
@@ -7081,7 +7091,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   }
 
   // Flush meta log (and checkpoint info) to disk
-  log_write_metalog_to_file ();
+  log_write_metalog_to_file (false);
   detailed_er_log ("logpb_checkpoint: wrote metalog containing checkpoint information.\n");
 
   /*
@@ -7352,7 +7362,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
       }
     log_Gl.m_metainfo.add_checkpoint_info (trantable_checkpoint_lsa, std::move (trantable_checkpoint_info));
 
-    log_write_metalog_to_file ();
+    log_write_metalog_to_file (false);
 
     // function explicitly needs to be called in critical section-free context
     LOG_CS_EXIT (thread_p);
@@ -7372,7 +7382,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     //    checkpoint and before deleting the outdated checkpoint) there can be at most two
     assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
 
-    log_write_metalog_to_file ();
+    log_write_metalog_to_file (false);
   }
 
   if (detailed_logging)
@@ -9411,7 +9421,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   /*
    * Copy log meta-information file
    */
-  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
+  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname, false);
   // *INDENT-OFF*
   try
     {
@@ -9994,7 +10004,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
   /*
    * Rename the log meta file
    */
-  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
+  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname, false);
   if (fileio_rename (LOG_DBLOG_METAINFO_VOLID, log_Name_metainfo, to_volname) == NULL)
     {
       error_code = ER_FAILED;
@@ -10438,7 +10448,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 
   fileio_unformat (thread_p, log_Name_active);
   fileio_unformat (thread_p, log_Name_info);
-  fileio_unformat (thread_p, log_Name_metainfo);
+  logpb_delete_metainfo_files_internal (thread_p, log_Path, log_Prefix);
 
   return NO_ERROR;
 }
@@ -11395,9 +11405,32 @@ delete_fixed_logs:
 
   fileio_unformat (thread_p, log_Name_active);
   fileio_unformat (thread_p, log_Name_info);
-  fileio_unformat (thread_p, log_Name_metainfo);
+  logpb_delete_metainfo_files_internal (thread_p, log_Path, log_Prefix);
 
   return NO_ERROR;
+}
+
+/*
+ * logpb_delete_metainfo_files_internal - delete all existing metainfo volumes found in the log path
+ *
+ * NOTE: a transaction server with remote storage has its own specific metalog file;
+ *      in 'single-node' install mode - where both transaction server and page server
+ *      execute on the same machine, both the regular metalog volume and the transaction server specific
+ *      metalog volume are located in the same directory
+ */
+void
+logpb_delete_metainfo_files_internal (THREAD_ENTRY * thread_p, const char *logpath, const char *prefix_logname)
+{
+  char metainfo_file_name[PATH_MAX];
+  const bool is_ts_with_remote_storage = is_tran_server_with_remote_storage ();
+
+  // own metalog file
+  fileio_make_log_metainfo_name (metainfo_file_name, logpath, prefix_logname, is_ts_with_remote_storage);
+  fileio_unformat (thread_p, metainfo_file_name);
+
+  // other, possibly existing, metalog file
+  fileio_make_log_metainfo_name (metainfo_file_name, logpath, prefix_logname, !is_ts_with_remote_storage);
+  fileio_unformat (thread_p, metainfo_file_name);
 }
 
 /*

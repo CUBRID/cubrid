@@ -1656,8 +1656,15 @@
 #define ER_CDC_NULL_EXTRACTION_LSA                  -1293
 #define ER_CDC_LOGINFO_ENTRY_GENERATED              -1294
 #define ER_CDC_IGNORE_LOG_INFO                      -1295
+#define ER_LOG_RECOVERY_ANALYSIS_STARTED            -1296
+#define ER_LOG_RECOVERY_REDO_STARTED                -1297
+#define ER_LOG_RECOVERY_UNDO_STARTED                -1298
+#define ER_LOG_RECOVERY_PHASE_FINISHING_UP          -1299
+#define ER_LOG_RECOVERY_PHASE_FINISHED              -1300
+#define ER_LOG_RECOVERY_PROGRESS                    -1301
 
-#define ER_LAST_ERROR                               -1296
+
+#define ER_LAST_ERROR                               -1302
 
 /*
  * CAUTION!

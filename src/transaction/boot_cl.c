@@ -231,6 +231,9 @@ static int boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credent
 #endif
 static int boot_client_find_and_cache_class_oids (void);
 
+static int boot_initialize_path (const char *path_arg, const char *default_path, char *path_out);
+static int boot_initialize_lob_path (const char *path_arg, const char *db_path, char *path_out);
+
 /*
  * boot_client () -
  *
@@ -390,51 +393,26 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 
   /* If db_path and/or log_path are NULL find the defaults */
 
-  if (db_path_info->db_path == NULL)
+  error_code = boot_initialize_path (db_path_info->db_path, NULL, boot_Db_path_buf);
+  if (error_code != NO_ERROR)
     {
-      db_path_info->db_path = getcwd (boot_Db_path_buf, PATH_MAX);
-      if (db_path_info->db_path == NULL)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CWD_FAIL, 0);
-	  error_code = ER_BO_CWD_FAIL;
-	  goto error_exit;
-	}
+      goto error_exit;
     }
-  if (db_path_info->log_path == NULL)
-    {
-      /* assign the data volume directory */
-      strcpy (boot_Log_path_buf, db_path_info->db_path);
-      db_path_info->log_path = boot_Log_path_buf;
-    }
-  if (db_path_info->lob_path == NULL)
-    {
-      /* assign the data volume directory */
-      snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s%clob", LOB_PATH_DEFAULT_PREFIX,
-		db_path_info->db_path, PATH_SEPARATOR);
-      db_path_info->lob_path = boot_Lob_path_buf;
-    }
-  else
-    {
-      ES_TYPE es_type = es_get_type (db_path_info->lob_path);
+  db_path_info->db_path = boot_Db_path_buf;
 
-      switch (es_type)
-	{
-	case ES_NONE:
-	  /* prepend default prefix */
-	  snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s", LOB_PATH_DEFAULT_PREFIX,
-		    db_path_info->lob_path);
-	  db_path_info->lob_path = boot_Lob_path_buf;
-	  break;
-#if !defined (CUBRID_OWFS)
-	case ES_OWFS:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, db_path_info->lob_path);
-	  error_code = ER_ES_INVALID_PATH;
-	  goto error_exit;
-#endif /* !CUBRID_OWFS */
-	default:
-	  break;
-	}
+  error_code = boot_initialize_path (db_path_info->log_path, db_path_info->db_path, boot_Log_path_buf);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
     }
+  db_path_info->log_path = boot_Log_path_buf;
+
+  error_code = boot_initialize_lob_path (db_path_info->lob_path, db_path_info->db_path, boot_Lob_path_buf);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  db_path_info->lob_path = boot_Lob_path_buf;
 
   /* make sure that the full path for the database is not too long */
   length = (unsigned int) (client_credential->db_name.length () + strlen (db_path_info->db_path) + 2);
@@ -724,6 +702,142 @@ error_exit:
     }
 
   return error_code;
+}
+
+// Process the path argument and:
+//
+//      - If no argument is given, use default path. If there is no default path, use working directory as path
+//      - Convert to absolute path
+//      - Remove useless path separators.
+//
+static int
+boot_initialize_path (const char *path_arg, const char *default_path, char *path_out)
+{
+  char workdir_buf[PATH_MAX];
+  memset (workdir_buf, 0, PATH_MAX);
+
+  const char *path = path_arg;
+  if (path == nullptr)
+    {
+      // No path argument, try default path.
+      if (default_path != NULL)
+	{
+	  path = default_path;
+	}
+      else
+	{
+	  // No default path, fall back to working directory
+	  path = getcwd (workdir_buf, PATH_MAX);
+	  if (path == nullptr)
+	    {
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CWD_FAIL, 0);
+	      return ER_BO_CWD_FAIL;
+	    }
+	}
+    }
+
+  // convert to absolute path
+  char realpath_buf[PATH_MAX];
+  if (realpath (path, realpath_buf) != nullptr)
+    {
+      path = realpath_buf;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, path);
+      return ER_BO_DIRECTORY_DOESNOT_EXIST;
+    }
+
+  // remove useless PATH_SEPARATOR
+  char remove_useless_sep_buf[PATH_MAX];
+  boot_remove_useless_path_separator (path, remove_useless_sep_buf);
+  path = remove_useless_sep_buf;
+
+  // done
+  strcpy (path_out, path);
+  return NO_ERROR;
+}
+
+// Process the path argument and generate a normalized path containing the external storage prefix.
+static int
+boot_initialize_lob_path (const char *path_arg, const char *db_path, char *path_out)
+{
+  char es_path[PATH_MAX];
+  ES_TYPE es_type = ES_NONE;
+
+  if (path_arg == NULL)
+    {
+      snprintf (es_path, sizeof (es_path), "%s%s%clob", LOB_PATH_DEFAULT_PREFIX, db_path, PATH_SEPARATOR);
+      es_type = ES_DEFAULT_TYPE;
+    }
+  else
+    {
+      es_type = es_get_type (path_arg);
+      switch (es_type)
+	{
+	case ES_NONE:
+	  /* prepend default prefix */
+	  snprintf (es_path, sizeof (es_path), "%s%s", LOB_PATH_DEFAULT_PREFIX, path_arg);
+	  es_type = ES_DEFAULT_TYPE;
+	  break;
+#if !defined (CUBRID_OWFS)
+	case ES_OWFS:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, path_arg);
+	  return ER_ES_INVALID_PATH;
+#endif /* !CUBRID_OWFS */
+	default:
+	  strncpy_bufsize (es_path, path_arg);
+	  break;
+	}
+    }
+
+  assert (es_type != ES_NONE);
+
+  // Get the path without the external storage prefix; the prefix ends with ':'
+  // *INDENT-OFF*
+  char *lob_dir_path = std::strchr (es_path, ':');
+  // *INDENT-ON*
+  if (lob_dir_path == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, es_path);
+      return ER_ES_INVALID_PATH;
+    }
+  // Move after ':'
+  ++lob_dir_path;
+
+  if (es_get_type (es_path) == ES_POSIX)
+    {
+      // Convert to absolute path and check it exists
+      char absolute_path_buf[PATH_MAX];
+
+#if defined (WINDOWS)
+      struct stat stat_buf;
+      if (realpath (lob_dir_path, absolute_path_buf) != NULL
+	  && (stat (absolute_path_buf, &stat_buf) == 0 && S_ISDIR (stat_buf.st_mode)))
+#else
+      if (realpath (lob_dir_path, absolute_path_buf) != NULL)
+#endif
+	{
+	  // Conversion successful
+	}
+      else
+	{
+	  // Directory does not exist
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lob_dir_path);
+	  if (mkdir (lob_dir_path, 0777) < 0)
+	    {
+	      cub_dirname_r (lob_dir_path, absolute_path_buf, PATH_MAX);
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", absolute_path_buf);
+	      return ER_ES_GENERAL;
+	    }
+	}
+
+      // Remove useless separators and save the value to lob_dir_path (inside es_path)
+      boot_remove_useless_path_separator (absolute_path_buf, lob_dir_path);
+    }
+
+  strcpy (path_out, es_path);
+  return NO_ERROR;
 }
 
 /*

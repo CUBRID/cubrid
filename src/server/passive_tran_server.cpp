@@ -16,30 +16,16 @@
  *
  */
 
-#ifndef _TRAN_PAGE_REQUESTS_HPP_
-#define _TRAN_PAGE_REQUESTS_HPP_
+#include "passive_tran_server.hpp"
 
-enum class tran_to_page_request
+bool
+passive_tran_server::get_remote_storage_config ()
 {
-  // Common
-  GET_BOOT_INFO,
-  SEND_LOG_PAGE_FETCH,
-  SEND_DATA_PAGE_FETCH,
-  SEND_DISCONNECT_MSG,
+  return false;
+}
 
-  // Active only
-  SEND_LOG_PRIOR_LIST,
-
-  // Passive only
-};
-
-enum class page_to_tran_request
+void
+passive_tran_server::on_boot ()
 {
-  SEND_BOOT_INFO,
-  SEND_SAVED_LSA,
-  SEND_LOG_PAGE,
-  SEND_DATA_PAGE
-};
-
-#endif // !_TRAN_PAGE_REQUESTS_HPP_
-
+  assert (is_passive_transaction_server ());
+}

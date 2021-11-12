@@ -50,6 +50,8 @@ namespace cubcomm
       request_sync_client_server &operator = (request_sync_client_server &&) = delete;
 
     public:
+      void start ();
+
       /* only used by unit tests
        */
       std::string get_underlying_channel_id () const;
@@ -86,7 +88,12 @@ namespace cubcomm
 	assert (pair.second != nullptr);
 	m_conn->register_request_handler (pair.first, pair.second);
       }
+  }
 
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::start ()
+  {
     m_conn->start_thread ();
     m_queue_autosend->start_thread ();
   }

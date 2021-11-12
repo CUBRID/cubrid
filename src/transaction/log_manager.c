@@ -317,6 +317,7 @@ static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, voi
 
 static int log_create_metalog_file ();
 static int log_read_metalog_from_file ();
+static int log_read_metalog_from_file_with_create ();
 
 /*for CDC */
 static int cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry);
@@ -1141,7 +1142,15 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       log_final (thread_p);
     }
 
-  error_code = log_read_metalog_from_file ();
+  if (is_tran_server_with_remote_storage ())
+    {
+      // allow creation of metalog on-the-fly
+      error_code = log_read_metalog_from_file_with_create ();
+    }
+  else
+    {
+      error_code = log_read_metalog_from_file ();
+    }
   if (error_code != NO_ERROR && !init_emergency)
     {
       // Unable to mount meta log
@@ -1256,6 +1265,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * page size
        */
       logpb_finalize_pool (thread_p);
+      log_Gl.m_metainfo.clear ();
       log_unmount_active_file (thread_p);
       log_Gl.append.vdes = NULL_VOLDES;
 
@@ -1460,8 +1470,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       // if needed, mark that transaction server with remote storage is running and persist the value
       log_Gl.m_metainfo.set_clean_shutdown (false);
-
-      log_write_metalog_to_file ();
+      log_write_metalog_to_file (true);
     }
 
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
@@ -1856,7 +1865,7 @@ log_final (THREAD_ENTRY * thread_p)
 
       // mark and persist that transaction server with remote storage has been correctly closed
       log_Gl.m_metainfo.set_clean_shutdown (true);
-      log_write_metalog_to_file ();
+      log_write_metalog_to_file (false);
     }
   else
     {
@@ -1870,6 +1879,8 @@ log_final (THREAD_ENTRY * thread_p)
 
   /* Undefine page buffer pool and transaction table */
   logpb_finalize_pool (thread_p);
+
+  log_Gl.m_metainfo.clear ();
 
   logtb_undefine_trantable (thread_p);
 
@@ -9000,6 +9011,14 @@ log_rv_dump_hexa (FILE * fp, int length, void *data)
   log_hexa_dump (fp, length, data);
 }
 
+int
+log_rv_nop (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
+{
+  // No actual change, but page still has to be marked as dirty because LSA will be set regardless.
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
 /*
  * log_rv_outside_noop_redo - NO-OP of an outside REDO
  *
@@ -9850,6 +9869,8 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
 {
   int error_code = NO_ERROR;
 
+  assert (!log_lsa->is_null ());
+
   if (log_page->hdr.logical_pageid != log_lsa->pageid)
     {
       error_code = logpb_fetch_page (thread_p, log_lsa, LOG_CS_FORCE_USE, log_page);
@@ -10589,7 +10610,10 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
   return error_code;
 }
 
-// Create the meta log volume
+/*
+ * log_create_metalog_file - create the meta log volume
+ *
+ */
 int
 log_create_metalog_file ()
 {
@@ -10607,7 +10631,42 @@ log_create_metalog_file ()
   return NO_ERROR;
 }
 
-// Get meta log from disk to log_Gl
+/*
+ * log_read_metalog_from_file_with_create -  at initialization time, metalog is created if not found
+ *        Needed in the context of booting up an empty active transaction server with remote storage
+ *
+ */
+int
+log_read_metalog_from_file_with_create ()
+{
+  int err_code = NO_ERROR;
+
+  struct stat dummy_stat_buf;
+  if (stat (log_Name_metainfo, &dummy_stat_buf) != 0)
+    {
+      // should not be called in a a non booting-up scenario
+      assert (!log_Gl.m_metainfo.is_loaded_from_file ());
+      // empty/idle metalog; no subsequent recovery is needed; make sure that does not happen
+      log_Gl.m_metainfo.set_clean_shutdown (true);
+
+      err_code = log_create_metalog_file ();
+
+      // creation of an empty metalog file happens early during the log initialization process
+      // later on, there is a sequence where the clean shutdown flag is set to false such that
+      // an accidental server crash is correctly flagged
+    }
+  else
+    {
+      err_code = log_read_metalog_from_file ();
+    }
+
+  return err_code;
+}
+
+/*
+ * log_read_metalog_from_file - get meta log from disk to log_Gl
+ *
+ */
 int
 log_read_metalog_from_file ()
 {
@@ -10623,15 +10682,19 @@ log_read_metalog_from_file ()
   return NO_ERROR;
 }
 
-// Write meta log from log_Gl to disk
+/*
+ * log_write_metalog_to_file - Write meta log from log_Gl to disk
+ *
+ * file_open_is_fatal (in): treat failure to open file as fatal error or not
+ */
 void
-log_write_metalog_to_file ()
+log_write_metalog_to_file (bool file_open_is_fatal)
 {
   FILE *const fp = fopen (log_Name_metainfo, "r+");
   if (fp == nullptr)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
-      assert (false);
+      const er_severity severity = file_open_is_fatal ? ER_FATAL_ERROR_SEVERITY : ER_ERROR_SEVERITY;
+      er_set (severity, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
     }
   else
     {
