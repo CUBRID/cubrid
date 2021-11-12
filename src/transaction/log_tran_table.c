@@ -3730,7 +3730,7 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *ar
 	      goto cleanup;
 	    }
 
-	  error_code = logtb_create_unique_stats_from_repr (thread_p, &entry->class_oid);
+	  error_code = logtb_create_unique_stats_from_repr (thread_p, &new_entry->class_oid);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto cleanup;

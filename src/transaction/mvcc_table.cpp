@@ -299,13 +299,11 @@ mvcctable::build_mvcc_info (log_tdes &tdes, bool partitioned)
 					   mvcc_active_tran::copy_safety::THREAD_UNSAFE);
       /* load statistics temporary disabled need to be enabled when activate count optimization */
       /* load global statistics. This must take place here and nowhere else. */
-      if (!partitioned)
-	{
-          if (logtb_load_global_statistics_to_tran (thread_get_thread_entry_info())!= NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
-	      return;
-	    }
+      tdes.mvccinfo.snapshot.valid = true;
+      if (logtb_load_global_statistics_to_tran (thread_get_thread_entry_info())!= NO_ERROR)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
+          return;
 	}
 
       if (trans_status_version == trans_status.m_version.load ())
