@@ -731,7 +731,7 @@ boot_initialize_remote_storage_client (const char *dbname, BOOT_DB_PATH_INFO & d
       return error_code;
     }
 
-  return NO_ERROR;
+  return boot_initialize_remote_storage_server (dbname, &db_path_info);
 }
 
 // Process the path argument and:

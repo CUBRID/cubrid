@@ -369,7 +369,11 @@ createdb_with_remote_storage (UTIL_FUNCTION_ARG * arg)
   db_path_info.db_comments = comment;
 
   int error_code = boot_initialize_remote_storage_client (database_name, db_path_info);
-
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return EXIT_FAILURE;
+    }
 
   return EXIT_SUCCESS;
 }
