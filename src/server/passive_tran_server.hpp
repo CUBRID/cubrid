@@ -28,6 +28,7 @@ class passive_tran_server : public tran_server
     {
     }
 
+    bool uses_remote_storage () const final override;
   private:
     void on_boot () final override;
     bool get_remote_storage_config () final override;

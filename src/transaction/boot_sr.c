@@ -2659,7 +2659,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif
 
 #if defined (SERVER_MODE)
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+  if (is_active_transaction_server ())
     {
       /* set number of hosts */
       css_set_ha_num_of_hosts (db->num_hosts);
