@@ -325,25 +325,53 @@ createdb_with_remote_storage (UTIL_FUNCTION_ARG * arg)
 
   UTIL_ARG_MAP *arg_map = arg->arg_map;
 
+  auto usage_error =[arg] (){
+    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_USAGE),
+	     basename (arg->argv0));
+    util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+    return EXIT_FAILURE;
+  };
+
+  // Get database name and charset
   const char *database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   const char *cubrid_charset = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
-  const char *volume_path = utility_get_option_string_value (arg_map, CREATE_FILE_PATH_S, 0);
-  const char *lob_path = utility_get_option_string_value (arg_map, CREATE_LOB_PATH_S, 0);
-  const char *host_name = utility_get_option_string_value (arg_map, CREATE_SERVER_NAME_S, 0);
-
   if (database_name == 0 || database_name[0] == 0 || cubrid_charset == 0 || cubrid_charset[0] == 0
       || utility_get_option_string_table_size (arg_map) != 2)
     {
-      goto print_create_usage;
+      return usage_error ();
     }
 
   const char *output_file_name = utility_get_option_string_value (arg_map, CREATE_OUTPUT_FILE_S, 0);
-  const char *log_path = utility_get_option_string_value (arg_map, CREATE_LOG_PATH_S, 0);
+  FILE *output_file = stdout;
+  if (output_file_name != nullptr && output_file_name[0] != '\0')
+    {
+      output_file = fopen (output_file_name, "w");
+    }
+  if (output_file == NULL)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_BAD_OUTPUT),
+			     output_file_name);
+      return EXIT_FAILURE;
+    }
 
-print_create_usage:
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_USAGE),
-	   basename (arg->argv0));
-  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+  const char *log_path = utility_get_option_string_value (arg_map, CREATE_LOG_PATH_S, 0);
+  const char *lob_path = utility_get_option_string_value (arg_map, CREATE_LOB_PATH_S, 0);
+  const char *host_name = utility_get_option_string_value (arg_map, CREATE_SERVER_NAME_S, 0);
+  const char *volume_path = utility_get_option_string_value (arg_map, CREATE_FILE_PATH_S, 0);
+  const char *host_name = utility_get_option_string_value (arg_map, CREATE_SERVER_NAME_S, 0);
+  const char *comment = utility_get_option_string_value (arg_map, CREATE_COMMENT_S, 0);
+  BOOT_DB_PATH_INFO db_path_info;
+  db_path_info.db_path = volume_path;
+  db_path_info.vol_path = NULL;
+  db_path_info.log_path = log_path;
+  db_path_info.lob_path = lob_path;
+  db_path_info.db_host = host_name;
+  db_path_info.db_comments = comment;
+
+  int error_code = boot_initialize_remote_storage_client (database_name, db_path_info);
+
+
+  return EXIT_SUCCESS;
 }
 
 /*
