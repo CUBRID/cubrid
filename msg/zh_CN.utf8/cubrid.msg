@@ -1356,24 +1356,40 @@ $ LOADDB
 1284 由于在 %1$s 上引用了主键，因此无法截断表。 使用 CASCADE 选项重试。
 1285 无法级联截断，因为外键 (%1$s) 的 ON DELETE 操作未设置为 CASCADE。
 
-1296 dblink - %1$s
-1297 dblink - invalid number of columns specified.
-1298 dblink - catalog _db_server class not found.
-1299 dblink - server "%1$s" not found.
-1300 dblink - server "%1$s" already exists.
-1301 dblink - Cannot update server object.
-1302 dblink - unsupported type.
-1303 dblink - invalid bind param.
-1304 dblink - password length exceeds max size.
-1305 dblink - encrypted password length is incorrect.
-1306 dblink - the checksum of the encrypted password does not match.
-1307 dblink - invalid cipher string format.
-1308 dblink - Failed to decryption password. error=%1$d".
-1309 dblink - Failed to encryption password. error=%1$d".
-1310 dblink - Multiple "%1$s" Server found.
-1311 dblink - Not allowed "%1$s" Server. 
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server. 
 
-1312 最后一个错误.
+1318 [%1$5.5s] %2$s (%3$d)
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
