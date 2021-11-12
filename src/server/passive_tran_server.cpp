@@ -19,9 +19,15 @@
 #include "passive_tran_server.hpp"
 
 bool
+passive_tran_server::uses_remote_storage () const
+{
+  return true;
+}
+
+bool
 passive_tran_server::get_remote_storage_config ()
 {
-  return false;
+  return true;
 }
 
 void

@@ -1414,7 +1414,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        */
       log_recovery (thread_p, is_media_crash, stopat);
     }
-  else if (is_tran_server_with_remote_storage ()
+  else if (is_tran_server_with_remote_storage () && is_active_transaction_server ()
 	   && init_emergency == false && (log_Gl.m_metainfo.get_clean_shutdown () == false || is_media_crash == true))
     {
       log_recovery_finish_transactions (thread_p);

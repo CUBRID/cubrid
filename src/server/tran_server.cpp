@@ -30,6 +30,7 @@
 #include <functional>
 #include <string>
 
+std::unique_ptr<tran_server> ts_Gl;
 static void assert_is_tran_server ();
 
 tran_server::~tran_server ()

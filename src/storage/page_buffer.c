@@ -8003,8 +8003,8 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
   bool is_tran_server = get_server_type () == SERVER_TYPE_TRANSACTION;
   bool is_page_server = get_server_type () == SERVER_TYPE_PAGE;
   bool is_temporary_page = pgbuf_is_temporary_volume (vpid->volid);
-  bool is_using_local_storage = is_page_server || !ats_Gl.uses_remote_storage ();
-  bool request_from_ps = is_tran_server && ats_Gl.is_page_server_connected () && !is_temporary_page;
+  bool is_using_local_storage = is_page_server || !ts_Gl->uses_remote_storage ();
+  bool request_from_ps = is_tran_server && ts_Gl->is_page_server_connected () && !is_temporary_page;
   bool read_from_local = is_using_local_storage || is_temporary_page;
   int error_code = NO_ERROR;
 
@@ -8020,7 +8020,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
   if (request_from_ps)
     {
       pgbuf_request_data_page_from_page_server (vpid);
-      auto data_page = ats_Gl.get_data_page_broker ().wait_for_page (*vpid);
+      auto data_page = ts_Gl->get_data_page_broker ().wait_for_page (*vpid);
 
       if (read_from_local)
 	{
@@ -8084,7 +8084,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
 
   // *INDENT-OFF*
   /* Send a request to Page Server for the Page. */
-  auto entry_state = ats_Gl.get_data_page_broker ().register_entry (*vpid);
+  auto entry_state = ts_Gl->get_data_page_broker ().register_entry (*vpid);
   assert (entry_state == page_broker_register_entry_state::ADDED);
 
   cubpacking::packer pac;
@@ -8100,7 +8100,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
   cublog::lsa_utils::pack (pac, lsa);
 
   std::string message (buffer.get (), size);
-  ats_Gl.push_request (tran_to_page_request::SEND_DATA_PAGE_FETCH, std::move (message));
+  ts_Gl->push_request (tran_to_page_request::SEND_DATA_PAGE_FETCH, std::move (message));
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
     {
       _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sent request for Page to Page Server. VPID: %d|%d\n", VPID_AS_ARGS (vpid));
