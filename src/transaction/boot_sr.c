@@ -1603,49 +1603,50 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 #endif // WINDOWS && DONT_USE_MANDATORY_LOCK_IN_WINDOWS
 
-  assert (dir != NULL);
-
-  db = cfg_find_db_list (dir, client_credential->get_db_name ());
-  if (db != NULL)
+  if (dir != NULL)
     {
-      if (db_overwrite == false)
+      db = cfg_find_db_list (dir, client_credential->get_db_name ());
+      if (db != NULL)
 	{
-	  /* There is a database with the same name and we cannot overwrite it */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, client_credential->get_db_name ());
-	  goto exit_on_error;
-	}
-      else
-	{
-	  /*
-	   * Delete the database.. to make sure that all backups, log archives, and
-	   * so on are removed... then continue...
-	   *
-	   * Note: we do not call xboot_delete since it shutdown the system and
-	   *       update database.txt that we have a read copy of its content.
-	   */
-
-	  /* Note: for database replacement, we need to remove the old database with its original path! */
-	  memset (original_namebuf, 0, sizeof (original_namebuf));
-
-	  /* Compose the original full name of the database */
-	  snprintf (original_namebuf, sizeof (original_namebuf), "%s%c%s", db->pathname, PATH_SEPARATOR, db->name);
-
-	  error_code = boot_remove_all_volumes (thread_p, original_namebuf, db->logpath, log_prefix, false, true);
-	  if (error_code != NO_ERROR)
+	  if (db_overwrite == false)
 	    {
+	      /* There is a database with the same name and we cannot overwrite it */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, client_credential->get_db_name ());
 	      goto exit_on_error;
 	    }
-	}
-    }
+	  else
+	    {
+	      /*
+	       * Delete the database.. to make sure that all backups, log archives, and
+	       * so on are removed... then continue...
+	       *
+	       * Note: we do not call xboot_delete since it shutdown the system and
+	       *       update database.txt that we have a read copy of its content.
+	       */
 
-  if (dbtxt_vdes != NULL_VOLDES)
-    {
-      fileio_dismount (thread_p, dbtxt_vdes);	/* unlock the directory file */
-      dbtxt_vdes = NULL_VOLDES;
+	      /* Note: for database replacement, we need to remove the old database with its original path! */
+	      memset (original_namebuf, 0, sizeof (original_namebuf));
+
+	      /* Compose the original full name of the database */
+	      snprintf (original_namebuf, sizeof (original_namebuf), "%s%c%s", db->pathname, PATH_SEPARATOR, db->name);
+
+	      error_code = boot_remove_all_volumes (thread_p, original_namebuf, db->logpath, log_prefix, false, true);
+	      if (error_code != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+	    }
+	}
+
+      if (dbtxt_vdes != NULL_VOLDES)
+	{
+	  fileio_dismount (thread_p, dbtxt_vdes);	/* unlock the directory file */
+	  dbtxt_vdes = NULL_VOLDES;
+	}
+      cfg_free_directory (dir);
+      dir = NULL;
+      db = NULL;
     }
-  cfg_free_directory (dir);
-  dir = NULL;
-  db = NULL;
 
   error_code =
     logpb_check_exist_any_volumes (thread_p, boot_Db_full_name, db_path_info->log_path, log_prefix, vol_real_path,
@@ -1894,8 +1895,7 @@ xboot_initialize_remote_storage_server (THREAD_ENTRY * thread_p, const char *dbn
     }
   scope_exit dismount_dbtxt ([thread_p, dbtxt_vdes]
 			     {
-			     fileio_dismount (thread_p, dbtxt_vdes);
-			     }
+			     fileio_dismount (thread_p, dbtxt_vdes);}
   );
 
   // Load databases directory from file
@@ -1908,8 +1908,7 @@ xboot_initialize_remote_storage_server (THREAD_ENTRY * thread_p, const char *dbn
     }
   scope_exit free_dir ([dir]
 		       {
-		       cfg_free_directory (dir);
-		       }
+		       cfg_free_directory (dir);}
   );
 
   // Does a database with the same name already exist?
@@ -1921,9 +1920,8 @@ xboot_initialize_remote_storage_server (THREAD_ENTRY * thread_p, const char *dbn
     }
 
   // Add database to directory
-  DB_INFO *db =
-    cfg_add_db (&dir, dbname, db_path_info->db_path, db_path_info->log_path, db_path_info->lob_path,
-		db_path_info->db_host);
+  DB_INFO *db = cfg_add_db (&dir, dbname, db_path_info->db_path, db_path_info->log_path, db_path_info->lob_path,
+			    db_path_info->db_host);
   if (db == nullptr || db->name == nullptr || db->pathname == nullptr || db->logpath == nullptr
       || db->lobpath == nullptr || db->hosts == nullptr)
     {
