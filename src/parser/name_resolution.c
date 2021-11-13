@@ -1875,6 +1875,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 				{
 				  break;
 				}
+			      if (PT_NAME_INFO_IS_FLAGED (range_var, PT_NAME_INFO_RESOLVED_OWNER)
+				  && pt_dot_compare (attr->info.name.original, range_var->info.name.original,
+						     CASE_INSENSITIVE) == 0)
+				{
+				  break;
+				}
 			    }
 			}	/* for */
 
@@ -6214,7 +6220,7 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = p->info.spec.flat_entity_list;
 	  while (q)
 	    {
-	      /**
+	      /** to_do_by_youngjinj
 	      PT_NODE *range_var = p->info.spec.range_var;
 	      if (PT_NAME_INFO_IS_FLAGED (range_var, PT_NAME_INFO_CURRENT_USER_OWNER))
 		{
@@ -8298,8 +8304,9 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       assert (cte_name != NULL);
 
       if (pt_name_equal (parser, cte_name, node->info.spec.entity_name)
-	  || !pt_dot_compare (cte_name->info.name.original, node->info.spec.entity_name->info.name.original,
-	  CASE_INSENSITIVE))
+	  || (PT_NAME_INFO_IS_FLAGED (node->info.spec.entity_name, PT_NAME_INFO_RESOLVED_OWNER)
+	      && !pt_dot_compare (cte_name->info.name.original, node->info.spec.entity_name->info.name.original,
+				  CASE_INSENSITIVE)))
 	{
 	  node->info.spec.cte_name = node->info.spec.entity_name;
 	  node->info.spec.entity_name = NULL;

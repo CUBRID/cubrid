@@ -8165,7 +8165,9 @@ qo_node_fprint (QO_NODE * node, FILE * f)
 
   if (QO_NODE_NAME (node))
     {
-      if (entity && entity->info.spec.entity_name && entity->info.spec.entity_name->node_type == PT_NAME
+      if (strchr (QO_NODE_NAME (node), '.')
+	  && entity && entity->info.spec.entity_name
+	  && entity->info.spec.entity_name->node_type == PT_NAME
 	  && PT_NAME_INFO_IS_FLAGED (entity->info.spec.entity_name, PT_NAME_INFO_RESOLVED_OWNER)
 	  && entity->info.spec.entity_name->info.name.thin
 	  && entity->info.spec.entity_name->info.name.thin[0] != '\0')

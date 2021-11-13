@@ -19660,43 +19660,40 @@ path_header
 		{{
 
 			PT_NODE *node = $2;
-			char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
-			char name_buf[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
-			const char *original_name_buf = NULL;
-			int user_name_size = 0;
-			int name_size = 0;
+			const char *user_name_ptr = NULL;
+			const char *name_ptr = NULL;
+			const char *dot_ptr = NULL;
 
+			/* to_do_by_youngjinj:
+			 * Is there any case where we need to set a resolved name here? */
 			if (node && node->node_type == PT_NAME)
 			  {
 			    node->info.name.meta_class = PT_META_CLASS;
 
-			    intl_identifier_lower (db_get_user_name (), user_name_buf);
-
-			    /* Because only identifier exists in path_id rule,
-			     * owner name is not included in PT_NODE of PT_NAME type. */
-			    name_size = intl_identifier_lower_string_size (node->info.name.original);
-			    if (name_size + 1 > DB_MAX_CLASS_LENGTH)
+			    user_name_ptr = db_get_user_name ();
+			    if (user_name_ptr == NULL)
 			      {
-				PT_ERRORf (this_parser, node, "Identifier name cannot exceed %d bytes.", DB_MAX_CLASS_LENGTH);
+				PT_ERROR (this_parser, node, "Failed to get current-user-name.");
 			      }
-			    intl_identifier_lower (node->info.name.original, name_buf);
+			    PT_NAME_INFO_SET_FLAG (node, PT_NAME_INFO_RESOLVED_OWNER);
 
-			    /* Name without owner name. */
-			    node->info.name.thin = pt_append_string (this_parser, NULL, name_buf);
+			    /* thin-name does not include user-name. */
+			    dot_ptr = strchr (node->info.name.original, '.');
+			    node->info.name.thin = pt_append_string (this_parser, NULL,
+								     (dot_ptr ? dot_ptr + 1 :
+								      node->info.name.original));
 
-			    /* Name without owner name.
-			     * System class/vclass has no owner_name. */
-			    if (db_is_system_class_by_name (name_buf) == FALSE)
+			    /* original-name includes user-name. */
+			    if (dot_ptr == NULL
+				&& db_is_system_class_by_name (node->info.name.thin) == FALSE)
 			      {
-				original_name_buf = pt_append_string (this_parser, NULL,  user_name_buf);
-				original_name_buf = pt_append_string (this_parser, original_name_buf, ".");
-				original_name_buf = pt_append_string (this_parser, original_name_buf, name_buf);
-				node->info.name.original = original_name_buf;
+				name_ptr = pt_append_string (this_parser, NULL, user_name_ptr);
+				name_ptr = pt_append_string (this_parser, name_ptr, ".");
+				name_ptr = pt_append_string (this_parser, name_ptr, node->info.name.thin);
+				node->info.name.original = name_ptr;
 			      }
-			    else
-			      {
-				node->info.name.original = pt_append_string (this_parser, NULL, name_buf);
-			      }
+
+			    db_string_free (user_name_ptr);
 			  }
 
 			$$ = node;

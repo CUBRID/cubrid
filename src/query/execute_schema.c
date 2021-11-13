@@ -2485,7 +2485,7 @@ acquire_locks_for_multiple_rename (const PT_NODE * statement)
 
       for (i = 0; i < num_names; i++)
 	{
-	  if (strcmp (name_set[i], old_name) == 0)
+	  if (pt_str_compare (name_set[i], old_name, CASE_INSENSITIVE) == 0)
 	    {
 	      found = true;
 	      break;
