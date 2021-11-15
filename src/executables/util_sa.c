@@ -343,10 +343,9 @@ createdb_with_remote_storage (UTIL_FUNCTION_ARG * arg)
       return usage_error ();
     }
 
+  const char *volume_path = utility_get_option_string_value (arg_map, CREATE_FILE_PATH_S, 0);
   const char *log_path = utility_get_option_string_value (arg_map, CREATE_LOG_PATH_S, 0);
   const char *lob_path = utility_get_option_string_value (arg_map, CREATE_LOB_PATH_S, 0);
-  const char *host_name = utility_get_option_string_value (arg_map, CREATE_SERVER_NAME_S, 0);
-  const char *volume_path = utility_get_option_string_value (arg_map, CREATE_FILE_PATH_S, 0);
   const char *host_name = utility_get_option_string_value (arg_map, CREATE_SERVER_NAME_S, 0);
   const char *comment = utility_get_option_string_value (arg_map, CREATE_COMMENT_S, 0);
   BOOT_DB_PATH_INFO db_path_info;
