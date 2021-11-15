@@ -2659,6 +2659,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_DUMMY_GENERIC:
 		case LOG_SUPPLEMENTAL_INFO:
 		case LOG_SYSOP_ATOMIC_START:
+		case LOG_START_ATOMIC_REPL:
+		case LOG_END_ATOMIC_REPL:
 		  /* Not for UNDO ... */
 		  /* Break switch to go to previous record */
 		  break;
@@ -2749,8 +2751,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_2PC_COMMIT_INFORM_PARTICPS:
 		case LOG_2PC_RECV_ACK:
 		case LOG_DUMMY_CRASH_RECOVERY:
-		case LOG_START_ATOMIC_REPL:
-		case LOG_END_ATOMIC_REPL:
 		case LOG_END_OF_LOG:
 		  /* This looks like a system error in the analysis phase */
 #if defined(CUBRID_DEBUG)
