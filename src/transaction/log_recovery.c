@@ -1889,17 +1889,25 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 	    }
 	  tdes->rcv.sysop_start_postpone_lsa = chkpt_topone->sysop_start_postpone_lsa;
 	  tdes->rcv.atomic_sysop_start_lsa = chkpt_topone->atomic_sysop_start_lsa;
-	  log_lsa_local = chkpt_topone->sysop_start_postpone_lsa;
-	  error_code =
-	    log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
-					   NULL, NULL, NULL, NULL);
-	  if (error_code != NO_ERROR)
+	  if (!chkpt_topone->sysop_start_postpone_lsa.is_null ())
 	    {
-	      assert (false);
-	      return error_code;
+	      log_lsa_local = chkpt_topone->sysop_start_postpone_lsa;
+	      error_code =
+		log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
+					       NULL, NULL, NULL, NULL);
+	      if (error_code != NO_ERROR)
+		{
+		  assert (false);
+		  return error_code;
+		}
+	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone.sysop_end.lastparent_lsa;
+	      tdes->topops.stack[tdes->topops.last].posp_lsa = sysop_start_postpone.posp_lsa;
 	    }
-	  tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone.sysop_end.lastparent_lsa;
-	  tdes->topops.stack[tdes->topops.last].posp_lsa = sysop_start_postpone.posp_lsa;
+	  else
+	    {
+	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = chkpt_topone->atomic_sysop_start_lsa;
+	      tdes->topops.stack[tdes->topops.last].posp_lsa.set_null ();
+	    }
 	}
     }
 
