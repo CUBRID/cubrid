@@ -6177,6 +6177,8 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       break;
 
     case LOG_DUMMY_CRASH_RECOVERY:
+    case LOG_START_ATOMIC_REPL:
+    case LOG_END_ATOMIC_REPL:
       snprintf (buffer, sizeof (buffer), "process log record (type:%d). skip this log record. LSA: %lld|%d",
 		lrec->type, (long long int) final->pageid, (int) final->offset);
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);

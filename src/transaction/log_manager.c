@@ -483,6 +483,11 @@ log_to_string (LOG_RECTYPE type)
     case LOG_SYSOP_ATOMIC_START:
       return "LOG_SYSOP_ATOMIC_START";
 
+    case LOG_START_ATOMIC_REPL:
+      return "LOG_START_ATOMIC_REPL";
+    case LOG_END_ATOMIC_REPL:
+      return "LOG_END_ATOMIC_REPL";
+
     case LOG_DUMMY_HA_SERVER_STATE:
       return "LOG_DUMMY_HA_SERVER_STATE";
     case LOG_DUMMY_OVF_RECORD:
@@ -6990,6 +6995,8 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
+    case LOG_START_ATOMIC_REPL:
+    case LOG_END_ATOMIC_REPL:
       fprintf (out_fp, "\n");
       /* That is all for this kind of log record */
       break;
@@ -7923,6 +7930,8 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_END_OF_LOG:
 	    case LOG_SMALLER_LOGREC_TYPE:
 	    case LOG_LARGER_LOGREC_TYPE:
+	    case LOG_START_ATOMIC_REPL:
+	    case LOG_END_ATOMIC_REPL:
 	    default:
 	      {
 		char msg[LINE_MAX];
@@ -8390,6 +8399,8 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_DUMMY_CRASH_RECOVERY:
 		    case LOG_SMALLER_LOGREC_TYPE:
 		    case LOG_LARGER_LOGREC_TYPE:
+		    case LOG_START_ATOMIC_REPL:
+		    case LOG_END_ATOMIC_REPL:
 		    default:
 #if defined(CUBRID_DEBUG)
 		      er_log_debug (ARG_FILE_LINE,
