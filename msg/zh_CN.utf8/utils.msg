@@ -626,6 +626,7 @@ cub_commdb: 这个工具不赞成使用. 用 'cubrid' 命令来代替.\n\
 39 选项 -i(--immediately) 必须与选项 --deact-stop-all 一起使用.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 请在没有 --recreate-log 选项的情况下运行或手动删除活动日志卷。\n
 60 \
 emergency_patchlog: 紧急情况下修补一个数据库.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1216,6 +1217,7 @@ tde: 透明数据加密（TDE）管理\n\
 \n\
 有效选项:\n\
     -p, --dba-password=PASS    DBA用户的密码；如果未指定，则会提示\n\
+\n\
 操作:必须给出一种操作，并且它们是唯一的\n\
     -s, --show-keys            打印在数据库和密钥文件（_keys）上设置的密钥信息\n\
     -n, --generate-new-key     在密钥文件（_keys）中生成一个新密钥；最大计数:128\n\

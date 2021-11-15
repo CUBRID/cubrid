@@ -1329,7 +1329,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1258 Impossibile trovare la serie di chiavi nel database da%1$s. Verrà utilizzato il file chiave del volume di backup.
 1259 Rinomina il file della chiave da "%1$s" a "%2$s".
 1260 Copia il file chiave "%1$s" in "%2$s".
-1261 Impossibile trovare la chiave al momento del ripristino (indice chiave: %1$d, ora di creazione: %2$s). Imposta la chiave (indice chiave: %3$d) per il database.
+1261 La prima chiave (indice chiave: %1$d, ora di creazione: %2$s) sul file chiave ripristinato è stata impostata.
 1262 Il file della chiave è pieno.
 1263 Impossibile crittografare TDE la pagina di registro (pageid: %1$lld). Non si tenterà più di crittografare questa pagina.
 1264 Error reserved for scalability development.
@@ -1361,7 +1361,42 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1300 Ricupero di log: fase di recupero del %1$s è terminata.
 1301 Recupero log: %1$s progresso: (%2$lld/%3$lld), %4$.2f percento, tempo trascorso: %5$.2f (s), tempo rimanente stimato: %6$.2f (s).
 
-1302 Ultimo errore
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s] %2$s (%3$d)
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Both dsn name and link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 Il volume del registro attivo (%1$s) è troppo sano per essere ricreato. Se rimuovi il registro attivo, potrebbe causare un problema imprevisto e irreversibile.
+
+1333 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
@@ -1826,6 +1861,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Numero imprevisto di argomenti %1$d.
 304 Impossibile trovare una firma compatibile per la funzione %1$s()
 305 Firma %1$s non è compatibile con gli argomenti delle funzioni.
+306 dblink - Mancano le informazioni richieste.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.
