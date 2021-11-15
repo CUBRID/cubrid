@@ -1059,11 +1059,11 @@ typedef struct _ha_config
 #define BACKUP_NO_COMPRESS_L                    "no-compress"
 #define BACKUP_EXCEPT_ACTIVE_LOG_S              'e'
 #define BACKUP_EXCEPT_ACTIVE_LOG_L              "except-active-log"
-#define BACKUP_SLEEP_MSECS_S                    10507
+#define BACKUP_SLEEP_MSECS_S                    10508
 #define BACKUP_SLEEP_MSECS_L                    "sleep-msecs"
 #define BACKUP_SEPARATE_KEYS_S                  'k'
 #define BACKUP_SEPARATE_KEYS_L                  "separate-keys"
-#define BACKUP_PAGE_SERVER_S                    10508
+#define BACKUP_PAGE_SERVER_S                    10520
 #define BACKUP_PAGE_SERVER_L                    "page-server"
 
 
