@@ -1575,6 +1575,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 
   if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
     {
+      // topops stack is bumped when system operation start postpone is found.
       assert (tdes->topops.last == 0);
       if (commit_start_postpone)
 	{
@@ -1879,18 +1880,20 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 		}
 	    }
 
-	  if (tdes->topops.last == -1)
-	    {
-	      tdes->topops.last++;
-	    }
-	  else
-	    {
-	      assert (tdes->topops.last == 0);
-	    }
 	  tdes->rcv.sysop_start_postpone_lsa = chkpt_topone->sysop_start_postpone_lsa;
 	  tdes->rcv.atomic_sysop_start_lsa = chkpt_topone->atomic_sysop_start_lsa;
 	  if (!chkpt_topone->sysop_start_postpone_lsa.is_null ())
 	    {
+	      // Bump the sysop level to save lastparent_lsa and posp_lsa.
+	      if (tdes->topops.last == -1)
+		{
+		  tdes->topops.last++;
+		}
+	      else
+		{
+		  assert (tdes->topops.last == 0);
+		}
+
 	      log_lsa_local = chkpt_topone->sysop_start_postpone_lsa;
 	      error_code =
 		log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
@@ -1902,11 +1905,6 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 		}
 	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone.sysop_end.lastparent_lsa;
 	      tdes->topops.stack[tdes->topops.last].posp_lsa = sysop_start_postpone.posp_lsa;
-	    }
-	  else
-	    {
-	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = chkpt_topone->atomic_sysop_start_lsa;
-	      tdes->topops.stack[tdes->topops.last].posp_lsa.set_null ();
 	    }
 	}
     }
