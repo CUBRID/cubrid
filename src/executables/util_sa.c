@@ -110,6 +110,8 @@ static int delete_all_slave_ha_apply_info (char *database_name, char *master_hos
 
 static bool check_ha_db_and_node_list (char *database_name, char *source_host_name);
 
+static int createdb_with_local_storage (UTIL_FUNCTION_ARG * arg);
+static int createdb_with_remote_storage (UTIL_FUNCTION_ARG * arg);
 
 /*
  * util_admin_usage - display an usage of this utility
@@ -318,7 +320,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
  * createdb_with_remote_storage () - create database, without most physical files that should be on page servers.
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */
-int
+static int
 createdb_with_remote_storage (UTIL_FUNCTION_ARG * arg)
 {
   assert (arg != nullptr);
@@ -378,7 +380,7 @@ createdb_with_remote_storage (UTIL_FUNCTION_ARG * arg)
  * createdb_with_local_storage () - create database and all its physical files
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */
-int
+static int
 createdb_with_local_storage (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
