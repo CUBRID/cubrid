@@ -27686,22 +27686,28 @@ pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 {
    if(node)
      {
+ /*
         if(parser_top_cond() == false)
         {
-           return node;
-        }
+            return pt_convert_to_logical_expr(parser, node, 1,1);
 
+           //return node;
+        }
+*/
         if (node->type_enum != PT_TYPE_LOGICAL)
           {
              PT_ERROR (parser, node, "invalid by [CBRD-24083]");
           }
+/*
         else if(node->node_type == PT_VALUE)
           {
              if (memcmp(node->info.value.text, "true", 5) == 0 || memcmp(node->info.value.text, "false", 6) == 0)
                {
-                 PT_ERROR (parser, node, "invalid by [CBRD-24083]");
+                 return pt_convert_to_logical_expr(parser, node, 1,1);
+                 //PT_ERROR (parser, node, "invalid by [CBRD-24083] Boolean");
                }
           }
+*/
      }
 
      return node;
