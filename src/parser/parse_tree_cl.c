@@ -9524,6 +9524,9 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
   int print_from = 0;
   PT_NODE *arg3;
   PT_NODE *between, *between_ge_lt;
+  const char *name_ptr = NULL;
+  char *user_name_ptr = NULL;
+
 
   assert_release (p != p->info.expr.arg1);
   assert_release (p != p->info.expr.arg2);
@@ -9940,14 +9943,70 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_CURRENT_VALUE:
       q = pt_append_nulstring (parser, q, "serial_current_value(");
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      /* The same owner-name as the current user name in the column name is not displayed.
+       * - Execute: select owner-name.serial-name.current_value from db_root;
+       * - Column name: serial_current_value (owner-name.serial-name, 1) */
+      if (p->info.expr.arg1->node_type == PT_DOT_
+	  && p->info.expr.arg1->info.expr.arg1->node_type == PT_NAME
+	  && p->info.expr.arg1->info.expr.arg2->node_type == PT_NAME)
+	{
+	  name_ptr = p->info.expr.arg1->info.expr.arg1->info.name.original;
+	  user_name_ptr = db_get_user_name ();
+
+	  if (!pt_str_compare (name_ptr, user_name_ptr, CASE_INSENSITIVE))
+	    {
+	      /* Equal. */
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	    }
+	  else
+	    {
+	      /* Not equal. */
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	    }
+	
+	  db_string_free (user_name_ptr);
+	}
+      else
+        {
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	}
+
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_NEXT_VALUE:
       q = pt_append_nulstring (parser, q, "serial_next_value(");
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      /* The same owner-name as the current user name in the column name is not displayed.
+       * - Execute: select owner-name.serial-name.next_value from db_root;
+       * - Column name: serial_next_value (owner-name.serial-name, 1) */
+      if (p->info.expr.arg1->node_type == PT_DOT_
+	  && p->info.expr.arg1->info.expr.arg1->node_type == PT_NAME
+	  && p->info.expr.arg1->info.expr.arg2->node_type == PT_NAME)
+	{
+	  name_ptr = p->info.expr.arg1->info.expr.arg1->info.name.original;
+	  user_name_ptr = db_get_user_name ();
+
+	  if (!pt_str_compare (name_ptr, user_name_ptr, CASE_INSENSITIVE))
+	    {
+	      /* Equal. */
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	    }
+	  else
+	    {
+	      /* Not equal. */
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	    }
+	
+	  db_string_free (user_name_ptr);
+	}
+      else
+        {
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	}
+
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ", ");
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
