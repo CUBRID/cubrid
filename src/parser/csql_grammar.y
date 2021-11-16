@@ -26256,10 +26256,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
   FUNCTION_MAP *key;
   int c;
   PT_NODE *val, *between_ge_lt, *between;
-  char *name_ptr = NULL;
-  char *full_name_ptr = NULL;
-  char *user_name_ptr = NULL;
-  char *dot_ptr = NULL;
 
   parser_function_code = PT_EMPTY;
   c = parser_count_list (args);
@@ -26514,6 +26510,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_SUBSTRING_INDEX:
     case PT_NVL2:
     case PT_MAKETIME:
+    case PT_INDEX_CARDINALITY:
     case PT_CONV:
     case PT_NEW_TIME:
       if (c != 3)
@@ -26521,33 +26518,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a1 = args;
       a2 = a1->next;
       a3 = a2->next;
-      a1->next = a2->next = NULL;
-      return parser_make_expression (this_parser, key->op, a1, a2, a3);
-
-    case PT_INDEX_CARDINALITY:
-      if (c != 3)
-	return NULL;
-
-      /* class_name */
-      name_ptr = (char *) args->info.value.data_value.str->bytes;
-      dot_ptr = strchr (name_ptr, '.');
-      if (!dot_ptr && !db_is_system_class_by_name (name_ptr))
-	{
-	  user_name_ptr = db_get_user_name ();
-	  if (user_name_ptr == NULL)
-	    {
-	      PT_ERROR (this_parser, args, "Failed to get current-user-name.");
-	    }
-	  full_name_ptr = pt_append_bytes (this_parser, NULL, user_name_ptr, strlen (user_name_ptr));
-	  full_name_ptr = pt_append_bytes (this_parser, full_name_ptr, ".", strlen ("."));
-	  full_name_ptr = pt_append_bytes (this_parser, full_name_ptr, name_ptr, strlen (name_ptr));
-	  args->info.value.data_value.str = full_name_ptr;
-	  db_string_free (user_name_ptr);
-	}
-
-      a1 = args;	// class_name
-      a2 = a1->next;	// index_name
-      a3 = a2->next;	// key_position
       a1->next = a2->next = NULL;
       return parser_make_expression (this_parser, key->op, a1, a2, a3);
 

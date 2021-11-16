@@ -151,11 +151,11 @@ db_create_vclass (const char *name)
   virtual_class = NULL;
   if (name != NULL)
     {
-      type = pr_find_type (name);
-      if (type != NULL || pt_is_reserved_word (name))
+      type = pr_find_type (sm_simple_name (name));
+      if (type != NULL || pt_is_reserved_word ( sm_simple_name (name)))
 	{
 	  error = ER_SM_CLASS_WITH_PRIM_NAME;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, sm_simple_name (name));
 	}
       else
 	{

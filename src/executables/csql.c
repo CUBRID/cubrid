@@ -799,6 +799,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
   char *argument_end = NULL;
   int argument_len = 0;
   int error_code;
+  char *user_name_ptr = NULL;
+  char * class_name_ptr = NULL;
+  const char *dot_ptr = NULL;
+  int class_name_len = 0;
 #if !defined(WINDOWS)
   HIST_ENTRY *hist_entry;
 #endif /* !WINDOWS */
@@ -1060,71 +1064,29 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_SCHEMA:
-      // csql_help_schema ((argument[0] == '\0') ? NULL : argument);
-
-      /* Start of change for POC *
-      if (argument[0] != '\0')
+      if (argument[0] == '\0')
+	{
+	  csql_help_schema (NULL);
+	}
+      else
         {
-          if (strstr(argument, ".") == NULL)
+	  dot_ptr = strchr (argument, '.');
+          if (!dot_ptr && !sm_is_system_class_by_name (argument))
             {
-	      const char *user_name = NULL;
-              if (pt_is_system_class (argument) == true)
-                {
-                  user_name = "DBA";
-                }
-              else
-                {
-                  user_name = db_get_user_name();
-                }
+	      user_name_ptr = db_get_user_name();
+	      class_name_len = strlen (user_name_ptr) + 1 + strlen (argument) + 1;
+	      class_name_ptr = (char *) calloc (class_name_len, sizeof (char));
+	      snprintf (class_name_ptr, class_name_len, "%s.%s", user_name_ptr, argument);
+	      csql_help_schema (class_name_ptr);
 
-	      int user_name_len = strlen(user_name);
-              int class_name_len = strlen(argument);
-              int schema_name_len = user_name_len + 1 + class_name_len + 1;
-
-	      char schema_name[schema_name_len];
-	      memset(schema_name, 0, schema_name_len);
-
-	      sprintf (schema_name, "%s.%s", user_name, argument);
-	      csql_help_schema (schema_name);
+	      free_and_init (class_name_ptr);
+	      db_string_free (user_name_ptr);
             }
           else
             {
 	      csql_help_schema (argument);
 	    }
 	}
-      else
-        {
-	  csql_help_schema (NULL);
-	}
-      /* End of change for POC */
-
-      /* Start of change for POC */
-      if (argument[0] != '\0')
-        {
-          if (strstr(argument, ".") == NULL && sm_is_system_class_by_name (argument) != true)
-            {
-	      const char *user_name = db_get_user_name();
-
-	      int user_name_len = strlen(user_name);
-	      int class_name_len = strlen(argument);
-	      int schema_name_len = user_name_len + 1 + class_name_len + 1;
-
-	      char schema_name[schema_name_len];
-	      memset(schema_name, 0, schema_name_len);
-
-	      sprintf (schema_name, "%s.%s", user_name, argument);
-	      csql_help_schema (schema_name);
-            }
-          else
-            {
-	      csql_help_schema (argument);
-	    }
-	}
-      else
-        {
-	  csql_help_schema (NULL);
-	}
-      /* End of change for POC */
       
       if (csql_is_auto_commit_requested (csql_arg))
 	{

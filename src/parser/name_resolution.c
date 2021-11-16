@@ -4857,32 +4857,6 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
       if (savespec)
 	{
 	  /* if yes, set the resolution and the resolved name */
-
-	  /**
-	  PT_NODE *range_var = savespec->info.spec.range_var;
-	  if (PT_NAME_INFO_IS_FLAGED (range_var, PT_NAME_INFO_CURRENT_USER_OWNER))
-	    {
-	      in_node->info.name.resolved = range_var->info.name.thin;
-	    }
-	  else if (PT_NAME_INFO_IS_FLAGED (range_var, PT_NAME_INFO_WITH_OWNER))
-	    {
-	      const char *current_user_name = db_get_user_name ();
-	      if (strncmp (range_var->info.name.resolved, current_user_name, (sizeof (current_user_name) - 1)) == 0)
-		{
-		  PT_NAME_INFO_SET_FLAG (range_var, PT_NAME_INFO_CURRENT_USER_OWNER);
-		  in_node->info.name.resolved = range_var->info.name.thin;
-		}
-	      else
-		{
-		  in_node->info.name.resolved = range_var->info.name.original;
-		}
-	    }
-	  else
-	    {
-	      in_node->info.name.resolved = range_var->info.name.original;
-	    }
-	  in_node->info.name.partition = range_var->info.name.partition;
-	  /**/
 	  in_node->info.name.resolved = savespec->info.spec.range_var->info.name.original;
 	  in_node->info.name.partition = savespec->info.spec.range_var->info.name.partition;
 
@@ -6220,31 +6194,6 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = p->info.spec.flat_entity_list;
 	  while (q)
 	    {
-	      /** to_do_by_youngjinj
-	      PT_NODE *range_var = p->info.spec.range_var;
-	      if (PT_NAME_INFO_IS_FLAGED (range_var, PT_NAME_INFO_CURRENT_USER_OWNER))
-		{
-		  q->info.name.resolved = range_var->info.name.thin;
-		}
-	      else if (PT_NAME_INFO_IS_FLAGED (range_var, PT_NAME_INFO_WITH_OWNER))
-		{
-		  const char *current_user_name = db_get_user_name ();
-		  if (strncmp (range_var->info.name.resolved, current_user_name,
-			       (sizeof (current_user_name) - 1)) == 0)
-		    {
-		      PT_NAME_INFO_SET_FLAG (range_var, PT_NAME_INFO_CURRENT_USER_OWNER);
-		      q->info.name.resolved = range_var->info.name.thin;
-		    }
-		  else
-		    {
-		      q->info.name.resolved = range_var->info.name.original;
-		    }
-		}
-	      else
-		{
-		  q->info.name.resolved = range_var->info.name.original;
-		}
-	      /**/
 	      q->info.name.resolved = p->info.spec.range_var->info.name.original;
 	      if (PT_IS_SPEC_REAL_TABLE (p))
 		{
@@ -6972,12 +6921,6 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
   DB_OBJECT *classop;
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *cons;
-  /**
-  char user_name_buf[DB_MAX_USER_LENGTH] = { 0 };
-  const char *range_var_name = NULL;
-  const char *resolved_name = NULL;
-  const char *dot = NULL;
-  /**/
   int found = 0;
   int errid;
 
@@ -7000,22 +6943,6 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
   if (index->info.name.resolved != NULL)
     {
       /* index name is specified by class name as "class.index" */
-      /** to_do_delete youngjinj
-      if (from->info.spec.range_var)
-	{
-	  range_var_name = from->info.spec.range_var->info.name.original;
-	}
-      resolved_name = index->info.name.resolved;
-      if (range_var_name && strchr (resolved_name, '.') == NULL && pt_dot_compare (resolved_name, range_var_name) != 0)
-	{
-	  intl_identifier_lower (db_get_user_name (), user_name_buf);
-
-	  resolved_name = pt_append_string (parser, NULL, user_name_buf);
-	  resolved_name = pt_append_string (parser, resolved_name, ".");
-	  resolved_name = pt_append_string (parser, resolved_name, index->info.name.resolved);
-	  index->info.name.resolved = resolved_name;
-	}
-	/**/
 
       /* check if the specified class name exists in spec list */
       for (spec = from; spec; spec = spec->next)

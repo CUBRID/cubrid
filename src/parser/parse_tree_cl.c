@@ -9524,8 +9524,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
   int print_from = 0;
   PT_NODE *arg3;
   PT_NODE *between, *between_ge_lt;
-  const char *name_ptr = NULL;
-  char *user_name_ptr = NULL;
+  PT_NODE *dot_node_ptr = NULL;
 
 
   assert_release (p != p->info.expr.arg1);
@@ -9944,28 +9943,15 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_CURRENT_VALUE:
       q = pt_append_nulstring (parser, q, "serial_current_value(");
 
-      /* The same owner-name as the current user name in the column name is not displayed.
-       * - Execute: select owner-name.serial-name.current_value from db_root;
-       * - Column name: serial_current_value (owner-name.serial-name, 1) */
-      if (p->info.expr.arg1->node_type == PT_DOT_
-	  && p->info.expr.arg1->info.expr.arg1->node_type == PT_NAME
-	  && p->info.expr.arg1->info.expr.arg2->node_type == PT_NAME)
+      /* Only the column name is printed. */
+      if (p->info.expr.arg1->node_type == PT_DOT_)
 	{
-	  name_ptr = p->info.expr.arg1->info.expr.arg1->info.name.original;
-	  user_name_ptr = db_get_user_name ();
-
-	  if (!pt_str_compare (name_ptr, user_name_ptr, CASE_INSENSITIVE))
+	  dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
+	  while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
 	    {
-	      /* Equal. */
-	      r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	      dot_node_ptr = dot_node_ptr->info.expr.arg2;
 	    }
-	  else
-	    {
-	      /* Not equal. */
-	      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	    }
-	
-	  db_string_free (user_name_ptr);
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
 	}
       else
         {
@@ -9979,28 +9965,15 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_NEXT_VALUE:
       q = pt_append_nulstring (parser, q, "serial_next_value(");
 
-      /* The same owner-name as the current user name in the column name is not displayed.
-       * - Execute: select owner-name.serial-name.next_value from db_root;
-       * - Column name: serial_next_value (owner-name.serial-name, 1) */
-      if (p->info.expr.arg1->node_type == PT_DOT_
-	  && p->info.expr.arg1->info.expr.arg1->node_type == PT_NAME
-	  && p->info.expr.arg1->info.expr.arg2->node_type == PT_NAME)
+      /* Only the column name is printed. */
+      if (p->info.expr.arg1->node_type == PT_DOT_)
 	{
-	  name_ptr = p->info.expr.arg1->info.expr.arg1->info.name.original;
-	  user_name_ptr = db_get_user_name ();
-
-	  if (!pt_str_compare (name_ptr, user_name_ptr, CASE_INSENSITIVE))
+	  dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
+	  while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
 	    {
-	      /* Equal. */
-	      r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	      dot_node_ptr = dot_node_ptr->info.expr.arg2;
 	    }
-	  else
-	    {
-	      /* Not equal. */
-	      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	    }
-	
-	  db_string_free (user_name_ptr);
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
 	}
       else
         {
@@ -12991,7 +12964,7 @@ static PARSER_VARCHAR *
 pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
-  PT_NODE *name_node_ptr = NULL;
+  const PT_NODE *name_node_ptr = NULL;
   const char *name_ptr = NULL;
   char *user_name_ptr = NULL;
   char *copy_name = NULL;

@@ -702,10 +702,10 @@ def_class_internal (const char *name, int class_type)
 
   if (sm_check_name (name))
     {
-      type = pr_find_type (name);
+      type = pr_find_type (sm_simple_name (name));
       if (type != NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, sm_simple_name (name));
 	}
       else
 	{

@@ -277,7 +277,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    }
 	  else
 	    {
-	      sb ("%-20s COLLATE %s", sm_ch_simple_name ((MOBJ) class_), lang_get_collation_name (class_->collation_id));
+	      sb ("%-20s COLLATE %s", sm_ch_name ((MOBJ) class_), lang_get_collation_name (class_->collation_id));
 	    }
 	}
       this->name = object_print::copy_string (sb.get_buffer ());
@@ -289,7 +289,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
        * this->name is set to the exact class name
        */
       sb.clear ();
-      sb ("[%s]", sm_ch_simple_name ((MOBJ) class_));
+      sb ("[%s]", sm_ch_name ((MOBJ) class_));
       this->name = object_print::copy_string (sb.get_buffer ());
     }
 

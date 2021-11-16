@@ -703,6 +703,13 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
   unsigned int save_custom;
   PT_NODE *node, *spec, *range_var;
   char *original_name;
+  const PT_NODE *name_node_ptr = NULL;
+  const char *name_ptr = NULL;
+  char *user_name_ptr = NULL;
+  char *copy_name = NULL;
+  char *token = NULL;
+  char *token_save = NULL;
+  const char *dot_ptr = NULL;
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_SUPPRESS_QUOTES;
@@ -732,9 +739,39 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 	    {
 	      if (col->info.name.meta_class == PT_META_ATTR)
 		{
-		  name =
-		    pt_append_string (parser, pt_append_string (parser, (char *) col->info.name.resolved, "."), name);
-		  name = pt_append_string (parser, pt_append_string (parser, NULL, "class "), name);
+		  name = pt_append_string (parser, NULL, "class ");
+
+		  name_node_ptr = col;
+		  name_ptr = col->info.name.resolved;
+		  dot_ptr = strchr (name_ptr, '.');
+		  if (dot_ptr)
+		    {
+		      user_name_ptr = db_get_user_name ();
+
+		      copy_name = strndup (name_ptr, strlen (name_ptr));
+		      token = strtok_r (copy_name, ".", &token_save);
+
+		      if (!pt_str_compare (user_name_ptr, token, CASE_INSENSITIVE))
+			{
+			  /* Equal. */
+			  name = pt_append_string (parser, name, dot_ptr + 1);
+			}
+		      else
+			{
+			  /* Not equal. */
+			  name = pt_append_string (parser, name, name_ptr);
+			}
+
+		      free_and_init (copy_name);
+		      db_string_free (user_name_ptr);
+		    }
+		  else
+		    {
+		      name = pt_append_string (parser, name, name_ptr);
+		    }
+
+		  name = pt_append_string (parser, name, ".");
+		  name = pt_append_string (parser, name, original_name);
 		  original_name = name;
 		}
 	      else if (PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_DOT_NAME))
@@ -960,18 +997,10 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query, DB_QUERY_TYPE * l
 	    {
 	      if (want_spec_entity_name == true && spec->info.spec.entity_name)
 		{
-		  /**
-		  spec_name = (PT_NAME_INFO_IS_FLAGED (spec->info.spec.entity_name, PT_NAME_INFO_CURRENT_USER_OWNER) ?
-			spec->info.spec.entity_name->info.name.thin : spec->info.spec.entity_name->info.name.original);
-		  /**/
 		  spec_name = spec->info.spec.entity_name->info.name.original;
 		}
 	      else if (want_spec_entity_name == false && spec->info.spec.range_var)
 		{
-		  /**
-		  spec_name = (PT_NAME_INFO_IS_FLAGED (spec->info.spec.range_var, PT_NAME_INFO_CURRENT_USER_OWNER) ?
-			spec->info.spec.range_var->info.name.thin : spec->info.spec.range_var->info.name.original);
-		  /**/
 		  spec_name = spec->info.spec.range_var->info.name.original;
 		}
 	    }
@@ -990,18 +1019,10 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query, DB_QUERY_TYPE * l
 	    {
 	      if (want_spec_entity_name == true && spec->info.spec.entity_name)
 		{
-		  /**
-		  spec_name = (PT_NAME_INFO_IS_FLAGED (spec->info.spec.entity_name, PT_NAME_INFO_CURRENT_USER_OWNER) ?
-			spec->info.spec.entity_name->info.name.thin : spec->info.spec.entity_name->info.name.original);
-		  /**/
 		  spec_name = spec->info.spec.entity_name->info.name.original;
 		}
 	      else if (want_spec_entity_name == false && spec->info.spec.range_var)
 		{
-		  /**
-		  spec_name = (PT_NAME_INFO_IS_FLAGED (spec->info.spec.range_var, PT_NAME_INFO_CURRENT_USER_OWNER) ?
-			spec->info.spec.range_var->info.name.thin : spec->info.spec.range_var->info.name.original);
-		  /**/
   		  spec_name = spec->info.spec.range_var->info.name.original;
 		}
 	    }

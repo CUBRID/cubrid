@@ -1166,10 +1166,7 @@ au_find_user (const char *user_name)
   DB_QUERY_ERROR query_error;
   int error = NO_ERROR;
   DB_VALUE user_val;
-  /* Start of change for POC */
   const char *qp1 = "select [%s] from [%s] where [name] = '%s' using index none";
-  // const char *qp1 = "select [%s] from %s where [name] = '%s' using index none";
-  /* End of change for POC */
   MOP user_class;
   char *upper_case_name;
   size_t upper_case_name_size;
