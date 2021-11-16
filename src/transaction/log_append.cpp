@@ -402,6 +402,8 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_REPLICATION_STATEMENT:
     case LOG_2PC_START:
     case LOG_SYSOP_ATOMIC_START:
+    case LOG_START_ATOMIC_REPL:
+    case LOG_END_ATOMIC_REPL:
       assert (rlength == 0 && rdata == NULL);
 
       error_code = prior_lsa_gen_record (thread_p, node, rec_type, ulength, udata);
@@ -1239,6 +1241,8 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_SYSOP_ATOMIC_START:
+    case LOG_START_ATOMIC_REPL:
+    case LOG_END_ATOMIC_REPL:
       assert (length == 0 && data == NULL);
       break;
 

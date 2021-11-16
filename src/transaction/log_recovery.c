@@ -1726,6 +1726,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_SUPPLEMENTAL_INFO:
 	    case LOG_END_OF_LOG:
 	    case LOG_SYSOP_ATOMIC_START:
+	    case LOG_START_ATOMIC_REPL:
+	    case LOG_END_ATOMIC_REPL:
 	      break;
 
 	    case LOG_SYSOP_END:
@@ -2657,6 +2659,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_DUMMY_GENERIC:
 		case LOG_SUPPLEMENTAL_INFO:
 		case LOG_SYSOP_ATOMIC_START:
+		case LOG_START_ATOMIC_REPL:
+		case LOG_END_ATOMIC_REPL:
 		  /* Not for UNDO ... */
 		  /* Break switch to go to previous record */
 		  break;
@@ -3300,6 +3304,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_DUMMY_GENERIC:
     case LOG_END_OF_LOG:
     case LOG_SYSOP_ATOMIC_START:
+    case LOG_START_ATOMIC_REPL:
+    case LOG_END_ATOMIC_REPL:
       break;
 
     case LOG_REPLICATION_DATA:
