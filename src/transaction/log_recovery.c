@@ -1807,8 +1807,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
 
-  LOG_CS_ENTER (thread_p);
-
   if (!context.is_page_server ())
     {
       log_Gl.mvcc_table.reset_start_mvccid ();
@@ -1819,6 +1817,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
       /* Now finish all postpone operations */
       log_recovery_finish_all_postpone (thread_p);
     }
+
+  LOG_CS_ENTER (thread_p);
 
   /* Flush all dirty pages */
   logpb_flush_pages_direct (thread_p);
@@ -2348,6 +2348,20 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   UINT64 total_page_cnt = 0, read_page_cnt = 0;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+  //
+  // Unblock log critical section while running undo.
+  //
+  // During undo, pages will have to be fixed. Page buffer may be full and pages have be loaded from disk only by
+  // victimizing other pages. Page flush thread must be able to operate and it will require the log critical section.
+  //
+  // Lock log critical section again on exit.
+  //
+  assert (LOG_CS_OWN (thread_p));
+  LOG_CS_EXIT (thread_p);
+  // *INDENT-OFF*
+  scope_exit reenter_log_cs ([thread_p] { LOG_CS_ENTER (thread_p); });
+  // *INDENT-ON*
 
   /*
    * Remove from the list of transaction to abort, those that have finished
