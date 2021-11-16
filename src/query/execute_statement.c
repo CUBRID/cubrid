@@ -5833,10 +5833,8 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
 	  error = ER_GENERIC_ERROR;
 	  goto cleanup;
 	}
-      classes_names[idx] = (char *) node->info.delete_.spec->info.spec.entity_name->info.name.original;
-      // to_be_delete youngjinj
-      // classes_names[idx] = (char *) db_private_alloc (NULL, SM_MAX_IDENTIFIER_LENGTH * sizeof (char));
-      // sm_downcase_name (node->info.delete_.spec->info.spec.entity_name->info.name.original, classes_names[idx], SM_MAX_IDENTIFIER_LENGTH);
+      classes_names[idx] = (char *) db_private_alloc (NULL, SM_MAX_IDENTIFIER_LENGTH * sizeof (char));
+      sm_downcase_name (node->info.delete_.spec->info.spec.entity_name->info.name.original, classes_names[idx], SM_MAX_IDENTIFIER_LENGTH);
       locks[idx] = X_LOCK;
       if (node->info.delete_.spec->info.spec.only_all == PT_ALL)
 	{
@@ -5947,12 +5945,10 @@ cleanup:
   /* free allocated resources */
   if (classes_names != NULL)
     {
-      /* to_be_delete youngjinj
       for (idx = 0; idx < num_classes; idx++)
 	{
 	  db_private_free (NULL, classes_names[idx]);
 	}
-      */
       db_private_free (NULL, classes_names);
     }
 

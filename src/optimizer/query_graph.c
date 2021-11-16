@@ -8162,17 +8162,35 @@ void
 qo_node_fprint (QO_NODE * node, FILE * f)
 {
   PT_NODE *entity = QO_NODE_ENTITY_SPEC (node);
+  char *user_name_ptr = NULL;
+  char *copy_name = NULL;
+  char *token = NULL;
+  char *token_save = NULL;
+  const char *dot_ptr = NULL;
 
   if (QO_NODE_NAME (node))
     {
-      if (strchr (QO_NODE_NAME (node), '.')
-	  && entity && entity->info.spec.entity_name
-	  && entity->info.spec.entity_name->node_type == PT_NAME
-	  && PT_NAME_INFO_IS_FLAGED (entity->info.spec.entity_name, PT_NAME_INFO_RESOLVED_OWNER)
-	  && entity->info.spec.entity_name->info.name.thin
-	  && entity->info.spec.entity_name->info.name.thin[0] != '\0')
+      dot_ptr = strchr (QO_NODE_NAME (node), '.');
+      if (dot_ptr)
 	{
-	  fprintf (f, "%s", entity->info.spec.entity_name->info.name.thin);
+	  user_name_ptr = db_get_user_name ();
+
+	  copy_name = strndup (QO_NODE_NAME (node), strlen (QO_NODE_NAME (node)));
+	  token = strtok_r (copy_name, ".", &token_save);
+
+	  if (!pt_str_compare (user_name_ptr, token, CASE_INSENSITIVE))
+	    {
+	      /* Equal. */
+	      fprintf (f, "%s", dot_ptr + 1);
+	    }
+	  else
+	    {
+	      /* Not equal. */
+	      fprintf (f, "%s", QO_NODE_NAME (node));
+	    }
+
+	  free_and_init (copy_name);
+	  db_string_free (user_name_ptr);
 	}
       else
         {
