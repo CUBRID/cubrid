@@ -9683,7 +9683,7 @@ pr_data_writeval_disk_size (DB_VALUE * value)
  * Note:
  */
 int
-pr_index_writeval_disk_size (DB_VALUE * value)
+pr_index_writeval_disk_size (const DB_VALUE * value)
 {
   PR_TYPE *type;
   DB_TYPE dbval_type;
