@@ -142,22 +142,16 @@ extern int yybuffer_pos;
 #define PRINT_(a) printf(a)
 #define PRINT_1(a, b) printf(a, b)
 #define PRINT_2(a, b, c) printf(a, b, c)
+#define DBG_PRINT_MATCH(...)    do { fprintf(stdout, "  *** RULE) "__VA_ARGS__);  fflush(stdout); } while(0)
+#define DBG_PRINT_MATCH_LN(...) do { fprintf(stdout, "  *** RULE) "__VA_ARGS__); fprintf(stdout, "\n"); fflush(stdout); } while(0)
 #else
 #define DBG_PRINT
 #define PRINT_(a)
 #define PRINT_1(a, b)
 #define PRINT_2(a, b, c)
+#define DBG_PRINT_MATCH(...)    
+#define DBG_PRINT_MATCH_LN(...) 
 #endif
-
-#if 0 
-#if defined(#ifdef PARSER_DEBUG)
-#define DBG_RULE_MATCH(...)    do { fprintf(stdout, "  *** RULE) "__VA_ARGS__);  fflush(stdout); } while(0)
-#define DBG_RULE_MATCH_LN(...) do { fprintf(stdout, "  *** RULE) "__VA_ARGS__); fprintf(stdout, "\n"); fflush(stdout); } while(0)
-#else
-#define DBG_RULE_MATCH(...)    
-#define DBG_RULE_MATCH_LN(...) 
-#endif
-#endif // #if 0
 
 #define STACK_SIZE	128
 
@@ -395,10 +389,6 @@ int parse_one_statement (int state);
 static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 					   PT_NODE *node, PT_NODE *coll_node);
 
-static void parser_reset_cond ();
-static void parser_push_cond (bool is_in_cond);
-static bool parser_pop_cond ();
-static bool parser_top_cond ();
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
 
@@ -829,7 +819,6 @@ int g_original_buffer_len;
 %type <node> incr_arg_name__inc
 %type <node> incr_arg_name_list__dec
 %type <node> incr_arg_name__dec
-%type <node> search_condition_query_primary
 %type <node> search_condition_query
 %type <node> search_condition_expression
 %type <node> opt_select_limit_clause
@@ -1617,7 +1606,6 @@ stmt
 	:
 		{{
 			msg_ptr = 0;
-                        parser_reset_cond ();
 
 			if (this_parser->original_buffer)
 			  {
@@ -15070,14 +15058,14 @@ opt_nulls_first_or_last
 
 expression_
 	: normal_expression
-		{{
+		{{DBG_PRINT_MATCH_LN("expression_ > : normal_expression");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| predicate_expression
-		{{
+		{{DBG_PRINT_MATCH_LN("expression_ > | predicate_expression");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -15439,8 +15427,8 @@ primary
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| '(' search_condition_query_primary ')' %dprec 2
-		{{
+	| '(' search_condition_query ')' %dprec 2
+		{{DBG_PRINT_MATCH_LN("primary > | '(' search_condition_query ')' ");
 
 			PT_NODE *exp = $2;
 
@@ -15455,7 +15443,7 @@ primary
 
 		DBG_PRINT}}
 	| subquery    %dprec 1
-		{{
+		{{DBG_PRINT_MATCH_LN("primary > | subquery ");
 			parser_groupby_exception = PT_IS_SUBQUERY;
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -15468,15 +15456,6 @@ primary
 
 		}}
 	;
-
-search_condition_query_primary
-        :   {  parser_push_cond(false); }
-            search_condition_query
-                {{
-                        parser_pop_cond();
-                        $$ = $2;
-                DBG_PRINT}}
-        ;
 
 search_condition_query
 	: search_condition_expression
@@ -18149,7 +18128,7 @@ table_set_function_call
 
 search_condition
 	: search_condition OR boolean_term_xor
-		{{
+		{{DBG_PRINT_MATCH_LN("search_condition > : search_condition OR boolean_term_xor");
 			PT_NODE *arg1 = pt_check_non_logical_expr(this_parser, $1);
 			PT_NODE *arg2 = pt_check_non_logical_expr(this_parser, $3);
 			$$ = parser_make_expression (this_parser, PT_OR, arg1, arg2, NULL);
@@ -18157,7 +18136,7 @@ search_condition
 
 		DBG_PRINT}}
 	| boolean_term_xor
-		{{
+		{{DBG_PRINT_MATCH_LN("search_condition > | boolean_term_xor");
 			$$ = pt_check_non_logical_expr(this_parser, $1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -18166,7 +18145,7 @@ search_condition
 
 boolean_term_xor
 	: boolean_term_xor XOR boolean_term_is
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_term_xor > : boolean_term_xor XOR boolean_term_is");
 			PT_NODE *arg1 = pt_check_non_logical_expr(this_parser, $1);
 			PT_NODE *arg2 = pt_check_non_logical_expr(this_parser, $3);
 			$$ = parser_make_expression (this_parser, PT_XOR, arg1, arg2, NULL);
@@ -18174,7 +18153,7 @@ boolean_term_xor
 
 		DBG_PRINT}}
 	| boolean_term_is
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_term_xor > | boolean_term_is");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -18183,14 +18162,14 @@ boolean_term_xor
 
 boolean_term_is
 	: boolean_term_is is_op boolean
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_term_xor > : boolean_term_is");
 	                PT_NODE *arg = pt_check_non_logical_expr(this_parser, $1);
 			$$ = parser_make_expression (this_parser, $2, arg, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| boolean_term
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_term_xor > | boolean_term_is");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -18215,7 +18194,7 @@ is_op
 
 boolean_term
 	: boolean_term AND boolean_factor
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_term > : boolean_term AND boolean_factor");
 			PT_NODE *arg1 = pt_check_non_logical_expr(this_parser, $1);
 			PT_NODE *arg2 = pt_check_non_logical_expr(this_parser, $3);
 			$$ = parser_make_expression (this_parser, PT_AND, arg1, arg2, NULL);
@@ -18223,7 +18202,7 @@ boolean_term
 
 		DBG_PRINT}}
 	| boolean_factor
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_term > | boolean_factor");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -18233,7 +18212,7 @@ boolean_term
 
 boolean_factor
 	: NOT predicate
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_factor > : NOT predicate");
 
 			PT_NODE *arg = pt_check_non_logical_expr(this_parser, $2);
 			$$ = parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
@@ -18241,7 +18220,7 @@ boolean_factor
 
 		DBG_PRINT}}
 	| '!' predicate
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_factor > | '!' predicate");
 
 			PT_NODE *arg = pt_check_non_logical_expr(this_parser, $2);
 			$$ = parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
@@ -18249,7 +18228,7 @@ boolean_factor
 
 		DBG_PRINT}}
 	| predicate
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_factor > | predicate");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -27629,85 +27608,15 @@ pt_create_paren_expr_list (PT_NODE * exp)
   return exp;
 }
 
-#define COND_STACK_SIZE (32)
-static bool parser_cond_stack_default[COND_STACK_SIZE];
-static bool *parser_cond_stack = parser_cond_stack_default;
-static int parser_cond_sp = 0;
-static int parser_cond_limit = COND_STACK_SIZE;
-
-static void
-parser_reset_cond ()
-{
-  parser_cond_sp = 0;
-  parser_cond_stack[parser_cond_sp++] = true;
-}
-
-static void
-parser_push_cond (bool is_in_cond)
-{
-  if (parser_cond_sp >= parser_cond_limit)
-    {
-      size_t new_size = (parser_cond_limit + COND_STACK_SIZE) * sizeof (bool*);
-      bool *new_p = malloc (new_size);
-      if (new_p == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
-	  return;
-	}
-
-      memcpy (new_p, parser_cond_stack, parser_cond_limit * sizeof (bool));
-      if (parser_cond_stack != parser_cond_stack_default)
-	free (parser_cond_stack);
-
-      parser_cond_stack = new_p;
-      parser_cond_limit += COND_STACK_SIZE;
-    }
-
-  assert (parser_cond_sp >= 0);
-  parser_cond_stack[parser_cond_sp++] = is_in_cond;
-}
-
-static bool
-parser_top_cond ()
-{
-  assert (parser_cond_sp >= 1);
-  return parser_cond_stack[parser_cond_sp - 1];
-}
-
-static bool
-parser_pop_cond ()
-{
-  assert (parser_cond_sp >= 1);
-  return parser_cond_stack[--parser_cond_sp];
-}
-
 static PT_NODE *
 pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 {
    if(node)
      {
- /*
-        if(parser_top_cond() == false)
-        {
-            return pt_convert_to_logical_expr(parser, node, 1,1);
-
-           //return node;
-        }
-*/
         if (node->type_enum != PT_TYPE_LOGICAL)
           {
-             PT_ERROR (parser, node, "invalid by [CBRD-24083]");
+             PT_ERROR (parser, node, "operand must be a logical expression.");
           }
-/*
-        else if(node->node_type == PT_VALUE)
-          {
-             if (memcmp(node->info.value.text, "true", 5) == 0 || memcmp(node->info.value.text, "false", 6) == 0)
-               {
-                 return pt_convert_to_logical_expr(parser, node, 1,1);
-                 //PT_ERROR (parser, node, "invalid by [CBRD-24083] Boolean");
-               }
-          }
-*/
      }
 
      return node;
