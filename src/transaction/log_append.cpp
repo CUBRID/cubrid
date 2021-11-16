@@ -1424,6 +1424,13 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
       prior_update_header_mvcc_info (start_lsa, mvccid);
+
+      // Also set the transaction last MVCC lsa.
+      tdes->last_mvcc_lsa = node->start_lsa;
+    }
+  else if (node->log_header.type == LOG_MVCC_REDO_DATA)
+    {
+      tdes->last_mvcc_lsa = node->start_lsa;
     }
   else if (node->log_header.type == LOG_SYSOP_START_POSTPONE)
     {

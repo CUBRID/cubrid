@@ -1492,6 +1492,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
   LSA_SET_NULL (&tdes->commit_abort_lsa);
+  tdes->last_mvcc_lsa.set_null ();
   tdes->topops.last = -1;
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
@@ -1617,6 +1618,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
   LSA_SET_NULL (&tdes->commit_abort_lsa);
+  tdes->last_mvcc_lsa.set_null ();
 
   r = rmutex_initialize (&tdes->rmutex_topop, RMUTEX_NAME_TDES_TOPOP);
   assert (r == NO_ERROR);
@@ -3991,6 +3993,12 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   if (MVCCID_IS_VALID (mvccid))
     {
+      if (tdes->last_mvcc_lsa.is_null ())
+	{
+	  // No log record contains this transaction MVCCID. The PTS replication has to also complete this MVCCID so it needs
+	  // to be notified via a log record. Add a log record containing the MVCCID.
+	  // TODO
+	}
       mvcc_table->complete_mvcc (tran_index, mvccid, committed);
     }
   else
