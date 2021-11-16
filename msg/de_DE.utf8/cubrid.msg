@@ -1355,24 +1355,40 @@ $ LOADDB
 1284 Die Tabelle kann aufgrund des Primärschlüssels, auf den in %1$s verwiesen wird, nicht abgeschnitten werden. Versuchen Sie es erneut mit der Option CASCADE.
 1285 Abschneiden in Kaskade nicht möglich, da die Aktion ON DELETE des Fremdschlüssels (%1$s) nicht auf CASCADE gesetzt ist.
 
-1296 dblink - %1$s
-1297 dblink - invalid number of columns specified.
-1298 dblink - catalog _db_server class not found.
-1299 dblink - server "%1$s" not found.
-1300 dblink - server "%1$s" already exists.
-1301 dblink - Cannot update server object.
-1302 dblink - unsupported type.
-1303 dblink - invalid bind param.
-1304 dblink - password length exceeds max size.
-1305 dblink - encrypted password length is incorrect.
-1306 dblink - the checksum of the encrypted password does not match.
-1307 dblink - invalid cipher string format.
-1308 dblink - Failed to decryption password. error=%1$d".
-1309 dblink - Failed to encryption password. error=%1$d".
-1310 dblink - Multiple "%1$s" Server found.
-1311 dblink - Not allowed "%1$s" Server. 
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server. 
 
-1312 Letzter Fehler
+1318 [%1$5.5s] %2$s (%3$d)
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
