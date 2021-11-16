@@ -1204,6 +1204,8 @@ extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool 
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 extern LOG_TRAN_CLASS_COS *logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid, bool create);
+extern GLOBAL_UNIQUE_STATS *logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
+								 bool load_at_creation);
 extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
 					   int n_nulls, bool write_to_log);
 

@@ -127,8 +127,10 @@ static int logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *dat
 static int logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_tran_reset_cos_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid);
+#if 0
 static GLOBAL_UNIQUE_STATS *logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
 								 bool load_at_creation);
+#endif
 static void *logtb_global_unique_stat_alloc (void);
 static int logtb_global_unique_stat_free (void *unique_stat);
 static int logtb_global_unique_stat_init (void *unique_stat);
@@ -4761,7 +4763,7 @@ logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p)
  *    NOTE: !!! DO NOT CALL THIS FUNCTION IF YOU HAVE A LATCH ON THE BTREE
  *          HEADER. THIS CAN CAUSE A DEADLOCK BETWEEN THE LATCH AND THE MUTEX !!!
  */
-static GLOBAL_UNIQUE_STATS *
+GLOBAL_UNIQUE_STATS *
 logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool load_at_creation)
 {
   int error_code = NO_ERROR;
