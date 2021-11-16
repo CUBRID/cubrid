@@ -13879,7 +13879,35 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   // Log the postpone operation
   heap_log_postpone_heap_append_pages (thread_p, hfid, class_oid, heap_pages_array);
 
-  return NO_ERROR;
+  OR_CLASSREP *classrepr = NULL;
+  int idx, classrepr_cacheindex = -1;
+
+  classrepr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
+  assert (classrepr != NULL);
+
+  for (idx = classrepr->n_indexes - 1; idx >= 0; idx--)
+    {
+      if (btree_is_unique_type (classrepr->indexes[idx].type))
+	{
+	  GLOBAL_UNIQUE_STATS *stats = NULL;
+
+	  logtb_update_global_unique_stats_by_delta (thread_p, &classrepr->indexes[idx].btid,
+		recdes_array.size (), 0, recdes_array.size (), true);	
+	  stats = logtb_get_global_unique_stats_entry (thread_p, &classrepr->indexes[idx].btid, true);
+	  if (stats != NULL)
+	    {
+	      error_code = btree_reflect_global_unique_statistics (thread_p, stats, false);
+	      pthread_mutex_unlock (&stats->mutex);
+	    }
+	}
+    }
+
+  if (classrepr != NULL)
+    {
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
+    }
+
+  return error_code;
 }
 
 bool
