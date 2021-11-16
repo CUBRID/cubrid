@@ -143,7 +143,11 @@ extern int yybuffer_pos;
 #define PRINT_1(a, b) printf(a, b)
 #define PRINT_2(a, b, c) printf(a, b, c)
 #define DBG_PRINT_MATCH(...)    do { fprintf(stdout, "  *** RULE) "__VA_ARGS__);  fflush(stdout); } while(0)
-#define DBG_PRINT_MATCH_LN(...) do { fprintf(stdout, "  *** RULE) "__VA_ARGS__); fprintf(stdout, "\n"); fflush(stdout); } while(0)
+#define DBG_PRINT_MATCH_LN(...) do {                        \
+                fprintf(stdout, "  *** RULE) "__VA_ARGS__); \
+                fprintf(stdout, "\n");                      \
+                fflush(stdout);                             \
+              } while(0)
 #else
 #define DBG_PRINT
 #define PRINT_(a)
