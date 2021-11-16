@@ -1787,7 +1787,8 @@ static unsigned int prm_multi_range_opt_limit_flag = 0;
 
 UINT64 PRM_DB_VOLUME_SIZE = 536870912ULL;
 static UINT64 prm_db_volume_size_default = 536870912ULL;	/* 512M */
-static UINT64 prm_db_volume_size_lower = 0;
+//static UINT64 prm_db_volume_size_lower = 67108864ULL;	/* 64M */
+static UINT64 prm_db_volume_size_lower = 0;	
 static UINT64 prm_db_volume_size_upper = 21474836480ULL;	/* 20G */
 static unsigned int prm_db_volume_size_flag = 0;
 

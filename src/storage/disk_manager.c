@@ -1695,24 +1695,26 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   assert (disk_Cache->owner_extend == thread_get_entry_index (thread_p));
 
   /* expand */
-  /* what is the desired remaining free after expand? */
-  target_free = MAX ((DKNSECTS) (total * 0.01), DISK_MIN_VOLUME_SECTS);
-  /* what is the desired expansion? do not expand less than intention. */
-  nsect_extend = MAX (target_free - free, 0) + intention;
+#if 0
+  if (voltype == DB_TEMPORARY_VOLTYPE)
+    {
+      nsect_extend = intention;
+    }
+  else
+    {
+#endif
+      /* what is the desired remaining free after expand? */
+      target_free = MAX ((DKNSECTS) (total * 0.01), DISK_MIN_VOLUME_SECTS);
+      /* what is the desired expansion? do not expand less than intention. */
+      nsect_extend = MAX (target_free - free, 0) + intention;
+#if 0
+    }
+#endif
 
   if (nsect_extend <= 0)
     {
       /* no expand needed */
       return NO_ERROR;
-    }
-
-  if (voltype == DB_TEMPORARY_VOLTYPE && total + nsect_extend >= disk_Temp_max_sects)
-    {
-      /* too much temporary space */
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1,
-	  (long) disk_Temp_max_sects * DISK_SECTOR_NPAGES);
-      return ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED;
     }
 
   disk_log ("disk_extend", "extend %s disk by %d sectors.", disk_type_to_string (extend_info->voltype), nsect_extend);
@@ -4357,7 +4359,8 @@ error:
 
   if (error_code == ER_INTERRUPTED	/* interrupted error */
       || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE
-      || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ )
+      || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ 
+      || error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED)
     {
       /* this is expected. */
       return error_code;
@@ -4415,8 +4418,6 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       return ER_FAILED;
     }
 
-  extend_info = &disk_Cache->perm_purpose_info.extend_info;
-
   disk_cache_lock_reserve_for_purpose (context->purpose);
   if (context->purpose == DB_TEMPORARY_DATA_PURPOSE)
     {
@@ -4436,6 +4437,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 	}
 
       /* reserve sectors from temporary volumes */
+      extend_info = &disk_Cache->temp_purpose_info.extend_info;
       if (extend_info->nsect_free > 0)
 	{
 	  disk_reserve_from_cache_vols (DB_TEMPORARY_VOLTYPE, context);
@@ -4448,26 +4450,24 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 	    }
 	}
 
-#if 0
       if (extend_info->nsect_total + context->n_cache_reserve_remaining >= disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
-	  assert (false);
+//	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1,
 		  (long) disk_Temp_max_sects * DISK_SECTOR_NPAGES);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);
+	  disk_cache_free_reserved(context);
 	  return ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED;
 	}
-#endif
-
-      /* fall through */
+      disk_log ("disk_reserve_from_cache", "need to extend temp volume."
+		"current total : %d, needed page : %d, limit : %d.", extend_info->nsect_total,
+		context->n_cache_reserve_remaining, disk_Temp_max_sects);
     }
   else
     {
       /* permanent volume */
-//  assert (context->n_cache_reserve_remaining > 0);
-//  assert (extend_info->owner_reserve == thread_get_entry_index (thread_p));
-
+      extend_info = &disk_Cache->perm_purpose_info.extend_info;
       if (extend_info->nsect_free > context->n_cache_reserve_remaining)
 	{
 	  disk_reserve_from_cache_vols (extend_info->voltype, context);
@@ -4480,6 +4480,9 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 	    }
 	}
     }
+
+  assert (context->n_cache_reserve_remaining > 0);
+  assert (extend_info->owner_reserve == thread_get_entry_index (thread_p));
 
   /* we might have to expand */
   /* first, save our intention in case somebody else will do the expand */
@@ -4963,7 +4966,7 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
     }
   else
     {
-      disk_Temp_max_sects = MAX ((DISK_MIN_VOLUME_SECTS + 1) * DISK_SECTOR_NPAGES, disk_Temp_max_sects);
+      disk_Temp_max_sects = MAX ((DISK_MIN_VOLUME_SECTS) * DISK_SECTOR_NPAGES, disk_Temp_max_sects);
       disk_Temp_max_sects = CEIL_PTVDIV(disk_Temp_max_sects, DISK_SECTOR_NPAGES);
       disk_Temp_max_sects = DISK_SECTS_ROUND_UP(disk_Temp_max_sects);
     }

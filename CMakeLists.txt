@@ -116,7 +116,7 @@ option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ${ENABL
 option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build with JDBC driver" ON)
-option(WITH_CMSERVER "Build with Manager server" ON)
+option(WITH_CMSERVER "Build with Manager server" OFF)
 option(UNIT_TESTS "Unit tests" OFF)
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
