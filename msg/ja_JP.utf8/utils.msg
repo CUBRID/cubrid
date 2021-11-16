@@ -520,6 +520,8 @@ unloaddb: データベースからスキーマとオブジェクトをアンロ�
   -d, --data-only             オブジェクトだけを処理; デフォルト: スキーマとオブジェクト処理\n\
       --output-prefix=PREFIEX 出力ファイルのprefix; デフォルト: データベース名\n\
       --hash-file=FILE        ハッシュファイル名; デフォルト: ファイルを作るために「tmpnam()」使う。\n\
+      --latest-image          オブジェクトをダンプするとき、ログボリュームを参照せずに（MVCCを無視して）データボリューム内のオブジェクトの最新のイメージをダンプします\n\
+                              コミットされていないデータや、バキュームされていない削除されたデータが含まれる可能性があります。 デフォルト：無効\n\
   -v, --verbose               多様な進行情報を出力; デフォルト: 出力しない\n\
       --use-delimiter         識別者の最初と最後に「"」をつける; デフォルト: つけない\n\
   -S, --SA-mode               独立モードで実行\n\
@@ -623,6 +625,7 @@ cub_commdb: このユーティリティーは使わないでください。そ�
 39 -i(--immediately) オプションは、--deact-stop-all オプションと一緒に使用する必要があります。\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 --recreate-logオプションを指定せずに実行するか、アクティブなログボリュームを手動で削除してください。\n
 60 \
 emergency_patchlog: 緊急状況でデータベースログのパッチ\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1225,6 +1228,7 @@ tde：透過的データ暗号化（TDE）管理\n\
 \n\
 有効なオプション：\n\
     -p, --dba-password=PASS       DBAユーザーのパスワード。指定しない場合はプロンプトが表示されます\n\
+\n\
 操作：操作の1つを指定する必要があり、それらは排他的です\n\
     -s, --show-keys               は、データベースとキーファイル（_keys）に設定されたキー情報を出力します\n\
     -n, --generate-new-key        キーファイル（_keys）に新しいキーを生成します。最大数：128\n\

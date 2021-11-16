@@ -4763,7 +4763,7 @@ tr_check_recursivity (OID oid, OID stack[], int stack_size, bool is_statement)
   min = MIN (stack_size, TR_MAX_RECURSION_LEVEL);
   for (i = 0; i < min; i++)
     {
-      if (oid_compare (&oid, &stack[i]) == 0)
+      if (OID_EQ (&oid, &stack[i]))
 	{
 	  /* this is a STATEMENT trigger, we should not go further with the action, but we should allow the call to
 	   * succeed.
