@@ -2275,7 +2275,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
       // Log page broker is required to load log header.
-      ats_Gl.init_page_brokers ();
+      ts_Gl->init_page_brokers ();
     }
 #endif
 
@@ -2483,7 +2483,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+  if (is_active_transaction_server ())
     {
       error_code = vacuum_boot (thread_p);
       if (error_code != NO_ERROR)
@@ -2493,12 +2493,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
       else
 	{
-	  er_log_debug (ARG_FILE_LINE, "Vacuum was started on the transaction server.");
+	  er_log_debug (ARG_FILE_LINE, "Vacuum was started on the active transaction server.");
 	}
     }
   else
     {
-      er_log_debug (ARG_FILE_LINE, "Vacuum was not started on the page server.");
+      er_log_debug (ARG_FILE_LINE, "Vacuum was not started on the passive server.");
     }
 
 #if defined (SERVER_MODE)
@@ -2711,7 +2711,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif
 
   /* read only mode ? */
-  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) || get_server_type () == SERVER_TYPE_PAGE)
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) || is_passive_server ())
     {
       logtb_disable_update (NULL);
     }
@@ -2736,7 +2736,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif
 
 #if defined (SERVER_MODE)
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+  if (is_active_transaction_server ())
     {
       /* set number of hosts */
       css_set_ha_num_of_hosts (db->num_hosts);
@@ -3151,7 +3151,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
     }
   else if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      ats_Gl.finalize_page_brokers ();
+      ts_Gl->finalize_page_brokers ();
     }
 #endif
 

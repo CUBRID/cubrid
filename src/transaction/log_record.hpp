@@ -136,6 +136,8 @@ enum log_rectype
   LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
   LOG_SYSOP_ATOMIC_START = 50,	/* Log marker to start atomic operations that need to be rollbacked immediately after
                  * redo phase of recovery and before finishing postpones */
+  LOG_START_ATOMIC_REPL = 51,
+  LOG_END_ATOMIC_REPL = 52,
 
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
                                  * case. we should find a different approach */
