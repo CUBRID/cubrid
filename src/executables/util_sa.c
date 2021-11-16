@@ -361,7 +361,7 @@ createdb_with_remote_storage (UTIL_FUNCTION_ARG * arg)
       // Cannot overwrite database
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_INCOMPATIBLE_OPTIONS),
-			     CREATE_REPLACE_S, CREATE_REMOTE_STORAGE_S);
+			     CREATE_REPLACE_L, CREATE_REMOTE_STORAGE_L);
       return EXIT_FAILURE;
     }
 
