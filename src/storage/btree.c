@@ -4041,7 +4041,7 @@ btree_start_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_O
  *   key(in):
  */
 int
-btree_get_disk_size_of_key (DB_VALUE * key)
+btree_get_disk_size_of_key (const DB_VALUE * key)
 {
   if (key == NULL || DB_IS_NULL (key))
     {
@@ -12914,13 +12914,16 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   rheader->node_level = qheader->node_level;
   rheader->max_key_len = right_max_key_len;
-  if (key_cnt - leftcnt == 0 && flag_fence_insert == false)
-    {
-      /* Only key length will exist in page. Set max key length. */
-      /* Max key length would have been set when key is inserted. However, we set it here to suppress assert of
-       * btree_verify_node. */
-      rheader->max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
-    }
+//  if (key_cnt - leftcnt == 0 && flag_fence_insert == false)
+//    {
+//      /* Only key length will exist in page. Set max key length. */
+//      /* Max key length would have been set when key is inserted. However, we set it here to suppress assert of
+//       * btree_verify_node. */
+//      const short old_r_max_key_len = rheader->max_key_len;
+//      rheader->max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
+//      btree_insert_log (helper, "btree_split_node rheader->max_key_len old = %d new = %d",
+//                      old_r_max_key_len, rheader->max_key_len);
+//    }
 
   rheader->next_vpid = right_next_vpid;
 
@@ -13060,6 +13063,13 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   /* TODO : update child_vpid max_key_len */
+  assert (pheader->max_key_len >= qheader->max_key_len);
+  assert (pheader->max_key_len >= rheader->max_key_len);
+
+  btree_insert_log (helper, "btree_split_node end\n"
+		    "\tmax_key_len pheader = %d  qheader = %d  rheader = %d",
+		    pheader->max_key_len, qheader->max_key_len, rheader->max_key_len);
+
   if (sep_key)
     {
       btree_clear_key_value (&clear_sep_key, sep_key);
@@ -13928,6 +13938,9 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       btree_clear_key_value (&clear_sep_key, sep_key);
       db_private_free_and_init (thread_p, sep_key);
     }
+
+  btree_insert_log (helper, "btree_split_root.\n"
+		    "\tmax_key_len qheader = %d  rheader = %d", qheader->max_key_len, rheader->max_key_len);
 
   pgbuf_set_dirty (thread_p, P, DONT_FREE);
   pgbuf_set_dirty (thread_p, Q, DONT_FREE);
