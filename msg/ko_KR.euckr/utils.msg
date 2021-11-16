@@ -627,6 +627,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' 명령을 사용하십시�
 39 -i(--immediately)옵션은 --deact-stop-all 옵션이 지정되어야합니다.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 --recreate-log 옵션 없이 실행하거나 액티브 로그 볼륨을 직접 제거해주세요.\n
 60 \
 emergency_patchlog: 긴급한 상황에서 데이터베이스 로그 패치\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1217,6 +1218,7 @@ usage: %1$s tde <operation> [옵션] <데이터베이스-이름>\n\
 \n\
 valid options:\n\
     -p, --dba-password=PASS       DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
+\n\
 operations:\n\
     -s, --show-keys               데이터베이스에 등록된 키, 키 파일 (_keys)내의 키들에 대한 정보를 출력 \n\
     -n, --generate-new-key        키 파일 (_keys)에 새로운 키를 추가; 최대 갯수: 128\n\

@@ -1568,9 +1568,7 @@ prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex)
       return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
-#if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE, "TDE: prior_set_tde_encrypted(): rcvindex = %s\n", rv_rcvindex_string (recvindex));
-#endif /* !NDEBUG */
+  tde_er_log ("prior_set_tde_encrypted(): rcvindex = %s\n", rv_rcvindex_string (recvindex));
 
   node->tde_encrypted = true;
 

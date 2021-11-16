@@ -642,6 +642,7 @@ opţiuni valide:\n\
 39 Opţiunea -i(--immediately) trebuie folosită împreună cu opţiunea --deact-stop-all.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Rulați fără opțiunea --recreate-log sau eliminați manual volumul de jurnal activ.\n
 60 \
 emergency_patchlog: Efectuează un patch asupra bazei de date în caz de urgenţă.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1256,6 +1257,7 @@ utilizare: %1$s tde OPERARE (-s|-n|-d|-c) [OPȚIUNE] nume bază de date\n\
 \n\
 opțiuni valide:\n\
     -p, --dba-password=PASS      parola utilizatorului DBA; va solicita dacă nu specificați\n\
+\n\
 OPERAȚII: trebuie dată una dintre operațiuni și sunt exclusive\n\
     -s, --show-keys              imprimă informațiile cheie setate în baza de date și fișierul cheie (_keys)\n\
     -n, --generate-new-key       generează o nouă cheie în fișierul cheie (_keys); număr maxim: 128\n\

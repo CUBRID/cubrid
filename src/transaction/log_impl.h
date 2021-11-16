@@ -994,6 +994,8 @@ extern int logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LO
 extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages,
 					    bool decrypt_needed, LOG_PAGE * log_pgptr);
 extern int logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAGEID logical_pageid);
+extern int logpb_fetch_header_from_file (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+					 const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
 extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log_header,
 					      const char *db_fullname, const char *logpath,
 					      const char *prefix_logname, PGLENGTH * io_page_size,

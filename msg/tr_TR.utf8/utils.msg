@@ -627,6 +627,7 @@ geçerli seçenekler:\n\
 39 -i(--immediately) opsiyon seçeneği --deact-stop-all ile birlikte kullanılmalıdır.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Lütfen --recreate-log seçeneği olmadan çalıştırın veya etkin günlük birimini manuel olarak kaldırın.\n
 60 \
 emergency_patchlog: Patch acil durumlarda bir veritabanı.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1223,6 +1224,7 @@ kullanım: %1$s tde İŞLEM (-s|-n|-d|-c) [SEÇENEK] veritabanı-adı\n\
 \n\
 geçerli seçenekler:\n\
     -p, --dba-password=PASS      DBA kullanıcısının şifresi; belirtmezseniz sorulacak\n\
+\n\
 İŞLEMLER: işlemlerden biri verilmelidir ve bunlar özeldir\n\
     -s, --show-keys              veritabanında ve anahtar dosyasında (_keys) ayarlanan anahtar bilgileri yazdırır\n\
     -n, --generate-new-key       anahtar dosyasında (_keys) yeni bir anahtar oluşturur; maksimum sayı: 128\n\

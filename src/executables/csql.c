@@ -1827,7 +1827,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   /* execute the statements one-by-one */
   for (num_stmts = 0; num_stmts < total; num_stmts++)
     {
-      TSC_TICKS start_tick, end_tick;
+      TSC_TICKS start_tick, end_tick, start_commit_tick, end_commit_tick;
       TSCTIMEVAL elapsed_time;
 
       int stmt_id;
@@ -2062,6 +2062,10 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (csql_is_auto_commit_requested (csql_arg) && stmt_type != CUBRID_STMT_COMMIT_WORK
 	  && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	{
+	  if (csql_Is_time_on)
+	    {
+	      tsc_getticks (&start_commit_tick);
+	    }
 	  db_error = db_commit_transaction ();
 	  if (db_error < 0)
 	    {
@@ -2094,6 +2098,14 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  else
 	    {
 	      strncat (stmt_msg, csql_get_message (CSQL_STAT_COMMITTED_TEXT), LINE_BUFFER_SIZE - 1);
+	      if (csql_Is_time_on)
+		{
+		  char time[100];
+		  tsc_getticks (&end_commit_tick);
+		  tsc_elapsed_time_usec (&elapsed_time, end_commit_tick, start_commit_tick);
+		  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
+		  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);
+		}
 	    }
 	}
 

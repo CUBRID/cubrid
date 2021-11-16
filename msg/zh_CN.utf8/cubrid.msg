@@ -1330,7 +1330,7 @@ $ LOADDB
 1258 在%1$s中找不到数据库上的密钥集。将使用备份卷中的密钥文件。
 1259 将密钥文件从“%1$s”重命名为“%2$s”。
 1260 将密钥文件“%1$s”复制到“%2$s”。
-1261 在还原时找不到密钥（密钥索引：%1$d，创建时间：%2$s）。设置数据库的键（键索引：%3$d）。
+1261 恢复的密钥文件的第一个密钥（密钥索引：%1$d，创建时间：%2$s）已设置。
 1262 密钥文件已满。
 1263 无法对日志页面进行TDE加密（页面ID：%1$lld）。不再尝试加密此页面。
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
@@ -1362,7 +1362,42 @@ $ LOADDB
 1300 日志恢复: %1$s 阶段已完成。
 1301 日志恢复：%1$s 进度：(%2$lld/%3$lld)，%4$.2f 百分比，已用时间：%5$.2f (s)，估计剩余时间：%6$.2f (s)。
 
-1302 最后一个错误.
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s] %2$s (%3$d)
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Both dsn name and link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 活动日志卷 (%1$s) 过于健全，无法重新创建。 如果删除活动日志，可能会导致意外且不可逆转的问题。
+
+1331 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1827,6 +1862,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 为期待的参数个数 %1$d.
 304 没有找到与 %1$s() 函数兼容的签名.
 305 函数签名 %1$s 与函数参数不匹配.
+306 dblink - 缺少必需的信息.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

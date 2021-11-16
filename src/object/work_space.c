@@ -443,6 +443,10 @@ ws_insert_mop_on_hash_link (MOP mop, int slot)
   for (p = ws_Mop_table[slot].head; p != NULL; prev = p, p = p->hash_link)
     {
       c = oid_compare (WS_OID (mop), WS_OID (p));
+      if (c > 0)
+	{
+	  continue;
+	}
 
       if (c == 0)
 	{
@@ -474,8 +478,7 @@ ws_insert_mop_on_hash_link (MOP mop, int slot)
 
 	  break;
 	}
-
-      if (c < 0)
+      else			/* if (c < 0) */
 	{
 	  break;
 	}
@@ -584,13 +587,9 @@ ws_mop_if_exists (OID * oid)
 	  for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
 	    {
 	      c = oid_compare (oid, WS_OID (mop));
-	      if (c == 0)
+	      if (c <= 0)
 		{
-		  return mop;
-		}
-	      else if (c < 0)
-		{
-		  return NULL;
+		  return (c == 0) ? mop : NULL;
 		}
 	    }
 	}
@@ -652,7 +651,11 @@ ws_mop (const OID * oid, MOP class_mop)
 	  for (mop = ws_Mop_table[slot].head; mop != NULL; prev = mop, mop = mop->hash_link)
 	    {
 	      c = oid_compare (oid, WS_OID (mop));
-	      if (c == 0)
+	      if (c > 0)
+		{
+		  continue;
+		}
+	      else if (c == 0)
 		{
 		  if (mop->decached)
 		    {
@@ -684,7 +687,7 @@ ws_mop (const OID * oid, MOP class_mop)
 		    }
 		  return mop;
 		}
-	      else if (c < 0)
+	      else		/* if (c < 0) */
 		{
 		  /* find the node which is greater than I */
 		  break;

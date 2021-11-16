@@ -8681,6 +8681,67 @@ error:
 }
 
 /*
+ * log_is_active_log_sane - Check whether the active log volume is sane. Note that it does NOT guarantee that the active log volume is perfectly fine. It checks the existance of the log volume, the checksum of the log header page and compatibility.
+ *
+ * return: whether the active log volume is sane
+ *
+ *   db_fullname(in): Full name of the database
+ *   logpath(in): Directory where the log volumes reside
+ *   prefix_logname(in): Name of the log volumes. It is usually set the same as
+ *                      database name. For example, if the value is equal to
+ *                      "db", the names of the log volumes created are as
+ *                      follow:
+ *                      Active_log      = db_logactive
+ *                      Archive_logs    = db_logarchive.0
+ *                                        db_logarchive.1
+ *                                             .
+ *                                             .
+ *                                             .
+ *                                        db_logarchive.n
+ *                      Log_information = db_loginfo
+ *                      Database Backup = db_backup
+ */
+bool
+log_is_active_log_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+			const char *prefix_logname)
+{
+  LOG_HEADER hdr;
+  REL_COMPATIBILITY compat;
+  bool is_corrupted = false;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  LOG_PAGE *log_pgptr = NULL;
+  int error_code = NO_ERROR;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  error_code = logpb_fetch_header_from_file (thread_p, db_fullname, logpath, prefix_logname, &hdr, log_pgptr);
+  if (error_code != NO_ERROR)
+    {
+      _er_log_debug (ARG_FILE_LINE, "The active log volume (%s) is insane: mounting or fetching header fails.\n",
+		     logpath);
+      return false;
+    }
+
+  is_corrupted = !logpb_page_has_valid_checksum (log_pgptr);
+  if (is_corrupted == true)
+    {
+      _er_log_debug (ARG_FILE_LINE, "The active log volume (%s) is insane: the header page is corrupted.\n", logpath);
+      return false;
+    }
+
+  if (rel_is_log_compatible (hdr.db_release, rel_release_string ()) == false)
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "The active log volume (%s) is insane: unmatched release version. database release version: %s, build release version: %s\n",
+		     logpath, hdr.db_release, rel_release_string ());
+      return false;
+    }
+
+  return true;
+}
+
+/*
  * log_recreate - RECREATE THE LOG WITHOUT REMOVING THE DATABASE
  *
  * return:

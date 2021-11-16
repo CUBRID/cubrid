@@ -626,6 +626,7 @@ cub_commdb: このユーティリティーは使わないでください。そ�
 39 -i(--immediately) オプションは、--deact-stop-all オプションと一緒に使用する必要があります。\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 --recreate-logオプションを指定せずに実行するか、アクティブなログボリュームを手動で削除してください。\n
 60 \
 emergency_patchlog: 緊急状況でデータベースログのパッチ\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1230,6 +1231,7 @@ tde：透過的データ暗号化（TDE）管理\n\
 \n\
 有効なオプション：\n\
     -p, --dba-password=PASS       DBAユーザーのパスワード。指定しない場合はプロンプトが表示されます\n\
+\n\
 操作：操作の1つを指定する必要があり、それらは排他的です\n\
     -s, --show-keys               は、データベースとキーファイル（_keys）に設定されたキー情報を出力します\n\
     -n, --generate-new-key        キーファイル（_keys）に新しいキーを生成します。最大数：128\n\

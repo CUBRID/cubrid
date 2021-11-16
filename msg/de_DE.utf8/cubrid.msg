@@ -1329,7 +1329,7 @@ $ LOADDB
 1258 Der in der Datenbank festgelegte Schlüssel von %1$s kann nicht gefunden werden. Die Schlüsseldatei vom Sicherungsvolume wird verwendet.
 1259 Benennen Sie die Schlüsseldatei von "%1$s" in "%2$s" um.
 1260 Kopieren Sie die Schlüsseldatei "%1$s" nach "%2$s".
-1261 Der Schlüssel kann zum Zeitpunkt der Wiederherstellung nicht gefunden werden (Schlüsselindex: %1$d, Erstellungszeit: %2$s). Legen Sie den Schlüssel (Schlüsselindex: %3$d) für die Datenbank fest.
+1261 Der erste Schlüssel (Schlüsselindex: %1$d, Erstellungszeit: %2$s) der wiederhergestellten Schlüsseldatei wurde gesetzt.
 1262 Die Schlüsseldatei ist voll.
 1263 Die Protokollseite kann nicht mit TDE verschlüsselt werden (Seiten-ID: %1$lld). Es wird nicht mehr versucht, diese Seite zu verschlüsseln.
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
@@ -1361,7 +1361,42 @@ $ LOADDB
 1300 Log Wiederherstellung: %1$s Phase ist beendet.
 1301 Log Wiederherstellung: %1$s Fortschritt: (%2$lld/%3$lld), %4$.2f Prozent, verstrichene Zeit: %5$.2f (s), geschätzte Restzeit: %6$.2f (s).
 
-1302 Letzter Fehler
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s] %2$s (%3$d)
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Both dsn name and link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 Das aktive Protokollvolumen (%1$s) ist zu normal, um es neu zu erstellen. Wenn Sie das aktive Protokoll entfernen, kann dies zu einem unerwarteten und irreversiblen Problem führen.
+
+1333 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -1826,6 +1861,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unerwartete Anzahl von Argumenten %1$d.
 304 Konnte keine kompatible Signatur für die Funktion finden %1$s().
 305 Die Signatur %1$s ist nicht mit Funktionsargumenten kompatibel.
+306 dblink - Erforderliche Informationen fehlen.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.
