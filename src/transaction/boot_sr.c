@@ -1869,8 +1869,7 @@ exit_on_error:
 // xboot_initialize_remote_storage_server - Initialize files for transaction server with remote storage.
 //
 int
-xboot_initialize_remote_storage_server (THREAD_ENTRY * thread_p, const char *dbname,
-					const BOOT_DB_PATH_INFO * db_path_info)
+xboot_initialize_remote_storage_server (const char *dbname, const BOOT_DB_PATH_INFO * db_path_info)
 {
   int error_code = NO_ERROR;
 
@@ -1886,6 +1885,12 @@ xboot_initialize_remote_storage_server (THREAD_ENTRY * thread_p, const char *dbn
       return error_code;
     }
 
+  THREAD_ENTRY *thread_p = nullptr;
+  cubthread::initialize (thread_p);
+  // *INDENT-OFF*
+  scope_exit finalize_thread_module ([] { cubthread::finalize (); });
+  // *INDENT-ON*
+
   // Mount databases file
   int dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label, LOG_DBTXT_VOLID, 2, true);
   if (dbtxt_vdes == NULL_VOLDES)
@@ -1893,10 +1898,9 @@ xboot_initialize_remote_storage_server (THREAD_ENTRY * thread_p, const char *dbn
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-  scope_exit dismount_dbtxt ([thread_p, dbtxt_vdes]
-			     {
-			     fileio_dismount (thread_p, dbtxt_vdes);}
-  );
+  // *INDENT-OFF*
+  scope_exit dismount_dbtxt ([thread_p, dbtxt_vdes] { fileio_dismount (thread_p, dbtxt_vdes); });
+  // *INDENT-ON*
 
   // Load databases directory from file
   DB_INFO *dir = nullptr;
@@ -1906,10 +1910,9 @@ xboot_initialize_remote_storage_server (THREAD_ENTRY * thread_p, const char *dbn
       ASSERT_ERROR ();
       return error_code;
     }
-  scope_exit free_dir ([dir]
-		       {
-		       cfg_free_directory (dir);}
-  );
+  // *INDENT-OFF*
+  scope_exit free_dir ([dir] { cfg_free_directory (dir); });
+  // *INDENT-ON*
 
   // Does a database with the same name already exist?
   if (cfg_find_db_list (dir, dbname) != NULL)
