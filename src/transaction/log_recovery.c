@@ -2350,7 +2350,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   //
   // Unblock log critical section while running undo.
   //
-  // During undo, pages will have to be fixed. Page buffer may be full and pages have be loaded from disk, by
+  // During undo, pages will have to be fixed. Page buffer may be full and pages have be loaded from disk only by
   // victimizing other pages. Page flush thread must be able to operate and it will require the log critical section.
   //
   // Lock log critical section again on exit.
