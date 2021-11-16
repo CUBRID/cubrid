@@ -27619,7 +27619,7 @@ pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
      {
         if (node->type_enum != PT_TYPE_LOGICAL)
           {
-             PT_ERROR (parser, node, "operand must be a logical expression.");
+             PT_ERROR (parser, node, "operand must be logical expression.");
           }
      }
 
