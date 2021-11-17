@@ -1222,11 +1222,11 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name, SAVEPOINT_TYPE s
     }
   else
     {
-      ws_abort_mops (false);
 #if defined(SA_MODE)
       ws_clear ();
 #else /* SA_MODE */
       /* Remove any dirty objects and remove any hints */
+      ws_abort_mops (false);
       ws_filter_dirty ();
 #endif /* SA_MODE */
     }
