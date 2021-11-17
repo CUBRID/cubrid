@@ -1872,11 +1872,11 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       DISK_EXTEND_TEMP_COLLECT (volext.nsect_total);
 #endif /* SERVER_MODE */
 
-	if (voltype == DB_TEMPORARY_VOLTYPE && extend_info->nsect_total >= disk_Temp_max_sects && nsect_extend > 0)
-	  {
-	    /* prevent to extend larger than disk_Temp_max_sects */
-	    nsect_extend = 0;
-	  }
+      if (voltype == DB_TEMPORARY_VOLTYPE && extend_info->nsect_total >= disk_Temp_max_sects && nsect_extend > 0)
+	{
+	  /* prevent to extend larger than disk_Temp_max_sects */
+	  nsect_extend = 0;
+	}
     }
 
   /* finished expand */
@@ -4370,7 +4370,7 @@ error:
   log_sysop_abort (thread_p);
 
   if (error_code == ER_INTERRUPTED	/* interrupted error */
-      || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ 
+      || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */
       || error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED)
     {
       /* this is expected. */
