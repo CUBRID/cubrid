@@ -12660,7 +12660,8 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 		  VPID * Q_vpid, VPID * R_vpid, INT16 p_slot_id, BTREE_NODE_TYPE node_type, DB_VALUE * key,
 		  BTREE_INSERT_HELPER * helper, VPID * child_vpid)
 {
-  int key_cnt, leftcnt, rightcnt;
+  int pcnt, leftcnt_before, leftcnt, rightcnt;	/* key counts in: parent initially, left child before split,
+						   left child after split, right child */
   RECDES peek_rec, rec, rec_fence;
   NON_LEAF_REC nleaf_rec;
   BTREE_NODE_HEADER *pheader = NULL, *qheader = NULL;
@@ -12727,8 +12728,8 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, Q);
 #endif
 
-  key_cnt = btree_node_number_of_keys (thread_p, Q);
-  if (key_cnt <= 0)
+  leftcnt_before = btree_node_number_of_keys (thread_p, Q);
+  if (leftcnt_before <= 0)
     {
       ASSERT_ERROR_AND_SET (ret);
       goto exit_on_error;
@@ -12763,7 +12764,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       ASSERT_ERROR_AND_SET (ret);
       goto exit_on_error;
     }
-  assert (leftcnt <= key_cnt && leftcnt >= 0);
+  assert (leftcnt <= leftcnt_before && leftcnt >= 0);
 
   /* make fence record */
   if (node_type == BTREE_LEAF_NODE)
@@ -12798,7 +12799,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       flag_fence_insert = false;
     }
 
-  rightcnt = key_cnt - leftcnt;
+  rightcnt = leftcnt_before - leftcnt;
 
   /****************************************************************************
    ***   STEP 2: insert sep_key to P
@@ -12851,8 +12852,8 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
-  key_cnt = btree_node_number_of_keys (thread_p, P);
-  assert_release (key_cnt > 0);
+  pcnt = btree_node_number_of_keys (thread_p, P);
+  assert_release (pcnt > 0);
 
   pheader = btree_get_node_header (thread_p, P);
   if (pheader == NULL)
@@ -12866,7 +12867,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   btree_node_header_undo_log (thread_p, &btid->sys_btid->vfid, P);
 
-  btree_split_next_pivot (&pheader->split_info, (float) p_slot_id / key_cnt, key_cnt);
+  btree_split_next_pivot (&pheader->split_info, (float) p_slot_id / pcnt, pcnt);
 
   /* We may need to update the max_key length if the mid key is larger than the max key length. This can happen due to
    * disk padding when the prefix key length approaches the fixed key length. */
@@ -12914,16 +12915,16 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   rheader->node_level = qheader->node_level;
   rheader->max_key_len = right_max_key_len;
-//  if (key_cnt - leftcnt == 0 && flag_fence_insert == false)
-//    {
-//      /* Only key length will exist in page. Set max key length. */
-//      /* Max key length would have been set when key is inserted. However, we set it here to suppress assert of
-//       * btree_verify_node. */
-//      const short old_r_max_key_len = rheader->max_key_len;
-//      rheader->max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
-//      btree_insert_log (helper, "btree_split_node rheader->max_key_len old = %d new = %d",
-//                      old_r_max_key_len, rheader->max_key_len);
-//    }
+  if (leftcnt_before - leftcnt == 0 && flag_fence_insert == false)
+    {
+      /* Only key length will exist in page. Set max key length. */
+      /* Max key length would have been set when key is inserted. However, we set it here to suppress assert of
+       * btree_verify_node. */
+      const short old_r_max_key_len = rheader->max_key_len;
+      rheader->max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (btree_get_disk_size_of_key (key));
+      btree_insert_log (helper, "btree_split_node rheader->max_key_len old = %d new = %d",
+			old_r_max_key_len, rheader->max_key_len);
+    }
 
   rheader->next_vpid = right_next_vpid;
 
