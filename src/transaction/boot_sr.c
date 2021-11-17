@@ -84,6 +84,7 @@
 #include "tde.h"
 #include "porting.h"
 #include "page_server.hpp"
+#include "scope_exit.hpp"
 #include "server_type.hpp"
 #include "log_manager.h"
 
@@ -1577,70 +1578,74 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   /*
    * get the database directory information in write mode.
    */
-
-  if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL
-#if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
-/* Temporary fix for NT file locking problem */
-      || (dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label, LOG_DBTXT_VOLID, 2, true)) == NULL_VOLDES
-#endif /* !WINDOWS || DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
-    )
+  if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL)
     {
       goto exit_on_error;
     }
 
-  if (dbtxt_vdes != NULL_VOLDES)
+#if !defined (WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
+  /* Temporary fix for NT file locking problem */
+  dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label, LOG_DBTXT_VOLID, 2, true);
+  if (dbtxt_vdes == NULL_VOLDES)
     {
-      if (cfg_read_directory_ex (dbtxt_vdes, &dir, true) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      goto exit_on_error;
     }
-  else
+  error_code = cfg_read_directory_ex (dbtxt_vdes, &dir, true);
+  if (error_code != NO_ERROR)
     {
-      if (cfg_read_directory (&dir, true) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      goto exit_on_error;
     }
-
-  if (dir != NULL && ((db = cfg_find_db_list (dir, client_credential->get_db_name ())) != NULL))
+#else // WINDOWS && DONT_USE_MANDATORY_LOCK_IN_WINDOWS
+  error_code = cfg_read_directory (&dir, true);
+  if (error_code != NO_ERROR)
     {
-      if (db_overwrite == false)
+      goto exit_on_error;
+    }
+#endif // WINDOWS && DONT_USE_MANDATORY_LOCK_IN_WINDOWS
+
+  if (dir != NULL)
+    {
+      db = cfg_find_db_list (dir, client_credential->get_db_name ());
+      if (db != NULL)
 	{
-	  /* There is a database with the same name and we cannot overwrite it */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, client_credential->get_db_name ());
-	  goto exit_on_error;
-	}
-      else
-	{
-	  /*
-	   * Delete the database.. to make sure that all backups, log archives, and
-	   * so on are removed... then continue...
-	   *
-	   * Note: we do not call xboot_delete since it shuttdown the system and
-	   *       update database.txt that we have a read copy of its content.
-	   */
-
-	  /* Note: for database replacement, we need to remove the old database with its original path! */
-	  memset (original_namebuf, 0, sizeof (original_namebuf));
-
-	  /* Compose the original full name of the database */
-	  snprintf (original_namebuf, sizeof (original_namebuf), "%s%c%s", db->pathname, PATH_SEPARATOR, db->name);
-
-	  error_code = boot_remove_all_volumes (thread_p, original_namebuf, db->logpath, log_prefix, false, true);
-	  if (error_code != NO_ERROR)
+	  if (db_overwrite == false)
 	    {
+	      /* There is a database with the same name and we cannot overwrite it */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, client_credential->get_db_name ());
 	      goto exit_on_error;
 	    }
-	}
-    }
+	  else
+	    {
+	      /*
+	       * Delete the database.. to make sure that all backups, log archives, and
+	       * so on are removed... then continue...
+	       *
+	       * Note: we do not call xboot_delete since it shutdown the system and
+	       *       update database.txt that we have a read copy of its content.
+	       */
 
-  if (dbtxt_vdes != NULL_VOLDES)
-    {
-      fileio_dismount (thread_p, dbtxt_vdes);	/* unlock the directory file */
-      dbtxt_vdes = NULL_VOLDES;
+	      /* Note: for database replacement, we need to remove the old database with its original path! */
+	      memset (original_namebuf, 0, sizeof (original_namebuf));
+
+	      /* Compose the original full name of the database */
+	      snprintf (original_namebuf, sizeof (original_namebuf), "%s%c%s", db->pathname, PATH_SEPARATOR, db->name);
+
+	      error_code = boot_remove_all_volumes (thread_p, original_namebuf, db->logpath, log_prefix, false, true);
+	      if (error_code != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+	    }
+	}
+
+      if (dbtxt_vdes != NULL_VOLDES)
+	{
+	  fileio_dismount (thread_p, dbtxt_vdes);	/* unlock the directory file */
+	  dbtxt_vdes = NULL_VOLDES;
+	}
       cfg_free_directory (dir);
       dir = NULL;
+      db = NULL;
     }
 
   error_code =
@@ -1859,6 +1864,78 @@ exit_on_error:
   cubthread::finalize ();
 
   return NULL_TRAN_INDEX;
+}
+
+// xboot_initialize_remote_storage_server - Initialize files for transaction server with remote storage.
+//
+int
+xboot_initialize_remote_storage_server (const char *dbname, const BOOT_DB_PATH_INFO * db_path_info)
+{
+  int error_code = NO_ERROR;
+
+  //
+  //  Add new entry into databases.txt file.
+  //
+
+  // Get databases file label
+  char dbtxt_label[PATH_MAX];
+  if (cfg_maycreate_get_directory_filename (dbtxt_label) == nullptr)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  THREAD_ENTRY *thread_p = nullptr;
+  cubthread::initialize (thread_p);
+  // *INDENT-OFF*
+  scope_exit finalize_thread_module ([] { cubthread::finalize (); });
+  // *INDENT-ON*
+
+  // Mount databases file
+  int dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label, LOG_DBTXT_VOLID, 2, true);
+  if (dbtxt_vdes == NULL_VOLDES)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  // *INDENT-OFF*
+  scope_exit dismount_dbtxt ([thread_p, dbtxt_vdes] { fileio_dismount (thread_p, dbtxt_vdes); });
+  // *INDENT-ON*
+
+  // Load databases directory from file
+  DB_INFO *dir = nullptr;
+  error_code = cfg_read_directory_ex (dbtxt_vdes, &dir, true);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  // *INDENT-OFF*
+  scope_exit free_dir ([dir] { cfg_free_directory (dir); });
+  // *INDENT-ON*
+
+  // Does a database with the same name already exist?
+  if (cfg_find_db_list (dir, dbname) != NULL)
+    {
+      /* There is a database with the same name and we cannot overwrite it */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, dbname);
+      return ER_BO_DATABASE_EXISTS;
+    }
+
+  // Add database to directory
+  DB_INFO *db = cfg_add_db (&dir, dbname, db_path_info->db_path, db_path_info->log_path, db_path_info->lob_path,
+			    db_path_info->db_host);
+  if (db == nullptr || db->name == nullptr || db->pathname == nullptr || db->logpath == nullptr
+      || db->lobpath == nullptr || db->hosts == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
+  // Flush databases directory to file
+  cfg_write_directory_ex (dbtxt_vdes, dir);
+
+  return NO_ERROR;
 }
 
 static int

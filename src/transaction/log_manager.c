@@ -278,6 +278,8 @@ static LOG_PAGE *log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, F
 						      LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						  LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_trantable_snapshot (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+						     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						    LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
@@ -482,6 +484,13 @@ log_to_string (LOG_RECTYPE type)
 
     case LOG_SYSOP_ATOMIC_START:
       return "LOG_SYSOP_ATOMIC_START";
+
+    case LOG_START_ATOMIC_REPL:
+      return "LOG_START_ATOMIC_REPL";
+    case LOG_END_ATOMIC_REPL:
+      return "LOG_END_ATOMIC_REPL";
+    case LOG_TRANTABLE_SNAPSHOT:
+      return "LOG_TRANTABLE_SNAPSHOT";
 
     case LOG_DUMMY_HA_SERVER_STATE:
       return "LOG_DUMMY_HA_SERVER_STATE";
@@ -3519,6 +3528,29 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
 
   return &tdes->savept_lsa;
 }
+
+// *INDENT-OFF*
+void
+log_append_trantable_snapshot (THREAD_ENTRY *thread_p, const cublog::checkpoint_info &chkpt_info)
+{
+  cubpacking::packer packer;
+  size_t packed_size = chkpt_info.get_packed_size (packer, 0);
+  std::unique_ptr<char[]> rv_data_buffer (new char[packed_size]);
+  packer.set_buffer (rv_data_buffer.get (), packed_size);
+  chkpt_info.pack (packer);
+
+  LOG_PRIOR_NODE *node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_TRANTABLE_SNAPSHOT, RV_NOT_DEFINED, NULL, (int) packed_size,
+				   rv_data_buffer.get (), 0, NULL);
+  assert (node != nullptr);
+
+  auto trantable_snapshot_recp = (LOG_REC_TRANTABLE_SNAPSHOT *) node->data_header;
+  trantable_snapshot_recp->snapshot_lsa = chkpt_info.get_snapshot_lsa ();
+  trantable_snapshot_recp->length = packed_size;
+
+  (void) prior_lsa_next_record (thread_p, node, LOG_FIND_CURRENT_TDES (thread_p));
+}
+// *INDENT-ON*
 
 /*
  * log_find_savept_lsa - FIND LSA ADDRESS OF GIVEN SAVEPOINT
@@ -6874,6 +6906,19 @@ log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 }
 
 static LOG_PAGE *
+log_dump_record_trantable_snapshot (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  const LOG_REC_TRANTABLE_SNAPSHOT *trantable_snapshot = nullptr;
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*trantable_snapshot), log_lsa, log_page_p);
+  trantable_snapshot = (LOG_REC_TRANTABLE_SNAPSHOT *) (log_page_p->area + log_lsa->offset);
+
+  fprintf (out_fp, " Snapshot_LSA = %lld|%d, length =%zu", LSA_AS_ARGS (&trantable_snapshot->snapshot_lsa),
+	   trantable_snapshot->length);
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
 log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_SUPPLEMENT *supplement;
@@ -6977,6 +7022,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_ha_server_state (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
+    case LOG_TRANTABLE_SNAPSHOT:
+      log_page_p = log_dump_record_trantable_snapshot (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
     case LOG_SUPPLEMENTAL_INFO:
       log_page_p = log_dump_record_supplemental_info (thread_p, out_fp, log_lsa, log_page_p);
       break;
@@ -6990,6 +7039,8 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
+    case LOG_START_ATOMIC_REPL:
+    case LOG_END_ATOMIC_REPL:
       fprintf (out_fp, "\n");
       /* That is all for this kind of log record */
       break;
@@ -7902,6 +7953,8 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
+	    case LOG_START_ATOMIC_REPL:
+	    case LOG_END_ATOMIC_REPL:
 	    case LOG_SUPPLEMENTAL_INFO:
 	      break;
 
@@ -7920,6 +7973,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_2PC_COMMIT_INFORM_PARTICPS:
 	    case LOG_2PC_RECV_ACK:
 	    case LOG_DUMMY_CRASH_RECOVERY:
+	    case LOG_TRANTABLE_SNAPSHOT:
 	    case LOG_END_OF_LOG:
 	    case LOG_SMALLER_LOGREC_TYPE:
 	    case LOG_LARGER_LOGREC_TYPE:
@@ -8335,6 +8389,8 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_DUMMY_OVF_RECORD:
 		    case LOG_DUMMY_GENERIC:
 		    case LOG_SUPPLEMENTAL_INFO:
+		    case LOG_START_ATOMIC_REPL:
+		    case LOG_END_ATOMIC_REPL:
 		      break;
 
 		    case LOG_POSTPONE:
@@ -8388,6 +8444,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_2PC_COMMIT_INFORM_PARTICPS:
 		    case LOG_2PC_RECV_ACK:
 		    case LOG_DUMMY_CRASH_RECOVERY:
+		    case LOG_TRANTABLE_SNAPSHOT:
 		    case LOG_SMALLER_LOGREC_TYPE:
 		    case LOG_LARGER_LOGREC_TYPE:
 		    default:

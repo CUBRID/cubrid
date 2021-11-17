@@ -7352,6 +7352,11 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
     trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
 
+    // Append to log
+    log_append_trantable_snapshot (thread_p, trantable_checkpoint_info);
+
+    // Write to log meta file
+
     // loading the transaction table snapshot ensures also that a snapshot lsa has been set
     trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
 
