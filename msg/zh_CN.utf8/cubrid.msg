@@ -1330,7 +1330,7 @@ $ LOADDB
 1258 在%1$s中找不到数据库上的密钥集。将使用备份卷中的密钥文件。
 1259 将密钥文件从“%1$s”重命名为“%2$s”。
 1260 将密钥文件“%1$s”复制到“%2$s”。
-1261 在还原时找不到密钥（密钥索引：%1$d，创建时间：%2$s）。设置数据库的键（键索引：%3$d）。
+1261 恢复的密钥文件的第一个密钥（密钥索引：%1$d，创建时间：%2$s）已设置。
 1262 密钥文件已满。
 1263 无法对日志页面进行TDE加密（页面ID：%1$lld）。不再尝试加密此页面。
 1264 Error reserved for scalability development.
@@ -1395,7 +1395,9 @@ $ LOADDB
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
-1332 最后一个错误.
+1332 活动日志卷 (%1$s) 过于健全，无法重新创建。 如果删除活动日志，可能会导致意外且不可逆转的问题。
+
+1331 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
