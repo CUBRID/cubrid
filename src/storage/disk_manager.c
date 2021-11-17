@@ -1740,7 +1740,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	  return error_code;
 	}
 
-       log_sysop_commit (thread_p);
+      log_sysop_commit (thread_p);
       assert (nsect_free_new >= to_expand);
 
       if (extend_info->nsect_total == extend_info->nsect_max)
@@ -1779,8 +1779,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 #endif /* SERVER_MODE */
 	  return NO_ERROR;
 	}
-      else if (voltype == DB_TEMPORARY_VOLTYPE 
-	  && extend_info->nsect_total >= disk_Temp_max_sects)
+      else if (voltype == DB_TEMPORARY_VOLTYPE && extend_info->nsect_total >= disk_Temp_max_sects)
 	{
 	  /* prevent to extend larger than disk_Temp_max_sects */
 #if defined (SERVER_MODE)
@@ -1873,8 +1872,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       DISK_EXTEND_TEMP_COLLECT (volext.nsect_total);
 #endif /* SERVER_MODE */
 
-	if (voltype == DB_TEMPORARY_VOLTYPE 
-	    && extend_info->nsect_total >= disk_Temp_max_sects && nsect_extend > 0)
+	if (voltype == DB_TEMPORARY_VOLTYPE && extend_info->nsect_total >= disk_Temp_max_sects && nsect_extend > 0)
 	  {
 	    /* prevent to extend larger than disk_Temp_max_sects */
 	    nsect_extend = 0;
@@ -4372,8 +4370,7 @@ error:
   log_sysop_abort (thread_p);
 
   if (error_code == ER_INTERRUPTED	/* interrupted error */
-      || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE
-      || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ 
+      || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ 
       || error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED)
     {
       /* this is expected. */
@@ -4472,7 +4469,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1,
 		  (long) disk_Temp_max_sects * DISK_SECTOR_NPAGES);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);
-	  disk_cache_free_reserved(context);
+	  disk_cache_free_reserved (context);
 	  return ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED;
 	}
     }
@@ -4979,8 +4976,8 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
   else
     {
       disk_Temp_max_sects = MAX ((DISK_MIN_VOLUME_SECTS) * DISK_SECTOR_NPAGES, disk_Temp_max_sects);
-      disk_Temp_max_sects = CEIL_PTVDIV(disk_Temp_max_sects, DISK_SECTOR_NPAGES);
-      disk_Temp_max_sects = DISK_SECTS_ROUND_UP(disk_Temp_max_sects);
+      disk_Temp_max_sects = CEIL_PTVDIV (disk_Temp_max_sects, DISK_SECTOR_NPAGES);
+      disk_Temp_max_sects = DISK_SECTS_ROUND_UP (disk_Temp_max_sects);
     }
 
   disk_Logging = prm_get_bool_value (PRM_ID_DISK_LOGGING);
