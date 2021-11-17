@@ -1879,6 +1879,7 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
     case PT_JOIN_LEFT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
       QO_ADD_RIGHT_DEP_SET (on_node, p_node);
+      QO_ADD_OUTER_DEP_SET (on_node, p_node);
       break;
     case PT_JOIN_RIGHT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
