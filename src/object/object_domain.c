@@ -10316,24 +10316,17 @@ tp_value_change_coll_and_codeset (DB_VALUE * src, DB_VALUE * dest, int coll_id, 
 static DB_VALUE_COMPARE_RESULT
 oidcmp (OID * oid1, OID * oid2)
 {
-  DB_VALUE_COMPARE_RESULT status;
-  int c;
-
-  c = oid_compare (oid1, oid2);
+  int c = oid_compare (oid1, oid2);
   if (c < 0)
     {
-      status = DB_LT;
+      return DB_LT;
     }
   else if (c > 0)
     {
-      status = DB_GT;
-    }
-  else
-    {
-      status = DB_EQ;
+      return DB_GT;
     }
 
-  return status;
+  return DB_EQ;
 }
 
 /*

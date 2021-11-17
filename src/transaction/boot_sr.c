@@ -2948,6 +2948,7 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
   char mk_path[PATH_MAX] = { 0, };
   char mk_path_old[PATH_MAX] = { 0, };
   char ctime_buf[CTIME_MAX];
+  int time_str_len;
   unsigned char master_key[TDE_MASTER_KEY_LENGTH];
   time_t created_time;
   int mk_index;
@@ -3045,9 +3046,14 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
       goto exit;
     }
 
-  ctime_r (&keyinfo.created_time, ctime_buf);
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_CHANGE_MASTER_KEY, 3, keyinfo.mk_index, ctime_buf,
-	  mk_index);
+  ctime_r (&created_time, ctime_buf);
+
+  time_str_len = strlen (ctime_buf);
+  if (time_str_len > 0 && ctime_buf[time_str_len - 1] == '\n')
+    {
+      ctime_buf[time_str_len - 1] = '\0';
+    }
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_CHANGE_MASTER_KEY, 2, mk_index, ctime_buf);
 
   if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
     {
@@ -5632,6 +5638,13 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 
   if (recreate_log == true)
     {
+      if (log_is_active_log_sane (thread_p, boot_Db_full_name, log_path, log_prefix))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_TOO_SANE_TO_RECREATE, 1, log_path);
+	  error_code = ER_LOG_TOO_SANE_TO_RECREATE;
+	  goto error_exit;
+	}
+
       if (log_npages <= 0)
 	{
 	  /* Use the default that is the size of the database */

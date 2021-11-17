@@ -1696,8 +1696,9 @@
 #define ER_DBLINK_DEV_RESERVED_ERROR30              -1330
 #define ER_DBLINK_DEV_RESERVED_ERROR31              -1331
 
-#define ER_LAST_ERROR                               -1332
+#define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
 
+#define ER_LAST_ERROR                               -1333
 /*
  * CAUTION!
  *

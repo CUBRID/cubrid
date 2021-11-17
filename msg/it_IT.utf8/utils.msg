@@ -626,6 +626,7 @@ opzioni valide:\n\
 39 Opzione -i(--immediately) deve essere utilizzata con l'opzione --deact-stop-all.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Eseguire senza l'opzione --recreate-log o rimuovere manualmente il volume di log attivo.\n
 60 \
 emergency_patchlog: Patch di un database in caso di emergenza.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1225,6 +1226,7 @@ utilizzo: %1$s tde OPERAZIONE (-s|-n|-d|-c) [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
     -p, --dba-password=PASS    password dell'utente DBA; chiederà se non si specifica\n\
+\n\
 OPERAZIONI: una delle operazioni deve essere assegnata e sono esclusive\n\
     -s, --show-keys            stampa le informazioni sulla chiave impostate nel database e il file della chiave (_keys)\n\
     -n, --generate-new-key     genera una nuova chiave nel file chiave (_keys); conteggio massimo: 128\n\
