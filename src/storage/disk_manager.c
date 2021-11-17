@@ -1695,21 +1695,10 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   assert (disk_Cache->owner_extend == thread_get_entry_index (thread_p));
 
   /* expand */
-#if 0
-  if (voltype == DB_TEMPORARY_VOLTYPE)
-    {
-      nsect_extend = intention;
-    }
-  else
-    {
-#endif
-      /* what is the desired remaining free after expand? */
-      target_free = MAX ((DKNSECTS) (total * 0.01), DISK_MIN_VOLUME_SECTS);
-      /* what is the desired expansion? do not expand less than intention. */
-      nsect_extend = MAX (target_free - free, 0) + intention;
-#if 0
-    }
-#endif
+  /* what is the desired remaining free after expand? */
+  target_free = MAX ((DKNSECTS) (total * 0.01), DISK_MIN_VOLUME_SECTS);
+  /* what is the desired expansion? do not expand less than intention. */
+  nsect_extend = MAX (target_free - free, 0) + intention;
 
   if (nsect_extend <= 0)
     {
@@ -1734,6 +1723,10 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       assert (extend_info->volid_extend != NULL_VOLID);
 
       to_expand = MIN (nsect_extend, max - total);
+      if (voltype == DB_TEMPORARY_VOLTYPE)
+	{
+	  to_expand = MIN (to_expand, disk_Temp_max_sects - total);
+	}
 
       log_sysop_start (thread_p);
 
@@ -1747,7 +1740,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	  return error_code;
 	}
 
-      log_sysop_commit (thread_p);
+       log_sysop_commit (thread_p);
       assert (nsect_free_new >= to_expand);
 
       if (extend_info->nsect_total == extend_info->nsect_max)
@@ -1786,6 +1779,16 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 #endif /* SERVER_MODE */
 	  return NO_ERROR;
 	}
+      else if (voltype == DB_TEMPORARY_VOLTYPE 
+	  && extend_info->nsect_total >= disk_Temp_max_sects)
+	{
+	  /* prevent to extend larger than disk_Temp_max_sects */
+#if defined (SERVER_MODE)
+	  DISK_EXTEND_TEMP_REGISTER ();
+#endif /* SERVER_MODE */
+	  return NO_ERROR;
+	}
+
       assert (extend_info->nsect_total == extend_info->nsect_max);
     }
   assert (nsect_extend > 0);
@@ -1819,6 +1822,10 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       volext.nsect_total = MAX (volext.nsect_total, DISK_MIN_VOLUME_SECTS);
       /* we always keep rounded number of sectors */
       volext.nsect_total = DISK_SECTS_ROUND_UP (volext.nsect_total);
+      if (voltype == DB_TEMPORARY_VOLTYPE)
+	{
+	  volext.nsect_total = MIN (volext.nsect_total, disk_Temp_max_sects - extend_info->nsect_total);
+	}
 
       /* add new volume */
       (void) logtb_set_check_interrupt (thread_p, false);
@@ -1865,6 +1872,13 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 #if defined (SERVER_MODE)
       DISK_EXTEND_TEMP_COLLECT (volext.nsect_total);
 #endif /* SERVER_MODE */
+
+	if (voltype == DB_TEMPORARY_VOLTYPE 
+	    && extend_info->nsect_total >= disk_Temp_max_sects && nsect_extend > 0)
+	  {
+	    /* prevent to extend larger than disk_Temp_max_sects */
+	    nsect_extend = 0;
+	  }
     }
 
   /* finished expand */
@@ -4424,6 +4438,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       /* if we want to allocate temporary files, we have two options: preallocated permanent volumes (but with the
        * purpose of temporary files) or temporary volumes. try first the permanent volumes */
 
+      /* reserve sectors from permanent temp volumes */
       if (disk_Cache->temp_purpose_info.nsect_perm_free > 0)
 	{
 	  disk_reserve_from_cache_vols (DB_PERMANENT_VOLTYPE, context);
@@ -4436,7 +4451,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 	    }
 	}
 
-      /* reserve sectors from temporary volumes */
+      /* reserve sectors from temporary temp volumes */
       extend_info = &disk_Cache->temp_purpose_info.extend_info;
       if (extend_info->nsect_free > 0)
 	{
@@ -4450,19 +4465,16 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 	    }
 	}
 
+      /* check that the temporary temp volume can be extended with the requested sector. */
       if (extend_info->nsect_total + context->n_cache_reserve_remaining >= disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
-//	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1,
 		  (long) disk_Temp_max_sects * DISK_SECTOR_NPAGES);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);
 	  disk_cache_free_reserved(context);
 	  return ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED;
 	}
-      disk_log ("disk_reserve_from_cache", "need to extend temp volume."
-		"current total : %d, needed page : %d, limit : %d.", extend_info->nsect_total,
-		context->n_cache_reserve_remaining, disk_Temp_max_sects);
     }
   else
     {
