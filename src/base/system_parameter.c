@@ -681,6 +681,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ENABLE_NEW_LFHASH "new_lfhash"
 #define PRM_NAME_HEAP_INFO_CACHE_LOGGING "heap_info_cache_logging"
 #define PRM_NAME_TDE_DEFAULT_ALGORITHM "tde_default_algorithm"
+#define PRM_NAME_ER_LOG_TDE "er_log_tde"
 
 #define PRM_NAME_GENERAL_RESERVE_01 "general_reserve_01"
 
@@ -2298,6 +2299,10 @@ static unsigned int prm_heap_info_cache_logging_flag = 0;
 int PRM_TDE_DEFAULT_ALGORITHM = TDE_ALGORITHM_AES;
 static int prm_tde_default_algorithm = TDE_ALGORITHM_AES;
 static unsigned int prm_tde_default_algorithm_flag = 0;
+
+int PRM_ER_LOG_TDE = false;
+static int prm_er_log_tde_default = false;
+static unsigned int prm_er_log_tde_flag = 0;
 
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
@@ -5933,6 +5938,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_tde_default_algorithm,
    (void *) &PRM_TDE_DEFAULT_ALGORITHM,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ER_LOG_TDE,
+   PRM_NAME_ER_LOG_TDE,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_er_log_tde_flag,
+   (void *) &prm_er_log_tde_default,
+   (void *) &PRM_ER_LOG_TDE,
+   (void *) NULL,
+   (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
