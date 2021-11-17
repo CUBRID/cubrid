@@ -1728,6 +1728,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_SYSOP_ATOMIC_START:
 	    case LOG_START_ATOMIC_REPL:
 	    case LOG_END_ATOMIC_REPL:
+	    case LOG_TRANTABLE_SNAPSHOT:
 	      break;
 
 	    case LOG_SYSOP_END:
@@ -2675,6 +2676,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_SYSOP_ATOMIC_START:
 		case LOG_START_ATOMIC_REPL:
 		case LOG_END_ATOMIC_REPL:
+		case LOG_TRANTABLE_SNAPSHOT:
 		  /* Not for UNDO ... */
 		  /* Break switch to go to previous record */
 		  break;
@@ -3332,6 +3334,18 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_REPLICATION), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, repl_log_length, &log_lsa, log_pgptr);
       break;
+
+    case LOG_TRANTABLE_SNAPSHOT:
+      {
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TRANTABLE_SNAPSHOT), &log_lsa, log_pgptr);
+
+	const auto trantable_snapshot = (LOG_REC_TRANTABLE_SNAPSHOT *) (log_pgptr->area + log_lsa.offset);
+	const size_t rv_length = trantable_snapshot->length;
+
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_TRANTABLE_SNAPSHOT), &log_lsa, log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, rv_length, &log_lsa, log_pgptr);
+	break;
+      }
 
     case LOG_DUMMY_HA_SERVER_STATE:
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_HA_SERVER_STATE), &log_lsa, log_pgptr);

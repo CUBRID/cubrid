@@ -1728,6 +1728,7 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY *thread_p, LOG_RECTYPE log_t
     case LOG_SUPPLEMENTAL_INFO:
     case LOG_START_ATOMIC_REPL:
     case LOG_END_ATOMIC_REPL:
+    case LOG_TRANTABLE_SNAPSHOT:
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:
