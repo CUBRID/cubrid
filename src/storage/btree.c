@@ -4041,7 +4041,7 @@ btree_start_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_O
  *   key(in):
  */
 int
-btree_get_disk_size_of_key (const DB_VALUE * key)
+btree_get_disk_size_of_key (DB_VALUE * key)
 {
   if (key == NULL || DB_IS_NULL (key))
     {
