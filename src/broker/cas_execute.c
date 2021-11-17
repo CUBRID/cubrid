@@ -9390,7 +9390,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
     {
       if (find_cross_ref)
 	{
-	  if (WS_ISVID (fktable_obj) || oid_compare (WS_REAL_OID (fktable_obj), &(fk_info->self_oid)) != 0)
+	  if (WS_ISVID (fktable_obj) || OID_EQ (WS_REAL_OID (fktable_obj), &(fk_info->self_oid)) == false)
 	    {
 	      continue;
 	    }

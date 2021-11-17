@@ -1656,6 +1656,12 @@
 #define ER_CDC_NULL_EXTRACTION_LSA                  -1293
 #define ER_CDC_LOGINFO_ENTRY_GENERATED              -1294
 #define ER_CDC_IGNORE_LOG_INFO                      -1295
+#define ER_LOG_RECOVERY_ANALYSIS_STARTED            -1296
+#define ER_LOG_RECOVERY_REDO_STARTED                -1297
+#define ER_LOG_RECOVERY_UNDO_STARTED                -1298
+#define ER_LOG_RECOVERY_PHASE_FINISHING_UP          -1299
+#define ER_LOG_RECOVERY_PHASE_FINISHED              -1300
+#define ER_LOG_RECOVERY_PROGRESS                    -1301
 
 #define ER_DBLINK                                   -1302
 #define ER_DBLINK_INVALID_COLUMNS_SPECIFIED         -1303
@@ -1690,8 +1696,9 @@
 #define ER_DBLINK_DEV_RESERVED_ERROR30              -1330
 #define ER_DBLINK_DEV_RESERVED_ERROR31              -1331
 
-#define ER_LAST_ERROR                               -1332
+#define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
 
+#define ER_LAST_ERROR                               -1333
 /*
  * CAUTION!
  *

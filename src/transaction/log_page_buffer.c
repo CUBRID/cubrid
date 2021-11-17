@@ -351,9 +351,6 @@ static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, 
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
-static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
-					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
-					       LOG_PAGE * log_pgptr);
 static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32);
 static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
 
@@ -1497,7 +1494,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
  *
  * NOTE: Should be used only during boot sequence.
  */
-static int
+int
 logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				    const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
@@ -6652,12 +6649,18 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
   return fileio_is_volume_exist (log_Name_active);
 }
 
+/* logpb_checkpoint_trans - checkpoint a transaction if it is valid for checkpointing
+ */
 void
 logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, int &ntrans, int &ntops,
 			LOG_LSA & smallest_lsa)
 {
   LOG_INFO_CHKPT_TRANS *chkpt_entry = &chkpt_entries[ntrans];
-  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->tail_lsa))
+  /* - commit_abort_lsa is filled when either commit or abbort entry is appended to the transaction;
+   *    the last part of the condition has the effect that the actual transaction state is ignored by the
+   *    checkpoint mechanism as long as either the commit or the abort log records have been appended
+   */
+  if (tdes != NULL && tdes->trid != NULL_TRANID && !tdes->tail_lsa.is_null () && tdes->commit_abort_lsa.is_null ())
     {
       chkpt_entry->isloose_end = tdes->isloose_end;
       chkpt_entry->trid = tdes->trid;

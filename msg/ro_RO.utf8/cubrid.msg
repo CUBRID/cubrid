@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Crearea unui fişier de chei de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
 1126 Crearea unei pagini noi de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
 1127 Ştergerea unei pagini goale de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
-1128 Restaurarea logului a început. Numărul de înregistrări din log ce trebuie aplicate: %1$lld. Pagina de log: %2$lld ~ %3$lld.
+1128 Restaurarea logului a început.
 1129 Restaurarea logului s-a finalizat.
 1130 Tranzacţia a fost abandonată deoarece numărul de lock-uri asociate tranzacţiei depăşeşte %1$d.
 1131 Eroare internă: Pagina %1$d din volumul "%2$s" ar putea fi coruptă.\n%3$s
@@ -1329,7 +1329,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1258 Nu se poate găsi setul de chei în baza de date de la%1$s. Fișierul cheie din volumul de rezervă va fi utilizat.
 1259 Redenumiți fișierul cheie din „%1$s” în „%2$s”.
 1260 Copiați fișierul cheie „%1$s” în „%2$s”.
-1261 Nu se poate găsi cheia în momentul restaurării (index cheie: %1$d, timp creat: %2$s). Setați cheia (index cheie: %3$d) pentru baza de date.
+1261 Prima cheie (indexul cheii: %1$d, ora creată: %2$s) din fișierul cheie restaurat a fost setată.
 1262 Fișierul cheie este plin.
 1263 Nu criptează TDE pagina jurnalului (pageid: %1$lld). Nu va mai fi încercat să criptați această pagină.
 1264 Error reserved for scalability development.
@@ -1354,6 +1354,12 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1283 Error reserved for scalability development.
 1284 Nu se poate tăia tabelul din cauza cheii principale menționate în %1$s. Încercați din nou cu opțiunea CASCADE.
 1285 Nu se poate trunchia în cascadă deoarece acțiunea ON DELETE a cheii externe (%1$s) nu este setată la CASCADE.
+1296 Recuperarea logului: Faza de analiză este pornită.
+1297 Recuperarea jurnalului: Faza redo este pornită. Jurnal Pagini la Redo: %1$lld, înregistrări jurnal la redo: %2$lld.
+1298 Recuperarea jurnalului: Faza de anulare este pornită. Jurnal Pagini pentru a anula: %1$lld, tranzacții pentru a anula: %2$d.
+1299 Recuperarea jurnalului: %1$S este terminat.
+1300 Recuperarea jurnalului: %1$S este terminată.
+1301 Recuperare jurnal: %1$s progres: (%2$lld/%3$lld), %4$.2f procent, timp scurs: %5$.2f (s), timp rămas estimat: %6$.2f (s).
 
 1302 dblink - %1$s
 1303 dblink - invalid number of columns specified.
@@ -1370,7 +1376,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1314 dblink - Failed to decryption password. error=%1$d".
 1315 dblink - Failed to encryption password. error=%1$d".
 1316 dblink - Multiple "%1$s" Server found.
-1317 dblink - Not allowed "%1$s" Server. 
+1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s] %2$s (%3$d)
 1319 Parameter binding error.
@@ -1388,7 +1394,9 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
-1332 Ultima eroare
+1332 Volumul de jurnal activ (%1$s) este prea corect pentru a fi recreat. Dacă eliminați jurnalul activ, ar putea cauza o problemă neașteptată și ireversibilă.
+
+1333 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

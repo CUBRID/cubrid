@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 创建溢出键文件. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 创建新的溢出页. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 删除空的溢出页. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 日志恢复已经开始. 已经被应用的日志记录数为: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 日志恢复已经开始.
 1129 日志恢复结束.
 1130 事务被终止, 因为事务锁数超过 %1$d.
 1131 内部错误: 卷 "%2$s" 的页 %1$d 可能被破坏.\n%3$s
@@ -1330,7 +1330,7 @@ $ LOADDB
 1258 在%1$s中找不到数据库上的密钥集。将使用备份卷中的密钥文件。
 1259 将密钥文件从“%1$s”重命名为“%2$s”。
 1260 将密钥文件“%1$s”复制到“%2$s”。
-1261 在还原时找不到密钥（密钥索引：%1$d，创建时间：%2$s）。设置数据库的键（键索引：%3$d）。
+1261 恢复的密钥文件的第一个密钥（密钥索引：%1$d，创建时间：%2$s）已设置。
 1262 密钥文件已满。
 1263 无法对日志页面进行TDE加密（页面ID：%1$lld）。不再尝试加密此页面。
 1264 Error reserved for scalability development.
@@ -1355,6 +1355,12 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 由于在 %1$s 上引用了主键，因此无法截断表。 使用 CASCADE 选项重试。
 1285 无法级联截断，因为外键 (%1$s) 的 ON DELETE 操作未设置为 CASCADE。
+1296 日志恢复: 开始分析阶段。
+1297 日志恢复: REDO阶段开始。 重做日志页面: %1$lld，重做日志记录: %2$lld。
+1298 日志恢复: 启动 UNDE 阶段。 要撤消的日志页面: %1$lld，要撤消的事务处理: %2$d。
+1299 日志恢复: %1$s 阶段已完成。
+1300 日志恢复: %1$s 阶段已完成。
+1301 日志恢复：%1$s 进度：(%2$lld/%3$lld)，%4$.2f 百分比，已用时间：%5$.2f (s)，估计剩余时间：%6$.2f (s)。
 
 1302 dblink - %1$s
 1303 dblink - invalid number of columns specified.
@@ -1371,7 +1377,7 @@ $ LOADDB
 1314 dblink - Failed to decryption password. error=%1$d".
 1315 dblink - Failed to encryption password. error=%1$d".
 1316 dblink - Multiple "%1$s" Server found.
-1317 dblink - Not allowed "%1$s" Server. 
+1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s] %2$s (%3$d)
 1319 Parameter binding error.
@@ -1389,7 +1395,9 @@ $ LOADDB
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
-1332 最后一个错误.
+1332 活动日志卷 (%1$s) 过于健全，无法重新创建。 如果删除活动日志，可能会导致意外且不可逆转的问题。
+
+1331 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

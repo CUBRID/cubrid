@@ -532,6 +532,8 @@ struct log_tdes
   LOG_LSA savept_lsa;		/* Address of last savepoint */
   LOG_LSA topop_lsa;		/* Address of last top operation */
   LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
+  LOG_LSA commit_abort_lsa;	/* Address of the commit/abort operation. Used by checkpoint to decide whether to
+				 * consider or not a transaction as concluded. */
   int client_id;		/* unique client id */
   int gtrid;			/* Global transaction identifier; used only if this transaction is a participant to a
 				 * global transaction and it is prepared to commit. */
@@ -1008,6 +1010,9 @@ extern int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid
 extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages,
 					    bool decrypt_needed, LOG_PAGE * log_pgptr);
 extern int logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAGEID logical_pageid);
+extern int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
+					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
+					       LOG_PAGE * log_pgptr);
 extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log_header,
 					      const char *db_fullname, const char *logpath,
 					      const char *prefix_logname, PGLENGTH * io_page_size,
@@ -1169,7 +1174,8 @@ extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_largest_lsa (THREAD_ENTRY * thread_p);
 #endif
 extern int logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p);
-extern void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
+extern void logtb_rv_read_only_map_undo_tdes (THREAD_ENTRY * thread_p,
+					      const std::function < void (const log_tdes &) > map_func);
 extern void logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern void logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p, LOG_PAGEID * smallest,
 							  LOG_PAGEID * largest);

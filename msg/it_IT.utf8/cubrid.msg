@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Creare il file chiave di overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. chiave: %5$s%6$s.
 1126 Creare una nuova pagina di overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. chiave: %5$s%6$s.
 1127 Eliminare una pagina di overflow vuota. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Recupero log è avviato. Il numero di record del log da applicare: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 Recupero log è avviato.
 1129 Recupero log è finito.
 1130 Transazione viene interrotta perché numero di lock counts supera il valore %1$d.
 1131 Errore interno: La pagina %1$d di volume "%2$s" potrebbe essere danneggiata.\n%3$s
@@ -1329,7 +1329,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1258 Impossibile trovare la serie di chiavi nel database da%1$s. Verrà utilizzato il file chiave del volume di backup.
 1259 Rinomina il file della chiave da "%1$s" a "%2$s".
 1260 Copia il file chiave "%1$s" in "%2$s".
-1261 Impossibile trovare la chiave al momento del ripristino (indice chiave: %1$d, ora di creazione: %2$s). Imposta la chiave (indice chiave: %3$d) per il database.
+1261 La prima chiave (indice chiave: %1$d, ora di creazione: %2$s) sul file chiave ripristinato è stata impostata.
 1262 Il file della chiave è pieno.
 1263 Impossibile crittografare TDE la pagina di registro (pageid: %1$lld). Non si tenterà più di crittografare questa pagina.
 1264 Error reserved for scalability development.
@@ -1354,6 +1354,12 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1283 Error reserved for scalability development.
 1284 Impossibile troncare la tabella a causa della chiave primaria a cui si fa riferimento su %1$s. Riprova con l'opzione CASCADE.
 1285 Impossibile eseguire il troncamento a catena perché l'azione ON DELETE della chiave esterna (%1$s) non è impostata su CASCADE.
+1296 Ricupero della scheda: è iniziata la fase ANALYSIS.
+1297 Ricostituzione della scheda: è iniziata la fase REDO. Pagine di log per ripetere: %1$lld, registrazioni di log per ripetere: %2$lld.
+1298 Ricupero della Log: è iniziata la fase UNDO. Pagine di log da annullare: %1$lld, transazioni da annullare: %2$d.
+1299 Ricostituzione di log: fase di recupero del %1$s è in corso di completamento.
+1300 Ricupero di log: fase di recupero del %1$s è terminata.
+1301 Recupero log: %1$s progresso: (%2$lld/%3$lld), %4$.2f percento, tempo trascorso: %5$.2f (s), tempo rimanente stimato: %6$.2f (s).
 
 1302 dblink - %1$s
 1303 dblink - invalid number of columns specified.
@@ -1370,7 +1376,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1314 dblink - Failed to decryption password. error=%1$d".
 1315 dblink - Failed to encryption password. error=%1$d".
 1316 dblink - Multiple "%1$s" Server found.
-1317 dblink - Not allowed "%1$s" Server. 
+1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s] %2$s (%3$d)
 1319 Parameter binding error.
@@ -1388,7 +1394,9 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
-1332 Ultimo errore
+1332 Il volume del registro attivo (%1$s) è troppo sano per essere ricreato. Se rimuovi il registro attivo, potrebbe causare un problema imprevisto e irreversibile.
+
+1333 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

@@ -285,6 +285,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
 
   node->tde_encrypted = false;
 
+  node->data_header_length = 0;
   node->data_header = NULL;
   node->ulength = 0;
   node->udata = NULL;
@@ -1469,6 +1470,12 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
       assert (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa));
       tdes->rcv.atomic_sysop_start_lsa = start_lsa;
     }
+  else if (node->log_header.type == LOG_COMMIT || node->log_header.type == LOG_ABORT)
+    {
+      /* mark the commit/abort in the transaction,  */
+      assert (tdes->commit_abort_lsa.is_null ());
+      LSA_COPY (&tdes->commit_abort_lsa, &start_lsa);
+    }
 
   log_prior_lsa_append_advance_when_doesnot_fit (node->data_header_length);
   log_prior_lsa_append_add_align (node->data_header_length);
@@ -1555,9 +1562,7 @@ prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex)
       return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
-#if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE, "TDE: prior_set_tde_encrypted(): rcvindex = %s\n", rv_rcvindex_string (recvindex));
-#endif /* !NDEBUG */
+  tde_er_log ("prior_set_tde_encrypted(): rcvindex = %s\n", rv_rcvindex_string (recvindex));
 
   node->tde_encrypted = true;
 

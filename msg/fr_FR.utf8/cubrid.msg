@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Création du fichier de clé de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
 1126 Création d'une nouvelle page de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
 1127 Suppression d'une page de débordement vide. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
-1128 Reprise du journal est démarré. Le nombre d'enregistrements de journal à appliquer: %1$lld. Page du jurnal: %2$lld ~ %3$lld.
+1128 Reprise du journal est démarré.
 1129 Reprise du journal est finie.
 1130 Transaction est abandonnée parce que nombre de verrous de la transaction dépasse %1$d.
 1131 Erreur interne: La page %1$d du volume "%2$s" peut être corrompue.\n%3$s
@@ -1329,7 +1329,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1258 Impossible de trouver le jeu de clés sur la base de données à partir de%1$s. Le fichier clé du volume de sauvegarde va être utilisé.
 1259 Renommez le fichier de clé de «%1$s» en «%2$s».
 1260 Copiez le fichier de clé "%1$s" dans "%2$s".
-1261 Impossible de trouver la clé au moment de la restauration (index de clé: %1$d, heure de création: %2$s). Définissez la clé (index de clé: %3$d) pour la base de données.
+1261 La première clé (index de clé : %1$d, heure de création : %2$s) sur le fichier de clé restauré a été définie.
 1262 Le fichier clé est plein.
 1263 Le chiffrement TDE de la page de journal échoue (pageid: %1$lld). Il ne sera plus essayé de crypter cette page.
 1264 Error reserved for scalability development.
@@ -1354,6 +1354,12 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1283 Error reserved for scalability development.
 1284 Impossible de tronquer la table en raison de la clé primaire référencée sur %1$s. Essayez à nouveau avec l'option CASCADE.
 1285 Impossible de tronquer en cascade car l'action ON DELETE de la clé étrangère (%1$s) n'est pas définie sur CASCADE.
+1296 Récupération des billes : la phase d'ANALYSE commence.
+1297 Récupération des logs : la phase REDO est lancée. Pages de log à refaire : %1$lld, enregistrements de log à refaire : %2$lld.
+1298 Récupération des logs : la phase de la DEOD est lancée. Pages de journal à défaire : %1$lld, transactions à défaire : %2$d.
+1299 Récupération des logs : %1$s La phase est en cours d'achèvement.
+1300 Récupération des billes : %1$s La phase est terminée.
+1301 Récupération du journal : %1$s progrès : (%2$lld/%3$lld), %4$.2f pourcent, temps écoulé : %5$.2f (s), temps restant estimé : %6$.2f (s).
 
 1302 dblink - %1$s
 1303 dblink - invalid number of columns specified.
@@ -1370,7 +1376,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1314 dblink - Failed to decryption password. error=%1$d".
 1315 dblink - Failed to encryption password. error=%1$d".
 1316 dblink - Multiple "%1$s" Server found.
-1317 dblink - Not allowed "%1$s" Server. 
+1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s] %2$s (%3$d)
 1319 Parameter binding error.
@@ -1388,7 +1394,9 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
-1332 Dernière erreur
+1332 Le volume de journal actif (%1$s) est trop sain pour être recréé. Si vous supprimez le journal actif, cela peut provoquer un problème inattendu et irréversible.
+
+1333 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
