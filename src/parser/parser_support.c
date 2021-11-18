@@ -2975,6 +2975,7 @@ pt_is_define_vars (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 {
   bool *is_define_vars = (bool *) arg;
   *continue_walk = PT_CONTINUE_WALK;
+  assert (has_define_vars != NULL);
 
   if (*is_define_vars)
     {
