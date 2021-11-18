@@ -1744,7 +1744,12 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	{
 	  rewrite_as_derived = true;
 	}
-      /* determine if vclass_query is pushable */
+      /* determine if main query's where has define_vars ':=' */
+      else if (pt_has_define_vars (parser, tmp_result->info.query.q.select.where))
+	{
+	  rewrite_as_derived = true;
+	}
+      /* determine if view(subquery) is pushable */
       else if (!mq_is_pushable_subquery (parser, query_spec, is_only_spec))
 	{
 	  rewrite_as_derived = true;
