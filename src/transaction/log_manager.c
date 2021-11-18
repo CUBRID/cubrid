@@ -280,6 +280,8 @@ static LOG_PAGE *log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE 
 						  LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_trantable_snapshot (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						     LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_assigned_mvccid (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+						  LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						    LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
@@ -491,6 +493,8 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_END_ATOMIC_REPL";
     case LOG_TRANTABLE_SNAPSHOT:
       return "LOG_TRANTABLE_SNAPSHOT";
+    case LOG_ASSIGNED_MVCCID:
+      return "LOG_ASSIGNED_MVCCID";
 
     case LOG_DUMMY_HA_SERVER_STATE:
       return "LOG_DUMMY_HA_SERVER_STATE";
@@ -3551,6 +3555,24 @@ log_append_trantable_snapshot (THREAD_ENTRY *thread_p, const cublog::checkpoint_
   (void) prior_lsa_next_record (thread_p, node, LOG_FIND_CURRENT_TDES (thread_p));
 }
 // *INDENT-ON*
+
+void
+log_append_assigned_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  assert (MVCCID_IS_VALID (mvccid));
+
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  assert (tdes != nullptr);
+
+  LOG_PRIOR_NODE *node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_ASSIGNED_MVCCID, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  assert (node != nullptr);
+
+  auto recp = (LOG_REC_ASSIGNED_MVCCID *) node->data_header;
+  recp->mvccid = mvccid;
+
+  (void) prior_lsa_next_record (thread_p, node, tdes);
+}
 
 /*
  * log_find_savept_lsa - FIND LSA ADDRESS OF GIVEN SAVEPOINT
@@ -6919,6 +6941,18 @@ log_dump_record_trantable_snapshot (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
 }
 
 static LOG_PAGE *
+log_dump_record_assigned_mvccid (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  const LOG_REC_ASSIGNED_MVCCID *assigned_mvccid = nullptr;
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*assigned_mvccid), log_lsa, log_page_p);
+  assigned_mvccid = (LOG_REC_ASSIGNED_MVCCID *) (log_page_p->area + log_lsa->offset);
+
+  fprintf (out_fp, " MVCCID = %lld\n", assigned_mvccid->mvccid);
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
 log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_SUPPLEMENT *supplement;
@@ -7024,6 +7058,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_TRANTABLE_SNAPSHOT:
       log_page_p = log_dump_record_trantable_snapshot (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
+    case LOG_ASSIGNED_MVCCID:
+      log_page_p = log_dump_record_assigned_mvccid (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_SUPPLEMENTAL_INFO:
@@ -7955,6 +7993,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_START_ATOMIC_REPL:
 	    case LOG_END_ATOMIC_REPL:
+	    case LOG_ASSIGNED_MVCCID:
 	    case LOG_SUPPLEMENTAL_INFO:
 	      break;
 
@@ -8390,6 +8429,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_DUMMY_GENERIC:
 		    case LOG_SUPPLEMENTAL_INFO:
 		    case LOG_START_ATOMIC_REPL:
+		    case LOG_ASSIGNED_MVCCID:
 		    case LOG_END_ATOMIC_REPL:
 		      break;
 

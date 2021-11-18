@@ -3997,7 +3997,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	{
 	  // No log record contains this transaction MVCCID. The PTS replication has to also complete this MVCCID so it needs
 	  // to be notified via a log record. Add a log record containing the MVCCID.
-	  // TODO
+	  log_append_assigned_mvccid (thread_p, mvccid);
 	}
       mvcc_table->complete_mvcc (tran_index, mvccid, committed);
     }
