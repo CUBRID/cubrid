@@ -59,6 +59,7 @@
 #include "string_opfunc.h"
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
+#include "scope_exit.hpp"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
 #include "set_object.h"
@@ -20957,8 +20958,20 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   RECDES forward_recdes;
   OID forward_oid;
   int rc;
+  bool atomic_replication_flag = false;
 
   LOG_TDES *tdes = NULL;
+
+  // *INDENT-OFF*
+  // To ensure that, if started, the atomic replication area will also end.
+  scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, atomic_replication_flag]()
+  {
+    if (atomic_replication_flag == true)
+     {
+        log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+     }
+  });
+  // *INDENT-ON*
 
   /* check input */
   assert (context != NULL);
@@ -21219,6 +21232,16 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /*
+       * When update_old_forward is set it signifies that more than one page will be modified,
+       * and so the changes need to be marked as atomic for replication
+       */
+      if (update_old_forward)
+	{
+	  log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+	  atomic_replication_flag = true;
+	}
+
+      /*
        * Update old home record (if necessary)
        */
       if (update_old_home)
@@ -21384,6 +21407,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /*
        * Delete home record
        */
+      //The following changes will apply to multiple pages, so they must be marked as atomic for replication.
+      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+      atomic_replication_flag = true;
 
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 				&context->home_recdes, is_reusable, NULL);
