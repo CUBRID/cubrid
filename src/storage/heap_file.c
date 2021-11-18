@@ -21232,10 +21232,10 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /*
-       * When update_old_forward is set it signifies that more than one page will be modified,
-       * and so the changes need to be marked as atomic for replication
+       * When update_old_forward is true it signifies that only the forward page will be modified.
+       * In all other cases two or more pages are changed and need to be marked as atomic for replication.
        */
-      if (update_old_forward)
+      if (!update_old_forward)
 	{
 	  log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
 	  atomic_replication_flag = true;
