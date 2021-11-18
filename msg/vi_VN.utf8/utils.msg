@@ -327,6 +327,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 47 Problem with user file '%1$s'\n
 48 The given '%1$s', %2$s is out of range. Choose a size between %3$s and %4$s.\n
 49 The value of %1$s '%2$s' is invalid.\n
+50 The option '%1$s' is not compatible with the option '%2$s'.\n
 60 \
 createdb: Create a database.\n\
 usage: %1$s createdb [OPTION] database-name database-locale\n\

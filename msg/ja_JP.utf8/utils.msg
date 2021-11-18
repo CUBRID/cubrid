@@ -327,6 +327,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 47 ユーザーファイル「%1$s」に問題があります。\n
 48 あげられたバリュー：「%1$s」。「%2$s」は範囲を超えてしまいました。「%3$s」と「%4$s」の内のバリューを入力してください。\n
 49 %1$sの内容の中で「%2$s」が正しくありません。\n
+50 The option '%1$s' is not compatible with the option '%2$s'.\n
 60 \
 createdb: データベース生成。\n\
 usage: %1$s createdb [OPTION] database-name database-locale\n\

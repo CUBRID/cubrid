@@ -233,6 +233,7 @@ static int boot_client_find_and_cache_class_oids (void);
 
 static int boot_initialize_path (const char *path_arg, const char *default_path, char *path_out);
 static int boot_initialize_lob_path (const char *path_arg, const char *db_path, char *path_out);
+static int boot_initialize_paths (BOOT_DB_PATH_INFO * db_path_info);
 
 /*
  * boot_client () -
@@ -258,6 +259,36 @@ boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
   boot_Set_client_at_exit = true;
   boot_Process_id = getpid ();
   atexit (boot_shutdown_client_at_exit);
+
+  return NO_ERROR;
+}
+
+static int
+boot_initialize_paths (BOOT_DB_PATH_INFO * db_path_info)
+{
+  int error_code = boot_initialize_path (db_path_info->db_path, NULL, boot_Db_path_buf);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  db_path_info->db_path = boot_Db_path_buf;
+
+  error_code = boot_initialize_path (db_path_info->log_path, db_path_info->db_path, boot_Log_path_buf);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  db_path_info->log_path = boot_Log_path_buf;
+
+  error_code = boot_initialize_lob_path (db_path_info->lob_path, db_path_info->db_path, boot_Lob_path_buf);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  db_path_info->lob_path = boot_Lob_path_buf;
 
   return NO_ERROR;
 }
@@ -393,26 +424,12 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 
   /* If db_path and/or log_path are NULL find the defaults */
 
-  error_code = boot_initialize_path (db_path_info->db_path, NULL, boot_Db_path_buf);
+  error_code = boot_initialize_paths (db_path_info);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error_exit;
     }
-  db_path_info->db_path = boot_Db_path_buf;
-
-  error_code = boot_initialize_path (db_path_info->log_path, db_path_info->db_path, boot_Log_path_buf);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
-  db_path_info->log_path = boot_Log_path_buf;
-
-  error_code = boot_initialize_lob_path (db_path_info->lob_path, db_path_info->db_path, boot_Lob_path_buf);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
-  db_path_info->lob_path = boot_Lob_path_buf;
 
   /* make sure that the full path for the database is not too long */
   length = (unsigned int) (client_credential->db_name.length () + strlen (db_path_info->db_path) + 2);
@@ -702,6 +719,19 @@ error_exit:
     }
 
   return error_code;
+}
+
+int
+boot_initialize_remote_storage_client (const char *dbname, BOOT_DB_PATH_INFO & db_path_info)
+{
+  int error_code = boot_initialize_paths (&db_path_info);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return boot_initialize_remote_storage_server (dbname, &db_path_info);
 }
 
 // Process the path argument and:

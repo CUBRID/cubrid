@@ -331,6 +331,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 47 S-a întâmpinat o problemă cu fişierul '%1$s' dat de utilizator\n
 48 S-a furnizat '%1$s', %2$s este în afara domeniului. Alegeţi o dimensiune cuprinsă între %3$s şi %4$s.\n
 49 Valoarea lui %1$s '%2$s' nu este validă.\n
+50 Opţiunea '%1$s' nu este compatibilă cu opţiunea '%2$s'.\n
 60 \
 createdb: Creează o baza de date.\n\
 utilizare: %1$s createdb [OPTIUNE] <nume-bază-de-date> <localizare>\n\
