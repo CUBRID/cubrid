@@ -1726,7 +1726,7 @@ stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| /*  empty */
+	| ';'
 		{{
 			$$ = NULL;
 		DBG_PRINT}}
