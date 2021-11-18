@@ -1671,7 +1671,7 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY *thread_p, LOG_RECTYPE log_t
     case LOG_UNDO_DATA:
     case LOG_REDO_DATA:
     case LOG_DBEXTERN_REDO_DATA:
-      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa);
+      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa, is_mvcc);
       break;
 
     case LOG_DUMMY_HEAD_POSTPONE:
