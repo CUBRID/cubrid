@@ -1548,7 +1548,9 @@ stmt_done
 	;
 
 stmt_list
-	: stmt_list ';' stmt %dprec 1
+	: stmt_list ';' %dprec 1
+                {{ /* empty line*/ }}
+        | stmt_list ';' stmt %dprec 2
 		{{
 
 			if ($3 != NULL)
@@ -1570,7 +1572,7 @@ stmt_list
 			  }
 
 		DBG_PRINT}}
-	| stmt %dprec 2
+	| stmt %dprec 3
 		{{
 
 			if ($1 != NULL)
@@ -1725,10 +1727,6 @@ stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
-	| ';'
-		{{
-			$$ = NULL;
 		DBG_PRINT}}
 	;
 stmt_
