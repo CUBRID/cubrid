@@ -302,7 +302,7 @@ exit:
 /*
  * tde_is_loaded () - Is the TDE module initialized correctly?
  *
- * return                 : trun or false
+ * return                 : true or false
  */
 bool
 tde_is_loaded ()
