@@ -2010,6 +2010,7 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
     case LOG_REPLICATION_STATEMENT:
     case LOG_START_ATOMIC_REPL:
     case LOG_END_ATOMIC_REPL:
+    case LOG_TRANTABLE_SNAPSHOT:
     case LOG_END_OF_LOG:
       /*
        * Either the prepare to commit or start 2PC record should
