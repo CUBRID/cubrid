@@ -192,6 +192,7 @@ int boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BO
 			    PGLENGTH db_desired_pagesize, DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
 			    OID * rootclass_oid, HFID * rootclass_hfid, int client_lock_wait,
 			    TRAN_ISOLATION client_isolation);
+extern int boot_initialize_remote_storage_server (const char *dbname, const BOOT_DB_PATH_INFO * db_path_info);
 int boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_lock_wait,
 			  TRAN_ISOLATION client_isolation, TRAN_STATE * tran_state,
 			  BOOT_SERVER_CREDENTIAL * server_credential);

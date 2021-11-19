@@ -7352,6 +7352,14 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
     trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
 
+    // Currently the transaction table snapshot is saved in two places:
+    //
+    //    1) In the log, to be passed to the passive transaction server; the PTS will use it during the boot.
+    //    2) In the local meta-log, to be used by the ATS for recovery after a crash.
+    //
+    // todo: The local meta-log snapshot copy could be removed and also the ATS recovery could get its snapshot from
+    // the log.
+
     // Append to log
     log_append_trantable_snapshot (thread_p, trantable_checkpoint_info);
 

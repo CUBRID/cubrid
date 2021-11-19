@@ -327,6 +327,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 47 用户文件 '%1$s' 存在问题\n
 48 给定值 '%1$s', %2$s 超过了范围. 选择大小在 %3$s 和 %4$s之间的数.\n
 49 %1$s '%2$s'的值是非法的.\n
+50 The option '%1$s' is not compatible with the option '%2$s'.\n
 60 \
 createdb: 创建一个数据库.\n\
 用法: %1$s createdb [选项] 数据库名 语言字符集\n\

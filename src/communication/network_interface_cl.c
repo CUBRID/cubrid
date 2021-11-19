@@ -3713,6 +3713,20 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_D
 #endif /* !CS_MODE */
 }
 
+int
+boot_initialize_remote_storage_server (const char *dbname, const BOOT_DB_PATH_INFO * db_path_info)
+{
+#if defined (CS_MODE)
+  assert (false);
+  return ER_FAILED;
+#else
+  enter_server_no_thread_entry ();
+  int error_code = xboot_initialize_remote_storage_server (dbname, db_path_info);
+  exit_server_no_thread_entry ();
+  return error_code;
+#endif
+}
+
 /*
  * boot_register_client -
  *
