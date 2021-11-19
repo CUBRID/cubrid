@@ -22458,6 +22458,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   LOG_LSA prev_version_lsa;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
   PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
+  bool atomic_replication_flag = false;
 
   LOG_TDES *tdes = NULL;
 
@@ -22504,6 +22505,9 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
   if (heap_is_big_length (context->recdes_p->length))
     {
+      /* record will be converted to a bigone and more pages will be afected */
+      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+      atomic_replication_flag = true;
       /* fix header page */
       error_code = heap_fix_header_page (thread_p, context);
       if (error_code != NO_ERROR)
@@ -22536,6 +22540,9 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   else if (!spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
 				context->recdes_p->length))
     {
+      /* record will be converted to a relocation and two pages will be afected */
+      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+      atomic_replication_flag = true;
       /* insert new home */
 
       if (is_mvcc_op)
@@ -22660,6 +22667,11 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   /* Fall through to exit. */
 
 exit:
+
+  if (atomic_replication_flag == true)
+    {
+      log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+    }
 
   if (newhome_pg_watcher_p != NULL && newhome_pg_watcher_p->pgptr != NULL)
     {
