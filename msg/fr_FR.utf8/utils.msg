@@ -327,6 +327,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 47 Problème avec le fichier '%1$s' d'utilisateur\n
 48 Le donné '%1$s', %2$s est hors plage. Choisissez une taille comprise entre %3$s et %4$s.\n
 49 La valeur de %1$s '%2$s' n'est pas valide.\n
+50 The option '%1$s' is not compatible with the option '%2$s'.\n
 60 \
 createdb: crée une base de données.\n\
 usage: %1$s createdb [OPTION] database-name database-locale\n\

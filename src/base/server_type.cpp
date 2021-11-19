@@ -24,6 +24,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "page_server.hpp"
+#include "passive_tran_server.hpp"
 #include "system_parameter.h"
 
 #include <string>
@@ -125,7 +126,21 @@ int init_server_type (const char *db_name)
 #endif
   if (g_server_type == SERVER_TYPE_TRANSACTION)
     {
-      er_code = ats_Gl.boot (db_name);
+      assert (ts_Gl == nullptr);
+
+      if (is_active_transaction_server ())
+	{
+	  ts_Gl.reset (new active_tran_server ());
+	}
+      else if (is_passive_transaction_server ())
+	{
+	  ts_Gl.reset (new passive_tran_server ());
+	}
+      else
+	{
+	  assert (false);
+	}
+      er_code = ts_Gl->boot (db_name);
     }
   else
     {
@@ -140,7 +155,7 @@ int init_server_type (const char *db_name)
       if (g_server_type == SERVER_TYPE_TRANSACTION)
 	{
 	  er_log_debug (ARG_FILE_LINE, "Starting server type: %s transaction\n",
-			transaction_server_type_to_string (get_transaction_server_type()));
+			transaction_server_type_to_string (get_transaction_server_type ()));
 	}
       else
 	{
@@ -169,11 +184,12 @@ void finalize_server_type ()
 {
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      ats_Gl.disconnect_page_server ();
+      ts_Gl->disconnect_page_server ();
+      ts_Gl.reset (nullptr);
     }
   else if (get_server_type () == SERVER_TYPE_PAGE)
     {
-      ps_Gl.disconnect_active_tran_server ();
+      ps_Gl.disconnect_all_tran_server ();
     }
   else
     {
@@ -212,7 +228,7 @@ bool is_tran_server_with_remote_storage ()
 
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      return ats_Gl.uses_remote_storage ();
+      return ts_Gl->uses_remote_storage ();
     }
   return false;
 }
@@ -245,6 +261,31 @@ void finalize_server_type ()
 bool is_tran_server_with_remote_storage ()
 {
   return false;
+}
+
+bool is_active_transaction_server ()
+{
+  return true;
+}
+
+bool is_page_server ()
+{
+  return false;
+}
+
+bool is_passive_transaction_server ()
+{
+  return false;
+}
+
+bool is_passive_server ()
+{
+  return false;
+}
+
+bool is_transaction_server ()
+{
+  return true;
 }
 
 #endif // !SERVER_MODE = SA_MODE

@@ -3141,7 +3141,7 @@ logtb_disable_update (THREAD_ENTRY * thread_p)
 void
 logtb_enable_update (THREAD_ENTRY * thread_p)
 {
-  assert (get_server_type () == SERVER_TYPE_TRANSACTION);
+  assert (is_active_transaction_server ());
   if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) == false)
     {
       db_Disable_modifications = 0;

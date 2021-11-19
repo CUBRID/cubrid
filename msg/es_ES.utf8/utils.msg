@@ -327,6 +327,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 47 Problema con el archivo de utilizador '%1$s'\n
 48 Para el '%1$s' dado, %2$s es fuera de rango. Escoger un tamano entre %3$s y %4$s.\n
 49 El valor de %1$s '%2$s' no es valido.\n
+50 The option '%1$s' is not compatible with the option '%2$s'.\n
 60 \
 createdb: Crear una base de datos.\n\
 usage: %1$s createdb [OPTION] database-name database-locale\n\

@@ -110,6 +110,8 @@ static int delete_all_slave_ha_apply_info (char *database_name, char *master_hos
 
 static bool check_ha_db_and_node_list (char *database_name, char *source_host_name);
 
+static int createdb_with_local_storage (UTIL_FUNCTION_ARG * arg);
+static int createdb_with_remote_storage (UTIL_FUNCTION_ARG * arg);
 
 /*
  * util_admin_usage - display an usage of this utility
@@ -301,6 +303,84 @@ make_valid_page_size (int *v)
  */
 int
 createdb (UTIL_FUNCTION_ARG * arg)
+{
+  assert (arg != nullptr);
+
+  if (utility_get_option_bool_value (arg->arg_map, CREATE_REMOTE_STORAGE_S))
+    {
+      return createdb_with_remote_storage (arg);
+    }
+  else
+    {
+      return createdb_with_local_storage (arg);
+    }
+}
+
+/*
+ * createdb_with_remote_storage () - create database, without most physical files that should be on page servers.
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+static int
+createdb_with_remote_storage (UTIL_FUNCTION_ARG * arg)
+{
+  assert (arg != nullptr);
+
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+
+  auto usage_error =[arg] (){
+    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_USAGE),
+	     basename (arg->argv0));
+    util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+    return EXIT_FAILURE;
+  };
+
+  // Get database name and charset
+  const char *database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  const char *cubrid_charset = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+  if (database_name == 0 || database_name[0] == 0 || cubrid_charset == 0 || cubrid_charset[0] == 0
+      || utility_get_option_string_table_size (arg_map) != 2)
+    {
+      return usage_error ();
+    }
+
+  const char *volume_path = utility_get_option_string_value (arg_map, CREATE_FILE_PATH_S, 0);
+  const char *log_path = utility_get_option_string_value (arg_map, CREATE_LOG_PATH_S, 0);
+  const char *lob_path = utility_get_option_string_value (arg_map, CREATE_LOB_PATH_S, 0);
+  const char *host_name = utility_get_option_string_value (arg_map, CREATE_SERVER_NAME_S, 0);
+  const char *comment = utility_get_option_string_value (arg_map, CREATE_COMMENT_S, 0);
+  BOOT_DB_PATH_INFO db_path_info;
+  db_path_info.db_path = volume_path;
+  db_path_info.vol_path = NULL;
+  db_path_info.log_path = log_path;
+  db_path_info.lob_path = lob_path;
+  db_path_info.db_host = host_name;
+  db_path_info.db_comments = comment;
+
+  if (utility_get_option_bool_value (arg_map, CREATE_REPLACE_S))
+    {
+      // Cannot overwrite database
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_INCOMPATIBLE_OPTIONS),
+			     CREATE_REPLACE_L, CREATE_REMOTE_STORAGE_L);
+      return EXIT_FAILURE;
+    }
+
+  int error_code = boot_initialize_remote_storage_client (database_name, db_path_info);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return EXIT_FAILURE;
+    }
+
+  return EXIT_SUCCESS;
+}
+
+/*
+ * createdb_with_local_storage () - create database and all its physical files
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+static int
+createdb_with_local_storage (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];

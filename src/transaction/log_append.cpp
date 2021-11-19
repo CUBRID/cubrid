@@ -402,6 +402,9 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_REPLICATION_STATEMENT:
     case LOG_2PC_START:
     case LOG_SYSOP_ATOMIC_START:
+    case LOG_START_ATOMIC_REPL:
+    case LOG_END_ATOMIC_REPL:
+    case LOG_TRANTABLE_SNAPSHOT:
       assert (rlength == 0 && rdata == NULL);
 
       error_code = prior_lsa_gen_record (thread_p, node, rec_type, ulength, udata);
@@ -1239,6 +1242,8 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_SYSOP_ATOMIC_START:
+    case LOG_START_ATOMIC_REPL:
+    case LOG_END_ATOMIC_REPL:
       assert (length == 0 && data == NULL);
       break;
 
@@ -1280,6 +1285,10 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
       node->data_header_length = sizeof (LOG_REC_REPLICATION);
+      break;
+
+    case LOG_TRANTABLE_SNAPSHOT:
+      node->data_header_length = sizeof (LOG_REC_TRANTABLE_SNAPSHOT);
       break;
 
     case LOG_2PC_START:
@@ -1741,7 +1750,7 @@ prior_list_deserialize (const std::string &str, log_prior_node *&head, log_prior
 static void
 prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes)
 {
-  assertm (get_server_type () == SERVER_TYPE_TRANSACTION, "Log append can be executed only on transaction server");
+  assertm (is_active_transaction_server (), "Log append can be executed only on active transaction server");
   /* Does the new log record fit in this page ? */
   log_prior_lsa_append_advance_when_doesnot_fit (sizeof (LOG_RECORD_HEADER));
 

@@ -197,6 +197,7 @@ typedef enum
   CREATEDB_MSG_BAD_USERFILE = 47,
   CREATEDB_MSG_BAD_RANGE = 48,
   CREATEDB_MSG_INVALID_SIZE = 49,
+  CREATEDB_INCOMPATIBLE_OPTIONS = 50,
   CREATEDB_MSG_USAGE = 60
 } MSGCAT_CREATEDB_MSG;
 
@@ -1002,6 +1003,8 @@ typedef struct _ha_config
 #define CREATE_DB_VOLUME_SIZE_L                 "db-volume-size"
 #define CREATE_LOG_VOLUME_SIZE_S                10116
 #define CREATE_LOG_VOLUME_SIZE_L                "log-volume-size"
+#define CREATE_REMOTE_STORAGE_S                 10117
+#define CREATE_REMOTE_STORAGE_L                 "remote-storage"
 
 /* renamedb option list */
 #define RENAME_EXTENTED_VOLUME_PATH_S           'E'
@@ -1060,11 +1063,11 @@ typedef struct _ha_config
 #define BACKUP_NO_COMPRESS_L                    "no-compress"
 #define BACKUP_EXCEPT_ACTIVE_LOG_S              'e'
 #define BACKUP_EXCEPT_ACTIVE_LOG_L              "except-active-log"
-#define BACKUP_SLEEP_MSECS_S                    10507
+#define BACKUP_SLEEP_MSECS_S                    10508
 #define BACKUP_SLEEP_MSECS_L                    "sleep-msecs"
 #define BACKUP_SEPARATE_KEYS_S                  'k'
 #define BACKUP_SEPARATE_KEYS_L                  "separate-keys"
-#define BACKUP_PAGE_SERVER_S                    10508
+#define BACKUP_PAGE_SERVER_S                    10520
 #define BACKUP_PAGE_SERVER_L                    "page-server"
 
 

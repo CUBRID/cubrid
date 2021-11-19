@@ -785,7 +785,7 @@ log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
   LSA_COPY (&log_Gl.final_restored_lsa, &log_Gl.hdr.append_lsa);
 #endif /* SERVER_MODE */
 
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+  if (is_active_transaction_server ())
     {
       log_append_empty_record (thread_p, LOG_DUMMY_CRASH_RECOVERY, NULL);
     }
@@ -1726,6 +1726,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_SUPPLEMENTAL_INFO:
 	    case LOG_END_OF_LOG:
 	    case LOG_SYSOP_ATOMIC_START:
+	    case LOG_START_ATOMIC_REPL:
+	    case LOG_END_ATOMIC_REPL:
+	    case LOG_TRANTABLE_SNAPSHOT:
 	      break;
 
 	    case LOG_SYSOP_END:
@@ -1805,8 +1808,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
 
-  LOG_CS_ENTER (thread_p);
-
   if (!context.is_page_server ())
     {
       log_Gl.mvcc_table.reset_start_mvccid ();
@@ -1817,6 +1818,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
       /* Now finish all postpone operations */
       log_recovery_finish_all_postpone (thread_p);
     }
+
+  LOG_CS_ENTER (thread_p);
 
   /* Flush all dirty pages */
   logpb_flush_pages_direct (thread_p);
@@ -2347,6 +2350,20 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
+  //
+  // Unblock log critical section while running undo.
+  //
+  // During undo, pages will have to be fixed. Page buffer may be full and pages have be loaded from disk only by
+  // victimizing other pages. Page flush thread must be able to operate and it will require the log critical section.
+  //
+  // Lock log critical section again on exit.
+  //
+  assert (LOG_CS_OWN (thread_p));
+  LOG_CS_EXIT (thread_p);
+  // *INDENT-OFF*
+  scope_exit reenter_log_cs ([thread_p] { LOG_CS_ENTER (thread_p); });
+  // *INDENT-ON*
+
   /*
    * Remove from the list of transaction to abort, those that have finished
    * when the crash happens, so it does not remain dangling in the transaction
@@ -2657,6 +2674,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_DUMMY_GENERIC:
 		case LOG_SUPPLEMENTAL_INFO:
 		case LOG_SYSOP_ATOMIC_START:
+		case LOG_START_ATOMIC_REPL:
+		case LOG_END_ATOMIC_REPL:
+		case LOG_TRANTABLE_SNAPSHOT:
 		  /* Not for UNDO ... */
 		  /* Break switch to go to previous record */
 		  break;
@@ -3300,6 +3320,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_DUMMY_GENERIC:
     case LOG_END_OF_LOG:
     case LOG_SYSOP_ATOMIC_START:
+    case LOG_START_ATOMIC_REPL:
+    case LOG_END_ATOMIC_REPL:
       break;
 
     case LOG_REPLICATION_DATA:
@@ -3312,6 +3334,18 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_REPLICATION), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, repl_log_length, &log_lsa, log_pgptr);
       break;
+
+    case LOG_TRANTABLE_SNAPSHOT:
+      {
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TRANTABLE_SNAPSHOT), &log_lsa, log_pgptr);
+
+	const auto trantable_snapshot = (LOG_REC_TRANTABLE_SNAPSHOT *) (log_pgptr->area + log_lsa.offset);
+	const size_t rv_length = trantable_snapshot->length;
+
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_TRANTABLE_SNAPSHOT), &log_lsa, log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, rv_length, &log_lsa, log_pgptr);
+	break;
+      }
 
     case LOG_DUMMY_HA_SERVER_STATE:
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_HA_SERVER_STATE), &log_lsa, log_pgptr);

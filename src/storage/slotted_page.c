@@ -5277,6 +5277,6 @@ bool
 spage_is_save_space_disabled ()
 {
   const bool during_crash_recovery = log_is_in_crash_recovery ();
-  const bool in_page_server (get_server_type () == SERVER_TYPE_PAGE);
-  return during_crash_recovery || in_page_server;
+  const bool in_passive_server = is_passive_server ();
+  return during_crash_recovery || in_passive_server;
 }

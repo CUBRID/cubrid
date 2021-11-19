@@ -327,6 +327,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 47 '%1$s' Kullanıcı dosya ile ilgili sorun\n
 48 Verilen '%1$s', %2$s kapsam dışı. %3$s ve %4$s arasında bir boyut seçin.\n
 49 %1$s sayısal değeri '%2$s' geçersiz. \n
+50 The option '%1$s' is not compatible with the option '%2$s'.\n
 60 \
 createdb: Bir veritabanı oluştur.\n\
 kullanım: %1$s createdb [SEÇENEK] database-name database-locale\n\

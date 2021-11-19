@@ -327,6 +327,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 47 Problem mit Benutzerdatei '%1$s'\n
 48 Der angegebene '%1$s', %2$s ist außerhalb des Bereichs. Eine Größe zwischen %3$s und %4$s wählen.\n
 49 Der Wert von %1$s '%2$s' ist ungültig.\n
+50 The option '%1$s' is not compatible with the option '%2$s'.\n
 60 \
 createdb: Datenbank erstellen.\n\
 usage: %1$s createdb [OPTION] database-name database-locale\n\

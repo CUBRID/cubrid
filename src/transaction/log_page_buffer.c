@@ -1600,7 +1600,7 @@ logpb_fetch_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
   request_log_page_from_page_server (LOGPB_HEADER_PAGE_ID);
 
   std::shared_ptr<log_page_owner> brokered_log_hdr_page
-    = ats_Gl.get_log_page_broker ().wait_for_page (LOGPB_HEADER_PAGE_ID);
+    = ts_Gl->get_log_page_broker ().wait_for_page (LOGPB_HEADER_PAGE_ID);
 
   const LOG_PAGE *const log_hdr_page = brokered_log_hdr_page->get_log_page ();
   const LOG_HEADER *const log_hdr = reinterpret_cast<const LOG_HEADER*> (log_hdr_page->area);
@@ -2097,10 +2097,10 @@ request_log_page_from_page_server (LOG_PAGEID log_pageid)
   std::memcpy (buffer, &log_pageid, sizeof (log_pageid));
   std::string message (buffer, BIG_INT_SIZE);
 
-  if (ats_Gl.get_log_page_broker ().register_entry (log_pageid) == page_broker_register_entry_state::ADDED)
+  if (ts_Gl->get_log_page_broker ().register_entry (log_pageid) == page_broker_register_entry_state::ADDED)
     {
       // First to add an entry must also sent the request to the page server
-      ats_Gl.push_request (tran_to_page_request::SEND_LOG_PAGE_FETCH, std::move (message));
+      ts_Gl->push_request (tran_to_page_request::SEND_LOG_PAGE_FETCH, std::move (message));
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
         {
@@ -2151,7 +2151,7 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
   //  3) PS or TS with local storage + not connected to PS: only read from file
 
   const SERVER_TYPE server_type = get_server_type ();
-  if (server_type == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
+  if (server_type == SERVER_TYPE_TRANSACTION && ts_Gl->is_page_server_connected ())
     {
       // context 1) or 2)
       request_log_page_from_page_server (pageid);
@@ -2170,11 +2170,11 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
       read_from_disk = true;
     }
 
-  if (server_type == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
+  if (server_type == SERVER_TYPE_TRANSACTION && ts_Gl->is_page_server_connected ())
     {
       // *INDENT-OFF*
       std::shared_ptr<log_page_owner> brokered_log_page
-          = ats_Gl.get_log_page_broker ().wait_for_page (pageid);
+          = ts_Gl->get_log_page_broker ().wait_for_page (pageid);
       // *INDENT-ON*
       const LOG_PAGE *const log_page_from_page_server = brokered_log_page->get_log_page ();
       if (read_from_disk)
@@ -4309,7 +4309,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
 	}
 
       // *INDENT-OFF*
-      if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
+      if (get_server_type () == SERVER_TYPE_TRANSACTION && ts_Gl->is_page_server_connected ())
 	{
 	  log_Gl.wait_flushed_lsa (*flush_lsa);
 	  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
@@ -7349,6 +7349,19 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
       }
     LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
     trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
+
+    // Currently the transaction table snapshot is saved in two places:
+    //
+    //    1) In the log, to be passed to the passive transaction server; the PTS will use it during the boot.
+    //    2) In the local meta-log, to be used by the ATS for recovery after a crash.
+    //
+    // todo: The local meta-log snapshot copy could be removed and also the ATS recovery could get its snapshot from
+    // the log.
+
+    // Append to log
+    log_append_trantable_snapshot (thread_p, trantable_checkpoint_info);
+
+    // Write to log meta file
 
     // loading the transaction table snapshot ensures also that a snapshot lsa has been set
     trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
