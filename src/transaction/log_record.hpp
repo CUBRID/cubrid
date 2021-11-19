@@ -138,6 +138,7 @@ enum log_rectype
                  * redo phase of recovery and before finishing postpones */
   LOG_START_ATOMIC_REPL = 51,
   LOG_END_ATOMIC_REPL = 52,
+  LOG_TRANTABLE_SNAPSHOT = 53,
 
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
                                  * case. we should find a different approach */
@@ -384,6 +385,13 @@ typedef struct log_rec_2pc_particp_ack LOG_REC_2PC_PARTICP_ACK;
 struct log_rec_2pc_particp_ack
 {
   int particp_index;		/* Index of the acknowledging participant */
+};
+
+typedef struct log_rec_trantable_snapshot LOG_REC_TRANTABLE_SNAPSHOT;
+struct log_rec_trantable_snapshot
+{
+  LOG_LSA snapshot_lsa = NULL_LSA;       // the LSA when transaction table snapshot is taken
+  size_t length = 0;                    // packed snapshot recovery data length
 };
 
 typedef enum supplement_rec_type
