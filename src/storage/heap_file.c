@@ -21926,6 +21926,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
+  // All situations will modify more than one page, so they are all marked as atomic for replication.
   log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
   if (is_mvcc_op)
     {
