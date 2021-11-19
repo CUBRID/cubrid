@@ -55,6 +55,7 @@ namespace cublog
 	lsa_utils::pack (serializator, tran_info.savept_lsa);
 	lsa_utils::pack (serializator, tran_info.tail_topresult_lsa);
 	lsa_utils::pack (serializator, tran_info.start_postpone_lsa);
+	lsa_utils::pack (serializator, tran_info.last_mvcc_lsa);
 	serializator.pack_c_string (tran_info.user_name, strlen (tran_info.user_name));
       }
 
@@ -93,6 +94,7 @@ namespace cublog
 	lsa_utils::unpack (deserializator, chkpt_trans.savept_lsa);
 	lsa_utils::unpack (deserializator, chkpt_trans.tail_topresult_lsa);
 	lsa_utils::unpack (deserializator, chkpt_trans.start_postpone_lsa);
+	lsa_utils::unpack (deserializator, chkpt_trans.last_mvcc_lsa);
 	deserializator.unpack_c_string (chkpt_trans.user_name, LOG_USERNAME_MAX);
 
 	m_trans.push_back (chkpt_trans);
@@ -132,6 +134,7 @@ namespace cublog
 	size += lsa_utils::get_packed_size (serializator, start_offset + size);
 	size += lsa_utils::get_packed_size (serializator, start_offset + size);
 
+	size += lsa_utils::get_packed_size (serializator, start_offset + size);
 	size += lsa_utils::get_packed_size (serializator, start_offset + size);
 	size += lsa_utils::get_packed_size (serializator, start_offset + size);
 	size += lsa_utils::get_packed_size (serializator, start_offset + size);
@@ -186,6 +189,7 @@ namespace cublog
 	LSA_COPY (&chkpt_tran.savept_lsa, &tdes.savept_lsa);
 	LSA_COPY (&chkpt_tran.tail_topresult_lsa, &tdes.tail_topresult_lsa);
 	LSA_COPY (&chkpt_tran.start_postpone_lsa, &tdes.rcv.tran_start_postpone_lsa);
+	chkpt_tran.last_mvcc_lsa = tdes.last_mvcc_lsa;
 	std::strncpy (chkpt_tran.user_name, tdes.client.get_db_user (), LOG_USERNAME_MAX);
 
 	if (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &tdes.head_lsa))
@@ -305,6 +309,7 @@ namespace cublog
 	LSA_COPY (&tdes->savept_lsa, &chkpt.savept_lsa);
 	LSA_COPY (&tdes->tail_topresult_lsa, &chkpt.tail_topresult_lsa);
 	LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt.start_postpone_lsa);
+	tdes->last_mvcc_lsa = chkpt.last_mvcc_lsa;
 	tdes->client.set_system_internal_with_user (chkpt.user_name);
       }
 
