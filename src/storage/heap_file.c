@@ -22123,6 +22123,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   LOG_LSA prev_version_lsa = LSA_INITIALIZER;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
   PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
+  bool atomic_replication_flag = false;
 
   LOG_TDES *tdes = NULL;
 
@@ -22180,8 +22181,11 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
+  /* all the cases that modify more than one page will be marked with the atomic replication start log record */
   if (heap_is_big_length (context->recdes_p->length))
     {
+      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+      atomic_replication_flag = true;
       /* insert new overflow record */
       if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid, context->recdes_p) == NULL)
 	{
@@ -22207,6 +22211,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   else if (!fits_in_forward && !fits_in_home)
     {
       /* insert a new forward record */
+      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+      atomic_replication_flag = true;
 
       if (is_mvcc_op)
 	{
@@ -22242,6 +22248,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     }
   else if (fits_in_home)
     {
+      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+      atomic_replication_flag = true;
       /* updated forward record fits in home page */
       context->recdes_p->type = REC_HOME;
       new_home_recdes = *context->recdes_p;
@@ -22417,6 +22425,12 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   COPY_OID (&context->res_oid, &context->oid);
 
 exit:
+
+  //To ensure that, if started, the atomic replication area will also end.
+  if (atomic_replication_flag == true)
+    {
+      log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+    }
 
   if (newhome_pg_watcher_p != NULL && newhome_pg_watcher_p->pgptr != NULL)
     {
