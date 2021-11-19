@@ -1823,16 +1823,6 @@ cubrid_log_disconnect_server (void)
       free_and_init (recv_data);
     }
 
-  if (g_trace_log != NULL)
-    {
-      fflush (g_trace_log);
-      fclose (g_trace_log);
-      g_trace_log = NULL;
-    }
-
-  css_free_conn (g_conn_entry);
-  g_conn_entry = NULL;
-
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
@@ -1849,16 +1839,6 @@ cubrid_log_error:
       css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
     }
 
-  if (g_trace_log != NULL)
-    {
-      fflush (g_trace_log);
-      fclose (g_trace_log);
-      g_trace_log = NULL;
-    }
-
-  css_free_conn (g_conn_entry);
-  g_conn_entry = NULL;
-
   return err_code;
 }
 
@@ -1866,6 +1846,9 @@ static int
 cubrid_log_reset_globals (void)
 {
   int i;
+
+  css_free_conn (g_conn_entry);
+  g_conn_entry = NULL;
 
   g_connection_timeout = 300;
   g_extraction_timeout = 300;
@@ -1876,6 +1859,13 @@ cubrid_log_reset_globals (void)
     {
       free_and_init (g_extraction_table);
       g_extraction_table = NULL;
+    }
+
+  if (g_trace_log != NULL)
+    {
+      fflush (g_trace_log);
+      fclose (g_trace_log);
+      g_trace_log = NULL;
     }
 
   cubrid_log_reset_tracelog ();
@@ -1924,18 +1914,22 @@ cubrid_log_finalize (void)
 				 CUBRID_LOG_STAGE_PREPARATION, CUBRID_LOG_STAGE_EXTRACTION, g_stage);
     }
 
-  (void) cubrid_log_reset_globals ();
-
-  g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
-
   if (cubrid_log_disconnect_server () != CUBRID_LOG_SUCCESS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT, NULL);
     }
 
+  (void) cubrid_log_reset_globals ();
+
+  g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
+
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
+
+  (void) cubrid_log_reset_globals ();
+
+  g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
 
   return err_code;
 }
