@@ -1849,6 +1849,16 @@ cubrid_log_error:
       css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
     }
 
+  if (g_trace_log != NULL)
+    {
+      fflush (g_trace_log);
+      fclose (g_trace_log);
+      g_trace_log = NULL;
+    }
+
+  css_free_conn (g_conn_entry);
+  g_conn_entry = NULL;
+
   return err_code;
 }
 
@@ -1914,14 +1924,14 @@ cubrid_log_finalize (void)
 				 CUBRID_LOG_STAGE_PREPARATION, CUBRID_LOG_STAGE_EXTRACTION, g_stage);
     }
 
+  (void) cubrid_log_reset_globals ();
+
+  g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
+
   if (cubrid_log_disconnect_server () != CUBRID_LOG_SUCCESS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT, NULL);
     }
-
-  (void) cubrid_log_reset_globals ();
-
-  g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
 
   return CUBRID_LOG_SUCCESS;
 
