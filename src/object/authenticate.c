@@ -5406,9 +5406,12 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
   MOP serial_class_mop;
   DB_IDENTIFIER serial_obj_id;
   const char *serial_name = NULL, *owner_name = NULL;
-  char full_name[DB_MAX_IDENTIFIER_LENGTH];
-
   int error = NO_ERROR;
+
+  const char *dot = NULL;
+  char *user_name = NULL;
+  char *full_name = NULL;
+  int len = 0;
 
   db_make_null (returnval);
 
@@ -5426,18 +5429,37 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
       return;
     }
 
-  /* Get full name. */
-  memset (full_name, '\0', sizeof (char) * DB_MAX_IDENTIFIER_LENGTH);
-  snprintf (full_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", owner_name, serial_name);
-
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, full_name);
+  dot = strchr (serial_name, '.');
+  if (dot == NULL)
+    {
+      len = snprintf (NULL, 0, "%s.%s", owner_name, serial_name) + 1;
+      full_name = (char *) db_ws_alloc (len * sizeof (char));
+      snprintf (full_name, len, "%s.%s", owner_name, serial_name);
+
+      serial_name = full_name;
+    }
+
+  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
   if (serial_object == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, full_name);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
       db_make_error (returnval, ER_QPROC_SERIAL_NOT_FOUND);
+
+      if (full_name)
+	{
+	  db_ws_free_and_init (full_name);
+	  serial_name = NULL;
+	}
+
       return;
+    }
+
+  if (full_name)
+    {
+      db_ws_free_and_init (full_name);
+      serial_name = NULL;
     }
 
   user = au_find_user (owner_name);
