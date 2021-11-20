@@ -8170,32 +8170,7 @@ qo_node_fprint (QO_NODE * node, FILE * f)
 
   if (QO_NODE_NAME (node))
     {
-      dot_ptr = strchr (QO_NODE_NAME (node), '.');
-      if (dot_ptr)
-	{
-	  user_name_ptr = db_get_user_name ();
-
-	  copy_name = strndup (QO_NODE_NAME (node), strlen (QO_NODE_NAME (node)));
-	  token = strtok_r (copy_name, ".", &token_save);
-
-	  if (!pt_str_compare (user_name_ptr, token, CASE_INSENSITIVE))
-	    {
-	      /* Equal. */
-	      fprintf (f, "%s", dot_ptr + 1);
-	    }
-	  else
-	    {
-	      /* Not equal. */
-	      fprintf (f, "%s", QO_NODE_NAME (node));
-	    }
-
-	  free_and_init (copy_name);
-	  db_string_free (user_name_ptr);
-	}
-      else
-        {
-	  fprintf (f, "%s", QO_NODE_NAME (node));
-	}
+      fprintf (f, "%s", pt_get_name_without_current_user (QO_NODE_NAME (node)));
     }
   fprintf (f, " node[%d]", QO_NODE_IDX (node));
 }

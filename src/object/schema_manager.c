@@ -3118,12 +3118,12 @@ sm_is_system_class_by_name (const char *name)
 
   if (strncmp (real_name, ROOTCLASS_NAME, sizeof (ROOTCLASS_NAME) - 1) == 0)
     {
-      return TRUE;
+      return 1;
     }
 
   if (strncmp (real_name, CT_DUAL_NAME, sizeof (CT_DUAL_NAME) - 1) == 0)
     {
-      return TRUE;
+      return 1;
     }
 
   /*
@@ -3134,7 +3134,7 @@ sm_is_system_class_by_name (const char *name)
    */
   if (strncmp (real_name, "_db_", 4) != 0 && strncmp (real_name, "db_", 3) != 0)
     {
-      return FALSE;
+      return 0;
     }
 
   ptr = system_classes;
@@ -3142,13 +3142,13 @@ sm_is_system_class_by_name (const char *name)
     {
       if (strncmp (real_name, *ptr, SM_MAX_IDENTIFIER_LENGTH) == 0)
 	{
-	  return TRUE;
+	  return 1;
 	}
 
       ptr++;
     }
 
-  return FALSE;
+  return 0;
 }
 
 /*

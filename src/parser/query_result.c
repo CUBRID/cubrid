@@ -740,36 +740,7 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 	      if (col->info.name.meta_class == PT_META_ATTR)
 		{
 		  name = pt_append_string (parser, NULL, "class ");
-
-		  name_node_ptr = col;
-		  name_ptr = col->info.name.resolved;
-		  dot_ptr = strchr (name_ptr, '.');
-		  if (dot_ptr)
-		    {
-		      user_name_ptr = db_get_user_name ();
-
-		      copy_name = strndup (name_ptr, strlen (name_ptr));
-		      token = strtok_r (copy_name, ".", &token_save);
-
-		      if (!pt_str_compare (user_name_ptr, token, CASE_INSENSITIVE))
-			{
-			  /* Equal. */
-			  name = pt_append_string (parser, name, dot_ptr + 1);
-			}
-		      else
-			{
-			  /* Not equal. */
-			  name = pt_append_string (parser, name, name_ptr);
-			}
-
-		      free_and_init (copy_name);
-		      db_string_free (user_name_ptr);
-		    }
-		  else
-		    {
-		      name = pt_append_string (parser, name, name_ptr);
-		    }
-
+		  name = pt_append_string (parser, name, pt_get_name_without_current_user (col->info.name.resolved));
 		  name = pt_append_string (parser, name, ".");
 		  name = pt_append_string (parser, name, original_name);
 		  original_name = name;

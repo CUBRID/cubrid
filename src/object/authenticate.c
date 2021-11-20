@@ -5163,7 +5163,11 @@ au_change_owner (MOP classmop, MOP owner)
 	  class_->owner = owner;
 
 	  simple_name = sm_ch_simple_name ((MOBJ) class_);
-	  if (sm_is_system_class_by_name (simple_name) == FALSE)
+	  if (db_is_system_class_by_name (simple_name))
+	    {
+	      error = locator_flush_class(classmop);
+	    }
+	  else
 	    {
 	      /* Get original name. */
 	      memset (full_name, '\0', sizeof (char) * DB_MAX_IDENTIFIER_LENGTH);
@@ -5172,10 +5176,6 @@ au_change_owner (MOP classmop, MOP owner)
 	      /* Change original name. */
 	      error = sm_rename_class (classmop, full_name);
 	      
-	    }
-	  else
-	    {
-		    error = locator_flush_class(classmop);
 	    }
 	}
     }
@@ -5202,6 +5202,11 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
   const char *class_name = NULL, *owner_name = NULL;
   SM_CLASS *clsobj;
 
+  const char *dot = NULL;
+  char *user_name = NULL;
+  char *full_name = NULL;
+  int len = 0;
+
   db_make_null (returnval);
 
   if (DB_IS_NULL (class_) || !IS_STRING (class_) || (class_name = db_get_string (class_)) == NULL)
@@ -5217,26 +5222,32 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
       return;
     }
 
-  /* Start of change for POC */
-  if (strstr(class_name, ".") == NULL && sm_is_system_class_by_name (class_name) != true)
-    {
-      const char *user_name = au_user_name();
-
-      int user_name_len = strlen(user_name);
-      int class_name_len = strlen(class_name);
-      int schema_name_len = user_name_len + 1 + class_name_len + 1;
-
-      char schema_name[schema_name_len] = { 0 };
-
-      sprintf (schema_name, "%s.%s", user_name, class_name);
-
-      classmop = sm_find_class (schema_name);
-    }
-  else
+  dot = strchr (class_name, '.');
+  if (dot || db_is_system_class_by_name (class_name))
     {
       classmop = sm_find_class (class_name);
     }
-  /* End of change for POC */
+  else
+    {
+      user_name = db_get_user_name ();
+
+      len = snprintf (NULL, 0, "%s.%s", user_name, class_name) + 1;
+      full_name = (char *) db_ws_alloc (len * sizeof (char));
+      snprintf (full_name, len, "%s.%s", user_name, class_name);
+
+      classmop = sm_find_class (full_name);
+
+      if (full_name)
+	{
+	  db_ws_free_and_init (full_name);
+	}
+
+      if (user_name)
+	{
+	  db_string_free (user_name);
+	  user_name = NULL;
+	}
+    }
 
   /* Start of change for POC */
   // classmop = sm_find_class (class_name);
@@ -5571,24 +5582,44 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
 {
   MOP user;
   MOP classmop;
-  const char *name = NULL;
-  char name_buf[SM_MAX_IDENTIFIER_LENGTH];
   int error = NO_ERROR;
+
+  const char *dot = NULL;
+  const char *name = NULL;
+  char *user_name = NULL;
+  char *full_name = NULL;
+  int len = 0;
 
   db_make_null (returnval);
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
       name = db_get_string (class_);
 
-      if (strchr (name, '.') || sm_is_system_class_by_name (name))
+      dot = strchr (name, '.');
+      if (dot || db_is_system_class_by_name (name))
 	{
 	  classmop = sm_find_class (name);
 	}
       else
 	{
-	  memset(name_buf, '\0', sizeof(char) * SM_MAX_IDENTIFIER_LENGTH);
-	  snprintf(name_buf, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", au_user_name(), name);
-	  classmop = sm_find_class (name_buf);
+	  user_name = db_get_user_name ();
+
+	  len = snprintf (NULL, 0, "%s.%s", user_name, name) + 1;
+	  full_name = (char *) db_ws_alloc (len * sizeof (char));
+	  snprintf (full_name, len, "%s.%s", user_name, name);
+
+	  classmop = sm_find_class (full_name);
+
+	  if (full_name)
+	    {
+	      db_ws_free_and_init (full_name);
+	    }
+
+	  if (user_name)
+	    {
+	      db_string_free (user_name);
+	      user_name = NULL;
+	    }
 	}
 
       if (classmop != NULL)

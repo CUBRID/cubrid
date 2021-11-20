@@ -3362,6 +3362,87 @@ pt_get_name (PT_NODE * nam)
     }
 }
 
+const char *
+pt_get_name_without_current_user (const char *name)
+{
+  const char *current_name = NULL;
+  const char *dot = NULL;
+  char *user_name = NULL;
+  char *copy_name = NULL;
+  char *token = NULL;
+  char *token_save = NULL;
+  int error = NO_ERROR;
+
+  if (!name)
+    {
+      return NULL;
+    }
+
+  dot = strchr (name, '.');
+  if (dot == NULL)
+    {
+      /* e.g.   name: object_name
+       *      return: object_name
+       *
+       */
+      return name;
+    }
+
+  copy_name = strndup (name, strlen (name));
+  if (copy_name == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (strlen (name) + 1));
+
+      return NULL;
+    }
+
+  token = strtok_r (copy_name, ".", &token_save);
+  if (token == NULL)
+    {
+      /* It's impossible to come here because dot is not null. */
+      assert (false);
+
+      /* return NULL; */
+      goto end;
+    }
+
+  user_name = db_get_user_name ();
+
+  if (intl_identifier_casecmp (token, user_name) == 0)
+    {
+      /* e.g.   name: current_user_name.object_name
+       *      return: object_name
+       */
+      current_name = dot + 1;
+
+      goto end;
+    }
+  else
+    {
+      /* e.g.   name: other_user_name.object_name
+       *      return: other_user_name.object_name
+       */
+      current_name = name;
+
+      goto end;
+    }
+
+end:
+  if (copy_name)
+    {
+      free_and_init (copy_name);
+    }
+
+  if (user_name)
+    {
+      db_string_free (user_name);
+      user_name = NULL;
+    }
+
+  return current_name;
+}
+
 /*
  * pt_host_var_index () - return a PT_HOST_VAR's index
  *   return:  hv's index if all OK, -1 otherwise.

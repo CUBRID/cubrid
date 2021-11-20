@@ -13077,26 +13077,9 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
        * 
        */
     case PT_NAME:
-      if (PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_RESOLVED_OWNER))
+      if (pt_dot_compare (p->info.name.original, q->info.name.original, CASE_INSENSITIVE))
 	{
-	  if (pt_dot_compare (p->info.name.thin, q->info.name.original, CASE_INSENSITIVE))
-	    {
-	      return 1;
-	    }
-	}
-      else if (PT_NAME_INFO_IS_FLAGED (q, PT_NAME_INFO_RESOLVED_OWNER))
-	{
-	  if (pt_dot_compare (p->info.name.original, q->info.name.thin, CASE_INSENSITIVE))
-	    {
-	      return 1;
-	    }
-	}
-      else
-	{
-	  if (pt_dot_compare (p->info.name.original, q->info.name.original, CASE_INSENSITIVE))
-	    {
-	      return 1;
-	    }
+	  return 1;
 	}
       if (pt_dot_compare (p->info.name.resolved, q->info.name.resolved, CASE_INSENSITIVE))
 	{

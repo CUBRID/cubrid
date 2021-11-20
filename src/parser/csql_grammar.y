@@ -4978,41 +4978,23 @@ user_specified_name_without_dot
 
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
-			char *user_name_ptr = NULL;
-			const char *name_ptr = NULL;
+			const char *full_name = NULL;
 
 			assert (user != NULL && user->node_type == PT_NAME);
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			/* check if resolved-name is the current-user-name. */
-			user_name_ptr = db_get_user_name ();
-			if (user_name_ptr == NULL)
-			  {
-			    PT_ERROR (this_parser, name, "Failed to get current-user-name.");
-			  }
-			if (pt_str_compare (user_name_ptr, user->info.name.original, CASE_INSENSITIVE) == 0)
-			  {
-			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_RESOLVED_OWNER);
-			  }
-			else
-			  {
-			    /* set resolved-name if not current-user-name. */
-			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
-			  }
-
-			/* thin-name does not include user-name. */
 			name->info.name.thin = pt_append_string (this_parser, NULL, name->info.name.original);
 
-			/* original-name includes user-name. */
-			if (db_is_system_class_by_name (name->info.name.thin) == FALSE)
+			if (db_is_system_class_by_name (name->info.name.thin) == 0)
 			  {
-			    name_ptr = pt_append_string (this_parser, NULL, user->info.name.original);
-			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
-			    name_ptr = pt_append_string (this_parser, name_ptr, name->info.name.thin);
-			    name->info.name.original = name_ptr;
+			    // name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
+
+			    full_name = pt_append_string (this_parser, NULL, user->info.name.original);
+			    full_name = pt_append_string (this_parser, full_name, ".");
+			    full_name = pt_append_string (this_parser, full_name, name->info.name.thin);
+			    name->info.name.original = full_name;
 			  }
 
-			db_string_free (user_name_ptr);
 			parser_free_tree (this_parser, user);
 
 			$$ = name;
@@ -5023,32 +5005,29 @@ user_specified_name_without_dot
 		{{
 
 			PT_NODE *name = $1;
-			char *user_name_ptr = NULL;
-			const char *name_ptr = NULL;
+			char *user_name = NULL;
+			const char *full_name = NULL;
 
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			user_name_ptr = db_get_user_name ();
-			if (user_name_ptr == NULL)
-			  {
-			    PT_ERROR (this_parser, name, "Failed to get current-user-name.");
-			  }
-			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_RESOLVED_OWNER);
-
-			/* thin-name does not include user-name. */
 			name->info.name.thin = pt_append_string (this_parser, NULL, name->info.name.original);
 
-			/* original-name includes user-name. */
-			if (db_is_system_class_by_name (name->info.name.thin) == FALSE)
+			if (db_is_system_class_by_name (name->info.name.thin) == 0)
 			  {
-			    /* Owner name. */
-			    name_ptr = pt_append_string (this_parser, NULL, user_name_ptr);
-			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
-			    name_ptr = pt_append_string (this_parser, name_ptr, name->info.name.thin);
-			    name->info.name.original = name_ptr;
-			  }
+			    user_name = db_get_user_name ();
+			    // name->info.name.resolved = pt_append_string (this_parser, NULL, user_name);
 
-			db_string_free (user_name_ptr);
+			    full_name = pt_append_string (this_parser, NULL, user_name);
+			    full_name = pt_append_string (this_parser, full_name, ".");
+			    full_name = pt_append_string (this_parser, full_name, name->info.name.thin);
+			    name->info.name.original = full_name;
+
+			    if (user_name)
+			      {
+				db_string_free (user_name);
+				user_name = NULL;
+			      }
+			  }
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5073,44 +5052,35 @@ user_specified_name
 
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
-			char * user_name_ptr = NULL;
-			const char *name_ptr = NULL;
-			const char *dot_ptr = NULL;
+			const char *dot = NULL;
+			const char *full_name = NULL;
 
 			assert (user != NULL && user->node_type == PT_NAME);
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			/* check if resolved-name is the current-user-name. */
-			user_name_ptr = db_get_user_name ();
-			if (user_name_ptr == NULL)
+			/*
+			 *  Assume that identifier does not contain dot(.) or can contain only 1 dot(.).
+			 *  If not, additional processing is required.
+			 */
+			dot = name->info.name.original ? strchr (name->info.name.original, '.') : NULL;
+			name->info.name.thin = pt_append_string (this_parser, NULL, (dot ? dot + 1 : name->info.name.original));
+
+			/*
+			 *  "dot == NULL" comparison is needed below.
+			 *  other_user_name must not be changed to current_user_name.
+			 *
+			 *  e.g. name->info.name.original == "[other_user_name.object_name]"
+			 */
+			if (dot == NULL && db_is_system_class_by_name (name->info.name.thin) == 0)
 			  {
-			    PT_ERROR (this_parser, name, "Failed to get current-user-name.");
-			  }
-			if (pt_str_compare (user_name_ptr, user->info.name.original, CASE_INSENSITIVE) == 0)
-			  {
-			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_RESOLVED_OWNER);
-			  }
-			else
-			  {
-			    /* set resolved-name if not current-user-name. */
-			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
+			    // name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
+
+			    full_name = pt_append_string (this_parser, NULL, user->info.name.original);
+			    full_name = pt_append_string (this_parser, full_name, ".");
+			    full_name = pt_append_string (this_parser, full_name, name->info.name.thin);
+			    name->info.name.original = full_name;
 			  }
 
-			/* thin-name does not include user-name. */
-			dot_ptr = strchr (name->info.name.original, '.');
-			name->info.name.thin = dot_ptr ? dot_ptr + 1 : name->info.name.original;
-
-			/* original-name includes user-name. */
-			if (dot_ptr == NULL
-			    && db_is_system_class_by_name (name->info.name.thin) == FALSE)
-			  {
-			    name_ptr = pt_append_string (this_parser, NULL, user->info.name.original);
-			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
-			    name_ptr = pt_append_string (this_parser, name_ptr, name->info.name.thin);
-			    name->info.name.original = name_ptr;
-			  }
-
-			db_string_free (user_name_ptr);
 			parser_free_tree (this_parser, user);
 
 			$$ = name;
@@ -5121,35 +5091,41 @@ user_specified_name
 		{{
 
 			PT_NODE *name = $1;
-			char *user_name_ptr = NULL;
-			const char *name_ptr = NULL;
-			const char *dot_ptr = NULL;
+			const char *dot = NULL;
+			char *user_name = NULL;
+			const char *full_name = NULL;
 
 			assert (name != NULL && name->node_type == PT_NAME);
 
-			user_name_ptr = db_get_user_name ();
-			if (user_name_ptr == NULL)
+			/*
+			 *  Assume that identifier does not contain dot(.) or can contain only 1 dot(.).
+			 *  If not, additional processing is required.
+			 */
+			dot = name->info.name.original ? strchr (name->info.name.original, '.') : NULL;
+			name->info.name.thin = pt_append_string (this_parser, NULL, (dot ? dot + 1 : name->info.name.original));
+
+			/*
+			 *  "dot == NULL" comparison is needed below.
+			 *  other_user_name must not be changed to current_user_name.
+			 *
+			 *  e.g. name->info.name.original == "[other_user_name.object_name]"
+			 */
+			if (dot == NULL && db_is_system_class_by_name (name->info.name.thin) == 0)
 			  {
-			    PT_ERROR (this_parser, name, "Failed to get current-user-name.");
+			    user_name = db_get_user_name ();
+			    // name->info.name.resolved = pt_append_string (this_parser, NULL, user_name);
+
+			    full_name = pt_append_string (this_parser, NULL, user_name);
+			    full_name = pt_append_string (this_parser, full_name, ".");
+			    full_name = pt_append_string (this_parser, full_name, name->info.name.thin);
+			    name->info.name.original = full_name;
+
+			    if (user_name)
+			      {
+				db_string_free (user_name);
+				user_name = NULL;
+			      }
 			  }
-			PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_RESOLVED_OWNER);
-
-			/* thin-name does not include user-name. */
-			dot_ptr = strchr (name->info.name.original, '.');
-			name->info.name.thin = pt_append_string (this_parser, NULL,
-								 (dot_ptr ? dot_ptr + 1 : name->info.name.original));
-
-			/* original-name includes user-name. */
-			if (dot_ptr == NULL
-			    && db_is_system_class_by_name (name->info.name.thin) == FALSE)
-			  {
-			    name_ptr = pt_append_string (this_parser, NULL, user_name_ptr);
-			    name_ptr = pt_append_string (this_parser, name_ptr, ".");
-			    name_ptr = pt_append_string (this_parser, name_ptr, name->info.name.thin);
-			    name->info.name.original = name_ptr;
-			  }
-
-			db_string_free (user_name_ptr);
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -7876,7 +7852,7 @@ path_expression_list
 	;
 
 delete_name
-	: identifier
+	: user_specified_name
 		{{
 
 			PT_NODE *node = $1;
@@ -7885,7 +7861,7 @@ delete_name
 			$$ = node;
 
 		DBG_PRINT}}
-	| identifier DOT '*'
+	| user_specified_name DOT '*'
 		{{
 
 			PT_NODE *node = $1;
@@ -19660,40 +19636,35 @@ path_header
 		{{
 
 			PT_NODE *node = $2;
-			const char *user_name_ptr = NULL;
-			const char *name_ptr = NULL;
-			const char *dot_ptr = NULL;
+			const char *dot = NULL;
+			char *user_name = NULL;
+			const char *full_name = NULL;
 
-			/* to_do_by_youngjinj:
-			 * Is there any case where we need to set a resolved name here? */
 			if (node && node->node_type == PT_NAME)
 			  {
 			    node->info.name.meta_class = PT_META_CLASS;
 
-			    user_name_ptr = db_get_user_name ();
-			    if (user_name_ptr == NULL)
+			    /* Assume that identifier does not contain dot(.) or can contain only 1 dot(.).
+			     * If not, additional processing is required. */
+			    dot = node->info.name.original ? strchr (node->info.name.original, '.') : NULL;
+			    node->info.name.thin = pt_append_string (this_parser, NULL, (dot ? dot + 1 : node->info.name.original));
+
+			    if (dot == NULL && db_is_system_class_by_name (node->info.name.thin) == 0)
 			      {
-				PT_ERROR (this_parser, node, "Failed to get current-user-name.");
+				user_name = db_get_user_name ();
+				// node->info.name.resolved = pt_append_string (this_parser, NULL, user_name);
+
+				full_name = pt_append_string (this_parser, NULL, user_name);
+				full_name = pt_append_string (this_parser, full_name, ".");
+				full_name = pt_append_string (this_parser, full_name, node->info.name.thin);
+				node->info.name.original = full_name;
+
+				if (user_name)
+				  {
+				    db_string_free (user_name);
+				    user_name = NULL;
+				  }
 			      }
-			    PT_NAME_INFO_SET_FLAG (node, PT_NAME_INFO_RESOLVED_OWNER);
-
-			    /* thin-name does not include user-name. */
-			    dot_ptr = strchr (node->info.name.original, '.');
-			    node->info.name.thin = pt_append_string (this_parser, NULL,
-								     (dot_ptr ? dot_ptr + 1 :
-								      node->info.name.original));
-
-			    /* original-name includes user-name. */
-			    if (dot_ptr == NULL
-				&& db_is_system_class_by_name (node->info.name.thin) == FALSE)
-			      {
-				name_ptr = pt_append_string (this_parser, NULL, user_name_ptr);
-				name_ptr = pt_append_string (this_parser, name_ptr, ".");
-				name_ptr = pt_append_string (this_parser, name_ptr, node->info.name.thin);
-				node->info.name.original = name_ptr;
-			      }
-
-			    db_string_free (user_name_ptr);
 			  }
 
 			$$ = node;

@@ -2536,7 +2536,7 @@ struct pt_name_info
 {
   UINTPTR spec_id;		/* unique identifier for entity specs */
   const char *original;		/* the string of the original name */
-  const char *thin;		/* the string of the thin name */
+  const char *thin;		/* thine_name does not include owner_name in original_name. */
   const char *resolved;		/* the string of the resolved name */
   DB_OBJECT *db_object;		/* the object, if this is a class or instance */
   int db_object_chn;
@@ -2565,7 +2565,6 @@ struct pt_name_info
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from derived spec */
 #define PT_NAME_FOR_UPDATE	  2048	/* Table name in FOR UPDATE clause */
 #define PT_NAME_DEFAULTF_ACCEPTS  4096	/* name of table/column that default function accepts: real table's, cte's */
-#define PT_NAME_INFO_RESOLVED_OWNER 8192	/* resolved name is the current user name. */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))

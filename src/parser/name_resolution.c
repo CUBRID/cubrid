@@ -1870,14 +1870,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      /* derived table or cte */
 			      assert (PT_SPEC_IS_DERIVED (spec) || PT_SPEC_IS_CTE (spec));
 			      range_var = spec->info.spec.range_var;
-			      if (pt_str_compare (attr->info.name.original, range_var->info.name.original,
-						  CASE_INSENSITIVE) == 0)
-				{
-				  break;
-				}
-			      if (PT_NAME_INFO_IS_FLAGED (range_var, PT_NAME_INFO_RESOLVED_OWNER)
-				  && pt_dot_compare (attr->info.name.original, range_var->info.name.original,
-						     CASE_INSENSITIVE) == 0)
+			      if (pt_dot_compare (attr->info.name.original, range_var->info.name.original, CASE_INSENSITIVE) == 0)
 				{
 				  break;
 				}
@@ -5485,8 +5478,8 @@ pt_is_correlation_name (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * nam)
 
       if (specs->info.spec.range_var
 	  && ((nam->info.name.meta_class != PT_META_CLASS) || (specs->info.spec.meta_class == PT_META_CLASS))
-	  && pt_dot_compare (nam->info.name.original, specs->info.spec.range_var->info.name.original,
-			     CASE_INSENSITIVE) == 0)
+	  && (pt_dot_compare (nam->info.name.original, specs->info.spec.range_var->info.name.original,
+			      CASE_INSENSITIVE) == 0))
 	{
 	  if (!owner)
 	    {
@@ -5499,8 +5492,7 @@ pt_is_correlation_name (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * nam)
 	      entity_name = specs->info.spec.entity_name;
 	      if (entity_name && entity_name->node_type == PT_NAME && entity_name->info.name.resolved
 		  /* actual class ownership test is done for spec no need to repeat that here. */
-		  && (pt_dot_compare (entity_name->info.name.resolved, owner->info.name.original, CASE_INSENSITIVE) ==
-		      0))
+		  && (pt_dot_compare (entity_name->info.name.resolved, owner->info.name.original, CASE_INSENSITIVE) == 0))
 		{
 		  return specs;
 		}
@@ -6681,7 +6673,7 @@ pt_resolve_hint_args (PARSER_CONTEXT * parser, PT_NODE ** arg_list, PT_NODE * sp
 	    }
 
 	  if ((range = spec->info.spec.range_var)
-	      && !pt_str_compare (range->info.name.original, arg->info.name.original, CASE_INSENSITIVE))
+	      && (pt_qualifier_compare (range->info.name.original, arg->info.name.original) == 0))
 	    {
 	      /* found match */
 	      arg->info.name.spec_id = spec->info.spec.id;
@@ -6956,7 +6948,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 	  range = spec->info.spec.range_var;
 	  entity = spec->info.spec.entity_name;
 	  if (range && entity
-	      && !pt_dot_compare (range->info.name.original, index->info.name.resolved, CASE_INSENSITIVE))
+	      && (pt_dot_compare (range->info.name.original, index->info.name.resolved, CASE_INSENSITIVE) == 0))
 	    {
 	      classop = db_find_class (entity->info.name.original);
 	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
@@ -7158,6 +7150,33 @@ pt_dot_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag)
     {
       return intl_identifier_cmp (p, q);
     }
+}
+
+int
+pt_qualifier_compare (const char *p, const char *q)
+{
+  const char *dot_p = NULL;
+  const char *dot_q = NULL;
+  const char *qualifier_p = NULL;
+  const char *qualifier_q = NULL;
+
+  /* p */
+  qualifier_p = pt_get_name_without_current_user (p);
+
+  /* q */
+  qualifier_q = pt_get_name_without_current_user (q);
+
+  if (!qualifier_p && !qualifier_q)
+    {
+      return 0;
+    }
+
+  if (!qualifier_p || !qualifier_q)
+    {
+      return 1;
+    }
+
+  return intl_identifier_casecmp (qualifier_p, qualifier_q);
 }
 
 /*
@@ -8231,9 +8250,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       assert (cte_name != NULL);
 
       if (pt_name_equal (parser, cte_name, node->info.spec.entity_name)
-	  || (PT_NAME_INFO_IS_FLAGED (node->info.spec.entity_name, PT_NAME_INFO_RESOLVED_OWNER)
-	      && !pt_dot_compare (cte_name->info.name.original, node->info.spec.entity_name->info.name.original,
-				  CASE_INSENSITIVE)))
+	  || pt_dot_compare (cte_name->info.name.original, node->info.spec.entity_name->info.name.original, CASE_INSENSITIVE) == 0)
 	{
 	  node->info.spec.cte_name = node->info.spec.entity_name;
 	  node->info.spec.entity_name = NULL;
@@ -10272,3 +10289,4 @@ pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   node->info.name.meta_class = PT_NORMAL;	// so far, only normals are used.
   return node;
 }
+
