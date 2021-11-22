@@ -34,4 +34,7 @@ class passive_tran_server : public tran_server
     bool get_remote_storage_config () final override;
 };
 
+extern void init_passive_tran_server_shadow_ptr (passive_tran_server *ptr);
+extern void reset_passive_tran_server_shadow_ptr ();
+
 #endif // !_passive_tran_server_HPP_

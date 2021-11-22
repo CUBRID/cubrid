@@ -19,6 +19,7 @@
 #include "server_type.hpp"
 
 #include "active_tran_server.hpp"
+#include "passive_tran_server.hpp"
 #include "communication_server_channel.hpp"
 #include "connection_defs.h"
 #include "error_manager.h"
@@ -134,7 +135,9 @@ int init_server_type (const char *db_name)
 	}
       else if (is_passive_transaction_server ())
 	{
-	  ts_Gl.reset (new passive_tran_server ());
+	  passive_tran_server *const pts_ptr = new passive_tran_server ();
+	  ts_Gl.reset (pts_ptr);
+	  init_passive_tran_server_shadow_ptr (pts_ptr);
 	}
       else
 	{
@@ -184,6 +187,10 @@ void finalize_server_type ()
 {
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
+      if (is_passive_transaction_server ())
+	{
+	  reset_passive_tran_server_shadow_ptr ();
+	}
       ts_Gl->disconnect_page_server ();
       ts_Gl.reset (nullptr);
     }

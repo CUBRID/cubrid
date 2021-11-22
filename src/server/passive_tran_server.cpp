@@ -18,6 +18,26 @@
 
 #include "passive_tran_server.hpp"
 
+// non-owning "shadow" pointer of globally visible ps_Gl
+passive_tran_server *pts_Gl = nullptr;
+
+void
+init_passive_tran_server_shadow_ptr (passive_tran_server *ptr)
+{
+  assert (pts_Gl == nullptr);
+  assert (ptr != nullptr);
+
+  pts_Gl = ptr;
+}
+
+void
+reset_passive_tran_server_shadow_ptr ()
+{
+  assert (pts_Gl != nullptr);
+
+  pts_Gl = nullptr;
+}
+
 bool
 passive_tran_server::uses_remote_storage () const
 {
