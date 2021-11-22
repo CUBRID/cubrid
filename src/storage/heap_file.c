@@ -21898,6 +21898,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   bool is_old_home_updated;
   RECDES new_home_recdes;
   VFID ovf_vfid;
+  bool atomic_replication_flag = false;
 
   LOG_TDES *tdes = NULL;
 
@@ -21926,6 +21927,9 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
+  // All situations will modify more than one page, so they are all marked as atomic for replication.
+  log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+  atomic_replication_flag = true;
   if (is_mvcc_op)
     {
       /* log old overflow record and set prev version lsa */
@@ -22098,6 +22102,11 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   /* Fall through to exit. */
 
 exit:
+  if (atomic_replication_flag == true)
+    {
+      log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+    }
+
   return error_code;
 }
 
