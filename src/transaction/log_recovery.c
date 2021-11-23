@@ -2858,6 +2858,10 @@ log_rv_undo_abort_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       log_append_assigned_mvccid (thread_p, tdes->mvccinfo.id);
     }
+
+  // Clear MVCCID
+  tdes->mvccinfo.id = MVCCID_NULL;
+
   (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
   logtb_free_tran_index (thread_p, tdes->tran_index);
 }
