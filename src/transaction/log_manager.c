@@ -75,6 +75,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "partition_sr.h"
+#include "scope_exit.hpp"
 #include "slotted_page.h"
 #include "tz_support.h"
 #if defined (SA_MODE)
@@ -3347,6 +3348,38 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 
   return;
 }
+
+/* log_pack_log_header_log_append_prev_lsa - pack together the log header, log append pages
+ *              and prev lsa for the purpose of sending them to the passive transaction server
+ *              as part of the log initialization sequence
+ */
+// *INDENT-OFF*
+std::string log_pack_log_header_log_append_prev_lsa (THREAD_ENTRY * thread_p)
+{
+  LOG_CS_ENTER_READ_MODE (thread_p);
+  scope_exit log_cs_exit_ftor ( [thread_p] { LOG_CS_EXIT (thread_p); } );
+  std::lock_guard<std::mutex> { log_Gl.prior_info.prior_lsa_mutex };
+
+  const int log_page_size = db_log_page_size ();
+
+  std::string packed_message;
+
+  // log header
+  assert (log_Gl.loghdr_pgptr != nullptr);
+  packed_message.append(reinterpret_cast<const char*> (log_Gl.loghdr_pgptr), log_page_size);
+
+  // log append
+  assert (log_Gl.append.log_pgptr != nullptr);
+  packed_message.append(reinterpret_cast<const char*> (log_Gl.append.log_pgptr), log_page_size);
+
+  // prev lsa
+  packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (struct log_lsa));
+
+  assert (packed_message.size () == (2 * log_page_size + sizeof (struct log_lsa)));
+
+  return packed_message;
+}
+// *INDENT-ON*
 
 /*
  * log_skip_logging -  A log entry was not recorded intentionally by the

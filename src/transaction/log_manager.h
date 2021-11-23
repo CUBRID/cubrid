@@ -228,6 +228,10 @@ extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
 
 extern void log_write_metalog_to_file (bool file_open_is_fatal);
 
+// *INDENT-OFF*
+extern std::string log_pack_log_header_log_append_prev_lsa (THREAD_ENTRY * thread_p);
+// *INDENT-ON*
+
 #if defined (SERVER_MODE)
 extern void cdc_daemons_init ();
 extern void cdc_daemons_destroy ();
