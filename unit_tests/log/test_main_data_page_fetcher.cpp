@@ -223,6 +223,13 @@ pgbuf_unfix_debug (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const char *caller_fi
   delete_page (pgptr);
 }
 
+std::string
+log_pack_log_boot_info (THREAD_ENTRY *thread_p)
+{
+  assert ("function is not used in the context of this unit test" == nullptr);
+  return std::string ();
+}
+
 #if defined(NDEBUG)
 PAGE_PTR
 pgbuf_fix_release (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fetch_mode,

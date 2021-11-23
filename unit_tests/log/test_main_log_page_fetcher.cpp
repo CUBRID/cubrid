@@ -195,6 +195,13 @@ pgbuf_fix_release (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fet
   return nullptr;
 }
 
+std::string
+log_pack_log_boot_info (THREAD_ENTRY *thread_p)
+{
+  assert ("function is not used in the context of this unit test" == nullptr);
+  return std::string ();
+}
+
 #if defined(NDEBUG)
 void
 pgbuf_unfix (THREAD_ENTRY *thread_p, PAGE_PTR pgptr)

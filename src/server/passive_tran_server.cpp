@@ -18,6 +18,7 @@
 
 #include "log_impl.h"
 #include "passive_tran_server.hpp"
+#include "server_type.hpp"
 #include "thread_manager.hpp"
 
 // non-owning "shadow" pointer of globally visible ps_Gl

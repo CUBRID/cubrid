@@ -18,11 +18,11 @@
 
 #include "page_server.hpp"
 
+#include "async_page_fetcher.hpp"
 #include "disk_manager.h"
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa_utils.hpp"
-#include "log_manager.h"
 #include "log_prior_recv.hpp"
 #include "log_replication.hpp"
 #include "packer.hpp"
@@ -115,7 +115,7 @@ page_server::connection_handler::receive_log_page_fetch (cubpacking::unpacker &u
       _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
     }
 
-  m_ps.get_page_fetcher ().fetch_log_page (pageid, std::bind (&page_server::connection_handler::on_log_page_read_result,
+  m_ps.get_page_fetcher ()->fetch_log_page (pageid, std::bind (&page_server::connection_handler::on_log_page_read_result,
       this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -132,7 +132,7 @@ page_server::connection_handler::receive_data_page_fetch (cubpacking::unpacker &
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
 
-  m_ps.get_page_fetcher ().fetch_data_page (vpid, target_repl_lsa,
+  m_ps.get_page_fetcher ()->fetch_data_page (vpid, target_repl_lsa,
       std::bind (&page_server::connection_handler::on_data_page_read_result, this, std::placeholders::_1,
 		 std::placeholders::_2));
 }
@@ -144,15 +144,7 @@ page_server::connection_handler::receive_log_boot_info_fetch (cubpacking::unpack
 
   auto callback_func = std::bind (&page_server::connection_handler::on_log_boot_info_result,
 				  this, std::placeholders::_1);
-
-  using call_func_type = std::string (*) (cubthread::entry *);
-  using callback_func_type = decltype (callback_func);
-
-  cubthread::entry_task *const task
-    = new cublog::single_arg_call_callback_task<call_func_type, callback_func_type> (
-	  log_pack_log_boot_info, std::move (callback_func));
-  // ownership goes to the thread pool that will handle it
-  m_ps.get_page_fetcher ().submit_task (task);
+  m_ps.get_page_fetcher ()->fetch_log_boot_info (std::move (callback_func));
 }
 
 void
@@ -349,11 +341,11 @@ page_server::is_passive_tran_server_connected () const
   return !m_passive_tran_server_conn.empty ();
 }
 
-cublog::async_page_fetcher &
+cublog::async_page_fetcher *
 page_server::get_page_fetcher ()
 {
   assert (m_page_fetcher != nullptr);
-  return *m_page_fetcher.get ();
+  return m_page_fetcher.get ();
 }
 
 void
@@ -400,5 +392,5 @@ page_server::init_page_fetcher ()
 void
 page_server::finalize_page_fetcher ()
 {
-  m_page_fetcher.reset ();
+  m_page_fetcher.reset (nullptr);
 }

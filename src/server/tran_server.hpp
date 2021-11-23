@@ -23,7 +23,6 @@
 #include "communication_server_channel.hpp"
 #include "page_broker.hpp"
 #include "request_sync_client_server.hpp"
-#include "server_type.hpp"
 #include "tran_page_requests.hpp"
 
 #include <memory>

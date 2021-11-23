@@ -19,6 +19,7 @@
 #include "async_page_fetcher.hpp"
 
 #include "log_lsa.hpp"
+#include "log_manager.h"
 #include "log_reader.hpp"
 #include "log_replication.hpp"
 #include "page_buffer.h"
@@ -35,7 +36,7 @@ namespace cublog
       {
       }
 
-      void execute (context_type &) override;
+      void execute (context_type &context) override;
 
     private:
       LOG_PAGEID m_logpageid;
@@ -50,13 +51,31 @@ namespace cublog
       {
       }
 
-      void execute (context_type &) override;
+      void execute (context_type &context) override;
 
     private:
       VPID m_vpid;
       LOG_LSA m_lsa;
       async_page_fetcher::data_page_callback_type m_callback;
   };
+
+  class log_boot_info_fetch_task : public cubthread::entry_task
+  {
+    public:
+      explicit log_boot_info_fetch_task (async_page_fetcher::log_boot_info_callback_type &&callback)
+	: m_callback { std::move (callback) }
+      {
+      }
+
+      void execute (context_type &context) override;
+
+    private:
+      async_page_fetcher::log_boot_info_callback_type m_callback;
+  };
+
+  /*
+   * implementations
+   */
 
   void log_page_fetch_task::execute (context_type &context)
   {
@@ -91,6 +110,13 @@ namespace cublog
     m_callback (io_pgptr, error);
 
     pgbuf_unfix (&context, page_ptr);
+  }
+
+  void log_boot_info_fetch_task::execute (context_type &context)
+  {
+    const std::string str = log_pack_log_boot_info (&context);
+
+    m_callback (str);
   }
 
   async_page_fetcher::async_page_fetcher ()
@@ -129,9 +155,9 @@ namespace cublog
     m_threads->execute (task);
   }
 
-  void async_page_fetcher::submit_task (cubthread::entry_task *task)
+  void async_page_fetcher::fetch_log_boot_info (log_boot_info_callback_type &&callback_func)
   {
-    assert (task != nullptr);
+    cubthread::entry_task *const task = new log_boot_info_fetch_task (std::move (callback_func));
 
     // ownership is transfered to the worker pool
     m_threads->execute (task);

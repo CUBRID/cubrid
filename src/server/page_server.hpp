@@ -19,7 +19,7 @@
 #ifndef _PAGE_SERVER_HPP_
 #define _PAGE_SERVER_HPP_
 
-#include "async_page_fetcher.hpp"
+#include "log_storage.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
 
@@ -29,6 +29,7 @@
 namespace cublog
 {
   class replicator;
+  class async_page_fetcher;
 }
 namespace cubpacking
 {
@@ -63,7 +64,7 @@ class page_server
     void disconnect_tran_server (connection_handler *conn);
     bool is_active_tran_server_connected () const;
     bool is_passive_tran_server_connected () const;
-    cublog::async_page_fetcher &get_page_fetcher ();
+    cublog::async_page_fetcher *get_page_fetcher ();
 
   private:
     class connection_handler
