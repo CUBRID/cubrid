@@ -81,14 +81,14 @@ class page_server
       private:
 	void on_log_page_read_result (const LOG_PAGE *log_page, int error_code);
 	void on_data_page_read_result (const FILEIO_PAGE *page_ptr, int error_code);
-	void on_log_header_log_append_prev_lsa_result (std::string &&message);
+	void on_log_boot_info_result (std::string &&message);
 
 	void receive_boot_info_request (cubpacking::unpacker &upk);
 	void receive_log_prior_list (cubpacking::unpacker &upk);
 	void receive_log_page_fetch (cubpacking::unpacker &upk);
 	void receive_data_page_fetch (cubpacking::unpacker &upk);
 	void receive_disconnect_request (cubpacking::unpacker &upk);
-	void receive_log_header_log_append_prev_lsa_fetch (cubpacking::unpacker &upk);
+	void receive_log_boot_info_fetch (cubpacking::unpacker &upk);
 
 	std::unique_ptr<tran_server_conn_t> m_conn;
 	page_server &m_ps;

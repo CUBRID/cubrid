@@ -3349,12 +3349,12 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
   return;
 }
 
-/* log_pack_log_header_log_append_prev_lsa - pack together the log header, log append pages
+/* log_pack_log_boot_info - pack together the log header, log append pages
  *              and prev lsa for the purpose of sending them to the passive transaction server
  *              as part of the log initialization sequence
  */
 // *INDENT-OFF*
-std::string log_pack_log_header_log_append_prev_lsa (THREAD_ENTRY * thread_p)
+std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p)
 {
   LOG_CS_ENTER_READ_MODE (thread_p);
   scope_exit log_cs_exit_ftor ( [thread_p] { LOG_CS_EXIT (thread_p); } );

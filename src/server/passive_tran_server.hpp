@@ -29,7 +29,7 @@ class passive_tran_server : public tran_server
     }
 
   public:
-    void send_and_receive_log_header_log_append_prev_lsa (THREAD_ENTRY *thread_p);
+    void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p);
 
   private:
     bool uses_remote_storage () const final override;
@@ -37,17 +37,17 @@ class passive_tran_server : public tran_server
     void on_boot () final override;
     request_handlers_map_t get_request_handlers () final override;
 
-    void receive_log_header_log_append_prev_lsa (cubpacking::unpacker &upk);
+    void receive_log_boot_info (cubpacking::unpacker &upk);
 
   private:
-    std::mutex m_log_header_log_append_prev_lsa_mtx;
-    std::string m_log_header_log_append_prev_lsa;
-    std::condition_variable m_log_header_log_append_prev_lsa_condvar;
+    std::mutex m_log_boot_info_mtx;
+    std::string m_log_boot_info;
+    std::condition_variable m_log_boot_info_condvar;
 };
 
 extern void init_passive_tran_server_shadow_ptr (passive_tran_server *ptr);
 extern void reset_passive_tran_server_shadow_ptr ();
 
-extern void send_and_receive_log_header_log_append_prev_lsa (THREAD_ENTRY *thread_p);
+extern void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p);
 
 #endif // !_passive_tran_server_HPP_

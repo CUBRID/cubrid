@@ -31,7 +31,7 @@ enum class tran_to_page_request
   SEND_LOG_PRIOR_LIST,
 
   // Passive only
-  SEND_LOG_HEADER_LOG_APPEND_PREV_LSA_FETCH,
+  SEND_LOG_INIT_BOOT_FETCH,
 };
 
 enum class page_to_tran_request
@@ -45,7 +45,7 @@ enum class page_to_tran_request
   SEND_DATA_PAGE,
 
   // Passive only
-  SEND_LOG_HEADER_LOG_APPEND_PREV_LSA,
+  SEND_LOG_BOOT_INFO,
 };
 
 #endif // !_TRAN_PAGE_REQUESTS_HPP_

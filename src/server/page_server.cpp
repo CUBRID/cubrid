@@ -71,9 +71,8 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, page
     },
     // passive only
     {
-      tran_to_page_request::SEND_LOG_HEADER_LOG_APPEND_PREV_LSA_FETCH,
-      std::bind (&page_server::connection_handler::receive_log_header_log_append_prev_lsa_fetch,
-		 std::ref (*this), std::placeholders::_1)
+      tran_to_page_request::SEND_LOG_INIT_BOOT_FETCH,
+      std::bind (&page_server::connection_handler::receive_log_boot_info_fetch, std::ref (*this), std::placeholders::_1)
     },
   }));
 
@@ -139,11 +138,11 @@ page_server::connection_handler::receive_data_page_fetch (cubpacking::unpacker &
 }
 
 void
-page_server::connection_handler::receive_log_header_log_append_prev_lsa_fetch (cubpacking::unpacker &upk)
+page_server::connection_handler::receive_log_boot_info_fetch (cubpacking::unpacker &upk)
 {
   // empty request message
 
-  auto callback_func = std::bind (&page_server::connection_handler::on_log_header_log_append_prev_lsa_result,
+  auto callback_func = std::bind (&page_server::connection_handler::on_log_boot_info_result,
 				  this, std::placeholders::_1);
 
   using call_func_type = std::string (*) (cubthread::entry *);
@@ -151,17 +150,17 @@ page_server::connection_handler::receive_log_header_log_append_prev_lsa_fetch (c
 
   cubthread::entry_task *const task
     = new cublog::single_arg_call_callback_task<call_func_type, callback_func_type> (
-	  log_pack_log_header_log_append_prev_lsa, std::move (callback_func));
+	  log_pack_log_boot_info, std::move (callback_func));
   // ownership goes to the thread pool that will handle it
   m_ps.get_page_fetcher ().submit_task (task);
 }
 
 void
-page_server::connection_handler::on_log_header_log_append_prev_lsa_result (std::string &&message)
+page_server::connection_handler::on_log_boot_info_result (std::string &&message)
 {
   assert (message.size () > 0);
 
-  m_conn->push (page_to_tran_request::SEND_LOG_HEADER_LOG_APPEND_PREV_LSA, std::move (message));
+  m_conn->push (page_to_tran_request::SEND_LOG_BOOT_INFO, std::move (message));
 }
 
 void
