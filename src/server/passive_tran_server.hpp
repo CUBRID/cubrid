@@ -45,9 +45,6 @@ class passive_tran_server : public tran_server
     std::condition_variable m_log_boot_info_condvar;
 };
 
-extern void init_passive_tran_server_shadow_ptr (passive_tran_server *ptr);
-extern void reset_passive_tran_server_shadow_ptr ();
-
 extern void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p);
 
 #endif // !_passive_tran_server_HPP_

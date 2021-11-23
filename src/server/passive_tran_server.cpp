@@ -21,26 +21,6 @@
 #include "server_type.hpp"
 #include "thread_manager.hpp"
 
-// non-owning "shadow" pointer of globally visible ps_Gl
-passive_tran_server *pts_Gl = nullptr;
-
-void
-init_passive_tran_server_shadow_ptr (passive_tran_server *ptr)
-{
-  assert (pts_Gl == nullptr);
-  assert (ptr != nullptr);
-
-  pts_Gl = ptr;
-}
-
-void
-reset_passive_tran_server_shadow_ptr ()
-{
-  assert (pts_Gl != nullptr);
-
-  pts_Gl = nullptr;
-}
-
 bool
 passive_tran_server::uses_remote_storage () const
 {
@@ -135,7 +115,7 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
 
 void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p)
 {
-  assert (pts_Gl != nullptr);
+  passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
 
-  pts_Gl->send_and_receive_log_boot_info (thread_p);
+  pts_ptr->send_and_receive_log_boot_info (thread_p);
 }

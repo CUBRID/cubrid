@@ -25,10 +25,13 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "page_server.hpp"
-#include "passive_tran_server.hpp"
 #include "system_parameter.h"
 
 #include <string>
+
+std::unique_ptr<tran_server> ts_Gl;
+// non-owning "shadow" pointer of globally visible ts_Gl
+passive_tran_server *pts_Gl = nullptr;
 
 SERVER_TYPE get_value_from_config (server_type_config parameter_value);
 transaction_server_type get_value_from_config (transaction_server_type_config parameter_value);
@@ -135,9 +138,9 @@ int init_server_type (const char *db_name)
 	}
       else if (is_passive_transaction_server ())
 	{
-	  passive_tran_server *const pts_ptr = new passive_tran_server ();
-	  ts_Gl.reset (pts_ptr);
-	  init_passive_tran_server_shadow_ptr (pts_ptr);
+	  assert (pts_Gl == nullptr);
+	  pts_Gl = new passive_tran_server ();
+	  ts_Gl.reset (pts_Gl);
 	}
       else
 	{
@@ -189,7 +192,8 @@ void finalize_server_type ()
     {
       if (is_passive_transaction_server ())
 	{
-	  reset_passive_tran_server_shadow_ptr ();
+	  assert (pts_Gl != nullptr);
+	  pts_Gl = nullptr;
 	}
       ts_Gl->disconnect_page_server ();
       ts_Gl.reset (nullptr);
@@ -238,6 +242,12 @@ bool is_tran_server_with_remote_storage ()
       return ts_Gl->uses_remote_storage ();
     }
   return false;
+}
+
+passive_tran_server *get_passive_tran_server_ptr ()
+{
+  assert (pts_Gl != nullptr);
+  return pts_Gl;
 }
 
 #else // !SERVER_MODE = SA_MODE
