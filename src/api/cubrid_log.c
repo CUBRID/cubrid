@@ -749,6 +749,12 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
 
   snprintf (dbname_at_hostname, sizeof (dbname_at_hostname), "%s@%s", dbname, hostname);
 
+  if (au_login (username, password, true) != NO_ERROR)
+    {
+      cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, CUBRID_LOG_FAILED_LOGIN, "Failed to login\n");
+      goto error;
+    }
+
   if (db_restart ("cubrid_log_api", 0, dbname_at_hostname) != NO_ERROR)
     {
       cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, CUBRID_LOG_FAILED_LOGIN,
@@ -768,12 +774,6 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
     {
       cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, CUBRID_LOG_FAILED_LOGIN,
 			   "DBA authorization failed. %s is not a member of DBA group\n", username);
-      goto error;
-    }
-
-  if (db_login (username, password) != NO_ERROR)
-    {
-      cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, CUBRID_LOG_FAILED_LOGIN, "Failed to login\n");
       goto error;
     }
 
