@@ -66,7 +66,7 @@ namespace cublog
     if (m_logpageid == LOGPB_HEADER_PAGE_ID)
       {
 	// Make sure log page header is updated
-	logpb_force_flush_header_and_pages (&cubthread::get_entry ());
+	logpb_force_flush_header_and_pages (&context);
       }
     int err = logreader.set_lsa_and_fetch_page (loglsa);
     m_callback (logreader.get_page (), err);
@@ -126,6 +126,14 @@ namespace cublog
     data_page_fetch_task *const task = new data_page_fetch_task (vpid, repl_lsa, std::move (func));
 
     // Ownership is transfered to m_threads.
+    m_threads->execute (task);
+  }
+
+  void async_page_fetcher::submit_task (cubthread::entry_task *task)
+  {
+    assert (task != nullptr);
+
+    // ownership is transfered to the worker pool
     m_threads->execute (task);
   }
 }

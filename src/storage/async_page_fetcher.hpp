@@ -27,6 +27,25 @@
 
 namespace cublog
 {
+  /* generic task to be used with to call a engine function taking one argument - the thread context
+   * and returning a single result that is then passed back via the callback
+   *  - call func: takes as single argument the thread context and returns value
+   *  - callback func: takes as single argument the value returned by the call func
+   *
+   * TODO: error handling
+   */
+  template <typename CALL_FUNC, typename CALLBACK_FUNC>
+  class single_arg_call_callback_task : public cubthread::entry_task
+  {
+    public:
+      explicit single_arg_call_callback_task (CALL_FUNC &&call_func, CALLBACK_FUNC &&callback_func);
+
+      void execute (context_type &context) override;
+
+    private:
+      CALL_FUNC m_call_func;
+      CALLBACK_FUNC m_callback_func;
+  };
 
   class async_page_fetcher
   {
@@ -39,6 +58,7 @@ namespace cublog
 
       void fetch_log_page (LOG_PAGEID pageid, log_page_callback_type &&func);
       void fetch_data_page (const VPID &vpid, const LOG_LSA repl_lsa, data_page_callback_type &&func);
+      void submit_task (cubthread::entry_task *task);
 
     private:
       cubthread::entry_workpool *m_threads = nullptr;
@@ -48,6 +68,22 @@ namespace cublog
       std::unique_ptr<cubthread::entry_manager> m_worker_pool_context_manager;
   };
 
+  template <typename CALL_FUNC, typename CALLBACK_FUNC>
+  single_arg_call_callback_task<CALL_FUNC, CALLBACK_FUNC>::single_arg_call_callback_task (
+	  CALL_FUNC &&call_func, CALLBACK_FUNC &&callback_func)
+    : m_call_func { call_func }, m_callback_func { callback_func }
+  {
+  }
+
+  /*
+   * template implementations
+   */
+
+  template <typename CALL_FUNC, typename CALLBACK_FUNC>
+  void single_arg_call_callback_task<CALL_FUNC, CALLBACK_FUNC>::execute (context_type &context)
+  {
+    m_callback_func (m_call_func (&context));
+  }
 }
 
 #endif //_ASYNC_PAGE_FETCHER_HPP_
