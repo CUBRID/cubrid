@@ -293,7 +293,9 @@ method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 {
   int error = NO_ERROR;
   handler.set_server_info (conn_info.rc, conn_info.host);
+  tran_begin_libcas_function ();
   error = handler.callback_dispatch (unpacker);
+  tran_end_libcas_function ();
   return error;
 }
 

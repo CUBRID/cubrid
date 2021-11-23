@@ -367,6 +367,7 @@ typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
 #define CSS_RID_FROM_EID(eid)           ((unsigned short) LOW16BITS(eid))
 #define CSS_ENTRYID_FROM_EID(eid)       ((unsigned short) HIGH16BITS(eid))
 
+#define NET_HEADER_FLAG_METHOD_MODE         0x4000
 #define NET_HEADER_FLAG_INVALIDATE_SNAPSHOT 0x8000
 
 /*
