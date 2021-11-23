@@ -195,6 +195,13 @@ cubrid_log_set_extraction_timeout (int timeout)
 static void
 cubrid_log_reset_tracelog ()
 {
+  if (g_trace_log != NULL)
+    {
+      fflush (g_trace_log);
+      fclose (g_trace_log);
+      g_trace_log = NULL;
+    }
+
   memset (g_trace_log_base, 0, PATH_MAX + 1);
   memset (g_trace_log_path, 0, PATH_MAX + 1);
   memset (g_trace_log_path_old, 0, PATH_MAX + 1);
@@ -1823,13 +1830,6 @@ cubrid_log_disconnect_server (void)
       free_and_init (recv_data);
     }
 
-  if (g_trace_log != NULL)
-    {
-      fflush (g_trace_log);
-      fclose (g_trace_log);
-      g_trace_log = NULL;
-    }
-
   css_free_conn (g_conn_entry);
   g_conn_entry = NULL;
 
@@ -1847,6 +1847,12 @@ cubrid_log_error:
     {
       queue_entry->buffer = NULL;
       css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
+    }
+
+  if (g_conn_entry != NULL)
+    {
+      css_free_conn (g_conn_entry);
+      g_conn_entry = NULL;
     }
 
   return err_code;
@@ -1926,6 +1932,10 @@ cubrid_log_finalize (void)
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
+
+  (void) cubrid_log_reset_globals ();
+
+  g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
 
   return err_code;
 }
