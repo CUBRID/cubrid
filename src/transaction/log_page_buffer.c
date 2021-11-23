@@ -313,6 +313,7 @@ static void logpb_dump_information (FILE * out_fp);
 static void logpb_dump_to_flush_page (FILE * out_fp);
 static void logpb_dump_pages (FILE * out_fp);
 static void logpb_initialize_backup_info (LOG_HEADER * loghdr);
+static void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
 static LOG_PAGE **logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAGES npages);
 static int logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 static void logpb_set_unavailable_archive (THREAD_ENTRY * thread_p, int arv_num);
