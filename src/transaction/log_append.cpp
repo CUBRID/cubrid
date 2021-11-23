@@ -405,6 +405,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_START_ATOMIC_REPL:
     case LOG_END_ATOMIC_REPL:
     case LOG_TRANTABLE_SNAPSHOT:
+    case LOG_ASSIGNED_MVCCID:
       assert (rlength == 0 && rdata == NULL);
 
       error_code = prior_lsa_gen_record (thread_p, node, rec_type, ulength, udata);
@@ -1291,6 +1292,10 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
       node->data_header_length = sizeof (LOG_REC_TRANTABLE_SNAPSHOT);
       break;
 
+    case LOG_ASSIGNED_MVCCID:
+      node->data_header_length = sizeof (LOG_REC_ASSIGNED_MVCCID);
+      break;
+
     case LOG_2PC_START:
       node->data_header_length = sizeof (LOG_REC_2PC_START);
       break;
@@ -1433,6 +1438,13 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
       prior_update_header_mvcc_info (start_lsa, mvccid);
+
+      // Also set the transaction last MVCC lsa.
+      tdes->last_mvcc_lsa = node->start_lsa;
+    }
+  else if (node->log_header.type == LOG_MVCC_REDO_DATA)
+    {
+      tdes->last_mvcc_lsa = node->start_lsa;
     }
   else if (node->log_header.type == LOG_SYSOP_START_POSTPONE)
     {

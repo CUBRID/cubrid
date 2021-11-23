@@ -139,6 +139,7 @@ enum log_rectype
   LOG_START_ATOMIC_REPL = 51,
   LOG_END_ATOMIC_REPL = 52,
   LOG_TRANTABLE_SNAPSHOT = 53,
+  LOG_ASSIGNED_MVCCID = 54,
 
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
                                  * case. we should find a different approach */
@@ -392,6 +393,12 @@ struct log_rec_trantable_snapshot
 {
   LOG_LSA snapshot_lsa = NULL_LSA;       // the LSA when transaction table snapshot is taken
   size_t length = 0;                    // packed snapshot recovery data length
+};
+
+typedef struct log_rec_assigned_mvccid LOG_REC_ASSIGNED_MVCCID;
+struct log_rec_assigned_mvccid
+{
+  MVCCID mvccid;
 };
 
 typedef enum supplement_rec_type
