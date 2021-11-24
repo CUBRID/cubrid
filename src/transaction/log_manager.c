@@ -3366,11 +3366,11 @@ std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p)
 
   // log header
   assert (log_Gl.loghdr_pgptr != nullptr);
-  packed_message.append(reinterpret_cast<const char*> (log_Gl.loghdr_pgptr), log_page_size);
+  packed_message.append (reinterpret_cast<const char*> (log_Gl.loghdr_pgptr), log_page_size);
 
   // log append
   assert (log_Gl.append.log_pgptr != nullptr);
-  packed_message.append(reinterpret_cast<const char*> (log_Gl.append.log_pgptr), log_page_size);
+  packed_message.append (reinterpret_cast<const char*> (log_Gl.append.log_pgptr), log_page_size);
 
   // prev lsa
   packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (struct log_lsa));
