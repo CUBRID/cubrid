@@ -3375,8 +3375,6 @@ std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p)
   // prev lsa
   packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (struct log_lsa));
 
-  assert (packed_message.size () == (2 * log_page_size + sizeof (struct log_lsa)));
-
   return packed_message;
 }
 // *INDENT-ON*
