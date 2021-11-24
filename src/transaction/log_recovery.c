@@ -63,6 +63,8 @@ static void log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p);
 static void log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p);
 static void log_recovery_undo (THREAD_ENTRY * thread_p);
+static void log_rv_undo_abort_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+static void log_rv_undo_end_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static bool log_unformat_ahead_volumes (THREAD_ENTRY * thread_p, VOLID volid, VOLID * start_volid);
 static void log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p);
 static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
@@ -1729,6 +1731,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_START_ATOMIC_REPL:
 	    case LOG_END_ATOMIC_REPL:
 	    case LOG_TRANTABLE_SNAPSHOT:
+	    case LOG_ASSIGNED_MVCCID:
 	      break;
 
 	    case LOG_SYSOP_END:
@@ -2376,8 +2379,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED)
 	  && LSA_ISNULL (&tdes->undo_nxlsa))
 	{
-	  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
-	  logtb_free_tran_index (thread_p, tran_index);
+	  log_rv_undo_abort_complete (thread_p, tdes);
 	}
     }
   // *INDENT-OFF*
@@ -2677,6 +2679,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_START_ATOMIC_REPL:
 		case LOG_END_ATOMIC_REPL:
 		case LOG_TRANTABLE_SNAPSHOT:
+		case LOG_ASSIGNED_MVCCID:
 		  /* Not for UNDO ... */
 		  /* Break switch to go to previous record */
 		  break;
@@ -2777,21 +2780,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 		  /* Remove the transaction from the recovery process */
 		  assert (false);
-
-		  /* Clear MVCCID */
-		  tdes->mvccinfo.id = MVCCID_NULL;
-
-		  if (logtb_is_system_worker_tranid (tran_id))
-		    {
-		      // *INDENT-OFF*
-		      log_system_tdes::rv_delete_tdes (tran_id);
-		      // *INDENT-ON*
-		    }
-		  else
-		    {
-		      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
-		      logtb_free_tran_index (thread_p, tran_index);
-		    }
+		  log_rv_undo_end_tdes (thread_p, tdes);
 		  tdes = NULL;
 		  break;
 
@@ -2809,21 +2798,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  /*
 		   * Remove the transaction from the recovery process
 		   */
-
-		  /* Clear MVCCID */
-		  tdes->mvccinfo.id = MVCCID_NULL;
-
-		  if (logtb_is_system_worker_tranid (tran_id))
-		    {
-		      // *INDENT-OFF*
-		      log_system_tdes::rv_delete_tdes (tran_id);
-		      // *INDENT-ON*
-		    }
-		  else
-		    {
-		      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
-		      logtb_free_tran_index (thread_p, tran_index);
-		    }
+		  log_rv_undo_end_tdes (thread_p, tdes);
 		  tdes = NULL;
 		  break;
 		}
@@ -2837,19 +2812,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      /* Clear MVCCID */
 		      tdes->mvccinfo.id = MVCCID_NULL;
 
-		      if (logtb_is_system_worker_tranid (tran_id))
-			{
-			  // *INDENT-OFF*
-			  log_system_tdes::rv_delete_tdes (tran_id);
-			  // *INDENT-ON*
-			}
-		      else
-			{
-			  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID,
-					       LOG_NEED_TO_WRITE_EOT_LOG);
-			  logtb_free_tran_index (thread_p, tran_index);
-			  tdes = NULL;
-			}
+		      log_rv_undo_end_tdes (thread_p, tdes);
+		      tdes = NULL;
 		    }
 		  else
 		    {
@@ -2870,6 +2834,36 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "UNDO");
 
   return;
+}
+
+void
+log_rv_undo_end_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  if (logtb_is_system_worker_tranid (tdes->trid))
+    {
+      // *INDENT-OFF*
+      log_system_tdes::rv_delete_tdes (tdes->trid);
+      // *INDENT-ON*
+    }
+  else
+    {
+      log_rv_undo_abort_complete (thread_p, tdes);
+    }
+}
+
+void
+log_rv_undo_abort_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  if (MVCCID_IS_VALID (tdes->mvccinfo.id) && tdes->last_mvcc_lsa.is_null ())
+    {
+      log_append_assigned_mvccid (thread_p, tdes->mvccinfo.id);
+    }
+
+  // Clear MVCCID
+  tdes->mvccinfo.id = MVCCID_NULL;
+
+  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+  logtb_free_tran_index (thread_p, tdes->tran_index);
 }
 
 /*
@@ -3346,6 +3340,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 	LOG_READ_ADD_ALIGN (thread_p, rv_length, &log_lsa, log_pgptr);
 	break;
       }
+
+    case LOG_ASSIGNED_MVCCID:
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_ASSIGNED_MVCCID), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_ASSIGNED_MVCCID), &log_lsa, log_pgptr);
+      break;
 
     case LOG_DUMMY_HA_SERVER_STATE:
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_HA_SERVER_STATE), &log_lsa, log_pgptr);

@@ -50,7 +50,7 @@
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_context &context,
     LOG_PAGE *log_page_p, const LOG_RECORD_HEADER *log_rec,
     const log_lsa &prev_lsa, const log_lsa &prev_prev_lsa);
-static int log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
+static int log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, bool is_mvcc);
 static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
 static int log_rv_analysis_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
 static int log_rv_analysis_run_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
@@ -538,7 +538,7 @@ log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_con
  * Note:
  */
 static int
-log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa)
+log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, bool is_mvcc)
 {
   LOG_TDES *tdes;
 
@@ -559,6 +559,11 @@ log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
   /* New tail and next to undo */
   LSA_COPY (&tdes->tail_lsa, log_lsa);
   LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
+
+  if (is_mvcc)
+    {
+      tdes->last_mvcc_lsa = *log_lsa;
+    }
 
   return NO_ERROR;
 }
@@ -993,6 +998,25 @@ log_rv_analysis_atomic_sysop_start (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA
   return NO_ERROR;
 }
 
+static int
+log_rv_analysis_assigned_mvccid (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p)
+{
+  LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
+  if (tdes == nullptr)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_sysop_start_postpone");
+      return ER_FAILED;
+    }
+
+  tdes->last_mvcc_lsa = *log_lsa;
+
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_ASSIGNED_MVCCID), log_lsa, log_page_p);
+  auto rec = (const LOG_REC_ASSIGNED_MVCCID *) (log_page_p->area + log_lsa->offset);
+  tdes->mvccinfo.id = rec->mvccid;
+
+  return NO_ERROR;
+}
+
 /*
  * log_rv_analysis_complete -
  *
@@ -1141,8 +1165,13 @@ log_rv_analysis_sysop_end (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
 
     case LOG_SYSOP_END_COMMIT:
       assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
-    case LOG_SYSOP_END_LOGICAL_UNDO:
+      commit_start_postpone = true;
+      break;
+
     case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
+      tdes->last_mvcc_lsa = tdes->tail_lsa;
+    // fall through
+    case LOG_SYSOP_END_LOGICAL_UNDO:
       /* todo: I think it will be safer to save previous states in nested system operations, rather than rely on context
        *       to guess it. we should consider that for cherry. */
       commit_start_postpone = true;
@@ -1630,16 +1659,18 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY *thread_p, LOG_RECTYPE log_t
 {
   switch (log_type)
     {
-    case LOG_UNDOREDO_DATA:
-    case LOG_DIFF_UNDOREDO_DATA:
-    case LOG_UNDO_DATA:
-    case LOG_REDO_DATA:
     case LOG_MVCC_UNDOREDO_DATA:
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
     case LOG_MVCC_UNDO_DATA:
     case LOG_MVCC_REDO_DATA:
+      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa, true);
+      break;
+    case LOG_UNDOREDO_DATA:
+    case LOG_DIFF_UNDOREDO_DATA:
+    case LOG_UNDO_DATA:
+    case LOG_REDO_DATA:
     case LOG_DBEXTERN_REDO_DATA:
-      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa);
+      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa, false);
       break;
 
     case LOG_DUMMY_HEAD_POSTPONE:
@@ -1717,6 +1748,10 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY *thread_p, LOG_RECTYPE log_t
 
     case LOG_SYSOP_ATOMIC_START:
       (void) log_rv_analysis_atomic_sysop_start (thread_p, tran_id, log_lsa);
+      break;
+
+    case LOG_ASSIGNED_MVCCID:
+      (void) log_rv_analysis_assigned_mvccid (thread_p, tran_id, log_lsa, log_page_p);
       break;
 
     case LOG_DUMMY_CRASH_RECOVERY:

@@ -95,6 +95,7 @@ namespace cublog
     LOG_LSA savept_lsa;		/* Address of last savepoint */
     LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
     LOG_LSA start_postpone_lsa;	/* Address of start postpone (if transaction was doing postpone during checkpoint) */
+    LOG_LSA last_mvcc_lsa;
 
     MVCCID mvcc_id;
     MVCCID mvcc_sub_id;
