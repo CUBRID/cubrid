@@ -114,9 +114,9 @@ namespace cublog
 
   void log_boot_info_fetch_task::execute (context_type &context)
   {
-    const std::string str = log_pack_log_boot_info (&context);
+    std::string message = log_pack_log_boot_info (&context);
 
-    m_callback (str);
+    m_callback (std::move (message));
   }
 
   async_page_fetcher::async_page_fetcher ()

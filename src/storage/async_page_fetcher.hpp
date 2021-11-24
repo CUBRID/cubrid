@@ -32,7 +32,7 @@ namespace cublog
     public:
       using log_page_callback_type = std::function<void (const LOG_PAGE *, int)>;
       using data_page_callback_type = std::function<void (const FILEIO_PAGE *, int)>;
-      using log_boot_info_callback_type = std::function<void (std::string)>;
+      using log_boot_info_callback_type = std::function<void (std::string &&)>;
 
     public:
       async_page_fetcher ();
