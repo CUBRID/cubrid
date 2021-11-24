@@ -107,6 +107,10 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
 
   // prev lsa
   std::memcpy (&log_Gl.append.prev_lsa, message_buf, sizeof (struct log_lsa));
+  message_buf += sizeof (struct log_lsa);
+
+  // safe-guard that the message has been consumed
+  assert (message_buf == m_log_boot_info.c_str () + m_log_boot_info.size ());
 
   // do not leave m_log_boot_info empty as a safeguard as this function is only supposed
   // to be called once
