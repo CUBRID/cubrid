@@ -203,6 +203,8 @@ full_compare_tdes (log_tdes *td1, const log_tdes *td2, bool is_unactive_aborted)
   REQUIRE (td1->posp_nxlsa == td2->posp_nxlsa);
   REQUIRE (td1->savept_lsa == td2->savept_lsa);
   REQUIRE (td1->tail_topresult_lsa == td2->tail_topresult_lsa);
+  REQUIRE (td1->mvccinfo.id == td2->mvccinfo.id);
+  REQUIRE (td1->mvccinfo.sub_ids == td2->mvccinfo.sub_ids);
 }
 
 log_tdes *
@@ -544,6 +546,17 @@ test_env_chkpt::generate_tdes (int index)
   tdes->fl_mark_repl_recidx      = rand () % MAX_RAND;
   tdes->repl_insert_lsa          = generate_log_lsa ();
   tdes->repl_update_lsa          = generate_log_lsa ();
+
+  tdes->mvccinfo.id = std::rand () % MAX_RAND;
+
+  if (std::rand () % 2 == 0)
+    {
+      tdes->mvccinfo.sub_ids.clear();
+    }
+  else
+    {
+      tdes->mvccinfo.sub_ids.emplace_back (std::rand () % MAX_RAND);
+    }
 
   tdes->client  = generate_client (index);
   tdes->gtrinfo = generate_2pc_gtrinfo ();
