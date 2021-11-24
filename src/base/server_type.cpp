@@ -246,8 +246,15 @@ bool is_tran_server_with_remote_storage ()
 
 passive_tran_server *get_passive_tran_server_ptr ()
 {
-  assert (pts_Gl != nullptr);
-  return pts_Gl;
+  if (is_passive_transaction_server())
+    {
+      assert (pts_Gl != nullptr);
+      return pts_Gl;
+    }
+  else
+    {
+      assert (is_passive_transaction_server());
+    }
 }
 
 #else // !SERVER_MODE = SA_MODE
