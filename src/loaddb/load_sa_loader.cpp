@@ -527,6 +527,7 @@ static void idmap_final (void);
 static int idmap_grow (int size);
 static int ldr_assign_class_id (DB_OBJECT *class_, int id);
 static DB_OBJECT *ldr_find_class (const char *class_name);
+static const char *ldr_get_class_name_from_db_class (const char *name);
 static DB_OBJECT *ldr_get_class_from_id (int id);
 static void ldr_clear_context (LDR_CONTEXT *context);
 static void ldr_clear_and_free_context (LDR_CONTEXT *context);
@@ -1420,6 +1421,7 @@ ldr_find_class (const char *class_name)
   LC_FIND_CLASSNAME find;
   DB_OBJECT *class_ = NULL;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
+  const char *other_name = NULL;
 
   /* Check for internal error */
   if (class_name == NULL)
@@ -1441,9 +1443,109 @@ ldr_find_class (const char *class_name)
       class_ = db_find_class (class_name);
     }
 
+  if (find != LC_CLASSNAME_EXIST)
+    {
+      other_name = ldr_get_class_name_from_db_class (realname);
+
+      if (other_name)
+	{
+	  ldr_Hint_class_names[0] = other_name;
+
+	  find = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1, NULL_LOCK);
+
+	    if (find == LC_CLASSNAME_EXIST)
+	      {
+		class_ = db_find_class (other_name);
+	      }
+	}
+    }
+
   ldr_Hint_class_names[0] = NULL;
 
   return (class_);
+}
+
+static const char *
+ldr_get_class_name_from_db_class (const char *name)
+{
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+
+  const char *query = NULL;
+  char *query_buf = NULL;
+  int query_len = 0;
+  
+  const char *target_name = NULL;
+  const char *dot = NULL;
+ 
+  int error = NO_ERROR;
+
+  /* initialization */
+  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
+
+  dot = strchr (name, '.');
+  if (dot)
+    {
+      name = dot + 1;
+    }
+
+  /* Get private synonyms before public synonyms. */
+  query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s'";
+  query_len = snprintf (NULL, 0, query, "_db_class", name);
+  if (query_len < 0)
+    {
+      /* To Do: Exception handling */
+      goto end;
+    }
+
+  query_buf = (char *) db_ws_alloc (query_len + 1);
+  query_len = sprintf (query_buf, query, "_db_class", name);
+  if (query_len < 0)
+    {
+      /* To Do: Exception handling */
+      goto end;
+    }
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+
+  if (error != NO_ERROR)
+    {
+      /* To Do: Exception handling */
+    }
+
+  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
+    {
+      DB_VALUE value;
+      pr_clear_value (&value);
+
+      if (db_query_get_tuple_value (query_result, 0, &value) == NO_ERROR)
+        {
+          if (!DB_IS_NULL (&value))
+	    {
+	      assert (DB_IS_STRING (&value));
+	      target_name = db_get_string (&value);
+	    }
+	}
+
+      if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+        {
+	  target_name = NULL;
+	}
+    }
+
+end:
+  if (query_buf)
+    {
+      db_ws_free_and_init (query_buf);
+    }
+
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return target_name;
 }
 
 /*

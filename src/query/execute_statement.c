@@ -1218,6 +1218,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, MOP serial_class, const cha
 {
   MOP serial_obj;
   char serial_lower_name[SERIAL_NAME_MAX_LENGTH];
+  const char *other_name = NULL;
   DB_VALUE value;
   DB_IDENTIFIER *oid;
 
@@ -1234,6 +1235,23 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, MOP serial_class, const cha
   AU_DISABLE (save);
 
   serial_obj = db_find_unique (serial_class, SERIAL_ATTR_FULL_NAME, &value);
+
+  if (serial_obj == NULL)
+    {
+      other_name = do_get_serial_name_from_db_serial (serial_lower_name);
+
+      if (other_name)
+	{
+	    db_value_clear (&value);
+	    db_make_string (&value, other_name);
+
+	    serial_obj = db_find_unique (serial_class, SERIAL_ATTR_FULL_NAME, &value);
+	}
+      else
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
+	}
+    }
 
   AU_ENABLE (save);
 
@@ -1264,6 +1282,89 @@ end:
   pr_clear_value (&value);
 
   return serial_obj;
+}
+
+const char *
+do_get_serial_name_from_db_serial (const char *name)
+{
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+
+  const char *query = NULL;
+  char *query_buf = NULL;
+  int query_len = 0;
+  
+  const char *target_name = NULL;
+  const char *dot = NULL;
+ 
+  int error = NO_ERROR;
+
+  /* initialization */
+  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
+
+  dot = strchr (name, '.');
+  if (dot)
+    {
+      name = dot + 1;
+    }
+
+  /* Get private synonyms before public synonyms. */
+  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s'";
+  query_len = snprintf (NULL, 0, query, CT_SERIAL_NAME, name);
+  if (query_len < 0)
+    {
+      /* To Do: Exception handling */
+      goto end;
+    }
+
+  query_buf = (char *) db_ws_alloc (query_len + 1);
+  query_len = sprintf (query_buf, query, CT_SERIAL_NAME, name);
+  if (query_len < 0)
+    {
+      /* To Do: Exception handling */
+      goto end;
+    }
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+
+  if (error != NO_ERROR)
+    {
+      /* To Do: Exception handling */
+    }
+
+  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
+    {
+      DB_VALUE value;
+      pr_clear_value (&value);
+
+      if (db_query_get_tuple_value (query_result, 0, &value) == NO_ERROR)
+        {
+          if (!DB_IS_NULL (&value))
+	    {
+	      assert (DB_IS_STRING (&value));
+	      target_name = db_get_string (&value);
+	    }
+	}
+
+      if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+        {
+	  target_name = NULL;
+	}
+    }
+
+end:
+  if (query_buf)
+    {
+      db_ws_free_and_init (query_buf);
+    }
+
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return target_name;
 }
 
 /*

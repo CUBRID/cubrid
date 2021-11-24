@@ -549,6 +549,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   /* login */
   if (!args.user_name.empty () || !dba_mode)
     {
+      if (strcasecmp (args.user_name.c_str (), "DBA") == 0)
+	{
+	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+	}
       (void) db_login (args.user_name.c_str (), args.password.c_str ());
       error = db_restart (arg->command_name, true, args.volume.c_str ());
       if (error != NO_ERROR)

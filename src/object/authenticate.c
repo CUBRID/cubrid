@@ -5175,6 +5175,11 @@ au_change_owner (MOP classmop, MOP owner)
 
 	      /* Change original name. */
 	      error = sm_rename_class (classmop, full_name);
+	      if (error == ER_LC_CLASSNAME_EXIST)
+		{
+		  er_clear ();
+		  error = NO_ERROR;
+		}
 	      
 	    }
 	}

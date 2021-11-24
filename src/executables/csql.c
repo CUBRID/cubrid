@@ -1084,7 +1084,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      full_name = (char *) db_ws_alloc (len * sizeof (char));
 	      snprintf (full_name, len, "%s.%s", user_name, argument);
 
-	      csql_help_schema (argument);
+	      csql_help_schema (full_name);
 
 	      if (full_name)
 		{

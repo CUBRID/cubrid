@@ -10323,6 +10323,7 @@ pt_check_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
   const char *dot = NULL;
   char *user_name = NULL;
   const char *full_name = NULL;
+
   if (node->node_type == PT_METHOD_CALL
       && node->info.method_call.method_name->node_type == PT_NAME
       && node->info.method_call.method_name->info.name.original

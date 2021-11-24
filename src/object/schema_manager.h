@@ -225,6 +225,7 @@ extern bool sm_has_indexes (MOBJ class_);
 extern void sm_downcase_name (const char *name, char *buf, int maxlen);
 extern const char *sm_simple_name (const char *name);
 extern MOP sm_find_class (const char *name);
+const char *sm_get_class_name_from_db_class (const char *name);
 extern MOP sm_find_class_with_purpose (const char *name, bool for_update);
 
 extern const char *sm_get_att_name (MOP classop, int id);

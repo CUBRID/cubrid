@@ -5197,11 +5197,106 @@ sm_class_constraints (MOP classop)
 MOP
 sm_find_class (const char *name)
 {
+  MOP class_mop = NULL;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
 
   sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
-  return (locator_find_class (realname));
+  class_mop = locator_find_class (realname);
+  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+    {
+      const char *target_name = sm_get_class_name_from_db_class (realname);
+
+      if (target_name)
+        {
+          class_mop = locator_find_class (target_name);
+	}
+    }
+
+  return class_mop;
+}
+
+const char *
+sm_get_class_name_from_db_class (const char *name)
+{
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+
+  const char *query = NULL;
+  char *query_buf = NULL;
+  int query_len = 0;
+  
+  const char *target_name = NULL;
+  const char *dot = NULL;
+ 
+  int error = NO_ERROR;
+
+  /* initialization */
+  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
+
+  dot = strchr (name, '.');
+  if (dot)
+    {
+      name = dot + 1;
+    }
+
+  /* Get private synonyms before public synonyms. */
+  query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s'";
+  query_len = snprintf (NULL, 0, query, CT_CLASS_NAME, name);
+  if (query_len < 0)
+    {
+      /* To Do: Exception handling */
+      goto end;
+    }
+
+  query_buf = (char *) db_ws_alloc (query_len + 1);
+  query_len = sprintf (query_buf, query, CT_CLASS_NAME, name);
+  if (query_len < 0)
+    {
+      /* To Do: Exception handling */
+      goto end;
+    }
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+
+  if (error != NO_ERROR)
+    {
+      /* To Do: Exception handling */
+    }
+
+  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
+    {
+      DB_VALUE value;
+      db_make_null (&value);
+
+      if (db_query_get_tuple_value (query_result, 0, &value) == NO_ERROR)
+        {
+          if (!DB_IS_NULL (&value))
+	    {
+	      assert (DB_IS_STRING (&value));
+	      target_name = db_get_string (&value);
+	    }
+	}
+
+      if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+        {
+	  target_name = NULL;
+	}
+    }
+
+end:
+  if (query_buf)
+    {
+      db_ws_free_and_init (query_buf);
+    }
+
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return target_name;
 }
 
 /*
@@ -5216,11 +5311,23 @@ sm_find_class (const char *name)
 MOP
 sm_find_class_with_purpose (const char *name, bool for_update)
 {
+  MOP class_mop = NULL;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
 
   sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
-  return (locator_find_class_with_purpose (realname, for_update));
+  class_mop = locator_find_class_with_purpose (realname, for_update);
+  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+    {
+      const char *target_name = sm_get_class_name_from_db_class (realname);
+
+      if (target_name)
+        {
+          class_mop = locator_find_class_with_purpose (target_name, for_update);
+	}
+    }
+
+  return class_mop;
 }
 
 /*
