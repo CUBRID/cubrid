@@ -116,10 +116,3 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   // to be called once
   m_log_boot_info = "not empty";
 }
-
-void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p)
-{
-  passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-
-  pts_ptr->send_and_receive_log_boot_info (thread_p);
-}
