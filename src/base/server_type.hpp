@@ -21,6 +21,13 @@
 
 #include "server_type_enum.hpp"
 
+#include <memory>
+
+/* forward declarations
+ */
+class passive_tran_server;
+class tran_server;
+
 bool is_active_transaction_server ();
 bool is_page_server ();
 bool is_passive_transaction_server ();
@@ -32,4 +39,9 @@ transaction_server_type get_transaction_server_type ();
 void set_server_type (SERVER_TYPE type);
 void finalize_server_type ();
 int init_server_type (const char *db_name);
+
+passive_tran_server *get_passive_tran_server_ptr ();
+
+extern std::unique_ptr<tran_server> ts_Gl;
+
 #endif // _SERVER_TYPE_H_

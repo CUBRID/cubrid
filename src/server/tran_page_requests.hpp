@@ -31,14 +31,21 @@ enum class tran_to_page_request
   SEND_LOG_PRIOR_LIST,
 
   // Passive only
+  SEND_LOG_INIT_BOOT_FETCH,
 };
 
 enum class page_to_tran_request
 {
+  // Common
   SEND_BOOT_INFO,
+
+  // Active only
   SEND_SAVED_LSA,
   SEND_LOG_PAGE,
-  SEND_DATA_PAGE
+  SEND_DATA_PAGE,
+
+  // Passive only
+  SEND_LOG_BOOT_INFO,
 };
 
 #endif // !_TRAN_PAGE_REQUESTS_HPP_

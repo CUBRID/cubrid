@@ -23,10 +23,8 @@
 #include "communication_server_channel.hpp"
 #include "page_broker.hpp"
 #include "request_sync_client_server.hpp"
-#include "server_type.hpp"
 #include "tran_page_requests.hpp"
 
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -123,7 +121,5 @@ class tran_server
     std::condition_variable m_boot_info_condvar;
     bool m_is_boot_info_received = false;
 };
-
-extern std::unique_ptr<tran_server> ts_Gl;
 
 #endif // !_tran_server_HPP_

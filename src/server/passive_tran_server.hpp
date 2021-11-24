@@ -28,10 +28,21 @@ class passive_tran_server : public tran_server
     {
     }
 
-    bool uses_remote_storage () const final override;
+  public:
+    void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p);
+
   private:
-    void on_boot () final override;
+    bool uses_remote_storage () const final override;
     bool get_remote_storage_config () final override;
+    void on_boot () final override;
+    request_handlers_map_t get_request_handlers () final override;
+
+    void receive_log_boot_info (cubpacking::unpacker &upk);
+
+  private:
+    std::mutex m_log_boot_info_mtx;
+    std::string m_log_boot_info;
+    std::condition_variable m_log_boot_info_condvar;
 };
 
 #endif // !_passive_tran_server_HPP_

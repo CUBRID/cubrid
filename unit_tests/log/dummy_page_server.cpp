@@ -16,6 +16,7 @@
  *
  */
 
+#include "async_page_fetcher.hpp"
 #include "log_replication.hpp"
 #include "page_server.hpp"
 

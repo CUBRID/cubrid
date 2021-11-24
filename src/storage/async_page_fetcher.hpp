@@ -27,18 +27,20 @@
 
 namespace cublog
 {
-
   class async_page_fetcher
   {
     public:
       using log_page_callback_type = std::function<void (const LOG_PAGE *, int)>;
       using data_page_callback_type = std::function<void (const FILEIO_PAGE *, int)>;
+      using log_boot_info_callback_type = std::function<void (std::string &&)>;
 
+    public:
       async_page_fetcher ();
       ~async_page_fetcher ();
 
       void fetch_log_page (LOG_PAGEID pageid, log_page_callback_type &&func);
       void fetch_data_page (const VPID &vpid, const LOG_LSA repl_lsa, data_page_callback_type &&func);
+      void fetch_log_boot_info (log_boot_info_callback_type &&callback_func);
 
     private:
       cubthread::entry_workpool *m_threads = nullptr;
@@ -47,7 +49,6 @@ namespace cublog
       // identity as to properly identify these agains perf logging
       std::unique_ptr<cubthread::entry_manager> m_worker_pool_context_manager;
   };
-
 }
 
 #endif //_ASYNC_PAGE_FETCHER_HPP_
