@@ -18,7 +18,6 @@
 
 #include "page_server.hpp"
 
-#include "async_page_fetcher.hpp"
 #include "disk_manager.h"
 #include "error_manager.h"
 #include "log_impl.h"
@@ -115,7 +114,7 @@ page_server::connection_handler::receive_log_page_fetch (cubpacking::unpacker &u
       _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
     }
 
-  m_ps.get_page_fetcher ()->fetch_log_page (pageid, std::bind (&page_server::connection_handler::on_log_page_read_result,
+  m_ps.get_page_fetcher ().fetch_log_page (pageid, std::bind (&page_server::connection_handler::on_log_page_read_result,
       this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -132,7 +131,7 @@ page_server::connection_handler::receive_data_page_fetch (cubpacking::unpacker &
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
 
-  m_ps.get_page_fetcher ()->fetch_data_page (vpid, target_repl_lsa,
+  m_ps.get_page_fetcher ().fetch_data_page (vpid, target_repl_lsa,
       std::bind (&page_server::connection_handler::on_data_page_read_result, this, std::placeholders::_1,
 		 std::placeholders::_2));
 }
@@ -144,7 +143,7 @@ page_server::connection_handler::receive_log_boot_info_fetch (cubpacking::unpack
 
   auto callback_func = std::bind (&page_server::connection_handler::on_log_boot_info_result,
 				  this, std::placeholders::_1);
-  m_ps.get_page_fetcher ()->fetch_log_boot_info (std::move (callback_func));
+  m_ps.get_page_fetcher ().fetch_log_boot_info (std::move (callback_func));
 }
 
 void
@@ -341,11 +340,11 @@ page_server::is_passive_tran_server_connected () const
   return !m_passive_tran_server_conn.empty ();
 }
 
-cublog::async_page_fetcher *
+cublog::async_page_fetcher &
 page_server::get_page_fetcher ()
 {
   assert (m_page_fetcher != nullptr);
-  return m_page_fetcher.get ();
+  return *m_page_fetcher.get ();
 }
 
 void
