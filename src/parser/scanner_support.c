@@ -46,20 +46,6 @@
 #define IS_HINT_ON_TABLE(h) \
   		((h) & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
 
-//#define PRINT_HIT_HINT_INFO   /* When declared, matching hint information is output to the screen. */
-#if defined(PRINT_HIT_HINT_INFO)
-static void debug_hit_hint_print (PT_HINT * hint_table);
-#define PRINT_HIT_HINT(...)  fprintf(stdout, __VA_ARGS__)
-#define END_HIT_PRINT() fflush(stdout)
-#else
-#define  debug_hit_hint_print(hint)
-#define PRINT_HIT_HINT(...)
-#define END_HIT_PRINT()
-#endif
-
-#define HINT_LEAD_CHAR_SIZE (129)
-static u_char hint_table_lead_offset[HINT_LEAD_CHAR_SIZE] = { 0, };
-
 int parser_input_host_index = 0;
 int parser_statement_OK = 0;
 PARSER_CONTEXT *this_parser;
@@ -70,6 +56,109 @@ extern "C"
   extern int csql_yyget_lineno ();
 }
 extern int yycolumn_end;
+
+
+/* matching hint information to output*/
+struct st_hint_msg
+{
+  bool is_print;
+  int m_alloc;
+  int m_used;
+  char *msg_ptr;
+  char msg_buf[1024];
+
+public:
+    st_hint_msg ()
+  {
+    is_print = false;
+    m_alloc = sizeof (msg_buf);
+    m_used = 0;
+    msg_ptr = msg_buf;
+    msg_buf[0] = 0x00;
+  }
+
+  void reset ()
+  {
+    m_used = 0;
+    if (msg_ptr != msg_buf)
+      {
+	free (msg_ptr);
+	msg_ptr = msg_buf;
+	m_alloc = sizeof (msg_buf);
+      }
+    msg_buf[0] = 0x00;
+    is_print = false;
+  }
+
+  void check_buffer (int size)
+  {
+    size++;			/* for '\0' */
+    if ((m_alloc - m_used) <= size)
+      {
+	char *ptr = NULL;
+	int new_alloc_sz = m_alloc;
+
+	do
+	  {
+	    new_alloc_sz += 1024 /* 1 KB */ ;
+	  }
+	while (new_alloc_sz <= (m_used + size));
+
+	ptr = (char *) malloc (new_alloc_sz);
+	assert (ptr != NULL);
+
+	memcpy (ptr, msg_ptr, m_used);
+	if (msg_ptr != msg_buf)
+	  {
+	    free (msg_ptr);
+	  }
+
+	msg_ptr = ptr;
+	m_alloc = new_alloc_sz;
+      }
+  }
+
+  void addstring (char *str)
+  {
+    check_buffer (snprintf (NULL, 0, "%s", str));
+    m_used += sprintf (msg_ptr + m_used, "%s", str);
+  }
+  void addstring (const char *fmt, char *str)
+  {
+    check_buffer (snprintf (NULL, 0, fmt, str));
+    m_used += sprintf (msg_ptr + m_used, fmt, str);
+  }
+  void addstring (const char *fmt, char *str1, char *str2)
+  {
+    check_buffer (snprintf (NULL, 0, fmt, str1, str2));
+    m_used += sprintf (msg_ptr + m_used, fmt, str1, str2);
+  }
+};
+
+static struct st_hint_msg s_hint_msg;
+static void print_hit_hint_string (PT_HINT * hint_table);
+static bool plan_include_hint = false;
+
+void
+set_plan_include_hint (bool is_include)
+{
+  plan_include_hint = is_include;
+}
+
+void
+print_hint_dump (FILE * output)
+{
+  if (s_hint_msg.msg_ptr && *s_hint_msg.msg_ptr)
+    {
+      s_hint_msg.msg_ptr[s_hint_msg.m_used] = '\0';
+      fprintf (output, "%s", s_hint_msg.msg_ptr);
+    }
+
+  s_hint_msg.reset ();
+}
+
+#define HINT_LEAD_CHAR_SIZE (129)
+static u_char hint_table_lead_offset[HINT_LEAD_CHAR_SIZE] = { 0, };
 
 /*
  * pt_makename () -
@@ -156,6 +245,7 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 {
   static int was_initialized = 0;
 
+  s_hint_msg.reset ();
   if (was_initialized)
     {
       return;
@@ -230,396 +320,403 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 {
   int i;
 
-  PRINT_HIT_HINT ("(HINT HIT) ");
+  if (s_hint_msg.is_print)
+    {
+      s_hint_msg.addstring ((char *) "    Hit) ");
+    }
 
   /* read hint info */
   for (i = 0; hint_table[i].tokens; i++)
     {
-      if (hint_table[i].is_hit)
+      if (!hint_table[i].is_hit)
 	{
-	  debug_hit_hint_print (hint_table + i);
+	  continue;
+	}
 
-	  switch (hint_table[i].hint)
-	    {
-	    case PT_HINT_NONE:
-	      break;
-	    case PT_HINT_ORDERED:	/* force join left-to-right */
+      if (s_hint_msg.is_print)
+	{
+	  print_hit_hint_string (hint_table + i);
+	}
+
+      switch (hint_table[i].hint)
+	{
+	case PT_HINT_NONE:
+	  break;
+	case PT_HINT_ORDERED:	/* force join left-to-right */
 
 /* TEMPORARY COMMENTED CODE: DO NOT REMOVE ME !!! */
 #if 0
-	      node->info.query.q.select.ordered = hint_table[i].arg_list;
-	      hint_table[i].arg_list = NULL;
+	  node->info.query.q.select.ordered = hint_table[i].arg_list;
+	  hint_table[i].arg_list = NULL;
 #endif /* 0 */
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_DELETE)
-		{
-		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_NO_INDEX_SS:	/* disable index skip scan */
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_INDEX_SS:
-	      if (node->node_type == PT_SELECT)
-		{
-		  if (hint_table[i].arg_list != NULL && PT_IS_NULL_NODE (hint_table[i].arg_list))
-		    {
-		      /* For INDEX_SS(), just ignore index skip scan hint */
-		      node->info.query.q.select.hint =
-			(PT_HINT_ENUM) (node->info.query.q.select.hint & ~PT_HINT_INDEX_SS);
-		      node->info.query.q.select.index_ss = NULL;
-		    }
-		  else
-		    {
-		      node->info.query.q.select.hint =
-			(PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		      node->info.query.q.select.index_ss = hint_table[i].arg_list;
-		      hint_table[i].arg_list = NULL;
-		    }
-		}
-	      break;
-#if 0
-	    case PT_HINT_Y:	/* not used */
-	      break;
-#endif /* 0 */
-	    case PT_HINT_USE_NL:	/* force nl-join */
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		  node->info.query.q.select.use_nl = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      else if (node->node_type == PT_DELETE)
-		{
-		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		  node->info.delete_.use_nl_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      else if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		  node->info.update.use_nl_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      break;
-	    case PT_HINT_USE_IDX:	/* force idx-join */
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		  node->info.query.q.select.use_idx = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      else if (node->node_type == PT_DELETE)
-		{
-		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		  node->info.delete_.use_idx_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      else if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		  node->info.update.use_idx_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      break;
-	    case PT_HINT_USE_MERGE:	/* force m-join */
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		  node->info.query.q.select.use_merge = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      else if (node->node_type == PT_DELETE)
-		{
-		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		  node->info.delete_.use_merge_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      else if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		  node->info.update.use_merge_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      break;
-#if 0
-	    case PT_HINT_USE_HASH:	/* not used */
-	      break;
-#endif /* 0 */
-	    case PT_HINT_RECOMPILE:	/* recompile */
-	      node->flag.recompile = 1;
-	      break;
-	    case PT_HINT_LK_TIMEOUT:	/* lock timeout */
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		  node->info.query.q.select.waitsecs_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      else if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		  node->info.update.waitsecs_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      else if (node->node_type == PT_DELETE)
-		{
-		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		  node->info.delete_.waitsecs_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      else if (node->node_type == PT_INSERT)
-		{
-		  node->info.insert.hint = (PT_HINT_ENUM) (node->info.insert.hint | hint_table[i].hint);
-		  node->info.insert.waitsecs_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      else if (node->node_type == PT_MERGE)
-		{
-		  node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
-		  node->info.merge.waitsecs_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      break;
-	    case PT_HINT_NO_LOGGING:	/* no logging */
-	      if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_DELETE)
-		{
-		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_INSERT)
-		{
-		  node->info.insert.hint = (PT_HINT_ENUM) (node->info.insert.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_MERGE)
-		{
-		  node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_QUERY_CACHE:	/* query_cache */
-	      if (PT_IS_QUERY_NODE_TYPE (node->node_type))
-		{
-		  node->info.query.hint = (PT_HINT_ENUM) (node->info.query.hint | hint_table[i].hint);
-		  node->info.query.qcache_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		  if (node->info.query.qcache_hint)
-		    {
-		      if (atoi (node->info.query.qcache_hint->info.name.original))
-			node->info.query.flag.do_cache = 1;
-		      else
-			node->info.query.flag.do_not_cache = 1;
-		    }
-		  else
-		    {
-		      node->info.query.flag.do_cache = 1;
-		    }
-		}
-	      break;
-#if 0
-	    case PT_HINT_QUERY_NO_CACHE:
-	      if (PT_IS_QUERY_NODE_TYPE (node->node_type))
-		{
-		  node->info.query.hint = (PT_HINT_ENUM) (node->info.query.hint | hint_table[i].hint);
-		  node->info.query.qcache_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		  /* force not use the query cache */
-		  node->info.query.flag.reexecute = 1;
-		  node->info.query.flag.do_cache = 0;
-		  node->info.query.flag.do_not_cache = 1;
-		}
-	      break;
-#endif
-	    case PT_HINT_REEXECUTE:	/* reexecute */
-	      if (PT_IS_QUERY_NODE_TYPE (node->node_type))
-		{
-		  node->info.query.hint = (PT_HINT_ENUM) (node->info.query.hint | hint_table[i].hint);
-		  node->info.query.flag.reexecute = 1;
-		}
-	      break;
-	    case PT_HINT_JDBC_CACHE:	/* jdbc cache */
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		  node->info.query.q.select.jdbc_life_time = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      break;
-	    case PT_HINT_USE_IDX_DESC:	/* descending index scan */
-	    case PT_HINT_NO_COVERING_IDX:	/* do not use covering index scan */
-	    case PT_HINT_NO_IDX_DESC:	/* do not use descending index scan */
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_DELETE)
-		{
-		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_INSERT_MODE:
-	      if (node->node_type == PT_INSERT)
-		{
-		  node->info.insert.hint = (PT_HINT_ENUM) (node->info.insert.hint | hint_table[i].hint);
-		  node->info.insert.insert_mode = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      break;
-	    case PT_HINT_NO_MULTI_RANGE_OPT:
-	    case PT_HINT_NO_SORT_LIMIT:
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_DELETE)
-		{
-		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_USE_UPDATE_IDX:
-	      if (node->node_type == PT_MERGE)
-		{
-		  node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
-		  node->info.merge.update.index_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      break;
-	    case PT_HINT_USE_INSERT_IDX:
-	      if (node->node_type == PT_MERGE)
-		{
-		  node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
-		  node->info.merge.insert.index_hint = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      break;
-	    case PT_HINT_NO_HASH_AGGREGATE:
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_NO_HASH_LIST_SCAN:
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_NO_PUSH_PRED:
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_SKIP_UPDATE_NULL:
-	      if (node->node_type == PT_ALTER)
-		{
-		  node->info.alter.hint = (PT_HINT_ENUM) (node->info.alter.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_NO_INDEX_LS:	/* disable loose index scan */
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_INDEX_LS:	/* enable loose index scan */
-	      if (node->node_type == PT_SELECT)
-		{
-		  if (hint_table[i].arg_list != NULL && PT_IS_NULL_NODE (hint_table[i].arg_list))
-		    {
-		      /* For INDEX_LS(), just ignore loose index scan hint */
-		      node->info.query.q.select.hint =
-			(PT_HINT_ENUM) (node->info.query.q.select.hint & ~PT_HINT_INDEX_LS);
-		      node->info.query.q.select.index_ls = NULL;
-		    }
-		  else
-		    {
-		      node->info.query.q.select.hint =
-			(PT_HINT_ENUM) (node->info.query.q.select.hint | PT_HINT_INDEX_LS);
-		      node->info.query.q.select.index_ls = hint_table[i].arg_list;
-		      hint_table[i].arg_list = NULL;
-		    }
-		}
-	      break;
-	    case PT_HINT_SELECT_RECORD_INFO:
-	    case PT_HINT_SELECT_PAGE_INFO:
-	      if (node->node_type == PT_SELECT)
-		{
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_SELECT_KEY_INFO:
-	    case PT_HINT_SELECT_BTREE_NODE_INFO:
-	      if (node->node_type == PT_SELECT)
-		{
-		  /* SELECT_KEY_INFO hint can work if it has one and only one index name as argument. Same for
-		   * SELECT_BTREE_NODE_INFO. Ignore hint if this condition is not met. */
-		  if (hint_table[i].arg_list == NULL || hint_table[i].arg_list->next != NULL)
-		    {
-		      break;
-		    }
-		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		  node->info.query.q.select.using_index = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
-		}
-	      break;
-	    case PT_HINT_USE_SBR:	/* statement-based replication */
-	      if (node->node_type == PT_INSERT)
-		{
-		  node->info.insert.hint = (PT_HINT_ENUM) (node->info.insert.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_DELETE)
-		{
-		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		}
-	      break;
-	    case PT_HINT_NO_SUPPLEMENTAL_LOG:	/* statement-based replication */
-	      if (node->node_type == PT_DELETE)
-		{
-		  node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		}
-	      else if (node->node_type == PT_UPDATE)
-		{
-		  node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		}
-	      break;
-	    default:
-	      break;
-	    }
-
-	  if (hint_table[i].arg_list)
+	  if (node->node_type == PT_SELECT)
 	    {
-	      parser_free_tree (this_parser, hint_table[i].arg_list);
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_NO_INDEX_SS:	/* disable index skip scan */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_INDEX_SS:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      if (hint_table[i].arg_list != NULL && PT_IS_NULL_NODE (hint_table[i].arg_list))
+		{
+		  /* For INDEX_SS(), just ignore index skip scan hint */
+		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint & ~PT_HINT_INDEX_SS);
+		  node->info.query.q.select.index_ss = NULL;
+		}
+	      else
+		{
+		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+		  node->info.query.q.select.index_ss = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
+	    }
+	  break;
+#if 0
+	case PT_HINT_Y:	/* not used */
+	  break;
+#endif /* 0 */
+	case PT_HINT_USE_NL:	/* force nl-join */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.use_nl = hint_table[i].arg_list;
 	      hint_table[i].arg_list = NULL;
 	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	      node->info.delete_.use_nl_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	      node->info.update.use_nl_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
+	case PT_HINT_USE_IDX:	/* force idx-join */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.use_idx = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	      node->info.delete_.use_idx_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	      node->info.update.use_idx_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
+	case PT_HINT_USE_MERGE:	/* force m-join */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.use_merge = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	      node->info.delete_.use_merge_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	      node->info.update.use_merge_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
+#if 0
+	case PT_HINT_USE_HASH:	/* not used */
+	  break;
+#endif /* 0 */
+	case PT_HINT_RECOMPILE:	/* recompile */
+	  node->flag.recompile = 1;
+	  break;
+	case PT_HINT_LK_TIMEOUT:	/* lock timeout */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.waitsecs_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	      node->info.update.waitsecs_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	      node->info.delete_.waitsecs_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_INSERT)
+	    {
+	      node->info.insert.hint = (PT_HINT_ENUM) (node->info.insert.hint | hint_table[i].hint);
+	      node->info.insert.waitsecs_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_MERGE)
+	    {
+	      node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
+	      node->info.merge.waitsecs_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
+	case PT_HINT_NO_LOGGING:	/* no logging */
+	  if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_INSERT)
+	    {
+	      node->info.insert.hint = (PT_HINT_ENUM) (node->info.insert.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_MERGE)
+	    {
+	      node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_QUERY_CACHE:	/* query_cache */
+	  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+	    {
+	      node->info.query.hint = (PT_HINT_ENUM) (node->info.query.hint | hint_table[i].hint);
+	      node->info.query.qcache_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	      if (node->info.query.qcache_hint)
+		{
+		  if (atoi (node->info.query.qcache_hint->info.name.original))
+		    node->info.query.flag.do_cache = 1;
+		  else
+		    node->info.query.flag.do_not_cache = 1;
+		}
+	      else
+		{
+		  node->info.query.flag.do_cache = 1;
+		}
+	    }
+	  break;
+#if 0
+	case PT_HINT_QUERY_NO_CACHE:
+	  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+	    {
+	      node->info.query.hint = (PT_HINT_ENUM) (node->info.query.hint | hint_table[i].hint);
+	      node->info.query.qcache_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	      /* force not use the query cache */
+	      node->info.query.flag.reexecute = 1;
+	      node->info.query.flag.do_cache = 0;
+	      node->info.query.flag.do_not_cache = 1;
+	    }
+	  break;
+#endif
+	case PT_HINT_REEXECUTE:	/* reexecute */
+	  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+	    {
+	      node->info.query.hint = (PT_HINT_ENUM) (node->info.query.hint | hint_table[i].hint);
+	      node->info.query.flag.reexecute = 1;
+	    }
+	  break;
+	case PT_HINT_JDBC_CACHE:	/* jdbc cache */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.jdbc_life_time = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
+	case PT_HINT_USE_IDX_DESC:	/* descending index scan */
+	case PT_HINT_NO_COVERING_IDX:	/* do not use covering index scan */
+	case PT_HINT_NO_IDX_DESC:	/* do not use descending index scan */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_INSERT_MODE:
+	  if (node->node_type == PT_INSERT)
+	    {
+	      node->info.insert.hint = (PT_HINT_ENUM) (node->info.insert.hint | hint_table[i].hint);
+	      node->info.insert.insert_mode = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
+	case PT_HINT_NO_MULTI_RANGE_OPT:
+	case PT_HINT_NO_SORT_LIMIT:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_USE_UPDATE_IDX:
+	  if (node->node_type == PT_MERGE)
+	    {
+	      node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
+	      node->info.merge.update.index_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
+	case PT_HINT_USE_INSERT_IDX:
+	  if (node->node_type == PT_MERGE)
+	    {
+	      node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
+	      node->info.merge.insert.index_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
+	case PT_HINT_NO_HASH_AGGREGATE:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_NO_HASH_LIST_SCAN:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_NO_PUSH_PRED:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_SKIP_UPDATE_NULL:
+	  if (node->node_type == PT_ALTER)
+	    {
+	      node->info.alter.hint = (PT_HINT_ENUM) (node->info.alter.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_NO_INDEX_LS:	/* disable loose index scan */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_INDEX_LS:	/* enable loose index scan */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      if (hint_table[i].arg_list != NULL && PT_IS_NULL_NODE (hint_table[i].arg_list))
+		{
+		  /* For INDEX_LS(), just ignore loose index scan hint */
+		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint & ~PT_HINT_INDEX_LS);
+		  node->info.query.q.select.index_ls = NULL;
+		}
+	      else
+		{
+		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | PT_HINT_INDEX_LS);
+		  node->info.query.q.select.index_ls = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
+	    }
+	  break;
+	case PT_HINT_SELECT_RECORD_INFO:
+	case PT_HINT_SELECT_PAGE_INFO:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_SELECT_KEY_INFO:
+	case PT_HINT_SELECT_BTREE_NODE_INFO:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      /* SELECT_KEY_INFO hint can work if it has one and only one index name as argument. Same for
+	       * SELECT_BTREE_NODE_INFO. Ignore hint if this condition is not met. */
+	      if (hint_table[i].arg_list == NULL || hint_table[i].arg_list->next != NULL)
+		{
+		  break;
+		}
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.using_index = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
+	case PT_HINT_USE_SBR:	/* statement-based replication */
+	  if (node->node_type == PT_INSERT)
+	    {
+	      node->info.insert.hint = (PT_HINT_ENUM) (node->info.insert.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_NO_SUPPLEMENTAL_LOG:	/* statement-based replication */
+	  if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	    }
+	  break;
+	default:
+	  break;
+	}
+
+      if (hint_table[i].arg_list)
+	{
+	  parser_free_tree (this_parser, hint_table[i].arg_list);
+	  hint_table[i].arg_list = NULL;
 	}
     }				/* for (i = ... ) */
 
-  END_HIT_PRINT ();
+  if (s_hint_msg.is_print)
+    {
+      s_hint_msg.addstring ((char *) "\n");
+    }
 }
 
 
@@ -922,7 +1019,16 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
   bool start_flag = true;
   unsigned char *h_str = (unsigned char *) text + 1;	// skip '+'
 
-  PRINT_HIT_HINT ("\n(HINT STRING) %s\n", text);
+  s_hint_msg.is_print = false;
+  if (*h_str == '+')
+    {
+      h_str++;
+      if (plan_include_hint)
+	{
+	  s_hint_msg.is_print = true;
+	  s_hint_msg.addstring ((const char *) "    Input) %s\n", (char *) h_str);
+	}
+    }
 
   // reset hit info.
   for (int i = 0; hint_table[i].tokens; i++)
@@ -979,19 +1085,18 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
     }
 }
 
-#if defined(PRINT_HIT_HINT_INFO)
 static void
-debug_hit_hint_print (PT_HINT * hint_table)
+print_hit_hint_string (PT_HINT * hint_table)
 {
   PT_NODE *px;
 
   if (hint_table->arg_list == NULL)
     {
-      fprintf (stdout, " %s ", hint_table->tokens);
+      s_hint_msg.addstring ((const char *) " %s ", (char *) hint_table->tokens);
       return;
     }
 
-  fprintf (stdout, " %s(", hint_table->tokens);
+  s_hint_msg.addstring ((const char *) " %s(", (char *) hint_table->tokens);
 
   px = hint_table->arg_list;
   do
@@ -1000,17 +1105,18 @@ debug_hit_hint_print (PT_HINT * hint_table)
 	{
 	  if (px->info.name.resolved)
 	    {
-	      fprintf (stdout, "[%s].[%s]", px->info.name.resolved, px->info.name.original);
+	      s_hint_msg.addstring ((const char *) "[%s].[%s]", (char *) px->info.name.resolved,
+				    (char *) px->info.name.original);
 	    }
 	  else
 	    {
-	      fprintf (stdout, "[%s]", px->info.name.original);
+	      s_hint_msg.addstring ((const char *) "[%s]", (char *) px->info.name.original);
 	    }
 	}
       else if (px->node_type == PT_VALUE)
 	{
 	  assert (px->type_enum == PT_TYPE_NULL);
-	  fprintf (stdout, "%s", "***");
+	  s_hint_msg.addstring (" ");
 	}
       else
 	{
@@ -1020,12 +1126,10 @@ debug_hit_hint_print (PT_HINT * hint_table)
       px = px->next;
       if (px)
 	{
-	  fprintf (stdout, ", ");
+	  s_hint_msg.addstring (", ");
 	}
 
     }
   while (px);
-
-  fprintf (stdout, ")");
+  s_hint_msg.addstring (")");
 }
-#endif
