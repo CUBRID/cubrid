@@ -2334,6 +2334,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+#if defined(SERVER_MODE)
+  /* for passive transaction server, log initialization occurs earlier on because it does not rely
+   * on any type of storage; information is manually/explicitly retrieved from page server */
+  if (is_passive_transaction_server ())
+    {
+      log_initialize_passive_tran_server (thread_p);
+    }
+#endif /* SERVER_MODE */
+
   /*
    * Now continue the normal restart process. At this point the data volumes
    * are ok. However, some recovery may need to take place
@@ -2466,7 +2475,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 #endif
 
-  log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
+#if defined(SERVER_MODE)
+  if (!is_passive_transaction_server ())
+#endif /* SERVER_MODE */
+    {
+      log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
+    }
 
   error_code = boot_after_copydb (thread_p);	// only does something if this is first boot after copydb
   if (error_code != NO_ERROR)
