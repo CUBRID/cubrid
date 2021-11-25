@@ -9758,7 +9758,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 #if defined(SERVER_MODE)
   int tran_index;
 #else
-  int btree_oid_cnt, btree_null_cnt, btree_key_cnt;
+  long long btree_oid_cnt, btree_null_cnt, btree_key_cnt;
 #endif /* SERVER_MODE */
   bool bt_checkscan_inited = false;
 

@@ -4581,7 +4581,7 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
 
   fprintf (fp, "==============    R O O T    P A G E   ================\n\n");
   fprintf (fp, " Key_Type: %s\n", pr_type_name (TP_DOMAIN_TYPE (key_type)));
-  fprintf (fp, " Num OIDs: %d, Num NULLs: %d, Num keys: %d\n", root_header->num_oids, root_header->num_nulls,
+  fprintf (fp, " Num OIDs: %lld, Num NULLs: %lld, Num keys: %lld\n", root_header->num_oids, root_header->num_nulls,
 	   root_header->num_keys);
   fprintf (fp, " Topclass_oid: (%d %d %d)\n", root_header->topclass_oid.volid, root_header->topclass_oid.pageid,
 	   root_header->topclass_oid.slotid);
@@ -4602,7 +4602,6 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
   fprintf (fp, "\n");
   fprintf (fp, " OVFID: %d|%d\n", root_header->ovfid.fileid, root_header->ovfid.volid);
   fprintf (fp, " Btree Revision Level: %d\n", root_header->rev_level);
-  fprintf (fp, " Reserved: %d\n", root_header->reverse_reserved);	/* unused */
   fprintf (fp, "\n");
 }
 
@@ -5638,8 +5637,9 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
 
   VFID_SET_NULL (&(root_header->ovfid));
   root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
-
-  root_header->reverse_reserved = 0;	/* unused */
+  root_header->_64.num_oids = 0;
+  root_header->_64.num_nulls = 0;
+  root_header->_64.num_keys = 0;
 
 #if defined (SERVER_MODE)
   root_header->creator_mvccid = logtb_get_current_mvccid (thread_p);
@@ -6098,7 +6098,7 @@ xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size)
 static int
 xbtree_test_unique (THREAD_ENTRY * thread_p, BTID * btid)
 {
-  INT32 num_oids, num_nulls, num_keys;
+  long long num_oids, num_nulls, num_keys;
 
   if (logtb_get_global_unique_stats (thread_p, btid, &num_oids, &num_nulls, &num_keys) != NO_ERROR)
     {
@@ -6168,7 +6168,7 @@ xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid)
  * Note: In MVCC the statistics are taken from memory structures. In non-mvcc from B-tree header
  */
 int
-btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, int *oid_cnt, int *null_cnt, int *key_cnt)
+btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, long long *oid_cnt, long long *null_cnt, long long *key_cnt)
 {
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
 
@@ -6196,7 +6196,7 @@ btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, int
  * the btree is not a unique btree, all the stats will be -1.
  */
 int
-btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, int *oid_cnt, int *null_cnt, int *key_cnt)
+btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, long long *oid_cnt, long long *null_cnt, long long *key_cnt)
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
@@ -6222,9 +6222,9 @@ btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, int *oid_cnt,
 
   assert ((root_header->unique_pk & (BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY)) != 0);
 
-  *oid_cnt = root_header->num_oids;
-  *null_cnt = root_header->num_nulls;
-  *key_cnt = root_header->num_keys;
+  *oid_cnt = (((long long)root_header->_64.num_oids) << 32) | root_header->num_oids;
+  *null_cnt = (((long long)root_header->_64.num_nulls) << 32) | root_header->num_nulls;
+  *key_cnt = (((long long)root_header->_64.num_keys) << 32) | root_header->num_keys;
 
   pgbuf_unfix_and_init (thread_p, root);
 
@@ -14090,9 +14090,13 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
       if (!only_active_tran || logtb_is_current_active (thread_p))
 	{
 	  /* update header information */
-	  root_header->num_nulls = unique_stat_info->unique_stats.num_nulls;
-	  root_header->num_oids = unique_stat_info->unique_stats.num_oids;
-	  root_header->num_keys = unique_stat_info->unique_stats.num_keys;
+	  root_header->num_nulls = unique_stat_info->unique_stats.num_nulls & 0xffffffff;
+	  root_header->num_oids = unique_stat_info->unique_stats.num_oids & 0xffffffff;
+	  root_header->num_keys = unique_stat_info->unique_stats.num_keys & 0xffffffff;
+
+	  root_header->_64.num_nulls = unique_stat_info->unique_stats.num_nulls >> 22;
+	  root_header->_64.num_oids = unique_stat_info->unique_stats.num_oids >> 22;
+	  root_header->_64.num_keys = unique_stat_info->unique_stats.num_keys >> 22;
 
 	  page_lsa = pgbuf_get_lsa (root);
 	  /* update the page's LSA to the last global unique statistics change that was made at commit, only if it is
@@ -20814,7 +20818,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
   char buf[256] = { 0 };
   OR_BUF or_buf;
   TP_DOMAIN *key_type;
-  int num_oids = 0, num_nulls = 0, num_keys = 0;
+  long long num_oids = 0, num_nulls = 0, num_keys = 0;
   bool fetch_unique_stats = false;
   int unique_stats_idx = -1;
   RECDES recdes = RECDES_INITIALIZER;
@@ -35267,7 +35271,7 @@ btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid
 					    OID * class_oid)
 {
   int ret = NO_ERROR;
-  int g_num_oids = 0, g_num_nulls = 0, g_num_keys = 0;
+  long long g_num_oids = 0, g_num_nulls = 0, g_num_keys = 0;
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
 
   if (unique_stats == NULL)

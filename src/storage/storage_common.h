@@ -132,6 +132,14 @@ typedef INT32 LOLENGTH;		/* Length for a large object */
 #define LEAF_RECORD_SIZE (0)
 #define SPLIT_INFO_SIZE (OR_FLOAT_SIZE + OR_INT_SIZE)
 
+/* for backward compatibility */
+typedef struct btree_version BTREE_VERSION;
+struct btree_version
+{
+  int major;			/* major version */
+  int minor;			/* minor version */
+};
+
 typedef struct btree_node_split_info BTREE_NODE_SPLIT_INFO;
 struct btree_node_split_info
 {
