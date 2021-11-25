@@ -386,6 +386,9 @@ static int logpb_fetch_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log
 static int logpb_fetch_header_from_file_or_page_server (THREAD_ENTRY * thread_p, const char *db_fullname,
 							const char *logpath, const char *prefix_logname,
 							LOG_HEADER * hdr);
+static void logpb_fill_or_reset_header_parameters (const struct log_header *hdr, PGLENGTH & io_page_size,
+						   PGLENGTH & log_page_size, INT64 & creation_time,
+						   float &db_compatibility, int &db_charset);
 static int logpb_compute_page_checksum (const LOG_PAGE * log_pgptr);
 
 static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *active_log_path,
@@ -2550,6 +2553,32 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
 }
 
 /*
+ * logpb_fill_or_reset_header_parameters - initialize values from header, or reset to invalid values if no header
+ *                    argument is provided
+ */
+void
+logpb_fill_or_reset_header_parameters (const struct log_header *hdr, PGLENGTH & io_page_size, PGLENGTH & log_page_size,
+				       INT64 & creation_time, float &db_compatibility, int &db_charset)
+{
+  if (hdr != nullptr)
+    {
+      io_page_size = hdr->db_iopagesize;
+      log_page_size = hdr->db_logpagesize;
+      creation_time = hdr->db_creation;
+      db_compatibility = hdr->db_compatibility;
+      db_charset = hdr->db_charset;
+    }
+  else
+    {
+      io_page_size = -1;
+      log_page_size = -1;
+      creation_time = 0;
+      db_compatibility = -1.0;
+      db_charset = INTL_CODESET_ERROR;
+    }
+}
+
+/*
  * logpb_find_header_parameters - Find some database creation parameters
  *
  * return: iopagesize or -1
@@ -2597,10 +2626,8 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
   /* Is the system restarted ? */
   if (log_Gl.trantable.area != NULL && log_Gl.append.log_pgptr != NULL)
     {
-      *io_page_size = log_Gl.hdr.db_iopagesize;
-      *log_page_size = log_Gl.hdr.db_logpagesize;
-      *creation_time = log_Gl.hdr.db_creation;
-      *db_compatibility = log_Gl.hdr.db_compatibility;
+      logpb_fill_or_reset_header_parameters (&log_Gl.hdr, *io_page_size, *log_page_size, *creation_time,
+					     *db_compatibility, *db_charset);
 
       if (IO_PAGESIZE != *io_page_size || LOG_PAGESIZE != *log_page_size)
 	{
@@ -2638,11 +2665,8 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
       is_header_read_from_file = true;
     }
 
-  *io_page_size = hdr.db_iopagesize;
-  *log_page_size = hdr.db_logpagesize;
-  *creation_time = hdr.db_creation;
-  *db_compatibility = hdr.db_compatibility;
-  *db_charset = (int) hdr.db_charset;
+  logpb_fill_or_reset_header_parameters (&hdr, *io_page_size, *log_page_size, *creation_time,
+					 *db_compatibility, *db_charset);
 
   if (is_log_header_validated)
     {
@@ -2682,10 +2706,9 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
   return *io_page_size;
 
 error:
-  *io_page_size = -1;
-  *log_page_size = -1;
-  *creation_time = 0;
-  *db_compatibility = -1.0;
+  // null header argument will reset all values
+  logpb_fill_or_reset_header_parameters (nullptr, *io_page_size, *log_page_size, *creation_time,
+					 *db_compatibility, *db_charset);
 
   return *io_page_size;
 }
