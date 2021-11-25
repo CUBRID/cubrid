@@ -4280,6 +4280,11 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 
   hint = tree->info.query.q.select.hint;
 
+  if (hint == PT_HINT_NONE)
+    {
+      return;
+    }
+
   if (hint & PT_HINT_ORDERED)
     {
       if (tree->info.query.q.select.ordered)
