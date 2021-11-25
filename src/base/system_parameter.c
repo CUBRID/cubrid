@@ -681,6 +681,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ENABLE_NEW_LFHASH "new_lfhash"
 #define PRM_NAME_HEAP_INFO_CACHE_LOGGING "heap_info_cache_logging"
 #define PRM_NAME_TDE_DEFAULT_ALGORITHM "tde_default_algorithm"
+#define PRM_NAME_ER_LOG_TDE "er_log_tde"
 
 #define PRM_NAME_GENERAL_RESERVE_01 "general_reserve_01"
 
@@ -694,6 +695,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SUPPLEMENTAL_LOG "supplemental_log"
 #define PRM_NAME_CDC_LOGGING_DEBUG "cdc_logging_debug"
+
+#define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2297,6 +2300,10 @@ int PRM_TDE_DEFAULT_ALGORITHM = TDE_ALGORITHM_AES;
 static int prm_tde_default_algorithm = TDE_ALGORITHM_AES;
 static unsigned int prm_tde_default_algorithm_flag = 0;
 
+int PRM_ER_LOG_TDE = false;
+static int prm_er_log_tde_default = false;
+static unsigned int prm_er_log_tde_flag = 0;
+
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
 static unsigned int prm_java_stored_procedure_flag = 0;
@@ -2356,6 +2363,12 @@ static unsigned int prm_supplemental_log_flag = 0;
 bool PRM_CDC_LOGGING_DEBUG = false;
 static bool prm_cdc_logging_debug_default = false;
 static unsigned int prm_cdc_logging_debug_flag = 0;
+
+int PRM_RECOVERY_PROGRESS_LOGGING_INTERVAL = 0;
+static int prm_recovery_progress_logging_interval_default = 0;
+static int prm_recovery_progress_logging_interval_lower = 0;
+static int prm_recovery_progress_logging_interval_upper = 3600;
+static unsigned int prm_recovery_progress_logging_interval_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5928,6 +5941,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ER_LOG_TDE,
+   PRM_NAME_ER_LOG_TDE,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_er_log_tde_flag,
+   (void *) &prm_er_log_tde_default,
+   (void *) &PRM_ER_LOG_TDE,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),
@@ -6072,7 +6097,19 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_recovery_progress_logging_interval_flag,
+   (void *) &prm_recovery_progress_logging_interval_default,
+   (void *) &PRM_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   (void *) &prm_recovery_progress_logging_interval_upper,
+   (void *) &prm_recovery_progress_logging_interval_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

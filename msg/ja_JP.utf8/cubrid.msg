@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 オーバーフローキーファイルを生成します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
 1126 新しいオーバーフローページを生成します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
 1127 空きオーバーフローページを削除します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
-1128 ログリカバリー作業が始まりました。適用されるログレコード数：%1$lld。ログページ：%2$lld ~ %3$lld。
+1128 ログリカバリー作業が始まりました。
 1129 ログリカバリー作業が終わりました。
 1130 トランザクションのロックカウントが「%1$d」を超えたので、トランザクションがキャンセルされました。
 1131 インターナルエラー：ボリューム「%2$s」のページ「%1$d」が壊れています。\n%3$s
@@ -1329,7 +1329,7 @@ $ LOADDB
 1258 %1$sからデータベースに設定されたキーが見つかりません。バックアップボリュームのキーファイルが使用されます。
 1259 キーファイルの名前を「%1$s」から「%2$s」に変更します。
 1260 キーファイル「%1$s」を「%2$s」にコピーします。
-1261 復元時にキーが見つかりません（キーインデックス：%1$d、作成時間：%2$s）。データベースのキー（キーインデックス：%3$d）を設定します。
+1261 復元されたキーファイルの最初のキー（キーインデックス：%1$d、作成時間：%2$s）が設定されました。
 1262 キーファイルがいっぱいです。
 1263 ログページのTDE暗号化に失敗しました（ページID：%1$lld）。このページの暗号化はこれ以上試行されません。
 1264 Error reserved for scalability development.
@@ -1354,8 +1354,49 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 %1$s sで参照されている主キーが原因で、テーブルを切り捨てることができません。 CASCADEオプションを使用して再試行してください。
 1285 外部キー（%1$s）のON DELETEアクションがCASCADEに設定されていないため、切り捨てをカスケードできません。
+1296 ログリカバリ: 分析フェーズが開始されます。
+1297 ログ回復: REDOフェーズが開始されました。 再実行するログページ: %1$lld、再実行するログレコード: %2$lld。
+1298 ログリカバリ: UNDOフェーズが開始されました。 元に戻すページ: %1$lld、元に戻すトランザクション: %2$d。
+1299 ログ復旧: %1$sフェーズが終了しています。
+1300 ログの回復: %1$sフェーズが終了しました。
+1301 ログの回復：%1$sの進行状況：（%2$lld/%3$lld）、%4$.2fパーセント、経過時間：%5$.2f（s）、推定残り時間：%6$.2f （s）。
 
-1286 ラストエラー
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s] %2$s (%3$d)
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Both dsn name and link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 アクティブなログボリューム（%1$s）が正常すぎて、再作成できません。 アクティブなログを削除すると、予期しない不可逆的な問題が発生する可能性があります。
+
+1333 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1820,6 +1861,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unexpected number of arguments %1$d.
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
+306 dblink - Required information is missing.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

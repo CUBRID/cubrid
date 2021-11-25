@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Overflow key 파일이 생성 되었습니다. 클래스 %3$s%4$s의 인덱스 %1$s%2$s. 키: %5$s%6$s.
 1126 새로운 overflow 페이지가 생성 되었습니다. 클래스 %3$s%4$s의 인덱스 %1$s%2$s. 키: %5$s%6$s.
 1127 빈 overflow 페이지가 삭제 되었습니다. 클래스 %3$s%4$s의 인덱스 %1$s%2$s. 키: %5$s%6$s.
-1128 로그 복구가 시작되었습니다. 적용될 로그 개수: %1$lld. 로그 페이지: %2$lld ~ %3$lld.
+1128 로그 복구가 시작되었습니다.
 1129 로그 복구가 완료되었습니다.
 1130 락 횟수가 %1$d 를 초과하여 트랜잭션이 취소되었습니다.
 1131 내부 에러: 볼륨 "%2$s"의 페이지 "%1$d"에 오류가 생겼을 수 있습니다.\n%3$s
@@ -1329,7 +1329,7 @@ $ LOADDB
 1258 데이터베이스에 설정된 키를 "%1$s"에서 찾을 수 없습니다. 백업 볼륨의 키 파일을 참조합니다.
 1259 데이터베이스의 키 파일 "%1$s"를 "$2%s"로 변경합니다.
 1260 키 파일 "%1$s"를 데이터베이스의 키 파일 "%2$s"로 복사합니다.
-1261 백업 시점의 키 (키 인덱스: %1$d, 생성 시간: %2$s)를 찾을 수 없으므로 새로운 키 (키 인덱스: %3$d)로 변경합니다.
+1261 복구된 키 파일의 첫번째 키 (키 인덱스: %1$d, 생성 시간: %2$s)가 등록되었습니다.
 1262 키 파일 (_keys)이 가득 찼습니다.
 1263 로그 페이지 (pageid: %1$lld) 암호화에 실패했습니다. 해당 페이지는 더 이상 암호화되지 않습니다.
 1264 Error reserved for scalability development.
@@ -1354,8 +1354,49 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 %1$s 의 기본키는 외래키 참조로 인해 truncate될 수 없습니다.
 1285 외래키 (%1$s) 의 ON DELETE action이 CASCADE가 아니기 때문에 truncate할 수 없습니다.
+1296 Log recovery: ANALYSIS 단계가 시작되었습니다.
+1297 Log recovery: REDO 단계가 시작되었습니다. redo할 로그 페이지 수: %1$lld, redo할 로그 레코드 수: %2$lld.
+1298 Log recovery: UNDO 단계가 시작되었습니다. undo할 로그 페이지 수: %1$lld, undo할 트랜잭션 수: %2$d.
+1299 Log recovery: %1$s 단계를 마무리 중입니다.
+1300 Log recovery: %1$s 단계가 끝났습니다.
+1301 Log recovery: %1$s 진행도: (%2$lld/%3$lld), %4$.2f 퍼센트, 경과 시간: %5$.2f (s), 추정 남은 시간: %6$.2f (s).
 
-1286 마지막 에러
+1302 dblink - %1$s
+1303 dblink - 명시된 열의 개수가 올바르지 않습니다.
+1304 dblink - _db_server 카탈로그를 찾을 수 없습니다.
+1305 dblink - "%1$s" 서버를 찾을 수 없습니다.
+1306 dblink - "%1$s" 서버는 이미 존재합니다.
+1307 dblink - 서버 객체에 대한 소유권이 없습니다.
+1308 dblink - 지원하지 않는 유형입니다.
+1309 dblink - 유효하지 않은 바인드 파라메터입니다.
+1300 dblink - 암호화할 비밀번호의 길이가 최댓값을 넘어섰습니다.
+1311 dblink - 암호화된 비밀번호의 길이가 올바르지 않습니다.
+1312 dblink - 암호화된 비밀번호의 체크섬이 일치하지 않습니다.
+1313 dblink - 암호 문자열의 형식이 올바르지 않습니다.
+1314 dblink - 암호화된 비밀번호를 복호화하는 데 실패했습니다.. error=%1$d".
+1315 dblink - 비밀번호를 암호화하는 데 실패했습니다. error=%1$d".
+1316 dblink - 이름이 "%1$s"인 서버가 여러 개 있습니다.
+1317 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다.
+
+1318 [%1$5.5s] %2$s (%3$d)
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Both dsn name and link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 액티브 로그 볼륨 (%1$s)에서 문제를 발견할 수 없어 재생성할 수 없습니다. 액티브 로그 볼륨을 제거할 경우에 예측할 수 없는 문제가 발생할 수 있으며, 되돌릴 수 없습니다.
+
+1333 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1820,6 +1861,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 잘못된 인자 갯수 %1$d.
 304 함수 %1$s()에 대해 호환되는 함수 정의를 찾을 수 없습니다.
 305 함수 인자와 함수 정의 %1$s 은 호환되지 않습니다.
+306 dblink - 필수 정보가 누락되었습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

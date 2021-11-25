@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Taşma anahtar dosyası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Yeni bir taşma sayfası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Boş bir taşma sayfayı sil. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Oturum kurtarma başlatılır. Uygulanacak günlük kayıt sayısı: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 Oturum kurtarma başlatılır.
 1129 Oturum kurtarma bitti.
 1130 İşlem kilit sayıları %1$d aştığı için işlem iptal edilir.
 1131 Dahili hata: Sayfa %1$d hacmi "%2$s"de bozulabilir.\n%3$s
@@ -1329,7 +1329,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1258 %1$s veritabanında anahtar kümesi bulunamıyor. Yedekleme birimindeki anahtar dosya kullanılacaktır.
 1259 "%1$s" anahtar dosyasını "%2$s" olarak yeniden adlandırın.
 1260 "%1$s" anahtar dosyasını "%2$s" klasörüne kopyalayın.
-1261 Geri yükleme sırasında anahtar bulunamıyor (anahtar dizini: %1$d, oluşturma zamanı: %2$s). Veritabanı için anahtarı (anahtar dizini: %3$d) ayarlayın.
+1261 Geri yüklenen yedek anahtar dosyasındaki ilk anahtar (anahtar dizini: %1$d, oluşturma zamanı: %2$s) ayarlandı.
 1262 Anahtar dosyası dolu.
 1263 Günlük sayfasını TDE şifreleyemiyor (pageid: %1$lld). Artık bu sayfayı şifrelemeye çalışılmayacak.
 1264 Error reserved for scalability development.
@@ -1354,8 +1354,49 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1283 Error reserved for scalability development.
 1284 %1$s üzerinde başvurulan birincil anahtar nedeniyle tablo kesilemiyor. CASCADE seçeneği ile tekrar deneyiniz.
 1285 Yabancı anahtarın ON DELETE eylemi (%1$s) CASCADE olarak ayarlanmadığından kademeli kesilemiyor.
+1296 Günlük kurtarma: ANALİZ Aşaması başlatıldı.
+1297 Günlük kurtarma: REDO Aşaması başlatıldı. Yeniden yapılacak günlük sayfaları: %1$lld, Yeniden yapılacak günlük kayıtları: %2$lld.
+1298 Günlük kurtarma: GERİ AL Aşaması başlatıldı. Geri alınacak günlük sayfaları: %1$lld, geri alınacak işlemler: %2$d.
+1299 Günlük kurtarma: %1$s Aşama tamamlanıyor.
+1300 Günlük kurtarma: %1$s Aşama tamamlandı.
+1301 Günlük kurtarma: %1$s ilerleme: (%2$lld/%3$lld), %4$.2f, geçen süre: %5$.2f (s), tahmini kalan süre: %6$.2f (s).
 
-1286 Son Hata
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s] %2$s (%3$d)
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Both dsn name and link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 Etkin günlük hacmi (%1$s) yeniden oluşturulamayacak kadar makul. Etkin günlüğü kaldırırsanız, beklenmeyen ve geri dönüşü olmayan bir soruna neden olabilir.
+
+1333 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1820,6 +1861,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Beklenmeyen argüman sayısı %1$d.
 304 %1$s() fonksiyonu için uyumlu bir imza bulunamadı
 305 İmza %1$s, argümanları ile uyumlu değildir.
+306 dblink - Gerekli bilgiler eksik.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Crear archivo clave de sobreflujo.INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Crear una nueva pagina de sobreflujo.INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Borrar una pagina de sobreflujo vacia. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 La recuperacion de anotaciones se inicia. El numero de registros de anotacion que se aplicara: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 La recuperacion de anotaciones se inicia.
 1129 La recuperacion de anotaciones ha terminado.
 1130 Transaccion es abortada porque el numero de llaves asociado a la transaccion excede %1$d.
 1131 Error interno: La pagina %1$d del volumen "%2$s" puede ser corrota. \n%3$s
@@ -1329,7 +1329,7 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1258 No se puede encontrar el conjunto de claves en la base de datos de%1$s. Se utilizará el archivo de claves del volumen de copia de seguridad.
 1259 Cambie el nombre del archivo de claves de "%1$s" a "%2$s".
 1260 Copie el archivo de claves "%1$s" en "%2$s".
-1261 No se puede encontrar la clave en el momento de restaurar (índice de clave: %1$d, hora de creación: %2$s). Establezca la clave (índice de clave: %3$d) para la base de datos.
+1261 Se ha establecido la primera clave (índice de clave: %1$d, hora de creación: %2$s) del archivo de claves restaurado.
 1262 El archivo de claves está lleno.
 1263 No se puede cifrar con TDE la página de registro (pageid: %1$lld). Ya no se intentará cifrar esta página.
 1264 Error reserved for scalability development.
@@ -1354,8 +1354,49 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1283 Error reserved for scalability development.
 1284 No se puede truncar la tabla debido a la clave principal a la que se hace referencia en %1$s. Inténtelo de nuevo con la opción CASCADE.
 1285 No se puede truncar en cascada porque la acción ON DELETE de la clave externa (%1$s) no está establecida en CASCADE.
+1296 Registro de registro: se inicia la fase de análisis.
+1297 Registro de registro: se inicia la fase rehacer. Páginas de registro para rehacer: %1$lld, registros de registro para rehacer: %2$lld.
+1298 Registro de registro: se inicia la fase de deshacer. Páginas de registro para deshacer: %1$lld, transacciones para deshacer: %2$d.
+1299 Registro de registro: %1$s fase se está acabando.
+1300 Registro de registro: %1$s fase se termina.
+1301 Registro de registro: %1$s progreso: (%2$lld/%3$lld), %4$.2f por ciento, tiempo transcurrido: %5$.2f (s), tiempo resistente estimado: %6$.2f (s).
 
-1286 Ultimo error
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s] %2$s (%3$d)
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Both dsn name and link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 El volumen de registro activo (%1$s) está demasiado sano para volver a crearlo. Si elimina el registro activo, podría causar un problema inesperado e irreversible.
+
+1333 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
@@ -1820,6 +1861,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Número inesperado de argumentos %1$d.
 304 No se pudo encontrar la signatura compatible para la función %1$s()
 305 Signatura %1$s no es compatible con argumentos de función.
+306 dblink - Falta la información requerida.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.
