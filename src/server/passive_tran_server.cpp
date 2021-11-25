@@ -19,6 +19,7 @@
 #include "log_impl.h"
 #include "passive_tran_server.hpp"
 #include "server_type.hpp"
+#include "system_parameter.h"
 #include "thread_manager.hpp"
 
 bool
@@ -112,4 +113,11 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   // do not leave m_log_boot_info empty as a safeguard as this function is only supposed
   // to be called once
   m_log_boot_info = "not empty";
+
+  if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "Received log boot info to from page server with prev_lsa = (%lld|%d), append_lsa = (%lld|%d)\n",
+		     LSA_AS_ARGS (&log_Gl.append.prev_lsa), LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
+    }
 }

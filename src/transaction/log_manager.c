@@ -3424,7 +3424,8 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
  *              as part of the log initialization sequence
  */
 // *INDENT-OFF*
-std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p)
+std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, struct log_lsa &append_lsa,
+                                    struct log_lsa &prev_lsa)
 {
   LOG_CS_ENTER_READ_MODE (thread_p);
   scope_exit log_cs_exit_ftor ( [thread_p] { LOG_CS_EXIT (thread_p); } );
@@ -3434,6 +3435,7 @@ std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p)
 
   // log header
   packed_message.append( reinterpret_cast<const char*> (&log_Gl.hdr), sizeof (struct log_header));
+  append_lsa = log_Gl.hdr.append_lsa;
 
   // log append
   assert (log_Gl.append.log_pgptr != nullptr);
@@ -3442,6 +3444,7 @@ std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p)
 
   // prev lsa
   packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (struct log_lsa));
+  prev_lsa = log_Gl.append.prev_lsa;
 
   return packed_message;
 }
