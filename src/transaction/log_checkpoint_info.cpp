@@ -56,6 +56,10 @@ namespace cublog
 	lsa_utils::pack (serializator, tran_info.tail_topresult_lsa);
 	lsa_utils::pack (serializator, tran_info.start_postpone_lsa);
 	lsa_utils::pack (serializator, tran_info.last_mvcc_lsa);
+
+	serializator.pack_bigint (tran_info.mvcc_id);
+	serializator.pack_bigint (tran_info.mvcc_sub_id);
+
 	serializator.pack_c_string (tran_info.user_name, strlen (tran_info.user_name));
       }
 
@@ -95,6 +99,10 @@ namespace cublog
 	lsa_utils::unpack (deserializator, chkpt_trans.tail_topresult_lsa);
 	lsa_utils::unpack (deserializator, chkpt_trans.start_postpone_lsa);
 	lsa_utils::unpack (deserializator, chkpt_trans.last_mvcc_lsa);
+
+	deserializator.unpack_bigint (chkpt_trans.mvcc_id);
+	deserializator.unpack_bigint (chkpt_trans.mvcc_sub_id);
+
 	deserializator.unpack_c_string (chkpt_trans.user_name, LOG_USERNAME_MAX);
 
 	m_trans.push_back (chkpt_trans);
@@ -139,6 +147,10 @@ namespace cublog
 	size += lsa_utils::get_packed_size (serializator, start_offset + size);
 	size += lsa_utils::get_packed_size (serializator, start_offset + size);
 	size += lsa_utils::get_packed_size (serializator, start_offset + size);
+
+	size += serializator.get_packed_bigint_size (start_offset + size);
+	size += serializator.get_packed_bigint_size (start_offset + size);
+
 	size += serializator.get_packed_c_string_size (tran_info.user_name, strlen (tran_info.user_name), start_offset + size);
       }
 
@@ -166,6 +178,17 @@ namespace cublog
 	chkpt_tran.isloose_end = tdes.isloose_end;
 	chkpt_tran.trid = tdes.trid;
 	chkpt_tran.state = tdes.state;
+	chkpt_tran.mvcc_id = tdes.mvccinfo.id;
+
+	if (tdes.mvccinfo.sub_ids.size () == 0)
+	  {
+	    chkpt_tran.mvcc_sub_id = MVCCID_NULL;
+	  }
+	else
+	  {
+	    assert (tdes.mvccinfo.sub_ids.size () == 1);
+	    chkpt_tran.mvcc_sub_id = tdes.mvccinfo.sub_ids[0];
+	  }
 
 	LSA_COPY (&chkpt_tran.head_lsa, &tdes.head_lsa);
 	LSA_COPY (&chkpt_tran.tail_lsa, &tdes.tail_lsa);
@@ -310,6 +333,11 @@ namespace cublog
 	LSA_COPY (&tdes->tail_topresult_lsa, &chkpt.tail_topresult_lsa);
 	LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt.start_postpone_lsa);
 	tdes->last_mvcc_lsa = chkpt.last_mvcc_lsa;
+	tdes->mvccinfo.id = chkpt.mvcc_id;
+	if (chkpt.mvcc_sub_id != MVCCID_NULL)
+	  {
+	    tdes->mvccinfo.sub_ids.emplace_back (chkpt.mvcc_sub_id);
+	  }
 	tdes->client.set_system_internal_with_user (chkpt.user_name);
       }
 
@@ -472,6 +500,16 @@ namespace cublog
       }
 
     if (start_postpone_lsa != other.start_postpone_lsa)
+      {
+	return false;
+      }
+
+    if (mvcc_id != other.mvcc_id)
+      {
+	return false;
+      }
+
+    if (mvcc_sub_id != other.mvcc_sub_id)
       {
 	return false;
       }

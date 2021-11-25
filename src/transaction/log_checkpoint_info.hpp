@@ -96,6 +96,9 @@ namespace cublog
     LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
     LOG_LSA start_postpone_lsa;	/* Address of start postpone (if transaction was doing postpone during checkpoint) */
     LOG_LSA last_mvcc_lsa;
+
+    MVCCID mvcc_id;
+    MVCCID mvcc_sub_id;
     char user_name[LOG_USERNAME_MAX];	/* Name of the client */
 
     inline bool operator== (const tran_info &other) const;
