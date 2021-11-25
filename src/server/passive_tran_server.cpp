@@ -61,9 +61,6 @@ passive_tran_server::receive_log_boot_info (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
 
-  const int log_page_size = db_log_page_size ();
-  assert (message.size () == (2 * log_page_size + sizeof (struct log_lsa)));
-
   // pass to caller thread; it has the thread context needed to access engine functions
   {
     std::lock_guard<std::mutex> lockg { m_log_boot_info_mtx };
@@ -88,15 +85,15 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
     });
   }
 
-  const char *message_buf = m_log_boot_info.c_str ();
   const int log_page_size = db_log_page_size ();
+  assert (m_log_boot_info.size () == sizeof (struct log_header) + log_page_size + sizeof (struct log_lsa));
+
+  const char *message_buf = m_log_boot_info.c_str ();
 
   // log header, copy and initialize header
-  assert (log_Gl.loghdr_pgptr != nullptr);
-  std::memcpy (reinterpret_cast<char *> (log_Gl.loghdr_pgptr), message_buf, log_page_size);
-  LOG_HEADER *const log_hdr = reinterpret_cast<LOG_HEADER *> (log_Gl.loghdr_pgptr->area);
+  const struct log_header *const log_hdr = reinterpret_cast<const struct log_header *> (message_buf);
   log_Gl.hdr = *log_hdr;
-  message_buf += log_page_size;
+  message_buf += sizeof (struct log_header);
 
   // log append
   assert (log_Gl.append.log_pgptr == nullptr);

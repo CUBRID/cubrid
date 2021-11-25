@@ -3368,16 +3368,14 @@ std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p)
   scope_exit log_cs_exit_ftor ( [thread_p] { LOG_CS_EXIT (thread_p); } );
   std::lock_guard<std::mutex> { log_Gl.prior_info.prior_lsa_mutex };
 
-  const int log_page_size = db_log_page_size ();
-
   std::string packed_message;
 
   // log header
-  assert (log_Gl.loghdr_pgptr != nullptr);
-  packed_message.append (reinterpret_cast<const char*> (log_Gl.loghdr_pgptr), log_page_size);
+  packed_message.append( reinterpret_cast<const char*> (&log_Gl.hdr), sizeof (struct log_header));
 
   // log append
   assert (log_Gl.append.log_pgptr != nullptr);
+  const int log_page_size = db_log_page_size ();
   packed_message.append (reinterpret_cast<const char*> (log_Gl.append.log_pgptr), log_page_size);
 
   // prev lsa
