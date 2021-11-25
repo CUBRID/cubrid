@@ -1621,7 +1621,10 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LOG_PAGESIZE);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_initialize_passive_tran_server: out of memory");
       return;
-    }				// log header page buffer is not really needed subsequently as log header is copied directly // from page server without the help of a buffer
+    }
+  /* TODO: log header page buffer is not really needed subsequently as log header is copied directly
+   * from page server without the help of a buffer and, afterwards, it does not need to be saved hence
+   * this buffer will remain useless on the passive tran server */
 
   err_code = logpb_initialize_pool (thread_p);
   if (err_code != NO_ERROR)
