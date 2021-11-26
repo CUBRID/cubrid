@@ -108,7 +108,7 @@ int init_server_type (const char *db_name)
   const auto server_type_from_config = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
   g_transaction_server_type = get_transaction_server_type_from_config (
 				      (transaction_server_type_config) prm_get_integer_value (
-				      PRM_ID_TRANSACTION_SERVER_TYPE));
+					  PRM_ID_TRANSACTION_SERVER_TYPE));
   if (g_server_type == SERVER_TYPE_UNKNOWN)
     {
       if (server_type_from_config == server_type_config::SINGLE_NODE)
@@ -142,6 +142,9 @@ int init_server_type (const char *db_name)
 	  assert (pts_Gl == nullptr);
 	  pts_Gl = new passive_tran_server ();
 	  ts_Gl.reset (pts_Gl);
+
+	  // passive tran server also needs (a) prior receiver(s) to receive log from page server(s)
+	  log_Gl.initialize_log_prior_receiver ();
 	}
       else
 	{
