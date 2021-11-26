@@ -238,8 +238,8 @@ extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
 extern void log_write_metalog_to_file (bool file_open_is_fatal);
 
 // *INDENT-OFF*
-extern std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, struct log_lsa &append_lsa,
-					   struct log_lsa &prev_lsa);
+extern std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa,
+					   log_lsa &prev_lsa);
 // *INDENT-ON*
 
 #if defined (SERVER_MODE)

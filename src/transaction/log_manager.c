@@ -1657,6 +1657,9 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   logpb_initialize_logging_statistics ();
 
+  LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+  LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+
   er_log_debug (ARG_FILE_LINE, "log_initialize_passive_tran_server: end of log initializaton, append_lsa = (%lld|%d)\n",
 		LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
 }
@@ -3436,17 +3439,17 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
  *              as part of the log initialization sequence
  */
 // *INDENT-OFF*
-std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, struct log_lsa &append_lsa,
-                                    struct log_lsa &prev_lsa)
+std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa,
+                                    log_lsa &prev_lsa)
 {
   LOG_CS_ENTER_READ_MODE (thread_p);
-  scope_exit log_cs_exit_ftor ( [thread_p] { LOG_CS_EXIT (thread_p); } );
+  scope_exit log_cs_exit_ftor ([thread_p] { LOG_CS_EXIT (thread_p); });
   std::lock_guard<std::mutex> { log_Gl.prior_info.prior_lsa_mutex };
 
   std::string packed_message;
 
   // log header
-  packed_message.append( reinterpret_cast<const char*> (&log_Gl.hdr), sizeof (struct log_header));
+  packed_message.append (reinterpret_cast<const char*> (&log_Gl.hdr), sizeof (log_header));
   append_lsa = log_Gl.hdr.append_lsa;
 
   // log append
@@ -3455,7 +3458,7 @@ std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, struct log_lsa &app
   packed_message.append (reinterpret_cast<const char*> (log_Gl.append.log_pgptr), log_page_size);
 
   // prev lsa
-  packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (struct log_lsa));
+  packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (log_lsa));
   prev_lsa = log_Gl.append.prev_lsa;
 
   return packed_message;

@@ -2340,6 +2340,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (is_passive_transaction_server ())
     {
       log_initialize_passive_tran_server (thread_p);
+      /* NOTE - Scalability:
+       * see note regarding scalability below where this function is called in the context of
+       * !passive_transaction_server
+       */
+      pgbuf_highest_evicted_lsa_init ();
     }
 #endif /* SERVER_MODE */
 
@@ -2491,7 +2496,20 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
 #if defined(SERVER_MODE)
   // Reset highest evicted LSA
-  pgbuf_highest_evicted_lsa_init ();
+  if (!is_passive_transaction_server ())
+    {
+      /* NOTE - Scalability:
+       * When executing in scalability mode, should be initialized after log has been initialized and
+       * before fetching any pages from page server; The current booting sequence does not allow it
+       * because pages are fetched in order to initialize the log. If page server replication starts
+       * being behind active transaction server's information is lost. However, it is most likely that
+       * page server has finished executing any leftovers and is idle (from this point of view) by the
+       * time active transaction server comes online.
+       *
+       * For passive transaction server, this init is performed according to the above description.
+       */
+      pgbuf_highest_evicted_lsa_init ();
+    }
 
   cdc_daemons_init ();
 #endif /* SERVER_MODE */

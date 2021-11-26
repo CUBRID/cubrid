@@ -114,7 +114,7 @@ namespace cublog
 
   void log_boot_info_fetch_task::execute (context_type &context)
   {
-    struct log_lsa append_lsa, prev_lsa;
+    log_lsa append_lsa, prev_lsa;
 
     std::string message = log_pack_log_boot_info (&context, append_lsa, prev_lsa);
 

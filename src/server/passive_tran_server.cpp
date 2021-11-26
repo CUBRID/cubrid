@@ -87,14 +87,14 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   }
 
   const int log_page_size = db_log_page_size ();
-  assert (m_log_boot_info.size () == sizeof (struct log_header) + log_page_size + sizeof (struct log_lsa));
+  assert (m_log_boot_info.size () == sizeof (log_header) + log_page_size + sizeof (log_lsa));
 
   const char *message_buf = m_log_boot_info.c_str ();
 
   // log header, copy and initialize header
-  const struct log_header *const log_hdr = reinterpret_cast<const struct log_header *> (message_buf);
+  const log_header *const log_hdr = reinterpret_cast<const log_header *> (message_buf);
   log_Gl.hdr = *log_hdr;
-  message_buf += sizeof (struct log_header);
+  message_buf += sizeof (log_header);
 
   // log append
   assert (log_Gl.append.log_pgptr == nullptr);
@@ -104,8 +104,8 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   message_buf += log_page_size;
 
   // prev lsa
-  std::memcpy (&log_Gl.append.prev_lsa, message_buf, sizeof (struct log_lsa));
-  message_buf += sizeof (struct log_lsa);
+  std::memcpy (&log_Gl.append.prev_lsa, message_buf, sizeof (log_lsa));
+  message_buf += sizeof (log_lsa);
 
   // safe-guard that the message has been consumed
   assert (message_buf == m_log_boot_info.c_str () + m_log_boot_info.size ());
