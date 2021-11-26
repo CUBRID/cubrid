@@ -1648,6 +1648,9 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   logpb_initialize_logging_statistics ();
 
+  LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+  LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+
   er_log_debug (ARG_FILE_LINE, "log_initialize_passive_tran_server: end of log initializaton, append_lsa = (%lld|%d)\n",
 		LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
 }
