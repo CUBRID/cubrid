@@ -21,9 +21,6 @@
 
 enum class tran_to_page_request
 {
-  // Reserved for responses
-  RESPONSE,
-
   // Common
   GET_BOOT_INFO,
   SEND_LOG_PAGE_FETCH,
@@ -39,13 +36,7 @@ enum class tran_to_page_request
 
 enum class page_to_tran_request
 {
-  <<<<<<< Updated upstream
   // Common
-  =======
-	  // Reserved for responses
-	  RESPONSE,
-
-  >>>>>>> Stashed changes
   SEND_BOOT_INFO,
 
   // Active only
