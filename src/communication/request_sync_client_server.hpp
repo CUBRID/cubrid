@@ -22,6 +22,11 @@
 #include "request_client_server.hpp"
 #include "request_sync_send_queue.hpp"
 
+#include <condition_variable>
+#include <cstdint>
+#include <limits>
+#include <mutex>
+
 //
 // declarations
 //
@@ -39,9 +44,12 @@ namespace cubcomm
       using request_client_server_t = cubcomm::request_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID>;
       using incoming_request_handler_t = typename request_client_server_t::server_request_handler;
 
+      using response_id_t = std::uint64_t;
+
     public:
       request_sync_client_server (cubcomm::channel &&a_channel,
-				  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers);
+				  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers,
+				  T_OUTGOING_MSG_ID a_outgoing_response_msgid, T_INCOMING_MSG_ID a_incoming_response_msgid);
       ~request_sync_client_server ();
       request_sync_client_server (const request_sync_client_server &) = delete;
       request_sync_client_server (request_sync_client_server &&) = delete;
@@ -57,15 +65,31 @@ namespace cubcomm
       std::string get_underlying_channel_id () const;
 
       void push (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload);
+      void send_receive (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload);
+      void respond (response_id_t a_rid, T_PAYLOAD &&a_payload);
 
     private:
-      using request_sync_send_queue_t = cubcomm::request_sync_send_queue<request_client_server_t, T_PAYLOAD>;
+      using underlaying_payload_t = std::pair<response_id_t,
+
+	    using request_sync_send_queue_t = cubcomm::request_sync_send_queue<request_client_server_t, T_PAYLOAD>;
       using request_queue_autosend_t = cubcomm::request_queue_autosend<request_sync_send_queue_t>;
+
+      response_id_t NO_RESPONSE = std::numeric_limits<response_id_t>::max ();
 
     private:
       std::unique_ptr<request_client_server_t> m_conn;
       std::unique_ptr<request_sync_send_queue_t> m_queue;
       std::unique_ptr<request_queue_autosend_t> m_queue_autosend;
+
+      // Outgoing response management
+      T_OUTGOING_MSG_ID m_outgoing_respond_msgid;     // a message ID to use for outgoing responses
+
+      // Incoming response management
+      T_INCOMING_MSG_ID m_incoming_respond_msgid;     // a message ID to use for handling incoming responses
+      std::atomic<response_id_t> m_response_id_generator;   // generate ID's for future responses
+      std::mutex m_response_mutex;
+      std::condition_variable m_response_condvar;
+      std::map<response_id_t, T_PAYLOAD> m_responses;
   };
 }
 
@@ -77,10 +101,13 @@ namespace cubcomm
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::request_sync_client_server (
 	  cubcomm::channel &&a_channel,
-	  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers)
+	  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers,
+	  T_OUTGOING_MSG_ID a_outgoing_response_msgid, T_INCOMING_MSG_ID a_incoming_response_msgid)
     : m_conn { new request_client_server_t (std::move (a_channel)) }
   , m_queue { new request_sync_send_queue_t (*m_conn) }
   , m_queue_autosend { new request_queue_autosend_t (*m_queue) }
+  , m_outgoing_respond_msgid { a_outgoing_response_msgid }
+  , m_incoming_respond_msgid { a_incoming_response_msgid }
   {
     assert (a_incoming_request_handlers.size () > 0);
     for (const auto &pair: a_incoming_request_handlers)
