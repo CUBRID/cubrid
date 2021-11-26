@@ -114,9 +114,18 @@ namespace cublog
 
   void log_boot_info_fetch_task::execute (context_type &context)
   {
-    std::string message = log_pack_log_boot_info (&context);
+    log_lsa append_lsa, prev_lsa;
+
+    std::string message = log_pack_log_boot_info (&context, append_lsa, prev_lsa);
 
     m_callback (std::move (message));
+
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+      {
+	_er_log_debug (ARG_FILE_LINE,
+		       "Sent log boot info to passive tran server with prev_lsa = (%lld|%d), append_lsa = (%lld|%d)\n",
+		       LSA_AS_ARGS (&prev_lsa), LSA_AS_ARGS (&append_lsa));
+      }
   }
 
   async_page_fetcher::async_page_fetcher ()

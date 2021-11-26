@@ -2334,6 +2334,20 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+#if defined(SERVER_MODE)
+  /* for passive transaction server, log initialization occurs earlier on because it does not rely
+   * on any type of storage; information is manually/explicitly retrieved from page server */
+  if (is_passive_transaction_server ())
+    {
+      log_initialize_passive_tran_server (thread_p);
+      /* NOTE - Scalability:
+       * see note regarding scalability below where this function is called in the context of
+       * !passive_transaction_server
+       */
+      pgbuf_highest_evicted_lsa_init ();
+    }
+#endif /* SERVER_MODE */
+
   /*
    * Now continue the normal restart process. At this point the data volumes
    * are ok. However, some recovery may need to take place
@@ -2466,7 +2480,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 #endif
 
-  log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
+#if defined(SERVER_MODE)
+  if (!is_passive_transaction_server ())
+#endif /* SERVER_MODE */
+    {
+      log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
+    }
 
   error_code = boot_after_copydb (thread_p);	// only does something if this is first boot after copydb
   if (error_code != NO_ERROR)
@@ -2477,7 +2496,20 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
 #if defined(SERVER_MODE)
   // Reset highest evicted LSA
-  pgbuf_highest_evicted_lsa_init ();
+  if (!is_passive_transaction_server ())
+    {
+      /* NOTE - Scalability:
+       * When executing in scalability mode, should be initialized after log has been initialized and
+       * before fetching any pages from page server; The current booting sequence does not allow it
+       * because pages are fetched in order to initialize the log. If page server replication starts
+       * being behind active transaction server's information is lost. However, it is most likely that
+       * page server has finished executing any leftovers and is idle (from this point of view) by the
+       * time active transaction server comes online.
+       *
+       * For passive transaction server, this init is performed according to the above description.
+       */
+      pgbuf_highest_evicted_lsa_init ();
+    }
 
   cdc_daemons_init ();
 #endif /* SERVER_MODE */

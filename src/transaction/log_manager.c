@@ -75,6 +75,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "partition_sr.h"
+#include "passive_tran_server.hpp"
 #include "scope_exit.hpp"
 #include "slotted_page.h"
 #include "tz_support.h"
@@ -1086,6 +1087,8 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
 		logpath != NULL ? logpath : "(UNKNOWN)",
 		prefix_logname != NULL ? prefix_logname : "(UNKNOWN)", (int) is_media_crash);
 
+  assert (!is_passive_transaction_server ());
+
   (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, is_media_crash, r_args, false);
 
 #if defined(SERVER_MODE)
@@ -1587,6 +1590,71 @@ error:
 
   return error_code;
 }
+
+#if defined(SERVER_MODE)
+/*
+ * log_initialize_passive_tran_server - Initialize the log manager for passive transaction server
+ *
+ * return: nothing
+ *
+ */
+void
+log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
+{
+  int err_code = 0;
+
+  assert (is_passive_transaction_server ());
+
+#if !defined (NDEBUG)
+  /* Make sure that the recovery function array is synchronized.. */
+  rv_check_rvfuns ();
+#endif /* !NDEBUG */
+
+  LOG_CS_ENTER (thread_p);
+  // *INDENT-OFF*
+  scope_exit log_cs_exit_ftor ([thread_p] { LOG_CS_EXIT (thread_p); });
+  // *INDENT-ON*
+
+  log_Gl.loghdr_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
+  if (log_Gl.loghdr_pgptr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LOG_PAGESIZE);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_initialize_passive_tran_server: out of memory");
+      return;
+    }
+  /* TODO: log header page buffer is not really needed subsequently as log header is copied directly
+   * from page server without the help of a buffer and, afterwards, it does not need to be saved hence
+   * this buffer will remain useless on the passive tran server */
+
+  err_code = logpb_initialize_pool (thread_p);
+  if (err_code != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_initialize_passive_tran_server: error initializing log buffer pool");
+      return;
+    }
+
+  passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
+  assert (pts_ptr != nullptr);
+  pts_ptr->send_and_receive_log_boot_info (thread_p);
+
+  err_code = logtb_define_trantable_log_latch (thread_p, -1);
+  if (err_code != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_initialize_passive_tran_server: error initializing transaction table");
+      return;
+    }
+
+  logpb_initialize_logging_statistics ();
+
+  LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+  LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+
+  er_log_debug (ARG_FILE_LINE, "log_initialize_passive_tran_server: end of log initializaton, append_lsa = (%lld|%d)\n",
+		LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
+}
+#endif /* SERVER_MODE */
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -3362,26 +3430,27 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
  *              as part of the log initialization sequence
  */
 // *INDENT-OFF*
-std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p)
+std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa,
+                                    log_lsa &prev_lsa)
 {
   LOG_CS_ENTER_READ_MODE (thread_p);
-  scope_exit log_cs_exit_ftor ( [thread_p] { LOG_CS_EXIT (thread_p); } );
+  scope_exit log_cs_exit_ftor ([thread_p] { LOG_CS_EXIT (thread_p); });
   std::lock_guard<std::mutex> { log_Gl.prior_info.prior_lsa_mutex };
-
-  const int log_page_size = db_log_page_size ();
 
   std::string packed_message;
 
   // log header
-  assert (log_Gl.loghdr_pgptr != nullptr);
-  packed_message.append (reinterpret_cast<const char*> (log_Gl.loghdr_pgptr), log_page_size);
+  packed_message.append (reinterpret_cast<const char*> (&log_Gl.hdr), sizeof (log_header));
+  append_lsa = log_Gl.hdr.append_lsa;
 
   // log append
   assert (log_Gl.append.log_pgptr != nullptr);
+  const int log_page_size = db_log_page_size ();
   packed_message.append (reinterpret_cast<const char*> (log_Gl.append.log_pgptr), log_page_size);
 
   // prev lsa
-  packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (struct log_lsa));
+  packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (log_lsa));
+  prev_lsa = log_Gl.append.prev_lsa;
 
   return packed_message;
 }

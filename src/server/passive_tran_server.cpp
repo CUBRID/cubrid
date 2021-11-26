@@ -19,6 +19,7 @@
 #include "log_impl.h"
 #include "passive_tran_server.hpp"
 #include "server_type.hpp"
+#include "system_parameter.h"
 #include "thread_manager.hpp"
 
 bool
@@ -61,9 +62,6 @@ passive_tran_server::receive_log_boot_info (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
 
-  const int log_page_size = db_log_page_size ();
-  assert (message.size () == (2 * log_page_size + sizeof (struct log_lsa)));
-
   // pass to caller thread; it has the thread context needed to access engine functions
   {
     std::lock_guard<std::mutex> lockg { m_log_boot_info_mtx };
@@ -88,15 +86,15 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
     });
   }
 
-  const char *message_buf = m_log_boot_info.c_str ();
   const int log_page_size = db_log_page_size ();
+  assert (m_log_boot_info.size () == sizeof (log_header) + log_page_size + sizeof (log_lsa));
+
+  const char *message_buf = m_log_boot_info.c_str ();
 
   // log header, copy and initialize header
-  assert (log_Gl.loghdr_pgptr != nullptr);
-  std::memcpy (reinterpret_cast<char *> (log_Gl.loghdr_pgptr), message_buf, log_page_size);
-  LOG_HEADER *const log_hdr = reinterpret_cast<LOG_HEADER *> (log_Gl.loghdr_pgptr->area);
+  const log_header *const log_hdr = reinterpret_cast<const log_header *> (message_buf);
   log_Gl.hdr = *log_hdr;
-  message_buf += log_page_size;
+  message_buf += sizeof (log_header);
 
   // log append
   assert (log_Gl.append.log_pgptr == nullptr);
@@ -106,8 +104,8 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   message_buf += log_page_size;
 
   // prev lsa
-  std::memcpy (&log_Gl.append.prev_lsa, message_buf, sizeof (struct log_lsa));
-  message_buf += sizeof (struct log_lsa);
+  std::memcpy (&log_Gl.append.prev_lsa, message_buf, sizeof (log_lsa));
+  message_buf += sizeof (log_lsa);
 
   // safe-guard that the message has been consumed
   assert (message_buf == m_log_boot_info.c_str () + m_log_boot_info.size ());
@@ -115,4 +113,11 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   // do not leave m_log_boot_info empty as a safeguard as this function is only supposed
   // to be called once
   m_log_boot_info = "not empty";
+
+  if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "Received log boot info to from page server with prev_lsa = (%lld|%d), append_lsa = (%lld|%d)\n",
+		     LSA_AS_ARGS (&log_Gl.append.prev_lsa), LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
+    }
 }

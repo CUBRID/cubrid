@@ -72,6 +72,7 @@ extern int log_create (THREAD_ENTRY * thread_p, const char *db_fullname, const c
 		       const char *prefix_logname, DKNPAGES npages);
 extern void log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			    const char *prefix_logname, bool is_media_crash, bo_restart_arg * r_args);
+extern void log_initialize_passive_tran_server (THREAD_ENTRY * thread_p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int log_update_compatibility_and_release (THREAD_ENTRY * thread_p, float compatibility, char release[]);
 #endif
@@ -237,7 +238,8 @@ extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
 extern void log_write_metalog_to_file (bool file_open_is_fatal);
 
 // *INDENT-OFF*
-extern std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p);
+extern std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa,
+					   log_lsa &prev_lsa);
 // *INDENT-ON*
 
 #if defined (SERVER_MODE)
