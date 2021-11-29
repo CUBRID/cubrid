@@ -148,16 +148,19 @@ int init_server_type (const char *db_name)
 	}
       else
 	{
-	  assert (false);
+	  assert ("neither active nor passive transaction server type" == nullptr);
 	}
       er_code = ts_Gl->boot (db_name);
     }
-  else
+  else if (g_server_type == SERVER_TYPE_PAGE)
     {
-      assert (g_server_type == SERVER_TYPE_PAGE);
 
       // page server needs a log prior receiver
       log_Gl.initialize_log_prior_receiver ();
+    }
+  else
+    {
+      assert ("neither transaction nor page server type" == nullptr);
     }
 
   if (er_code == NO_ERROR)
