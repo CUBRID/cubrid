@@ -72,7 +72,7 @@ namespace cubcomm
       virtual css_error_code connect (const char *hostname, int port);
 
       /* creates a listener channel */
-      css_error_code accept (SOCKET socket);
+      virtual css_error_code accept (SOCKET socket);
 
       /* this function waits for events such as EPOLLIN, EPOLLOUT,
        * if (revents & EPOLLIN) != 0 it means that we have an "in" event
@@ -81,6 +81,7 @@ namespace cubcomm
 
       bool is_connection_alive () const;
       SOCKET get_socket ();
+      int get_port ();
       void close_connection ();
 
       /* this is the command that the non overridden connect will send */

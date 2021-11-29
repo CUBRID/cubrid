@@ -212,7 +212,7 @@ static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
 static void css_setup_server_loop (void);
 static int css_check_conn (CSS_CONN_ENTRY * p);
 static void css_set_shutdown_timeout (int timeout);
-static int css_get_master_request (SOCKET master_fd);
+int css_get_master_request (SOCKET master_fd);
 static int css_process_master_request (SOCKET master_fd);
 static void css_process_shutdown_request (SOCKET master_fd);
 static void css_send_reply_to_new_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason);
@@ -513,7 +513,7 @@ css_master_thread (void)
  *   return:
  *   master_fd(in):
  */
-static int
+int
 css_get_master_request (SOCKET master_fd)
 {
   int request, r;
@@ -2619,10 +2619,10 @@ css_process_server_server_connect (SOCKET master_fd)
       return;
     }
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;	// 1000 milliseconds = 1 second
-  cubcomm::channel chn (CHANNEL_POLL_TIMEOUT);
+  cubcomm::server_channel chn (CHANNEL_POLL_TIMEOUT);
   chn.accept (slave_fd);
-  int request = css_get_master_request (slave_fd);	//read an integer to determine connection type
-  switch (STATIC_CAST (cubcomm::server_server, request))
+  cubcomm::server_server conn_type = chn.get_conn_type ();	//read an integer to determine connection type
+  switch (conn_type)
     {
     case cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER:
       // *INDENT-OFF*

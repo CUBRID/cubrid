@@ -60,6 +60,11 @@ namespace cubcomm
   {
     return NO_ERRORS;
   }
+
+  css_error_code channel::accept (SOCKET socket)
+  {
+    return NO_ERRORS;
+  }
 }
 
 perfmon_counter_timer_tracker::perfmon_counter_timer_tracker (PERF_STAT_ID a_stat_id)

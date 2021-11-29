@@ -236,4 +236,9 @@ namespace cubcomm
     return m_socket;
   }
 
+  int channel::get_port ()
+  {
+    return m_port;
+  }
+
 } /* namespace cubcomm */
