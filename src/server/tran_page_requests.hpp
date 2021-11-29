@@ -25,13 +25,13 @@ enum class tran_to_page_request
   GET_BOOT_INFO,
   SEND_LOG_PAGE_FETCH,
   SEND_DATA_PAGE_FETCH,
-  SEND_DISCONNECT_MSG,
+  SEND_DISCONNECT_MSG, /* response-less */
 
   // Active only
-  SEND_LOG_PRIOR_LIST,
+  SEND_LOG_PRIOR_LIST, /* response-less */
 
   // Passive only
-  SEND_LOG_INIT_BOOT_FETCH,
+  SEND_LOG_BOOT_INFO_FETCH,
 };
 
 enum class page_to_tran_request

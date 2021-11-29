@@ -75,7 +75,7 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   assert (m_log_boot_info.empty ());
 
   // empty message request
-  push_request (tran_to_page_request::SEND_LOG_INIT_BOOT_FETCH, std::string ());
+  push_request (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string ());
 
   {
     std::unique_lock<std::mutex> ulock { m_log_boot_info_mtx };
