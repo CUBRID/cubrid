@@ -32,7 +32,7 @@ namespace cublog
       {
 	return;
       }
-    std::string message = prior_list_serialize (head);
+    const std::string message = prior_list_serialize (head);
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
       {
@@ -44,7 +44,9 @@ namespace cublog
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
     for (auto &sink : m_sink_hooks)
       {
-	sink (std::move (std::string (message)));
+	// TODO: consume message without copy
+	std::string copy_message { message };
+	sink (std::move (std::string (copy_message)));
       }
   }
 
