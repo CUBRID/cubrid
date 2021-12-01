@@ -44,6 +44,7 @@ class page_server
 {
   private:
     class connection_handler;
+
   public:
     page_server () = default;
     ~page_server ();
@@ -67,14 +68,14 @@ class page_server
     cublog::async_page_fetcher &get_page_fetcher ();
 
   private:
-    class connection_handler
+    class connection_handler : public cublog::prior_sender_sink
     {
 	using tran_server_conn_t =
 		cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
       public:
 	connection_handler () = delete;
-	~connection_handler () = default;
+	~connection_handler () override;
 	connection_handler (cubcomm::channel &chn, page_server &ps);
 	void push_request (page_to_tran_request id, std::string msg);
 	std::string get_channel_id ();
@@ -91,8 +92,18 @@ class page_server
 	void receive_disconnect_request (cubpacking::unpacker &upk);
 	void receive_log_boot_info_fetch (cubpacking::unpacker &upk);
 
+      private:
+	// prior_sender_sink implementation
+	void operator () (std::string &&) const override;
+
+      private:
 	std::unique_ptr<tran_server_conn_t> m_conn;
 	page_server &m_ps;
+
+	// only passive transaction servers receive log in the form of prior list;
+	// flag keeps track of whether this instance has been registered as a sink for log prior in order
+	// to know whether it needs to un-register upon disconnect
+	bool m_registered_as_prior_sender_sink;
     };
 
     std::unique_ptr<connection_handler> m_active_tran_server_conn;

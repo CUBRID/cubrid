@@ -42,7 +42,8 @@ page_server::~page_server ()
   assert (m_active_tran_server_conn == nullptr);
 }
 
-page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps) : m_ps (ps)
+page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps)
+  : m_ps (ps), m_registered_as_prior_sender_sink (false)
 {
   m_conn.reset (new tran_server_conn_t (std::move (chn),
   {
@@ -77,6 +78,11 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, page
 
   assert (m_conn != nullptr);
   m_conn->start ();
+}
+
+page_server::connection_handler::~connection_handler ()
+{
+  assert (!m_registered_as_prior_sender_sink);
 }
 
 std::string
@@ -157,7 +163,13 @@ page_server::connection_handler::on_log_boot_info_result (std::string &&message)
 void
 page_server::connection_handler::receive_disconnect_request (cubpacking::unpacker &upk)
 {
-  //start a thread to destroy the ATS to PS connection object
+  if (m_registered_as_prior_sender_sink)
+    {
+      m_registered_as_prior_sender_sink = false;
+      log_Gl.m_prior_sender.remove_sink (this);
+    }
+
+  //start a thread to destroy the ATS/PTS to PS connection object
   std::thread disconnect_thread (&page_server::disconnect_tran_server, std::ref (m_ps), this);
   disconnect_thread.detach ();
 }
@@ -237,6 +249,17 @@ page_server::connection_handler::on_data_page_read_result (const FILEIO_PAGE *io
 }
 
 void
+page_server::connection_handler::operator () (std::string &&message) const
+{
+  assert (message.size () > 0);
+
+  // passive tran server already connected - as assumed by the very existence of this
+  // connection handler instance
+  m_conn->push (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST, std::move (message));
+  // hmm, const member function being allowed to call non-const member function of a non-const member variable??
+}
+
+void
 page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 {
   assert (is_page_server ());
@@ -263,6 +286,8 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
 		chn.get_channel_id ().c_str ());
 
+  // TODO: is it possible to have two [passive] transaction server connecting at exactly the same time?
+  // callstack: css_master_thread -> css_process_master_request -> css_process_server_server_connect -> this function
   m_passive_tran_server_conn.emplace_back (new connection_handler (chn, *this));
 }
 
