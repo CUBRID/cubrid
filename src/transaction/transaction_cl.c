@@ -91,6 +91,7 @@ int tm_Tran_latest_query_status;
 static UINT64 tm_Query_begin = 0;
 static int tm_Query_timeout = 0;
 static bool tm_Is_libcas = false;
+static int tm_libcas_depth = 0;
 
 /* this is a local list of user-defined savepoints.  It may be updated upon
  * the following calls:
@@ -1315,6 +1316,7 @@ void
 tran_begin_libcas_function (void)
 {
   tm_Is_libcas = true;
+  tm_libcas_depth++;
 }
 
 /*
@@ -1325,6 +1327,7 @@ void
 tran_end_libcas_function (void)
 {
   tm_Is_libcas = false;
+  tm_libcas_depth--;
 }
 
 /*
@@ -1334,7 +1337,18 @@ tran_end_libcas_function (void)
 bool
 tran_is_in_libcas (void)
 {
-  return tm_Is_libcas;
+  //return tm_Is_libcas;
+  return tm_libcas_depth > 0;
+}
+
+/*
+ * tran_get_libcas_depth() -
+ *   return: int
+ */
+int
+tran_get_libcas_depth (void)
+{
+  return tm_libcas_depth;
 }
 
 /*

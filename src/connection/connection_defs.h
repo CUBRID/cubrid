@@ -408,6 +408,7 @@ struct css_queue_entry
   int transaction_id;
   int invalidate_snapshot;
   int db_error;
+  bool in_method;
 
 #if !defined(SERVER_MODE)
   char lock;
@@ -431,6 +432,7 @@ struct css_conn_entry
   int db_error;
   bool in_transaction;		/* this client is in-transaction or out-of- */
   bool reset_on_commit;		/* set reset_on_commit when commit/abort */
+  bool in_method;		/* this connection is for method callback */
 
 #if defined(SERVER_MODE)
   int idx;			/* connection index */

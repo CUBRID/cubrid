@@ -27,6 +27,8 @@
 #include "object_primitive.h"
 #include "oid.h"
 
+#include "transaction_cl.h"
+
 namespace cubmethod
 {
   callback_handler::callback_handler (int max_query_handler)
@@ -44,10 +46,11 @@ namespace cubmethod
   }
 
   void
-  callback_handler::set_server_info (int rc, char *host)
+  callback_handler::set_server_info (int idx, int rc, char *host)
   {
-    m_rid = rc;
-    m_host = host;
+    method_server_conn_info &info = m_conn_info [idx];
+    info.rc = rc;
+    info.host = host;
   }
 
   template<typename ... Args>
@@ -59,7 +62,9 @@ namespace cubmethod
 
     packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
 
-    int error = net_client_send_data (m_host, m_rid, eb.get_ptr (), packer.get_current_size ());
+    int depth = tran_get_libcas_depth () - 1;
+    method_server_conn_info &info = m_conn_info [depth];
+    int error = net_client_send_data (info.host, info.rc, eb.get_ptr (), packer.get_current_size ());
     if (error != NO_ERROR)
       {
 	return ER_FAILED;

@@ -56,13 +56,6 @@ static cubmethod::callback_handler handler (100);
 /* For Java SP Method */
 // *INDENT-ON*
 
-struct method_server_conn_info
-{
-  unsigned int rc;
-  char *host;
-  char *server_name;
-};
-
 /* FIXME: duplicated function implementation; The following three functions are ported from the client cursor (cursor.c) */
 static bool method_has_set_vobjs (DB_SET *set);
 static int method_fixup_set_vobjs (DB_VALUE *value_p);
@@ -292,9 +285,17 @@ static int
 method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_info)
 {
   int error = NO_ERROR;
-  handler.set_server_info (conn_info.rc, conn_info.host);
   tran_begin_libcas_function ();
-  error = handler.callback_dispatch (unpacker);
+  int depth = tran_get_libcas_depth ();
+  if (depth > METHOD_MAX_RECURSION_DEPTH)
+    {
+      error = ER_SP_TOO_MANY_NESTED_CALL;
+    }
+  else
+    {
+      handler.set_server_info (depth - 1, conn_info.rc, conn_info.host);
+      error = handler.callback_dispatch (unpacker);
+    }
   tran_end_libcas_function ();
   return error;
 }
