@@ -1813,7 +1813,7 @@ boot_define_class (MOP class_mop)
     }
 
   /* class full name */
-  error_code = smt_add_attribute (def, "class_full_name", "varchar(255)", NULL);
+  error_code = smt_add_attribute (def, "class_full_name", "varchar(288)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;

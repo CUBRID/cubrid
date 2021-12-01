@@ -492,7 +492,8 @@ extern "C"
    * a string to the db_ functions (other than user attribute values). This includes such things as class names, attribute names
    * etc. This isn't strictly enforced right now but applications must be aware that this will be a requirement.
    */
-#define DB_MAX_IDENTIFIER_LENGTH 255
+// #define DB_MAX_IDENTIFIER_LENGTH 255
+#define DB_MAX_IDENTIFIER_LENGTH 288	/* 255 + DB_MAX_USER_LENGTH + 1 */
 
 /* Maximum allowable user name.*/
 #define DB_MAX_USER_LENGTH 32
