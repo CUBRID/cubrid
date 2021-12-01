@@ -140,11 +140,12 @@ int init_server_type (const char *db_name)
       else if (is_passive_transaction_server ())
 	{
 	  assert (pts_Gl == nullptr);
-	  pts_Gl = new passive_tran_server ();
-	  ts_Gl.reset (pts_Gl);
 
 	  // passive tran server also needs (a) prior receiver(s) to receive log from page server(s)
 	  log_Gl.initialize_log_prior_receiver ();
+
+	  pts_Gl = new passive_tran_server ();
+	  ts_Gl.reset (pts_Gl);
 	}
       else
 	{
@@ -154,7 +155,6 @@ int init_server_type (const char *db_name)
     }
   else if (g_server_type == SERVER_TYPE_PAGE)
     {
-
       // page server needs a log prior receiver
       log_Gl.initialize_log_prior_receiver ();
     }
