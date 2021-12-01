@@ -46,6 +46,7 @@ enum class page_to_tran_request
 
   // Passive only
   SEND_LOG_BOOT_INFO,
+  SEND_TO_PTS_LOG_PRIOR_LIST, /* response-less */
 };
 
 #endif // !_TRAN_PAGE_REQUESTS_HPP_
