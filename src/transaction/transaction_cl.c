@@ -1325,6 +1325,7 @@ void
 tran_end_libcas_function (void)
 {
   tm_libcas_depth--;
+  assert (tm_libcas_depth >= 0);
 }
 
 /*
