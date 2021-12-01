@@ -313,7 +313,17 @@ or_class_name (RECDES * record)
     }
   else
     {
-      name = start + 1 + OR_INT_SIZE;
+      // name = start + 1 + OR_INT_SIZE;
+
+      int rc, compressed_length, decompressed_length;
+      OR_BUF buffer;
+      char *string;
+
+      OR_BUF_INIT (buffer, start, -1);
+      or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
+      string = (char *) db_private_alloc (NULL, decompressed_length + 1);
+      pr_get_compressed_data_from_buffer (&buffer, string, compressed_length, decompressed_length);
+      name = string;
     }
 
   return name;
