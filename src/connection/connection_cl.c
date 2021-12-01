@@ -388,7 +388,7 @@ css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header)
 
   conn->set_tran_index (ntohl (local_header->transaction_id));
   flags = ntohs (local_header->flags);
-  conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
   conn->in_method = flags & NET_HEADER_FLAG_METHOD_MODE ? true : false;
   conn->db_error = (int) ntohl (local_header->db_error);
 

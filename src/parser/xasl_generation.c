@@ -23187,7 +23187,7 @@ pt_find_oid_scan_block (XASL_NODE * xasl, OID * oid)
     {
       /* only check required condition: OID match. Other, more sophisticated conditions should be checked from the
        * caller */
-      if (xasl->spec_list && xasl->spec_list->indexptr && oid_compare (&xasl->spec_list->indexptr->class_oid, oid) == 0)
+      if (xasl->spec_list && xasl->spec_list->indexptr && OID_EQ (&xasl->spec_list->indexptr->class_oid, oid))
 	{
 	  return xasl;
 	}

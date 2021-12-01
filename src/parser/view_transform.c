@@ -95,11 +95,9 @@ typedef struct check_pushable_info
 {
   bool check_query;
   bool check_method;
-  bool check_xxxnum;
 
   bool query_found;
   bool method_found;
-  bool xxxnum_found;		/* rownum, inst_num(), orderby_num(), groupby_num() */
 } CHECK_PUSHABLE_INFO;
 
 static unsigned int top_cycle = 0;
@@ -1329,18 +1327,21 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *   query(in): query to check
  *   is_only_spec(in): true if query is not joined in parent statement
  *
- * NOTE: a subquery is pushable if it's select list can be "pushed" up in it's
- *   parent query without altering the output. For example, the following:
- *       SELECT * FROM (SELECT * FROM t WHERE t.i > 2), u
- *   can be rewritten as
- *       SELECT * FROM t, u WHERE t.i > 2
- *   thus, "SELECT * FROM t WHERE t.i > 2" is called "pushable".
+ * NOTE:
+ *          | SELECT ...
+ *   main <-|   FROM ( subquery ) <== query check
+ *          |  WHERE term
  *
- * NOTE: inst_num(), groupby_num() and rownum are only pushable if the
- *   query is not joined in the parent statement.
- *
- * NOTE: a query with joins is only pushable if it's not joined in the parent
- *   statement
+ * in this fuction, subquery(view) is checked whether pushable or not.
+ * It is not pushable(mergeable) in the following cases.
+ *  - NOT SELECT node (UNION, DIFFERENCE, INTERSECTION)
+ *  - is value query
+ *  - has outer join spec
+ *  - has CONNECT BY (Hierarchical Queries)
+ *  - has DISTINCT
+ *  - has aggregate or orderby_for or analytic
+ *  - has inst num or orderby_num
+ *  - has method
  */
 static bool
 mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_spec)
@@ -1364,15 +1365,25 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
       return false;
     }
 
-  /* check for joins */
-  if (!is_only_spec && query->info.query.q.select.from && query->info.query.q.select.from->next)
+  /* check for value query */
+  if (PT_IS_VALUE_QUERY (query))
     {
-      /* parent statement and subquery both have joins; not pushable */
+      /* not pushable */
       return false;
     }
 
+  /* determine if spec is outer joined */
+  for (PT_NODE * spec = query->info.query.q.select.from; spec; spec = spec->next)
+    {
+      if (mq_is_outer_join_spec (parser, spec))
+	{
+	  /* subquery have outer joins; not pushable */
+	  return false;
+	}
+    }
+
   /* check for CONNECT BY */
-  if (query->node_type == PT_SELECT && query->info.query.q.select.connect_by)
+  if (query->info.query.q.select.connect_by)
     {
       /* not pushable */
       return false;
@@ -1392,35 +1403,21 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, bool is_only_
       return false;
     }
 
-  /* check select list */
-  cpi.check_query = false;	/* subqueries are pushable */
-  cpi.check_method = true;	/* methods are non-pushable */
-  cpi.check_xxxnum = !is_only_spec;
-
-  cpi.method_found = false;
-  cpi.query_found = false;
-  cpi.xxxnum_found = false;
-
-  parser_walk_tree (parser, query->info.query.q.select.list, pt_check_pushable, (void *) &cpi, NULL, NULL);
-
-  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
+  /* check inst num or orderby_num */
+  if (!is_only_spec && pt_has_inst_in_where_and_select_list (parser, query))
     {
-      /* query not pushable */
       return false;
     }
 
-  /* check where clause */
+  /* check method */
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
-  cpi.check_xxxnum = !is_only_spec;
-
   cpi.method_found = false;
   cpi.query_found = false;
-  cpi.xxxnum_found = false;
 
-  parser_walk_tree (parser, query->info.query.q.select.where, pt_check_pushable, (void *) &cpi, NULL, NULL);
+  parser_walk_tree (parser, query, pt_check_pushable, (void *) &cpi, NULL, NULL);
 
-  if (cpi.method_found || cpi.query_found || cpi.xxxnum_found)
+  if (cpi.method_found)
     {
       /* query not pushable */
       return false;
@@ -1456,9 +1453,9 @@ static PT_NODE *
 mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec, PT_NODE * class_)
 {
   PT_NODE *order, *val;
-  PT_NODE *attributes, *attr;
+  PT_NODE *attributes, *attr, *prev_order;
   PT_NODE *node, *result;
-  PT_NODE *save_data_type;
+  PT_NODE *save_data_type, *free_node = NULL, *save_next;
   int attr_count;
   int i;
 
@@ -1484,6 +1481,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       attr_count++;
     }
 
+  prev_order = NULL;
   /* update the position number of order by clause */
   for (order = statement->info.query.order_by; order != NULL; order = order->next)
     {
@@ -1544,24 +1542,55 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       /* if attr is not found in output list, append a hidden column at the end of the output list. */
       if (node == NULL)
 	{
-	  result = parser_copy_tree (parser, attr);
-	  if (result == NULL)
+	  if (pt_is_distinct (statement))
 	    {
-	      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
-	      return NULL;
+	      /* remove unnecessary order */
+	      if (prev_order == NULL)
+		{
+		  statement->info.query.order_by = order->next;
+		}
+	      else
+		{
+		  prev_order->next = order->next;
+		}
+	      /* free order */
+	      save_next = order->next;
+	      order->next = NULL;
+	      free_node = parser_append_node (order, free_node);
+	      order->next = save_next;
 	    }
-	  /* mark as a hidden column */
-	  result->flag.is_hidden_column = 1;
-	  parser_append_node (result, statement->info.query.q.select.list);
+	  else
+	    {
+	      /* add column of order to select list */
+	      result = parser_copy_tree (parser, attr);
+	      if (result == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		  return NULL;
+		}
+	      /* mark as a hidden column */
+	      result->flag.is_hidden_column = 1;
+	      parser_append_node (result, statement->info.query.q.select.list);
 
-	  /* update position number of order by clause */
-	  val->info.value.data_value.i = i;
-	  val->info.value.db_value.data.i = i;
-	  val->info.value.text = NULL;
-	  order->info.sort_spec.pos_descr.pos_no = i;
+	      /* update position number of order by clause */
+	      val->info.value.data_value.i = i;
+	      val->info.value.db_value.data.i = i;
+	      val->info.value.text = NULL;
+	      order->info.sort_spec.pos_descr.pos_no = i;
+	    }
+
+	}
+      else
+	{
+	  prev_order = order;
 	}
 
       attr->data_type = save_data_type;
+    }
+
+  if (free_node != NULL)
+    {
+      parser_free_tree (parser, free_node);
     }
 
   return statement;
@@ -1593,12 +1622,28 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
  *    It may be true that if the top level guy is distinct, you will
  *    get the same results if all sub levels are also distinct.
  *    Anyway, it is safe not to do this, and may be not be safe to do.
+ *
+ * NOTE:
+ *          | SELECT ...
+ *   main <-|   FROM ( subquery ) <== mq_is_pushable_subquery()
+ *          |  WHERE term
+ *
+ * subquery(view) is checked by mq_is_pushable_subquery().
+ * in this function, main query check is performed.
+ * It should be merged in the following cases.
+ *  - INSERT query
+ * It is not pushable(mergeable) in the following cases.
+ *  - Class is Spec set(spec set??)
+ *  - has CONNECT BY
+ *  - view spec is outer join spec
+ *  - main query's where has define_vars ':='
+ *  - subquery check ==> mq_is_pushable_subquery()
  */
 static PT_NODE *
 mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
 				     PT_NODE * class_, PT_NODE * order_by, int what_for)
 {
-  PT_NODE *tmp_result, *result, *arg1, *arg2, *statement_next;
+  PT_NODE *tmp_result, *result, *arg1, *arg2, *statement_next, *pred;
   PT_NODE *class_spec, *statement_spec = NULL;
   PT_NODE *derived_table, *derived_spec, *derived_class;
   bool is_pushable_query, is_outer_joined;
@@ -1633,23 +1678,28 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	{
 	case PT_SELECT:
 	  statement_spec = tmp_result->info.query.q.select.from;
+	  pred = tmp_result->info.query.q.select.where;
 	  break;
 
 	case PT_UPDATE:
 	  statement_spec = tmp_result->info.update.spec;
+	  pred = tmp_result->info.update.search_cond;
 	  break;
 
 	case PT_DELETE:
 	  statement_spec = tmp_result->info.delete_.spec;
+	  pred = tmp_result->info.delete_.search_cond;
 	  break;
 
 	case PT_INSERT:
 	  /* since INSERT can not have a spec list or statement conditions, there is nothing to check */
 	  statement_spec = tmp_result->info.insert.spec;
+	  pred = NULL;
 	  break;
 
 	case PT_MERGE:
 	  statement_spec = tmp_result->info.merge.into;
+	  pred = tmp_result->info.merge.insert.search_cond;
 	  break;
 
 	default:
@@ -1667,37 +1717,47 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  PT_INTERNAL_ERROR (parser, "class spec not found");
 	  goto exit_on_error;
 	}
-      else
-	{
-	  /* check for (non-pushable) spec set */
-	  rewrite_as_derived = (class_spec->info.spec.entity_name != NULL
-				&& class_spec->info.spec.entity_name->node_type == PT_SPEC);
-	}
+
+      /* determine if class_spec is the only spec in the statement */
+      is_only_spec = ((statement_spec->next == NULL && pred == NULL) ? true : false);
 
       /* do not rewrite vclass_query as a derived table if spec belongs to an insert statement. */
       if (tmp_result->node_type == PT_INSERT)
 	{
 	  rewrite_as_derived = false;
 	}
+      else if (query_spec->node_type != PT_SELECT)
+	{
+	  rewrite_as_derived = true;
+	}
+      /* check for (non-pushable) spec set (spec set??) */
+      else if (class_spec->info.spec.entity_name != NULL && class_spec->info.spec.entity_name->node_type == PT_SPEC)
+	{
+	  rewrite_as_derived = true;
+	}
+      /* check for CONNECT BY */
+      else if (PT_IS_SELECT (tmp_result) && tmp_result->info.query.q.select.connect_by)
+	{
+	  rewrite_as_derived = true;
+	}
+      /* determine if spec is outer joined */
+      else if (mq_is_outer_join_spec (parser, class_spec))
+	{
+	  rewrite_as_derived = true;
+	}
+      /* determine if main query's where has define_vars ':=' */
+      else if (pt_has_define_vars (parser, pred))
+	{
+	  rewrite_as_derived = true;
+	}
+      /* determine if view(subquery) is pushable */
+      else if (!mq_is_pushable_subquery (parser, query_spec, is_only_spec))
+	{
+	  rewrite_as_derived = true;
+	}
       else
 	{
-	  /* determine if class_spec is the only spec in the statement */
-	  is_only_spec = (statement_spec->next == NULL ? true : false);
-
-	  /* determine if spec is outer joined */
-	  is_outer_joined = mq_is_outer_join_spec (parser, class_spec);
-
-	  /* determine if vclass_query is pushable */
-	  is_pushable_query = mq_is_pushable_subquery (parser, query_spec, is_only_spec);
-
-	  /* rewrite vclass_query as a derived table if spec is outer joined or if query is not pushable */
-	  rewrite_as_derived = rewrite_as_derived || !is_pushable_query || is_outer_joined;
-
-	  if (PT_IS_QUERY (tmp_result))
-	    {
-	      rewrite_as_derived = rewrite_as_derived || (tmp_result->info.query.all_distinct == PT_DISTINCT)
-		|| (PT_IS_VALUE_QUERY (query_spec));
-	    }
+	  rewrite_as_derived = false;
 	}
 
       if (rewrite_as_derived)
@@ -1858,7 +1918,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 				    tmp_result->info.query.q.select.use_merge);
 
 	      assert (query_spec->info.query.orderby_for == NULL);
-	      if (!order_by && query_spec->info.query.order_by)
+	      if (!order_by && query_spec->info.query.order_by && !pt_has_aggregate (parser, tmp_result))
 		{
 		  /* update the position number of order by clause and add a hidden column into the output list if
 		   * necessary. */
@@ -2689,32 +2749,11 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 	  cinfop->method_found = true;	/* not pushable */
 	}
       break;
-
-    case PT_EXPR:
-      if (tree->info.expr.op == PT_ROWNUM || tree->info.expr.op == PT_INST_NUM || tree->info.expr.op == PT_ORDERBY_NUM)
-	{
-	  if (cinfop->check_xxxnum)
-	    {
-	      cinfop->xxxnum_found = true;	/* not pushable */
-	    }
-	}
-      break;
-
-    case PT_FUNCTION:
-      if (tree->info.function.function_type == PT_GROUPBY_NUM)
-	{
-	  if (cinfop->check_xxxnum)
-	    {
-	      cinfop->xxxnum_found = true;	/* not pushable */
-	    }
-	}
-      break;
-
     default:
       break;
     }				/* switch (tree->node_type) */
 
-  if (cinfop->query_found || cinfop->method_found || cinfop->xxxnum_found)
+  if (cinfop->query_found || cinfop->method_found)
     {
       /* not pushable */
       /* do not need to traverse anymore */
