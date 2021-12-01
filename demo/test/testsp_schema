@@ -30,6 +30,18 @@ CREATE OR REPLACE FUNCTION testConnectionSP() RETURN STRING AS LANGUAGE JAVA NAM
 CREATE OR REPLACE FUNCTION testStatementExecute(q string) RETURN STRING AS LANGUAGE JAVA NAME 'test.SpJDBCTest.testStatementExecute(java.lang.String) return java.lang.String';
 
 /* ////////////////////////////////////////////////////////////////////////// */
+/* Unit Test for Stored Procedure Specs */
+/* ////////////////////////////////////////////////////////////////////////// */
+
+/* Argument Test */
+CREATE OR REPLACE FUNCTION sp_plus_int(a INT, b INT) RETURN int as language java name 'test.SpArgumentTest.testPlusInt(int, int) return int';
+CREATE OR REPLACE FUNCTION sp_plus_int_out(a IN OUT INT, b IN OUT INT) RETURN int as language java name 'test.SpArgumentTest.testPlusIntOut(int[], int[]) return int';
+CREATE OR REPLACE FUNCTION sp_plus_float(a FLOAT, b FLOAT) RETURN FLOAT as language java name 'test.SpArgumentTest.testPlusFloat(float, float) return float';
+CREATE OR REPLACE FUNCTION sp_plus_float_out(a IN OUT FLOAT, b IN OUT FLOAT) RETURN FLOAT as language java name 'test.SpArgumentTest.testPlusFloatOut(float[], float[]) return float';
+
+CREATE OR REPLACE PROCEDURE sp_setoid(x in out set, z object) AS LANGUAGE JAVA NAME 'test.SpArgumentTest.testSetOID(cubrid.sql.CUBRIDOID[][], cubrid.sql.CUBRIDOID)';
+
+/* ////////////////////////////////////////////////////////////////////////// */
 /* Unit Test for Server-Side JDBC */
 /* ////////////////////////////////////////////////////////////////////////// */
 
@@ -135,5 +147,10 @@ CREATE OR REPLACE FUNCTION TC_OID8() RETURN STRING as language java name 'test.T
 CREATE OR REPLACE FUNCTION TC_OID9() RETURN STRING as language java name 'test.TestCUBRIDOID.test9() return java.lang.String';
 CREATE OR REPLACE FUNCTION TC_OID10() RETURN STRING as language java name 'test.TestCUBRIDOID.test10() return java.lang.String';
 CREATE OR REPLACE FUNCTION TC_OID11() RETURN STRING as language java name 'test.TestCUBRIDOID.test11() return java.lang.String';
+
+/* CallableStatement Test */
+CREATE OR REPLACE FUNCTION TC_CS1() RETURN STRING as language java name 'test.TestCUBRIDCallableStatement.test1() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_CS2() RETURN STRING as language java name 'test.TestCUBRIDCallableStatement.test2() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_CS3() RETURN STRING as language java name 'test.TestCUBRIDCallableStatement.test3() return java.lang.String';
 
 COMMIT WORK;

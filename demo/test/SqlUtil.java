@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Connection;
 import java.sql.Date;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -37,6 +38,21 @@ public class SqlUtil {
 
     public static Arg arg(String name, int type, Object value) {
         return new Arg(name, type, value);
+    }
+
+    public static Connection connect(String url, String userId, String password) throws Exception {
+        Connection conn = null;
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            conn = DriverManager.getConnection(url, userId, password);
+        } catch (Exception e) {
+            //
+        }
+        return conn;
+    }
+
+    public static Connection connectServerSide() throws Exception {
+        return connect("jdbc:default:connection:", "", "");
     }
 
     public static void createTable(Connection conn, String table, String... cols)
