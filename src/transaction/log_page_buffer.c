@@ -351,9 +351,6 @@ static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, 
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
-static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
-					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
-					       LOG_PAGE * log_pgptr);
 static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32);
 static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
 
@@ -1497,7 +1494,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
  *
  * NOTE: Should be used only during boot sequence.
  */
-static int
+int
 logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				    const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
