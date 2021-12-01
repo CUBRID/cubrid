@@ -224,7 +224,7 @@ pgbuf_unfix_debug (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const char *caller_fi
 }
 
 std::string
-log_pack_log_boot_info (THREAD_ENTRY *, struct log_lsa &, struct log_lsa &)
+log_pack_log_boot_info (THREAD_ENTRY *, struct log_lsa &, struct log_lsa &, const cublog::prior_sender_sink *)
 {
   assert ("function is not used in the context of this unit test" == nullptr);
   return std::string ();

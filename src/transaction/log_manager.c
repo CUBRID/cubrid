@@ -3440,7 +3440,7 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
  */
 // *INDENT-OFF*
 std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa,
-                                    log_lsa &prev_lsa)
+                                    log_lsa &prev_lsa, const cublog::prior_sender_sink * log_prior_sender_sink)
 {
   LOG_CS_ENTER_READ_MODE (thread_p);
   scope_exit log_cs_exit_ftor ([thread_p] { LOG_CS_EXIT (thread_p); });
@@ -3460,6 +3460,16 @@ std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa
   // prev lsa
   packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (log_lsa));
   prev_lsa = log_Gl.append.prev_lsa;
+
+  // within the same locks, initialize log prior dispatch to the newly connected passive transaction server
+  assert (log_prior_sender_sink != nullptr);
+  log_Gl.m_prior_sender.add_sink (log_prior_sender_sink);
+
+  // TODO: in the future, this needs to be made explicit:
+  //  - as passive transaction servers (PTS) go on/off-line at a random pace
+  //  - and, as each PTS has the list of available page servers (PS) and it can connect to
+  //  - it is the PTS's responsibility to register itself as a log prior consumer with all/some/one of the
+  //    connected PS's
 
   return packed_message;
 }

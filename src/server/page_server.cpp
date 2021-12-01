@@ -147,9 +147,14 @@ page_server::connection_handler::receive_log_boot_info_fetch (cubpacking::unpack
 {
   // empty request message
 
+  // the underlying infrastructure will add this connection handler instance as a sink for log prior info
+  // acting as a sink for log prior info means packing and sending that log prior info down the line to the
+  // connected passive transaction server
+  m_registered_as_prior_sender_sink = true;
+
   auto callback_func = std::bind (&page_server::connection_handler::on_log_boot_info_result,
 				  this, std::placeholders::_1);
-  m_ps.get_page_fetcher ().fetch_log_boot_info (std::move (callback_func));
+  m_ps.get_page_fetcher ().fetch_log_boot_info (this, std::move (callback_func));
 }
 
 void
@@ -165,8 +170,8 @@ page_server::connection_handler::receive_disconnect_request (cubpacking::unpacke
 {
   if (m_registered_as_prior_sender_sink)
     {
-      m_registered_as_prior_sender_sink = false;
       log_Gl.m_prior_sender.remove_sink (this);
+      m_registered_as_prior_sender_sink = false;
     }
 
   //start a thread to destroy the ATS/PTS to PS connection object
