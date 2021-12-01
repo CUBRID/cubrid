@@ -1632,10 +1632,11 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
  * in this function, main query check is performed.
  * It should be merged in the following cases.
  *  - INSERT query
- * (MAINQUERY) It is not pushable(mergeable) in the following cases.
+ * It is not pushable(mergeable) in the following cases.
  *  - Class is Spec set(spec set??)
  *  - has CONNECT BY
  *  - view spec is outer join spec
+ *  - main query's where has define_vars ':='
  *  - subquery check ==> mq_is_pushable_subquery()
  */
 static PT_NODE *
@@ -1735,7 +1736,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  rewrite_as_derived = true;
 	}
       /* check for CONNECT BY */
-      else if (tmp_result->info.query.q.select.connect_by)
+      else if (PT_IS_SELECT (tmp_result) && tmp_result->info.query.q.select.connect_by)
 	{
 	  rewrite_as_derived = true;
 	}
@@ -1744,7 +1745,12 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	{
 	  rewrite_as_derived = true;
 	}
-      /* determine if vclass_query is pushable */
+      /* determine if main query's where has define_vars ':=' */
+      else if (pt_has_define_vars (parser, pred))
+	{
+	  rewrite_as_derived = true;
+	}
+      /* determine if view(subquery) is pushable */
       else if (!mq_is_pushable_subquery (parser, query_spec, is_only_spec))
 	{
 	  rewrite_as_derived = true;
