@@ -25,6 +25,12 @@
 
 namespace cublog
 {
+
+  prior_sender::~prior_sender()
+  {
+    assert (m_sink_hook_pointers.empty());
+  }
+
   void
   prior_sender::send_list (const log_prior_node *head)
   {
@@ -44,9 +50,11 @@ namespace cublog
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
     for (auto &sink : m_sink_hooks)
       {
-	// TODO: consume message without copy
-	std::string copy_message { message };
-	sink (std::move (std::string (copy_message)));
+	sink (std::string { message });
+      }
+    for (auto &sink : m_sink_hook_pointers)
+      {
+	(*sink) (std::string { message });
       }
   }
 
@@ -55,5 +63,24 @@ namespace cublog
   {
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
     m_sink_hooks.push_back (fun);
+  }
+
+  void
+  prior_sender::add_sink (const prior_sender_sink *func)
+  {
+    assert (func != nullptr);
+
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+    m_sink_hook_pointers.emplace_back (func);
+  }
+
+  void
+  prior_sender::remove_sink (const prior_sender_sink *func)
+  {
+    assert (func != nullptr);
+
+    const auto find_it = std::find (m_sink_hook_pointers.begin (), m_sink_hook_pointers.end (), func);
+    assert (find_it != m_sink_hook_pointers.end ());
+    m_sink_hook_pointers.erase (find_it);
   }
 }

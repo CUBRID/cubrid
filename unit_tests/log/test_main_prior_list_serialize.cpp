@@ -455,6 +455,7 @@ namespace cublog
   {
   }
   prior_recver::~prior_recver () = default;
+  prior_sender::~prior_sender () = default;
 }
 
 log_global::log_global ()
