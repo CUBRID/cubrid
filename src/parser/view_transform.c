@@ -1918,7 +1918,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 				    tmp_result->info.query.q.select.use_merge);
 
 	      assert (query_spec->info.query.orderby_for == NULL);
-	      if (!order_by && query_spec->info.query.order_by)
+	      if (!order_by && query_spec->info.query.order_by && !pt_has_aggregate (parser, tmp_result))
 		{
 		  /* update the position number of order by clause and add a hidden column into the output list if
 		   * necessary. */
