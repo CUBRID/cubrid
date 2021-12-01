@@ -1645,6 +1645,9 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
     assert (pts_ptr != nullptr);
     pts_ptr->send_and_receive_log_boot_info (thread_p);
+
+    LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+    LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
   }
 
   err_code = logtb_define_trantable_log_latch (thread_p, -1);
@@ -1656,9 +1659,6 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     }
 
   logpb_initialize_logging_statistics ();
-
-  LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
-  LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
 
   er_log_debug (ARG_FILE_LINE, "log_initialize_passive_tran_server: end of log initializaton, append_lsa = (%lld|%d)\n",
 		LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
