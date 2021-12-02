@@ -48,19 +48,15 @@ passive_tran_server::get_request_handlers ()
   std::map<page_to_tran_request, std::function<void (cubpacking::unpacker &upk)>> handlers_map =
 	      tran_server::get_request_handlers ();
 
-  {
-    auto log_boot_info_handler = std::bind (&passive_tran_server::receive_log_boot_info,
-					    std::ref (*this), std::placeholders::_1);
-    handlers_map.insert (std::make_pair (page_to_tran_request::SEND_LOG_BOOT_INFO,
-					 log_boot_info_handler));
-  }
-
-  {
-    auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::receive_from_ps_log_prior_list,
+  auto log_boot_info_handler = std::bind (&passive_tran_server::receive_log_boot_info,
 					  std::ref (*this), std::placeholders::_1);
-    handlers_map.insert (std::make_pair (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST,
-					 from_ps_log_prior_list_handler));
-  }
+  handlers_map.insert (std::make_pair (page_to_tran_request::SEND_LOG_BOOT_INFO,
+				       log_boot_info_handler));
+
+  auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::receive_from_ps_log_prior_list,
+					std::ref (*this), std::placeholders::_1);
+  handlers_map.insert (std::make_pair (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST,
+				       from_ps_log_prior_list_handler));
 
   return handlers_map;
 }

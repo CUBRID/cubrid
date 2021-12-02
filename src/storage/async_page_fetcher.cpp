@@ -62,7 +62,7 @@ namespace cublog
   class log_boot_info_fetch_task : public cubthread::entry_task
   {
     public:
-      explicit log_boot_info_fetch_task (const cublog::prior_sender::sink_hook_t  &log_prior_sender_sink,
+      explicit log_boot_info_fetch_task (const cublog::prior_sender::sink_hook_t &log_prior_sender_sink,
 					 async_page_fetcher::log_boot_info_callback_type &&callback)
 	: m_log_prior_sender_sink { log_prior_sender_sink }
 	, m_callback { std::move (callback) }

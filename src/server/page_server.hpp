@@ -26,7 +26,7 @@
 
 #include <memory>
 
-// forward declarations
+// forward declaration
 namespace cublog
 {
   class replicator;
@@ -92,7 +92,6 @@ class page_server
 	void receive_disconnect_request (cubpacking::unpacker &upk);
 	void receive_log_boot_info_fetch (cubpacking::unpacker &upk);
 
-      private:
 	void prior_sender_sink_hook (std::string &&message) const;
 
       private:

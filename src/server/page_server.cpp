@@ -42,8 +42,7 @@ page_server::~page_server ()
   assert (m_active_tran_server_conn == nullptr);
 }
 
-page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps)
-  : m_ps (ps)
+page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps) : m_ps (ps)
 {
   m_conn.reset (new tran_server_conn_t (std::move (chn),
   {
