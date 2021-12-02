@@ -116,12 +116,12 @@ namespace cubcomm
 
     m_type = CHANNEL_TYPE::LISTENER;
     m_socket = socket;
-    m_request = STATIC_CAST (cubcomm::server_server, css_get_master_request (socket));
 
     char buffer[CUB_MAXHOSTNAMELEN];
     size_t max_size = CUB_MAXHOSTNAMELEN;
     css_error_code rc = recv (buffer, max_size);
     m_hostname = buffer;
+    m_request = static_cast<cubcomm::server_server> (css_get_master_request (socket));
     return rc;
   }
 
