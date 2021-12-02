@@ -43,7 +43,7 @@ page_server::~page_server ()
 }
 
 page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps)
-  : m_ps (ps), m_registered_as_prior_sender_sink (false)
+  : m_ps (ps)
 {
   m_conn.reset (new tran_server_conn_t (std::move (chn),
   {
@@ -82,7 +82,7 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, page
 
 page_server::connection_handler::~connection_handler ()
 {
-  assert (!m_registered_as_prior_sender_sink);
+  assert (!m_prior_sender_sink_hook_func);
 }
 
 std::string
@@ -147,14 +147,15 @@ page_server::connection_handler::receive_log_boot_info_fetch (cubpacking::unpack
 {
   // empty request message
 
-  // the underlying infrastructure will add this connection handler instance as a sink for log prior info
-  // acting as a sink for log prior info means packing and sending that log prior info down the line to the
-  // connected passive transaction server
-  m_registered_as_prior_sender_sink = true;
+  auto callback_func =
+	  std::bind (&connection_handler::on_log_boot_info_result, this, std::placeholders::_1);
 
-  auto callback_func = std::bind (&page_server::connection_handler::on_log_boot_info_result,
-				  this, std::placeholders::_1);
-  m_ps.get_page_fetcher ().fetch_log_boot_info (this, std::move (callback_func));
+  // the underlying infrastructure will add this functor as a sink for log prior info packing and
+  // sending that log prior info down the line to the connected passive transaction server
+  m_prior_sender_sink_hook_func =
+	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
+
+  m_ps.get_page_fetcher ().fetch_log_boot_info (m_prior_sender_sink_hook_func, std::move (callback_func));
 }
 
 void
@@ -168,10 +169,10 @@ page_server::connection_handler::on_log_boot_info_result (std::string &&message)
 void
 page_server::connection_handler::receive_disconnect_request (cubpacking::unpacker &upk)
 {
-  if (m_registered_as_prior_sender_sink)
+  if (m_prior_sender_sink_hook_func)
     {
-      log_Gl.m_prior_sender.remove_sink (this);
-      m_registered_as_prior_sender_sink = false;
+      log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+      m_prior_sender_sink_hook_func = nullptr;
     }
 
   //start a thread to destroy the ATS/PTS to PS connection object
@@ -254,7 +255,7 @@ page_server::connection_handler::on_data_page_read_result (const FILEIO_PAGE *io
 }
 
 void
-page_server::connection_handler::operator () (std::string &&message) const
+page_server::connection_handler::prior_sender_sink_hook (std::string &&message) const
 {
   assert (message.size () > 0);
 

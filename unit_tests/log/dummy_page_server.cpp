@@ -71,6 +71,10 @@ page_server::~page_server ()
 {
 }
 
+page_server::connection_handler::~connection_handler ()
+{
+}
+
 cublog::replicator &
 page_server::get_replicator ()
 {

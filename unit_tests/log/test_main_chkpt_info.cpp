@@ -552,7 +552,7 @@ test_env_chkpt::generate_tdes (int index)
 
   if (std::rand () % 2 == 0)
     {
-      tdes->mvccinfo.sub_ids.clear();
+      tdes->mvccinfo.sub_ids.clear ();
     }
   else
     {
@@ -773,7 +773,6 @@ namespace cublog
   {
   }
   prior_recver::~prior_recver () = default;
-  prior_sender::~prior_sender () = default;
 }
 
 mvcc_active_tran::mvcc_active_tran () = default;
