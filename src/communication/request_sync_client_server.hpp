@@ -65,9 +65,18 @@ namespace cubcomm
       static constexpr response_sequence_number_t NO_RESPONSE =
 	      std::numeric_limits<response_sequence_number_t>::max ();
 
-      class internal_payload : cubpacking::packable_object
+      class internal_payload : public cubpacking::packable_object
       {
 	public:
+	  internal_payload () = default;
+	  internal_payload (response_sequence_number_t a_rsn, T_PAYLOAD &&a_payload);
+	  internal_payload (internal_payload &&other);
+	  internal_payload (const internal_payload &other) = delete;
+	  ~internal_payload () = default;
+
+	  internal_payload &operator= (internal_payload &&other);
+	  internal_payload &operator= (const internal_payload &) = delete;
+
 	  void push_payload (T_PAYLOAD &&a_payload);
 	  T_PAYLOAD pull_payload ();
 
@@ -80,7 +89,7 @@ namespace cubcomm
 	  T_PAYLOAD m_user_payload;
       };
 
-      using request_sync_send_queue_t = cubcomm::request_sync_send_queue<request_client_server_t, T_PAYLOAD>;
+      using request_sync_send_queue_t = cubcomm::request_sync_send_queue<request_client_server_t, internal_payload>;
       using request_queue_autosend_t = cubcomm::request_queue_autosend<request_sync_send_queue_t>;
 
     private:
@@ -141,12 +150,46 @@ namespace cubcomm
   {
     assert (m_conn != nullptr && m_conn->is_thread_started ());
 
-    m_queue->push (a_outgoing_message_id, std::move (a_payload));
+    internal_payload ip (NO_RESPONSE, std::move (a_payload));
+
+    m_queue->push (a_outgoing_message_id, std::move (ip));
   }
 
   //
   // Internal payload
   //
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::internal_payload (
+	  response_sequence_number_t a_rsn, T_PAYLOAD &&a_payload)
+    : m_rsn (a_rsn)
+  {
+    push_payload (std::move (a_payload));
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::internal_payload (
+	  internal_payload &&other)
+    : m_rsn (std::move (other.m_rsn))
+    , m_user_payload (std::move (other.m_user_payload))
+  {
+    other.m_rsn = NO_RESPONSE;
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  typename request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload &
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::operator=
+  (internal_payload &&other)
+  {
+    if (this != &other)
+      {
+	m_rsn = std::move (other.m_rsn);
+	m_user_payload = std::move (other.m_user_payload);
+
+	other.m_rsn = NO_RESPONSE;
+      }
+    return *this;
+  }
+
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   void
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::push_payload (
@@ -167,7 +210,7 @@ namespace cubcomm
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::
   get_packed_size (cubpacking::packer &serializator, std::size_t start_offset /*= 0*/) const
   {
-    return serializator.get_all_packed_size_starting_offset (start_offset, m_rsn, m_payload);
+    return serializator.get_all_packed_size_starting_offset (start_offset, m_rsn, m_user_payload);
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -175,7 +218,7 @@ namespace cubcomm
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::
   pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_all (m_rsn, m_payload);
+    serializator.pack_all (m_rsn, m_user_payload);
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -183,7 +226,7 @@ namespace cubcomm
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::
   unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_all (m_rsn, m_payload);
+    deserializator.unpack_all (m_rsn, m_user_payload);
   }
 }
 
