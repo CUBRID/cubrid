@@ -21,7 +21,6 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
-#include "log_prior_send.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
 
@@ -70,11 +69,11 @@ active_tran_server::on_boot ()
 {
   assert (is_active_transaction_server ());
 
-  cublog::prior_sender::sink_hook sink =
+  m_prior_sender_sink_hook_func =
 	  std::bind (&active_tran_server::push_request, std::ref (*this), tran_to_page_request::SEND_LOG_PRIOR_LIST,
 		     std::placeholders::_1);
 
-  log_Gl.m_prior_sender.add_sink (sink);
+  log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
 }
 
 active_tran_server::request_handlers_map_t
@@ -85,7 +84,7 @@ active_tran_server::get_request_handlers ()
 			  std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1));
 
   std::map<page_to_tran_request, std::function<void (cubpacking::unpacker &upk)>> handlers_map =
-	      tran_server::get_request_handlers();
+	      tran_server::get_request_handlers ();
 
   handlers_map.insert (saved_lsa_handler_value);
 

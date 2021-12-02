@@ -19,6 +19,7 @@
 #ifndef _ACTIVE_TRAN_SERVER_HPP_
 #define _ACTIVE_TRAN_SERVER_HPP_
 
+#include "log_prior_send.hpp"
 #include "tran_server.hpp"
 
 class active_tran_server : public tran_server
@@ -39,8 +40,9 @@ class active_tran_server : public tran_server
     void receive_saved_lsa (cubpacking::unpacker &upk);
 
   private:
-
     bool m_uses_remote_storage = false;
+
+    cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;
 };
 
 #endif // !_ACTIVE_TRAN_SERVER_HPP_
