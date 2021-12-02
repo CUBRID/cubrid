@@ -2947,6 +2947,55 @@ pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_has_define_vars () - check if a statement uses define vars ':='
+ * return	: true if the statement uses define vars ':='
+ * parser (in)	: parser context
+ * stmt (in)	: statement
+ */
+bool
+pt_has_define_vars (PARSER_CONTEXT * parser, PT_NODE * stmt)
+{
+  bool has_define_vars = false;
+
+  parser_walk_tree (parser, stmt, pt_is_define_vars, &has_define_vars, NULL, NULL);
+
+  return has_define_vars;
+}
+
+/*
+ * pt_is_define_vars () - check if a node is a define vars ':='
+ * return : node
+ * parser (in) : parser context
+ * node (in)   : node
+ * arg (in)    :
+ * continue_walk (in) :
+ */
+PT_NODE *
+pt_is_define_vars (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *is_define_vars = (bool *) arg;
+  *continue_walk = PT_CONTINUE_WALK;
+  assert (is_define_vars != NULL);
+
+  if (*is_define_vars)
+    {
+      /* stop checking, there already is a parameter in the statement */
+      return node;
+    }
+
+  if (node->node_type == PT_EXPR)
+    {
+      if (node->info.expr.op == PT_DEFINE_VARIABLE)
+	{
+	  *is_define_vars = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_has_analytic () -
  *   return: true if statement has an analytic function in its parse tree
  *   parser(in):

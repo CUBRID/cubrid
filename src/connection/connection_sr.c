@@ -1322,7 +1322,7 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
   conn->db_error = (int) ntohl (local_header->db_error);
 
   flags = ntohs (local_header->flags);
-  conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
 
   return rc;
 }
@@ -1981,7 +1981,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
   transaction_id = ntohl (header->transaction_id);
   db_error = (int) ntohl (header->db_error);
   flags = ntohs (header->flags);
-  invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
 
   r = rmutex_lock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
