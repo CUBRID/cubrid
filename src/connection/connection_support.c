@@ -1490,6 +1490,14 @@ css_set_net_header (NET_HEADER * header_p, int type, short function_code, int re
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
     }
+
+#if defined (CS_MODE)
+  if (tran_is_in_libcas ())
+    {
+      flags |= NET_HEADER_FLAG_METHOD_MODE;
+    }
+#endif
+
   header_p->flags = htons (flags);
 }
 

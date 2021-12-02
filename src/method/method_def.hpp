@@ -27,6 +27,8 @@
 
 #include "packer.hpp"
 
+#define METHOD_MAX_RECURSION_DEPTH 15
+
 typedef enum
 {
   METHOD_SUCCESS = 1,
@@ -98,6 +100,13 @@ struct method_arg_info
   int result_type; /* DB_TYPE */
 
   method_arg_info () = default;
+};
+
+struct method_server_conn_info
+{
+  unsigned int rc;
+  char *host;
+  char *server_name;
 };
 
 typedef struct method_sig_node METHOD_SIG;

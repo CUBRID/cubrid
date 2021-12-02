@@ -27,6 +27,7 @@
 #error Does not belong to server module
 #endif /* SERVER_MODE */
 
+#include "method_def.hpp"
 #include "method_error.hpp"
 #include "method_oid_handler.hpp"
 #include "method_query_handler.hpp"
@@ -56,7 +57,7 @@ namespace cubmethod
       int oid_cmd (packing_unpacker &unpacker);
       int collection_cmd (packing_unpacker &unpacker);
 
-      void set_server_info (int rc, char *host);
+      void set_server_info (int idx, int rc, char *host);
       void free_query_handle_all (bool is_free);
 
     private:
@@ -74,8 +75,7 @@ namespace cubmethod
       int send_packable_object_to_server (Args &&... args);
 
       /* server info */
-      int m_rid; // method callback's rid
-      char *m_host;
+      method_server_conn_info m_conn_info [METHOD_MAX_RECURSION_DEPTH];
 
       std::multimap <std::string, int> m_query_handler_map;
 

@@ -234,13 +234,13 @@ namespace cubmethod
 	db_value_clear (&val);
       }
 
+    for (method_invoke *method: m_method_vector)
+      {
+	method->reset (m_thread_p);
+      }
+
     if (!is_end_query)
       {
-	for (method_invoke *method: m_method_vector)
-	  {
-	    method->reset (m_thread_p);
-	  }
-
 #if defined (SERVER_MODE)
 	cubmethod::header header (METHOD_REQUEST_END, get_id());
 	error = method_send_data_to_client (m_thread_p, header);

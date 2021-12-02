@@ -2328,7 +2328,7 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 	      }
 
 	    /* expecting another reply */
-	    // css_queue_receive_data_buffer (rc, replybuf, replysize);
+	    css_queue_receive_data_buffer (rc, replybuf, replysize);
 	  }
 	  break;
 	case END_CALLBACK:	/* get result */
