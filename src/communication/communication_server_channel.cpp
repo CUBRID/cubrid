@@ -121,13 +121,13 @@ namespace cubcomm
     size_t max_size = CUB_MAXHOSTNAMELEN;
     css_error_code rc = recv (buffer, max_size);
     m_hostname = buffer;
-    m_request = static_cast<cubcomm::server_server> (css_get_master_request (socket));
+    m_conn_type = static_cast<cubcomm::server_server> (css_get_master_request (socket));
     return rc;
   }
 
   cubcomm::server_server server_channel::get_conn_type ()
   {
-    return m_request;
+    return m_conn_type;
   }
 
 } /* namespace cubcomm */

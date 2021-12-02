@@ -94,7 +94,13 @@ namespace cubcomm
 
       std::string get_channel_id () const
       {
-	return m_channel_name + "_" + m_hostname + "_" + std::to_string (m_port);
+	std::string channel_id = m_channel_name + "_" + m_hostname;
+
+	if (m_port != -1)
+	  {
+	    channel_id += "_" + std::to_string (m_port);
+	  }
+	return channel_id;
       }
 
     protected:

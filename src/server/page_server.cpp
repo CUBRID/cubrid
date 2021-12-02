@@ -242,11 +242,8 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   assert (is_page_server ());
 
   chn.set_channel_name ("ATS_PS_comm");
-  if (chn.get_port() != -1)
-    {
-      er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
-		    chn.get_channel_id ().c_str ());
-    }
+  er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
+		chn.get_channel_id ().c_str ());
 
   if (m_active_tran_server_conn != nullptr)
     {
@@ -263,11 +260,8 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
   assert (is_page_server ());
 
   chn.set_channel_name ("PTS_PS_comm");
-  if (chn.get_port() != -1)
-    {
-      er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
-		    chn.get_channel_id ().c_str ());
-    }
+  er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
+		chn.get_channel_id ().c_str ());
 
   m_passive_tran_server_conn.emplace_back (new connection_handler (chn, *this));
 }

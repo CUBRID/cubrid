@@ -56,7 +56,7 @@ namespace cubcomm
     private:
       std::string m_server_name;
       SERVER_TYPE m_server_type;
-      cubcomm::server_server m_request;
+      cubcomm::server_server m_conn_type;
   };
 
 }; /* cubcomm namepace */
