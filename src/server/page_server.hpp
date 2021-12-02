@@ -26,7 +26,7 @@
 
 #include <memory>
 
-// forward declaration
+// forward declarations
 namespace cublog
 {
   class replicator;
