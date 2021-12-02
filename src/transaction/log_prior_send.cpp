@@ -32,7 +32,7 @@ namespace cublog
       {
 	return;
       }
-    std::string message = prior_list_serialize (head);
+    const std::string message = prior_list_serialize (head);
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
       {
@@ -44,14 +44,24 @@ namespace cublog
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
     for (auto &sink : m_sink_hooks)
       {
-	sink (std::move (std::string (message)));
+	(*sink) (std::string (message));
       }
   }
 
   void
-  prior_sender::add_sink (const sink_hook &fun)
+  prior_sender::add_sink (const sink_hook_t &fun)
   {
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
-    m_sink_hooks.push_back (fun);
+    m_sink_hooks.push_back (&fun);
+  }
+
+  void
+  prior_sender::remove_sink (const sink_hook_t &fun)
+  {
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+
+    const auto find_it = std::find (m_sink_hooks.begin (), m_sink_hooks.end (), &fun);
+    assert (find_it != m_sink_hooks.end ());
+    m_sink_hooks.erase (find_it);
   }
 }
