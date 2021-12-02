@@ -38,15 +38,16 @@ namespace cublog
       using sink_hook_t = std::function<void (std::string &&)>;   // messages are passed to sink hooks.
 
     public:
-      void send_list (const log_prior_node *head);              // send prior node list to all sinks
+      void send_list (const log_prior_node *head);                // send prior node list to all sinks
 
       void add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
       // todo: extend the sink management interface
 
     private:
+      // non-owning pointers
       std::vector<const sink_hook_t *> m_sink_hooks;              // hooks for sinks
-      std::mutex m_sink_hooks_mutex;                            // protect access on sink hooks
+      std::mutex m_sink_hooks_mutex;                              // protect access on sink hooks
   };
 }
 
