@@ -34,6 +34,8 @@ namespace cubmethod
   // forward declaration
   struct query_result;
 
+#define CUBRID_STMT_CALL_SP	0x7e
+
   struct column_info : public cubpacking::packable_object
   {
     column_info ();
@@ -89,6 +91,26 @@ namespace cubmethod
     void dump ();
   };
 
+  struct prepare_call_info : public cubpacking::packable_object
+  {
+    prepare_call_info ();
+    ~prepare_call_info ();
+
+    // DB_VALUE dbval_ret;
+    int num_args;
+    bool is_first_out; /* ? = call xxx (?) */
+    std::vector<DB_VALUE> dbval_args; /* # of num_args + 1 */
+    std::vector<int> param_modes; /* # of num_args */
+
+    int set_is_first_out (std::string &sql_stmt);
+    int set_prepare_call_info (int num_args);
+    void clear ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+  };
+
   struct query_result_info : public cubpacking::packable_object
   {
     query_result_info ();
@@ -117,6 +139,7 @@ namespace cubmethod
     int is_forward_only;
     int has_parameter; // 2: params are for Java, 1: params are for cubrid, 0: no params
     std::vector<DB_VALUE> param_values;
+    std::vector<int> param_modes;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -127,7 +150,8 @@ namespace cubmethod
 
   struct execute_info : public cubpacking::packable_object
   {
-    execute_info () = default; // default constructor
+    execute_info ();
+    ~execute_info ();
 
     int num_affected; /* or num_tuples or max_row */
     std::vector<query_result_info> qresult_infos;
@@ -136,6 +160,9 @@ namespace cubmethod
     std::vector<column_info> column_infos;
     int stmt_type; /* CUBRID_STMT_TYPE */
     int num_markers;
+
+    /* If this struct is for execute_call, the following variables are packed */
+    prepare_call_info *call_info;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;

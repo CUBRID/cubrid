@@ -193,7 +193,7 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
-    execute_info info = handler->execute (request.param_values, request.execute_flag, request.max_field, -1);
+    execute_info info = handler->execute (request);
 
     if (m_error_ctx.has_error())
       {

@@ -61,7 +61,6 @@ public class SUBindParameter extends SUParameter {
             paramMode[i] = PARAM_MODE_UNKNOWN;
             values[i] = null;
             types[i] = DBType.DB_NULL;
-            // types[i] = UUType.U_TYPE_NULL;
         }
     }
 
@@ -110,6 +109,7 @@ public class SUBindParameter extends SUParameter {
         packer.packInt(cnt);
         for (int i = 0; i < cnt; i++) {
             packer.packValue(values[i], types[i], ExecuteThread.charSet);
+            packer.packInt((int) paramMode[i]);
         }
     }
 }

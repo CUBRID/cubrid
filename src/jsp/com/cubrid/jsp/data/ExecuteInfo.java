@@ -8,6 +8,7 @@ public class ExecuteInfo {
     public int numAffected;
     public List<QueryResultInfo> qresultInfos = null;
     public List<ColumnInfo> columnInfos = null;
+    public CallInfo callInfo = null;
 
     public ExecuteInfo(CUBRIDUnpacker unpacker) {
         numAffected = unpacker.unpackInt();
@@ -28,6 +29,11 @@ public class ExecuteInfo {
                 columnInfos.add(cInfo);
             }
         }
+
+        boolean hasCallInfo = unpacker.unpackBool();
+        if (hasCallInfo) {
+            callInfo = new CallInfo(unpacker);
+        }
     }
 
     public QueryResultInfo getResultInfo(int idx) {
@@ -42,5 +48,9 @@ public class ExecuteInfo {
             return qresultInfos.size();
         }
         return 0;
+    }
+
+    public CallInfo getCallInfo() {
+        return callInfo;
     }
 }
