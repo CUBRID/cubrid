@@ -17,3 +17,11 @@
  */
 
 #include "response_broker.hpp"
+
+using namespace cubcomm;
+
+response_sequence_number
+response_sequence_number_generator::get_unique_number ()
+{
+  return m_next_number++;
+}
