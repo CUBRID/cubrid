@@ -160,6 +160,7 @@ page_server::connection_handler::receive_log_boot_info_fetch (cubpacking::unpack
 void
 page_server::connection_handler::on_log_boot_info_result (std::string &&message)
 {
+  assert (m_conn != nullptr);
   assert (message.size () > 0);
 
   m_conn->push (page_to_tran_request::SEND_LOG_BOOT_INFO, std::move (message));
@@ -256,12 +257,10 @@ page_server::connection_handler::on_data_page_read_result (const FILEIO_PAGE *io
 void
 page_server::connection_handler::prior_sender_sink_hook (std::string &&message) const
 {
+  assert (m_conn != nullptr);
   assert (message.size () > 0);
 
-  // passive tran server already connected - as assumed by the very existence of this
-  // connection handler instance
   m_conn->push (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST, std::move (message));
-  // hmm, const member function being allowed to call non-const member function of a non-const member variable??
 }
 
 void
@@ -291,8 +290,6 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
 		chn.get_channel_id ().c_str ());
 
-  // TODO: is it possible to have two [passive] transaction server connecting at exactly the same time?
-  // callstack: css_master_thread -> css_process_master_request -> css_process_server_server_connect -> this function
   m_passive_tran_server_conn.emplace_back (new connection_handler (chn, *this));
 }
 
@@ -360,14 +357,6 @@ page_server::is_active_tran_server_connected () const
   assert (is_page_server ());
 
   return m_active_tran_server_conn != nullptr;
-}
-
-bool
-page_server::is_passive_tran_server_connected () const
-{
-  assert (is_page_server ());
-
-  return !m_passive_tran_server_conn.empty ();
 }
 
 cublog::async_page_fetcher &

@@ -106,9 +106,10 @@ int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
   const auto server_type_from_config = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
-  g_transaction_server_type = get_transaction_server_type_from_config (
-				      (transaction_server_type_config) prm_get_integer_value (
-					  PRM_ID_TRANSACTION_SERVER_TYPE));
+  const auto transaction_server_type_from_config =
+	  (transaction_server_type_config) prm_get_integer_value ( PRM_ID_TRANSACTION_SERVER_TYPE);
+  g_transaction_server_type = get_transaction_server_type_from_config (transaction_server_type_from_config);
+
   if (g_server_type == SERVER_TYPE_UNKNOWN)
     {
       if (server_type_from_config == server_type_config::SINGLE_NODE)

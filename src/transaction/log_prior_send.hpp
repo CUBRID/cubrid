@@ -42,7 +42,6 @@ namespace cublog
 
       void add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
-      // TODO: extend the sink management interface
 
     private:
       // non-owning pointers

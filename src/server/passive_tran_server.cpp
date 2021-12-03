@@ -37,8 +37,6 @@ passive_tran_server::get_remote_storage_config ()
 void
 passive_tran_server::on_boot ()
 {
-  // no need to call base instance, it is abstract
-
   assert (is_passive_transaction_server ());
 }
 
@@ -53,7 +51,7 @@ passive_tran_server::get_request_handlers ()
   handlers_map.insert (std::make_pair (page_to_tran_request::SEND_LOG_BOOT_INFO,
 				       log_boot_info_handler));
 
-  auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::receive_from_ps_log_prior_list,
+  auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::receive_log_prior_list,
 					std::ref (*this), std::placeholders::_1);
   handlers_map.insert (std::make_pair (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST,
 				       from_ps_log_prior_list_handler));
@@ -76,7 +74,7 @@ passive_tran_server::receive_log_boot_info (cubpacking::unpacker &upk)
 }
 
 void
-passive_tran_server::receive_from_ps_log_prior_list (cubpacking::unpacker &upk)
+passive_tran_server::receive_log_prior_list (cubpacking::unpacker &upk)
 {
   std::string message;
   upk.unpack_string (message);

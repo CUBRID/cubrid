@@ -64,7 +64,6 @@ class page_server
     void disconnect_active_tran_server ();
     void disconnect_tran_server (connection_handler *conn);
     bool is_active_tran_server_connected () const;
-    bool is_passive_tran_server_connected () const;
     cublog::async_page_fetcher &get_page_fetcher ();
 
   private:
