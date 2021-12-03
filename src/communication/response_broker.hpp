@@ -19,8 +19,12 @@
 #ifndef _RESPONSE_BROKER_HPP_
 #define _RESPONSE_BROKER_HPP_
 
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <limits>
+#include <mutex>
+#include <unordered_map>
 
 namespace cubcomm
 {
@@ -34,6 +38,33 @@ namespace cubcomm
 
     private:
       std::atomic<response_sequence_number> m_next_number = 0;
+  };
+
+  template<typename T_PAYLOAD>
+  class response_broker
+  {
+    public:
+      response_broker () = delete;
+      response_broker (size_t a_bucket_count);
+
+      void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
+      T_PAYLOAD get_response (response_sequence_number a_rsn);
+
+    private:
+
+      struct bucket
+      {
+	std::mutex m_mutex;
+	std::condition_variable m_condvar;
+	std::unordered_map<response_sequence_number, T_PAYLOAD> m_response_payloads;
+
+	void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
+	T_PAYLOAD get_response (response_sequence_number a_rsn);
+      };
+
+      bucket &get_bucket ();
+
+      std::vector<bucket> m_buckets;
   };
 }
 
