@@ -1102,6 +1102,13 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 	{
 	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
 	}
+
+      // kill ha server if present
+      pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_ANY);
+      if (pid != 0)
+	{
+	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
+	}
     }
 
   if (commdb_Arg_kill_all)
