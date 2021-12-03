@@ -29,6 +29,13 @@ namespace cubcomm
 {
   /* wrapper/helper encapsulating instances of request_client_server, request_sync_send_queue
    * and request_queue_autosend working together
+   *
+   * request_sync_client_server extends the request handling with the ability of sending requests awaiting responses
+   * and the ability to respond.
+   *
+   * the request payloads are preceded by a response sequence number. the request sequence number is generated, packed
+   * and unpacked by request_sync_client_server; its value is not transparent to the users making the requests and the
+     responses. see nested class internal_payload.
    */
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   class request_sync_client_server
@@ -44,6 +51,8 @@ namespace cubcomm
       using outgoing_msg_id_t = T_OUTGOING_MSG_ID;
       using request_client_server_t = cubcomm::request_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID>;
 
+      // The user payload (of type T_PAYLOAD) is accompanied by a response sequence number set by
+      // request_sync_client_server.
       class internal_payload : public cubpacking::packable_object
       {
 	public:
@@ -119,7 +128,7 @@ namespace cubcomm
     for (const auto &pair: a_incoming_request_handlers)
       {
 	assert (pair.second != nullptr);
-	request_client_server_t::server_request_handler converted_handler =
+	typename request_client_server_t::server_request_handler converted_handler =
 		std::bind (&request_sync_client_server::unpack_and_handle, std::ref (*this), std::placeholders::_1, pair.second);
 	m_conn->register_request_handler (pair.first, converted_handler);
       }
@@ -215,7 +224,7 @@ namespace cubcomm
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
-  typename T_PAYLOAD
+  T_PAYLOAD
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::pull_payload ()
   {
     return std::move (m_user_payload);

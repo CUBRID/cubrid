@@ -84,3 +84,32 @@ log_rv_redo_context::log_rv_redo_context (const log_lsa &end_redo_lsa, log_reade
 log_rv_redo_context::~log_rv_redo_context ()
 {
 }
+
+namespace cubpacking
+{
+  size_t packer::get_packed_size_overloaded (const std::uint64_t &value, size_t curr_offset)
+  {
+    assert ("function is not used in the context of this unit test" == nullptr);
+  }
+  void packer::pack_overloaded (const std::uint64_t &value)
+  {
+    assert ("function is not used in the context of this unit test" == nullptr);
+  }
+  void unpacker::unpack_overloaded (std::uint64_t &value)
+  {
+    assert ("function is not used in the context of this unit test" == nullptr);
+  }
+
+  size_t packer::get_packed_size_overloaded (const std::string &value, size_t curr_offset)
+  {
+    assert ("function is not used in the context of this unit test" == nullptr);
+  }
+  void packer::pack_overloaded (const std::string &value)
+  {
+    assert ("function is not used in the context of this unit test" == nullptr);
+  }
+  void unpacker::unpack_overloaded (std::string &value)
+  {
+    assert ("function is not used in the context of this unit test" == nullptr);
+  }
+}
