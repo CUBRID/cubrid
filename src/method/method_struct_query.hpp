@@ -151,6 +151,7 @@ namespace cubmethod
   struct execute_info : public cubpacking::packable_object
   {
     execute_info ();
+    ~execute_info ();
 
     int num_affected; /* or num_tuples or max_row */
     std::vector<query_result_info> qresult_infos;

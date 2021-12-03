@@ -610,6 +610,14 @@ namespace cubmethod
     call_info = nullptr;
   }
 
+  execute_info::~execute_info ()
+  {
+    if (call_info)
+      {
+	delete call_info;
+      }
+  }
+
   void
   execute_info::pack (cubpacking::packer &serializator) const
   {
