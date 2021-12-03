@@ -1329,7 +1329,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1258 %1$s veritabanında anahtar kümesi bulunamıyor. Yedekleme birimindeki anahtar dosya kullanılacaktır.
 1259 "%1$s" anahtar dosyasını "%2$s" olarak yeniden adlandırın.
 1260 "%1$s" anahtar dosyasını "%2$s" klasörüne kopyalayın.
-1261 Geri yükleme sırasında anahtar bulunamıyor (anahtar dizini: %1$d, oluşturma zamanı: %2$s). Veritabanı için anahtarı (anahtar dizini: %3$d) ayarlayın.
+1261 Geri yüklenen yedek anahtar dosyasındaki ilk anahtar (anahtar dizini: %1$d, oluşturma zamanı: %2$s) ayarlandı.
 1262 Anahtar dosyası dolu.
 1263 Günlük sayfasını TDE şifreleyemiyor (pageid: %1$lld). Artık bu sayfayı şifrelemeye çalışılmayacak.
 1264 Error reserved for scalability development.

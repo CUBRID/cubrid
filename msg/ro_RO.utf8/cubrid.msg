@@ -1329,7 +1329,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1258 Nu se poate găsi setul de chei în baza de date de la%1$s. Fișierul cheie din volumul de rezervă va fi utilizat.
 1259 Redenumiți fișierul cheie din „%1$s” în „%2$s”.
 1260 Copiați fișierul cheie „%1$s” în „%2$s”.
-1261 Nu se poate găsi cheia în momentul restaurării (index cheie: %1$d, timp creat: %2$s). Setați cheia (index cheie: %3$d) pentru baza de date.
+1261 Prima cheie (indexul cheii: %1$d, ora creată: %2$s) din fișierul cheie restaurat a fost setată.
 1262 Fișierul cheie este plin.
 1263 Nu criptează TDE pagina jurnalului (pageid: %1$lld). Nu va mai fi încercat să criptați această pagină.
 1264 Error reserved for scalability development.
