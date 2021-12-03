@@ -839,7 +839,8 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
    * Turn off creation bits for group and others
    */
 
-  (void) umask (S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+  //(void) umask (S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+  (void) umask (S_IRGRP );
 
   /* Initialize the log buffer pool and the log names */
   error_code = logpb_initialize_pool (thread_p);
