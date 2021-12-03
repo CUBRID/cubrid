@@ -829,7 +829,7 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
     }
   else
     {
-      index = logpb_get_log_buffer_index ((int) pageid);
+      index = logpb_get_log_buffer_index (pageid);
       if (index >= 0 && index < log_Pb.num_buffers)
 	{
 	  log_bufptr = &log_Pb.buffers[index];
@@ -1741,7 +1741,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       goto exit;
     }
 
-  index = logpb_get_log_buffer_index ((int) pageid);
+  index = logpb_get_log_buffer_index (pageid);
   if (index >= 0 && index < log_Pb.num_buffers)
     {
       log_bufptr = &log_Pb.buffers[index];
