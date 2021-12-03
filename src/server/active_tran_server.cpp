@@ -44,12 +44,11 @@ active_tran_server::get_remote_storage_config ()
 }
 
 void
-active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
+active_tran_server::receive_saved_lsa (page_server_conn_t::internal_payload &a_ip)
 {
-  std::string message;
+  std::string message = a_ip.pull_payload ();
   log_lsa saved_lsa;
 
-  upk.unpack_string (message);
   assert (sizeof (log_lsa) == message.size ());
   std::memcpy (&saved_lsa, message.c_str (), sizeof (log_lsa));
 
@@ -83,8 +82,8 @@ active_tran_server::get_request_handlers ()
 	  std::make_pair (page_to_tran_request::SEND_SAVED_LSA,
 			  std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1));
 
-  std::map<page_to_tran_request, std::function<void (cubpacking::unpacker &upk)>> handlers_map =
-	      tran_server::get_request_handlers ();
+  std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map =
+	  tran_server::get_request_handlers ();
 
   handlers_map.insert (saved_lsa_handler_value);
 

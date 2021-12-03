@@ -92,20 +92,17 @@ page_server::connection_handler::push_request (page_to_tran_request id, std::str
 }
 
 void
-page_server::connection_handler::receive_log_prior_list (cubpacking::unpacker &upk)
+page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::internal_payload &a_ip)
 {
-  std::string message;
-  upk.unpack_string (message);
-  log_Gl.get_log_prior_receiver ().push_message (std::move (message));
+  log_Gl.get_log_prior_receiver ().push_message (std::move (a_ip.pull_payload ()));
 }
 
 void
-page_server::connection_handler::receive_log_page_fetch (cubpacking::unpacker &upk)
+page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::internal_payload &a_ip)
 {
   LOG_PAGEID pageid;
-  std::string message;
+  std::string message = a_ip.pull_payload ();
 
-  upk.unpack_string (message);
   assert (message.size () == sizeof (pageid));
   std::memcpy (&pageid, message.c_str (), sizeof (pageid));
 
@@ -119,10 +116,9 @@ page_server::connection_handler::receive_log_page_fetch (cubpacking::unpacker &u
 }
 
 void
-page_server::connection_handler::receive_data_page_fetch (cubpacking::unpacker &upk)
+page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::internal_payload &a_ip)
 {
-  std::string message;
-  upk.unpack_string (message);
+  std::string message = a_ip.pull_payload ();
 
   cubpacking::unpacker message_upk (message.c_str (), message.size ());
   VPID vpid;
@@ -137,7 +133,7 @@ page_server::connection_handler::receive_data_page_fetch (cubpacking::unpacker &
 }
 
 void
-page_server::connection_handler::receive_log_boot_info_fetch (cubpacking::unpacker &upk)
+page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::internal_payload &)
 {
   // empty request message
 
@@ -155,7 +151,7 @@ page_server::connection_handler::on_log_boot_info_result (std::string &&message)
 }
 
 void
-page_server::connection_handler::receive_disconnect_request (cubpacking::unpacker &upk)
+page_server::connection_handler::receive_disconnect_request (tran_server_conn_t::internal_payload &)
 {
   //start a thread to destroy the ATS to PS connection object
   std::thread disconnect_thread (&page_server::disconnect_tran_server, std::ref (m_ps), this);
@@ -163,7 +159,7 @@ page_server::connection_handler::receive_disconnect_request (cubpacking::unpacke
 }
 
 void
-page_server::connection_handler::receive_boot_info_request (cubpacking::unpacker &upk)
+page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::internal_payload &)
 {
   DKNVOLS nvols_perm = disk_get_perm_volume_count ();
 

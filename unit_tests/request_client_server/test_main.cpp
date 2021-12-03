@@ -129,7 +129,6 @@ static void mock_socket_between_two_client_servers (const test_request_client_se
     const test_request_client_server_type_two &clsr2,
     mock_socket_direction &sockdir_1_to_2,
     mock_socket_direction &sockdir_2_to_1);
-
 // Testing environment for two client-server's
 class test_two_client_server_env
 {
@@ -203,6 +202,10 @@ using test_request_sync_client_server_two_t =
 
 using uq_test_request_sync_client_server_one_t = std::unique_ptr<test_request_sync_client_server_one_t>;
 using uq_test_request_sync_client_server_two_t = std::unique_ptr<test_request_sync_client_server_two_t>;
+
+// The request_sync_client_server type handler that requires to find ExpectedVal
+template <typename ReqId, ReqId ExpectedVal, typename Payload>
+static void mock_check_expected_id_sync (Payload &upk);
 
 class test_two_request_sync_client_server_env
 {
@@ -562,6 +565,15 @@ mock_check_expected_id (cubpacking::unpacker &upk)
   ++global_handled_request_count;
 }
 
+template <typename T, T Val, typename Payload>
+static void
+mock_check_expected_id_sync (Payload &a_ip)
+{
+  T readval = static_cast<T> (a_ip.pull_payload ().val);
+  REQUIRE (readval == Val);
+  ++global_handled_request_count;
+}
+
 template <typename ReqCl, typename ReqId>
 static void
 send_request_id_as_message (ReqCl &reqcl, ReqId rid)
@@ -863,17 +875,20 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
   chn.set_channel_name ("sync_client_server_one");
 
   // handle requests 2 to 1
-  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_0 = [] (cubpacking::unpacker &upk)
+  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_0 =
+	  [] (test_request_sync_client_server_one_t::internal_payload &a_ip)
   {
-    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_0> (upk);
+    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_0> (a_ip);
   };
-  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_1 = [] (cubpacking::unpacker &upk)
+  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_1 =
+	  [] (test_request_sync_client_server_one_t::internal_payload &a_ip)
   {
-    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_1> (upk);
+    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_1> (a_ip);
   };
-  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_2 = [] (cubpacking::unpacker &upk)
+  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_2 =
+	  [] (test_request_sync_client_server_one_t::internal_payload &a_ip)
   {
-    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_2> (upk);
+    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_2> (a_ip);
   };
 
   uq_test_request_sync_client_server_one_t scs_one
@@ -897,13 +912,15 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_two (
   chn.set_channel_name ("sync_client_server_two");
 
   // handle requests 1 to 2
-  test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_0 = [] (cubpacking::unpacker &upk)
+  test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_0 =
+	  [] (test_request_sync_client_server_two_t::internal_payload &a_ip)
   {
-    mock_check_expected_id<reqids_1_to_2, reqids_1_to_2::_0> (upk);
+    mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_0> (a_ip);
   };
-  test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_1 = [] (cubpacking::unpacker &upk)
+  test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_1 =
+	  [] (test_request_sync_client_server_two_t::internal_payload &a_ip)
   {
-    mock_check_expected_id<reqids_1_to_2, reqids_1_to_2::_1> (upk);
+    mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_1> (a_ip);
   };
 
   uq_test_request_sync_client_server_two_t scs_two

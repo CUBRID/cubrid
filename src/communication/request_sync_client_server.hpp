@@ -33,37 +33,16 @@ namespace cubcomm
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   class request_sync_client_server
   {
-    public:
-      using outgoing_msg_id_t = T_OUTGOING_MSG_ID;
-
-      using request_client_server_t = cubcomm::request_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID>;
-      using incoming_request_handler_t = typename request_client_server_t::server_request_handler;
-
-    public:
-      request_sync_client_server (cubcomm::channel &&a_channel,
-				  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers);
-      ~request_sync_client_server ();
-      request_sync_client_server (const request_sync_client_server &) = delete;
-      request_sync_client_server (request_sync_client_server &&) = delete;
-
-      request_sync_client_server &operator = (const request_sync_client_server &) = delete;
-      request_sync_client_server &operator = (request_sync_client_server &&) = delete;
-
-    public:
-      void start ();
-
-      /* only used by unit tests
-       */
-      std::string get_underlying_channel_id () const;
-
-      void push (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload);
-
     private:
 
       // Wrap the user payload with a response sequence number
       using response_sequence_number_t = std::uint64_t;
       static constexpr response_sequence_number_t NO_RESPONSE =
 	      std::numeric_limits<response_sequence_number_t>::max ();
+
+    public:
+      using outgoing_msg_id_t = T_OUTGOING_MSG_ID;
+      using request_client_server_t = cubcomm::request_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID>;
 
       class internal_payload : public cubpacking::packable_object
       {
@@ -89,8 +68,32 @@ namespace cubcomm
 	  T_PAYLOAD m_user_payload;
       };
 
+      using incoming_request_handler_t = std::function<void (internal_payload &)>;
+
+    public:
+      request_sync_client_server (cubcomm::channel &&a_channel,
+				  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers);
+      ~request_sync_client_server ();
+      request_sync_client_server (const request_sync_client_server &) = delete;
+      request_sync_client_server (request_sync_client_server &&) = delete;
+
+      request_sync_client_server &operator = (const request_sync_client_server &) = delete;
+      request_sync_client_server &operator = (request_sync_client_server &&) = delete;
+
+    public:
+      void start ();
+
+      /* only used by unit tests
+       */
+      std::string get_underlying_channel_id () const;
+
+      void push (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload);
+
+    private:
       using request_sync_send_queue_t = cubcomm::request_sync_send_queue<request_client_server_t, internal_payload>;
       using request_queue_autosend_t = cubcomm::request_queue_autosend<request_sync_send_queue_t>;
+
+      void unpack_and_handle (cubpacking::unpacker &deserializator, const incoming_request_handler_t &handler);
 
     private:
       std::unique_ptr<request_client_server_t> m_conn;
@@ -116,7 +119,9 @@ namespace cubcomm
     for (const auto &pair: a_incoming_request_handlers)
       {
 	assert (pair.second != nullptr);
-	m_conn->register_request_handler (pair.first, pair.second);
+	request_client_server_t::server_request_handler converted_handler =
+		std::bind (&request_sync_client_server::unpack_and_handle, std::ref (*this), std::placeholders::_1, pair.second);
+	m_conn->register_request_handler (pair.first, converted_handler);
       }
   }
 
@@ -153,6 +158,17 @@ namespace cubcomm
     internal_payload ip (NO_RESPONSE, std::move (a_payload));
 
     m_queue->push (a_outgoing_message_id, std::move (ip));
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::unpack_and_handle (
+	  cubpacking::unpacker &deserializator, const incoming_request_handler_t &handler)
+  {
+    internal_payload ip;
+
+    ip.unpack (deserializator);
+    handler (ip);
   }
 
   //
@@ -207,24 +223,24 @@ namespace cubcomm
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   size_t
-  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::
-  get_packed_size (cubpacking::packer &serializator, std::size_t start_offset /*= 0*/) const
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::get_packed_size (
+	  cubpacking::packer &serializator, std::size_t start_offset /*= 0*/) const
   {
     return serializator.get_all_packed_size_starting_offset (start_offset, m_rsn, m_user_payload);
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   void
-  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::
-  pack (cubpacking::packer &serializator) const
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::pack (
+	  cubpacking::packer &serializator) const
   {
     serializator.pack_all (m_rsn, m_user_payload);
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   void
-  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::
-  unpack (cubpacking::unpacker &deserializator)
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::internal_payload::unpack (
+	  cubpacking::unpacker &deserializator)
   {
     deserializator.unpack_all (m_rsn, m_user_payload);
   }
