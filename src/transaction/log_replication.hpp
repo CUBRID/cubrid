@@ -54,7 +54,7 @@ namespace cublog
   {
     public:
       replicator () = delete;
-      replicator (const log_lsa &start_redo_lsa);
+      replicator (const log_lsa &start_redo_lsa, int parallel_count);
       ~replicator ();
 
       /* function can only be called when it is ensured that 'nxio_lsa' will
