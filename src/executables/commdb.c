@@ -486,7 +486,7 @@ process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name)
 }
 
 static int
-search_server_pid (char *server_info, char *search_pattern)
+search_server_pid (const char *server_info, const char *search_pattern)
 {
   char *p = NULL;
   int pid = 0;
@@ -539,6 +539,10 @@ process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_t
 	      break;
 
 	    case SERVER_TYPE_TRANSACTION:
+	      // Transaction servers are printed in two ways:
+	      //    - as "Transaction-Server" if HA is disabled
+	      //    - as "HA-Server" if HA is enabled
+	      // Search by both patterns.
 	      sprintf (search_pattern, "Transaction-Server %s (", server);
 	      pid = search_server_pid (server_info, search_pattern);
 
@@ -551,6 +555,7 @@ process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_t
 
 	    default:
 	      sprintf (search_pattern, "Server %s (", server);
+	      pid = search_server_pid (server_info, search_pattern);
 	      break;
 	    }
 	  break;
