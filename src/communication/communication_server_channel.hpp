@@ -40,6 +40,7 @@ namespace cubcomm
   {
     public:
       server_channel (const char *server_name, SERVER_TYPE server_type, int max_timeout_in_ms = -1);
+      server_channel (int max_timeout_in_ms = -1);
       ~server_channel () = default;
 
       server_channel (const server_channel &) = delete;
@@ -49,10 +50,13 @@ namespace cubcomm
       server_channel &operator= (server_channel &&comm);
 
       css_error_code connect (const char *hostname, int port, css_command_type cmd_type);
+      css_error_code accept (SOCKET socket);
+      cubcomm::server_server get_conn_type ();
 
     private:
       std::string m_server_name;
       SERVER_TYPE m_server_type;
+      cubcomm::server_server m_conn_type;
   };
 
 }; /* cubcomm namepace */
