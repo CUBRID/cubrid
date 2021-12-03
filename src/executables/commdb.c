@@ -485,6 +485,26 @@ process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name)
     }
 }
 
+static int
+search_server_pid (char *server_info, char *search_pattern)
+{
+  char *p = NULL;
+  int pid = 0;
+
+  p = strstr (server_info, search_pattern);
+  if (p)
+    {
+      p = strstr (p + strlen (search_pattern), "pid");
+      if (p)
+	{
+	  p += 4;
+	}
+    }
+  if (p)
+    pid = atoi (p);
+
+  return pid;
+}
 
 /*
  * process_server_info_pid() - find process id from server status
@@ -515,10 +535,18 @@ process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_t
 	    {
 	    case SERVER_TYPE_PAGE:
 	      sprintf (search_pattern, "Page-Server %s (", server);
+	      pid = search_server_pid (server_info, search_pattern);
 	      break;
 
 	    case SERVER_TYPE_TRANSACTION:
 	      sprintf (search_pattern, "Transaction-Server %s (", server);
+	      pid = search_server_pid (server_info, search_pattern);
+
+	      if (pid == 0)
+		{
+		  sprintf (search_pattern, "HA-Server %s (", server);
+		  pid = search_server_pid (server_info, search_pattern);
+		}
 	      break;
 
 	    default:
@@ -527,17 +555,6 @@ process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_t
 	    }
 	  break;
 	}
-      p = strstr (server_info, search_pattern);
-      if (p)
-	{
-	  p = strstr (p + strlen (search_pattern), "pid");
-	  if (p)
-	    {
-	      p += 4;
-	    }
-	}
-      if (p)
-	pid = atoi (p);
 
       free_and_init (server_info);
     }
@@ -1098,13 +1115,6 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
       // and then the page server
       pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_PAGE);
-      if (pid != 0)
-	{
-	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
-	}
-
-      // kill ha server if present
-      pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER, SERVER_TYPE_ANY);
       if (pid != 0)
 	{
 	  process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
