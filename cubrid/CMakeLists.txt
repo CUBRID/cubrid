@@ -195,6 +195,7 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/communication_channel.cpp
   ${COMMUNICATION_DIR}/communication_server_channel.cpp
   ${COMMUNICATION_DIR}/request_client_server.cpp
+  ${COMMUNICATION_DIR}/response_broker.cpp
   )
 
 set(COMMUNICATION_HEADERS
@@ -205,6 +206,7 @@ set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/request_client_server.hpp
   ${COMMUNICATION_DIR}/request_sync_send_queue.hpp
   ${COMMUNICATION_DIR}/request_sync_client_server.hpp
+  ${COMMUNICATION_DIR}/response_broker.hpp
   )
 
 set(DEBUGGING_HEADERS
