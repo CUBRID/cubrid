@@ -19,6 +19,7 @@
 #ifndef _ASYNC_PAGE_FETCHER_HPP_
 #define _ASYNC_PAGE_FETCHER_HPP_
 
+#include "log_prior_send.hpp"
 #include "log_storage.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
@@ -40,7 +41,8 @@ namespace cublog
 
       void fetch_log_page (LOG_PAGEID pageid, log_page_callback_type &&func);
       void fetch_data_page (const VPID &vpid, const LOG_LSA repl_lsa, data_page_callback_type &&func);
-      void fetch_log_boot_info (log_boot_info_callback_type &&callback_func);
+      void fetch_log_boot_info (const cublog::prior_sender::sink_hook_t  &log_prior_sender_sink,
+				log_boot_info_callback_type &&callback_func);
 
     private:
       cubthread::entry_workpool *m_threads = nullptr;

@@ -38,6 +38,7 @@ class passive_tran_server : public tran_server
     request_handlers_map_t get_request_handlers () final override;
 
     void receive_log_boot_info (cubpacking::unpacker &upk);
+    void receive_log_prior_list (cubpacking::unpacker &upk);
 
   private:
     std::mutex m_log_boot_info_mtx;

@@ -1634,9 +1634,21 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       return;
     }
 
-  passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-  assert (pts_ptr != nullptr);
-  pts_ptr->send_and_receive_log_boot_info (thread_p);
+  {
+    // before requesting log boot info from page server, hold a lock for the prior mutex
+    // during the call, page server will also start sending log records and we must make sure to
+    // initialize log info before any log is consumed on the passive tran server
+    // *INDENT-OFF*
+    std::lock_guard<std::mutex> prior_lsa_lockg { log_Gl.prior_info.prior_lsa_mutex };
+    // *INDENT-ON*
+
+    passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
+    assert (pts_ptr != nullptr);
+    pts_ptr->send_and_receive_log_boot_info (thread_p);
+
+    LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+    LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+  }
 
   err_code = logtb_define_trantable_log_latch (thread_p, -1);
   if (err_code != NO_ERROR)
@@ -1647,9 +1659,6 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     }
 
   logpb_initialize_logging_statistics ();
-
-  LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
-  LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
 
   er_log_debug (ARG_FILE_LINE, "log_initialize_passive_tran_server: end of log initializaton, append_lsa = (%lld|%d)\n",
 		LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
@@ -3431,7 +3440,7 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
  */
 // *INDENT-OFF*
 std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa,
-                                    log_lsa &prev_lsa)
+                                    log_lsa &prev_lsa, const cublog::prior_sender::sink_hook_t  &log_prior_sender_sink)
 {
   LOG_CS_ENTER_READ_MODE (thread_p);
   scope_exit log_cs_exit_ftor ([thread_p] { LOG_CS_EXIT (thread_p); });
@@ -3451,6 +3460,15 @@ std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa
   // prev lsa
   packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (log_lsa));
   prev_lsa = log_Gl.append.prev_lsa;
+
+  // within the same locks, initialize log prior dispatch to the newly connected passive transaction server
+  log_Gl.m_prior_sender.add_sink (log_prior_sender_sink);
+
+  // TODO: in the future, this needs to be made explicit:
+  //  - as passive transaction servers (PTS) go on/off-line at a random pace
+  //  - and, as each PTS has the list of available page servers (PS) and it can connect to
+  //  - it is the PTS's responsibility to register itself as a log prior consumer with all/some/one of the
+  //    connected PS's
 
   return packed_message;
 }
@@ -5036,14 +5054,14 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
 }
 
 /*
- * log_append_supplemental_info - append supplemental log record 
+ * log_append_supplemental_info - append supplemental log record
  *
  * return: nothing
  *
  *   rec_type (in): type of supplemental log record .
  *   length (in) : length of supplemental data length.
  *   data (in) : supplemental data
- *   
+ *
  */
 void
 log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length, const void *data)
@@ -5106,7 +5124,7 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
 {
   int size;
 
-  /* sizeof (OID) = 8, sizeof (LOG_LSA) = 8, and data contains classoid and undo, redo lsa. 
+  /* sizeof (OID) = 8, sizeof (LOG_LSA) = 8, and data contains classoid and undo, redo lsa.
    * OR_OID_SIZE and OR_LOG_LSA_SIZE are not used here, because this function just copy the memory, not using OR_PUT_* function*/
   char data[24];
 
@@ -11528,7 +11546,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
   /* Get UNDO RECDES from undo lsa */
 
-  /* Because it is unable to know exact size of data (recdes.data), can not use log_get_undo_record. 
+  /* Because it is unable to know exact size of data (recdes.data), can not use log_get_undo_record.
    * In order to use log_get_undo_record(), memory pool for recdes (assign_recdes_to_area()) is required just as scan cache where log_get_undo_record() is called. */
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -12523,9 +12541,9 @@ end:
 static int
 cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id)
 {
-  /*1. if PK exists, return 0 with PK column id(pk_attr_id) and number of columns(num_attr) 
-   *2. if PK does not exist, return -1 
-   *3. pk_attr_id is required to be free_and_init() from caller 
+  /*1. if PK exists, return 0 with PK column id(pk_attr_id) and number of columns(num_attr)
+   *2. if PK does not exist, return -1
+   *3. pk_attr_id is required to be free_and_init() from caller
    * */
 
   /*refer locator_check_foreign_key */
@@ -12547,7 +12565,7 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 
   for (int i = 0; i < rep->n_indexes; i++)
     {
-      index = rep->indexes + i;	//REVIEW : array? 
+      index = rep->indexes + i;	//REVIEW : array?
       if (index->type == BTREE_PRIMARY_KEY)
 	{
 	  has_pk = 1;
@@ -12559,7 +12577,7 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 	  else
 	    {
 	      //REVIEW : function index 동작 구조 보고, 에러처리 할지, 다른 곳과 동일하게 처리할지 결정
-	      // TODO : 일단 반환하지 않고, 나중에. 
+	      // TODO : 일단 반환하지 않고, 나중에.
 	      num_idx_att = index->func_index_info->attr_index_start;
 	      return ER_FAILED;
 	    }
@@ -12645,7 +12663,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	}
 
       ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
-      ptr = or_pack_int (ptr, 0);	//dummy for log info length 
+      ptr = or_pack_int (ptr, 0);	//dummy for log info length
       ptr = or_pack_int (ptr, trid);
       ptr = or_pack_string (ptr, user);
       ptr = or_pack_int (ptr, dataitem_type);
@@ -12692,10 +12710,10 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
       for (i = 0; i < attr_info.num_values; i++)
 	{
-	  // if (attr_info.values[i]->read_attrper != NULL) ? 
+	  // if (attr_info.values[i]->read_attrper != NULL) ?
 	  heap_value = &attr_info.values[i];
 	  oldval_deforder = heap_value->read_attrepr->def_order;
-	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));	// REVIEW : copy 없이, old_attr_info, def_order는 그냥 index에다가 넣어주기. 
+	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));	// REVIEW : copy 없이, old_attr_info, def_order는 그냥 index에다가 넣어주기.
 	}
 
       record_length += undo_recdes->length;
@@ -12760,7 +12778,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
     }
 
   ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
-  ptr = or_pack_int (ptr, 0);	//dummy for log info length 
+  ptr = or_pack_int (ptr, 0);	//dummy for log info length
   ptr = or_pack_int (ptr, trid);
   ptr = or_pack_string (ptr, user);
   ptr = or_pack_int (ptr, dataitem_type);
@@ -12796,7 +12814,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	{
 	  if ((error_code = cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i])) > 0)
 	    {
-	      changed_col_idx[cnt++] = i;	//REVIEW : i 대신 def_order 
+	      changed_col_idx[cnt++] = i;	//REVIEW : i 대신 def_order
 	    }
 	  else if (error_code < 0)
 	    {
@@ -12963,7 +12981,7 @@ cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOG
   int statement_length;
   char *statement;
 
-  /*ddl log info : TRID | user | data_item_type | ddl_type | object_type | OID | class OID | statement length | statement | 
+  /*ddl log info : TRID | user | data_item_type | ddl_type | object_type | OID | class OID | statement length | statement |
    * cdc_make_ddl_loginfo construct log info from ddl_type to statement */
   int loginfo_length;
   int dataitem_type = CDC_DDL;
@@ -13678,7 +13696,7 @@ cdc_loginfo_producer_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10)); /* 주석 처리  */
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (cdc_loginfo_producer_execute);
 
-  cdc_Loginfo_producer_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc_loginfo_producer"); 
+  cdc_Loginfo_producer_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc_loginfo_producer");
   /* *INDENT-ON* */
 }
 
@@ -13769,8 +13787,8 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 {
   /*
    * 1. get volume list
-   * 2. get fpage from each volume 
-   * 3. get commit/abort/ha_dummy_server_state which contains time from fpage 
+   * 2. get fpage from each volume
+   * 3. get commit/abort/ha_dummy_server_state which contains time from fpage
    * */
   int begin = log_Gl.hdr.last_deleted_arv_num;
   int end = log_Gl.hdr.nxarv_num - 1;
@@ -13788,9 +13806,9 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
   int error = NO_ERROR;
 
   /*
-   * 1. traverse from the latest log volume 
-   * 2. when num_arvs > 0, no logic to handle the active log volume 
-   * 3. check condition when i = begin while finding target_arv_num 
+   * 1. traverse from the latest log volume
+   * 2. when num_arvs > 0, no logic to handle the active log volume
+   * 3. check condition when i = begin while finding target_arv_num
    */
 
   /* At first, compare the time in active log volume. */
@@ -13867,7 +13885,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 	    }
 	  else
 	    {
-	      /* num_arvs == 0, and active_start_time > input time 
+	      /* num_arvs == 0, and active_start_time > input time
 	       * returns oldest LSA in active log volume */
 	      if (active_start_time != 0)
 		{
@@ -13973,9 +13991,9 @@ end:
 }
 
 /*
- * arv_num (in) : archive log volume number to traverse. If it is -1, then traverse active log volume. 
- * ret_lsa (out) : lsa of the first log which contains time info 
- * time (out) : time of the first log which contains time info  
+ * arv_num (in) : archive log volume number to traverse. If it is -1, then traverse active log volume.
+ * ret_lsa (out) : lsa of the first log which contains time info
+ * time (out) : time of the first log which contains time info
  */
 
 static int
@@ -14118,7 +14136,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
 /*
  * time (in/out) : Time to compare (in) and actual time of log for start_lsa (out)
- * start_lsa (in/out) : start point (in) and lsa of LOG which is found (out)  
+ * start_lsa (in/out) : start point (in) and lsa of LOG which is found (out)
  */
 
 static int
@@ -14310,7 +14328,7 @@ end:
 	}
     }
 
-//  if producer status is wait, and producer queue size is over the limit 
+//  if producer status is wait, and producer queue size is over the limit
   cdc_log
     ("cdc_make_loginfo : consume the log info entry in the queue and send to the requester.\nnumber of loginfos:(%d), total length of loginfos:(%d), next LOG_LSA to consume:(%lld | %d).",
      cdc_Gl.consumer.num_log_info, cdc_Gl.consumer.log_info_size, LSA_AS_ARGS (&cdc_Gl.consumer.next_lsa));
@@ -14476,7 +14494,7 @@ int
 cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user,
 		       uint64_t * classoids, int num_class)
 {
-  /* if CDC client exits abnomaly, extraction user and classoids are not freed. 
+  /* if CDC client exits abnomaly, extraction user and classoids are not freed.
    * So, reconnection requires these variables to be reset */
   cdc_free_extraction_filter ();
 
