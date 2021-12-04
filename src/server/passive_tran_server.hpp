@@ -19,6 +19,7 @@
 #ifndef _PASSIVE_TRAN_SERVER_HPP_
 #define _PASSIVE_TRAN_SERVER_HPP_
 
+#include "log_replication.hpp"
 #include "tran_server.hpp"
 
 class passive_tran_server : public tran_server
@@ -27,9 +28,11 @@ class passive_tran_server : public tran_server
     passive_tran_server () : tran_server (cubcomm::server_server::CONNECT_PASSIVE_TRAN_TO_PAGE_SERVER)
     {
     }
+    ~passive_tran_server () override;
 
   public:
     void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p);
+    void start_log_replicator (const log_lsa &start_lsa);
 
   private:
     bool uses_remote_storage () const final override;
@@ -44,6 +47,8 @@ class passive_tran_server : public tran_server
     std::mutex m_log_boot_info_mtx;
     std::string m_log_boot_info;
     std::condition_variable m_log_boot_info_condvar;
+
+    std::unique_ptr<cublog::replicator> m_replicator;
 };
 
 #endif // !_passive_tran_server_HPP_

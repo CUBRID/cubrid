@@ -22,6 +22,11 @@
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 
+passive_tran_server::~passive_tran_server ()
+{
+  assert (m_replicator == nullptr);
+}
+
 bool
 passive_tran_server::uses_remote_storage () const
 {
@@ -125,6 +130,9 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   // to be called once
   m_log_boot_info = "not empty";
 
+  // at this point, page server has already started log prior dispatch towards this passive transaction server;
+  // for now, log prior consumption is held back by the log prior lsa mutex held while calling this function
+
   if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
     {
       _er_log_debug (ARG_FILE_LINE,
@@ -132,3 +140,13 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
 		     LSA_AS_ARGS (&log_Gl.append.prev_lsa), LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
     }
 }
+
+void passive_tran_server::start_log_replicator (const log_lsa &start_lsa)
+{
+  assert (m_replicator == nullptr);
+
+  // passive transaction server executes replication synchronously, for the time being, due to complexity of
+  // executing it in parallel while also providing a consistent view of the data
+  m_replicator.reset (new cublog::replicator (start_lsa, 0));
+}
+

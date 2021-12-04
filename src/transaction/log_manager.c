@@ -1648,6 +1648,11 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
     LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
     LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+
+    // while still holding prior LSA lock, initialize passive transaction server replication
+    // without losing any log record
+    const log_lsa next_io_lsa = log_Gl.append.get_nxio_lsa ();
+    pts_ptr->start_log_replicator (next_io_lsa);
   }
 
   err_code = logtb_define_trantable_log_latch (thread_p, -1);
