@@ -3189,6 +3189,12 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
     }
   else if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
+      // NOTE: passive transaction server, regarding replication: since
+      // the state of a passive transaction server is completely transient - and read-only,
+      // there is no need to reach a consistent state of log replication before shutting down;
+      // upon restart, a passive transaction server will, again, pick up its state from the
+      // page server(s) it connects to
+
       ts_Gl->finalize_page_brokers ();
     }
 #endif
