@@ -1396,7 +1396,10 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 
 1332 Le volume de journal actif (%1$s) est trop sain pour être recréé. Si vous supprimez le journal actif, cela peut provoquer un problème inattendu et irréversible.
 
-1333 Dernière erreur
+1333 Unsupported argument type of stored procedure: %1$s
+1334 Unsupported return type of stored procedure: %1$s
+
+1335 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

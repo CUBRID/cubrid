@@ -1396,7 +1396,10 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 
 1332 El volumen de registro activo (%1$s) está demasiado sano para volver a crearlo. Si elimina el registro activo, podría causar un problema inesperado e irreversible.
 
-1333 Ultimo error
+1333 Unsupported argument type of stored procedure: %1$s
+1334 Unsupported return type of stored procedure: %1$s
+
+1335 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

@@ -1396,7 +1396,10 @@ $ LOADDB
 
 1332 Das aktive Protokollvolumen (%1$s) ist zu normal, um es neu zu erstellen. Wenn Sie das aktive Protokoll entfernen, kann dies zu einem unerwarteten und irreversiblen Problem führen.
 
-1333 Letzter Fehler
+1333 Unsupported argument type of stored procedure: %1$s
+1334 Unsupported return type of stored procedure: %1$s
+
+1335 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
