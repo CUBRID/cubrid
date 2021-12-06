@@ -842,7 +842,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
    * Turn off creation bits for group and others
    */
 
-  (void) umask (S_IRGRP | S_IWGRP | S_IXGRP | S_IROTH | S_IWOTH | S_IXOTH);
+  (void) umask (S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 
   /* Initialize the log buffer pool and the log names */
   error_code = logpb_initialize_pool (thread_p);
@@ -1098,7 +1098,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   rv_check_rvfuns ();
 #endif /* !NDEBUG */
 
-  (void) umask (S_IRGRP | S_IWGRP | S_IXGRP | S_IROTH | S_IWOTH | S_IXOTH);
+  (void) umask (S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 
   /* Make sure that the log is a valid one */
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
