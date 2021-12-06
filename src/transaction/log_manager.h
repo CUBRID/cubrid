@@ -176,7 +176,7 @@ extern int log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_
 extern int log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recdes);
 
 extern int log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name, int cached_num,
-					   OID * classoid, OID * serial_oid);
+					   OID * classoid, const OID * serial_oid);
 /*
  * FOR DEBUGGING
  */
