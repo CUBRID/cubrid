@@ -3497,7 +3497,7 @@ logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool cre
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids, int n_nulls)
+logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys, long long n_oids, long long n_nulls)
 {
   /* search and create if not found */
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
@@ -3530,7 +3530,7 @@ logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid,
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids, int n_nulls,
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys, long long n_oids, long long n_nulls,
 				bool write_to_log)
 {
   int error = NO_ERROR;
@@ -3545,14 +3545,14 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int 
   if (write_to_log)
     {
       /* log statistics */
-      char undo_rec_buf[3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE + MAX_ALIGNMENT];
-      char redo_rec_buf[3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE + MAX_ALIGNMENT];
+      char undo_rec_buf[3 * OR_BIGINT_SIZE + OR_BTID_ALIGNED_SIZE + MAX_ALIGNMENT];
+      char redo_rec_buf[3 * OR_BIGINT_SIZE + OR_BTID_ALIGNED_SIZE + MAX_ALIGNMENT];
       RECDES undo_rec, redo_rec;
 
-      undo_rec.area_size = ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+      undo_rec.area_size = ((3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
       undo_rec.data = PTR_ALIGN (undo_rec_buf, MAX_ALIGNMENT);
 
-      redo_rec.area_size = ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+      redo_rec.area_size = ((3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
       redo_rec.data = PTR_ALIGN (redo_rec_buf, MAX_ALIGNMENT);
 
       btree_rv_mvcc_save_increments (btid, -n_keys, -n_oids, -n_nulls, &undo_rec);
@@ -4769,7 +4769,7 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool 
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   GLOBAL_UNIQUE_STATS *stats = NULL;
-  int num_oids, num_nulls, num_keys;
+  long long num_oids, num_nulls, num_keys;
 
   assert (btid != NULL);
 
@@ -4828,7 +4828,7 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool 
  *		     of keys for the given btid
  */
 int
-logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oids, int *num_nulls, int *num_keys)
+logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, long long *num_oids, long long *num_nulls, long long *num_keys)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
@@ -4863,8 +4863,8 @@ logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oi
  *   num_keys (in) : the new number of keys
  */
 int
-logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, int num_oids, int num_nulls,
-					    int num_keys)
+logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, long long num_oids, long long num_nulls,
+					    long long num_keys)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
@@ -4913,13 +4913,13 @@ logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid
  *   log (in) : true if we need to log the changes
  */
 int
-logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, int oid_delta, int null_delta,
-					   int key_delta, bool log)
+logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, long long oid_delta, long long null_delta,
+					   long long key_delta, bool log)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  int num_oids, num_nulls, num_keys;
+  long long num_oids, num_nulls, num_keys;
 
   if (oid_delta == 0 && key_delta == 0 && null_delta == 0)
     {
@@ -4939,41 +4939,41 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
   if (log)
     {
       RECDES undo_rec, redo_rec;
-      char undo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN], *datap = NULL;
-      char redo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN];
+      char undo_rec_buf[(3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN], *datap = NULL;
+      char redo_rec_buf[(3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN];
 
       /* although we don't change the btree header, we still need to log here the new values of statistics so that they
        * can be recovered at recover stage. For undo purposes we log the increments. */
       undo_rec.data = NULL;
-      undo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
+      undo_rec.area_size = 3 * OR_BIGINT_SIZE + OR_BTID_ALIGNED_SIZE;
       undo_rec.data = PTR_ALIGN (undo_rec_buf, BTREE_MAX_ALIGN);
 
       undo_rec.length = 0;
       datap = (char *) undo_rec.data;
       OR_PUT_BTID (datap, btid);
       datap += OR_BTID_ALIGNED_SIZE;
-      OR_PUT_INT (datap, null_delta);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, oid_delta);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, key_delta);
-      datap += OR_INT_SIZE;
+      OR_PUT_BIGINT (datap, &null_delta);
+      datap += OR_BIGINT_SIZE;
+      OR_PUT_BIGINT (datap, &oid_delta);
+      datap += OR_BIGINT_SIZE;
+      OR_PUT_BIGINT (datap, &key_delta);
+      datap += OR_BIGINT_SIZE;
       undo_rec.length = CAST_BUFLEN (datap - undo_rec.data);
 
       redo_rec.data = NULL;
-      redo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
+      redo_rec.area_size = 3 * OR_BIGINT_SIZE + OR_BTID_ALIGNED_SIZE;
       redo_rec.data = PTR_ALIGN (redo_rec_buf, BTREE_MAX_ALIGN);
 
       redo_rec.length = 0;
       datap = (char *) redo_rec.data;
       OR_PUT_BTID (datap, btid);
       datap += OR_BTID_ALIGNED_SIZE;
-      OR_PUT_INT (datap, num_nulls);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, num_oids);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, num_keys);
-      datap += OR_INT_SIZE;
+      OR_PUT_BIGINT (datap, &num_nulls);
+      datap += OR_BIGINT_SIZE;
+      OR_PUT_BIGINT (datap, &num_oids);
+      datap += OR_BIGINT_SIZE;
+      OR_PUT_BIGINT (datap, &num_keys);
+      datap += OR_BIGINT_SIZE;
       redo_rec.length = CAST_BUFLEN (datap - redo_rec.data);
 
       log_append_undoredo_data2 (thread_p, RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL, NULL, HEADER, undo_rec.length,
@@ -4989,8 +4989,8 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "Update stats for index (%d, %d|%d) by nulls=%d, "
-		     "oids=%d, keys=%d to nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", btid->root_pageid,
+		     "Update stats for index (%d, %d|%d) by nulls=%lld, "
+		     "oids=%lld, keys=%lld to nulls=%lld, oids=%lld, keys=%lld. LSA=%lld|%d.\n", btid->root_pageid,
 		     btid->vfid.volid, btid->vfid.fileid, null_delta, oid_delta, key_delta, num_nulls, num_oids,
 		     num_keys, (long long int) stats->last_log_lsa.pageid, (int) stats->last_log_lsa.offset);
     }
