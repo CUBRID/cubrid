@@ -3497,7 +3497,8 @@ logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool cre
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys, long long n_oids, long long n_nulls)
+logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys, long long n_oids,
+				     long long n_nulls)
 {
   /* search and create if not found */
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
@@ -3530,8 +3531,8 @@ logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid,
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys, long long n_oids, long long n_nulls,
-				bool write_to_log)
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys, long long n_oids,
+				long long n_nulls, bool write_to_log)
 {
   int error = NO_ERROR;
 
@@ -4828,7 +4829,8 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool 
  *		     of keys for the given btid
  */
 int
-logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, long long *num_oids, long long *num_nulls, long long *num_keys)
+logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, long long *num_oids, long long *num_nulls,
+			       long long *num_keys)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
@@ -4863,8 +4865,8 @@ logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, long long *
  *   num_keys (in) : the new number of keys
  */
 int
-logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, long long num_oids, long long num_nulls,
-					    long long num_keys)
+logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, long long num_oids,
+					    long long num_nulls, long long num_keys)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
@@ -4913,8 +4915,8 @@ logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid
  *   log (in) : true if we need to log the changes
  */
 int
-logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, long long oid_delta, long long null_delta,
-					   long long key_delta, bool log)
+logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, long long oid_delta,
+					   long long null_delta, long long key_delta, bool log)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;

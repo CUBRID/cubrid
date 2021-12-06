@@ -458,8 +458,8 @@ btree_node_header_redo_log (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_
  *
  */
 int
-btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, long long null_delta, long long oid_delta,
-				long long key_delta)
+btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, long long null_delta,
+				long long oid_delta, long long key_delta)
 {
   RECDES rec, delta_rec;
   char delta_rec_buf[(3 * OR_BIGINT_SIZE) + BTREE_MAX_ALIGN];
@@ -643,7 +643,8 @@ btree_rv_save_root_head (long long null_delta, long long oid_delta, long long ke
  * Note: This is a UTILITY routine, but not an actual recovery routine.
  */
 void
-btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta, long long null_delta, RECDES * recdes)
+btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta, long long null_delta,
+			       RECDES * recdes)
 {
   char *datap;
 

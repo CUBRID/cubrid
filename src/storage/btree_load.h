@@ -194,8 +194,8 @@ typedef struct btree_node_header BTREE_NODE_HEADER;
 struct btree_node_header
 {
   BTREE_NODE_SPLIT_INFO split_info;	/* split point info. of the node */
-  VPID prev_vpid;			/* Leaf Page Previous Node Pointer */
-  VPID next_vpid;			/* Leaf Page Next Node Pointer */
+  VPID prev_vpid;		/* Leaf Page Previous Node Pointer */
+  VPID next_vpid;		/* Leaf Page Next Node Pointer */
   short node_level;		/* btree depth; Leaf(= 1), Non_leaf(> 1) */
   short max_key_len;		/* Maximum key length for the subtree */
 };
@@ -210,7 +210,8 @@ struct btree_root_header
   int num_keys;			/* Number of unique keys in the Btree */
   OID topclass_oid;		/* topclass oid or NULL OID(non unique index) */
   int unique_pk;		/* unique or non-unique, is primary key */
-  struct {
+  struct
+  {
     int over:2;			/* for checking to over 32 bit */
     int num_oids:10;		/* extend 64 bit for num_x each 10 bits */
     int num_nulls:10;		/* extend 64 bit for num_x each 10 bits */
@@ -257,8 +258,8 @@ struct btree_node
 
 /* Recovery routines */
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
-extern void btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta, long long null_delta,
-					   RECDES * recdes);
+extern void btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta,
+					   long long null_delta, RECDES * recdes);
 
 extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
 extern void btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value);
@@ -273,8 +274,8 @@ extern BTREE_ROOT_HEADER *btree_get_root_header (THREAD_ENTRY * thread_p, PAGE_P
 extern BTREE_OVERFLOW_HEADER *btree_get_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 extern int btree_node_header_undo_log (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr);
 extern int btree_node_header_redo_log (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr);
-extern int btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, long long null_delta,
-					   long long oid_delta, long long key_delta);
+extern int btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
+					   long long null_delta, long long oid_delta, long long key_delta);
 
 extern int btree_get_disk_size_of_key (DB_VALUE *);
 extern TP_DOMAIN *btree_generate_prefix_domain (BTID_INT * btid);
