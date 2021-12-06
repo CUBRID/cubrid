@@ -1665,6 +1665,8 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   logpb_initialize_logging_statistics ();
 
+  log_daemons_init ();
+
   er_log_debug (ARG_FILE_LINE, "log_initialize_passive_tran_server: end of log initializaton, append_lsa = (%lld|%d)\n",
 		LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
 }
@@ -10761,12 +10763,19 @@ log_flush_daemon_init ()
 static void
 log_daemons_init ()
 {
-  log_remove_log_archive_daemon_init ();
-  log_checkpoint_daemon_init ();
-  log_checkpoint_trantable_daemon_init ();
-  log_check_ha_delay_info_daemon_init ();
-  log_clock_daemon_init ();
-  log_flush_daemon_init ();
+  if (is_passive_transaction_server ())
+    {
+      log_flush_daemon_init ();
+    }
+  else
+    {
+      log_remove_log_archive_daemon_init ();
+      log_checkpoint_daemon_init ();
+      log_checkpoint_trantable_daemon_init ();
+      log_check_ha_delay_info_daemon_init ();
+      log_clock_daemon_init ();
+      log_flush_daemon_init ();
+    }
 }
 #endif /* SERVER_MODE */
 
