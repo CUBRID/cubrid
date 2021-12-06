@@ -1083,8 +1083,8 @@ _[uU][tT][fF]8[']		{
 				}
 
 ([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* { begin_token(yytext);
-							   if (strlen(yytext) >= 254)
-							     yytext[254] = 0;
+							   if (strlen(yytext) >= 287)
+							     yytext[287] = 0;
 							   csql_yylval.cptr = pt_makename(yytext);
 							   return IdName;
 						         }
@@ -1280,27 +1280,27 @@ _[uU][tT][fF]8[']		{
 
 <DELIMITED_ID_NAME>["]		{
 					BEGIN(INITIAL);
-					if (strlen(csql_yylval.cptr) >= 254)
+					if (strlen(csql_yylval.cptr) >= 287)
 					  {
-					    csql_yylval.cptr[254] = 0;
+					    csql_yylval.cptr[287] = 0;
 					  }
 					return DelimitedIdName;
 				}
 
 <BRACKET_ID_NAME>"]"		{
 					BEGIN(INITIAL);
-					if (strlen(csql_yylval.cptr) >= 254)
+					if (strlen(csql_yylval.cptr) >= 287)
 					  {
-					    csql_yylval.cptr[254] = 0;
+					    csql_yylval.cptr[287] = 0;
 					  }
 					return BracketDelimitedIdName;
 				}
 
 <BACKTICK_ID_NAME>"`"		{
 					BEGIN(INITIAL);
-					if (strlen(csql_yylval.cptr) >= 254)
+					if (strlen(csql_yylval.cptr) >= 287)
 					  {
-					    csql_yylval.cptr[254] = 0;
+					    csql_yylval.cptr[287] = 0;
 					  }
 					return BacktickDelimitedIdName;
 				}
