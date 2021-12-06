@@ -2514,8 +2514,10 @@ ws_clear_internal (bool clear_vmop_keys)
 
 	  mop->lock = NULL_LOCK;
 	  mop->deleted = 0;
+	  mop->commit_link = NULL;
 	}
     }
+
   ws_Commit_mops = NULL;
   ws_filter_dirty ();
 }

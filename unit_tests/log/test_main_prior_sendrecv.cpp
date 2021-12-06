@@ -69,6 +69,8 @@ class test_env
 
     std::vector<log_prior_lsa_info *> m_dest_prior_infos; // destination prior info, one for each receiver
     std::vector<cublog::prior_recver *> m_recvers;	  // log receivers
+
+    std::vector<cublog::prior_sender::sink_hook_t> m_prior_sender_sinks;
 };
 
 void
@@ -99,7 +101,7 @@ TEST_CASE ("Test prior list transfers with a single receiver", "")
 
 TEST_CASE ("Test prior list transfers with two receivers", "")
 {
-  test_env env (2);
+  test_env env (3);
   do_test (env);
 }
 
@@ -119,8 +121,14 @@ test_env::test_env (size_t receivers_count)
       m_recvers.push_back (new cublog::prior_recver (*m_dest_prior_infos.back ()));
 
       // add new sink for prior receiver
-      m_sender.add_sink (std::bind (&cublog::prior_recver::push_message, std::ref (*m_recvers.back ()),
-				    std::placeholders::_1));
+      m_prior_sender_sinks.emplace_back (
+	      std::bind (&cublog::prior_recver::push_message, std::ref (*m_recvers.back ()), std::placeholders::_1));
+    }
+
+  for (const auto &sink : m_prior_sender_sinks)
+    {
+      // hooks sinks on the sender
+      m_sender.add_sink (sink);
     }
 }
 
@@ -129,6 +137,7 @@ test_env::~test_env ()
   free_list (m_source_nodes_head);
   free_list (m_source_prior_info.prior_list_header);
 
+  m_prior_sender_sinks.clear ();
   for (size_t i = 0; i < m_recvers.size (); ++i)
     {
       delete m_recvers[i];
