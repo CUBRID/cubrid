@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Interruption de la transaction %1$d.
 983 Instances d'une classe OID réutilisable ne sont pas attribuables. Cette opération est interdite sur les non-attribuables instances.
 984 Impossible de configurer %3$s à "%6$s" dans la section "[%5$s]" quand il est configuré sur "%4$s" dans la section "[%2$s]" du fichier de configuration "%1$s".
-985 Le nom d'hôte sur la chaîne de connexion de base de données doit être spécifié lors de multihôte est configuré dans "databases.txt".
+985 Le nom d'hôte sur la chaîne de connexion de base de données doit être spécifié lors de multihôte est configuré dans "databases.txt". ex) csql demodb@localhost
 986 Fonction heartbeat du CUBRID commencée.
 987 Fonction heartbeat du CUBRID arrêtée.
 988 Événement de noeud: %1$s.

@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Comandă de întrerupere trimisă către tranzacţia %1$d.
 983 Instanţele unei clase OID reutilizabile nu pot fi referenţiate. Această operaţie nu este permisă pentru instanţe nereferenţiabile.
 984 Nu se poate seta %3$s la "%6$s" în secţiunea "[%5$s]" când este setat la "%4$s" în secţiunea "[%2$s]" a fişierului de configurare "%1$s".
-985 Numele de gazdă din stringul de conexiune la baza de date trebuie specificat atunci când opţiunea de gazde multiple este setată în "databases.txt".
+985 Numele de gazdă din stringul de conexiune la baza de date trebuie specificat atunci când opţiunea de gazde multiple este setată în "databases.txt". ex) csql demodb@localhost
 986 Modulul CUBRID Heartbeat a pornit.
 987 Modulul CUBRID Heartbeat a fost oprit.
 988 Eveniment la nod: %1$s.

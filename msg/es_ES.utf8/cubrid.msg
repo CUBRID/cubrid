@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Interrupcion de conjunto a la transaccion %1$d.
 983 Instancias de una clase OID reutilizable son non-referibles. Esta operacion no esta permitida para instancias non-referibles.
 984 No se puede ajustar %3$s en "%6$s" en la seccion "[%5$s]" cuando esta ajustado a "%4$s" en la seccion "[%2$s]" del archivo de configuracion "%1$s".
-985 El nombre de host en el string de conexion de la base de datos tendria que ser especificado cuando multihost esta ajustado en "databases.txt".
+985 El nombre de host en el string de conexion de la base de datos tendria que ser especificado cuando multihost esta ajustado en "databases.txt". ex) csql demodb@localhost
 986 Caracteristica heartbeat de CUBRID inicializada.
 987 Caracteristica heartbeat de CUBRID terminada.
 988 Evento de nodo: %1$s. 

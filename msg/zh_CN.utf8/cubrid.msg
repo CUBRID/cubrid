@@ -1052,7 +1052,7 @@ $ LOADDB
 982 为事务 %1$d 设置中断.
 983 可重用 OID 类的实例是 non-referable 的. 这项操作在 non-referable 的实例上不被允许.
 984 无法设置 %3$s 为 "%6$s" 在 "[%5$s]" 部分, 当它被设置为 "%4$s" 在 "[%2$s]" section of the configuration file "%1$s".
-985 数据库连接字符串中的主机名应当被指明，当在 "databases.txt" 设定有多个主机时.
+985 数据库连接字符串中的主机名应当被指明，当在 "databases.txt" 设定有多个主机时. ex) csql demodb@localhost
 986 CUBRID heartbeat 函数启动.
 987 CUBRID heartbeat 函数停止.
 988 结点事件: %1$s.

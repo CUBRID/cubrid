@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Set-Interrupt auf Transaktion %1$d.
 983 Instanzen der wiederverwendbaren OID-Klasse sind nicht beziehbar. Diese Operation ist auf nicht beziehbaren Instanzen nicht erlaubt.
 984 %3$s kann nicht auf "%6$s" in "[%5$s]" Sektion gesetzt, wenn es auf "%4$s" in "[%2$s]" Sektion der Konfigurationsdatei "%1$s" gesetzt ist.
-985 Der Hostname muss in dem Datenbank-Verbindungsstring angegeben werden, wenn Multihost in „databases.txt“ eingestellt ist.
+985 Der Hostname muss in dem Datenbank-Verbindungsstring angegeben werden, wenn Multihost in „databases.txt“ eingestellt ist. ex) csql demodb@localhost
 986 CUBRID Heartbeat-Funktion gestartet. 
 987 CUBRID Heartbeat-Funktion ist beendet.
 988 Knotenereignis: %1$s.
