@@ -1354,6 +1354,18 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 Die Tabelle kann aufgrund des Primärschlüssels, auf den in %1$s verwiesen wird, nicht abgeschnitten werden. Versuchen Sie es erneut mit der Option CASCADE.
 1285 Abschneiden in Kaskade nicht möglich, da die Aktion ON DELETE des Fremdschlüssels (%1$s) nicht auf CASCADE gesetzt ist.
+
+1286 Das Protokoll lsa kann zum Zeitpunkt des Extrahierens nicht gefunden werden. (Eingabezeit: %1$s).
+1287 Zeitüberschreitung beim Versuch, Protokollinformationen zu extrahieren. (verstrichene Zeit: %1$d Sek., Extraktionszeitlimit: %2$d Sek.)
+1288 Überspringe die interne Erzeugung von Protokollinformationen für nicht unterstützte Protokolldatensätze.
+1289 Überspringe die Erstellung von Protokollinformationen für eine ungültige Transaktion. (trid : %1$d)
+1290 Ungültige Log-lsa (%1$lld|%2$d) zum Extrahieren von Log-Informationen.
+1291 Es kann keine Verbindung zum Server zum Extrahieren von Protokollinformationen hergestellt werden. Versuchen Sie es erneut mit der Einstellung des Parameters 'supplemental_log'.
+1292 Das Protokoll lsa kann derzeit nicht gefunden werden (%1$s). Log lsa wird an die Zeit (%2$s) angepasst.
+1293 Log-Seite kann nicht abgerufen werden, während Log-Infos erstellt werden. Log lsa zum Generieren von Log-Informationen zeigt NULL an.
+1294 Protokollinformationen wurden generiert. (Typ: "%1$s").
+1295 Überspringe die Erzeugung von Protokollinformationen für eine ungültige Tabelle. (class OID : %1$d|%2$d|%3$d)
+
 1296 Log-Rückgewinnung: Die ANALYSIS-Phase ist gestartet.
 1297 Log-Rückgewinnung: REDO Phase ist gestartet. Log Seiten zu wiederholen: %1$lld, Log-Aufzeichnungen zu wiederholen: %2$lld.
 1298 Log-Rückgewinnung: UNDO Phase ist gestartet. Log Seiten, die rückgängig gemacht werden sollen: %1$lld, Transaktionen, die rückgängig gemacht werden: %2$d.

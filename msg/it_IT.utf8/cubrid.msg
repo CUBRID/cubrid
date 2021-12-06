@@ -1354,6 +1354,18 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1283 Error reserved for scalability development.
 1284 Impossibile troncare la tabella a causa della chiave primaria a cui si fa riferimento su %1$s. Riprova con l'opzione CASCADE.
 1285 Impossibile eseguire il troncamento a catena perché l'azione ON DELETE della chiave esterna (%1$s) non è impostata su CASCADE.
+
+1286 Impossibile trovare il log lsa al momento dell'estrazione. (tempo di immissione: %1$s).
+1287 Timeout durante il tentativo di estrarre le informazioni di registro. (tempo trascorso: %1$d sec, timeout di estrazione: %2$d sec)
+1288 Salta la produzione interna delle informazioni di registro per il record di registro non supportato.
+1289 Salta la produzione delle informazioni di registro per la transazione non valida. (trid: %1$d)
+1290 Lsa di registro non valido (%1$lld|%2$d) per estrarre le informazioni di registro.
+1291 Impossibile connettersi al server per estrarre le informazioni di registro. Riprova impostando il parametro 'supplemental_log'.
+1292 Impossibile trovare il log lsa al momento (%1$s). Log lsa è regolato in base all'ora (%2$s).
+1293 Impossibile ottenere la pagina di registro durante la produzione delle informazioni di registro. Log lsa per generare informazioni di log indica NULL.
+1294 Le informazioni di registro sono state generate. (digita: "%1$s").
+1295 Salta la produzione delle informazioni di registro per la tabella non valida. (classe oid: %1$d|%2$d|%3$d)
+
 1296 Ricupero della scheda: è iniziata la fase ANALYSIS.
 1297 Ricostituzione della scheda: è iniziata la fase REDO. Pagine di log per ripetere: %1$lld, registrazioni di log per ripetere: %2$lld.
 1298 Ricupero della Log: è iniziata la fase UNDO. Pagine di log da annullare: %1$lld, transazioni da annullare: %2$d.
