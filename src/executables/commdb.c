@@ -488,7 +488,7 @@ process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name)
 static int
 search_server_pid (const char *server_info, const char *search_pattern)
 {
-  char *p = NULL;
+  const char *p = NULL;
   int pid = 0;
 
   p = strstr (server_info, search_pattern);
