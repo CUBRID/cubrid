@@ -1044,7 +1044,7 @@ log_rv_analysis_complete (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
       if (tran_index != NULL_TRAN_INDEX)
 	{
 	  // quick fix: reset mvccid.
-	  LOG_FIND_CURRENT_TDES (thread_p)->mvccinfo.id = MVCCID_NULL;
+	  LOG_FIND_TDES (tran_index)->mvccinfo.id = MVCCID_NULL;
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
       return NO_ERROR;
@@ -1091,7 +1091,7 @@ log_rv_analysis_complete (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
       if (tran_index != NULL_TRAN_INDEX)
 	{
 	  // quick fix: reset mvccid.
-	  LOG_FIND_CURRENT_TDES (thread_p)->mvccinfo.id = MVCCID_NULL;
+	  LOG_FIND_TDES (tran_index)->mvccinfo.id = MVCCID_NULL;
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
       return NO_ERROR;
