@@ -36,10 +36,12 @@ struct log_rv_redo_context
   LOG_ZIP m_redo_zip;
   LOG_ZIP m_undo_zip;
   const LOG_LSA m_end_redo_lsa = NULL_LSA;
+  const PAGE_FETCH_MODE m_page_fetch_mode = RECOVERY_PAGE;
   const log_reader::fetch_mode m_reader_fetch_page_mode = log_reader::fetch_mode::FORCE;
 
   log_rv_redo_context () = delete;
-  log_rv_redo_context (const log_lsa &end_redo_lsa, log_reader::fetch_mode fetch_mode);
+  log_rv_redo_context (const log_lsa &end_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
+		       log_reader::fetch_mode reader_fetch_page_mode);
   ~log_rv_redo_context ();
 
   log_rv_redo_context (const log_rv_redo_context &);

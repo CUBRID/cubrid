@@ -46,16 +46,18 @@ vpid_lsa_consistency_check::cleanup ()
 vpid_lsa_consistency_check log_Gl_recovery_redo_consistency_check;
 #endif
 
-log_rv_redo_context::log_rv_redo_context (const log_lsa &end_redo_lsa, log_reader::fetch_mode fetch_mode)
+log_rv_redo_context::log_rv_redo_context (const log_lsa &end_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
+    log_reader::fetch_mode reader_fetch_page_mode)
   : m_end_redo_lsa { end_redo_lsa }
-  , m_reader_fetch_page_mode { fetch_mode }
+  , m_page_fetch_mode { page_fetch_mode }
+  , m_reader_fetch_page_mode { reader_fetch_page_mode }
 {
   log_zip_realloc_if_needed (m_undo_zip, LOGAREA_SIZE);
   log_zip_realloc_if_needed (m_redo_zip, LOGAREA_SIZE);
 }
 
-log_rv_redo_context::log_rv_redo_context (const log_rv_redo_context &o)
-  : log_rv_redo_context (o.m_end_redo_lsa, o.m_reader_fetch_page_mode)
+log_rv_redo_context::log_rv_redo_context (const log_rv_redo_context &that)
+  : log_rv_redo_context { that.m_end_redo_lsa, that.m_page_fetch_mode, that.m_reader_fetch_page_mode }
 {
 }
 

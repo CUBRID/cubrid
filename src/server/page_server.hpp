@@ -20,25 +20,12 @@
 #define _PAGE_SERVER_HPP_
 
 #include "async_page_fetcher.hpp"
+#include "log_replication.hpp"
 #include "log_storage.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
 
 #include <memory>
-
-// forward declaration
-namespace cublog
-{
-  class replicator;
-}
-namespace cubpacking
-{
-  class unpacker;
-}
-namespace cubthread
-{
-  class entry;
-}
 
 class page_server
 {

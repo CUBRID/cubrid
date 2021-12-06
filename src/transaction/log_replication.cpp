@@ -97,8 +97,9 @@ namespace cublog
    * replicator - definition
    *********************************************************************/
 
-  replicator::replicator (const log_lsa &start_redo_lsa, int parallel_count)
+  replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
     : m_redo_lsa { start_redo_lsa }
+    , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }
   {
@@ -173,12 +174,12 @@ namespace cublog
 
     m_perfmon_redo_sync.start ();
     // make sure the log page is refreshed. otherwise it may be outdated and new records may be missed
-    m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa, log_reader::fetch_mode::FORCE);
+    (void) m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa, log_reader::fetch_mode::FORCE);
 
     while (m_redo_lsa < end_redo_lsa)
       {
 	// read and redo a record
-	m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa);
+	(void) m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa);
 
 	const log_rec_header header = m_redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
 

@@ -22,7 +22,7 @@
 
 PSTAT_GLOBAL pstat_Global;
 
-cublog::replicator replicator_Gl_test (NULL_LSA, -1);
+cublog::replicator replicator_Gl_test (NULL_LSA, RECOVERY_PAGE, -1);
 page_server ps_Gl;
 
 namespace cublog
@@ -30,8 +30,9 @@ namespace cublog
   class reusable_jobs_stack {};
   class redo_parallel {};
 
-  replicator::replicator (const log_lsa &start_redo_lsa, int parallel_count)
-    : m_perfmon_redo_sync{ PSTAT_REDO_REPL_LOG_REDO_SYNC }
+  replicator::replicator (const log_lsa &, PAGE_FETCH_MODE page_fetch_mode, int)
+    : m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
+    , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }
   {
   }
@@ -86,7 +87,7 @@ page_server::get_replicator ()
   return replicator_Gl_test;
 }
 
-log_rv_redo_context::log_rv_redo_context (const log_lsa &end_redo_lsa, log_reader::fetch_mode fetch_mode)
+log_rv_redo_context::log_rv_redo_context (const log_lsa &, PAGE_FETCH_MODE, log_reader::fetch_mode)
 {
 }
 
