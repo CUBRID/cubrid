@@ -6308,7 +6308,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_REMOTE_STORAGE,
    PRM_NAME_REMOTE_STORAGE,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
+   (PRM_FOR_SERVER),
    PRM_BOOLEAN,
    &prm_remote_storage_flag,
    (void *) &prm_remote_storage_default,
