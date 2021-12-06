@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Set interrupt to the transaction %1$d.
 983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
 984 Cannot set %3$s to "%6$s" in the "[%5$s]" section when it is set to "%4$s" in the "[%2$s]" section of the configuration file "%1$s".
-985 The hostname on the database connection string should be specified when multihost is set in "databases.txt".
+985 The hostname on the database connection string should be specified when multihost is set in "databases.txt". ex) csql demodb@localhost
 986 CUBRID heartbeat feature started. 
 987 CUBRID heartbeat feature stopped.
 988 Node event: %1$s.

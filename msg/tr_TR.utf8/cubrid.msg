@@ -1052,7 +1052,7 @@ $ LOADDB
 982 İşlem %1$d ile kesme ayarlayın.
 983 Yeniden kullanılabilir bir OID sınıfının örnekleri olmayan başvurulabilir . Bu işleme olmayan başvurulabilir örnekler üzerinde izin verilmez.
 984 Bu yapılandırma dosyası "%1$s" "[%2$s]" bölümünde "%4$s" ayarlanır "[%5$s]" bölümde "%6$s"'ye %3$s ayarlayamazsınız.
-985 Multi ana bilgisayar "databases.txt" olarak ayarlandığında veritabanı bağlantısının dizesinde ana bilgisayar adı belirtilmelidir.
+985 Multi ana bilgisayar "databases.txt" olarak ayarlandığında veritabanı bağlantısının dizesinde ana bilgisayar adı belirtilmelidir. ex) csql demodb@localhost
 986 CUBRID sinyal özelliği başladı.
 987 CUBRID sinyal özelliği durdu.
 988 Düğüm olayı: %1$s.
