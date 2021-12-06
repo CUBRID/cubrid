@@ -485,6 +485,26 @@ process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name)
     }
 }
 
+static int
+search_server_pid (const char *server_info, const char *search_pattern)
+{
+  const char *p = NULL;
+  int pid = 0;
+
+  p = strstr (server_info, search_pattern);
+  if (p)
+    {
+      p = strstr (p + strlen (search_pattern), "pid");
+      if (p)
+	{
+	  p += 4;
+	}
+    }
+  if (p)
+    pid = atoi (p);
+
+  return pid;
+}
 
 /*
  * process_server_info_pid() - find process id from server status
@@ -515,29 +535,31 @@ process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_t
 	    {
 	    case SERVER_TYPE_PAGE:
 	      sprintf (search_pattern, "Page-Server %s (", server);
+	      pid = search_server_pid (server_info, search_pattern);
 	      break;
 
 	    case SERVER_TYPE_TRANSACTION:
+	      // Transaction servers are printed in two ways:
+	      //    - as "Transaction-Server" if HA is disabled
+	      //    - as "HA-Server" if HA is enabled
+	      // Search by both patterns.
 	      sprintf (search_pattern, "Transaction-Server %s (", server);
+	      pid = search_server_pid (server_info, search_pattern);
+
+	      if (pid == 0)
+		{
+		  sprintf (search_pattern, "HA-Server %s (", server);
+		  pid = search_server_pid (server_info, search_pattern);
+		}
 	      break;
 
 	    default:
 	      sprintf (search_pattern, "Server %s (", server);
+	      pid = search_server_pid (server_info, search_pattern);
 	      break;
 	    }
 	  break;
 	}
-      p = strstr (server_info, search_pattern);
-      if (p)
-	{
-	  p = strstr (p + strlen (search_pattern), "pid");
-	  if (p)
-	    {
-	      p += 4;
-	    }
-	}
-      if (p)
-	pid = atoi (p);
 
       free_and_init (server_info);
     }
