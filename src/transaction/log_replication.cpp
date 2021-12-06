@@ -78,18 +78,29 @@ namespace cublog
 
   // replicate_btree_stats does redo record simulation
   static void replicate_btree_stats (cubthread::entry &thread_entry, const VPID &root_vpid,
-				     const log_unique_stats &stats, const log_lsa &record_lsa);
+				     const log_unique_stats &stats, const log_lsa &record_lsa,
+				     PAGE_FETCH_MODE page_fetch_mode);
 
   // a job for replication b-tree stats update
   class redo_job_btree_stats : public redo_parallel::redo_job_base
   {
     public:
-      redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, const log_unique_stats &stats);
+      redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, PAGE_FETCH_MODE page_fetch_mode,
+			    const log_unique_stats &stats);
+
+      redo_job_btree_stats (redo_job_btree_stats const &) = delete;
+      redo_job_btree_stats (redo_job_btree_stats &&) = delete;
+
+      ~redo_job_btree_stats () override = default;
+
+      redo_job_btree_stats &operator = (redo_job_btree_stats const &) = delete;
+      redo_job_btree_stats &operator = (redo_job_btree_stats &&) = delete;
 
       int execute (THREAD_ENTRY *thread_p, log_rv_redo_context &) override;
       void retire (std::size_t a_task_idx) override;
 
     private:
+      const PAGE_FETCH_MODE m_page_fetch_mode;
       log_unique_stats m_stats;
   };
 
@@ -279,13 +290,15 @@ namespace cublog
     // Create a job or apply the change immediately
     if (m_parallel_replication_redo != nullptr)
       {
-	redo_job_btree_stats *job = new redo_job_btree_stats (root_vpid, record_info.m_start_lsa, stats);
+	redo_job_btree_stats *job = new redo_job_btree_stats (root_vpid, record_info.m_start_lsa,
+	    m_redo_context.m_page_fetch_mode, stats);
 	// ownership of raw pointer remains with the job instance which will delete itself upon retire
 	m_parallel_replication_redo->add (job);
       }
     else
       {
-	replicate_btree_stats (thread_entry, root_vpid, stats, record_info.m_start_lsa);
+	replicate_btree_stats (thread_entry, root_vpid, stats, record_info.m_start_lsa,
+			       m_redo_context.m_page_fetch_mode);
       }
   }
 
@@ -446,9 +459,9 @@ namespace cublog
 
   void
   replicate_btree_stats (cubthread::entry &thread_entry, const VPID &root_vpid, const log_unique_stats &stats,
-			 const log_lsa &record_lsa)
+			 const log_lsa &record_lsa, PAGE_FETCH_MODE page_fetch_mode)
   {
-    PAGE_PTR root_page = log_rv_redo_fix_page (&thread_entry, &root_vpid);
+    PAGE_PTR root_page = log_rv_redo_fix_page (&thread_entry, &root_vpid, page_fetch_mode);
     if (root_page == nullptr)
       {
 	logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "cublog::replicate_btree_stats");
@@ -460,8 +473,10 @@ namespace cublog
     pgbuf_set_dirty_and_free (&thread_entry, root_page);
   }
 
-  redo_job_btree_stats::redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, const log_unique_stats &stats)
+  redo_job_btree_stats::redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa,
+      PAGE_FETCH_MODE page_fetch_mode, const log_unique_stats &stats)
     : redo_parallel::redo_job_base (vpid, record_lsa)
+    , m_page_fetch_mode { page_fetch_mode }
     , m_stats (stats)
   {
   }
@@ -469,7 +484,7 @@ namespace cublog
   int
   redo_job_btree_stats::execute (THREAD_ENTRY *thread_p, log_rv_redo_context &)
   {
-    replicate_btree_stats (*thread_p, get_vpid (), m_stats, get_log_lsa ());
+    replicate_btree_stats (*thread_p, get_vpid (), m_stats, get_log_lsa (), m_page_fetch_mode);
     return NO_ERROR;
   }
 

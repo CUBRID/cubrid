@@ -602,7 +602,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
 
   LOG_RCV rcv;
   if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, log_data.rcvindex, record_info.m_start_lsa,
-      redo_context.m_end_redo_lsa))
+      redo_context.m_end_redo_lsa, redo_context.m_page_fetch_mode))
     {
       /* nothing else needs to be done, see explanation in function */
       assert (rcv.pgptr == nullptr);
