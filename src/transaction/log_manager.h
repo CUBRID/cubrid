@@ -38,6 +38,7 @@
 #include "log_comm.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
+#include "log_prior_send.hpp"
 #include "recovery.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
@@ -238,8 +239,8 @@ extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
 extern void log_write_metalog_to_file (bool file_open_is_fatal);
 
 // *INDENT-OFF*
-extern std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa,
-					   log_lsa &prev_lsa);
+extern std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa, log_lsa &prev_lsa,
+					   const cublog::prior_sender::sink_hook_t  & log_prior_sender_sink);
 // *INDENT-ON*
 
 #if defined (SERVER_MODE)

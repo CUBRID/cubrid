@@ -70,13 +70,18 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, page
     },
     // passive only
     {
-      tran_to_page_request::SEND_LOG_INIT_BOOT_FETCH,
+      tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH,
       std::bind (&page_server::connection_handler::receive_log_boot_info_fetch, std::ref (*this), std::placeholders::_1)
     },
   }));
 
   assert (m_conn != nullptr);
   m_conn->start ();
+}
+
+page_server::connection_handler::~connection_handler ()
+{
+  assert (!m_prior_sender_sink_hook_func);
 }
 
 std::string
@@ -137,14 +142,21 @@ page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t
 {
   // empty request message
 
-  auto callback_func = std::bind (&page_server::connection_handler::on_log_boot_info_result,
-				  this, std::placeholders::_1);
-  m_ps.get_page_fetcher ().fetch_log_boot_info (std::move (callback_func));
+  auto callback_func =
+	  std::bind (&connection_handler::on_log_boot_info_result, this, std::placeholders::_1);
+
+  // the underlying infrastructure will add this functor as a sink for log prior info packing and
+  // sending that log prior info down the line to the connected passive transaction server
+  m_prior_sender_sink_hook_func =
+	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
+
+  m_ps.get_page_fetcher ().fetch_log_boot_info (m_prior_sender_sink_hook_func, std::move (callback_func));
 }
 
 void
 page_server::connection_handler::on_log_boot_info_result (std::string &&message)
 {
+  assert (m_conn != nullptr);
   assert (message.size () > 0);
 
   m_conn->push (page_to_tran_request::SEND_LOG_BOOT_INFO, std::move (message));
@@ -153,7 +165,13 @@ page_server::connection_handler::on_log_boot_info_result (std::string &&message)
 void
 page_server::connection_handler::receive_disconnect_request (tran_server_conn_t::internal_payload &)
 {
-  //start a thread to destroy the ATS to PS connection object
+  if (m_prior_sender_sink_hook_func)
+    {
+      log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+      m_prior_sender_sink_hook_func = nullptr;
+    }
+
+  //start a thread to destroy the ATS/PTS to PS connection object
   std::thread disconnect_thread (&page_server::disconnect_tran_server, std::ref (m_ps), this);
   disconnect_thread.detach ();
 }
@@ -230,6 +248,15 @@ page_server::connection_handler::on_data_page_read_result (const FILEIO_PAGE *io
     }
 
   m_conn->push (page_to_tran_request::SEND_DATA_PAGE, std::move (message));
+}
+
+void
+page_server::connection_handler::prior_sender_sink_hook (std::string &&message) const
+{
+  assert (m_conn != nullptr);
+  assert (message.size () > 0);
+
+  m_conn->push (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST, std::move (message));
 }
 
 void
@@ -326,14 +353,6 @@ page_server::is_active_tran_server_connected () const
   assert (is_page_server ());
 
   return m_active_tran_server_conn != nullptr;
-}
-
-bool
-page_server::is_passive_tran_server_connected () const
-{
-  assert (is_page_server ());
-
-  return !m_passive_tran_server_conn.empty ();
 }
 
 cublog::async_page_fetcher &

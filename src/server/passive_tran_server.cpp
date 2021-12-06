@@ -43,15 +43,18 @@ passive_tran_server::on_boot ()
 tran_server::request_handlers_map_t
 passive_tran_server::get_request_handlers ()
 {
-  request_handlers_map_t::value_type log_boot_info_handler_value =
-	  std::make_pair (page_to_tran_request::SEND_LOG_BOOT_INFO,
-			  std::bind (&passive_tran_server::receive_log_boot_info,
-				     std::ref (*this), std::placeholders::_1));
-
   std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map =
 	  tran_server::get_request_handlers ();
 
-  handlers_map.insert (log_boot_info_handler_value);
+  auto log_boot_info_handler = std::bind (&passive_tran_server::receive_log_boot_info,
+					  std::ref (*this), std::placeholders::_1);
+  handlers_map.insert (std::make_pair (page_to_tran_request::SEND_LOG_BOOT_INFO,
+				       log_boot_info_handler));
+
+  auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::receive_log_prior_list,
+					std::ref (*this), std::placeholders::_1);
+  handlers_map.insert (std::make_pair (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST,
+				       from_ps_log_prior_list_handler));
 
   return handlers_map;
 }
@@ -69,12 +72,19 @@ passive_tran_server::receive_log_boot_info (page_server_conn_t::internal_payload
   m_log_boot_info_condvar.notify_one ();
 }
 
+void
+passive_tran_server::receive_log_prior_list (page_server_conn_t::internal_payload &a_ip)
+{
+  std::string message = a_ip.pull_payload ();
+  log_Gl.get_log_prior_receiver ().push_message (std::move (message));
+}
+
 void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p)
 {
   assert (m_log_boot_info.empty ());
 
   // empty message request
-  push_request (tran_to_page_request::SEND_LOG_INIT_BOOT_FETCH, std::string ());
+  push_request (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string ());
 
   {
     std::unique_lock<std::mutex> ulock { m_log_boot_info_mtx };

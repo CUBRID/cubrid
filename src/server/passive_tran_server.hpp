@@ -38,6 +38,7 @@ class passive_tran_server : public tran_server
     request_handlers_map_t get_request_handlers () final override;
 
     void receive_log_boot_info (page_server_conn_t::internal_payload &a_ip);
+    void receive_log_prior_list (page_server_conn_t::internal_payload &a_ip);
 
   private:
     std::mutex m_log_boot_info_mtx;

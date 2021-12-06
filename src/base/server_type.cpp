@@ -33,8 +33,8 @@ std::unique_ptr<tran_server> ts_Gl;
 // non-owning "shadow" pointer of globally visible ts_Gl
 passive_tran_server *pts_Gl = nullptr;
 
-SERVER_TYPE get_value_from_config (server_type_config parameter_value);
-transaction_server_type get_value_from_config (transaction_server_type_config parameter_value);
+SERVER_TYPE get_server_type_from_config (server_type_config parameter_value);
+transaction_server_type get_transaction_server_type_from_config (transaction_server_type_config parameter_value);
 void setup_tran_server_params_on_single_node_config ();
 
 static SERVER_TYPE g_server_type = SERVER_TYPE_UNKNOWN;
@@ -53,7 +53,7 @@ transaction_server_type get_transaction_server_type ()
   return g_transaction_server_type;
 }
 
-SERVER_TYPE get_value_from_config (server_type_config parameter_value)
+SERVER_TYPE get_server_type_from_config (server_type_config parameter_value)
 {
   switch (parameter_value)
     {
@@ -68,7 +68,7 @@ SERVER_TYPE get_value_from_config (server_type_config parameter_value)
     }
 }
 
-transaction_server_type get_value_from_config (transaction_server_type_config parameter_value)
+transaction_server_type get_transaction_server_type_from_config (transaction_server_type_config parameter_value)
 {
   switch (parameter_value)
     {
@@ -105,12 +105,14 @@ void set_server_type (SERVER_TYPE type)
 int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
-  server_type_config parameter_value = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
-  g_transaction_server_type = get_value_from_config ((transaction_server_type_config) prm_get_integer_value (
-				      PRM_ID_TRANSACTION_SERVER_TYPE));
+  const auto server_type_from_config = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+  const auto transaction_server_type_from_config =
+	  (transaction_server_type_config) prm_get_integer_value ( PRM_ID_TRANSACTION_SERVER_TYPE);
+  g_transaction_server_type = get_transaction_server_type_from_config (transaction_server_type_from_config);
+
   if (g_server_type == SERVER_TYPE_UNKNOWN)
     {
-      if (parameter_value == server_type_config::SINGLE_NODE)
+      if (server_type_from_config == server_type_config::SINGLE_NODE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1,
 		  "Single node server must have type specified as argument");
@@ -118,10 +120,10 @@ int init_server_type (const char *db_name)
 	}
 
       //if no parameter value is provided use transaction as the default type
-      g_server_type = get_value_from_config (parameter_value);
+      g_server_type = get_server_type_from_config (server_type_from_config);
     }
 
-  if (g_server_type == SERVER_TYPE_TRANSACTION && parameter_value == server_type_config::SINGLE_NODE)
+  if (g_server_type == SERVER_TYPE_TRANSACTION && server_type_from_config == server_type_config::SINGLE_NODE)
     {
       setup_tran_server_params_on_single_node_config ();
     }
@@ -139,21 +141,27 @@ int init_server_type (const char *db_name)
       else if (is_passive_transaction_server ())
 	{
 	  assert (pts_Gl == nullptr);
+
+	  // passive tran server also needs (a) prior receiver(s) to receive log from page server(s)
+	  log_Gl.initialize_log_prior_receiver ();
+
 	  pts_Gl = new passive_tran_server ();
 	  ts_Gl.reset (pts_Gl);
 	}
       else
 	{
-	  assert (false);
+	  assert ("neither active nor passive transaction server type" == nullptr);
 	}
       er_code = ts_Gl->boot (db_name);
     }
-  else
+  else if (g_server_type == SERVER_TYPE_PAGE)
     {
-      assert (g_server_type == SERVER_TYPE_PAGE);
-
       // page server needs a log prior receiver
       log_Gl.initialize_log_prior_receiver ();
+    }
+  else
+    {
+      assert ("neither transaction nor page server type" == nullptr);
     }
 
   if (er_code == NO_ERROR)

@@ -431,6 +431,7 @@ main (int argc, char *argv[])
   if (csql_arg.page_server && csql_arg.sysadm == false)
     {
       /* only sysadm can connect to page server */
+      fprintf (stderr, "CSQL does not allow direct connections to a page server.\n\n");
       goto print_usage;
     }
 
