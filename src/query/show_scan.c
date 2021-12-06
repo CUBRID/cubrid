@@ -516,6 +516,12 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   int msecs;
   DB_DATETIME time_val;
 
+  if (thrd->m_status == cubthread::entry::status::TS_DEAD)
+    {
+      // thread entry does not belong to a running thread; should not be shown in SHOW THREADS statement
+      return;
+    }
+
   vals = showstmt_alloc_tuple_in_context (caller_thread_p, ctx);
   if (vals == NULL)
     {

@@ -20356,6 +20356,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
       delete_->no_logging = (statement->info.delete_.hint & PT_HINT_NO_LOGGING);
+      delete_->no_supplemental_log = (statement->info.delete_.hint & PT_HINT_NO_SUPPLEMENTAL_LOG);
     }
 
   if (pt_has_error (parser) || error < 0)
@@ -21032,6 +21033,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	}
     }
   update->no_logging = (statement->info.update.hint & PT_HINT_NO_LOGGING);
+  update->no_supplemental_log = (statement->info.update.hint & PT_HINT_NO_SUPPLEMENTAL_LOG);
 
   /* iterate through classes and check constants */
   for (p = from, cls_idx = num_classes; p; p = p->next)
@@ -23105,7 +23107,7 @@ pt_find_oid_scan_block (XASL_NODE * xasl, OID * oid)
     {
       /* only check required condition: OID match. Other, more sophisticated conditions should be checked from the
        * caller */
-      if (xasl->spec_list && xasl->spec_list->indexptr && oid_compare (&xasl->spec_list->indexptr->class_oid, oid) == 0)
+      if (xasl->spec_list && xasl->spec_list->indexptr && OID_EQ (&xasl->spec_list->indexptr->class_oid, oid))
 	{
 	  return xasl;
 	}

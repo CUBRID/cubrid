@@ -655,6 +655,7 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
 	  if (temp->node_type == PT_NAME)
 	    {
 	      PT_NAME_INFO_SET_FLAG (temp, PT_NAME_INFO_CONSTANT);
+	      temp->info.name.constant_value = lambda_arg->tree;
 	    }
 
 	  return tree_or_name;
@@ -8515,6 +8516,11 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, " USE_SBR ");
 	}
 
+      if (p->info.delete_.hint & PT_HINT_NO_SUPPLEMENTAL_LOG)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_SUPPLEMENTAL_LOG ");
+	}
+
       q = pt_append_nulstring (parser, q, " */");
     }
   if (r1)
@@ -13834,6 +13840,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "NO_HASH_LIST_SCAN ");
 	    }
 
+	  if (p->info.query.q.select.hint & PT_HINT_NO_PUSH_PRED)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_PUSH_PRED ");
+	    }
+
 	  if (p->info.query.q.select.hint & PT_HINT_NO_INDEX_LS)
 	    {
 	      q = pt_append_nulstring (parser, q, "NO_INDEX_LS ");
@@ -14993,6 +15004,11 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.update.hint & PT_HINT_USE_SBR)
 	{
 	  b = pt_append_nulstring (parser, b, " USE_SBR ");
+	}
+
+      if (p->info.update.hint & PT_HINT_NO_SUPPLEMENTAL_LOG)
+	{
+	  b = pt_append_nulstring (parser, b, " NO_SUPPLEMENTAL_LOG ");
 	}
 
       b = pt_append_nulstring (parser, b, " */ ");

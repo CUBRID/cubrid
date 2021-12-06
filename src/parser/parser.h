@@ -437,6 +437,7 @@ extern "C"
   extern PT_NODE *pt_is_analytic_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_inst_or_orderby_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						  int *continue_walk);
+  extern PT_NODE *pt_is_inst_or_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_inst_or_orderby_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						       int *continue_walk);
   extern PT_NODE *pt_is_pseudocolumn_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -524,7 +525,11 @@ extern "C"
   extern bool pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node);
-  extern bool pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
+  extern bool pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_define_vars (PARSER_CONTEXT * parser, PT_NODE * stmt);
+  extern PT_NODE *pt_is_define_vars (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern void pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node);
   extern void pt_set_expected_domain (PT_NODE * node, TP_DOMAIN * domain);

@@ -1163,10 +1163,8 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
     }
 
   query_p->includes_tde_class = XASL_IS_FLAGED (xasl_p, XASL_INCLUDES_TDE_CLASS);
-#if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE, "TDE: qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
-#endif /* !NDEBUG */
 
+  tde_er_log ("qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
 
   if (flag & RETURN_GENERATED_KEYS)
     {
@@ -1176,6 +1174,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
   /* execute the query with the value list, if any */
   query_p->list_id = qexec_execute_query (thread_p, xasl_p, dbval_count, dbvals_p, query_p->query_id);
   thread_p->no_logging = false;
+  thread_p->no_supplemental_log = false;
 
   /* Note: qexec_execute_query() returns listid (NOT NULL) even if an error was occurred. We should check the error
    * condition and free listid. */
@@ -2307,7 +2306,7 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
       oid_block_p = tmp_oid_block_p;
       for (i = 0, tmp_oid_p = oid_block_p->oid_array; i < oid_block_p->last_oid_idx; i++, tmp_oid_p++)
 	{
-	  if (oid_compare (class_oid_p, tmp_oid_p) == 0)
+	  if (OID_EQ (class_oid_p, tmp_oid_p))
 	    {
 	      found = true;
 	      break;

@@ -554,7 +554,7 @@ css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn, unsigned short req
 
   conn->set_tran_index (ntohl (header->transaction_id));
   flags = ntohs (header->flags);
-  conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
   conn->db_error = (int) ntohl (header->db_error);
 
   switch (type)
