@@ -5623,6 +5623,12 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
       root_header->num_keys = num_keys & 0xffffffff;
       root_header->unique_pk = unique_pk;
 
+      over += root_header->_64.num_oids = num_oids >> 32;
+      over += root_header->_64.num_nulls = num_nulls >> 32;
+      over += root_header->_64.num_keys = num_keys >> 32;
+
+      root_header->_64.over = (over > 0);
+
       assert (BTREE_IS_UNIQUE (root_header->unique_pk));
       assert (BTREE_IS_PRIMARY_KEY (root_header->unique_pk) || !BTREE_IS_PRIMARY_KEY (root_header->unique_pk));
     }
@@ -5638,12 +5644,6 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
 
   VFID_SET_NULL (&(root_header->ovfid));
   root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
-
-  over += root_header->_64.num_oids = num_oids >> 32;
-  over += root_header->_64.num_nulls = num_nulls >> 32;
-  over += root_header->_64.num_keys = num_keys >> 32;
-
-  root_header->_64.over = (over > 0);
 
 #if defined (SERVER_MODE)
   root_header->creator_mvccid = logtb_get_current_mvccid (thread_p);
