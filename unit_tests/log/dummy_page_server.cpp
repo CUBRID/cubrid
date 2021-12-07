@@ -99,6 +99,7 @@ namespace cubpacking
   size_t packer::get_packed_size_overloaded (const std::uint64_t &value, size_t curr_offset)
   {
     assert ("function is not used in the context of this unit test" == nullptr);
+    return 0;
   }
   void packer::pack_overloaded (const std::uint64_t &value)
   {
@@ -112,6 +113,7 @@ namespace cubpacking
   size_t packer::get_packed_size_overloaded (const std::string &value, size_t curr_offset)
   {
     assert ("function is not used in the context of this unit test" == nullptr);
+    return 0;
   }
   void packer::pack_overloaded (const std::string &value)
   {
