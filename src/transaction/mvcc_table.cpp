@@ -308,6 +308,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
       if (logtb_load_global_statistics_to_tran (thread_get_thread_entry_info())!= NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
+	  tdes.mvccinfo.snapshot.valid = false;
 	  return;
 	}
 
