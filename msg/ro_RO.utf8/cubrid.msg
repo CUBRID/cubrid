@@ -1396,7 +1396,10 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 
 1332 Volumul de jurnal activ (%1$s) este prea corect pentru a fi recreat. Dacă eliminați jurnalul activ, ar putea cauza o problemă neașteptată și ireversibilă.
 
-1333 Ultima eroare
+1333 Unsupported argument type of stored procedure: %1$s
+1334 Unsupported return type of stored procedure: %1$s
+
+1335 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

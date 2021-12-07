@@ -230,6 +230,99 @@ jsp_is_exist_stored_procedure (const char *name)
 }
 
 /*
+ * jsp_check_param_type_supported
+ *
+ * Note:
+ */
+
+int
+jsp_check_param_type_supported (PT_NODE * node)
+{
+  assert (node && node->node_type == PT_SP_PARAMETERS);
+
+  PT_TYPE_ENUM pt_type = node->type_enum;
+  DB_TYPE domain_type = pt_type_enum_to_db (pt_type);
+
+  switch (domain_type)
+    {
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_STRING:
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATE:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_DATETIME:
+      return NO_ERROR;
+      break;
+
+    case DB_TYPE_RESULTSET:
+      if (node->info.sp_param.mode != PT_OUTPUT)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_INPUT_RESULTSET, 0);
+	}
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1, pr_type_name (domain_type));
+      break;
+    }
+
+  return er_errid ();
+}
+
+
+/*
+ * jsp_check_return_type_supported
+ *
+ * Note:
+ */
+
+int
+jsp_check_return_type_supported (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_NULL:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_STRING:
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATE:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_RESULTSET:
+      return NO_ERROR;
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_RETURN_TYPE, 1, pr_type_name (type));
+      break;
+    }
+
+  return er_errid ();
+}
+
+/*
  * jsp_get_return_type - Return Java Stored Procedure Type
  *   return: if fail return error code
  *           else return Java Stored Procedure Type
@@ -1081,6 +1174,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
   bool has_savepoint = false;
   char *checked_name;
   const char *arg_comment;
+  DB_TYPE return_type_value;
 
   if (java_method == NULL)
     {
@@ -1132,7 +1226,14 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_int (&value, pt_type_enum_to_db (return_type));
+  return_type_value = pt_type_enum_to_db (return_type);
+  if (jsp_check_return_type_supported (return_type_value) != NO_ERROR)
+    {
+      err = er_errid ();
+      goto error;
+    }
+
+  db_make_int (&value, (int) return_type_value);
   err = dbt_put_internal (obt_p, SP_ATTR_RETURN_TYPE, &value);
   if (err != NO_ERROR)
     {
@@ -1151,12 +1252,12 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
     {
       MOP mop = NULL;
 
-      if (node_p->type_enum == PT_TYPE_RESULTSET && node_p->info.sp_param.mode != PT_OUTPUT)
+      if (jsp_check_param_type_supported (node_p) != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_INPUT_RESULTSET, 0);
 	  err = er_errid ();
 	  goto error;
 	}
+
       name_info = node_p->info.sp_param.name->info.name;
 
       arg_comment = (char *) PT_NODE_SP_ARG_COMMENT (node_p);
