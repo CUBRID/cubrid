@@ -9913,3 +9913,89 @@ pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *contin
 
   return node;
 }
+
+PT_NODE *
+pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * user)
+{
+  const char *dot = NULL;
+  const char *user_name = NULL;
+  char *current_user_name = NULL;
+  const char *class_name = NULL;
+  char *class_name_copy = NULL;
+  int class_name_len = 0;
+  const char *full_name = NULL;
+
+  assert (name != NULL && name->node_type == PT_NAME);
+  assert ((user == NULL) || (user->node_type == PT_NAME));
+
+  if (name->info.name.original == NULL || name->info.name.original[0] == '\0')
+    {
+      assert (false);
+      return NULL;
+    }
+
+  /* 
+   *  In the existing code, user_name is stored in name->info.name.resolved.
+   *  To manage objects by user, it has been changed to store "user_name.object_name" in name->info.name.original.
+   *  Then, duplicate user_name is stored in name->info.name.original and name->info.name.resolved.
+   *  When PT_NAME is output as name->info.name.resolved + name->info.name.original, user_name is output as duplicate,
+   *  so user_name is changed not to be stored in name->info.name.resolved.
+   */
+  if (user && user->info.name.original && user->info.name.original[0] != '\0')
+    {
+      user_name = user->info.name.original;
+    }
+  else
+    {
+      current_user_name = db_get_user_name ();
+      user_name = current_user_name;
+    }
+
+  class_name_len = strlen (name->info.name.original);
+  class_name_copy = strndup (name->info.name.original, class_name_len);
+
+  /*
+   *  Assume that identifier does not contain dot(.) or can contain only 1 dot(.).
+   *  If not, additional processing is required.
+   */
+  dot = strchr (class_name_copy, '.');
+  if (dot && class_name_len >= 286)
+    {
+      class_name_copy[286] = '\0';
+    }
+  else if (dot == NULL && class_name_len >= 254)
+    {
+      class_name_copy[254] = '\0';
+    }
+  name->info.name.thin = pt_append_string (parser, NULL, class_name_copy);
+  class_name = name->info.name.thin;
+
+  /*
+   *  "dot == NULL" comparison is needed below.
+   *
+   *  e.g. name->info.name.original == "other_user_name.object_name"
+   * 
+   *  other_user_name must not be changed to current_user_name.
+   */
+  if (dot == NULL && db_is_system_class_by_name (class_name) == 0)
+    {
+      full_name = pt_append_string (parser, NULL, user_name);
+      full_name = pt_append_string (parser, full_name, ".");
+      full_name = pt_append_string (parser, full_name, class_name);
+      name->info.name.original = full_name;
+    }
+
+  if (current_user_name)
+    {
+      db_string_free (current_user_name);
+      current_user_name = NULL;
+      user_name = NULL;
+  }
+
+  if (class_name_copy)
+    {
+      free_and_init (class_name_copy);
+    }
+
+  return name;
+}

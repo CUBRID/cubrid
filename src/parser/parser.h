@@ -662,6 +662,8 @@ extern "C"
 
   extern PT_NODE *pt_check_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_check_spec_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
+  extern PT_NODE *pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * user);
 #ifdef __cplusplus
 }
 #endif

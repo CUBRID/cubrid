@@ -3126,12 +3126,7 @@ sm_is_system_class_by_name (const char *name)
       return 1;
     }
 
-  /*
-   * To reduce unnecessary operations, the result of the operation is used as a constant.
-   * - strlen ("_db_") : 4
-   * - strlen ("db_")  : 3
-   *
-   */
+  /* strncmp (real_name, "_db_", strlen ("_db_")) != 0 && strncmp (real_name, "db_", strlen ("db_")) != 0 */
   if (strncmp (real_name, "_db_", 4) != 0 && strncmp (real_name, "db_", 3) != 0)
     {
       return 0;
@@ -14440,7 +14435,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	    }
 	}			/* for (ptr = ...) */
 
-      if (name_length >= DB_MAX_IDENTIFIER_LENGTH)
+      if (name_length >= SM_MAX_IDENTIFIER_LENGTH)
 	{
 	  /* constraint name will contain a descriptive prefix + prefixes of class name + prefixes of the first
 	   * MAX_ATTR_IN_AUTO_GEN_NAME attributes + MD5 of the entire string of concatenated class name and attributes
