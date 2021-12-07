@@ -213,9 +213,9 @@ struct btree_root_header
   struct
   {
     int over:2;			/* for checking to over 32 bit */
-    int num_oids:10;		/* extend 64 bit for num_x each 10 bits */
-    int num_nulls:10;		/* extend 64 bit for num_x each 10 bits */
-    int num_keys:10;		/* extend 64 bit for num_x each 10 bits */
+    int num_oids:10;		/* extend 10 bit for num_oids */
+    int num_nulls:10;		/* extend 10 bit for num_nulls */
+    int num_keys:10;		/* extend 10 bit for num_keys */
   } _64;
   int rev_level;		/* Btree revision level */
   VFID ovfid;			/* Overflow file */

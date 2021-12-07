@@ -16946,7 +16946,7 @@ btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   long long num_nulls, num_oids, num_keys;
   BTID btid;
 
-  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+  assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
 
   /* unpack the root statistics */
   datap = (char *) recv->data;
@@ -20931,16 +20931,11 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
     }
   else
     {
+      /* the statistics values is always same as initial (-1) 
+       * so, it's not necessary to extend 64 bit */
       num_oids = root_header->num_oids;
       num_nulls = root_header->num_oids;
       num_keys = root_header->num_oids;
-
-      if (root_header->_64.over)
-	{
-	  num_oids |= (long long) root_header->_64.num_oids << 32;
-	  num_nulls |= (long long) root_header->_64.num_nulls << 32;
-	  num_keys |= (long long) root_header->_64.num_keys << 32;
-	}
 
       db_make_bigint (out_values[idx], num_oids);
       idx++;
