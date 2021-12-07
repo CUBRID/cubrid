@@ -493,14 +493,7 @@ namespace cubmethod
 	if (m_q_result[i].copied == false && m_q_result[i].result)
 	  {
 	    DB_QUERY_RESULT *result = m_q_result[i].result;
-	    if (result && result->status != T_CLOSED)
-	      {
-		if (result->type == T_SELECT)
-		  {
-		    cursor_close (&result->res.s.cursor_id);
-		  }
-		db_free_query_result (result);
-	      }
+	    db_query_end_internal (result, false);
 	  }
 	m_q_result[i].result = NULL;
 
