@@ -394,6 +394,12 @@ namespace cublog
       }
   }
 
+  log_lsa replicator::get_redo_lsa () const
+  {
+    std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
+    return m_redo_lsa;
+  }
+
   /*********************************************************************
    * replication delay calculation - definition
    *********************************************************************/
@@ -464,7 +470,17 @@ namespace cublog
     PAGE_PTR root_page = log_rv_redo_fix_page (&thread_entry, &root_vpid, page_fetch_mode);
     if (root_page == nullptr)
       {
-	logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "cublog::replicate_btree_stats");
+	// this fetch mode is only used when replicating on passive transaction server
+	if (page_fetch_mode != OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT)
+	  {
+	    logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "cublog::replicate_btree_stats");
+	    return;
+	  }
+
+	// allowed to be null when on passive transaction server; means the page is neither already in the
+	// page buffer nor on its way down from the page server; replication will gently pass through; when
+	// page will, eventually, be needed, will be downloaded from the page server with already all the
+	// necessary log records already applied
 	return;
       }
 

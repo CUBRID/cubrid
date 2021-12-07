@@ -34,6 +34,8 @@ class passive_tran_server : public tran_server
     void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p);
     void start_log_replicator (const log_lsa &start_lsa);
 
+    log_lsa get_replicator_lsa () const;
+
   private:
     bool uses_remote_storage () const final override;
     bool get_remote_storage_config () final override;

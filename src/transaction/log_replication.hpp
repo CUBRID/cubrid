@@ -65,14 +65,13 @@ namespace cublog
       replicator &operator= (replicator &&) = delete;
 
       /* function can only be called when it is ensured that 'nxio_lsa' will
-       * no longer be modified (ie: increase)
-       */
+       * no longer be modified (ie: increase) */
       void wait_replication_finish_during_shutdown () const;
 
-      /* wait until replication advances past the target lsa
-       * blocking call
-       */
+      /* wait until replication advances past the target lsa; blocking call */
       void wait_past_target_lsa (const log_lsa &a_target_lsa);
+      /* return current progress of the replicator; non-blocking call */
+      log_lsa get_redo_lsa () const;
 
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);

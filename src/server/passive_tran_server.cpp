@@ -150,3 +150,7 @@ void passive_tran_server::start_log_replicator (const log_lsa &start_lsa)
   m_replicator.reset (new cublog::replicator (start_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0));
 }
 
+log_lsa passive_tran_server::get_replicator_lsa () const
+{
+  return m_replicator->get_redo_lsa ();
+}

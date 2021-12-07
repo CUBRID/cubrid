@@ -59,6 +59,7 @@
 #include "btree_load.h"
 #include "boot_sr.h"
 #include "double_write_buffer.h"
+#include "passive_tran_server.hpp"
 #include "resource_tracker.hpp"
 #include "tde.h"
 #include "show_scan.h"
@@ -1072,7 +1073,7 @@ static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID *
 static int pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page);
 static int pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page);
 #if defined (SERVER_MODE)
-static void pgbuf_request_data_page_from_page_server (const VPID * vpid);
+static void pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl_lsa);
 #endif // SERVER_MODE
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
@@ -7998,12 +7999,10 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 //                                            Temp              Yes               Yes            No
 
 #if defined(SERVER_MODE)
-  bool is_tran_server = get_server_type () == SERVER_TYPE_TRANSACTION;
-  bool is_page_server = get_server_type () == SERVER_TYPE_PAGE;
-  bool is_temporary_page = pgbuf_is_temporary_volume (vpid->volid);
-  bool is_using_local_storage = is_page_server || !ts_Gl->uses_remote_storage ();
-  bool request_from_ps = is_tran_server && ts_Gl->is_page_server_connected () && !is_temporary_page;
-  bool read_from_local = is_using_local_storage || is_temporary_page;
+  const bool is_temporary_page = pgbuf_is_temporary_volume (vpid->volid);
+  const bool is_using_local_storage = is_page_server () || !ts_Gl->uses_remote_storage ();
+  const bool request_from_ps = is_transaction_server () && ts_Gl->is_page_server_connected () && !is_temporary_page;
+  const bool read_from_local = is_using_local_storage || is_temporary_page;
   int error_code = NO_ERROR;
 
   if (read_from_local)
@@ -8017,7 +8016,23 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
     }
   if (request_from_ps)
     {
-      pgbuf_request_data_page_from_page_server (vpid);
+      // *INDENT-OFF*
+      const auto replicator_lsa_ftor =[] ()
+      {
+	const passive_tran_server * const pts_ptr = get_passive_tran_server_ptr ();
+	return pts_ptr->get_replicator_lsa ();
+      };
+      // *INDENT-ON*
+
+      /* on the passive transaction server, make sure to request that the progress on the page server - from
+       * where the data page is retrieved -  be at least the same as the local progress to avoid losing
+       * any log entries being applied on both ends
+       */
+      const LOG_LSA target_repl_lsa =
+	(is_passive_transaction_server ())? replicator_lsa_ftor () : pgbuf_Pool.get_highest_evicted_lsa ();
+
+      pgbuf_request_data_page_from_page_server (vpid, target_repl_lsa);
+      // TODO: what if, by the next line, page has already been retrieved by the page broker
       auto data_page = ts_Gl->get_data_page_broker ().wait_for_page (*vpid);
 
       if (read_from_local)
@@ -8076,7 +8091,7 @@ pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_
  *   return: void
  */
 static void
-pgbuf_request_data_page_from_page_server (const VPID * vpid)
+pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl_lsa)
 {
   assert (get_server_type () == SERVER_TYPE_TRANSACTION);
 
@@ -8094,8 +8109,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
 
   pac.set_buffer (buffer.get (), size);
   vpid_utils::pack (pac, *vpid);
-  LOG_LSA lsa = pgbuf_Pool.get_highest_evicted_lsa ();
-  cublog::lsa_utils::pack (pac, lsa);
+  cublog::lsa_utils::pack (pac, target_repl_lsa);
 
   std::string message (buffer.get (), size);
   ts_Gl->push_request (tran_to_page_request::SEND_DATA_PAGE_FETCH, std::move (message));
