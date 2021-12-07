@@ -43,8 +43,8 @@ passive_tran_server::on_boot ()
 tran_server::request_handlers_map_t
 passive_tran_server::get_request_handlers ()
 {
-  std::map<page_to_tran_request, std::function<void (cubpacking::unpacker &upk)>> handlers_map =
-	      tran_server::get_request_handlers ();
+  std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map =
+	  tran_server::get_request_handlers ();
 
   auto log_boot_info_handler = std::bind (&passive_tran_server::receive_log_boot_info,
 					  std::ref (*this), std::placeholders::_1);
@@ -60,10 +60,9 @@ passive_tran_server::get_request_handlers ()
 }
 
 void
-passive_tran_server::receive_log_boot_info (cubpacking::unpacker &upk)
+passive_tran_server::receive_log_boot_info (page_server_conn_t::internal_payload &a_ip)
 {
-  std::string message;
-  upk.unpack_string (message);
+  std::string message = a_ip.pull_payload ();
 
   // pass to caller thread; it has the thread context needed to access engine functions
   {
@@ -74,10 +73,9 @@ passive_tran_server::receive_log_boot_info (cubpacking::unpacker &upk)
 }
 
 void
-passive_tran_server::receive_log_prior_list (cubpacking::unpacker &upk)
+passive_tran_server::receive_log_prior_list (page_server_conn_t::internal_payload &a_ip)
 {
-  std::string message;
-  upk.unpack_string (message);
+  std::string message = a_ip.pull_payload ();
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }
 
