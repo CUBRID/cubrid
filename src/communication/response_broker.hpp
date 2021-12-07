@@ -29,7 +29,8 @@
 namespace cubcomm
 {
   using response_sequence_number = std::uint64_t;
-  constexpr NO_RESPONSE_SEQUENCE_NUMBER = std::numeric_limits<request_sync_client_server>::max ();
+  constexpr response_sequence_number NO_RESPONSE_SEQUENCE_NUMBER =
+	  std::numeric_limits<response_sequence_number>::max ();
 
   class response_sequence_number_generator
   {
@@ -62,7 +63,7 @@ namespace cubcomm
 	T_PAYLOAD get_response (response_sequence_number a_rsn);
       };
 
-      bucket &get_bucket ();
+      bucket &get_bucket (response_sequence_number rsn);
 
       std::vector<bucket> m_buckets;
   };

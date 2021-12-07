@@ -23,6 +23,7 @@
 #include "request_client_server.hpp"
 #include "request_sync_send_queue.hpp"
 #include "request_sync_client_server.hpp"
+#include "response_broker.hpp"
 
 #include "comm_channel_mock.hpp"
 
@@ -529,6 +530,52 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "[dbg]"
   for (auto &th : threads)
     {
       th.join ();
+    }
+}
+
+TEST_CASE ("Test response sequence number generator", "")
+{
+  // Test concurrent number generation, that all the generated numbers are unique
+
+  cubcomm::response_sequence_number_generator rsn_gen;
+
+  // Start threads that request numbers from the generator. Save all the numbers.
+  //
+  // In the end, compare all the generated numbers; they should be unique
+  //
+  constexpr size_t THREAD_COUNT = 10;
+  constexpr size_t NUMBER_COUNT = 1000;
+  using numbers_t = std::vector<cubcomm::response_sequence_number>;
+  std::array<std::pair<std::thread, numbers_t>, THREAD_COUNT> threads_info;
+
+  for (auto &ti : threads_info)
+    {
+      numbers_t &numbers = ti.second;
+      numbers.reserve (NUMBER_COUNT);
+      ti.first = std::thread ([&numbers, &rsn_gen] ()
+      {
+	numbers.push_back (rsn_gen.get_unique_number ());
+      }
+			     );
+    }
+
+  // Wait for everyone to finish
+  for (auto &ti : threads_info)
+    {
+      ti.first.join ();
+    }
+
+  // Check all the generated numbers
+  std::set<cubcomm::response_sequence_number> m_all_numbers;
+  for (auto &ti : threads_info)
+    {
+      for (const auto n : ti.second)
+	{
+	  auto insert_ret = m_all_numbers.insert (n);
+
+	  // Since all numbers are unique, the insertion must take place:
+	  REQUIRE (insert_ret.second == true);
+	}
     }
 }
 

@@ -34,7 +34,7 @@ response_broker<T_PAYLOAD>::response_broker (size_t a_bucket_count)
 }
 
 template <typename T_PAYLOAD>
-response_broker<T_PAYLOAD>::bucket
+typename response_broker<T_PAYLOAD>::bucket &
 response_broker<T_PAYLOAD>::get_bucket (response_sequence_number rsn)
 {
   return m_buckets[rsn % m_buckets.size ()];
