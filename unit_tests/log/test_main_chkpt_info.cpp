@@ -552,7 +552,7 @@ test_env_chkpt::generate_tdes (int index)
 
   if (std::rand () % 2 == 0)
     {
-      tdes->mvccinfo.sub_ids.clear();
+      tdes->mvccinfo.sub_ids.clear ();
     }
   else
     {

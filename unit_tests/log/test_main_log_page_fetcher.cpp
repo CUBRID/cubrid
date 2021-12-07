@@ -196,7 +196,7 @@ pgbuf_fix_release (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fet
 }
 
 std::string
-log_pack_log_boot_info (THREAD_ENTRY *, struct log_lsa &, struct log_lsa &)
+log_pack_log_boot_info (THREAD_ENTRY *, struct log_lsa &, struct log_lsa &, const cublog::prior_sender::sink_hook_t &)
 {
   assert ("function is not used in the context of this unit test" == nullptr);
   return std::string ();

@@ -28,7 +28,7 @@
 namespace cublog
 {
   //
-  // prior_sender coverts log prior node lists into messages and broadcast them to a list of sinks.
+  // prior_sender converts log prior node lists into messages and broadcast them to a list of sinks.
   //
   //  NOTE: each sink sends the message to a different prior_recver.
   //
@@ -42,7 +42,6 @@ namespace cublog
 
       void add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
-      // todo: extend the sink management interface
 
     private:
       // non-owning pointers

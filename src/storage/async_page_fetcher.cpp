@@ -62,14 +62,17 @@ namespace cublog
   class log_boot_info_fetch_task : public cubthread::entry_task
   {
     public:
-      explicit log_boot_info_fetch_task (async_page_fetcher::log_boot_info_callback_type &&callback)
-	: m_callback { std::move (callback) }
+      explicit log_boot_info_fetch_task (const cublog::prior_sender::sink_hook_t &log_prior_sender_sink,
+					 async_page_fetcher::log_boot_info_callback_type &&callback)
+	: m_log_prior_sender_sink { log_prior_sender_sink }
+	, m_callback { std::move (callback) }
       {
       }
 
       void execute (context_type &context) override;
 
     private:
+      const cublog::prior_sender::sink_hook_t &m_log_prior_sender_sink;
       async_page_fetcher::log_boot_info_callback_type m_callback;
   };
 
@@ -116,7 +119,7 @@ namespace cublog
   {
     log_lsa append_lsa, prev_lsa;
 
-    std::string message = log_pack_log_boot_info (&context, append_lsa, prev_lsa);
+    std::string message = log_pack_log_boot_info (&context, append_lsa, prev_lsa, m_log_prior_sender_sink);
 
     m_callback (std::move (message));
 
@@ -164,9 +167,11 @@ namespace cublog
     m_threads->execute (task);
   }
 
-  void async_page_fetcher::fetch_log_boot_info (log_boot_info_callback_type &&callback_func)
+  void async_page_fetcher::fetch_log_boot_info (const cublog::prior_sender::sink_hook_t &log_prior_sender_sink,
+      log_boot_info_callback_type &&callback_func)
   {
-    cubthread::entry_task *const task = new log_boot_info_fetch_task (std::move (callback_func));
+    cubthread::entry_task *const task =
+	    new log_boot_info_fetch_task (log_prior_sender_sink, std::move (callback_func));
 
     // ownership is transfered to the worker pool
     m_threads->execute (task);
