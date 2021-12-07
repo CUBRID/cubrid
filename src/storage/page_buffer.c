@@ -8017,9 +8017,9 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
   if (request_from_ps)
     {
       // *INDENT-OFF*
-      const auto replicator_lsa_ftor =[] ()
+      const auto replicator_lsa_ftor = [] ()
       {
-	const passive_tran_server * const pts_ptr = get_passive_tran_server_ptr ();
+	const passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
 	return pts_ptr->get_replicator_lsa ();
       };
       // *INDENT-ON*
