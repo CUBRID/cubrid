@@ -84,12 +84,12 @@ class page_server
 	void on_data_page_read_result (const FILEIO_PAGE *page_ptr, int error_code);
 	void on_log_boot_info_result (std::string &&message);
 
-	void receive_boot_info_request (tran_server_conn_t::internal_payload &a_ip);
-	void receive_log_prior_list (tran_server_conn_t::internal_payload &a_ip);
-	void receive_log_page_fetch (tran_server_conn_t::internal_payload &a_ip);
-	void receive_data_page_fetch (tran_server_conn_t::internal_payload &a_ip);
-	void receive_disconnect_request (tran_server_conn_t::internal_payload &a_ip);
-	void receive_log_boot_info_fetch (tran_server_conn_t::internal_payload &a_ip);
+	void receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_ip);
+	void receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip);
+	void receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_ip);
+	void receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_ip);
+	void receive_disconnect_request (tran_server_conn_t::sequenced_payload &a_ip);
+	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 
 	void prior_sender_sink_hook (std::string &&message) const;
 

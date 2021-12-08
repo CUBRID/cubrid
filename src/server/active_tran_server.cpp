@@ -44,7 +44,7 @@ active_tran_server::get_remote_storage_config ()
 }
 
 void
-active_tran_server::receive_saved_lsa (page_server_conn_t::internal_payload &a_ip)
+active_tran_server::receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip)
 {
   std::string message = a_ip.pull_payload ();
   log_lsa saved_lsa;
