@@ -19441,24 +19441,35 @@ path_expression
 		DBG_PRINT}}
 	| path_id_list				%dprec 2
 		{{
-			PT_NODE *dot;
+			PT_NODE *node = $1;
 			PT_NODE *serial_value = NULL;
+			
+			const char *dot = NULL;
 
-			dot = $1;
-			if (dot
-			    && dot->node_type == PT_DOT_
-			    && dot->info.dot.arg2 && dot->info.dot.arg2->node_type == PT_NAME)
+			assert (node != NULL);
+
+			if (node->node_type == PT_NAME && node->info.name.meta_class == PT_META_CLASS)
 			  {
-			    PT_NODE *name = dot->info.dot.arg2;
+			    dot = strchr (node->info.name.original, '.');
+			    if (dot == NULL)
+			      {
+				node = pt_make_user_specified_name (this_parser, node, NULL);
+			      }
+			  }
+
+			if (node->node_type == PT_DOT_
+			    && node->info.dot.arg2 && node->info.dot.arg2->node_type == PT_NAME)
+			  {
+			    PT_NODE *name = node->info.dot.arg2;
+			    serial_value = parser_new_node (this_parser, PT_EXPR);
 
 			    if (intl_identifier_casecmp (name->info.name.original, "current_value") == 0 ||
 				intl_identifier_casecmp (name->info.name.original, "currval") == 0)
 			      {
-				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_CURRENT_VALUE;
 				serial_value->info.expr.arg1
-				  = dot->info.dot.arg1;
-				dot->info.dot.arg1 = NULL; /* cut */
+				  = node->info.dot.arg1;
+				node->info.dot.arg1 = NULL; /* cut */
 
 				serial_value->info.expr.arg2 = NULL;
 
@@ -19469,8 +19480,8 @@ path_expression
 					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
 					"serial");
 
-				parser_free_node (this_parser, dot);
-				dot = serial_value;
+				parser_free_node (this_parser, node);
+				node = serial_value;
 
 				parser_cannot_cache = true;
 			      }
@@ -19478,12 +19489,10 @@ path_expression
 			      if (intl_identifier_casecmp (name->info.name.original, "next_value") == 0 ||
 				  intl_identifier_casecmp (name->info.name.original, "nextval") == 0)
 			      {
-				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_NEXT_VALUE;
-
 				serial_value->info.expr.arg1
-				  = dot->info.dot.arg1;
-				dot->info.dot.arg1 = NULL; /* cut */
+				  = node->info.dot.arg1;
+				node->info.dot.arg1 = NULL; /* cut */
 
 				serial_value->info.expr.arg2
 				  = parser_new_node (this_parser, PT_VALUE);
@@ -19503,14 +19512,14 @@ path_expression
 					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
 					"serial");
 
-				parser_free_node (this_parser, dot);
-				dot = serial_value;
+				parser_free_node (this_parser, node);
+				node = serial_value;
 
 				parser_cannot_cache = true;
 			      }
 			  }
 
-			$$ = dot;
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -19520,14 +19529,54 @@ path_id_list
 	: path_id_list path_dot path_id			%dprec 1
 		{{
 
-			PT_NODE *dot = parser_new_node (this_parser, PT_DOT_);
-			if (dot)
+			PT_NODE *node = NULL;
+			PT_NODE *arg1 = $1;
+			PT_NODE *arg2 = $3;
+
+			const char *dot = NULL;
+			const char *user_name = NULL;
+			const char *class_simple_name = NULL;
+			const char *class_full_name = NULL;
+
+			assert (arg1 != NULL);
+			assert (arg2 != NULL);
+
+			if (arg1->node_type == PT_NAME && arg2->node_type == PT_NAME && arg1->info.name.meta_class == PT_META_CLASS)
 			  {
-			    dot->info.dot.arg1 = $1;
-			    dot->info.dot.arg2 = $3;
+			    /*
+			     *  Prevents misidentification of user_name as class_name in 'class user_name.class_name'
+			     *
+			     *  when parsing path_expression. 'class user_name' is parsed in path_id_list,
+			     *  and 'class_name' is parsed in path_id. it must be combined so that it can be parsed
+			     *  as 'class user_name.class_name'.
+			     * 
+			     *  However, when parsing 'class class_name.attribute_name', current_user_name is required
+			     *  before class_name. It is difficult to distinguish whether user_name or class_name comes
+			     *  after the class keyword. Therefore, since current_user_name cannot be added
+			     *  before class_name, even if it is a class owned by the current user,
+			     *  it must always be used in the form of user_name.class_name after the class keyword.
+			     */
+
+			    user_name = arg1->info.name.original;
+			    class_simple_name = arg2->info.name.original;
+
+			    class_full_name = pt_append_string (this_parser, NULL, user_name);
+			    class_full_name = pt_append_string (this_parser, class_full_name, ".");
+			    class_full_name = pt_append_string (this_parser, class_full_name, class_simple_name);
+			    arg1->info.name.original = class_full_name;
+
+			    node = arg1;
+			  }
+			else
+			  {
+			    node = parser_new_node (this_parser, PT_DOT_);
+			    assert (node != NULL);
+
+			    node->info.dot.arg1 = arg1;
+			    node->info.dot.arg2 = arg2;
 			  }
 
-			$$ = dot;
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -19556,8 +19605,6 @@ path_header
 			if (node && node->node_type == PT_NAME)
 			  {
 			    node->info.name.meta_class = PT_META_CLASS;
-
-			    node = pt_make_user_specified_name (this_parser, node, NULL);
 			  }
 
 			$$ = node;

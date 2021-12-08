@@ -2174,7 +2174,7 @@ sm_simple_name (const char *name)
 {
   const char *dot = strchr (name, '.');
 
-  return dot ? dot + 1 : name;
+  return dot ? (dot + 1) : name;
 }
 
 /*

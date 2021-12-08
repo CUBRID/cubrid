@@ -9961,11 +9961,11 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
   dot = strchr (class_name_copy, '.');
   if (dot && class_name_len >= (DB_MAX_SIMPLE_CLASS_LENGTH - 1))
     {
-      class_name_copy[(DB_MAX_FULL_CLASS_LENGTH - 1)] = '\0';
+      class_name_copy[(DB_MAX_FULL_CLASS_LENGTH - 1)] = '\0';	// truncate
     }
   else if (dot == NULL && class_name_len >= (DB_MAX_SIMPLE_CLASS_LENGTH - 1))
     {
-      class_name_copy[(DB_MAX_SIMPLE_CLASS_LENGTH - 1)] = '\0';
+      class_name_copy[(DB_MAX_SIMPLE_CLASS_LENGTH - 1)] = '\0';	// truncate
     }
   name->info.name.thin = pt_append_string (parser, NULL, class_name_copy);
   class_name = name->info.name.thin;
