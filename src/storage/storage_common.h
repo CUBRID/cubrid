@@ -1147,7 +1147,10 @@ typedef enum
  *    attribute name, method name, or any other named entity in the schema.
  */
 // #define SM_MAX_IDENTIFIER_LENGTH 255
-#define SM_MAX_IDENTIFIER_LENGTH 288	/* DB_MAX_IDENTIFIER_LENGTH */
+#define SM_MAX_IDENTIFIER_LENGTH_287 287	/* DB_MAX_FULL_CLASS_LENGTH */
+#define SM_MAX_IDENTIFIER_LENGTH     255
+#define SM_MAX_SIMPLE_CLASS_LENGTH   (DB_MAX_SIMPLE_CLASS_LENGTH)
+#define SM_MAX_FULL_CLASS_LENGTH     (DB_MAX_FULL_CLASS_LENGTH)
 
 #define SERIAL_ATTR_FULL_NAME       "full_name"
 #define SERIAL_ATTR_NAME            "name"

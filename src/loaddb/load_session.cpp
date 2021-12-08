@@ -254,10 +254,10 @@ namespace cubload
 	// just set class id to 1 since only one table can be specified as command line argument
 	cubthread::entry &thread_ref = cubthread::get_entry ();
 
-	if (intl_identifier_lower_string_size (m_args.table_name.c_str ()) >= SM_MAX_IDENTIFIER_LENGTH)
+	if (intl_identifier_lower_string_size (m_args.table_name.c_str ()) >= SM_MAX_FULL_CLASS_LENGTH)
 	  {
 	    // This is an error.
-	    m_driver->get_error_handler ().on_error (LOADDB_MSG_EXCEED_MAX_LEN, SM_MAX_IDENTIFIER_LENGTH - 1);
+	    m_driver->get_error_handler ().on_error (LOADDB_MSG_EXCEED_MAX_LEN, SM_MAX_FULL_CLASS_LENGTH - 1);
 	    return;
 	  }
 

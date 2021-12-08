@@ -8644,8 +8644,8 @@ int
 qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VALUE * db_index_name,
 		       DB_VALUE * db_key_position, DB_VALUE * result_p)
 {
-  char class_name[SM_MAX_IDENTIFIER_LENGTH];
-  char index_name[SM_MAX_IDENTIFIER_LENGTH];
+  char class_name[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char index_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int key_pos = 0;
   int cardinality = 0;
   int error = NO_ERROR;
@@ -8673,7 +8673,7 @@ qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VAL
       goto exit;
     }
 
-  str_class_name_len = MIN (SM_MAX_IDENTIFIER_LENGTH - 1, db_get_string_size (db_class_name));
+  str_class_name_len = MIN (SM_MAX_FULL_CLASS_LENGTH - 1, db_get_string_size (db_class_name));
   strncpy (class_name, db_get_string (db_class_name), str_class_name_len);
   class_name[str_class_name_len] = '\0';
 

@@ -152,7 +152,7 @@ int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
 OID tr_Stack[TR_MAX_RECURSION_LEVEL + 1];
 
 bool tr_Invalid_transaction = false;
-char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
+char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH_287 + 2];
 
 bool tr_Trace = true;
 
@@ -307,12 +307,12 @@ time_as_string (DB_TRIGGER_TIME tr_time)
 static char *
 tr_process_name (const char *name_string)
 {
-  char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
+  char buffer[SM_MAX_IDENTIFIER_LENGTH_287 + 2] = { '\0' };	/* trigger name */
   char *name = NULL;
 
   if (sm_check_name (name_string))
     {
-      sm_downcase_name (name_string, buffer, SM_MAX_IDENTIFIER_LENGTH);
+      sm_downcase_name (name_string, buffer, SM_MAX_IDENTIFIER_LENGTH_287);
       name = strdup (buffer);
     }
   return name;
@@ -3931,7 +3931,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 {
   TR_TRIGGER *trigger;
   DB_OBJECT *object;
-  char realname[SM_MAX_IDENTIFIER_LENGTH];
+  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };	/* attribute name */
   bool tr_object_map_added = false;
   bool has_savepoint = false;
 

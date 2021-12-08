@@ -1088,7 +1088,7 @@ pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node)
 
   assert (show_args_node->node_type == PT_VALUE);
   assert (show_args_node->type_enum == PT_TYPE_CHAR);
-  assert (show_args_node->info.value.data_value.str->length < DB_MAX_IDENTIFIER_LENGTH);
+  assert (show_args_node->info.value.data_value.str->length < DB_MAX_FULL_CLASS_LENGTH);
 
   /* check table name */
   table_name = (const char *) show_args_node->info.value.data_value.str->bytes;

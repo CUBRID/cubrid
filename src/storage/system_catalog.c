@@ -4713,7 +4713,7 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
 #if !defined(NDEBUG)
       classname = or_class_name (&peek);
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
+      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);
 #endif
       if (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, LK_COND_LOCK) != LK_GRANTED)
 	{
@@ -5023,7 +5023,7 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 #if !defined(NDEBUG)
       classname = or_class_name (&peek);
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
+      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);
 #endif
 
       fprintf (fp, " -------------------------------------------------\n");
@@ -5596,7 +5596,7 @@ catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p, const char *class_name
   BTID found_btid;
   BTID curr_bitd;
   OID class_oid;
-  char cls_lower[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+  char cls_lower[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
   LC_FIND_CLASSNAME status;
 
   BTID_SET_NULL (&found_btid);

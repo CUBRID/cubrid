@@ -3194,7 +3194,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   // *INDENT-OFF*
   int tran_index;
   std::string db_user_save;
-  char db_user_upper[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char db_user_upper[DB_MAX_USER_LENGTH] = { '\0' };
   bool skip_vacuum = false;
 #if defined(SA_MODE)
   std::string adm_prg_file_name;

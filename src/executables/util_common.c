@@ -1226,7 +1226,7 @@ int
 util_get_table_list_from_file (char *fname, dynamic_array * darray)
 {
   int c, i, p;
-  char name[SM_MAX_IDENTIFIER_LENGTH];
+  char name[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
   FILE *fp = fopen (fname, "r");
 
   if (fp == NULL)
@@ -1260,7 +1260,7 @@ util_get_table_list_from_file (char *fname, dynamic_array * darray)
 	  continue;
 	}
       name[p++] = c;
-      if (p == SM_MAX_IDENTIFIER_LENGTH)
+      if (p == SM_MAX_FULL_CLASS_LENGTH)
 	{
 	  /* too long table name */
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);

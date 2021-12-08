@@ -83,7 +83,7 @@
 typedef struct chksum_result CHKSUM_RESULT;
 struct chksum_result
 {
-  char class_name[SM_MAX_IDENTIFIER_LENGTH];
+  char class_name[SM_MAX_FULL_CLASS_LENGTH];
   char *last_lower_bound;
   int last_chunk_id;
   int last_chunk_cnt;
@@ -104,8 +104,8 @@ struct chksum_arg
 };
 
 CHKSUM_RESULT *chksum_Prev_results = NULL;
-char chksum_result_Table_name[SM_MAX_IDENTIFIER_LENGTH];
-char chksum_schema_Table_name[SM_MAX_IDENTIFIER_LENGTH];
+char chksum_result_Table_name[SM_MAX_FULL_CLASS_LENGTH];
+char chksum_schema_Table_name[SM_MAX_FULL_CLASS_LENGTH];
 
 static int chksum_drop_and_create_checksum_table (void);
 static int chksum_init_checksum_tables (bool resume);
@@ -851,7 +851,7 @@ chksum_get_prev_checksum_results (void)
 	  db_string_p = db_get_string (&value);
 	  if (db_string_p != NULL)
 	    {
-	      snprintf (checksum_result->class_name, SM_MAX_IDENTIFIER_LENGTH, "%s", db_string_p);
+	      snprintf (checksum_result->class_name, SM_MAX_FULL_CLASS_LENGTH, "%s", db_string_p);
 	    }
 	  db_value_clear (&value);
 
@@ -1736,7 +1736,7 @@ chksum_need_skip_table (const char *table_name, CHKSUM_ARG * chksum_arg)
   int i;
   bool match_need_skip = false;
   dynamic_array *list = NULL;
-  char table_in_list[SM_MAX_IDENTIFIER_LENGTH];
+  char table_in_list[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
 
   if (table_name == NULL || (strcasecmp (table_name, chksum_result_Table_name) == 0)
       || (strcasecmp (table_name, chksum_schema_Table_name) == 0))
@@ -2107,14 +2107,14 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   checksum_table = utility_get_option_string_value (arg_map, CHECKSUM_TABLE_NAME_S, 0);
   if (sm_check_name (checksum_table) > 0)
     {
-      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", checksum_table);
+      snprintf (chksum_result_Table_name, SM_MAX_FULL_CLASS_LENGTH, "%s", checksum_table);
     }
   else
     {
-      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", CHKSUM_DEFAULT_TABLE_NAME);
+      snprintf (chksum_result_Table_name, SM_MAX_FULL_CLASS_LENGTH, "%s", CHKSUM_DEFAULT_TABLE_NAME);
     }
 
-  if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
+  if (snprintf (chksum_schema_Table_name, SM_MAX_FULL_CLASS_LENGTH - 1, "%s%s", chksum_result_Table_name,
 		CHKSUM_SCHEMA_TABLE_SUFFIX) < 0)
     {
       assert (false);
@@ -2138,7 +2138,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
 
   if (incl_class_file != NULL)
     {
-      chksum_arg.include_list = da_create (CHKSUM_DEFAULT_LIST_SIZE, SM_MAX_IDENTIFIER_LENGTH);
+      chksum_arg.include_list = da_create (CHKSUM_DEFAULT_LIST_SIZE, SM_MAX_FULL_CLASS_LENGTH);
       if (util_get_table_list_from_file (incl_class_file, chksum_arg.include_list) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
@@ -2150,7 +2150,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
 
   if (excl_class_file != NULL)
     {
-      chksum_arg.exclude_list = da_create (CHKSUM_DEFAULT_LIST_SIZE, SM_MAX_IDENTIFIER_LENGTH);
+      chksum_arg.exclude_list = da_create (CHKSUM_DEFAULT_LIST_SIZE, SM_MAX_FULL_CLASS_LENGTH);
       if (util_get_table_list_from_file (excl_class_file, chksum_arg.exclude_list) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message

@@ -4693,7 +4693,7 @@ pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser, const char *identif
   char *p_dot = NULL;
 
   assert (depth >= 0);
-  if (strlen (identifier_str) >= SM_MAX_IDENTIFIER_LENGTH)
+  if (strlen (identifier_str) >= SM_MAX_IDENTIFIER_LENGTH_287)
     {
       assert (false);
       return NULL;
@@ -4703,8 +4703,8 @@ pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser, const char *identif
 
   if (p_dot != NULL)
     {
-      char string_name1[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
-      char string_name2[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+      char string_name1[SM_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+      char string_name2[SM_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
       PT_NODE *name1 = NULL;
       PT_NODE *name2 = NULL;
       int position = CAST_BUFLEN (p_dot - identifier_str);
@@ -6687,7 +6687,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
   PT_NODE *order_by_item = NULL;
   PT_NODE *sub_query = NULL;
   PT_NODE *outer_query = NULL;
-  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
+  char lower_table_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
   PT_NODE *value = NULL, *value_list = NULL;
   DB_VALUE db_valuep[10];
   const char **psubquery_aliases = NULL, **pquery_names = NULL, **pquery_aliases = NULL;
@@ -6974,7 +6974,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
 {
   PT_NODE *node = NULL;
   PT_NODE *from_item = NULL;
-  char lower_view_name[DB_MAX_IDENTIFIER_LENGTH];
+  char lower_view_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
 
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
@@ -7336,10 +7336,10 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   PT_NODE *where_expr = NULL;
   PT_NODE *concat_node = NULL;
   PT_NODE *group_by_item = NULL;
-  char user_name[SM_MAX_IDENTIFIER_LENGTH];
+  char user_name[DB_MAX_USER_LENGTH] = { '\0' };
 
   assert (original_user_name != NULL);
-  assert (strlen (original_user_name) < SM_MAX_IDENTIFIER_LENGTH);
+  assert (strlen (original_user_name) < DB_MAX_USER_LENGTH);
 
   /* conversion to uppercase can cause <original_user_name> to double size, if internationalization is used : size
    * <user_name> accordingly */
@@ -7429,7 +7429,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
       }
 
     {
-      char col_alias[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+      char col_alias[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
       const char *const col_header = "Grants for ";
 
       strcpy (col_alias, col_header);
@@ -7858,7 +7858,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_NODE *from_item = NULL;
   PT_NODE *order_by_item = NULL;
   PT_NODE *query = NULL;
-  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
+  char lower_table_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
   PT_NODE *value = NULL, *value_list = NULL;
   DB_VALUE db_valuep[14];
   const char *aliases[] = {
@@ -9923,7 +9923,7 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
   const char *class_name = NULL;
   char *class_name_copy = NULL;
   int class_name_len = 0;
-  const char *full_name = NULL;
+  const char *class_full_name = NULL;
 
   assert (name != NULL && name->node_type == PT_NAME);
   assert ((user == NULL) || (user->node_type == PT_NAME));
@@ -9939,7 +9939,7 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
    *  To manage objects by user, it has been changed to store "user_name.object_name" in name->info.name.original.
    *  Then, duplicate user_name is stored in name->info.name.original and name->info.name.resolved.
    *  When PT_NAME is output as name->info.name.resolved + name->info.name.original, user_name is output as duplicate,
-   *  so user_name is changed not to be stored in name->info.name.resolved.
+   *  so user_name is changed not to be stored in name->info.name.resolved. 
    */
   if (user && user->info.name.original && user->info.name.original[0] != '\0')
     {
@@ -9959,16 +9959,29 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
    *  If not, additional processing is required.
    */
   dot = strchr (class_name_copy, '.');
-  if (dot && class_name_len >= 286)
+  if (dot && class_name_len >= (DB_MAX_SIMPLE_CLASS_LENGTH - 1))
     {
-      class_name_copy[286] = '\0';
+      class_name_copy[(DB_MAX_FULL_CLASS_LENGTH - 1)] = '\0';
     }
-  else if (dot == NULL && class_name_len >= 254)
+  else if (dot == NULL && class_name_len >= (DB_MAX_SIMPLE_CLASS_LENGTH - 1))
     {
-      class_name_copy[254] = '\0';
+      class_name_copy[(DB_MAX_SIMPLE_CLASS_LENGTH - 1)] = '\0';
     }
   name->info.name.thin = pt_append_string (parser, NULL, class_name_copy);
   class_name = name->info.name.thin;
+
+  /*  In the system class, class_full_name does not include user_name.
+   *  So, the value stored in info.name.original is different for each case below.
+   *
+   *  1. common class name &&             NULL -> current_user_name.common_class_name
+   *  2. common class name && common user name ->  common_user_name.common_class_name
+   *  3. common class name &&    dba user name ->     dba_user_name.common_class_name
+   *  4. system class name &&             NULL ->                   system_class_name
+   *  5. system class name && common user name ->                   system_class_name
+   *  6. system class name &&    dba user name ->                   system_class_name
+   * 
+   *  In case 5, If it is a system class name, the given user_name is ignored.
+   */
 
   /*
    *  "dot == NULL" comparison is needed below.
@@ -9976,15 +9989,18 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
    *  e.g. name->info.name.original == "other_user_name.object_name"
    * 
    *  other_user_name must not be changed to current_user_name.
+   *  So, the code below is executed only when 'dot == NULL'.
    */
   if (dot == NULL && db_is_system_class_by_name (class_name) == 0)
     {
-      full_name = pt_append_string (parser, NULL, user_name);
-      full_name = pt_append_string (parser, full_name, ".");
-      full_name = pt_append_string (parser, full_name, class_name);
-      name->info.name.original = full_name;
+      /* In case 1, 2, 3 */
+      class_full_name = pt_append_string (parser, NULL, user_name);
+      class_full_name = pt_append_string (parser, class_full_name, ".");
+      class_full_name = pt_append_string (parser, class_full_name, class_name);
+      name->info.name.original = class_full_name;
     }
 
+end:
   if (current_user_name)
     {
       db_string_free (current_user_name);

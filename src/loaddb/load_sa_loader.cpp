@@ -1420,7 +1420,7 @@ ldr_find_class (const char *class_name)
 {
   LC_FIND_CLASSNAME find;
   DB_OBJECT *class_ = NULL;
-  char realname[SM_MAX_IDENTIFIER_LENGTH];
+  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
   const char *other_name = NULL;
 
   /* Check for internal error */
@@ -1431,7 +1431,7 @@ ldr_find_class (const char *class_name)
       return NULL;
     }
 
-  sm_downcase_name (class_name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  sm_downcase_name (class_name, realname, SM_MAX_FULL_CLASS_LENGTH);
   ldr_Hint_class_names[0] = realname;
 
   find =
@@ -1481,7 +1481,8 @@ ldr_get_class_name_from_db_class (const char *name)
   int error = NO_ERROR;
 
   /* initialization */
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
 
   dot = strchr (name, '.');
   if (dot)
@@ -4912,11 +4913,11 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
     }
   if (class_name)
     {
-      if (intl_identifier_lower_string_size (class_name) >= SM_MAX_IDENTIFIER_LENGTH)
+      if (intl_identifier_lower_string_size (class_name) >= SM_MAX_FULL_CLASS_LENGTH)
 	{
 	  display_error_line (0);
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_EXCEED_MAX_LEN),
-		   SM_MAX_IDENTIFIER_LENGTH - 1);
+		   SM_MAX_FULL_CLASS_LENGTH - 1);
 	  CHECK_CONTEXT_VALIDITY (context, true);
 	  ldr_abort ();
 	  goto error_exit;

@@ -394,7 +394,7 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 #if !defined(NDEBUG)
       classname = or_class_name (&recdes);
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
+      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);
 #endif
 
       error = xstats_update_statistics (thread_p, &class_oid, with_fullscan);

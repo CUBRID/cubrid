@@ -9320,9 +9320,10 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
 MOP
 pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial)
 {
-  const char *serial_name = NULL;
+  const char *serial_simple_name = NULL;
   const char *owner_name = NULL;
-  char full_name[SERIAL_NAME_MAX_LENGTH];
+  char *current_user_name = NULL;
+  char serial_full_name[MAX_SERIAL_NAME_LENGTH] = { '\0' };
 
   MOP serial_class;
   MOP serial_obj;
@@ -9339,31 +9340,39 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial)
       assert (PT_IS_NAME_NODE (serial->info.dot.arg1));
       assert (PT_IS_NAME_NODE (serial->info.dot.arg2));
 
-      serial_name = serial->info.dot.arg2->info.name.original;
+      serial_simple_name = serial->info.dot.arg2->info.name.original;
       owner_name = serial->info.dot.arg1->info.name.original;
 
       if (owner_name == NULL || owner_name[0] == '\0')
 	{
-	  owner_name = db_get_user_name ();
+	  current_user_name = db_get_user_name ();
+	  owner_name = current_user_name;
 	}
     }
   else
     {
       assert (PT_IS_NAME_NODE (serial));
 
-      serial_name = serial->info.name.original;
-      owner_name = db_get_user_name ();
+      serial_simple_name = serial->info.name.original;
+      current_user_name = db_get_user_name ();
+      owner_name = current_user_name;
     }
 
-  /* Get full name. */
-  memset (full_name, '\0', sizeof (char) * SERIAL_NAME_MAX_LENGTH);
-  snprintf (full_name, SERIAL_NAME_MAX_LENGTH, "%s.%s", owner_name, serial_name);
+  /* serial full name */
+  snprintf (serial_full_name, MAX_SERIAL_NAME_LENGTH, "%s.%s", owner_name, serial_simple_name);
+
+  if (current_user_name)
+    {
+      db_string_free (current_user_name);
+      current_user_name = NULL;
+      owner_name = NULL;
+    }
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
-  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, full_name);
+  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_full_name);
   if (serial_obj == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, full_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_full_name);
     }
 
   return serial_obj;

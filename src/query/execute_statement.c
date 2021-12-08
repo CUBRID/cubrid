@@ -1217,7 +1217,7 @@ MOP
 do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, MOP serial_class, const char *serial_name)
 {
   MOP serial_obj;
-  char serial_lower_name[SERIAL_NAME_MAX_LENGTH];
+  char serial_lower_name[MAX_SERIAL_NAME_LENGTH] = { '\0' };
   const char *other_name = NULL;
   DB_VALUE value;
   DB_IDENTIFIER *oid;
@@ -1300,7 +1300,8 @@ do_get_serial_name_from_db_serial (const char *name)
   int error = NO_ERROR;
 
   /* initialization */
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
 
   dot = strchr (name, '.');
   if (dot)
@@ -5934,8 +5935,8 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
 	  error = ER_GENERIC_ERROR;
 	  goto cleanup;
 	}
-      classes_names[idx] = (char *) db_private_alloc (NULL, SM_MAX_IDENTIFIER_LENGTH * sizeof (char));
-      sm_downcase_name (node->info.delete_.spec->info.spec.entity_name->info.name.original, classes_names[idx], SM_MAX_IDENTIFIER_LENGTH);
+      classes_names[idx] = (char *) db_private_alloc (NULL, SM_MAX_FULL_CLASS_LENGTH * sizeof (char));
+      sm_downcase_name (node->info.delete_.spec->info.spec.entity_name->info.name.original, classes_names[idx], SM_MAX_FULL_CLASS_LENGTH);
       locks[idx] = X_LOCK;
       if (node->info.delete_.spec->info.spec.only_all == PT_ALL)
 	{

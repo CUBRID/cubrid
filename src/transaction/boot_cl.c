@@ -1813,7 +1813,7 @@ boot_define_class (MOP class_mop)
     }
 
   /* class full name */
-  error_code = smt_add_attribute (def, "class_full_name", "varchar(288)", NULL);
+  error_code = smt_add_attribute (def, "class_full_name", "varchar(287)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -1979,23 +1979,24 @@ boot_define_class (MOP class_mop)
     }
 
   /* 
-   *   Define the index name so that it always has the same name as the macro variable (CATCLS_INDEX_NAME)
-   * in src/storage/catalog_class.c.
-   *   _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
-   * in src/storage/btree.c, it becomes assert (false) in the code below.
+   *  Define the index name so that it always has the same name as the macro variable (CATCLS_INDEX_NAME)
+   *  in src/storage/catalog_class.c.
    * 
-   *   CREATE TABLE t1 (c1 INT);
-   *   RENAME CLASS t1 AS t2;
+   *  _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
+   *  in src/storage/btree.c, it becomes assert (false) in the code below.
    * 
-   *   assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
-   *           || log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
+   *    CREATE TABLE t1 (c1 INT);
+   *    RENAME CLASS t1 AS t2;
    * 
-   *   All others should be false, and !BTREE_IS_UNIQUE (btid_int->unique_pk) should be true. However,
-   * if there is a primary key or a unique index, !BTREE_IS_UNIQUE (btid_int->unique_pk) also becomes false,
-   * and all are false. In the btree_key_insert_new_key function, analysis should be added to the operation
-   * of the primary key and unique index.
-   *   Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
+   *    assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
+   *            || log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
    * 
+   *  All others should be false, and !BTREE_IS_UNIQUE (btid_int->unique_pk) should be true. However,
+   *  if there is a primary key or a unique index, !BTREE_IS_UNIQUE (btid_int->unique_pk) also becomes false,
+   *  and all are false. In the btree_key_insert_new_key function, analysis should be added to the operation
+   *  of the primary key and unique index.
+   * 
+   *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
    */
   error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, "i__db_class_class_full_name", index1_col_names, 0);
   if (error_code != NO_ERROR)

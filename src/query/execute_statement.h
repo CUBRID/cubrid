@@ -39,7 +39,7 @@ extern int do_reset_auto_increment_serial (MOP serial_obj);
 extern int do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, PT_NODE * new_cur_val);
 
 
-extern MOP do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, MOP serial_class, const char *orig_serial_name);
+extern MOP do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class, const char *orig_serial_name);
 extern const char *do_get_serial_name_from_db_serial (const char *name);
 extern int do_get_serial_cached_num (int *cached_num, MOP serial_obj);
 

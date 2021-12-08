@@ -2633,12 +2633,12 @@ sm_rename_class (MOP op, const char *new_name)
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;
   const char *current, *newname;
-  char realname[SM_MAX_IDENTIFIER_LENGTH];
+  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class full name */
   int is_partition = 0;
 /*  TR_STATE *trstate; */
 
   /* make sure this gets into the server table with no capitalization */
-  sm_downcase_name (new_name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  sm_downcase_name (new_name, realname, SM_MAX_FULL_CLASS_LENGTH);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   if (sm_has_text_domain (db_get_attributes (op), 1))
@@ -3022,12 +3022,12 @@ sm_is_system_class (MOP op)
  * sm_is_system_class_by_name () - Checks whether the class name is
  *    the same as the system class name.
  * return: int
- * name(in): class name
+ * name(in): class simple name
  */
 int
 sm_is_system_class_by_name (const char *name)
 {
-  char real_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+  char downcase_class_name[SM_MAX_SIMPLE_CLASS_LENGTH] = { '\0' };
   const char **ptr = NULL;
 
   int error = NO_ERROR;
@@ -3039,7 +3039,7 @@ sm_is_system_class_by_name (const char *name)
       return error;
     }
 
-  sm_downcase_name (name, real_name, SM_MAX_IDENTIFIER_LENGTH);
+  sm_downcase_name (name, downcase_class_name, SM_MAX_SIMPLE_CLASS_LENGTH);
 
   const char *system_classes[] = {
     /* 
@@ -3116,18 +3116,19 @@ sm_is_system_class_by_name (const char *name)
     NULL
   };
 
-  if (strncmp (real_name, ROOTCLASS_NAME, sizeof (ROOTCLASS_NAME) - 1) == 0)
+  if (strncmp (downcase_class_name, ROOTCLASS_NAME, sizeof (ROOTCLASS_NAME) - 1) == 0)
     {
       return 1;
     }
 
-  if (strncmp (real_name, CT_DUAL_NAME, sizeof (CT_DUAL_NAME) - 1) == 0)
+  if (strncmp (downcase_class_name, CT_DUAL_NAME, sizeof (CT_DUAL_NAME) - 1) == 0)
     {
       return 1;
     }
 
-  /* strncmp (real_name, "_db_", strlen ("_db_")) != 0 && strncmp (real_name, "db_", strlen ("db_")) != 0 */
-  if (strncmp (real_name, "_db_", 4) != 0 && strncmp (real_name, "db_", 3) != 0)
+  /* strncmp (downcase_class_name, "_db_", strlen ("_db_")) != 0
+   * && strncmp (downcase_class_name, "db_", strlen ("db_")) != 0 */
+  if (strncmp (downcase_class_name, "_db_", 4) != 0 && strncmp (downcase_class_name, "db_", 3) != 0)
     {
       return 0;
     }
@@ -3135,7 +3136,7 @@ sm_is_system_class_by_name (const char *name)
   ptr = system_classes;
   while (*ptr)
     {
-      if (strncmp (real_name, *ptr, SM_MAX_IDENTIFIER_LENGTH) == 0)
+      if (strncmp (downcase_class_name, *ptr, SM_MAX_SIMPLE_CLASS_LENGTH) == 0)
 	{
 	  return 1;
 	}
@@ -5193,9 +5194,9 @@ MOP
 sm_find_class (const char *name)
 {
   MOP class_mop = NULL;
-  char realname[SM_MAX_IDENTIFIER_LENGTH];
+  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class full name */
 
-  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  sm_downcase_name (name, realname, SM_MAX_FULL_CLASS_LENGTH);
 
   class_mop = locator_find_class (realname);
   if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
@@ -5227,7 +5228,8 @@ sm_get_class_name_from_db_class (const char *name)
   int error = NO_ERROR;
 
   /* initialization */
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
 
   dot = strchr (name, '.');
   if (dot)
@@ -5307,9 +5309,9 @@ MOP
 sm_find_class_with_purpose (const char *name, bool for_update)
 {
   MOP class_mop = NULL;
-  char realname[SM_MAX_IDENTIFIER_LENGTH];
+  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class full name */
 
-  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  sm_downcase_name (name, realname, SM_MAX_FULL_CLASS_LENGTH);
 
   class_mop = locator_find_class_with_purpose (realname, for_update);
   if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
@@ -14365,7 +14367,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
     {
       const char *prefix;
       int i, k;
-      int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
+      int class_name_prefix_size = DB_MAX_SIMPLE_CLASS_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
 
@@ -14435,7 +14437,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	    }
 	}			/* for (ptr = ...) */
 
-      if (name_length >= SM_MAX_IDENTIFIER_LENGTH)
+      if (name_length >= DB_MAX_IDENTIFIER_LENGTH)
 	{
 	  /* constraint name will contain a descriptive prefix + prefixes of class name + prefixes of the first
 	   * MAX_ATTR_IN_AUTO_GEN_NAME attributes + MD5 of the entire string of concatenated class name and attributes
@@ -14482,7 +14484,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	    }
 	  else
 	    {
-	      char class_name_trunc[DB_MAX_IDENTIFIER_LENGTH];
+	      char class_name_trunc[DB_MAX_SIMPLE_CLASS_LENGTH] = { '\0' };
 
 	      strncpy (class_name_trunc, class_simple_name, class_name_prefix_size);
 
@@ -14582,7 +14584,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	      k++;
 	    }
 
-	  if (att_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH || class_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH)
+	  if (att_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH || class_name_prefix_size != DB_MAX_SIMPLE_CLASS_LENGTH)
 	    {
 	      /* append MD5 */
 	      strcat (name, "_");
@@ -15777,7 +15779,7 @@ int
 sm_truncate_using_delete (MOP class_mop)
 {
   DB_SESSION *session = NULL;
-  char delete_query[DB_MAX_IDENTIFIER_LENGTH + 64] = { 0 };
+  char delete_query[DB_MAX_FULL_CLASS_LENGTH + 64] = { '\0' };
   int stmt_id = 0;
   int error = NO_ERROR;
   const char *class_name;

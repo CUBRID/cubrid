@@ -56,7 +56,7 @@ static int
 get_num_requested_class (const char *input_filename, int *num_class)
 {
   FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH];
+  char buffer[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class full name */
 
   if (input_filename == NULL || num_class == NULL)
     {
@@ -71,7 +71,7 @@ get_num_requested_class (const char *input_filename, int *num_class)
     }
 
   *num_class = 0;
-  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
+  while (fgets ((char *) buffer, DB_MAX_FULL_CLASS_LENGTH, input_file) != NULL)
     {
       (*num_class)++;
     }
@@ -93,7 +93,7 @@ int
 get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_class_list)
 {
   int i;
-  char downcase_class_name[SM_MAX_IDENTIFIER_LENGTH];
+  char downcase_class_name[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
   DB_OBJECT *class_ = NULL;
 
   if (class_names == NULL || num_class <= 0 || class_list == NULL || num_class_list == NULL)
@@ -120,7 +120,7 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
 	  goto error;
 	}
 
-      sm_downcase_name (class_names[i], downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
+      sm_downcase_name (class_names[i], downcase_class_name, SM_MAX_FULL_CLASS_LENGTH);
 
       class_ = locator_find_class (downcase_class_name);
       if (class_ != NULL)
@@ -167,7 +167,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
   int status = NO_ERROR;
   int i = 0;
   FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH];
+  char buffer[DB_MAX_FULL_CLASS_LENGTH];
   char **class_names = NULL;
   int num_class = 0;
   int len = 0;
@@ -208,7 +208,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 
   for (i = 0; i < num_class; ++i)
     {
-      if (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) == NULL)
+      if (fgets ((char *) buffer, DB_MAX_FULL_CLASS_LENGTH, input_file) == NULL)
 	{
 	  status = ER_FAILED;
 	  goto end;

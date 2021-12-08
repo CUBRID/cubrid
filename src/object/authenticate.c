@@ -5129,8 +5129,9 @@ au_change_owner (MOP classmop, MOP owner)
   SM_CLASS *class_;
   int save;
   SM_ATTRIBUTE *attr;
-  char full_name[DB_MAX_IDENTIFIER_LENGTH];
-  const char *simple_name = NULL;
+  char *current_user_name = NULL;
+  const char *class_simple_name = NULL;
+  char class_full_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
 
   AU_DISABLE (save);
   if (!au_is_dba_group_member (Au_user))
@@ -5162,25 +5163,31 @@ au_change_owner (MOP classmop, MOP owner)
 	  /* Change class owner */
 	  class_->owner = owner;
 
-	  simple_name = sm_ch_simple_name ((MOBJ) class_);
-	  if (db_is_system_class_by_name (simple_name))
+	  /* Since class_full_name includes owner_name, if owner of class is changed,
+	   * class_full_name must be changed as well. */
+	  class_simple_name = sm_ch_simple_name ((MOBJ) class_);
+	  if (db_is_system_class_by_name (class_simple_name))
 	    {
 	      error = locator_flush_class(classmop);
 	    }
 	  else
 	    {
-	      /* Get original name. */
-	      memset (full_name, '\0', sizeof (char) * DB_MAX_IDENTIFIER_LENGTH);
-	      snprintf (full_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", au_get_user_name(owner), simple_name);
+	      current_user_name = au_get_user_name(owner);
 
-	      /* Change original name. */
-	      error = sm_rename_class (classmop, full_name);
+	      snprintf (class_full_name, DB_MAX_FULL_CLASS_LENGTH, "%s.%s", current_user_name, class_simple_name);
+
+	      if (current_user_name)
+		{
+		  db_string_free (current_user_name);
+		  current_user_name = NULL;
+	      }
+
+	      error = sm_rename_class (classmop, class_full_name);
 	      if (error == ER_LC_CLASSNAME_EXIST)
 		{
 		  er_clear ();
 		  error = NO_ERROR;
 		}
-	      
 	    }
 	}
     }
