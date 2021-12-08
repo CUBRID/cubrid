@@ -129,8 +129,6 @@ extern void cas_ssl_close (int client_sock_fd);
 
 #else /* !LIBCAS_FOR_JSP */
 extern int libcas_main (SOCKET jsp_sock_fd);
-extern void *libcas_get_db_result_set (int h_id);
-extern void libcas_srv_handle_free (int h_id);
 #endif /* !LIBCAS_FOR_JSP */
 
 static void set_cas_info_size (void);
@@ -1454,27 +1452,6 @@ libcas_main (SOCKET jsp_sock_fd)
     {
       return -1;
     }
-}
-
-void *
-libcas_get_db_result_set (int h_id)
-{
-  T_SRV_HANDLE *srv_handle;
-
-  srv_handle = hm_find_srv_handle (h_id);
-  if (srv_handle == NULL || srv_handle->cur_result == NULL)
-    {
-      return NULL;
-    }
-
-  return srv_handle;
-}
-
-void
-libcas_srv_handle_free (int h_id)
-{
-  cas_log_write (0, false, "close_req_handle srv_h_id %d", h_id);
-  hm_srv_handle_free (h_id);
 }
 #endif /* !LIBCAS_FOR_JSP */
 
