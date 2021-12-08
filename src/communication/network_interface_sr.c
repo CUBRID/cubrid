@@ -2236,6 +2236,8 @@ slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 	}
 
       log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
+
+      free_and_init (supplemental_data);
     }
 
 end:
@@ -10328,6 +10330,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
     {
       error_code = ER_CDC_NOT_AVAILABLE;
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
       goto error;
     }
 
@@ -10339,7 +10342,10 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	  /* check if existing connection is alive */
 	  if (cdc_check_client_connection ())
 	    {
+	      cdc_log ("%s : More than two clients attempt to connect", __func__);
+
 	      error_code = ER_CDC_NOT_AVAILABLE;
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
 	      goto error;
 	    }
 	}
@@ -10366,6 +10372,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       extraction_user = (char **) malloc (sizeof (char *) * num_extraction_user);
       if (extraction_user == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * num_extraction_user);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error;
 	}
@@ -10377,6 +10384,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	  extraction_user[i] = strdup (dummy_user);
 	  if (extraction_user[i] == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (dummy_user));
 	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error;
 	    }
@@ -10390,6 +10398,8 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       extraction_classoids = (UINT64 *) malloc (sizeof (UINT64) * num_extraction_class);
       if (extraction_classoids == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (UINT64) * num_extraction_class);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error;
 	}
@@ -10399,6 +10409,10 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	  ptr = or_unpack_int64 (ptr, (INT64 *) & extraction_classoids[i]);
 	}
     }
+
+  cdc_log
+    ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
+     __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
 
   error_code =
     cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
@@ -10454,6 +10468,8 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   ptr = or_unpack_int64 (request, &input_time);
   //if scdc_find_lsa() is called more than once, it should pause running cdc_loginfo_producer_execute() thread 
 
+  cdc_log ("%s : input time (%lld)", __func__, input_time);
+
   error_code = cdc_find_lsa (thread_p, &input_time, &start_lsa);
   if (error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA)
     {
@@ -10475,6 +10491,9 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
       ptr = or_pack_int (reply, error_code);
       ptr = or_pack_log_lsa (ptr, &start_lsa);
       or_pack_int64 (ptr, input_time);
+
+      cdc_log ("%s : reply contains start lsa (%lld|%d), output time (%lld)", __func__, LSA_AS_ARGS (&start_lsa),
+	       input_time);
 
       (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
@@ -10509,6 +10528,8 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   int rc;
 
   or_unpack_log_lsa (request, &start_lsa);
+
+  cdc_log ("%s : request from client contains start_lsa (%lld|%d)", __func__, LSA_AS_ARGS (&start_lsa));
 
   if (LSA_ISNULL (&cdc_Gl.consumer.next_lsa))
     {
@@ -10556,6 +10577,8 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 		     "requested extract lsa is (%lld | %d) is not in a range of previously requested lsa (%lld | %d) and next lsa to extract (%lld | %d)",
 		     LSA_AS_ARGS (&start_lsa), LSA_AS_ARGS (&cdc_Gl.consumer.start_lsa),
 		     LSA_AS_ARGS (&cdc_Gl.consumer.next_lsa));
+
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_LOG_LSA, 1, LSA_AS_ARGS (&start_lsa));
       error_code = ER_CDC_INVALID_LOG_LSA;
       goto error;
     }
@@ -10565,6 +10588,9 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   ptr = or_pack_log_lsa (ptr, &next_lsa);
   ptr = or_pack_int (ptr, num_log_info);
   ptr = or_pack_int (ptr, total_length);
+
+  cdc_log ("%s : reply contains next lsa (%lld|%d), num log info (%d), total length (%d)", __func__,
+	   LSA_AS_ARGS (&next_lsa), num_log_info, total_length);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   return;
@@ -10579,6 +10605,8 @@ error:
 void
 scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  cdc_log ("%s : size of log info is %d", __func__, cdc_Gl.consumer.log_info_size);
+
   (void) css_send_data_to_client (thread_p->conn_entry, rid, cdc_Gl.consumer.log_info, cdc_Gl.consumer.log_info_size);
 
   return;
@@ -10592,6 +10620,8 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   int error_code;
 
   error_code = cdc_cleanup ();
+
+  cdc_log ("%s : clean up for cdc thread has done.", __func__);
 
   cdc_Gl.conn.fd = -1;
   cdc_Gl.conn.status = CONN_CLOSED;
