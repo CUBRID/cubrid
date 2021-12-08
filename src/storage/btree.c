@@ -16999,21 +16999,21 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   root_header = btree_get_root_header (thread_p, recv->pgptr);
   assert (root_header != NULL);
 
-  num_nulls = (unsigned int) root_header->num_nulls;
-  num_oids = (unsigned int) root_header->num_oids;
-  num_keys = (unsigned int) root_header->num_keys;
-
-  if (root_header->_64.over)
-    {
-      num_nulls |= (long long) root_header->num_nulls << 32;
-      num_oids |= (long long) root_header->num_oids << 32;
-      num_keys |= (long long) root_header->num_keys << 32;
-    }
-
   if (root_header != NULL)
     {
       int over = 0;
       long long delta;
+
+      num_nulls = (unsigned int) root_header->num_nulls;
+      num_oids = (unsigned int) root_header->num_oids;
+      num_keys = (unsigned int) root_header->num_keys;
+
+      if (root_header->_64.over)
+        {
+          num_nulls |= (long long) root_header->num_nulls << 32;
+          num_oids |= (long long) root_header->num_oids << 32;
+          num_keys |= (long long) root_header->num_keys << 32;
+        }
 
       /* unpack the root statistics */
       datap = (char *) recv->data;
