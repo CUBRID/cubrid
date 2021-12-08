@@ -749,7 +749,7 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 		{
 		  /* PT_NAME comes from PT_DOT_ */
 		  original_name =
-		    pt_append_string (parser, pt_append_string (parser, (char *) col->info.name.resolved, "."),
+		    pt_append_string (parser, pt_append_string (parser, pt_get_name_without_current_user (col->info.name.resolved), "."),
 				      original_name);
 		}
 	      else if (PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_DOT_STAR))
@@ -780,7 +780,7 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 		  if (node->info.name.meta_class == PT_META_ATTR)
 		    {
 		      name =
-			pt_append_string (parser, pt_append_string (parser, (char *) node->info.name.resolved, "."),
+			pt_append_string (parser, pt_append_string (parser, pt_get_name_without_current_user (node->info.name.resolved), "."),
 					  name);
 		      name = pt_append_string (parser, pt_append_string (parser, NULL, "class "), name);
 		      original_name = name;
@@ -789,7 +789,7 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 		    {
 		      /* PT_NAME comes from PT_DOT_ */
 		      original_name =
-			pt_append_string (parser, pt_append_string (parser, (char *) node->info.name.resolved, "."),
+			pt_append_string (parser, pt_append_string (parser, pt_get_name_without_current_user (node->info.name.resolved), "."),
 					  original_name);
 		    }
 		}
