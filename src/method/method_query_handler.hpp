@@ -72,23 +72,7 @@ namespace cubmethod
   class query_handler
   {
     public:
-      query_handler (error_context &ctx, int id)
-	: m_id (id), m_error_ctx (ctx)
-      {
-	m_is_prepared = false;
-	m_use_plan_cache = false;
-	m_is_occupied = false;
-
-	m_session = nullptr;
-	m_current_result = nullptr;
-
-	m_num_markers = -1;
-	m_max_col_size = -1;
-	m_max_row = -1;
-
-	m_has_result_set = false;
-      }
-
+      query_handler (error_context &ctx, int id);
       ~query_handler ();
 
       /* request */
@@ -114,6 +98,9 @@ namespace cubmethod
       bool get_is_occupied ();
       void set_is_occupied (bool flag);
       bool get_prepare_info (prepare_info &info);
+      DB_SESSION *get_db_session ();
+      DB_QUERY_TYPE *get_column_info ();
+      query_result *get_current_result ();
 
     protected:
       /* prepare */

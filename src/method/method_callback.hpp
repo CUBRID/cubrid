@@ -60,6 +60,8 @@ namespace cubmethod
       void set_server_info (int idx, int rc, char *host);
       void free_query_handle_all (bool is_free);
 
+      query_handler *get_query_handler_by_qid (uint64_t qid);
+
     private:
       /* ported from cas_handle */
       int new_query_handler ();
@@ -69,7 +71,8 @@ namespace cubmethod
       int new_oid_handler ();
 
       /* statement handler cache */
-      int find_query_handler_cache (std::string &sql);
+      int find_query_handler_by_sql (std::string &sql);
+
 
       template<typename ... Args>
       int send_packable_object_to_server (Args &&... args);
@@ -77,13 +80,23 @@ namespace cubmethod
       /* server info */
       method_server_conn_info m_conn_info [METHOD_MAX_RECURSION_DEPTH];
 
-      std::multimap <std::string, int> m_query_handler_map;
+      std::multimap <std::string, int> m_sql_handler_map;
+      std::unordered_map <uint64_t, int> m_qid_handler_map;
 
       error_context m_error_ctx;
 
       std::vector<query_handler *> m_query_handlers;
       oid_handler *m_oid_handler;
   };
-}
 
-#endif
+  //////////////////////////////////////////////////////////////////////////
+  // global functions
+  //////////////////////////////////////////////////////////////////////////
+
+  callback_handler *get_callback_handler (void);
+
+} // namespace cubmethod
+
+extern int method_make_out_rs (DB_BIGINT query_id);
+
+#endif // _METHOD_CALLBACK_HPP_
