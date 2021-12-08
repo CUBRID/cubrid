@@ -2278,6 +2278,110 @@ try_again:
   return pgptr;
 }
 
+PAGE_PTR
+pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid, PGBUF_LATCH_CONDITION cond)
+{
+  assert (is_transaction_server ());
+
+  PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, cond);
+
+  if (is_active_transaction_server ())
+    {
+      // No replication, no page - replication desynchronization is possible
+      // Use regular fix
+      return page;
+    }
+
+  assert (is_passive_transaction_server ());
+
+  // Passive Transaction Server
+  //
+  // Need to check if page is more advanced than replication
+  //
+  // There are two scenarios that may happen if the page is more advanced that the replication:
+  //
+  //    a) Page is allocated and its LSA is higher than replication lsa
+  //    b) Page is deallocated and its LSA is higher than replication lsa
+  //
+  // In case b) pgbuf_fix returns a null pointer and sets ER_PB_BAD_PAGEID error. Follow-up by fixing
+  // with OLD_PAGE_DEALLOCATED fetch mode to force read the page LSA; replace ER_PB_BAD_PAGEID with
+  // ER_PTS_PAGE_DESYNC.
+  //
+  bool deallocated = false;	// start by assuming page is not deallocated
+
+  if (page == nullptr)
+    {
+      // Maybe page is deallocated, or maybe there was another error. If page is deallocated, the error must be
+      // ER_PB_BAD_PAGEID
+
+      deallocated = (er_errid () == ER_PB_BAD_PAGEID);
+
+      if (!deallocated)
+	{
+	  // Stop if other errors occurred.
+	  return nullptr;
+	}
+
+      // Force fixing the deallocated page to check its LSA
+      page = pgbuf_fix (thread_p, &vpid, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (page == nullptr)
+	{
+	  // Error
+	  ASSERT_ERROR ();
+	  return nullptr;
+	}
+    }
+
+  // Page must be fixed here
+  assert (page != nullptr);
+
+  const int error_code = pgbuf_check_page_ahead_of_replication (thread_p, page);
+  if (error_code == ER_PAGE_AHEAD_OF_REPLICATION)
+    {
+      // Unfix the page
+      pgbuf_unfix (thread_p, page);
+      return nullptr;
+    }
+  // Page is not ahead.
+  assert (error_code == NO_ERROR);
+
+  if (deallocated)
+    {
+      // Page was deallocated though...
+      assert (er_errid () == ER_PB_BAD_PAGEID);
+      pgbuf_unfix (thread_p, page);
+      return nullptr;
+    }
+
+  // No errors
+  return page;
+}
+
+int
+pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
+{
+  assert (page != nullptr);
+  assert (is_passive_transaction_server ());
+
+  // Compare page LSA to replication LSA. If page is ahead, there may be a desynchronization issue; its LSA must be
+  // saved in transaction descriptor and the appropriate error must be set and returned.
+  LOG_LSA page_lsa = *pgbuf_get_lsa (page);
+  LOG_LSA repl_lsa = MAX_LSA;	// todo
+  if (page_lsa > repl_lsa)
+    {
+      assert (LOG_FIND_CURRENT_TDES (thread_p)->page_desync_lsa.is_null ());
+      LOG_FIND_CURRENT_TDES (thread_p)->page_desync_lsa = page_lsa;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_AHEAD_OF_REPLICATION, 6, PGBUF_PAGE_VPID_AS_ARGS (page),
+	      PGBUF_PAGE_LSA_AS_ARGS (page), LSA_AS_ARGS (&repl_lsa));
+      return ER_PAGE_AHEAD_OF_REPLICATION;
+    }
+  else
+    {
+      // Page cannot be desynchronized
+      return NO_ERROR;
+    }
+}
+
 /*
  * pgbuf_promote_read_latch () - Promote read latch to write latch
  *   return: error code or NO_ERROR
