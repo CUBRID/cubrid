@@ -19553,7 +19553,10 @@ path_id_list
 			assert (arg1 != NULL);
 			assert (arg2 != NULL);
 
-			dot = strchr (arg1->info.name.original, '.');
+			if (arg1->node_type == PT_NAME)
+			  {
+			    dot = strchr (arg1->info.name.original, '.');
+			  }
 
 			if (dot == NULL && arg1->node_type == PT_NAME && arg2->node_type == PT_NAME
 			    && arg1->info.name.meta_class == PT_META_CLASS)
