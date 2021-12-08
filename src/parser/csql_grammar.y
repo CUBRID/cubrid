@@ -9914,15 +9914,27 @@ attr_def_one
 	  data_type
 		{{//attr_def_one : identifier
 
+			PT_NODE *attr_name = $1;
 			PT_NODE *dt;
 			PT_TYPE_ENUM typ;
 			PT_NODE *node = parser_new_node (this_parser, PT_ATTR_DEF);
+			char *attr_name_copy = NULL;
+			int attr_name_len = 0;
 
 			if (node)
 			  {
 			    node->type_enum = typ = TO_NUMBER (CONTAINER_AT_0 ($2));
 			    node->data_type = dt = CONTAINER_AT_1 ($2);
-			    node->info.attr_def.attr_name = $1;
+
+			    attr_name_len = strlen (attr_name->info.name.original);
+			    if (attr_name_len >= (DB_MAX_IDENTIFIER_LENGTH - 1))
+			      {
+				attr_name_copy = strndup (attr_name->info.name.original, attr_name_len);
+			        attr_name_copy[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
+				attr_name->info.name.original = pt_append_string (this_parser, NULL, attr_name_copy);
+			      }
+			    node->info.attr_def.attr_name = attr_name;
+
 			    if (typ == PT_TYPE_CHAR && dt)
 			      node->info.attr_def.size_constraint = dt->info.data_type.precision;
 			    if (typ == PT_TYPE_OBJECT && dt && dt->type_enum == PT_TYPE_VARCHAR)
@@ -19541,7 +19553,10 @@ path_id_list
 			assert (arg1 != NULL);
 			assert (arg2 != NULL);
 
-			if (arg1->node_type == PT_NAME && arg2->node_type == PT_NAME && arg1->info.name.meta_class == PT_META_CLASS)
+			dot = strchr (arg1->info.name.original, '.');
+
+			if (dot == NULL && arg1->node_type == PT_NAME && arg2->node_type == PT_NAME
+			    && arg1->info.name.meta_class == PT_META_CLASS)
 			  {
 			    /*
 			     *  Prevents misidentification of user_name as class_name in 'class user_name.class_name'

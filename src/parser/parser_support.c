@@ -9951,23 +9951,30 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
       user_name = current_user_name;
     }
 
-  class_name_len = strlen (name->info.name.original);
-  class_name_copy = strndup (name->info.name.original, class_name_len);
+  class_name = name->info.name.original;
+  class_name_len = strlen (class_name);
 
   /*
    *  Assume that identifier does not contain dot(.) or can contain only 1 dot(.).
    *  If not, additional processing is required.
    */
-  dot = strchr (class_name_copy, '.');
+  dot = strchr (class_name, '.');
   if (dot && class_name_len >= (DB_MAX_SIMPLE_CLASS_LENGTH - 1))
     {
-      class_name_copy[(DB_MAX_FULL_CLASS_LENGTH - 1)] = '\0';	// truncate
+      class_name_copy = strndup (class_name, class_name_len);
+      class_name_copy[DB_MAX_FULL_CLASS_LENGTH - 1] = '\0';	// truncate
+      name->info.name.thin = pt_append_string (parser, NULL, class_name_copy);
     }
   else if (dot == NULL && class_name_len >= (DB_MAX_SIMPLE_CLASS_LENGTH - 1))
     {
-      class_name_copy[(DB_MAX_SIMPLE_CLASS_LENGTH - 1)] = '\0';	// truncate
+      class_name_copy = strndup (class_name, class_name_len);
+      class_name_copy[DB_MAX_SIMPLE_CLASS_LENGTH - 1] = '\0';	// truncate
+      name->info.name.thin = pt_append_string (parser, NULL, class_name_copy);
     }
-  name->info.name.thin = pt_append_string (parser, NULL, class_name_copy);
+  else
+    {
+      name->info.name.thin = dot ? (dot + 1) : class_name;
+    }
   class_name = name->info.name.thin;
 
   /*  In the system class, class_full_name does not include user_name.
