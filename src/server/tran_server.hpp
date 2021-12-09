@@ -86,7 +86,7 @@ class tran_server
 
   protected:
     using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
-    using request_handlers_map_t = std::map<page_to_tran_request, typename page_server_conn_t::incoming_request_handler_t>;
+    using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
 
   protected:
 
@@ -105,9 +105,9 @@ class tran_server
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
     // Common request Handlers
-    void receive_boot_info (cubpacking::unpacker &upk);
-    void receive_log_page (cubpacking::unpacker &upk);
-    void receive_data_page (cubpacking::unpacker &upk);
+    void receive_boot_info (page_server_conn_t::internal_payload &a_ip);
+    void receive_log_page (page_server_conn_t::internal_payload &a_ip);
+    void receive_data_page (page_server_conn_t::internal_payload &a_ip);
 
   private:
     std::unique_ptr<page_broker<log_page_type>> m_log_page_broker;

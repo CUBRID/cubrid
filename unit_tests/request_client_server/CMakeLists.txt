@@ -18,6 +18,9 @@
 
 project (request_client_server)
 
+#
+# tests for request [sync] client server and all helping classes
+#
 set (TEST_REQUEST_CS_SOURCES
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/packer.cpp
@@ -27,6 +30,7 @@ set (TEST_REQUEST_CS_SOURCES
   )
 set (TEST_REQUEST_CS_HEADERS
   ${COMMUNICATION_DIR}/request_client_server.hpp
+  ${COMMUNICATION_DIR}/response_broker.hpp
   comm_channel_mock.hpp
   )
 

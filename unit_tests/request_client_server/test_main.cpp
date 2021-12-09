@@ -23,6 +23,7 @@
 #include "request_client_server.hpp"
 #include "request_sync_send_queue.hpp"
 #include "request_sync_client_server.hpp"
+#include "response_broker.hpp"
 
 #include "comm_channel_mock.hpp"
 
@@ -129,7 +130,6 @@ static void mock_socket_between_two_client_servers (const test_request_client_se
     const test_request_client_server_type_two &clsr2,
     mock_socket_direction &sockdir_1_to_2,
     mock_socket_direction &sockdir_2_to_1);
-
 // Testing environment for two client-server's
 class test_two_client_server_env
 {
@@ -203,6 +203,10 @@ using test_request_sync_client_server_two_t =
 
 using uq_test_request_sync_client_server_one_t = std::unique_ptr<test_request_sync_client_server_one_t>;
 using uq_test_request_sync_client_server_two_t = std::unique_ptr<test_request_sync_client_server_two_t>;
+
+// The request_sync_client_server type handler that requires to find ExpectedVal
+template <typename ReqId, ReqId ExpectedVal, typename Payload>
+static void mock_check_expected_id_sync (Payload &upk);
 
 class test_two_request_sync_client_server_env
 {
@@ -532,6 +536,121 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "[dbg]"
     }
 }
 
+TEST_CASE ("Test response sequence number generator", "")
+{
+  // Test concurrent number generation, that all the generated numbers are unique
+
+  cubcomm::response_sequence_number_generator rsn_gen;
+
+  // Start threads that request numbers from the generator. Save all the numbers.
+  //
+  // In the end, compare all the generated numbers; they should be unique
+  //
+  constexpr size_t THREAD_COUNT = 10;
+  constexpr size_t NUMBER_COUNT = 1000;
+  using numbers_t = std::vector<cubcomm::response_sequence_number>;
+  std::array<std::pair<std::thread, numbers_t>, THREAD_COUNT> threads_info;
+
+  for (auto &ti : threads_info)
+    {
+      numbers_t &numbers = ti.second;
+      numbers.reserve (NUMBER_COUNT);
+      ti.first = std::thread ([&numbers, &rsn_gen] ()
+      {
+	numbers.push_back (rsn_gen.get_unique_number ());
+      });
+    }
+
+  // Wait for everyone to finish
+  for (auto &ti : threads_info)
+    {
+      ti.first.join ();
+    }
+
+  // Check all the generated numbers
+  std::set<cubcomm::response_sequence_number> m_all_numbers;
+  for (auto &ti : threads_info)
+    {
+      for (const auto n : ti.second)
+	{
+	  auto insert_ret = m_all_numbers.insert (n);
+
+	  // Since all numbers are unique, the insertion must take place:
+	  REQUIRE (insert_ret.second == true);
+	}
+    }
+}
+
+TEST_CASE ("Test response broker", "")
+{
+  // Test threads simulating requesters and a thread registering responses.
+
+  constexpr size_t THREAD_COUNT = 10;
+  constexpr size_t REQUEST_PER_THREAD_COUNT = 1000;
+  constexpr size_t TOTAL_REQUEST_COUNT = THREAD_COUNT * REQUEST_PER_THREAD_COUNT;
+  constexpr size_t BUCKET_COUNT = 30;
+
+  cubcomm::response_sequence_number_generator rsn_gen;
+  cubcomm::response_broker<cubcomm::response_sequence_number> broker (BUCKET_COUNT);
+
+  std::vector<cubcomm::response_sequence_number> requested_rsn;
+  std::mutex request_mutex;
+  std::condition_variable request_condvar;
+
+  std::thread responder_thread ([&] ()
+  {
+    size_t response_count = 0;
+    while (response_count < TOTAL_REQUEST_COUNT)
+      {
+	std::unique_lock<std::mutex> ulock (request_mutex);
+	request_condvar.wait (ulock, [&] ()
+	{
+	  return !requested_rsn.empty ();
+	});
+
+	size_t rsn_index = std::rand () % requested_rsn.size ();
+	auto it = requested_rsn.begin () + rsn_index;
+	cubcomm::response_sequence_number response_rsn = *it;
+	requested_rsn.erase (it);
+
+	ulock.unlock ();
+
+	broker.register_response (response_rsn, std::move (response_rsn));
+	++response_count;
+      }
+  }
+			       );
+
+  std::array<std::thread, THREAD_COUNT> requester_threads;
+  for (auto &it : requester_threads)
+    {
+      it = std::thread ([&] ()
+      {
+	for (size_t i = 0; i < REQUEST_PER_THREAD_COUNT; ++i)
+	  {
+	    cubcomm::response_sequence_number rsn = rsn_gen.get_unique_number ();
+
+	    {
+	      std::lock_guard<std::mutex> lkguard (request_mutex);
+	      requested_rsn.push_back (rsn);
+	    }
+	    request_condvar.notify_all ();
+
+	    cubcomm::response_sequence_number response = broker.get_response (rsn);
+	    REQUIRE (response == rsn);
+	  }
+      }
+		       );
+    }
+
+  // Wait for all threads to finish
+  responder_thread.join ();
+  for (auto &it : requester_threads)
+    {
+      it.join ();
+    }
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // implementations
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -558,6 +677,15 @@ mock_check_expected_id (cubpacking::unpacker &upk)
 {
   T readval;
   upk.unpack_from_int (readval);
+  REQUIRE (readval == Val);
+  ++global_handled_request_count;
+}
+
+template <typename T, T Val, typename Payload>
+static void
+mock_check_expected_id_sync (Payload &a_ip)
+{
+  T readval = static_cast<T> (a_ip.pull_payload ().val);
   REQUIRE (readval == Val);
   ++global_handled_request_count;
 }
@@ -863,17 +991,20 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
   chn.set_channel_name ("sync_client_server_one");
 
   // handle requests 2 to 1
-  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_0 = [] (cubpacking::unpacker &upk)
+  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_0 =
+	  [] (test_request_sync_client_server_one_t::internal_payload &a_ip)
   {
-    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_0> (upk);
+    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_0> (a_ip);
   };
-  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_1 = [] (cubpacking::unpacker &upk)
+  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_1 =
+	  [] (test_request_sync_client_server_one_t::internal_payload &a_ip)
   {
-    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_1> (upk);
+    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_1> (a_ip);
   };
-  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_2 = [] (cubpacking::unpacker &upk)
+  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_2 =
+	  [] (test_request_sync_client_server_one_t::internal_payload &a_ip)
   {
-    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_2> (upk);
+    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_2> (a_ip);
   };
 
   uq_test_request_sync_client_server_one_t scs_one
@@ -897,13 +1028,15 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_two (
   chn.set_channel_name ("sync_client_server_two");
 
   // handle requests 1 to 2
-  test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_0 = [] (cubpacking::unpacker &upk)
+  test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_0 =
+	  [] (test_request_sync_client_server_two_t::internal_payload &a_ip)
   {
-    mock_check_expected_id<reqids_1_to_2, reqids_1_to_2::_0> (upk);
+    mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_0> (a_ip);
   };
-  test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_1 = [] (cubpacking::unpacker &upk)
+  test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_1 =
+	  [] (test_request_sync_client_server_two_t::internal_payload &a_ip)
   {
-    mock_check_expected_id<reqids_1_to_2, reqids_1_to_2::_1> (upk);
+    mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_1> (a_ip);
   };
 
   uq_test_request_sync_client_server_two_t scs_two

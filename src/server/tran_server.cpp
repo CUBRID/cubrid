@@ -365,10 +365,9 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 }
 
 void
-tran_server::receive_log_page (cubpacking::unpacker &upk)
+tran_server::receive_log_page (page_server_conn_t::internal_payload &a_ip)
 {
-  std::string message;
-  upk.unpack_string (message);
+  std::string message = a_ip.pull_payload ();
 
   int error_code;
   std::memcpy (&error_code, message.c_str (), sizeof (error_code));
@@ -394,10 +393,9 @@ tran_server::receive_log_page (cubpacking::unpacker &upk)
 }
 
 void
-tran_server::receive_data_page (cubpacking::unpacker &upk)
+tran_server::receive_data_page (page_server_conn_t::internal_payload &a_ip)
 {
-  std::string message;
-  upk.unpack_string (message);
+  std::string message = a_ip.pull_payload ();
 
   // The message is either an error code or the content of the data page
   if (message.size () == sizeof (int))
@@ -433,10 +431,9 @@ tran_server::receive_data_page (cubpacking::unpacker &upk)
 }
 
 void
-tran_server::receive_boot_info (cubpacking::unpacker &upk)
+tran_server::receive_boot_info (page_server_conn_t::internal_payload &a_ip)
 {
-  std::string message;
-  upk.unpack_string (message);
+  std::string message = a_ip.pull_payload ();
 
   assert (message.size () == sizeof (DKNVOLS));
   DKNVOLS nvols_perm;
@@ -466,7 +463,7 @@ tran_server::get_request_handlers ()
 	  std::make_pair (page_to_tran_request::SEND_DATA_PAGE,
 			  std::bind (&tran_server::receive_data_page, std::ref (*this), std::placeholders::_1));
 
-  std::map<page_to_tran_request, std::function<void (cubpacking::unpacker &upk)>> handlers_map;
+  std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
 
   handlers_map.insert ({ boot_info_handler_value, log_page_handler_value, data_page_handler_value });
 
