@@ -154,3 +154,11 @@ log_lsa passive_tran_server::get_replicator_lsa () const
 {
   return m_replicator->get_redo_lsa ();
 }
+
+void passive_tran_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
+{
+  assert (m_replicator != nullptr);
+
+  m_replicator->wait_replication_finish_during_shutdown ();
+  m_replicator.reset (nullptr);
+}

@@ -84,6 +84,7 @@
 #include "tde.h"
 #include "porting.h"
 #include "page_server.hpp"
+#include "passive_tran_server.hpp"
 #include "scope_exit.hpp"
 #include "server_type.hpp"
 #include "log_manager.h"
@@ -3194,6 +3195,8 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
       // there is no need to reach a consistent state of log replication before shutting down;
       // upon restart, a passive transaction server will, again, pick up its state from the
       // page server(s) it connects to
+      passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
+      pts_ptr->finish_replication_during_shutdown (*thread_p);
 
       ts_Gl->finalize_page_brokers ();
     }
