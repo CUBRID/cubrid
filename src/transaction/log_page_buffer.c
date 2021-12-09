@@ -1343,7 +1343,14 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   loghdr->avg_nlocks = LOG_ESTIMATE_NOBJ_LOCKS;
   loghdr->npages = npages - 1;	/* Hdr pg is stolen */
   loghdr->db_charset = lang_charset ();
-  loghdr->fpageid = 0;
+  if (prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID) != 0)
+    {
+      loghdr->fpageid = (LOG_PAGEID) prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID);
+    }
+  else
+    {
+      loghdr->fpageid = 0;
+    }
   loghdr->append_lsa.pageid = loghdr->fpageid;
   loghdr->append_lsa.offset = 0;
   LSA_COPY (&loghdr->chkpt_lsa, &loghdr->append_lsa);
@@ -2481,6 +2488,13 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   logpb_log ("started logpb_fetch_start_append_page\n");
+
+  if (prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID) != 0
+      && (LOG_PAGEID) prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID) == log_Gl.hdr.append_lsa.pageid
+      && log_Gl.hdr.append_lsa.offset == 0)
+    {
+      flag = NEW_PAGE;
+    }
 
   /* detect empty log (page and offset of zero) */
   if ((log_Gl.hdr.append_lsa.pageid == 0) && (log_Gl.hdr.append_lsa.offset == 0))
