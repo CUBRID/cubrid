@@ -555,8 +555,7 @@ TEST_CASE ("Test response sequence number generator", "")
       ti.first = std::thread ([&numbers, &rsn_gen] ()
       {
 	numbers.push_back (rsn_gen.get_unique_number ());
-      }
-			     );
+      });
     }
 
   // Wait for everyone to finish
