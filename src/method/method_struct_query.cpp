@@ -612,10 +612,7 @@ namespace cubmethod
 
   execute_info::~execute_info ()
   {
-    if (call_info)
-      {
-	delete call_info;
-      }
+    call_info = nullptr;
   }
 
   void

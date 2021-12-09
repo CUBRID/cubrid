@@ -1396,7 +1396,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1332 The active log volume (%1$s) is too sane to recreate. If you remove the active log, it could cause an unexpected and irreversible problem.
 
-1333 Last Error
+1333 Unsupported argument type of stored procedure: %1$s
+1334 Unsupported return type of stored procedure: %1$s
+
+1335 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

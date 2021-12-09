@@ -534,7 +534,8 @@ namespace cubmethod
       {
 	if (m_q_result[i].copied == false && m_q_result[i].result)
 	  {
-	    db_query_end (m_q_result[i].result);
+	    DB_QUERY_RESULT *result = m_q_result[i].result;
+	    db_query_end_internal (result, false);
 	  }
 	m_q_result[i].result = NULL;
 

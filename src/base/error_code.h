@@ -1698,7 +1698,10 @@
 
 #define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
 
-#define ER_LAST_ERROR                               -1333
+#define ER_SP_NOT_SUPPORTED_ARG_TYPE                -1333
+#define ER_SP_NOT_SUPPORTED_RETURN_TYPE             -1334
+
+#define ER_LAST_ERROR                               -1335
 /*
  * CAUTION!
  *
