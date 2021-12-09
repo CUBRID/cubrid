@@ -838,7 +838,7 @@ struct pgbuf_buffer_pool
   {
     return highest_evicted_lsa.load ();
   };
-  
+
   /* *INDENT-ON* */
 };
 
@@ -8016,29 +8016,24 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
     }
   if (request_from_ps)
     {
-      // *INDENT-OFF*
-      const auto replicator_lsa_ftor = [] ()
-      {
-	const passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-	return pts_ptr->get_replicator_lsa ();
-      };
-      // *INDENT-ON*
-
-      /* on the passive transaction server, make sure to request that the progress on the page server - from
-       * where the data page is retrieved -  be at least the same as the local progress to avoid losing
-       * any log entries being applied on both ends
+      /* make sure to request that the progress on the page server, from where the page is retrieved, is:
+       *  - on the active transaction server (ATS): at least the same as the level of the "most advanced" (from the
+       *    point of view of view of data) page that has been evicted from the page buffer (ie: whatever page
+       *    is dropped from the page buffer, if it were to be retrieved again from page server, already contains
+       *    the data that has just been evicted)
+       *  - on the passive transaction server (PTS): at least the same as the local progress to avoid losing
+       *      any log entries being applied on both ends
        */
-      const LOG_LSA target_repl_lsa =
-	(is_passive_transaction_server ())? replicator_lsa_ftor () : pgbuf_Pool.get_highest_evicted_lsa ();
+      const LOG_LSA target_repl_lsa = is_passive_transaction_server ()?
+	get_passive_tran_server_ptr ()->get_replicator_lsa () : pgbuf_Pool.get_highest_evicted_lsa ();
 
       pgbuf_request_data_page_from_page_server (vpid, target_repl_lsa);
-      // TODO: what if, by the next line, page has already been retrieved by the page broker
       auto data_page = ts_Gl->get_data_page_broker ().wait_for_page (*vpid);
 
       if (read_from_local)
 	{
 	  // *INDENT-OFF*
-	  assert (reinterpret_cast<FILEIO_PAGE const*> (data_page->c_str ())->prv == 
+	  assert (reinterpret_cast<FILEIO_PAGE const*> (data_page->c_str ())->prv ==
             reinterpret_cast<FILEIO_PAGE *> (io_page)->prv);
 	  // *INDENT-ON*
 	}
