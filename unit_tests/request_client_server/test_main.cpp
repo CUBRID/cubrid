@@ -23,6 +23,7 @@
 #include "request_client_server.hpp"
 #include "request_sync_send_queue.hpp"
 #include "request_sync_client_server.hpp"
+#include "response_broker.hpp"
 
 #include "comm_channel_mock.hpp"
 
@@ -532,6 +533,121 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "[dbg]"
   for (auto &th : threads)
     {
       th.join ();
+    }
+}
+
+TEST_CASE ("Test response sequence number generator", "")
+{
+  // Test concurrent number generation, that all the generated numbers are unique
+
+  cubcomm::response_sequence_number_generator rsn_gen;
+
+  // Start threads that request numbers from the generator. Save all the numbers.
+  //
+  // In the end, compare all the generated numbers; they should be unique
+  //
+  constexpr size_t THREAD_COUNT = 10;
+  constexpr size_t NUMBER_COUNT = 1000;
+  using numbers_t = std::vector<cubcomm::response_sequence_number>;
+  std::array<std::pair<std::thread, numbers_t>, THREAD_COUNT> threads_info;
+
+  for (auto &ti : threads_info)
+    {
+      numbers_t &numbers = ti.second;
+      numbers.reserve (NUMBER_COUNT);
+      ti.first = std::thread ([&numbers, &rsn_gen] ()
+      {
+	numbers.push_back (rsn_gen.get_unique_number ());
+      });
+    }
+
+  // Wait for everyone to finish
+  for (auto &ti : threads_info)
+    {
+      ti.first.join ();
+    }
+
+  // Check all the generated numbers
+  std::set<cubcomm::response_sequence_number> m_all_numbers;
+  for (auto &ti : threads_info)
+    {
+      for (const auto n : ti.second)
+	{
+	  auto insert_ret = m_all_numbers.insert (n);
+
+	  // Since all numbers are unique, the insertion must take place:
+	  REQUIRE (insert_ret.second == true);
+	}
+    }
+}
+
+TEST_CASE ("Test response broker", "")
+{
+  // Test threads simulating requesters and a thread registering responses.
+
+  constexpr size_t THREAD_COUNT = 10;
+  constexpr size_t REQUEST_PER_THREAD_COUNT = 1000;
+  constexpr size_t TOTAL_REQUEST_COUNT = THREAD_COUNT * REQUEST_PER_THREAD_COUNT;
+  constexpr size_t BUCKET_COUNT = 30;
+
+  cubcomm::response_sequence_number_generator rsn_gen;
+  cubcomm::response_broker<cubcomm::response_sequence_number> broker (BUCKET_COUNT);
+
+  std::vector<cubcomm::response_sequence_number> requested_rsn;
+  std::mutex request_mutex;
+  std::condition_variable request_condvar;
+
+  std::thread responder_thread ([&] ()
+  {
+    size_t response_count = 0;
+    while (response_count < TOTAL_REQUEST_COUNT)
+      {
+	std::unique_lock<std::mutex> ulock (request_mutex);
+	request_condvar.wait (ulock, [&] ()
+	{
+	  return !requested_rsn.empty ();
+	});
+
+	size_t rsn_index = std::rand () % requested_rsn.size ();
+	auto it = requested_rsn.begin () + rsn_index;
+	cubcomm::response_sequence_number response_rsn = *it;
+	requested_rsn.erase (it);
+
+	ulock.unlock ();
+
+	broker.register_response (response_rsn, std::move (response_rsn));
+	++response_count;
+      }
+  }
+			       );
+
+  std::array<std::thread, THREAD_COUNT> requester_threads;
+  for (auto &it : requester_threads)
+    {
+      it = std::thread ([&] ()
+      {
+	for (size_t i = 0; i < REQUEST_PER_THREAD_COUNT; ++i)
+	  {
+	    cubcomm::response_sequence_number rsn = rsn_gen.get_unique_number ();
+
+	    {
+	      std::lock_guard<std::mutex> lkguard (request_mutex);
+	      requested_rsn.push_back (rsn);
+	    }
+	    request_condvar.notify_all ();
+
+	    cubcomm::response_sequence_number response = broker.get_response (rsn);
+	    REQUIRE (response == rsn);
+	  }
+      }
+		       );
+    }
+
+  // Wait for all threads to finish
+  responder_thread.join ();
+  for (auto &it : requester_threads)
+    {
+      it.join ();
     }
 }
 
