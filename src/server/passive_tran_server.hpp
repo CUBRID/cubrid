@@ -34,7 +34,6 @@ class passive_tran_server : public tran_server
     void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p);
     void start_log_replicator (const log_lsa &start_lsa);
 
-  public:
     /* read replicator's current progress */
     log_lsa get_replicator_lsa () const;
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);

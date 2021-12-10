@@ -1637,9 +1637,7 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
   passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
   assert (pts_ptr != nullptr);
 
-  log_lsa replication_start_redo_lsa
-  {
-  NULL_LSA};
+  log_lsa replication_start_redo_lsa = NULL_LSA;
   {
     // before requesting log boot info from page server, hold a lock for the prior mutex
     // during the call, page server will also start sending log records and we must make sure to
