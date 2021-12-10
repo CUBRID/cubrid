@@ -498,6 +498,8 @@ struct log_tdes
   LOG_LSA commit_abort_lsa;	/* Address of the commit/abort operation. Used by checkpoint to decide whether to
 				 * consider or not a transaction as concluded. */
   LOG_LSA last_mvcc_lsa;	/* The address of transaction's last MVCC log record. */
+  LOG_LSA page_desync_lsa;	/* Only on PTS: the LSA of a page found to be ahead of replication, that could cause a page
+				 * desynchronization issue. */
   int client_id;		/* unique client id */
   int gtrid;			/* Global transaction identifier; used only if this transaction is a participant to a
 				 * global transaction and it is prepared to commit. */

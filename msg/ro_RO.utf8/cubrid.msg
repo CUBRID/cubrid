@@ -1343,7 +1343,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1272 Error connecting with the active transaction server.
 1273 Invalid server type '%s', -t or --type should be followed either by 'transaction' or 'page'.
 1274 Invalid server option "%s".
-1275 Error reserved for scalability development.
+1275 Page %1d|%2d is ahead of replication. Page LSA is %3lld|%4d, replication LSA is %5lld|%6d.
 1276 Error reserved for scalability development.
 1277 Error reserved for scalability development.
 1278 Error reserved for scalability development.
