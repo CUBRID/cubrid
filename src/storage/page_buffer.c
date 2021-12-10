@@ -2327,7 +2327,7 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
       page = pgbuf_fix (thread_p, &vpid, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (page == nullptr)
 	{
-	  // Error
+	  // Another error occurred. Stop.
 	  ASSERT_ERROR ();
 	  return nullptr;
 	}
@@ -2370,15 +2370,16 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
   LOG_LSA repl_lsa = get_passive_tran_server_ptr ()->get_replicator_lsa ();
   if (page_lsa > repl_lsa)
     {
-      assert (LOG_FIND_CURRENT_TDES (thread_p)->page_desync_lsa.is_null ());
-      LOG_FIND_CURRENT_TDES (thread_p)->page_desync_lsa = page_lsa;
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+      assert (tdes->page_desync_lsa.is_null ());
+      tdes->page_desync_lsa = page_lsa;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_AHEAD_OF_REPLICATION, 6, PGBUF_PAGE_VPID_AS_ARGS (page),
-	      PGBUF_PAGE_LSA_AS_ARGS (page), LSA_AS_ARGS (&repl_lsa));
+	      LSA_AS_ARGS (&page_lsa), LSA_AS_ARGS (&repl_lsa));
       return ER_PAGE_AHEAD_OF_REPLICATION;
     }
   else
     {
-      // Page cannot be desynchronized
+      // Page is not desynchronized
       return NO_ERROR;
     }
 }
