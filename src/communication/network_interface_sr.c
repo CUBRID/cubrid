@@ -2194,46 +2194,52 @@ slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   int data_len;
   LOG_TDES *tdes;
 
-  ptr = or_unpack_int (request, &ddl_type);
-  ptr = or_unpack_int (ptr, &obj_type);
-
-  ptr = or_unpack_oid (ptr, &classoid);
-  ptr = or_unpack_oid (ptr, &oid);
-
-  or_unpack_string_nocopy (ptr, &stmt_text);
-
-  /* ddl_type | obj_type | class OID | OID | stmt_text len | stmt_text */
-  data_len =
-    OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_OID_SIZE + OR_INT_SIZE + or_packed_string_length (stmt_text, NULL);
-
-  supplemental_data = (char *) malloc (data_len + MAX_ALIGNMENT);
-  if (supplemental_data == NULL)
+  /* CAS and Server are able to have different parameter value, when broker restarted with changed parameter value */
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
     {
-      success = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto end;
+      ptr = or_unpack_int (request, &ddl_type);
+      ptr = or_unpack_int (ptr, &obj_type);
+
+      ptr = or_unpack_oid (ptr, &classoid);
+      ptr = or_unpack_oid (ptr, &oid);
+
+      or_unpack_string_nocopy (ptr, &stmt_text);
+
+      /* ddl_type | obj_type | class OID | OID | stmt_text len | stmt_text */
+      data_len =
+	OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_OID_SIZE + OR_INT_SIZE + or_packed_string_length (stmt_text, NULL);
+
+      supplemental_data = (char *) malloc (data_len + MAX_ALIGNMENT);
+      if (supplemental_data == NULL)
+	{
+	  success = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      ptr = start_ptr = supplemental_data;
+
+      ptr = or_pack_int (ptr, ddl_type);
+      ptr = or_pack_int (ptr, obj_type);
+      ptr = or_pack_oid (ptr, &classoid);
+      ptr = or_pack_oid (ptr, &oid);
+      ptr = or_pack_int (ptr, strlen (stmt_text));
+      ptr = or_pack_string (ptr, stmt_text);
+
+      data_len = ptr - start_ptr;
+
+      tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      if (!tdes->has_supplemental_log)
+	{
+	  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					tdes->client.get_db_user ());
+	  tdes->has_supplemental_log = true;
+	}
+
+      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
+
+      free_and_init (supplemental_data);
     }
-
-  ptr = start_ptr = supplemental_data;
-
-  ptr = or_pack_int (ptr, ddl_type);
-  ptr = or_pack_int (ptr, obj_type);
-  ptr = or_pack_oid (ptr, &classoid);
-  ptr = or_pack_oid (ptr, &oid);
-  ptr = or_pack_int (ptr, strlen (stmt_text));
-  ptr = or_pack_string (ptr, stmt_text);
-
-  data_len = ptr - start_ptr;
-
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-
-  if (!tdes->has_supplemental_log)
-    {
-      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
-				    tdes->client.get_db_user ());
-      tdes->has_supplemental_log = true;
-    }
-
-  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
 
 end:
   (void) or_pack_int (reply, success);
@@ -2618,7 +2624,7 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  if (!tde_Cipher.is_loaded)
+  if (!tde_is_loaded ())
     {
       (void) return_error_to_client (thread_p, rid);
       area = NULL;
@@ -2651,6 +2657,28 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     {
       db_private_free_and_init (thread_p, area);
     }
+}
+
+/*
+ * stde_is_loaded -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+stde_is_loaded (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_int (reply, tde_is_loaded ());
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -10262,6 +10290,20 @@ ssession_stop_attached_threads (void *session)
   session_stop_attached_threads (session);
 }
 
+static bool
+cdc_check_client_connection ()
+{
+  if (css_check_conn (&cdc_Gl.conn) == NO_ERROR)
+    {
+      /* existing connection is alive */
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
 void
 smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -10405,8 +10447,37 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
     {
       error_code = ER_CDC_NOT_AVAILABLE;
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
       goto error;
     }
+
+  /* scdc_start_session more than once without scdc_end_session */
+  if (cdc_Gl.conn.fd != -1)
+    {
+      if (thread_p->conn_entry->fd != cdc_Gl.conn.fd)
+	{
+	  /* check if existing connection is alive */
+	  if (cdc_check_client_connection ())
+	    {
+	      cdc_log ("%s : More than two clients attempt to connect", __func__);
+
+	      error_code = ER_CDC_NOT_AVAILABLE;
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
+	      goto error;
+	    }
+	}
+
+      /* if existing session is dead, then pause loginfo producer thread (cdc). */
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
+	}
+
+      LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
+    }
+
+  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
+  cdc_Gl.conn.status = thread_p->conn_entry->status;
 
   ptr = or_unpack_int (request, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
@@ -10418,6 +10489,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       extraction_user = (char **) malloc (sizeof (char *) * num_extraction_user);
       if (extraction_user == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * num_extraction_user);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error;
 	}
@@ -10429,6 +10501,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	  extraction_user[i] = strdup (dummy_user);
 	  if (extraction_user[i] == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (dummy_user));
 	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error;
 	    }
@@ -10442,6 +10515,8 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       extraction_classoids = (UINT64 *) malloc (sizeof (UINT64) * num_extraction_class);
       if (extraction_classoids == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (UINT64) * num_extraction_class);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error;
 	}
@@ -10451,6 +10526,10 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	  ptr = or_unpack_int64 (ptr, (INT64 *) & extraction_classoids[i]);
 	}
     }
+
+  cdc_log
+    ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
+     __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
 
   error_code =
     cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
@@ -10468,11 +10547,29 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
 error:
 
-  cdc_free_extraction_filter ();
+  if (extraction_user != NULL)
+    {
+      for (int i = 0; i < num_extraction_user; i++)
+	{
+	  if (extraction_user[i] != NULL)
+	    {
+	      free_and_init (extraction_user[i]);
+	    }
+	}
+
+      free_and_init (extraction_user);
+    }
+
+  if (extraction_classoids != NULL)
+    {
+      free_and_init (extraction_classoids);
+    }
 
   or_pack_int (reply, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
 }
 
 void
@@ -10487,6 +10584,8 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
 
   ptr = or_unpack_int64 (request, &input_time);
   //if scdc_find_lsa() is called more than once, it should pause running cdc_loginfo_producer_execute() thread 
+
+  cdc_log ("%s : input time (%lld)", __func__, input_time);
 
   error_code = cdc_find_lsa (thread_p, &input_time, &start_lsa);
   if (error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA)
@@ -10509,6 +10608,9 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
       ptr = or_pack_int (reply, error_code);
       ptr = or_pack_log_lsa (ptr, &start_lsa);
       or_pack_int64 (ptr, input_time);
+
+      cdc_log ("%s : reply contains start lsa (%lld|%d), output time (%lld)", __func__, LSA_AS_ARGS (&start_lsa),
+	       input_time);
 
       (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
@@ -10544,11 +10646,21 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 
   or_unpack_log_lsa (request, &start_lsa);
 
+  cdc_log ("%s : request from client contains start_lsa (%lld|%d)", __func__, LSA_AS_ARGS (&start_lsa));
+
   if (LSA_ISNULL (&cdc_Gl.consumer.next_lsa))
     {
-      /* if server is restarted while cdc is running, and client immediately calls extraction without scdc_find_lsa(), 
-       * LSA validation is needed to perform at client side or somewhere because server has no information about LSAs. it needs to be discussed ( 보류) */
+      /* if server is restarted while cdc is running, and client immediately calls extraction without scdc_find_lsa() */
+
+      error_code = cdc_validate_lsa (thread_p, &start_lsa);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
       cdc_set_extraction_lsa (&start_lsa);
+
+      cdc_reinitialize_queue (&start_lsa);
 
       cdc_wakeup_producer ();
     }
@@ -10582,6 +10694,8 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 		     "requested extract lsa is (%lld | %d) is not in a range of previously requested lsa (%lld | %d) and next lsa to extract (%lld | %d)",
 		     LSA_AS_ARGS (&start_lsa), LSA_AS_ARGS (&cdc_Gl.consumer.start_lsa),
 		     LSA_AS_ARGS (&cdc_Gl.consumer.next_lsa));
+
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_LOG_LSA, 1, LSA_AS_ARGS (&start_lsa));
       error_code = ER_CDC_INVALID_LOG_LSA;
       goto error;
     }
@@ -10591,6 +10705,9 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   ptr = or_pack_log_lsa (ptr, &next_lsa);
   ptr = or_pack_int (ptr, num_log_info);
   ptr = or_pack_int (ptr, total_length);
+
+  cdc_log ("%s : reply contains next lsa (%lld|%d), num log info (%d), total length (%d)", __func__,
+	   LSA_AS_ARGS (&next_lsa), num_log_info, total_length);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   return;
@@ -10605,6 +10722,8 @@ error:
 void
 scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  cdc_log ("%s : size of log info is %d", __func__, cdc_Gl.consumer.log_info_size);
+
   (void) css_send_data_to_client (thread_p->conn_entry, rid, cdc_Gl.consumer.log_info, cdc_Gl.consumer.log_info_size);
 
   return;
@@ -10617,13 +10736,12 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-  // 1. producer 정지 및 관련 자료구조 cleanup
-  // 2. consumer 버퍼 정리 및 초기화
   error_code = cdc_cleanup ();
 
-  /* server side, client side finalize is mixed 
-   * server : 전역 변수 초기화 
-   * client : server finalize의 subset */
+  cdc_log ("%s : clean up for cdc thread has done.", __func__);
+
+  cdc_Gl.conn.fd = -1;
+  cdc_Gl.conn.status = CONN_CLOSED;
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));

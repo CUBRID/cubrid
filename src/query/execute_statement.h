@@ -33,6 +33,26 @@
 #include "dbi.h"
 #include "parser.h"
 
+#define CDC_TRIGGER_INVOLVED_BACKUP(is_trigger_involved) \
+  do \
+    { \
+      if (prm_get_integer_value(PRM_ID_SUPPLEMENTAL_LOG)) \
+        { \
+          (is_trigger_involved) = cdc_Trigger_involved; \
+        } \
+    } \
+  while (0)
+
+#define CDC_TRIGGER_INVOLVED_RESTORE(is_trigger_involved) \
+  do \
+    { \
+      if (prm_get_integer_value(PRM_ID_SUPPLEMENTAL_LOG)) \
+        { \
+          cdc_Trigger_involved = (is_trigger_involved); \
+        } \
+    } \
+  while (0)
+
 extern int do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_name, const char *att_name);
 extern int do_reset_auto_increment_serial (MOP serial_obj);
 
@@ -57,6 +77,8 @@ extern int do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement);
 typedef int (PT_DO_FUNC) (PARSER_CONTEXT *, PT_NODE *);
 
 extern bool do_Trigger_involved;
+
+extern bool cdc_Trigger_involved;
 
 extern int do_alter (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -162,5 +184,4 @@ extern int do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
 
-extern int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement);
 #endif /* _EXECUTE_STATEMENT_H_ */
