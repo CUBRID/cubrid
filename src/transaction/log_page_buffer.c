@@ -1343,14 +1343,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   loghdr->avg_nlocks = LOG_ESTIMATE_NOBJ_LOCKS;
   loghdr->npages = npages - 1;	/* Hdr pg is stolen */
   loghdr->db_charset = lang_charset ();
-  if (prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID) != 0)
-    {
-      loghdr->fpageid = (LOG_PAGEID) prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID);
-    }
-  else
-    {
-      loghdr->fpageid = 0;
-    }
+  loghdr->fpageid = (LOG_PAGEID) prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID);	/* loghdr->fpageid should always be 0 except for QA or TEST purposes. */
   loghdr->append_lsa.pageid = loghdr->fpageid;
   loghdr->append_lsa.offset = 0;
   LSA_COPY (&loghdr->chkpt_lsa, &loghdr->append_lsa);
