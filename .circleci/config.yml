@@ -13,7 +13,7 @@ test_defaults: &test_defaults
         environment:
           _JAVA_OPTIONS: -Xmx1g
         command: |
-          ulimit -c unlimited
+          ulimit -c 0
           /entrypoint.sh checkout
           circleci tests glob cubrid-testcases/$TEST_SUITE/_* | circleci tests split | tee tc.list
           find cubrid-testcases/$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
