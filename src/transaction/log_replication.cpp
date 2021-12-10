@@ -78,18 +78,29 @@ namespace cublog
 
   // replicate_btree_stats does redo record simulation
   static void replicate_btree_stats (cubthread::entry &thread_entry, const VPID &root_vpid,
-				     const log_unique_stats &stats, const log_lsa &record_lsa);
+				     const log_unique_stats &stats, const log_lsa &record_lsa,
+				     PAGE_FETCH_MODE page_fetch_mode);
 
   // a job for replication b-tree stats update
   class redo_job_btree_stats : public redo_parallel::redo_job_base
   {
     public:
-      redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, const log_unique_stats &stats);
+      redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, PAGE_FETCH_MODE page_fetch_mode,
+			    const log_unique_stats &stats);
+
+      redo_job_btree_stats (redo_job_btree_stats const &) = delete;
+      redo_job_btree_stats (redo_job_btree_stats &&) = delete;
+
+      ~redo_job_btree_stats () override = default;
+
+      redo_job_btree_stats &operator = (redo_job_btree_stats const &) = delete;
+      redo_job_btree_stats &operator = (redo_job_btree_stats &&) = delete;
 
       int execute (THREAD_ENTRY *thread_p, log_rv_redo_context &) override;
       void retire (std::size_t a_task_idx) override;
 
     private:
+      const PAGE_FETCH_MODE m_page_fetch_mode;
       log_unique_stats m_stats;
   };
 
@@ -97,8 +108,9 @@ namespace cublog
    * replicator - definition
    *********************************************************************/
 
-  replicator::replicator (const log_lsa &start_redo_lsa)
+  replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
     : m_redo_lsa { start_redo_lsa }
+    , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }
   {
@@ -107,17 +119,15 @@ namespace cublog
     //  - race conditions, when daemon comes online, are avoided
     //  - (even making abstraction of the race conditions) no log records are needlessly
     //    processed synchronously
-    const int replication_parallel_count = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
-    assert (replication_parallel_count >= 0);
-    if (replication_parallel_count > 0)
+    if (parallel_count > 0)
       {
 	// no need to reset with start redo lsa
 
 	const bool force_each_log_page_fetch = true;
 	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
-	m_reusable_jobs->initialize (replication_parallel_count);
+	m_reusable_jobs->initialize (parallel_count);
 	m_parallel_replication_redo.reset (
-		new cublog::redo_parallel (replication_parallel_count, true, m_redo_lsa, m_redo_context));
+		new cublog::redo_parallel (parallel_count, true, m_redo_lsa, m_redo_context));
       }
 
     // Create the daemon
@@ -175,12 +185,12 @@ namespace cublog
 
     m_perfmon_redo_sync.start ();
     // make sure the log page is refreshed. otherwise it may be outdated and new records may be missed
-    m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa, log_reader::fetch_mode::FORCE);
+    (void) m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa, log_reader::fetch_mode::FORCE);
 
     while (m_redo_lsa < end_redo_lsa)
       {
 	// read and redo a record
-	m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa);
+	(void) m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa);
 
 	const log_rec_header header = m_redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
 
@@ -280,13 +290,15 @@ namespace cublog
     // Create a job or apply the change immediately
     if (m_parallel_replication_redo != nullptr)
       {
-	redo_job_btree_stats *job = new redo_job_btree_stats (root_vpid, record_info.m_start_lsa, stats);
+	redo_job_btree_stats *job = new redo_job_btree_stats (root_vpid, record_info.m_start_lsa,
+	    m_redo_context.m_page_fetch_mode, stats);
 	// ownership of raw pointer remains with the job instance which will delete itself upon retire
 	m_parallel_replication_redo->add (job);
       }
     else
       {
-	replicate_btree_stats (thread_entry, root_vpid, stats, record_info.m_start_lsa);
+	replicate_btree_stats (thread_entry, root_vpid, stats, record_info.m_start_lsa,
+			       m_redo_context.m_page_fetch_mode);
       }
   }
 
@@ -382,6 +394,12 @@ namespace cublog
       }
   }
 
+  log_lsa replicator::get_redo_lsa () const
+  {
+    std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
+    return m_redo_lsa;
+  }
+
   /*********************************************************************
    * replication delay calculation - definition
    *********************************************************************/
@@ -447,12 +465,22 @@ namespace cublog
 
   void
   replicate_btree_stats (cubthread::entry &thread_entry, const VPID &root_vpid, const log_unique_stats &stats,
-			 const log_lsa &record_lsa)
+			 const log_lsa &record_lsa, PAGE_FETCH_MODE page_fetch_mode)
   {
-    PAGE_PTR root_page = log_rv_redo_fix_page (&thread_entry, &root_vpid);
+    PAGE_PTR root_page = log_rv_redo_fix_page (&thread_entry, &root_vpid, page_fetch_mode);
     if (root_page == nullptr)
       {
-	logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "cublog::replicate_btree_stats");
+	// this fetch mode is only used when replicating on passive transaction server
+	if (page_fetch_mode != OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT)
+	  {
+	    logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "cublog::replicate_btree_stats");
+	    return;
+	  }
+
+	// allowed to be null when on passive transaction server; means the page is neither already in the
+	// page buffer nor on its way down from the page server; replication will gently pass through; when
+	// page will, eventually, be needed, will be downloaded from the page server with already all the
+	// necessary log records already applied
 	return;
       }
 
@@ -461,8 +489,10 @@ namespace cublog
     pgbuf_set_dirty_and_free (&thread_entry, root_page);
   }
 
-  redo_job_btree_stats::redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, const log_unique_stats &stats)
+  redo_job_btree_stats::redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa,
+      PAGE_FETCH_MODE page_fetch_mode, const log_unique_stats &stats)
     : redo_parallel::redo_job_base (vpid, record_lsa)
+    , m_page_fetch_mode { page_fetch_mode }
     , m_stats (stats)
   {
   }
@@ -470,7 +500,7 @@ namespace cublog
   int
   redo_job_btree_stats::execute (THREAD_ENTRY *thread_p, log_rv_redo_context &)
   {
-    replicate_btree_stats (*thread_p, get_vpid (), m_stats, get_log_lsa ());
+    replicate_btree_stats (*thread_p, get_vpid (), m_stats, get_log_lsa (), m_page_fetch_mode);
     return NO_ERROR;
   }
 
