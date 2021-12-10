@@ -48,6 +48,20 @@ namespace cublog
 
 namespace cublog
 {
+  /* configuration params for replicator
+   *
+   * TODO: add after merge with lets-223
+   */
+//  struct replicator_config
+//  {
+//    // TODO: const PAGE_FETCH_MODE m_page_fetch_mode;
+//    // TODO: const int m_parallel_count;
+
+//    /* only page server handles trantable snapshot log records for the purpose of relaying
+//     * that info to the newly connected passive transaction servers */
+//    const bool m_handle_trantable_snapshot;
+//  };
+
   //  replicator applies redo to replicate changes from the active transaction server
   //
   class replicator
@@ -67,6 +81,8 @@ namespace cublog
        */
       void wait_past_target_lsa (const log_lsa &a_target_lsa);
 
+      log_lsa get_previous_encountered_trantable_snapshot_lsa () const;
+
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
@@ -79,6 +95,8 @@ namespace cublog
 	  const log_lsa &rec_lsa);
 
     private:
+      //const replicator_config m_config;
+
       std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
 
@@ -98,6 +116,10 @@ namespace cublog
        *    effective calling of the redo function
        */
       perfmon_counter_timer_tracker m_perfmon_redo_sync;
+
+      /*
+       */
+      std::atomic<log_lsa> m_previous_encountered_trantable_snapshot_lsa;
 
       /* does not record anything; needed just to please reused recovery infrastructure
        */

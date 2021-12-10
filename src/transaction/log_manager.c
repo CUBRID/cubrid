@@ -69,11 +69,13 @@
 #include "log_compress.h"
 #include "log_record.hpp"
 #include "log_recovery.h"
+#include "log_replication.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "page_server.hpp"
 #include "partition_sr.h"
 #include "passive_tran_server.hpp"
 #include "scope_exit.hpp"
@@ -3434,13 +3436,21 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
   return;
 }
 
+#if defined (SERVER_MODE)
 /* log_pack_log_boot_info - pack together the log header, log append pages
  *              and prev lsa for the purpose of sending them to the passive transaction server
  *              as part of the log initialization sequence
+ *
+ *  append_lsa(out): for logging purposes
+ *  prev_lsa (out): for logging
+ *  previous_encountered_trantable_snapshot (out): for logging
+ *  log_prior_sender_sink (in): functor to add as a sink for prior sender; will act as a relay for log info between
+ *                              the page server and the passive transaction server connected to this page server
  */
 // *INDENT-OFF*
 std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa,
-                                    log_lsa &prev_lsa, const cublog::prior_sender::sink_hook_t  &log_prior_sender_sink)
+                                    log_lsa &prev_lsa, log_lsa &previous_encountered_trantable_snapshot,
+                                    const cublog::prior_sender::sink_hook_t  &log_prior_sender_sink)
 {
   LOG_CS_ENTER_READ_MODE (thread_p);
   scope_exit log_cs_exit_ftor ([thread_p] { LOG_CS_EXIT (thread_p); });
@@ -3461,18 +3471,23 @@ std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa
   packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (log_lsa));
   prev_lsa = log_Gl.append.prev_lsa;
 
+  previous_encountered_trantable_snapshot =
+      ps_Gl.get_replicator().get_previous_encountered_trantable_snapshot_lsa();
+  packed_message.append(reinterpret_cast<const char *> (&previous_encountered_trantable_snapshot),
+                        sizeof (log_lsa));
+
   // within the same locks, initialize log prior dispatch to the newly connected passive transaction server
   log_Gl.m_prior_sender.add_sink (log_prior_sender_sink);
-
   // TODO: in the future, this needs to be made explicit:
   //  - as passive transaction servers (PTS) go on/off-line at a random pace
-  //  - and, as each PTS has the list of available page servers (PS) and it can connect to
+  //  - and, as each PTS has the list of available page servers (PS) it can connect to
   //  - it is the PTS's responsibility to register itself as a log prior consumer with all/some/one of the
   //    connected PS's
 
   return packed_message;
 }
 // *INDENT-ON*
+#endif // SERVER_MODE
 
 /*
  * log_skip_logging -  A log entry was not recorded intentionally by the
@@ -3664,6 +3679,8 @@ log_append_trantable_snapshot (THREAD_ENTRY *thread_p, const cublog::checkpoint_
   LOG_PRIOR_NODE *node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_TRANTABLE_SNAPSHOT, RV_NOT_DEFINED, NULL, (int) packed_size,
 				   rv_data_buffer.get (), 0, NULL);
+  // TODO: question: is it actually arbitrary whether data is stored in undo or redo? since this is only used for
+  // data relay between servers, I suppose it is arbitrary of whether data is stored in undo or redo areas
   assert (node != nullptr);
 
   auto trantable_snapshot_recp = (LOG_REC_TRANTABLE_SNAPSHOT *) node->data_header;
@@ -7054,6 +7071,7 @@ log_dump_record_trantable_snapshot (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
 
   fprintf (out_fp, " Snapshot_LSA = %lld|%d, length =%zu", LSA_AS_ARGS (&trantable_snapshot->snapshot_lsa),
 	   trantable_snapshot->length);
+  // TODO: do we need to also dump the packed info as well? I saw that log dump also logs the raw data (or raw payload)
 
   return log_page_p;
 }
