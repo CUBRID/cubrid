@@ -105,9 +105,9 @@ class tran_server
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
     // Common request Handlers
-    void receive_boot_info (page_server_conn_t::internal_payload &a_ip);
-    void receive_log_page (page_server_conn_t::internal_payload &a_ip);
-    void receive_data_page (page_server_conn_t::internal_payload &a_ip);
+    void receive_boot_info (page_server_conn_t::sequenced_payload &a_ip);
+    void receive_log_page (page_server_conn_t::sequenced_payload &a_ip);
+    void receive_data_page (page_server_conn_t::sequenced_payload &a_ip);
 
   private:
     std::unique_ptr<page_broker<log_page_type>> m_log_page_broker;

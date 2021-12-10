@@ -65,7 +65,7 @@ passive_tran_server::get_request_handlers ()
 }
 
 void
-passive_tran_server::receive_log_boot_info (page_server_conn_t::internal_payload &a_ip)
+passive_tran_server::receive_log_boot_info (page_server_conn_t::sequenced_payload &a_ip)
 {
   std::string message = a_ip.pull_payload ();
 
@@ -78,7 +78,7 @@ passive_tran_server::receive_log_boot_info (page_server_conn_t::internal_payload
 }
 
 void
-passive_tran_server::receive_log_prior_list (page_server_conn_t::internal_payload &a_ip)
+passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip)
 {
   std::string message = a_ip.pull_payload ();
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));

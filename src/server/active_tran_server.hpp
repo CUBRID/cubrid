@@ -37,7 +37,7 @@ class active_tran_server : public tran_server
 
     request_handlers_map_t get_request_handlers () final override;
 
-    void receive_saved_lsa (page_server_conn_t::internal_payload &a_ip);
+    void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
 
   private:
     bool m_uses_remote_storage = false;

@@ -365,7 +365,7 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 }
 
 void
-tran_server::receive_log_page (page_server_conn_t::internal_payload &a_ip)
+tran_server::receive_log_page (page_server_conn_t::sequenced_payload &a_ip)
 {
   std::string message = a_ip.pull_payload ();
 
@@ -393,7 +393,7 @@ tran_server::receive_log_page (page_server_conn_t::internal_payload &a_ip)
 }
 
 void
-tran_server::receive_data_page (page_server_conn_t::internal_payload &a_ip)
+tran_server::receive_data_page (page_server_conn_t::sequenced_payload &a_ip)
 {
   std::string message = a_ip.pull_payload ();
 
@@ -431,7 +431,7 @@ tran_server::receive_data_page (page_server_conn_t::internal_payload &a_ip)
 }
 
 void
-tran_server::receive_boot_info (page_server_conn_t::internal_payload &a_ip)
+tran_server::receive_boot_info (page_server_conn_t::sequenced_payload &a_ip)
 {
   std::string message = a_ip.pull_payload ();
 
