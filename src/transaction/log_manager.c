@@ -1636,6 +1636,7 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       return;
     }
 
+  log_lsa most_recent_transaction_table_snapshot_lsa = NULL_LSA;
   {
     // before requesting log boot info from page server, hold a lock for the prior mutex
     // during the call, page server will also start sending log records and we must make sure to
@@ -1646,11 +1647,13 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
     passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
     assert (pts_ptr != nullptr);
-    pts_ptr->send_and_receive_log_boot_info (thread_p);
+
+    pts_ptr->send_and_receive_log_boot_info (thread_p, most_recent_transaction_table_snapshot_lsa);
 
     LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
     LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
   }
+  assert (!most_recent_transaction_table_snapshot_lsa.is_null ());
 
   err_code = logtb_define_trantable_log_latch (thread_p, -1);
   if (err_code != NO_ERROR)
@@ -3443,13 +3446,13 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
  *
  *  append_lsa(out): for logging purposes
  *  prev_lsa (out): for logging
- *  previous_encountered_trantable_snapshot (out): for logging
+ *  most_recent_trantable_snapshot_lsa (out): for logging
  *  log_prior_sender_sink (in): functor to add as a sink for prior sender; will act as a relay for log info between
  *                              the page server and the passive transaction server connected to this page server
  */
 // *INDENT-OFF*
 std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa,
-                                    log_lsa &prev_lsa, log_lsa &previous_encountered_trantable_snapshot,
+                                    log_lsa &prev_lsa, log_lsa &most_recent_trantable_snapshot_lsa,
                                     const cublog::prior_sender::sink_hook_t  &log_prior_sender_sink)
 {
   LOG_CS_ENTER_READ_MODE (thread_p);
@@ -3471,9 +3474,12 @@ std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa
   packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (log_lsa));
   prev_lsa = log_Gl.append.prev_lsa;
 
-  previous_encountered_trantable_snapshot =
-      ps_Gl.get_replicator().get_previous_encountered_trantable_snapshot_lsa();
-  packed_message.append(reinterpret_cast<const char *> (&previous_encountered_trantable_snapshot),
+  // most recent trantable snapshot lsa
+  most_recent_trantable_snapshot_lsa =
+      ps_Gl.get_replicator().get_most_recent_trantable_snapshot_lsa ();
+  assert (!most_recent_trantable_snapshot_lsa.is_null());
+  // TODO: what if it is
+  packed_message.append(reinterpret_cast<const char *> (&most_recent_trantable_snapshot_lsa),
                         sizeof (log_lsa));
 
   // within the same locks, initialize log prior dispatch to the newly connected passive transaction server

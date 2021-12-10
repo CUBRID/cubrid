@@ -81,7 +81,7 @@ namespace cublog
        */
       void wait_past_target_lsa (const log_lsa &a_target_lsa);
 
-      log_lsa get_previous_encountered_trantable_snapshot_lsa () const;
+      log_lsa get_most_recent_trantable_snapshot_lsa () const;
 
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
@@ -119,7 +119,7 @@ namespace cublog
 
       /*
        */
-      std::atomic<log_lsa> m_previous_encountered_trantable_snapshot_lsa;
+      std::atomic<log_lsa> m_most_recent_trantable_snapshot_lsa;
 
       /* does not record anything; needed just to please reused recovery infrastructure
        */

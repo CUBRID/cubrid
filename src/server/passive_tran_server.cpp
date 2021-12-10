@@ -79,7 +79,8 @@ passive_tran_server::receive_log_prior_list (page_server_conn_t::internal_payloa
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }
 
-void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p)
+void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
+    log_lsa &most_recent_transaction_table_snapshot_lsa)
 {
   assert (m_log_boot_info.empty ());
 
@@ -96,8 +97,6 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   }
 
   const int log_page_size = db_log_page_size ();
-  assert (m_log_boot_info.size () == sizeof (log_header) + log_page_size + sizeof (log_lsa));
-
   const char *message_buf = m_log_boot_info.c_str ();
 
   // log header, copy and initialize header
@@ -114,6 +113,11 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
 
   // prev lsa
   std::memcpy (&log_Gl.append.prev_lsa, message_buf, sizeof (log_lsa));
+  message_buf += sizeof (log_lsa);
+
+  // most recent trantable snapshot lsa
+  std::memcpy (reinterpret_cast<char *> (&most_recent_transaction_table_snapshot_lsa),
+	       message_buf, sizeof (log_lsa));
   message_buf += sizeof (log_lsa);
 
   // safe-guard that the message has been consumed

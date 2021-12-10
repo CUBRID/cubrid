@@ -117,10 +117,10 @@ namespace cublog
 
   void log_boot_info_fetch_task::execute (context_type &context)
   {
-    log_lsa append_lsa, prev_lsa, previous_encountered_trantable_snapshot;
+    log_lsa append_lsa, prev_lsa, most_recent_trantable_snapshot_lsa;
 
     std::string message = log_pack_log_boot_info (&context, append_lsa, prev_lsa,
-			  previous_encountered_trantable_snapshot, m_log_prior_sender_sink);
+			  most_recent_trantable_snapshot_lsa, m_log_prior_sender_sink);
 
     m_callback (std::move (message));
 
@@ -128,9 +128,9 @@ namespace cublog
       {
 	_er_log_debug (ARG_FILE_LINE,
 		       "Sent log boot info to passive tran server with prev_lsa = (%lld|%d), append_lsa = (%lld|%d)"
-		       " prev_trantable_snapshot_lsa = (%lld|%d)\n",
+		       " most_recent_trantable_snapshot_lsa = (%lld|%d)\n",
 		       LSA_AS_ARGS (&prev_lsa), LSA_AS_ARGS (&append_lsa),
-		       LSA_AS_ARGS (&previous_encountered_trantable_snapshot));
+		       LSA_AS_ARGS (&most_recent_trantable_snapshot_lsa));
       }
   }
 

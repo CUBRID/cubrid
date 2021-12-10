@@ -29,7 +29,8 @@ class passive_tran_server : public tran_server
     }
 
   public:
-    void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p);
+    void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
+					 log_lsa &most_recent_transaction_table_snapshot_lsa);
 
   private:
     bool uses_remote_storage () const final override;

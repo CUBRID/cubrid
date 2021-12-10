@@ -101,7 +101,7 @@ namespace cublog
     : //m_config { true } ,
       m_redo_lsa { start_redo_lsa }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
-    , m_previous_encountered_trantable_snapshot_lsa { NULL_LSA }
+    , m_most_recent_trantable_snapshot_lsa { NULL_LSA }
     , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }
   {
     // depending on parameter, instantiate the mechanism to execute replication in parallel
@@ -234,7 +234,7 @@ namespace cublog
 	  case LOG_TRANTABLE_SNAPSHOT:
 	    // only save the LSA where the last (or, more accurately, 'a recent') transaction table
 	    // snapshot can be found in the log
-	    m_previous_encountered_trantable_snapshot_lsa.store (m_redo_lsa);
+	    m_most_recent_trantable_snapshot_lsa.store (m_redo_lsa);
 	    // TODO: what if there is no such LSA encountered by the PS at the moment a PTS connects to it? should a PS,
 	    // as part of its recovery upon boot also search backwards for such a trantable snapshot such that it is covered
 	    // in case a PTS asks for one? what if the PS does not need to perform recovery upon boot at all?
@@ -396,9 +396,9 @@ namespace cublog
   }
 
   log_lsa
-  replicator::get_previous_encountered_trantable_snapshot_lsa () const
+  replicator::get_most_recent_trantable_snapshot_lsa () const
   {
-    return m_previous_encountered_trantable_snapshot_lsa.load ();
+    return m_most_recent_trantable_snapshot_lsa.load ();
   }
 
   /*********************************************************************
