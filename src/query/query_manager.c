@@ -1342,6 +1342,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   if (IS_TRIGGER_INVOLVED (*flag_p))
     {
       session_set_trigger_state (thread_p, true);
+      thread_p->trigger_involved = true;
     }
 
 #if defined (SERVER_MODE)
@@ -1601,6 +1602,7 @@ end:
   if (IS_TRIGGER_INVOLVED (*flag_p))
     {
       session_set_trigger_state (thread_p, false);
+      thread_p->trigger_involved = false;
     }
 
 #if defined (SERVER_MODE)
@@ -1793,6 +1795,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
   if (IS_TRIGGER_INVOLVED (*flag_p))
     {
       session_set_trigger_state (thread_p, true);
+      thread_p->trigger_involved = true;
     }
 
   /* Make an query entry */
@@ -1878,6 +1881,7 @@ end:
   if (IS_TRIGGER_INVOLVED (*flag_p))
     {
       session_set_trigger_state (thread_p, false);
+      thread_p->trigger_involved = false;
     }
 
 #if defined (SERVER_MODE)
