@@ -112,6 +112,7 @@ namespace cublog
     : m_redo_lsa { start_redo_lsa }
     , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
+    , m_most_recent_trantable_snapshot_lsa { NULL_LSA }
     , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }
   {
     // depending on parameter, instantiate the mechanism to execute replication in parallel
@@ -238,6 +239,11 @@ namespace cublog
 	  case LOG_DUMMY_HA_SERVER_STATE:
 	    calculate_replication_delay_or_dispatch_async<log_rec_ha_server_state> (
 		    thread_entry, m_redo_lsa);
+	    break;
+	  case LOG_TRANTABLE_SNAPSHOT:
+	    // save the LSA of the last transaction table snapshot that can be found in the log
+	    // only needed on the passive transaction server
+	    m_most_recent_trantable_snapshot_lsa.store (m_redo_lsa);
 	    break;
 	  default:
 	    // do nothing
@@ -392,6 +398,12 @@ namespace cublog
 	// async
 	m_parallel_replication_redo->wait_past_target_lsa (a_target_lsa);
       }
+  }
+
+  log_lsa
+  replicator::get_most_recent_trantable_snapshot_lsa () const
+  {
+    return m_most_recent_trantable_snapshot_lsa.load ();
   }
 
   log_lsa replicator::get_redo_lsa () const

@@ -73,6 +73,8 @@ namespace cublog
       /* return current progress of the replicator; non-blocking call */
       log_lsa get_redo_lsa () const;
 
+      log_lsa get_most_recent_trantable_snapshot_lsa () const;
+
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
@@ -104,6 +106,10 @@ namespace cublog
        *    effective calling of the redo function
        */
       perfmon_counter_timer_tracker m_perfmon_redo_sync;
+
+      /*
+       */
+      std::atomic<log_lsa> m_most_recent_trantable_snapshot_lsa;
 
       /* does not record anything; needed just to please reused recovery infrastructure
        */

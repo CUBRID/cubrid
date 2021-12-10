@@ -31,7 +31,8 @@ class passive_tran_server : public tran_server
     ~passive_tran_server () override;
 
   public:
-    void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p);
+    void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
+					 log_lsa &most_recent_transaction_table_snapshot_lsa);
     void start_log_replicator (const log_lsa &start_lsa);
 
     /* read replicator's current progress */
