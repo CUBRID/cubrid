@@ -19,6 +19,7 @@
 #ifndef REQUEST_SYNC_CLIENT_SERVER_HPP
 #define REQUEST_SYNC_CLIENT_SERVER_HPP
 
+#include "response_broker.hpp"
 #include "request_client_server.hpp"
 #include "request_sync_send_queue.hpp"
 
@@ -42,11 +43,6 @@ namespace cubcomm
   {
     private:
 
-      // Wrap the user payload with a response sequence number
-      using response_sequence_number_t = std::uint64_t;
-      static constexpr response_sequence_number_t NO_RESPONSE =
-	      std::numeric_limits<response_sequence_number_t>::max ();
-
     public:
       using outgoing_msg_id_t = T_OUTGOING_MSG_ID;
       using request_client_server_t = cubcomm::request_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID>;
@@ -57,7 +53,7 @@ namespace cubcomm
       {
 	public:
 	  sequenced_payload () = default;
-	  sequenced_payload (response_sequence_number_t a_rsn, T_PAYLOAD &&a_payload);
+	  sequenced_payload (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
 	  sequenced_payload (sequenced_payload &&other);
 	  sequenced_payload (const sequenced_payload &other) = delete;
 	  ~sequenced_payload () = default;
@@ -68,12 +64,17 @@ namespace cubcomm
 	  void push_payload (T_PAYLOAD &&a_payload);
 	  T_PAYLOAD pull_payload ();
 
+	  response_sequence_number get_response_sequence_number () const
+	  {
+	    return m_rsn;
+	  }
+
 	  size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const final override;
 	  void pack (cubpacking::packer &serializator) const final override;
 	  void unpack (cubpacking::unpacker &deserializator) final override;
 
 	private:
-	  response_sequence_number_t m_rsn = NO_RESPONSE;
+	  response_sequence_number m_rsn = NO_RESPONSE_SEQUENCE_NUMBER;
 	  T_PAYLOAD m_user_payload;
       };
 
@@ -81,7 +82,9 @@ namespace cubcomm
 
     public:
       request_sync_client_server (cubcomm::channel &&a_channel,
-				  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers);
+				  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers,
+				  T_OUTGOING_MSG_ID a_outgoing_response_msgid,
+				  T_INCOMING_MSG_ID a_incoming_response_msgid, size_t response_partition_count);
       ~request_sync_client_server ();
       request_sync_client_server (const request_sync_client_server &) = delete;
       request_sync_client_server (request_sync_client_server &&) = delete;
@@ -97,17 +100,26 @@ namespace cubcomm
       std::string get_underlying_channel_id () const;
 
       void push (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload);
+      void send_recv (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_request_payload, T_PAYLOAD &a_response_payload);
+      void respond (sequenced_payload &&seq_payload);
 
     private:
       using request_sync_send_queue_t = cubcomm::request_sync_send_queue<request_client_server_t, sequenced_payload>;
       using request_queue_autosend_t = cubcomm::request_queue_autosend<request_sync_send_queue_t>;
 
       void unpack_and_handle (cubpacking::unpacker &deserializator, const incoming_request_handler_t &handler);
+      void handle_response (sequenced_payload &seq_payload);
+      void register_handler (T_INCOMING_MSG_ID msgid, const incoming_request_handler_t &handler);
 
     private:
       std::unique_ptr<request_client_server_t> m_conn;
       std::unique_ptr<request_sync_send_queue_t> m_queue;
       std::unique_ptr<request_queue_autosend_t> m_queue_autosend;
+
+      T_OUTGOING_MSG_ID m_outgoing_response_msgid;
+      T_INCOMING_MSG_ID m_incoming_response_msgid;
+      response_sequence_number_generator m_rsn_generator;
+      response_broker<T_PAYLOAD> m_response_broker;
   };
 }
 
@@ -119,19 +131,26 @@ namespace cubcomm
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::request_sync_client_server (
 	  cubcomm::channel &&a_channel,
-	  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers)
+	  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers,
+	  T_OUTGOING_MSG_ID a_outgoing_response_msgid,
+	  T_INCOMING_MSG_ID a_incoming_response_msgid, size_t response_partition_count)
     : m_conn { new request_client_server_t (std::move (a_channel)) }
   , m_queue { new request_sync_send_queue_t (*m_conn) }
   , m_queue_autosend { new request_queue_autosend_t (*m_queue) }
+  , m_outgoing_response_msgid { a_outgoing_response_msgid }
+  , m_incoming_response_msgid { a_incoming_response_msgid }
+  , m_response_broker { response_partition_count }
   {
     assert (a_incoming_request_handlers.size () > 0);
     for (const auto &pair: a_incoming_request_handlers)
       {
 	assert (pair.second != nullptr);
-	typename request_client_server_t::server_request_handler converted_handler =
-		std::bind (&request_sync_client_server::unpack_and_handle, std::ref (*this), std::placeholders::_1, pair.second);
-	m_conn->register_request_handler (pair.first, converted_handler);
+	register_handler (pair.first, pair.second);
       }
+    // Add the handler for responses
+    incoming_request_handler_t bound_response_handler =
+	    std::bind (&request_sync_client_server::handle_response, this, std::placeholders::_1);
+    register_handler (m_incoming_response_msgid, bound_response_handler);
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -164,9 +183,42 @@ namespace cubcomm
   {
     assert (m_conn != nullptr && m_conn->is_thread_started ());
 
-    sequenced_payload ip (NO_RESPONSE, std::move (a_payload));
+    sequenced_payload ip (NO_RESPONSE_SEQUENCE_NUMBER, std::move (a_payload));
 
     m_queue->push (a_outgoing_message_id, std::move (ip));
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::send_recv (
+	  T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_request_payload, T_PAYLOAD &a_response_payload)
+  {
+    // Get a unique sequence number of response and group with the payload
+    response_sequence_number rsn = m_rsn_generator.get_unique_number ();
+    sequenced_payload seq_payload (rsn, std::move (a_request_payload));
+
+    // Send the request
+    m_queue->push (a_outgoing_message_id, std::move (seq_payload));
+
+    // Get the answer
+    a_response_payload = m_response_broker.get_response (rsn);
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::respond (
+	  sequenced_payload &&seq_payload)
+  {
+    m_queue->push (m_outgoing_response_msgid, std::move (seq_payload));
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::handle_response (
+	  sequenced_payload &seq_payload)
+  {
+    m_response_broker.register_response (seq_payload.get_response_sequence_number (),
+					 std::move (seq_payload.pull_payload ()));
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -180,12 +232,22 @@ namespace cubcomm
     handler (ip);
   }
 
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::register_handler (
+	  T_INCOMING_MSG_ID msgid, const incoming_request_handler_t &handler)
+  {
+    typename request_client_server_t::server_request_handler converted_handler =
+	    std::bind (&request_sync_client_server::unpack_and_handle, std::ref (*this), std::placeholders::_1, handler);
+    m_conn->register_request_handler (msgid, converted_handler);
+  }
+
   //
   // Internal payload
   //
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::sequenced_payload (
-	  response_sequence_number_t a_rsn, T_PAYLOAD &&a_payload)
+	  response_sequence_number a_rsn, T_PAYLOAD &&a_payload)
     : m_rsn (a_rsn)
   {
     push_payload (std::move (a_payload));
@@ -197,20 +259,20 @@ namespace cubcomm
     : m_rsn (std::move (other.m_rsn))
     , m_user_payload (std::move (other.m_user_payload))
   {
-    other.m_rsn = NO_RESPONSE;
+    other.m_rsn = NO_RESPONSE_SEQUENCE_NUMBER;
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   typename request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload &
-  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::operator=
-  (sequenced_payload &&other)
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::operator= (
+	  sequenced_payload &&other)
   {
     if (this != &other)
       {
 	m_rsn = std::move (other.m_rsn);
 	m_user_payload = std::move (other.m_user_payload);
 
-	other.m_rsn = NO_RESPONSE;
+	other.m_rsn = NO_RESPONSE_SEQUENCE_NUMBER;
       }
     return *this;
   }

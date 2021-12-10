@@ -108,14 +108,18 @@ class test_client_and_server_env
 enum class reqids_1_to_2
 {
   _0,
-  _1
+  _1,
+
+  RESPOND  // for request_sync_client_server only
 };
 
 enum class reqids_2_to_1
 {
   _0,
   _1,
-  _2
+  _2,
+
+  RESPOND  // for request_sync_client_server only
 };
 // There are two type of request_client_server.
 //
@@ -1014,7 +1018,7 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
       { reqids_2_to_1::_0, req_handler_0 },
       { reqids_2_to_1::_1, req_handler_1 },
       { reqids_2_to_1::_2, req_handler_2 }
-    })
+    }, reqids_1_to_2::RESPOND, reqids_2_to_1::RESPOND, 10)
   };
   scs_one->start ();
 
@@ -1045,7 +1049,7 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_two (
     {
       { reqids_1_to_2::_0, req_handler_0 },
       { reqids_1_to_2::_1, req_handler_1 }
-    })
+    }, reqids_2_to_1::RESPOND, reqids_1_to_2::RESPOND, 10)
   };
   scs_two->start ();
 
