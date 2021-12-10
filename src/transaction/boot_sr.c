@@ -84,6 +84,7 @@
 #include "tde.h"
 #include "porting.h"
 #include "page_server.hpp"
+#include "passive_tran_server.hpp"
 #include "scope_exit.hpp"
 #include "server_type.hpp"
 #include "log_manager.h"
@@ -3189,6 +3190,14 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
     }
   else if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
+      // NOTE: passive transaction server, regarding replication: even if a
+      // passive transaction server is completely transient - and read-only -
+      // and, thus, does not need to reach a consistent state at shutdown (because it
+      // will pick a consistent state at boot from the page server(s) it connects to), replication
+      // needs to be explicitly terminated gracefully before log infrastructure is finalized
+      passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
+      pts_ptr->finish_replication_during_shutdown (*thread_p);
+
       ts_Gl->finalize_page_brokers ();
     }
 #endif

@@ -1636,7 +1636,10 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       return;
     }
 
+  passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
+  assert (pts_ptr != nullptr);
   log_lsa most_recent_transaction_table_snapshot_lsa = NULL_LSA;
+  log_lsa replication_start_redo_lsa = NULL_LSA;
   {
     // before requesting log boot info from page server, hold a lock for the prior mutex
     // during the call, page server will also start sending log records and we must make sure to
@@ -1645,15 +1648,19 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     std::lock_guard<std::mutex> prior_lsa_lockg { log_Gl.prior_info.prior_lsa_mutex };
     // *INDENT-ON*
 
-    passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-    assert (pts_ptr != nullptr);
-
     pts_ptr->send_and_receive_log_boot_info (thread_p, most_recent_transaction_table_snapshot_lsa);
 
     LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
     LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+
+    // while still holding prior LSA lock, initialize passive transaction server replication
+    // with a LSA that ensures that no record is lost (ie: while still holding the mutex)
+    replication_start_redo_lsa = log_Gl.append.get_nxio_lsa ();
   }
   assert (!most_recent_transaction_table_snapshot_lsa.is_null ());
+  assert (!replication_start_redo_lsa.is_null ());
+
+  pts_ptr->start_log_replicator (replication_start_redo_lsa);
 
   err_code = logtb_define_trantable_log_latch (thread_p, -1);
   if (err_code != NO_ERROR)
@@ -1664,6 +1671,8 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     }
 
   logpb_initialize_logging_statistics ();
+
+  log_daemons_init ();
 
   er_log_debug (ARG_FILE_LINE, "log_initialize_passive_tran_server: end of log initializaton, append_lsa = (%lld|%d)\n",
 		LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
@@ -10780,11 +10789,14 @@ log_flush_daemon_init ()
 static void
 log_daemons_init ()
 {
-  log_remove_log_archive_daemon_init ();
-  log_checkpoint_daemon_init ();
-  log_checkpoint_trantable_daemon_init ();
-  log_check_ha_delay_info_daemon_init ();
-  log_clock_daemon_init ();
+  if (!is_passive_transaction_server ())
+    {
+      log_remove_log_archive_daemon_init ();
+      log_checkpoint_daemon_init ();
+      log_checkpoint_trantable_daemon_init ();
+      log_check_ha_delay_info_daemon_init ();
+      log_clock_daemon_init ();
+    }
   log_flush_daemon_init ();
 }
 #endif /* SERVER_MODE */

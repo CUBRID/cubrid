@@ -22,14 +22,15 @@
 #include "log_compress.h"
 #include "log_lsa.hpp"
 #include "log_reader.hpp"
+#include "page_buffer.h"
 #include "recovery.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
-PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv);
+PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, PAGE_FETCH_MODE page_fetch_mode);
 bool log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
 					       LOG_RCVINDEX rcvindex, const log_lsa & rcv_lsa,
-					       const LOG_LSA & end_redo_lsa);
+					       const LOG_LSA & end_redo_lsa, PAGE_FETCH_MODE page_fetch_mode);
 int log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log_pgptr_reader, LOG_ZIP * unzip_ptr,
 			       bool & is_zip);
 int log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader, LOG_RCV * rcv,
