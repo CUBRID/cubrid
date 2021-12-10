@@ -2286,6 +2286,7 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
 
   PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, cond);
 
+#if defined (SERVER_MODE)
   if (is_active_transaction_server ())
     {
       // No replication, no page - replication desynchronization is possible
@@ -2355,9 +2356,12 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
     }
 
   // No errors
+#endif // SERVER_MODE
+
   return page;
 }
 
+#if defined (SERVER_MODE)
 int
 pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
 {
@@ -2383,6 +2387,7 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
       return NO_ERROR;
     }
 }
+#endif
 
 /*
  * pgbuf_promote_read_latch () - Promote read latch to write latch
