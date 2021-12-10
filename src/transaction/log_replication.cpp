@@ -109,8 +109,7 @@ namespace cublog
    *********************************************************************/
 
   replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
-    : //m_config { true } ,
-      m_redo_lsa { start_redo_lsa }
+    : m_redo_lsa { start_redo_lsa }
     , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_most_recent_trantable_snapshot_lsa { NULL_LSA }
@@ -242,15 +241,9 @@ namespace cublog
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_TRANTABLE_SNAPSHOT:
-	    // only save the LSA where the last (or, more accurately, 'a recent') transaction table
-	    // snapshot can be found in the log
+	    // save the LSA of the last transaction table snapshot that can be found in the log
+	    // only needed on the passive transaction server
 	    m_most_recent_trantable_snapshot_lsa.store (m_redo_lsa);
-	    // TODO: what if there is no such LSA encountered by the PS at the moment a PTS connects to it? should a PS,
-	    // as part of its recovery upon boot also search backwards for such a trantable snapshot such that it is covered
-	    // in case a PTS asks for one? what if the PS does not need to perform recovery upon boot at all?
-	    // TODO: what if, between the moment this is relayed to the PTS and the moment the PTS consumes this, another
-	    // trantable snapshot is send from the ATS and consumed on both the PS and the PTS (or any other combination
-	    // between the state of that newly received trantable snapshot log record on the PS and PTS)?
 	    break;
 	  default:
 	    // do nothing

@@ -48,20 +48,6 @@ namespace cublog
 
 namespace cublog
 {
-  /* configuration params for replicator
-   *
-   * TODO: add after merge with lets-223
-   */
-//  struct replicator_config
-//  {
-//    // TODO: const PAGE_FETCH_MODE m_page_fetch_mode;
-//    // TODO: const int m_parallel_count;
-
-//    /* only page server handles trantable snapshot log records for the purpose of relaying
-//     * that info to the newly connected passive transaction servers */
-//    const bool m_handle_trantable_snapshot;
-//  };
-
   //  replicator applies redo to replicate changes from the active transaction server
   //
   class replicator
@@ -101,8 +87,6 @@ namespace cublog
 	  const log_lsa &rec_lsa);
 
     private:
-      //const replicator_config m_config;
-
       std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
 
