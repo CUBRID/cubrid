@@ -197,7 +197,7 @@ static void mock_check_expected_id_and_op_count (cubpacking::unpacker &upk);
 static void handler_register_mock_check_expected_id_and_op_count (test_request_server &req_sr);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Stuff for two request_sync_client_server test case
+// Stuff for two request_sync_client_server test case (n
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 using test_request_sync_client_server_one_t =
@@ -210,7 +210,7 @@ using uq_test_request_sync_client_server_two_t = std::unique_ptr<test_request_sy
 
 // The request_sync_client_server type handler that requires to find ExpectedVal
 template <typename ReqId, ReqId ExpectedVal, typename Payload>
-static void mock_check_expected_id_sync (Payload &upk);
+static void mock_check_expected_id_sync (Payload &a_sp);
 
 class test_two_request_sync_client_server_env
 {
@@ -221,11 +221,29 @@ class test_two_request_sync_client_server_env
     test_request_sync_client_server_one_t &get_scs_one ();
     test_request_sync_client_server_two_t &get_scs_two ();
 
-    void wait_for_all_messages (size_t a_1_to_2_message_count, size_t a_2_to_1_message_count);
+    void push_request_on_scs_one (reqids_1_to_2 msgid, int i);
+    void push_request_on_scs_two (reqids_2_to_1 msgid, int i);
+
+    void send_recv_request_on_scs_one (reqids_1_to_2 msgid, int i);
+    void send_recv_request_on_scs_two (reqids_2_to_1 msgid, int i);
+
+    void wait_for_all_messages ();
 
   private:
-    static uq_test_request_sync_client_server_one_t create_request_sync_client_server_one ();
-    static uq_test_request_sync_client_server_two_t create_request_sync_client_server_two ();
+    template<typename T_SCS, typename T_MSGID>
+    void push_request_and_increment_msg_count (T_SCS &scs, T_MSGID msgid, int i, std::atomic<size_t> &msg_count_inout);
+    template<typename T_SCS, typename T_MSGID>
+    void send_recv_and_increment_msg_count (T_SCS &scs, T_MSGID msgid, int i, std::atomic<size_t> &msg_count_inout);
+    template<typename T_MSGID, T_MSGID T_VAL, typename T_SCS, typename T_SEQUENCED_PAYLOAD>
+    void handle_req_and_respond (T_SCS &scs, T_SEQUENCED_PAYLOAD &payload, std::atomic<size_t> &msg_count_inout);
+
+    template<reqids_2_to_1 T_VAL>
+    void handle_req_and_respond_on_scs_one (test_request_sync_client_server_one_t::sequenced_payload &sp);
+    template<reqids_1_to_2 T_VAL>
+    void handle_req_and_respond_on_scs_two (test_request_sync_client_server_two_t::sequenced_payload &sp);
+
+    uq_test_request_sync_client_server_one_t create_request_sync_client_server_one ();
+    uq_test_request_sync_client_server_two_t create_request_sync_client_server_two ();
 
     void mock_socket_between_two_sync_client_servers ();
 
@@ -234,33 +252,12 @@ class test_two_request_sync_client_server_env
     uq_test_request_sync_client_server_two_t m_scs_two;
     mock_socket_direction m_sockdir_1_to_2;
     mock_socket_direction m_sockdir_2_to_1;
-};
 
-template <typename T_REQUEST_SYNC_CLIENT_SERVER>
-struct test_two_request_sync_client_server_thread_ftor
-{
-  public:
-    test_two_request_sync_client_server_thread_ftor (
-	    const int a_message_count,
-	    T_REQUEST_SYNC_CLIENT_SERVER &a_rscs,
-	    const typename T_REQUEST_SYNC_CLIENT_SERVER::outgoing_msg_id_t a_msg_id)
-      : m_message_count { a_message_count }
-      , m_rscs { a_rscs }
-      , m_msg_id { a_msg_id }
-    {}
+    std::atomic<size_t> m_total_1_to_2_message_count = 0;
+    std::atomic<size_t> m_total_2_to_1_message_count = 0;
 
-    void operator () ()
-    {
-      for (int i = 0; i < m_message_count; ++i)
-	{
-	  push_message_id_and_op (m_rscs, m_msg_id, i);
-	}
-    }
-
-  private:
-    const int m_message_count;
-    T_REQUEST_SYNC_CLIENT_SERVER &m_rscs;
-    const typename T_REQUEST_SYNC_CLIENT_SERVER::outgoing_msg_id_t m_msg_id;
+    std::atomic<size_t> m_total_response_requested = 0;
+    std::atomic<size_t> m_total_response_sent = 0;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -513,24 +510,35 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "[dbg]"
 
   constexpr int MESSAGE_COUNT = 4200;
 
-  std::vector<std::thread> threads;
-  threads.emplace_back (
-	  test_two_request_sync_client_server_thread_ftor<test_request_sync_client_server_one_t> (
-		  MESSAGE_COUNT, env.get_scs_one (), reqids_1_to_2::_0));
-  threads.emplace_back (
-	  test_two_request_sync_client_server_thread_ftor<test_request_sync_client_server_one_t> (
-		  MESSAGE_COUNT, env.get_scs_one (), reqids_1_to_2::_1));
-  threads.emplace_back (
-	  test_two_request_sync_client_server_thread_ftor<test_request_sync_client_server_two_t> (
-		  MESSAGE_COUNT, env.get_scs_two (), reqids_2_to_1::_0));
-  threads.emplace_back (
-	  test_two_request_sync_client_server_thread_ftor<test_request_sync_client_server_two_t> (
-		  MESSAGE_COUNT, env.get_scs_two (), reqids_2_to_1::_1));
-  threads.emplace_back (
-	  test_two_request_sync_client_server_thread_ftor<test_request_sync_client_server_two_t> (
-		  MESSAGE_COUNT, env.get_scs_two (), reqids_2_to_1::_2));
+#define BIND_ENV_FUNC(foo) \
+  std::bind (&(test_two_request_sync_client_server_env::foo), std::ref (env), std::placeholders::_1, std::placeholders::_2)
 
-  env.wait_for_all_messages ((MESSAGE_COUNT * 2) * 2, (MESSAGE_COUNT * 2) * 3);
+#define REPEAT_REQUEST_WITH_MSGID(req_foo, msgid) \
+  for (int i = 0; i < MESSAGE_COUNT; ++i) req_foo (msgid, i)
+
+  std::vector<std::thread> threads;
+  threads.emplace_back ([&] ()
+  {
+    REPEAT_REQUEST_WITH_MSGID (env.send_recv_request_on_scs_one, reqids_1_to_2::_0);
+  });
+  threads.emplace_back ([&] ()
+  {
+    REPEAT_REQUEST_WITH_MSGID (env.push_request_on_scs_one, reqids_1_to_2::_1);
+  });
+  threads.emplace_back ([&] ()
+  {
+    REPEAT_REQUEST_WITH_MSGID (env.send_recv_request_on_scs_two, reqids_2_to_1::_0);
+  });
+  threads.emplace_back ([&] ()
+  {
+    REPEAT_REQUEST_WITH_MSGID (env.push_request_on_scs_two, reqids_2_to_1::_1);
+  });
+  threads.emplace_back ([&] ()
+  {
+    REPEAT_REQUEST_WITH_MSGID (env.push_request_on_scs_two, reqids_2_to_1::_1);
+  });
+
+  env.wait_for_all_messages ();
 
   require_all_sent_requests_are_handled ();
 
@@ -687,9 +695,9 @@ mock_check_expected_id (cubpacking::unpacker &upk)
 
 template <typename T, T Val, typename Payload>
 static void
-mock_check_expected_id_sync (Payload &a_ip)
+mock_check_expected_id_sync (Payload &a_sp)
 {
-  T readval = static_cast<T> (a_ip.pull_payload ().val);
+  T readval = static_cast<T> (a_sp.pull_payload ().val);
   REQUIRE (readval == Val);
   ++global_handled_request_count;
 }
@@ -968,24 +976,108 @@ test_two_request_sync_client_server_env::~test_two_request_sync_client_server_en
   clear_socket_directions ();
 }
 
-test_request_sync_client_server_one_t &test_two_request_sync_client_server_env::get_scs_one ()
+test_request_sync_client_server_one_t &
+test_two_request_sync_client_server_env::get_scs_one ()
 {
   return *m_scs_one.get ();
 }
 
-test_request_sync_client_server_two_t &test_two_request_sync_client_server_env::get_scs_two ()
+test_request_sync_client_server_two_t &
+test_two_request_sync_client_server_env::get_scs_two ()
 {
   return *m_scs_two.get ();
 }
 
-void test_two_request_sync_client_server_env::wait_for_all_messages (
-	size_t a_1_to_2_message_count, size_t a_2_to_1_message_count)
+void test_two_request_sync_client_server_env::wait_for_all_messages ()
 {
-  m_sockdir_1_to_2.wait_until_message_count (a_1_to_2_message_count);
-  m_sockdir_2_to_1.wait_until_message_count (a_2_to_1_message_count);
+  m_sockdir_1_to_2.wait_until_message_count (m_total_1_to_2_message_count * 2);
+  m_sockdir_2_to_1.wait_until_message_count (m_total_2_to_1_message_count * 2);
 
   m_sockdir_1_to_2.wait_for_all_messages ();
   m_sockdir_2_to_1.wait_for_all_messages ();
+}
+
+template<typename T_SCS, typename T_MSGID>
+void
+test_two_request_sync_client_server_env::push_request_and_increment_msg_count (
+	T_SCS &scs, T_MSGID msgid, int i, std::atomic<size_t> &msg_count_inout)
+{
+  ++msg_count_inout;
+
+  push_message_id_and_op (scs, msgid, i);
+}
+
+template<typename T_SCS, typename T_MSGID>
+void
+test_two_request_sync_client_server_env::send_recv_and_increment_msg_count (
+	T_SCS &scs, T_MSGID msgid, int i, std::atomic<size_t> &msg_count_inout)
+{
+  ++msg_count_inout;
+
+  payload_with_op_count request_payload;
+  request_payload.val = static_cast<int> (msgid);
+  request_payload.op_count = i;
+
+  payload_with_op_count response_payload;
+
+  scs.send_recv (msgid, std::move (request_payload), response_payload);
+  REQUIRE (response_payload.val == static_cast<int> (msgid));
+  REQUIRE (response_payload.op_count == i + 1);	  // it is incremented by response handler
+}
+
+template<typename T_MSGID, T_MSGID T_VAL, typename T_SCS, typename T_SEQUENCED_PAYLOAD>
+void
+test_two_request_sync_client_server_env::handle_req_and_respond (T_SCS &scs, T_SEQUENCED_PAYLOAD &sp,
+    std::atomic<size_t> &msg_count_inout)
+{
+  payload_with_op_count payload = sp.pull_payload ();
+  mock_check_expected_id_sync<T_MSGID, T_VAL, T_SEQUENCED_PAYLOAD> (sp);
+
+  payload.op_count++;
+  sp.push_payload (std::move (payload));
+
+  ++msg_count_inout;
+  scs.respond (std::move (sp));
+}
+
+void
+test_two_request_sync_client_server_env::push_request_on_scs_one (reqids_1_to_2 msgid, int i)
+{
+  push_request_and_increment_msg_count (get_scs_one (), msgid, i, m_total_1_to_2_message_count);
+}
+
+void
+test_two_request_sync_client_server_env::push_request_on_scs_two (reqids_2_to_1 msgid, int i)
+{
+  push_request_and_increment_msg_count (get_scs_two (), msgid, i, m_total_2_to_1_message_count);
+}
+
+void
+test_two_request_sync_client_server_env::send_recv_request_on_scs_one (reqids_1_to_2 msgid, int i)
+{
+  send_recv_and_increment_msg_count (get_scs_one (), msgid, i, m_total_1_to_2_message_count);
+}
+
+void
+test_two_request_sync_client_server_env::send_recv_request_on_scs_two (reqids_2_to_1 msgid, int i)
+{
+  send_recv_and_increment_msg_count (get_scs_two (), msgid, i, m_total_2_to_1_message_count);
+}
+
+template<reqids_2_to_1 T_VAL>
+void
+test_two_request_sync_client_server_env::handle_req_and_respond_on_scs_one (
+	test_request_sync_client_server_one_t::sequenced_payload &sp)
+{
+  handle_req_and_respond<reqids_2_to_1, T_VAL> (get_scs_one (), sp, m_total_1_to_2_message_count);
+}
+
+template<reqids_1_to_2 T_VAL>
+void
+test_two_request_sync_client_server_env::handle_req_and_respond_on_scs_two (
+	test_request_sync_client_server_two_t::sequenced_payload &sp)
+{
+  handle_req_and_respond<reqids_1_to_2, T_VAL> (get_scs_two (), sp, m_total_2_to_1_message_count);
 }
 
 uq_test_request_sync_client_server_one_t
@@ -996,19 +1088,19 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
 
   // handle requests 2 to 1
   test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_0 =
-	  [] (test_request_sync_client_server_one_t::sequenced_payload &a_ip)
+	  [this] (test_request_sync_client_server_one_t::sequenced_payload &a_sp)
   {
-    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_0> (a_ip);
+    handle_req_and_respond_on_scs_one<reqids_2_to_1::_0> (a_sp);
   };
   test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_1 =
-	  [] (test_request_sync_client_server_one_t::sequenced_payload &a_ip)
+	  [] (test_request_sync_client_server_one_t::sequenced_payload &a_sp)
   {
-    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_1> (a_ip);
+    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_1> (a_sp);
   };
   test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_2 =
-	  [] (test_request_sync_client_server_one_t::sequenced_payload &a_ip)
+	  [] (test_request_sync_client_server_one_t::sequenced_payload &a_sp)
   {
-    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_2> (a_ip);
+    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_2> (a_sp);
   };
 
   uq_test_request_sync_client_server_one_t scs_one
@@ -1033,14 +1125,14 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_two (
 
   // handle requests 1 to 2
   test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_0 =
-	  [] (test_request_sync_client_server_two_t::sequenced_payload &a_ip)
+	  [this] (test_request_sync_client_server_two_t::sequenced_payload &a_sp)
   {
-    mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_0> (a_ip);
+    handle_req_and_respond_on_scs_two<reqids_1_to_2::_0> (a_sp);
   };
   test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_1 =
-	  [] (test_request_sync_client_server_two_t::sequenced_payload &a_ip)
+	  [] (test_request_sync_client_server_two_t::sequenced_payload &a_sp)
   {
-    mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_1> (a_ip);
+    mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_1> (a_sp);
   };
 
   uq_test_request_sync_client_server_two_t scs_two
