@@ -176,6 +176,7 @@ struct mvcc_snapshot
   MVCC_SNAPSHOT_FUNC snapshot_fnc;	/* the snapshot function */
 
   bool valid;			/* true, if the snapshot is valid */
+  bool loading;			/* true, if the snapshot is loading for partioned tables */
 
   // *INDENT-OFF*
   mvcc_snapshot ();

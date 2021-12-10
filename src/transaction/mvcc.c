@@ -646,6 +646,7 @@ mvcc_snapshot::mvcc_snapshot ()
   , m_active_mvccs ()
   , snapshot_fnc (NULL)
   , valid (false)
+  , loading (false)
 {
 }
 
@@ -659,6 +660,7 @@ mvcc_snapshot::reset ()
   m_active_mvccs.reset ();
 
   valid = false;
+  loading = false;
 }
 
 void
@@ -671,6 +673,7 @@ mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
   dest.highest_completed_mvccid = highest_completed_mvccid;
   dest.snapshot_fnc = snapshot_fnc;
   dest.valid = valid;
+  dest.loading = loading;
 }
 
 mvcc_info::mvcc_info ()

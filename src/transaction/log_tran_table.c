@@ -3575,8 +3575,8 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const
     {
       return NO_ERROR;
     }
-  return logtb_tran_update_unique_stats (thread_p, &btid, (int) ustats.get_key_count (), (int) ustats.get_row_count (),
-                                         (int) ustats.get_null_count (), write_to_log);
+  return logtb_tran_update_unique_stats (thread_p, &btid, ustats.get_key_count (), ustats.get_row_count (),
+                                         ustats.get_null_count (), write_to_log);
 }
 
 int
@@ -4009,12 +4009,12 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
     }
   else
     {
-#if defined(SA_MODE)
       if (committed && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
 	{
 	  assert (false);
 	}
-#else	/* !SA_MODE */	       /* SERVER_MODE */
+#if defined(SERVER_MODE)
+      /* SERVER_MODE */
       if (committed)
 	{
 	  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This

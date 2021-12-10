@@ -297,19 +297,17 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
       trans_status_version = trans_status.m_version.load ();
       trans_status.m_active_mvccs.copy_to (tdes.mvccinfo.snapshot.m_active_mvccs,
 					   mvcc_active_tran::copy_safety::THREAD_UNSAFE);
-      /* load statistics temporary disabled need to be enabled when activate count optimization */
-      /* load global statistics. This must take place here and nowhere else. */
-      tdes.mvccinfo.snapshot.valid = true;
+
+      tdes.mvccinfo.snapshot.loading = true;
       /*
-       snapshot should be set to valid to avoid the endless mvcc_info build
-       because gtb_load_global_statistics_to_tran calls build_mvcc_info recursively
+       snapshot should be set the flag to "loading" to avoid the endless mvcc_info build
+       because gtb_load_global_statistics_to_tran calls build_mvcc_info recursively for partitioned tables
        since the valid flag is false.
       */
       if (logtb_load_global_statistics_to_tran (thread_get_thread_entry_info())!= NO_ERROR)
 	{
+	  /* just error setting without returning for further processing */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
-	  tdes.mvccinfo.snapshot.valid = false;
-	  return;
 	}
 
       if (trans_status_version == trans_status.m_version.load ())
@@ -339,6 +337,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
   tdes.mvccinfo.snapshot.lowest_active_mvccid = crt_status_lowest_active;
   tdes.mvccinfo.snapshot.highest_completed_mvccid = highest_completed_mvccid;
   tdes.mvccinfo.snapshot.valid = true;
+  tdes.mvccinfo.snapshot.loading = false;
 
   if (is_perf_tracking)
     {

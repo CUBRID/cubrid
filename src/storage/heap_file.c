@@ -10798,6 +10798,7 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, O
   int error = NO_ERROR;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
   assert (class_oid != NULL);
 
@@ -10806,11 +10807,14 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, O
       return ER_FAILED;
     }
 
-  scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (scan_cache.mvcc_snapshot == NULL)
+  if (!tdes->mvccinfo.snapshot.loading)
     {
-      error = ER_FAILED;
-      goto cleanup;
+      scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+      if (scan_cache.mvcc_snapshot == NULL)
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
     }
 
   if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
