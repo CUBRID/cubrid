@@ -712,12 +712,12 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
   {
     if (conn_established_flag == true)
      {
-        MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Client successfully connected to %s server of type %s.", server_name.c_str (),
+        MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Successfully connected to %s server of type %s.", server_name.c_str (),
                              server_type_to_string (type));
      }
     else
      {
-        MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Client failed to connect to %s server of type %s.", server_name.c_str (),
+        MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Failed to connect to %s server of type %s.", server_name.c_str (),
                              server_type_to_string (type));
      }
   });
@@ -747,7 +747,6 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 		{
 		  css_reject_client_request (conn, rid, SERVER_STARTED);
 		  css_free_conn (conn);
-		  conn_established_flag = true;
 		  return;
 		}
 	      else
@@ -792,7 +791,6 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 	      css_send_data (conn, rid, (char *) &buffer, sizeof (int));
 	      buffer = htonl (temp->port_id);
 	      css_send_data (conn, rid, (char *) &buffer, sizeof (int));
-	      conn_established_flag = true;
 	    }
 	}
       css_reject_client_request (conn, rid, SERVER_NOT_FOUND);
