@@ -22,6 +22,11 @@
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 
+passive_tran_server::~passive_tran_server ()
+{
+  assert (m_replicator == nullptr);
+}
+
 bool
 passive_tran_server::uses_remote_storage () const
 {
@@ -79,7 +84,8 @@ passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_paylo
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }
 
-void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p)
+void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
+    log_lsa &most_recent_transaction_table_snapshot_lsa)
 {
   assert (m_log_boot_info.empty ());
 
@@ -96,8 +102,6 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   }
 
   const int log_page_size = db_log_page_size ();
-  assert (m_log_boot_info.size () == sizeof (log_header) + log_page_size + sizeof (log_lsa));
-
   const char *message_buf = m_log_boot_info.c_str ();
 
   // log header, copy and initialize header
@@ -116,12 +120,20 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   std::memcpy (&log_Gl.append.prev_lsa, message_buf, sizeof (log_lsa));
   message_buf += sizeof (log_lsa);
 
-  // safe-guard that the message has been consumed
+  // most recent trantable snapshot lsa
+  std::memcpy (reinterpret_cast<char *> (&most_recent_transaction_table_snapshot_lsa),
+	       message_buf, sizeof (log_lsa));
+  message_buf += sizeof (log_lsa);
+
+  // safe-guard that the entire message has been consumed
   assert (message_buf == m_log_boot_info.c_str () + m_log_boot_info.size ());
 
   // do not leave m_log_boot_info empty as a safeguard as this function is only supposed
   // to be called once
   m_log_boot_info = "not empty";
+
+  // at this point, page server has already started log prior dispatch towards this passive transaction server;
+  // for now, log prior consumption is held back by the log prior lsa mutex held while calling this function
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
     {
@@ -129,4 +141,26 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
 		     "Received log boot info to from page server with prev_lsa = (%lld|%d), append_lsa = (%lld|%d)\n",
 		     LSA_AS_ARGS (&log_Gl.append.prev_lsa), LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
     }
+}
+
+void passive_tran_server::start_log_replicator (const log_lsa &start_lsa)
+{
+  assert (m_replicator == nullptr);
+
+  // passive transaction server executes replication synchronously, for the time being, due to complexity of
+  // executing it in parallel while also providing a consistent view of the data
+  m_replicator.reset (new cublog::replicator (start_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0));
+}
+
+log_lsa passive_tran_server::get_replicator_lsa () const
+{
+  return m_replicator->get_redo_lsa ();
+}
+
+void passive_tran_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
+{
+  assert (m_replicator != nullptr);
+
+  m_replicator->wait_replication_finish_during_shutdown ();
+  m_replicator.reset (nullptr);
 }

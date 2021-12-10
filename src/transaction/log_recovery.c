@@ -440,41 +440,63 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
  *  rcvindex(in): recovery index of log record to redo
  *  rcv_lsa(in): Reset data page (rcv->pgptr) to this LSA
  *  end_redo_lsa(in):
+ *  page_fetch_mode(in):
+ *
+ * NOTE: function, and the entire infrastructure using it, is used in three contexts:
+ *  - regular server recovery
+ *  - page server replication
+ *  - passive transaction server replication
  */
 bool
-log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
-					  LOG_RCVINDEX rcvindex, const log_lsa & rcv_lsa, const LOG_LSA & end_redo_lsa)
+log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv, LOG_RCVINDEX rcvindex,	// TODO: delete param
+					  const log_lsa & rcv_lsa, const LOG_LSA & end_redo_lsa,
+					  PAGE_FETCH_MODE page_fetch_mode)
 {
   assert (rcv.pgptr == nullptr);
 
   if (!VPID_ISNULL (&page_vpid))
     {
-      rcv.pgptr = log_rv_redo_fix_page (thread_p, &page_vpid);
+      rcv.pgptr = log_rv_redo_fix_page (thread_p, &page_vpid, page_fetch_mode);
       if (rcv.pgptr == nullptr)
 	{
-	  /* the page was changed and also deallocated in the meantime, no need to apply redo */
-	  // only acceptable during recovery, not acceptable for replication
-	  assert (log_is_in_crash_recovery ());
+	  /* page being null after fix attempt is:
+	   *  - acceptable during recovery: the page was changed and also deallocated in the meantime, no need to
+	   *    apply redo
+	   *  - not acceptable for page server replication
+	   *  - acceptable for passive transaction server replication: the page has not been found in the page buffer
+	   *    cache, nor is it in the process of being doanloaded from the page server, therefo the replication
+	   *    will just skip requesting and applying the log record on the page; when, eventually, the page will be
+	   *    needed and downloaded from the page server it will have already have this log record applied (done as
+	   *    part of the page server's own replication)
+	   *    Note: passive transaction servers do not perform recovery, therefore the only context this
+	   *          code is executed on PTS is for replication) */
+	  assert (log_is_in_crash_recovery () || is_passive_transaction_server ());
 	  return false;
 	}
     }
 
   if (rcv.pgptr != nullptr)
     {
-      /* LSA of data page for log record to redo */
-      const log_lsa *const rcv_page_ptr = pgbuf_get_lsa (rcv.pgptr);
+      /* LSA of fixed data page */
+      const log_lsa *const fixed_page_lsa = pgbuf_get_lsa (rcv.pgptr);
       /*
        * Do we need to execute the redo operation ?
        * If page_lsa >= lsa... already updated. In this case make sure
        * that the redo is not far from the end_redo_lsa (TODO: how to ensure this last bit?)
        */
-      assert (rcv_page_ptr != nullptr);
-      assert (end_redo_lsa.is_null () || *rcv_page_ptr <= end_redo_lsa);
-      if (rcv_lsa <= *rcv_page_ptr)
+      assert (fixed_page_lsa != nullptr);
+      assert (end_redo_lsa.is_null () || *fixed_page_lsa <= end_redo_lsa);
+      if (rcv_lsa <= *fixed_page_lsa)
 	{
-	  /* already applied, make sure to unfix the page */
-	  // only acceptable during recovery, not acceptable for replication
-	  assert (log_is_in_crash_recovery ());
+	  /* page having a higher LSA than the current log record's LSA is:
+	   *  - acceptable during recovery: already applied
+	   *  - not acceptable for page server replication
+	   *  - acceptable for passive transaction server replication: the page might have already been downloaded
+	   *    from the page server with this log record applied
+	   *    Note: passive transaction servers do not perform recovery, therefore the only context this
+	   *          code is executed on PTS is for replication)
+	   * make sure to unfix the page */
+	  assert (log_is_in_crash_recovery () || is_passive_transaction_server ());
 	  pgbuf_unfix_and_init (thread_p, rcv.pgptr);
 	  return false;
 	}
@@ -1118,7 +1140,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
 
-  log_rv_redo_context redo_context (context.get_end_redo_lsa (), log_reader::fetch_mode::NORMAL);
+  log_rv_redo_context redo_context (context.get_end_redo_lsa (), RECOVERY_PAGE, log_reader::fetch_mode::NORMAL);
 
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
@@ -3976,9 +3998,10 @@ log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_siz
  * return        : fixed page or NULL
  * thread_p (in) : thread entry
  * vpid_rcv (in) : page identifier
+ * page_fetch_mode (in) :
  */
 PAGE_PTR
-log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv)
+log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, PAGE_FETCH_MODE page_fetch_mode)
 {
   PAGE_PTR page = NULL;
 
@@ -3994,11 +4017,15 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv)
   //
   // therefore, fix page using RECOVERY_PAGE mode. pgbuf_fix will know to accept even new or deallocated pages.
   //
-  page = pgbuf_fix (thread_p, vpid_rcv, RECOVERY_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  page = pgbuf_fix (thread_p, vpid_rcv, page_fetch_mode, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page == NULL)
     {
       // this is terrible, because it makes recovery impossible
-      assert_release (false);
+      // accepted in passive transaction server replication: if page is not already in the buffer of the passive
+      // transaction server, when it will be eventually loaded in the buffer, the replication on the page
+      // server the page is loaded from would have already applied the log records up to the point
+      // this passive transaction server has already advanced with replication
+      assert (is_passive_transaction_server () && page_fetch_mode == OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT);
       return NULL;
     }
   return page;

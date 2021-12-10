@@ -464,6 +464,14 @@ extern void pgbuf_highest_evicted_lsa_init ();
 extern void pgbuf_daemons_destroy ();
 #endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE)
+// Check if page is ahead of replication; only relevant on passive transaction server, don't call elsewhere.
+extern int pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page);
+#endif
+// Fix an old page with read latch; and if this is a PTS, check if it is ahead of replication.
+extern PAGE_PTR pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid,
+							  PGBUF_LATCH_CONDITION cond);
+
 extern int pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr);
 // *INDENT-OFF*
 extern void pgbuf_cast_pgptr_to_iopgptr (PAGE_PTR page_ptr, FILEIO_PAGE *&io_page);
