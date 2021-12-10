@@ -225,6 +225,7 @@ extern "C"
     PROTOCOL_V8 = 8,		/* JSON type */
     PROTOCOL_V9 = 9,		/* cas health check: get function status */
     PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
+    PROTOCOL_V11 = 11,		/* make out resultset */
     CURRENT_PROTOCOL = PROTOCOL_V10
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
