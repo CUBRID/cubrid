@@ -992,17 +992,17 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
 
   // handle requests 2 to 1
   test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_0 =
-	  [] (test_request_sync_client_server_one_t::internal_payload &a_ip)
+	  [] (test_request_sync_client_server_one_t::sequenced_payload &a_ip)
   {
     mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_0> (a_ip);
   };
   test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_1 =
-	  [] (test_request_sync_client_server_one_t::internal_payload &a_ip)
+	  [] (test_request_sync_client_server_one_t::sequenced_payload &a_ip)
   {
     mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_1> (a_ip);
   };
   test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_2 =
-	  [] (test_request_sync_client_server_one_t::internal_payload &a_ip)
+	  [] (test_request_sync_client_server_one_t::sequenced_payload &a_ip)
   {
     mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_2> (a_ip);
   };
@@ -1029,12 +1029,12 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_two (
 
   // handle requests 1 to 2
   test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_0 =
-	  [] (test_request_sync_client_server_two_t::internal_payload &a_ip)
+	  [] (test_request_sync_client_server_two_t::sequenced_payload &a_ip)
   {
     mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_0> (a_ip);
   };
   test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_1 =
-	  [] (test_request_sync_client_server_two_t::internal_payload &a_ip)
+	  [] (test_request_sync_client_server_two_t::sequenced_payload &a_ip)
   {
     mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_1> (a_ip);
   };

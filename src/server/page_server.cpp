@@ -97,13 +97,13 @@ page_server::connection_handler::push_request (page_to_tran_request id, std::str
 }
 
 void
-page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::internal_payload &a_ip)
+page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip)
 {
   log_Gl.get_log_prior_receiver ().push_message (std::move (a_ip.pull_payload ()));
 }
 
 void
-page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::internal_payload &a_ip)
+page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_ip)
 {
   LOG_PAGEID pageid;
   std::string message = a_ip.pull_payload ();
@@ -121,7 +121,7 @@ page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::int
 }
 
 void
-page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::internal_payload &a_ip)
+page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_ip)
 {
   std::string message = a_ip.pull_payload ();
 
@@ -138,7 +138,7 @@ page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::in
 }
 
 void
-page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::internal_payload &)
+page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &)
 {
   // empty request message
 
@@ -163,7 +163,7 @@ page_server::connection_handler::on_log_boot_info_result (std::string &&message)
 }
 
 void
-page_server::connection_handler::receive_disconnect_request (tran_server_conn_t::internal_payload &)
+page_server::connection_handler::receive_disconnect_request (tran_server_conn_t::sequenced_payload &)
 {
   if (m_prior_sender_sink_hook_func)
     {
@@ -177,7 +177,7 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
 }
 
 void
-page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::internal_payload &)
+page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &)
 {
   DKNVOLS nvols_perm = disk_get_perm_volume_count ();
 
