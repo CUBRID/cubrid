@@ -10807,7 +10807,7 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, O
       return ER_FAILED;
     }
 
-  if (!tdes->mvccinfo.snapshot.loading)
+  if (tdes != NULL && !tdes->mvccinfo.snapshot.loading)
     {
       scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (scan_cache.mvcc_snapshot == NULL)
