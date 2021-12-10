@@ -197,7 +197,7 @@ static void mock_check_expected_id_and_op_count (cubpacking::unpacker &upk);
 static void handler_register_mock_check_expected_id_and_op_count (test_request_server &req_sr);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Stuff for two request_sync_client_server test case (n
+// Stuff for two request_sync_client_server test case
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 using test_request_sync_client_server_one_t =

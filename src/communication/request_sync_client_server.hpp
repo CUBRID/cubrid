@@ -49,34 +49,7 @@ namespace cubcomm
 
       // The user payload (of type T_PAYLOAD) is accompanied by a response sequence number set by
       // request_sync_client_server.
-      class sequenced_payload : public cubpacking::packable_object
-      {
-	public:
-	  sequenced_payload () = default;
-	  sequenced_payload (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
-	  sequenced_payload (sequenced_payload &&other);
-	  sequenced_payload (const sequenced_payload &other) = delete;
-	  ~sequenced_payload () = default;
-
-	  sequenced_payload &operator= (sequenced_payload &&other);
-	  sequenced_payload &operator= (const sequenced_payload &) = delete;
-
-	  void push_payload (T_PAYLOAD &&a_payload);
-	  T_PAYLOAD pull_payload ();
-
-	  response_sequence_number get_response_sequence_number () const
-	  {
-	    return m_rsn;
-	  }
-
-	  size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const final override;
-	  void pack (cubpacking::packer &serializator) const final override;
-	  void unpack (cubpacking::unpacker &deserializator) final override;
-
-	private:
-	  response_sequence_number m_rsn = NO_RESPONSE_SEQUENCE_NUMBER;
-	  T_PAYLOAD m_user_payload;
-      };
+      class sequenced_payload;
 
       using incoming_request_handler_t = std::function<void (sequenced_payload &)>;
 
@@ -120,6 +93,37 @@ namespace cubcomm
       T_INCOMING_MSG_ID m_incoming_response_msgid;
       response_sequence_number_generator m_rsn_generator;
       response_broker<T_PAYLOAD> m_response_broker;
+  };
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  class request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload
+    : public cubpacking::packable_object
+  {
+    public:
+      sequenced_payload () = default;
+      sequenced_payload (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
+      sequenced_payload (sequenced_payload &&other);
+      sequenced_payload (const sequenced_payload &other) = delete;
+      ~sequenced_payload () = default;
+
+      sequenced_payload &operator= (sequenced_payload &&other);
+      sequenced_payload &operator= (const sequenced_payload &) = delete;
+
+      void push_payload (T_PAYLOAD &&a_payload);
+      T_PAYLOAD pull_payload ();
+
+      response_sequence_number get_response_sequence_number () const
+      {
+	return m_rsn;
+      }
+
+      size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const final override;
+      void pack (cubpacking::packer &serializator) const final override;
+      void unpack (cubpacking::unpacker &deserializator) final override;
+
+    private:
+      response_sequence_number m_rsn = NO_RESPONSE_SEQUENCE_NUMBER;
+      T_PAYLOAD m_user_payload;
   };
 }
 
