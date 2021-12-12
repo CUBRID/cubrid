@@ -46,6 +46,9 @@ CREATE OR REPLACE FUNCTION rset() RETURN CURSOR AS LANGUAGE JAVA NAME 'test.SpCu
 CREATE OR REPLACE FUNCTION rset_limit(a INT) RETURN CURSOR AS LANGUAGE JAVA NAME 'test.SpCursorTest.TResultSetWithLimit(int) return java.sql.ResultSet';
 CREATE OR REPLACE FUNCTION pyramid(a INT) RETURN STRING as language java name 'test.SpCursorTest.PyramidPrinter(int) return java.lang.String';
 
+CREATE OR REPLACE FUNCTION rset_q(q STRING) RETURN CURSOR AS LANGUAGE JAVA NAME 'test.SpCursorTest.testCursorWithQuery(java.lang.String) return java.sql.ResultSet';
+CREATE OR REPLACE FUNCTION sp_rset_q(q STRING) RETURN STRING as language java name 'test.SpCursorTest.testOutResultWithQuery(java.lang.String) return java.lang.String';
+
 /* ////////////////////////////////////////////////////////////////////////// */
 /* Unit Test for Server-Side JDBC */
 /* ////////////////////////////////////////////////////////////////////////// */
