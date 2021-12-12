@@ -42,7 +42,9 @@ CREATE OR REPLACE FUNCTION sp_plus_float_out(a IN OUT FLOAT, b IN OUT FLOAT) RET
 CREATE OR REPLACE PROCEDURE sp_setoid(x in out set, z object) AS LANGUAGE JAVA NAME 'test.SpArgumentTest.testSetOID(cubrid.sql.CUBRIDOID[][], cubrid.sql.CUBRIDOID)';
 
 /* Returning Cursor Test */
-CREATE FUNCTION rset() RETURN CURSOR AS LANGUAGE JAVA NAME 'test.SpCursorTest.TResultSet() return java.sql.ResultSet';
+CREATE OR REPLACE FUNCTION rset() RETURN CURSOR AS LANGUAGE JAVA NAME 'test.SpCursorTest.TResultSet() return java.sql.ResultSet';
+CREATE OR REPLACE FUNCTION rset_limit(a INT) RETURN CURSOR AS LANGUAGE JAVA NAME 'test.SpCursorTest.TResultSetWithLimit(int) return java.sql.ResultSet';
+CREATE OR REPLACE FUNCTION pyramid(a INT) RETURN STRING as language java name 'test.SpCursorTest.PyramidPrinter(int) return java.lang.String';
 
 /* ////////////////////////////////////////////////////////////////////////// */
 /* Unit Test for Server-Side JDBC */

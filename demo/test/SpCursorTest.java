@@ -31,10 +31,12 @@
 
 package test;
 
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.sql.Types;
 
 public class SpCursorTest {
     public static ResultSet TResultSet() {
@@ -51,5 +53,50 @@ public class SpCursorTest {
         }
 
         return null;
+    }
+
+    public static ResultSet TResultSetWithLimit(int limit) {
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            Connection conn = DriverManager.getConnection("jdbc:default:connection:");
+
+            String sql = "select name, nation_code, event from athlete LIMIT " + limit;
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(sql);
+            return rs;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    public static String PyramidPrinter(int depth) {
+        String result = "";
+        if (depth >= 0) {
+            try {
+                Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+                Connection conn = DriverManager.getConnection("jdbc:default:connection:");
+
+                for (int i = 0; i < depth; i++) {
+                    CallableStatement cstmt =
+                            conn.prepareCall("?=CALL rset_limit(" + (i + 1) + ")");
+                    cstmt.registerOutParameter(1, Types.JAVA_OBJECT);
+                    cstmt.execute();
+                    ResultSet rs = (ResultSet) cstmt.getObject(1);
+
+                    while (rs.next()) {
+                        result += rs.getString(1) + "|";
+                    }
+                    result += "\n";
+
+                    rs.close();
+                }
+            } catch (Exception e) {
+                result = e.getMessage();
+            }
+        }
+
+        return result;
     }
 }
