@@ -336,6 +336,7 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
         } else if (x instanceof Clob) {
             setClob(parameterIndex, (Clob) x);
         } else {
+            int type = DBType.getObjectDBtype(x);
             if (x != null
                     && (targetSqlType == java.sql.Types.NUMERIC
                             || targetSqlType == java.sql.Types.DECIMAL)) {
@@ -343,16 +344,17 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
                 try {
                     n = (Number) x;
                 } catch (Exception e) {
-                    // TODO: not implemented yet
-                    throw new SQLException(new UnsupportedOperationException());
+                    getStatementHandler().bindValue(parameterIndex, type, x);
                 }
                 if (n != null) {
-                    // TODO: not implemented yet
-                    throw new SQLException(new UnsupportedOperationException());
+                    getStatementHandler()
+                            .bindValue(
+                                    parameterIndex,
+                                    type,
+                                    new BigDecimal(n.toString()).setScale(scale));
                 }
             } else {
-                // TODO: not implemented yet
-                throw new SQLException(new UnsupportedOperationException());
+                getStatementHandler().bindValue(parameterIndex, type, x);
             }
         }
     }
@@ -371,8 +373,8 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
             setClob(parameterIndex, (Clob) x);
             return;
         } else {
-            // TODO: not implemented yet
-            throw new SQLException(new UnsupportedOperationException());
+            int type = DBType.getObjectDBtype(x);
+            getStatementHandler().bindValue(parameterIndex, type, x);
         }
     }
 
