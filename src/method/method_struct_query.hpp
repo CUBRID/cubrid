@@ -213,6 +213,16 @@ namespace cubmethod
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
   };
+
+  struct make_outresult_info : public cubpacking::packable_object
+  {
+    std::vector<query_result_info> qresult_infos;
+    std::vector<column_info> column_infos;
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+  };
 }
 
 #endif

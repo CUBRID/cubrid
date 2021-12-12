@@ -38,7 +38,6 @@ namespace cubthread
 
 namespace cubmethod
 {
-
   class query_cursor
   {
     public:
