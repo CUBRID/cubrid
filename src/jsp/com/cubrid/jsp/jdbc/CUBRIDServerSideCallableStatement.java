@@ -168,8 +168,8 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
     }
 
     public Object getObject(int index) throws SQLException {
-        // TODO: not implemented yet
-        return null;
+        beforeGetValue(index);
+        return statementHandler.getObject(index);
     }
 
     public BigDecimal getBigDecimal(int index) throws SQLException {

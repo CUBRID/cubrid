@@ -31,8 +31,10 @@
 
 package com.cubrid.jsp.jdbc;
 
+import com.cubrid.jsp.impl.SUConnection;
 import com.cubrid.jsp.impl.SUStatement;
 import cubrid.sql.CUBRIDOID;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.math.BigDecimal;
@@ -69,8 +71,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     private SUStatement statementHandler;
 
-    private int type;
-    private int concurrency;
+    private int type = TYPE_FORWARD_ONLY;
+    private int concurrency = CONCUR_READ_ONLY;
 
     /* For findColumn */
     protected HashMap<String, Integer> colNameToIdx;
@@ -78,7 +80,7 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     private boolean wasNullValue = false;
 
     private boolean isInserting;
-    private int currentRowIndex;
+    private int currentRowIndex = -1;
 
     protected CUBRIDServerSideResultSet(
             CUBRIDServerSideConnection c, CUBRIDServerSideStatement s, int t, int concur)
@@ -86,18 +88,21 @@ public class CUBRIDServerSideResultSet implements ResultSet {
         connection = c;
         stmt = s;
 
-        statementHandler = stmt.getStatementHandler();
+        setStatementHandler(stmt.getStatementHandler());
 
         type = t;
         concurrency = concur;
 
         isInserting = false;
-        currentRowIndex = -1;
+    }
+
+    protected CUBRIDServerSideResultSet(SUConnection ucon, long queryId)
+            throws IOException, SQLException {
+        setStatementHandler(new SUStatement(ucon, queryId));
     }
 
     protected CUBRIDServerSideResultSet(SUStatement stmt) {
-        statementHandler = stmt;
-        currentRowIndex = -1;
+        setStatementHandler(stmt);
     }
 
     public boolean isUpdatable() {
@@ -175,6 +180,18 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     protected void clearCurrentRow() throws SQLException {
         // TODO: clear for Streams (CLOB, BLOB, AsciiStream, BinaryStream)
         // TODO: clear for variables related to updatable
+    }
+
+    protected void setStatementHandler(SUStatement stmt) {
+        statementHandler = stmt;
+    }
+
+    protected SUStatement getStatementHandler() {
+        return statementHandler;
+    }
+
+    public long getQueryId() {
+        return statementHandler.getQueryId();
     }
 
     // ==============================================================

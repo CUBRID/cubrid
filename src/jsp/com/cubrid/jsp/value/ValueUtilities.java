@@ -1,5 +1,5 @@
 /*
- * 
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -35,7 +35,7 @@ import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 
 public class ValueUtilities {
-    public static Object resolveValue (int dbType, Value value) throws TypeMismatchException {
+    public static Object resolveValue(int dbType, Value value) throws TypeMismatchException {
         Object resolvedResult = null;
 
         if (value == null) return null;
@@ -85,7 +85,7 @@ public class ValueUtilities {
                 resolvedResult = value.toOid();
                 break;
             case DBType.DB_RESULTSET:
-                resolvedResult = value.toResultSet();
+                resolvedResult = value.toResultSet(null);
                 break;
             default:
                 break;

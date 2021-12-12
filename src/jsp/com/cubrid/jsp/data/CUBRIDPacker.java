@@ -31,7 +31,7 @@
 
 package com.cubrid.jsp.data;
 
-import cubrid.jdbc.driver.CUBRIDResultSet;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import cubrid.sql.CUBRIDOID;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
@@ -173,7 +173,7 @@ public class CUBRIDPacker {
             packShort(DataUtilities.bytes2short(oid, 6));
         } else if (result instanceof ResultSet) {
             packInt(DBType.DB_RESULTSET);
-            packInt(((CUBRIDResultSet) result).getServerHandle());
+            packBigInt(((CUBRIDServerSideResultSet) result).getQueryId());
         } else if (result instanceof int[]) {
             int length = ((int[]) result).length;
             Integer[] array = new Integer[length];

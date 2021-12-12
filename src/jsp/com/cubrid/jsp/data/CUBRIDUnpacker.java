@@ -210,7 +210,12 @@ public class CUBRIDUnpacker {
                     arg = new SetValue(unpackSetValue(nCol));
                 }
                 break;
-
+            case DBType.DB_RESULTSET:
+                {
+                    long queryId = unpackBigint();
+                    arg = new ResultSetValue(queryId);
+                }
+                break;
             case DBType.DB_OID:
             case DBType.DB_OBJECT:
                 {
@@ -310,6 +315,12 @@ public class CUBRIDUnpacker {
                 {
                     SOID oid = new SOID(this);
                     arg = new OidValue(oid, mode, dbType);
+                }
+                break;
+            case DBType.DB_RESULTSET:
+                {
+                    long queryId = unpackBigint();
+                    arg = new ResultSetValue(queryId);
                 }
                 break;
             case DBType.DB_NULL:
