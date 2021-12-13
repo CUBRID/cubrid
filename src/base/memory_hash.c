@@ -100,8 +100,8 @@ static inline unsigned int mht_5str_pseudo_key (const void *key, int key_size);
 
 static int mht_rehash (MHT_TABLE * ht);
 
-static void mht_remove_enrty (MHT_TABLE * ht, HENTRY_PTR prev_hentry, HENTRY_PTR hentry, unsigned int hash);
-static bool mht_add_new_enrty (MHT_TABLE * ht, const void *key, void *data, unsigned int hash,
+static void mht_remove_entry (MHT_TABLE * ht, HENTRY_PTR prev_hentry, HENTRY_PTR hentry, unsigned int hash);
+static bool mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int hash,
 			       unsigned int val_of_hash);
 static const void *mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 static const void *mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
@@ -1614,7 +1614,7 @@ mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 }
 
 static bool
-mht_add_new_enrty (MHT_TABLE * ht, const void *key, void *data, unsigned int hash, unsigned int val_of_hash)
+mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int hash, unsigned int val_of_hash)
 {
   HENTRY_PTR hentry;
 
@@ -1756,7 +1756,7 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 	}
     }
 
-  if (mht_add_new_enrty (ht, key, data, hash, val_of_hash) == false)
+  if (mht_add_new_entry (ht, key, data, hash, val_of_hash) == false)
     {
       return NULL;
     }
@@ -1878,7 +1878,7 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 	}
     }
 
-  if (mht_add_new_enrty (ht, key, data, hash, val_of_hash) == false)
+  if (mht_add_new_entry (ht, key, data, hash, val_of_hash) == false)
     {
       return NULL;
     }
@@ -1927,7 +1927,7 @@ mht_put2 (MHT_TABLE * ht, const void *key, void *data)
 
 
 static void
-mht_remove_enrty (MHT_TABLE * ht, HENTRY_PTR prev_hentry, HENTRY_PTR hentry, unsigned int hash)
+mht_remove_entry (MHT_TABLE * ht, HENTRY_PTR prev_hentry, HENTRY_PTR hentry, unsigned int hash)
 {
 
   if (ht->build_lru_list)
@@ -2047,7 +2047,7 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
 		}
 	    }
 
-	  mht_remove_enrty (ht, prev_hentry, hentry, hash);
+	  mht_remove_entry (ht, prev_hentry, hentry, hash);
 	  return NO_ERROR;
 	}
     }
@@ -2107,7 +2107,7 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
 		}
 	    }
 
-	  mht_remove_enrty (ht, prev_hentry, hentry, hash);
+	  mht_remove_entry (ht, prev_hentry, hentry, hash);
 	  return NO_ERROR;
 	}
     }
