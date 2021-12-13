@@ -342,19 +342,23 @@ namespace cubmethod
   void
   prepare_call_info::clear ()
   {
-    for (int i = 0; i < (int) dbval_args.size(); i++)
+    int i = 0;
+    if (is_first_out)
       {
-	db_value_clear (&dbval_args[i]);
+	db_value_clear (&dbval_args[0]);
+	i++;
       }
-    dbval_args.clear ();
-    param_modes.clear ();
+
+    while (i < (int) dbval_args.size())
+      {
+	db_make_null (&dbval_args[i]);
+	i++;
+      }
   }
 
   int
   prepare_call_info::set_prepare_call_info (int num_args)
   {
-    // db_make_null (&dbval_ret);
-
     this->num_args = num_args;
     if (num_args > 0)
       {
