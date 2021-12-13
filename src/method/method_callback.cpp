@@ -490,12 +490,12 @@ method_make_out_rs (DB_BIGINT query_id)
   cubmethod::query_result *qresult = query_handler->get_current_result();
   if (qresult)
     {
-      qresult->column_info = db_get_query_type_list (query_handler->get_db_session(), qresult->stmt_id);
+      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session(), qresult->stmt_id);
       return ux_create_srv_handle_with_method_query_result (
 		     qresult->result,
 		     qresult->stmt_type,
 		     qresult->num_column,
-		     qresult->column_info,
+		     column_info,
 		     true
 	     );
     }
