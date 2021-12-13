@@ -90,6 +90,8 @@ extern MOP jsp_find_stored_procedure (const char *name);
 
 extern void jsp_set_prepare_call (void);
 extern void jsp_unset_prepare_call (void);
+extern bool jsp_is_prepare_call (void);
+
 extern int jsp_call_from_server (DB_VALUE * returnval, DB_VALUE ** argarray, const char *name, const int arg_cnt);
 
 extern int jsp_send_destroy_request_all ();

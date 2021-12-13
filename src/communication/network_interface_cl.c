@@ -10580,13 +10580,6 @@ method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE
 		    continue;
 		  }
 
-		if (sig->arg_info.arg_type[i] == DB_TYPE_RESULTSET)	// && !is_prepare_call[call_cnt])
-		  {
-		    req_error = ER_SP_CANNOT_RETURN_RESULTSET;
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, req_error, 0);
-		    goto cleanup;
-		  }
-
 		int pos = sig->method_arg_pos[i];
 		unpacker.unpack_db_value (temp);
 

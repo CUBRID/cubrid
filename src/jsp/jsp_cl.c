@@ -624,7 +624,6 @@ jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = method_invoke_fold_constants (sig_list, args, ret_value);
 	}
       sig_list.freemem ();
-      // error = jsp_do_call_stored_procedure (&ret_value, value_list, proc);
     }
 
   vc = statement->info.method_call.arg_list;
@@ -2151,7 +2150,8 @@ jsp_call_from_server (DB_VALUE * returnval, DB_VALUE ** argarray, const char *na
 void
 jsp_set_prepare_call (void)
 {
-  is_prepare_call[call_cnt] = true;
+  int depth = tran_get_libcas_depth ();
+  is_prepare_call[depth] = true;
 }
 
 /*
@@ -2164,7 +2164,22 @@ jsp_set_prepare_call (void)
 void
 jsp_unset_prepare_call (void)
 {
-  is_prepare_call[call_cnt] = false;
+  int depth = tran_get_libcas_depth ();
+  is_prepare_call[depth] = false;
+}
+
+/*
+ * jsp_is_prepare_call -
+ *   return: bool
+ *
+ * Note:
+ */
+
+bool
+jsp_is_prepare_call ()
+{
+  int depth = tran_get_libcas_depth ();
+  return is_prepare_call[depth];
 }
 
 /*
@@ -2237,7 +2252,14 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 
 		if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
 		  {
-		    sig_arg_type.push_back (db_get_int (&arg_type));
+		    int type_val = db_get_int (&arg_type);
+		    if (type_val == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
+			error = er_errid ();
+			goto end;
+		      }
+		    sig_arg_type.push_back (type_val);
 		  }
 
 		pr_clear_value (&mode);
@@ -2254,6 +2276,12 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 	    goto end;
 	  }
 	sig_result_type = db_get_int (&result_type);
+	if (sig_result_type == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
+	    error = er_errid ();
+	    goto end;
+	  }
       }
     else
       {
