@@ -370,6 +370,7 @@ static PT_NODE *mq_replace_virtual_oid_with_real_oid (PARSER_CONTEXT * parser, P
 						      int *continue_walk);
 
 static void mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * query_cache);
+static void mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_query);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -1648,7 +1649,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
   PT_NODE *derived_table, *derived_spec, *derived_class;
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec, rewrite_as_derived;
-  bool is_index_ss, is_index_ls;
 
   result = tmp_result = NULL;	/* init */
   class_spec = NULL;
@@ -1767,15 +1767,14 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 
 	  /* rewrite vclass spec */
 	  class_spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec);
-	  if (class_spec == NULL)
+
+	  /* get derived expending spec node */
+	  if (!class_spec || !(derived_table = class_spec->info.spec.derived_table)
+	      || !(derived_spec = derived_table->info.query.q.select.from)
+	      || !(derived_class = derived_spec->info.spec.flat_entity_list))
 	    {
 	      goto exit_on_error;
 	    }
-
-	  /* get derived expending spec node */
-	  derived_table = class_spec->info.spec.derived_table;
-	  derived_spec = derived_table->info.query.q.select.from;
-	  derived_class = derived_spec->info.spec.flat_entity_list;
 
 	  tmp_class = parser_copy_tree (parser, class_);
 	  if (tmp_class == NULL)
@@ -1784,34 +1783,8 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	    }
 	  tmp_class->info.name.spec_id = derived_class->info.name.spec_id;
 
-	  /* now, derived_table has been derived. */
-
 	  /* merge HINT of vclass spec */
-	  derived_table->info.query.q.select.hint =
-	    (PT_HINT_ENUM) (derived_table->info.query.q.select.hint | query_spec->info.query.q.select.hint);
-	  derived_table->info.query.q.select.ordered =
-	    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.ordered),
-				derived_table->info.query.q.select.ordered);
-
-	  derived_table->info.query.q.select.use_nl =
-	    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.use_nl),
-				derived_table->info.query.q.select.use_nl);
-
-	  derived_table->info.query.q.select.use_idx =
-	    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.use_idx),
-				derived_table->info.query.q.select.use_idx);
-
-	  derived_table->info.query.q.select.index_ss =
-	    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.index_ss),
-				derived_table->info.query.q.select.index_ss);
-
-	  derived_table->info.query.q.select.index_ls =
-	    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.index_ls),
-				derived_table->info.query.q.select.index_ls);
-
-	  derived_table->info.query.q.select.use_merge =
-	    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.use_merge),
-				derived_table->info.query.q.select.use_merge);
+	  mq_copy_sql_hint (parser, derived_table, query_spec);
 
 	  if (!order_by || query_spec->info.query.orderby_for)
 	    {
@@ -1832,16 +1805,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 		    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.orderby_for),
 					derived_table->info.query.orderby_for);
 		}
-	    }
-
-	  /* merge USING INDEX clause of vclass spec */
-	  if (query_spec->info.query.q.select.using_index)
-	    {
-	      PT_NODE *ui;
-
-	      ui = parser_copy_tree_list (parser, query_spec->info.query.q.select.using_index);
-	      derived_table->info.query.q.select.using_index =
-		parser_append_node (ui, derived_table->info.query.q.select.using_index);
 	    }
 
 	  class_spec->info.spec.derived_table =
@@ -1871,45 +1834,10 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
       else
 	{
 	  /* expand vclass_query in parent statement */
+	  mq_copy_sql_hint (parser, tmp_result, query_spec);
+
 	  if (tmp_result->node_type == PT_SELECT)
 	    {
-	      is_index_ss = tmp_result->info.query.q.select.hint & PT_HINT_INDEX_SS;
-	      is_index_ls = tmp_result->info.query.q.select.hint & PT_HINT_INDEX_LS;
-
-	      /* merge HINT of vclass spec */
-	      tmp_result->info.query.q.select.hint =
-		(PT_HINT_ENUM) (tmp_result->info.query.q.select.hint | query_spec->info.query.q.select.hint);
-
-	      tmp_result->info.query.q.select.ordered =
-		parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.ordered),
-				    tmp_result->info.query.q.select.ordered);
-
-	      tmp_result->info.query.q.select.use_nl =
-		parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.use_nl),
-				    tmp_result->info.query.q.select.use_nl);
-
-	      tmp_result->info.query.q.select.use_idx =
-		parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.use_idx),
-				    tmp_result->info.query.q.select.use_idx);
-
-	      if (!is_index_ss || tmp_result->info.query.q.select.index_ss != NULL)
-		{
-		  tmp_result->info.query.q.select.index_ss =
-		    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.index_ss),
-					tmp_result->info.query.q.select.index_ss);
-		}
-
-	      if (!is_index_ls || tmp_result->info.query.q.select.index_ls != NULL)
-		{
-		  tmp_result->info.query.q.select.index_ls =
-		    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.index_ls),
-					tmp_result->info.query.q.select.index_ls);
-		}
-
-	      tmp_result->info.query.q.select.use_merge =
-		parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.q.select.use_merge),
-				    tmp_result->info.query.q.select.use_merge);
-
 	      assert (query_spec->info.query.orderby_for == NULL);
 	      if (!order_by && query_spec->info.query.order_by && !pt_has_aggregate (parser, tmp_result))
 		{
@@ -1920,27 +1848,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 		    {
 		      goto exit_on_error;
 		    }
-		}
-	    }
-
-	  /* merge USING INDEX clause of vclass spec */
-	  if (query_spec->info.query.q.select.using_index)
-	    {
-	      PT_NODE *ui;
-
-	      ui = parser_copy_tree_list (parser, query_spec->info.query.q.select.using_index);
-	      if (tmp_result->node_type == PT_SELECT)
-		{
-		  tmp_result->info.query.q.select.using_index =
-		    parser_append_node (ui, tmp_result->info.query.q.select.using_index);
-		}
-	      else if (tmp_result->node_type == PT_UPDATE)
-		{
-		  tmp_result->info.update.using_index = parser_append_node (ui, tmp_result->info.update.using_index);
-		}
-	      else if (tmp_result->node_type == PT_DELETE)
-		{
-		  tmp_result->info.delete_.using_index = parser_append_node (ui, tmp_result->info.delete_.using_index);
 		}
 	    }
 
@@ -2419,9 +2326,9 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
       if (PT_SPEC_IS_DERIVED (class_spec))
 	{
 	  /* 여기 inline view 처리 */
-	/* subquery ==> tree->info.spec.derived_table
-	 * entity ==> 어떻게?  ==> spec으로 대체 하는 방법
-	 */
+	  /* subquery ==> tree->info.spec.derived_table
+	   * entity ==> 어떻게?  ==> spec으로 대체 하는 방법
+	   */
 /*	  subquery = tree->info.spec.derived_table;
 	  substituted =
 	mq_substitute_subquery_list_in_statement (parser, tree, subquery, entity, order_by, what_for);
@@ -11782,4 +11689,80 @@ mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * query_cache)
   error_msg = pt_get_next_error (error_msg, &stmt_no, &line_no, &col_no, &msg);
 
   pt_record_error (parser, stmt_no, line_no, col_no, msg, NULL);
+}
+
+/*
+ * mq_copy_sql_hint  () - copy sql hint from src to dest
+ *
+ * return: void
+ * parser(in):
+ * dest_query(in):
+ * src_query(in):
+ *
+ */
+static void
+mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_query)
+{
+  bool is_index_ss, is_index_ls;
+
+  if (dest_query->node_type == PT_SELECT)
+    {
+      is_index_ss = dest_query->info.query.q.select.hint & PT_HINT_INDEX_SS;
+      is_index_ls = dest_query->info.query.q.select.hint & PT_HINT_INDEX_LS;
+
+      /* merge HINT of vclass spec */
+      dest_query->info.query.q.select.hint =
+	(PT_HINT_ENUM) (dest_query->info.query.q.select.hint | src_query->info.query.q.select.hint);
+
+      dest_query->info.query.q.select.ordered =
+	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.ordered),
+			    dest_query->info.query.q.select.ordered);
+
+      dest_query->info.query.q.select.use_nl =
+	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_nl),
+			    dest_query->info.query.q.select.use_nl);
+
+      dest_query->info.query.q.select.use_idx =
+	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_idx),
+			    dest_query->info.query.q.select.use_idx);
+
+      if (!is_index_ss || dest_query->info.query.q.select.index_ss != NULL)
+	{
+	  dest_query->info.query.q.select.index_ss =
+	    parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.index_ss),
+				dest_query->info.query.q.select.index_ss);
+	}
+
+      if (!is_index_ls || dest_query->info.query.q.select.index_ls != NULL)
+	{
+	  dest_query->info.query.q.select.index_ls =
+	    parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.index_ls),
+				dest_query->info.query.q.select.index_ls);
+	}
+
+      dest_query->info.query.q.select.use_merge =
+	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_merge),
+			    dest_query->info.query.q.select.use_merge);
+    }
+
+  /* merge USING INDEX clause of vclass spec */
+  if (src_query->info.query.q.select.using_index)
+    {
+      PT_NODE *ui;
+
+      ui = parser_copy_tree_list (parser, src_query->info.query.q.select.using_index);
+      if (dest_query->node_type == PT_SELECT)
+	{
+	  dest_query->info.query.q.select.using_index =
+	    parser_append_node (ui, dest_query->info.query.q.select.using_index);
+	}
+      else if (dest_query->node_type == PT_UPDATE)
+	{
+	  dest_query->info.update.using_index = parser_append_node (ui, dest_query->info.update.using_index);
+	}
+      else if (dest_query->node_type == PT_DELETE)
+	{
+	  dest_query->info.delete_.using_index = parser_append_node (ui, dest_query->info.delete_.using_index);
+	}
+    }
 }
