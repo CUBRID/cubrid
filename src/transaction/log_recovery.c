@@ -4072,6 +4072,8 @@ log_cnt_pages_containing_lsa (const log_lsa * from_lsa, const log_lsa * to_lsa)
     }
   else
     {
-      return to_lsa->pageid - from_lsa->pageid + 1;
+      const INT64 pages_cnt = to_lsa->pageid - from_lsa->pageid + 1;
+      assert (pages_cnt > 0);
+      return (UINT64) pages_cnt;
     }
 }
