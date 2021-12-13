@@ -10701,6 +10701,9 @@ log_checkpoint_trantable_daemon_init ()
   if (is_tran_server_with_remote_storage ())
     {
       cubthread::looper looper { std::chrono::seconds (60) };
+      // TODO: supply a custom timing function such that the checkpoint is fired right away even if
+      // it is for an empty transaction table; thus, the PTS is sure to have a most recent transaction
+      // table snapshot LSA to start from
       cubthread::entry_callable_task * daemon_task =
           new cubthread::entry_callable_task (log_checkpoint_trantable_execute);
       log_Checkpoint_trantable_daemon =
