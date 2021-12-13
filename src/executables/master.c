@@ -73,6 +73,7 @@
 #include "message_catalog.h"
 #include "dbi.h"
 #include "util_func.h"
+#include "scope_exit.hpp"
 #include "system_parameter.h"
 
 static void css_master_error (const char *error_string);
@@ -463,9 +464,6 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
 	  type = static_cast<SERVER_TYPE> (buffer[0] - '0');
 	  dbname = std::string (buffer + 1, buffer_length - 1);
 	}
-
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "The %s server of type %s wants to connect to cub_master.", dbname.c_str (),
-			   server_type_to_string (type));
     }
   return exit_code;
 }
@@ -485,10 +483,13 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   std::string server_name;
   SERVER_TYPE type;
   SOCKET_QUEUE_ENTRY *entry;
+  bool conn_established_flag = false;
 
   /* read server name */
   if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS)
     {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "The %s server of type %s wants to connect to cub_master.",
+			   server_name.c_str (), server_type_to_string (type));
       entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
 
       if (entry != NULL)
@@ -498,6 +499,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 	    {
 	      /* accept a server that was auto-started */
 	      css_accept_old_request (conn, rid, entry, server_name.c_str (), server_name.length ());
+	      conn_established_flag = true;
 	    }
 	  else
 	    {
@@ -509,6 +511,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 	{
 #if defined(WINDOWS)
 	  css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED);
+	  conn_established_flag = true;
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
@@ -518,6 +521,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 #else /* ! WINDOWS */
 	  /* accept a request from a new server */
 	  css_accept_new_request (conn, rid, server_name.c_str (), server_name.length (), type);
+	  conn_established_flag = true;
 #endif /* ! WINDOWS */
 	}
     }
@@ -526,6 +530,17 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   /* WINDOWS wants to keep this conn--it is the main connection */
   css_free_conn (conn);
 #endif /* ! WINDOWS */
+
+  if (conn_established_flag == true)
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "The %s server of type %s successfully connected to cub_master.",
+			   server_name.c_str (), server_type_to_string (type));
+    }
+  else
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "The %s server of type %s failed to connect to cub_master.",
+			   server_name.c_str (), server_type_to_string (type));
+    }
 }
 
 /*
@@ -545,10 +560,13 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
   SERVER_TYPE type;
   SOCKET_QUEUE_ENTRY *entry;
   int buffer;
+  bool conn_established_flag = false;
 
   /* read server name */
   if (receive_server_info (conn, rid, server_name, type) == NO_ERRORS && !server_name.empty ())
     {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "The %s server of type %s wants to connect to cub_master.",
+			   server_name.c_str (), server_type_to_string (type));
       entry = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
 
       if (entry != NULL)
@@ -558,6 +576,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	    {
 	      /* accept a server */
 	      css_accept_old_request (conn, rid, entry, server_name.c_str (), server_name.length ());
+	      conn_established_flag = true;
 	    }
 	  else
 	    {
@@ -579,6 +598,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	      entry =
 		css_add_request_to_socket_queue (conn, false, server_name.c_str (), conn->fd, READ_WRITE, 0, type,
 						 &css_Master_socket_anchor);
+	      conn_established_flag = true;
 	      /* store this for later */
 	      if (entry != NULL)
 		{
@@ -629,6 +649,17 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
     {
       css_free_conn (conn);
     }
+
+  if (conn_established_flag == true)
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "The %s server of type %s successfully connected to cub_master.",
+			   server_name.c_str (), server_type_to_string (type));
+    }
+  else
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "The %s server of type %s failed to connect to cub_master.",
+			   server_name.c_str (), server_type_to_string (type));
+    }
 }
 
 /*
@@ -673,7 +704,24 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
   int name_length, buffer;
   name_length = 1024;
   std::string server_name;
-  SERVER_TYPE type;
+  SERVER_TYPE type = SERVER_TYPE_TRANSACTION;
+  bool conn_established_flag = false;
+
+  // *INDENT-OFF*
+  scope_exit <std::function<void (void)>> log_on_exit ([&conn_established_flag, &server_name, &type]()
+  {
+    if (conn_established_flag == true)
+     {
+        MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Successfully connected to %s server of type %s.", server_name.c_str (),
+                             server_type_to_string (type));
+     }
+    else
+     {
+        MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Failed to connect to %s server of type %s.", server_name.c_str (),
+                             server_type_to_string (type));
+     }
+  });
+  // *INDENT-ON*
 
   if (receive_server_info (conn, rid, server_name, type) != NO_ERRORS)
     {
@@ -683,6 +731,8 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 
   if (server_name.empty () == false)
     {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Client wants to connect to %s server of type %s.", server_name.c_str (),
+			   server_type_to_string (type));
       temp = css_return_entry_of_server (server_name.c_str (), css_Master_socket_anchor, type);
       if (temp != NULL
 #if !defined(WINDOWS)
@@ -711,6 +761,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 #endif
 		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request))
 		    {
+		      conn_established_flag = true;
 		      css_free_conn (conn);
 		      return;
 		    }
