@@ -27,6 +27,23 @@
 
 namespace cubmethod
 {
+  query_handler::query_handler (error_context &ctx, int id)
+    : m_id (id), m_error_ctx (ctx)
+  {
+    m_is_prepared = false;
+    m_use_plan_cache = false;
+    m_is_occupied = false;
+
+    m_session = nullptr;
+    m_current_result = nullptr;
+
+    m_num_markers = -1;
+    m_max_col_size = -1;
+    m_max_row = -1;
+
+    m_has_result_set = false;
+  }
+
   query_handler::~query_handler ()
   {
     end_qresult (true);
@@ -96,6 +113,28 @@ namespace cubmethod
     return false;
   }
 
+  DB_SESSION *
+  query_handler::get_db_session ()
+  {
+    return m_session;
+  }
+
+  DB_QUERY_TYPE *
+  query_handler::get_column_info ()
+  {
+    if (m_session && m_current_result)
+      {
+	return db_get_query_type_list (m_session, m_current_result->stmt_id);
+      }
+    return nullptr;
+  }
+
+  query_result *
+  query_handler::get_current_result ()
+  {
+    return m_current_result;
+  }
+
   prepare_info
   query_handler::prepare (std::string sql, int flag)
   {
@@ -118,6 +157,7 @@ namespace cubmethod
       {
 	query_result &qresult = m_q_result[0]; /* only one result */
 
+	info.handle_id = get_id ();
 	info.stmt_type = qresult.stmt_type;
 	info.num_markers = m_num_markers;
 	set_prepare_column_list_info (info.column_infos, qresult);
@@ -178,6 +218,8 @@ namespace cubmethod
 	    m_max_row = max_row;
 	  }
 	m_max_col_size = max_col_size;
+
+	info.handle_id = get_id ();
 
 	/* include column info? */
 	if (db_check_single_query (m_session) != NO_ERROR) /* ER_IT_MULTIPLE_STATEMENT */

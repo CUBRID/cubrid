@@ -228,6 +228,13 @@ namespace cubmethod
       }
       break;
 
+      case DB_TYPE_RESULTSET:
+      {
+	DB_RESULTSET rs = db_get_resultset (&v);
+	serializator.pack_bigint (rs);
+      }
+      break;
+
       case DB_TYPE_NULL:
 	break;
 
@@ -402,6 +409,10 @@ namespace cubmethod
 	  }
       }
       break;
+
+      case DB_TYPE_RESULTSET:
+	size += serializator.get_packed_bigint_size (size); /* DB_RESULTSET */
+	break;
 
       case DB_TYPE_NULL:
 	break;
@@ -712,8 +723,8 @@ namespace cubmethod
 
       case DB_TYPE_RESULTSET:
       {
-	int val;
-	deserializator.unpack_int (val);
+	uint64_t val;
+	deserializator.unpack_bigint (val);
 	db_make_resultset (v, val);
       }
       break;

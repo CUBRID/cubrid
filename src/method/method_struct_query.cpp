@@ -618,6 +618,7 @@ namespace cubmethod
   void
   execute_info::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_int (handle_id);
     serializator.pack_int (num_affected);
     serializator.pack_int (qresult_infos.size ());
     for (int i = 0; i < (int) qresult_infos.size(); i++)
@@ -650,6 +651,7 @@ namespace cubmethod
   void
   execute_info::unpack (cubpacking::unpacker &deserializator)
   {
+    deserializator.unpack_int (handle_id);
     deserializator.unpack_int (num_affected);
 
     int num_q_result;
@@ -688,7 +690,8 @@ namespace cubmethod
   size_t
   execute_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset); // num_affected
+    size_t size = serializator.get_packed_int_size (start_offset); // handle_id
+    size += serializator.get_packed_int_size (size); // num_affected
     size += serializator.get_packed_int_size (size); // num_q_result
 
     for (int i = 0; i < (int) qresult_infos.size(); i++)
@@ -719,6 +722,7 @@ namespace cubmethod
   void
   execute_info::dump ()
   {
+    fprintf (stdout, "handle_id: %d\n", handle_id);
     fprintf (stdout, "num_affected: %d\n", num_affected);
     fprintf (stdout, "qresult_infos.size(): %d\n", (int) qresult_infos.size());
     fprintf (stdout, "==============================\n");

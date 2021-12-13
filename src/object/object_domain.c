@@ -323,6 +323,8 @@ TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY)
 };
 
+TP_DOMAIN tp_Resultset_domain = { NULL, NULL, &tp_ResultSet, DOMAIN_INIT4 (DB_BIGINT_PRECISION, 0) };
+
 /* These must be in DB_TYPE order */
 static TP_DOMAIN *tp_Domains[] = {
   &tp_Null_domain,
@@ -353,7 +355,7 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Char_domain,
   &tp_NChar_domain,
   &tp_VarNChar_domain,
-  &tp_Null_domain,		/* result set */
+  &tp_Resultset_domain,		/* result set */
   &tp_Midxkey_domain_list_heads[0],
   &tp_Null_domain,
   &tp_Bigint_domain,
@@ -3391,6 +3393,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_SUB:
 	case DB_TYPE_VARIABLE:
 	case DB_TYPE_DB_VALUE:
+	case DB_TYPE_RESULTSET:
 	  /*
 	   * These are internal domains, they shouldn't be seen, in case they
 	   * are, match to a built-in
@@ -3445,7 +3448,6 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_SEQUENCE:
 	case DB_TYPE_MIDXKEY:
 	  break;
-	case DB_TYPE_RESULTSET:
 	case DB_TYPE_TABLE:
 	  break;
 	case DB_TYPE_ELO:

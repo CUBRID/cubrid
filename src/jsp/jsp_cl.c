@@ -112,8 +112,6 @@ static int jsp_get_value_size (DB_VALUE * value);
 static int jsp_get_argument_size (DB_ARG_LIST * args);
 
 extern int libcas_main (SOCKET fd);
-extern void *libcas_get_db_result_set (int h_id);
-extern void libcas_srv_handle_free (int h_id);
 
 static int jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args);
 static int jsp_alloc_response (const SOCKET sockfd, cubmem::extensible_block & blk);
@@ -2167,34 +2165,6 @@ void
 jsp_unset_prepare_call (void)
 {
   is_prepare_call[call_cnt] = false;
-}
-
-/*
- * jsp_get_db_result_set -
- *   return: none
- *   h_id(in):
- *
- * Note: require cubrid cas library
- */
-
-void *
-jsp_get_db_result_set (int h_id)
-{
-  return libcas_get_db_result_set (h_id);
-}
-
-/*
- * jsp_srv_handle_free -
- *   return: none
- *   h_id(in):
- *
- * Note:
- */
-
-void
-jsp_srv_handle_free (int h_id)
-{
-  libcas_srv_handle_free (h_id);
 }
 
 /*

@@ -9829,7 +9829,7 @@ pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain)
 static void
 mr_initmem_resultset (void *mem, TP_DOMAIN * domain)
 {
-  *(int *) mem = 0;
+  *(DB_BIGINT *) mem = 0;
 }
 
 static int
@@ -9837,7 +9837,7 @@ mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 {
   if (value != NULL)
     {
-      *(int *) mem = db_get_resultset (value);
+      *(DB_BIGINT *) mem = db_get_resultset (value);
     }
   else
     {
@@ -9850,13 +9850,13 @@ mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 static int
 mr_getmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
-  return db_make_resultset (value, *(int *) mem);
+  return db_make_resultset (value, *(DB_BIGINT *) mem);
 }
 
 static void
 mr_data_writemem_resultset (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
-  or_put_int (buf, *(int *) mem);
+  or_put_bigint (buf, *(DB_BIGINT *) mem);
 }
 
 static void
@@ -9870,7 +9870,7 @@ mr_data_readmem_resultset (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size
     }
   else
     {
-      *(int *) mem = or_get_int (buf, &rc);
+      *(DB_BIGINT *) mem = or_get_bigint (buf, &rc);
     }
 }
 
@@ -9897,14 +9897,15 @@ mr_setval_resultset (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 static int
 mr_data_writeval_resultset (OR_BUF * buf, DB_VALUE * value)
 {
-  return or_put_int (buf, db_get_resultset (value));
+  return or_put_bigint (buf, db_get_resultset (value));
 }
 
 static int
 mr_data_readval_resultset (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 			   int copy_buf_len)
 {
-  int temp_int, rc = NO_ERROR;
+  DB_BIGINT temp;
+  int rc = NO_ERROR;
 
   if (value == NULL)
     {
@@ -9912,8 +9913,11 @@ mr_data_readval_resultset (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
     }
   else
     {
-      temp_int = or_get_int (buf, &rc);
-      db_make_resultset (value, temp_int);
+      temp = (DB_BIGINT) or_get_bigint (buf, &rc);
+      if (rc == NO_ERROR)
+	{
+	  db_make_resultset (value, temp);
+	}
       value->need_clear = false;
     }
   return rc;
@@ -9923,15 +9927,15 @@ static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_resultset (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
 			   int *start_colp)
 {
-  int i1, i2;
+  DB_BIGINT i1, i2;
 
   assert (domain != NULL);
 
   /* is not index type */
   assert (!domain->is_desc && !tp_valid_indextype (TP_DOMAIN_TYPE (domain)));
 
-  i1 = OR_GET_INT (mem1);
-  i2 = OR_GET_INT (mem2);
+  OR_GET_BIGINT (mem1, &i1);
+  OR_GET_BIGINT (mem2, &i2);
 
   return MR_CMP (i1, i2);
 }
@@ -9940,7 +9944,7 @@ static DB_VALUE_COMPARE_RESULT
 mr_cmpval_resultset (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		     int collation)
 {
-  int i1, i2;
+  DB_BIGINT i1, i2;
 
   i1 = db_get_resultset (value1);
   i2 = db_get_resultset (value2);

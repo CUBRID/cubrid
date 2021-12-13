@@ -2074,8 +2074,6 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
 FN_RETURN
 fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  int srv_h_id;
-
   if (argc < 1)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
@@ -2083,8 +2081,16 @@ fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
       return FN_KEEP_CONN;
     }
 
-  net_arg_get_int (&srv_h_id, argv[0]);
-  ux_make_out_rs (srv_h_id, net_buf, req_info);
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V11))
+    {
+      DB_BIGINT query_id;
+      net_arg_get_bigint (&query_id, argv[0]);
+      ux_make_out_rs (query_id, net_buf, req_info);
+    }
+  else
+    {
+      fn_deprecated (sock_fd, argc, argv, net_buf, req_info);
+    }
 
   return FN_KEEP_CONN;
 }

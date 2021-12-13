@@ -153,6 +153,7 @@ namespace cubmethod
     execute_info ();
     ~execute_info ();
 
+    int handle_id;
     int num_affected; /* or num_tuples or max_row */
     std::vector<query_result_info> qresult_infos;
 
