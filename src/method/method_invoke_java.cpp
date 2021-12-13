@@ -209,9 +209,9 @@ namespace cubmethod
 	value_unpacker.value = &temp;
 	value_unpacker.unpack (unpacker);
 
-	if (db_value_type (&returnval) == DB_TYPE_RESULTSET)
+	if (db_value_type (&temp) == DB_TYPE_RESULTSET)
 	  {
-	    std::uint64_t query_id = db_get_resultset (&returnval);
+	    std::uint64_t query_id = db_get_resultset (&temp);
 	    query_cursor *cursor = m_cursor_map [query_id];
 	    cursor->close ();
 	    delete cursor;
