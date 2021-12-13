@@ -1064,6 +1064,12 @@ log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY * thread_p,
   assert (!most_recent_transaction_table_snapshot_lsa.is_null ());
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
+  // analysis changes the transaction index and leaves it in an indefinite state
+  // therefore reset to system transaction index afterwards;
+  // first make sure we're executing on the system thread
+  const int sys_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (sys_tran_index == LOG_SYSTEM_TRAN_INDEX);
+
   log_reader lr (LOG_CS_SAFE_READER);
   int log_page_read_err = lr.set_lsa_and_fetch_page (most_recent_transaction_table_snapshot_lsa);
   if (log_page_read_err != NO_ERROR)
@@ -1103,12 +1109,6 @@ log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY * thread_p,
 
   // TODO: we need to analyse up to the point where the page server (the one we received this most recent
   // transaction table snapshot lsa from) has reached to replicate
-
-  // analysis changes the transaction index and leaves it in an indefinite state
-  // therefore reset to system transaction index afterwards;
-  // first make sure we're executing on the system thread
-  const int sys_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (sys_tran_index == LOG_SYSTEM_TRAN_INDEX);
 
   INT64 dummy_redo_log_record_count = 0LL;
   log_recovery_analysis (thread_p, &dummy_redo_log_record_count, log_rcv_context);
