@@ -2487,7 +2487,12 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
   logpb_log ("started logpb_fetch_start_append_page\n");
 
   /* detect empty log (page and offset of zero) */
-  if ((log_Gl.hdr.append_lsa.pageid == log_Gl.hdr.fpageid) && (log_Gl.hdr.append_lsa.offset == 0))
+#if !defined(NDEBUG)
+  if ((log_Gl.hdr.append_lsa.pageid == (LOG_PAGEID) prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID))
+      && (log_Gl.hdr.append_lsa.offset == 0))
+#else
+  if ((log_Gl.hdr.append_lsa.pageid == 0) && (log_Gl.hdr.append_lsa.offset == 0))
+#endif
     {
       flag = NEW_PAGE;
     }
