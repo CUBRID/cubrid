@@ -48,6 +48,8 @@ CREATE OR REPLACE FUNCTION pyramid(a INT) RETURN STRING as language java name 't
 
 CREATE OR REPLACE FUNCTION rset_q(q STRING) RETURN CURSOR AS LANGUAGE JAVA NAME 'test.SpCursorTest.testCursorWithQuery(java.lang.String) return java.sql.ResultSet';
 CREATE OR REPLACE FUNCTION sp_rset_q(q STRING) RETURN STRING as language java name 'test.SpCursorTest.testOutResultWithQuery(java.lang.String) return java.lang.String';
+CREATE OR REPLACE FUNCTION sp_rset_qm(q STRING) RETURN STRING as language java name 'test.SpCursorTest.testOutResultWithQueryMeta(java.lang.String) return java.lang.String';
+CREATE OR REPLACE PROCEDURE sp_rset_qu(q STRING) as language java name 'test.SpCursorTest.testOutResultWithUpdateQuery(java.lang.String)';
 
 /* ////////////////////////////////////////////////////////////////////////// */
 /* Unit Test for Server-Side JDBC */

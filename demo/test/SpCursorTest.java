@@ -36,6 +36,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 
@@ -147,5 +148,63 @@ public class SpCursorTest {
             ret = e.getMessage();
         }
         return ret;
+    }
+
+    public static String testOutResultWithQueryMeta(String query) {
+        Connection conn = null;
+        Statement stmt = null;
+        String ret = "";
+
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+
+            conn.setAutoCommit(false);
+            stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(query);
+
+            ResultSetMetaData rsmd = rs.getMetaData();
+            int numberofColumn = rsmd.getColumnCount();
+
+            for (int i = 1; i <= numberofColumn; i++) {
+                String ColumnName = rsmd.getColumnName(i);
+                ret = ret + ColumnName + "|";
+            }
+
+            while (rs.next()) {
+                for (int j = 1; j <= numberofColumn; j++) {
+                    ret = ret + rs.getObject(j) + "|";
+                }
+            }
+
+            stmt.close();
+            conn.close();
+        } catch (SQLException e) {
+            // e.printStackTrace();
+        } catch (Exception e) {
+            // e.printStackTrace();
+        }
+        return ret;
+    }
+
+    public static void testOutResultWithUpdateQuery(String query) {
+        Connection conn = null;
+        Statement stmt = null;
+
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+
+            conn.setAutoCommit(false);
+            stmt = conn.createStatement();
+            stmt.executeUpdate(query);
+
+            stmt.close();
+            conn.close();
+        } catch (SQLException e) {
+            // e.printStackTrace();
+        } catch (Exception e) {
+            // e.printStackTrace();
+        }
     }
 }
