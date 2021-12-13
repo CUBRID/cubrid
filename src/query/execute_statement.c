@@ -15992,7 +15992,7 @@ do_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *variables = NULL;
 
   assert (statement != NULL);
-  assert (statement->node_type = PT_DROP_SESSION_VARIABLES);
+  assert (statement->node_type == PT_DROP_SESSION_VARIABLES);
 
   count = 0;
   /* count assignments */
