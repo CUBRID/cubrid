@@ -1368,7 +1368,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       goto execute_error;
     }
 
-  if ((client_version, PROTOCOL_V2))
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V2))
     {
       int result_cache_lifetime;
       char include_column_info;
