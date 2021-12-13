@@ -240,21 +240,22 @@ namespace cubmethod
     unpacker.unpack_all (query_id);
 
     cubmethod::query_handler *query_handler = get_query_handler_by_qid (query_id);
-    cubmethod::query_result *qresult = query_handler->get_current_result();
-
-    make_outresult_info info;
-
-    query_handler->set_prepare_column_list_info (info.column_infos, *qresult);
-    query_handler->set_qresult_info (info.qresult_infos);
-
-    if (m_error_ctx.has_error())
+    if (query_handler)
       {
-	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	cubmethod::query_result *qresult = query_handler->get_current_result();
+	if (qresult)
+	  {
+	    make_outresult_info info;
+
+	    query_handler->set_prepare_column_list_info (info.column_infos, *qresult);
+	    query_handler->set_qresult_info (info.qresult_infos);
+	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
+	  }
       }
-    else
-      {
-	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
-      }
+
+    /* unexpected error, should not be here */
+    m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
 //////////////////////////////////////////////////////////////////////////
