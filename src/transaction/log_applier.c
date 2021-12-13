@@ -8598,7 +8598,7 @@ la_process_dk_request (void *arg)
 
       if (error == NO_ERROR)
 	{
-	  if (!tde_Cipher.is_loaded)
+	  if (!tde_is_loaded ())
 	    {
 	      error = ER_TDE_CIPHER_IS_NOT_LOADED;
 	    }

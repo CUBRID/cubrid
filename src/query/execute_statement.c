@@ -164,6 +164,13 @@ struct eval_insert_value
   bool replace_names;		/* true if names may need to be replaced with each evaluation */
 };
 
+typedef struct reserved_class_info
+{
+  OID oid;
+  CDC_DDL_OBJECT_TYPE objtype;
+  char name[1024];
+} RESERVED_CLASS_INFO;
+
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
 					 PT_OP_TYPE cmp_op, int val1_msgid, int val2_msgid, int error_type);
 static int check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int *ret_msg_id);
@@ -181,6 +188,12 @@ static void init_compile_context (PARSER_CONTEXT * parser);
 
 static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
 
+static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
+				      OID * reserved_oid);
+
+static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info);
+
+static int do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** oid);
 /*
  * initialize_serial_invariant() - initialize a serial invariant
  *   return: None
@@ -2930,6 +2943,11 @@ end:
 
 bool do_Trigger_involved;
 
+/* do_Trigger_involved does not accurately distinguish
+ * whether the corresponding query is a trigger syntax.
+ * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
+bool cdc_Trigger_involved = false;
+
 /*
  * do_statement() -
  *   return: Error code
@@ -2945,6 +2963,9 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool need_stmt_replication = false;
   int suppress_repl_error = NO_ERROR;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
+
+  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
+  OID *reserved_oid = NULL;
 
   /* save old read fetch instance version */
   read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
@@ -3120,6 +3141,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP:
+	  (void) do_reserve_classinfo (parser, statement, cls_info);
+
 	  error = do_check_internal_statements (parser, statement,
 						/* statement->info.drop. internal_stmts, */
 						do_drop);
@@ -3257,6 +3280,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP_SERIAL:
+	  (void) do_reserve_oidinfo (parser, statement, &reserved_oid);
+
 	  error = do_drop_serial (parser, statement);
 	  break;
 
@@ -3329,7 +3354,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	{
-	  do_supplemental_statement (parser, statement);
+	  (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
 	}
     }
 
@@ -3437,6 +3462,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool need_stmt_based_repl = false;
   int suppress_repl_error;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
+
+  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
+  OID *reserved_oid = NULL;
 
   assert (parser->query_id == NULL_QUERY_ID);
   /* save old read fetch instance version */
@@ -3609,6 +3637,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP:
       /* err = do_drop(parser, statement); */
       /* execute internal statements before and after do_drop() */
+
+      (void) do_reserve_classinfo (parser, statement, cls_info);
       err = do_check_internal_statements (parser, statement,
 					  /* statement->info.drop.internal_stmts, */
 					  do_drop);
@@ -3617,6 +3647,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_drop_index (parser, statement);
       break;
     case PT_DROP_SERIAL:
+      (void) do_reserve_oidinfo (parser, statement, &reserved_oid);
+
       err = do_drop_serial (parser, statement);
       break;
     case PT_DROP_TRIGGER:
@@ -3787,7 +3819,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
     {
-      do_supplemental_statement (parser, statement);
+      (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
     }
 
 end:
@@ -13302,6 +13334,9 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* the do_Trigger_involved will be set as true when execute trigger statement. it will not be set back. we need to
    * keep its value to update last insert id. */
   is_trigger_involved = do_Trigger_involved;
+
+  cdc_Trigger_involved = do_Trigger_involved;
+
   if (!do_Trigger_involved)
     {
       obt_begin_insert_values ();
@@ -14631,8 +14666,142 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   return err;
 }				/* do_execute_select() */
 
-int
-do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
+static int
+do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** reserved_oid)
+{
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
+    {
+      return NO_ERROR;
+    }
+
+  switch (statement->node_type)
+    {
+      /* can be expanded to several drop statements */
+    case PT_DROP_SERIAL:
+      {
+	const char *objname = NULL;
+	OID *oid = NULL;
+
+	oid = (OID *) malloc (sizeof (OID));
+	if (oid == NULL)
+	  {
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
+
+	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
+
+	objname = (char *) PT_NODE_SR_NAME (statement);
+	if (do_get_serial_obj_id (oid, serial_class, objname) == NULL)
+	  {
+	    free_and_init (oid);
+
+	    return ER_FAILED;
+	  }
+	*reserved_oid = oid;
+	break;
+      }
+    default:
+      break;
+    }
+  return NO_ERROR;
+}
+
+static int
+do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TYPE * objtype)
+{
+  DB_OBJECT *class_obj;
+
+  if (type == PT_CLASS)
+    {
+      *objtype = CDC_TABLE;
+    }
+  else if (type == PT_VCLASS)
+    {
+      *objtype = CDC_VIEW;
+    }
+  else if (type == PT_MISC_DUMMY)
+    {
+      class_obj = db_find_class (classname);
+
+      if (db_is_vclass (class_obj))
+	{
+	  *objtype = CDC_VIEW;
+	}
+      else if (db_is_class (class_obj))
+	{
+	  *objtype = CDC_TABLE;
+	}
+      else
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info)
+{
+  int count = 0;
+  PT_NODE *entity = NULL;
+  PT_NODE *entity_spec = NULL;
+
+  const char *classname;
+  DB_OBJECT *class_obj;
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
+    {
+      return NO_ERROR;
+    }
+
+  if (statement->node_type == PT_DROP)
+    {
+      if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
+	{
+	  return NO_ERROR;
+	}
+
+      for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
+	{
+	  entity = entity_spec->info.spec.flat_entity_list;
+
+	  cls_info[count] = (RESERVED_CLASS_INFO *) malloc (sizeof (RESERVED_CLASS_INFO));
+	  if (cls_info[count] == NULL)
+	    {
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
+	  classname = entity->info.name.original;
+	  class_obj = db_find_class (classname);
+
+	  strcpy (cls_info[count]->name, classname);
+
+	  memcpy (&cls_info[count]->oid, ws_oid (class_obj), sizeof (OID));
+
+	  if (do_find_object_type (statement->info.drop.entity_type, classname, &cls_info[count]->objtype) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  assert (cls_info[count]->objtype == CDC_TABLE || cls_info[count]->objtype == CDC_VIEW);
+
+	  count++;
+	}
+    }
+
+  cls_info[count] = NULL;
+
+  return NO_ERROR;
+}
+
+static int
+do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
+			   OID * reserved_oid)
 {
   int error = NO_ERROR;
   PARSER_VARCHAR **host_val = NULL;
@@ -14648,14 +14817,13 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int drop_stmt_length = 0, pre_drop_length = 0;
   int drop_copied_length = 0;
   char *drop_stmt = NULL;
-  const char *drop_prefix = "DROP TABLE ";
-  const char *if_exist_statement = "IF EXISTS ";
-  const char *cascade_statement = " CASCADE CONSTRAINTS";
+  const char *drop_prefix = "drop table ";
+  const char *drop_view_prefix = "drop view ";
+  const char *if_exist_statement = "if exists ";
+  const char *cascade_statement = " cascade constraints";
 
   const char *classname = NULL;
   const char *objname = NULL;
-
-  char *classname_list[64];
 
   CDC_DDL_TYPE ddl_type;
   CDC_DDL_OBJECT_TYPE objtype;
@@ -14668,6 +14836,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   OID *classoid_list[1024];
   OID *oid = NULL;
   int stmt_length = 0;
+
+  bool supp_appended = false;
 
   if (statement->sql_user_text == NULL || statement->sql_user_text_len == 0)
     {
@@ -14686,75 +14856,176 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  classoid = ws_oid (sm_find_class (classname));
 	  objtype = CDC_TABLE;
 	}
-      else
+      else if (statement->info.create_entity.entity_type == PT_VCLASS)
 	{
 	  objtype = CDC_VIEW;
 	}
+      else
+	{
+	  assert (false);
+	}
+
       break;
 
     case PT_ALTER:
       classname = statement->info.alter.entity_name->info.name.original;
       ddl_type = CDC_ALTER;
 
-      if (statement->info.alter.entity_type == PT_CLASS)
+      if (do_find_object_type (statement->info.alter.entity_type, classname, &objtype) != NO_ERROR)
 	{
-	  objtype = CDC_TABLE;
-	  classoid = ws_oid (sm_find_class (classname));
+	  return ER_FAILED;
 	}
-      else if (error == 0)
+
+      assert (objtype == CDC_TABLE || objtype == CDC_VIEW);
+
+      if (objtype == CDC_TABLE)
 	{
-	  objtype = CDC_VIEW;
+	  classoid = ws_oid (sm_find_class (classname));
 	}
 
       break;
 
     case PT_RENAME:
-      classname = statement->info.rename.old_name->info.name.original;
-      ddl_type = CDC_RENAME;
+      {
+	const PT_NODE *current_rename = NULL;
+	ddl_type = CDC_RENAME;
 
-      if (statement->info.rename.entity_type == PT_CLASS)
-	{
-	  objtype = CDC_TABLE;
-	  classoid = ws_oid (sm_find_class (classname));
-	}
-      else if (error == 0)
-	{
-	  objtype = CDC_VIEW;
-	}
+	for (current_rename = statement; current_rename != NULL; current_rename = current_rename->next)
+	  {
+	    char temp_statement[1024] = "\0";
+	    char *rename_statement = NULL;
+	    const char *new_name = current_rename->info.rename.new_name->info.name.original;
+	    const char *old_name = current_rename->info.rename.old_name->info.name.original;
+	    int length = 0;
 
-      break;
+	    /* Bug : statement->info.rename.entity_type always has PT_CLASS 
+	     * when rename view1 as view2 or rename table1 as table2. So, objtype can not be classified with entity_type */
+	    if (do_find_object_type (PT_MISC_DUMMY, new_name, &objtype) != NO_ERROR)
+	      {
+		error = ER_FAILED;
+		goto end;
+	      }
 
+	    assert (objtype == CDC_TABLE || objtype == CDC_VIEW);
+
+	    length = strlen (new_name) + strlen (old_name) + 18;
+
+	    if (length <= 1024)
+	      {
+		rename_statement = temp_statement;
+	      }
+	    else
+	      {
+		rename_statement = (char *) malloc (length);
+		if (rename_statement == NULL)
+		  {
+		    error = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
+	      }
+
+	    if (objtype == CDC_VIEW)
+	      {
+		sprintf (rename_statement, "rename view %s as %s", old_name, new_name);
+	      }
+	    else if (objtype == CDC_TABLE)
+	      {
+		classoid = ws_oid (sm_find_class (new_name));
+		sprintf (rename_statement, "rename table %s as %s", old_name, new_name);
+	      }
+	    else
+	      {
+		assert (false);
+	      }
+
+	    error = log_supplement_statement (ddl_type, objtype, classoid, classoid, rename_statement);
+
+	    if (rename_statement != temp_statement)
+	      {
+		free_and_init (rename_statement);
+	      }
+	  }
+
+	supp_appended = true;
+
+	break;
+      }
     case PT_DROP:
-      if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
-	{
-	  return NO_ERROR;
-	}
+      {
+	if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
+	  {
+	    goto end;
+	  }
 
-      if (statement->info.drop.entity_type == PT_CLASS)
-	{
-	  objtype = CDC_TABLE;
-	}
-      else
-	{
-	  objtype = CDC_VIEW;
-	}
+	ddl_type = CDC_DROP;
 
-      for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
-	{
-	  entity = entity_spec->info.spec.flat_entity_list;
-	  classname = entity->info.name.original;
-	  classname_list[num_class] = (char *) malloc (strlen (classname) + 1);
-	  if (classname_list[num_class] == NULL)
-	    {
-	      goto end;
-	    }
-	  memcpy (classname_list[num_class], classname, strlen (classname));
+	if (cls_info != NULL)
+	  {
+	    while (cls_info[num_class] != NULL)
+	      {
+		num_class++;
+	      }
+	  }
 
-	  classoid_list[num_class++] = ws_oid (sm_find_class (classname));
-	}
 
-      break;
+	for (int i = 0; i < num_class; i++)
+	  {
+	    pre_drop_length =
+	      ((cls_info[i]->objtype ==
+		CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix)) + strlen (if_exist_statement) +
+	      strlen (cascade_statement) + 2;
 
+	    drop_stmt_length = pre_drop_length + strlen (cls_info[i]->name);
+	    drop_stmt = (char *) malloc (drop_stmt_length * 2);
+	    if (drop_stmt == NULL)
+	      {
+		goto end;
+	      }
+
+	    if (cls_info[i]->objtype == CDC_TABLE)
+	      {
+		strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
+		drop_copied_length = strlen (drop_prefix);
+	      }
+	    else if (cls_info[i]->objtype == CDC_VIEW)
+	      {
+		strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix));
+		drop_copied_length = strlen (drop_view_prefix);
+	      }
+	    else
+	      {
+		assert (false);
+	      }
+
+	    if (statement->info.drop.if_exists)
+	      {
+		strncpy (drop_stmt + drop_copied_length, if_exist_statement, strlen (if_exist_statement));
+		drop_copied_length += strlen (if_exist_statement);
+	      }
+
+	    strncpy (drop_stmt + drop_copied_length, cls_info[i]->name, strlen (cls_info[i]->name));
+	    drop_copied_length += strlen (cls_info[i]->name);
+
+	    if (statement->info.drop.is_cascade_constraints)
+	      {
+		strncpy (drop_stmt + drop_copied_length, cascade_statement, strlen (cascade_statement));
+		drop_copied_length += strlen (cascade_statement);
+	      }
+
+	    drop_stmt[drop_copied_length] = '\0';
+
+	    error =
+	      log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid,
+					drop_stmt);
+
+	    free_and_init (drop_stmt);
+	    free_and_init (cls_info[i]);
+	  }
+
+	supp_appended = true;
+
+	break;
+      }
     case PT_CREATE_INDEX:
       {
 	BTID index;
@@ -14763,7 +15034,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	oid = (OID *) malloc (sizeof (OID));
 	if (oid == NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
 	  }
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -14788,7 +15060,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	oid = (OID *) malloc (sizeof (OID));
 	if (oid == NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
 	  }
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -14813,7 +15086,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	oid = (OID *) malloc (sizeof (OID));
 	if (oid == NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
 	  }
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -14835,7 +15109,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	oid = (OID *) malloc (sizeof (OID));
 	if (oid == NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
 	  }
 
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
@@ -14843,7 +15118,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	objname = (char *) PT_NODE_SR_NAME (statement);
 	if (do_get_serial_obj_id (oid, serial_class, objname) == NULL)
 	  {
-	    return NO_ERROR;
+	    error = ER_FAILED;
+	    goto end;
 	  }
 
 	ddl_type = CDC_CREATE;
@@ -14856,7 +15132,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	oid = (OID *) malloc (sizeof (OID));
 	if (oid == NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
 	  }
 
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
@@ -14864,7 +15141,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	objname = (char *) PT_NODE_SR_NAME (statement);
 	if (do_get_serial_obj_id (oid, serial_class, objname) == NULL)
 	  {
-	    return NO_ERROR;
+	    goto end;
 	  }
 
 	ddl_type = CDC_ALTER;
@@ -14874,18 +15151,14 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       }
     case PT_DROP_SERIAL:
       {
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
+	if (reserved_oid != NULL)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    oid = reserved_oid;
 	  }
-
-	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
-
-	objname = (char *) PT_NODE_SR_NAME (statement);
-	if (do_get_serial_obj_id (oid, serial_class, objname) == NULL)
+	else
 	  {
-	    return NO_ERROR;
+	    oid = (OID *) malloc (sizeof (OID));
+	    OID_SET_NULL (oid);
 	  }
 
 	ddl_type = CDC_DROP;
@@ -15100,47 +15373,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       stmt_text = sbr_text;
     }
 
-  if (statement->node_type == PT_DROP)
-    {
-      /*length for ';' and '\0' are added as 2 */
-      pre_drop_length = strlen (drop_prefix) + strlen (if_exist_statement) + strlen (cascade_statement) + 2;
-
-      for (int i = 0; i < num_class; i++)
-	{
-	  drop_stmt_length = pre_drop_length + strlen (classname_list[i]);
-	  drop_stmt = (char *) malloc (drop_stmt_length);
-	  if (drop_stmt == NULL)
-	    {
-	      goto end;
-	    }
-
-	  strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
-	  drop_copied_length = strlen (drop_prefix);
-
-	  if (statement->info.drop.if_exists)
-	    {
-	      strncpy (drop_stmt + drop_copied_length, if_exist_statement, strlen (if_exist_statement));
-	      drop_copied_length += strlen (if_exist_statement);
-	    }
-
-	  strncpy (drop_stmt + drop_copied_length, classname_list[i], strlen (classname_list[i]));
-	  drop_copied_length += strlen (classname_list[i]);
-
-	  if (statement->info.drop.is_cascade_constraints)
-	    {
-	      strncpy (drop_stmt + drop_copied_length, cascade_statement, strlen (cascade_statement));
-	      drop_copied_length += strlen (cascade_statement);
-	    }
-
-	  drop_stmt[drop_copied_length] = ';';
-	  drop_stmt[drop_copied_length + 1] = '\0';
-
-	  error = log_supplement_statement (ddl_type, objtype, classoid_list[i], oid, drop_stmt);
-
-	  free (drop_stmt);
-	}
-    }
-  else
+  if (!supp_appended)
     {
       error = log_supplement_statement (ddl_type, objtype, classoid, oid, stmt_text);
     }
@@ -15162,20 +15395,24 @@ end:
       free (host_val);
     }
 
-  if (num_class > 1)
-    {
-      for (int i = 0; i < num_class; i++)
-	{
-	  if (classname_list[i] != NULL)
-	    {
-	      free (classname_list[i]);
-	    }
-	}
-    }
-
   if (oid != NULL)
     {
       free_and_init (oid);
+    }
+
+  if (drop_stmt != NULL)
+    {
+      free_and_init (drop_stmt);
+    }
+
+  if (cls_info[0] != NULL && statement->node_type == PT_DROP)
+    {
+      int i = 0;
+
+      while (cls_info[i] != NULL)
+	{
+	  free_and_init (cls_info[i++]);
+	}
     }
 
   return error;

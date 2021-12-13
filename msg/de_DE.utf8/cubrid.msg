@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Set-Interrupt auf Transaktion %1$d.
 983 Instanzen der wiederverwendbaren OID-Klasse sind nicht beziehbar. Diese Operation ist auf nicht beziehbaren Instanzen nicht erlaubt.
 984 %3$s kann nicht auf "%6$s" in "[%5$s]" Sektion gesetzt, wenn es auf "%4$s" in "[%2$s]" Sektion der Konfigurationsdatei "%1$s" gesetzt ist.
-985 Der Hostname muss in dem Datenbank-Verbindungsstring angegeben werden, wenn Multihost in „databases.txt“ eingestellt ist.
+985 Der Hostname muss in dem Datenbank-Verbindungsstring angegeben werden, wenn Multihost in „databases.txt“ eingestellt ist. ex) csql demodb@localhost
 986 CUBRID Heartbeat-Funktion gestartet. 
 987 CUBRID Heartbeat-Funktion ist beendet.
 988 Knotenereignis: %1$s.
@@ -1329,7 +1329,7 @@ $ LOADDB
 1258 Der in der Datenbank festgelegte Schlüssel von %1$s kann nicht gefunden werden. Die Schlüsseldatei vom Sicherungsvolume wird verwendet.
 1259 Benennen Sie die Schlüsseldatei von "%1$s" in "%2$s" um.
 1260 Kopieren Sie die Schlüsseldatei "%1$s" nach "%2$s".
-1261 Der Schlüssel kann zum Zeitpunkt der Wiederherstellung nicht gefunden werden (Schlüsselindex: %1$d, Erstellungszeit: %2$s). Legen Sie den Schlüssel (Schlüsselindex: %3$d) für die Datenbank fest.
+1261 Der erste Schlüssel (Schlüsselindex: %1$d, Erstellungszeit: %2$s) der wiederhergestellten Schlüsseldatei wurde gesetzt.
 1262 Die Schlüsseldatei ist voll.
 1263 Die Protokollseite kann nicht mit TDE verschlüsselt werden (Seiten-ID: %1$lld). Es wird nicht mehr versucht, diese Seite zu verschlüsseln.
 1264 Error reserved for scalability development.
@@ -1354,6 +1354,18 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 Die Tabelle kann aufgrund des Primärschlüssels, auf den in %1$s verwiesen wird, nicht abgeschnitten werden. Versuchen Sie es erneut mit der Option CASCADE.
 1285 Abschneiden in Kaskade nicht möglich, da die Aktion ON DELETE des Fremdschlüssels (%1$s) nicht auf CASCADE gesetzt ist.
+
+1286 Das Protokoll lsa kann zum Zeitpunkt des Extrahierens nicht gefunden werden. (Eingabezeit: %1$s).
+1287 Zeitüberschreitung beim Versuch, Protokollinformationen zu extrahieren. (verstrichene Zeit: %1$d Sek., Extraktionszeitlimit: %2$d Sek.)
+1288 Überspringe die interne Erzeugung von Protokollinformationen für nicht unterstützte Protokolldatensätze.
+1289 Überspringe die Erstellung von Protokollinformationen für eine ungültige Transaktion. (trid : %1$d)
+1290 Ungültige Log-lsa (%1$lld|%2$d) zum Extrahieren von Log-Informationen.
+1291 Es kann keine Verbindung zum Server zum Extrahieren von Protokollinformationen hergestellt werden. Versuchen Sie es erneut mit der Einstellung des Parameters 'supplemental_log'.
+1292 Das Protokoll lsa kann derzeit nicht gefunden werden (%1$s). Log lsa wird an die Zeit (%2$s) angepasst.
+1293 Log-Seite kann nicht abgerufen werden, während Log-Infos erstellt werden. Log lsa zum Generieren von Log-Informationen zeigt NULL an.
+1294 Protokollinformationen wurden generiert. (Typ: "%1$s").
+1295 Überspringe die Erzeugung von Protokollinformationen für eine ungültige Tabelle. (class OID : %1$d|%2$d|%3$d)
+
 1296 Log-Rückgewinnung: Die ANALYSIS-Phase ist gestartet.
 1297 Log-Rückgewinnung: REDO Phase ist gestartet. Log Seiten zu wiederholen: %1$lld, Log-Aufzeichnungen zu wiederholen: %2$lld.
 1298 Log-Rückgewinnung: UNDO Phase ist gestartet. Log Seiten, die rückgängig gemacht werden sollen: %1$lld, Transaktionen, die rückgängig gemacht werden: %2$d.
@@ -1394,7 +1406,9 @@ $ LOADDB
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
-1332 Letzter Fehler
+1332 Das aktive Protokollvolumen (%1$s) ist zu normal, um es neu zu erstellen. Wenn Sie das aktive Protokoll entfernen, kann dies zu einem unerwarteten und irreversiblen Problem führen.
+
+1333 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
