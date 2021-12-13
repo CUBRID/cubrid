@@ -316,6 +316,10 @@ public class SUStatement {
             return;
         }
 
+        if (commandType == CUBRIDCommandType.CUBRID_STMT_CALL) {
+            return;
+        }
+
         /* need not to send fetch request */
         if (fetchedStartCursorPosition >= 0
                 && fetchedStartCursorPosition <= cursorPosition
@@ -426,7 +430,9 @@ public class SUStatement {
         }
 
         if (type == NORMAL) {
-            if (commandType != CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+            if (commandType == CUBRIDCommandType.CUBRID_STMT_CALL) {
+                /* do nothing, tuples is already retrived when executing the call stmt */
+            } else if (commandType != CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
                 tuples = fetchInfo.tuples; // get tuples from fetchInfo
             }
         } else {
