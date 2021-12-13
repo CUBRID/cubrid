@@ -1102,7 +1102,6 @@ mht_rehash (MHT_TABLE * ht)
       for (hentry = *hvector; hentry != NULL; hentry = next_hentry)
 	{
 	  next_hentry = hentry->next;
-
 #if 1
 	  hash = hentry->val_of_hash % est_size;
 #else
@@ -1114,7 +1113,6 @@ mht_rehash (MHT_TABLE * ht)
 	   */
 	  assert (hash < est_size);
 #endif
-
 	  /* Link the new entry with any previous elements */
 	  hentry->next = new_hvector[hash];
 	  if (hentry->next != NULL)
@@ -1440,11 +1438,7 @@ mht_get (MHT_TABLE * ht, const void *key)
   /* now search the linked list */
   for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
     {
-#if 1
-      if (hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key))
-#else
-      if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
-#endif
+      if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash))
 	{
 	  mht_adjust_lru_list (ht, hentry);
 
@@ -1519,11 +1513,7 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
   /* now search the linked list */
   for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
     {
-#if 1
-      if (hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key))
-#else
-      if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
-#endif
+      if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash))
 	{
 	  if (last == NULL)
 	    {
@@ -1747,11 +1737,7 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
       /* Now search the linked list.. Is there any entry with the given key ? */
       for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
 	{
-#if 1
-	  if (hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key))
-#else
-	  if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
-#endif
+	  if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash))
 	    {
 	      if (opt & MHT_OPT_INSERT_IF_NOT_EXISTS)
 		{
@@ -1878,11 +1864,8 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
       /* now search the linked list */
       for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
 	{
-#if 1
-	  if ((hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key)) && hentry->data == data)
-#else
-	  if ((hentry->key == key || (*ht->cmp_func) (hentry->key, key)) && hentry->data == data)
-#endif
+	  if (hentry->data == data
+	      && (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash)))
 	    {
 	      /* We found the existing entry. Replace the old data with the new one. */
 	      if (!(opt & MHT_OPT_KEEP_KEY))
@@ -2046,11 +2029,7 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
   /* Now search the linked list.. Is there any entry with the given key ? */
   for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL; prev_hentry = hentry, hentry = hentry->next)
     {
-#if 1
-      if (hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key))
-#else
-      if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
-#endif
+      if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash))
 	{
 	  /*
 	   * We found the entry
@@ -2111,11 +2090,7 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
   /* now search the linked list */
   for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL; prev_hentry = hentry, hentry = hentry->next)
     {
-#if 1
-      if ((hentry->val_of_hash == val_of_hash && (*ht->cmp_func) (hentry->key, key)) && hentry->data == data)
-#else
-      if ((hentry->key == key || (*ht->cmp_func) (hentry->key, key)) && hentry->data == data)
-#endif
+      if (hentry->data == data && (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash)))
 	{
 	  /*
 	   * We found the entry.

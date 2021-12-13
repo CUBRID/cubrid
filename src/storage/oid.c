@@ -271,6 +271,7 @@ unsigned int
 oid_hash (const void *key_oid, unsigned int htsize, unsigned int *val_of_hash)
 {
   const OID *oid = (OID *) key_oid;
+  assert (val_of_hash != NULL);
 
   *val_of_hash = OID_PSEUDO_KEY (oid);
   return (*val_of_hash % htsize);

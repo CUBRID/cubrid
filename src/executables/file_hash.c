@@ -363,11 +363,8 @@ fh_get (FH_TABLE * ht, FH_KEY key, FH_DATA * data)
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  pos = (FH_FILE_POS) (*ht->hfun) (key, ht->size, NULL);
-  if (pos >= ht->size)
-    {
-      pos = pos % ht->size;
-    }
+  unsigned int useless_val_of_hash = 0;
+  pos = (FH_FILE_POS) (*ht->hfun) (key, ht->size, &useless_val_of_hash);
 
   while (pos != INVALID_FILE_POS)
     {
@@ -452,11 +449,8 @@ fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data)
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  pos = (FH_FILE_POS) (*ht->hfun) (key, ht->size, NULL);
-  if (pos >= ht->size)
-    {
-      pos = pos % ht->size;
-    }
+  unsigned int useless_val_of_hash = 0;
+  pos = (FH_FILE_POS) (*ht->hfun) (key, ht->size, &useless_val_of_hash);
 
   do
     {
