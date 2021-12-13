@@ -149,6 +149,12 @@ namespace cubscan
 	  for (int i = 0; i < num_methods; i++)
 	    {
 	      DB_VALUE *dbval_p = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE));
+	      if (dbval_p == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE));
+		  return S_ERROR;
+		}
+
 	      db_make_null (dbval_p);
 
 	      DB_VALUE *result = m_method_group->get_return_value (i);
