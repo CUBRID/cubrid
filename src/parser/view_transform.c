@@ -1767,15 +1767,15 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 
 	  /* rewrite vclass spec */
 	  class_spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec);
-
-	  /* get derived expending spec node */
-	  if (!class_spec || !(derived_table = class_spec->info.spec.derived_table)
-	      || !(derived_spec = derived_table->info.query.q.select.from)
-	      || !(derived_class = derived_spec->info.spec.flat_entity_list))
+	  if (class_spec == NULL)
 	    {
-	      /* error */
 	      goto exit_on_error;
 	    }
+
+	  /* get derived expending spec node */
+	  derived_table = class_spec->info.spec.derived_table;
+	  derived_spec = derived_table->info.query.q.select.from;
+	  derived_class = derived_spec->info.spec.flat_entity_list;
 
 	  tmp_class = parser_copy_tree (parser, class_);
 	  if (tmp_class == NULL)
@@ -1784,14 +1784,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	    }
 	  tmp_class->info.name.spec_id = derived_class->info.name.spec_id;
 
-	  /* now, derived_table has been derived.  */
-	  if (pt_has_aggregate (parser, query_spec))
-	    {
-	      /* simply move WHERE's aggregate terms to HAVING. in mq_class_lambda(), this HAVING will be merged with
-	       * query_spec HAVING. */
-	      derived_table->info.query.q.select.having = derived_table->info.query.q.select.where;
-	      derived_table->info.query.q.select.where = NULL;
-	    }
+	  /* now, derived_table has been derived. */
 
 	  /* merge HINT of vclass spec */
 	  derived_table->info.query.q.select.hint =
@@ -2425,6 +2418,15 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 
       if (PT_SPEC_IS_DERIVED (class_spec))
 	{
+	  /* 여기 inline view 처리 */
+	/* subquery ==> tree->info.spec.derived_table
+	 * entity ==> 어떻게?  ==> spec으로 대체 하는 방법
+	 */
+/*	  subquery = tree->info.spec.derived_table;
+	  substituted =
+	mq_substitute_subquery_list_in_statement (parser, tree, subquery, entity, order_by, what_for);
+*/
+	  /* 아래는 view merge 되지 않았을때 처리? */
 	  /* no translation per se, but need to fix up proxy objects */
 	  tree = mq_fix_derived_in_union (parser, tree, class_spec->info.spec.id);
 
