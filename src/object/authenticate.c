@@ -7597,10 +7597,10 @@ class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth)
 		   */
 		  if ((user->available_auth & authbits) == authbits)
 		    {
-		      if (!ws_is_same_object(auth->users->obj, grant->user->obj))
-		        {
-		          issue_grant_statement (output_ctx, auth, grant, authbits);
-		        }
+		      if (!ws_is_same_object (auth->users->obj, grant->user->obj))
+			{
+			  issue_grant_statement (output_ctx, auth, grant, authbits);
+			}
 
 		      /* turn on grant bits in the granted user */
 		      grant->user->available_auth |= authbits;
