@@ -612,7 +612,7 @@ namespace cubmethod
   query_handler::prepare_call (prepare_info &info, int &flag)
   {
     std::string sql_stmt_copy = m_sql_stmt;
-    error = m_prepare_call_info.set_is_first_out (sql_stmt_copy);
+    int error = m_prepare_call_info.set_is_first_out (sql_stmt_copy);
     if (error != NO_ERROR)
       {
 	m_error_ctx.set_error (METHOD_CALLBACK_ER_INVALID_CALL_STMT, NULL, __FILE__, __LINE__);
