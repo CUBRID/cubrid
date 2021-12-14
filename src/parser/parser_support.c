@@ -3365,15 +3365,15 @@ pt_get_name (PT_NODE * nam)
 const char *
 pt_get_name_without_current_user (const char *name)
 {
-  const char *current_name = NULL;
   const char *dot = NULL;
   char *user_name = NULL;
+  const char *current_name = NULL;
   char *copy_name = NULL;
   char *token = NULL;
   char *token_save = NULL;
   int error = NO_ERROR;
 
-  if (!name)
+  if (name == NULL || name[0] == '\0')
     {
       return NULL;
     }
@@ -9914,25 +9914,75 @@ pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *contin
   return node;
 }
 
+/*
+ * pt_make_user_specified_name () - Make user_specified_name in user_name.object_name format.
+ * return	      : node
+ * parser (in)	      : parser context
+ * name (in)	      : object_name node
+ * user (in)	      : user_name node
+ *
+ * NOTE: Change info.name.original of object_name node to user_specified_name.
+ */
 PT_NODE *
 pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * user)
 {
-  const char *dot = NULL;
+  char *dot = NULL;
   const char *user_name = NULL;
+  char *specified_user_name = NULL;
   char *current_user_name = NULL;
-  const char *class_name = NULL;
-  char *class_name_copy = NULL;
-  int class_name_len = 0;
+  DB_OBJECT *user_obj = NULL;
+  const char *class_simple_name = NULL;
   const char *class_full_name = NULL;
+  int error = NO_ERROR;
 
   assert (name != NULL && name->node_type == PT_NAME);
-  assert ((user == NULL) || (user->node_type == PT_NAME));
 
   if (name->info.name.original == NULL || name->info.name.original[0] == '\0')
     {
       assert (false);
       return NULL;
     }
+
+  /*
+   * Assume that identifier does not contain dot(.) or can contain only 1 dot(.).
+   */
+  dot = (char *) strchr (name->info.name.original, '.');
+  if (dot)
+    {
+      /*
+       * e.g. 1. name->info.name.original == [user_name.class_name]
+       *      2. name->info.name.original == `user_name.class_name`
+       *      3. name->info.name.original == "user_name.class_name"
+       */
+
+      class_simple_name = dot + 1;
+
+      if (user == NULL)
+	{
+	  dot[0] = '\0';
+	  specified_user_name = strndup (name->info.name.original, strlen (name->info.name.original));
+	  dot[0] = '.';
+
+	  if (intl_identifier_casecmp (specified_user_name, au_get_dba_user_name ())
+	      && intl_identifier_casecmp (specified_user_name, au_get_public_user_name ()))
+	    {
+	      user_obj = db_find_user (specified_user_name);
+	      if (user_obj == NULL)
+		{
+		  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, specified_user_name);
+
+		  goto end;
+		}
+	    }
+	
+	  user_name = specified_user_name;
+	}
+    }
+  else
+    {
+      class_simple_name = name->info.name.original;
+    }
+  name->info.name.thin = class_simple_name;
 
   /* 
    *  In the existing code, user_name is stored in name->info.name.resolved.
@@ -9941,41 +9991,31 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
    *  When PT_NAME is output as name->info.name.resolved + name->info.name.original, user_name is output as duplicate,
    *  so user_name is changed not to be stored in name->info.name.resolved. 
    */
-  if (user && user->info.name.original && user->info.name.original[0] != '\0')
+  if (user && user->node_type == PT_NAME && user->info.name.original && user->info.name.original[0] != '\0')
     {
       user_name = user->info.name.original;
+
+      if (intl_identifier_casecmp (user_name, au_get_dba_user_name ())
+	  && intl_identifier_casecmp (user_name, au_get_public_user_name ()))
+	{
+	  user_obj = db_find_user (user_name);
+	  if (user_obj == NULL)
+	    {
+	      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, user_name);
+
+	      goto end;
+	    }
+	}
     }
-  else
+
+  /*
+   * e.g. dot == NULL && user == NULL
+   */
+  if (user_name == NULL)
     {
       current_user_name = db_get_user_name ();
       user_name = current_user_name;
     }
-
-  class_name = name->info.name.original;
-  class_name_len = strlen (class_name);
-
-  /*
-   *  Assume that identifier does not contain dot(.) or can contain only 1 dot(.).
-   *  If not, additional processing is required.
-   */
-  dot = strchr (class_name, '.');
-  if (dot && class_name_len >= (DB_MAX_SIMPLE_CLASS_LENGTH - 1))
-    {
-      class_name_copy = strndup (class_name, class_name_len);
-      class_name_copy[DB_MAX_FULL_CLASS_LENGTH - 1] = '\0';	// truncate
-      name->info.name.thin = pt_append_string (parser, NULL, class_name_copy);
-    }
-  else if (dot == NULL && class_name_len >= (DB_MAX_SIMPLE_CLASS_LENGTH - 1))
-    {
-      class_name_copy = strndup (class_name, class_name_len);
-      class_name_copy[DB_MAX_SIMPLE_CLASS_LENGTH - 1] = '\0';	// truncate
-      name->info.name.thin = pt_append_string (parser, NULL, class_name_copy);
-    }
-  else
-    {
-      name->info.name.thin = dot ? (dot + 1) : class_name;
-    }
-  class_name = name->info.name.thin;
 
   /*  In the system class, class_full_name does not include user_name.
    *  So, the value stored in info.name.original is different for each case below.
@@ -9984,7 +10024,7 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
    *  2. common class name && common user name ->  common_user_name.common_class_name
    *  3. common class name &&    dba user name ->     dba_user_name.common_class_name
    *  4. system class name &&             NULL ->                   system_class_name
-   *  5. system class name && common user name ->                   system_class_name
+   *  5. system class name && common user name ->  common_user_name.system_class_name
    *  6. system class name &&    dba user name ->                   system_class_name
    * 
    *  In case 5, If it is a system class name, the given user_name is ignored.
@@ -9998,12 +10038,21 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
    *  other_user_name must not be changed to current_user_name.
    *  So, the code below is executed only when 'dot == NULL'.
    */
-  if (dot == NULL && db_is_system_class_by_name (class_name) == 0)
+  if (dot == NULL)
     {
-      /* In case 1, 2, 3 */
+      if (db_is_system_class_by_name (class_simple_name))	// system_class_name
+	{
+	  /* Skip in case 4, 6 */
+	  if (user == NULL || intl_identifier_casecmp (user_name, AU_DBA_USER_NAME) == 0)
+	    {
+	      goto end;
+	    }
+	}
+
+      /* In case 1, 2, 3, 5 */
       class_full_name = pt_append_string (parser, NULL, user_name);
       class_full_name = pt_append_string (parser, class_full_name, ".");
-      class_full_name = pt_append_string (parser, class_full_name, class_name);
+      class_full_name = pt_append_string (parser, class_full_name, class_simple_name);
       name->info.name.original = class_full_name;
     }
 
@@ -10012,13 +10061,70 @@ end:
     {
       db_string_free (current_user_name);
       current_user_name = NULL;
-      user_name = NULL;
   }
 
-  if (class_name_copy)
+  if (specified_user_name)
     {
-      free_and_init (class_name_copy);
-    }
+      free_and_init (specified_user_name);
+  }
 
   return name;
+}
+
+const char *
+pt_get_user_name (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  const char *dot = NULL;
+  const char *user_name = NULL;
+  const char *name = NULL;
+  char *copy_name = NULL;
+  char *token = NULL;
+  char *token_save = NULL;
+  int error = NO_ERROR;
+
+  assert (node != NULL && node->node_type == PT_NAME);
+
+  if (node->info.name.original == NULL || node->info.name.original[0] == '\0')
+    {
+      return NULL;
+    }
+
+  name = node->info.name.original;
+  dot = strchr (name, '.');
+  if (dot == NULL)
+    {
+      return NULL;
+    }
+
+  copy_name = strndup (name, strlen (name));
+  if (copy_name == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (strlen (name) + 1));
+
+      return NULL;
+    }
+
+  token = strtok_r (copy_name, ".", &token_save);
+  if (token == NULL)
+    {
+      /* It's impossible to come here because dot is not null. */
+      assert (false);
+
+      if (copy_name)
+	{
+	  free_and_init (copy_name);
+	}
+
+      return NULL;
+    }
+
+  user_name = pt_append_string (parser, NULL, token);
+
+  if (copy_name)
+    {
+      free_and_init (copy_name);
+    }
+
+  return user_name;
 }

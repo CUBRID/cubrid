@@ -4979,12 +4979,15 @@ user_specified_name_without_dot
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
 
-			assert (user != NULL && user->node_type == PT_NAME);
-			assert (name != NULL && name->node_type == PT_NAME);
+			if (user
+			    && name
+			    && user->node_type == PT_NAME
+			    && name->node_type == PT_NAME)
+			  {
+			    name = pt_make_user_specified_name (this_parser, name, user);
 
-			name = pt_make_user_specified_name (this_parser, name, user);
-
-			parser_free_tree (this_parser, user);
+			    parser_free_tree (this_parser, user);
+			  }
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -4995,9 +4998,11 @@ user_specified_name_without_dot
 
 			PT_NODE *name = $1;
 
-			assert (name != NULL && name->node_type == PT_NAME);
-
-			name = pt_make_user_specified_name (this_parser, name, NULL);
+			if (name
+			    && name->node_type == PT_NAME)
+			  {
+			    name = pt_make_user_specified_name (this_parser, name, NULL);
+			  }
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5023,12 +5028,15 @@ user_specified_name
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
 
-			assert (user != NULL && user->node_type == PT_NAME);
-			assert (name != NULL && name->node_type == PT_NAME);
+			if (user
+			    && name
+			    && user->node_type == PT_NAME
+			    && name->node_type == PT_NAME)
+			  {
+			    name = pt_make_user_specified_name (this_parser, name, user);
 
-			name = pt_make_user_specified_name (this_parser, name, user);
-
-			parser_free_tree (this_parser, user);
+			    parser_free_tree (this_parser, user);
+			  }
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5039,9 +5047,11 @@ user_specified_name
 
 			PT_NODE *name = $1;
 
-			assert (name != NULL && name->node_type == PT_NAME);
-
-			name = pt_make_user_specified_name (this_parser, name, NULL);
+			if (name
+			    && name->node_type == PT_NAME)
+			  {
+			    name = pt_make_user_specified_name (this_parser, name, NULL);
+			  }
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5077,11 +5087,15 @@ object_name_without_dot
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
 
-			assert (user != NULL && user->node_type == PT_NAME);
-			assert (name != NULL && name->node_type == PT_NAME);
+			if (user
+			    && name
+			    && user->node_type == PT_NAME
+			    && name->node_type == PT_NAME)
+			  {
+			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
 
-			name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
-			parser_free_tree (this_parser, user);
+			    parser_free_tree (this_parser, user);
+			  }
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5103,11 +5117,15 @@ object_name
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
 
-			assert (user != NULL && user->node_type == PT_NAME);
-			assert (name != NULL && name->node_type == PT_NAME);
+			if (user
+			    && name
+			    && user->node_type == PT_NAME
+			    && name->node_type == PT_NAME)
+			  {
+			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
 
-			name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
-			parser_free_tree (this_parser, user);
+			    parser_free_tree (this_parser, user);
+			  }
 
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -9914,26 +9932,15 @@ attr_def_one
 	  data_type
 		{{//attr_def_one : identifier
 
-			PT_NODE *attr_name = $1;
 			PT_NODE *dt;
 			PT_TYPE_ENUM typ;
 			PT_NODE *node = parser_new_node (this_parser, PT_ATTR_DEF);
-			char *attr_name_copy = NULL;
-			int attr_name_len = 0;
 
 			if (node)
 			  {
 			    node->type_enum = typ = TO_NUMBER (CONTAINER_AT_0 ($2));
 			    node->data_type = dt = CONTAINER_AT_1 ($2);
-
-			    attr_name_len = strlen (attr_name->info.name.original);
-			    if (attr_name_len >= (DB_MAX_IDENTIFIER_LENGTH - 1))
-			      {
-				attr_name_copy = strndup (attr_name->info.name.original, attr_name_len);
-			        attr_name_copy[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
-				attr_name->info.name.original = pt_append_string (this_parser, NULL, attr_name_copy);
-			      }
-			    node->info.attr_def.attr_name = attr_name;
+			    node->info.attr_def.attr_name = $1;
 
 			    if (typ == PT_TYPE_CHAR && dt)
 			      node->info.attr_def.size_constraint = dt->info.data_type.precision;
@@ -19453,35 +19460,24 @@ path_expression
 		DBG_PRINT}}
 	| path_id_list				%dprec 2
 		{{
-			PT_NODE *node = $1;
+			PT_NODE *dot;
 			PT_NODE *serial_value = NULL;
-			
-			const char *dot = NULL;
 
-			assert (node != NULL);
-
-			if (node->node_type == PT_NAME && node->info.name.meta_class == PT_META_CLASS)
+			dot = $1;
+			if (dot
+			    && dot->node_type == PT_DOT_
+			    && dot->info.dot.arg2 && dot->info.dot.arg2->node_type == PT_NAME)
 			  {
-			    dot = strchr (node->info.name.original, '.');
-			    if (dot == NULL)
-			      {
-				node = pt_make_user_specified_name (this_parser, node, NULL);
-			      }
-			  }
-
-			if (node->node_type == PT_DOT_
-			    && node->info.dot.arg2 && node->info.dot.arg2->node_type == PT_NAME)
-			  {
-			    PT_NODE *name = node->info.dot.arg2;
-			    serial_value = parser_new_node (this_parser, PT_EXPR);
+			    PT_NODE *name = dot->info.dot.arg2;
 
 			    if (intl_identifier_casecmp (name->info.name.original, "current_value") == 0 ||
 				intl_identifier_casecmp (name->info.name.original, "currval") == 0)
 			      {
+				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_CURRENT_VALUE;
 				serial_value->info.expr.arg1
-				  = node->info.dot.arg1;
-				node->info.dot.arg1 = NULL; /* cut */
+				  = dot->info.dot.arg1;
+				dot->info.dot.arg1 = NULL; /* cut */
 
 				serial_value->info.expr.arg2 = NULL;
 
@@ -19492,8 +19488,8 @@ path_expression
 					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
 					"serial");
 
-				parser_free_node (this_parser, node);
-				node = serial_value;
+				parser_free_node (this_parser, dot);
+				dot = serial_value;
 
 				parser_cannot_cache = true;
 			      }
@@ -19501,10 +19497,11 @@ path_expression
 			      if (intl_identifier_casecmp (name->info.name.original, "next_value") == 0 ||
 				  intl_identifier_casecmp (name->info.name.original, "nextval") == 0)
 			      {
+				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_NEXT_VALUE;
 				serial_value->info.expr.arg1
-				  = node->info.dot.arg1;
-				node->info.dot.arg1 = NULL; /* cut */
+				  = dot->info.dot.arg1;
+				dot->info.dot.arg1 = NULL; /* cut */
 
 				serial_value->info.expr.arg2
 				  = parser_new_node (this_parser, PT_VALUE);
@@ -19524,14 +19521,14 @@ path_expression
 					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
 					"serial");
 
-				parser_free_node (this_parser, node);
-				node = serial_value;
+				parser_free_node (this_parser, dot);
+				dot = serial_value;
 
 				parser_cannot_cache = true;
 			      }
 			  }
 
-			$$ = node;
+			$$ = dot;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -19547,52 +19544,122 @@ path_id_list
 
 			const char *dot = NULL;
 			const char *user_name = NULL;
+			char *current_user_name = NULL;
+			DB_OBJECT *user_obj = NULL;
+			int is_exist_user = 0;
 			const char *class_simple_name = NULL;
 			const char *class_full_name = NULL;
 
-			assert (arg1 != NULL);
-			assert (arg2 != NULL);
+			/*
+			 *  Prevents misidentification of user_name as class_name in 'class user_name.class_name'
+			 *
+			 *  when parsing path_expression. 'class user_name' is parsed in path_id_list,
+			 *  and 'class_name' is parsed in path_id. it must be combined so that it can be parsed
+			 *  as 'class user_name.class_name'.
+			 * 
+			 *  However, when parsing 'class class_name.attribute_name', current_user_name is required
+			 *  before class_name. It is difficult to distinguish whether user_name or class_name comes
+			 *  after the class keyword. Therefore, since current_user_name cannot be added
+			 *  before class_name, even if it is a class owned by the current user,
+			 *  it must always be used in the form of user_name.class_name after the class keyword.
+			 */
 
-			if (arg1->node_type == PT_NAME)
-			  {
-			    dot = strchr (arg1->info.name.original, '.');
-			  }
-
-			if (dot == NULL && arg1->node_type == PT_NAME && arg2->node_type == PT_NAME
+			if (arg1
+			    && arg2
+			    && arg1->node_type == PT_NAME
+			    && arg2->node_type == PT_NAME
 			    && arg1->info.name.meta_class == PT_META_CLASS)
 			  {
-			    /*
-			     *  Prevents misidentification of user_name as class_name in 'class user_name.class_name'
-			     *
-			     *  when parsing path_expression. 'class user_name' is parsed in path_id_list,
-			     *  and 'class_name' is parsed in path_id. it must be combined so that it can be parsed
-			     *  as 'class user_name.class_name'.
-			     * 
-			     *  However, when parsing 'class class_name.attribute_name', current_user_name is required
-			     *  before class_name. It is difficult to distinguish whether user_name or class_name comes
-			     *  after the class keyword. Therefore, since current_user_name cannot be added
-			     *  before class_name, even if it is a class owned by the current user,
-			     *  it must always be used in the form of user_name.class_name after the class keyword.
-			     */
+			    dot = strchr (arg1->info.name.original, '.');
+			    if (dot)
+			      {
+				/*
+				 * e.g. arg1->info.name.original: user_name.class_name
+				 *      arg2->info.name.original: class_attribute_name
+				 */
+				node = parser_new_node (this_parser, PT_DOT_);
+				if (node)
+				  {
+				    node->info.dot.arg1 = arg1;
+				    node->info.dot.arg2 = arg2;
+				  }
+			      }
+			    else // dot != NULL
+			      {
+				user_name = arg1->info.name.original;
+				if (intl_identifier_casecmp (user_name, "DBA")
+				    && intl_identifier_casecmp (user_name, "PUBLIC"))
+				  {
+				    /* not dba or public user */
+				    user_obj = db_find_user (user_name);
+				    if (user_obj)
+				      {
+					is_exist_user = 1;
+				      }
+				  }
 
-			    user_name = arg1->info.name.original;
-			    class_simple_name = arg2->info.name.original;
+				if (is_exist_user)
+				  {
+				    /*
+				     * e.g. arg1->info.name.original: user_name
+				     *      arg2->info.name.original: class_name
+				     */ 
+				    class_simple_name = arg2->info.name.original;
 
-			    class_full_name = pt_append_string (this_parser, NULL, user_name);
-			    class_full_name = pt_append_string (this_parser, class_full_name, ".");
-			    class_full_name = pt_append_string (this_parser, class_full_name, class_simple_name);
-			    arg1->info.name.original = class_full_name;
+				    class_full_name = pt_append_string (this_parser, NULL, user_name);
+				    class_full_name = pt_append_string (this_parser, class_full_name, ".");
+				    class_full_name = pt_append_string (this_parser, class_full_name, class_simple_name);
+				    arg1->info.name.original = class_full_name;
 
-			    node = arg1;
+				    parser_free_tree (this_parser, arg2);
+
+				    node = arg1;
+				  }
+				else // is_exist_user == 1
+				  {
+				    /*
+				     * e.g. arg1->info.name.original: class_name     -> current_user_name.class_name
+				     *      arg2->info.name.original: class_attribute_name
+				     */ 
+				    node = parser_new_node (this_parser, PT_DOT_);
+				    if (node)
+				      {
+					current_user_name = db_get_user_name ();
+					user_name = current_user_name;
+
+					class_simple_name = arg1->info.name.original;
+
+					class_full_name = pt_append_string (this_parser, NULL, user_name);
+					class_full_name = pt_append_string (this_parser, class_full_name, ".");
+					class_full_name = pt_append_string (this_parser, class_full_name, class_simple_name);
+					arg1->info.name.original = class_full_name;
+
+					node->info.dot.arg1 = arg1;
+					node->info.dot.arg2 = arg2;
+
+					if (current_user_name)
+					  {
+					    db_string_free (current_user_name);
+					    current_user_name = NULL;
+					  }
+				      }
+				  } // is_exist_user == 0
+			      } // dot == NULL
 			  }
-			else
+			else // arg1 != NULL && arg1->node_type == PT_NAME
 			  {
+			    /*
+			     * e.g. arg1->info.dot.arg1.original: user_name.class_name
+			     *      arg1->info.dot.arg2.original: class_attribute_name
+			     *      arg2->info.name.original: class_attribute_name
+			     */ 
 			    node = parser_new_node (this_parser, PT_DOT_);
-			    assert (node != NULL);
-
-			    node->info.dot.arg1 = arg1;
-			    node->info.dot.arg2 = arg2;
-			  }
+			    if (node)
+			      {
+				node->info.dot.arg1 = arg1;
+				node->info.dot.arg2 = arg2;
+			      }
+			  } // arg1 != NULL && arg1->node_type != PT_NAME
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -21623,6 +21690,7 @@ identifier_without_dot
 				PT_ERRORf (this_parser, p,
 					   "Identifier name %s not allowed. It cannot contain DOT(.).",
 					   name);
+				p = NULL;
 			      }
 			  }
 
@@ -21641,8 +21709,25 @@ identifier
 			  {
 			    int size_in;
 			    char *str_name = $1;
+			    const char *dot = NULL;
 
 			    size_in = strlen(str_name);
+
+			    dot = strchr (str_name, '.');
+			    if (dot)
+			      {
+				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH_287 - 1))
+				  {
+				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
+				  }
+			      }
+			    else // dot != NULL
+			      {
+				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
+				  {
+				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
+				  }   
+			      } // dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
@@ -21661,8 +21746,25 @@ identifier
 			  {
 			    int size_in;
 			    char *str_name = $1;
+			    const char *dot = NULL;
 
 			    size_in = strlen(str_name);
+
+			    dot = strchr (str_name, '.');
+			    if (dot)
+			      {
+				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH_287 - 1))
+				  {
+				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
+				  }
+			      }
+			    else // dot != NULL
+			      {
+				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
+				  {
+				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
+				  }   
+			      } // dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
@@ -21680,8 +21782,25 @@ identifier
 			  {
 			    int size_in;
 			    char *str_name = $1;
+			    const char *dot = NULL;
 
 			    size_in = strlen(str_name);
+
+			    dot = strchr (str_name, '.');
+			    if (dot)
+			      {
+				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH_287 - 1))
+				  {
+				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
+				  }
+			      }
+			    else // dot != NULL
+			      {
+				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
+				  {
+				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
+				  }   
+			      } // dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
@@ -21699,8 +21818,25 @@ identifier
 			  {
 			    int size_in;
 			    char *str_name = $1;
+			    const char *dot = NULL;
 
 			    size_in = strlen(str_name);
+
+			    dot = strchr (str_name, '.');
+			    if (dot)
+			      {
+				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH_287 - 1))
+				  {
+				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
+				  }
+			      }
+			    else // dot != NULL
+			      {
+				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
+				  {
+				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
+				  }   
+			      } // dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,

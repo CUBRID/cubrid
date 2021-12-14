@@ -44,6 +44,7 @@
 #include "partition.h"
 #include "db_json.hpp"
 #include "object_primitive.h"
+#include "db_client_type.hpp"
 
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
@@ -1355,6 +1356,15 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
   if ((result = pt_check_user_exists (parser, cls_ref)) == NULL || (cls = cls_ref->info.name.db_object) == NULL)
     {
       return NULL;
+    }
+
+  /* 
+   *  For compatibility, do not check the owner of DB_OBJECT when loading a lower version unload file.
+   *  When running loaddb as dba account, client_type becomes DB_CLIENT_TYPE_ADMIN_UTILITY.
+   */
+  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+    {
+      return result;
     }
 
   owner = db_get_owner (cls);
@@ -8193,6 +8203,8 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
   DB_OBJECT *db_obj, *existing_entity;
+  const char *user_name = NULL;
+  const char *current_user_name = NULL;
   int found, partition_status = DB_NOT_PARTITIONED_CLASS;
   int collation_id, charset;
   bool found_reuse_oid_option = false, reuse_oid = false;
@@ -8361,6 +8373,15 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* check name doesn't already exist as a class */
   name = node->info.create_entity.entity_name;
+
+  current_user_name = db_get_user_name ();
+  user_name = au_get_user_name (name->info.name.original);
+  if (intl_identifier_casecmp (current_user_name, user_name) && au_is_dba_group_member (Au_user) == false)
+    {
+	  PT_ERRORmf4 (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ER_AU_DBA_ONLY, "CREATE", name->info.name.thin, user_name, current_user_name);
+	  return;
+    }
+
   existing_entity = pt_find_class (parser, name, false);
   if (existing_entity != NULL)
     {
@@ -13077,11 +13098,11 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
        * 
        */
     case PT_NAME:
-      if (pt_dot_compare (p->info.name.original, q->info.name.original, CASE_INSENSITIVE))
+      if (pt_qualifier_compare (p->info.name.original, q->info.name.original))
 	{
 	  return 1;
 	}
-      if (pt_dot_compare (p->info.name.resolved, q->info.name.resolved, CASE_INSENSITIVE))
+      if (pt_qualifier_compare (p->info.name.resolved, q->info.name.resolved))
 	{
 	  return 1;
 	}

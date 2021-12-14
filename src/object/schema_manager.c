@@ -12864,6 +12864,8 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   SM_CLASS *class_;
   DB_OBJLIST *cursupers, *oldsupers, *newsupers, *cursubs, *newsubs;
   SM_TEMPLATE *flat;
+  const char *user_name = NULL;
+  char *current_user_name = NULL;
 
   sm_bump_local_schema_version ();
   class_ = NULL;
@@ -13017,7 +13019,27 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	    }
 	  else
 	    {
-	      class_->owner = Au_user;	/* remember the owner id */
+	      user_name = au_get_user_name (template_->name);
+	      current_user_name = db_get_user_name ();
+	      if (user_name && intl_identifier_casecmp (user_name, current_user_name))
+		{
+		  class_->owner = db_find_user (user_name);
+		}
+	      else
+		{
+		  class_->owner = Au_user;	/* remember the owner id */
+		}
+
+	      if (user_name)
+		{
+		  free_and_init (user_name);
+		}
+
+	      if (current_user_name)
+		{
+		  db_string_free (current_user_name);
+		  current_user_name = NULL;
+		}
 	    }
 
 	  /* NOTE: Garbage collection can occur in the following function as a result of the allocation of the class
