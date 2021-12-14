@@ -19586,6 +19586,7 @@ path_id_list
 			      }
 			    else // dot != NULL
 			      {
+				/* Consider how to check user in pt_check_user_exist in semantic phase */
 				user_name = arg1->info.name.original;
 				if (intl_identifier_casecmp (user_name, "DBA")
 				    && intl_identifier_casecmp (user_name, "PUBLIC"))

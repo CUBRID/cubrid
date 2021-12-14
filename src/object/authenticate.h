@@ -267,8 +267,10 @@ extern void au_describe_user_method (MOP user, DB_VALUE * returnval);
 extern void au_info_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
 extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
 extern int au_check_serial_authorization (MOP serial_object);
+extern const char *au_get_dba_user_name (void);
 extern const char *au_get_public_user_name (void);
 extern const char *au_get_user_class_name (void);
+extern const char *au_get_specified_user_name (const char *user_specified_name);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern char *toupper_string (const char *name1, char *name2);
 #endif

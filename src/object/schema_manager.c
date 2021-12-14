@@ -13019,7 +13019,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	    }
 	  else
 	    {
-	      user_name = au_get_user_name (template_->name);
+	      user_name = au_get_specified_user_name (template_->name);
 	      current_user_name = db_get_user_name ();
 	      if (user_name && intl_identifier_casecmp (user_name, current_user_name))
 		{

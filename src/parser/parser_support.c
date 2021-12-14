@@ -9957,6 +9957,7 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
 
       class_simple_name = dot + 1;
 
+      /* Consider how to check user in pt_check_user_exist in semantic phase */
       if (user == NULL)
 	{
 	  dot[0] = '\0';

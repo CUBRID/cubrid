@@ -8854,6 +8854,12 @@ au_check_serial_authorization (MOP serial_object)
 }
 
 const char *
+au_get_dba_user_name (void)
+{
+  return AU_DBA_USER_NAME;
+}
+
+const char *
 au_get_public_user_name (void)
 {
   return AU_PUBLIC_USER_NAME;
@@ -8863,4 +8869,50 @@ const char *
 au_get_user_class_name (void)
 {
   return AU_USER_CLASS_NAME;
+}
+
+const char *
+au_get_specified_user_name (const char *user_specified_name)
+{
+  const char *dot = NULL;
+  char *copy_name = NULL;
+  char *token = NULL;
+  char *token_save = NULL;
+  int error = NO_ERROR;
+
+  if (user_specified_name == NULL || user_specified_name[0] == '\0')
+    {
+      return NULL;
+    }
+
+  dot = strchr (user_specified_name, '.');
+  if (dot == NULL)
+    {
+      return NULL;
+    }
+
+  copy_name = strndup (user_specified_name, strlen (user_specified_name));
+  if (copy_name == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (strlen (user_specified_name) + 1));
+
+      return NULL;
+    }
+
+  token = strtok_r (copy_name, ".", &token_save);
+  if (token == NULL)
+    {
+      /* It's impossible to come here because dot is not null. */
+      assert (false);
+
+      if (copy_name)
+	{
+	  free_and_init (copy_name);
+	}
+
+      return NULL;
+    }
+
+  return token;
 }
