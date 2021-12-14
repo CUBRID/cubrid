@@ -692,8 +692,7 @@ namespace cubmethod
   size_t
   execute_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset); // handle_id
-    size += serializator.get_packed_int_size (size); // num_affected
+    size_t size = serializator.get_packed_int_size (start_offset); // num_affected
     size += serializator.get_packed_int_size (size); // num_q_result
 
     for (int i = 0; i < (int) qresult_infos.size(); i++)
