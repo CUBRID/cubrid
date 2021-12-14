@@ -19,13 +19,13 @@
 #ifndef _LOG_RECOVERY_H_
 #define _LOG_RECOVERY_H_
 
-#include "log_compress.h"
-#include "log_lsa.hpp"
-#include "log_reader.hpp"
+//#include "log_compress.h"
+//#include "log_lsa.hpp"
+//#include "log_reader.hpp"
 #include "page_buffer.h"
-#include "recovery.h"
-#include "storage_common.h"
-#include "thread_compat.hpp"
+//#include "recovery.h"
+//#include "storage_common.h"
+//#include "thread_compat.hpp"
 
 PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, PAGE_FETCH_MODE page_fetch_mode);
 bool log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
