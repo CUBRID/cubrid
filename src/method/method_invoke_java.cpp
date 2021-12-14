@@ -709,8 +709,7 @@ namespace cubmethod
 	  cursor->open ();
 	}
 
-      error = method_send_buffer_to_java (m_group->get_socket(), b);
-      return error;
+      return method_send_buffer_to_java (m_group->get_socket(), b);
     };
 
     error = xs_receive (&thread_ref, get_make_outresult_info);
