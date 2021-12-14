@@ -6092,7 +6092,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_first_log_pageid_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
