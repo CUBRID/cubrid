@@ -4760,7 +4760,7 @@ logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p)
  *    NOTE: !!! DO NOT CALL THIS FUNCTION IF YOU HAVE A LATCH ON THE BTREE
  *          HEADER. THIS CAN CAUSE A DEADLOCK BETWEEN THE LATCH AND THE MUTEX !!!
  */
-GLOBAL_UNIQUE_STATS *
+static GLOBAL_UNIQUE_STATS *
 logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool load_at_creation)
 {
   int error_code = NO_ERROR;
