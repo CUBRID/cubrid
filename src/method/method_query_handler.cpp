@@ -551,6 +551,14 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
+    if (db_check_single_query (m_session) == ER_IT_MULTIPLE_STATEMENT)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_MULTIPLE_STATEMENT, 0);
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	er_clear ();
+	return ER_IT_MULTIPLE_STATEMENT;
+      }
+
     flag |= (flag & PREPARE_UPDATABLE) ? PREPARE_INCLUDE_OID : 0;
     if (flag & PREPARE_INCLUDE_OID)
       {
@@ -603,8 +611,6 @@ namespace cubmethod
   int
   query_handler::prepare_call (prepare_info &info, int &flag)
   {
-    int error = NO_ERROR;
-
     std::string sql_stmt_copy = m_sql_stmt;
     error = m_prepare_call_info.set_is_first_out (sql_stmt_copy);
     if (error != NO_ERROR)
@@ -626,6 +632,14 @@ namespace cubmethod
       {
 	m_error_ctx.set_error (db_error_code(), db_error_string (1), __FILE__, __LINE__);
 	return ER_FAILED;
+      }
+
+    if (db_check_single_query (m_session) == ER_IT_MULTIPLE_STATEMENT)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_MULTIPLE_STATEMENT, 0);
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	er_clear ();
+	return ER_IT_MULTIPLE_STATEMENT;
       }
 
     int stmt_id = db_compile_statement (m_session);
@@ -650,7 +664,7 @@ namespace cubmethod
     q_result.stmt_type = stmt_type;
     q_result.stmt_id = stmt_id;
 
-    return error;
+    return NO_ERROR;
   }
 
   void
