@@ -60,6 +60,11 @@ if [ "x${is_installed_dir}x" = "xFALSEx" ];then
   cubrid_home=${input_dir}
 fi
 
+if [ ! -d $cubrid_home ];then
+  echo "$cubrid_home: no such directory"
+  exit
+fi
+
 # environment variables for *csh
 cubrid_csh_envfile="$HOME/.cubrid.csh"
 
@@ -100,12 +105,15 @@ export LD_LIBRARY_PATH
 export SHLIB_PATH
 export LIBPATH
 export PATH
+
 LIB=$CUBRID/lib
+
 if [ -f /etc/redhat-release ];then
         OS=$(cat /etc/system-release-cpe | cut -d':' -f'3-3')
 elif [ -f /etc/os-release ];then
         OS=$(cat /etc/os-release | egrep "^ID=" | cut -d'=' -f2-2)
 fi
+
 case $OS in
         fedoraproject | centos | redhat)
                 if [ ! -h /lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
