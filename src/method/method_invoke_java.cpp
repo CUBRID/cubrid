@@ -191,8 +191,11 @@ namespace cubmethod
       {
 	std::uint64_t query_id = db_get_resultset (&returnval);
 	query_cursor *cursor = m_cursor_map [query_id];
-	cursor->close ();
-	delete cursor;
+	if (cursor)
+	  {
+	    cursor->close ();
+	    delete cursor;
+	  }
 	m_cursor_map.erase (query_id);
       }
 
@@ -213,8 +216,11 @@ namespace cubmethod
 	  {
 	    std::uint64_t query_id = db_get_resultset (&temp);
 	    query_cursor *cursor = m_cursor_map [query_id];
-	    cursor->close ();
-	    delete cursor;
+	    if (cursor)
+	      {
+		cursor->close ();
+		delete cursor;
+	      }
 	    m_cursor_map.erase (query_id);
 	  }
 
