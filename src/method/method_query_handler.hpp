@@ -84,7 +84,7 @@ namespace cubmethod
       /* TODO: execute_batch, execute_array */
       // TODO: int get_system_parameter ();
 
-      void end_qresult (bool is_self_free);
+      void end_qresult ();
 
       void reset (); /* called after 1 iteration on method scan */
 
@@ -100,24 +100,26 @@ namespace cubmethod
       bool get_prepare_info (prepare_info &info);
       DB_SESSION *get_db_session ();
       DB_QUERY_TYPE *get_column_info ();
-      query_result *get_current_result ();
+
+      const query_result &get_result ();
 
       /* set result info */
-      void set_prepare_column_list_info (std::vector<column_info> &infos, query_result &result);
-      int set_qresult_info (std::vector<query_result_info> &qinfo);
+      void set_prepare_column_list_info (std::vector<column_info> &infos);
+      int set_qresult_info (query_result_info &qinfo);
 
     protected:
       /* prepare */
       int prepare_query (prepare_info &info, int &flag);
       int prepare_call (prepare_info &info, int &flag);
 
+      /* check */
+
+
       /* execute */
       int execute_internal (execute_info &info, int flag, int max_col_size, int max_row,
 			    const std::vector<DB_VALUE> &bind_values);
       int execute_internal_call (execute_info &info, int flag, int max_col_size, int max_row,
 				 const std::vector<DB_VALUE> &bind_values);
-      int execute_internal_all (execute_info &info, int flag, int max_col_size, int max_row,
-				const std::vector<DB_VALUE> &bind_values);
 
       int set_host_variables (int num_bind, DB_VALUE *value_list);
       bool has_stmt_result_set (char stmt_type);
@@ -157,9 +159,7 @@ namespace cubmethod
       int m_max_row;
 
       bool m_has_result_set;
-      std::vector<query_result> m_q_result;
-      query_result *m_current_result;
-      int m_current_result_index; // It has a value of -1 when no queries have been executed
+      query_result m_query_result;
 
       /* statement handler cache */
       bool m_is_occupied; // Is occupied by CUBRIDServerSideStatement

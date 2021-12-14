@@ -443,7 +443,7 @@ namespace cubmethod
 	  execute_info info;
 	  info.unpack (unpacker);
 
-	  query_result_info &current_result_info = info.qresult_infos[0];
+	  query_result_info &current_result_info = info.qresult_info;
 	  int stmt_type = current_result_info.stmt_type;
 	  if (stmt_type == CUBRID_STMT_SELECT)
 	    {
@@ -691,7 +691,7 @@ namespace cubmethod
       make_outresult_info info;
       unpacker.unpack_all (res_code, info);
 
-      query_result_info &current_result_info = info.qresult_infos[0];
+      query_result_info &current_result_info = info.qresult_info;
       const auto &iter = m_cursor_map.find (current_result_info.query_id);
       if (iter == m_cursor_map.end ())
 	{

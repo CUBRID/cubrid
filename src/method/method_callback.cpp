@@ -208,10 +208,10 @@ namespace cubmethod
     execute_info info = handler->execute (request);
 
     /* register query_id for out resultset */
-    cubmethod::query_result *qresult = handler->get_current_result();
-    if (qresult && qresult->stmt_type == CUBRID_STMT_SELECT)
+    const cubmethod::query_result &qresult = handler->get_result();
+    if (qresult.stmt_type == CUBRID_STMT_SELECT)
       {
-	uint64_t qid = (uint64_t) info.qresult_infos[0].query_id;
+	uint64_t qid = (uint64_t) info.qresult_info.query_id;
 	m_qid_handler_map[qid] = request.handler_id;
       }
 
@@ -242,15 +242,12 @@ namespace cubmethod
     cubmethod::query_handler *query_handler = get_query_handler_by_qid (query_id);
     if (query_handler)
       {
-	cubmethod::query_result *qresult = query_handler->get_current_result();
-	if (qresult)
-	  {
-	    make_outresult_info info;
+	const cubmethod::query_result &qresult = query_handler->get_result();
 
-	    query_handler->set_prepare_column_list_info (info.column_infos, *qresult);
-	    query_handler->set_qresult_info (info.qresult_infos);
-	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
-	  }
+	make_outresult_info info;
+	query_handler->set_prepare_column_list_info (info.column_infos);
+	query_handler->set_qresult_info (info.qresult_info);
+	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
       }
 
     /* unexpected error, should not be here */
@@ -488,20 +485,14 @@ method_make_out_rs (DB_BIGINT query_id)
   cubmethod::callback_handler *callback_handler = cubmethod::get_callback_handler ();
   cubmethod::query_handler *query_handler = callback_handler->get_query_handler_by_qid ((uint64_t) query_id);
 
-  cubmethod::query_result *qresult = query_handler->get_current_result();
-  if (qresult)
-    {
-      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session(), qresult->stmt_id);
-      return ux_create_srv_handle_with_method_query_result (
-		     qresult->result,
-		     qresult->stmt_type,
-		     qresult->num_column,
-		     column_info,
-		     true
-	     );
-    }
-  else
-    {
-      return -1;
-    }
+  const cubmethod::query_result &qresult = query_handler->get_result();
+
+  DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session(), qresult.stmt_id);
+  return ux_create_srv_handle_with_method_query_result (
+		 qresult.result,
+		 qresult.stmt_type,
+		 qresult.num_column,
+		 column_info,
+		 true
+	 );
 }

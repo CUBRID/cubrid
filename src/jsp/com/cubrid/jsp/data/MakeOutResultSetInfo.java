@@ -4,18 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MakeOutResultSetInfo {
-    public List<QueryResultInfo> qresultInfos = null;
+    public QueryResultInfo qresultInfo = null;
     public List<ColumnInfo> columnInfos = null;
 
     public MakeOutResultSetInfo(CUBRIDUnpacker unpacker) {
-        int numQueryResult = unpacker.unpackInt();
-        qresultInfos = new ArrayList<QueryResultInfo>();
-        if (numQueryResult > 0) {
-            for (int i = 0; i < numQueryResult; i++) {
-                QueryResultInfo qInfo = new QueryResultInfo(unpacker);
-                qresultInfos.add(qInfo);
-            }
-        }
+        qresultInfo = new QueryResultInfo(unpacker);
 
         int columnSize = unpacker.unpackInt();
         columnInfos = new ArrayList<ColumnInfo>();
@@ -27,17 +20,7 @@ public class MakeOutResultSetInfo {
         }
     }
 
-    public QueryResultInfo getResultInfo(int idx) {
-        if (idx < 0 || idx >= qresultInfos.size()) {
-            return null;
-        }
-        return qresultInfos.get(idx);
-    }
-
-    public int getResultInfoSize() {
-        if (qresultInfos != null) {
-            return qresultInfos.size();
-        }
-        return 0;
+    public QueryResultInfo getResultInfo() {
+        return qresultInfo;
     }
 }
