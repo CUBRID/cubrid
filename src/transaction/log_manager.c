@@ -69,6 +69,7 @@
 #include "log_compress.h"
 #include "log_record.hpp"
 #include "log_recovery.h"
+#include "log_recovery_analysis.hpp"
 #include "log_replication.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
@@ -7118,7 +7119,7 @@ log_dump_record_assigned_mvccid (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*assigned_mvccid), log_lsa, log_page_p);
   assigned_mvccid = (LOG_REC_ASSIGNED_MVCCID *) (log_page_p->area + log_lsa->offset);
 
-  fprintf (out_fp, " MVCCID = %lld\n", (long long)assigned_mvccid->mvccid);
+  fprintf (out_fp, " MVCCID = %lld\n", (long long) assigned_mvccid->mvccid);
 
   return log_page_p;
 }

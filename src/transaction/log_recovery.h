@@ -50,7 +50,5 @@ void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
 			 int (*redofun) (THREAD_ENTRY * thread_p, const LOG_RCV *), LOG_RCV * rcv,
 			 const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data, LOG_ZIP & redo_unzip);
 void log_recovery_finish_transactions (THREAD_ENTRY * const thread_p);
-void log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY * thread_p,
-							    log_lsa most_recent_transaction_table_snapshot_lsa);
 
 #endif // _LOG_RECOVERY_H_
