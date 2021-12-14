@@ -41,8 +41,7 @@ if [ -z "$cubrid_home" ];then
   cubrid_home="`pwd`"
 fi
 
-echo "Is CUBRID installed in the directory below? [Yn]:"
-echo "\"$cubrid_home\""
+echo "Is the CUBRID installed in "$cubrid_home" ? [Yn]:"
 
 read line leftover
 is_installed_dir=TRUE
