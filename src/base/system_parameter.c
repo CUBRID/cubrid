@@ -695,6 +695,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_SUPPLEMENTAL_LOG "supplemental_log"
 #define PRM_NAME_CDC_LOGGING_DEBUG "cdc_logging_debug"
 
+#define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2356,6 +2358,12 @@ static unsigned int prm_supplemental_log_flag = 0;
 bool PRM_CDC_LOGGING_DEBUG = false;
 static bool prm_cdc_logging_debug_default = false;
 static unsigned int prm_cdc_logging_debug_flag = 0;
+
+UINT64 PRM_FIRST_LOG_PAGEID = 0LL;
+static UINT64 prm_first_log_pageid_default = 0LL;
+static UINT64 prm_first_log_pageid_lower = 0LL;
+static UINT64 prm_first_log_pageid_upper = LOGPAGEID_MAX;
+static unsigned int prm_first_log_pageid_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6070,6 +6078,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_cdc_logging_debug_default,
    (void *) &PRM_CDC_LOGGING_DEBUG,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_FIRST_LOG_PAGEID,	/* Except for QA or TEST purposes, never use it. */
+   PRM_NAME_FIRST_LOG_PAGEID,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BIGINT,
+   &prm_first_log_pageid_flag,
+   (void *) &prm_first_log_pageid_default,
+   (void *) &PRM_FIRST_LOG_PAGEID,
+   (void *) &prm_first_log_pageid_upper,
+   (void *) &prm_first_log_pageid_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
