@@ -31,19 +31,19 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-//#include "config.h"
-//#include "disk_manager.h"
-//#include "error_manager.h"
-//#include "file_io.h"
-//#include "log_comm.h"
+#include "config.h"
+#include "disk_manager.h"
+#include "error_manager.h"
+#include "file_io.h"
+#include "log_comm.h"
 #include "log_impl.h"
-//#include "log_lsa.hpp"
-//#include "log_prior_send.hpp"
-//#include "recovery.h"
-//#include "storage_common.h"
-//#include "thread_compat.hpp"
+#include "log_lsa.hpp"
+#include "log_prior_send.hpp"
+#include "recovery.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
-//#include <time.h>
+#include <time.h>
 
 // forward declarations
 struct bo_restart_arg;
