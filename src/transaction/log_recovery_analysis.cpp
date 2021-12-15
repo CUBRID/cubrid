@@ -30,7 +30,6 @@
 #include "log_impl.h"
 #include "log_manager.h"
 #include "log_meta.hpp"
-#include "log_reader.hpp"
 #include "log_record.hpp"
 #include "log_recovery.h"
 #include "log_recovery_context.hpp"
