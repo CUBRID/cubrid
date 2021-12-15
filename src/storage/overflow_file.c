@@ -743,7 +743,7 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
 
   next_vpid = *ovf_vpid;
 
-  pgptr = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  pgptr = pgbuf_fix_read_old_and_check_repl_desync (thread_p, next_vpid, PGBUF_UNCONDITIONAL_LATCH);
   if (pgptr == NULL)
     {
       return S_ERROR;
@@ -863,7 +863,7 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
 	      return S_ERROR;
 	    }
 
-	  pgptr = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  pgptr = pgbuf_fix_read_old_and_check_repl_desync (thread_p, next_vpid, PGBUF_UNCONDITIONAL_LATCH);
 	  if (pgptr == NULL)
 	    {
 	      recdes->length = 0;
