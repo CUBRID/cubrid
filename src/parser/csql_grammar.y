@@ -19460,15 +19460,23 @@ path_expression
 		DBG_PRINT}}
 	| path_id_list				%dprec 2
 		{{
-			PT_NODE *dot;
+			PT_NODE *node = $1;
 			PT_NODE *serial_value = NULL;
 
-			dot = $1;
-			if (dot
-			    && dot->node_type == PT_DOT_
-			    && dot->info.dot.arg2 && dot->info.dot.arg2->node_type == PT_NAME)
+			if (node->node_type == PT_NAME && node->info.name.meta_class == PT_META_CLASS)
 			  {
-			    PT_NODE *name = dot->info.dot.arg2;
+			    const char *dot = strchr (node->info.name.original, '.');
+			    if (dot == NULL)
+			      {
+				node = pt_make_user_specified_name (this_parser, node, NULL);
+			      }
+			  }
+			
+			if (node
+			    && node->node_type == PT_DOT_
+			    && node->info.dot.arg2 && node->info.dot.arg2->node_type == PT_NAME)
+			  {
+			    PT_NODE *name = node->info.dot.arg2;
 
 			    if (intl_identifier_casecmp (name->info.name.original, "current_value") == 0 ||
 				intl_identifier_casecmp (name->info.name.original, "currval") == 0)
@@ -19476,8 +19484,8 @@ path_expression
 				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_CURRENT_VALUE;
 				serial_value->info.expr.arg1
-				  = dot->info.dot.arg1;
-				dot->info.dot.arg1 = NULL; /* cut */
+				  = node->info.dot.arg1;
+				node->info.dot.arg1 = NULL; /* cut */
 
 				serial_value->info.expr.arg2 = NULL;
 
@@ -19488,8 +19496,8 @@ path_expression
 					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
 					"serial");
 
-				parser_free_node (this_parser, dot);
-				dot = serial_value;
+				parser_free_node (this_parser, node);
+				node = serial_value;
 
 				parser_cannot_cache = true;
 			      }
@@ -19500,8 +19508,8 @@ path_expression
 				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_NEXT_VALUE;
 				serial_value->info.expr.arg1
-				  = dot->info.dot.arg1;
-				dot->info.dot.arg1 = NULL; /* cut */
+				  = node->info.dot.arg1;
+				node->info.dot.arg1 = NULL; /* cut */
 
 				serial_value->info.expr.arg2
 				  = parser_new_node (this_parser, PT_VALUE);
@@ -19521,14 +19529,14 @@ path_expression
 					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
 					"serial");
 
-				parser_free_node (this_parser, dot);
-				dot = serial_value;
+				parser_free_node (this_parser, node);
+				node = serial_value;
 
 				parser_cannot_cache = true;
 			      }
 			  }
 
-			$$ = dot;
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -19597,6 +19605,10 @@ path_id_list
 				      {
 					is_exist_user = 1;
 				      }
+				  }
+				else
+				  {
+				    is_exist_user = 1;
 				  }
 
 				if (is_exist_user)
@@ -21683,6 +21695,8 @@ identifier_without_dot
 
 			if (p)
 			  {
+			    assert (p->node_type = PT_NAME);
+
 			    const char *name = p->info.name.original;
 
 			    /* Check if it contains DOT(.) */
@@ -21722,13 +21736,13 @@ identifier
 				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
 				  }
 			      }
-			    else // dot != NULL
+			    else	// dot != NULL
 			      {
 				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 				  {
 				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 				  }   
-			      } // dot == NULL
+			      }		// dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
@@ -21759,13 +21773,13 @@ identifier
 				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
 				  }
 			      }
-			    else // dot != NULL
+			    else	// dot != NULL
 			      {
 				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 				  {
 				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 				  }   
-			      } // dot == NULL
+			      }		// dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
@@ -21795,13 +21809,13 @@ identifier
 				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
 				  }
 			      }
-			    else // dot != NULL
+			    else	// dot != NULL
 			      {
 				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 				  {
 				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 				  }   
-			      } // dot == NULL
+			      }		// dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
@@ -21831,13 +21845,13 @@ identifier
 				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
 				  }
 			      }
-			    else // dot != NULL
+			    else	// dot != NULL
 			      {
 				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 				  {
 				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 				  }   
-			      } // dot == NULL
+			      }		// dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
