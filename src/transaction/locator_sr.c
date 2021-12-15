@@ -13866,8 +13866,6 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	}
     }
 
-  logtb_load_global_statistics_to_tran (thread_p);
-
   // We must check if we have records which did not fill an entire page.
   for (size_t i = 0; i < recdes_array.size (); i++)
     {
