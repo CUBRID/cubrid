@@ -1418,7 +1418,15 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	    case 7:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
-	      dml->cond_column_data_len[i] = (int) strlen (dml->cond_column_data[i]);
+	      if (dml->cond_column_data[i] == NULL)
+		{
+		  dml->cond_column_data_len[i] = 0;
+		}
+	      else
+		{
+		  dml->cond_column_data_len[i] = (int) strlen (dml->cond_column_data[i]);
+		}
+
 	      break;
 
 	    case 8:
