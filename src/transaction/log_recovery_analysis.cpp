@@ -1601,11 +1601,13 @@ static int
 log_rv_analysis_log_end (int tran_id, const LOG_LSA *log_lsa, const LOG_PAGE *log_page_p)
 {
   assert (log_page_p != nullptr);
-  if (is_tran_server_with_remote_storage () || !logpb_is_page_in_archive (log_lsa->pageid))
+  if ((is_tran_server_with_remote_storage () && is_active_transaction_server ())
+      || (!is_tran_server_with_remote_storage () && !logpb_is_page_in_archive (log_lsa->pageid)))
     {
-      /*
-       * Reset the log header for the recovery undo operation
-       */
+      /* Reset the log header for the recovery undo operation.
+       * Do not execute routine on the passive transaction server because LSA's are initialized
+       * by copying a consistent snapshot of them from the page server. */
+
       LOG_RESET_APPEND_LSA (log_lsa);
 
       // log page pointer passed here is that of the last log page - the append page
