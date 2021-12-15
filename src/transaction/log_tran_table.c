@@ -4015,39 +4015,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	{
 	  assert (false);
 	}
-#if defined(SERVER_MODE)
-      /* SERVER_MODE */
-      if (committed)
-	{
-	  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This
-	   * could happen in a transaction that only does a create serial and commits. Next code makes sure serial
-	   * index statistics are reflected. */
-	  BTID serial_index_btid = BTID_INITIALIZER;
-	  LOG_TRAN_BTID_UNIQUE_STATS *serial_unique_stats = NULL;
-
-	  /* Get serial index BTID. */
-	  serial_get_index_btid (&serial_index_btid);
-	  assert (!BTID_IS_NULL (&serial_index_btid));
-
-	  /* Get statistics for serial unique index. */
-	  serial_unique_stats = logtb_tran_find_btid_stats (thread_p, &serial_index_btid, false);
-	  if (serial_unique_stats != NULL)
-	    {
-	      /* Reflect serial unique statistics. */
-	      if (logtb_update_global_unique_stats_by_delta (thread_p, &serial_index_btid,
-							     serial_unique_stats->tran_stats.num_oids,
-							     serial_unique_stats->tran_stats.num_nulls,
-							     serial_unique_stats->tran_stats.num_keys,
-							     true) != NO_ERROR)
-		{
-		  /* No errors are permitted here. */
-		  assert (false);
-
-		  /* Fall through to do everything we would do in case of no error. */
-		}
-	    }
-	}
-#endif /* SERVER_MODE */
 
       /* atomic set transaction lowest active MVCCID */
       log_Gl.mvcc_table.reset_transaction_lowest_active (tran_index);
