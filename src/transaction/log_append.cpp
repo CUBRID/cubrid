@@ -137,7 +137,7 @@ log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list
 
 #if !defined (NDEBUG)
   // check list input is valid
-  log_prior_node *nodep;
+  const log_prior_node *nodep;
   for (nodep = list_head; nodep->next != nullptr; nodep = nodep->next)
     {
       assert (nodep->next->start_lsa == nodep->log_header.forw_lsa);
@@ -166,7 +166,7 @@ log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list
   prior_lsa = list_tail->log_header.forw_lsa;
   prev_lsa = list_tail->start_lsa;
 
-  list_head = nullptr;
+  list_head = list_tail = nullptr;
 }
 
 void

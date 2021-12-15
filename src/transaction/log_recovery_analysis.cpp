@@ -2219,18 +2219,19 @@ corruption_checker::check_log_record (const log_lsa &record_lsa, const log_rec_h
 }
 
 /* log_recovery_analysis_from_transaction_table_snapshot - perform recovery for a passive transaction server
- *                  starting from a [recent] transaction table snapshot relayed via log from the active
- *                  transaction server
+ *                  starting from a [recent] transaction table snapshot relayed via log and page server from
+ *                  the active transaction server
  *
- * most_recent_transaction_table_snapshot_lsa (in): the lsa where a record containing, as payload, the packed contents
+ * most_recent_trantable_snapshot_lsa (in): the lsa where a record containing, as payload, the packed contents
  *                                of a recent transaction table snapshot; starting from that snapshot, analyze the log
  *                                to construct an actual starting transaction table
  */
 void
 log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
-    log_lsa most_recent_transaction_table_snapshot_lsa)
+    log_lsa most_recent_trantable_snapshot_lsa)
 {
-  assert (!most_recent_transaction_table_snapshot_lsa.is_null ());
+  assert (is_passive_transaction_server ());
+  assert (!most_recent_trantable_snapshot_lsa.is_null ());
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   // analysis changes the transaction index and leaves it in an indefinite state
@@ -2240,7 +2241,7 @@ log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
   assert (sys_tran_index == LOG_SYSTEM_TRAN_INDEX);
 
   log_reader lr (LOG_CS_SAFE_READER);
-  int log_page_read_err = lr.set_lsa_and_fetch_page (most_recent_transaction_table_snapshot_lsa);
+  int log_page_read_err = lr.set_lsa_and_fetch_page (most_recent_trantable_snapshot_lsa);
   if (log_page_read_err != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
@@ -2248,17 +2249,17 @@ log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
       return;
     }
 
-  // copy because, maybe, the next add will advance to a new page
+  // always copy because the next add might advance to the next log page
   const log_rec_header log_rec_hdr = lr.reinterpret_copy_and_add_align<log_rec_header> ();
   assert (log_rec_hdr.type == LOG_TRANTABLE_SNAPSHOT);
 
-  lr.advance_when_does_not_fit (sizeof (LOG_REC_TRANTABLE_SNAPSHOT));
-  const LOG_REC_TRANTABLE_SNAPSHOT *const log_rec = lr.reinterpret_cptr<LOG_REC_TRANTABLE_SNAPSHOT> ();
-  std::unique_ptr<char []> snapshot_data_buf { new char[log_rec->length] };
-  lr.add_align (sizeof (LOG_REC_TRANTABLE_SNAPSHOT));
-  lr.copy_from_log (snapshot_data_buf.get (), log_rec->length);
+  lr.advance_when_does_not_fit (sizeof (log_rec_trantable_snapshot));
+  const log_rec_trantable_snapshot log_rec = lr.reinterpret_copy_and_add_align<log_rec_trantable_snapshot> ();
+  std::unique_ptr<char []> snapshot_data_buf { new char[log_rec.length] };
+  lr.copy_from_log (snapshot_data_buf.get (), log_rec.length);
+
   cubpacking::unpacker unpacker;
-  unpacker.set_buffer (snapshot_data_buf.get (), log_rec->length);
+  unpacker.set_buffer (snapshot_data_buf.get (), log_rec.length);
 
   cublog::checkpoint_info chkpt_info;
   chkpt_info.unpack (unpacker);
@@ -2267,13 +2268,11 @@ log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
   chkpt_info.recovery_analysis (thread_p, start_redo_lsa);
 
   log_recovery_context log_rcv_context;
-  log_rcv_context.init_for_recovery (log_rec->snapshot_lsa);
+  log_rcv_context.init_for_recovery (log_rec.snapshot_lsa);
 
-  //log_rcv_context.set_start_redo_lsa(log_rec->snapshot_lsa);
-  // TODO: snapshot_lsa or the next actual lsa?
-
-  // TODO: we need to analyse up to the point where the page server (the one we received this most recent
-  // transaction table snapshot lsa from) has reached to replicate
+  // passive transaction server needs to analyze up to the point its replication will pick-up things;
+  // that means until the append_lsa; incidentally, end of log record should be found at the current append_lsa, so
+  // analysis should stop there
 
   INT64 dummy_redo_log_record_count = 0LL;
   log_recovery_analysis (thread_p, &dummy_redo_log_record_count, log_rcv_context);

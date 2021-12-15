@@ -1639,30 +1639,38 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
   assert (pts_ptr != nullptr);
-  log_lsa most_recent_transaction_table_snapshot_lsa = NULL_LSA;
   log_lsa replication_start_redo_lsa = NULL_LSA;
   {
-    // before requesting log boot info from page server, hold a lock for the prior mutex
-    // during the call, page server will also start sending log records and we must make sure to
-    // initialize log info before any log is consumed on the passive tran server
+    LOG_CS_ENTER (thread_p);
     // *INDENT-OFF*
-    std::lock_guard<std::mutex> prior_lsa_lockg { log_Gl.prior_info.prior_lsa_mutex };
+    scope_exit log_cs_exit_ftor { [thread_p] { LOG_CS_EXIT (thread_p); } };
     // *INDENT-ON*
 
-    pts_ptr->send_and_receive_log_boot_info (thread_p, most_recent_transaction_table_snapshot_lsa);
+    log_lsa most_recent_trantable_snapshot_lsa = NULL_LSA;
+    {
+      // before requesting log boot info from page server, hold a lock for the prior mutex
+      // during the call, page server will also start sending log records and we must make sure to
+      // initialize log info before any log is consumed on the passive tran server
+      // *INDENT-OFF*
+      std::lock_guard<std::mutex> prior_lsa_lockg { log_Gl.prior_info.prior_lsa_mutex };
+      // *INDENT-ON*
 
-    LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
-    LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+      pts_ptr->send_and_receive_log_boot_info (thread_p, most_recent_trantable_snapshot_lsa);
 
-    // while still holding prior LSA lock, initialize passive transaction server replication
-    // with a LSA that ensures that no record is lost (ie: while still holding the mutex)
-    replication_start_redo_lsa = log_Gl.append.get_nxio_lsa ();
+      LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+      LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+
+      // while still holding prior LSA lock, initialize passive transaction server replication
+      // with a LSA that ensures that no record is lost (ie: while still holding the mutex)
+      replication_start_redo_lsa = log_Gl.append.get_nxio_lsa ();
+    }
+    // prior lists from page server are being received now
 
     // NOTE: following situations can happen with regard to most recent transaction table snapshot lsa:
     //  1. it is null here at destination on PTS:
     //    1.1. the PTS has been started too fast after the ATS and did not get to generate and relay at least
     //        one transaction table snapshot to the PTS via PS
-    //        - to mitigate this the PTS will have its own routine to search the log backwards for the most
+    //        - to mitigate this the PTS can have its own routine to search the log backwards for the most
     //          recent transaction table snapshot
     //    1.2. no transaction table snapshot has ever been generated ever
     //        - even if the PTS searches backwards for a transaction table snapshot log record, it will not
@@ -1673,19 +1681,14 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     //        log buffer waiting to be processed
     //        - during log analysis, the PTS will ignore (skip) the newer transaction table snapshot log records
     //
-    assert (!most_recent_transaction_table_snapshot_lsa.is_null ());
-
-    LOG_CS_ENTER (thread_p);
-    // TODO: if the rest of this scope is performed outside the prior lsa mutex, an assert fails in prior append,
-    // which means that log is actually lost; I assume that log analysis actually needs a static state of the
-    // log to be able to perform its job
-    // *INDENT-OFF*
-    scope_exit log_cs_exit_ftor { [thread_p] { LOG_CS_EXIT (thread_p); } };
-    // *INDENT-ON*
-
-    log_recovery_analysis_from_transaction_table_snapshot (thread_p, most_recent_transaction_table_snapshot_lsa);
+    assert (!most_recent_trantable_snapshot_lsa.is_null ());
+    log_recovery_analysis_from_transaction_table_snapshot (thread_p, most_recent_trantable_snapshot_lsa);
   }
+  // prior lists are consumed and flushed to log pages
+
   assert (!replication_start_redo_lsa.is_null ());
+
+  log_daemons_init ();
 
   pts_ptr->start_log_replicator (replication_start_redo_lsa);
 
@@ -1698,8 +1701,6 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     }
 
   logpb_initialize_logging_statistics ();
-
-  log_daemons_init ();
 
   er_log_debug (ARG_FILE_LINE, "log_initialize_passive_tran_server: end of log initializaton, append_lsa = (%lld|%d)\n",
 		LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
