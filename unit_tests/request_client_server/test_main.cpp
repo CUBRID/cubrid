@@ -538,14 +538,14 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "[dbg]"
     REPEAT_REQUEST_WITH_MSGID (env.push_request_on_scs_two, reqids_2_to_1::_1);
   });
 
-  env.wait_for_all_messages ();
-
-  require_all_sent_requests_are_handled ();
-
   for (auto &th : threads)
     {
       th.join ();
     }
+
+  env.wait_for_all_messages ();
+
+  require_all_sent_requests_are_handled ();
 }
 
 TEST_CASE ("Test response sequence number generator", "")
@@ -1023,6 +1023,8 @@ test_two_request_sync_client_server_env::send_recv_and_increment_msg_count (
   scs.send_recv (msgid, std::move (request_payload), response_payload);
   REQUIRE (response_payload.val == static_cast<int> (msgid));
   REQUIRE (response_payload.op_count == i + 1);	  // it is incremented by response handler
+
+  ++global_sent_request_count;
 }
 
 template<typename T_MSGID, T_MSGID T_VAL, typename T_SCS, typename T_SEQUENCED_PAYLOAD>
