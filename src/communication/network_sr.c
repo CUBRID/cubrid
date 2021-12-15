@@ -446,6 +446,10 @@ net_server_init (void)
   req_p->name = "NET_SERVER_DBLINK_GET_CRYPT_KEY";
 
   /* tde */
+  req_p = &net_Requests[NET_SERVER_TDE_IS_LOADED];
+  req_p->processing_function = stde_is_loaded;
+  req_p->name = "NET_SERVER_TDE_IS_LOADED";
+
   req_p = &net_Requests[NET_SERVER_TDE_GET_DATA_KEYS];
   req_p->processing_function = stde_get_data_keys;
   req_p->name = "NET_SERVER_TDE_GET_DATA_KEYS";

@@ -1948,6 +1948,38 @@ dblink_get_cipher_master_key ()
 
 
 /*
+ * tde_is_loaded -
+ *
+ * return:
+ *
+ */
+int
+tde_is_loaded (int *is_loaded)
+{
+#if defined(CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request (NET_SERVER_TDE_IS_LOADED, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      (void *) or_unpack_int (reply, is_loaded);
+    }
+
+  return NO_ERROR;
+#else /* CS_MODE */
+
+  *is_loaded = tde_is_loaded ();
+
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/*
  * tde_get_mk_file_path -
  *
  * return:

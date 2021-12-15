@@ -542,6 +542,8 @@ net_histo_setup_names (void)
 
   net_Req_buffer[NET_SERVER_DBLINK_GET_CRYPT_KEY].name = "NET_SERVER_DBLINK_GET_CRYPT_KEY";
 
+  net_Req_buffer[NET_SERVER_TDE_IS_LOADED].name = "NET_SERVER_TDE_IS_LOADED";
+
   net_Req_buffer[NET_SERVER_TDE_GET_DATA_KEYS].name = "NET_SERVER_TDE_GET_DATA_KEYS";
   net_Req_buffer[NET_SERVER_TDE_GET_MK_FILE_PATH].name = "NET_SERVER_TDE_GET_MK_FILE_PATH";
   net_Req_buffer[NET_SERVER_TDE_GET_MK_INFO].name = "NET_SERVER_TDE_GET_MK_INFO";
