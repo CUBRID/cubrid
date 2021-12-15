@@ -287,7 +287,10 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
   er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
 
-  m_page_server_conn_vec.emplace_back (new page_server_conn_t (std::move (srv_chn), get_request_handlers ()));
+  constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
+  m_page_server_conn_vec.emplace_back (
+	  new page_server_conn_t (std::move (srv_chn), get_request_handlers (), tran_to_page_request::RESPOND,
+				  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE));
   m_page_server_conn_vec.back ()->start ();
 
   return NO_ERROR;
