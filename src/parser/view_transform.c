@@ -1881,7 +1881,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 
   result = tmp_result = NULL;	/* init */
   class_spec = NULL;
-  is_mergeable = false;
+  is_mergeable = 1;
 
   statement_next = statement->next;
   switch (query_spec->node_type)
