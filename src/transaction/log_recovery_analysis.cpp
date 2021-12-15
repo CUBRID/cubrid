@@ -2268,6 +2268,9 @@ log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
 
   log_recovery_context log_rcv_context;
   log_rcv_context.init_for_recovery (log_rec.snapshot_lsa);
+  // no recovery is done, start redo lsa may remain invalid
+  log_rcv_context.set_start_redo_lsa (NULL_LSA);
+  log_rcv_context.set_end_redo_lsa (NULL_LSA);
 
   // passive transaction server needs to analyze up to the point its replication will pick-up things;
   // that means until the append_lsa; incidentally, end of log record should be found at the current append_lsa, so
