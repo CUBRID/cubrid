@@ -36,9 +36,11 @@ namespace cublog
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
       {
+	const log_prior_node *tail;
+	for (tail = head; tail->next != nullptr; tail = tail->next);
 	_er_log_debug (ARG_FILE_LINE,
-		       "[LOG PRIOR TRANSFER] Sending list starting with lsa %lld|%d. Message size = %zu.\n",
-		       LSA_AS_ARGS (&head->start_lsa), message.size ());
+		       "[LOG PRIOR TRANSFER] Sending. Head lsa %lld|%d. Tail lsa %lld|%d. Message size = %zu.\n",
+		       LSA_AS_ARGS (&head->start_lsa), LSA_AS_ARGS (&tail->start_lsa), message.size ());
       }
 
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
