@@ -21695,7 +21695,7 @@ identifier_without_dot
 
 			if (p)
 			  {
-			    assert (p->node_type = PT_NAME);
+			    assert (p->node_type == PT_NAME);
 
 			    const char *name = p->info.name.original;
 
@@ -21705,6 +21705,7 @@ identifier_without_dot
 				PT_ERRORf (this_parser, p,
 					   "Identifier name %s not allowed. It cannot contain DOT(.).",
 					   name);
+
 				p = NULL;
 			      }
 			  }

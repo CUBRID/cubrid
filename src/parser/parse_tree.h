@@ -2536,7 +2536,6 @@ struct pt_name_info
 {
   UINTPTR spec_id;		/* unique identifier for entity specs */
   const char *original;		/* the string of the original name */
-  const char *thin;		/* thine_name does not include owner_name in original_name. */
   const char *resolved;		/* the string of the resolved name */
   DB_OBJECT *db_object;		/* the object, if this is a class or instance */
   int db_object_chn;

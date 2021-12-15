@@ -10388,7 +10388,6 @@ pt_check_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 	      && (pt_str_compare (name = node->info.method_call.method_name->info.name.original, "change_serial_owner", CASE_INSENSITIVE) == 0))
 	    {
 	      on_call_target_node->info.name.original = pt_append_string (parser, NULL, "_db_serial");
-	      on_call_target_node->info.name.thin = on_call_target_node->info.name.original;
 	    }
 	}
 

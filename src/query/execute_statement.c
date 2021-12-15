@@ -1236,7 +1236,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, MOP serial_class, const cha
 
   serial_obj = db_find_unique (serial_class, SERIAL_ATTR_FULL_NAME, &value);
 
-  if (serial_obj == NULL)
+  if (serial_obj == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
     {
       other_name = do_get_serial_name_from_db_serial (serial_lower_name);
 
@@ -1328,9 +1328,10 @@ do_get_serial_name_from_db_serial (const char *name)
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
 
-  if (error != NO_ERROR)
+  if (error < NO_ERROR)
     {
       /* To Do: Exception handling */
+      goto end;
     }
 
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)

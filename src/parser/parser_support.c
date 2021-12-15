@@ -9983,14 +9983,13 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
     {
       class_simple_name = name->info.name.original;
     }
-  name->info.name.thin = class_simple_name;
 
   /* 
-   *  In the existing code, user_name is stored in name->info.name.resolved.
-   *  To manage objects by user, it has been changed to store "user_name.object_name" in name->info.name.original.
-   *  Then, duplicate user_name is stored in name->info.name.original and name->info.name.resolved.
-   *  When PT_NAME is output as name->info.name.resolved + name->info.name.original, user_name is output as duplicate,
-   *  so user_name is changed not to be stored in name->info.name.resolved. 
+   * In the existing code, user_name is stored in name->info.name.resolved.
+   * To manage objects by user, it has been changed to store "user_name.object_name" in name->info.name.original.
+   * Then, duplicate user_name is stored in name->info.name.original and name->info.name.resolved.
+   * When PT_NAME is output as name->info.name.resolved + name->info.name.original, user_name is output as duplicate,
+   * so user_name is changed not to be stored in name->info.name.resolved. 
    */
   if (user && user->node_type == PT_NAME && user->info.name.original && user->info.name.original[0] != '\0')
     {
@@ -10018,26 +10017,27 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
       user_name = current_user_name;
     }
 
-  /*  In the system class, class_full_name does not include user_name.
-   *  So, the value stored in info.name.original is different for each case below.
+  /* In the system class, class_full_name does not include user_name.
+   * So, the value stored in info.name.original is different for each case below.
    *
-   *  1. common class name &&             NULL -> current_user_name.common_class_name
-   *  2. common class name && common user name ->  common_user_name.common_class_name
-   *  3. common class name &&    dba user name ->     dba_user_name.common_class_name
-   *  4. system class name &&             NULL ->                   system_class_name
-   *  5. system class name && common user name ->  common_user_name.system_class_name
-   *  6. system class name &&    dba user name ->                   system_class_name
+   * 1. common class name &&             NULL -> current_user_name.common_class_name
+   * 2. common class name && common user name ->  common_user_name.common_class_name
+   * 3. common class name &&    dba user name ->     dba_user_name.common_class_name
+   * 4. system class name &&             NULL ->                   system_class_name
+   * 5. system class name && common user name ->  common_user_name.system_class_name
+   * 6. system class name &&    dba user name ->                   system_class_name
    * 
-   *  In case 5, If it is a system class name, the given user_name is ignored.
+   * In case 5, The system_class_name is correct,
+   * but raises an error to inform the user of an incorrect customization.
    */
 
   /*
-   *  "dot == NULL" comparison is needed below.
+   * "dot == NULL" comparison is needed below.
    *
-   *  e.g. name->info.name.original == "other_user_name.object_name"
+   * e.g. name->info.name.original == "other_user_name.object_name"
    * 
-   *  other_user_name must not be changed to current_user_name.
-   *  So, the code below is executed only when 'dot == NULL'.
+   * other_user_name must not be changed to current_user_name.
+   * So, the code below is executed only when 'dot == NULL'.
    */
   if (dot == NULL)
     {
