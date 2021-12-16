@@ -73,6 +73,12 @@ extern int do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser,
 extern int do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement);
+
+extern int get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * values);
 
 typedef int (PT_DO_FUNC) (PARSER_CONTEXT *, PT_NODE *);
 

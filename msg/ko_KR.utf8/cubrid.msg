@@ -1381,25 +1381,25 @@ $ LOADDB
 1307 dblink - 서버 객체에 대한 소유권이 없습니다.
 1308 dblink - 지원하지 않는 유형입니다.
 1309 dblink - 유효하지 않은 바인드 파라메터입니다.
-1300 dblink - 암호화할 비밀번호의 길이가 최댓값을 넘어섰습니다.
+1310 dblink - 암호화할 비밀번호의 길이가 최댓값을 넘어섰습니다.
 1311 dblink - 암호화된 비밀번호의 길이가 올바르지 않습니다.
 1312 dblink - 암호화된 비밀번호의 체크섬이 일치하지 않습니다.
 1313 dblink - 암호 문자열의 형식이 올바르지 않습니다.
 1314 dblink - 암호화된 비밀번호를 복호화하는 데 실패했습니다.. error=%1$d".
 1315 dblink - 비밀번호를 암호화하는 데 실패했습니다. error=%1$d".
 1316 dblink - 이름이 "%1$s"인 서버가 여러 개 있습니다.
-1317 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다.
+1317 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다. 
 
 1318 [%1$5.5s] %2$s (%3$d)
-1319 Parameter binding error.
-1320 Invalid ODBC handle.
-1321 Type conversion error.
-1322 Not supported data type.
-1323 Invalid Statement handle.
-1324 Invalid db connection handle.
-1325 Both dsn name and link server connection url do not exist.
-1326 Invalid numeric value.
-1327 Invalid precision value of "%1$s" column.
+1319 매개 변수 바인딩 오류.
+1320 잘못된 ODBC Handle 입니다.
+1321 데이터 형식 변환 오류.
+1322 지원되지 않는 Data Type 입니다.
+1323 잘못된 Statement Handle 입니다.
+1324 Connection Handle이 잘못되었습니다.
+1325 Connection URL이 존재하지 않습니다.
+1326 유효하지 않은 Numeric 값입니다.
+1327 "%1$s" 열의 정밀도 값이 잘못되었습니다.
 
 1328 Error reserved for dblink development.
 1329 Error reserved for dblink development.
