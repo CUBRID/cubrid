@@ -7468,6 +7468,18 @@ try_again:
   /* Output record type. */
   context->record_type = slot_p->record_type;
 
+#if defined (SERVER_MODE)
+  if (context->record_type == REC_BIGONE || context->record_type == REC_RELOCATION)
+    {
+      ret = pgbuf_check_page_ahead_of_replication (thread_p, context->home_page_watcher.pgptr);
+
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+#endif
+
   if (context->fwd_page_watcher.pgptr != NULL && slot_p->record_type != REC_RELOCATION
       && slot_p->record_type != REC_BIGONE)
     {
@@ -7514,7 +7526,33 @@ try_again:
 
 	      goto error;
 	    }
+#if defined (SERVER_MODE)
+	  ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
+
+	  if (ret != NO_ERROR)
+	    {
+	      goto error;
+	    }
+#endif
 	  return S_SUCCESS;
+	}
+      else if (ret == ER_PB_BAD_PAGEID)
+	{
+	  VPID *vpid = pgbuf_get_vpid_ptr (context->fwd_page_watcher.pgptr);
+	  if (vpid == NULL)
+	    {
+	      goto error;
+	    }
+
+	  PAGE_PTR fixed_page =
+	    pgbuf_fix (thread_p, vpid, OLD_PAGE_DEALLOCATED, context->latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+	  if (fixed_page == NULL)
+	    {
+	      goto error;
+	    }
+
+	  ret = ER_PAGE_AHEAD_OF_REPLICATION;
+	  goto error;
 	}
 
       goto error;
@@ -7545,7 +7583,33 @@ try_again:
 	      assert (false);
 	      goto error;
 	    }
+#if defined (SERVER_MODE)
+	  ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
+
+	  if (ret != NO_ERROR)
+	    {
+	      goto error;
+	    }
+#endif
 	  return S_SUCCESS;
+	}
+      else if (ret == ER_PB_BAD_PAGEID)
+	{
+	  VPID *vpid = pgbuf_get_vpid_ptr (context->fwd_page_watcher.pgptr);
+	  if (vpid == NULL)
+	    {
+	      goto error;
+	    }
+
+	  PAGE_PTR fixed_page =
+	    pgbuf_fix (thread_p, vpid, OLD_PAGE_DEALLOCATED, context->latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+	  if (fixed_page == NULL)
+	    {
+	      goto error;
+	    }
+
+	  ret = ER_PAGE_AHEAD_OF_REPLICATION;
+	  goto error;
 	}
 
       goto error;
