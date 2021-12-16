@@ -85,7 +85,7 @@ passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_paylo
 }
 
 void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
-    log_lsa &most_recent_transaction_table_snapshot_lsa)
+    log_lsa &most_recent_trantable_snapshot_lsa)
 {
   assert (m_log_boot_info.empty ());
 
@@ -121,7 +121,7 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   message_buf += sizeof (log_lsa);
 
   // most recent trantable snapshot lsa
-  std::memcpy (reinterpret_cast<char *> (&most_recent_transaction_table_snapshot_lsa),
+  std::memcpy (reinterpret_cast<char *> (&most_recent_trantable_snapshot_lsa),
 	       message_buf, sizeof (log_lsa));
   message_buf += sizeof (log_lsa);
 

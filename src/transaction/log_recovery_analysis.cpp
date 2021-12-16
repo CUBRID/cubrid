@@ -18,34 +18,21 @@
 
 #include "log_recovery_analysis.hpp"
 
-#include "disk_manager.h"
-#include "error_manager.h"
-#include "file_io.h"
-#include "log_2pc.h"
 #include "log_append.hpp"
-#include "log_checkpoint_info.hpp"
-#include "log_comm.h"
-#include "log_common_impl.h"
-#include "log_lsa.hpp"
 #include "log_impl.h"
 #include "log_manager.h"
-#include "log_meta.hpp"
+#include "log_reader.hpp"
 #include "log_record.hpp"
 #include "log_recovery.h"
 #include "log_recovery_context.hpp"
 #include "log_storage.hpp"
+#include "log_system_tran.hpp"
 #include "log_volids.hpp"
-#include "memory_alloc.h"
 #include "message_catalog.h"
 #include "msgcat_set_log.hpp"
-#include "mvcc_table.hpp"
-#include "porting.h"
 #include "server_type.hpp"
-#include "storage_common.h"
 #include "system_parameter.h"
 #include "util_func.h"
-
-#include <cstring>
 
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_context &context,
     LOG_PAGE *log_page_p, const LOG_RECORD_HEADER *log_rec,
@@ -1600,11 +1587,13 @@ static int
 log_rv_analysis_log_end (int tran_id, const LOG_LSA *log_lsa, const LOG_PAGE *log_page_p)
 {
   assert (log_page_p != nullptr);
-  if (is_tran_server_with_remote_storage () || !logpb_is_page_in_archive (log_lsa->pageid))
+  if ((is_tran_server_with_remote_storage () && is_active_transaction_server ())
+      || (!is_tran_server_with_remote_storage () && !logpb_is_page_in_archive (log_lsa->pageid)))
     {
-      /*
-       * Reset the log header for the recovery undo operation
-       */
+      /* Reset the log header for the recovery undo operation.
+       * Do not execute routine on the passive transaction server because LSA's are initialized
+       * by copying a consistent snapshot of them from the page server. */
+
       LOG_RESET_APPEND_LSA (log_lsa);
 
       // log page pointer passed here is that of the last log page - the append page
@@ -2213,4 +2202,77 @@ corruption_checker::check_log_record (const log_lsa &record_lsa, const log_rec_h
 	    }
 	}
     }
+}
+
+/* log_recovery_analysis_from_transaction_table_snapshot - perform recovery for a passive transaction server
+ *                  starting from a [recent] transaction table snapshot relayed via log and page server from
+ *                  the active transaction server
+ *
+ * most_recent_trantable_snapshot_lsa (in): the lsa where a record containing, as payload, the packed contents
+ *                                of a recent transaction table snapshot; starting from that snapshot, analyze the log
+ *                                to construct an actual starting transaction table
+ */
+void
+log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
+    log_lsa most_recent_trantable_snapshot_lsa)
+{
+  assert (is_passive_transaction_server ());
+  assert (!most_recent_trantable_snapshot_lsa.is_null ());
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  // analysis changes the transaction index and leaves it in an indefinite state
+  // therefore reset to system transaction index afterwards;
+  // first make sure we're executing on the system thread
+  const int sys_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (sys_tran_index == LOG_SYSTEM_TRAN_INDEX);
+
+  log_reader lr (LOG_CS_SAFE_READER);
+  int log_page_read_err = lr.set_lsa_and_fetch_page (most_recent_trantable_snapshot_lsa);
+  if (log_page_read_err != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_initialize_passive_tran_server: error reading transaction table snapshot log page");
+      return;
+    }
+
+  // always copy because the next add might advance to the next log page
+  const log_rec_header log_rec_hdr = lr.reinterpret_copy_and_add_align<log_rec_header> ();
+  assert (log_rec_hdr.type == LOG_TRANTABLE_SNAPSHOT);
+
+  lr.advance_when_does_not_fit (sizeof (log_rec_trantable_snapshot));
+  const log_rec_trantable_snapshot log_rec = lr.reinterpret_copy_and_add_align<log_rec_trantable_snapshot> ();
+  std::unique_ptr<char []> snapshot_data_buf { new char[log_rec.length] };
+  lr.copy_from_log (snapshot_data_buf.get (), log_rec.length);
+
+  cubpacking::unpacker unpacker;
+  unpacker.set_buffer (snapshot_data_buf.get (), log_rec.length);
+
+  cublog::checkpoint_info chkpt_info;
+  chkpt_info.unpack (unpacker);
+
+  log_lsa start_redo_lsa;
+  chkpt_info.recovery_analysis (thread_p, start_redo_lsa);
+
+  log_recovery_context log_rcv_context;
+  log_rcv_context.init_for_recovery (log_rec.snapshot_lsa);
+  // no recovery is done, start redo lsa may remain invalid
+  log_rcv_context.set_start_redo_lsa (NULL_LSA);
+  log_rcv_context.set_end_redo_lsa (NULL_LSA);
+
+  // passive transaction server needs to analyze up to the point its replication will pick-up things;
+  // that means until the append_lsa; incidentally, end of log record should be found at the current append_lsa, so
+  // analysis should stop there
+
+  INT64 dummy_redo_log_record_count = 0LL;
+  log_recovery_analysis (thread_p, &dummy_redo_log_record_count, log_rcv_context);
+  assert (!log_rcv_context.is_restore_incomplete ());
+
+  // on passive transaction server, the recovery analysis has only the role of bringing the
+  // transaction table up to date because it is relevant in read-only results
+  log_system_tdes::rv_delete_all_tdes_if ([] (const log_tdes &)
+  {
+    return true;
+  });
+
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 }

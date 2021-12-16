@@ -604,7 +604,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 		{
 		  entry->port_id = ntohl (buffer);
 		  entry->server_type = type;
-		  int length = (int) strlen (server_name.c_str ()) + 1;
+		  unsigned length = strlen (server_name.c_str ()) + 1;
 		  /* read server version_string, env_var, pid */
 		  if (length < server_name.length ())
 		    {
