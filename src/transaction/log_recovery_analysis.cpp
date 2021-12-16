@@ -2269,9 +2269,10 @@ log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
 
   // on passive transaction server, the recovery analysis has only the role of bringing the
   // transaction table up to date because it is relevant in read-only results
-  // *INDENT-OFF*
-  log_system_tdes::discard_recovery_system_transactions ();
-  // *INDENT-ON*
+  log_system_tdes::rv_delete_all_tdes_if ([] (const log_tdes &)
+  {
+    return true;
+  });
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 }
