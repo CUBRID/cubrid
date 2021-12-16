@@ -18,34 +18,21 @@
 
 #include "log_recovery_analysis.hpp"
 
-#include "disk_manager.h"
-#include "error_manager.h"
-#include "file_io.h"
-#include "log_2pc.h"
 #include "log_append.hpp"
-#include "log_checkpoint_info.hpp"
-#include "log_comm.h"
-#include "log_common_impl.h"
-#include "log_lsa.hpp"
 #include "log_impl.h"
 #include "log_manager.h"
-#include "log_meta.hpp"
+#include "log_reader.hpp"
 #include "log_record.hpp"
 #include "log_recovery.h"
 #include "log_recovery_context.hpp"
 #include "log_storage.hpp"
+#include "log_system_tran.hpp"
 #include "log_volids.hpp"
-#include "memory_alloc.h"
 #include "message_catalog.h"
 #include "msgcat_set_log.hpp"
-#include "mvcc_table.hpp"
-#include "porting.h"
 #include "server_type.hpp"
-#include "storage_common.h"
 #include "system_parameter.h"
 #include "util_func.h"
-
-#include <cstring>
 
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_context &context,
     LOG_PAGE *log_page_p, const LOG_RECORD_HEADER *log_rec,
@@ -2279,6 +2266,12 @@ log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
   INT64 dummy_redo_log_record_count = 0LL;
   log_recovery_analysis (thread_p, &dummy_redo_log_record_count, log_rcv_context);
   assert (!log_rcv_context.is_restore_incomplete ());
+
+  // on passive transaction server, the recovery analysis has only the role of bringing the
+  // transaction table up to date because it is relevant in read-only results
+  // *INDENT-OFF*
+  log_system_tdes::discard_recovery_system_transactions ();
+  // *INDENT-ON*
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 }

@@ -48,6 +48,8 @@ class log_system_tdes
     static void init_system_transations ();
     static void destroy_system_transactions ();
 
+    static void discard_recovery_system_transactions ();
+
     using map_func = std::function<void (log_tdes &)>;
     using rv_delete_if_func = std::function<bool (const log_tdes &)>;
 
@@ -58,8 +60,10 @@ class log_system_tdes
     static void rv_delete_all_tdes_if (const rv_delete_if_func &func);
     static void rv_delete_tdes (TRANID trid);
     static void rv_simulate_system_tdes (TRANID trid);
-    static void rv_end_simulation ();
     static void rv_final ();
+
+  private:
+    static void rv_end_simulation ();
 
   private:
     log_tdes *m_tdes;

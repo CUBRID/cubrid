@@ -23,6 +23,7 @@
 #include "log_system_tran.hpp"
 
 #include "log_impl.h"
+#include "server_type.hpp"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 
@@ -211,6 +212,39 @@ log_system_tdes::destroy_system_transactions ()
       delete tdes;
     }
   assert (systb_System_tdes.empty ());
+}
+
+void
+log_system_tdes::discard_recovery_system_transactions ()
+{
+  assert (is_passive_transaction_server ());
+  assert (!LOG_ISRESTARTED ());
+  // no lock needed, still in recovery
+
+  auto tdes_not_in_free_list_ftor = [] (const log_tdes *tdes)
+  {
+    for (const auto free_tdes_ptr : systb_Free_tdes_list)
+      {
+	if (free_tdes_ptr == tdes)
+	  {
+	    return false;
+	  }
+      }
+    return true;
+  };
+
+  for (auto it = systb_System_tdes.begin (); it != systb_System_tdes.end ();)
+    {
+      if (tdes_not_in_free_list_ftor (it->second))
+	{
+	  delete it->second;
+	  it = systb_System_tdes.erase (it);
+	}
+      else
+	{
+	  assert (false);
+	}
+    }
 }
 
 log_tdes *
