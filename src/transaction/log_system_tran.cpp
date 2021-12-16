@@ -221,7 +221,6 @@ log_system_tdes::discard_recovery_system_transactions ()
   assert (!LOG_ISRESTARTED ());
   // no lock needed, still in recovery
 
-  // sanity check; recovery should not re-use system transactions
   auto tdes_not_in_free_list_ftor = [] (const log_tdes *tdes)
   {
     for (const auto free_tdes_ptr : systb_Free_tdes_list)
