@@ -67,7 +67,7 @@ class page_server
 	std::string get_channel_id ();
 
       private:
-	void on_log_page_read_result (const LOG_PAGE *log_page, int error_code);
+	void on_log_page_read_result (tran_server_conn_t::sequenced_payload &&sp, const LOG_PAGE *log_page, int error_code);
 	void on_data_page_read_result (const FILEIO_PAGE *page_ptr, int error_code);
 	void on_log_boot_info_result (tran_server_conn_t::sequenced_payload &&sp, std::string &&message);
 

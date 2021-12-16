@@ -103,10 +103,10 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
 }
 
 void
-page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_ip)
+page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
   LOG_PAGEID pageid;
-  std::string message = a_ip.pull_payload ();
+  std::string message = a_sp.pull_payload ();
 
   assert (message.size () == sizeof (pageid));
   std::memcpy (&pageid, message.c_str (), sizeof (pageid));
@@ -116,8 +116,12 @@ page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::seq
       _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
     }
 
-  m_ps.get_page_fetcher ().fetch_log_page (pageid, std::bind (&page_server::connection_handler::on_log_page_read_result,
-      this, std::placeholders::_1, std::placeholders::_2));
+  auto callback_func = [this, &a_sp] (const LOG_PAGE *log_page, int error_code)
+  {
+    on_log_page_read_result (std::move (a_sp), log_page, error_code);
+  };
+
+  m_ps.get_page_fetcher ().fetch_log_page (pageid, callback_func);
 }
 
 void
@@ -194,20 +198,20 @@ page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::
 }
 
 void
-page_server::connection_handler::on_log_page_read_result (const LOG_PAGE *log_page, int error_code)
+page_server::connection_handler::on_log_page_read_result (tran_server_conn_t::sequenced_payload &&sp,
+    const LOG_PAGE *log_page, int error_code)
 {
-  char buffer[sizeof (int) + IO_MAX_PAGE_SIZE];
-  std::memcpy (buffer, &error_code, sizeof (error_code));
-  std::size_t buffer_size = sizeof (error_code);
+  std::string message;
+
+  message.append (reinterpret_cast<const char *> (&error_code), sizeof (error_code));
 
   if (error_code == NO_ERROR)
     {
-      std::memcpy (buffer + sizeof (error_code), log_page, db_log_page_size ());
-      buffer_size += db_log_page_size ();
+      message.append (reinterpret_cast<const char *> (log_page), db_log_page_size ());
     }
 
-  std::string message (buffer, buffer_size);
-  m_conn->push (page_to_tran_request::SEND_LOG_PAGE, std::move (message));
+  sp.push_payload (std::move (message));
+  m_conn->respond (std::move (sp));
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
