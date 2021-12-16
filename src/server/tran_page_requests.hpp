@@ -42,9 +42,6 @@ enum class page_to_tran_request
   // Reserve for responses
   RESPOND,
 
-  // Common
-  SEND_BOOT_INFO,
-
   // Active only
   SEND_SAVED_LSA,
   SEND_LOG_PAGE,

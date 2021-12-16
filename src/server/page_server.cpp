@@ -177,7 +177,7 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
 }
 
 void
-page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &)
+page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_sp)
 {
   DKNVOLS nvols_perm = disk_get_perm_volume_count ();
 
@@ -185,7 +185,8 @@ page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::
   response_message.reserve (sizeof (nvols_perm));
   response_message.append (reinterpret_cast<const char *> (&nvols_perm), sizeof (nvols_perm));
 
-  m_conn->push (page_to_tran_request::SEND_BOOT_INFO, std::move (response_message));
+  a_sp.push_payload (std::move (response_message));
+  m_conn->respond (std::move (a_sp));
 }
 
 void
