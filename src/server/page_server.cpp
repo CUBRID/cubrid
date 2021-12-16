@@ -138,12 +138,14 @@ page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::se
 }
 
 void
-page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &)
+page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
   // empty request message
 
-  auto callback_func =
-	  std::bind (&connection_handler::on_log_boot_info_result, this, std::placeholders::_1);
+  auto callback_func = [this, &a_sp] (std::string &&message)
+  {
+    on_log_boot_info_result (std::move (a_sp), std::move (message));
+  };
 
   // the underlying infrastructure will add this functor as a sink for log prior info packing and
   // sending that log prior info down the line to the connected passive transaction server
@@ -154,12 +156,14 @@ page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t
 }
 
 void
-page_server::connection_handler::on_log_boot_info_result (std::string &&message)
+page_server::connection_handler::on_log_boot_info_result (tran_server_conn_t::sequenced_payload &&sp,
+    std::string &&message)
 {
   assert (m_conn != nullptr);
   assert (message.size () > 0);
 
-  m_conn->push (page_to_tran_request::SEND_LOG_BOOT_INFO, std::move (message));
+  sp.push_payload (std::move (message));
+  m_conn->respond (std::move (sp));
 }
 
 void
