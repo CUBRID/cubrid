@@ -210,7 +210,6 @@ private:
 static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
 
 static void css_setup_server_loop (void);
-static int css_check_conn (CSS_CONN_ENTRY * p);
 static void css_set_shutdown_timeout (int timeout);
 static int css_process_master_request (SOCKET master_fd);
 static void css_process_shutdown_request (SOCKET master_fd);
@@ -349,7 +348,7 @@ css_setup_server_loop (void)
  *   return:
  *   p(in):
  */
-static int
+int
 css_check_conn (CSS_CONN_ENTRY * p)
 {
 #if defined(WINDOWS)

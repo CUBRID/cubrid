@@ -912,6 +912,9 @@ db_restart (const char *program, int print_version, const char *volume)
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
+
+	  // Even if dblink_get_cipher_master_key() fails, it is executed normally.
+	  dblink_get_cipher_master_key ();
 	}
     }
 

@@ -895,7 +895,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 		{
 		  logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
 
-		  while (!tde_Cipher.is_loaded)
+		  while (!tde_is_loaded ())
 		    {
 		      error = logwr_load_tde ();
 		      if (error != NO_ERROR)
@@ -960,7 +960,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	    {
 	      logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
 
-	      while (!tde_Cipher.is_loaded)
+	      while (!tde_is_loaded ())
 		{
 		  error = logwr_load_tde ();
 		  if (error != NO_ERROR)

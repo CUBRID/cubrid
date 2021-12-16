@@ -1,33 +1,21 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
- * Copyright (c) 2016 CUBRID Corporation.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- * - Redistributions of source code must retain the above copyright notice,
- *   this list of conditions and the following disclaimer.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- * - Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors
- *   may be used to endorse or promote products derived from this software without
- *   specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
- * OF SUCH DAMAGE.
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
+
 
 /*
  * cas_cci.h -
@@ -95,6 +83,9 @@
 
 #define CCI_GET_RESULT_INFO_IS_SHARED(RES_INFO, INDEX)	\
 		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].is_shared)
+
+#define CCI_GET_RESULT_INFO_CHARSET(RES_INFO, INDEX)	\
+		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].charset)
 
 #define CCI_IS_SET_TYPE(TYPE)	\
 	(((((TYPE) & CCI_CODE_COLLECTION) == CCI_CODE_SET) || ((TYPE) == CCI_U_TYPE_SET)) ? 1 : 0)
@@ -545,6 +536,8 @@ typedef enum
   CUBRID_STMT_USE,
   CUBRID_STMT_REMOVE_TRIGGER,
   CUBRID_STMT_RENAME_TRIGGER,
+  CUBRID_STMT_RENAME_SERVER,
+  CUBRID_STMT_ALTER_SERVER,
   CUBRID_STMT_ON_LDB,
   CUBRID_STMT_GET_LDB,
   CUBRID_STMT_SET_LDB,
@@ -574,13 +567,12 @@ typedef enum
 
   CUBRID_MAX_STMT_TYPE
 } T_CCI_CUBRID_STMT;
-
+#endif
 typedef int T_CCI_CONN;
 typedef int T_CCI_REQ;
 typedef struct PROPERTIES_T T_CCI_PROPERTIES;
 typedef struct DATASOURCE_T T_CCI_DATASOURCE;
 
-#endif
 #endif
 #define CUBRID_STMT_CALL_SP	0x7e
 #define CUBRID_STMT_UNKNOWN	0x7f
@@ -625,6 +617,8 @@ typedef struct DATASOURCE_T T_CCI_DATASOURCE;
 #define SQLX_CMD_USE   CUBRID_STMT_USE
 #define SQLX_CMD_REMOVE_TRIGGER   CUBRID_STMT_REMOVE_TRIGGER
 #define SQLX_CMD_RENMAE_TRIGGER   CUBRID_STMT_RENAME_TRIGGER
+#define SQLX_CMD_RENMAE_SERVER   CUBRID_STMT_RENAME_SERVER
+#define SQLX_CMD_ALTER_SERVER    CUBRID_STMT_ALTER_SERVER
 #define SQLX_CMD_ON_LDB   CUBRID_STMT_ON_LDB
 #define SQLX_CMD_GET_LDB   CUBRID_STMT_GET_LDB
 #define SQLX_CMD_SET_LDB   CUBRID_STMT_SET_LDB
@@ -679,7 +673,21 @@ typedef struct
   char is_reverse_index;
   char is_reverse_unique;
   char is_shared;
+  int charset;
 } T_CCI_COL_INFO;
+
+typedef enum
+{
+  CCI_CHARSET_ERROR = -2,
+  CCI_CHARSET_NONE = -1,
+  CCI_CHARSET_ASCII,		/* US English charset, ASCII encoding */
+  CCI_CHARSET_RAW_BITS,		/* Uninterpreted bits, Raw encoding */
+  CCI_CHARSET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
+  CCI_CHARSET_ISO88591,		/* Latin 1 charset, ISO 8859 encoding */
+  CCI_CHARSET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
+  CCI_CHARSET_UTF8,		/* UNICODE charset, UTF-8 encoding */
+  CCI_CHARSET_LAST
+} T_CCI_CHARSET_TYPE;
 
 typedef enum
 {

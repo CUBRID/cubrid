@@ -287,6 +287,8 @@ extern int db_Disable_modifications;
     } \
   while (0)
 
+#define cdc_log(...) if (cdc_Logging) _er_log_debug (ARG_FILE_LINE, "CDC: " __VA_ARGS__)
+
 #define MAX_CDC_LOGINFO_QUEUE_ENTRY  2048
 #define MAX_CDC_LOGINFO_QUEUE_SIZE   32 * 1024 * 1024	/*32 MB */
 #define MAX_CDC_TRAN_USER_TABLE       4000
@@ -813,12 +815,18 @@ typedef enum cdc_producer_state
   CDC_PRODUCER_STATE_DEAD
 } CDC_PRODUCER_STATE;
 
+typedef enum cdc_consumer_request
+{
+  CDC_REQUEST_CONSUMER_TO_WAIT,
+  CDC_REQUEST_CONSUMER_TO_RUN,
+  CDC_REQUEST_CONSUMER_NONE
+} CDC_CONSUMER_REQUEST;
+
 typedef enum cdc_producer_request
 {
-  CDC_REQUEST_PRODUCER_IS_DEAD,
-  CDC_REQUEST_PRODUCER_IS_WAITED,
-  CDC_REQUEST_CONSUMER_TO_WAIT,
-  CDC_REQUEST_NONE
+  CDC_REQUEST_PRODUCER_TO_WAIT,
+  CDC_REQUEST_PRODUCER_TO_BE_DEAD,
+  CDC_REQUEST_PRODUCER_NONE
 } CDC_PRODUCER_REQUEST;
 
 typedef struct cdc_loginfo_entry
@@ -847,7 +855,8 @@ typedef struct cdc_producer
   int num_extraction_class;
   UINT64 *extraction_classoids;
 
-  CDC_PRODUCER_STATE state;
+  volatile CDC_PRODUCER_STATE state;
+  volatile CDC_PRODUCER_REQUEST request;
 
   int produced_queue_size;
 
@@ -874,7 +883,7 @@ typedef struct cdc_consumer
 
   int consumed_queue_size;
 
-  CDC_PRODUCER_REQUEST request;
+  volatile CDC_CONSUMER_REQUEST request;
 
   LOG_LSA start_lsa;		/* first LSA of log info that should be sent */
   LOG_LSA next_lsa;		/* next LSA to be sent to client */
@@ -883,6 +892,8 @@ typedef struct cdc_consumer
 
 typedef struct cdc_global
 {
+  css_conn_entry conn;
+
   CDC_PRODUCER producer;
   CDC_CONSUMER consumer;
 
@@ -892,12 +903,9 @@ typedef struct cdc_global
 
   LOG_LSA first_loginfo_queue_lsa;
   LOG_LSA last_loginfo_queue_lsa;
-  uint64_t loginfo_queue_size;
 
   bool is_queue_reinitialized;
 
-  pthread_mutex_t queue_consume_lock;
-  pthread_cond_t queue_consume_cond;
 } CDC_GLOBAL;
 
 /* will be moved to new file for CDC */
@@ -928,6 +936,9 @@ typedef enum cdc_dml_type
   CDC_INSERT = 0,
   CDC_UPDATE,
   CDC_DELETE,
+  CDC_TRIGGER_INSERT,
+  CDC_TRIGGER_UPDATE,
+  CDC_TRIGGER_DELETE
 } CDC_DML_TYPE;
 
 /*Data structure for CDC interface end */
@@ -964,6 +975,7 @@ extern char log_Name_metainfo[];
 
 /*CDC global variables */
 extern CDC_GLOBAL cdc_Gl;
+extern bool cdc_Logging;
 
 /* logging */
 #if defined (SA_MODE)

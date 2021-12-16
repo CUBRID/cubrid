@@ -185,7 +185,7 @@ extern int log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_
 extern int log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recdes);
 
 extern int log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name, int cached_num,
-					   OID * classoid, OID * serial_oid);
+					   OID * classoid, const OID * serial_oid);
 /*
  * FOR DEBUGGING
  */
@@ -251,6 +251,8 @@ extern void cdc_daemons_init ();
 extern void cdc_daemons_destroy ();
 #endif
 
+extern LOG_PAGEID cdc_min_log_pageid_to_keep ();
+
 /*cdc functions*/
 extern int cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * input_time, LOG_LSA * start_lsa);
 extern int cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user,
@@ -260,9 +262,11 @@ extern int cdc_initialize ();
 extern int cdc_finalize ();
 extern int cdc_free_extraction_filter ();
 extern int cdc_cleanup ();
+extern void cdc_cleanup_consumer ();
 extern int cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa);
 extern int cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info);
 
+extern int cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern int cdc_set_extraction_lsa (LOG_LSA * lsa);
 extern void cdc_reinitialize_queue (LOG_LSA * start_lsa);
 
