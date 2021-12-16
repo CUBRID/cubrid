@@ -21480,6 +21480,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   int error_code = NO_ERROR;
 
   LOG_TDES *tdes = NULL;
+  bool atomic_replication_flag = false;
 
   /* check input */
   assert (context != NULL);
@@ -21487,6 +21488,17 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   assert (context->type == HEAP_OPERATION_DELETE);
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
+
+  // *INDENT-OFF*
+  // To ensure that, if started, the atomic replication area will also end.
+  scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, atomic_replication_flag]()
+  {
+    if (atomic_replication_flag == true)
+     {
+        log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+     }
+  });
+  // *INDENT-ON*
 
   if (context->do_supplemental_log)
     {
@@ -21647,6 +21659,8 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  /*
 	   * Relocation necessary
 	   */
+	  log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+	  atomic_replication_flag = true;
 	  LOG_DATA_ADDR rec_address;
 
 	  /* insertion of built record */
