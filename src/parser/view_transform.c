@@ -183,8 +183,8 @@ static PT_UPDATABILITY mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * st
 					   int *max);
 static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
 						   PT_NODE * class_);
-static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
-						   PT_NODE * derived_table);
+static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
+						      PT_NODE * query_spec, PT_NODE * derived_table);
 static PT_NODE *mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 						    int *continue_walk);
 static PT_NODE *mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
@@ -311,8 +311,9 @@ extern PT_NODE *mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, P
 				 PT_NODE * class_group_by_part, PT_NODE * class_having_part);
 
 static PT_NODE *mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_table,
-				 PT_NODE * corresponding_spec, PT_NODE * class_where_part, PT_NODE * class_check_part,
-				 PT_NODE * class_group_by_part, PT_NODE * class_having_part);
+				       PT_NODE * corresponding_spec, PT_NODE * class_where_part,
+				       PT_NODE * class_check_part, PT_NODE * class_group_by_part,
+				       PT_NODE * class_having_part);
 
 static PT_NODE *mq_fix_derived_in_union (PARSER_CONTEXT * parser, PT_NODE * statement, UINTPTR spec_id);
 
@@ -1320,7 +1321,8 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
  *   derived_spec(in): class name of class that will be expanded
  */
 static PT_NODE *
-mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * subquery, PT_NODE * derived_spec)
+mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * subquery,
+				      PT_NODE * derived_spec)
 {
   PT_RESOLVE_METHOD_NAME_INFO info;
   PT_NODE *query_spec_from, *query_spec_columns;
@@ -1405,8 +1407,8 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
     {
       statement =
 	mq_inline_view_lambda (parser, statement, derived_spec, query_spec_from, subquery->info.query.q.select.where,
-			 subquery->info.query.q.select.check_where, subquery->info.query.q.select.group_by,
-			 subquery->info.query.q.select.having);
+			       subquery->info.query.q.select.check_where, subquery->info.query.q.select.group_by,
+			       subquery->info.query.q.select.having);
       if (PT_SELECT_INFO_IS_FLAGED (subquery, PT_SELECT_INFO_HAS_AGG))
 	{
 	  /* mark as agg select */
@@ -1661,7 +1663,8 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
  *
  */
 static PT_NODE *
-mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec, PT_NODE * class_, PT_NODE * derived_spec)
+mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec, PT_NODE * class_,
+		    PT_NODE * derived_spec)
 {
   PT_NODE *order, *val;
   PT_NODE *attributes, *attr, *prev_order;
@@ -2636,12 +2639,21 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 
       if (PT_SPEC_IS_DERIVED (class_spec))
 	{
-	  /* in-line view is merged into main query if it is possible */
 	  subquery = class_spec->info.spec.derived_table;
-	  tree = mq_substitute_inline_view_in_statement (parser, tree, subquery, class_spec, order_by);
-	  if (tree == NULL)
+
+	  if (PT_IS_QUERY (subquery))
 	    {
-	      return NULL;
+	      /* in-line view is merged into main query if it is possible */
+	      tree = mq_substitute_inline_view_in_statement (parser, tree, subquery, class_spec, order_by);
+	      if (tree == NULL)
+		{
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      /* no translation per se, but need to fix up proxy objects */
+	      tree = mq_fix_derived_in_union (parser, tree, class_spec->info.spec.id);
 	    }
 
 	  /* check SELECT authorization rather than the authrization of opcode * */
@@ -9180,9 +9192,9 @@ exit_on_error:
  *             - the recursive result of this function on both arguments.
  */
 PT_NODE *
-mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_spec, PT_NODE * corresponding_spec,
-		 PT_NODE * class_where_part, PT_NODE * class_check_part, PT_NODE * class_group_by_part,
-		 PT_NODE * class_having_part)
+mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_spec,
+		       PT_NODE * corresponding_spec, PT_NODE * class_where_part, PT_NODE * class_check_part,
+		       PT_NODE * class_group_by_part, PT_NODE * class_having_part)
 {
   PT_NODE *spec;
   PT_NODE **specptr = NULL;
@@ -9196,7 +9208,7 @@ mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * d
   PT_NODE *crt_list = NULL, *attr_names = NULL, *attr_names_crt = NULL;
   bool build_att_names_list = false, for_update = false;
   PT_NODE **lhs, **rhs, *lhs_next, *rhs_next;
-  const char *newresolved = derived_spec->info.spec.range_var->info.name.original; /* 확인필요  class_->info.name.resolved; */
+  const char *newresolved = derived_spec->info.spec.range_var->info.name.original;	/* 확인필요  class_->info.name.resolved; */
 
   if (statement == NULL)
     {
