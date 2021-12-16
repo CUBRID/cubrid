@@ -51,6 +51,7 @@
 #include "object_representation.h"
 #include "dbi.h"
 #include "server_type_enum.hpp"
+#include "dbtype_def.h"
 #include "porting.h"
 
 #define CUBRID_LOG_WRITE_TRACELOG(msg, ...) \
@@ -579,7 +580,8 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
   //client should connect to Transaction server
   msg = css_build_message_for_server_connection (dbname, SERVER_TYPE_TRANSACTION);
   if (css_common_connect
-      (g_conn_entry, &rid, host, DATA_REQUEST, msg.c_str (), msg.length (), port, g_connection_timeout, true) == NULL)
+      (g_conn_entry, &rid, host, DATA_REQUEST, msg.c_str (), (int) msg.length (), port, g_connection_timeout,
+       true) == NULL)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
 				 "Failed to connect to the server. host (%s), dbname (%s), port (%d), timeout (%d sec)\n",

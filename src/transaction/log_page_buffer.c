@@ -6276,8 +6276,8 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   LOG_PAGEID cdc_first_pageid = NULL_PAGEID;
   int min_arv_required_for_cdc;
-  assert (!is_tran_server_with_remote_storage ());
 
+  assert (!is_tran_server_with_remote_storage ());
 
   if (log_max_archives == INT_MAX)
     {
@@ -6466,8 +6466,8 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 
   int min_arv_required_for_cdc;
   LOG_PAGEID cdc_first_pageid;
-  assert (!is_tran_server_with_remote_storage ());
 
+  assert (!is_tran_server_with_remote_storage ());
 
   if (!vacuum_is_safe_to_remove_archives ())
     {

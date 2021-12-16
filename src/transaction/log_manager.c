@@ -12807,7 +12807,7 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 
   for (int i = 0; i < rep->n_indexes; i++)
     {
-      index = rep->indexes + i;
+      index = rep->indexes + i;	//REVIEW : array? 
       if (index->type == BTREE_PRIMARY_KEY)
 	{
 	  has_pk = 1;
@@ -12818,7 +12818,7 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 	    }
 	  else
 	    {
-	      // TODO : function indexes 
+	      // TODO : function indexes
 	      num_idx_att = index->func_index_info->attr_index_start;
 	      return ER_FAILED;
 	    }
