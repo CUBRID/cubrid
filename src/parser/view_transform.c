@@ -1893,7 +1893,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
       /* refer to mq_rewrite_vclass_spec_as_derived () */
 
       /* no translation per se, but need to fix up proxy objects */
-      statement = mq_fix_derived_in_union (parser, statement, derived_spec->info.spec.id);
+      result = mq_fix_derived_in_union (parser, tmp_result, derived_spec->info.spec.id);
 
     }
   else
