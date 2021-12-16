@@ -2641,7 +2641,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 	{
 	  subquery = class_spec->info.spec.derived_table;
 
-	  if (PT_IS_QUERY (subquery))
+	  if (class_spec->info.spec.derived_table_type == PT_IS_SUBQUERY && PT_IS_QUERY (subquery))
 	    {
 	      /* in-line view is merged into main query if it is possible */
 	      tree = mq_substitute_inline_view_in_statement (parser, tree, subquery, class_spec, order_by);
