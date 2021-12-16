@@ -263,7 +263,7 @@ static SCAN_CODE qfile_scan_list (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * 
 #if defined(SERVER_MODE)
 static int qfile_compare_tran_id (const void *t1, const void *t2);
 #endif /* SERVER_MODE */
-static unsigned int qfile_hash_db_value_array (const void *key, unsigned int htsize, unsigned int *val_of_hash);
+static unsigned int qfile_hash_db_value_array (const void *key, unsigned int htsize, unsigned int *orig_hash_value);
 static int qfile_compare_equal_db_value_array (const void *key1, const void *key2);
 
 /* for list cache */
@@ -4842,14 +4842,14 @@ qfile_compare_tran_id (const void *t1, const void *t2)
  *   htsize(in) :
  */
 static unsigned int
-qfile_hash_db_value_array (const void *key, unsigned int htsize, unsigned int *val_of_hash)
+qfile_hash_db_value_array (const void *key, unsigned int htsize, unsigned int *orig_hash_value)
 {
   unsigned int hash = 0;
   int i;
   const DB_VALUE_ARRAY *array = (DB_VALUE_ARRAY *) key;
   const DB_VALUE *val;
 
-  assert (val_of_hash);
+  assert (orig_hash_value);
 
   if (key != NULL && array->size > 0)
     {
@@ -4861,7 +4861,7 @@ qfile_hash_db_value_array (const void *key, unsigned int htsize, unsigned int *v
       hash |= array->size;
     }
 
-  *val_of_hash = hash;
+  *orig_hash_value = hash;
   return (hash % htsize);
 }
 

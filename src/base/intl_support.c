@@ -3218,14 +3218,14 @@ check_truncation:
  * Note: Charset dependent version of 'mht_1strlowerhashTaken' function
  */
 unsigned int
-intl_identifier_mht_1strlowerhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash)
+intl_identifier_mht_1strlowerhash (const void *key, const unsigned int ht_size, unsigned int *orig_hash_value)
 {
   unsigned int hash;
   unsigned const char *byte_p = (unsigned char *) key;
   unsigned int ch;
 
   assert (key != NULL);
-  assert (val_of_hash != NULL);
+  assert (orig_hash_value != NULL);
 
   switch (lang_charset ())
     {
@@ -3283,7 +3283,7 @@ intl_identifier_mht_1strlowerhash (const void *key, const unsigned int ht_size, 
       break;
     }
 
-  *val_of_hash = hash;
+  *orig_hash_value = hash;
   return hash % ht_size;
 }
 

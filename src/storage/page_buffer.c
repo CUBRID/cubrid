@@ -1270,13 +1270,13 @@ pgbuf_hash_func_mirror (const VPID * vpid)
  *   htsize(in): Size of hash table
  */
 unsigned int
-pgbuf_hash_vpid (const void *key_vpid, unsigned int htsize, unsigned int *val_of_hash)
+pgbuf_hash_vpid (const void *key_vpid, unsigned int htsize, unsigned int *orig_hash_value)
 {
   const VPID *vpid = (VPID *) key_vpid;
-  assert (val_of_hash);
+  assert (orig_hash_value);
 
-  *val_of_hash = (vpid->pageid | ((unsigned int) vpid->volid) << 24);
-  return (*val_of_hash % htsize);
+  *orig_hash_value = (vpid->pageid | ((unsigned int) vpid->volid) << 24);
+  return (*orig_hash_value % htsize);
 }
 
 /*

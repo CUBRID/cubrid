@@ -48,16 +48,16 @@ struct hentry
   HENTRY_PTR next;		/* Next hash table entry for colisions */
   const void *key;		/* Key associated with entry */
   void *data;			/* Data associated with key entry */
-  unsigned int val_of_hash;	/* for faster compare by u_int */
+  unsigned int orig_hash_value;	/* for faster compare by u_int */
 };
 
-#define MHT_HASH_COMPARE(func, hentry, key, val_of_hash) \
-        ((hentry)->val_of_hash == (val_of_hash) && (func) ((hentry)->key, (key)))
+#define MHT_HASH_COMPARE(func, hentry, key, orig_hash_value) \
+        ((hentry)->orig_hash_value == (orig_hash_value) && (func) ((hentry)->key, (key)))
 /* Memory Hash Table */
 typedef struct mht_table MHT_TABLE;
 struct mht_table
 {
-  unsigned int (*hash_func) (const void *key, unsigned int htsize, unsigned int *val_of_hash);
+  unsigned int (*hash_func) (const void *key, unsigned int htsize, unsigned int *orig_hash_value);
   int (*cmp_func) (const void *key1, const void *key2);
   const char *name;
   HENTRY_PTR *table;		/* The hash table (entries) */
@@ -79,15 +79,15 @@ struct mht_table
 
 extern unsigned int mht_2str_pseudo_key (const void *key, int key_size);
 extern unsigned int mht_1strlowerhash (const void *key, const unsigned int ht_size);
-extern unsigned int mht_1strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash);
+extern unsigned int mht_1strhash (const void *key, const unsigned int ht_size, unsigned int *orig_hash_value);
 extern unsigned int mht_2strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_3strhash (const void *key, const unsigned int ht_size);
-extern unsigned int mht_4strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash);
-extern unsigned int mht_5strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash);
+extern unsigned int mht_4strhash (const void *key, const unsigned int ht_size, unsigned int *orig_hash_value);
+extern unsigned int mht_5strhash (const void *key, const unsigned int ht_size, unsigned int *orig_hash_value);
 extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
 
 extern unsigned int mht_get_hash_number (const int unsigned ht_size, const DB_VALUE * val);
-extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size, unsigned int *val_of_hash);
+extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size, unsigned int *orig_hash_value);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
 extern int mht_compare_identifiers_equal (const void *key1, const void *key2);
 extern int mht_compare_strings_are_equal (const void *key1, const void *key2);
@@ -98,9 +98,8 @@ extern int mht_compare_dbvalues_are_equal (const void *key1, const void *key2);
 
 extern MHT_TABLE *mht_create (const char *name, int est_size,
 			      unsigned int (*hash_func) (const void *key, unsigned int ht_size,
-							 unsigned int *val_of_hash), int (*cmp_func) (const void *key1,
-												      const void
-												      *key2));
+							 unsigned int *orig_hash_value),
+			      int (*cmp_func) (const void *key1, const void *key2));
 extern void mht_destroy (MHT_TABLE * ht);
 extern int mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args), void *func_args);
 extern void *mht_get (MHT_TABLE * ht, const void *key);
@@ -112,8 +111,8 @@ extern const void *mht_put_if_not_exists (MHT_TABLE * ht, const void *key, void 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern const void *mht_put2 (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put2_data (MHT_TABLE * ht, const void *key, void *data);
-#endif
 extern const void *mht_put2_new (MHT_TABLE * ht, const void *key, void *data);
+#endif
 extern int mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void *data, void *args),
 		    void *func_args);
 extern int mht_rem2 (MHT_TABLE * ht, const void *key, const void *data,
@@ -121,7 +120,6 @@ extern int mht_rem2 (MHT_TABLE * ht, const void *key, const void *data,
 extern int mht_map (const MHT_TABLE * ht, int (*map_func) (const void *key, void *data, void *args), void *func_args);
 extern int mht_map_no_key (THREAD_ENTRY * thread_p, const MHT_TABLE * ht,
 			   int (*map_func) (THREAD_ENTRY * thread_p, void *data, void *args), void *func_args);
-extern int mht_adjust_lru_list (MHT_TABLE * ht, HENTRY_PTR hentry);
 extern unsigned int mht_count (const MHT_TABLE * ht);
 extern int mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
 		     int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args),

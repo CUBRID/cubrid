@@ -750,9 +750,9 @@ static int heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * c
 static int heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATTR_ID * type_id,
 					  ATTR_ID * values_id);
 static int heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *count, OID ** subclasses);
-static unsigned int heap_hash_vpid (const void *key_vpid, unsigned int htsize, unsigned int *val_of_hash);
+static unsigned int heap_hash_vpid (const void *key_vpid, unsigned int htsize, unsigned int *orig_hash_value);
 static int heap_compare_vpid (const void *key_vpid1, const void *key_vpid2);
-static unsigned int heap_hash_hfid (const void *key_hfid, unsigned int htsize, unsigned int *val_of_hash);
+static unsigned int heap_hash_hfid (const void *key_hfid, unsigned int htsize, unsigned int *orig_hash_value);
 static int heap_compare_hfid (const void *key_hfid1, const void *key_hfid2);
 
 static char *heap_bestspace_to_string (char *buf, int buf_size, const HEAP_BESTSPACE * hb);
@@ -907,13 +907,13 @@ static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfi
  *   htsize(in): Size of hash table
  */
 static unsigned int
-heap_hash_vpid (const void *key_vpid, unsigned int htsize, unsigned int *val_of_hash)
+heap_hash_vpid (const void *key_vpid, unsigned int htsize, unsigned int *orig_hash_value)
 {
   const VPID *vpid = (VPID *) key_vpid;
-  assert (val_of_hash);
+  assert (orig_hash_value);
 
-  *val_of_hash = (vpid->pageid | ((unsigned int) vpid->volid) << 24);
-  return (*val_of_hash % htsize);
+  *orig_hash_value = (vpid->pageid | ((unsigned int) vpid->volid) << 24);
+  return (*orig_hash_value % htsize);
 }
 
 /*
@@ -938,13 +938,13 @@ heap_compare_vpid (const void *key_vpid1, const void *key_vpid2)
  *   htsize(in): Size of hash table
  */
 static unsigned int
-heap_hash_hfid (const void *key_hfid, unsigned int htsize, unsigned int *val_of_hash)
+heap_hash_hfid (const void *key_hfid, unsigned int htsize, unsigned int *orig_hash_value)
 {
   const HFID *hfid = (HFID *) key_hfid;
-  assert (val_of_hash);
+  assert (orig_hash_value);
 
-  *val_of_hash = (hfid->hpgid | ((unsigned int) hfid->vfid.volid) << 24);
-  return (*val_of_hash % htsize);
+  *orig_hash_value = (hfid->hpgid | ((unsigned int) hfid->vfid.volid) << 24);
+  return (*orig_hash_value % htsize);
 }
 
 /*

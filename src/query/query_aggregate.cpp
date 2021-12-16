@@ -2186,7 +2186,7 @@ qdata_free_agg_hentry (const void *key, void *data, void *args)
  *   ht_size(in): hash table size (in buckets)
  */
 unsigned int
-qdata_hash_agg_hkey (const void *key, unsigned int ht_size, unsigned int *val_of_hash)
+qdata_hash_agg_hkey (const void *key, unsigned int ht_size, unsigned int *orig_hash_value)
 {
   aggregate_hash_key *ckey = (aggregate_hash_key *) key;
   unsigned int hash_val = 0;
@@ -2198,7 +2198,7 @@ qdata_hash_agg_hkey (const void *key, unsigned int ht_size, unsigned int *val_of
       hash_val = hash_val ^ mht_get_hash_number (ht_size, ckey->values[i]);
     }
 
-  *val_of_hash = hash_val;
+  *orig_hash_value = hash_val;
   return hash_val % ht_size;
 }
 

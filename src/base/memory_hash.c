@@ -92,6 +92,11 @@ typedef enum mht_put_opt MHT_PUT_OPT;
  *
  * Note: if x is a prime number, the n is prime if X**(n-1) mod n == 1
  */
+//#define USE_ORDERED_LIST
+#if defined(USE_ORDERED_LIST)
+#define HASHVAL_NOT_ORDERED(he, val) ((he)->orig_hash_value > (val))
+static void check_order (HENTRY_PTR start);
+#endif
 
 static inline unsigned int mht_1str_pseudo_key (const void *key, int key_size);
 static unsigned int mht_3str_pseudo_key (const void *key, int key_size, const unsigned int max_value);
@@ -99,12 +104,19 @@ static inline unsigned int mht_4str_pseudo_key (const void *key, int key_size);
 static inline unsigned int mht_5str_pseudo_key (const void *key, int key_size);
 
 static int mht_rehash (MHT_TABLE * ht);
+static void mht_adjust_lru_list (MHT_TABLE * ht, HENTRY_PTR hentry);
 
 static void mht_remove_entry (MHT_TABLE * ht, HENTRY_PTR prev_hentry, HENTRY_PTR hentry, unsigned int hash);
 static bool mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int hash,
-			       unsigned int val_of_hash);
+			       unsigned int orig_hash_value
+#if defined(USE_ORDERED_LIST)
+			       , HENTRY_PTR prev_hentry
+#endif
+  );
 static const void *mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static const void *mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
+#endif
 static const void *mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 
 static unsigned int mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size);
@@ -435,13 +447,13 @@ mht_1strlowerhash (const void *key, const unsigned int ht_size)
  * Note: Taken from Gosling's emacs
  */
 unsigned int
-mht_1strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash)
+mht_1strhash (const void *key, const unsigned int ht_size, unsigned int *orig_hash_value)
 {
   assert (key != NULL);
-  assert (val_of_hash != NULL);
+  assert (orig_hash_value != NULL);
 
-  *val_of_hash = mht_1str_pseudo_key (key, -1);
-  return *val_of_hash % ht_size;
+  *orig_hash_value = mht_1str_pseudo_key (key, -1);
+  return *orig_hash_value % ht_size;
 }
 
 /*
@@ -495,13 +507,13 @@ mht_3strhash (const void *key, const unsigned int ht_size)
  *       Communications of the ACM, June 1990.
  */
 unsigned int
-mht_4strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash)
+mht_4strhash (const void *key, const unsigned int ht_size, unsigned int *orig_hash_value)
 {
   assert (key != NULL);
-  assert (val_of_hash != NULL);
+  assert (orig_hash_value != NULL);
 
-  *val_of_hash = mht_4str_pseudo_key (key, -1);
-  return *val_of_hash % ht_size;
+  *orig_hash_value = mht_4str_pseudo_key (key, -1);
+  return *orig_hash_value % ht_size;
 }
 
 /*
@@ -513,13 +525,13 @@ mht_4strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_
  * Note: Based on hash method reported by Diniel J. Bernstein.
  */
 unsigned int
-mht_5strhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash)
+mht_5strhash (const void *key, const unsigned int ht_size, unsigned int *orig_hash_value)
 {
   assert (key != NULL);
-  assert (val_of_hash != NULL);
+  assert (orig_hash_value != NULL);
 
-  *val_of_hash = mht_5str_pseudo_key (key, -1);
-  return *val_of_hash % ht_size;
+  *orig_hash_value = mht_5str_pseudo_key (key, -1);
+  return *orig_hash_value % ht_size;
 }
 
 /*
@@ -543,13 +555,13 @@ mht_numhash (const void *key, const unsigned int ht_size)
  *   ht_size(in): size of hash table
  */
 unsigned int
-mht_ptrhash (const void *key, const unsigned int ht_size, unsigned int *val_of_hash)
+mht_ptrhash (const void *key, const unsigned int ht_size, unsigned int *orig_hash_value)
 {
   assert (key != NULL);
-  assert (val_of_hash != NULL);
+  assert (orig_hash_value != NULL);
 
-  *val_of_hash = GET_PTR_FOR_HASH (key);
-  return *val_of_hash % ht_size;
+  *orig_hash_value = GET_PTR_FOR_HASH (key);
+  return *orig_hash_value % ht_size;
 }
 
 /*
@@ -893,7 +905,7 @@ mht_calculate_htsize (unsigned int ht_size)
  */
 MHT_TABLE *
 mht_create (const char *name, int est_size,
-	    unsigned int (*hash_func) (const void *key, unsigned int ht_size, unsigned int *val_of_hash),
+	    unsigned int (*hash_func) (const void *key, unsigned int ht_size, unsigned int *orig_hash_value),
 	    int (*cmp_func) (const void *key1, const void *key2))
 {
   MHT_TABLE *ht;
@@ -1103,7 +1115,7 @@ mht_rehash (MHT_TABLE * ht)
 	{
 	  next_hentry = hentry->next;
 #if 1
-	  hash = hentry->val_of_hash % est_size;
+	  hash = hentry->orig_hash_value % est_size;
 #else
 	  unsigned int fc_hashval;
 	  hash = (*ht->hash_func) (hentry->key, est_size, &fc_hashval);
@@ -1114,12 +1126,48 @@ mht_rehash (MHT_TABLE * ht)
 	  assert (hash < est_size);
 #endif
 	  /* Link the new entry with any previous elements */
+#if defined(USE_ORDERED_LIST)
+	  if (new_hvector[hash] == NULL)
+	    {
+	      hentry->next = NULL;
+	      new_hvector[hash] = hentry;
+	    }
+	  else
+	    {
+	      ht->ncollisions++;
+
+	      HENTRY_PTR prev = NULL;
+	      HENTRY_PTR cur = new_hvector[hash];
+	      do
+		{
+		  if (HASHVAL_NOT_ORDERED (cur, hentry->orig_hash_value))
+		    {
+		      break;
+		    }
+		  prev = cur;
+		  cur = cur->next;
+		}
+	      while (cur);
+
+	      hentry->next = cur;
+	      if (prev)
+		{
+		  prev->next = hentry;
+		}
+	      else
+		{
+		  new_hvector[hash] = hentry;
+		}
+	      check_order (new_hvector[hash]);
+	    }
+#else
 	  hentry->next = new_hvector[hash];
 	  if (hentry->next != NULL)
 	    {
 	      ht->ncollisions++;
 	    }
 	  new_hvector[hash] = hentry;
+#endif
 	}
     }
 
@@ -1427,8 +1475,8 @@ mht_get (MHT_TABLE * ht, const void *key)
   assert (ht != NULL);
   assert (key != NULL);
 
-  unsigned int val_of_hash = 0;
-  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
+  unsigned int orig_hash_value = 0;
+  hash = (*ht->hash_func) (key, ht->size, &orig_hash_value);
   /* 
    * In the definition of the mht_create() function, 
    * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
@@ -1438,13 +1486,22 @@ mht_get (MHT_TABLE * ht, const void *key)
   /* now search the linked list */
   for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
     {
-      if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash))
+      if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, orig_hash_value))
 	{
-	  mht_adjust_lru_list (ht, hentry);
+	  if (ht->build_lru_list)
+	    {
+	      mht_adjust_lru_list (ht, hentry);
+	    }
 
 	  /* return value */
 	  return hentry->data;
 	}
+#if defined(USE_ORDERED_LIST)
+      else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
+	{
+	  return NULL;
+	}
+#endif
     }
   return NULL;
 }
@@ -1454,12 +1511,12 @@ mht_get (MHT_TABLE * ht, const void *key)
  *   ht(in): hash table
  *   hentry(in): hash entry
  */
-int
+static void
 mht_adjust_lru_list (MHT_TABLE * ht, HENTRY_PTR hentry)
 {
   assert (ht && hentry);
 
-  if (ht && hentry && ht->build_lru_list && ht->lru_tail != hentry)
+  if (ht->lru_tail != hentry)
     {
       if (ht->lru_head == hentry)
 	{
@@ -1479,8 +1536,6 @@ mht_adjust_lru_list (MHT_TABLE * ht, HENTRY_PTR hentry)
       hentry->lru_next = NULL;
       ht->lru_tail = hentry;
     }
-
-  return NO_ERROR;
 }
 
 /*
@@ -1501,8 +1556,8 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 
   assert (ht != NULL && key != NULL);
 
-  unsigned int val_of_hash = 0;
-  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
+  unsigned int orig_hash_value = 0;
+  hash = (*ht->hash_func) (key, ht->size, &orig_hash_value);
   /* 
    * In the definition of the mht_create() function, 
    * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
@@ -1513,7 +1568,7 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
   /* now search the linked list */
   for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
     {
-      if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash))
+      if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, orig_hash_value))
 	{
 	  if (last == NULL)
 	    {
@@ -1531,6 +1586,12 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 	      *((HENTRY_PTR *) last) = NULL;
 	    }
 	}
+#if defined(USE_ORDERED_LIST)
+      else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
+	{
+	  return NULL;
+	}
+#endif
     }
 
   return NULL;
@@ -1614,7 +1675,11 @@ mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 }
 
 static bool
-mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int hash, unsigned int val_of_hash)
+mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int hash, unsigned int orig_hash_value
+#if defined(USE_ORDERED_LIST)
+		   , HENTRY_PTR prev_hentry
+#endif
+  )
 {
   HENTRY_PTR hentry;
 
@@ -1655,7 +1720,7 @@ mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int has
    */
 
   hentry->key = key;
-  hentry->val_of_hash = val_of_hash;
+  hentry->orig_hash_value = orig_hash_value;
   hentry->data = data;
   hentry->act_next = NULL;
   hentry->act_prev = ht->act_tail;
@@ -1672,6 +1737,54 @@ mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int has
     }
 
   /* link to the hash itself */
+#if defined(USE_ORDERED_LIST)
+  if (ht->table[hash] == NULL)
+    {
+      hentry->next = NULL;
+      ht->table[hash] = hentry;
+    }
+  else
+    {
+      ht->ncollisions++;
+
+      if (prev_hentry)
+	{
+	  hentry->next = prev_hentry->next;
+	  prev_hentry->next = hentry;
+	}
+      else
+	{
+	  /*
+	   ** There are two cases where prev_hentry is null.
+	   **   1) When to go to the front of ht->table[hash]
+	   **   2) When the MHT_OPT_INSERT_ONLY option is specified
+	   */
+	  HENTRY_PTR prev = NULL;
+	  HENTRY_PTR cur = ht->table[hash];
+	  do
+	    {
+	      if (HASHVAL_NOT_ORDERED (cur, hentry->orig_hash_value))
+		{
+		  break;
+		}
+	      prev = cur;
+	      cur = cur->next;
+	    }
+	  while (cur);
+
+	  hentry->next = cur;
+	  if (prev)
+	    {
+	      prev->next = hentry;
+	    }
+	  else
+	    {
+	      ht->table[hash] = hentry;
+	    }
+	}
+      check_order (ht->table[hash]);
+    }
+#else
   hentry->next = ht->table[hash];
   if (hentry->next != NULL)
     {
@@ -1679,6 +1792,7 @@ mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int has
     }
 
   ht->table[hash] = hentry;
+#endif
   ht->nentries++;
 
   /* Rehash if almost all entries of hash table are used and there are at least * 5% of collisions */
@@ -1720,12 +1834,13 @@ static const void *
 mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 {
   unsigned int hash;
-  HENTRY_PTR hentry;
+  HENTRY_PTR hentry = NULL;
+  HENTRY_PTR prev_hentry = NULL;
 
   assert (ht != NULL && key != NULL);
 
-  unsigned int val_of_hash = 0;
-  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
+  unsigned int orig_hash_value = 0;
+  hash = (*ht->hash_func) (key, ht->size, &orig_hash_value);
   /* 
    * In the definition of the mht_create() function, 
    * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
@@ -1737,7 +1852,7 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
       /* Now search the linked list.. Is there any entry with the given key ? */
       for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
 	{
-	  if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash))
+	  if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, orig_hash_value))
 	    {
 	      if (opt & MHT_OPT_INSERT_IF_NOT_EXISTS)
 		{
@@ -1753,10 +1868,21 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 	      hentry->data = data;
 	      return key;
 	    }
+#if defined(USE_ORDERED_LIST)
+	  else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
+	    {
+	      break;
+	    }
+	  prev_hentry = hentry;
+#endif
 	}
     }
 
-  if (mht_add_new_entry (ht, key, data, hash, val_of_hash) == false)
+#if defined(USE_ORDERED_LIST)
+  if (mht_add_new_entry (ht, key, data, hash, orig_hash_value, prev_hentry) == false)
+#else
+  if (mht_add_new_entry (ht, key, data, hash, orig_hash_value) == false)
+#endif
     {
       return NULL;
     }
@@ -1826,6 +1952,7 @@ mht_put (MHT_TABLE * ht, const void *key, void *data)
   return mht_put_internal (ht, key, data, MHT_OPT_DEFAULT);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * mht_put2_internal - internal function for mht_put2(), mht_put_new2(), and
  *                     mht_put_data2();
@@ -1848,11 +1975,12 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 {
   unsigned int hash;
   HENTRY_PTR hentry;
+  HENTRY_PTR prev_hentry = NULL;
 
   assert (ht != NULL && key != NULL);
 
-  unsigned int val_of_hash = 0;
-  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
+  unsigned int orig_hash_value = 0;
+  hash = (*ht->hash_func) (key, ht->size, &orig_hash_value);
   /* 
    * In the definition of the mht_create() function, 
    * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
@@ -1865,7 +1993,7 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
       for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
 	{
 	  if (hentry->data == data
-	      && (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash)))
+	      && (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, orig_hash_value)))
 	    {
 	      /* We found the existing entry. Replace the old data with the new one. */
 	      if (!(opt & MHT_OPT_KEEP_KEY))
@@ -1875,10 +2003,21 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 	      hentry->data = data;
 	      return key;
 	    }
+#if defined(USE_ORDERED_LIST)
+	  else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
+	    {
+	      break;
+	    }
+#endif
+	  prev_hentry = hentry;
 	}
     }
 
-  if (mht_add_new_entry (ht, key, data, hash, val_of_hash) == false)
+#if defined(USE_ORDERED_LIST)
+  if (mht_add_new_entry (ht, key, data, hash, orig_hash_value, prev_hentry) == false)
+#else
+  if (mht_add_new_entry (ht, key, data, hash, orig_hash_value) == false)
+#endif
     {
       return NULL;
     }
@@ -1892,6 +2031,7 @@ mht_put2_new (MHT_TABLE * ht, const void *key, void *data)
   assert (ht != NULL && key != NULL);
   return mht_put2_internal (ht, key, data, MHT_OPT_INSERT_ONLY);
 }
+#endif
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 const void *
@@ -1929,7 +2069,6 @@ mht_put2 (MHT_TABLE * ht, const void *key, void *data)
 static void
 mht_remove_entry (MHT_TABLE * ht, HENTRY_PTR prev_hentry, HENTRY_PTR hentry, unsigned int hash)
 {
-
   if (ht->build_lru_list)
     {
       /* remove from LRU list */
@@ -2018,8 +2157,8 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
 
   assert (ht != NULL && key != NULL);
 
-  unsigned int val_of_hash = 0;
-  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
+  unsigned int orig_hash_value = 0;
+  hash = (*ht->hash_func) (key, ht->size, &orig_hash_value);
   /* 
    * In the definition of the mht_create() function, 
    * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
@@ -2029,7 +2168,7 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
   /* Now search the linked list.. Is there any entry with the given key ? */
   for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL; prev_hentry = hentry, hentry = hentry->next)
     {
-      if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash))
+      if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, orig_hash_value))
 	{
 	  /*
 	   * We found the entry
@@ -2050,6 +2189,12 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
 	  mht_remove_entry (ht, prev_hentry, hentry, hash);
 	  return NO_ERROR;
 	}
+#if defined(USE_ORDERED_LIST)
+      else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
+	{
+	  break;
+	}
+#endif
     }
 
   return ER_FAILED;
@@ -2079,8 +2224,8 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
 
   assert (ht != NULL && key != NULL);
 
-  unsigned int val_of_hash = 0;
-  hash = (*ht->hash_func) (key, ht->size, &val_of_hash);
+  unsigned int orig_hash_value = 0;
+  hash = (*ht->hash_func) (key, ht->size, &orig_hash_value);
   /* 
    * In the definition of the mht_create() function, 
    * it is specified that a value between 0 and ht->size-1 must be returned as hash_func.
@@ -2090,7 +2235,8 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
   /* now search the linked list */
   for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL; prev_hentry = hentry, hentry = hentry->next)
     {
-      if (hentry->data == data && (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, val_of_hash)))
+      if (hentry->data == data
+	  && (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, orig_hash_value)))
 	{
 	  /*
 	   * We found the entry.
@@ -2110,6 +2256,12 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
 	  mht_remove_entry (ht, prev_hentry, hentry, hash);
 	  return NO_ERROR;
 	}
+#if defined(USE_ORDERED_LIST)
+      else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
+	{
+	  break;
+	}
+#endif
     }
 
   return ER_FAILED;
@@ -2549,3 +2701,25 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_O
 
   return key;
 }
+
+#if defined(USE_ORDERED_LIST)
+static void
+check_order (HENTRY_PTR start)
+{
+  HENTRY_PTR prev = NULL;
+  HENTRY_PTR cur = start;
+
+  prev = cur;
+  cur = cur->next;
+  while (cur)
+    {
+      if (HASHVAL_NOT_ORDERED (prev, cur->orig_hash_value))
+	{
+	  assert (0);
+	  return;
+	}
+      prev = cur;
+      cur = cur->next;
+    }
+}
+#endif
