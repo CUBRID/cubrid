@@ -34,6 +34,7 @@ class passive_tran_server : public tran_server
     void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
 					 log_lsa &most_recent_trantable_snapshot_lsa);
     void start_log_replicator (const log_lsa &start_lsa);
+    void send_and_receive_stop_log_prior_dispatch ();
 
     /* read replicator's current progress */
     log_lsa get_replicator_lsa () const;
@@ -47,11 +48,15 @@ class passive_tran_server : public tran_server
 
     void receive_log_boot_info (page_server_conn_t::sequenced_payload &a_ip);
     void receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip);
+    void receive_confirm_log_prior_dispatch_stopped (page_server_conn_t::sequenced_payload &a_ip);
 
   private:
     std::mutex m_log_boot_info_mtx;
     std::string m_log_boot_info;
     std::condition_variable m_log_boot_info_condvar;
+
+    std::mutex m_confirm_log_prior_dispatch_stopped_mtx;
+    std::condition_variable m_confirm_log_prior_dispatch_stopped_cv;
 
     std::unique_ptr<cublog::replicator> m_replicator;
 };

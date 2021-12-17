@@ -77,6 +77,7 @@ class page_server
 	void receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_disconnect_request (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
+	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp);
 
 	void prior_sender_sink_hook (std::string &&message) const;
 

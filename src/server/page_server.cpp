@@ -73,6 +73,11 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, page
       tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH,
       std::bind (&page_server::connection_handler::receive_log_boot_info_fetch, std::ref (*this), std::placeholders::_1)
     },
+    {
+      tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH,
+      std::bind (&page_server::connection_handler::receive_stop_log_prior_dispatch, std::ref (*this),
+		 std::placeholders::_1)
+    }
   }, page_to_tran_request::RESPOND, tran_to_page_request::RESPOND, 1));
 
   assert (m_conn != nullptr);
@@ -154,6 +159,21 @@ page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t
 }
 
 void
+page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp)
+{
+  // empty request message
+
+  assert ((bool)m_prior_sender_sink_hook_func);
+
+  // TODO: should removal actually be synched with the prior_sender_sink_hook execution below?
+  log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+  m_prior_sender_sink_hook_func = nullptr;
+
+  // empty response message, needed just to make the entire roundtrip synchronous
+  m_conn->push (page_to_tran_request::SEND_CONFIRM_LOG_PRIOR_DISPATCH_STOPPED, std::string ());
+}
+
+void
 page_server::connection_handler::on_log_boot_info_result (std::string &&message)
 {
   assert (m_conn != nullptr);
@@ -165,11 +185,9 @@ page_server::connection_handler::on_log_boot_info_result (std::string &&message)
 void
 page_server::connection_handler::receive_disconnect_request (tran_server_conn_t::sequenced_payload &)
 {
-  if (m_prior_sender_sink_hook_func)
-    {
-      log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
-      m_prior_sender_sink_hook_func = nullptr;
-    }
+  // if this instance acted as a prior sender sink - in other words, if this connection handler was for a
+  // passive transaction server - it should have been disconnected beforehand
+  assert (! (bool)m_prior_sender_sink_hook_func);
 
   //start a thread to destroy the ATS/PTS to PS connection object
   std::thread disconnect_thread (&page_server::disconnect_tran_server, std::ref (m_ps), this);
