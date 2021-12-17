@@ -102,6 +102,27 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
   log_Gl.get_log_prior_receiver ().push_message (std::move (a_ip.pull_payload ()));
 }
 
+template <typename T>
+struct rvalue_holder
+{
+  T value;
+  explicit rvalue_holder (T &&arg)
+    : value { std::move (arg) }
+  {
+  }
+
+  operator T && ()
+  {
+    return std::move (value);
+  }
+};
+
+template <typename T>
+rvalue_holder<T> rval (T &&val)
+{
+  return rvalue_holder<T> (std::move (val));
+}
+
 void
 page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
@@ -116,12 +137,11 @@ page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::seq
       _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
     }
 
-  auto callback_func = [this, &a_sp] (const LOG_PAGE *log_page, int error_code)
-  {
-    on_log_page_read_result (std::move (a_sp), log_page, error_code);
-  };
+  cublog::async_page_fetcher::log_page_callback_type callback_func =
+	  std::bind (&page_server::connection_handler::on_log_page_read_result, std::ref (*this), rval (std::move (a_sp)),
+		     std::placeholders::_1, std::placeholders::_2);
 
-  m_ps.get_page_fetcher ().fetch_log_page (pageid, callback_func);
+  m_ps.get_page_fetcher ().fetch_log_page (pageid, std::move (callback_func));
 }
 
 void

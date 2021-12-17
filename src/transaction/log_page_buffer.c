@@ -1614,6 +1614,8 @@ logpb_fetch_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
       return ER_LOG_PAGE_CORRUPTED;
     }
 
+  *hdr = *reinterpret_cast<const LOG_HEADER *> (log_pgptr->area);
+
   return NO_ERROR;
 }
 // *INDENT-ON*
@@ -2118,8 +2120,6 @@ request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr)
 	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
 			 log_pgptr->hdr.logical_pageid);
 	}
-
-      return error_code;
     }
   else
     {
