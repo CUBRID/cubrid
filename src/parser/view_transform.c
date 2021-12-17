@@ -1464,6 +1464,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - has CONNECT BY
  *  - view spec is outer join spec
  *  - main query's where has define_vars ':='
+ *  - main query has inst_num and subquery has order_by
  *
  * 2. SUB QUERY CHECK
  * It is not pushable(mergeable) in the following cases.
@@ -1562,6 +1563,13 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
   /* determine if main query's where has define_vars ':=' */
   if (pt_has_define_vars (parser, pred))
+    {
+      /* not pushable */
+      return 0;
+    }
+
+  /* main query has inst_num and subquery has order_by */
+  if (pt_has_inst_num (parser, pred) && subquery->info.query.order_by)
     {
       /* not pushable */
       return 0;

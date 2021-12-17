@@ -1168,6 +1168,65 @@ pt_is_inst_or_orderby_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, vo
 }
 
 /*
+ * pt_is_inst_num_node_post () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_inst_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_inst_num = (bool *) arg;
+
+  if (*has_inst_num)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_inst_num_node () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an INST_NUM expression node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_inst_num = (bool *) arg;
+
+  if (PT_IS_INSTNUM (tree))
+    {
+      *has_inst_num = true;
+    }
+
+  if (*has_inst_num)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
  * pt_is_inst_or_orderby_num_node () -
  *   return:
  *   parser(in):
@@ -3068,6 +3127,23 @@ pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node)
 			   pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
 
   return has_inst_orderby_num;
+}
+
+/*
+ * pt_has_inst_num () - check if tree has an INST_NUM node somewhere
+ *   return: true if tree has INST_NUM
+ *   parser(in):
+ *   node(in):
+ */
+bool
+pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_inst_num = false;
+
+  (void) parser_walk_tree (parser, node, pt_is_inst_num_node, &has_inst_num,
+			   pt_is_inst_num_node_post, &has_inst_num);
+
+  return has_inst_num;
 }
 
 /*
