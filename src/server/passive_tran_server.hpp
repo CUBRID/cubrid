@@ -38,6 +38,7 @@ class passive_tran_server : public tran_server
     /* read replicator's current progress */
     log_lsa get_replicator_lsa () const;
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
+    void wait_replication_pasts_target_lsa (LOG_LSA lsa);
 
   private:
     bool uses_remote_storage () const final override;

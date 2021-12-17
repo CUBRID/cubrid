@@ -164,3 +164,8 @@ void passive_tran_server::finish_replication_during_shutdown (cubthread::entry &
   m_replicator->wait_replication_finish_during_shutdown ();
   m_replicator.reset (nullptr);
 }
+
+void passive_tran_server::wait_replication_pasts_target_lsa (LOG_LSA lsa)
+{
+  m_replicator->wait_past_target_lsa (lsa);
+}
