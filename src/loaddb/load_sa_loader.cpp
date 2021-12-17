@@ -40,6 +40,7 @@
 #include "authenticate.h"
 #include "db.h"
 #include "db_json.hpp"
+#include "db_client_type.hpp"
 #include "dbi.h"
 #include "dbtype.h"
 #include "elo.h"
@@ -527,7 +528,7 @@ static void idmap_final (void);
 static int idmap_grow (int size);
 static int ldr_assign_class_id (DB_OBJECT *class_, int id);
 static DB_OBJECT *ldr_find_class (const char *class_name);
-static const char *ldr_get_class_name_from_db_class (const char *name);
+static const char *ldr_find_class_name_from_db_class (const char *name);
 static DB_OBJECT *ldr_get_class_from_id (int id);
 static void ldr_clear_context (LDR_CONTEXT *context);
 static void ldr_clear_and_free_context (LDR_CONTEXT *context);
@@ -1421,7 +1422,7 @@ ldr_find_class (const char *class_name)
   LC_FIND_CLASSNAME find;
   DB_OBJECT *class_ = NULL;
   char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
-  const char *other_name = NULL;
+  const char *target_name = NULL;
 
   /* Check for internal error */
   if (class_name == NULL)
@@ -1443,19 +1444,19 @@ ldr_find_class (const char *class_name)
       class_ = db_find_class (class_name);
     }
 
-  if (find != LC_CLASSNAME_EXIST)
+  if (find != LC_CLASSNAME_EXIST && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
     {
-      other_name = ldr_get_class_name_from_db_class (realname);
+      target_name = ldr_find_class_name_from_db_class (realname);
 
-      if (other_name)
+      if (target_name)
 	{
-	  ldr_Hint_class_names[0] = other_name;
+	  ldr_Hint_class_names[0] = target_name;
 
 	  find = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1, NULL_LOCK);
 
 	    if (find == LC_CLASSNAME_EXIST)
 	      {
-		class_ = db_find_class (other_name);
+		class_ = db_find_class (target_name);
 	      }
 	}
     }
@@ -1466,7 +1467,7 @@ ldr_find_class (const char *class_name)
 }
 
 static const char *
-ldr_get_class_name_from_db_class (const char *name)
+ldr_find_class_name_from_db_class (const char *name)
 {
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
@@ -1474,9 +1475,10 @@ ldr_get_class_name_from_db_class (const char *name)
   const char *query = NULL;
   char *query_buf = NULL;
   int query_len = 0;
+  const char *result = NULL;
   
-  const char *target_name = NULL;
   const char *dot = NULL;
+  const char *target_name = NULL;
  
   int error = NO_ERROR;
 
@@ -1509,9 +1511,10 @@ ldr_get_class_name_from_db_class (const char *name)
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
 
-  if (error != NO_ERROR)
+  if (error < NO_ERROR)
     {
       /* To Do: Exception handling */
+      goto end;
     }
 
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
@@ -1524,13 +1527,23 @@ ldr_get_class_name_from_db_class (const char *name)
           if (!DB_IS_NULL (&value))
 	    {
 	      assert (DB_IS_STRING (&value));
-	      target_name = db_get_string (&value);
+	      result = db_get_string (&value);
 	    }
 	}
 
       if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
         {
-	  target_name = NULL;
+	  result = NULL;
+	}
+    }
+
+  if (result)
+    {
+      target_name = strndup (result, strlen (result));
+      if (target_name == NULL)
+        {
+	  /* To Do: Exception handling */
+	  goto end;
 	}
     }
 
