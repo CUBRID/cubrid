@@ -24981,7 +24981,7 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 
       if (ret != S_SUCCESS)
 	{
-	  if (er_errid () == ER_PB_BAD_PAGEID)
+	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
 	    {
 	      if (context->home_page_watcher.pgptr)
 		{
