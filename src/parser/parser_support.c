@@ -3362,87 +3362,6 @@ pt_get_name (PT_NODE * nam)
     }
 }
 
-const char *
-pt_get_name_without_current_user (const char *name)
-{
-  const char *dot = NULL;
-  char *user_name = NULL;
-  const char *current_name = NULL;
-  char *copy_name = NULL;
-  char *token = NULL;
-  char *token_save = NULL;
-  int error = NO_ERROR;
-
-  if (name == NULL || name[0] == '\0')
-    {
-      return NULL;
-    }
-
-  dot = strchr (name, '.');
-  if (dot == NULL)
-    {
-      /* e.g.   name: object_name
-       *      return: object_name
-       *
-       */
-      return name;
-    }
-
-  copy_name = strndup (name, strlen (name));
-  if (copy_name == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (strlen (name) + 1));
-
-      return NULL;
-    }
-
-  token = strtok_r (copy_name, ".", &token_save);
-  if (token == NULL)
-    {
-      /* It's impossible to come here because dot is not null. */
-      assert (false);
-
-      /* return NULL; */
-      goto end;
-    }
-
-  user_name = db_get_user_name ();
-
-  if (intl_identifier_casecmp (token, user_name) == 0)
-    {
-      /* e.g.   name: current_user_name.object_name
-       *      return: object_name
-       */
-      current_name = dot + 1;
-
-      goto end;
-    }
-  else
-    {
-      /* e.g.   name: other_user_name.object_name
-       *      return: other_user_name.object_name
-       */
-      current_name = name;
-
-      goto end;
-    }
-
-end:
-  if (copy_name)
-    {
-      free_and_init (copy_name);
-    }
-
-  if (user_name)
-    {
-      db_string_free (user_name);
-      user_name = NULL;
-    }
-
-  return current_name;
-}
-
 /*
  * pt_host_var_index () - return a PT_HOST_VAR's index
  *   return:  hv's index if all OK, -1 otherwise.
@@ -10073,32 +9992,30 @@ end:
 }
 
 const char *
-pt_get_user_name (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_get_user_name (const char *name)
 {
-  const char *dot = NULL;
-  const char *user_name = NULL;
-  const char *name = NULL;
+  char *dot = NULL;
   char *copy_name = NULL;
+  const char *user_name = NULL;
   char *token = NULL;
   char *token_save = NULL;
   int error = NO_ERROR;
 
-  assert (node != NULL && node->node_type == PT_NAME);
-
-  if (node->info.name.original == NULL || node->info.name.original[0] == '\0')
+  if (name == NULL || name[0] == '\0')
     {
       return NULL;
     }
 
-  name = node->info.name.original;
-  dot = strchr (name, '.');
+  dot = (char *) strchr (name, '.');
   if (dot == NULL)
     {
       return NULL;
     }
 
-  copy_name = strndup (name, strlen (name));
-  if (copy_name == NULL)
+  dot[0] = '\0';
+
+  user_name = strndup (name, strlen (name));
+  if (user_name == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (strlen (name) + 1));
@@ -10106,26 +10023,62 @@ pt_get_user_name (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
     }
 
-  token = strtok_r (copy_name, ".", &token_save);
-  if (token == NULL)
-    {
-      /* It's impossible to come here because dot is not null. */
-      assert (false);
-
-      if (copy_name)
-	{
-	  free_and_init (copy_name);
-	}
-
-      return NULL;
-    }
-
-  user_name = pt_append_string (parser, NULL, token);
-
-  if (copy_name)
-    {
-      free_and_init (copy_name);
-    }
+  dot[0] = '.';
 
   return user_name;
+}
+
+const char *
+pt_get_name_without_current_user_name (const char *name)
+{
+  char *dot = NULL;
+  char *current_user_name = NULL;
+  const char *object_name = NULL;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      return name;
+    }
+
+  dot = (char *) strchr (name, '.');
+  if (dot == NULL)
+    {
+      /*
+       * e.g.   name: object_name
+       *      return: object_name
+       */
+      return name;
+    }
+
+  current_user_name = db_get_user_name ();
+  assert (current_user_name != NULL);
+
+  dot[0] = '\0';
+
+  if (current_user_name && name && intl_identifier_casecmp (current_user_name, name) == 0)
+    {
+      /*
+       * e.g.   name: current_user_name.object_name
+       *      return: object_name
+       */
+      object_name = dot + 1;
+    }
+  else
+    {
+      /*
+       * e.g.   name: other_user_name.object_name
+       *      return: other_user_name.object_name
+       */
+      object_name = name;
+    }
+
+  dot[0] = '.';
+
+  if (current_user_name)
+    {
+      db_string_free (current_user_name);
+      current_user_name = NULL;
+    }
+
+  return object_name;
 }
