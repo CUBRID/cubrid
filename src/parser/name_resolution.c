@@ -3803,7 +3803,17 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
       q = p->next;		/* q = next spec */
       while (q)
 	{			/* check that p->range != q->range to the end of list */
-	  if (!pt_str_compare (p->info.spec.range_var->info.name.original, q->info.spec.range_var->info.name.original,
+	  /*
+	   * Case of comparing names after DOT(.).
+	   * 1. When comparing owner_name.class_name and alias_name.
+	   *    In Oracle and PostgreSQL, only table_name excluding schema_name or owner_name is compared
+	   *    with alias_name. In order to operate the same as other DBMSs, only class_name except owner_name
+	   *    should be compared with alias_name. An error should occur in the case below.
+	   *    e.g. select t1.c1 from u1.t1, t2 t1;
+	   *      - exposed_name of "t1"    : "u1.t1"
+	   *      - exposed_name of "t2 t1" : "t1"
+	   */
+	  if (!pt_dot_compare (p->info.spec.range_var->info.name.original, q->info.spec.range_var->info.name.original,
 			       CASE_INSENSITIVE))
 	    {
 	      PT_MISC_TYPE p_type = p->info.spec.range_var->info.name.meta_class;
@@ -7161,10 +7171,10 @@ pt_qualifier_compare (const char *p, const char *q)
   const char *qualifier_q = NULL;
 
   /* p */
-  qualifier_p = pt_get_name_without_current_user (p);
+  qualifier_p = pt_get_name_without_current_user_name (p);
 
   /* q */
-  qualifier_q = pt_get_name_without_current_user (q);
+  qualifier_q = pt_get_name_without_current_user_name (q);
 
   if (!qualifier_p && !qualifier_q)
     {
