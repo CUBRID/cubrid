@@ -142,9 +142,9 @@ page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t
 {
   // empty request message
 
-  auto callback_func = [this, &a_sp] (std::string &&message)
+  auto callback_func = [this, sp = a_sp] (std::string &&message) mutable
   {
-    on_log_boot_info_result (std::move (a_sp), std::move (message));
+    on_log_boot_info_result (std::move (sp), std::move (message));
   };
 
   // the underlying infrastructure will add this functor as a sink for log prior info packing and
