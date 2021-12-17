@@ -125,9 +125,9 @@ page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::seq
 }
 
 void
-page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_ip)
+page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  std::string message = a_ip.pull_payload ();
+  std::string message = a_sp.pull_payload ();
 
   cubpacking::unpacker message_upk (message.c_str (), message.size ());
   VPID vpid;
@@ -136,9 +136,12 @@ page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::se
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
 
-  m_ps.get_page_fetcher ().fetch_data_page (vpid, target_repl_lsa,
-      std::bind (&page_server::connection_handler::on_data_page_read_result, this, std::placeholders::_1,
-		 std::placeholders::_2));
+  auto callback_func = [this, sp = a_sp] (const FILEIO_PAGE *iopage, int error_code) mutable
+  {
+    on_data_page_read_result (std::move (sp), iopage, error_code);
+  };
+
+  m_ps.get_page_fetcher ().fetch_data_page (vpid, target_repl_lsa, std::move (callback_func));
 }
 
 void
@@ -227,36 +230,31 @@ page_server::connection_handler::on_log_page_read_result (tran_server_conn_t::se
 }
 
 void
-page_server::connection_handler::on_data_page_read_result (const FILEIO_PAGE *io_page, int error_code)
+page_server::connection_handler::on_data_page_read_result (tran_server_conn_t::sequenced_payload &&sp,
+    const FILEIO_PAGE *io_page,
+    int error_code)
 {
   std::string message;
   if (error_code != NO_ERROR)
     {
-      char buffer[sizeof (int)];
-      std::memcpy (buffer, &error_code, sizeof (error_code));
-      message = std::string (buffer, sizeof (int));
-    }
-  else
-    {
-      char buffer[IO_MAX_PAGE_SIZE];
-      std::memcpy (buffer, io_page, db_io_page_size ());
-      message = std::string (buffer, db_io_page_size ());
-    }
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-    {
-      if (error_code == NO_ERROR)
+      message.append (reinterpret_cast<const char *> (&error_code), sizeof (error_code));
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sending data page.. VPID: %d|%d, LSA: %lld|%d\n",
 			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
 	}
-      else
+    }
+  else
+    {
+      message.append (reinterpret_cast<const char *> (io_page), db_io_page_size ());
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sending data page.. Error code: %d\n", error_code);
 	}
     }
 
-  m_conn->push (page_to_tran_request::SEND_DATA_PAGE, std::move (message));
+  sp.push_payload (std::move (message));
+  m_conn->respond (std::move (sp));
 }
 
 void
