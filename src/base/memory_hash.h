@@ -51,8 +51,6 @@ struct hentry
   unsigned int orig_hash_value;	/* for faster compare by u_int */
 };
 
-#define MHT_HASH_COMPARE(func, hentry, key, orig_hash_value) \
-        ((hentry)->orig_hash_value == (orig_hash_value) && (func) ((hentry)->key, (key)))
 /* Memory Hash Table */
 typedef struct mht_table MHT_TABLE;
 struct mht_table
