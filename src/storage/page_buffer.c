@@ -2309,27 +2309,14 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
   // with OLD_PAGE_DEALLOCATED fetch mode to force read the page LSA; replace ER_PB_BAD_PAGEID with
   // ER_PTS_PAGE_DESYNC.
   //
-  bool deallocated = false;	// start by assuming page is not deallocated
 
   if (page == nullptr)
     {
       // Maybe page is deallocated, or maybe there was another error. If page is deallocated, the error must be
       // ER_PB_BAD_PAGEID
 
-      deallocated = (er_errid () == ER_PB_BAD_PAGEID);
-
-      if (!deallocated)
+      if (pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, PGBUF_LATCH_READ, vpid) == ER_PB_BAD_PAGEID)
 	{
-	  // Stop if other errors occurred.
-	  return nullptr;
-	}
-
-      // Force fixing the deallocated page to check its LSA
-      page = pgbuf_fix (thread_p, &vpid, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (page == nullptr)
-	{
-	  // Another error occurred. Stop.
-	  ASSERT_ERROR ();
 	  return nullptr;
 	}
     }
@@ -2346,14 +2333,6 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
     }
   // Page is not ahead.
   assert (error_code == NO_ERROR);
-
-  if (deallocated)
-    {
-      // Page was deallocated though...
-      assert (er_errid () == ER_PB_BAD_PAGEID);
-      pgbuf_unfix (thread_p, page);
-      return nullptr;
-    }
 
   // No errors
 #endif // SERVER_MODE
@@ -2388,6 +2367,29 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
     }
 }
 #endif
+
+int
+pgbuf_check_for_deallocated_page_or_desyncronization (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode,
+						      const VPID & vpid)
+{
+  int ret = ER_PB_BAD_PAGEID;
+
+  PAGE_PTR fixed_page = pgbuf_fix (thread_p, &vpid, OLD_PAGE_DEALLOCATED, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  if (fixed_page == NULL)
+    {
+      return ER_PB_BAD_PAGEID;
+    }
+
+#if defined (SERVER_MODE)
+  ret = pgbuf_check_page_ahead_of_replication (thread_p, fixed_page);
+  if (ret == NO_ERROR)
+    {
+      return ER_PB_BAD_PAGEID;
+      pgbuf_unfix (thread_p, fixed_page);
+    }
+#endif
+  return ret;
+}
 
 /*
  * pgbuf_promote_read_latch () - Promote read latch to write latch

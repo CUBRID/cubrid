@@ -7541,18 +7541,10 @@ try_again:
 	  VPID *vpid = pgbuf_get_vpid_ptr (context->fwd_page_watcher.pgptr);
 	  if (vpid == NULL)
 	    {
+	      ret = ER_PB_BAD_PAGEID;
 	      goto error;
 	    }
-
-	  PAGE_PTR fixed_page =
-	    pgbuf_fix (thread_p, vpid, OLD_PAGE_DEALLOCATED, context->latch_mode, PGBUF_UNCONDITIONAL_LATCH);
-	  if (fixed_page == NULL)
-	    {
-	      goto error;
-	    }
-
-	  ret = ER_PAGE_AHEAD_OF_REPLICATION;
-	  goto error;
+	  ret = pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, context->latch_mode, *vpid);
 	}
 
       goto error;
@@ -7598,18 +7590,10 @@ try_again:
 	  VPID *vpid = pgbuf_get_vpid_ptr (context->fwd_page_watcher.pgptr);
 	  if (vpid == NULL)
 	    {
+	      ret = ER_PB_BAD_PAGEID;
 	      goto error;
 	    }
-
-	  PAGE_PTR fixed_page =
-	    pgbuf_fix (thread_p, vpid, OLD_PAGE_DEALLOCATED, context->latch_mode, PGBUF_UNCONDITIONAL_LATCH);
-	  if (fixed_page == NULL)
-	    {
-	      goto error;
-	    }
-
-	  ret = ER_PAGE_AHEAD_OF_REPLICATION;
-	  goto error;
+	  ret = pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, context->latch_mode, *vpid);
 	}
 
       goto error;
