@@ -262,7 +262,7 @@ extern "C"
     int *con_handles;		/* realloc by pool_size */
   };
 
-  typedef unsigned int (*HASH_FUNC) (const void *key, unsigned int ht_size);
+  typedef unsigned int (*HASH_FUNC) (const void *key, unsigned int ht_size, unsigned int *orig_hash_value);
   typedef int (*CMP_FUNC) (const void *key1, const void *key2);
   typedef int (*REM_FUNC) (void *key, void *data, void *args);
   typedef int (*PRINT_FUNC) (FILE * fp, void *key, void *data, void *args);
@@ -272,11 +272,14 @@ extern "C"
   typedef struct cci_hentry *CCI_HENTRY_PTR;
   struct cci_hentry
   {
+#if defined(ENABLE_MEANINGLESS_CODE)
     CCI_HENTRY_PTR act_next;	/* Next active entry on hash table */
     CCI_HENTRY_PTR act_prev;	/* Previous active entry on hash table */
+#endif
     CCI_HENTRY_PTR next;	/* Next hash table entry for colisions */
     void *key;			/* Key associated with entry */
     void *data;			/* Data associated with key entry */
+    unsigned int orig_hash_value;	/* for faster compare by u_int */
   };
 
 /* CCI Memory Hash Table */
@@ -287,10 +290,12 @@ extern "C"
     CMP_FUNC cmp_func;
     const char *name;
     CCI_HENTRY_PTR *table;	/* The hash table (entries) */
+#if defined(ENABLE_MEANINGLESS_CODE)
     CCI_HENTRY_PTR act_head;	/* Head of active double link list entries. Used to perform quick mappings of hash
 				 * table. */
     CCI_HENTRY_PTR act_tail;	/* Tail of active double link list entries. Used to perform quick mappings of hash
 				 * table. */
+#endif
     CCI_HENTRY_PTR prealloc_entries;	/* Free entries allocated for locality reasons */
     unsigned int size;		/* Better if prime number */
     unsigned int rehash_at;	/* Rehash at this num of entries */
@@ -304,7 +309,7 @@ extern "C"
  ************************************************************************/
   extern int get_elapsed_time (struct timeval *start_time);
 
-  extern unsigned int cci_mht_5strhash (const void *key, unsigned int ht_size);
+  extern unsigned int cci_mht_5strhash (const void *key, unsigned int ht_size, unsigned int *orig_hash_value);
   extern int cci_mht_strcasecmpeq (const void *key1, const void *key2);
 
   extern CCI_MHT_TABLE *cci_mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func);

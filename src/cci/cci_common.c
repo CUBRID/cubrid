@@ -80,6 +80,10 @@
 static const float CCI_MHT_REHASH_TRESHOLD = 0.7f;
 static const float CCI_MHT_REHASH_FACTOR = 1.3f;
 
+#define HASHVAL_NOT_ORDERED(hent, val) ((hent)->orig_hash_value > (val))
+#define MHT_HASH_COMPARE(func, hentry, key, orig_hash_value) \
+        ((hentry)->orig_hash_value == (orig_hash_value) && (func) ((hentry)->key, (key)))
+
 /* options for cci_mht_put() */
 enum cci_mht_put_opt
 {
@@ -163,9 +167,10 @@ cci_mht_5str_pseudo_key (const void *key, int key_size)
  * Note: Based on hash method reported by Diniel J. Bernstein.
  */
 unsigned int
-cci_mht_5strhash (const void *key, unsigned int ht_size)
+cci_mht_5strhash (const void *key, unsigned int ht_size, unsigned int *orig_hash_value)
 {
-  return cci_mht_5str_pseudo_key (key, -1) % ht_size;
+  *orig_hash_value = cci_mht_5str_pseudo_key (key, -1);
+  return *orig_hash_value % ht_size;
 }
 
 /*
@@ -323,8 +328,10 @@ cci_mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func
   ht->cmp_func = cmp_func;
   ht->name = name;
   ht->table = hvector;
+#if defined(ENABLE_MEANINGLESS_CODE)
   ht->act_head = NULL;
   ht->act_tail = NULL;
+#endif
   ht->prealloc_entries = NULL;
   ht->size = ht_estsize;
   ht->rehash_at = (unsigned int) (ht_estsize * CCI_MHT_REHASH_TRESHOLD);
@@ -394,19 +401,41 @@ cci_mht_rehash (CCI_MHT_TABLE * ht)
 	{
 	  next_hentry = hentry->next;
 
-	  hash = (*ht->hash_func) (hentry->key, est_size);
-	  if (hash >= est_size)
-	    {
-	      hash %= est_size;
-	    }
+	  hash = hentry->orig_hash_value % est_size;
 
 	  /* Link the new entry with any previous elements */
-	  hentry->next = new_hvector[hash];
-	  if (hentry->next != NULL)
+	  if (new_hvector[hash] == NULL)
+	    {
+	      hentry->next = NULL;
+	      new_hvector[hash] = hentry;
+	    }
+	  else
 	    {
 	      ht->ncollisions++;
+
+	      CCI_HENTRY_PTR prev = NULL;
+	      CCI_HENTRY_PTR cur = new_hvector[hash];
+	      do
+		{
+		  if (HASHVAL_NOT_ORDERED (cur, hentry->orig_hash_value))
+		    {
+		      break;
+		    }
+		  prev = cur;
+		  cur = cur->next;
+		}
+	      while (cur);
+
+	      hentry->next = cur;
+	      if (prev)
+		{
+		  prev->next = hentry;
+		}
+	      else
+		{
+		  new_hvector[hash] = hentry;
+		}
 	    }
-	  new_hvector[hash] = hentry;
 	}
     }
 
@@ -491,20 +520,18 @@ cci_mht_rem (CCI_MHT_TABLE * ht, const void *key, bool free_key, bool free_data)
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  hash = (*ht->hash_func) (key, ht->size);
-  if (hash >= ht->size)
-    {
-      hash %= ht->size;
-    }
+  unsigned int orig_hash_value = 0;
+  hash = (*ht->hash_func) (key, ht->size, &orig_hash_value);
 
   /* Now search the linked list.. Is there any entry with the given key ? */
   for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL; prev_hentry = hentry, hentry = hentry->next)
     {
-      if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
+      if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, orig_hash_value))
 	{
 	  data = hentry->data;
 
 	  /* Remove from double link list of active entries */
+#if defined(ENABLE_MEANINGLESS_CODE)
 	  if (ht->act_head == ht->act_tail)
 	    {
 	      /* Single active element */
@@ -528,7 +555,7 @@ cci_mht_rem (CCI_MHT_TABLE * ht, const void *key, bool free_key, bool free_data)
 	      hentry->act_prev->act_next = hentry->act_next;
 	      hentry->act_next->act_prev = hentry->act_prev;
 	    }
-
+#endif
 	  /* Remove from the hash */
 	  if (prev_hentry != NULL)
 	    {
@@ -558,6 +585,10 @@ cci_mht_rem (CCI_MHT_TABLE * ht, const void *key, bool free_key, bool free_data)
 
 	  return data;
 	}
+      else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
+	{
+	  break;
+	}
     }
 
   return NULL;
@@ -583,18 +614,19 @@ cci_mht_get (CCI_MHT_TABLE * ht, void *key)
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  hash = (*ht->hash_func) (key, ht->size);
-  if (hash >= ht->size)
-    {
-      hash %= ht->size;
-    }
+  unsigned int orig_hash_value = 0;
+  hash = (*ht->hash_func) (key, ht->size, &orig_hash_value);
 
   /* now search the linked list */
   for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
     {
-      if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
+      if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, orig_hash_value))
 	{
 	  return hentry->data;
+	}
+      else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
+	{
+	  break;
 	}
     }
   return NULL;
@@ -622,6 +654,7 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
 {
   unsigned int hash;
   CCI_HENTRY_PTR hentry;
+  CCI_HENTRY_PTR prev_hentry = NULL;
 
   assert (ht != NULL && key != NULL);
 
@@ -629,18 +662,15 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
-  hash = (*ht->hash_func) (key, ht->size);
-  if (hash >= ht->size)
-    {
-      hash %= ht->size;
-    }
+  unsigned int orig_hash_value = 0;
+  hash = (*ht->hash_func) (key, ht->size, &orig_hash_value);
 
   if (!(opt & CCI_MHT_OPT_INSERT_ONLY))
     {
       /* Now search the linked list.. Is there any entry with the given key ? */
       for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
 	{
-	  if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
+	  if (hentry->key == key || MHT_HASH_COMPARE (*ht->cmp_func, hentry, key, orig_hash_value))
 	    {
 	      /* Replace the old data with the new one */
 	      if (!(opt & CCI_MHT_OPT_KEEP_KEY))
@@ -650,6 +680,11 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
 	      hentry->data = data;
 	      return key;
 	    }
+	  else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
+	    {
+	      break;
+	    }
+	  prev_hentry = hentry;
 	}
     }
 
@@ -676,6 +711,7 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
 
   hentry->key = key;
   hentry->data = data;
+#if defined(ENABLE_MEANINGLESS_CODE)
   hentry->act_next = NULL;
   hentry->act_prev = ht->act_tail;
   /* Double link tail entry should point to newly created entry */
@@ -689,14 +725,53 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
     {
       ht->act_head = hentry;
     }
+#endif
 
-  hentry->next = ht->table[hash];
-  if (hentry->next != NULL)
+  if (ht->table[hash] == NULL)
+    {
+      hentry->next = NULL;
+      ht->table[hash] = hentry;
+    }
+  else
     {
       ht->ncollisions++;
-    }
 
-  ht->table[hash] = hentry;
+      if (prev_hentry)
+	{
+	  hentry->next = prev_hentry->next;
+	  prev_hentry->next = hentry;
+	}
+      else
+	{
+	  /*
+	   ** There are two cases where prev_hentry is null.
+	   **   1) When to go to the front of ht->table[hash]
+	   **   2) When the MHT_OPT_INSERT_ONLY option is specified
+	   */
+	  CCI_HENTRY_PTR prev = NULL;
+	  CCI_HENTRY_PTR cur = ht->table[hash];
+	  do
+	    {
+	      if (HASHVAL_NOT_ORDERED (cur, hentry->orig_hash_value))
+		{
+		  break;
+		}
+	      prev = cur;
+	      cur = cur->next;
+	    }
+	  while (cur);
+
+	  hentry->next = cur;
+	  if (prev)
+	    {
+	      prev->next = hentry;
+	    }
+	  else
+	    {
+	      ht->table[hash] = hentry;
+	    }
+	}
+    }
   ht->nentries++;
 
   /*
