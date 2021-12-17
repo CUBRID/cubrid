@@ -24967,14 +24967,18 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 SCAN_CODE
 heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan)
 {
+  SCAN_CODE ret;
 #if defined (SERVER_MODE)
-
   if (is_active_transaction_server ())
     {
-      return heap_get_visible_version_with_repl_desync (thread_p, context, is_heap_scan);
+      ret = heap_get_visible_version_with_repl_desync (thread_p, context, is_heap_scan);
+      if (ret == S_ERROR)
+	{
+	  assert (er_errid () != ER_PAGE_AHEAD_OF_REPLICATION);
+	}
+      return ret;
     }
 
-  SCAN_CODE ret;
   do
     {
       ret = heap_get_visible_version_with_repl_desync (thread_p, context, is_heap_scan);
@@ -25008,10 +25012,14 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 	}
     }
   while (ret != S_SUCCESS);
-  return ret;
 #else
-  return heap_get_visible_version_with_repl_desync (thread_p, context, is_heap_scan);
+  ret = heap_get_visible_version_with_repl_desync (thread_p, context, is_heap_scan);
+  if (ret == S_ERROR)
+    {
+      assert (er_errid () != ER_PAGE_AHEAD_OF_REPLICATION);
+    }
 #endif
+  return ret;
 }
 
 /*
