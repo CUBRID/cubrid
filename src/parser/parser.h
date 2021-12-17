@@ -521,7 +521,6 @@ extern "C"
   extern const char *pt_get_proxy_spec_name (const char *qspec);
   extern const char *pt_get_spec_name (PARSER_CONTEXT * parser, const PT_NODE * selqry);
   extern const char *pt_get_name (PT_NODE * nam);
-  extern const char *pt_get_name_without_current_user (const char *name);
   extern PT_NODE *pt_get_cursor (const PT_HOST_VARS * hv);
   extern PT_NODE *pt_get_parameters (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -664,7 +663,8 @@ extern "C"
   extern PT_NODE *pt_check_spec_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern PT_NODE *pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * user);
-  extern const char *pt_get_user_name (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern const char *pt_get_user_name (const char *name);
+  extern const char *pt_get_name_without_current_user_name (const char *name);
 #ifdef __cplusplus
 }
 #endif

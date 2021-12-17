@@ -13004,12 +13004,12 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  /*
 	   * e.g. select t1 from dba.t1;
-	   *                                        p->info.name.original  : NULL
-	   *                                        p->info.name.resolved  : dba.t1
-	   *      pt_get_name_without_current_user (p->info.name.resolved) : t1
+	   *                                             p->info.name.original  : NULL
+	   *                                             p->info.name.resolved  : dba.t1
+	   *      pt_get_name_without_current_user_name (p->info.name.resolved) : t1
 	   * 
 	   */
-	  q = pt_append_name (parser, q, pt_get_name_without_current_user (p->info.name.resolved));
+	  q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.resolved));
 	}
     }
   else
@@ -13020,11 +13020,12 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       /*
        * e.g. select c1 from dba.t1;
-       *                                        p->info.name.resolved  : dba.t1
-       *      pt_get_name_without_current_user (p->info.name.resolved) : t1
+       *                                             p->info.name.resolved  : dba.t1
+       *      pt_get_name_without_current_user_name (p->info.name.resolved) : t1
        * 
        */
-      qualifier_name = pt_get_name_without_current_user (p->info.name.resolved);
+      qualifier_name = pt_get_name_without_current_user_name (p->info.name.resolved);
+      // qualifier_name = p->info.name.resolved;
 
       /* Print both resolved name and original name If there is a non-zero length resolved name, print it, followed by
        * ".". */
@@ -13039,7 +13040,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	      && original_spec->info.spec.entity_name->info.name.original
 	      && original_spec->info.spec.entity_name->info.name.original[0] != '\0')
 	    {
-	      q = pt_append_name (parser, q, pt_get_name_without_current_user (original_spec->info.spec.entity_name->info.name.original));
+	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (original_spec->info.spec.entity_name->info.name.original));
 	    }
 	  else
 	    {
@@ -13095,12 +13096,13 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  /*
 	   * e.g. select 1 from dba.t1;
-	   *                                        p->info.name.original  : dba.t1
-	   *                                        p->info.name.resolved  : NULL
-	   *      pt_get_name_without_current_user (p->info.name.original) : t1
+	   *                                             p->info.name.original  : dba.t1
+	   *                                             p->info.name.resolved  : NULL
+	   *      pt_get_name_without_current_user_name (p->info.name.original) : t1
 	   * 
 	   */
-	  q = pt_append_name (parser, q, pt_get_name_without_current_user (p->info.name.original));
+	  q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.original));
+	  // q = pt_append_name (parser, q, p->info.name.original);
 
 	  if (p->info.name.meta_class == PT_INDEX_NAME)
 	    {

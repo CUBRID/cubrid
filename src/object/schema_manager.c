@@ -5194,18 +5194,53 @@ MOP
 sm_find_class (const char *name)
 {
   MOP class_mop = NULL;
-  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class full name */
+  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class_full_name */
 
   sm_downcase_name (name, realname, SM_MAX_FULL_CLASS_LENGTH);
 
   class_mop = locator_find_class (realname);
   if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
     {
-      const char *target_name = sm_get_class_name_from_db_class (realname);
+      const char *target_name = sm_find_class_name_from_db_class (realname);
 
       if (target_name)
         {
           class_mop = locator_find_class (target_name);
+
+	  free_and_init (target_name);
+	}
+    }
+
+  return class_mop;
+}
+
+/*
+ * sm_find_class_with_purpose() - Given a class name, find the class.
+ *    All this really does is call locator_find_class but it makes sure
+ *    the search is case insensitive.
+ *   return: class object
+ *   name(in): class name
+ *   for_update(in): true, if search the class for update purpose
+ */
+
+MOP
+sm_find_class_with_purpose (const char *name, bool for_update)
+{
+  MOP class_mop = NULL;
+  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class_full_name */
+
+  sm_downcase_name (name, realname, SM_MAX_FULL_CLASS_LENGTH);
+
+  class_mop = locator_find_class_with_purpose (realname, for_update);
+  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+    {
+      const char *target_name = sm_find_class_name_from_db_class (realname);
+
+      if (target_name)
+        {
+          class_mop = locator_find_class_with_purpose (target_name, for_update);
+
+	  free_and_init (target_name);
 	}
     }
 
@@ -5213,7 +5248,7 @@ sm_find_class (const char *name)
 }
 
 const char *
-sm_get_class_name_from_db_class (const char *name)
+sm_find_class_name_from_db_class (const char *name)
 {
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
@@ -5221,9 +5256,10 @@ sm_get_class_name_from_db_class (const char *name)
   const char *query = NULL;
   char *query_buf = NULL;
   int query_len = 0;
+  const char *result = NULL;
   
-  const char *target_name = NULL;
   const char *dot = NULL;
+  const char *target_name = NULL;
  
   int error = NO_ERROR;
 
@@ -5256,9 +5292,10 @@ sm_get_class_name_from_db_class (const char *name)
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
 
-  if (error != NO_ERROR)
+  if (error < NO_ERROR)
     {
       /* To Do: Exception handling */
+      goto end;
     }
 
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
@@ -5271,13 +5308,23 @@ sm_get_class_name_from_db_class (const char *name)
           if (!DB_IS_NULL (&value))
 	    {
 	      assert (DB_IS_STRING (&value));
-	      target_name = db_get_string (&value);
+	      result = db_get_string (&value);
 	    }
 	}
 
       if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
         {
-	  target_name = NULL;
+	  result = NULL;
+	}
+    }
+
+  if (result)
+    {
+      target_name = strndup (result, strlen (result));
+      if (target_name == NULL)
+        {
+	  /* To Do: Exception handling */
+	  goto end;
 	}
     }
 
@@ -5294,37 +5341,6 @@ end:
     }
 
   return target_name;
-}
-
-/*
- * sm_find_class_with_purpose() - Given a class name, find the class.
- *    All this really does is call locator_find_class but it makes sure
- *    the search is case insensitive.
- *   return: class object
- *   name(in): class name
- *   for_update(in): true, if search the class for update purpose
- */
-
-MOP
-sm_find_class_with_purpose (const char *name, bool for_update)
-{
-  MOP class_mop = NULL;
-  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class full name */
-
-  sm_downcase_name (name, realname, SM_MAX_FULL_CLASS_LENGTH);
-
-  class_mop = locator_find_class_with_purpose (realname, for_update);
-  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
-    {
-      const char *target_name = sm_get_class_name_from_db_class (realname);
-
-      if (target_name)
-        {
-          class_mop = locator_find_class_with_purpose (target_name, for_update);
-	}
-    }
-
-  return class_mop;
 }
 
 /*
