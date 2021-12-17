@@ -7468,7 +7468,6 @@ try_again:
   /* Output record type. */
   context->record_type = slot_p->record_type;
 
-#if defined (SERVER_MODE)
   if (context->record_type == REC_BIGONE || context->record_type == REC_RELOCATION)
     {
       ret = pgbuf_check_page_ahead_of_replication (thread_p, context->home_page_watcher.pgptr);
@@ -7478,7 +7477,6 @@ try_again:
 	  goto error;
 	}
     }
-#endif
 
   if (context->fwd_page_watcher.pgptr != NULL && slot_p->record_type != REC_RELOCATION
       && slot_p->record_type != REC_BIGONE)
@@ -7526,14 +7524,12 @@ try_again:
 
 	      goto error;
 	    }
-#if defined (SERVER_MODE)
 	  ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
 
 	  if (ret != NO_ERROR)
 	    {
 	      goto error;
 	    }
-#endif
 	  return S_SUCCESS;
 	}
       else if (ret == ER_PB_BAD_PAGEID)
@@ -7575,14 +7571,12 @@ try_again:
 	      assert (false);
 	      goto error;
 	    }
-#if defined (SERVER_MODE)
 	  ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
 
 	  if (ret != NO_ERROR)
 	    {
 	      goto error;
 	    }
-#endif
 	  return S_SUCCESS;
 	}
       else if (ret == ER_PB_BAD_PAGEID)

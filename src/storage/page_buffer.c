@@ -2315,10 +2315,8 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
       // Maybe page is deallocated, or maybe there was another error. If page is deallocated, the error must be
       // ER_PB_BAD_PAGEID
 
-      if (pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, PGBUF_LATCH_READ, vpid) == ER_PB_BAD_PAGEID)
-	{
-	  return nullptr;
-	}
+      (void) pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, PGBUF_LATCH_READ, vpid);
+      return nullptr;
     }
 
   // Page must be fixed here
@@ -2340,10 +2338,10 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
   return page;
 }
 
-#if defined (SERVER_MODE)
 int
 pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
 {
+#if defined (SERVER_MODE)
   assert (page != nullptr);
   assert (is_passive_transaction_server ());
 
@@ -2365,30 +2363,29 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
       // Page is not desynchronized
       return NO_ERROR;
     }
-}
+#else
+  return NO_ERROR;
 #endif
+}
 
 int
 pgbuf_check_for_deallocated_page_or_desyncronization (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode,
 						      const VPID & vpid)
 {
+  assert (er_errid () == ER_PB_BAD_PAGEID);
   int ret = ER_PB_BAD_PAGEID;
-
+#if defined (SERVER_MODE)
   PAGE_PTR fixed_page = pgbuf_fix (thread_p, &vpid, OLD_PAGE_DEALLOCATED, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
   if (fixed_page == NULL)
     {
-      return ER_PB_BAD_PAGEID;
+      ASSERT_ERROR_AND_SET (ret);
+      return ret;
     }
 
-#if defined (SERVER_MODE)
-  ret = pgbuf_check_page_ahead_of_replication (thread_p, fixed_page);
-  if (ret == NO_ERROR)
-    {
-      return ER_PB_BAD_PAGEID;
-      pgbuf_unfix (thread_p, fixed_page);
-    }
-#endif
+  return pgbuf_check_page_ahead_of_replication (thread_p, fixed_page);
+#else
   return ret;
+#endif
 }
 
 /*
