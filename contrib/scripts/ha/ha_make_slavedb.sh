@@ -16,7 +16,7 @@ repl_log_home=$CUBRID_DATABASES
 db_name=
 
 backup_dest_path=
-backup_option=
+backup_option="-z --no-check"
 restore_option=
 scp_option="-l 131072"		# default - limit : 16M*1024*8=131072
 ssh_port=22
