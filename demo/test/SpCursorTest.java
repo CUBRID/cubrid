@@ -31,10 +31,14 @@
 
 package test;
 
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
 
 public class SpCursorTest {
     public static ResultSet TResultSet() {
@@ -51,5 +55,156 @@ public class SpCursorTest {
         }
 
         return null;
+    }
+
+    public static ResultSet TResultSetWithLimit(int limit) {
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            Connection conn = DriverManager.getConnection("jdbc:default:connection:");
+
+            String sql = "select name, nation_code, event from athlete LIMIT " + limit;
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(sql);
+            return rs;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    public static String PyramidPrinter(int depth) {
+        String result = "";
+        if (depth >= 0) {
+            try {
+                Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+                Connection conn = DriverManager.getConnection("jdbc:default:connection:");
+
+                for (int i = 0; i < depth; i++) {
+                    CallableStatement cstmt =
+                            conn.prepareCall("?=CALL rset_limit(" + (i + 1) + ")");
+                    cstmt.registerOutParameter(1, Types.JAVA_OBJECT);
+                    cstmt.execute();
+                    ResultSet rs = (ResultSet) cstmt.getObject(1);
+
+                    while (rs.next()) {
+                        result += rs.getString(1) + "|";
+                    }
+                    result += "\n";
+
+                    rs.close();
+                }
+            } catch (Exception e) {
+                result = e.getMessage();
+            }
+        }
+
+        return result;
+    }
+
+    public static ResultSet testCursorWithQuery(String sql) {
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            Connection con = DriverManager.getConnection("jdbc:default:connection:");
+
+            String query = sql;
+            Statement stmt = con.createStatement();
+            ResultSet rs = stmt.executeQuery(query);
+            return rs;
+        } catch (Exception e) {
+            // e.printStackTrace();
+        }
+        return null;
+    }
+
+    public static String testOutResultWithQuery(String query) {
+        String ret = "";
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            Connection con = DriverManager.getConnection("jdbc:default:connection:");
+
+            CallableStatement cstmt = con.prepareCall("? = CALL rset_q(?)");
+            cstmt.registerOutParameter(1, Types.JAVA_OBJECT);
+            cstmt.registerOutParameter(2, Types.VARCHAR);
+            cstmt.setObject(2, query);
+            cstmt.execute();
+            ResultSet rs = (ResultSet) cstmt.getObject(1);
+            rs = (ResultSet) cstmt.getObject(1);
+            ResultSetMetaData rsmd = rs.getMetaData();
+            int numberofColumn = rsmd.getColumnCount();
+
+            for (int i = 1; i <= numberofColumn; i++) {
+                String ColumnName = rsmd.getColumnName(i);
+                ret = ret + ColumnName + "|";
+            }
+
+            while (rs.next()) {
+                for (int j = 1; j <= numberofColumn; j++) {
+                    ret = ret + rs.getObject(j) + "|";
+                }
+            }
+            rs.close();
+        } catch (Exception e) {
+            ret = e.getMessage();
+        }
+        return ret;
+    }
+
+    public static String testOutResultWithQueryMeta(String query) {
+        Connection conn = null;
+        Statement stmt = null;
+        String ret = "";
+
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+
+            conn.setAutoCommit(false);
+            stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(query);
+
+            ResultSetMetaData rsmd = rs.getMetaData();
+            int numberofColumn = rsmd.getColumnCount();
+
+            for (int i = 1; i <= numberofColumn; i++) {
+                String ColumnName = rsmd.getColumnName(i);
+                ret = ret + ColumnName + "|";
+            }
+
+            while (rs.next()) {
+                for (int j = 1; j <= numberofColumn; j++) {
+                    ret = ret + rs.getObject(j) + "|";
+                }
+            }
+
+            stmt.close();
+            conn.close();
+        } catch (SQLException e) {
+            // e.printStackTrace();
+        } catch (Exception e) {
+            // e.printStackTrace();
+        }
+        return ret;
+    }
+
+    public static void testOutResultWithUpdateQuery(String query) {
+        Connection conn = null;
+        Statement stmt = null;
+
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+
+            conn.setAutoCommit(false);
+            stmt = conn.createStatement();
+            stmt.executeUpdate(query);
+
+            stmt.close();
+            conn.close();
+        } catch (SQLException e) {
+            // e.printStackTrace();
+        } catch (Exception e) {
+            // e.printStackTrace();
+        }
     }
 }

@@ -1,5 +1,7 @@
+package test;
+
 /*
- * Copyright (C) 2008 Search Solution Corporation.
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,40 +31,8 @@
  *
  */
 
-package com.cubrid.jsp.value;
+import java.sql.*;
 
-import com.cubrid.jsp.impl.SUConnection;
-import com.cubrid.jsp.jdbc.CUBRIDServerSideOutResultSet;
-import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
-import java.sql.ResultSet;
-
-public class ResultSetValue extends Value {
-    private long queryId;
-    private ResultSet rset = null;
-
-    public ResultSetValue(long queryId) {
-        super();
-        this.queryId = queryId;
-    }
-
-    public ResultSetValue(ResultSet rset) {
-        super();
-        this.rset = rset;
-        this.queryId = ((CUBRIDServerSideResultSet) rset).getQueryId();
-    }
-
-    public ResultSet toResultSet(SUConnection ucon) {
-        if (rset == null) {
-            try {
-                rset = new CUBRIDServerSideOutResultSet(ucon, queryId);
-            } catch (Exception e) {
-                // ignore and leave it null
-            }
-        }
-        return rset;
-    }
-
-    public long toLong() {
-        return queryId;
-    }
+public class SpMultipleStatementTest {
+    
 }

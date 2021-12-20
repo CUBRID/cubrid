@@ -191,7 +191,7 @@ public class StoredProcedure {
                 resolved = args[i].toOidArray();
 
             } else if (argsTypes[i] == ResultSet[].class) {
-                resolved = args[i].toResultSetArray();
+                resolved = args[i].toResultSetArray(null);
 
             } else if (argsTypes[i] == Object[].class) {
                 resolved = args[i].toObjectArray();
@@ -251,7 +251,7 @@ public class StoredProcedure {
                 resolved = args[i].toOidArrayArray();
 
             } else if (argsTypes[i] == ResultSet[][].class) {
-                resolved = args[i].toResultSetArrayArray();
+                resolved = args[i].toResultSetArrayArray(null);
 
             } else if (argsTypes[i] == Object[][].class) {
                 resolved = args[i].toObjectArrayArray();

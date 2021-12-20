@@ -40,6 +40,7 @@ import com.cubrid.jsp.data.ExecuteInfo;
 import com.cubrid.jsp.data.FetchInfo;
 import com.cubrid.jsp.data.GetByOIDInfo;
 import com.cubrid.jsp.data.GetSchemaInfo;
+import com.cubrid.jsp.data.MakeOutResultSetInfo;
 import com.cubrid.jsp.data.PrepareInfo;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -169,6 +170,17 @@ public class SUConnection {
 
         CUBRIDUnpacker unpacker = request(outputBuffer);
         FetchInfo info = new FetchInfo(unpacker);
+        return info;
+    }
+
+    // UFunctionCode.MAKE_OUT_RS
+    public MakeOutResultSetInfo makeOutResult(long queryId) throws IOException, SQLException {
+        CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
+        packer.packInt(SUFunctionCode.MAKE_OUT_RS.getCode());
+        packer.packBigInt(queryId);
+
+        CUBRIDUnpacker unpacker = request(outputBuffer);
+        MakeOutResultSetInfo info = new MakeOutResultSetInfo(unpacker);
         return info;
     }
 

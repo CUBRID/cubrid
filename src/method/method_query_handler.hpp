@@ -102,6 +102,10 @@ namespace cubmethod
       DB_QUERY_TYPE *get_column_info ();
       query_result *get_current_result ();
 
+      /* set result info */
+      void set_prepare_column_list_info (std::vector<column_info> &infos, query_result &result);
+      int set_qresult_info (std::vector<query_result_info> &qinfo);
+
     protected:
       /* prepare */
       int prepare_query (prepare_info &info, int &flag);
@@ -119,13 +123,9 @@ namespace cubmethod
       bool has_stmt_result_set (char stmt_type);
 
       /* column info */
-      void set_prepare_column_list_info (std::vector<column_info> &infos, query_result &result);
       column_info set_column_info (int dbType, int setType, short scale, int prec, char charset, const char *col_name,
 				   const char *attr_name,
 				   const char *class_name, char is_non_null);
-
-      /* qresult */
-      int set_qresult_info (std::vector<query_result_info> &qinfo);
 
       /* session */
       void close_and_free_session ();

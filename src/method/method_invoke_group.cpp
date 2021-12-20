@@ -90,11 +90,11 @@ namespace cubmethod
     m_method_vector.clear ();
   }
 
-  DB_VALUE &
+  DB_VALUE *
   method_invoke_group::get_return_value (int index)
   {
     assert (index >= 0 && index < (int) get_num_methods ());
-    return m_result_vector.at (index);
+    return &m_result_vector.at (index);
   }
 
   int

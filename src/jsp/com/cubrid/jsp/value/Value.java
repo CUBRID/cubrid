@@ -32,6 +32,7 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.impl.SUConnection;
 import cubrid.sql.CUBRIDOID;
 import java.math.BigDecimal;
 import java.sql.Date;
@@ -300,15 +301,15 @@ public abstract class Value {
         throw new TypeMismatchException();
     }
 
-    public ResultSet toResultSet() throws TypeMismatchException {
+    public ResultSet toResultSet(SUConnection ucon) throws TypeMismatchException {
         throw new TypeMismatchException();
     }
 
-    public ResultSet[] toResultSetArray() throws TypeMismatchException {
+    public ResultSet[] toResultSetArray(SUConnection ucon) throws TypeMismatchException {
         throw new TypeMismatchException();
     }
 
-    public ResultSet[][] toResultSetArrayArray() throws TypeMismatchException {
+    public ResultSet[][] toResultSetArrayArray(SUConnection ucon) throws TypeMismatchException {
         throw new TypeMismatchException();
     }
 

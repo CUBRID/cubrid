@@ -1,14 +1,15 @@
 package com.cubrid.jsp.impl;
 
+import com.cubrid.jsp.data.CallInfo;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.ExecuteInfo;
 import com.cubrid.jsp.data.FetchInfo;
 import com.cubrid.jsp.data.GetByOIDInfo;
 import com.cubrid.jsp.data.GetSchemaInfo;
+import com.cubrid.jsp.data.MakeOutResultSetInfo;
 import com.cubrid.jsp.data.PrepareInfo;
 import com.cubrid.jsp.data.QueryResultInfo;
-import com.cubrid.jsp.data.CallInfo;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
@@ -16,6 +17,7 @@ import com.cubrid.jsp.jdbc.CUBRIDServerSideConstants;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorManager;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideOID;
+import com.cubrid.jsp.value.ResultSetValue;
 import com.cubrid.jsp.value.Value;
 import cubrid.jdbc.jci.CUBRIDCommandType;
 import cubrid.sql.CUBRIDOID;
@@ -62,6 +64,7 @@ public class SUStatement {
     int resultIndex = -1;
 
     /* fetch info */
+    private long queryId = -1;
     FetchInfo fetchInfo; // last fetched result
     private boolean wasNull = false;
     SUResultTuple tuples[] = null;
@@ -152,6 +155,21 @@ public class SUStatement {
         isSensitive = false;
     }
 
+    /* out resultset */
+    public SUStatement(SUConnection conn, long queryId) throws IOException, SQLException {
+        suConn = conn;
+        type = NORMAL;
+
+        this.queryId = queryId;
+
+        MakeOutResultSetInfo info = suConn.makeOutResult(queryId);
+
+        /* init column infos */
+        setColumnInfo(info.columnInfos);
+
+        totalTupleNumber = info.getResultInfo(0).tupleCount;
+    }
+
     public boolean getSQLType() {
         switch (commandType) {
             case CUBRIDCommandType.CUBRID_STMT_SELECT:
@@ -224,9 +242,9 @@ public class SUStatement {
 
             CallInfo callInfo = executeInfo.callInfo;
             tuples = new SUResultTuple[fetchedTupleNumber];
-            tuples[0] = callInfo.getTuple ();
-        } else {
-            cursorPosition = -1;
+            tuples[0] = callInfo.getTuple();
+        } else if (getSQLType() == true) {
+            queryId = executeInfo.getResultInfo(0).queryId;
         }
 
         totalTupleNumber = executeInfo.numAffected;
@@ -298,6 +316,10 @@ public class SUStatement {
             return;
         }
 
+        if (commandType == CUBRIDCommandType.CUBRID_STMT_CALL) {
+            return;
+        }
+
         /* need not to send fetch request */
         if (fetchedStartCursorPosition >= 0
                 && fetchedStartCursorPosition <= cursorPosition
@@ -307,9 +329,7 @@ public class SUStatement {
 
         // send fetch request
         try {
-            fetchInfo =
-                    suConn.fetch(
-                            executeInfo.getResultInfo(0).queryId, cursorPosition, fetchSize, 0);
+            fetchInfo = suConn.fetch(queryId, cursorPosition, fetchSize, 0);
         } catch (IOException ioe) {
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
                     CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, ioe);
@@ -410,8 +430,10 @@ public class SUStatement {
         }
 
         if (type == NORMAL) {
-            if (commandType != CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
-              tuples = fetchInfo.tuples; // get tuples from fetchInfo
+            if (commandType == CUBRIDCommandType.CUBRID_STMT_CALL) {
+                /* do nothing, tuples is already retrived when executing the call stmt */
+            } else if (commandType != CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+                tuples = fetchInfo.tuples; // get tuples from fetchInfo
             }
         } else {
             // GET_BY_OID initialized 1 tuple at constructor
@@ -639,12 +661,18 @@ public class SUStatement {
 
     public Object getObject(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
-        Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null) return null;
+        Value v = (Value) beforeGetTuple(idx);
+        if (v == null) return null;
 
         // TODO: not implemented yet
         try {
-            return obj.toObject();
+            Object obj = null;
+            if (v instanceof ResultSetValue) {
+                obj = v.toResultSet(suConn);
+            } else {
+                obj = v.toObject();
+            }
+            return obj;
         } catch (TypeMismatchException e) {
             return null;
         }
@@ -674,5 +702,9 @@ public class SUStatement {
 
     public int getColumnLength() {
         return columnNumber;
+    }
+
+    public long getQueryId() {
+        return queryId;
     }
 }

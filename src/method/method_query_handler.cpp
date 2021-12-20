@@ -25,6 +25,10 @@
 #include "method_schema_info.hpp"
 #include "object_primitive.h"
 
+/* from jsp_cl.c */
+extern void jsp_set_prepare_call ();
+extern void jsp_unset_prepare_call ();
+
 namespace cubmethod
 {
   query_handler::query_handler (error_context &ctx, int id)
@@ -484,7 +488,9 @@ namespace cubmethod
 
     DB_QUERY_RESULT *result = NULL;
     int stmt_id = m_q_result[0].stmt_id;
+    jsp_set_prepare_call ();
     int n = db_execute_and_keep_statement (m_session, stmt_id, &result);
+    jsp_unset_prepare_call ();
     if (n < 0)
       {
 	m_error_ctx.set_error (n, NULL, __FILE__, __LINE__);

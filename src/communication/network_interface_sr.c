@@ -10343,13 +10343,10 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   char *reply_data = NULL;
   int reply_data_size = 0;
 
-  DB_VALUE ret_value;
-  db_make_null (&ret_value);
-
   error_code = method_group.execute (args);
   if (error_code == NO_ERROR)
     {
-      ret_value = method_group.get_return_value (0);
+      DB_VALUE *ret_value = method_group.get_return_value (0);
 
       method_sig_node *sig = sig_list.method_sig;
 
@@ -10369,7 +10366,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	}
 
       //int total_size = packer.get_packed_int_size (0);
-      int total_size = packer.get_packed_db_value_size (ret_value, 0);
+      int total_size = packer.get_packed_db_value_size (*ret_value, 0);
       total_size += packer.get_packed_int_size (total_size);
     /* *INDENT-OFF* */
     for (DB_VALUE *value : out_args)
@@ -10383,7 +10380,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 
       /* result */
       //packer.pack_int (error_code);
-      packer.pack_db_value (ret_value);
+      packer.pack_db_value (*ret_value);
 
       /* output parameters */
       packer.pack_int (out_args.size ());

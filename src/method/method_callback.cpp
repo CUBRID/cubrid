@@ -113,6 +113,9 @@ namespace cubmethod
       case METHOD_CALLBACK_COLLECTION:
 	error = collection_cmd (unpacker);
 	break;
+      case METHOD_CALLBACK_MAKE_OUT_RS:
+	error = make_out_resultset (unpacker);
+	break;
       default:
 	assert (false);
 	error = ER_FAILED;
@@ -206,7 +209,7 @@ namespace cubmethod
 
     /* register query_id for out resultset */
     cubmethod::query_result *qresult = handler->get_current_result();
-    if (qresult->stmt_type == CUBRID_STMT_SELECT)
+    if (qresult && qresult->stmt_type == CUBRID_STMT_SELECT)
       {
 	uint64_t qid = (uint64_t) info.qresult_infos[0].query_id;
 	m_qid_handler_map[qid] = request.handler_id;
@@ -228,6 +231,31 @@ namespace cubmethod
     // TODO
     int error = NO_ERROR;
     return error;
+  }
+
+  int
+  callback_handler::make_out_resultset (packing_unpacker &unpacker)
+  {
+    uint64_t query_id;
+    unpacker.unpack_all (query_id);
+
+    cubmethod::query_handler *query_handler = get_query_handler_by_qid (query_id);
+    if (query_handler)
+      {
+	cubmethod::query_result *qresult = query_handler->get_current_result();
+	if (qresult)
+	  {
+	    make_outresult_info info;
+
+	    query_handler->set_prepare_column_list_info (info.column_infos, *qresult);
+	    query_handler->set_qresult_info (info.qresult_infos);
+	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
+	  }
+      }
+
+    /* unexpected error, should not be here */
+    m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
 //////////////////////////////////////////////////////////////////////////
@@ -463,12 +491,12 @@ method_make_out_rs (DB_BIGINT query_id)
   cubmethod::query_result *qresult = query_handler->get_current_result();
   if (qresult)
     {
-      qresult->column_info = db_get_query_type_list (query_handler->get_db_session(), qresult->stmt_id);
+      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session(), qresult->stmt_id);
       return ux_create_srv_handle_with_method_query_result (
 		     qresult->result,
 		     qresult->stmt_type,
 		     qresult->num_column,
-		     qresult->column_info,
+		     column_info,
 		     true
 	     );
     }
