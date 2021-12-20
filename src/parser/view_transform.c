@@ -1552,8 +1552,9 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return 0;
     }
   /* select for schema */
-  if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_COLS_SCHEMA)
-      || PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_FULL_INFO_COLS_SCHEMA))
+  if (PT_IS_SELECT (mainquery)
+      && (PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_COLS_SCHEMA)
+	  || PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_FULL_INFO_COLS_SCHEMA)))
     {
       /* not pushable */
       return 0;
