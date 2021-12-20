@@ -433,6 +433,8 @@ extern "C"
   extern PT_NODE *pt_find_aggregate_functions_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						    int *continue_walk);
   extern PT_NODE *pt_is_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+  extern PT_NODE *pt_is_group_concat (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+  extern PT_NODE *pt_is_group_concat_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_has_non_idx_sarg_coll_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_analytic_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_inst_or_orderby_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
@@ -526,6 +528,7 @@ extern "C"
 
   extern bool pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_group_concat (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);

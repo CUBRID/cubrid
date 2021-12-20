@@ -1050,6 +1050,65 @@ pt_find_aggregate_functions_post (PARSER_CONTEXT * parser, PT_NODE * tree, void 
 }
 
 /*
+ * pt_is_group_concat_post () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_group_concat_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *group_concat = (bool *) arg;
+
+  if (*group_concat)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_group_concat () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an analytic function node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_group_concat (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_group_concat = (bool *) arg;
+
+  if (tree && tree->node_type == PT_FUNCTION && tree->info.function.function_type == PT_GROUP_CONCAT)
+    {
+      *has_group_concat = true;
+    }
+
+  if (*has_group_concat)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
  * pt_is_analytic_node_post () -
  *   return:
  *   parser(in):
@@ -3109,6 +3168,52 @@ pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return has_analytic;
+}
+
+/*
+ * pt_has_group_concat () -
+ *   return: true if statement has an group_concat function in its parse tree
+ *   parser(in):
+ *   node(in/out):
+ *
+ */
+bool
+pt_has_group_concat (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_group_concat = false;
+  bool has_group_concat_arg1 = false;
+  bool has_group_concat_arg2 = false;
+
+  if (!node)
+    {
+      return false;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      (void) parser_walk_tree (parser, node->info.query.q.select.list, pt_is_group_concat, &has_group_concat,
+			       pt_is_group_concat_post, &has_group_concat);
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      has_group_concat_arg1 = pt_has_group_concat (parser, node->info.query.q.union_.arg1);
+      has_group_concat_arg2 = pt_has_group_concat (parser, node->info.query.q.union_.arg2);
+      if (has_group_concat_arg1 || has_group_concat_arg2)
+	{
+	  has_group_concat = true;
+	}
+      break;
+
+    default:
+      (void) parser_walk_tree (parser, node, pt_is_group_concat, &has_group_concat, pt_is_group_concat_post,
+			       &has_group_concat);
+      break;
+    }
+
+  return has_group_concat;
 }
 
 /*
