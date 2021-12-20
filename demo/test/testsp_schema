@@ -163,4 +163,8 @@ CREATE OR REPLACE FUNCTION TC_CS1() RETURN STRING as language java name 'test.Te
 CREATE OR REPLACE FUNCTION TC_CS2() RETURN STRING as language java name 'test.TestCUBRIDCallableStatement.test2() return java.lang.String';
 CREATE OR REPLACE FUNCTION TC_CS3() RETURN STRING as language java name 'test.TestCUBRIDCallableStatement.test3() return java.lang.String';
 
+/* Specification change Test */
+CREATE OR REPLACE FUNCTION TC_SC1() RETURN STRING as language java name 'test.TestChangedSpecTest.test1() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_SC2() RETURN STRING as language java name 'test.TestChangedSpecTest.test2() return java.lang.String';
+
 COMMIT WORK;
