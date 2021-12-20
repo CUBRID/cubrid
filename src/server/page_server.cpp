@@ -73,6 +73,11 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, page
       tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH,
       std::bind (&page_server::connection_handler::receive_log_boot_info_fetch, std::ref (*this), std::placeholders::_1)
     },
+    {
+      tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH,
+      std::bind (&page_server::connection_handler::receive_stop_log_prior_dispatch, std::ref (*this),
+		 std::placeholders::_1)
+    }
   }, page_to_tran_request::RESPOND, tran_to_page_request::RESPOND, 1));
 
   assert (m_conn != nullptr);
