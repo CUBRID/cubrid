@@ -3727,11 +3727,13 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
 
+#if 0				/* In case of HS_REJECT_ALL, this function is not called. */
   if (context->state == HS_REJECT_ALL)
     {
       /* no tuples should be allowed */
       return NO_ERROR;
     }
+#endif
 
   if (thread_is_on_trace (thread_p))
     {

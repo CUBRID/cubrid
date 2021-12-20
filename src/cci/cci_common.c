@@ -80,7 +80,9 @@
 static const float CCI_MHT_REHASH_TRESHOLD = 0.7f;
 static const float CCI_MHT_REHASH_FACTOR = 1.3f;
 
+#if defined(USE_HASHVAL_ORDERED_LIST)
 #define HASHVAL_NOT_ORDERED(hent, val) ((hent)->orig_hash_value > (val))
+#endif
 #define MHT_HASH_COMPARE(func, hentry, key, orig_hash_value) \
         ((hentry)->orig_hash_value == (orig_hash_value) && (func) ((hentry)->key, (key)))
 
@@ -412,7 +414,10 @@ cci_mht_rehash (CCI_MHT_TABLE * ht)
 	  else
 	    {
 	      ht->ncollisions++;
-
+#if !defined(USE_HASHVAL_ORDERED_LIST)
+	      hentry->next = new_hvector[hash];
+	      new_hvector[hash] = hentry;
+#else
 	      CCI_HENTRY_PTR prev = NULL;
 	      CCI_HENTRY_PTR cur = new_hvector[hash];
 	      do
@@ -435,6 +440,7 @@ cci_mht_rehash (CCI_MHT_TABLE * ht)
 		{
 		  new_hvector[hash] = hentry;
 		}
+#endif
 	    }
 	}
     }
@@ -585,10 +591,12 @@ cci_mht_rem (CCI_MHT_TABLE * ht, const void *key, bool free_key, bool free_data)
 
 	  return data;
 	}
+#if defined(USE_HASHVAL_ORDERED_LIST)
       else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
 	{
 	  break;
 	}
+#endif
     }
 
   return NULL;
@@ -624,10 +632,12 @@ cci_mht_get (CCI_MHT_TABLE * ht, void *key)
 	{
 	  return hentry->data;
 	}
+#if defined(USE_HASHVAL_ORDERED_LIST)
       else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
 	{
 	  break;
 	}
+#endif
     }
   return NULL;
 }
@@ -654,8 +664,9 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
 {
   unsigned int hash;
   CCI_HENTRY_PTR hentry;
+#if defined(USE_HASHVAL_ORDERED_LIST)
   CCI_HENTRY_PTR prev_hentry = NULL;
-
+#endif
   assert (ht != NULL && key != NULL);
 
   /*
@@ -680,11 +691,13 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
 	      hentry->data = data;
 	      return key;
 	    }
+#if defined(USE_HASHVAL_ORDERED_LIST)
 	  else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
 	    {
 	      break;
 	    }
 	  prev_hentry = hentry;
+#endif
 	}
     }
 
@@ -736,6 +749,10 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
     {
       ht->ncollisions++;
 
+#if !defined(USE_HASHVAL_ORDERED_LIST)
+      hentry->next = ht->table[hash];
+      ht->table[hash] = hentry;
+#else
       if (prev_hentry)
 	{
 	  hentry->next = prev_hentry->next;
@@ -771,6 +788,7 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
 	      ht->table[hash] = hentry;
 	    }
 	}
+#endif
     }
   ht->nentries++;
 

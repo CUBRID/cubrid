@@ -63,7 +63,9 @@
 #define GET_PTR_FOR_HASH(key) (((UINT64)(key)) & 0xFFFFFFFFUL)
 #endif
 
+#if defined(USE_HASHVAL_ORDERED_LIST)
 #define HASHVAL_NOT_ORDERED(hent, val) ((hent)->orig_hash_value > (val))
+#endif
 #define MHT_HASH_COMPARE(func, hentry, key, orig_hash_value) \
         ((hentry)->orig_hash_value == (orig_hash_value) && (func) ((hentry)->key, (key)))
 
@@ -107,7 +109,11 @@ static void mht_adjust_lru_list (MHT_TABLE * ht, HENTRY_PTR hentry);
 
 static void mht_remove_entry (MHT_TABLE * ht, HENTRY_PTR prev_hentry, HENTRY_PTR hentry, unsigned int hash);
 static bool mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int hash,
-			       unsigned int orig_hash_value, HENTRY_PTR prev_hentry);
+			       unsigned int orig_hash_value
+#if defined(USE_HASHVAL_ORDERED_LIST)
+			       , HENTRY_PTR prev_hentry
+#endif
+  );
 static const void *mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static const void *mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
@@ -1120,7 +1126,10 @@ mht_rehash (MHT_TABLE * ht)
 	  else
 	    {
 	      ht->ncollisions++;
-
+#if !defined(USE_HASHVAL_ORDERED_LIST)
+	      hentry->next = new_hvector[hash];
+	      new_hvector[hash] = hentry;
+#else
 	      HENTRY_PTR prev = NULL;
 	      HENTRY_PTR cur = new_hvector[hash];
 	      do
@@ -1143,6 +1152,7 @@ mht_rehash (MHT_TABLE * ht)
 		{
 		  new_hvector[hash] = hentry;
 		}
+#endif
 	    }
 	}
     }
@@ -1472,10 +1482,12 @@ mht_get (MHT_TABLE * ht, const void *key)
 	  /* return value */
 	  return hentry->data;
 	}
+#if defined(USE_HASHVAL_ORDERED_LIST)
       else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
 	{
 	  return NULL;
 	}
+#endif
     }
   return NULL;
 }
@@ -1560,10 +1572,12 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 	      *((HENTRY_PTR *) last) = NULL;
 	    }
 	}
+#if defined(USE_HASHVAL_ORDERED_LIST)
       else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
 	{
 	  return NULL;
 	}
+#endif
     }
 
   return NULL;
@@ -1647,8 +1661,11 @@ mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 }
 
 static bool
-mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int hash,
-		   unsigned int orig_hash_value, HENTRY_PTR prev_hentry)
+mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int hash, unsigned int orig_hash_value
+#if defined(USE_HASHVAL_ORDERED_LIST)
+		   , HENTRY_PTR prev_hentry
+#endif
+  )
 {
   HENTRY_PTR hentry;
 
@@ -1715,6 +1732,10 @@ mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int has
     {
       ht->ncollisions++;
 
+#if !defined(USE_HASHVAL_ORDERED_LIST)
+      hentry->next = ht->table[hash];
+      ht->table[hash] = hentry;
+#else
       if (prev_hentry)
 	{
 	  hentry->next = prev_hentry->next;
@@ -1750,6 +1771,7 @@ mht_add_new_entry (MHT_TABLE * ht, const void *key, void *data, unsigned int has
 	      ht->table[hash] = hentry;
 	    }
 	}
+#endif
     }
   ht->nentries++;
 
@@ -1793,8 +1815,9 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 {
   unsigned int hash;
   HENTRY_PTR hentry = NULL;
+#if defined(USE_HASHVAL_ORDERED_LIST)
   HENTRY_PTR prev_hentry = NULL;
-
+#endif
   assert (ht != NULL && key != NULL);
 
   unsigned int orig_hash_value = 0;
@@ -1826,15 +1849,21 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 	      hentry->data = data;
 	      return key;
 	    }
+#if defined(USE_HASHVAL_ORDERED_LIST)
 	  else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
 	    {
 	      break;
 	    }
 	  prev_hentry = hentry;
+#endif
 	}
     }
 
+#if defined(USE_HASHVAL_ORDERED_LIST)
   if (mht_add_new_entry (ht, key, data, hash, orig_hash_value, prev_hentry) == false)
+#else
+  if (mht_add_new_entry (ht, key, data, hash, orig_hash_value) == false)
+#endif
     {
       return NULL;
     }
@@ -1927,7 +1956,9 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 {
   unsigned int hash;
   HENTRY_PTR hentry;
+#if defined(USE_HASHVAL_ORDERED_LIST)
   HENTRY_PTR prev_hentry = NULL;
+#endif
 
   assert (ht != NULL && key != NULL);
 
@@ -1955,15 +1986,21 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 	      hentry->data = data;
 	      return key;
 	    }
+#if defined(USE_HASHVAL_ORDERED_LIST)
 	  else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
 	    {
 	      break;
 	    }
 	  prev_hentry = hentry;
+#endif
 	}
     }
 
+#if defined(USE_HASHVAL_ORDERED_LIST)
   if (mht_add_new_entry (ht, key, data, hash, orig_hash_value, prev_hentry) == false)
+#else
+  if (mht_add_new_entry (ht, key, data, hash, orig_hash_value) == false)
+#endif
     {
       return NULL;
     }
@@ -2135,10 +2172,12 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
 	  mht_remove_entry (ht, prev_hentry, hentry, hash);
 	  return NO_ERROR;
 	}
+#if defined(USE_HASHVAL_ORDERED_LIST)
       else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
 	{
 	  break;
 	}
+#endif
     }
 
   return ER_FAILED;
@@ -2200,10 +2239,12 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
 	  mht_remove_entry (ht, prev_hentry, hentry, hash);
 	  return NO_ERROR;
 	}
+#if defined(USE_HASHVAL_ORDERED_LIST)
       else if (HASHVAL_NOT_ORDERED (hentry, orig_hash_value))
 	{
 	  break;
 	}
+#endif
     }
 
   return ER_FAILED;
