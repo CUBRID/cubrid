@@ -1591,7 +1591,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   /*****************************/
 
   /* check for non-SELECTs */
-  if (PT_IS_SELECT (subquery))
+  if (!PT_IS_SELECT (subquery))
     {
       /* not pushable */
       return 0;
