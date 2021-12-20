@@ -5166,7 +5166,7 @@ au_change_owner (MOP classmop, MOP owner)
 	  /* Since class_full_name includes owner_name, if owner of class is changed,
 	   * class_full_name must be changed as well. */
 	  class_simple_name = sm_ch_simple_name ((MOBJ) class_);
-	  if (db_is_system_class_by_name (class_simple_name))
+	  if (db_is_system_class_by_name (class_simple_name) == TRUE)
 	    {
 	      error = locator_flush_class(classmop);
 	    }
@@ -5235,7 +5235,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
     }
 
   dot = strchr (class_name, '.');
-  if (dot || db_is_system_class_by_name (class_name))
+  if (dot || db_is_system_class_by_name (class_name) == TRUE)
     {
       classmop = sm_find_class (class_name);
     }
@@ -5630,7 +5630,7 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
       name = db_get_string (class_);
 
       dot = strchr (name, '.');
-      if (dot || db_is_system_class_by_name (name))
+      if (dot || db_is_system_class_by_name (name) == TRUE)
 	{
 	  classmop = sm_find_class (name);
 	}

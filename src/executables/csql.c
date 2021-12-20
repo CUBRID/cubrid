@@ -1072,7 +1072,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       else
         {
 	  dot = strchr (argument, '.');
-	  if (dot || db_is_system_class_by_name (argument))
+	  if (dot || db_is_system_class_by_name (argument) == TRUE)
 	    {
 	      csql_help_schema (argument);
 	    }
