@@ -3804,7 +3804,7 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
       while (q)
 	{			/* check that p->range != q->range to the end of list */
 	  /*
-	   * Case of comparing names after DOT(.).
+	   * Case of comparing names after DOT (.).
 	   * 1. When comparing owner_name.class_name and alias_name.
 	   *    In Oracle and PostgreSQL, only table_name excluding schema_name or owner_name is compared
 	   *    with alias_name. In order to operate the same as other DBMSs, only class_name except owner_name
@@ -7170,20 +7170,48 @@ pt_qualifier_compare (const char *p, const char *q)
   const char *qualifier_p = NULL;
   const char *qualifier_q = NULL;
 
-  /* p */
-  qualifier_p = pt_get_name_without_current_user_name (p);
-
-  /* q */
-  qualifier_q = pt_get_name_without_current_user_name (q);
-
-  if (!qualifier_p && !qualifier_q)
+  if (p == NULL && q == NULL)
     {
       return 0;
     }
 
-  if (!qualifier_p || !qualifier_q)
+  if (p == NULL || q == NULL)
     {
       return 1;
+    }
+
+  dot_p = strchr (p, '.');
+  dot_q = strchr (q, '.');
+
+  if ((dot_p == NULL && dot_q != NULL) || (dot_p != NULL && dot_q == NULL))
+    {
+      /*
+       * In the case below, only after DOT (.) is compared.
+       *
+       * e.g. p : object_name
+       *      q : object_name
+       *
+       *      or
+       *
+       *      p : user_name.object_name
+       *      q : object_name
+       *
+       *      or
+       * 
+       *      p : object_name
+       *      q : user_name.object_name
+       */
+      qualifier_p = dot_p ? (dot_p + 1) : p;
+      qualifier_q = dot_q ? (dot_q + 1) : q;
+    }
+  else
+    {
+      /*
+       * e.g. p : user_name.object_name
+       *      q : user_name.object_name
+       */
+      qualifier_p = p;
+      qualifier_q = q;
     }
 
   return intl_identifier_casecmp (qualifier_p, qualifier_q);
@@ -9375,7 +9403,6 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial)
     {
       db_string_free (current_user_name);
       current_user_name = NULL;
-      owner_name = NULL;
     }
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
