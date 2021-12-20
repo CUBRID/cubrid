@@ -24983,7 +24983,6 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
   do
     {
       ret = heap_get_visible_version_with_repl_desync (thread_p, context, is_heap_scan);
-
       if (ret != S_ERROR || er_errid () != ER_PAGE_AHEAD_OF_REPLICATION)
 	{
 	  // We'll continue here only if we have a page desynchronization error. Break the loop in any other cases.
