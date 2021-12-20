@@ -6675,7 +6675,7 @@ classobj_free_class (SM_CLASS * class_)
     }
 
   /*
-   * ch_simple_name points after dot(".") in ch_name.
+   * ch_simple_name points after DOT (.) in ch_name.
    * So, ch_simple_name should be initialized to NULL and only ch_name should be freed.
    *
    */

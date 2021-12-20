@@ -348,7 +348,7 @@ struct sm_class_header
 
   SM_METATYPE ch_type;		/* doesn't need to be a full word */
   const char *ch_name;
-  const char *ch_simple_name;	/* ch_simple_name points after dot(".") in ch_name. */
+  const char *ch_simple_name;	/* after DOT (.) in ch_name. */
 
   OID ch_rep_dir;		/* representation directory record OID */
   HFID ch_heap;			/* heap file id */

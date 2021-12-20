@@ -4985,9 +4985,18 @@ mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
 	  search_node = using_index;
 	  while (search_node != NULL)
 	    {
+	      /*
+	       * Case of comparing names after DOT (.).
+	       * 1. When comparing owner_name.class_name and class_name.
+	       *    class_name used in index_name must be in from. So, only class_name should be compared,
+	       *    not owner_name.
+	       *    e.g. select c1 from t1 use index (i1) where c1 >= 0 using index t1.none;
+	       *      - resolved_name of "use index (i1)"      : "u1.t1"
+	       *      - resolved_name of "using index t1.none" : "t1"
+	       */
 	      if (search_node->info.name.original != NULL && search_node->info.name.resolved != NULL
 		  && (search_node->etc == (void *) PT_IDX_HINT_USE || search_node->etc == (void *) PT_IDX_HINT_FORCE)
-		  && !intl_identifier_casecmp (node->info.name.resolved, search_node->info.name.resolved))
+		  && !pt_dot_compare (node->info.name.resolved, search_node->info.name.resolved, CASE_INSENSITIVE))
 		{
 		  /* class_name.idx_name and class_name.none found in USE INDEX and/or USING INDEX clauses */
 		  PT_ERRORmf2 (parser, using_index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INDEX_HINT_CONFLICT,
