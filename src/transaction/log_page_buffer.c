@@ -3272,8 +3272,6 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
   assert (log_Gl.prior_info.prior_flush_list_header == NULL);
   log_Gl.prior_info.prior_flush_list_header = list;
 
-  // TODO: send is synched here; is this on purpose?
-  // does it have any drawbacks if synch? does it have other drawbacks if make async?
   log_Gl.m_prior_sender.send_list (list);
 
   /* append log buffer */
