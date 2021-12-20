@@ -1472,6 +1472,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - NOT SELECT node (UNION, DIFFERENCE, INTERSECTION)
  *  - is value query
  *  - is correlated subquery
+ *  - is CTE query
  *  - has outer join spec and CTE spec
  *  - has CONNECT BY (Hierarchical Queries)
  *  - has DISTINCT
@@ -1590,7 +1591,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   /*****************************/
 
   /* check for non-SELECTs */
-  if (subquery->node_type != PT_SELECT)
+  if (PT_IS_SELECT (subquery))
     {
       /* not pushable */
       return 0;
@@ -1605,6 +1606,13 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* check for correlated subquery */
   if (pt_is_correlated_subquery (subquery))
+    {
+      /* not pushable */
+      return 0;
+    }
+
+  /* check for CTE query */
+  if (PT_IS_SELECT (subquery) && subquery->info.query.with != NULL)
     {
       /* not pushable */
       return 0;
