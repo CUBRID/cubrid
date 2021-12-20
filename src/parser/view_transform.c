@@ -1472,7 +1472,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - NOT SELECT node (UNION, DIFFERENCE, INTERSECTION)
  *  - is value query
  *  - is correlated subquery
- *  - has outer join spec
+ *  - has outer join spec and CTE spec
  *  - has CONNECT BY (Hierarchical Queries)
  *  - has DISTINCT
  *  - has aggregate or orderby_for or analytic
@@ -1610,12 +1610,17 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return 0;
     }
 
-  /* determine if spec is outer joined */
+  /* determine if spec is outer joined and CTE spec */
   for (PT_NODE * spec = subquery->info.query.q.select.from; spec; spec = spec->next)
     {
       if (mq_is_outer_join_spec (parser, spec))
 	{
-	  /* subquery have outer joins; not pushable */
+	  /* subquery has outer joins; not pushable */
+	  return 0;
+	}
+      if (PT_SPEC_IS_CTE (spec))
+	{
+	  /* subquery has CTE spec; not pushable */
 	  return 0;
 	}
     }
