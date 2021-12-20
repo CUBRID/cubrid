@@ -48,15 +48,11 @@ class passive_tran_server : public tran_server
 
     void receive_log_boot_info (page_server_conn_t::sequenced_payload &a_ip);
     void receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip);
-    void receive_confirm_log_prior_dispatch_stopped (page_server_conn_t::sequenced_payload &a_ip);
 
   private:
     std::mutex m_log_boot_info_mtx;
     std::string m_log_boot_info;
     std::condition_variable m_log_boot_info_condvar;
-
-    std::mutex m_confirm_log_prior_dispatch_stopped_mtx;
-    std::condition_variable m_confirm_log_prior_dispatch_stopped_cv;
 
     std::unique_ptr<cublog::replicator> m_replicator;
 };

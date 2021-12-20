@@ -368,6 +368,14 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 }
 
 void
+tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
+{
+  assert (is_page_server_connected ());
+
+  m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
+}
+
+void
 tran_server::receive_log_page (page_server_conn_t::sequenced_payload &a_ip)
 {
   std::string message = a_ip.pull_payload ();

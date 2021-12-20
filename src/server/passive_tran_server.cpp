@@ -61,12 +61,6 @@ passive_tran_server::get_request_handlers ()
   handlers_map.insert (std::make_pair (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST,
 				       from_ps_log_prior_list_handler));
 
-  auto from_ps_confirm_log_prior_transfer_stopped_handler
-    = std::bind (&passive_tran_server::receive_confirm_log_prior_dispatch_stopped,
-		 std::ref (*this), std::placeholders::_1);
-  handlers_map.insert (std::make_pair (page_to_tran_request::SEND_CONFIRM_LOG_PRIOR_DISPATCH_STOPPED,
-				       std::move (from_ps_confirm_log_prior_transfer_stopped_handler)));
-
   return handlers_map;
 }
 
@@ -88,14 +82,6 @@ passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_paylo
 {
   std::string message = a_ip.pull_payload ();
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
-}
-
-void
-passive_tran_server::receive_confirm_log_prior_dispatch_stopped (page_server_conn_t::sequenced_payload &a_ip)
-{
-  // empty response message
-  // only one thread can perform server shutdown
-  m_confirm_log_prior_dispatch_stopped_cv.notify_one ();
 }
 
 void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
@@ -169,14 +155,11 @@ void passive_tran_server::start_log_replicator (const log_lsa &start_lsa)
 void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
 {
   // empty message request
-  push_request (tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string ());
 
-  // wait for a confirmation to avoid race conditions where log prior is still being transferred
-  // while the passive transaction server thinks otherwise
-  {
-    std::unique_lock<std::mutex> ulock { m_confirm_log_prior_dispatch_stopped_mtx };
-    m_confirm_log_prior_dispatch_stopped_cv.wait (ulock);
-  }
+  std::string expected_empty_answer;
+  // blocking call
+  send_receive(tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string (), expected_empty_answer);
+
   // at this point, no log prior is flowing from the connected page server(s)
   // outside this context, all log prior currently present on the passive transaction server
   // needs to be consumed (aka: waited to be consumed/serialized to log)

@@ -169,8 +169,9 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
   log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
   m_prior_sender_sink_hook_func = nullptr;
 
-  // empty response message, needed just to make the entire roundtrip synchronous
-  m_conn->push (page_to_tran_request::SEND_CONFIRM_LOG_PRIOR_DISPATCH_STOPPED, std::string ());
+  // empty response message, the roundtrip is synchronous
+  a_sp.push_payload (std::string ());
+  m_conn->respond(std::move (a_sp));
 }
 
 void
