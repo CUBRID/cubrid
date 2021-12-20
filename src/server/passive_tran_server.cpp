@@ -128,7 +128,7 @@ void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
 
   std::string expected_empty_answer;
   // blocking call
-  send_receive(tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string (), expected_empty_answer);
+  send_receive (tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string (), expected_empty_answer);
 
   // at this point, no log prior is flowing from the connected page server(s)
   // outside this context, all log prior currently present on the passive transaction server
