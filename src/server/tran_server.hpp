@@ -76,6 +76,7 @@ class tran_server
     void disconnect_page_server ();
     bool is_page_server_connected () const;
     void push_request (tran_to_page_request reqid, std::string &&payload);
+    void send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
 
     virtual bool uses_remote_storage () const;
 
@@ -105,7 +106,6 @@ class tran_server
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
     // Common request Handlers
-    void receive_boot_info (page_server_conn_t::sequenced_payload &a_ip);
     void receive_log_page (page_server_conn_t::sequenced_payload &a_ip);
     void receive_data_page (page_server_conn_t::sequenced_payload &a_ip);
 
@@ -116,10 +116,6 @@ class tran_server
     std::vector<cubcomm::node> m_connection_list;
     cubcomm::server_server m_conn_type;
     std::vector<std::unique_ptr<page_server_conn_t>> m_page_server_conn_vec;
-
-    std::mutex m_boot_info_mutex;
-    std::condition_variable m_boot_info_condvar;
-    bool m_is_boot_info_received = false;
 };
 
 #endif // !_tran_server_HPP_

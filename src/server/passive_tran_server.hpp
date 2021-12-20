@@ -45,13 +45,9 @@ class passive_tran_server : public tran_server
     void on_boot () final override;
     request_handlers_map_t get_request_handlers () final override;
 
-    void receive_log_boot_info (page_server_conn_t::sequenced_payload &a_ip);
     void receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip);
 
   private:
-    std::mutex m_log_boot_info_mtx;
-    std::string m_log_boot_info;
-    std::condition_variable m_log_boot_info_condvar;
 
     std::unique_ptr<cublog::replicator> m_replicator;
 };

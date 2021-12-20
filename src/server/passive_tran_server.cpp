@@ -51,30 +51,12 @@ passive_tran_server::get_request_handlers ()
   std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map =
 	  tran_server::get_request_handlers ();
 
-  auto log_boot_info_handler = std::bind (&passive_tran_server::receive_log_boot_info,
-					  std::ref (*this), std::placeholders::_1);
-  handlers_map.insert (std::make_pair (page_to_tran_request::SEND_LOG_BOOT_INFO,
-				       log_boot_info_handler));
-
   auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::receive_log_prior_list,
 					std::ref (*this), std::placeholders::_1);
   handlers_map.insert (std::make_pair (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST,
 				       from_ps_log_prior_list_handler));
 
   return handlers_map;
-}
-
-void
-passive_tran_server::receive_log_boot_info (page_server_conn_t::sequenced_payload &a_ip)
-{
-  std::string message = a_ip.pull_payload ();
-
-  // pass to caller thread; it has the thread context needed to access engine functions
-  {
-    std::lock_guard<std::mutex> lockg { m_log_boot_info_mtx };
-    m_log_boot_info.swap (message);
-  }
-  m_log_boot_info_condvar.notify_one ();
 }
 
 void
@@ -87,22 +69,14 @@ passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_paylo
 void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
     log_lsa &most_recent_trantable_snapshot_lsa)
 {
-  assert (m_log_boot_info.empty ());
+  std::string log_boot_info;
 
-  // empty message request
-  push_request (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string ());
+  send_receive (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string (), log_boot_info);
 
-  {
-    std::unique_lock<std::mutex> ulock { m_log_boot_info_mtx };
-    // TODO: wait_for a limited time in case page server hangs
-    m_log_boot_info_condvar.wait (ulock, [this] ()
-    {
-      return !m_log_boot_info.empty ();
-    });
-  }
+  assert (!log_boot_info.empty ());
 
   const int log_page_size = db_log_page_size ();
-  const char *message_buf = m_log_boot_info.c_str ();
+  const char *message_buf = log_boot_info.c_str ();
 
   // log header, copy and initialize header
   const log_header *const log_hdr = reinterpret_cast<const log_header *> (message_buf);
@@ -126,11 +100,7 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   message_buf += sizeof (log_lsa);
 
   // safe-guard that the entire message has been consumed
-  assert (message_buf == m_log_boot_info.c_str () + m_log_boot_info.size ());
-
-  // do not leave m_log_boot_info empty as a safeguard as this function is only supposed
-  // to be called once
-  m_log_boot_info = "not empty";
+  assert (message_buf == log_boot_info.c_str () + log_boot_info.size ());
 
   // at this point, page server has already started log prior dispatch towards this passive transaction server;
   // for now, log prior consumption is held back by the log prior lsa mutex held while calling this function
