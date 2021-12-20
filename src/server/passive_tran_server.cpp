@@ -122,6 +122,19 @@ void passive_tran_server::start_log_replicator (const log_lsa &start_lsa)
   m_replicator.reset (new cublog::replicator (start_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0));
 }
 
+void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
+{
+  // empty message request
+
+  std::string expected_empty_answer;
+  // blocking call
+  send_receive (tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string (), expected_empty_answer);
+
+  // at this point, no log prior is flowing from the connected page server(s)
+  // outside this context, all log prior currently present on the passive transaction server
+  // needs to be consumed (aka: waited to be consumed/serialized to log)
+}
+
 log_lsa passive_tran_server::get_replicator_lsa () const
 {
   return m_replicator->get_redo_lsa ();

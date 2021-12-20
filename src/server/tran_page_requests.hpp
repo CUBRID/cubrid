@@ -35,6 +35,7 @@ enum class tran_to_page_request
 
   // Passive only
   SEND_LOG_BOOT_INFO_FETCH,
+  SEND_STOP_LOG_PRIOR_DISPATCH,
 };
 
 enum class page_to_tran_request
