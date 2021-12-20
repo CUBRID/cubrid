@@ -87,6 +87,10 @@ class page_server
 
 	// only passive transaction servers receive log in the form of prior list;
 	cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;
+
+	// exclusive lock between the hook function that executes the dispatch and the
+	// function that will, at some moment, remove that hook
+	mutable std::mutex m_prior_sender_sink_removal_mtx;
     };
 
     std::unique_ptr<connection_handler> m_active_tran_server_conn;

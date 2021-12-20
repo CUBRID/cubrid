@@ -163,15 +163,18 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
 {
   // empty request message
 
-  assert ((bool)m_prior_sender_sink_hook_func);
+  assert ((bool) m_prior_sender_sink_hook_func);
 
-  // TODO: should removal actually be synched with the prior_sender_sink_hook execution below?
-  log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
-  m_prior_sender_sink_hook_func = nullptr;
+  {
+    std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
+
+    log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+    m_prior_sender_sink_hook_func = nullptr;
+  }
 
   // empty response message, the roundtrip is synchronous
   a_sp.push_payload (std::string ());
-  m_conn->respond(std::move (a_sp));
+  m_conn->respond (std::move (a_sp));
 }
 
 void
@@ -188,7 +191,7 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
 {
   // if this instance acted as a prior sender sink - in other words, if this connection handler was for a
   // passive transaction server - it should have been disconnected beforehand
-  assert (! (bool)m_prior_sender_sink_hook_func);
+  assert (! (bool) m_prior_sender_sink_hook_func);
 
   //start a thread to destroy the ATS/PTS to PS connection object
   std::thread disconnect_thread (&page_server::disconnect_tran_server, std::ref (m_ps), this);
@@ -275,6 +278,7 @@ page_server::connection_handler::prior_sender_sink_hook (std::string &&message) 
   assert (m_conn != nullptr);
   assert (message.size () > 0);
 
+  std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
   m_conn->push (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST, std::move (message));
 }
 
