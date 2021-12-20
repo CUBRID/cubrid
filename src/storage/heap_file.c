@@ -24971,7 +24971,8 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 #if defined (SERVER_MODE)
   if (is_active_transaction_server ())
     {
-      ret = heap_get_visible_version_with_repl_desync (thread_p, context, is_heap_scan);
+      // Active transaction server doesn't have the page desynchronization issue.
+      ret = heap_get_visible_version_internal (thread_p, context, is_heap_scan);
       if (ret == S_ERROR)
 	{
 	  assert (er_errid () != ER_PAGE_AHEAD_OF_REPLICATION);
@@ -24983,37 +24984,35 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
     {
       ret = heap_get_visible_version_with_repl_desync (thread_p, context, is_heap_scan);
 
-      if (ret != S_SUCCESS)
+      if (ret != S_ERROR || er_errid () != ER_PAGE_AHEAD_OF_REPLICATION)
 	{
-	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
-	    {
-	      if (context->home_page_watcher.pgptr)
-		{
-		  /* Unfix home page. */
-		  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
-		}
-
-	      if (context->fwd_page_watcher.pgptr != NULL)
-		{
-		  /* Unfix forward page. */
-		  pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
-		}
-
-	      assert (is_passive_transaction_server ());
-	      passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-	      assert (tdes->page_desync_lsa.is_null ());
-	      pts_ptr->wait_replication_pasts_target_lsa (tdes->page_desync_lsa);
-	    }
-	  else
-	    {
-	      return ret;
-	    }
+	  // We'll continue here only if we have a page desynchronization error. Break the loop in any other cases.
+	  break;
 	}
+
+      // Handle the page desynchronization error
+      if (context->home_page_watcher.pgptr)
+	{
+	  /* Unfix home page. */
+	  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+	}
+
+      if (context->fwd_page_watcher.pgptr != NULL)
+	{
+	  /* Unfix forward page. */
+	  pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
+	}
+
+      assert (is_passive_transaction_server ());
+      passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+      assert (tdes->page_desync_lsa.is_null ());
+      pts_ptr->wait_replication_pasts_target_lsa (tdes->page_desync_lsa);
     }
-  while (ret != S_SUCCESS);
+  while (true);
 #else
-  ret = heap_get_visible_version_with_repl_desync (thread_p, context, is_heap_scan);
+  // SA_MODE doesn't have the page desynchronization issue.
+  ret = heap_get_visible_version_internal (thread_p, context, is_heap_scan);
   if (ret == S_ERROR)
     {
       assert (er_errid () != ER_PAGE_AHEAD_OF_REPLICATION);
