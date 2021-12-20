@@ -76,7 +76,6 @@
 #include "connection_sr.h"
 #endif
 #include "active_tran_server.hpp"
-#include "page_broker.hpp"
 #include "tran_page_requests.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"

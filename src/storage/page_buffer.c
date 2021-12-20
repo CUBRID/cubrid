@@ -8200,8 +8200,6 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
 
   // *INDENT-OFF*
   /* Send a request to Page Server for the Page. */
-  auto entry_state = ts_Gl->get_data_page_broker ().register_entry (*vpid);
-  assert (entry_state == page_broker_register_entry_state::ADDED);
 
   cubpacking::packer pac;
   size_t size = 0;

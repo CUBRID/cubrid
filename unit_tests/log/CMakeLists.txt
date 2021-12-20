@@ -183,35 +183,6 @@ add_dependencies(test_log_page_fetcher
   )
 
 #
-# test_log_page_broker
-#
-set(TEST_LOG_PAGE_BROKER_SOURCES
-  ${TRANSACTION_DIR}/log_storage.cpp
-  test_main_log_page_broker.cpp)
-
-SET_SOURCE_FILES_PROPERTIES(
-  ${TEST_LOG_PAGE_BROKER_SOURCES}
-  PROPERTIES LANGUAGE CXX)
-
-add_executable(test_log_page_broker
-  ${TEST_LOG_PAGE_BROKER_SOURCES}
-  )
-
-target_compile_options(test_log_page_broker PRIVATE
-  ${compile_warning_flags}
-  )
-target_compile_definitions(test_log_page_broker PRIVATE
-  ${COMMON_DEFS} SERVER_MODE
-  )
-target_include_directories(test_log_page_broker PRIVATE
-  ${TEST_INCLUDES}
-  )
-target_link_libraries(test_log_page_broker fake_thread_utils)
-add_dependencies(test_log_page_broker
-  ${CATCH2_TARGET}
-  )
-
-#
 # test_log_lsa_utils
 #
 set(TEST_LOG_LSA_UTILS_SOURCES

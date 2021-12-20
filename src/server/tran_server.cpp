@@ -323,34 +323,6 @@ tran_server::is_page_server_connected () const
   return !m_page_server_conn_vec.empty ();
 }
 
-void
-tran_server::init_page_brokers ()
-{
-  m_log_page_broker.reset (new page_broker<log_page_type> ());
-  m_data_page_broker.reset (new page_broker<data_page_type> ());
-}
-
-void
-tran_server::finalize_page_brokers ()
-{
-  m_log_page_broker.reset ();
-  m_data_page_broker.reset ();
-}
-
-page_broker<log_page_type> &
-tran_server::get_log_page_broker ()
-{
-  assert (m_log_page_broker);
-  return *m_log_page_broker;
-}
-
-page_broker<data_page_type> &
-tran_server::get_data_page_broker ()
-{
-  assert (m_data_page_broker);
-  return *m_data_page_broker;
-}
-
 bool
 tran_server::uses_remote_storage () const
 {
@@ -376,88 +348,13 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
   m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
 }
 
-void
-tran_server::receive_log_page (page_server_conn_t::sequenced_payload &a_ip)
-{
-  std::string message = a_ip.pull_payload ();
-
-  int error_code;
-  std::memcpy (&error_code, message.c_str (), sizeof (error_code));
-
-  if (error_code == NO_ERROR)
-    {
-      auto shared_log_page = std::make_shared<log_page_owner> (message.c_str () + sizeof (error_code));
-
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
-			 shared_log_page->get_id ());
-	}
-      m_log_page_broker->set_page (shared_log_page->get_id (), std::move (shared_log_page));
-    }
-  else
-    {
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Error code: %d\n", error_code);
-	}
-    }
-}
-
-void
-tran_server::receive_data_page (page_server_conn_t::sequenced_payload &a_ip)
-{
-  std::string message = a_ip.pull_payload ();
-
-  // The message is either an error code or the content of the data page
-  if (message.size () == sizeof (int))
-    {
-      // We have an error.
-      int error_code;
-      std::memcpy (&error_code, message.c_str (), sizeof (error_code));
-
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d \n", error_code);
-	}
-    }
-  else
-    {
-      assert (db_io_page_size () >= 0 && message.size () == static_cast<std::size_t> (db_io_page_size ()));
-      // We have a page.
-      auto shared_data_page = std::make_shared<std::string> (std::move (message));
-
-      auto io_page = reinterpret_cast<const FILEIO_PAGE *> (shared_data_page->c_str ());
-      VPID id;
-      id.pageid = io_page->prv.pageid;
-      id.volid = io_page->prv.volid;
-
-      m_data_page_broker->set_page (id, std::move (shared_data_page));
-
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, LSA: %lld|%d \n",
-			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
-	}
-    }
-}
-
 tran_server::request_handlers_map_t
 tran_server::get_request_handlers ()
 {
-  using map_value_t = request_handlers_map_t::value_type;
-
-  map_value_t log_page_handler_value =
-	  std::make_pair (page_to_tran_request::SEND_LOG_PAGE,
-			  std::bind (&tran_server::receive_log_page, std::ref (*this), std::placeholders::_1));
-  map_value_t data_page_handler_value =
-	  std::make_pair (page_to_tran_request::SEND_DATA_PAGE,
-			  std::bind (&tran_server::receive_data_page, std::ref (*this), std::placeholders::_1));
+  // Insert handlers specific to all transaction servers here.
+  // For now, there are no such handlers; return an empthy map
 
   std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
-
-  handlers_map.insert ({ log_page_handler_value, data_page_handler_value });
-
   return handlers_map;
 }
 
