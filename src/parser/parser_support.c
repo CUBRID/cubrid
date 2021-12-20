@@ -3140,8 +3140,7 @@ pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   bool has_inst_num = false;
 
-  (void) parser_walk_tree (parser, node, pt_is_inst_num_node, &has_inst_num,
-			   pt_is_inst_num_node_post, &has_inst_num);
+  (void) parser_walk_tree (parser, node, pt_is_inst_num_node, &has_inst_num, pt_is_inst_num_node_post, &has_inst_num);
 
   return has_inst_num;
 }
