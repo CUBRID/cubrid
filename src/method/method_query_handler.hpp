@@ -107,6 +107,10 @@ namespace cubmethod
       void set_prepare_column_list_info (std::vector<column_info> &infos);
       int set_qresult_info (query_result_info &qinfo);
 
+      /* set result info */
+      void set_prepare_column_list_info (std::vector<column_info> &infos, query_result &result);
+      int set_qresult_info (std::vector<query_result_info> &qinfo);
+
     protected:
       /* prepare */
       int prepare_query (prepare_info &info, int &flag);
