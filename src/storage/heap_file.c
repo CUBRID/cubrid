@@ -7471,7 +7471,6 @@ try_again:
   if (context->record_type == REC_BIGONE || context->record_type == REC_RELOCATION)
     {
       ret = pgbuf_check_page_ahead_of_replication (thread_p, context->home_page_watcher.pgptr);
-
       if (ret != NO_ERROR)
 	{
 	  goto error;
@@ -7524,8 +7523,8 @@ try_again:
 
 	      goto error;
 	    }
-	  ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
 
+	  ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
 	  if (ret != NO_ERROR)
 	    {
 	      goto error;
@@ -7571,8 +7570,8 @@ try_again:
 	      assert (false);
 	      goto error;
 	    }
-	  ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
 
+	  ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
 	  if (ret != NO_ERROR)
 	    {
 	      goto error;
