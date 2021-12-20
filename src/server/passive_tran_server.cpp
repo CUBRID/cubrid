@@ -69,10 +69,9 @@ passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_paylo
 void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
     log_lsa &most_recent_transaction_table_snapshot_lsa)
 {
-  std::string request_message; // empty
   std::string log_boot_info;
 
-  send_receive (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::move (request_message), log_boot_info);
+  send_receive (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string (), log_boot_info);
 
   assert (!log_boot_info.empty ());
 
