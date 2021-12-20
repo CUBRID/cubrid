@@ -69,7 +69,7 @@ class page_server
       private:
 	void on_log_page_read_result (const LOG_PAGE *log_page, int error_code);
 	void on_data_page_read_result (const FILEIO_PAGE *page_ptr, int error_code);
-	void on_log_boot_info_result (std::string &&message);
+	void on_log_boot_info_result (tran_server_conn_t::sequenced_payload &&sp, std::string &&message);
 
 	void receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip);

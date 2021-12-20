@@ -236,13 +236,13 @@ tran_server::init_page_server_hosts (const char *db_name)
 void
 tran_server::get_boot_info_from_page_server ()
 {
-  assert (!m_is_boot_info_received);
+  std::string response_message;
+  send_receive (tran_to_page_request::GET_BOOT_INFO, std::string (), response_message);
 
-  push_request (tran_to_page_request::GET_BOOT_INFO, std::string ()); // empty message
+  DKNVOLS nvols_perm;
+  std::memcpy (&nvols_perm, response_message.c_str (), sizeof (nvols_perm));
 
-  std::unique_lock<std::mutex> ulock (m_boot_info_mutex);
-  m_boot_info_condvar.wait (ulock, [this] { return m_is_boot_info_received; });
-  // fix me: connection error handling
+  disk_set_page_server_perm_volume_count (nvols_perm);
 }
 
 int
@@ -441,32 +441,11 @@ tran_server::receive_data_page (page_server_conn_t::sequenced_payload &a_ip)
     }
 }
 
-void
-tran_server::receive_boot_info (page_server_conn_t::sequenced_payload &a_ip)
-{
-  std::string message = a_ip.pull_payload ();
-
-  assert (message.size () == sizeof (DKNVOLS));
-  DKNVOLS nvols_perm;
-  std::memcpy (&nvols_perm, message.c_str (), sizeof (nvols_perm));
-
-  disk_set_page_server_perm_volume_count (nvols_perm);
-
-  {
-    std::unique_lock<std::mutex> ulock (m_boot_info_mutex);
-    m_is_boot_info_received = true;
-  }
-  m_boot_info_condvar.notify_one ();
-}
-
 tran_server::request_handlers_map_t
 tran_server::get_request_handlers ()
 {
   using map_value_t = request_handlers_map_t::value_type;
 
-  map_value_t boot_info_handler_value =
-	  std::make_pair (page_to_tran_request::SEND_BOOT_INFO,
-			  std::bind (&tran_server::receive_boot_info, std::ref (*this), std::placeholders::_1));
   map_value_t log_page_handler_value =
 	  std::make_pair (page_to_tran_request::SEND_LOG_PAGE,
 			  std::bind (&tran_server::receive_log_page, std::ref (*this), std::placeholders::_1));
@@ -476,7 +455,7 @@ tran_server::get_request_handlers ()
 
   std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
 
-  handlers_map.insert ({ boot_info_handler_value, log_page_handler_value, data_page_handler_value });
+  handlers_map.insert ({ log_page_handler_value, data_page_handler_value });
 
   return handlers_map;
 }
