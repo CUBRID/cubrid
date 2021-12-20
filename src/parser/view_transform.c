@@ -1461,6 +1461,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - INSERT query
  * It is not pushable(mergeable) in the following cases.
  *  - Class is Spec set(spec set??)
+ *  - select for schema
  *  - has CONNECT BY
  *  - view spec is outer join spec
  *  - main query's where has define_vars ':='
@@ -1546,6 +1547,13 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
   /* check for (non-pushable) spec set (spec set??) */
   if (class_spec->info.spec.entity_name != NULL && class_spec->info.spec.entity_name->node_type == PT_SPEC)
+    {
+      /* not pushable */
+      return 0;
+    }
+  /* select for schema */
+  if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_COLS_SCHEMA)
+      || PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_FULL_INFO_COLS_SCHEMA))
     {
       /* not pushable */
       return 0;
