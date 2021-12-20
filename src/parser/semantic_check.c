@@ -1323,20 +1323,30 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 static DB_OBJECT *
 pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
 {
-  const char *usr;
+  const char *user_name = NULL;
   DB_OBJECT *result;
 
   assert (parser != NULL);
 
-  if (!cls_ref || cls_ref->node_type != PT_NAME || (usr = cls_ref->info.name.resolved) == NULL || usr[0] == '\0')
+  if (cls_ref && cls_ref->node_type == PT_NAME)
+    {
+      user_name = cls_ref->info.name.resolved;
+
+      if (user_name == NULL || user_name[0] == '\0')
+	{
+	  user_name = pt_get_user_name (cls_ref->info.name.original);
+	}
+    }
+
+  if (user_name == NULL || user_name[0] == '\0')
     {
       return NULL;
     }
 
-  result = db_find_user (usr);
+  result = db_find_user (user_name);
   if (!result)
     {
-      PT_ERRORmf (parser, cls_ref, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, usr);
+      PT_ERRORmf (parser, cls_ref, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, user_name);
     }
 
   return result;
@@ -13094,7 +13104,7 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
        * In order to distinguish User Schema, the original, resolved name may contain a user name
        * with a dot (.) as a separator. It is not necessary to attach a user name to its own table,
        * but the user name currently connected internally is attached. So, when comparing original and resolved names,
-       * we need to compare names after dot (.).;plan 
+       * we need to compare names after DOT (.). 
        * 
        */
     case PT_NAME:

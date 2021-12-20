@@ -19462,15 +19462,6 @@ path_expression
 		{{
 			PT_NODE *node = $1;
 			PT_NODE *serial_value = NULL;
-
-			if (node->node_type == PT_NAME && node->info.name.meta_class == PT_META_CLASS)
-			  {
-			    const char *dot = strchr (node->info.name.original, '.');
-			    if (dot == NULL)
-			      {
-				node = pt_make_user_specified_name (this_parser, node, NULL);
-			      }
-			  }
 			
 			if (node
 			    && node->node_type == PT_DOT_
@@ -19546,135 +19537,14 @@ path_id_list
 	: path_id_list path_dot path_id			%dprec 1
 		{{
 
-			PT_NODE *node = NULL;
-			PT_NODE *arg1 = $1;
-			PT_NODE *arg2 = $3;
-
-			const char *dot = NULL;
-			const char *user_name = NULL;
-			char *current_user_name = NULL;
-			DB_OBJECT *user_obj = NULL;
-			int is_exist_user = 0;
-			const char *class_simple_name = NULL;
-			const char *class_full_name = NULL;
-
-			/*
-			 *  Prevents misidentification of user_name as class_name in 'class user_name.class_name'
-			 *
-			 *  when parsing path_expression. 'class user_name' is parsed in path_id_list,
-			 *  and 'class_name' is parsed in path_id. it must be combined so that it can be parsed
-			 *  as 'class user_name.class_name'.
-			 * 
-			 *  However, when parsing 'class class_name.attribute_name', current_user_name is required
-			 *  before class_name. It is difficult to distinguish whether user_name or class_name comes
-			 *  after the class keyword. Therefore, since current_user_name cannot be added
-			 *  before class_name, even if it is a class owned by the current user,
-			 *  it must always be used in the form of user_name.class_name after the class keyword.
-			 */
-
-			if (arg1
-			    && arg2
-			    && arg1->node_type == PT_NAME
-			    && arg2->node_type == PT_NAME
-			    && arg1->info.name.meta_class == PT_META_CLASS)
+			PT_NODE *dot = parser_new_node (this_parser, PT_DOT_);
+			if (dot)
 			  {
-			    dot = strchr (arg1->info.name.original, '.');
-			    if (dot)
-			      {
-				/*
-				 * e.g. arg1->info.name.original: user_name.class_name
-				 *      arg2->info.name.original: class_attribute_name
-				 */
-				node = parser_new_node (this_parser, PT_DOT_);
-				if (node)
-				  {
-				    node->info.dot.arg1 = arg1;
-				    node->info.dot.arg2 = arg2;
-				  }
-			      }
-			    else // dot != NULL
-			      {
-				/* Consider how to check user in pt_check_user_exist in semantic phase */
-				user_name = arg1->info.name.original;
-				if (intl_identifier_casecmp (user_name, "DBA")
-				    && intl_identifier_casecmp (user_name, "PUBLIC"))
-				  {
-				    /* not dba or public user */
-				    user_obj = db_find_user (user_name);
-				    if (user_obj)
-				      {
-					is_exist_user = 1;
-				      }
-				  }
-				else
-				  {
-				    is_exist_user = 1;
-				  }
-
-				if (is_exist_user)
-				  {
-				    /*
-				     * e.g. arg1->info.name.original: user_name
-				     *      arg2->info.name.original: class_name
-				     */ 
-				    class_simple_name = arg2->info.name.original;
-
-				    class_full_name = pt_append_string (this_parser, NULL, user_name);
-				    class_full_name = pt_append_string (this_parser, class_full_name, ".");
-				    class_full_name = pt_append_string (this_parser, class_full_name, class_simple_name);
-				    arg1->info.name.original = class_full_name;
-
-				    parser_free_tree (this_parser, arg2);
-
-				    node = arg1;
-				  }
-				else // is_exist_user == 1
-				  {
-				    /*
-				     * e.g. arg1->info.name.original: class_name     -> current_user_name.class_name
-				     *      arg2->info.name.original: class_attribute_name
-				     */ 
-				    node = parser_new_node (this_parser, PT_DOT_);
-				    if (node)
-				      {
-					current_user_name = db_get_user_name ();
-					user_name = current_user_name;
-
-					class_simple_name = arg1->info.name.original;
-
-					class_full_name = pt_append_string (this_parser, NULL, user_name);
-					class_full_name = pt_append_string (this_parser, class_full_name, ".");
-					class_full_name = pt_append_string (this_parser, class_full_name, class_simple_name);
-					arg1->info.name.original = class_full_name;
-
-					node->info.dot.arg1 = arg1;
-					node->info.dot.arg2 = arg2;
-
-					if (current_user_name)
-					  {
-					    db_string_free (current_user_name);
-					    current_user_name = NULL;
-					  }
-				      }
-				  } // is_exist_user == 0
-			      } // dot == NULL
+			    dot->info.dot.arg1 = $1;
+			    dot->info.dot.arg2 = $3;
 			  }
-			else // arg1 != NULL && arg1->node_type == PT_NAME
-			  {
-			    /*
-			     * e.g. arg1->info.dot.arg1.original: user_name.class_name
-			     *      arg1->info.dot.arg2.original: class_attribute_name
-			     *      arg2->info.name.original: class_attribute_name
-			     */ 
-			    node = parser_new_node (this_parser, PT_DOT_);
-			    if (node)
-			      {
-				node->info.dot.arg1 = arg1;
-				node->info.dot.arg2 = arg2;
-			      }
-			  } // arg1 != NULL && arg1->node_type != PT_NAME
 
-			$$ = node;
+			$$ = dot;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}

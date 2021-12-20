@@ -9845,12 +9845,10 @@ pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *contin
 PT_NODE *
 pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * user)
 {
-  char *dot = NULL;
+  const char *dot = NULL;
   const char *user_name = NULL;
-  char *specified_user_name = NULL;
   char *current_user_name = NULL;
-  DB_OBJECT *user_obj = NULL;
-  const char *class_simple_name = NULL;
+  const char *class_name = NULL;
   const char *class_full_name = NULL;
   int error = NO_ERROR;
 
@@ -9858,49 +9856,24 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
 
   if (name->info.name.original == NULL || name->info.name.original[0] == '\0')
     {
-      assert (false);
       return NULL;
     }
+
+  class_name = name->info.name.original;
 
   /*
    * Assume that identifier does not contain dot(.) or can contain only 1 dot(.).
    */
-  dot = (char *) strchr (name->info.name.original, '.');
+  dot = strchr (class_name, '.');
   if (dot)
     {
       /*
-       * e.g. 1. name->info.name.original == [user_name.class_name]
-       *      2. name->info.name.original == `user_name.class_name`
-       *      3. name->info.name.original == "user_name.class_name"
+       * e.g. name->info.name.original == "other_user_name.object_name"
+       * 
+       * other_user_name must not be changed to current_user_name.
+       * So, the code below is executed only when 'dot == NULL'.
        */
-
-      class_simple_name = dot + 1;
-
-      /* Consider how to check user in pt_check_user_exist in semantic phase */
-      if (user == NULL)
-	{
-	  dot[0] = '\0';
-	  specified_user_name = strndup (name->info.name.original, strlen (name->info.name.original));
-	  dot[0] = '.';
-
-	  if (intl_identifier_casecmp (specified_user_name, au_get_dba_user_name ())
-	      && intl_identifier_casecmp (specified_user_name, au_get_public_user_name ()))
-	    {
-	      user_obj = db_find_user (specified_user_name);
-	      if (user_obj == NULL)
-		{
-		  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, specified_user_name);
-
-		  goto end;
-		}
-	    }
-	
-	  user_name = specified_user_name;
-	}
-    }
-  else
-    {
-      class_simple_name = name->info.name.original;
+      return name;
     }
 
   /* 
@@ -9913,24 +9886,8 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
   if (user && user->node_type == PT_NAME && user->info.name.original && user->info.name.original[0] != '\0')
     {
       user_name = user->info.name.original;
-
-      if (intl_identifier_casecmp (user_name, au_get_dba_user_name ())
-	  && intl_identifier_casecmp (user_name, au_get_public_user_name ()))
-	{
-	  user_obj = db_find_user (user_name);
-	  if (user_obj == NULL)
-	    {
-	      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, user_name);
-
-	      goto end;
-	    }
-	}
     }
-
-  /*
-   * e.g. dot == NULL && user == NULL
-   */
-  if (user_name == NULL)
+  else
     {
       current_user_name = db_get_user_name ();
       user_name = current_user_name;
@@ -9939,54 +9896,39 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
   /* In the system class, class_full_name does not include user_name.
    * So, the value stored in info.name.original is different for each case below.
    *
-   * 1. common class name &&             NULL -> current_user_name.common_class_name
-   * 2. common class name && common user name ->  common_user_name.common_class_name
-   * 3. common class name &&    dba user name ->     dba_user_name.common_class_name
-   * 4. system class name &&             NULL ->                   system_class_name
-   * 5. system class name && common user name ->  common_user_name.system_class_name
-   * 6. system class name &&    dba user name ->                   system_class_name
+   *  1. common class name &&             NULL -> current_user_name.common_class_name
+   *  2. common class name && common user name ->  common_user_name.common_class_name
+   *  3. common class name &&    dba user name ->     dba_user_name.common_class_name
+   *  4. system class name &&             NULL ->                   system_class_name
+   *  5. system class name && common user name ->  common_user_name.system_class_name
+   *  6. system class name &&    dba user name ->                   system_class_name
    * 
    * In case 5, The system_class_name is correct,
    * but raises an error to inform the user of an incorrect customization.
    */
 
-  /*
-   * "dot == NULL" comparison is needed below.
-   *
-   * e.g. name->info.name.original == "other_user_name.object_name"
-   * 
-   * other_user_name must not be changed to current_user_name.
-   * So, the code below is executed only when 'dot == NULL'.
-   */
-  if (dot == NULL)
-    {
-      if (db_is_system_class_by_name (class_simple_name))	// system_class_name
-	{
-	  /* Skip in case 4, 6 */
-	  if (user == NULL || intl_identifier_casecmp (user_name, AU_DBA_USER_NAME) == 0)
-	    {
-	      goto end;
-	    }
-	}
 
-      /* In case 1, 2, 3, 5 */
-      class_full_name = pt_append_string (parser, NULL, user_name);
-      class_full_name = pt_append_string (parser, class_full_name, ".");
-      class_full_name = pt_append_string (parser, class_full_name, class_simple_name);
-      name->info.name.original = class_full_name;
+  if (db_is_system_class_by_name (class_name) == TRUE)
+    {
+      /* Skip in case 4, 6 */
+      if (user == NULL || intl_identifier_casecmp (user_name, AU_DBA_USER_NAME) == 0)
+	{
+	  goto end;
+	}
     }
+
+  /* In case 1, 2, 3, 5 */
+  class_full_name = pt_append_string (parser, NULL, user_name);
+  class_full_name = pt_append_string (parser, class_full_name, ".");
+  class_full_name = pt_append_string (parser, class_full_name, class_name);
+  name->info.name.original = class_full_name;
 
 end:
   if (current_user_name)
     {
       db_string_free (current_user_name);
       current_user_name = NULL;
-  }
-
-  if (specified_user_name)
-    {
-      free_and_init (specified_user_name);
-  }
+    }
 
   return name;
 }
@@ -10044,8 +9986,8 @@ pt_get_name_without_current_user_name (const char *name)
   if (dot == NULL)
     {
       /*
-       * e.g.   name: object_name
-       *      return: object_name
+       * e.g.        name: object_name
+       *      object_name: object_name
        */
       return name;
     }
@@ -10058,16 +10000,16 @@ pt_get_name_without_current_user_name (const char *name)
   if (current_user_name && name && intl_identifier_casecmp (current_user_name, name) == 0)
     {
       /*
-       * e.g.   name: current_user_name.object_name
-       *      return: object_name
+       * e.g.        name: current_user_name.object_name
+       *      object_name: object_name
        */
       object_name = dot + 1;
     }
   else
     {
       /*
-       * e.g.   name: other_user_name.object_name
-       *      return: other_user_name.object_name
+       * e.g.        name: other_user_name.object_name
+       *      object_name: other_user_name.object_name
        */
       object_name = name;
     }
