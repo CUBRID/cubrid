@@ -1470,6 +1470,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  * It is not pushable(mergeable) in the following cases.
  *  - NOT SELECT node (UNION, DIFFERENCE, INTERSECTION)
  *  - is value query
+ *  - is correlated subquery
  *  - has outer join spec
  *  - has CONNECT BY (Hierarchical Queries)
  *  - has DISTINCT
@@ -1588,6 +1589,13 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* check for value query */
   if (PT_IS_VALUE_QUERY (subquery))
+    {
+      /* not pushable */
+      return 0;
+    }
+
+  /* check for correlated subquery */
+  if (pt_is_correlated_subquery (subquery))
     {
       /* not pushable */
       return 0;
