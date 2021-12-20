@@ -1473,6 +1473,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - is value query
  *  - is correlated subquery
  *  - is CTE query
+ *  - has NOT 'FROM'
  *  - has outer join spec and CTE spec
  *  - has CONNECT BY (Hierarchical Queries)
  *  - has DISTINCT
@@ -1578,7 +1579,6 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       /* not pushable */
       return 0;
     }
-
   /* main query has inst_num and subquery has order_by */
   if (pt_has_inst_num (parser, pred) && subquery->info.query.order_by)
     {
@@ -1596,28 +1596,30 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       /* not pushable */
       return 0;
     }
-
   /* check for value query */
   if (PT_IS_VALUE_QUERY (subquery))
     {
       /* not pushable */
       return 0;
     }
-
   /* check for correlated subquery */
   if (pt_is_correlated_subquery (subquery))
     {
       /* not pushable */
       return 0;
     }
-
   /* check for CTE query */
-  if (PT_IS_SELECT (subquery) && subquery->info.query.with != NULL)
+  if (subquery->info.query.with != NULL)
     {
       /* not pushable */
       return 0;
     }
-
+  /* check for FROM */
+  if (subquery->info.query.q.select.from == NULL)
+    {
+      /* not pushable */
+      return 0;
+    }
   /* determine if spec is outer joined and CTE spec */
   for (PT_NODE * spec = subquery->info.query.q.select.from; spec; spec = spec->next)
     {
