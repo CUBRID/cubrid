@@ -2309,29 +2309,14 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
   // with OLD_PAGE_DEALLOCATED fetch mode to force read the page LSA; replace ER_PB_BAD_PAGEID with
   // ER_PTS_PAGE_DESYNC.
   //
-  bool deallocated = false;	// start by assuming page is not deallocated
 
   if (page == nullptr)
     {
       // Maybe page is deallocated, or maybe there was another error. If page is deallocated, the error must be
       // ER_PB_BAD_PAGEID
 
-      deallocated = (er_errid () == ER_PB_BAD_PAGEID);
-
-      if (!deallocated)
-	{
-	  // Stop if other errors occurred.
-	  return nullptr;
-	}
-
-      // Force fixing the deallocated page to check its LSA
-      page = pgbuf_fix (thread_p, &vpid, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (page == nullptr)
-	{
-	  // Another error occurred. Stop.
-	  ASSERT_ERROR ();
-	  return nullptr;
-	}
+      (void) pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, PGBUF_LATCH_READ, vpid);
+      return nullptr;
     }
 
   // Page must be fixed here
@@ -2347,24 +2332,16 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
   // Page is not ahead.
   assert (error_code == NO_ERROR);
 
-  if (deallocated)
-    {
-      // Page was deallocated though...
-      assert (er_errid () == ER_PB_BAD_PAGEID);
-      pgbuf_unfix (thread_p, page);
-      return nullptr;
-    }
-
   // No errors
 #endif // SERVER_MODE
 
   return page;
 }
 
-#if defined (SERVER_MODE)
 int
 pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
 {
+#if defined (SERVER_MODE)
   assert (page != nullptr);
   assert (is_passive_transaction_server ());
 
@@ -2386,8 +2363,30 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
       // Page is not desynchronized
       return NO_ERROR;
     }
-}
+#else
+  return NO_ERROR;
 #endif
+}
+
+int
+pgbuf_check_for_deallocated_page_or_desyncronization (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode,
+						      const VPID & vpid)
+{
+  assert (er_errid () == ER_PB_BAD_PAGEID);
+  int ret = ER_PB_BAD_PAGEID;
+#if defined (SERVER_MODE)
+  PAGE_PTR fixed_page = pgbuf_fix (thread_p, &vpid, OLD_PAGE_DEALLOCATED, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  if (fixed_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      return ret;
+    }
+
+  return pgbuf_check_page_ahead_of_replication (thread_p, fixed_page);
+#else
+  return ret;
+#endif
+}
 
 /*
  * pgbuf_promote_read_latch () - Promote read latch to write latch

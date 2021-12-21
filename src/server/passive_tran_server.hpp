@@ -32,8 +32,9 @@ class passive_tran_server : public tran_server
 
   public:
     void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
-					 log_lsa &most_recent_transaction_table_snapshot_lsa);
+					 log_lsa &most_recent_trantable_snapshot_lsa);
     void start_log_replicator (const log_lsa &start_lsa);
+    void send_and_receive_stop_log_prior_dispatch ();
 
     /* read replicator's current progress */
     log_lsa get_replicator_lsa () const;

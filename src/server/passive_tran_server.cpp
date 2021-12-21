@@ -67,12 +67,11 @@ passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_paylo
 }
 
 void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
-    log_lsa &most_recent_transaction_table_snapshot_lsa)
+    log_lsa &most_recent_trantable_snapshot_lsa)
 {
-  std::string request_message; // empty
   std::string log_boot_info;
 
-  send_receive (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::move (request_message), log_boot_info);
+  send_receive (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string (), log_boot_info);
 
   assert (!log_boot_info.empty ());
 
@@ -96,7 +95,7 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   message_buf += sizeof (log_lsa);
 
   // most recent trantable snapshot lsa
-  std::memcpy (reinterpret_cast<char *> (&most_recent_transaction_table_snapshot_lsa),
+  std::memcpy (reinterpret_cast<char *> (&most_recent_trantable_snapshot_lsa),
 	       message_buf, sizeof (log_lsa));
   message_buf += sizeof (log_lsa);
 
@@ -121,6 +120,19 @@ void passive_tran_server::start_log_replicator (const log_lsa &start_lsa)
   // passive transaction server executes replication synchronously, for the time being, due to complexity of
   // executing it in parallel while also providing a consistent view of the data
   m_replicator.reset (new cublog::replicator (start_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0));
+}
+
+void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
+{
+  // empty message request
+
+  std::string expected_empty_answer;
+  // blocking call
+  send_receive (tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string (), expected_empty_answer);
+
+  // at this point, no log prior is flowing from the connected page server(s)
+  // outside this context, all log prior currently present on the passive transaction server
+  // needs to be consumed (aka: waited to be consumed/serialized to log)
 }
 
 log_lsa passive_tran_server::get_replicator_lsa () const

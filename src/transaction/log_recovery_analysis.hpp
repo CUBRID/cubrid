@@ -19,6 +19,7 @@
 #ifndef _LOG_RECOVERY_ANALYSIS_HPP_
 #define _LOG_RECOVERY_ANALYSIS_HPP_
 
+#include "log_lsa.hpp"
 #include "thread_compat.hpp"
 #include "system.h"
 
@@ -34,5 +35,8 @@ class log_recovery_context;
  *       have to be completed due to postpone actions and client loose ends.
  */
 void log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_recovery_context &context);
+
+void log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
+    log_lsa most_recent_trantable_snapshot_lsa);
 
 #endif // !_LOG_RECOVERY_ANALYSIS_HPP_
