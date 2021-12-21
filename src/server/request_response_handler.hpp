@@ -30,7 +30,7 @@ class request_response_handler
     using connection_t = T_CONN;
     using payload_t = typename connection_t::payload_t;
     using sequenced_payload_t = typename connection_t::sequenced_payload;
-    using handler_func_t = std::function<void (payload_t &in_out)>;
+    using handler_func_t = std::function<void (cubthread::entry &, payload_t &in_out)>;
 
     class task;
 
@@ -114,7 +114,7 @@ request_response_handler<T_CONN>::task::execute (cubthread::entry &thread_entry)
 {
   // execute may be called only once! payload is lost after this call
   payload_t payload = m_sequenced_payload.pull_payload ();
-  m_function (payload);
+  m_function (thread_entry, payload);
   m_sequenced_payload.push_payload (std::move (payload));
   m_conn_reference.respond (std::move (m_sequenced_payload));
 }

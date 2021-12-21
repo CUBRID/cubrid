@@ -111,7 +111,7 @@ struct test_env
     test_conn &conn_ref = m_conns[conn_index];
     ++conn_ref.m_request_count;
 
-    auto handler = [rsn, &conn_ref] (test_conn::payload_t &a_p)
+    auto handler = [rsn, &conn_ref] (cubthread::entry &, test_conn::payload_t &a_p)
     {
       REQUIRE (a_p == rsn); // input payload is the same
       ++a_p;  // output incremented payload

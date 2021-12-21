@@ -22,6 +22,7 @@
 #include "async_page_fetcher.hpp"
 #include "log_replication.hpp"
 #include "log_storage.hpp"
+#include "request_response_handler.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
 
@@ -48,18 +49,18 @@ class page_server
     void finalize_page_fetcher ();
 
   private:
+
     void disconnect_active_tran_server ();
     void disconnect_tran_server (connection_handler *conn);
     bool is_active_tran_server_connected () const;
     cublog::async_page_fetcher &get_page_fetcher ();
 
-  private:
     class connection_handler
     {
+      public:
 	using tran_server_conn_t =
 		cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
-      public:
 	connection_handler () = delete;
 	~connection_handler ();
 	connection_handler (cubcomm::channel &chn, page_server &ps);
@@ -81,6 +82,9 @@ class page_server
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp);
 
+	void handle_data_page_fetch (cubthread::entry &context, std::string &a_payload);
+	void handle_log_page_fetch (cubthread::entry &context, std::string &a_payload);
+
 	void prior_sender_sink_hook (std::string &&message) const;
 
       private:
@@ -95,11 +99,17 @@ class page_server
 	mutable std::mutex m_prior_sender_sink_removal_mtx;
     };
 
+    using responder_t = request_response_handler<connection_handler::tran_server_conn_t>;
+
+    responder_t &get_responder ();
+
     std::unique_ptr<connection_handler> m_active_tran_server_conn;
     std::vector<std::unique_ptr<connection_handler>> m_passive_tran_server_conn;
 
     std::unique_ptr<cublog::replicator> m_replicator;
     std::unique_ptr<cublog::async_page_fetcher> m_page_fetcher;
+
+    responder_t m_responder;
 };
 
 extern page_server ps_Gl;

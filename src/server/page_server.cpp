@@ -25,6 +25,7 @@
 #include "log_prior_recv.hpp"
 #include "log_replication.hpp"
 #include "packer.hpp"
+#include "page_buffer.h"
 #include "server_type.hpp"
 #include "system_parameter.h"
 #include "vpid_utilities.hpp"
@@ -130,23 +131,67 @@ page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::seq
 }
 
 void
-page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::connection_handler::handle_data_page_fetch (cubthread::entry &context, std::string &a_payload)
 {
-  std::string message = a_sp.pull_payload ();
+  // Unpack the message data
+  cubpacking::unpacker message_upk (a_payload.c_str (), a_payload.size ());
 
-  cubpacking::unpacker message_upk (message.c_str (), message.size ());
   VPID vpid;
   vpid_utils::unpack (message_upk, vpid);
 
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
 
-  auto callback_func = [this, sp = a_sp] (const FILEIO_PAGE *iopage, int error_code) mutable
-  {
-    on_data_page_read_result (std::move (sp), iopage, error_code);
-  };
+  // Fetch data page. But first make sure that replication hits its target LSA
+  if (!target_repl_lsa.is_null ())
+    {
+      // TODO: FIXME
+      // The transaction server boots and reads pages before initializing its log module and before knowing a safe target
+      // LSA for replication. A way of knowing this target LSA is required, but disable this wait until that's fixed.
+      m_ps.get_replicator ().wait_past_target_lsa (target_repl_lsa);
+    }
 
-  m_ps.get_page_fetcher ().fetch_data_page (vpid, target_repl_lsa, std::move (callback_func));
+  PAGE_PTR page_ptr = pgbuf_fix (&context, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == nullptr)
+    {
+      int error;
+      ASSERT_ERROR_AND_SET (error);
+      // respond with the error
+      a_payload = { reinterpret_cast<const char *> (&error), sizeof (error) };
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "[READ DATA] Error %lld while fixing page %d|%d, replication LSA = %lld|%d\n",
+			 error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+	}
+    }
+  else
+    {
+      FILEIO_PAGE *io_pgptr = nullptr;
+      pgbuf_cast_pgptr_to_iopgptr (page_ptr, io_pgptr);
+      assert (io_pgptr != nullptr);
+
+      // respond with io_page
+      a_payload = { reinterpret_cast<const char *> (io_pgptr), (size_t) db_io_page_size () };
+
+      pgbuf_unfix (&context, page_ptr);
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "[READ DATA] Successful while fixing page %d|%d, replication LSA = %lld|%d\n",
+			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+	}
+    }
+}
+
+void
+page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
+{
+  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp),
+				       std::bind (&connection_handler::handle_data_page_fetch, this,
+					   std::placeholders::_1, std::placeholders::_2));
 }
 
 void

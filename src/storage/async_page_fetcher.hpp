@@ -53,21 +53,6 @@ namespace cublog
       // identity as to properly identify these agains perf logging
       std::unique_ptr<cubthread::entry_manager> m_worker_pool_context_manager;
   };
-
-
-  template <typename T_CONN>
-  async_page_fetcher::task<T_CONN>::task (sequenced_payload_t &&a_sp)
-    : m_seq_payload (std::move (a_sp))
-  {
-  }
-
-  template <typename T_CONN>
-  void
-  async_page_fetcher::task<T_CONN>::execute (cubthread::entry &context)
-  {
-    // Note: execute will work only once; the payload is lost after
-    handle_and_respond (context, std::move (m_seq_payload));
-  }
 }
 
 #endif //_ASYNC_PAGE_FETCHER_HPP_
