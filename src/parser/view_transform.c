@@ -4986,7 +4986,7 @@ mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
 	  while (search_node != NULL)
 	    {
 	      /*
-	       * Case of comparing names after DOT (.).
+	       * Case of comparing names after dot(.).
 	       * 1. When comparing owner_name.class_name and class_name.
 	       *    class_name used in index_name must be in from. So, only class_name should be compared,
 	       *    not owner_name.

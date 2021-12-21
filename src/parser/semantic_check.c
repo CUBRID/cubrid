@@ -13102,9 +13102,9 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
        * if a name, the original and resolved fields must match
        *
        * In order to distinguish User Schema, the original, resolved name may contain a user name
-       * with a dot (.) as a separator. It is not necessary to attach a user name to its own table,
+       * with a dot(.) as a separator. It is not necessary to attach a user name to its own table,
        * but the user name currently connected internally is attached. So, when comparing original and resolved names,
-       * we need to compare names after DOT (.). 
+       * we need to compare names after dot(.). 
        * 
        */
     case PT_NAME:
