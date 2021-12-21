@@ -822,7 +822,8 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 #endif /* CUBRID_DEBUG */
   for (i = 0; i < class_table->num; i++)
     {
-      if (WS_IS_DELETED (class_table->mops[i]) || class_table->mops[i] == sm_Root_class_mop)
+      if (WS_IS_DELETED (class_table->mops[i]) || class_table->mops[i] == sm_Root_class_mop
+	  || db_is_vclass (class_table->mops[i]))
 	{
 	  continue;
 	}
