@@ -21,7 +21,6 @@
 
 #include "log_prior_send.hpp"
 #include "log_storage.hpp"
-#include "page_server.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 
