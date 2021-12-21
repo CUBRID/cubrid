@@ -60,6 +60,7 @@
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
 #include "scope_exit.hpp"
+#include "server_type.hpp"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
 #include "set_object.h"
@@ -7420,6 +7421,7 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, b
   int try_count = 0;
   int try_max = 1;
   int ret;
+  bool check_page_ahead_of_repl = false;
 
   assert (context->oid_p != NULL);
 
@@ -7468,7 +7470,11 @@ try_again:
   /* Output record type. */
   context->record_type = slot_p->record_type;
 
-  if (context->record_type == REC_BIGONE || context->record_type == REC_RELOCATION)
+#if defined (SERVER_MODE)
+  check_page_ahead_of_repl =
+    is_passive_transaction_server () && (context->record_type == REC_BIGONE || context->record_type == REC_RELOCATION);
+#endif
+  if (check_page_ahead_of_repl)
     {
       ret = pgbuf_check_page_ahead_of_replication (thread_p, context->home_page_watcher.pgptr);
       if (ret != NO_ERROR)
@@ -7531,7 +7537,7 @@ try_again:
 	    }
 	  return S_SUCCESS;
 	}
-      else if (ret == ER_PB_BAD_PAGEID)
+      else if (check_page_ahead_of_repl && ret == ER_PB_BAD_PAGEID)
 	{
 	  VPID *vpid = pgbuf_get_vpid_ptr (context->fwd_page_watcher.pgptr);
 	  if (vpid == NULL)
@@ -7578,7 +7584,7 @@ try_again:
 	    }
 	  return S_SUCCESS;
 	}
-      else if (ret == ER_PB_BAD_PAGEID)
+      else if (check_page_ahead_of_repl && ret == ER_PB_BAD_PAGEID)
 	{
 	  VPID *vpid = pgbuf_get_vpid_ptr (context->fwd_page_watcher.pgptr);
 	  if (vpid == NULL)
