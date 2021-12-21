@@ -46,6 +46,7 @@ namespace cubcomm
     public:
       using outgoing_msg_id_t = T_OUTGOING_MSG_ID;
       using request_client_server_t = cubcomm::request_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID>;
+      using payload_t = T_PAYLOAD;
 
       // The user payload (of type T_PAYLOAD) is accompanied by a response sequence number set by
       // request_sync_client_server.

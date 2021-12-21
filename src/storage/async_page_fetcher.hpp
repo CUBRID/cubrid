@@ -21,6 +21,7 @@
 
 #include "log_prior_send.hpp"
 #include "log_storage.hpp"
+#include "page_server.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 
@@ -31,6 +32,7 @@ namespace cublog
   class async_page_fetcher
   {
     public:
+
       using log_page_callback_type = std::function<void (const LOG_PAGE *, int)>;
       using data_page_callback_type = std::function<void (const FILEIO_PAGE *, int)>;
       using log_boot_info_callback_type = std::function<void (std::string &&)>;
@@ -51,6 +53,21 @@ namespace cublog
       // identity as to properly identify these agains perf logging
       std::unique_ptr<cubthread::entry_manager> m_worker_pool_context_manager;
   };
+
+
+  template <typename T_CONN>
+  async_page_fetcher::task<T_CONN>::task (sequenced_payload_t &&a_sp)
+    : m_seq_payload (std::move (a_sp))
+  {
+  }
+
+  template <typename T_CONN>
+  void
+  async_page_fetcher::task<T_CONN>::execute (cubthread::entry &context)
+  {
+    // Note: execute will work only once; the payload is lost after
+    handle_and_respond (context, std::move (m_seq_payload));
+  }
 }
 
 #endif //_ASYNC_PAGE_FETCHER_HPP_

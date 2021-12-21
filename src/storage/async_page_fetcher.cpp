@@ -28,6 +28,7 @@
 
 namespace cublog
 {
+
   class log_page_fetch_task : public cubthread::entry_task
   {
     public:
