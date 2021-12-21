@@ -7421,6 +7421,7 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, b
   int try_count = 0;
   int try_max = 1;
   int ret;
+  bool check_page_ahead_of_repl = false;
 
   assert (context->oid_p != NULL);
 
@@ -7469,11 +7470,9 @@ try_again:
   /* Output record type. */
   context->record_type = slot_p->record_type;
 
-  bool check_page_ahead_of_repl =
 #if defined (SERVER_MODE)
+  check_page_ahead_of_repl =
     is_passive_transaction_server () && (context->record_type == REC_BIGONE || context->record_type == REC_RELOCATION);
-#else
-    false;
 #endif
   if (check_page_ahead_of_repl)
     {
