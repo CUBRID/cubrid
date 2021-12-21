@@ -101,7 +101,10 @@ class page_server
 
     using responder_t = request_response_handler<connection_handler::tran_server_conn_t>;
 
-    responder_t &get_responder ();
+    responder_t &get_responder ()
+    {
+      return m_responder;
+    }
 
     std::unique_ptr<connection_handler> m_active_tran_server_conn;
     std::vector<std::unique_ptr<connection_handler>> m_passive_tran_server_conn;
