@@ -112,7 +112,7 @@ class page_server
     std::unique_ptr<cublog::replicator> m_replicator;
     std::unique_ptr<cublog::async_page_fetcher> m_page_fetcher;
 
-    responder_t m_responder;
+    std::unique_ptr<responder_t> m_responder;
 };
 
 extern page_server ps_Gl;

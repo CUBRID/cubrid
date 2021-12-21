@@ -477,10 +477,12 @@ void
 page_server::init_page_fetcher ()
 {
   m_page_fetcher.reset (new cublog::async_page_fetcher ());
+  m_responder = std::make_unique<responder_t> ();
 }
 
 void
 page_server::finalize_page_fetcher ()
 {
   m_page_fetcher.reset (nullptr);
+  m_responder.reset (nullptr);
 }
