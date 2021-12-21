@@ -253,8 +253,7 @@ page_server::connection_handler::on_log_page_read_result (tran_server_conn_t::se
 
 void
 page_server::connection_handler::on_data_page_read_result (tran_server_conn_t::sequenced_payload &&sp,
-    const FILEIO_PAGE *io_page,
-    int error_code)
+    const FILEIO_PAGE *io_page, int error_code)
 {
   std::string message;
   if (error_code != NO_ERROR)

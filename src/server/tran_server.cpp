@@ -236,7 +236,6 @@ tran_server::init_page_server_hosts (const char *db_name)
 void
 tran_server::get_boot_info_from_page_server ()
 {
-  std::string request_message;  // empty
   std::string response_message;
   send_receive (tran_to_page_request::GET_BOOT_INFO, std::string (), response_message);
 
