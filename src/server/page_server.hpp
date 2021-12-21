@@ -103,7 +103,8 @@ class page_server
 
     responder_t &get_responder ()
     {
-      return m_responder;
+      assert (m_responder);
+      return *m_responder;
     }
 
     std::unique_ptr<connection_handler> m_active_tran_server_conn;
