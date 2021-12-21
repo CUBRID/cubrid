@@ -7529,11 +7529,13 @@ try_again:
 
 	      goto error;
 	    }
-
-	  ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
-	  if (ret != NO_ERROR)
+	  if (check_page_ahead_of_repl)
 	    {
-	      goto error;
+	      ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
+	      if (ret != NO_ERROR)
+		{
+		  goto error;
+		}
 	    }
 	  return S_SUCCESS;
 	}
@@ -7577,10 +7579,13 @@ try_again:
 	      goto error;
 	    }
 
-	  ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
-	  if (ret != NO_ERROR)
+	  if (check_page_ahead_of_repl)
 	    {
-	      goto error;
+	      ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
+	      if (ret != NO_ERROR)
+		{
+		  goto error;
+		}
 	    }
 	  return S_SUCCESS;
 	}
