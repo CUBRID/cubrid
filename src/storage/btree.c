@@ -17010,9 +17010,9 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 
       if (root_header->_64.over)
 	{
-	  num_nulls |= (long long) root_header->num_nulls << 32;
-	  num_oids |= (long long) root_header->num_oids << 32;
-	  num_keys |= (long long) root_header->num_keys << 32;
+	  num_nulls |= (long long) root_header->_64.num_nulls << 32;
+	  num_oids |= (long long) root_header->_64.num_oids << 32;
+	  num_keys |= (long long) root_header->_64.num_keys << 32;
 	}
 
       /* unpack the root statistics */
