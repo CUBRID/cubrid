@@ -1710,7 +1710,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 {
   PT_NODE *order, *val;
   PT_NODE *attributes, *attr, *prev_order;
-  PT_NODE *node, *result;
+  PT_NODE *node, *result, *order_by;
   PT_NODE *save_data_type, *free_node = NULL, *save_next;
   int attr_count;
   int i;
@@ -1718,10 +1718,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 
   assert (statement->node_type == PT_SELECT && query_spec->info.query.order_by != NULL);
 
-  statement->info.query.order_by =
-    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.order_by),
-			statement->info.query.order_by);
-
+  order_by = parser_copy_tree_list (parser, query_spec->info.query.order_by);
 
   /* 1 get vclass spec attrs */
   if (class_ != NULL)
@@ -1753,7 +1750,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 
   prev_order = NULL;
   /* update the position number of order by clause */
-  for (order = statement->info.query.order_by; order != NULL; order = order->next)
+  for (order = order_by; order != NULL; order = order->next)
     {
       assert (order->node_type == PT_SORT_SPEC);
 
@@ -1857,6 +1854,9 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 
       attr->data_type = save_data_type;
     }
+
+  statement->info.query.order_by =
+    parser_append_node (order_by, statement->info.query.order_by);
 
   if (free_node != NULL)
     {
