@@ -80,6 +80,43 @@ endif
 setenv SHLIB_PATH $LD_LIBRARY_PATH
 setenv LIBPATH $LD_LIBRARY_PATH
 set path=($CUBRID/bin $path)
+
+set LIB=$CUBRID/lib
+
+if (-f "/etc/redhat-release" ) then
+  set OS=(`cat /etc/system-release-cpe | cut -d':' -f'3-3'`)
+else if (-f "/etc/os-release" ) then
+  set OS=(`cat /etc/os-release | egrep "^ID=" | cut -d'=' -f2-2`)
+endif
+
+switch ($OS)
+  case fedoraproject:
+  case centos:
+  case redhat:
+    if ((! -e /lib64/libncurses.so.5 ) && ( ! -e $LIB/libncurses.so.5 )) then
+      ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
+      ln -s /lib64/libform.so.6 $LIB/libform.so.5
+      ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
+    endif
+    breaksw
+  case ubuntu:
+    if ((! -e /lib/x86_64-linux-gnu/libncurses.so.5 ) && ( ! -e $LIB/libncurses.so.5)) then
+      ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
+      ln -s /lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
+      ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
+    endif
+    breaksw
+  case debian:
+    if ( ! -e /lib/x86_64-linux-gnu/libncurses.so.5 ) && ( ! -e $LIB/libncurses.so.5 ) then
+      ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
+      ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
+      ln -s /usr/lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
+    endif
+    breaksw
+  default:
+    echo "Unknown operating system."
+    breaksw
+endsw
 ____cubrid__here_doc____
 
 
