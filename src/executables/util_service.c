@@ -260,7 +260,7 @@ static int process_server (int command_type, int argc, char **argv, bool show_us
 			   bool process_window_service);
 static int process_broker (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_manager (int command_type, bool process_window_service);
-static int process_javasp (int command_type, int argc, const char **argv, bool process_window_service);
+static int process_javasp (int command_type, int argc, const char **argv, bool show_usage, bool process_window_service);
 static int process_javasp_start (const char *db_name, bool process_window_service);
 static int process_javasp_stop (const char *db_name, bool process_window_service);
 static int process_javasp_status (const char *db_name);
@@ -678,7 +678,7 @@ main (int argc, char *argv[])
 #endif /* !WINDOWs */
       break;
     case JAVASP_UTIL:
-      status = process_javasp (command_type, argc - 3, (const char **) &argv[3], process_window_service);
+      status = process_javasp (command_type, argc - 3, (const char **) &argv[3], true, process_window_service);
       break;
     default:
       goto usage;
@@ -1377,7 +1377,7 @@ process_service (int command_type, bool process_window_service)
 	(void) process_server (command_type, 0, NULL, false, true, false);
 	(void) process_broker (command_type, 1, args, false);
 	(void) process_manager (command_type, false);
-	(void) process_javasp (command_type, 0, NULL, false);
+	(void) process_javasp (command_type, 0, NULL, false, false);
 	if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
 	  {
 	    (void) process_heartbeat (command_type, 0, NULL);
@@ -1667,7 +1667,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		  /* run javasp server if DB server is started successfully */
 		  if (status == NO_ERROR && (is_javasp_running (token) != JAVASP_SERVER_RUNNING))
 		    {
-		      (void) process_javasp (command_type, 1, (const char **) &token, false);
+		      (void) process_javasp (command_type, 1, (const char **) &token, false, false);
 		    }
 		}
 	    }
@@ -1685,7 +1685,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	  /* try to stop javasp server first */
 	  if (is_javasp_running (token) == JAVASP_SERVER_RUNNING)
 	    {
-	      (void) process_javasp (command_type, 1, (const char **) &token, process_window_service);
+	      (void) process_javasp (command_type, 1, (const char **) &token, false, process_window_service);
 	    }
 
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_STOP, token);
@@ -1748,6 +1748,11 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SERVER_STATUS, NULL };
 	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+
+	  if (status == NO_ERROR)
+	    {
+
+	    }
 	}
       else
 	{
@@ -2509,7 +2514,7 @@ process_javasp_status (const char *db_name)
 }
 
 static int
-process_javasp (int command_type, int argc, const char **argv, bool process_window_service)
+process_javasp (int command_type, int argc, const char **argv, bool show_usage, bool process_window_service)
 {
   char buf[4096] = { 0 };
   char *list = NULL, *save = NULL;
@@ -2531,8 +2536,11 @@ process_javasp (int command_type, int argc, const char **argv, bool process_wind
 
   if (strlen (buf) == 0)
     {
-      util_service_usage (JAVASP_UTIL);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
+      if (show_usage)
+	{
+	  util_service_usage (JAVASP_UTIL);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
+	}
       status = ER_GENERIC_ERROR;
       goto exit;
     }
