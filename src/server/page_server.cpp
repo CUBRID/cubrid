@@ -275,13 +275,6 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
 }
 
 void
-page_server::connection_handler::on_log_boot_info_result (tran_server_conn_t::sequenced_payload &&sp,
-    std::string &&message)
-{
-
-}
-
-void
 page_server::connection_handler::receive_disconnect_request (tran_server_conn_t::sequenced_payload &)
 {
   // if this instance acted as a prior sender sink - in other words, if this connection handler was for a
@@ -304,63 +297,6 @@ page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::
 
   a_sp.push_payload (std::move (response_message));
   m_conn->respond (std::move (a_sp));
-}
-
-void
-page_server::connection_handler::on_log_page_read_result (tran_server_conn_t::sequenced_payload &&sp,
-    const LOG_PAGE *log_page, int error_code)
-{
-  std::string message;
-
-  message.append (reinterpret_cast<const char *> (&error_code), sizeof (error_code));
-
-  if (error_code == NO_ERROR)
-    {
-      message.append (reinterpret_cast<const char *> (log_page), db_log_page_size ());
-    }
-
-  sp.push_payload (std::move (message));
-  m_conn->respond (std::move (sp));
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-    {
-      LOG_PAGEID page_id = NULL_PAGEID;
-      if (error_code == NO_ERROR)
-	{
-	  page_id = log_page->hdr.logical_pageid;
-	}
-
-      _er_log_debug (ARG_FILE_LINE, "Sending log page to Active Tran Server. Page ID: %lld Error code: %ld\n", page_id,
-		     error_code);
-    }
-}
-
-void
-page_server::connection_handler::on_data_page_read_result (tran_server_conn_t::sequenced_payload &&sp,
-    const FILEIO_PAGE *io_page, int error_code)
-{
-  std::string message;
-  message.append (reinterpret_cast<const char *> (&error_code), sizeof (error_code));
-
-  if (error_code != NO_ERROR)
-    {
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sending data page.. VPID: %d|%d, LSA: %lld|%d\n",
-			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
-	}
-    }
-  else
-    {
-      message.append (reinterpret_cast<const char *> (io_page), db_io_page_size ());
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sending data page.. Error code: %d\n", error_code);
-	}
-    }
-
-  sp.push_payload (std::move (message));
-  m_conn->respond (std::move (sp));
 }
 
 void
@@ -469,13 +405,6 @@ page_server::is_active_tran_server_connected () const
   return m_active_tran_server_conn != nullptr;
 }
 
-cublog::async_page_fetcher &
-page_server::get_page_fetcher ()
-{
-  assert (m_page_fetcher != nullptr);
-  return *m_page_fetcher.get ();
-}
-
 void
 page_server::push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload)
 {
@@ -514,15 +443,13 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 }
 
 void
-page_server::init_page_fetcher ()
+page_server::init_request_responder ()
 {
-  m_page_fetcher.reset (new cublog::async_page_fetcher ());
   m_responder = std::make_unique<responder_t> ();
 }
 
 void
-page_server::finalize_page_fetcher ()
+page_server::finalize_request_responder ()
 {
-  m_page_fetcher.reset (nullptr);
   m_responder.reset (nullptr);
 }

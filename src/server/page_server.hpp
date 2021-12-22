@@ -19,7 +19,6 @@
 #ifndef _PAGE_SERVER_HPP_
 #define _PAGE_SERVER_HPP_
 
-#include "async_page_fetcher.hpp"
 #include "log_replication.hpp"
 #include "log_storage.hpp"
 #include "request_response_handler.hpp"
@@ -45,15 +44,14 @@ class page_server
     void start_log_replicator (const log_lsa &start_lsa);
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
 
-    void init_page_fetcher ();
-    void finalize_page_fetcher ();
+    void init_request_responder ();
+    void finalize_request_responder ();
 
   private:
 
     void disconnect_active_tran_server ();
     void disconnect_tran_server (connection_handler *conn);
     bool is_active_tran_server_connected () const;
-    cublog::async_page_fetcher &get_page_fetcher ();
 
     class connection_handler
     {
@@ -68,11 +66,6 @@ class page_server
 	std::string get_channel_id ();
 
       private:
-	void on_log_page_read_result (tran_server_conn_t::sequenced_payload &&sp, const LOG_PAGE *log_page,
-				      int error_code);
-	void on_data_page_read_result (tran_server_conn_t::sequenced_payload &&sp, const FILEIO_PAGE *page_ptr,
-				       int error_code);
-	void on_log_boot_info_result (tran_server_conn_t::sequenced_payload &&sp, std::string &&message);
 
 	void receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip);
@@ -114,7 +107,6 @@ class page_server
     std::vector<std::unique_ptr<connection_handler>> m_passive_tran_server_conn;
 
     std::unique_ptr<cublog::replicator> m_replicator;
-    std::unique_ptr<cublog::async_page_fetcher> m_page_fetcher;
 
     std::unique_ptr<responder_t> m_responder;
 };
