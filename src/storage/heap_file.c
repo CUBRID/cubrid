@@ -24991,7 +24991,6 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 	  pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
 	}
 
-      assert (is_passive_transaction_server ());
       passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       assert (tdes->page_desync_lsa.is_null ());
