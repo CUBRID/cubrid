@@ -73,7 +73,7 @@ namespace cublog
       {
 	m_messages_condvar.wait (ulock, [this]
 	{
-	  return m_shutdown || !m_messages.empty();
+	  return m_shutdown || !m_messages.empty ();
 	});
 
 	if (m_shutdown)
@@ -93,8 +93,9 @@ namespace cublog
 	    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
 	      {
 		_er_log_debug (ARG_FILE_LINE,
-			       "[LOG_PRIOR_TRANSFER] Received list starting with lsa %lld|%d. Message size = %d.\n",
-			       LSA_AS_ARGS (&list_head->start_lsa), backbuffer.front ().size ());
+			       "[LOG_PRIOR_TRANSFER] Received. Head lsa %lld|%d. Tail lsa %lld|%d. Message size = %d.\n",
+			       LSA_AS_ARGS (&list_head->start_lsa), LSA_AS_ARGS (&list_tail->start_lsa),
+			       backbuffer.front ().size ());
 	      }
 
 	    m_prior_lsa_info.push_list (list_head, list_tail);

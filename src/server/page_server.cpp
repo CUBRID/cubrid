@@ -73,6 +73,11 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, page
       tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH,
       std::bind (&page_server::connection_handler::receive_log_boot_info_fetch, std::ref (*this), std::placeholders::_1)
     },
+    {
+      tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH,
+      std::bind (&page_server::connection_handler::receive_stop_log_prior_dispatch, std::ref (*this),
+		 std::placeholders::_1)
+    }
   }, page_to_tran_request::RESPOND, tran_to_page_request::RESPOND, 1));
 
   assert (m_conn != nullptr);
@@ -103,10 +108,10 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
 }
 
 void
-page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_ip)
+page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
   LOG_PAGEID pageid;
-  std::string message = a_ip.pull_payload ();
+  std::string message = a_sp.pull_payload ();
 
   assert (message.size () == sizeof (pageid));
   std::memcpy (&pageid, message.c_str (), sizeof (pageid));
@@ -116,14 +121,18 @@ page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::seq
       _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
     }
 
-  m_ps.get_page_fetcher ().fetch_log_page (pageid, std::bind (&page_server::connection_handler::on_log_page_read_result,
-      this, std::placeholders::_1, std::placeholders::_2));
+  auto callback_func = [this, sp = a_sp] (const LOG_PAGE *log_page, int error_code) mutable
+  {
+    on_log_page_read_result (std::move (sp), log_page, error_code);
+  };
+
+  m_ps.get_page_fetcher ().fetch_log_page (pageid, std::move (callback_func));
 }
 
 void
-page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_ip)
+page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  std::string message = a_ip.pull_payload ();
+  std::string message = a_sp.pull_payload ();
 
   cubpacking::unpacker message_upk (message.c_str (), message.size ());
   VPID vpid;
@@ -132,18 +141,23 @@ page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::se
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
 
-  m_ps.get_page_fetcher ().fetch_data_page (vpid, target_repl_lsa,
-      std::bind (&page_server::connection_handler::on_data_page_read_result, this, std::placeholders::_1,
-		 std::placeholders::_2));
+  auto callback_func = [this, sp = a_sp] (const FILEIO_PAGE *iopage, int error_code) mutable
+  {
+    on_data_page_read_result (std::move (sp), iopage, error_code);
+  };
+
+  m_ps.get_page_fetcher ().fetch_data_page (vpid, target_repl_lsa, std::move (callback_func));
 }
 
 void
-page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &)
+page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
   // empty request message
 
-  auto callback_func =
-	  std::bind (&connection_handler::on_log_boot_info_result, this, std::placeholders::_1);
+  auto callback_func = [this, sp = a_sp] (std::string &&message) mutable
+  {
+    on_log_boot_info_result (std::move (sp), std::move (message));
+  };
 
   // the underlying infrastructure will add this functor as a sink for log prior info packing and
   // sending that log prior info down the line to the connected passive transaction server
@@ -154,22 +168,41 @@ page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t
 }
 
 void
-page_server::connection_handler::on_log_boot_info_result (std::string &&message)
+page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp)
+{
+  // empty request message
+
+  assert ((bool) m_prior_sender_sink_hook_func);
+
+  {
+    std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
+
+    log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+    m_prior_sender_sink_hook_func = nullptr;
+  }
+
+  // empty response message, the roundtrip is synchronous
+  a_sp.push_payload (std::string ());
+  m_conn->respond (std::move (a_sp));
+}
+
+void
+page_server::connection_handler::on_log_boot_info_result (tran_server_conn_t::sequenced_payload &&sp,
+    std::string &&message)
 {
   assert (m_conn != nullptr);
   assert (message.size () > 0);
 
-  m_conn->push (page_to_tran_request::SEND_LOG_BOOT_INFO, std::move (message));
+  sp.push_payload (std::move (message));
+  m_conn->respond (std::move (sp));
 }
 
 void
 page_server::connection_handler::receive_disconnect_request (tran_server_conn_t::sequenced_payload &)
 {
-  if (m_prior_sender_sink_hook_func)
-    {
-      log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
-      m_prior_sender_sink_hook_func = nullptr;
-    }
+  // if this instance acted as a prior sender sink - in other words, if this connection handler was for a
+  // passive transaction server - it should have been disconnected beforehand
+  assert (! (bool) m_prior_sender_sink_hook_func);
 
   //start a thread to destroy the ATS/PTS to PS connection object
   std::thread disconnect_thread (&page_server::disconnect_tran_server, std::ref (m_ps), this);
@@ -177,7 +210,7 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
 }
 
 void
-page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &)
+page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_sp)
 {
   DKNVOLS nvols_perm = disk_get_perm_volume_count ();
 
@@ -185,24 +218,25 @@ page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::
   response_message.reserve (sizeof (nvols_perm));
   response_message.append (reinterpret_cast<const char *> (&nvols_perm), sizeof (nvols_perm));
 
-  m_conn->push (page_to_tran_request::SEND_BOOT_INFO, std::move (response_message));
+  a_sp.push_payload (std::move (response_message));
+  m_conn->respond (std::move (a_sp));
 }
 
 void
-page_server::connection_handler::on_log_page_read_result (const LOG_PAGE *log_page, int error_code)
+page_server::connection_handler::on_log_page_read_result (tran_server_conn_t::sequenced_payload &&sp,
+    const LOG_PAGE *log_page, int error_code)
 {
-  char buffer[sizeof (int) + IO_MAX_PAGE_SIZE];
-  std::memcpy (buffer, &error_code, sizeof (error_code));
-  std::size_t buffer_size = sizeof (error_code);
+  std::string message;
+
+  message.append (reinterpret_cast<const char *> (&error_code), sizeof (error_code));
 
   if (error_code == NO_ERROR)
     {
-      std::memcpy (buffer + sizeof (error_code), log_page, db_log_page_size ());
-      buffer_size += db_log_page_size ();
+      message.append (reinterpret_cast<const char *> (log_page), db_log_page_size ());
     }
 
-  std::string message (buffer, buffer_size);
-  m_conn->push (page_to_tran_request::SEND_LOG_PAGE, std::move (message));
+  sp.push_payload (std::move (message));
+  m_conn->respond (std::move (sp));
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
@@ -218,36 +252,31 @@ page_server::connection_handler::on_log_page_read_result (const LOG_PAGE *log_pa
 }
 
 void
-page_server::connection_handler::on_data_page_read_result (const FILEIO_PAGE *io_page, int error_code)
+page_server::connection_handler::on_data_page_read_result (tran_server_conn_t::sequenced_payload &&sp,
+    const FILEIO_PAGE *io_page, int error_code)
 {
   std::string message;
+  message.append (reinterpret_cast<const char *> (&error_code), sizeof (error_code));
+
   if (error_code != NO_ERROR)
     {
-      char buffer[sizeof (int)];
-      std::memcpy (buffer, &error_code, sizeof (error_code));
-      message = std::string (buffer, sizeof (int));
-    }
-  else
-    {
-      char buffer[IO_MAX_PAGE_SIZE];
-      std::memcpy (buffer, io_page, db_io_page_size ());
-      message = std::string (buffer, db_io_page_size ());
-    }
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-    {
-      if (error_code == NO_ERROR)
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sending data page.. VPID: %d|%d, LSA: %lld|%d\n",
 			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
 	}
-      else
+    }
+  else
+    {
+      message.append (reinterpret_cast<const char *> (io_page), db_io_page_size ());
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sending data page.. Error code: %d\n", error_code);
 	}
     }
 
-  m_conn->push (page_to_tran_request::SEND_DATA_PAGE, std::move (message));
+  sp.push_payload (std::move (message));
+  m_conn->respond (std::move (sp));
 }
 
 void
@@ -256,6 +285,7 @@ page_server::connection_handler::prior_sender_sink_hook (std::string &&message) 
   assert (m_conn != nullptr);
   assert (message.size () > 0);
 
+  std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
   m_conn->push (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST, std::move (message));
 }
 

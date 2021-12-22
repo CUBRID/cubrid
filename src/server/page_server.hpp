@@ -67,9 +67,11 @@ class page_server
 	std::string get_channel_id ();
 
       private:
-	void on_log_page_read_result (const LOG_PAGE *log_page, int error_code);
-	void on_data_page_read_result (const FILEIO_PAGE *page_ptr, int error_code);
-	void on_log_boot_info_result (std::string &&message);
+	void on_log_page_read_result (tran_server_conn_t::sequenced_payload &&sp, const LOG_PAGE *log_page,
+				      int error_code);
+	void on_data_page_read_result (tran_server_conn_t::sequenced_payload &&sp, const FILEIO_PAGE *page_ptr,
+				       int error_code);
+	void on_log_boot_info_result (tran_server_conn_t::sequenced_payload &&sp, std::string &&message);
 
 	void receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip);
@@ -77,6 +79,7 @@ class page_server
 	void receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_disconnect_request (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
+	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp);
 
 	void prior_sender_sink_hook (std::string &&message) const;
 
@@ -86,6 +89,10 @@ class page_server
 
 	// only passive transaction servers receive log in the form of prior list;
 	cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;
+
+	// exclusive lock between the hook function that executes the dispatch and the
+	// function that will, at some moment, remove that hook
+	mutable std::mutex m_prior_sender_sink_removal_mtx;
     };
 
     std::unique_ptr<connection_handler> m_active_tran_server_conn;

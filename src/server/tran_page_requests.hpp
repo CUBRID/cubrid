@@ -35,6 +35,7 @@ enum class tran_to_page_request
 
   // Passive only
   SEND_LOG_BOOT_INFO_FETCH,
+  SEND_STOP_LOG_PRIOR_DISPATCH,
 };
 
 enum class page_to_tran_request
@@ -42,16 +43,10 @@ enum class page_to_tran_request
   // Reserve for responses
   RESPOND,
 
-  // Common
-  SEND_BOOT_INFO,
-
   // Active only
   SEND_SAVED_LSA,
-  SEND_LOG_PAGE,
-  SEND_DATA_PAGE,
 
   // Passive only
-  SEND_LOG_BOOT_INFO,
   SEND_TO_PTS_LOG_PRIOR_LIST, /* response-less */
 };
 

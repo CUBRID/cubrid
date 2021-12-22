@@ -32,8 +32,9 @@ class passive_tran_server : public tran_server
 
   public:
     void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
-					 log_lsa &most_recent_transaction_table_snapshot_lsa);
+					 log_lsa &most_recent_trantable_snapshot_lsa);
     void start_log_replicator (const log_lsa &start_lsa);
+    void send_and_receive_stop_log_prior_dispatch ();
 
     /* read replicator's current progress */
     log_lsa get_replicator_lsa () const;
@@ -45,13 +46,9 @@ class passive_tran_server : public tran_server
     void on_boot () final override;
     request_handlers_map_t get_request_handlers () final override;
 
-    void receive_log_boot_info (page_server_conn_t::sequenced_payload &a_ip);
     void receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip);
 
   private:
-    std::mutex m_log_boot_info_mtx;
-    std::string m_log_boot_info;
-    std::condition_variable m_log_boot_info_condvar;
 
     std::unique_ptr<cublog::replicator> m_replicator;
 };

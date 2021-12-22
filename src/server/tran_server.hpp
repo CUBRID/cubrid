@@ -21,7 +21,6 @@
 
 #include "communication_node.hpp"
 #include "communication_server_channel.hpp"
-#include "page_broker.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
 
@@ -76,13 +75,9 @@ class tran_server
     void disconnect_page_server ();
     bool is_page_server_connected () const;
     void push_request (tran_to_page_request reqid, std::string &&payload);
+    void send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
 
     virtual bool uses_remote_storage () const;
-
-    void init_page_brokers ();
-    void finalize_page_brokers ();
-    page_broker<log_page_type> &get_log_page_broker ();
-    page_broker<data_page_type> &get_data_page_broker ();
 
   protected:
     using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
@@ -104,22 +99,12 @@ class tran_server
 
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
-    // Common request Handlers
-    void receive_boot_info (page_server_conn_t::sequenced_payload &a_ip);
-    void receive_log_page (page_server_conn_t::sequenced_payload &a_ip);
-    void receive_data_page (page_server_conn_t::sequenced_payload &a_ip);
 
   private:
-    std::unique_ptr<page_broker<log_page_type>> m_log_page_broker;
-    std::unique_ptr<page_broker<data_page_type>> m_data_page_broker;
 
     std::vector<cubcomm::node> m_connection_list;
     cubcomm::server_server m_conn_type;
     std::vector<std::unique_ptr<page_server_conn_t>> m_page_server_conn_vec;
-
-    std::mutex m_boot_info_mutex;
-    std::condition_variable m_boot_info_condvar;
-    bool m_is_boot_info_received = false;
 };
 
 #endif // !_tran_server_HPP_

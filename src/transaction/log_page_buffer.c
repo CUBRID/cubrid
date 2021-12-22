@@ -76,7 +76,6 @@
 #include "connection_sr.h"
 #endif
 #include "active_tran_server.hpp"
-#include "page_broker.hpp"
 #include "tran_page_requests.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
@@ -140,9 +139,7 @@ static int rv;
 
 
 /* PAGES OF ACTIVE LOG PORTION */
-#define LOGPB_HEADER_PAGE_ID             (-9LL)	/* The first log page in the infinite log sequence. It is always kept
-						 * on the active portion of the log. Log records are not stored on this
-						 * page. This page is backed up in all archive logs */
+
 #define LOGPB_NEXT_ARCHIVE_PAGE_ID    (log_Gl.hdr.nxarv_pageid)
 #define LOGPB_FIRST_ACTIVE_PAGE_ID    (log_Gl.hdr.fpageid)
 #define LOGPB_LAST_ACTIVE_PAGE_ID     (log_Gl.hdr.nxarv_pageid + log_Gl.hdr.npages - 1)
@@ -374,7 +371,7 @@ static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
 static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			    LOG_PAGE * log_pgptr);
-static void request_log_page_from_page_server (LOG_PAGEID log_pageid);
+static int request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr);
 
 static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_flush, const char *file_name,
 					const int lineno, const char *fmt, va_list ap);
@@ -1607,22 +1604,20 @@ logpb_fetch_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
   assert (is_tran_server_with_remote_storage ());
 
-  request_log_page_from_page_server (LOGPB_HEADER_PAGE_ID);
-
-  std::shared_ptr<log_page_owner> brokered_log_hdr_page
-    = ts_Gl->get_log_page_broker ().wait_for_page (LOGPB_HEADER_PAGE_ID);
-
-  const LOG_PAGE *const log_hdr_page = brokered_log_hdr_page->get_log_page ();
-  const LOG_HEADER *const log_hdr = reinterpret_cast<const LOG_HEADER*> (log_hdr_page->area);
-  *hdr = *log_hdr;
-
-  std::memcpy (log_pgptr, log_hdr_page, LOG_PAGESIZE);
+  int err = request_log_page_from_page_server (LOGPB_HEADER_PAGE_ID, log_pgptr);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
 
   if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, LOGPB_HEADER_PAGE_ID);
       return ER_LOG_PAGE_CORRUPTED;
     }
+
+  *hdr = *reinterpret_cast<const LOG_HEADER *> (log_pgptr->area);
 
   return NO_ERROR;
 }
@@ -2097,26 +2092,55 @@ exit:
   return rv;
 }
 
-static void
-request_log_page_from_page_server (LOG_PAGEID log_pageid)
+static int
+request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr)
 {
 #if defined(SERVER_MODE)
   // *INDENT-OFF*
-  constexpr size_t BIG_INT_SIZE = 8;
-  char buffer[BIG_INT_SIZE];
-  std::memcpy (buffer, &log_pageid, sizeof (log_pageid));
-  std::string message (buffer, BIG_INT_SIZE);
+  std::string request_message;
+  request_message.append (reinterpret_cast<const char *> (&log_pageid), sizeof (log_pageid));
 
-  if (ts_Gl->get_log_page_broker ().register_entry (log_pageid) == page_broker_register_entry_state::ADDED)
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
-      // First to add an entry must also sent the request to the page server
-      ts_Gl->push_request (tran_to_page_request::SEND_LOG_PAGE_FETCH, std::move (message));
+      _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
+    }
+  std::string response_message;
+  ts_Gl->send_receive (tran_to_page_request::SEND_LOG_PAGE_FETCH, std::move (request_message), response_message);
+
+  assert (response_message.size () > 0);
+  const char *message_ptr = response_message.c_str ();
+  int error_code;
+  std::memcpy (&error_code, message_ptr, sizeof (error_code));
+  message_ptr += sizeof (error_code);
+
+  if (error_code == NO_ERROR)
+    {
+      std::memcpy (log_pgptr, message_ptr, db_log_page_size ());
+      message_ptr += db_log_page_size ();
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-        {
-          _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
-        }
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
+			 log_pgptr->hdr.logical_pageid);
+	}
     }
+  else
+    {
+      if (error_code == ER_LOG_PAGE_CORRUPTED)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, log_pageid);
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Error code: %d\n", error_code);
+	}
+    }
+  assert (message_ptr == (response_message.c_str () + response_message.size ()));
+  return error_code;
   // *INDENT-ON*
 #endif // SERVER_MODE
 }
@@ -2160,13 +2184,6 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
   //  2) TS with local storage + connected to PS: both read from PS and from file and compare results
   //  3) PS or TS with local storage + not connected to PS: only read from file
 
-  const SERVER_TYPE server_type = get_server_type ();
-  if (server_type == SERVER_TYPE_TRANSACTION && ts_Gl->is_page_server_connected ())
-    {
-      // context 1) or 2)
-      request_log_page_from_page_server (pageid);
-    }
-
   bool read_from_disk = false;
   if (!is_tran_server_with_remote_storage ())
     {
@@ -2180,25 +2197,28 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
       read_from_disk = true;
     }
 
+  const SERVER_TYPE server_type = get_server_type ();
   if (server_type == SERVER_TYPE_TRANSACTION && ts_Gl->is_page_server_connected ())
     {
-      // *INDENT-OFF*
-      std::shared_ptr<log_page_owner> brokered_log_page
-          = ts_Gl->get_log_page_broker ().wait_for_page (pageid);
-      // *INDENT-ON*
-      const LOG_PAGE *const log_page_from_page_server = brokered_log_page->get_log_page ();
-      if (read_from_disk)
+      if (!read_from_disk)
 	{
-	  // context 2)
-	  // log_pgptr already contains value read from local storage
-	  logpb_verify_page_read (pageid, log_page_from_page_server, log_pgptr);
+	  // context 1)
+	  return request_log_page_from_page_server (pageid, log_pgptr);
 	}
       else
 	{
-	  // context 1)
-          // *INDENT-OFF*
-	  std::memcpy (log_pgptr, log_page_from_page_server, LOG_PAGESIZE);
-          // *INDENT-ON*
+	  // context 2)
+	  // *INDENT-OFF*
+	  auto log_page_buffer_uptr = std::make_unique<char> (IO_MAX_PAGE_SIZE);
+	  auto second_log_page = (LOG_PAGE *) log_page_buffer_uptr.get ();
+
+	  int err = request_log_page_from_page_server (pageid, second_log_page);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	  logpb_verify_page_read (pageid, second_log_page, log_pgptr);
+	  // *INDENT-ON*
 	}
     }
 

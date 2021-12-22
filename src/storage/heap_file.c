@@ -60,6 +60,7 @@
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
 #include "scope_exit.hpp"
+#include "server_type.hpp"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
 #include "set_object.h"
@@ -7420,6 +7421,7 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, b
   int try_count = 0;
   int try_max = 1;
   int ret;
+  bool check_page_ahead_of_repl = false;
 
   assert (context->oid_p != NULL);
 
@@ -7468,6 +7470,19 @@ try_again:
   /* Output record type. */
   context->record_type = slot_p->record_type;
 
+#if defined (SERVER_MODE)
+  check_page_ahead_of_repl =
+    is_passive_transaction_server () && (context->record_type == REC_BIGONE || context->record_type == REC_RELOCATION);
+#endif
+  if (check_page_ahead_of_repl)
+    {
+      ret = pgbuf_check_page_ahead_of_replication (thread_p, context->home_page_watcher.pgptr);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   if (context->fwd_page_watcher.pgptr != NULL && slot_p->record_type != REC_RELOCATION
       && slot_p->record_type != REC_BIGONE)
     {
@@ -7514,7 +7529,25 @@ try_again:
 
 	      goto error;
 	    }
+	  if (check_page_ahead_of_repl)
+	    {
+	      ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
+	      if (ret != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
 	  return S_SUCCESS;
+	}
+      else if (check_page_ahead_of_repl && ret == ER_PB_BAD_PAGEID)
+	{
+	  VPID *vpid = pgbuf_get_vpid_ptr (context->fwd_page_watcher.pgptr);
+	  if (vpid == NULL)
+	    {
+	      ret = ER_PB_BAD_PAGEID;
+	      goto error;
+	    }
+	  ret = pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, context->latch_mode, *vpid);
 	}
 
       goto error;
@@ -7545,7 +7578,26 @@ try_again:
 	      assert (false);
 	      goto error;
 	    }
+
+	  if (check_page_ahead_of_repl)
+	    {
+	      ret = pgbuf_check_page_ahead_of_replication (thread_p, context->fwd_page_watcher.pgptr);
+	      if (ret != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
 	  return S_SUCCESS;
+	}
+      else if (check_page_ahead_of_repl && ret == ER_PB_BAD_PAGEID)
+	{
+	  VPID *vpid = pgbuf_get_vpid_ptr (context->fwd_page_watcher.pgptr);
+	  if (vpid == NULL)
+	    {
+	      ret = ER_PB_BAD_PAGEID;
+	      goto error;
+	    }
+	  ret = pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, context->latch_mode, *vpid);
 	}
 
       goto error;
@@ -21483,6 +21535,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   int error_code = NO_ERROR;
 
   LOG_TDES *tdes = NULL;
+  bool atomic_replication_flag = false;
 
   /* check input */
   assert (context != NULL);
@@ -21490,6 +21543,17 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   assert (context->type == HEAP_OPERATION_DELETE);
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
+
+  // *INDENT-OFF*
+  // To ensure that, if started, the atomic replication area will also end.
+  scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, atomic_replication_flag]()
+  {
+    if (atomic_replication_flag == true)
+     {
+        log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+     }
+  });
+  // *INDENT-ON*
 
   if (context->do_supplemental_log)
     {
@@ -21650,6 +21714,8 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  /*
 	   * Relocation necessary
 	   */
+	  log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+	  atomic_replication_flag = true;
 	  LOG_DATA_ADDR rec_address;
 
 	  /* insertion of built record */

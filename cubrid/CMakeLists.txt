@@ -405,7 +405,6 @@ set(STORAGE_HEADERS
   ${STORAGE_DIR}/async_page_fetcher.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
-  ${STORAGE_DIR}/page_broker.hpp
   ${STORAGE_DIR}/vpid.hpp
   ${STORAGE_DIR}/vpid_utilities.hpp
 )
