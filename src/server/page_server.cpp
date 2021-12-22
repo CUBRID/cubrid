@@ -232,10 +232,12 @@ page_server::connection_handler::async_log_boot_info (cubthread::entry &context,
   assert (a_payload.empty ());
   log_lsa append_lsa, prev_lsa, most_recent_trantable_snapshot_lsa;
 
+  m_prior_sender_sink_hook_func =
+	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
+
   // log_pack_log_boot_info does all the work
   a_payload = log_pack_log_boot_info (&context, append_lsa, prev_lsa, most_recent_trantable_snapshot_lsa,
-				      std::bind (&connection_handler::prior_sender_sink_hook, this,
-					  std::placeholders::_1));
+				      m_prior_sender_sink_hook_func);
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
     {
