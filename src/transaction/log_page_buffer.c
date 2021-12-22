@@ -2196,13 +2196,14 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
   const SERVER_TYPE server_type = get_server_type ();
   if (server_type == SERVER_TYPE_TRANSACTION && ts_Gl->is_page_server_connected ())
     {
-      // context 1) or 2)
       if (!read_from_disk)
 	{
+	  // context 1)
 	  return request_log_page_from_page_server (pageid, log_pgptr);
 	}
       else
 	{
+	  // context 2)
 	  // *INDENT-OFF*
 	  auto log_page_buffer_uptr = std::make_unique<char> (IO_MAX_PAGE_SIZE);
 	  auto second_log_page = (LOG_PAGE *) log_page_buffer_uptr.get ();

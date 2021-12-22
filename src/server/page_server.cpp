@@ -256,9 +256,10 @@ page_server::connection_handler::on_data_page_read_result (tran_server_conn_t::s
     const FILEIO_PAGE *io_page, int error_code)
 {
   std::string message;
+  message.append (reinterpret_cast<const char *> (&error_code), sizeof (error_code));
+
   if (error_code != NO_ERROR)
     {
-      message.append (reinterpret_cast<const char *> (&error_code), sizeof (error_code));
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sending data page.. VPID: %d|%d, LSA: %lld|%d\n",
