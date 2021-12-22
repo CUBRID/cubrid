@@ -24969,26 +24969,15 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 {
   SCAN_CODE ret;
 #if defined (SERVER_MODE)
-  if (is_active_transaction_server ())
-    {
-      // Active transaction server doesn't have the page desynchronization issue.
-      ret = heap_get_visible_version_internal (thread_p, context, is_heap_scan);
-      if (ret == S_ERROR)
-	{
-	  assert (er_errid () != ER_PAGE_AHEAD_OF_REPLICATION);
-	}
-      return ret;
-    }
-
   do
     {
-      ret = heap_get_visible_version_with_repl_desync (thread_p, context, is_heap_scan);
+      ret = heap_get_visible_version_internal (thread_p, context, is_heap_scan);
       if (ret != S_ERROR || er_errid () != ER_PAGE_AHEAD_OF_REPLICATION)
 	{
 	  // We'll continue here only if we have a page desynchronization error. Break the loop in any other cases.
 	  break;
 	}
-
+      assert (is_passive_transaction_server ());
       // Handle the page desynchronization error
       if (context->home_page_watcher.pgptr)
 	{
@@ -25007,6 +24996,7 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       assert (tdes->page_desync_lsa.is_null ());
       pts_ptr->wait_replication_pasts_target_lsa (tdes->page_desync_lsa);
+      tdes->page_desync_lsa.set_null ();
     }
   while (true);
 #else
