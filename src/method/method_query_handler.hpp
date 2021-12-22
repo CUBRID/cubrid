@@ -116,9 +116,6 @@ namespace cubmethod
       int prepare_query (prepare_info &info, int &flag);
       int prepare_call (prepare_info &info, int &flag);
 
-      /* check */
-
-
       /* execute */
       int execute_internal (execute_info &info, int flag, int max_col_size, int max_row,
 			    const std::vector<DB_VALUE> &bind_values);

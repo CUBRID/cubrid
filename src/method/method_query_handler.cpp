@@ -244,11 +244,18 @@ namespace cubmethod
 
     query_result &qresult = m_query_result;
     DB_QUERY_RESULT *qres = (DB_QUERY_RESULT *) qresult.result;
+
+    /* set result of a GET_GENERATED_KEYS request */
     if (qresult.stmt_type == CUBRID_STMT_INSERT && qres != NULL)
       {
-	DB_VALUE val;
-	if (qres->type != T_SELECT)
+	if (qres->type == T_SELECT)
 	  {
+	    /* result of a GET_GENERATED_KEYS request, server insert */
+	    /* do nothing */
+	  }
+	else
+	  {
+	    DB_VALUE val;
 	    error = db_query_get_tuple_value ((DB_QUERY_RESULT *) qresult.result, 0, &val);
 	    if (error >= 0)
 	      {
@@ -280,9 +287,9 @@ namespace cubmethod
     result_info.ins_oid = ins_oid;
     result_info.stmt_type = qresult.stmt_type;
     result_info.tuple_count = qresult.tuple_count;
+    result_info.include_oid = qresult.include_oid;
 
-    result_info.include_oid = qresult.include_oid; // TODO
-    if (qresult.result && qresult.result->type == T_SELECT)
+    if (qres && qres->type == T_SELECT)
       {
 	result_info.query_id = qres->res.s.query_id;
       }
