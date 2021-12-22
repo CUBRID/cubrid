@@ -1397,7 +1397,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1322 Not supported data type.
 1323 Invalid Statement handle.
 1324 Invalid db connection handle.
-1325 Both dsn name and link server connection url do not exist.
+1325 Link server connection url do not exist.
 1326 Invalid numeric value.
 1327 Invalid precision value of "%1$s" column.
 

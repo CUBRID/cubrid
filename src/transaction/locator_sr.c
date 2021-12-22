@@ -9762,7 +9762,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 #if defined(SERVER_MODE)
   int tran_index;
 #else
-  int btree_oid_cnt, btree_null_cnt, btree_key_cnt;
+  long long btree_oid_cnt, btree_null_cnt, btree_key_cnt;
 #endif /* SERVER_MODE */
   bool bt_checkscan_inited = false;
 
@@ -13883,7 +13883,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   // Log the postpone operation
   heap_log_postpone_heap_append_pages (thread_p, hfid, class_oid, heap_pages_array);
 
-  return NO_ERROR;
+  return error_code;
 }
 
 bool

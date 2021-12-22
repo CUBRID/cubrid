@@ -1332,6 +1332,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1261 The first key (key index: %1$d, created time: %2$s) on the restored key file has been set.
 1262 The key file is full.
 1263 It fails to TDE-encrypt the log page (pageid: %1$lld). It won't be tried to encrypt this page any longer.
+
 1264 Error reserved for scalability development.
 1265 Error reserved for scalability development.
 1266 Error reserved for scalability development.
@@ -1397,7 +1398,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1322 Not supported data type.
 1323 Invalid Statement handle.
 1324 Invalid db connection handle.
-1325 Both dsn name and link server connection url do not exist.
+1325 Link server connection url do not exist.
 1326 Invalid numeric value.
 1327 Invalid precision value of "%1$s" column.
 
@@ -1569,6 +1570,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Maximum length of a comment is %1$d bytes.
 128 Invalid number of arguments for JSON_OBJECTAGG
 129 PARALLEL count argument must be between %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.

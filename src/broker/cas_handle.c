@@ -131,6 +131,10 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle->has_mysql_last_insert_id = false;
 #endif /* CAS_FOR_MYSQL */
 
+#if defined (CAS_FOR_CGW)
+  srv_handle->cgw_handle = NULL;
+#endif /* CAS_FOR_CGW */
+
   *new_handle = srv_handle;
   srv_handle_table[new_handle_id - 1] = srv_handle;
   if (new_handle_id > max_handle_id)
@@ -180,6 +184,10 @@ hm_srv_handle_free (int h_id)
   FREE_MEM (srv_handle->classes_chn);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+#if defined (CAS_FOR_CGW)
+  srv_handle->cgw_handle = NULL;
+#endif
+
   FREE_MEM (srv_handle);
   srv_handle_table[h_id - 1] = NULL;
 #if !defined(LIBCAS_FOR_JSP)
@@ -210,6 +218,9 @@ hm_srv_handle_free_all (bool free_holdable)
 
       srv_handle_content_free (srv_handle);
       srv_handle_rm_tmp_file (i + 1, srv_handle);
+#if defined (CAS_FOR_CGW)
+      srv_handle->cgw_handle = NULL;
+#endif /* CAS_FOR_CGW */
       FREE_MEM (srv_handle);
       srv_handle_table[i] = NULL;
 #if !defined(LIBCAS_FOR_JSP)

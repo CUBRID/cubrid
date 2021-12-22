@@ -135,6 +135,9 @@ set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.
 # openssl library sources URL
 set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f.tar.gz")
 
+# unixODBC library sources URL
+set(WITH_LIBUNIXODBC_URL "http://www.unixodbc.org/unixODBC-2.3.9.tar.gz")
+
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
 set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SYSTEM)")
@@ -144,12 +147,15 @@ set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson
 set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
 set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
+set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODBC library (default: EXTERNAL)")
+
 
 message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
 message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
+message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -1110,6 +1116,33 @@ else(WITH_LIOPENSSL STREQUAL "SYSTEM")
 endif()
 list(APPEND EP_INCLUDES ${LIBOPENSSL_INCLUDES})
 list(APPEND EP_LIBS ${LIBOPENSSL_LIBS})
+
+# WITH_LIBUNIXODBC can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds unixODBC library from URL stored in ${WITH_LIBUNIXODBC_URL} uses the library created by the build
+#
+
+if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
+  set(LIBUNIXODBC_TARGET libodbc)
+  if(UNIX)
+    #compile unixODBC library given an internet url to a unixODBC archive
+    #e.g. http://www.unixodbc.org/unixODBC-2.3.9.tar.gz
+    externalproject_add(${LIBUNIXODBC_TARGET}
+      URL                  ${WITH_LIBUNIXODBC_URL}
+      TIMEOUT              600
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external # ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        $(MAKE) AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      )
+    set(LIBUNIXODBC_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libodbc.so)
+    set(LIBUNIXODBC_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
+    list(APPEND EP_TARGETS ${LIBUNIXODBC_TARGET})
+  endif(UNIX)
+else(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
+    message(FATAL_ERROR "Invalid WITH_LIBUNIXODBC option value ${WITH_LIBUNIXODBC}")
+endif(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
+list(APPEND EP_INCLUDES ${LIBUNIXODBC_INCLUDES})
 
 # For JVM libraries
 if(WIN32)

@@ -72,7 +72,7 @@
 #endif // SA_MODE
 #include "xasl.h"
 #include "lob_locator.hpp"
-
+#include "crypt_opfunc.h"
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
  */
@@ -1887,6 +1887,67 @@ tde_get_data_keys ()
 #endif /* !CS_MODE */
 }
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+
+
+int
+dblink_get_cipher_master_key ()
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, area_size;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply, *area;
+  int length;
+
+  dblink_Cipher.is_loaded = false;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request2 (NET_SERVER_DBLINK_GET_CRYPT_KEY, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error);
+      if (area_size > 0)
+	{
+	  ptr = or_unpack_int (area, &length);
+	  ptr = or_unpack_stream (ptr, (char *) dblink_Cipher.crypt_key, length);
+	  if (length != sizeof (dblink_Cipher.crypt_key))
+	    {
+	      memset (dblink_Cipher.crypt_key + length, 0x00, sizeof (dblink_Cipher.crypt_key) - length);
+	    }
+	  dblink_Cipher.is_loaded = true;
+	}
+      free_and_init (area);
+    }
+
+  return error;
+#else /* CS_MODE */
+  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH];
+  int length;
+
+  dblink_Cipher.is_loaded = false;
+
+  length = dblink_get_encrypt_key (crypt_key, sizeof (crypt_key));
+  if (length < 0)
+    {
+      return length;
+    }
+
+  dblink_Cipher.is_loaded = true;
+  memcpy (dblink_Cipher.crypt_key, crypt_key, length);
+  if (length != sizeof (crypt_key))
+    {
+      memset (dblink_Cipher.crypt_key + length, 0x00, sizeof (dblink_Cipher.crypt_key) - length);
+    }
+
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
 
 /*
  * tde_is_loaded -

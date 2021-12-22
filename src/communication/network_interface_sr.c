@@ -85,6 +85,7 @@
 #include "transaction_transient.hpp"
 #include "method_invoke_group.hpp"
 #include "log_manager.h"
+#include "crypt_opfunc.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2612,6 +2613,51 @@ sfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, unsigned int rid, char 
 
   ptr = or_pack_errcode (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+sdblink_get_crypt_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int area_size = -1;
+  char *reply, *area, *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  int err = NO_ERROR;
+  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH];
+  int length = dblink_get_encrypt_key (crypt_key, sizeof (crypt_key));
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (length < 0)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      area = NULL;
+      area_size = 0;
+      err = length;
+    }
+  else
+    {
+      area_size = OR_INT_SIZE + or_packed_stream_length (length);
+      area = (char *) db_private_alloc (thread_p, area_size);
+      if (area == NULL)
+	{
+	  (void) return_error_to_client (thread_p, rid);
+	  area_size = 0;
+	}
+      else
+	{
+	  ptr = or_pack_int (area, length);
+	  ptr = or_pack_stream (ptr, (char *) crypt_key, length);
+	}
+    }
+
+  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, err);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+
+  if (area != NULL)
+    {
+      db_private_free_and_init (thread_p, area);
+    }
 }
 
 void
