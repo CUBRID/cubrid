@@ -26,7 +26,6 @@ function run_test() {
 run_test ./test_checkpoint_info
 run_test ./test_log_page_fetcher
 run_test ./test_data_page_fetcher
-run_test ./test_log_page_broker
 run_test ./test_log_lsa_utils
 run_test ./test_meta_log
 run_test ./test_prior_list_serialize

@@ -2272,14 +2272,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-#if defined (SERVER_MODE)
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
-    {
-      // Log page broker is required to load log header.
-      ts_Gl->init_page_brokers ();
-    }
-#endif
-
   /*
    * Compose the full name of the database and find location of logs
    */
@@ -3207,8 +3199,6 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 	  // needs to be explicitly terminated gracefully before log infrastructure is finalized
 	  pts_ptr->finish_replication_during_shutdown (*thread_p);
 	}
-
-      ts_Gl->finalize_page_brokers ();
     }
 #endif
 
