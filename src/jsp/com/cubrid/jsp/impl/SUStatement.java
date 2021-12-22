@@ -61,7 +61,6 @@ public class SUStatement {
 
     /* execute info */
     private ExecuteInfo executeInfo = null;
-    int resultIndex = -1;
 
     /* fetch info */
     private long queryId = -1;
@@ -167,7 +166,7 @@ public class SUStatement {
         /* init column infos */
         setColumnInfo(info.columnInfos);
 
-        totalTupleNumber = info.getResultInfo(0).tupleCount;
+        totalTupleNumber = info.getResultInfo().tupleCount;
     }
 
     public boolean getSQLType() {
@@ -211,12 +210,7 @@ public class SUStatement {
         bindValue(index, DBType.DB_SEQUENCE, values);
     }
 
-    public void execute(
-            int maxRow,
-            int maxField,
-            boolean isExecuteAll,
-            boolean isSensitive,
-            boolean isScrollable)
+    public void execute(int maxRow, int maxField, boolean isSensitive, boolean isScrollable)
             throws IOException, SQLException {
 
         if (type == GET_SCHEMA_INFO) {
@@ -228,10 +222,9 @@ public class SUStatement {
             return;
         }
 
-        setExecuteFlags(maxRow, isExecuteAll, isSensitive);
+        setExecuteFlags(maxRow, isSensitive);
 
         executeInfo = suConn.execute(handlerId, executeFlag, isScrollable, maxField, bindParameter);
-        resultIndex = -1;
 
         fetchedStartCursorPosition = cursorPosition = -1;
 
@@ -244,7 +237,7 @@ public class SUStatement {
             tuples = new SUResultTuple[fetchedTupleNumber];
             tuples[0] = callInfo.getTuple();
         } else if (getSQLType() == true) {
-            queryId = executeInfo.getResultInfo(0).queryId;
+            queryId = executeInfo.getResultInfo().queryId;
         }
 
         totalTupleNumber = executeInfo.numAffected;
@@ -277,12 +270,8 @@ public class SUStatement {
         return null;
     }
 
-    private void setExecuteFlags(int maxRow, boolean isExecuteAll, boolean isSensitive) {
+    private void setExecuteFlags(int maxRow, boolean isSensitive) {
         executeFlag = 0;
-
-        if (isExecuteAll) {
-            executeFlag |= CUBRIDServerSideConstants.EXEC_FLAG_QUERY_ALL;
-        }
 
         if (isGeneratedKeys) {
             executeFlag |= CUBRIDServerSideConstants.EXEC_FLAG_GET_GENERATED_KEYS;
@@ -374,14 +363,14 @@ public class SUStatement {
         }
 
         try {
-            execute(0, 0, false, false, false);
+            execute(0, 0, false, false);
         } catch (IOException e) {
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
                     CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, null);
         }
 
-        if (executeInfo != null && executeInfo.getResultInfo(0) != null) {
-            SOID oid = executeInfo.getResultInfo(0).getCUBRIDOID();
+        if (executeInfo != null && executeInfo.getResultInfo() != null) {
+            SOID oid = executeInfo.getResultInfo().getCUBRIDOID();
             return new CUBRIDServerSideOID(con, oid);
         }
 
@@ -392,31 +381,8 @@ public class SUStatement {
     // The following is to manage Result Info
     // ==============================================================
 
-    public QueryResultInfo getResultInfo(int idx) {
-        if (idx < 0 || idx >= getResultSize()) {
-            return null;
-        }
-
-        return executeInfo.getResultInfo(idx);
-    }
-
-    public QueryResultInfo getCurrentResultInfo() {
-        return executeInfo.getResultInfo(resultIndex);
-    }
-
-    public void incrementResultIndex() {
-        resultIndex++;
-    }
-
-    public int getResultIndex() {
-        return resultIndex;
-    }
-
-    public int getResultSize() {
-        if (executeInfo != null) {
-            return executeInfo.getResultInfoSize();
-        }
-        return 0;
+    public QueryResultInfo getResultInfo() {
+        return executeInfo.getResultInfo();
     }
 
     // ==============================================================

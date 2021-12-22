@@ -155,7 +155,7 @@ namespace cubmethod
 
     int handle_id;
     int num_affected; /* or num_tuples or max_row */
-    std::vector<query_result_info> qresult_infos;
+    query_result_info qresult_info;
 
     /* If column info is included, the following three variables are packed */
     std::vector<column_info> column_infos;
@@ -216,7 +216,7 @@ namespace cubmethod
 
   struct make_outresult_info : public cubpacking::packable_object
   {
-    std::vector<query_result_info> qresult_infos;
+    query_result_info qresult_info;
     std::vector<column_info> column_infos;
 
     void pack (cubpacking::packer &serializator) const override;

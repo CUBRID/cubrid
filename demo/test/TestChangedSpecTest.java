@@ -33,6 +33,42 @@ package test;
 
 import java.sql.*;
 
-public class SpMultipleStatementTest {
-    
+public class TestChangedSpecTest {
+
+    /* Multiple SQL with Statement */
+    public static String test1() throws SQLException {
+        Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+        SqlUtil.createTable(conn, "t1", "a int auto_increment", "b int");
+
+        String result = "f";
+        Statement stmt = conn.createStatement();
+        try {
+            stmt.execute("select * from t1; insert into t1 (b) values (1); select * from t1");
+        } catch (Exception e) {
+            result = "t";
+        } finally {
+            SqlUtil.dropTable(conn, "t1");
+        }
+
+        return result;
+    }
+
+    /* Multiple SQL with PreparedStatement */
+    public static String test2() throws SQLException {
+        Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+        SqlUtil.createTable(conn, "t1", "a int auto_increment", "b int");
+
+        String result = "f";
+        try {
+            String query = "select * from t1; insert into t1 (b) values (1); select * from t1";
+            PreparedStatement stmt = conn.prepareStatement(query);
+            stmt.getMoreResults();
+        } catch (Exception e) {
+            result = "t";
+        } finally {
+            SqlUtil.dropTable(conn, "t1");
+        }
+
+        return result;
+    }
 }

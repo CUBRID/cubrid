@@ -623,11 +623,7 @@ namespace cubmethod
   execute_info::pack (cubpacking::packer &serializator) const
   {
     serializator.pack_int (num_affected);
-    serializator.pack_int (qresult_infos.size ());
-    for (int i = 0; i < (int) qresult_infos.size(); i++)
-      {
-	qresult_infos[i].pack (serializator);
-      }
+    qresult_info.pack (serializator);
 
     serializator.pack_int (column_infos.size());
     if (column_infos.size() > 0)
@@ -655,17 +651,7 @@ namespace cubmethod
   execute_info::unpack (cubpacking::unpacker &deserializator)
   {
     deserializator.unpack_int (num_affected);
-
-    int num_q_result;
-    deserializator.unpack_int (num_q_result);
-    if (num_q_result > 0)
-      {
-	qresult_infos.resize (num_q_result);
-	for (int i = 0; i < (int) num_q_result; i++)
-	  {
-	    qresult_infos[i].unpack (deserializator);
-	  }
-      }
+    qresult_info.unpack (deserializator);
 
     int num_column_info;
     deserializator.unpack_int (num_column_info);
@@ -693,12 +679,8 @@ namespace cubmethod
   execute_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t size = serializator.get_packed_int_size (start_offset); // num_affected
-    size += serializator.get_packed_int_size (size); // num_q_result
 
-    for (int i = 0; i < (int) qresult_infos.size(); i++)
-      {
-	size += qresult_infos[i].get_packed_size (serializator, size);
-      }
+    size += qresult_info.get_packed_size (serializator, size);
 
     size += serializator.get_packed_int_size (size); // num_columns
     if (column_infos.size() > 0)
@@ -725,13 +707,10 @@ namespace cubmethod
   {
     fprintf (stdout, "handle_id: %d\n", handle_id);
     fprintf (stdout, "num_affected: %d\n", num_affected);
-    fprintf (stdout, "qresult_infos.size(): %d\n", (int) qresult_infos.size());
+
     fprintf (stdout, "==============================\n");
-    for (int i = 0; i < (int) qresult_infos.size(); i++)
-      {
-	fprintf (stdout, "=> qresult_infos[%d]:\n", i);
-	qresult_infos[i].dump();
-      }
+    fprintf (stdout, "=> qresult_info:\n");
+    qresult_info.dump();
     fprintf (stdout, "==============================\n");
 
     fprintf (stdout, "column_infos.size(): %d\n", (int) column_infos.size());
@@ -915,11 +894,7 @@ namespace cubmethod
   void
   make_outresult_info::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_int (qresult_infos.size ());
-    for (int i = 0; i < (int) qresult_infos.size(); i++)
-      {
-	qresult_infos[i].pack (serializator);
-      }
+    qresult_info.pack (serializator);
 
     serializator.pack_int (column_infos.size());
     if (column_infos.size() > 0)
@@ -934,16 +909,7 @@ namespace cubmethod
   void
   make_outresult_info::unpack (cubpacking::unpacker &deserializator)
   {
-    int num_q_result;
-    deserializator.unpack_int (num_q_result);
-    if (num_q_result > 0)
-      {
-	qresult_infos.resize (num_q_result);
-	for (int i = 0; i < (int) num_q_result; i++)
-	  {
-	    qresult_infos[i].unpack (deserializator);
-	  }
-      }
+    qresult_info.unpack (deserializator);
 
     int num_column_info;
     deserializator.unpack_int (num_column_info);
@@ -960,11 +926,7 @@ namespace cubmethod
   size_t
   make_outresult_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (size); // num_q_result
-    for (int i = 0; i < (int) qresult_infos.size(); i++)
-      {
-	size += qresult_infos[i].get_packed_size (serializator, size);
-      }
+    size_t size = qresult_info.get_packed_size (serializator, start_offset);
 
     size += serializator.get_packed_int_size (size); // num_columns
     if (column_infos.size() > 0)
