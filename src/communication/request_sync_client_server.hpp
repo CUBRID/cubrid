@@ -104,11 +104,11 @@ namespace cubcomm
       sequenced_payload () = default;
       sequenced_payload (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
       sequenced_payload (sequenced_payload &&other);
-      sequenced_payload (const sequenced_payload &other);
+      sequenced_payload (const sequenced_payload &other) = delete;
       ~sequenced_payload () = default;
 
       sequenced_payload &operator= (sequenced_payload &&other);
-      sequenced_payload &operator= (const sequenced_payload &);
+      sequenced_payload &operator= (const sequenced_payload &) = delete;
 
       void push_payload (T_PAYLOAD &&a_payload);
       T_PAYLOAD pull_payload ();
@@ -268,14 +268,6 @@ namespace cubcomm
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
-  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::sequenced_payload (
-	  const sequenced_payload &other)
-    : m_rsn (other.m_rsn)
-    , m_user_payload (other.m_user_payload)
-  {
-  }
-
-  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   typename request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload &
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::operator= (
 	  sequenced_payload &&other)
@@ -286,19 +278,6 @@ namespace cubcomm
 	m_user_payload = std::move (other.m_user_payload);
 
 	other.m_rsn = NO_RESPONSE_SEQUENCE_NUMBER;
-      }
-    return *this;
-  }
-
-  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
-  typename request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload &
-  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::operator= (
-	  const sequenced_payload &other)
-  {
-    if (this != &other)
-      {
-	m_rsn = other.m_rsn;
-	m_user_payload = other.m_user_payload;
       }
     return *this;
   }
