@@ -97,9 +97,7 @@ typedef enum
   SERVICE_START_BROKER,
   SERVICE_START_MANAGER,
   SERVER_START_LIST,
-  SERVICE_START_HEARTBEAT,
-  SERVICE_START_JAVASP,
-  JAVASP_START_LIST,
+  SERVICE_START_HEARTBEAT
 } UTIL_SERVICE_PROPERTY_E;
 
 typedef enum
@@ -242,7 +240,6 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
   {SERVICE_START_MANAGER, NULL},
   {SERVER_START_LIST, NULL},
   {SERVICE_START_HEARTBEAT, NULL},
-  {SERVICE_START_JAVASP, NULL},
   {-1, NULL}
 };
 
@@ -1194,35 +1191,6 @@ check_all_services_status (unsigned int sleep_time, UTIL_ALL_SERVICES_STATUS exp
 	}
     }
 
-  if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
-      && us_Property_map[SERVER_START_LIST].property_value != NULL)
-    {
-      char buf[4096];
-      char *list, *token, *save;
-      const char *delim = " ,:";
-
-      memset (buf, '\0', sizeof (buf));
-
-      strncpy (buf, us_Property_map[SERVER_START_LIST].property_value, sizeof (buf) - 1);
-
-      for (list = buf;; list = NULL)
-	{
-	  token = strtok_r (list, delim, &save);
-	  if (token == NULL)
-	    {
-	      break;
-	    }
-
-	  /* check whether cub_javasp is running */
-	  UTIL_JAVASP_SERVER_STATUS_E javasp_status = is_javasp_running (token);
-	  if ((expected_status == ALL_SERVICES_RUNNING && javasp_status != JAVASP_SERVER_RUNNING)
-	      || (expected_status == ALL_SERVICES_STOPPED && javasp_status == JAVASP_SERVER_RUNNING))
-	    {
-	      return false;
-	    }
-	}
-    }
-
   /* check whether cub_broker is running */
   if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
     {
@@ -1319,12 +1287,6 @@ process_service (int command_type, bool process_window_service)
 		{
 		  (void) process_heartbeat (command_type, 0, NULL);
 		}
-	      if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
-		  && us_Property_map[SERVER_START_LIST].property_value != NULL
-		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
-		{
-		  (void) process_javasp (command_type, 0, NULL, false);
-		}
 	      status = are_all_services_running (0, process_window_service) ? NO_ERROR : ER_GENERIC_ERROR;
 	    }
 	  else
@@ -1368,14 +1330,6 @@ process_service (int command_type, bool process_window_service)
 		{
 		  (void) process_server (command_type, 0, NULL, false, true, false);
 		}
-
-	      if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
-		  && us_Property_map[SERVER_START_LIST].property_value != NULL
-		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
-		{
-		  (void) process_javasp (command_type, 0, NULL, false);
-		}
-
 	      if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
 		{
 		  (void) process_broker (command_type, 0, NULL, false);
@@ -1423,12 +1377,7 @@ process_service (int command_type, bool process_window_service)
 	(void) process_server (command_type, 0, NULL, false, true, false);
 	(void) process_broker (command_type, 1, args, false);
 	(void) process_manager (command_type, false);
-	if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
-	    && us_Property_map[SERVER_START_LIST].property_value != NULL
-	    && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
-	  {
-	    (void) process_javasp (command_type, 0, NULL, false);
-	  }
+	(void) process_javasp (command_type, 0, NULL, false);
 	if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
 	  {
 	    (void) process_heartbeat (command_type, 0, NULL);
@@ -4771,10 +4720,6 @@ load_properties (void)
 	    {
 	      heartbeat_flag = true;
 	    }
-	  else if (strcmp (util, UTIL_TYPE_JAVASP) == 0)
-	    {
-	      javasp_flag = true;
-	    }
 	  else
 	    {
 	      error_msg = utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
@@ -4788,7 +4733,6 @@ load_properties (void)
   us_Property_map[SERVICE_START_BROKER].property_value = strdup (broker_flag ? PROPERTY_ON : PROPERTY_OFF);
   us_Property_map[SERVICE_START_MANAGER].property_value = strdup (manager_flag ? PROPERTY_ON : PROPERTY_OFF);
   us_Property_map[SERVICE_START_HEARTBEAT].property_value = strdup (heartbeat_flag ? PROPERTY_ON : PROPERTY_OFF);
-  us_Property_map[SERVICE_START_JAVASP].property_value = strdup (javasp_flag ? PROPERTY_ON : PROPERTY_OFF);
 
   /* get service::server list */
   value = prm_get_string_value (PRM_ID_SERVICE_SERVER_LIST);

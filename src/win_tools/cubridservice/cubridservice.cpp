@@ -66,8 +66,6 @@ BOOL g_isRunning = false;
 #define		SERVICE_CONTROL_SERVER_STOP	181
 #define		SERVICE_CONTROL_SERVICE_START	190
 #define		SERVICE_CONTROL_SERVICE_STOP	191
-#define		SERVICE_CONTROL_JAVASP_START	210
-#define		SERVICE_CONTROL_JAVASP_STOP		211
 
 #define		CUBRID_UTIL_CUBRID		"cubrid.exe"
 #define		CUBRID_UTIL_SERVICE		"service"
@@ -195,8 +193,6 @@ vHandler (DWORD opcode)
 
   if (opcode == SERVICE_CONTROL_SERVER_START ||
       opcode == SERVICE_CONTROL_SERVER_STOP ||
-      opcode == SERVICE_CONTROL_JAVASP_START ||
-      opcode == SERVICE_CONTROL_JAVASP_STOP ||
       opcode == SERVICE_CONTROL_BROKER_ON ||
       opcode == SERVICE_CONTROL_BROKER_OFF)
     {
@@ -326,22 +322,6 @@ vHandler (DWORD opcode)
 	args[5] = NULL;
       }
       break;
-    case SERVICE_CONTROL_JAVASP_START:
-      {
-	args[1] = CUBRID_UTIL_JAVASP;
-	args[2] = CUBRID_COMMAND_START;
-	args[4] = "--for-windows-service";
-	args[5] = NULL;
-      }
-      break;
-    case SERVICE_CONTROL_JAVASP_STOP:
-      {
-	args[1] = CUBRID_UTIL_JAVASP;
-	args[2] = CUBRID_COMMAND_STOP;
-	args[4] = "--for-windows-service";
-	args[5] = NULL;
-      }
-      break;
     default:
       vSetStatus (g_XSS);
       return;
@@ -351,8 +331,6 @@ vHandler (DWORD opcode)
 
   if (opcode == SERVICE_CONTROL_SERVER_START ||
       opcode == SERVICE_CONTROL_SERVER_STOP ||
-      opcode == SERVICE_CONTROL_JAVASP_START ||
-      opcode == SERVICE_CONTROL_JAVASP_STOP ||
       opcode == SERVICE_CONTROL_BROKER_ON ||
       opcode == SERVICE_CONTROL_BROKER_OFF)
     {
