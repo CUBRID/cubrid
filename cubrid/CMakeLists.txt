@@ -373,7 +373,6 @@ set(SERVER_HEADERS
   )
 
 set(STORAGE_SOURCES
-  ${STORAGE_DIR}/async_page_fetcher.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
@@ -401,7 +400,6 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/vpid_utilities.cpp
   )
 set(STORAGE_HEADERS
-  ${STORAGE_DIR}/async_page_fetcher.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
   ${STORAGE_DIR}/vpid.hpp
