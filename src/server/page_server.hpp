@@ -21,7 +21,7 @@
 
 #include "log_replication.hpp"
 #include "log_storage.hpp"
-#include "request_response_handler.hpp"
+#include "server_request_responder.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
 
@@ -95,7 +95,7 @@ class page_server
 	mutable std::mutex m_prior_sender_sink_removal_mtx;
     };
 
-    using responder_t = request_response_handler<connection_handler::tran_server_conn_t>;
+    using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;
 
     responder_t &get_responder ()
     {

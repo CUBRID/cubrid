@@ -24,7 +24,7 @@
 #include "thread_worker_pool.hpp"
 
 template<typename T_CONN>
-class request_response_handler
+class server_request_responder
 {
   public:
     using connection_t = T_CONN;
@@ -34,8 +34,8 @@ class request_response_handler
 
     class task;
 
-    request_response_handler ();
-    ~request_response_handler ();
+    server_request_responder ();
+    ~server_request_responder ();
 
     void async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp, handler_func_t &&a_func);
     void async_execute (task *a_task);
@@ -46,7 +46,7 @@ class request_response_handler
 };
 
 template<typename T_CONN>
-class request_response_handler<T_CONN>::task : public cubthread::entry_task
+class server_request_responder<T_CONN>::task : public cubthread::entry_task
 {
   public:
     task (connection_t &a_conn_ref, sequenced_payload_t &&a_sp, handler_func_t &&a_func);
@@ -60,47 +60,47 @@ class request_response_handler<T_CONN>::task : public cubthread::entry_task
 };
 
 //
-// request_response_handler implementation
+// server_request_responder implementation
 //
 
 template<typename T_CONN>
-request_response_handler<T_CONN>::request_response_handler ()
+server_request_responder<T_CONN>::server_request_responder ()
   : m_threads_context_manager (std::make_unique<cubthread::system_worker_entry_manager> (TT_SYSTEM_WORKER))
 {
   const auto THREAD_COUNT = std::thread::hardware_concurrency ();
   const auto TASK_MAX_COUNT = THREAD_COUNT * 4;
 
-  m_threads = cubthread::get_manager ()->create_worker_pool (THREAD_COUNT, TASK_MAX_COUNT, "request_response_handler",
+  m_threads = cubthread::get_manager ()->create_worker_pool (THREAD_COUNT, TASK_MAX_COUNT, "server_request_responder",
 	      m_threads_context_manager.get (), 1, false);
 }
 
 template<typename T_CONN>
-request_response_handler<T_CONN>::~request_response_handler ()
+server_request_responder<T_CONN>::~server_request_responder ()
 {
   cubthread::get_manager ()->destroy_worker_pool (m_threads);
 }
 
 template<typename T_CONN>
 void
-request_response_handler<T_CONN>::async_execute (task *a_task)
+server_request_responder<T_CONN>::async_execute (task *a_task)
 {
   m_threads->execute (a_task);
 }
 
 template<typename T_CONN>
 void
-request_response_handler<T_CONN>::async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp,
+server_request_responder<T_CONN>::async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp,
     handler_func_t &&a_func)
 {
   async_execute (new task (a_conn, std::move (a_sp), std::move (a_func)));
 }
 
 //
-// request_response_handler::task implementation
+// server_request_responder::task implementation
 //
 
 template<typename T_CONN>
-request_response_handler<T_CONN>::task::task (connection_t &a_conn_ref, sequenced_payload_t &&a_sp,
+server_request_responder<T_CONN>::task::task (connection_t &a_conn_ref, sequenced_payload_t &&a_sp,
     handler_func_t &&a_func)
   : m_conn_reference (a_conn_ref)
   , m_sequenced_payload (std::move (a_sp))
@@ -110,7 +110,7 @@ request_response_handler<T_CONN>::task::task (connection_t &a_conn_ref, sequence
 
 template<typename T_CONN>
 void
-request_response_handler<T_CONN>::task::execute (cubthread::entry &thread_entry)
+server_request_responder<T_CONN>::task::execute (cubthread::entry &thread_entry)
 {
   // execute may be called only once! payload is lost after this call
   payload_t payload = m_sequenced_payload.pull_payload ();

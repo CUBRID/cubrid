@@ -21,33 +21,33 @@
 #
 
 #
-# request_response_handler
+# server_request_responder
 #
-set (TEST_RRH_SOURCES
-  test_request_response_handler_main.cpp
+set (TEST_SRR_SOURCES
+  test_server_request_responder_main.cpp
   )
-set (TEST_RRH_HEADERS
-  ${SERVER_DIR}/request_response_handler.hpp
+set (TEST_SRR_HEADERS
+  ${SERVER_DIR}/server_request_responder.hpp
   )
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${TEST_RRH_SOURCES}
+  ${TEST_SRR_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
-add_executable(test_request_response_handler
-  ${TEST_RRH_SOURCES}
-  ${TEST_RRH_HEADERS}
+add_executable(test_server_request_responder
+  ${TEST_SRR_SOURCES}
+  ${TEST_SRR_HEADERS}
   )
 
-target_compile_definitions(test_request_response_handler PRIVATE
+target_compile_definitions(test_server_request_responder PRIVATE
   ${COMMON_DEFS}
   SERVER_MODE
   )
-target_include_directories(test_request_response_handler PRIVATE
+target_include_directories(test_server_request_responder PRIVATE
   ${TEST_INCLUDES}
   )
-target_link_libraries(test_request_response_handler fake_thread_utils)
-add_dependencies(test_request_response_handler
+target_link_libraries(test_server_request_responder fake_thread_utils)
+add_dependencies(test_server_request_responder
   ${CATCH2_TARGET}
   )

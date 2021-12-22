@@ -19,7 +19,7 @@
 #define CATCH_CONFIG_MAIN
 #include "catch2/catch.hpp"
 
-#include "request_response_handler.hpp"
+#include "server_request_responder.hpp"
 
 #include <array>
 
@@ -101,7 +101,7 @@ struct test_env
   test_thread_init_final m_thread_init_final;   // only to initialize/finalize cubthread
   std::array<test_conn, T_CONN_COUNT> m_conns;
   std::atomic<unsigned int> m_rsn_gen = 0;
-  request_response_handler<test_conn> m_rrh;
+  server_request_responder<test_conn> m_rrh;
 
   void simulate_request (size_t conn_index)
   {
