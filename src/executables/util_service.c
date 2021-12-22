@@ -1592,6 +1592,12 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		      status = ER_GENERIC_ERROR;
 		    }
 		  print_result (PRINT_SERVER_NAME, status, command_type);
+
+		  /* run javasp utility if server is started successfully */
+		  if (status == NO_ERROR && (is_javasp_running (token) != JAVASP_SERVER_RUNNING))
+		    {
+		      (void) process_javasp (command_type, 1, (const char **) &token, true);
+		    }
 		}
 	    }
 #endif
@@ -1613,11 +1619,6 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	      if (token == NULL)
 		{
 		  break;
-		}
-
-	      if (is_javasp_running (token) != JAVASP_SERVER_RUNNING)
-		{
-		  (void) process_javasp (command_type, 1, (const char **) &token, false);
 		}
 
 	      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_START, token);
@@ -1662,6 +1663,12 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		      status = ER_GENERIC_ERROR;
 		    }
 		  print_result (PRINT_SERVER_NAME, status, command_type);
+
+		  /* run javasp server if DB server is started successfully */
+		  if (status == NO_ERROR && (is_javasp_running (token) != JAVASP_SERVER_RUNNING))
+		    {
+		      (void) process_javasp (command_type, 1, (const char **) &token, false);
+		    }
 		}
 	    }
 	}
@@ -1675,9 +1682,10 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	      break;
 	    }
 
+	  /* try to stop javasp server first */
 	  if (is_javasp_running (token) == JAVASP_SERVER_RUNNING)
 	    {
-	      (void) process_javasp (command_type, 1, (const char **) &token, false);
+	      (void) process_javasp (command_type, 1, (const char **) &token, process_window_service);
 	    }
 
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_STOP, token);
