@@ -8224,15 +8224,11 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
   const char *message_buf = response_message.c_str ();
   int error_code = NO_ERROR;
   std::memcpy (&error_code, message_buf, sizeof (error_code));
-
+  message_buf += sizeof (error_code);
 
   // The message is either an error code or the content of the data page
-  if (response_message.size () == sizeof (int))
+  if (error_code != NO_ERROR)
     {
-      // We have an error.
-      int error_code;
-      std::memcpy (&error_code, response_message.c_str (), sizeof (error_code));
-
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d \n", error_code);
@@ -8246,22 +8242,21 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
-
-      return error_code;
     }
   else
     {
-      assert (response_message.size () == db_io_page_size ());
       // We have a page.
-      std::memcpy (io_page, response_message.c_str (), db_io_page_size ());
+      std::memcpy (io_page, message_buf, db_io_page_size ());
+      message_buf += db_io_page_size ();
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, LSA: %lld|%d \n",
 			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
 	}
-      return NO_ERROR;
     }
+  assert (message_buf == response_message.c_str () + response_message.size ());
+  return error_code;
   // *INDENT-ON*
 }
 #endif // SERVER_MODE
