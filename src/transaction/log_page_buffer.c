@@ -849,7 +849,7 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
     }
   else
     {
-      index = logpb_get_log_buffer_index ((int) pageid);
+      index = logpb_get_log_buffer_index (pageid);
       if (index >= 0 && index < log_Pb.num_buffers)
 	{
 	  log_bufptr = &log_Pb.buffers[index];
@@ -1369,7 +1369,11 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   loghdr->avg_nlocks = LOG_ESTIMATE_NOBJ_LOCKS;
   loghdr->npages = npages - 1;	/* Hdr pg is stolen */
   loghdr->db_charset = lang_charset ();
+#if !defined(NDEBUG)
+  loghdr->fpageid = (LOG_PAGEID) prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID);	/* loghdr->fpageid should always be 0 except for QA or TEST purposes. */
+#else
   loghdr->fpageid = 0;
+#endif
   loghdr->append_lsa.pageid = loghdr->fpageid;
   loghdr->append_lsa.offset = 0;
   LSA_COPY (&loghdr->chkpt_lsa, &loghdr->append_lsa);
@@ -2014,7 +2018,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       goto exit;
     }
 
-  index = logpb_get_log_buffer_index ((int) pageid);
+  index = logpb_get_log_buffer_index (pageid);
   if (index >= 0 && index < log_Pb.num_buffers)
     {
       log_bufptr = &log_Pb.buffers[index];
@@ -2465,7 +2469,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 	    {
 	      /* This page is tde-ecnrypted page and has not yet decrypted.
 	       * To check consistency, we need to decrypt it */
-	      if (!tde_Cipher.is_loaded)
+	      if (!tde_is_loaded ())
 		{
 		  ptr += LOG_PAGESIZE;
 		  continue;	/* no way to check an encrypted page without tde module */
@@ -2762,7 +2766,12 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
   logpb_log ("started logpb_fetch_start_append_page\n");
 
   /* detect empty log (page and offset of zero) */
+#if !defined(NDEBUG)
+  if ((log_Gl.hdr.append_lsa.pageid == (LOG_PAGEID) prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID))
+      && (log_Gl.hdr.append_lsa.offset == 0))
+#else
   if ((log_Gl.hdr.append_lsa.pageid == 0) && (log_Gl.hdr.append_lsa.offset == 0))
+#endif
     {
       flag = NEW_PAGE;
     }
@@ -6285,6 +6294,9 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   char *catmsg;
   int deleted_count = 0;
 
+  LOG_PAGEID cdc_first_pageid = NULL_PAGEID;
+  int min_arv_required_for_cdc;
+
   assert (!is_tran_server_with_remote_storage ());
 
   if (log_max_archives == INT_MAX)
@@ -6373,6 +6385,32 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	    }
 	}
 
+      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+	{
+	  cdc_first_pageid = cdc_min_log_pageid_to_keep ();
+
+	  _er_log_debug (ARG_FILE_LINE, "First log pageid in cdc data is %lld", cdc_first_pageid);
+	  if (cdc_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (cdc_first_pageid))
+	    {
+	      min_arv_required_for_cdc = logpb_get_archive_number (thread_p, cdc_first_pageid);
+
+	      _er_log_debug (ARG_FILE_LINE,
+			     "First archive number used for cdc is %d , for vacuum is %d, last_arv_num_for_syscrashes : %d",
+			     min_arv_required_for_cdc, min_arv_required_for_vacuum,
+			     log_Gl.hdr.last_arv_num_for_syscrashes);
+
+	      if (min_arv_required_for_cdc >= 0)
+		{
+		  last_arv_num_to_delete = MIN (last_arv_num_to_delete, min_arv_required_for_cdc);
+		}
+	      else
+		{
+		  /* Page should be in archive. */
+		  assert (false);
+		}
+	    }
+	}
+
       if (max_count > 0)
 	{
 	  /* check max count for deletion */
@@ -6446,6 +6484,9 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   int min_arv_required_for_vacuum;
   LOG_PAGEID vacuum_first_pageid;
 
+  int min_arv_required_for_cdc;
+  LOG_PAGEID cdc_first_pageid;
+
   assert (!is_tran_server_with_remote_storage ());
 
   if (!vacuum_is_safe_to_remove_archives ())
@@ -6507,6 +6548,17 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
       min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
       min_arv_required_for_vacuum--;
       last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_vacuum);
+    }
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      cdc_first_pageid = cdc_min_log_pageid_to_keep ();
+      if (cdc_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (cdc_first_pageid))
+	{
+	  min_arv_required_for_cdc = logpb_get_archive_number (thread_p, cdc_first_pageid);
+	  min_arv_required_for_cdc--;
+	  last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_cdc);
+	}
     }
 
   if (log_Gl.hdr.last_deleted_arv_num + 1 > last_deleted_arv_num)
@@ -11588,7 +11640,7 @@ logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr)
 void
 logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo)
 {
-  assert (tde_Cipher.is_loaded || tde_algo == TDE_ALGORITHM_NONE);
+  assert (tde_is_loaded () || tde_algo == TDE_ALGORITHM_NONE);
   /* clear encrypted flag */
   log_pgptr->hdr.flags &= ~LOG_HDRPAGE_FLAG_ENCRYPTED_MASK;
 

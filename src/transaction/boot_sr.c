@@ -2949,7 +2949,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
     }
   else
     {
-      if (tde_Cipher.is_loaded)
+      if (tde_is_loaded ())
 	{
 	  if (boot_reset_mk_after_restart_from_backup (thread_p, r_args) != NO_ERROR)
 	    {
@@ -2994,7 +2994,7 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
   int err = NO_ERROR;
   bool is_tran_active = false;
 
-  assert (tde_Cipher.is_loaded);
+  assert (tde_is_loaded ());
 
   if (thread_p == NULL)
     {

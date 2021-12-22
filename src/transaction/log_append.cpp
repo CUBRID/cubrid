@@ -1583,7 +1583,7 @@ prior_lsa_next_record_with_lock (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, l
 int
 prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex)
 {
-  if (!tde_Cipher.is_loaded)
+  if (!tde_is_loaded ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       return ER_TDE_CIPHER_IS_NOT_LOADED;

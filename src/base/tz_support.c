@@ -4679,6 +4679,12 @@ tz_get_server_tz_region_session (void)
   TZ_REGION *session_tz_region;
 
   thread_p = thread_get_thread_entry_info ();
+
+  if (thread_p->type == TT_DAEMON && thread_p->is_cdc_daemon && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+    {
+      return &tz_Region_system;
+    }
+
   session_tz_region = session_get_session_tz_region (thread_p);
 
   if (session_tz_region == NULL)

@@ -503,3 +503,10 @@ namespace cubthread
     return (*ent);
   }
 }
+
+bool
+tde_is_loaded ()
+{
+  assert (false);
+  return false;
+}
