@@ -67,6 +67,7 @@ class page_server
 
       private:
 
+	// Request handlers for the request server:
 	void receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_ip);
@@ -75,12 +76,15 @@ class page_server
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp);
 
-	void async_data_page_fetch (cubthread::entry &context, std::string &a_payload);
-	void async_log_page_fetch (cubthread::entry &context, std::string &a_payload);
-	void async_log_boot_info (cubthread::entry &context, std::string &a_payload);
+	// Functions used for request handling, executed asynchronously by the responder
+	void fetch_data_page (cubthread::entry &context, std::string &a_payload);
+	void fetch_log_page (cubthread::entry &context, std::string &a_payload);
+	void get_log_boot_info_and_start_transfer (cubthread::entry &context, std::string &a_payload);
 
-	template<class F> void async_response (F &&, tran_server_conn_t::sequenced_payload &&a_sp);
+	// Helper function to convert above functions into responder specific tasks.
+	template<class F> void push_async_response (F &&, tran_server_conn_t::sequenced_payload &&a_sp);
 
+	// Function used as sink for log transfer
 	void prior_sender_sink_hook (std::string &&message) const;
 
       private:
@@ -96,12 +100,7 @@ class page_server
     };
 
     using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;
-
-    responder_t &get_responder ()
-    {
-      assert (m_responder);
-      return *m_responder;
-    }
+    responder_t &get_responder ();
 
     std::unique_ptr<connection_handler> m_active_tran_server_conn;
     std::vector<std::unique_ptr<connection_handler>> m_passive_tran_server_conn;

@@ -111,7 +111,7 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
 
 template<class F>
 void
-page_server::connection_handler::async_response (F &&a_func, tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::connection_handler::push_async_response (F &&a_func, tran_server_conn_t::sequenced_payload &&a_sp)
 {
   m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp),
 				       std::bind (std::forward<F> (a_func), this,
@@ -119,7 +119,7 @@ page_server::connection_handler::async_response (F &&a_func, tran_server_conn_t:
 }
 
 void
-page_server::connection_handler::async_log_page_fetch (cubthread::entry &context, std::string &a_payload)
+page_server::connection_handler::fetch_log_page (cubthread::entry &context, std::string &a_payload)
 {
   // Unpack the message data
   LOG_PAGEID log_pageid;
@@ -158,11 +158,11 @@ page_server::connection_handler::async_log_page_fetch (cubthread::entry &context
 void
 page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  async_response (&connection_handler::async_log_page_fetch, std::move (a_sp));
+  push_async_response (&connection_handler::fetch_log_page, std::move (a_sp));
 }
 
 void
-page_server::connection_handler::async_data_page_fetch (cubthread::entry &context, std::string &a_payload)
+page_server::connection_handler::fetch_data_page (cubthread::entry &context, std::string &a_payload)
 {
   // Unpack the message data
   cubpacking::unpacker message_upk (a_payload.c_str (), a_payload.size ());
@@ -223,11 +223,12 @@ page_server::connection_handler::async_data_page_fetch (cubthread::entry &contex
 void
 page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  async_response (&connection_handler::async_data_page_fetch, std::move (a_sp));
+  push_async_response (&connection_handler::fetch_data_page, std::move (a_sp));
 }
 
 void
-page_server::connection_handler::async_log_boot_info (cubthread::entry &context, std::string &a_payload)
+page_server::connection_handler::get_log_boot_info_and_start_transfer (cubthread::entry &context,
+    std::string &a_payload)
 {
   assert (a_payload.empty ());
   log_lsa append_lsa, prev_lsa, most_recent_trantable_snapshot_lsa;
@@ -252,7 +253,7 @@ page_server::connection_handler::async_log_boot_info (cubthread::entry &context,
 void
 page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  async_response (&connection_handler::async_log_boot_info, std::move (a_sp));
+  push_async_response (&connection_handler::get_log_boot_info_and_start_transfer, std::move (a_sp));
 }
 
 void
@@ -403,6 +404,13 @@ page_server::is_active_tran_server_connected () const
   assert (is_page_server ());
 
   return m_active_tran_server_conn != nullptr;
+}
+
+page_server::responder_t &
+page_server::get_responder ()
+{
+  assert (m_responder);
+  return *m_responder;
 }
 
 void

@@ -26,6 +26,21 @@
 template<typename T_CONN>
 class server_request_responder
 {
+    //
+    // Use server_request_responder class to handle the network requests received through a request_sync_client_server
+    // instance in a CUBRID server asynchronously.
+    //
+    // T_CONN must be a request_sync_client_server specialization.
+    //
+    // Use the async_execute functions to push a task on the server_request_responder.
+    //
+    // The task requires three components:
+    //	- the connection (request_sync_client_server instance) where to push the response.
+    //	- the request sequenced payload (that is moved into the task)
+    //	- the function that execute the request, consuming input payload and creating an output payload.
+    // The response is handled automatically by the task.
+    //
+
   public:
     using connection_t = T_CONN;
     using payload_t = typename connection_t::payload_t;
@@ -37,6 +52,7 @@ class server_request_responder
     server_request_responder ();
     ~server_request_responder ();
 
+    // Create a task that executes handler function asynchronously and pushes the response on the given connection
     void async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp, handler_func_t &&a_func);
     void async_execute (task *a_task);
 
@@ -48,15 +64,18 @@ class server_request_responder
 template<typename T_CONN>
 class server_request_responder<T_CONN>::task : public cubthread::entry_task
 {
+    // Specialized task for the server_request_responder. Override execute function to call m_function and then
+    // send the response on m_conn_reference.
+
   public:
     task (connection_t &a_conn_ref, sequenced_payload_t &&a_sp, handler_func_t &&a_func);
 
     void execute (cubthread::entry &thread_entry) final override;
 
   private:
-    connection_t &m_conn_reference;
-    sequenced_payload_t m_sequenced_payload;
-    handler_func_t m_function;
+    connection_t &m_conn_reference;		// a reference to the connection (request_sync_client_server instance)
+    sequenced_payload_t m_sequenced_payload;	// the request input payload
+    handler_func_t m_function;			// the request handler
 };
 
 //
