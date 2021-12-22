@@ -24,14 +24,13 @@ function run_test() {
 }
 
 run_test ./test_checkpoint_info
-run_test ./test_log_page_fetcher
-run_test ./test_data_page_fetcher
 run_test ./test_log_lsa_utils
+run_test ./test_log_recovery_parallel [ci]
 run_test ./test_meta_log
 run_test ./test_prior_list_serialize
 run_test ./test_prior_sendrecv
 run_test ./test_request_cs
-run_test ./test_log_recovery_parallel [ci]
+run_test ./test_server_request_responder
 
 exit $global_error_code
 
