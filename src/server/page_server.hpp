@@ -82,8 +82,11 @@ class page_server
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp);
 
-	void handle_data_page_fetch (cubthread::entry &context, std::string &a_payload);
-	void handle_log_page_fetch (cubthread::entry &context, std::string &a_payload);
+	void async_data_page_fetch (cubthread::entry &context, std::string &a_payload);
+	void async_log_page_fetch (cubthread::entry &context, std::string &a_payload);
+	void async_log_boot_info (cubthread::entry &context, std::string &a_payload);
+
+	template<class F> void async_response (F &&, tran_server_conn_t::sequenced_payload &&a_sp);
 
 	void prior_sender_sink_hook (std::string &&message) const;
 

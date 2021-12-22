@@ -22,6 +22,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa_utils.hpp"
+#include "log_manager.h"
 #include "log_prior_recv.hpp"
 #include "log_replication.hpp"
 #include "packer.hpp"
@@ -108,30 +109,60 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
   log_Gl.get_log_prior_receiver ().push_message (std::move (a_ip.pull_payload ()));
 }
 
+template<class F>
 void
-page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::connection_handler::async_response (F &&a_func, tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  LOG_PAGEID pageid;
-  std::string message = a_sp.pull_payload ();
-
-  assert (message.size () == sizeof (pageid));
-  std::memcpy (&pageid, message.c_str (), sizeof (pageid));
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-    {
-      _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
-    }
-
-  auto callback_func = [this, sp = a_sp] (const LOG_PAGE *log_page, int error_code) mutable
-  {
-    on_log_page_read_result (std::move (sp), log_page, error_code);
-  };
-
-  m_ps.get_page_fetcher ().fetch_log_page (pageid, std::move (callback_func));
+  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp),
+				       std::bind (std::forward<F> (a_func), this,
+					   std::placeholders::_1, std::placeholders::_2));
 }
 
 void
-page_server::connection_handler::handle_data_page_fetch (cubthread::entry &context, std::string &a_payload)
+page_server::connection_handler::async_log_page_fetch (cubthread::entry &context, std::string &a_payload)
+{
+  // Unpack the message data
+  LOG_PAGEID log_pageid;
+  assert (a_payload.size () == sizeof (log_pageid));
+  std::memcpy (&log_pageid, a_payload.c_str (), sizeof (log_pageid));
+
+  log_lsa fetch_lsa { log_pageid, 0 };
+  log_reader lr { LOG_CS_SAFE_READER };
+
+  if (log_pageid == LOGPB_HEADER_PAGE_ID)
+    {
+      // Make sure log page header is updated
+      logpb_force_flush_header_and_pages (&context);
+    }
+
+  int error = lr.set_lsa_and_fetch_page (fetch_lsa);
+
+  // Response message
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "[READ LOG] Sending log page to Active Tran Server. Page ID: %lld Error code: %ld\n",
+		     log_pageid, error);
+    }
+
+  // pack error first
+  a_payload = { reinterpret_cast<const char *> (&error), sizeof (error) };
+
+  if (error == NO_ERROR)
+    {
+      // pack page data too
+      a_payload.append (reinterpret_cast<const char *> (lr.get_page ()), db_log_page_size ());
+    }
+}
+
+void
+page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
+{
+  async_response (&connection_handler::async_log_page_fetch, std::move (a_sp));
+}
+
+void
+page_server::connection_handler::async_data_page_fetch (cubthread::entry &context, std::string &a_payload)
 {
   // Unpack the message data
   cubpacking::unpacker message_upk (a_payload.c_str (), a_payload.size ());
@@ -151,10 +182,10 @@ page_server::connection_handler::handle_data_page_fetch (cubthread::entry &conte
       m_ps.get_replicator ().wait_past_target_lsa (target_repl_lsa);
     }
 
+  int error = NO_ERROR;
   PAGE_PTR page_ptr = pgbuf_fix (&context, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == nullptr)
     {
-      int error;
       ASSERT_ERROR_AND_SET (error);
       // respond with the error
       a_payload = { reinterpret_cast<const char *> (&error), sizeof (error) };
@@ -172,8 +203,11 @@ page_server::connection_handler::handle_data_page_fetch (cubthread::entry &conte
       pgbuf_cast_pgptr_to_iopgptr (page_ptr, io_pgptr);
       assert (io_pgptr != nullptr);
 
-      // respond with io_page
-      a_payload = { reinterpret_cast<const char *> (io_pgptr), (size_t) db_io_page_size () };
+      // pack NO_ERROR first
+      a_payload = { reinterpret_cast<const char *> (&error), sizeof (error) };
+
+      // add io_page
+      a_payload.append (reinterpret_cast<const char *> (io_pgptr), (size_t) db_io_page_size ());
 
       pgbuf_unfix (&context, page_ptr);
 
@@ -189,27 +223,34 @@ page_server::connection_handler::handle_data_page_fetch (cubthread::entry &conte
 void
 page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp),
-				       std::bind (&connection_handler::handle_data_page_fetch, this,
-					   std::placeholders::_1, std::placeholders::_2));
+  async_response (&connection_handler::async_data_page_fetch, std::move (a_sp));
+}
+
+void
+page_server::connection_handler::async_log_boot_info (cubthread::entry &context, std::string &a_payload)
+{
+  assert (a_payload.empty ());
+  log_lsa append_lsa, prev_lsa, most_recent_trantable_snapshot_lsa;
+
+  // log_pack_log_boot_info does all the work
+  a_payload = log_pack_log_boot_info (&context, append_lsa, prev_lsa, most_recent_trantable_snapshot_lsa,
+				      std::bind (&connection_handler::prior_sender_sink_hook, this,
+					  std::placeholders::_1));
+
+  if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "[LOG PRIOR TRANSFER] Sent log boot info to passive tran server with prev_lsa = (%lld|%d), "
+		     "append_lsa = (%lld|%d), most_recent_trantable_snapshot_lsa = (%lld|%d)\n",
+		     LSA_AS_ARGS (&prev_lsa), LSA_AS_ARGS (&append_lsa),
+		     LSA_AS_ARGS (&most_recent_trantable_snapshot_lsa));
+    }
 }
 
 void
 page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  // empty request message
-
-  auto callback_func = [this, sp = a_sp] (std::string &&message) mutable
-  {
-    on_log_boot_info_result (std::move (sp), std::move (message));
-  };
-
-  // the underlying infrastructure will add this functor as a sink for log prior info packing and
-  // sending that log prior info down the line to the connected passive transaction server
-  m_prior_sender_sink_hook_func =
-	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
-
-  m_ps.get_page_fetcher ().fetch_log_boot_info (m_prior_sender_sink_hook_func, std::move (callback_func));
+  async_response (&connection_handler::async_log_boot_info, std::move (a_sp));
 }
 
 void
@@ -226,7 +267,7 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
     m_prior_sender_sink_hook_func = nullptr;
   }
 
-  // empty response message, the roundtrip is synchronous
+  // empty response message, the round trip is synchronous
   a_sp.push_payload (std::string ());
   m_conn->respond (std::move (a_sp));
 }
@@ -235,11 +276,7 @@ void
 page_server::connection_handler::on_log_boot_info_result (tran_server_conn_t::sequenced_payload &&sp,
     std::string &&message)
 {
-  assert (m_conn != nullptr);
-  assert (message.size () > 0);
 
-  sp.push_payload (std::move (message));
-  m_conn->respond (std::move (sp));
 }
 
 void
