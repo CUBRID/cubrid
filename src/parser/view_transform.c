@@ -1465,7 +1465,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - has CONNECT BY
  *  - view spec is outer join spec
  *  - main query's where has define_vars ':='
- *  - subquery has order_by and main query has inst_num or analytic or group_concat
+ *  - subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation function
  *
  * 2. SUB QUERY CHECK
  * It is not pushable(mergeable) in the following cases.
@@ -1579,10 +1579,10 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       /* not pushable */
       return 0;
     }
-  /* subquery has order_by and main query has inst_num or analytic or group_concat */
+  /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
   if (subquery->info.query.order_by
       && (pt_has_inst_num (parser, pred) || pt_has_analytic (parser, mainquery)
-	  || pt_has_group_concat (parser, mainquery)))
+	  || pt_has_order_sensitive_agg (parser, mainquery)))
     {
       /* not pushable */
       return 0;
@@ -1855,8 +1855,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       attr->data_type = save_data_type;
     }
 
-  statement->info.query.order_by =
-    parser_append_node (order_by, statement->info.query.order_by);
+  statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
 
   if (free_node != NULL)
     {

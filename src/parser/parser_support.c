@@ -1050,7 +1050,7 @@ pt_find_aggregate_functions_post (PARSER_CONTEXT * parser, PT_NODE * tree, void 
 }
 
 /*
- * pt_is_group_concat_post () -
+ * pt_is_order_sensitive_agg_post () -
  *   return:
  *   parser(in):
  *   tree(in):
@@ -1058,11 +1058,11 @@ pt_find_aggregate_functions_post (PARSER_CONTEXT * parser, PT_NODE * tree, void 
  *   continue_walk(in/out):
  */
 PT_NODE *
-pt_is_group_concat_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+pt_is_order_sensitive_agg_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  bool *group_concat = (bool *) arg;
+  bool *order_sensitive_agg = (bool *) arg;
 
-  if (*group_concat)
+  if (*order_sensitive_agg)
     {
       *continue_walk = PT_STOP_WALK;
     }
@@ -1088,6 +1088,45 @@ pt_is_group_concat (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *con
   bool *has_group_concat = (bool *) arg;
 
   if (tree && tree->node_type == PT_FUNCTION && tree->info.function.function_type == PT_GROUP_CONCAT)
+    {
+      *has_group_concat = true;
+    }
+
+  if (*has_group_concat)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_order_sensitive_agg () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an order-sensitive aggrigation function node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_group_concat = (bool *) arg;
+
+  if (tree && tree->node_type == PT_FUNCTION &&
+      (tree->info.function.function_type == PT_GROUP_CONCAT
+       || tree->info.function.function_type == PT_CUME_DIST
+       || tree->info.function.function_type == PT_PERCENT_RANK
+       || tree->info.function.function_type == PT_PERCENTILE_CONT
+       || tree->info.function.function_type == PT_PERCENTILE_DISC))
     {
       *has_group_concat = true;
     }
@@ -3171,18 +3210,18 @@ pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_has_group_concat () -
+ * pt_has_order_sensitive_agg () -
  *   return: true if statement has an group_concat function in its parse tree
  *   parser(in):
  *   node(in/out):
  *
  */
 bool
-pt_has_group_concat (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_has_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  bool has_group_concat = false;
-  bool has_group_concat_arg1 = false;
-  bool has_group_concat_arg2 = false;
+  bool has_order_sensitive_agg = false;
+  bool has_order_sensitive_agg_arg1 = false;
+  bool has_order_sensitive_agg_arg2 = false;
 
   if (!node)
     {
@@ -3192,28 +3231,28 @@ pt_has_group_concat (PARSER_CONTEXT * parser, PT_NODE * node)
   switch (node->node_type)
     {
     case PT_SELECT:
-      (void) parser_walk_tree (parser, node->info.query.q.select.list, pt_is_group_concat, &has_group_concat,
-			       pt_is_group_concat_post, &has_group_concat);
+      (void) parser_walk_tree (parser, node->info.query.q.select.list, pt_is_order_sensitive_agg,
+			       &has_order_sensitive_agg, pt_is_order_sensitive_agg_post, &has_order_sensitive_agg);
       break;
 
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      has_group_concat_arg1 = pt_has_group_concat (parser, node->info.query.q.union_.arg1);
-      has_group_concat_arg2 = pt_has_group_concat (parser, node->info.query.q.union_.arg2);
-      if (has_group_concat_arg1 || has_group_concat_arg2)
+      has_order_sensitive_agg_arg1 = pt_has_order_sensitive_agg (parser, node->info.query.q.union_.arg1);
+      has_order_sensitive_agg_arg2 = pt_has_order_sensitive_agg (parser, node->info.query.q.union_.arg2);
+      if (has_order_sensitive_agg_arg1 || has_order_sensitive_agg_arg2)
 	{
-	  has_group_concat = true;
+	  has_order_sensitive_agg = true;
 	}
       break;
 
     default:
-      (void) parser_walk_tree (parser, node, pt_is_group_concat, &has_group_concat, pt_is_group_concat_post,
-			       &has_group_concat);
+      (void) parser_walk_tree (parser, node, pt_is_order_sensitive_agg, &has_order_sensitive_agg,
+			       pt_is_order_sensitive_agg_post, &has_order_sensitive_agg);
       break;
     }
 
-  return has_group_concat;
+  return has_order_sensitive_agg;
 }
 
 /*
