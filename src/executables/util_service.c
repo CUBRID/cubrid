@@ -53,6 +53,8 @@
 #include "dynamic_array.h"
 #include "heartbeat.h"
 
+#include <string>
+
 #if defined(WINDOWS)
 typedef int pid_t;
 #endif
@@ -290,6 +292,7 @@ static bool is_server_running (const char *type, const char *server_name, int pi
 static int is_broker_running (void);
 static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int sleep_time);
 static UTIL_JAVASP_SERVER_STATUS_E is_javasp_running (const char *server_name);
+static int get_server_names (char *out_buffer);
 
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
@@ -1377,7 +1380,7 @@ process_service (int command_type, bool process_window_service)
 	(void) process_server (command_type, 0, NULL, false, true, false);
 	(void) process_broker (command_type, 1, args, false);
 	(void) process_manager (command_type, false);
-	(void) process_javasp (command_type, 0, NULL, false, false);
+	(void) process_javasp (command_type, 0, NULL, true, false);
 	if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
 	  {
 	    (void) process_heartbeat (command_type, 0, NULL);
@@ -1389,6 +1392,50 @@ process_service (int command_type, bool process_window_service)
     }
 
   return status;
+}
+
+/*
+ * get_server_names -
+ *
+ * return:
+ *
+ *      out_buffer (out):
+ */
+static void
+get_server_names (char *out_buffer)
+{
+  FILE *input;
+  char buf[4096];
+  char cmd[PATH_MAX];
+
+  make_exec_abspath (cmd, PATH_MAX, (char *) UTIL_COMMDB_NAME " " COMMDB_ALL_STATUS);
+  input = popen (cmd, "r");
+  if (input == NULL)
+    {
+      return;
+    }
+
+  int offset = 0;
+  /* *INDENT-OFF* */
+  std::string delimiter = " ";
+  /* *INDENT-ON* */
+  while (fgets (buf, 4096, input) != NULL)
+    {
+      /* *INDENT-OFF* */
+      std::string s (buf);
+
+      /* find Server */
+      size_t start = s.find (delimiter, 1) + 1;
+      size_t end = s.find (delimiter, start);
+
+      std::string server_name = s.substr (start, end - start);
+
+      snprintf (out_buffer + offset, 4096, "%s,", server_name.c_str ());
+      offset += server_name.size () + 1;
+      /* *INDENT-ON* */
+    }
+
+  pclose (input);
 }
 
 /*
@@ -2534,7 +2581,7 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
       strncpy (buf, argv[0], sizeof (buf) - 1);
     }
 
-  if (strlen (buf) == 0)
+  if (command_type != STATUS && strlen (buf) == 0)
     {
       if (show_usage)
 	{
@@ -2543,6 +2590,11 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
 	}
       status = ER_GENERIC_ERROR;
       goto exit;
+    }
+
+  if (command_type == STATUS && strlen (buf) == 0)
+    {
+      get_server_names (buf);
     }
 
   for (list = buf;; list = NULL)
