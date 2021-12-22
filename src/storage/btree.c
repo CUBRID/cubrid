@@ -2493,7 +2493,7 @@ btree_get_num_visible_oids_from_all_ovf (THREAD_ENTRY * thread_p, BTID_INT * bti
   /* search for OID into overflow page */
   while (!VPID_ISNULL (&next_ovfl_vpid))
     {
-      ovfl_page = pgbuf_fix (thread_p, &next_ovfl_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      ovfl_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, next_ovfl_vpid, PGBUF_UNCONDITIONAL_LATCH);
       if (ovfl_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
