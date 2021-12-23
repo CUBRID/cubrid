@@ -292,7 +292,7 @@ static bool is_server_running (const char *type, const char *server_name, int pi
 static int is_broker_running (void);
 static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int sleep_time);
 static UTIL_JAVASP_SERVER_STATUS_E is_javasp_running (const char *server_name);
-static int get_server_names (char *out_buffer);
+static void get_server_names (char *out_buffer);
 
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
@@ -1378,9 +1378,9 @@ process_service (int command_type, bool process_window_service)
 	const char *args[] = { "-b" };
 
 	(void) process_server (command_type, 0, NULL, false, true, false);
+	(void) process_javasp (command_type, 0, NULL, true, false);
 	(void) process_broker (command_type, 1, args, false);
 	(void) process_manager (command_type, false);
-	(void) process_javasp (command_type, 0, NULL, true, false);
 	if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
 	  {
 	    (void) process_heartbeat (command_type, 0, NULL);
@@ -1408,6 +1408,11 @@ get_server_names (char *out_buffer)
   char buf[4096];
   char cmd[PATH_MAX];
 
+  if (out_buffer == NULL)
+    {
+      return;
+    }
+
   make_exec_abspath (cmd, PATH_MAX, (char *) UTIL_COMMDB_NAME " " COMMDB_ALL_STATUS);
   input = popen (cmd, "r");
   if (input == NULL)
@@ -1423,6 +1428,12 @@ get_server_names (char *out_buffer)
     {
       /* *INDENT-OFF* */
       std::string s (buf);
+
+      /* ignore HA-Server */
+      if (s.find (CHECK_HA_SERVER) != std::string::npos)
+      {
+	    continue;
+      }
 
       /* find Server */
       size_t start = s.find (delimiter, 1) + 1;
@@ -1641,9 +1652,17 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		  print_result (PRINT_SERVER_NAME, status, command_type);
 
 		  /* run javasp utility if server is started successfully */
-		  if (status == NO_ERROR && (is_javasp_running (token) != JAVASP_SERVER_RUNNING))
+		  if (status == NO_ERROR)
 		    {
-		      (void) process_javasp (command_type, 1, (const char **) &token, true);
+		      if (is_javasp_running (token) != JAVASP_SERVER_RUNNING)
+			{
+			  (void) process_javasp (command_type, 1, (const char **) &token, false, true);
+			}
+		      else
+			{
+			  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, token);
+			  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, token);
+			}
 		    }
 		}
 	    }
@@ -1712,9 +1731,17 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		  print_result (PRINT_SERVER_NAME, status, command_type);
 
 		  /* run javasp server if DB server is started successfully */
-		  if (status == NO_ERROR && (is_javasp_running (token) != JAVASP_SERVER_RUNNING))
+		  if (status == NO_ERROR)
 		    {
-		      (void) process_javasp (command_type, 1, (const char **) &token, false, false);
+		      if (is_javasp_running (token) != JAVASP_SERVER_RUNNING)
+			{
+			  (void) process_javasp (command_type, 1, (const char **) &token, false, true);
+			}
+		      else
+			{
+			  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, token);
+			  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, token);
+			}
 		    }
 		}
 	    }
@@ -1795,11 +1822,6 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SERVER_STATUS, NULL };
 	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
-
-	  if (status == NO_ERROR)
-	    {
-
-	    }
 	}
       else
 	{
@@ -2542,8 +2564,6 @@ static int
 process_javasp_status (const char *db_name)
 {
   int status = NO_ERROR;
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_JAVASP_NAME, PRINT_CMD_STATUS, db_name);
-
   UTIL_JAVASP_SERVER_STATUS_E javasp_status = is_javasp_running (db_name);
   if (javasp_status == JAVASP_SERVER_RUNNING)
     {
@@ -2568,12 +2588,14 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
   const char *delim = " ,:";
   int status = NO_ERROR;
   char *db_name = NULL;
+  int master_port = prm_get_master_port_id ();
 
   if (argc == 0)		/* cubrid service command */
     {
-      if (us_Property_map[SERVER_START_LIST].property_value != NULL)
+      /* get all server names from master request */
+      if (css_does_master_exist (master_port))
 	{
-	  strncpy (buf, us_Property_map[SERVER_START_LIST].property_value, sizeof (buf) - 1);
+	  get_server_names (buf);
 	}
     }
   else				/* cubrid javasp command */
@@ -2592,9 +2614,9 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
       goto exit;
     }
 
-  if (command_type == STATUS && strlen (buf) == 0)
+  if (command_type == STATUS)
     {
-      get_server_names (buf);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_JAVASP_NAME, PRINT_CMD_STATUS);
     }
 
   for (list = buf;; list = NULL)
