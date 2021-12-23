@@ -16,8 +16,8 @@
 # 
 #
 
-# Project to test memory allocation.
 #
+# Project to test server functionality.
 #
 
 #
