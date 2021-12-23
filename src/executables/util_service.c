@@ -1327,6 +1327,8 @@ process_service (int command_type, bool process_window_service)
 	{
 	  if (!are_all_services_stopped (0, process_window_service))
 	    {
+	      (void) process_javasp (command_type, 0, NULL, false, process_window_service);
+
 	      if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0
 		  && us_Property_map[SERVER_START_LIST].property_value != NULL
 		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
@@ -1650,20 +1652,6 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		      status = ER_GENERIC_ERROR;
 		    }
 		  print_result (PRINT_SERVER_NAME, status, command_type);
-
-		  /* run javasp utility if server is started successfully */
-		  if (status == NO_ERROR)
-		    {
-		      if (is_javasp_running (token) != JAVASP_SERVER_RUNNING)
-			{
-			  (void) process_javasp (command_type, 1, (const char **) &token, false, true);
-			}
-		      else
-			{
-			  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, token);
-			  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, token);
-			}
-		    }
 		}
 	    }
 #endif
@@ -1733,15 +1721,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		  /* run javasp server if DB server is started successfully */
 		  if (status == NO_ERROR)
 		    {
-		      if (is_javasp_running (token) != JAVASP_SERVER_RUNNING)
-			{
-			  (void) process_javasp (command_type, 1, (const char **) &token, false, true);
-			}
-		      else
-			{
-			  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, token);
-			  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, token);
-			}
+		      (void) process_javasp (command_type, 1, (const char **) &token, false, process_window_service);
 		    }
 		}
 	    }
@@ -2509,9 +2489,8 @@ process_javasp_start (const char *db_name, bool process_window_service)
 		}
 	    }
 	}
+      print_result (PRINT_JAVASP_NAME, status, START);
     }
-
-  print_result (PRINT_JAVASP_NAME, status, START);
   return status;
 }
 
@@ -2548,6 +2527,7 @@ process_javasp_stop (const char *db_name, bool process_window_service)
 	    }
 	  while (status != NO_ERROR && waited_secs < wait_timeout);
 	}
+      print_result (PRINT_JAVASP_NAME, status, STOP);
     }
   else
     {
@@ -2556,7 +2536,6 @@ process_javasp_stop (const char *db_name, bool process_window_service)
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
     }
 
-  print_result (PRINT_JAVASP_NAME, status, STOP);
   return status;
 }
 
