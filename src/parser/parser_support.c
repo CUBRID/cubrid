@@ -3301,11 +3301,16 @@ bool
 pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   bool has_inst_orderby_num = false;
-  PT_NODE *where, *select_list, *orderby_for, *having;
+  PT_NODE *where, *select_list, *orderby_for, *having, *using_index;
 
   switch (node->node_type)
     {
     case PT_SELECT:
+      using_index = node->info.query.q.select.using_index;
+      if (using_index != NULL && using_index->info.name.indx_key_limit != NULL)
+	{
+	  return true;
+	}
       where = node->info.query.q.select.where;
       (void) parser_walk_tree (parser, where, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
 			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
