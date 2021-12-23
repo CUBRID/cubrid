@@ -34,6 +34,8 @@
 #include "system_parameter.h"
 #include "util_func.h"
 
+#include <set>
+
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_context &context,
     LOG_PAGE *log_page_p, const LOG_RECORD_HEADER *log_rec,
     const log_lsa &prev_lsa, const log_lsa &prev_prev_lsa);
@@ -2295,4 +2297,51 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
   });
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
+
+  MVCCID smallest_mvccid = std::numeric_limits<MVCCID>::max ();
+  MVCCID largest_mvccid = std::numeric_limits<MVCCID>::min ();
+  std::set<MVCCID> present_mvccids;
+  for (int i = 0; i < log_Gl.trantable.num_total_indices; ++i)
+    {
+      if (i != LOG_SYSTEM_TRAN_INDEX)
+	{
+	  const log_tdes *const tdes = log_Gl.trantable.all_tdes[i];
+	  if (tdes != nullptr && tdes->trid != NULL_TRANID)
+	    {
+	      //assert (tdes->mvccinfo.id != smallest_mvccid);
+	      //assert (tdes->mvccinfo.id != largest_mvccid);
+	      if (tdes->mvccinfo.id < smallest_mvccid)
+		{
+		  smallest_mvccid = tdes->mvccinfo.id;
+		}
+	      if (tdes->mvccinfo.id > largest_mvccid)
+		{
+		  largest_mvccid = tdes->mvccinfo.id;
+		}
+	      //assert (present_mvccids.find (tdes->mvccinfo.id) == present_mvccids.cend ());
+	      present_mvccids.insert (tdes->mvccinfo.id);
+	    }
+	}
+    }
+  //assert (smallest_mvccid != MVCCID_NULL);
+  log_Gl.hdr.mvcc_next_id = smallest_mvccid;
+  log_Gl.mvcc_table.reset_start_mvccid ();
+
+  if (!present_mvccids.empty ())
+    {
+      std::set<MVCCID>::const_iterator present_mvccids_it = present_mvccids.cbegin ();
+      MVCCID prev_mvccid = *present_mvccids_it;
+      ++present_mvccids_it;
+      for (; present_mvccids_it != present_mvccids.cend (); ++present_mvccids_it)
+	{
+	  const MVCCID curr_mvccid = *present_mvccids_it;
+	  for (MVCCID missing_mvccid = prev_mvccid + 1; missing_mvccid < curr_mvccid; ++missing_mvccid)
+	    {
+	      log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, missing_mvccid, true);
+	    }
+	  prev_mvccid = curr_mvccid;
+	}
+    }
+
+  log_Gl.hdr.mvcc_next_id = largest_mvccid + 1;
 }
