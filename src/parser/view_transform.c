@@ -2141,25 +2141,22 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  /* merge HINT of vclass spec */
 	  mq_copy_sql_hint (parser, derived_table, query_spec);
 
-	  if (!order_by || query_spec->info.query.orderby_for)
+	  if (query_spec->info.query.order_by)
 	    {
-	      if (query_spec->info.query.order_by)
+	      /* update the position number of order by clause */
+	      derived_table = mq_update_order_by (parser, derived_table, query_spec, tmp_class, NULL);
+	      if (derived_table == NULL)
 		{
-		  /* update the position number of order by clause */
-		  derived_table = mq_update_order_by (parser, derived_table, query_spec, tmp_class, NULL);
-		  if (derived_table == NULL)
-		    {
-		      goto exit_on_error;
-		    }
-		  derived_table->info.query.flag.order_siblings = query_spec->info.query.flag.order_siblings;
+		  goto exit_on_error;
 		}
+	      derived_table->info.query.flag.order_siblings = query_spec->info.query.flag.order_siblings;
+	    }
 
-	      if (query_spec->info.query.orderby_for)
-		{
-		  derived_table->info.query.orderby_for =
-		    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.orderby_for),
-					derived_table->info.query.orderby_for);
-		}
+	  if (query_spec->info.query.orderby_for)
+	    {
+	      derived_table->info.query.orderby_for =
+		parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.orderby_for),
+				    derived_table->info.query.orderby_for);
 	    }
 
 	  class_spec->info.spec.derived_table =
