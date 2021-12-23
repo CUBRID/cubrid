@@ -13290,7 +13290,7 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
   if (op_type == S_SELECT && lock_mode == NULL_LOCK)
     {
       /* No locking */
-      scan_code = heap_get_visible_version_internal (thread_p, &context, false);
+      scan_code = heap_get_visible_version_with_repl_desync (thread_p, &context, false);
     }
   else
     {
