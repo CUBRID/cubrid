@@ -473,8 +473,11 @@ extern PAGE_PTR pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_
 							  PGBUF_LATCH_CONDITION cond);
 
 extern int pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr);
+
+#if defined (SERVER_MODE)
 // *INDENT-OFF*
-extern void pgbuf_cast_pgptr_to_iopgptr (PAGE_PTR page_ptr, FILEIO_PAGE *&io_page);
+extern void pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payload_in_out);
 // *INDENT-ON*
+#endif
 
 #endif /* _PAGE_BUFFER_H_ */

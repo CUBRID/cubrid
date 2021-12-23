@@ -240,9 +240,8 @@ extern void log_write_metalog_to_file (bool file_open_is_fatal);
 
 #if defined (SERVER_MODE)
 // *INDENT-OFF*
-extern std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa, log_lsa &prev_lsa,
-					   log_lsa &most_recent_trantable_snapshot_lsa,
-					   const cublog::prior_sender::sink_hook_t  & log_prior_sender_sink);
+extern void log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
+				    const cublog::prior_sender::sink_hook_t &log_prior_sender_sink);
 // *INDENT-ON*
 #endif // SERVER_MODE
 

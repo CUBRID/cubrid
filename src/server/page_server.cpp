@@ -109,151 +109,34 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
   log_Gl.get_log_prior_receiver ().push_message (std::move (a_ip.pull_payload ()));
 }
 
-template<class F>
+template<class F, class ... Args>
 void
-page_server::connection_handler::push_async_response (F &&a_func, tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::connection_handler::push_async_response (F &&a_func, tran_server_conn_t::sequenced_payload &&a_sp,
+    Args &&... args)
 {
-  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp),
-				       std::bind (std::forward<F> (a_func), this,
-					   std::placeholders::_1, std::placeholders::_2));
-}
-
-void
-page_server::connection_handler::fetch_log_page (cubthread::entry &context, std::string &a_payload)
-{
-  // Unpack the message data
-  LOG_PAGEID log_pageid;
-  assert (a_payload.size () == sizeof (log_pageid));
-  std::memcpy (&log_pageid, a_payload.c_str (), sizeof (log_pageid));
-
-  log_lsa fetch_lsa { log_pageid, 0 };
-  log_reader lr { LOG_CS_SAFE_READER };
-
-  if (log_pageid == LOGPB_HEADER_PAGE_ID)
-    {
-      // Make sure log page header is updated
-      logpb_force_flush_header_and_pages (&context);
-    }
-
-  int error = lr.set_lsa_and_fetch_page (fetch_lsa);
-
-  // Response message
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[READ LOG] Sending log page to Active Tran Server. Page ID: %lld Error code: %ld\n",
-		     log_pageid, error);
-    }
-
-  // pack error first
-  a_payload = { reinterpret_cast<const char *> (&error), sizeof (error) };
-
-  if (error == NO_ERROR)
-    {
-      // pack page data too
-      a_payload.append (reinterpret_cast<const char *> (lr.get_page ()), db_log_page_size ());
-    }
+  auto handler_func = std::bind (std::forward<F> (a_func), std::placeholders::_1, std::placeholders::_2,
+				 std::forward<Args> (args)...);
+  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
 }
 
 void
 page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  push_async_response (&connection_handler::fetch_log_page, std::move (a_sp));
-}
-
-void
-page_server::connection_handler::fetch_data_page (cubthread::entry &context, std::string &a_payload)
-{
-  // Unpack the message data
-  cubpacking::unpacker message_upk (a_payload.c_str (), a_payload.size ());
-
-  VPID vpid;
-  vpid_utils::unpack (message_upk, vpid);
-
-  LOG_LSA target_repl_lsa;
-  cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
-
-  // Fetch data page. But first make sure that replication hits its target LSA
-  if (!target_repl_lsa.is_null ())
-    {
-      // TODO: FIXME
-      // The transaction server boots and reads pages before initializing its log module and before knowing a safe target
-      // LSA for replication. A way of knowing this target LSA is required, but disable this wait until that's fixed.
-      m_ps.get_replicator ().wait_past_target_lsa (target_repl_lsa);
-    }
-
-  int error = NO_ERROR;
-  PAGE_PTR page_ptr = pgbuf_fix (&context, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      // respond with the error
-      a_payload = { reinterpret_cast<const char *> (&error), sizeof (error) };
-
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[READ DATA] Error %lld while fixing page %d|%d, replication LSA = %lld|%d\n",
-			 error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
-	}
-    }
-  else
-    {
-      FILEIO_PAGE *io_pgptr = nullptr;
-      pgbuf_cast_pgptr_to_iopgptr (page_ptr, io_pgptr);
-      assert (io_pgptr != nullptr);
-
-      // pack NO_ERROR first
-      a_payload = { reinterpret_cast<const char *> (&error), sizeof (error) };
-
-      // add io_page
-      a_payload.append (reinterpret_cast<const char *> (io_pgptr), (size_t) db_io_page_size ());
-
-      pgbuf_unfix (&context, page_ptr);
-
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[READ DATA] Successful while fixing page %d|%d, replication LSA = %lld|%d\n",
-			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
-	}
-    }
+  push_async_response (&logpb_respond_fetch_log_page_request, std::move (a_sp));
 }
 
 void
 page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  push_async_response (&connection_handler::fetch_data_page, std::move (a_sp));
-}
-
-void
-page_server::connection_handler::get_log_boot_info_and_start_transfer (cubthread::entry &context,
-    std::string &a_payload)
-{
-  assert (a_payload.empty ());
-  log_lsa append_lsa, prev_lsa, most_recent_trantable_snapshot_lsa;
-
-  m_prior_sender_sink_hook_func =
-	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
-
-  // log_pack_log_boot_info does all the work
-  a_payload = log_pack_log_boot_info (&context, append_lsa, prev_lsa, most_recent_trantable_snapshot_lsa,
-				      m_prior_sender_sink_hook_func);
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[LOG PRIOR TRANSFER] Sent log boot info to passive tran server with prev_lsa = (%lld|%d), "
-		     "append_lsa = (%lld|%d), most_recent_trantable_snapshot_lsa = (%lld|%d)\n",
-		     LSA_AS_ARGS (&prev_lsa), LSA_AS_ARGS (&append_lsa),
-		     LSA_AS_ARGS (&most_recent_trantable_snapshot_lsa));
-    }
+  push_async_response (&pgbuf_respond_data_fetch_page_request, std::move (a_sp));
 }
 
 void
 page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  push_async_response (&connection_handler::get_log_boot_info_and_start_transfer, std::move (a_sp));
+  m_prior_sender_sink_hook_func =
+	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
+  push_async_response (&log_pack_log_boot_info, std::move (a_sp), m_prior_sender_sink_hook_func);
 }
 
 void

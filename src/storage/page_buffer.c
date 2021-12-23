@@ -59,6 +59,7 @@
 #include "btree_load.h"
 #include "boot_sr.h"
 #include "double_write_buffer.h"
+#include "page_server.hpp"
 #include "passive_tran_server.hpp"
 #include "resource_tracker.hpp"
 #include "tde.h"
@@ -8259,6 +8260,69 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
   return error_code;
   // *INDENT-ON*
 }
+
+// *INDENT-OFF*
+void
+pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payload_in_out)
+{
+  assert (is_page_server ());
+
+  // Unpack the message data
+  cubpacking::unpacker message_upk (payload_in_out.c_str (), payload_in_out.size ());
+
+  VPID vpid;
+  vpid_utils::unpack (message_upk, vpid);
+
+  LOG_LSA target_repl_lsa;
+  cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
+
+  // Fetch data page. But first make sure that replication hits its target LSA
+  if (!target_repl_lsa.is_null ())
+    {
+      // TODO: FIXME
+      // The transaction server boots and reads pages before initializing its log module and before knowing a safe target
+      // LSA for replication. A way of knowing this target LSA is required, but disable this wait until that's fixed.
+      ps_Gl.get_replicator ().wait_past_target_lsa (target_repl_lsa);
+    }
+
+  int error = NO_ERROR;
+  PAGE_PTR page_ptr = pgbuf_fix (&thread_r, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == nullptr)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      // respond with the error
+      payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "[READ DATA] Error %lld while fixing page %d|%d, replication LSA = %lld|%d\n",
+			 error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+	}
+    }
+  else
+    {
+      FILEIO_PAGE *io_pgptr = nullptr;
+      CAST_PGPTR_TO_IOPGPTR (io_pgptr, page_ptr);
+      assert (io_pgptr != nullptr);
+
+      // pack NO_ERROR first
+      payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+
+      // add io_page
+      payload_in_out.append (reinterpret_cast<const char *> (io_pgptr), (size_t) db_io_page_size ());
+
+      pgbuf_unfix (&thread_r, page_ptr);
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "[READ DATA] Successful while fixing page %d|%d, replication LSA = %lld|%d\n",
+			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+	}
+    }
+}
+// *INDENT-ON*
 #endif // SERVER_MODE
 
 /*
@@ -16832,11 +16896,3 @@ exit_on_error:
 
   return error;
 }
-
-// *INDENT-OFF*
-void
-pgbuf_cast_pgptr_to_iopgptr (PAGE_PTR page_ptr, FILEIO_PAGE *&io_page)
-{
-  CAST_PGPTR_TO_IOPGPTR (io_page, page_ptr);
-}
-// *INDENT-ON*

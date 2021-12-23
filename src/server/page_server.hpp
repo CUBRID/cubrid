@@ -76,13 +76,9 @@ class page_server
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp);
 
-	// Functions used for request handling, executed asynchronously by the responder
-	void fetch_data_page (cubthread::entry &context, std::string &a_payload);
-	void fetch_log_page (cubthread::entry &context, std::string &a_payload);
-	void get_log_boot_info_and_start_transfer (cubthread::entry &context, std::string &a_payload);
-
 	// Helper function to convert above functions into responder specific tasks.
-	template<class F> void push_async_response (F &&, tran_server_conn_t::sequenced_payload &&a_sp);
+	template<class F, class ... Args>
+	void push_async_response (F &&, tran_server_conn_t::sequenced_payload &&a_sp, Args &&...args);
 
 	// Function used as sink for log transfer
 	void prior_sender_sink_hook (std::string &&message) const;
