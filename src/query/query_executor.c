@@ -6469,7 +6469,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
     {
       assert (!force_select_lock);
 
-      /* We expect to update or delete a non MVCC objects via a scan are only _db_serial, db_ha_apply_info and
+      /* We expect to update or delete a non MVCC objects via a scan are only db_serial, db_ha_apply_info and
        * _db_collation objects. */
       assert ((scan_op_type != S_DELETE && scan_op_type != S_UPDATE) || oid_is_serial (&ACCESS_SPEC_CLS_OID (curr_spec))
 	      || (oid_check_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID, &ACCESS_SPEC_CLS_OID (curr_spec)))

@@ -3402,7 +3402,7 @@ au_drop_user (MOP user)
      * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
      */
-    "_db_class", "db_trigger", "_db_serial", "_db_server", NULL
+    "_db_class", "db_trigger", "db_serial", "_db_server", NULL
   };
   char query_buf[1024];
 
@@ -5418,11 +5418,6 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
   const char *serial_name = NULL, *owner_name = NULL;
   int error = NO_ERROR;
 
-  const char *dot = NULL;
-  char *user_name = NULL;
-  char *full_name = NULL;
-  int len = 0;
-
   db_make_null (returnval);
 
   if (DB_IS_NULL (serial) || !IS_STRING (serial) || (serial_name = db_get_string (serial)) == NULL)
@@ -5441,35 +5436,13 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  dot = strchr (serial_name, '.');
-  if (dot == NULL)
-    {
-      len = snprintf (NULL, 0, "%s.%s", owner_name, serial_name) + 1;
-      full_name = (char *) db_ws_alloc (len * sizeof (char));
-      snprintf (full_name, len, "%s.%s", owner_name, serial_name);
-
-      serial_name = full_name;
-    }
-
-  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
+  serial_object = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class_mop, serial_name, owner_name);
   if (serial_object == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
       db_make_error (returnval, ER_QPROC_SERIAL_NOT_FOUND);
 
-      if (full_name)
-	{
-	  db_ws_free_and_init (full_name);
-	  serial_name = NULL;
-	}
-
       return;
-    }
-
-  if (full_name)
-    {
-      db_ws_free_and_init (full_name);
-      serial_name = NULL;
     }
 
   user = au_find_user (owner_name);

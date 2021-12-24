@@ -1152,7 +1152,6 @@ typedef enum
 #define SM_MAX_SIMPLE_CLASS_LENGTH   (DB_MAX_SIMPLE_CLASS_LENGTH)
 #define SM_MAX_FULL_CLASS_LENGTH     (DB_MAX_FULL_CLASS_LENGTH)
 
-#define SERIAL_ATTR_FULL_NAME       "full_name"
 #define SERIAL_ATTR_NAME            "name"
 #define SERIAL_ATTR_OWNER           "owner"
 #define SERIAL_ATTR_CURRENT_VAL     "current_val"

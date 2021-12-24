@@ -4180,7 +4180,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	    }
 
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, sm_ch_name ((MOBJ) class_), att->header.name);
-	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
+	  serial_mop = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class_mop, auto_increment_name, NULL);
 
 	  /* If this att is inherited from a super class, serial_mop can be NULL. In this case, att->auto_increment
 	   * will be set later. */

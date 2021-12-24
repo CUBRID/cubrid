@@ -1584,7 +1584,7 @@ ws_release_instance (MOP mop)
 void
 ws_release_user_instance (MOP mop)
 {
-  /* to keep instances of system classes, for instance, _db_serial's. This prevents from dangling references to serial
+  /* to keep instances of system classes, for instance, db_serial's. This prevents from dangling references to serial
    * objects during replication. The typical scenario is to update serials, cull mops which clears the mop up, and then
    * truncate the table which leads updating the serial mop to reset its values. */
   if (db_is_system_class (mop->class_mop) > 0)

@@ -50,10 +50,9 @@ static int rv;
 static int rc;
 #endif /* !SERVER_MODE */
 
-/* attribute of _db_serial class */
+/* attribute of db_serial class */
 typedef enum
 {
-  SERIAL_ATTR_FULL_NAME_INDEX,
   SERIAL_ATTR_NAME_INDEX,
   SERIAL_ATTR_OWNER_INDEX,
   SERIAL_ATTR_CURRENT_VAL_INDEX,
@@ -471,7 +470,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 	  return error;
 	}
 
-      /* cur_val of _db_serial is updated to last_cached_val of entry */
+      /* cur_val of db_serial is updated to last_cached_val of entry */
       error = serial_update_cur_val_of_serial (thread_p, entry, num_alloc);
       if (error != NO_ERROR)
 	{
@@ -499,7 +498,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 
 /*
  * serial_update_cur_val_of_serial () -
- *                cur_val of _db_serial is updated to last_cached_val of entry
+ *                cur_val of db_serial is updated to last_cached_val of entry
  *   return: NO_ERROR, or ER_status
  *   entry(in)    :
  */
@@ -558,7 +557,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
 
   attr_info_p = &attr_info;
 
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_FULL_NAME_INDEX, attrid) != NO_ERROR)
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX, attrid) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -701,7 +700,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       cached_num = db_get_int (val);
     }
 
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_FULL_NAME_INDEX, attrid) != NO_ERROR)
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX, attrid) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -1262,11 +1261,7 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
 	  goto exit_on_error;
 	}
 
-      if (strcmp (attr_name_p, SERIAL_ATTR_FULL_NAME) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_FULL_NAME_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_NAME) == 0)
+      if (strcmp (attr_name_p, SERIAL_ATTR_NAME) == 0)
 	{
 	  serial_Attrs_id[SERIAL_ATTR_NAME_INDEX] = i;
 	}

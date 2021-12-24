@@ -2817,7 +2817,7 @@ create_stmt
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); }	/* 2 */
 	  SERIAL 					/* 3 */
 		{ pop_msg(); }				/* 4 */
-	  user_specified_name_without_dot  		/* 5 */
+	  object_name					/* 5 */
 	  opt_serial_option_list			/* 6 */
 	  opt_comment_spec				/* 7 */
 		{{
@@ -3441,7 +3441,7 @@ alter_stmt
 		DBG_PRINT}}
 	| ALTER						/* 1 */
 	  SERIAL					/* 2 */
-	  user_specified_name				/* 3 */
+	  object_name					/* 3 */
 	  opt_serial_option_list			/* 4 */
 	  opt_comment_spec				/* 5 */
 		{{
@@ -4201,7 +4201,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP SERIAL opt_if_exists user_specified_name
+	| DROP SERIAL opt_if_exists object_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERIAL);

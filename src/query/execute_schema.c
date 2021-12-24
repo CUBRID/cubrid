@@ -4784,7 +4784,7 @@ do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name,
 
   SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, attr_name);
 
-  *auto_increment_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_name);
+  *auto_increment_obj = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class, serial_name, NULL);
   if (*auto_increment_obj == NULL)
     {
       error = ER_QPROC_SERIAL_NOT_FOUND;
@@ -10536,7 +10536,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, ctemplate->name, name);
-	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
+	  serial_mop = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class_mop, auto_increment_name, NULL);
 	  found_att->auto_increment = serial_mop;
 	}
 
@@ -10613,7 +10613,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, ctemplate->name, old_name);
-	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
+	  serial_mop = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class_mop, auto_increment_name, NULL);
 	  found_att->auto_increment = serial_mop;
 	}
 
@@ -10627,7 +10627,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	}
     }
 
-  /* attribute type changed, and auto_increment is set to use(unchanged), update max_val in _db_serial according to new
+  /* attribute type changed, and auto_increment is set to use(unchanged), update max_val in db_serial according to new
    * type */
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED)
       && is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_DIFF))

@@ -337,4 +337,6 @@ SM_DOMAIN *sm_domain_alloc ();
 void sm_domain_free (SM_DOMAIN * ptr);
 SM_DOMAIN *sm_domain_copy (SM_DOMAIN * ptr);
 
+extern int sm_serial_midxkey_key_generate (DB_VALUE * value, const char *name, const char *user_name);
+
 #endif /* _SCHEMA_MANAGER_H_ */

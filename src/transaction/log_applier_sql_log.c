@@ -362,7 +362,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
   int result;
 
-  if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "_db_serial") != 0)
+  if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial") != 0)
     {
       /* ordinary tables */
       string_buffer update_strbuf;
@@ -387,7 +387,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
     }
   else
     {
-      /* _db_serial */
+      /* db_serial */
       DB_VALUE *cur_value = sl_find_att_value ("current_val", inst_tp->assignments, inst_tp->nassigns);
       DB_VALUE *incr_value = sl_find_att_value ("increment_val", inst_tp->assignments, inst_tp->nassigns);
 
@@ -406,7 +406,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 
       string_buffer serial_name_strbuf;
 
-      sl_print_att_value (serial_name_strbuf, SERIAL_ATTR_FULL_NAME, inst_tp->assignments, inst_tp->nassigns);
+      sl_print_att_value (serial_name_strbuf, SERIAL_ATTR_NAME, inst_tp->assignments, inst_tp->nassigns);
       char *serial_name = trim_single_quote ((char *) serial_name_strbuf.get_buffer (), serial_name_strbuf.len ());
 
       string_buffer alter_strbuf;

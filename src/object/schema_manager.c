@@ -3104,7 +3104,7 @@ sm_is_system_class_by_name (const char *name)
     CT_PARTITION_NAME,		// "_db_partition"
     CT_STORED_PROC_NAME,	// "_db_stored_procedure"
     CT_STORED_PROC_ARGS_NAME,	// "_db_stored_procedure_args"
-    CT_SERIAL_NAME,		// "_db_serial"
+    CT_SERIAL_NAME,		// "db_serial"
     CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
     CT_COLLATION_NAME,		// "_db_collation"
     CT_CHARSET_NAME,		// "_db_charset"
@@ -16869,4 +16869,89 @@ sm_domain_copy (SM_DOMAIN * ptr)
     }
 
   return new_ptr;
+}
+
+int
+sm_serial_midxkey_key_generate (DB_VALUE * value, const char *name, const char *owner_name)
+{
+  DB_VALUE name_val;
+  TP_DOMAIN *name_domian = NULL;
+
+  DB_OBJECT *owner_obj = NULL;
+  OID *owner_obj_id = NULL;
+  DB_VALUE owner_obj_id_val;
+  TP_DOMAIN *owner_obj_id_domian = NULL;
+
+  DB_MIDXKEY midxkey;
+  OR_BUF buf;
+  char *key_ptr;
+  char *nullmap_ptr;
+
+  int error = NO_ERROR;
+
+  db_make_null (&name_val);
+  db_make_null (&owner_obj_id_val);
+
+  if (name == NULL || name[0] == '\0')
+    {
+      assert (false);
+      return error;
+    }
+
+  /* serial name */
+  error = db_make_varchar (&name_val, DB_MAX_IDENTIFIER_LENGTH, name, strlen (name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  if (error < NO_ERROR)
+    {
+      assert (false);
+    }
+
+  /* serial name domain */
+  name_domian = tp_domain_resolve_default (db_value_domain_type (&name_val));
+
+  /* serial owner object id */
+  if (owner_name == NULL || owner_name[0] == '\0')
+    {
+      owner_obj = db_get_user ();
+    }
+  else
+    {
+      owner_obj = db_find_user (owner_name);
+    }
+
+  if (owner_obj == NULL)
+    {
+      assert (false);
+    }
+
+  owner_obj_id = db_identifier (owner_obj);
+  db_make_oid (&owner_obj_id_val, owner_obj_id);
+
+  /* serial owner object id domain */
+  owner_obj_id_domian = tp_domain_resolve_default (db_value_domain_type (&owner_obj_id_val));
+
+  /* midxkey */
+  midxkey.ncolumns = 2;
+  midxkey.buf = (char *) malloc (DB_MAX_IDENTIFIER_LENGTH + DB_MAX_IDENTIFIER_LENGTH);
+  or_init (&buf, midxkey.buf, -1);
+  nullmap_ptr = midxkey.buf;
+  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, midxkey.ncolumns));
+
+  name_domian->type->index_writeval (&buf, &name_val);
+  OR_ENABLE_BOUND_BIT (nullmap_ptr, 0);
+
+  owner_obj_id_domian->type->index_writeval (&buf, &owner_obj_id_val);
+  OR_ENABLE_BOUND_BIT (nullmap_ptr, 1);
+
+  midxkey.size = CAST_BUFLEN (buf.ptr - buf.buffer);
+  midxkey.domain = NULL;
+
+  error = db_make_midxkey (value, &midxkey);
+  if (error < NO_ERROR)
+    {
+      assert (false);
+    }
+
+  (*value).need_clear = true;
+
+  return error;
 }

@@ -60,7 +60,9 @@ extern int do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP s
 
 
 extern MOP do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class, const char *orig_serial_name);
+extern MOP do_get_serial_obj_id_with_owner (DB_IDENTIFIER * serial_obj_id, MOP serial_class, const char *serial_name, const char *serial_owner_name);
 extern const char *do_get_serial_name_from_db_serial (const char *name);
+extern const char *do_get_owner_name_from_db_serial (const char *name);
 extern int do_get_serial_cached_num (int *cached_num, MOP serial_obj);
 
 extern int do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement);

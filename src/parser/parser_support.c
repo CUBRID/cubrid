@@ -5547,7 +5547,7 @@ pt_make_collation_expr_node (PARSER_CONTEXT * parser)
  *   parser(in): Parser context
  *
  *    IF( (SELECT count(*)
- *	      FROM _db_serial S
+ *	      FROM db_serial S
  *	      WHERE S.att_name = A.attr_name AND
  *		    S.class_name =  C.class_name
  *	    ) >= 1 ,
@@ -5575,7 +5575,7 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
       return NULL;
     }
 
-  from_item = pt_add_table_name_to_from_list (parser, query, "_db_serial", "S", DB_AUTH_NONE);
+  from_item = pt_add_table_name_to_from_list (parser, query, "db_serial", "S", DB_AUTH_NONE);
 
   /* S.att_name = A.attr_name */
   where_item1 = pt_make_pred_with_identifiers (parser, PT_EQ, "S.att_name", "A.attr_name");
