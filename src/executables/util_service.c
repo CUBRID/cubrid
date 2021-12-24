@@ -1674,7 +1674,6 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		{
 		  break;
 		}
-
 	      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_START, token);
 
 #if !defined(WINDOWS)
