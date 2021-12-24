@@ -665,6 +665,7 @@ extern "C"
   extern PT_NODE *pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * user);
   extern const char *pt_get_user_name (const char *name);
   extern const char *pt_get_name_without_current_user_name (const char *name);
+  extern const char *pt_get_name_after_dot (const char *name);
 #ifdef __cplusplus
 }
 #endif

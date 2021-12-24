@@ -782,7 +782,9 @@ enum pt_custom_print
 
   PT_PRINT_USER = (0x1 << 20),
 
-  PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21)
+  PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21),
+
+  PT_PRINT_USER_SPECIFIED_NAME = (0x1 << 22)
 };
 
 /* all statement node types should be assigned their API statement enumeration */

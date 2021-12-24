@@ -4996,7 +4996,7 @@ mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
 	       */
 	      if (search_node->info.name.original != NULL && search_node->info.name.resolved != NULL
 		  && (search_node->etc == (void *) PT_IDX_HINT_USE || search_node->etc == (void *) PT_IDX_HINT_FORCE)
-		  && !pt_dot_compare (node->info.name.resolved, search_node->info.name.resolved, CASE_INSENSITIVE))
+		  && !pt_qualifier_compare (node->info.name.resolved, search_node->info.name.resolved))
 		{
 		  /* class_name.idx_name and class_name.none found in USE INDEX and/or USING INDEX clauses */
 		  PT_ERRORmf2 (parser, using_index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INDEX_HINT_CONFLICT,

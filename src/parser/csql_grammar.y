@@ -4962,11 +4962,11 @@ only_all_class_spec
  */
 
 /*
- * Since the owner_name and object_name are separated by a dot (.) in the object name,
- * do not include a dot (.) in the object name when creating an object.
- * The use of identifier_without_dot instead of identifier is to prevent users from using dot (.) in object names.
- * In general, dot (.) is not allowed for identifiers, but it can be used through exception syntax (" ", [ ], ` `),
- * so we have to check whether dot (.) is included one more time through identifier_without_dot.
+ * Since the owner_name and object_name are separated by a dot(.) in the object name,
+ * do not include a dot(.) in the object name when creating an object.
+ * The use of identifier_without_dot instead of identifier is to prevent users from using dot(.) in object names.
+ * In general, dot(.) is not allowed for identifiers, but it can be used through exception syntax (" ", [ ], ` `),
+ * so we have to check whether dot(.) is included one more time through identifier_without_dot.
  * 
  * Used to handle common access of <owner_name>.<object_name> even if the object type is not class/vclass.
  * The name class_name was not appropriate when used as a common object name, so we changed it to user_specified_name.
@@ -5013,8 +5013,8 @@ user_specified_name_without_dot
 /*
  * It is class_name before change.
  *
- * When it is not sql that creates an object, dot (.) is sometimes included in identifier while rewriting sql.
- * This is because it contains a dot (.) while saving <owner_name>.<object_name> in info.name.original.
+ * When it is not sql that creates an object, dot(.) is sometimes included in identifier while rewriting sql.
+ * This is because it contains a dot(.) while saving <owner_name>.<object_name> in info.name.original.
  * In this case, if identifier_without_dot is used, an error occurs.
  * 
  * So, in the case of sql that does not create an object, it is necessary to allow dot(.) to be used
@@ -7786,7 +7786,7 @@ path_expression_list
 	;
 
 delete_name
-	: identifier
+	: user_specified_name
 		{{
 
 			PT_NODE *node = $1;
@@ -7795,7 +7795,7 @@ delete_name
 			$$ = node;
 
 		DBG_PRINT}}
-	| identifier DOT '*'
+	| user_specified_name DOT '*'
 		{{
 
 			PT_NODE *node = $1;
@@ -21569,11 +21569,11 @@ identifier_without_dot
 
 			    const char *name = p->info.name.original;
 
-			    /* Check if it contains DOT(.) */
+			    /* Check if it contains dot(.) */
 			    if (name && strchr (name, '.'))
 			      {
 				PT_ERRORf (this_parser, p,
-					   "Identifier name %s not allowed. It cannot contain DOT(.).",
+					   "Identifier name %s not allowed. It cannot contain dot(.).",
 					   name);
 
 				p = NULL;

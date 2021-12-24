@@ -6300,6 +6300,7 @@ static void
 get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char **source, PT_NODE * statement)
 {
   PT_NODE *str;
+  unsigned int save_custom;
 
   *type = TR_ACT_NULL;
   *source = NULL;
@@ -6330,7 +6331,13 @@ get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char
 	{
 	  /* complex expression */
 	  *type = TR_ACT_EXPRESSION;
+
+	  save_custom = parser->custom_print;
+	  parser->custom_print |= PT_PRINT_USER_SPECIFIED_NAME;
+
 	  *source = parser_print_tree_with_quotes (parser, statement);
+
+	  parser->custom_print = save_custom;
 	}
     }
 }

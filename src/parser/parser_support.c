@@ -10024,3 +10024,19 @@ pt_get_name_without_current_user_name (const char *name)
 
   return object_name;
 }
+
+/*
+ * Get the name after dot(.).
+ */
+const char *
+pt_get_name_after_dot (const char *name)
+{
+  if (name != NULL && name[0] != '\0')
+    {
+      const char *dot = strchr (name, '.');
+
+      return dot ? (dot + 1) : name;
+    }
+
+  return name;
+}

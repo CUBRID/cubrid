@@ -8402,10 +8402,10 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  q = pt_append_nulstring (parser, q, "delete ");
+  q = pt_append_nulstring (parser, q, "delete");
   if (p->info.delete_.hint != PT_HINT_NONE)
     {
-      q = pt_append_nulstring (parser, q, "/*+");
+      q = pt_append_nulstring (parser, q, " /*+");
       if (p->info.delete_.hint & PT_HINT_LK_TIMEOUT && p->info.delete_.waitsecs_hint)
 	{
 	  q = pt_append_nulstring (parser, q, " LOCK_TIMEOUT(");
@@ -12966,7 +12966,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
   unsigned int save_custom = parser->custom_print;
 
-  const char *dot = NULL;
+  char *dot = NULL;
   const char *qualifier_name = NULL;
 
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
@@ -13094,15 +13094,33 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
       /* here we print whatever the length */
       if (p->info.name.original)
 	{
-	  /*
-	   * e.g. select 1 from dba.t1;
-	   *                                             p->info.name.original  : dba.t1
-	   *                                             p->info.name.resolved  : NULL
-	   *      pt_get_name_without_current_user_name (p->info.name.original) : t1
-	   * 
-	   */
-	  q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.original));
-	  // q = pt_append_name (parser, q, p->info.name.original);
+	  if (parser->custom_print & PT_PRINT_USER_SPECIFIED_NAME)
+	    {
+	      dot = (char *) strchr (p->info.name.original, '.');
+	      if (dot)
+		{
+		  dot[0] = '\0';
+		  q = pt_append_name (parser, q, p->info.name.original);
+		  dot[0] = '.';
+		  q = pt_append_nulstring (parser, q, ".");
+		  q = pt_append_name (parser, q, (dot + 1));
+		}
+	      else
+		{
+		  q = pt_append_name (parser, q, p->info.name.original);
+		}
+	    }
+	  else
+	    {
+	      /*
+	       * e.g. select 1 from dba.t1;
+	       *                                             p->info.name.original  : dba.t1
+	       *                                             p->info.name.resolved  : NULL
+	       *      pt_get_name_without_current_user_name (p->info.name.original) : t1
+	       * 
+	       */
+	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.original));
+	    }
 
 	  if (p->info.name.meta_class == PT_INDEX_NAME)
 	    {
