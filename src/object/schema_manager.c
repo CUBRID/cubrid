@@ -3108,6 +3108,7 @@ sm_is_system_class_by_name (const char *name)
     CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
     CT_COLLATION_NAME,		// "_db_collation"
     CT_CHARSET_NAME,		// "_db_charset"
+    CT_DB_SERVER_NAME,		// "_db_server"
 
     CT_TRIGGER_NAME,		// "db_trigger"
 
@@ -3136,6 +3137,7 @@ sm_is_system_class_by_name (const char *name)
     CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
     CTV_DB_COLLATION_NAME,	// "db_collation"
     CTV_DB_CHARSET_NAME,	// "db_charset"
+    CTV_DB_SERVER_NAME,		// "db_server"
 
     NULL
   };
