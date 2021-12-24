@@ -1167,7 +1167,8 @@ pt_is_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, i
        || tree->info.function.function_type == PT_CUME_DIST
        || tree->info.function.function_type == PT_PERCENT_RANK
        || tree->info.function.function_type == PT_PERCENTILE_CONT
-       || tree->info.function.function_type == PT_PERCENTILE_DISC || pt_is_json_function (parser, tree)))
+       || tree->info.function.function_type == PT_PERCENTILE_DISC
+       || tree->info.function.function_type == F_SEQUENCE || pt_is_json_function (parser, tree)))
     {
       *has_group_concat = true;
     }
