@@ -126,6 +126,7 @@ static const char *prohibited_classes[] = {
   CT_COLLATION_NAME,
   CT_CHARSET_NAME,
   CT_DUAL_NAME,
+  CT_DB_SERVER_NAME,
   /* catalog vclasses */
   CTV_CLASS_NAME,
   CTV_SUPER_CLASS_NAME,
@@ -146,6 +147,7 @@ static const char *prohibited_classes[] = {
   CTV_SERIAL_NAME,
   CTV_DB_COLLATION_NAME,
   CTV_DB_CHARSET_NAME,
+  CTV_DB_SERVER_NAME,
   NULL
 };
 
@@ -595,7 +597,8 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 #endif /* CUBRID_DEBUG */
   for (i = 0; i < class_table->num; i++)
     {
-      if (WS_IS_DELETED (class_table->mops[i]) || class_table->mops[i] == sm_Root_class_mop)
+      if (WS_IS_DELETED (class_table->mops[i]) || class_table->mops[i] == sm_Root_class_mop
+	  || db_is_vclass (class_table->mops[i]))
 	{
 	  continue;
 	}

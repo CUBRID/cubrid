@@ -7425,7 +7425,8 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	  spec = node->info.query.q.select.from;
 	  while (spec)
 	    {
-	      if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
+	      if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY
+		  || spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 		{
 		  (void) mq_copypush_sargable_terms (parser, node, spec);
 		}

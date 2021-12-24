@@ -769,3 +769,155 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 	}			/* while (hint_p) */
     }				/* for (i = ... ) */
 }
+
+
+/*
+ * pt_check_ipv4 () - Checks the validity of the ip address
+ *   p(in): IP addr
+ *   return: 
+ */
+bool
+pt_check_ipv4 (char *p)
+{
+  // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
+  // 127.0.0.1    
+  char *num;
+  int dot_cnt = 0;
+
+  num = p;
+  if (*num < '0' || *num > '9')
+    {
+      return false;
+    }
+
+  for (++p; *p; p++)
+    {
+      if (*p >= '0' && *p <= '9')
+	{
+	  continue;
+	}
+      else if ((*p != '.') || (p[1] == '.'))
+	{
+	  return false;
+	}
+
+      dot_cnt++;
+      switch ((int) (p - num))
+	{
+	case 1:
+	  break;
+	case 2:
+	case 3:
+	  if (*num == '0')
+	    {
+	      return false;
+	    }
+	  else if (255 < atoi (num))
+	    {
+	      return false;
+	    }
+	  break;
+	default:
+	  return false;
+	}
+
+      num = p + 1;
+      if (*num < '0' || *num > '9')
+	{
+	  return false;
+	}
+    }
+
+  if (dot_cnt != 3)
+    return false;
+
+  switch ((int) (p - num))
+    {
+    case 1:
+      break;
+    case 2:
+    case 3:
+      if (*num == '0')
+	{
+	  return false;
+	}
+      else if (255 < atoi (num))
+	{
+	  return false;
+	}
+      break;
+    default:
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * pt_check_hostname () - Checks the validity of the hostname
+ *   p(in): hostname
+ *   return: 
+ */
+bool
+pt_check_hostname (char *p)
+{
+  // case RFC 1123)
+  //   ^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+  // case RFC 952) Hostname segment cannot start with a number
+  //   ^(([a-zA-Z]|[a-zA-Z][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z]|[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9])$
+  // The length of the part separated by '.' is from 1 to 63 characters.
+  // The total length of the hostname must not exceed 255 characters.
+  bool isdot = false;
+  char *s = p;
+  char *t = p;
+
+  if (char_isalnum (*p) == 0)
+    {
+      return false;
+    }
+
+  for (p++; *p; p++)
+    {
+      if (*p == '.')
+	{
+	  if (char_isalnum (p[-1]) == 0)
+	    {
+	      return false;
+	    }
+	  else if (63 < (int) (p - t))
+	    {
+	      return false;
+	    }
+	  isdot = true;
+	}
+      else if (isdot)
+	{
+	  if (char_isalnum (*p) == 0)
+	    {
+	      return false;
+	    }
+	  t = p;
+	  isdot = false;
+	}
+      else if ((char_isalnum (*p) == 0) && (*p != '-'))
+	{
+	  return false;
+	}
+    }
+
+  if (isdot || (p[-1] == '-'))
+    {
+      return false;
+    }
+  else if (63 < (int) (p - t))
+    {
+      return false;
+    }
+
+  if (255 < (int) (p - s))
+    {
+      return false;
+    }
+
+  return true;
+}

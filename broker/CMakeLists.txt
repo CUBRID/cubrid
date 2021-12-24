@@ -236,6 +236,7 @@ else(UNIX)
     ${CUB_CAS_SOURCES}
     PROPERTIES LANGUAGE CXX
   )
+  list(APPEND CUB_CAS_SOURCES ${BASE_DIR}/chartype.c)
   list(APPEND CUB_CAS_SOURCES ${BASE_DIR}/porting.c)
   list(APPEND CUB_CAS_SOURCES ${BROKER_DIR}/broker_list.c)
   list(APPEND CUB_CAS_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
@@ -261,6 +262,68 @@ else(UNIX)
   target_link_libraries(cub_cas LINK_PRIVATE ws2_32 dbghelp ${LIBOPENSSL_LIBS})
 endif(UNIX)
 
+
+set(CUB_CAS_CGW_SOURCES
+  ${BROKER_DIR}/cas.c
+  ${BROKER_DIR}/cas_network.c
+  ${BROKER_DIR}/cas_net_buf.c
+  ${BROKER_DIR}/cas_function.c
+  ${BROKER_DIR}/cas_execute.c
+  ${BROKER_DIR}/cas_handle.c
+  ${BROKER_DIR}/broker_util.c
+  ${BROKER_DIR}/cas_str_like.c
+  ${BROKER_DIR}/cas_xa.c
+  ${BROKER_DIR}/cas_schema_info.c
+  ${BROKER_DIR}/cas_log.c
+  ${BROKER_DIR}/broker_shm.c
+  ${BROKER_DIR}/cas_sql_log2.c
+  ${BROKER_DIR}/broker_filename.c
+  ${BROKER_DIR}/cas_error.c
+  ${BROKER_DIR}/broker_acl.c
+  ${BROKER_DIR}/cas_meta.c
+  ${BROKER_DIR}/cas_ssl.c
+  ${BROKER_DIR}/cas_cgw.c
+  ${BASE_DIR}/ddl_log.c
+  )
+
+if(UNIX)
+  list(APPEND CUB_CAS_CGW_SOURCES ${BROKER_DIR}/broker_error.c)
+  list(APPEND CUB_CAS_CGW_SOURCES ${BROKER_DIR}/broker_process_size.c)
+  list(APPEND CUB_CAS_CGW_SOURCES ${BROKER_DIR}/broker_recv_fd.c)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${CUB_CAS_CGW_SOURCES}
+    PROPERTIES LANGUAGE CXX
+  )
+else(UNIX)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${CUB_CAS_CGW_SOURCES}
+    PROPERTIES LANGUAGE CXX
+  )
+  list(APPEND CUB_CAS_CGW_SOURCES ${BASE_DIR}/chartype.c)
+  list(APPEND CUB_CAS_CGW_SOURCES ${BASE_DIR}/porting.c)
+  list(APPEND CUB_CAS_CGW_SOURCES ${BROKER_DIR}/broker_list.c)
+  list(APPEND CUB_CAS_CGW_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
+  list(APPEND CUB_CAS_CGW_SOURCES ${BROKER_DIR}/cas_util.c)
+  
+  SET_SOURCE_FILES_PROPERTIES(
+    ${BASE_DIR}/porting.c
+    ${BROKER_DIR}/broker_list.c
+    ${BROKER_DIR}/broker_wsa_init.c
+    ${BROKER_DIR}/cas_util.c
+    PROPERTIES LANGUAGE CXX
+  )
+  list(APPEND CUB_CAS_CGW_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+endif(UNIX)
+
+add_executable(cub_cas_cgw WIN32 ${CUB_CAS_CGW_SOURCES})
+target_compile_definitions(cub_cas_cgw PRIVATE ${BROKER_DEFS} CAS_FOR_CGW CAS_CUBRID)
+target_include_directories(cub_cas_cgw PRIVATE ${EP_INCLUDES})
+target_link_libraries(cub_cas_cgw LINK_PRIVATE cubridcs)
+if(UNIX)
+  target_link_libraries(cub_cas_cgw LINK_PRIVATE rt ${LIBUNIXODBC_LIBS})
+else(UNIX)
+  target_link_libraries(cub_cas_cgw LINK_PRIVATE ws2_32 dbghelp ${LIBOPENSSL_LIBS} odbc32 odbccp32)
+endif(UNIX)
 
 set(CUB_PROXY_SOURCES
   ${BROKER_DIR}/shard_proxy.c
@@ -486,6 +549,7 @@ install(TARGETS
   broker_changer
   cubrid_broker
   cub_cas
+  cub_cas_cgw
   cub_proxy
   broker_log_converter
   broker_log_runner
