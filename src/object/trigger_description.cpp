@@ -98,7 +98,6 @@ int trigger_description::init (struct db_object *trobj)
 
   /* copy these */
   this->name = object_print::copy_string (trigger->name);
-  this->simple_name = object_print::copy_string (trigger->simple_name);
   this->attribute = object_print::copy_string (trigger->attribute);
   this->comment = object_print::copy_string (trigger->comment);
 

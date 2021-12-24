@@ -3132,7 +3132,6 @@ sm_is_system_class_by_name (const char *name)
     CTV_AUTH_NAME,		// "db_auth"
     CTV_TRIGGER_NAME,		// "db_trig"
     CTV_PARTITION_NAME,		// "db_partition"
-    CTV_SERIAL_NAME,            // "db_serial"
     CTV_STORED_PROC_NAME,	// "db_stored_procedure"
     CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
     CTV_DB_COLLATION_NAME,	// "db_collation"

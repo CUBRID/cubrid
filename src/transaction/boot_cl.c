@@ -5184,6 +5184,7 @@ boot_define_view_trigger (void)
   MOP class_mop;
   COLUMN columns[] = {
     {"trigger_name", "varchar(255)"},
+    {"trigger_owner_name", "varchar(255)"},
     {"target_class_name", "varchar(255)"},
     {"target_attr_name", "varchar(255)"},
     {"target_attr_type", "varchar(8)"},
@@ -5214,7 +5215,8 @@ boot_define_view_trigger (void)
     }
 
   sprintf (stmt,
-	   "SELECT CAST([t].[name] AS VARCHAR(255)), [c].[class_name], CAST([t].[target_attribute] AS VARCHAR(255)),"
+	   "SELECT CAST([t].[name] AS VARCHAR(255)), CAST([t].[owner].[name] AS VARCHAR(255)),"
+	   " [c].[class_name], CAST([t].[target_attribute] AS VARCHAR(255)),"
 	   " CASE [t].[target_class_attribute] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
 	   " [t].[action_type], [t].[action_time], [t].[comment]"
 	   " FROM [%s] [t] LEFT OUTER JOIN [%s] [c] ON [t].[target_class] = [c].[class_of]"
