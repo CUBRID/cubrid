@@ -12298,6 +12298,7 @@ mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select, int
   parent->info.query.correlation_level = select->info.query.correlation_level;
   parent->info.query.scan_op_type = select->info.query.scan_op_type;
   parent->info.query.oids_included = select->info.query.oids_included;
+  parent->type_enum = select->type_enum;
 
   /*
    * we now have the original SELECT (with both order dependent and order
