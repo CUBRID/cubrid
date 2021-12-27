@@ -1424,8 +1424,8 @@ get_server_names (char **name_buffer)
   int offset = 0;
   /* *INDENT-OFF* */
   std::string delimiter = " ";
-  /* *INDENT-ON* */
   std::string result;
+  /* *INDENT-ON* */
   while (fgets (buf, 4096, input) != NULL)
     {
       /* *INDENT-OFF* */
