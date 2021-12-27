@@ -23416,7 +23416,6 @@ identifier
         | ENCRYPT {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
         | ERROR_ {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
         | NESTED {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | NONE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
         | ONLINE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
         | ORDINALITY {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
         | PARALLEL {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
