@@ -292,7 +292,7 @@ static bool is_server_running (const char *type, const char *server_name, int pi
 static int is_broker_running (void);
 static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int sleep_time);
 static UTIL_JAVASP_SERVER_STATUS_E is_javasp_running (const char *server_name);
-static void get_server_names (char *out_buffer);
+static void get_server_names (char **name_buffer);
 
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
@@ -1404,16 +1404,15 @@ process_service (int command_type, bool process_window_service)
  *      out_buffer (out):
  */
 static void
-get_server_names (char *out_buffer)
+get_server_names (char **name_buffer)
 {
   FILE *input;
   char buf[4096];
   char cmd[PATH_MAX];
 
-  if (out_buffer == NULL)
-    {
-      return;
-    }
+  assert (name_buffer != NULL);
+
+  *name_buffer = NULL;
 
   make_exec_abspath (cmd, PATH_MAX, (char *) UTIL_COMMDB_NAME " " COMMDB_ALL_STATUS);
   input = popen (cmd, "r");
@@ -1426,26 +1425,41 @@ get_server_names (char *out_buffer)
   /* *INDENT-OFF* */
   std::string delimiter = " ";
   /* *INDENT-ON* */
+  std::string result;
   while (fgets (buf, 4096, input) != NULL)
     {
       /* *INDENT-OFF* */
       std::string s (buf);
 
-      /* ignore HA-Server */
-      if (s.find (CHECK_HA_SERVER) != std::string::npos)
+      /*
+      * ignore HA-applylogdb and HA-copylogdb
+      * check Server and HA-Server
+      */
+      std::string::size_type server_pos = s.find (CHECK_SERVER);
+      if (server_pos == std::string::npos)
       {
-	    continue;
+        continue;
       }
 
       /* find Server */
-      size_t start = s.find (delimiter, 1) + 1;
-      size_t end = s.find (delimiter, start);
+      std::string::size_type start = s.find (delimiter, 1) + 1;
+      std::string::size_type end = s.find (delimiter, start);
 
       std::string server_name = s.substr (start, end - start);
 
-      snprintf (out_buffer + offset, 4096, "%s,", server_name.c_str ());
-      offset += server_name.size () + 1;
+      result.append (server_name);
+      result.append (",");
       /* *INDENT-ON* */
+    }
+
+  /* allocate buffer, it should be freed */
+  if (!result.empty ())
+    {
+      *name_buffer = (char *) malloc (result.size ());
+      if (*name_buffer)
+	{
+	  strcpy (*name_buffer, result.c_str ());
+	}
     }
 
   pclose (input);
@@ -2561,23 +2575,26 @@ process_javasp_status (const char *db_name)
 static int
 process_javasp (int command_type, int argc, const char **argv, bool show_usage, bool process_window_service)
 {
-  char buf[4096] = { 0 };
+  char *buf = NULL;
   char *list = NULL, *save = NULL;
   const char *delim = " ,:";
   int status = NO_ERROR;
   char *db_name = NULL;
   int master_port = prm_get_master_port_id ();
 
+
   if (argc == 0)		/* cubrid service command */
     {
       /* get all server names from master request */
       if (css_does_master_exist (master_port))
 	{
-	  get_server_names (buf);
+	  get_server_names (&buf);
 	}
     }
   else				/* cubrid javasp command */
     {
+      buf = (char *) malloc (4096);
+      memset (buf, 0, 4096);
       strncpy (buf, argv[0], sizeof (buf) - 1);
     }
 
@@ -2626,6 +2643,10 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
     }
 
 exit:
+  if (buf)
+    {
+      free (buf);
+    }
   return status;
 }
 
