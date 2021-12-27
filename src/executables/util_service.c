@@ -2598,7 +2598,7 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
       strncpy (buf, argv[0], sizeof (buf) - 1);
     }
 
-  if (command_type != STATUS && strlen (buf) == 0)
+  if (command_type != STATUS && buf == NULL)
     {
       if (show_usage)
 	{
@@ -2614,7 +2614,7 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_JAVASP_NAME, PRINT_CMD_STATUS);
     }
 
-  for (list = buf;; list = NULL)
+  for (list = buf; buf; list = NULL)
     {
       db_name = strtok_r (list, delim, &save);
       if (db_name == NULL)
