@@ -2576,7 +2576,7 @@ static int
 process_javasp (int command_type, int argc, const char **argv, bool show_usage, bool process_window_service)
 {
   char *buf = NULL;
-  char *list = NULL, *save = NULL;
+  char *save = NULL;
   const char *delim = " ,:";
   int status = NO_ERROR;
   char *db_name = NULL;
@@ -2614,7 +2614,7 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_JAVASP_NAME, PRINT_CMD_STATUS);
     }
 
-  for (list = buf; buf; list = NULL)
+  while (buf)
     {
       db_name = strtok_r (list, delim, &save);
       if (db_name == NULL)
@@ -2647,6 +2647,7 @@ exit:
     {
       free (buf);
     }
+
   return status;
 }
 
