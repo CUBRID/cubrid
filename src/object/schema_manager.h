@@ -132,7 +132,6 @@ extern void sm_mark_system_class_for_catalog (void);
 #endif /* SA_MODE */
 extern int sm_mark_system_class (MOP classop, int on_or_off);
 extern int sm_is_system_class (MOP op);
-extern int sm_is_system_class_by_name (const char *name);
 extern bool sm_is_reuse_oid_class (MOP op);
 extern int sm_check_reuse_oid_class (MOP op);
 extern int sm_is_partitioned_class (MOP op);
@@ -215,7 +214,6 @@ extern SM_CLASS_CONSTRAINT *sm_class_constraints (MOP classop);
 
 /* Locator support functions */
 extern const char *sm_ch_name (const MOBJ clobj);
-extern const char *sm_ch_simple_name (const MOBJ clobj);
 extern HFID *sm_ch_heap (MOBJ clobj);
 extern OID *sm_ch_rep_dir (MOBJ clobj);
 
@@ -223,7 +221,6 @@ extern bool sm_has_indexes (MOBJ class_);
 
 /* Interpreter support functions */
 extern void sm_downcase_name (const char *name, char *buf, int maxlen);
-extern const char *sm_simple_name (const char *name);
 extern MOP sm_find_class (const char *name);
 extern MOP sm_find_class_with_purpose (const char *name, bool for_update);
 extern const char *sm_find_class_name_from_db_class (const char *name);
@@ -337,6 +334,11 @@ SM_DOMAIN *sm_domain_alloc ();
 void sm_domain_free (SM_DOMAIN * ptr);
 SM_DOMAIN *sm_domain_copy (SM_DOMAIN * ptr);
 
+extern const char *sm_ch_simple_name (const MOBJ clobj);
+extern const char *sm_simple_name (const char *name);
+extern int sm_check_system_class_by_name (const char *name);
+extern void sm_user_specified_name (const char *name, const char *owner_name, char *user_specified_name);
 extern int sm_serial_midxkey_key_generate (DB_VALUE * value, const char *name, const char *user_name);
+extern int sm_catcls_midxkey_key_generate (DB_VALUE * value, const char *name, const char *owner_name);
 
 #endif /* _SCHEMA_MANAGER_H_ */

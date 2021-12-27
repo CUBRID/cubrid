@@ -56,7 +56,7 @@ static int
 get_num_requested_class (const char *input_filename, int *num_class)
 {
   FILE *input_file;
-  char buffer[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class full name */
+  char buffer[DB_MAX_FULL_CLASS_LENGTH];
 
   if (input_filename == NULL || num_class == NULL)
     {
@@ -93,7 +93,7 @@ int
 get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_class_list)
 {
   int i;
-  char downcase_class_name[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char downcase_class_name[SM_MAX_FULL_CLASS_LENGTH];
   DB_OBJECT *class_ = NULL;
 
   if (class_names == NULL || num_class <= 0 || class_list == NULL || num_class_list == NULL)

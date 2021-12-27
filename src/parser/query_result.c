@@ -1437,7 +1437,7 @@ pt_find_users_class (PARSER_CONTEXT * parser, PT_NODE * name)
   object = db_find_class (class_name);
   if (object == NULL)
     {
-      if (strchr (class_name, '.') == NULL && db_is_system_class_by_name (class_name) == FALSE)
+      if (strchr (class_name, '.') == NULL && !sm_check_system_class_by_name (class_name))
 	{
 	  current_user_name = db_get_user_name ();
 
@@ -1459,12 +1459,11 @@ pt_find_users_class (PARSER_CONTEXT * parser, PT_NODE * name)
 	}
     }
 
-  if (object == NULL)
+  if (!object)
     {
       PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
 		  name->info.name.original);
     }
-
   name->info.name.db_object = object;
 
   pt_check_user_owns_class (parser, name);

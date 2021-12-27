@@ -1167,7 +1167,7 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 
 	  /* get original class's serial object */
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, class_name, att->header.name);
-	  serial_mop = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class_mop, auto_increment_name, NULL);
+	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name, NULL);
 	  if (serial_mop == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1, auto_increment_name);

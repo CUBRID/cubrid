@@ -4730,7 +4730,6 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
       if (string != NULL && alloced_string == 1)
 	{
 	  db_private_free_and_init (thread_p, string);
-	  classname = NULL;
 	}
 #endif
       if (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, LK_COND_LOCK) != LK_GRANTED)
@@ -5058,7 +5057,6 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
       if (string != NULL && alloced_string == 1)
 	{
 	  db_private_free_and_init (thread_p, string);
-	  classname = NULL;
 	}
 #endif
 
@@ -5632,7 +5630,7 @@ catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p, const char *class_name
   BTID found_btid;
   BTID curr_bitd;
   OID class_oid;
-  char cls_lower[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char cls_lower[DB_MAX_FULL_CLASS_LENGTH] = { 0 };
   LC_FIND_CLASSNAME status;
 
   BTID_SET_NULL (&found_btid);

@@ -2384,7 +2384,7 @@ update_locksets_for_multiple_rename (const char *class_name, int *num_mops, MOP 
 				     char **name_set, bool error_on_misssing_class)
 {
   DB_OBJECT *class_mop = NULL;
-  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char realname[SM_MAX_FULL_CLASS_LENGTH];
   int i = 0;
 
   sm_downcase_name (class_name, realname, SM_MAX_FULL_CLASS_LENGTH);
@@ -3668,7 +3668,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
   PT_NODE *parttemp, *entity_name = NULL;
   PART_CLASS_INFO pci = { NULL, NULL, NULL, NULL };
   PART_CLASS_INFO *newpci, *wpci;
-  char class_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char class_name[DB_MAX_FULL_CLASS_LENGTH];
   DB_VALUE *minval, *parts_val, *fmin_val, partsize;
   int part_cnt = 0, part_add = -1;
   size_t buf_size;
@@ -4784,7 +4784,7 @@ do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name,
 
   SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, attr_name);
 
-  *auto_increment_obj = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class, serial_name, NULL);
+  *auto_increment_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_name, NULL);
   if (*auto_increment_obj == NULL)
     {
       error = ER_QPROC_SERIAL_NOT_FOUND;
@@ -5174,7 +5174,7 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list, DB_CTMPL * tmpl)
 {
   PT_NODE *names;
   int error = NO_ERROR;
-  char subclass_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char subclass_name[DB_MAX_FULL_CLASS_LENGTH];
   SM_CLASS *smclass, *subclass;
   MOP classcata;
   OID *partitions = NULL;
@@ -6515,7 +6515,7 @@ static int
 do_promote_partition_list (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTER_INFO * pinfo)
 {
   int error = NO_ERROR;
-  char subclass_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char subclass_name[DB_MAX_FULL_CLASS_LENGTH];
   SM_CLASS *smclass = NULL, *smsubclass = NULL;
   MOP subclass = NULL;
   PT_NODE *name = NULL;
@@ -6666,7 +6666,7 @@ do_promote_partition_by_name (const char *class_name, const char *part_num, char
   int error = NO_ERROR;
   MOP subclass = NULL;
   SM_CLASS *smsmclass = NULL;
-  char name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char name[DB_MAX_FULL_CLASS_LENGTH];
 
   assert (class_name != NULL && part_num != NULL);
   CHECK_2ARGS_ERROR (class_name, part_num);
@@ -8413,7 +8413,7 @@ create_select_to_insert_into (PARSER_CONTEXT * parser, const char *class_name, P
   PT_NODE *ocs = NULL;
   PT_NODE *nls = NULL;
   DB_QUERY_TYPE *column = NULL;
-  char real_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };	/* attribute name */
+  char real_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };	/* attribute name */
   PT_NODE *name = NULL;
 
   /* TODO The generated nodes have incorrect line and column information. */
@@ -9784,7 +9784,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 		}
 	      else if (!prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
 		{
-		  char query[SM_MAX_FULL_CLASS_LENGTH + SM_MAX_IDENTIFIER_LENGTH * 3 + 36] = { '\0' };
+		  char query[SM_MAX_FULL_CLASS_LENGTH + SM_MAX_IDENTIFIER_LENGTH * 3 + 36] = { 0 };
 		  const char *class_name = NULL;
 		  const char *hard_default =
 		    get_hard_default_for_type (alter->info.alter.alter_clause.attr_mthd.attr_def_list->type_enum);
@@ -10536,7 +10536,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, ctemplate->name, name);
-	  serial_mop = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class_mop, auto_increment_name, NULL);
+	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name, NULL);
 	  found_att->auto_increment = serial_mop;
 	}
 
@@ -10613,7 +10613,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, ctemplate->name, old_name);
-	  serial_mop = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class_mop, auto_increment_name, NULL);
+	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name, NULL);
 	  found_att->auto_increment = serial_mop;
 	}
 
@@ -14058,7 +14058,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
   DB_SESSION *session = NULL;
   DB_QUERY_RESULT *result = NULL;
   const char *class_name = NULL;
-  char query[2 * SM_MAX_FULL_CLASS_LENGTH + 50] = { '\0' };
+  char query[2 * SM_MAX_FULL_CLASS_LENGTH + 50] = { 0 };
   DB_VALUE count;
 
   assert (class_mop != NULL);

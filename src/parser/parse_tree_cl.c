@@ -9591,7 +9591,6 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
   PT_NODE *between, *between_ge_lt;
   PT_NODE *dot_node_ptr = NULL;
 
-
   assert_release (p != p->info.expr.arg1);
   assert_release (p != p->info.expr.arg2);
   assert_release (p != p->info.expr.arg3);

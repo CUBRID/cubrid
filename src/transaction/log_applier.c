@@ -7634,7 +7634,7 @@ la_create_repl_filter (void)
   char filter_file_real_path[PATH_MAX];
   char buffer[LINE_MAX];
   char error_msg[LINE_MAX];
-  char classname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char classname[SM_MAX_FULL_CLASS_LENGTH];
   int classname_len = 0;
   LA_REPL_FILTER *filter;
   FILE *fp;

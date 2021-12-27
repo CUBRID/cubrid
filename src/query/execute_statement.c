@@ -106,6 +106,8 @@
 
 #define PT_NODE_SR_NAME(node)			\
 	((node)->info.serial.serial_name->info.name.original)
+#define PT_NODE_SR_OWNER_NAME(node)			\
+	((node)->info.serial.serial_name->info.name.resolved)
 #define PT_NODE_SR_START_VAL(node)		\
 	((node)->info.serial.start_val)
 #define PT_NODE_SR_INCREMENT_VAL(node)		\
@@ -126,8 +128,6 @@
 	((node)->info.serial.cached_num_val)
 #define PT_NODE_SR_NO_CACHE(node)		\
 	((node)->info.serial.no_cache)
-#define PT_NODE_SR_OWNER_NAME(node)			\
-	((node)->info.serial.serial_name->info.name.resolved)
 
 static void do_set_trace_to_query_flag (QUERY_FLAG * query_flag);
 static void do_send_plan_trace_to_session (PARSER_CONTEXT * parser);
@@ -690,7 +690,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* name */
-  db_make_string (&value, sm_simple_name (serial_name));
+  db_make_string (&value, serial_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -849,7 +849,10 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   int save;
   bool au_disable_flag = false;
 
-  CHECK_3ARGS_ERROR (serial_obj, class_name, att_name);
+  if (!serial_obj || !class_name || !att_name)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
 
   db_make_null (&value);
 
@@ -896,7 +899,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
     }
 
   /* name */
-  db_make_string (&value, sm_simple_name (serial_name));
+  db_make_string (&value, serial_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -944,15 +947,12 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
     }
 
   free_and_init (serial_name);
-  serial_name = NULL;
-
   return NO_ERROR;
 
 update_auto_increment_error:
   if (serial_name)
     {
       free_and_init (serial_name);
-      serial_name = NULL;
     }
 
   if (au_disable_flag == true)
@@ -1206,88 +1206,8 @@ normal_exit:
   return error_code;
 }
 
-/*
- * do_get_serial_obj_id() -
- *   return: serial object
- *   serial_obj_oid(out):
- *   serial_class(in):
- *   serial_name(in):
- *
- * Note:
- */
 MOP
-do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, MOP serial_class, const char *serial_name)
-{
-  MOP serial_obj;
-  char serial_lower_name[MAX_SERIAL_NAME_LENGTH] = { '\0' };
-  const char *other_name = NULL;
-  DB_VALUE value;
-  DB_IDENTIFIER *oid;
-
-  int save = 0;
-
-  CHECK_2ARGS_NULL (serial_class, serial_name);
-
-  OID_SET_NULL (serial_obj_id);
-  db_make_null (&value);
-
-  intl_identifier_lower (serial_name, serial_lower_name);
-  db_make_string (&value, serial_lower_name);
-
-  AU_DISABLE (save);
-
-  serial_obj = db_find_unique (serial_class, SERIAL_ATTR_NAME, &value);
-
-  if (serial_obj == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
-    {
-      other_name = do_get_serial_name_from_db_serial (serial_lower_name);
-
-      if (other_name)
-	{
-	    db_value_clear (&value);
-	    db_make_string (&value, other_name);
-
-	    serial_obj = db_find_unique (serial_class, SERIAL_ATTR_NAME, &value);
-	}
-      else
-	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
-	}
-    }
-
-  AU_ENABLE (save);
-
-  if (serial_obj == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-
-      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
-	{
-	  er_clear ();
-	}
-    }
-  else
-    {
-      oid = ws_identifier (serial_obj);
-
-      if (serial_obj_id != NULL)
-	{
-	  *serial_obj_id = *oid;
-	}
-      else
-	{
-	  serial_obj = NULL;
-	}
-    }
-
-end:
-  pr_clear_value (&value);
-
-  return serial_obj;
-}
-
-MOP
-do_get_serial_obj_id_with_owner (DB_IDENTIFIER * serial_obj_id, MOP serial_class, const char *serial_name, const char *serial_owner_name)
+do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *serial_name, const char *serial_owner_name)
 {
   MOP serial_obj;
   char serial_lower_name[MAX_SERIAL_NAME_LENGTH] = { '\0' };
@@ -1297,7 +1217,7 @@ do_get_serial_obj_id_with_owner (DB_IDENTIFIER * serial_obj_id, MOP serial_class
 
   int save = 0;
 
-  CHECK_2ARGS_NULL (serial_class, serial_name);
+  CHECK_2ARGS_NULL (serial_class_mop, serial_name);
 
   OID_SET_NULL (serial_obj_id);
   db_make_null (&value);
@@ -1307,7 +1227,7 @@ do_get_serial_obj_id_with_owner (DB_IDENTIFIER * serial_obj_id, MOP serial_class
 
   AU_DISABLE (save);
 
-  serial_obj = db_find_unique (serial_class, SERIAL_ATTR_NAME, &value);
+  serial_obj = db_find_unique (serial_class_mop, SERIAL_ATTR_NAME, &value);
 
   if (serial_obj == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
     {
@@ -1318,7 +1238,7 @@ do_get_serial_obj_id_with_owner (DB_IDENTIFIER * serial_obj_id, MOP serial_class
 	    db_value_clear (&value);
 	    sm_serial_midxkey_key_generate (&value, serial_lower_name, owner_name);
 
-	    serial_obj = db_find_unique (serial_class, SERIAL_ATTR_NAME, &value);
+	    serial_obj = db_find_unique (serial_class_mop, SERIAL_ATTR_NAME, &value);
 	}
       else
 	{
@@ -1419,91 +1339,6 @@ do_get_obj_id (DB_IDENTIFIER * obj_id, DB_OBJECT * class_mop, const char *name, 
 }
 
 const char *
-do_get_serial_name_from_db_serial (const char *name)
-{
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-
-  const char *query = NULL;
-  char *query_buf = NULL;
-  int query_len = 0;
-  
-  const char *target_name = NULL;
-  const char *dot = NULL;
- 
-  int error = NO_ERROR;
-
-  /* initialization */
-  query_error.err_lineno = 0;
-  query_error.err_posno = 0;
-
-  dot = strchr (name, '.');
-  if (dot)
-    {
-      name = dot + 1;
-    }
-
-  /* Get private synonyms before public synonyms. */
-  query = "SELECT [name] FROM [%s] WHERE [name] = '%s'";
-  query_len = snprintf (NULL, 0, query, CT_SERIAL_NAME, name);
-  if (query_len < 0)
-    {
-      /* To Do: Exception handling */
-      goto end;
-    }
-
-  query_buf = (char *) db_ws_alloc (query_len + 1);
-  query_len = sprintf (query_buf, query, CT_SERIAL_NAME, name);
-  if (query_len < 0)
-    {
-      /* To Do: Exception handling */
-      goto end;
-    }
-
-  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
-
-  if (error < NO_ERROR)
-    {
-      /* To Do: Exception handling */
-      goto end;
-    }
-
-  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
-    {
-      DB_VALUE value;
-      pr_clear_value (&value);
-
-      if (db_query_get_tuple_value (query_result, 0, &value) == NO_ERROR)
-        {
-          if (!DB_IS_NULL (&value))
-	    {
-	      assert (DB_IS_STRING (&value));
-	      target_name = db_get_string (&value);
-	    }
-	}
-
-      if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-        {
-	  target_name = NULL;
-	}
-    }
-
-end:
-  if (query_buf)
-    {
-      db_ws_free_and_init (query_buf);
-    }
-
-  if (query_result)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return target_name;
-}
-
-const char *
 do_get_owner_name_from_db_serial (const char *name)
 {
   DB_QUERY_RESULT *query_result = NULL;
@@ -1513,7 +1348,7 @@ do_get_owner_name_from_db_serial (const char *name)
   char *query_buf = NULL;
   int query_len = 0;
   
-  const char *target_name = NULL;
+  const char *owner_name = NULL;
   const char *dot = NULL;
  
   int error = NO_ERROR;
@@ -1563,13 +1398,13 @@ do_get_owner_name_from_db_serial (const char *name)
           if (!DB_IS_NULL (&value))
 	    {
 	      assert (DB_IS_STRING (&value));
-	      target_name = db_get_string (&value);
+	      owner_name = db_get_string (&value);
 	    }
 	}
 
       if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
         {
-	  target_name = NULL;
+	  owner_name = NULL;
 	}
     }
 
@@ -1585,7 +1420,7 @@ end:
       query_result = NULL;
     }
 
-  return target_name;
+  return owner_name;
 }
 
 /*
@@ -1631,9 +1466,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_IDENTIFIER serial_obj_id;
   DB_VALUE value, *pval = NULL;
 
-  char *serial_name = NULL;
-  char *serial_lower_name = NULL;
-  char *class_name = NULL;
+  char *name = NULL;
   PT_NODE *start_val_node;
   PT_NODE *inc_val_node;
   PT_NODE *max_val_node;
@@ -1659,7 +1492,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   int save;
   bool au_disable_flag = false;
-  
+  char *p = NULL;
   size_t name_size;
   const char *comment = NULL;
 
@@ -1691,23 +1524,23 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * lookup if serial object name already exists?
    */
 
-  serial_name = (char *) PT_NODE_SR_NAME (statement);
-  name_size = intl_identifier_lower_string_size (serial_name);
-  serial_lower_name = (char *) malloc (name_size + 1);
-  if (serial_lower_name == NULL)
+  name = (char *) PT_NODE_SR_NAME (statement);
+  name_size = intl_identifier_lower_string_size (name);
+  p = (char *) malloc (name_size + 1);
+  if (p == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (name_size + 1));
       goto end;
     }
-  intl_identifier_lower (serial_name, serial_lower_name);
+  intl_identifier_lower (name, p);
 
-  serial_mop = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class, serial_lower_name, NULL);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, p, NULL);
   if (serial_mop != NULL)
     {
       error = ER_QPROC_SERIAL_ALREADY_EXIST;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, serial_lower_name);
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALREADY_EXIST, serial_lower_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALREADY_EXIST, name);
       goto end;
     }
 
@@ -2069,7 +1902,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_DISABLE (save);
   au_disable_flag = true;
 
-  error = do_create_serial_internal (&serial_object, serial_lower_name, &start_val, &inc_val, &min_val, &max_val, cyclic, cached_num,
+  error = do_create_serial_internal (&serial_object, p, &start_val, &inc_val, &min_val, &max_val, cyclic, cached_num,
 				     0, comment, NULL, NULL);
 
   AU_ENABLE (save);
@@ -2080,9 +1913,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  if (serial_lower_name != NULL)
+  if (p != NULL)
     {
-      free_and_init (serial_lower_name);
+      free_and_init (p);
     }
 
   return NO_ERROR;
@@ -2093,9 +1926,9 @@ end:
       AU_ENABLE (save);
     }
 
-  if (serial_lower_name != NULL)
+  if (p != NULL)
     {
-      free_and_init (serial_lower_name);
+      free_and_init (p);
     }
 
   return error;
@@ -2120,7 +1953,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   int error = NO_ERROR;
   PT_NODE *auto_increment_node, *start_val_node, *inc_val_node;
   PT_NODE *dtyp;
-  char *att_name = NULL, *orig_serial_name = NULL;
+  char *att_name = NULL, *serial_name = NULL;
   DB_VALUE start_val, inc_val, max_val, min_val;
   DB_VALUE zero, value, *pval = NULL;
   DB_VALUE cmp_result;
@@ -2166,19 +1999,19 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   sm_downcase_name (att_name, att_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
   att_name = att_downcase_name;
 
-  /* orig_serial_name : <class_name>_ai_<att_name> */
+  /* serial_name : <class_name>_ai_<att_name> */
   name_len = (strlen (class_name) + strlen (att_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
-  orig_serial_name = (char *) malloc (name_len);
-  if (orig_serial_name == NULL)
+  serial_name = (char *) malloc (name_len);
+  if (serial_name == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name_len);
       goto end;
     }
 
-  SET_AUTO_INCREMENT_SERIAL_NAME (orig_serial_name, class_name, att_name);
+  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
 
-  serial_mop = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class, orig_serial_name, NULL);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_name, NULL);
   if (serial_mop != NULL)
     {
       error = ER_AUTO_INCREMENT_SERIAL_ALREADY_EXIST;
@@ -2318,7 +2151,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
 
   /* create auto increment serial object */
   error =
-    do_create_serial_internal (serial_object, orig_serial_name, &start_val, &inc_val, &min_val, &max_val, 0, 0, 0, NULL,
+    do_create_serial_internal (serial_object, serial_name, &start_val, &inc_val, &min_val, &max_val, 0, 0, 0, NULL,
 			       class_name, att_name);
   if (error < 0)
     {
@@ -2334,7 +2167,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   pr_clear_value (&max_val);
   pr_clear_value (&min_val);
 
-  free_and_init (orig_serial_name);
+  free_and_init (serial_name);
 
   return NO_ERROR;
 
@@ -2348,9 +2181,9 @@ end:
   pr_clear_value (&max_val);
   pr_clear_value (&min_val);
 
-  if (orig_serial_name)
+  if (serial_name)
     {
-      free_and_init (orig_serial_name);
+      free_and_init (serial_name);
     }
 
   return error;
@@ -2424,7 +2257,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
 
   /* get serial mop by serial name */
-  serial_mop = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class, serial_name, NULL);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_name, NULL);
   if (serial_mop == NULL)
     {
       error = ER_QPROC_SERIAL_NOT_FOUND;
@@ -2578,8 +2411,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE value, *pval;
 
-  char *serial_name = NULL;
-  char *serial_owner_name = NULL;
+  char *name = NULL;
+  char *owner_name = NULL;
   PT_NODE *start_val_node;
   PT_NODE *inc_val_node;
   PT_NODE *max_val_node;
@@ -2643,15 +2476,15 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * lookup if serial object name already exists?
    */
 
-  serial_name = (char *) PT_NODE_SR_NAME (statement);
-  serial_owner_name = (char *) PT_NODE_SR_OWNER_NAME (statement);
+  name = (char *) PT_NODE_SR_NAME (statement);
+  owner_name = (char *) PT_NODE_SR_OWNER_NAME (statement);
 
-  serial_object = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class, serial_name, serial_owner_name);
+  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class, name, owner_name);
   if (serial_object == NULL)
     {
       error = ER_QPROC_SERIAL_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, serial_name);
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, serial_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, name);
       goto end;
     }
 
@@ -3113,7 +2946,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  error = MSGCAT_RUNTIME_INVALID_AUTO_INCREMENT_ALTER;
 
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, serial_name);
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, name);
 
 	  goto end;
 
@@ -3183,23 +3016,19 @@ end:
 int
 do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  MOP serial_class = NULL;
-  MOP serial_obj = NULL;
+  DB_OBJECT *serial_class = NULL, *serial_object = NULL;
   DB_IDENTIFIER serial_obj_id;
-
   DB_VALUE class_name_val;
-  char *serial_name = NULL;
-  char *serial_owner_name = NULL;
-
+  char *name;
+  char *owner_name;
   int error = NO_ERROR;
-  int save = 0;
+  int save;
   bool au_disable_flag = false;
 
   CHECK_MODIFICATION_ERROR ();
-  CHECK_2ARGS_ERROR (parser, statement);
 
-  OID_SET_NULL (&serial_obj_id);
   db_make_null (&class_name_val);
+  OID_SET_NULL (&serial_obj_id);
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -3209,23 +3038,23 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  serial_name = (char *) PT_NODE_SR_NAME (statement);
-  serial_owner_name = (char *) PT_NODE_SR_OWNER_NAME (statement);
+  name = (char *) PT_NODE_SR_NAME (statement);
+  owner_name = (char *) PT_NODE_SR_OWNER_NAME (statement);
 
-  serial_obj = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class, serial_name, serial_owner_name);
-  if (serial_obj == NULL)
+  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class, name, owner_name);
+  if (serial_object == NULL)
     {
       if (statement->info.serial.if_exists)
 	{
 	  return NO_ERROR;
 	}
       error = ER_QPROC_SERIAL_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, serial_name);
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, serial_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, name);
       goto end;
     }
 
-  error = db_get (serial_obj, SERIAL_ATTR_CLASS_FULL_NAME, &class_name_val);
+  error = db_get (serial_object, SERIAL_ATTR_CLASS_FULL_NAME, &class_name_val);
   if (error < 0)
     {
       goto end;
@@ -3234,7 +3063,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (!DB_IS_NULL (&class_name_val))
     {
       error = ER_QPROC_CANNOT_UPDATE_SERIAL;
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_SERIAL_IS_AUTO_INCREMENT_OBJ, serial_name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_SERIAL_IS_AUTO_INCREMENT_OBJ, name);
       pr_clear_value (&class_name_val);
       goto end;
     }
@@ -3242,7 +3071,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /*
    * check if user is creator or DBA
    */
-  error = au_check_serial_authorization (serial_obj);
+  error = au_check_serial_authorization (serial_object);
   if (error != NO_ERROR)
     {
       if (error == ER_QPROC_CANNOT_UPDATE_SERIAL)
@@ -3255,7 +3084,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_DISABLE (save);
   au_disable_flag = true;
 
-  error = db_drop (serial_obj);
+  error = db_drop (serial_object);
   if (error < 0)
     {
       goto end;
@@ -15089,7 +14918,7 @@ do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** reserve
 
 	objname = (char *) PT_NODE_SR_NAME (statement);
 	owner_name = (char *) PT_NODE_SR_OWNER_NAME (statement);
-	if (do_get_serial_obj_id_with_owner (oid, serial_class, objname, owner_name) == NULL)
+	if (do_get_serial_obj_id (oid, serial_class, objname, owner_name) == NULL)
 	  {
 	    free_and_init (oid);
 
@@ -15516,7 +15345,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
 	objname = (char *) PT_NODE_SR_NAME (statement);
 	owner_name = (char *) PT_NODE_SR_OWNER_NAME (statement);
-	if (do_get_serial_obj_id_with_owner (oid, serial_class, objname, owner_name) == NULL)
+	if (do_get_serial_obj_id (oid, serial_class, objname, owner_name) == NULL)
 	  {
 	    error = ER_FAILED;
 	    goto end;
@@ -15540,7 +15369,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
 	objname = (char *) PT_NODE_SR_NAME (statement);
 	owner_name = (char *) PT_NODE_SR_OWNER_NAME (statement);
-	if (do_get_serial_obj_id_with_owner (oid, serial_class, objname, owner_name) == NULL)
+	if (do_get_serial_obj_id (oid, serial_class, objname, owner_name) == NULL)
 	  {
 	    goto end;
 	  }

@@ -1226,7 +1226,7 @@ int
 util_get_table_list_from_file (char *fname, dynamic_array * darray)
 {
   int c, i, p;
-  char name[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char name[SM_MAX_FULL_CLASS_LENGTH];
   FILE *fp = fopen (fname, "r");
 
   if (fp == NULL)

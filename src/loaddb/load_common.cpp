@@ -339,7 +339,7 @@ namespace cubload
 	// scan first string, and ignore rest of the line
 	sscanf (line.c_str (), fmt, class_name.c_str ());
 
-	char lower_case_string[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+	char lower_case_string[DB_MAX_FULL_CLASS_LENGTH] = { 0 };
 
 	assert (intl_identifier_lower_string_size (class_name.c_str ()) <= DB_MAX_FULL_CLASS_LENGTH);
 

@@ -136,8 +136,8 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define COLUMN_CONSTRAINT_DEFAULT		(0x20)
 #define COLUMN_CONSTRAINT_AUTO_INCREMENT	(0x40)
 #define COLUMN_CONSTRAINT_SHARED_DEFAULT_AI	(0x70)
-#define COLUMN_CONSTRAINT_COMMENT		(0x80)
-#define COLUMN_CONSTRAINT_ON_UPDATE		(0x100)
+#define COLUMN_CONSTRAINT_COMMENT       (0x80)
+#define COLUMN_CONSTRAINT_ON_UPDATE     (0x100)
 
 #ifdef PARSER_DEBUG
 #define DBG_PRINT printf("rule matched at line: %d\n", __LINE__);
@@ -371,7 +371,6 @@ static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
 static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
 static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p,
 				   const char *str, const int str_size);
-				   
 static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 						const PT_TYPE_ENUM char_type,
 						const char *str,
@@ -2780,7 +2779,7 @@ create_stmt
 	| CREATE 					/* 1 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_TRIGGER); }	/* 2 */
 	  TRIGGER 					/* 3 */
-	  identifier					/* 4 */
+	  identifier 					/* 4 */
 	  opt_status					/* 5 */
 	  opt_priority					/* 6 */
 	  trigger_time 					/* 7 */
@@ -2817,7 +2816,7 @@ create_stmt
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); }	/* 2 */
 	  SERIAL 					/* 3 */
 		{ pop_msg(); }				/* 4 */
-	  identifier					/* 5 */
+	  identifier 					/* 5 */
 	  opt_serial_option_list			/* 6 */
 	  opt_comment_spec				/* 7 */
 		{{
@@ -3387,11 +3386,11 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER						/* 1 */
-	  TRIGGER					/* 2 */
-	  identifier_list				/* 3 */
-	  trigger_status_or_priority_or_change_owner	/* 4 */
-	  opt_comment_spec				/* 5 */
+	| ALTER
+	  TRIGGER
+	  identifier_list
+	  trigger_status_or_priority_or_change_owner
+	  opt_comment_spec					/* 5 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_TRIGGER);
@@ -3417,8 +3416,8 @@ alter_stmt
 		DBG_PRINT}}
 	| ALTER						/* 1 */
 	  TRIGGER					/* 2 */
-	  identifier					/* 3 */
-	  COMMENT comment_value				/* 4, 5 */
+	  identifier				/* 3 */
+	  COMMENT comment_value		/* 4, 5 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_TRIGGER);
@@ -3439,11 +3438,11 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER						/* 1 */
-	  SERIAL					/* 2 */
-	  identifier					/* 3 */
-	  opt_serial_option_list			/* 4 */
-	  opt_comment_spec				/* 5 */
+	| ALTER                                /* 1 */
+	  SERIAL                               /* 2 */
+	  identifier                           /* 3 */
+	  opt_serial_option_list	       	   /* 4 */
+	  opt_comment_spec				       /* 5 */
 		{{
 			/* container order
 			 * 0: start_val
@@ -3515,7 +3514,7 @@ alter_stmt
 	  only_class_name				/* 9 */
 	  opt_index_column_name_list			/* 10 */
 	  opt_where_clause				/* 11 */
-	  opt_comment_spec				/* 12 */
+	  opt_comment_spec			/* 12 */
 	  REBUILD					/* 13 */
 		{{
 
@@ -3584,12 +3583,12 @@ alter_stmt
 			  }
 
 		DBG_PRINT}}
-	| ALTER						/* 1 */
-	  INDEX						/* 2 */
-	  identifier					/* 3 */
-	  ON_						/* 4 */
-	  user_specified_name				/* 5 */
-	  COMMENT comment_value				/* 6, 7 */
+	| ALTER				/* 1 */
+	  INDEX				/* 2 */
+	  identifier			/* 3 */
+	  ON_					/* 4 */
+	  user_specified_name		/* 5 */
+	  COMMENT comment_value /* 6, 7 */
 		{{
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
 
@@ -3619,12 +3618,12 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER						/* 1 */
-	  INDEX						/* 2 */
-	  identifier					/* 3 */
-	  ON_						/* 4 */
-	  user_specified_name				/* 5 */
-	  INVISIBLE					/* 6 */
+	| ALTER				/* 1 */
+	  INDEX				/* 2 */
+	  identifier			/* 3 */
+	  ON_				/* 4 */
+	  user_specified_name		/* 5 */
+	  INVISIBLE			/* 6 */
 		{{
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
 
@@ -3654,12 +3653,12 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER						/* 1 */
-	  INDEX						/* 2 */
-	  identifier					/* 3 */
-	  ON_						/* 4 */
-	  user_specified_name				/* 5 */
-	  VISIBLE					/* 6 */
+	| ALTER				/* 1 */
+	  INDEX				/* 2 */
+	  identifier			/* 3 */
+	  ON_				/* 4 */
+	  user_specified_name		/* 5 */
+	  VISIBLE			/* 6 */
 		{{
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
 
@@ -3689,12 +3688,12 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER						/* 1 */
-	  view_or_vclass				/* 2 */
-	  user_specified_name				/* 3 */
-	  AS						/* 4 */
-	  csql_query					/* 5 */
-	  opt_vclass_comment_spec			/* 6 */
+	| ALTER
+	  view_or_vclass
+	  user_specified_name
+	  AS
+	  csql_query
+	  opt_vclass_comment_spec
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER);
@@ -3714,10 +3713,10 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER						/* 1 */
-	  view_or_vclass				/* 2 */
-	  user_specified_name				/* 3 */
-	  class_comment_spec				/* 4 */	%dprec 1
+	| ALTER
+	  view_or_vclass
+	  user_specified_name
+	  class_comment_spec		%dprec 1
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER);
@@ -3735,10 +3734,10 @@ alter_stmt
 
 		DBG_PRINT}}
 	| ALTER						/* 1 */
-	  procedure_or_function				/* 2 */
-	  identifier					/* 3 */
-	  opt_owner_clause				/* 4 */
-	  opt_comment_spec				/* 5 */
+	  procedure_or_function		/* 2 */
+	  identifier				/* 3 */
+	  opt_owner_clause			/* 4 */
+	  opt_comment_spec			/* 5 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_STORED_PROCEDURE);
@@ -9375,7 +9374,7 @@ foreign_key_constraint
 	  opt_identifier				/* 3 */
 	  '(' index_column_identifier_list ')'	  	/* 4, 5, 6 */
 	  REFERENCES					/* 7 */
-	  user_specified_name				/* 8 */
+	 user_specified_name				/* 8 */
 	  opt_paren_attr_list				/* 9 */
 	  opt_ref_rule_list				/* 10 */
 		{{
@@ -10189,7 +10188,6 @@ attr_def_one
 			    node->type_enum = typ = TO_NUMBER (CONTAINER_AT_0 ($2));
 			    node->data_type = dt = CONTAINER_AT_1 ($2);
 			    node->info.attr_def.attr_name = $1;
-
 			    if (typ == PT_TYPE_CHAR && dt)
 			      node->info.attr_def.size_constraint = dt->info.data_type.precision;
 			    if (typ == PT_TYPE_OBJECT && dt && dt->type_enum == PT_TYPE_VARCHAR)
@@ -10533,13 +10531,13 @@ column_other_constraint_def
 			parser_make_link (node, constraint);
 
 		DBG_PRINT}}
-	| opt_constraint_id				/* 1 */
-	  opt_foreign_key				/* 2 */
-	  REFERENCES					/* 3 */
-	  user_specified_name				/* 4 */
-	  opt_paren_attr_list				/* 5 */
-	  opt_ref_rule_list				/* 6 */
-	  opt_constraint_attr_list			/* 7 */
+	| opt_constraint_id			/* 1 */
+	  opt_foreign_key			/* 2 */
+	  REFERENCES				/* 3 */
+	  user_specified_name			/* 4 */
+	  opt_paren_attr_list			/* 5 */
+	  opt_ref_rule_list			/* 6 */
+	  opt_constraint_attr_list		/* 7 */
 		{{
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -19708,14 +19706,15 @@ path_expression
 		DBG_PRINT}}
 	| path_id_list				%dprec 2
 		{{
-			PT_NODE *node = $1;
+			PT_NODE *dot;
 			PT_NODE *serial_value = NULL;
-			
-			if (node
-			    && node->node_type == PT_DOT_
-			    && node->info.dot.arg2 && node->info.dot.arg2->node_type == PT_NAME)
+
+			dot = $1;
+			if (dot
+			    && dot->node_type == PT_DOT_
+			    && dot->info.dot.arg2 && dot->info.dot.arg2->node_type == PT_NAME)
 			  {
-			    PT_NODE *name = node->info.dot.arg2;
+			    PT_NODE *name = dot->info.dot.arg2;
 
 			    if (intl_identifier_casecmp (name->info.name.original, "current_value") == 0 ||
 				intl_identifier_casecmp (name->info.name.original, "currval") == 0)
@@ -19723,8 +19722,8 @@ path_expression
 				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_CURRENT_VALUE;
 				serial_value->info.expr.arg1
-				  = node->info.dot.arg1;
-				node->info.dot.arg1 = NULL; /* cut */
+				  = dot->info.dot.arg1;
+				dot->info.dot.arg1 = NULL; /* cut */
 
 				serial_value->info.expr.arg2 = NULL;
 
@@ -19735,8 +19734,8 @@ path_expression
 					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
 					"serial");
 
-				parser_free_node (this_parser, node);
-				node = serial_value;
+				parser_free_node (this_parser, dot);
+				dot = serial_value;
 
 				parser_cannot_cache = true;
 			      }
@@ -19746,9 +19745,10 @@ path_expression
 			      {
 				serial_value = parser_new_node (this_parser, PT_EXPR);
 				serial_value->info.expr.op = PT_NEXT_VALUE;
+
 				serial_value->info.expr.arg1
-				  = node->info.dot.arg1;
-				node->info.dot.arg1 = NULL; /* cut */
+				  = dot->info.dot.arg1;
+				dot->info.dot.arg1 = NULL; /* cut */
 
 				serial_value->info.expr.arg2
 				  = parser_new_node (this_parser, PT_VALUE);
@@ -19768,14 +19768,14 @@ path_expression
 					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
 					"serial");
 
-				parser_free_node (this_parser, node);
-				node = serial_value;
+				parser_free_node (this_parser, dot);
+				dot = serial_value;
 
 				parser_cannot_cache = true;
 			      }
 			  }
 
-			$$ = node;
+			$$ = dot;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -19817,14 +19817,9 @@ path_header
 		{{
 
 			PT_NODE *node = $2;
-
 			if (node && node->node_type == PT_NAME)
-			  {
-			    node->info.name.meta_class = PT_META_CLASS;
-			  }
-
+			  node->info.name.meta_class = PT_META_CLASS;
 			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| path_id
@@ -21848,27 +21843,16 @@ identifier
 			    size_in = strlen(str_name);
 
 			    dot = strchr (str_name, '.');
-			    if (dot)
+			    if (dot == NULL && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 			      {
-				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH_287 - 1))
-				  {
-				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
-				  }
+				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 			      }
-			    else	// dot != NULL
-			      {
-				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
-				  {
-				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
-				  }   
-			      }		// dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
 			    p->info.name.original = str_name;
 			  }
-
 			$$ = p;
 
 		DBG_PRINT}}
@@ -21885,20 +21869,10 @@ identifier
 			    size_in = strlen(str_name);
 
 			    dot = strchr (str_name, '.');
-			    if (dot)
+			    if (dot == NULL && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 			      {
-				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH_287 - 1))
-				  {
-				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
-				  }
+				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 			      }
-			    else	// dot != NULL
-			      {
-				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
-				  {
-				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
-				  }   
-			      }		// dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
@@ -21921,20 +21895,10 @@ identifier
 			    size_in = strlen(str_name);
 
 			    dot = strchr (str_name, '.');
-			    if (dot)
+			    if (dot == NULL && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 			      {
-				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH_287 - 1))
-				  {
-				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
-				  }
+				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 			      }
-			    else	// dot != NULL
-			      {
-				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
-				  {
-				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
-				  }   
-			      }		// dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
@@ -21957,20 +21921,10 @@ identifier
 			    size_in = strlen(str_name);
 
 			    dot = strchr (str_name, '.');
-			    if (dot)
+			    if (dot == NULL && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 			      {
-				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH_287 - 1))
-				  {
-				    str_name[DB_MAX_IDENTIFIER_LENGTH_287 - 1] = '\0';	// truncate
-				  }
+				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 			      }
-			    else	// dot != NULL
-			      {
-				if (size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
-				  {
-				    str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
-				  }   
-			      }		// dot == NULL
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
@@ -26880,6 +26834,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
   FUNCTION_MAP *key;
   int c;
   PT_NODE *val, *between_ge_lt, *between;
+
 
   parser_function_code = PT_EMPTY;
   c = parser_count_list (args);

@@ -69,14 +69,15 @@ static int add_arg_domain (DB_OBJECT * class_, const char *name, int class_metho
 DB_OBJECT *
 db_create_class (const char *name)
 {
-  SM_TEMPLATE *def = NULL;
-  MOP class_ = NULL;
+  SM_TEMPLATE *def;
+  MOP class_;
   OID class_oid = OID_INITIALIZER;
 
   CHECK_CONNECT_NULL ();
   CHECK_1ARG_NULL (name);
   CHECK_MODIFICATION_NULL ();
 
+  class_ = NULL;
   def = smt_def_class (name);
   if (def != NULL)
     {
@@ -93,7 +94,6 @@ db_create_class (const char *name)
 	  smt_quit (def);
 	}
     }
-
   return (class_);
 }
 

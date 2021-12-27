@@ -55,8 +55,8 @@
     b = t; \
   } while (0)
 
-#define CATCLS_INDEX_NAME "i__db_class_class_full_name"
-#define CATCLS_INDEX_KEY   11
+#define CATCLS_INDEX_NAME "i__db_class_class_name_owner"
+#define CATCLS_INDEX_KEY   12
 
 #define CATCLS_OID_TABLE_SIZE   1024
 
@@ -182,6 +182,8 @@ static int catcls_resolution_space (int name_space);
 static void catcls_apply_resolutions (OR_VALUE * value_p, OR_VALUE * resolution_p);
 static int catcls_replace_entry_oid (THREAD_ENTRY * thread_p, OID * entry_class_oid, OID * entry_new_oid);
 static int catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
+
+static int catcls_midxkey_key_generate (THREAD_ENTRY * thread_p, DB_VALUE * value, const char *name, const char *owner_name);
 
 /*
  * catcls_allocate_entry () -
@@ -684,11 +686,11 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p, OID 
   DB_VALUE key_val;
   int error = NO_ERROR;
 
-  error = db_make_varchar (&key_val, DB_MAX_FULL_CLASS_LENGTH, name_p, (int) strlen (name_p), LANG_SYS_CODESET,
-			   LANG_SYS_COLLATION);
-  if (error != NO_ERROR)
+  error = catcls_midxkey_key_generate (thread_p, &key_val, name_p, NULL);
+  if (error < NO_ERROR)
     {
-      return error;
+      /* youngjinj */
+      assert (false);
     }
 
   error = xbtree_find_unique (thread_p, &catcls_Btid, S_SELECT, &key_val, &ct_Class.cc_classoid, oid_p, false);
@@ -4473,7 +4475,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
-  const char *class_name = CT_ROOT_NAME;
+  const char *class_name = "db_root";
   int charset_att_id = -1, lang_att_id = -1;
   int timezone_id = -1;
   int i;
@@ -4920,8 +4922,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
-  const char *class_name = CT_COLLATION_NAME;
-
+  const char *class_name = "_db_collation";
   int i;
   int error = NO_ERROR;
   int att_id_cnt = 0;
@@ -5424,6 +5425,154 @@ error:
   if (vars)
     {
       free_and_init (vars);
+    }
+
+  return error;
+}
+
+
+static int
+catcls_midxkey_key_generate (THREAD_ENTRY * thread_p, DB_VALUE * value, const char *name, const char *owner_name)
+{
+  DB_OBJECT *db_user_obj = NULL;
+
+  DB_VALUE class_name_val;
+  DB_VALUE owner_name_val;
+  DB_VALUE owner_obj_id_val;
+
+  OID db_user_obj_id;
+  OID owner_obj_id;
+
+  BTID db_user_btid;
+
+  PR_TYPE *class_name_type = NULL;
+  PR_TYPE *owner_type = NULL;
+
+  char *dot = NULL;
+  const char *class_name_p = NULL;
+  const char *owner_name_p = NULL;
+  char *user_name_p = NULL;
+  char upper_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+
+  DB_MIDXKEY midxkey;
+  OR_BUF buf;
+  char *key_ptr;
+  char *nullmap_ptr;
+
+  LC_FIND_CLASSNAME found = LC_CLASSNAME_ERROR;
+  int error = NO_ERROR;
+
+  db_make_null (&class_name_val);
+  db_make_null (&owner_name_val);
+  db_make_null (&owner_obj_id_val);
+
+  OID_SET_NULL (&db_user_obj_id);
+  OID_SET_NULL (&owner_obj_id);
+
+  BTID_SET_NULL (&db_user_btid);
+
+  if (name)
+    {
+      dot = (char *) strchr (name, '.');
+    }
+  
+  if (dot)
+    {
+      class_name_p = dot + 1;
+
+      if (owner_name)
+	{
+	  owner_name_p = owner_name;
+	}
+      else
+        {
+	  dot[0] = '\0';
+	  user_name_p = strndup (name, strlen (name));
+	  dot[0] = '.';
+
+	  intl_identifier_upper (user_name_p, upper_user_name);
+
+	  owner_name_p = upper_user_name;
+	}
+    }
+  else
+    {
+      class_name_p = name;
+
+      if (owner_name)
+	{
+	  owner_name_p = owner_name;
+	}
+      else
+        {
+	  owner_name_p = "DBA";
+	}
+    }
+
+  class_name_type = pr_type_from_id (DB_TYPE_VARCHAR);
+  owner_type = pr_type_from_id (DB_TYPE_OBJECT);
+
+  error = db_make_varchar (&class_name_val, DB_MAX_IDENTIFIER_LENGTH, class_name_p, strlen (class_name_p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  if (error < NO_ERROR)
+    {
+      assert (false);
+    }
+
+  found = xlocator_find_class_oid (thread_p, CT_USER_NAME, &db_user_obj_id, (LOCK) SCH_S_LOCK);
+  if (found == LC_CLASSNAME_ERROR)
+    {
+      assert (false);
+    }
+
+  error = heap_get_btid_from_index_name (thread_p, &db_user_obj_id, "u_db_user_name", &db_user_btid);
+  if (error < NO_ERROR)
+    {
+      return error;
+    }
+
+  error = db_make_varchar (&owner_name_val, DB_MAX_IDENTIFIER_LENGTH, owner_name_p, strlen (owner_name_p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  if (error < NO_ERROR)
+    {
+      assert (false);
+    }
+
+  error = xbtree_find_unique (thread_p, &db_user_btid, S_SELECT, &owner_name_val, &db_user_obj_id, &owner_obj_id, false);
+  if (error == BTREE_ERROR_OCCURRED)
+    {
+      assert (false);
+    }
+
+  db_value_clear (&owner_name_val);
+
+  db_value_domain_init (&owner_obj_id_val, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  db_make_oid (&owner_obj_id_val, &owner_obj_id);
+
+  midxkey.ncolumns = 2;
+  midxkey.buf = (char *) malloc (DB_MAX_IDENTIFIER_LENGTH + OR_OID_SIZE + MAX_ALIGNMENT);
+  or_init (&buf, midxkey.buf, -1);
+  nullmap_ptr = midxkey.buf;
+  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, midxkey.ncolumns));
+
+  tp_Type_string->index_writeval (&buf, &class_name_val);
+  OR_ENABLE_BOUND_BIT (nullmap_ptr, 0);
+
+  tp_Type_object->index_writeval (&buf, &owner_obj_id_val);
+  OR_ENABLE_BOUND_BIT (nullmap_ptr, 1);
+
+  midxkey.size = CAST_BUFLEN (buf.ptr - buf.buffer);
+  midxkey.domain = NULL;
+
+  error = db_make_midxkey (value, &midxkey);
+  if (error < NO_ERROR)
+    {
+      assert (false);
+    }
+
+  (*value).need_clear = true;
+
+  if (user_name_p)
+    {
+      free_and_init (user_name_p);
     }
 
   return error;

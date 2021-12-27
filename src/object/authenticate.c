@@ -1198,7 +1198,7 @@ au_find_user (const char *user_name)
    * if the query processing resources are all used up at the moment.
    * This is primarily of importance during logging in.
    */
-  user_class = db_find_class (AU_USER_CLASS_NAME);
+  user_class = db_find_class ("db_user");
   if (user_class)
     {
       db_make_string (&user_name_string, upper_case_name);
@@ -1545,8 +1545,16 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       return er_errid ();
     }
 
-  db_make_string (&class_name_val, sm_get_ch_name (class_mop));
-  db_class_inst = obj_find_unique (db_class, "class_full_name", &class_name_val, AU_FETCH_READ);
+  db_value_clear (&class_name_val);
+
+  error = sm_catcls_midxkey_key_generate (&class_name_val, sm_get_ch_name (class_mop), NULL);
+  if (error < NO_ERROR)
+    {
+      /* youngjinj */
+      assert (false);
+    }
+
+  db_class_inst = obj_find_unique (db_class, "class_name", &class_name_val, AU_FETCH_READ);
   if (db_class_inst == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2013,29 +2021,21 @@ end:
 int
 au_delete_auth_of_dropping_table (const char *class_name)
 {
-#define QUERY_BUFFER_SIZE 2048
-
-  char sql_query[QUERY_BUFFER_SIZE];
-
+  int error = NO_ERROR, save;
+  const char *sql_query =
+    "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[class_of] IN" " (SELECT [cl] FROM " CT_CLASS_NAME
+    " [cl] WHERE [class_full_name] = ?);";
   DB_VALUE val;
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   int stmt_id;
 
-  int error = NO_ERROR;
-  int save = 0;
-
   db_make_null (&val);
 
-  CHECK_1ARG_ERROR (class_name);
-
-  memset (sql_query, '\0', sizeof(char) * QUERY_BUFFER_SIZE);
-  sprintf (sql_query,
-  	   "DELETE FROM %s [a] WHERE [a].[class_of] IN ("
-	     "SELECT [c] FROM %s [c] WHERE [class_full_name] = ? "
-	   ")", CT_CLASSAUTH_NAME, CT_CLASS_NAME);
-
+  /* Disable the checking for internal authorization object access */
   AU_DISABLE (save);
+
+  assert (class_name != NULL);
 
   session = db_open_buffer_local (sql_query);
   if (session == NULL)
@@ -5127,9 +5127,11 @@ au_change_owner (MOP classmop, MOP owner)
   SM_CLASS *class_;
   int save;
   SM_ATTRIBUTE *attr;
-  char *current_user_name = NULL;
+
+  char *owner_name = NULL;
   const char *class_simple_name = NULL;
-  char class_full_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char *class_full_name = NULL;
+  int class_full_name_size = 0;
 
   AU_DISABLE (save);
   if (!au_is_dba_group_member (Au_user))
@@ -5161,24 +5163,22 @@ au_change_owner (MOP classmop, MOP owner)
 	  /* Change class owner */
 	  class_->owner = owner;
 
-	  /* Since class_full_name includes owner_name, if owner of class is changed,
-	   * class_full_name must be changed as well. */
+	  /*
+	   * Since class_full_name includes owner_name, if owner of class is changed,
+	   * class_full_name must be changed as well.
+	   */
 	  class_simple_name = sm_ch_simple_name ((MOBJ) class_);
-	  if (db_is_system_class_by_name (class_simple_name) == TRUE)
+	  if (sm_check_system_class_by_name (class_simple_name))
 	    {
 	      error = locator_flush_class(classmop);
 	    }
 	  else
 	    {
-	      current_user_name = au_get_user_name(owner);
+	      owner_name = au_get_user_name(owner);
 
-	      snprintf (class_full_name, DB_MAX_FULL_CLASS_LENGTH, "%s.%s", current_user_name, class_simple_name);
-
-	      if (current_user_name)
-		{
-		  db_string_free (current_user_name);
-		  current_user_name = NULL;
-	      }
+	      class_full_name_size = snprintf (NULL, 0, "%s.%s", owner_name, class_simple_name);
+	      class_full_name = (char *) db_ws_alloc (class_full_name_size * sizeof (char));
+	      snprintf (class_full_name, class_full_name_size, "%s.%s", owner_name, class_simple_name);
 
 	      error = sm_rename_class (classmop, class_full_name);
 	      if (error == ER_LC_CLASSNAME_EXIST)
@@ -5186,6 +5186,17 @@ au_change_owner (MOP classmop, MOP owner)
 		  er_clear ();
 		  error = NO_ERROR;
 		}
+
+	      if (owner_name)
+		{
+		  db_string_free (owner_name);
+		  owner_name = NULL;
+	      }
+
+	      if (class_full_name)
+		{
+		  db_ws_free_and_init (class_full_name);
+	      }
 	    }
 	}
     }
@@ -5211,11 +5222,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
   MOP *sub_partitions = NULL;
   const char *class_name = NULL, *owner_name = NULL;
   SM_CLASS *clsobj;
-
-  const char *dot = NULL;
-  char *user_name = NULL;
-  char *full_name = NULL;
-  int len = 0;
+  char *user_specified_name = NULL;
 
   db_make_null (returnval);
 
@@ -5232,36 +5239,17 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
       return;
     }
 
-  dot = strchr (class_name, '.');
-  if (dot || db_is_system_class_by_name (class_name) == TRUE)
+  sm_user_specified_name (class_name, NULL, user_specified_name);
+  if (user_specified_name == NULL)
     {
-      classmop = sm_find_class (class_name);
+      /* youngjinj */
+      assert (false);
     }
-  else
+  classmop = sm_find_class (user_specified_name);
+  if (user_specified_name)
     {
-      user_name = db_get_user_name ();
-
-      len = snprintf (NULL, 0, "%s.%s", user_name, class_name) + 1;
-      full_name = (char *) db_ws_alloc (len * sizeof (char));
-      snprintf (full_name, len, "%s.%s", user_name, class_name);
-
-      classmop = sm_find_class (full_name);
-
-      if (full_name)
-	{
-	  db_ws_free_and_init (full_name);
-	}
-
-      if (user_name)
-	{
-	  db_string_free (user_name);
-	  user_name = NULL;
-	}
+      db_ws_free_and_init (user_specified_name);
     }
-
-  /* Start of change for POC */
-  // classmop = sm_find_class (class_name);
-  /* End of change for POC */
   if (classmop == NULL)
     {
       db_make_error (returnval, er_errid ());
@@ -5436,12 +5424,11 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  serial_object = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class_mop, serial_name, owner_name);
+  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name, owner_name);
   if (serial_object == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
       db_make_error (returnval, ER_QPROC_SERIAL_NOT_FOUND);
-
       return;
     }
 
@@ -5589,44 +5576,22 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
   MOP classmop;
   int error = NO_ERROR;
 
-  const char *dot = NULL;
-  const char *name = NULL;
-  char *user_name = NULL;
-  char *full_name = NULL;
-  int len = 0;
+  char *user_specified_name = NULL;
 
   db_make_null (returnval);
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
-      name = db_get_string (class_);
-
-      dot = strchr (name, '.');
-      if (dot || db_is_system_class_by_name (name) == TRUE)
-	{
-	  classmop = sm_find_class (name);
+      sm_user_specified_name (db_get_string (class_), NULL, user_specified_name);
+      if (user_specified_name == NULL)
+        {
+	  /* youngjinj */
+	  assert (false);
 	}
-      else
-	{
-	  user_name = db_get_user_name ();
-
-	  len = snprintf (NULL, 0, "%s.%s", user_name, name) + 1;
-	  full_name = (char *) db_ws_alloc (len * sizeof (char));
-	  snprintf (full_name, len, "%s.%s", user_name, name);
-
-	  classmop = sm_find_class (full_name);
-
-	  if (full_name)
-	    {
-	      db_ws_free_and_init (full_name);
-	    }
-
-	  if (user_name)
-	    {
-	      db_string_free (user_name);
-	      user_name = NULL;
-	    }
+      classmop = sm_find_class (user_specified_name);
+      if (user_specified_name)
+        {
+	  db_ws_free_and_init (user_specified_name);
 	}
-
       if (classmop != NULL)
 	{
 	  user = au_get_class_owner (classmop);
@@ -8861,12 +8826,6 @@ bool
 au_is_server_authorized_user (DB_VALUE * owner_val)
 {
   return (au_check_owner (owner_val) == NO_ERROR);
-}
-
-const char *
-au_get_dba_user_name (void)
-{
-  return AU_DBA_USER_NAME;
 }
 
 const char *

@@ -39,8 +39,8 @@
 
 #include "authenticate.h"
 #include "db.h"
-#include "db_json.hpp"
 #include "db_client_type.hpp"
+#include "db_json.hpp"
 #include "dbi.h"
 #include "dbtype.h"
 #include "elo.h"
@@ -1421,7 +1421,7 @@ ldr_find_class (const char *class_name)
 {
   LC_FIND_CLASSNAME find;
   DB_OBJECT *class_ = NULL;
-  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char realname[SM_MAX_FULL_CLASS_LENGTH];
   const char *target_name = NULL;
 
   /* Check for internal error */

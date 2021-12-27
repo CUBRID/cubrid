@@ -8650,8 +8650,8 @@ int
 qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VALUE * db_index_name,
 		       DB_VALUE * db_key_position, DB_VALUE * result_p)
 {
-  char class_name[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
-  char index_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name[SM_MAX_FULL_CLASS_LENGTH];
+  char index_name[SM_MAX_IDENTIFIER_LENGTH];
   int key_pos = 0;
   int cardinality = 0;
   int error = NO_ERROR;

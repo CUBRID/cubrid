@@ -486,7 +486,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* TEST by youngjinj. */
-      (void) parser_walk_tree (parser, statement, pt_check_spec_pre, NULL, NULL, NULL);
+      // (void) parser_walk_tree (parser, statement, pt_check_spec_pre, NULL, NULL, NULL);
 
       if (statement->node_type == PT_CREATE_ENTITY && statement->info.create_entity.entity_type == PT_CLASS)
 	{
@@ -497,7 +497,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* TEST by youngjinj. */
-  (void) parser_walk_tree (parser, statement, pt_check_spec_pre, NULL, NULL, NULL);
+  // (void) parser_walk_tree (parser, statement, pt_check_spec_pre, NULL, NULL, NULL);
 
   /* specs referring a CTE will have an entity name, just like a normal class;
    * in order to not try and prefetch (and possibly fail) such classes, we must first resolve such specs */

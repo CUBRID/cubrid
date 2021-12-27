@@ -1873,9 +1873,9 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
   int i, j, is_partition = 0, error;
   int len_clsname = 0;
   FILE *input_file;
-  char buffer[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
-  char class_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
-  char downcase_class_name[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char buffer[DB_MAX_FULL_CLASS_LENGTH];
+  char class_name[DB_MAX_FULL_CLASS_LENGTH];
+  char downcase_class_name[SM_MAX_FULL_CLASS_LENGTH];
   MOP *sub_partitions = NULL;
   char scan_format[16];
   char *trimmed_buf;

@@ -359,7 +359,6 @@ error:
   if (string != NULL && alloced_string == 1)
     {
       db_private_free_and_init (thread_p, string);
-      classname = NULL;
     }
 
   csect_exit (thread_p, CSECT_CT_OID_TABLE);
@@ -2030,7 +2029,6 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
       if (string != NULL && alloced_string == 1)
 	{
 	  db_private_free_and_init (thread_p, string);
-	  classname = NULL;
 	}
     }				/* while (...) */
 
@@ -6042,8 +6040,7 @@ error:
   if (string != NULL && alloced_string == 1)
     {
       db_private_free_and_init (thread_p, string);
-      classname = NULL;
-  }
+    }
 
   if (cache_attr_copyarea != NULL)
     {
@@ -6387,7 +6384,6 @@ error:
   if (string != NULL && alloced_string == 1)
     {
       db_private_free_and_init (thread_p, string);
-      classname = NULL;
     }
 
   return error_code;

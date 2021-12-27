@@ -82,7 +82,7 @@ typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
 struct boot_client_credential : public clientids
 {
   std::string db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
-  std::string db_password;	/* DB_MAX_PASSWORD_LENGTH */
+  std::string db_password;		/* DB_MAX_PASSWORD_LENGTH */
   char *preferred_hosts;	/* LINE_MAX */
   int connect_order;
 

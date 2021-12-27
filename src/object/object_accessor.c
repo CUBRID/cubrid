@@ -3385,12 +3385,12 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
 
   BTID_SET_NULL (&btid);
 
-  /* look for a primary index on this attribute */
-  r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_PRIMARY_KEY, &btid);
+  /* look for a unique index on this attribute */
+  r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_UNIQUE, &btid);
   if (r == 0)
     {
-      /* look for a unique key on this attribute */
-      r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_UNIQUE, &btid);
+      /* look for a primary key on this attribute */
+      r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_PRIMARY_KEY, &btid);
       if (r == 0)
 	{
 	  /* look for a reverse unique index on this attribute */

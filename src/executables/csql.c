@@ -804,9 +804,9 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 #endif /* !WINDOWS */
 
   const char *dot = NULL;
-  char *user_name = NULL;
-  char *full_name = NULL;
-  int len = 0;
+  char *current_user_name = NULL;
+  char *class_full_name = NULL;
+  int class_full_name_size = 0;
 
   /* get session command and argument */
   ptr = line_read;
@@ -1072,29 +1072,29 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       else
         {
 	  dot = strchr (argument, '.');
-	  if (dot || db_is_system_class_by_name (argument) == TRUE)
+	  if (dot || sm_check_system_class_by_name (argument))
 	    {
 	      csql_help_schema (argument);
 	    }
 	  else
 	    {
-	      user_name = db_get_user_name ();
+	      current_user_name = db_get_user_name ();
 
-	      len = snprintf (NULL, 0, "%s.%s", user_name, argument) + 1;
-	      full_name = (char *) db_ws_alloc (len * sizeof (char));
-	      snprintf (full_name, len, "%s.%s", user_name, argument);
+	      class_full_name_size = snprintf (NULL, 0, "%s.%s", current_user_name, argument) + 1;
+	      class_full_name = (char *) db_ws_alloc (class_full_name_size * sizeof (char));
+	      snprintf (class_full_name, class_full_name_size, "%s.%s", current_user_name, argument);
 
-	      csql_help_schema (full_name);
+	      csql_help_schema (class_full_name);
 
-	      if (full_name)
+	      if (class_full_name)
 		{
-		  db_ws_free_and_init (full_name);
+		  db_ws_free_and_init (class_full_name);
 		}
 
-	      if (user_name)
+	      if (current_user_name)
 		{
-		  db_string_free (user_name);
-		  user_name = NULL;
+		  db_string_free (current_user_name);
+		  current_user_name = NULL;
 		}
 	    }
 	}

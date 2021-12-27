@@ -4677,8 +4677,8 @@ pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser, const char *identif
 
   if (p_dot != NULL)
     {
-      char string_name1[SM_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
-      char string_name2[SM_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+      char string_name1[SM_MAX_IDENTIFIER_LENGTH_287] = { 0 };
+      char string_name2[SM_MAX_IDENTIFIER_LENGTH_287] = { 0 };
       PT_NODE *name1 = NULL;
       PT_NODE *name2 = NULL;
       int position = CAST_BUFLEN (p_dot - identifier_str);
@@ -6661,7 +6661,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
   PT_NODE *order_by_item = NULL;
   PT_NODE *sub_query = NULL;
   PT_NODE *outer_query = NULL;
-  char lower_table_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char lower_table_name[DB_MAX_FULL_CLASS_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
   DB_VALUE db_valuep[10];
   const char **psubquery_aliases = NULL, **pquery_names = NULL, **pquery_aliases = NULL;
@@ -6908,7 +6908,6 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   pt_add_string_col_to_sel_list (parser, select, table_name->info.name.original, "TABLE");
   pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer (), "CREATE TABLE");
   pt_add_table_name_to_from_list (parser, select, "dual", NULL, DB_AUTH_SELECT);
-
   return select;
 }
 
@@ -6948,7 +6947,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
 {
   PT_NODE *node = NULL;
   PT_NODE *from_item = NULL;
-  char lower_view_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char lower_view_name[DB_MAX_FULL_CLASS_LENGTH];
 
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
@@ -7194,6 +7193,7 @@ pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
   /* db_user U */
   from_item = pt_add_table_name_to_from_list (parser, query, "db_user", "U", DB_AUTH_SELECT);
 
+
   {
     /* TABLE(groups) AS t(g) */
     PT_NODE *table_col = NULL;
@@ -7310,7 +7310,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   PT_NODE *where_expr = NULL;
   PT_NODE *concat_node = NULL;
   PT_NODE *group_by_item = NULL;
-  char user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char user_name[DB_MAX_USER_LENGTH];
 
   assert (original_user_name != NULL);
   assert (strlen (original_user_name) < DB_MAX_USER_LENGTH);
@@ -7403,7 +7403,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
       }
 
     {
-      char col_alias[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+      char col_alias[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
       const char *const col_header = "Grants for ";
 
       strcpy (col_alias, col_header);
@@ -7832,7 +7832,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_NODE *from_item = NULL;
   PT_NODE *order_by_item = NULL;
   PT_NODE *query = NULL;
-  char lower_table_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char lower_table_name[DB_MAX_FULL_CLASS_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
   DB_VALUE db_valuep[14];
   const char *aliases[] = {
@@ -9962,8 +9962,7 @@ pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * 
    * but raises an error to inform the user of an incorrect customization.
    */
 
-
-  if (db_is_system_class_by_name (class_name) == TRUE)
+  if (sm_check_system_class_by_name (class_name))
     {
       /* Skip in case 4, 6 */
       if (user == NULL || intl_identifier_casecmp (user_name, AU_DBA_USER_NAME) == 0)

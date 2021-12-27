@@ -541,8 +541,8 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
   OID *cls_oid;
   SM_CLASS *cls_sm;
   SM_CLASS_CONSTRAINT *constraint;
-  char table[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
-  char name[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char table[SM_MAX_FULL_CLASS_LENGTH];
+  char name[SM_MAX_FULL_CLASS_LENGTH];
   int i;
   int num_tables = da_size (darray);
   MOBJ *obj;
@@ -722,7 +722,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 
   if (num_tables > 0)
     {
-      char n[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };
+      char n[SM_MAX_FULL_CLASS_LENGTH];
       char *p;
 
       for (i = 0; i < num_tables; i++)

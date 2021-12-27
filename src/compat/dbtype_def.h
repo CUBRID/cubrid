@@ -490,21 +490,17 @@ extern "C"
 /* uninitialized value for row count */
 #define DB_ROW_COUNT_NOT_SET			-2
 
-#define NULL_TERM_LENGTH 1
-#define DOT_LENGTH       1
-
   /******************************************/
   /*
    * DB_MAX_IDENTIFIER_LENGTH -
    * This constant defines the maximum length of an identifier in the database. An identifier is anything that is passed as
    * a string to the db_ functions (other than user attribute values). This includes such things as class names, attribute names
    * etc. This isn't strictly enforced right now but applications must be aware that this will be a requirement.
-   * 
-   * DB_MAX_IDENTIFIER_LENGTH_287 -
-   * (DB_MAX_SCHEMA_LENGTH - 1) + DOT_LENGTH + (DB_MAX_SIMPLE_CLASS_LENGTH - 1) + NULL_TERM_LENGTH
    */
+#define DB_MAX_IDENTIFIER_LENGTH 255
+
+/* (DB_MAX_SCHEMA_LENGTH - 1) + 1 (DOT) + (DB_MAX_SIMPLE_CLASS_LENGTH - 1) + 1 (NULL_TERM) */
 #define DB_MAX_IDENTIFIER_LENGTH_287 287
-#define DB_MAX_IDENTIFIER_LENGTH     255
 
 /* Maximum allowable user name.*/
 #define DB_MAX_USER_LENGTH 32
@@ -515,7 +511,8 @@ extern "C"
 #define DB_MAX_SCHEMA_LENGTH DB_MAX_USER_LENGTH
 
 /* Maximum allowable class name. */
-// #define DB_MAX_CLASS_LENGTH (DB_MAX_IDENTIFIER_LENGTH-DB_MAX_SCHEMA_LENGTH-4)
+#define DB_MAX_CLASS_LENGTH (DB_MAX_IDENTIFIER_LENGTH-DB_MAX_SCHEMA_LENGTH-4)
+
 #define DB_MAX_SIMPLE_CLASS_LENGTH (DB_MAX_IDENTIFIER_LENGTH)
 #define DB_MAX_FULL_CLASS_LENGTH   (DB_MAX_IDENTIFIER_LENGTH_287)
 

@@ -2730,7 +2730,6 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   if (string != NULL && alloced_string == 1)
     {
       db_private_free_and_init (thread_p, string);
-      classname = NULL;
     }
 
   if (repr->n_attributes > 0)
@@ -9419,7 +9418,6 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
       if (string != NULL && alloced_string == 1)
 	{
 	  db_private_free_and_init (thread_p, string);
-	  classname = NULL;
 	}
     }
   else

@@ -409,7 +409,6 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
       if (string != NULL && alloced_string == 1)
 	{
 	  db_private_free_and_init (thread_p, string);
-	  classname = NULL;
 	}
 #endif
 

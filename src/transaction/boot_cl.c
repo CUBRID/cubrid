@@ -1802,8 +1802,7 @@ boot_define_class (MOP class_mop)
   SM_TEMPLATE *def;
   char domain_string[32];
   int error_code = NO_ERROR;
-  const char *index1_col_names[2] = { "class_full_name", NULL };
-  const char *index2_col_names[3] = { "class_name", "owner", NULL };
+  const char *index1_col_names[3] = { "class_name", "owner", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -1999,13 +1998,7 @@ boot_define_class (MOP class_mop)
    * 
    *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
    */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, "i__db_class_class_full_name", index1_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index2_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, "i__db_class_class_name_owner", index1_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5876,7 +5869,7 @@ boot_destroy_catalog_classes (void)
   AU_DISABLE (save);
 
   /* drop method of db_authorization */
-  error_code = db_drop_class_method (locator_find_class (CT_AUTHORIZATION_NAME), "check_authorization");
+  error_code = db_drop_class_method (locator_find_class ("db_authorization"), "check_authorization");
   /* error checking */
   if (error_code != NO_ERROR)
     {

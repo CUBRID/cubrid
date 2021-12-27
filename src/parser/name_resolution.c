@@ -6991,7 +6991,6 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
     {
       return index;
     }
-
   if (index->info.name.resolved != NULL)
     {
       /* index name is specified by class name as "class.index" */
@@ -9424,7 +9423,7 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
   serial_name = (t != NULL) ? (t + 1) : serial_name;
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
-  serial_mop = do_get_serial_obj_id_with_owner (&serial_obj_id, serial_class_mop, serial_name, owner_name);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name, owner_name);
   if (serial_mop == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
