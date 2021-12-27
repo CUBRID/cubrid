@@ -44,7 +44,6 @@ static char *get_user_name (DB_OBJECT *user);
 
 trigger_description::trigger_description ()
   : name (0)
-  , simple_name (0)
   , event (0)
   , class_name (0)
   , attribute (0)
