@@ -976,7 +976,6 @@ int g_original_buffer_len;
 %token ACTION
 %token ADD
 %token ADD_MONTHS
-%token AES
 %token AFTER
 %token ALL
 %token ALLOCATE
@@ -984,7 +983,6 @@ int g_original_buffer_len;
 %token AND
 %token ANY
 %token ARE
-%token ARIA
 %token AS
 %token ASC
 %token ASSERTION
@@ -995,7 +993,6 @@ int g_original_buffer_len;
 %token AVG
 %token BEFORE
 %token BEGIN_
-%token BENCHMARK
 %token BETWEEN
 %token BIGINT
 %token BINARY
@@ -1083,12 +1080,9 @@ int g_original_buffer_len;
 %token EACH
 %token ELSE
 %token ELSEIF
-%token EMPTY
-%token ENCRYPT
 %token END
 %token ENUM
 %token EQUALS
-%token ERROR_
 %token ESCAPE
 %token EVALUATE
 %token EXCEPT
@@ -1185,7 +1179,6 @@ int g_original_buffer_len;
 %token NATIONAL
 %token NATURAL
 %token NCHAR
-%token NESTED
 %token NEXT
 %token NO
 %token NOT
@@ -1196,20 +1189,17 @@ int g_original_buffer_len;
 %token OCTET_LENGTH
 %token OF
 %token OFF_
-%token ONLINE
 %token ON_
 %token ONLY
 %token OPTIMIZATION
 %token OPTION
 %token OR
 %token ORDER
-%token ORDINALITY
 %token OUT_
 %token OUTER
 %token OUTPUT
 %token OVER
 %token OVERLAPS
-%token PARALLEL
 %token PARAMETERS
 %token PARTIAL
 %token PARTITION
@@ -1230,11 +1220,6 @@ int g_original_buffer_len;
 %token REFERENCES
 %token REFERENCING
 %token REGEXP
-%token REGEXP_COUNT
-%token REGEXP_INSTR
-%token REGEXP_LIKE
-%token REGEXP_REPLACE
-%token REGEXP_SUBSTR
 %token RELATIVE_
 %token RENAME
 %token REPLACE
@@ -1266,7 +1251,6 @@ int g_original_buffer_len;
 %token SEQUENCE_OF
 %token SERIALIZABLE
 %token SESSION
-%token SESSION_TIMEZONE
 %token SESSION_USER
 %token SET
 %token SET_OF
@@ -1308,7 +1292,7 @@ int g_original_buffer_len;
 %token TIMESTAMP
 %token TIMESTAMPTZ
 %token TIMESTAMPLTZ
-%token TIMEZONE
+%token TIMEZONES
 %token TIMEZONE_HOUR
 %token TIMEZONE_MINUTE
 %token TO
@@ -1534,7 +1518,6 @@ int g_original_buffer_len;
 %token <cptr> SERIAL
 %token <cptr> SERVER
 %token <cptr> SHOW
-%token <cptr> SLEEP
 %token <cptr> SLOTS
 %token <cptr> SLOTTED
 %token <cptr> STABILITY
@@ -1565,8 +1548,23 @@ int g_original_buffer_len;
 %token <cptr> WEEK
 %token <cptr> WITHIN
 %token <cptr> WORKSPACE
-%token <cptr> TIMEZONES
-
+%token <cptr> AES
+%token <cptr> ARIA
+%token <cptr> BENCHMARK
+%token <cptr> EMPTY
+%token <cptr> ENCRYPT
+%token <cptr> ERROR_
+%token <cptr> NESTED
+%token <cptr> ONLINE
+%token <cptr> ORDINALITY
+%token <cptr> PARALLEL
+%token <cptr> REGEXP_COUNT
+%token <cptr> REGEXP_INSTR
+%token <cptr> REGEXP_LIKE
+%token <cptr> REGEXP_REPLACE
+%token <cptr> REGEXP_SUBSTR
+%token <cptr> SESSION_TIMEZONE
+%token <cptr> TIMEZONE
 
 %token <cptr> IdName
 %token <cptr> BracketDelimitedIdName
@@ -23281,7 +23279,6 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-/*}}}*/
 	| NTILE
 		{{
 
@@ -23412,6 +23409,25 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | AES {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | ARIA {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | BENCHMARK {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | EMPTY {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | ENCRYPT {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | ERROR_ {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | NESTED {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | NONE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | ONLINE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | ORDINALITY {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | PARALLEL {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | REGEXP_COUNT {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | REGEXP_INSTR {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | REGEXP_LIKE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | REGEXP_REPLACE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | REGEXP_SUBSTR {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | SESSION_TIMEZONE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | TIMEZONE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}    
+/*}}}*/
 	;
 
 escape_literal
