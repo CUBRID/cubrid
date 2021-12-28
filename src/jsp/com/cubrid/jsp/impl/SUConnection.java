@@ -39,6 +39,7 @@ import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.ExecuteInfo;
 import com.cubrid.jsp.data.FetchInfo;
 import com.cubrid.jsp.data.GetByOIDInfo;
+import com.cubrid.jsp.data.GetGeneratedKeysInfo;
 import com.cubrid.jsp.data.GetSchemaInfo;
 import com.cubrid.jsp.data.MakeOutResultSetInfo;
 import com.cubrid.jsp.data.PrepareInfo;
@@ -218,6 +219,19 @@ public class SUConnection {
         CUBRIDUnpacker unpacker = request(outputBuffer);
         GetByOIDInfo info = new GetByOIDInfo(unpacker);
         SUStatement stmt = new SUStatement(this, info, oid, attributeName);
+        return stmt;
+    }
+
+    // UFunctionCode.GET_GENERATED_KEYS
+    public SUStatement getGeneratedKeys(int handlerId)
+            throws IOException, SQLException, TypeMismatchException {
+        CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
+        packer.packInt(SUFunctionCode.GET_GENERATED_KEYS.getCode());
+        packer.packInt(handlerId);
+
+        CUBRIDUnpacker unpacker = request(outputBuffer);
+        GetGeneratedKeysInfo info = new GetGeneratedKeysInfo(unpacker);
+        SUStatement stmt = new SUStatement(this, info);
         return stmt;
     }
 

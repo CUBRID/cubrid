@@ -106,6 +106,7 @@ namespace cubmethod
       int callback_oid_cmd (cubthread::entry &thread_ref, cubmem::block &blk);
       int callback_collection_cmd (cubthread::entry &thread_ref, cubmem::block &blk);
       int callback_make_outresult (cubthread::entry &thread_ref, cubmem::block &blk);
+      int callback_get_generated_keys (cubthread::entry &thread_ref, cubmem::block &blk);
 
       static int bypass_block (SOCKET socket, cubmem::block &b);
 

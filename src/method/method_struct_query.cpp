@@ -940,4 +940,57 @@ namespace cubmethod
     return size;
   }
 
+  void
+  get_generated_keys_info::pack (cubpacking::packer &serializator) const
+  {
+    qresult_info.pack (serializator);
+
+    serializator.pack_int (column_infos.size());
+    if (column_infos.size() > 0)
+      {
+	for (int i = 0; i < (int) column_infos.size(); i++)
+	  {
+	    column_infos[i].pack (serializator);
+	  }
+      }
+
+    generated_keys.pack (serializator);
+  }
+
+  void
+  get_generated_keys_info::unpack (cubpacking::unpacker &deserializator)
+  {
+    qresult_info.unpack (deserializator);
+
+    int num_column_info;
+    deserializator.unpack_int (num_column_info);
+    if (num_column_info > 0)
+      {
+	column_infos.resize (num_column_info);
+	for (int i = 0; i < (int) num_column_info; i++)
+	  {
+	    column_infos[i].unpack (deserializator);
+	  }
+      }
+
+    generated_keys.unpack (deserializator);
+  }
+
+  size_t
+  get_generated_keys_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = qresult_info.get_packed_size (serializator, start_offset);
+
+    size += serializator.get_packed_int_size (size); // num_columns
+    if (column_infos.size() > 0)
+      {
+	for (int i = 0; i < (int) column_infos.size(); i++)
+	  {
+	    size += column_infos[i].get_packed_size (serializator, size);
+	  }
+      }
+
+    size += generated_keys.get_packed_size (serializator, size);
+    return size;
+  }
 }

@@ -329,6 +329,9 @@ namespace cubmethod
 	break;
 
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
+	error = callback_get_generated_keys (thread_ref, blk);
+	break;
+
       case METHOD_CALLBACK_NEXT_RESULT:
       case METHOD_CALLBACK_CURSOR:
       case METHOD_CALLBACK_CURSOR_CLOSE:
@@ -713,6 +716,30 @@ namespace cubmethod
     };
 
     error = xs_receive (&thread_ref, get_make_outresult_info);
+#endif
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_get_generated_keys (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code, handler_id;
+    unpacker.unpack_all (code, handler_id);
+
+    INT64 id = (INT64) this;
+    cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
+    error = method_send_data_to_client (&thread_ref, header, code, handler_id);
+    if (error != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
+
+    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
 #endif
     return error;
   }
