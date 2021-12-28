@@ -201,6 +201,7 @@ typedef enum
  */
 
 extern const char *TR_CLASS_NAME;
+extern const char *TR_ATT_FULL_NAME;
 extern const char *TR_ATT_NAME;
 extern const char *TR_ATT_OWNER;
 extern const char *TR_ATT_EVENT;
@@ -222,7 +223,7 @@ extern const char *TR_ATT_COMMENT;
 extern int tr_Current_depth;
 extern int tr_Maximum_depth;
 extern bool tr_Invalid_transaction;
-extern char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
+extern char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH_287 + 2];
 
 extern bool tr_Trace;
 

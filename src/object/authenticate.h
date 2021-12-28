@@ -271,7 +271,6 @@ extern int au_check_server_authorization (MOP server_object);
 extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
 extern const char *au_get_public_user_name (void);
 extern const char *au_get_user_class_name (void);
-extern const char *au_get_specified_user_name (const char *user_specified_name);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern char *toupper_string (const char *name1, char *name2);
 #endif

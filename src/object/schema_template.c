@@ -696,7 +696,7 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
 static SM_TEMPLATE *
 def_class_internal (const char *name, int class_type)
 {
-  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class full name */
+  char realname[SM_MAX_FULL_CLASS_LENGTH];
   SM_TEMPLATE *template_ = NULL;
   PR_TYPE *type;
 

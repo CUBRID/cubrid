@@ -3149,6 +3149,21 @@ locator_find_class (const char *classname)
       class_mop = NULL;
     }
 
+  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+    {
+      char * other_class_name = do_get_other_name_from_db_class (classname);
+
+      if (other_class_name)
+        {
+	  if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
+	    {
+	      class_mop = NULL;
+	    }
+
+	  db_ws_free_and_init (other_class_name);
+	}
+    }
+
   return class_mop;
 }
 
@@ -3180,6 +3195,21 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
   if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
     {
       class_mop = NULL;
+    }
+
+  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+    {
+      char * other_class_name = do_get_other_name_from_db_class (classname);
+
+      if (other_class_name)
+        {
+	  if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
+	    {
+	      class_mop = NULL;
+	    }
+
+	  db_ws_free_and_init (other_class_name);
+	}
     }
 
   return class_mop;

@@ -624,7 +624,7 @@ export_serial (print_output & output_ctx)
    * when changing the following query. Notice the order of the result.
    */
   const char *query =
-    "select [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], " "[cyclic], "
+    "select [full_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], " "[cyclic], "
     "[started], " "[cached_num], " "[comment] " "from [db_serial] where [class_name] is null and [att_name] is null";
 
   db_make_null (&diff_value);

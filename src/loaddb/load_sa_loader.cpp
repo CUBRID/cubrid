@@ -528,7 +528,7 @@ static void idmap_final (void);
 static int idmap_grow (int size);
 static int ldr_assign_class_id (DB_OBJECT *class_, int id);
 static DB_OBJECT *ldr_find_class (const char *class_name);
-static const char *ldr_find_class_name_from_db_class (const char *name);
+static char *ldr_get_other_name_from_from_db_class (const char *class_name);
 static DB_OBJECT *ldr_get_class_from_id (int id);
 static void ldr_clear_context (LDR_CONTEXT *context);
 static void ldr_clear_and_free_context (LDR_CONTEXT *context);
@@ -1422,7 +1422,7 @@ ldr_find_class (const char *class_name)
   LC_FIND_CLASSNAME find;
   DB_OBJECT *class_ = NULL;
   char realname[SM_MAX_FULL_CLASS_LENGTH];
-  const char *target_name = NULL;
+  char *other_class_name = NULL;
 
   /* Check for internal error */
   if (class_name == NULL)
@@ -1446,18 +1446,20 @@ ldr_find_class (const char *class_name)
 
   if (find != LC_CLASSNAME_EXIST && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
     {
-      target_name = ldr_find_class_name_from_db_class (realname);
+      other_class_name = ldr_get_other_name_from_from_db_class (realname);
 
-      if (target_name)
+      if (other_class_name)
 	{
-	  ldr_Hint_class_names[0] = target_name;
+	  ldr_Hint_class_names[0] = other_class_name;
 
 	  find = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1, NULL_LOCK);
 
 	    if (find == LC_CLASSNAME_EXIST)
 	      {
-		class_ = db_find_class (target_name);
+		class_ = db_find_class (other_class_name);
 	      }
+	
+	  db_ws_free_and_init (other_class_name);
 	}
     }
 
@@ -1466,19 +1468,21 @@ ldr_find_class (const char *class_name)
   return (class_);
 }
 
-static const char *
-ldr_find_class_name_from_db_class (const char *name)
+static char *
+ldr_get_other_name_from_from_db_class (const char *class_name)
 {
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
+  DB_VALUE value;
 
   const char *query = NULL;
   char *query_buf = NULL;
   int query_len = 0;
-  const char *result = NULL;
+  // const char *result = NULL;
   
   const char *dot = NULL;
-  const char *target_name = NULL;
+  const char *name = NULL;
+  char *other_name = NULL;
  
   int error = NO_ERROR;
 
@@ -1486,64 +1490,39 @@ ldr_find_class_name_from_db_class (const char *name)
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  dot = strchr (name, '.');
-  if (dot)
-    {
-      name = dot + 1;
-    }
+  db_make_null (&value);
 
-  /* Get private synonyms before public synonyms. */
+  dot = strchr (class_name, '.');
+  name = dot ? (dot + 1) : class_name;
+
   query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s'";
-  query_len = snprintf (NULL, 0, query, "_db_class", name);
-  if (query_len < 0)
-    {
-      /* To Do: Exception handling */
-      goto end;
-    }
-
-  query_buf = (char *) db_ws_alloc (query_len + 1);
-  query_len = sprintf (query_buf, query, "_db_class", name);
-  if (query_len < 0)
-    {
-      /* To Do: Exception handling */
-      goto end;
-    }
+  query_len = snprintf (NULL, 0, query, "_db_class", name) + 1;
+  query_buf = (char *) db_ws_alloc (query_len);
+  snprintf (query_buf, query_len, query, "_db_class", name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
-
   if (error < NO_ERROR)
     {
-      /* To Do: Exception handling */
+      /* youngjinj */
+      assert (false);
       goto end;
     }
 
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
-      DB_VALUE value;
-      pr_clear_value (&value);
-
       if (db_query_get_tuple_value (query_result, 0, &value) == NO_ERROR)
         {
-          if (!DB_IS_NULL (&value))
+	  if (!db_value_is_null (&value))
 	    {
-	      assert (DB_IS_STRING (&value));
-	      result = db_get_string (&value);
+	      other_name = ws_copy_string (db_get_string (&value));
 	    }
+	
+	  pr_clear_value (&value);
 	}
 
       if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
         {
-	  result = NULL;
-	}
-    }
-
-  if (result)
-    {
-      target_name = strndup (result, strlen (result));
-      if (target_name == NULL)
-        {
-	  /* To Do: Exception handling */
-	  goto end;
+	  other_name = NULL;
 	}
     }
 
@@ -1559,7 +1538,7 @@ end:
       query_result = NULL;
     }
 
-  return target_name;
+  return other_name;
 }
 
 /*

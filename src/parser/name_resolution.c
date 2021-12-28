@@ -6710,8 +6710,7 @@ static int
 pt_resolve_hint_args (PARSER_CONTEXT * parser, PT_NODE ** arg_list, PT_NODE * spec_list, bool discard_no_match)
 {
 
-  PT_NODE *arg, *spec, *entity, *range, *prev, *tmp;
-  const char *dot = NULL;
+  PT_NODE *arg, *spec, *range, *prev, *tmp;
 
   prev = NULL;
   arg = *arg_list;
@@ -9408,28 +9407,64 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
 DB_OBJECT *
 pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
 {
-  char *serial_name, *owner_name, *t;
-  DB_OBJECT *serial_class_mop, *serial_mop;
+  DB_OBJECT *serial_class = NULL;
+  DB_OBJECT *serial_obj = NULL;
   DB_IDENTIFIER serial_obj_id;
 
-  if (serial_name_node == NULL || serial_name_node->node_type != PT_NAME)
+  const char *name = NULL;
+  char *full_name = NULL;
+  const char *owner_name = NULL;
+  char *current_user_name = NULL;
+  int len = 0;
+
+  if (serial_name_node == NULL)
     {
       return NULL;
     }
 
-  serial_name = (char *) serial_name_node->info.name.original;
-  owner_name = (char *) serial_name_node->info.name.resolved;
-  t = strchr (serial_name, '.');	/* FIXME */
-  serial_name = (t != NULL) ? (t + 1) : serial_name;
-
-  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
-  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name, owner_name);
-  if (serial_mop == NULL)
+  if (PT_IS_DOT_NODE (serial_name_node))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
+      assert (PT_IS_NAME_NODE (serial_name_node->info.dot.arg1));
+      assert (PT_IS_NAME_NODE (serial_name_node->info.dot.arg2));
+
+      owner_name = serial_name_node->info.dot.arg1->info.name.original;
+      name = serial_name_node->info.dot.arg2->info.name.original;
+    }
+  else
+    {
+      assert (PT_IS_NAME_NODE (serial_name_node));
+
+      name = serial_name_node->info.name.original;
     }
 
-  return serial_mop;
+  if (owner_name == NULL || owner_name[0] == '\0')
+    {
+      current_user_name = db_get_user_name ();
+      owner_name = current_user_name;
+    }
+
+  len = snprintf (NULL, 0, "%s.%s", owner_name, name) + 1;
+  full_name = (char *) db_ws_alloc (len * sizeof (char));
+  snprintf (full_name, len, "%s.%s", owner_name, name);
+
+  serial_class = sm_find_class (CT_SERIAL_NAME);
+  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, full_name);
+  if (serial_obj == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, full_name);
+    }
+
+  if (full_name)
+    {
+      db_ws_free_and_init (full_name);
+    }
+
+  if (current_user_name)
+    {
+      db_string_free (current_user_name);
+    }
+
+  return serial_obj;
 }
 
 /*

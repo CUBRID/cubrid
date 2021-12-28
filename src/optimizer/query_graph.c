@@ -8184,13 +8184,6 @@ qo_node_add_sarg (QO_NODE * node, QO_TERM * sarg)
 void
 qo_node_fprint (QO_NODE * node, FILE * f)
 {
-  PT_NODE *entity = QO_NODE_ENTITY_SPEC (node);
-  char *user_name_ptr = NULL;
-  char *copy_name = NULL;
-  char *token = NULL;
-  char *token_save = NULL;
-  const char *dot_ptr = NULL;
-
   if (QO_NODE_NAME (node))
     {
       fprintf (f, "%s", pt_get_name_without_current_user_name (QO_NODE_NAME (node)));

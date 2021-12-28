@@ -1832,7 +1832,7 @@ db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value)
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name, NULL);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
   if (serial_mop == NULL)
     {
       result = ER_QPROC_SERIAL_NOT_FOUND;
@@ -1890,7 +1890,7 @@ db_get_serial_next_value_ex (const char *serial_name, DB_VALUE * serial_value, i
 
   serial_class_mop = sm_find_class (CT_CLASS_NAME);
 
-  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name, NULL);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
   if (serial_mop == NULL)
     {
       result = ER_QPROC_SERIAL_NOT_FOUND;

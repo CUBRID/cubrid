@@ -3574,12 +3574,12 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
   /* compute the variable offsets relative to the end of the header (beginning of variable table) */
   offset = tf_Metaclass_class.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
 
-  /* full name */
+  /* class_full_name */
   or_put_offset (buf, offset);
 
   offset += string_disk_size (sm_ch_name ((MOBJ) class_));
 
-  /* simple name */
+  /* class_name */
   or_put_offset (buf, offset);
 
   offset += string_disk_size (sm_ch_simple_name ((MOBJ) class_));
@@ -4180,7 +4180,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	    }
 
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, sm_ch_name ((MOBJ) class_), att->header.name);
-	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name, NULL);
+	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
 
 	  /* If this att is inherited from a super class, serial_mop can be NULL. In this case, att->auto_increment
 	   * will be set later. */

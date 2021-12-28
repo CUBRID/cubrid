@@ -135,6 +135,7 @@ extern "C"
   extern DB_OBJECT *db_get_owner (DB_OBJECT * classobj);
   extern char *db_get_user_name (void);
   extern char *db_get_user_and_host_name (void);
+  extern char *db_get_specified_user_name (const char *user_specified_name);
   extern DB_OBJECT *db_find_user (const char *name);
   extern int db_find_user_to_drop (const char *name, DB_OBJECT ** user);
   extern DB_OBJECT *db_add_user (const char *name, int *exists);

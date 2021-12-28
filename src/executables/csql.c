@@ -802,11 +802,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 #if !defined(WINDOWS)
   HIST_ENTRY *hist_entry;
 #endif /* !WINDOWS */
-
-  const char *dot = NULL;
-  char *current_user_name = NULL;
-  char *class_full_name = NULL;
-  int class_full_name_size = 0;
+  char *user_specified_name = NULL;
 
   /* get session command and argument */
   ptr = line_read;
@@ -1071,34 +1067,18 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
         {
-	  dot = strchr (argument, '.');
-	  if (dot || sm_check_system_class_by_name (argument))
+	  sm_user_specified_name (argument, NULL, &user_specified_name);
+	  if (user_specified_name == NULL)
 	    {
-	      csql_help_schema (argument);
+	      /* youngjinj */
+	      assert (false);
 	    }
-	  else
+	  csql_help_schema (user_specified_name);
+	  if (user_specified_name)
 	    {
-	      current_user_name = db_get_user_name ();
-
-	      class_full_name_size = snprintf (NULL, 0, "%s.%s", current_user_name, argument) + 1;
-	      class_full_name = (char *) db_ws_alloc (class_full_name_size * sizeof (char));
-	      snprintf (class_full_name, class_full_name_size, "%s.%s", current_user_name, argument);
-
-	      csql_help_schema (class_full_name);
-
-	      if (class_full_name)
-		{
-		  db_ws_free_and_init (class_full_name);
-		}
-
-	      if (current_user_name)
-		{
-		  db_string_free (current_user_name);
-		  current_user_name = NULL;
-		}
+	      db_ws_free_and_init (user_specified_name);
 	    }
 	}
-      
       if (csql_is_auto_commit_requested (csql_arg))
 	{
 	  if (db_commit_transaction () < 0)

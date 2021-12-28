@@ -2169,6 +2169,62 @@ sm_downcase_name (const char *name, char *buf, int maxlen)
   intl_identifier_lower (name, buf);
 }
 
+void
+sm_user_specified_name (const char *name, const char *owner_name, char **user_specified_name)
+{
+  const char *dot = NULL;
+  char *owner_name_p = NULL;
+  int len = 0;
+  int is_system_class = false;
+
+  assert (*user_specified_name == NULL);
+
+  if (name == NULL || name[0] == '\0')
+    {
+      return;
+    }
+
+  dot = strchr (name, '.');
+  if (dot)
+    {
+      *user_specified_name = ws_copy_string (name);
+      return;
+    }
+
+  is_system_class = sm_check_system_class_by_name (name);
+
+  if (owner_name && owner_name[0] != '\0')
+    {
+      owner_name_p = au_get_user_name (au_find_user (owner_name));
+    }
+
+  if (owner_name && strncmp (owner_name_p, "DBA", strlen ("DBA")) && is_system_class)
+    {
+      *user_specified_name = ws_copy_string (name);
+      return;
+    }
+
+  if (owner_name == NULL || owner_name[0] == '\0')
+    {
+      if (is_system_class)
+	{
+	  *user_specified_name = ws_copy_string (name);
+	  return;
+	}
+
+      owner_name_p = db_get_user_name ();
+    }
+
+  len = snprintf (NULL, 0, "%s.%s", owner_name_p, name) + 1;
+  *user_specified_name = (char *) db_ws_alloc (len * sizeof (char));
+  snprintf (*user_specified_name, len, "%s.%s", owner_name_p, name);
+
+  if (owner_name_p)
+    {
+      db_string_free (owner_name_p);
+    }
+}
+
 /*
  * sm_resolution_space() -  This is used to convert a full component
  *    name_space to one of the more constrained resolution namespaces.
@@ -3032,6 +3088,134 @@ int
 sm_is_system_class (MOP op)
 {
   return sm_get_class_flag (op, SM_CLASSFLAG_SYSTEM);
+}
+
+/*
+ * sm_check_system_class_by_name () - Checks whether the class name is
+ *    the same as the system class name.
+ * return: int
+ * name(in): class simple name
+ */
+int
+sm_check_system_class_by_name (const char *name)
+{
+  char downcase_class_name[SM_MAX_SIMPLE_CLASS_LENGTH] = { '\0' };
+  const char **ptr = NULL;
+
+  int error = NO_ERROR;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      return false;
+    }
+
+  sm_downcase_name (name, downcase_class_name, SM_MAX_SIMPLE_CLASS_LENGTH);
+
+  const char *system_classes[] = {
+    /* 
+     * authorization classes
+     *
+     * AU_ROOT_CLASS_NAME     = CT_ROOT_NAME
+     * AU_OLD_ROOT_CLASS_NAME = CT_AUTHORIZATIONS_NAME
+     * AU_USER_CLASS_NAME     = CT_USER_NAME
+     * AU_PASSWORD_CLASS_NAME = CT_PASSWORD_NAME
+     * AU_AUTH_CLASS_NAME     = CT_AUTHORIZATION_NAME
+     * AU_GRANT_CLASS_NAME
+     */
+
+    AU_ROOT_CLASS_NAME,		// "db_root"
+    AU_USER_CLASS_NAME,		// "db_user"
+    AU_PASSWORD_CLASS_NAME,	// "db_password"
+    AU_AUTH_CLASS_NAME,		// "db_authorization"
+    AU_OLD_ROOT_CLASS_NAME,	// "db_authorizations"
+
+    /* currently, not implemented */
+    AU_GRANT_CLASS_NAME,	// "db_grant"
+
+    /* 
+     * catalog classes
+     */
+    CT_CLASS_NAME,		// "_db_class"
+    CT_ATTRIBUTE_NAME,		// "_db_attribute"
+    CT_DOMAIN_NAME,		// "_db_domain"
+    CT_METHOD_NAME,		// "_db_method"
+    CT_METHSIG_NAME,		// "_db_meth_sig"
+    CT_METHARG_NAME,		// "_db_meth_arg"
+    CT_METHFILE_NAME,		// "_db_meth_file"
+    CT_QUERYSPEC_NAME,		// "_db_query_spec"
+    CT_INDEX_NAME,		// "_db_index"
+    CT_INDEXKEY_NAME,		// "_db_index_key"
+    CT_DATATYPE_NAME,		// "_db_data_type"
+    CT_CLASSAUTH_NAME,		// "_db_auth"
+    CT_PARTITION_NAME,		// "_db_partition"
+    CT_STORED_PROC_NAME,	// "_db_stored_procedure"
+    CT_STORED_PROC_ARGS_NAME,	// "_db_stored_procedure_args"
+    CT_SERIAL_NAME,		// "db_serial"
+    CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
+    CT_COLLATION_NAME,		// "_db_collation"
+    CT_CHARSET_NAME,		// "_db_charset"
+    CT_DB_SERVER_NAME,		// "_db_server"
+
+    CT_TRIGGER_NAME,		// "db_trigger"
+
+    /* currently, not implemented */
+    CT_RESOLUTION_NAME,		// "_db_resolution"
+
+    /*
+     * catalog vclasses
+     */
+    CTV_CLASS_NAME,		// "db_class"
+    CTV_SUPER_CLASS_NAME,	// "db_direct_super_class"
+    CTV_VCLASS_NAME,		// "db_vclass"
+    CTV_ATTRIBUTE_NAME,		// "db_attribute"
+    CTV_ATTR_SD_NAME,		// "db_attr_setdomain_elm"
+    CTV_METHOD_NAME,		// "db_method"
+    CTV_METHARG_NAME,		// "db_meth_arg"
+    CTV_METHARG_SD_NAME,	// "db_meth_arg_setdomain_elm"
+    CTV_METHFILE_NAME,		// "db_meth_file"
+    CTV_INDEX_NAME,		// "db_index"
+    CTV_INDEXKEY_NAME,		// "db_index_key"
+    CTV_AUTH_NAME,		// "db_auth"
+    CTV_TRIGGER_NAME,		// "db_trig"
+    CTV_PARTITION_NAME,		// "db_partition"
+    CTV_STORED_PROC_NAME,	// "db_stored_procedure"
+    CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
+    CTV_DB_COLLATION_NAME,	// "db_collation"
+    CTV_DB_CHARSET_NAME,	// "db_charset"
+    CTV_DB_SERVER_NAME,		// "db_server"
+
+    NULL
+  };
+
+  if (strncmp (downcase_class_name, ROOTCLASS_NAME, sizeof (ROOTCLASS_NAME) - 1) == 0)
+    {
+      return true;
+    }
+
+  if (strncmp (downcase_class_name, CT_DUAL_NAME, sizeof (CT_DUAL_NAME) - 1) == 0)
+    {
+      return true;
+    }
+
+  /* strncmp (downcase_class_name, "_db_", strlen ("_db_")) != 0
+   * && strncmp (downcase_class_name, "db_", strlen ("db_")) != 0 */
+  if (strncmp (downcase_class_name, "_db_", 4) != 0 && strncmp (downcase_class_name, "db_", 3) != 0)
+    {
+      return false;
+    }
+
+  ptr = system_classes;
+  while (*ptr)
+    {
+      if (strncmp (downcase_class_name, *ptr, strlen (*ptr)) == 0)
+	{
+	  return true;
+	}
+
+      ptr++;
+    }
+
+  return false;
 }
 
 /*
@@ -4852,6 +5036,37 @@ sm_ch_name (const MOBJ clobj)
   return ch_name;
 }
 
+const char *
+sm_ch_simple_name (const MOBJ clobj)
+{
+  SM_CLASS_HEADER *header;
+  const char *ch_simple_name = NULL;
+
+  if (clobj != NULL)
+    {
+      header = (SM_CLASS_HEADER *) clobj;
+      ch_simple_name = header->ch_simple_name;
+
+      assert (header->ch_type == SM_META_ROOT || header->ch_type == SM_META_CLASS);
+#if !defined(NDEBUG)
+      if (header->ch_type == SM_META_CLASS)
+	{
+	  assert (ch_simple_name != NULL);
+	}
+#endif
+    }
+
+  return ch_simple_name;
+}
+
+const char *
+sm_simple_name (const char *name)
+{
+  const char *dot = strchr (name, '.');
+
+  return dot ? (dot + 1) : name;
+}
+
 /*
  * sm_ch_heap() - Support function for the transaction locator.
  *    This returns a pointer to the heap file identifier in a class.
@@ -5057,25 +5272,11 @@ sm_class_constraints (MOP classop)
 MOP
 sm_find_class (const char *name)
 {
-  MOP class_mop = NULL;
-  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class_full_name */
+  char realname[SM_MAX_FULL_CLASS_LENGTH];
 
   sm_downcase_name (name, realname, SM_MAX_FULL_CLASS_LENGTH);
 
-  class_mop = locator_find_class (realname);
-  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
-    {
-      const char *target_name = sm_find_class_name_from_db_class (realname);
-
-      if (target_name)
-        {
-          class_mop = locator_find_class (target_name);
-
-	  free_and_init (target_name);
-	}
-    }
-
-  return class_mop;
+  return locator_find_class (realname);
 }
 
 /*
@@ -5090,121 +5291,11 @@ sm_find_class (const char *name)
 MOP
 sm_find_class_with_purpose (const char *name, bool for_update)
 {
-  MOP class_mop = NULL;
-  char realname[SM_MAX_FULL_CLASS_LENGTH] = { '\0' };	/* class_full_name */
+  char realname[SM_MAX_FULL_CLASS_LENGTH];
 
   sm_downcase_name (name, realname, SM_MAX_FULL_CLASS_LENGTH);
 
-  class_mop = locator_find_class_with_purpose (realname, for_update);
-  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
-    {
-      const char *target_name = sm_find_class_name_from_db_class (realname);
-
-      if (target_name)
-        {
-          class_mop = locator_find_class_with_purpose (target_name, for_update);
-
-	  free_and_init (target_name);
-	}
-    }
-
-  return class_mop;
-}
-
-const char *
-sm_find_class_name_from_db_class (const char *name)
-{
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-
-  const char *query = NULL;
-  char *query_buf = NULL;
-  int query_len = 0;
-  const char *result = NULL;
-  
-  const char *dot = NULL;
-  const char *target_name = NULL;
- 
-  int error = NO_ERROR;
-
-  /* initialization */
-  query_error.err_lineno = 0;
-  query_error.err_posno = 0;
-
-  dot = strchr (name, '.');
-  if (dot)
-    {
-      name = dot + 1;
-    }
-
-  /* Get private synonyms before public synonyms. */
-  query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s'";
-  query_len = snprintf (NULL, 0, query, CT_CLASS_NAME, name);
-  if (query_len < 0)
-    {
-      /* To Do: Exception handling */
-      goto end;
-    }
-
-  query_buf = (char *) db_ws_alloc (query_len + 1);
-  query_len = sprintf (query_buf, query, CT_CLASS_NAME, name);
-  if (query_len < 0)
-    {
-      /* To Do: Exception handling */
-      goto end;
-    }
-
-  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
-
-  if (error < NO_ERROR)
-    {
-      /* To Do: Exception handling */
-      goto end;
-    }
-
-  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
-    {
-      DB_VALUE value;
-      db_make_null (&value);
-
-      if (db_query_get_tuple_value (query_result, 0, &value) == NO_ERROR)
-        {
-          if (!DB_IS_NULL (&value))
-	    {
-	      assert (DB_IS_STRING (&value));
-	      result = db_get_string (&value);
-	    }
-	}
-
-      if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-        {
-	  result = NULL;
-	}
-    }
-
-  if (result)
-    {
-      target_name = strndup (result, strlen (result));
-      if (target_name == NULL)
-        {
-	  /* To Do: Exception handling */
-	  goto end;
-	}
-    }
-
-end:
-  if (query_buf)
-    {
-      db_ws_free_and_init (query_buf);
-    }
-
-  if (query_result)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return target_name;
+  return locator_find_class_with_purpose (realname, for_update);
 }
 
 /*
@@ -12744,7 +12835,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   SM_CLASS *class_;
   DB_OBJLIST *cursupers, *oldsupers, *newsupers, *cursubs, *newsubs;
   SM_TEMPLATE *flat;
-  const char *user_name = NULL;
+  char *user_name = NULL;
   char *current_user_name = NULL;
 
   sm_bump_local_schema_version ();
@@ -12899,7 +12990,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	    }
 	  else
 	    {
-	      user_name = au_get_specified_user_name (template_->name);
+	      user_name = db_get_specified_user_name (template_->name);
 	      current_user_name = db_get_user_name ();
 	      if (user_name && intl_identifier_casecmp (user_name, current_user_name))
 		{
@@ -12912,7 +13003,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 
 	      if (user_name)
 		{
-		  free_and_init (user_name);
+		  db_ws_free_and_init (user_name);
 		}
 
 	      if (current_user_name)
@@ -14386,7 +14477,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	    }
 	  else
 	    {
-	      char class_name_trunc[DB_MAX_SIMPLE_CLASS_LENGTH] = { '\0' };
+	      char class_name_trunc[DB_MAX_SIMPLE_CLASS_LENGTH];
 
 	      strncpy (class_name_trunc, class_simple_name, class_name_prefix_size);
 
@@ -15681,7 +15772,7 @@ int
 sm_truncate_using_delete (MOP class_mop)
 {
   DB_SESSION *session = NULL;
-  char delete_query[DB_MAX_FULL_CLASS_LENGTH + 64] = { '\0' };
+  char delete_query[DB_MAX_FULL_CLASS_LENGTH + 64] = { 0 };
   int stmt_id = 0;
   int error = NO_ERROR;
   const char *class_name;
@@ -16707,452 +16798,4 @@ sm_domain_copy (SM_DOMAIN * ptr)
     }
 
   return new_ptr;
-}
-
-const char *
-sm_simple_name (const char *name)
-{
-  const char *dot = strchr (name, '.');
-
-  return dot ? (dot + 1) : name;
-}
-
-const char *
-sm_ch_simple_name (const MOBJ clobj)
-{
-  SM_CLASS_HEADER *header;
-  const char *ch_simple_name = NULL;
-
-  if (clobj != NULL)
-    {
-      header = (SM_CLASS_HEADER *) clobj;
-      ch_simple_name = header->ch_simple_name;
-
-      assert (header->ch_type == SM_META_ROOT || header->ch_type == SM_META_CLASS);
-#if !defined(NDEBUG)
-      if (header->ch_type == SM_META_CLASS)
-	{
-	  assert (ch_simple_name != NULL);
-	}
-#endif
-    }
-
-  return ch_simple_name;
-}
-
-/*
- * sm_check_system_class_by_name () - Checks whether the class name is
- *    the same as the system class name.
- * return: int
- * name(in): class simple name
- */
-int
-sm_check_system_class_by_name (const char *name)
-{
-  char downcase_class_name[SM_MAX_SIMPLE_CLASS_LENGTH] = { '\0' };
-  const char **ptr = NULL;
-
-  int error = NO_ERROR;
-
-  if (name == NULL || name[0] == '\0')
-    {
-      return false;
-    }
-
-  sm_downcase_name (name, downcase_class_name, SM_MAX_SIMPLE_CLASS_LENGTH);
-
-  const char *system_classes[] = {
-    /* 
-     * authorization classes
-     *
-     * AU_ROOT_CLASS_NAME     = CT_ROOT_NAME
-     * AU_OLD_ROOT_CLASS_NAME = CT_AUTHORIZATIONS_NAME
-     * AU_USER_CLASS_NAME     = CT_USER_NAME
-     * AU_PASSWORD_CLASS_NAME = CT_PASSWORD_NAME
-     * AU_AUTH_CLASS_NAME     = CT_AUTHORIZATION_NAME
-     * AU_GRANT_CLASS_NAME
-     */
-
-    AU_ROOT_CLASS_NAME,		// "db_root"
-    AU_USER_CLASS_NAME,		// "db_user"
-    AU_PASSWORD_CLASS_NAME,	// "db_password"
-    AU_AUTH_CLASS_NAME,		// "db_authorization"
-    AU_OLD_ROOT_CLASS_NAME,	// "db_authorizations"
-
-    /* currently, not implemented */
-    AU_GRANT_CLASS_NAME,	// "db_grant"
-
-    /* 
-     * catalog classes
-     */
-    CT_CLASS_NAME,		// "_db_class"
-    CT_ATTRIBUTE_NAME,		// "_db_attribute"
-    CT_DOMAIN_NAME,		// "_db_domain"
-    CT_METHOD_NAME,		// "_db_method"
-    CT_METHSIG_NAME,		// "_db_meth_sig"
-    CT_METHARG_NAME,		// "_db_meth_arg"
-    CT_METHFILE_NAME,		// "_db_meth_file"
-    CT_QUERYSPEC_NAME,		// "_db_query_spec"
-    CT_INDEX_NAME,		// "_db_index"
-    CT_INDEXKEY_NAME,		// "_db_index_key"
-    CT_DATATYPE_NAME,		// "_db_data_type"
-    CT_CLASSAUTH_NAME,		// "_db_auth"
-    CT_PARTITION_NAME,		// "_db_partition"
-    CT_STORED_PROC_NAME,	// "_db_stored_procedure"
-    CT_STORED_PROC_ARGS_NAME,	// "_db_stored_procedure_args"
-    CT_SERIAL_NAME,		// "db_serial"
-    CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
-    CT_COLLATION_NAME,		// "_db_collation"
-    CT_CHARSET_NAME,		// "_db_charset"
-    CT_DB_SERVER_NAME,		// "_db_server"
-
-    CT_TRIGGER_NAME,		// "db_trigger"
-
-    /* currently, not implemented */
-    CT_RESOLUTION_NAME,		// "_db_resolution"
-
-    /*
-     * catalog vclasses
-     */
-    CTV_CLASS_NAME,		// "db_class"
-    CTV_SUPER_CLASS_NAME,	// "db_direct_super_class"
-    CTV_VCLASS_NAME,		// "db_vclass"
-    CTV_ATTRIBUTE_NAME,		// "db_attribute"
-    CTV_ATTR_SD_NAME,		// "db_attr_setdomain_elm"
-    CTV_METHOD_NAME,		// "db_method"
-    CTV_METHARG_NAME,		// "db_meth_arg"
-    CTV_METHARG_SD_NAME,	// "db_meth_arg_setdomain_elm"
-    CTV_METHFILE_NAME,		// "db_meth_file"
-    CTV_INDEX_NAME,		// "db_index"
-    CTV_INDEXKEY_NAME,		// "db_index_key"
-    CTV_AUTH_NAME,		// "db_auth"
-    CTV_TRIGGER_NAME,		// "db_trig"
-    CTV_PARTITION_NAME,		// "db_partition"
-    CTV_STORED_PROC_NAME,	// "db_stored_procedure"
-    CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
-    CTV_DB_COLLATION_NAME,	// "db_collation"
-    CTV_DB_CHARSET_NAME,	// "db_charset"
-    CTV_DB_SERVER_NAME,		// "db_server"
-
-    NULL
-  };
-
-  if (strncmp (downcase_class_name, ROOTCLASS_NAME, sizeof (ROOTCLASS_NAME) - 1) == 0)
-    {
-      return true;
-    }
-
-  if (strncmp (downcase_class_name, CT_DUAL_NAME, sizeof (CT_DUAL_NAME) - 1) == 0)
-    {
-      return true;
-    }
-
-  /* strncmp (downcase_class_name, "_db_", strlen ("_db_")) != 0
-   * && strncmp (downcase_class_name, "db_", strlen ("db_")) != 0 */
-  if (strncmp (downcase_class_name, "_db_", 4) != 0 && strncmp (downcase_class_name, "db_", 3) != 0)
-    {
-      return false;
-    }
-
-  ptr = system_classes;
-  while (*ptr)
-    {
-      if (strncmp (downcase_class_name, *ptr, strlen (*ptr)) == 0)
-	{
-	  return true;
-	}
-
-      ptr++;
-    }
-
-  return false;
-}
-
-void
-sm_user_specified_name (const char *name, const char *owner_name, char *user_specified_name)
-{
-  const char *dot = NULL;
-  char *owner_name_p = NULL;
-  int user_specified_name_size = 0;
-  int is_system_class = false;
-
-  assert (user_specified_name == NULL);
-
-  if (name == NULL || name[0] == '\0')
-    {
-      return;
-    }
-
-  dot = strchr (name, '.');
-  if (dot)
-    {
-      user_specified_name = ws_copy_string (name);
-      return;
-    }
-
-  is_system_class = sm_check_system_class_by_name (name);
-
-  if (owner_name && owner_name[0] != '\0')
-    {
-      owner_name_p = au_get_user_name (db_find_user (owner_name));
-    }
-
-  if (owner_name && strncmp (owner_name_p, "DBA", strlen ("DBA")) && is_system_class)
-    {
-      user_specified_name = ws_copy_string (name);
-      return;
-    }
-
-  if (owner_name == NULL || owner_name[0] == '\0')
-    {
-      if (is_system_class)
-	{
-	  user_specified_name = ws_copy_string (name);
-	  return;
-	}
-
-      owner_name_p = db_get_user_name ();
-    }
-
-  user_specified_name_size = snprintf (NULL, 0, "%s.%s", owner_name_p, name);
-  user_specified_name = (char *) db_ws_alloc (user_specified_name_size * sizeof (char));
-  snprintf (user_specified_name, user_specified_name_size, "%s.%s", owner_name_p, name);
-
-  if (owner_name_p)
-    {
-      db_string_free (owner_name_p);
-    }
-}
-
-int
-sm_serial_midxkey_key_generate (DB_VALUE * value, const char *name, const char *owner_name)
-{
-  DB_VALUE name_val;
-  TP_DOMAIN *name_domian = NULL;
-
-  DB_OBJECT *owner_obj = NULL;
-  OID *owner_obj_id = NULL;
-  DB_VALUE owner_obj_id_val;
-  TP_DOMAIN *owner_obj_id_domian = NULL;
-
-  DB_MIDXKEY midxkey;
-  OR_BUF buf;
-  char *key_ptr;
-  char *nullmap_ptr;
-
-  int error = NO_ERROR;
-
-  db_make_null (&name_val);
-  db_make_null (&owner_obj_id_val);
-
-  if (name == NULL || name[0] == '\0')
-    {
-      assert (false);
-      return error;
-    }
-
-  /* serial name */
-  error = db_make_varchar (&name_val, DB_MAX_IDENTIFIER_LENGTH, name, strlen (name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  if (error < NO_ERROR)
-    {
-      assert (false);
-    }
-
-  /* serial name domain */
-  name_domian = tp_domain_resolve_default (db_value_domain_type (&name_val));
-
-  /* serial owner object id */
-  if (owner_name == NULL || owner_name[0] == '\0')
-    {
-      owner_obj = db_get_user ();
-    }
-  else
-    {
-      owner_obj = db_find_user (owner_name);
-    }
-
-  if (owner_obj == NULL)
-    {
-      assert (false);
-    }
-
-  owner_obj_id = db_identifier (owner_obj);
-  db_make_oid (&owner_obj_id_val, owner_obj_id);
-
-  /* serial owner object id domain */
-  owner_obj_id_domian = tp_domain_resolve_default (db_value_domain_type (&owner_obj_id_val));
-
-  /* midxkey */
-  midxkey.ncolumns = 2;
-  midxkey.buf = (char *) malloc (DB_MAX_IDENTIFIER_LENGTH + DB_MAX_IDENTIFIER_LENGTH);
-  or_init (&buf, midxkey.buf, -1);
-  nullmap_ptr = midxkey.buf;
-  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, midxkey.ncolumns));
-
-  name_domian->type->index_writeval (&buf, &name_val);
-  OR_ENABLE_BOUND_BIT (nullmap_ptr, 0);
-
-  owner_obj_id_domian->type->index_writeval (&buf, &owner_obj_id_val);
-  OR_ENABLE_BOUND_BIT (nullmap_ptr, 1);
-
-  midxkey.size = CAST_BUFLEN (buf.ptr - buf.buffer);
-  midxkey.domain = NULL;
-
-  error = db_make_midxkey (value, &midxkey);
-  if (error < NO_ERROR)
-    {
-      assert (false);
-    }
-
-  (*value).need_clear = true;
-
-  return error;
-}
-
-int
-sm_catcls_midxkey_key_generate (DB_VALUE * value, const char *name, const char *owner_name)
-{
-  DB_OBJECT *db_user_obj = NULL;
-  DB_OBJECT *owner_obj = NULL;
-
-  DB_VALUE class_name_val;
-  DB_VALUE owner_name_val;
-  DB_VALUE owner_obj_id_val;
-
-  OID *owner_obj_id = NULL;
-
-  PR_TYPE *class_name_type = NULL;
-  PR_TYPE *owner_type = NULL;
-
-  char *dot = NULL;
-  const char *class_name_p = NULL;
-  const char *owner_name_p = NULL;
-  char *user_name_p = NULL;
-  char *current_user_name_p = NULL;
-
-  DB_MIDXKEY midxkey;
-  OR_BUF buf;
-  char *key_ptr;
-  char *nullmap_ptr;
-
-  int error = NO_ERROR;
-
-  db_make_null (&class_name_val);
-  db_make_null (&owner_name_val);
-  db_make_null (&owner_obj_id_val);
-
-  if (name)
-    {
-      dot = (char *) strchr (name, '.');
-    }
-  
-  if (dot)
-    {
-      class_name_p = dot + 1;
-
-      if (owner_name)
-	{
-	  owner_name_p = owner_name;
-	}
-      else
-        {
-	  dot[0] = '\0';
-	  user_name_p = strndup (name, strlen (name));
-	  dot[0] = '.';
-
-	  owner_name_p = user_name_p;
-	}
-    }
-  else
-    {
-      class_name_p = name;
-
-      if (owner_name)
-	{
-	  owner_name_p = owner_name;
-	}
-      else
-        {
-	  current_user_name_p = db_get_user_name ();
-	  if (current_user_name_p == NULL)
-	    {
-	      assert (false);
-	    }
-
-	  owner_name_p = current_user_name_p;
-	}
-    }
-
-  class_name_type = pr_type_from_id (DB_TYPE_VARCHAR);
-  owner_type = pr_type_from_id (DB_TYPE_OID);
-
-  error = db_make_varchar (&class_name_val, DB_MAX_IDENTIFIER_LENGTH, class_name_p, strlen (class_name_p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  if (error < NO_ERROR)
-    {
-      assert (false);
-    }
-
-  db_user_obj = sm_find_class (CT_USER_NAME);
-  if (db_user_obj == NULL)
-    {
-      assert (false);
-    }
-
-  error = db_make_varchar (&owner_name_val, DB_MAX_IDENTIFIER_LENGTH, owner_name_p, strlen (owner_name_p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  if (error < NO_ERROR)
-    {
-      assert (false);
-    }
-
-  owner_obj = obj_find_unique (db_user_obj, "name", &owner_name_val, AU_FETCH_READ);
-  if (owner_obj == NULL)
-    {
-      assert (false);
-    }
-
-  owner_obj_id = db_identifier(owner_obj);
-  if (owner_obj_id == NULL)
-    {
-      assert (false);
-    }
-
-  db_value_clear (&owner_name_val);
-
-  db_value_domain_init (&owner_obj_id_val, DB_TYPE_OID, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-  db_make_oid (&owner_obj_id_val, owner_obj_id);
-
-  midxkey.ncolumns = 2;
-  midxkey.buf = (char *) malloc (DB_MAX_IDENTIFIER_LENGTH + OR_OID_SIZE + MAX_ALIGNMENT);
-  or_init (&buf, midxkey.buf, -1);
-  nullmap_ptr = midxkey.buf;
-  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, midxkey.ncolumns));
-
-  class_name_type->index_writeval (&buf, &class_name_val);
-  OR_ENABLE_BOUND_BIT (nullmap_ptr, 0);
-
-  owner_type->index_writeval (&buf, &owner_obj_id_val);
-  OR_ENABLE_BOUND_BIT (nullmap_ptr, 1);
-
-  midxkey.size = CAST_BUFLEN (buf.ptr - buf.buffer);
-  midxkey.domain = NULL;
-
-  error = db_make_midxkey (value, &midxkey);
-  if (error < NO_ERROR)
-    {
-      assert (false);
-    }
-
-  (*value).need_clear = true;
-
-  if (user_name_p)
-    {
-      free_and_init (user_name_p);
-    }
-
-  if (current_user_name_p)
-    {
-      db_string_free (current_user_name_p);
-    }
-
-  return error;
 }

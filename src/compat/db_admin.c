@@ -1968,6 +1968,60 @@ db_get_user_and_host_name (void)
   return user;
 }
 
+char *
+db_get_specified_user_name (const char *name)
+{
+  const char *dot = NULL;
+  char *copy_name = NULL;
+  char *token = NULL;
+  char *token_save = NULL;
+  char *specified_user_name = NULL;
+  int error = NO_ERROR;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      return NULL;
+    }
+
+  dot = strchr (name, '.');
+  if (dot == NULL)
+    {
+      return NULL;
+    }
+
+  copy_name = ws_copy_string (name);
+  if (copy_name == NULL)
+    {
+      /* youngjinj */
+      assert (false);
+
+      return NULL;
+    }
+
+  token = strtok_r (copy_name, ".", &token_save);
+  if (token == NULL)
+    {
+      /* It's impossible to come here because dot is not null. */
+      assert (false);
+
+      if (copy_name)
+	{
+	  db_ws_free_and_init (copy_name);
+	}
+
+      return NULL;
+    }
+
+  specified_user_name  = ws_copy_string (token);
+
+  if (copy_name)
+    {
+      db_ws_free_and_init (copy_name);
+    }
+
+  return specified_user_name;
+}
+
 /*
  * db_get_user() - This returns the user object of the current user. If no user
  *    has been logged in, it returns NULL. No error is set if NULL is returned,

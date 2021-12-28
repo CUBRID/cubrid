@@ -2779,7 +2779,7 @@ create_stmt
 	| CREATE 					/* 1 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_TRIGGER); }	/* 2 */
 	  TRIGGER 					/* 3 */
-	  identifier 					/* 4 */
+	  user_specified_name_without_dot 		/* 4 */
 	  opt_status					/* 5 */
 	  opt_priority					/* 6 */
 	  trigger_time 					/* 7 */
@@ -2816,7 +2816,7 @@ create_stmt
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); }	/* 2 */
 	  SERIAL 					/* 3 */
 		{ pop_msg(); }				/* 4 */
-	  identifier 					/* 5 */
+	  user_specified_name_without_dot 		/* 5 */
 	  opt_serial_option_list			/* 6 */
 	  opt_comment_spec				/* 7 */
 		{{
@@ -3388,7 +3388,7 @@ alter_stmt
 		DBG_PRINT}}
 	| ALTER
 	  TRIGGER
-	  identifier_list
+	  user_specified_name_list
 	  trigger_status_or_priority_or_change_owner
 	  opt_comment_spec					/* 5 */
 		{{
@@ -3416,7 +3416,7 @@ alter_stmt
 		DBG_PRINT}}
 	| ALTER						/* 1 */
 	  TRIGGER					/* 2 */
-	  identifier				/* 3 */
+	  user_specified_name				/* 3 */
 	  COMMENT comment_value		/* 4, 5 */
 		{{
 
@@ -3440,7 +3440,7 @@ alter_stmt
 		DBG_PRINT}}
 	| ALTER                                /* 1 */
 	  SERIAL                               /* 2 */
-	  identifier                           /* 3 */
+	  user_specified_name                  /* 3 */
 	  opt_serial_option_list	       	   /* 4 */
 	  opt_comment_spec				       /* 5 */
 		{{
@@ -3916,7 +3916,7 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME TRIGGER object_name AS object_name
+	| RENAME TRIGGER user_specified_name AS user_specified_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_TRIGGER);
@@ -4156,7 +4156,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP TRIGGER identifier_list
+	| DROP TRIGGER user_specified_name_list
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_TRIGGER);
@@ -4200,7 +4200,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP SERIAL opt_if_exists identifier
+	| DROP SERIAL opt_if_exists user_specified_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERIAL);
@@ -9374,7 +9374,7 @@ foreign_key_constraint
 	  opt_identifier				/* 3 */
 	  '(' index_column_identifier_list ')'	  	/* 4, 5, 6 */
 	  REFERENCES					/* 7 */
-	 user_specified_name				/* 8 */
+	  user_specified_name				/* 8 */
 	  opt_paren_attr_list				/* 9 */
 	  opt_ref_rule_list				/* 10 */
 		{{
@@ -11742,7 +11742,7 @@ trigger_action
 	;
 
 trigger_spec_list
-	: identifier_list
+	: user_specified_name_list
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_TRIGGER_SPEC_LIST);

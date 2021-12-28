@@ -1545,16 +1545,8 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       return er_errid ();
     }
 
-  db_value_clear (&class_name_val);
-
-  error = sm_catcls_midxkey_key_generate (&class_name_val, sm_get_ch_name (class_mop), NULL);
-  if (error < NO_ERROR)
-    {
-      /* youngjinj */
-      assert (false);
-    }
-
-  db_class_inst = obj_find_unique (db_class, "class_name", &class_name_val, AU_FETCH_READ);
+  db_make_string (&class_name_val, sm_get_ch_name (class_mop));
+  db_class_inst = obj_find_unique (db_class, "class_full_name", &class_name_val, AU_FETCH_READ);
   if (db_class_inst == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -5131,7 +5123,7 @@ au_change_owner (MOP classmop, MOP owner)
   char *owner_name = NULL;
   const char *class_simple_name = NULL;
   char *class_full_name = NULL;
-  int class_full_name_size = 0;
+  int len = 0;
 
   AU_DISABLE (save);
   if (!au_is_dba_group_member (Au_user))
@@ -5176,9 +5168,9 @@ au_change_owner (MOP classmop, MOP owner)
 	    {
 	      owner_name = au_get_user_name(owner);
 
-	      class_full_name_size = snprintf (NULL, 0, "%s.%s", owner_name, class_simple_name);
-	      class_full_name = (char *) db_ws_alloc (class_full_name_size * sizeof (char));
-	      snprintf (class_full_name, class_full_name_size, "%s.%s", owner_name, class_simple_name);
+	      len = snprintf (NULL, 0, "%s.%s", owner_name, class_simple_name) + 1;
+	      class_full_name = (char *) db_ws_alloc (len * sizeof (char));
+	      snprintf (class_full_name, len, "%s.%s", owner_name, class_simple_name);
 
 	      error = sm_rename_class (classmop, class_full_name);
 	      if (error == ER_LC_CLASSNAME_EXIST)
@@ -5239,7 +5231,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
       return;
     }
 
-  sm_user_specified_name (class_name, NULL, user_specified_name);
+  sm_user_specified_name (class_name, NULL, &user_specified_name);
   if (user_specified_name == NULL)
     {
       /* youngjinj */
@@ -5424,7 +5416,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name, owner_name);
+  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
   if (serial_object == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
@@ -5581,7 +5573,7 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
   db_make_null (returnval);
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
-      sm_user_specified_name (db_get_string (class_), NULL, user_specified_name);
+      sm_user_specified_name (db_get_string (class_), NULL, &user_specified_name);
       if (user_specified_name == NULL)
         {
 	  /* youngjinj */
@@ -8838,50 +8830,4 @@ const char *
 au_get_user_class_name (void)
 {
   return AU_USER_CLASS_NAME;
-}
-
-const char *
-au_get_specified_user_name (const char *user_specified_name)
-{
-  const char *dot = NULL;
-  char *copy_name = NULL;
-  char *token = NULL;
-  char *token_save = NULL;
-  int error = NO_ERROR;
-
-  if (user_specified_name == NULL || user_specified_name[0] == '\0')
-    {
-      return NULL;
-    }
-
-  dot = strchr (user_specified_name, '.');
-  if (dot == NULL)
-    {
-      return NULL;
-    }
-
-  copy_name = strndup (user_specified_name, strlen (user_specified_name));
-  if (copy_name == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (strlen (user_specified_name) + 1));
-
-      return NULL;
-    }
-
-  token = strtok_r (copy_name, ".", &token_save);
-  if (token == NULL)
-    {
-      /* It's impossible to come here because dot is not null. */
-      assert (false);
-
-      if (copy_name)
-	{
-	  free_and_init (copy_name);
-	}
-
-      return NULL;
-    }
-
-  return token;
 }

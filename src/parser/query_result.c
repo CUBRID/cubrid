@@ -703,13 +703,6 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
   unsigned int save_custom;
   PT_NODE *node, *spec, *range_var;
   char *original_name;
-  const PT_NODE *name_node_ptr = NULL;
-  const char *name_ptr = NULL;
-  char *user_name_ptr = NULL;
-  char *copy_name = NULL;
-  char *token = NULL;
-  char *token_save = NULL;
-  const char *dot_ptr = NULL;
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_SUPPRESS_QUOTES;
@@ -994,7 +987,7 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query, DB_QUERY_TYPE * l
 		}
 	      else if (want_spec_entity_name == false && spec->info.spec.range_var)
 		{
-  		  spec_name = spec->info.spec.range_var->info.name.original;
+		  spec_name = spec->info.spec.range_var->info.name.original;
 		}
 	    }
 	}

@@ -8385,7 +8385,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   name = node->info.create_entity.entity_name;
 
   current_user_name = db_get_user_name ();
-  user_name = au_get_specified_user_name (name->info.name.original);
+  user_name = db_get_specified_user_name (name->info.name.original);
   if (intl_identifier_casecmp (current_user_name, user_name) && au_is_dba_group_member (Au_user) == false)
     {
 	  PT_ERRORmf4 (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ER_AU_DBA_ONLY, "CREATE", name->info.name.original, user_name, current_user_name);

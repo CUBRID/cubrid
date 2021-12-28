@@ -1802,7 +1802,8 @@ boot_define_class (MOP class_mop)
   SM_TEMPLATE *def;
   char domain_string[32];
   int error_code = NO_ERROR;
-  const char *index1_col_names[3] = { "class_name", "owner", NULL };
+  const char *index1_col_names[2] = { "class_full_name", NULL };
+  const char *index2_col_names[3] = { "class_name", "owner", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -1998,7 +1999,13 @@ boot_define_class (MOP class_mop)
    * 
    *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
    */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, "i__db_class_class_name_owner", index1_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, "i__db_class_class_full_name", index1_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index2_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3280,9 +3287,16 @@ boot_define_serial (MOP class_mop)
   unsigned char num[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   DB_VALUE default_value;
   int error_code = NO_ERROR;
-  const char *pk_col_names[] = { "name", "owner", NULL };
+  const char *index1_col_names[] = { "full_name", NULL };
+  const char *index2_col_names[] = { "name", "owner", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
+
+  error_code = smt_add_attribute (def, "full_name", "string", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   error_code = smt_add_attribute (def, "name", "string", NULL);
   if (error_code != NO_ERROR)
@@ -3405,8 +3419,21 @@ boot_define_serial (MOP class_mop)
       return error_code;
     }
 
-  /* add primary key */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_name_owner", pk_col_names, 0);
+  /* add index */
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, "u_db_serial_full_name", index1_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* add index */
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, NULL, index2_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "name", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5177,7 +5204,6 @@ boot_define_view_trigger (void)
   MOP class_mop;
   COLUMN columns[] = {
     {"trigger_name", "varchar(255)"},
-    {"trigger_owner_name", "varchar(255)"},
     {"target_class_name", "varchar(255)"},
     {"target_attr_name", "varchar(255)"},
     {"target_attr_type", "varchar(8)"},
@@ -5208,8 +5234,7 @@ boot_define_view_trigger (void)
     }
 
   sprintf (stmt,
-	   "SELECT CAST([t].[name] AS VARCHAR(255)), CAST([t].[owner].[name] AS VARCHAR(255)),"
-	   " [c].[class_name], CAST([t].[target_attribute] AS VARCHAR(255)),"
+	   "SELECT CAST([t].[name] AS VARCHAR(255)), [c].[class_name], CAST([t].[target_attribute] AS VARCHAR(255)),"
 	   " CASE [t].[target_class_attribute] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
 	   " [t].[action_type], [t].[action_time], [t].[comment]"
 	   " FROM [%s] [t] LEFT OUTER JOIN [%s] [c] ON [t].[target_class] = [c].[class_of]"
