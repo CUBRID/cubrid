@@ -1260,6 +1260,10 @@ extern void logpb_set_page_checksum (LOG_PAGE * log_pgptr);
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
 
+// *INDENT-OFF*
+extern void logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &payload_in_out);
+// *INDENT-ON*
+
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
 //////////////////////////////////////////////////////////////////////////

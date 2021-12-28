@@ -41,6 +41,7 @@ option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_REQUEST_CS "Unit testing: request_client_server module")
 option (UNIT_TEST_LOG "Unit testing: log")
+option (UNIT_TEST_SERVER "Unit testing: server")
 
 message("  unit_tests/...")
 
@@ -116,3 +117,8 @@ if (UNIT_TESTS OR UNIT_TEST_LOG)
   message("    log transfer")
   add_subdirectory(log)
 endif(UNIT_TESTS OR UNIT_TEST_LOG)
+
+if (UNIT_TESTS OR UNIT_TEST_SERVER)
+  message("    server")
+  add_subdirectory(server)
+endif(UNIT_TESTS OR UNIT_TEST_SERVER)

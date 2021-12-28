@@ -19,9 +19,9 @@
 #ifndef _PAGE_SERVER_HPP_
 #define _PAGE_SERVER_HPP_
 
-#include "async_page_fetcher.hpp"
 #include "log_replication.hpp"
 #include "log_storage.hpp"
+#include "server_request_responder.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
 
@@ -44,22 +44,21 @@ class page_server
     void start_log_replicator (const log_lsa &start_lsa);
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
 
-    void init_page_fetcher ();
-    void finalize_page_fetcher ();
+    void init_request_responder ();
+    void finalize_request_responder ();
 
   private:
+
     void disconnect_active_tran_server ();
     void disconnect_tran_server (connection_handler *conn);
     bool is_active_tran_server_connected () const;
-    cublog::async_page_fetcher &get_page_fetcher ();
 
-  private:
     class connection_handler
     {
+      public:
 	using tran_server_conn_t =
 		cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
-      public:
 	connection_handler () = delete;
 	~connection_handler ();
 	connection_handler (cubcomm::channel &chn, page_server &ps);
@@ -67,12 +66,8 @@ class page_server
 	std::string get_channel_id ();
 
       private:
-	void on_log_page_read_result (tran_server_conn_t::sequenced_payload &&sp, const LOG_PAGE *log_page,
-				      int error_code);
-	void on_data_page_read_result (tran_server_conn_t::sequenced_payload &&sp, const FILEIO_PAGE *page_ptr,
-				       int error_code);
-	void on_log_boot_info_result (tran_server_conn_t::sequenced_payload &&sp, std::string &&message);
 
+	// Request handlers for the request server:
 	void receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_ip);
@@ -81,6 +76,11 @@ class page_server
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp);
 
+	// Helper function to convert above functions into responder specific tasks.
+	template<class F, class ... Args>
+	void push_async_response (F &&, tran_server_conn_t::sequenced_payload &&a_sp, Args &&...args);
+
+	// Function used as sink for log transfer
 	void prior_sender_sink_hook (std::string &&message) const;
 
       private:
@@ -95,11 +95,15 @@ class page_server
 	mutable std::mutex m_prior_sender_sink_removal_mtx;
     };
 
+    using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;
+    responder_t &get_responder ();
+
     std::unique_ptr<connection_handler> m_active_tran_server_conn;
     std::vector<std::unique_ptr<connection_handler>> m_passive_tran_server_conn;
 
     std::unique_ptr<cublog::replicator> m_replicator;
-    std::unique_ptr<cublog::async_page_fetcher> m_page_fetcher;
+
+    std::unique_ptr<responder_t> m_responder;
 };
 
 extern page_server ps_Gl;
