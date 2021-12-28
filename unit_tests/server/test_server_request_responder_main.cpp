@@ -90,9 +90,9 @@ class test_conn
       ++m_response_count;
     }
 
-    std::atomic<size_t> m_request_count;
-    std::atomic<size_t> m_handle_count;
-    std::atomic<size_t> m_response_count;
+    std::atomic<size_t> m_request_count = 0;
+    std::atomic<size_t> m_handle_count = 0;
+    std::atomic<size_t> m_response_count = 0;
 };
 
 template <size_t T_CONN_COUNT>
