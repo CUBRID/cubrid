@@ -332,4 +332,62 @@ public class TestCUBRIDStatement {
         return "t";
     }
     */
+
+    /* Test get generated keys */
+    public static String test18() throws SQLException {
+        String result = "";
+        Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+        SqlUtil.createTable(conn, "t1", "a int auto_increment", "b int");
+        try {
+            String sql = String.format("insert into %s (b) values (1)", "t1");
+            Statement stmt = conn.createStatement();
+            boolean res = stmt.execute(sql, Statement.RETURN_GENERATED_KEYS);
+
+            result += TestUtil.assertTrue(!res);
+            result += TestUtil.assertEquals(1, stmt.getUpdateCount());
+            result += TestUtil.assertEquals(1, SqlUtil.getCount(conn, "t1", null));
+
+            ResultSet rs = stmt.getGeneratedKeys();
+            result += TestUtil.assertNotNull(rs);
+            result += TestUtil.assertEquals(1, rs.getMetaData().getColumnCount());
+            result += TestUtil.assertEquals(true, rs.next());
+            result += TestUtil.assertEquals(1, rs.getInt(1));
+
+            rs.close();
+        } finally {
+            SqlUtil.dropTable(conn, "t1");
+        }
+        return result;
+    }
+
+    /* Test get generated keys */
+    public static String test19() throws SQLException {
+        String result = "";
+        Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+        SqlUtil.createTable(conn, "t2", "a int auto_increment", "b int");
+        try {
+            String sql = String.format("insert into %s (b) values (1), (3)", "t2");
+            Statement stmt = conn.createStatement();
+            boolean res = stmt.execute(sql, Statement.RETURN_GENERATED_KEYS);
+
+            result += TestUtil.assertTrue(!res);
+            result += TestUtil.assertEquals(2, stmt.getUpdateCount());
+            result += TestUtil.assertEquals(2, SqlUtil.getCount(conn, "t2", null));
+
+            ResultSet rs = stmt.getGeneratedKeys();
+            result += TestUtil.assertNotNull(rs);
+            result += TestUtil.assertEquals(1, rs.getMetaData().getColumnCount());
+            result += TestUtil.assertEquals(true, rs.next());
+            result += TestUtil.assertEquals(1, rs.getInt(1));
+
+            result += TestUtil.assertEquals(1, rs.getMetaData().getColumnCount());
+            result += TestUtil.assertEquals(true, rs.next());
+            result += TestUtil.assertEquals(2, rs.getInt(1));
+
+            rs.close();
+        } finally {
+            SqlUtil.dropTable(conn, "t2");
+        }
+        return result;
+    }
 }
