@@ -1924,7 +1924,7 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 	}
       else
 	{
-	  low = (flag > 0) ? middle + flag : middle + 1;
+	  low = middle + 1;
 	}
     }
   while (high >= low);
