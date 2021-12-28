@@ -1251,6 +1251,7 @@ int g_original_buffer_len;
 %token SEQUENCE_OF
 %token SERIALIZABLE
 %token SESSION
+%token SESSION_TIMEZONE
 %token SESSION_USER
 %token SET
 %token SET_OF
@@ -1563,7 +1564,6 @@ int g_original_buffer_len;
 %token <cptr> REGEXP_LIKE
 %token <cptr> REGEXP_REPLACE
 %token <cptr> REGEXP_SUBSTR
-%token <cptr> SESSION_TIMEZONE
 %token <cptr> TIMEZONE
 
 %token <cptr> IdName
@@ -23424,7 +23424,6 @@ identifier
         | REGEXP_LIKE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
         | REGEXP_REPLACE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
         | REGEXP_SUBSTR {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | SESSION_TIMEZONE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
         | TIMEZONE {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}    
 /*}}}*/
 	;
