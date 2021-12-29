@@ -285,6 +285,7 @@ namespace cubmethod
   int
   query_handler::get_generated_keys_client_insert (get_generated_keys_info &info, DB_QUERY_RESULT &qres)
   {
+    int error = NO_ERROR;
     int tuple_count = 0;
     DB_SEQ *seq = NULL;
     DB_VALUE oid_val;
