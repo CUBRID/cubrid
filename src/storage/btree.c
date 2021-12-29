@@ -24301,12 +24301,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (!DB_IS_NULL (&bts->cur_key));
   assert (!BTS_IS_INDEX_ILS (bts));
 
-  if (!bts->page_desync_lsa.is_null ())
-    {
-      assert (is_passive_transaction_server ());
-      get_passive_tran_server_ptr ()->wait_replication_pasts_target_lsa (bts->page_desync_lsa);
-      bts->page_desync_lsa.set_null ();
-    }
+  btree_range_scan_wait_for_replication (*bts);
 
   /* Resume range scan. It can be resumed from same leaf or by looking up the key again from root. */
   if (!bts->force_restart_from_root)
@@ -24937,10 +24932,13 @@ btree_range_scan_wait_for_replication (btree_scan & bts)
       // no need to wait
       return;
     }
-
+#if defined (SERVER_MODE)
   assert (is_passive_transaction_server ());
   get_passive_tran_server_ptr ()->wait_replication_pasts_target_lsa (bts.page_desync_lsa);
   bts.page_desync_lsa.set_null ();
+#else
+  assert (false);
+#endif
 }
 
 int
