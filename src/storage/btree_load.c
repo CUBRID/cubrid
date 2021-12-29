@@ -1479,6 +1479,11 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   DB_VALUE last_key;		/* Last key of the current page */
   DB_VALUE first_key;		/* First key of the next page; used only if key_type is one of the string types */
 
+  root_header_info._64.over = 0;
+  root_header_info._64.num_oids = 0;
+  root_header_info._64.num_nulls = 0;
+  root_header_info._64.num_keys = 0;
+
   root_header = &root_header_info;
 
   rec.area_size = DB_PAGESIZE;

@@ -3155,7 +3155,7 @@ locator_find_class (const char *classname)
 
       if (other_class_name)
         {
-	  if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
+	  if (locator_find_class_by_name (other_class_name, lock, &class_mop) != LC_CLASSNAME_EXIST)
 	    {
 	      class_mop = NULL;
 	    }
@@ -3203,7 +3203,7 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
 
       if (other_class_name)
         {
-	  if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
+	  if (locator_find_class_by_name (other_class_name, lock, &class_mop) != LC_CLASSNAME_EXIST)
 	    {
 	      class_mop = NULL;
 	    }
