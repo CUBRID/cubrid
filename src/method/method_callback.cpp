@@ -137,20 +137,7 @@ namespace cubmethod
 
     /* find in m_sql_handler_map */
     prepare_info info;
-    query_handler *handler = nullptr;
-    for (auto it = m_sql_handler_map.lower_bound (sql); it != m_sql_handler_map.upper_bound (sql); it++)
-      {
-	handler = find_query_handler (it->second);
-	if (handler != nullptr && handler->get_is_occupied() == false)
-	  {
-	    info.handle_id = it->second;
-	    break;
-	  }
-	else
-	  {
-	    handler = nullptr;
-	  }
-      }
+    query_handler *handler = get_query_handler_by_sql (sql);
 
     bool is_cache_used = false;
     if (handler != nullptr)
@@ -170,7 +157,7 @@ namespace cubmethod
 	    return ER_FAILED;
 	  }
 
-	handler = find_query_handler (handle_id);
+	handler = get_query_handler_by_id (handle_id);
 	if (handler == nullptr)
 	  {
 	    // TODO: proper error code
@@ -190,6 +177,8 @@ namespace cubmethod
 	  {
 	    m_sql_handler_map.emplace (sql, info.handle_id);
 	  }
+	info.handle_id = handler->get_id ();
+
 	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
       }
   }
@@ -200,7 +189,7 @@ namespace cubmethod
     execute_request request;
     request.unpack (unpacker);
 
-    query_handler *handler = find_query_handler (request.handler_id);
+    query_handler *handler = get_query_handler_by_id (request.handler_id);
     if (handler == nullptr)
       {
 	// TODO: proper error code
@@ -229,20 +218,12 @@ namespace cubmethod
   }
 
   int
-  callback_handler::schema_info (packing_unpacker &unpacker)
-  {
-    // TODO
-    int error = NO_ERROR;
-    return error;
-  }
-
-  int
   callback_handler::make_out_resultset (packing_unpacker &unpacker)
   {
     uint64_t query_id;
     unpacker.unpack_all (query_id);
 
-    cubmethod::query_handler *query_handler = get_query_handler_by_qid (query_id);
+    cubmethod::query_handler *query_handler = get_query_handler_by_query_id (query_id);
     if (query_handler)
       {
 	const cubmethod::query_result &qresult = query_handler->get_result();
@@ -264,7 +245,7 @@ namespace cubmethod
     int handler_id = -1;
     unpacker.unpack_all (handler_id);
 
-    query_handler *handler = find_query_handler (handler_id);
+    query_handler *handler = get_query_handler_by_id (handler_id);
     if (handler == nullptr)
       {
 	// TODO: proper error code
@@ -438,7 +419,7 @@ namespace cubmethod
   }
 
   query_handler *
-  callback_handler::find_query_handler (int id)
+  callback_handler::get_query_handler_by_id (int id)
   {
     if (id < 0 || id >= (int) m_query_handlers.size())
       {
@@ -480,7 +461,7 @@ namespace cubmethod
   }
 
   query_handler *
-  callback_handler::get_query_handler_by_qid (uint64_t qid)
+  callback_handler::get_query_handler_by_query_id (uint64_t qid)
   {
     const auto &iter = m_qid_handler_map.find (qid);
     if (iter == m_qid_handler_map.end() )
@@ -489,12 +470,30 @@ namespace cubmethod
       }
     else
       {
-	return find_query_handler (iter->second);
+	return get_query_handler_by_id (iter->second);
       }
   }
 
+  query_handler *
+  callback_handler::get_query_handler_by_sql (std::string &sql)
+  {
+    query_handler *handler = nullptr;
+    for (auto it = m_sql_handler_map.lower_bound (sql); it != m_sql_handler_map.upper_bound (sql); it++)
+      {
+	handler = get_query_handler_by_id (it->second);
+	if (handler != nullptr && handler->get_is_occupied() == false)
+	  {
+	    /* found */
+	    break;
+	  }
+	handler = nullptr;
+      }
+
+    return handler;
+  }
+
   //////////////////////////////////////////////////////////////////////////
-  // Global thread interface
+  // Global method callback handler interface
   //////////////////////////////////////////////////////////////////////////
   static callback_handler handler (100);
 
@@ -511,16 +510,23 @@ int
 method_make_out_rs (DB_BIGINT query_id)
 {
   cubmethod::callback_handler *callback_handler = cubmethod::get_callback_handler ();
-  cubmethod::query_handler *query_handler = callback_handler->get_query_handler_by_qid ((uint64_t) query_id);
+  cubmethod::query_handler *query_handler = callback_handler->get_query_handler_by_query_id (query_id);
 
-  const cubmethod::query_result &qresult = query_handler->get_result();
+  if (query_handler != nullptr)
+    {
+      const cubmethod::query_result &qresult = query_handler->get_result();
 
-  DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session(), qresult.stmt_id);
-  return ux_create_srv_handle_with_method_query_result (
-		 qresult.result,
-		 qresult.stmt_type,
-		 qresult.num_column,
-		 column_info,
-		 true
-	 );
+      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session(), qresult.stmt_id);
+      return ux_create_srv_handle_with_method_query_result (
+		     qresult.result,
+		     qresult.stmt_type,
+		     qresult.num_column,
+		     column_info,
+		     true
+	     );
+    }
+  else
+    {
+      return -1;
+    }
 }
