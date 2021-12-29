@@ -223,6 +223,8 @@ struct btree_scan
 
   BTS_KEY_STATUS key_status;
 
+  LOG_LSA page_desync_lsa;
+
   bool end_scan;
   bool end_one_iteration;
   bool is_interrupted;
@@ -279,6 +281,7 @@ struct btree_scan
     VPID_SET_NULL (&(bts)->leaf_rec_info.ovfl);		\
     (bts)->node_type = BTREE_LEAF_NODE;			\
     (bts)->key_status = BTS_KEY_IS_NOT_VERIFIED;	\
+    (bts)->page_desync_lsa = NULL_LSA;			\
     (bts)->end_scan = false;				\
     (bts)->end_one_iteration = false;			\
     (bts)->is_interrupted = false;			\

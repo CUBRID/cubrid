@@ -41,6 +41,7 @@
 #include "utility.h"
 #include "transform.h"
 #include "partition_sr.h"
+#include "passive_tran_server.hpp"
 #include "porting_inline.hpp"
 #include "query_executor.h"
 #include "query_opfunc.h"
@@ -1548,6 +1549,9 @@ static int btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, B
 static int btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_range_scan_count_oids_leaf_and_one_ovf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
+static void btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_scan & bts);
+static void btree_range_scan_wait_for_replication (btree_scan & bts);
+static int btree_range_scan_handle_error (THREAD_ENTRY * thread_p, btree_scan & bts, int error_code);
 static int btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, key_val_range * kv_range);
 static int btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 
@@ -13517,7 +13521,6 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   char recset_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int key_type;
   BTREE_NODE_SPLIT_INFO split_info;
-  int node_level;
   bool flag_fence_insert = false;
   OID dummy_oid = { NULL_PAGEID, 0, 0 };
   int leftsize, rightsize;
@@ -13569,7 +13572,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
 #if !defined(NDEBUG)
-  node_level = btree_get_node_level (thread_p, P);
+  int node_level = btree_get_node_level (thread_p, P);
   assert (node_level >= 1);
 #endif
 
@@ -24298,6 +24301,13 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (!DB_IS_NULL (&bts->cur_key));
   assert (!BTS_IS_INDEX_ILS (bts));
 
+  if (!bts->page_desync_lsa.is_null ())
+    {
+      assert (is_passive_transaction_server ());
+      get_passive_tran_server_ptr ()->wait_replication_pasts_target_lsa (bts->page_desync_lsa);
+      bts->page_desync_lsa.set_null ();
+    }
+
   /* Resume range scan. It can be resumed from same leaf or by looking up the key again from root. */
   if (!bts->force_restart_from_root)
     {
@@ -24894,6 +24904,60 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   return ER_FAILED;
 }
 
+void
+btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_scan & bts)
+{
+  assert (is_passive_transaction_server ());
+  assert (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION);
+
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
+
+  assert (bts.page_desync_lsa.is_null ());
+  bts.page_desync_lsa = tdes->page_desync_lsa;
+  tdes->page_desync_lsa.set_null ();
+  er_clear ();
+
+  bts.force_restart_from_root = true;
+
+  // If there are objects selected, end this iteration and maybe replication will catch-up in the meantime.
+  // If MRO is used or if only counting is required, ending an iteration will not help.
+  //
+  if (bts.n_oids_read_last_iteration > 0 && !BTS_IS_INDEX_MRO (&bts) && !BTS_NEED_COUNT_ONLY (&bts))
+    {
+      bts.end_one_iteration;
+    }
+}
+
+void
+btree_range_scan_wait_for_replication (btree_scan & bts)
+{
+  if (bts.page_desync_lsa.is_null ())
+    {
+      // no need to wait
+      return;
+    }
+
+  assert (is_passive_transaction_server ());
+  get_passive_tran_server_ptr ()->wait_replication_pasts_target_lsa (bts.page_desync_lsa);
+  bts.page_desync_lsa.set_null ();
+}
+
+int
+btree_range_scan_handle_error (THREAD_ENTRY * thread_p, btree_scan & bts, int error_code)
+{
+  assert (error_code != NO_ERROR);
+  ASSERT_ERROR ();
+  if (error_code == ER_PAGE_AHEAD_OF_REPLICATION)
+    {
+      btree_range_scan_handle_page_ahead_repl_error (thread_p, bts);
+      ASSERT_NO_ERROR ();
+      return NO_ERROR;
+    }
+
+  return error_code;
+}
+
 /*
  * btree_range_scan () - Generic function to do a range scan on b-tree. It can scan key by key starting with first
  * 			 (or last key for descending scans). For each key, it calls an internal function to process
@@ -24949,8 +25013,11 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
+	  error_code = btree_range_scan_handle_error (thread_p, *bts, error_code);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 	}
       if (bts->end_scan)
 	{
@@ -25004,8 +25071,11 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  error_code = btree_range_scan_advance_over_filtered_keys (thread_p, bts);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR ();
-	      goto exit_on_error;
+	      error_code = btree_range_scan_handle_error (thread_p, *bts, error_code);
+	      if (error_code != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
 	    }
 	  if (bts->end_scan)
 	    {
