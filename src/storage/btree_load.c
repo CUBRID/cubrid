@@ -1460,7 +1460,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   PAGE_PTR cur_nleafpgptr = NULL;
 
   BTREE_NODE *temp;
-  BTREE_ROOT_HEADER root_header_info, *root_header = NULL;
+  BTREE_ROOT_HEADER root_header_info = { 0, }, *root_header = NULL;
   BTREE_NODE_HEADER *header = NULL;
   int key_cnt;
   int max_key_len, new_max;
