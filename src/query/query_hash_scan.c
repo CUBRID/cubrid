@@ -1924,7 +1924,7 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 	}
       else
 	{
-	  middle += (flag > 0) ? flag - 1 : 0; /* go to last slot using flag */
+	  middle += (flag > 0) ? flag - 1 : 0;	/* go to last slot using flag */
 	  low = middle + 1;
 	}
     }
