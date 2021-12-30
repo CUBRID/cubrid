@@ -99,11 +99,7 @@ function do_unloaddb ()
                 echo "Proc $slot_num: num tables: $num_tables_in_slot, page size: ${slot_size[$slot_num]}"
         fi
 
-        if [ $slot_num -eq 0 ];then
-                cubrid unloaddb -i $file $database
-        else
-                cubrid unloaddb -d -i $file $database
-        fi
+	cubrid unloaddb --input-class-only --input-class-file $file $database
 
         if [ $? -ne 0 ];then
                 msg="Failed"
