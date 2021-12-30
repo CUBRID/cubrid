@@ -14,6 +14,14 @@ public class TestUtil {
         }
     }
 
+    public static String assertNotNull(Object object) {
+        if (object != null) {
+            return "t ";
+        } else {
+            return "f ";
+        }
+    }
+
     public static String assertArrayEquals(Object[] expected, Object[] actual) {
         if (expected.length != actual.length) {
             return "f ";

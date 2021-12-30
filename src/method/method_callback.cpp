@@ -116,6 +116,9 @@ namespace cubmethod
       case METHOD_CALLBACK_MAKE_OUT_RS:
 	error = make_out_resultset (unpacker);
 	break;
+      case METHOD_CALLBACK_GET_GENERATED_KEYS:
+	error = generated_keys (unpacker);
+	break;
       default:
 	assert (false);
 	error = ER_FAILED;
@@ -253,6 +256,31 @@ namespace cubmethod
     /* unexpected error, should not be here */
     m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
     return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+  }
+
+  int
+  callback_handler::generated_keys (packing_unpacker &unpacker)
+  {
+    int handler_id = -1;
+    unpacker.unpack_all (handler_id);
+
+    query_handler *handler = find_query_handler (handler_id);
+    if (handler == nullptr)
+      {
+	// TODO: proper error code
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
+      }
+
+    get_generated_keys_info info = handler->generated_keys ();
+    if (m_error_ctx.has_error())
+      {
+	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+      }
+    else
+      {
+	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
+      }
   }
 
 //////////////////////////////////////////////////////////////////////////

@@ -6,6 +6,7 @@ import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.ExecuteInfo;
 import com.cubrid.jsp.data.FetchInfo;
 import com.cubrid.jsp.data.GetByOIDInfo;
+import com.cubrid.jsp.data.GetGeneratedKeysInfo;
 import com.cubrid.jsp.data.GetSchemaInfo;
 import com.cubrid.jsp.data.MakeOutResultSetInfo;
 import com.cubrid.jsp.data.PrepareInfo;
@@ -119,6 +120,7 @@ public class SUStatement {
 
     public SUStatement(
             SUConnection conn, GetByOIDInfo info, CUBRIDOID oid, String attributeName[]) {
+        suConn = conn;
         type = GET_BY_OID;
         handlerId = -1;
 
@@ -152,6 +154,25 @@ public class SUStatement {
         fetchSize = 1;
         maxFetchSize = 0;
         isSensitive = false;
+    }
+
+    public SUStatement(SUConnection conn, GetGeneratedKeysInfo info) {
+        suConn = conn;
+        type = GET_AUTOINCREMENT_KEYS;
+
+        /* init column infos */
+        setColumnInfo(info.columnInfos);
+
+        /* init fetch infos */
+        fetchedStartCursorPosition = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
+        fetchDirection = ResultSet.FETCH_FORWARD; // TODO: temporary init to FORWARD
+
+        commandType = (byte) info.getResultInfo().stmtType;
+        totalTupleNumber = info.getResultInfo().tupleCount;
+
+        fetchInfo = info.getFetchInfo();
+
+        handlerId = -1;
     }
 
     /* out resultset */
@@ -301,7 +322,7 @@ public class SUStatement {
     }
 
     public void fetch() throws SQLException {
-        if (type == GET_BY_OID) {
+        if (type == GET_BY_OID || type == GET_AUTOINCREMENT_KEYS) {
             return;
         }
 
@@ -401,6 +422,8 @@ public class SUStatement {
             } else if (commandType != CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
                 tuples = fetchInfo.tuples; // get tuples from fetchInfo
             }
+        } else if (type == GET_AUTOINCREMENT_KEYS) {
+            tuples = fetchInfo.tuples;
         } else {
             // GET_BY_OID initialized 1 tuple at constructor
         }
@@ -672,5 +695,9 @@ public class SUStatement {
 
     public long getQueryId() {
         return queryId;
+    }
+
+    public int getHandlerId() {
+        return handlerId;
     }
 }

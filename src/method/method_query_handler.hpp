@@ -79,8 +79,8 @@ namespace cubmethod
       prepare_info prepare (std::string sql, int flag);
       execute_info execute (const execute_request &request);
       next_result_info next_result (int flag);
+      get_generated_keys_info generated_keys ();
 
-      int get_generated_keys ();
       /* TODO: execute_batch, execute_array */
       // TODO: int get_system_parameter ();
 
@@ -124,6 +124,11 @@ namespace cubmethod
 
       int set_host_variables (int num_bind, DB_VALUE *value_list);
       bool has_stmt_result_set (char stmt_type);
+
+      /* generated keys */
+      int get_generated_keys_client_insert (get_generated_keys_info &info, DB_QUERY_RESULT &qres);
+      int get_generated_keys_server_insert (get_generated_keys_info &info, DB_QUERY_RESULT &qres);
+      int make_attributes_by_oid_value (get_generated_keys_info &info, const DB_VALUE &oid_val, int tuple_offset);
 
       /* column info */
       column_info set_column_info (int dbType, int setType, short scale, int prec, char charset, const char *col_name,

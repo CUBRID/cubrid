@@ -235,6 +235,217 @@ namespace cubmethod
     return info;
   }
 
+  get_generated_keys_info
+  query_handler::generated_keys ()
+  {
+    int error = NO_ERROR;
+
+    get_generated_keys_info info;
+
+    int stmt_type;
+    DB_QUERY_RESULT *qres = (DB_QUERY_RESULT *) m_query_result.result;
+    if (qres == NULL)
+      {
+	// TODO: proper error code
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	error = ER_FAILED;
+      }
+    else
+      {
+	if (qres->type == T_SELECT)
+	  {
+	    stmt_type = qres->res.s.stmt_type;
+	    error = get_generated_keys_server_insert (info, *qres);
+	  }
+	else if (qres->type == T_CALL)
+	  {
+	    stmt_type = m_query_result.stmt_type;
+	    error = get_generated_keys_client_insert (info, *qres);
+	  }
+	else
+	  {
+	    // TODO: proper error code
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	    error = ER_FAILED;
+	  }
+      }
+
+    if (error == NO_ERROR)
+      {
+	/* set qresult_info */
+	query_result_info &result_info = info.qresult_info;
+	result_info.stmt_type = stmt_type;
+	result_info.tuple_count = info.generated_keys.tuples.size ();
+	result_info.query_id = -1; /* initialized value, intead of garbage */
+      }
+
+    return info;
+  }
+
+  int
+  query_handler::get_generated_keys_client_insert (get_generated_keys_info &info, DB_QUERY_RESULT &qres)
+  {
+    int error = NO_ERROR;
+    int tuple_count = 0;
+    DB_SEQ *seq = NULL;
+    DB_VALUE oid_val;
+
+    assert (qres.type == T_CALL);
+
+    DB_VALUE *val_ptr = qres.res.c.val_ptr;
+    DB_TYPE db_type = DB_VALUE_DOMAIN_TYPE (val_ptr);
+    if (db_type == DB_TYPE_SEQUENCE)
+      {
+	seq = db_get_set (val_ptr);
+	if (seq == NULL)
+	  {
+	    // TODO: proper error code
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
+	  }
+	tuple_count = db_col_size (seq);
+      }
+    else if (db_type == DB_TYPE_OBJECT)
+      {
+	tuple_count = 1;
+	db_make_object (&oid_val, db_get_object (val_ptr));
+      }
+    else
+      {
+	// TODO: proper error code
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
+      }
+
+    for (int i = 0; i < tuple_count; i++)
+      {
+	if (seq != NULL)
+	  {
+	    error = db_col_get (seq, i, &oid_val);
+	    if (error < 0)
+	      {
+		// TODO: proper error code
+		m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+		return ER_FAILED;
+	      }
+	  }
+
+	error = make_attributes_by_oid_value (info, oid_val, i + 1);
+	if (error < 0)
+	  {
+	    // TODO: proper error code
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
+	  }
+      }
+    return NO_ERROR;
+  }
+
+  int
+  query_handler::get_generated_keys_server_insert (get_generated_keys_info &info, DB_QUERY_RESULT &qres)
+  {
+    int error = NO_ERROR;
+
+    assert (qres.type == T_SELECT);
+
+    error = db_query_next_tuple (&qres);
+    if (error < 0)
+      {
+	// TODO: proper error code
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
+      }
+
+    int tuple_count = 0;
+    DB_VALUE oid_val;
+    while (qres.res.s.cursor_id.position == C_ON)
+      {
+	tuple_count++;
+
+	error = db_query_get_tuple_value (&qres, 0, &oid_val);
+	if (error < 0)
+	  {
+	    // TODO: proper error code
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
+	  }
+
+	error = make_attributes_by_oid_value (info, oid_val, tuple_count);
+	if (error < 0)
+	  {
+	    // TODO: proper error code
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
+	  }
+
+	error = db_query_next_tuple (&qres);
+	if (error < 0)
+	  {
+	    // TODO: proper error code
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	    return ER_FAILED;
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
+  int
+  query_handler::make_attributes_by_oid_value (get_generated_keys_info &info, const DB_VALUE &oid_val, int tuple_offset)
+  {
+    int error = NO_ERROR;
+
+    DB_OBJECT *obj = db_get_object (&oid_val);
+    DB_OBJECT *class_obj = db_get_class (obj);
+    DB_ATTRIBUTE *attributes = db_get_attributes (class_obj);
+
+    OID ins_oid = OID_INITIALIZER;
+    set_dbobj_to_oid (obj, &ins_oid);
+
+    std::vector <DB_VALUE> attribute_values;
+    for (DB_ATTRIBUTE *attr = attributes; attr; attr = db_attribute_next (attr))
+      {
+	DB_VALUE value;
+	if (db_attribute_is_auto_increment (attr))
+	  {
+	    const char *attr_name = db_attribute_name (attr);
+	    error = db_get (obj, attr_name, &value);
+	    if (error < 0)
+	      {
+		error = ER_FAILED;
+		break;
+	      }
+
+	    if (tuple_offset == 1)
+	      {
+		const char *class_name = db_get_class_name (class_obj);
+		DB_DOMAIN *domain = db_attribute_domain (attr);
+		int precision = db_domain_precision (domain);
+		short scale = db_domain_scale (domain);
+		char charset = db_domain_codeset (domain);
+		int db_type = TP_DOMAIN_TYPE (domain);
+		int set_type = DB_TYPE_NULL;
+
+		if (TP_IS_SET_TYPE (db_type))
+		  {
+		    set_type = get_set_domain (domain, precision, scale, charset);
+		  }
+
+		/* first tuple, store attribute info */
+		column_info c_info = set_column_info (db_type, set_type, scale, precision, charset, attr_name, attr_name, class_name,
+						      false);
+
+		info.column_infos.push_back (c_info);
+	      }
+
+	    attribute_values.push_back (value);
+	  }
+      }
+
+    info.generated_keys.tuples.emplace_back (tuple_offset, attribute_values, ins_oid);
+    return error;
+  }
+
   int
   query_handler::set_qresult_info (query_result_info &qinfo)
   {
@@ -253,7 +464,7 @@ namespace cubmethod
 	    /* result of a GET_GENERATED_KEYS request, server insert */
 	    /* do nothing */
 	  }
-	else
+	else // qres->type == T_CALL
 	  {
 	    DB_VALUE val;
 	    error = db_query_get_tuple_value ((DB_QUERY_RESULT *) qresult.result, 0, &val);
@@ -499,33 +710,6 @@ namespace cubmethod
       }
 
     error = set_qresult_info (info.qresult_info);
-
-    return error;
-  }
-
-  int
-  query_handler::get_generated_keys ()
-  {
-    // TODO: not implemented yet
-    assert (false);
-
-    int error = NO_ERROR;
-
-    DB_QUERY_RESULT *qres = m_query_result.result;
-    if (qres == NULL)
-      {
-	// TODO: error handling
-	return ER_FAILED;
-      }
-
-    if (qres->type == T_SELECT)
-      {
-
-      }
-    else if (qres->type == T_CALL)
-      {
-
-      }
 
     return error;
   }

@@ -51,6 +51,7 @@ namespace cubmethod
       int execute (packing_unpacker &unpacker);
       int schema_info (packing_unpacker &unpacker);
       int make_out_resultset (packing_unpacker &unpacker);
+      int generated_keys (packing_unpacker &unpacker);
 
       /* handle related to OID */
       int oid_get (packing_unpacker &unpacker);

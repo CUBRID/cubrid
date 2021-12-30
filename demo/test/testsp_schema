@@ -73,6 +73,9 @@ CREATE OR REPLACE FUNCTION TC_S12() RETURN STRING as language java name 'test.Te
 CREATE OR REPLACE FUNCTION TC_S16() RETURN STRING as language java name 'test.TestCUBRIDStatement.test16() return java.lang.String';
 CREATE OR REPLACE FUNCTION TC_S17() RETURN STRING as language java name 'test.TestCUBRIDStatement.test17() return java.lang.String';
 
+CREATE OR REPLACE FUNCTION TC_S18() RETURN STRING as language java name 'test.TestCUBRIDStatement.test18() return java.lang.String';
+CREATE OR REPLACE FUNCTION TC_S19() RETURN STRING as language java name 'test.TestCUBRIDStatement.test19() return java.lang.String';
+
 /* PreparedStatement Test */
 CREATE OR REPLACE FUNCTION TC_PS1() RETURN STRING as language java name 'test.TestCUBRIDPreparedStatement.test1() return java.lang.String';
 CREATE OR REPLACE FUNCTION TC_PS2() RETURN STRING as language java name 'test.TestCUBRIDPreparedStatement.test2() return java.lang.String';
