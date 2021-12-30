@@ -104,6 +104,7 @@ static T_CONF_TABLE tbl_appl_server[] = {
   {APPL_SERVER_CAS_ORACLE_TYPE_NAME, APPL_SERVER_CAS_ORACLE},
   {APPL_SERVER_CAS_MYSQL_TYPE_NAME, APPL_SERVER_CAS_MYSQL},
   {APPL_SERVER_CAS_MYSQL51_TYPE_NAME, APPL_SERVER_CAS_MYSQL51},
+  {APPL_SERVER_CAS_CGW_TYPE_NAME, APPL_SERVER_CAS_CGW},
   {NULL, 0}
 };
 
@@ -216,6 +217,11 @@ const char *broker_keywords[] = {
   "SQL_LOG_MAX_SIZE",
   "SERVICE",
   "SSL",
+  "CGW_LINK_SERVER",
+  "CGW_LINK_SERVER_IP",
+  "CGW_LINK_SERVER_PORT",
+  "CGW_LINK_ODBC_DRIVER_NAME",
+  "CGW_LINK_CONNECT_URL_PROPERTY",
   "SOURCE_ENV",
   /* Below is a keyword referenced from the source code, although it is not in the manual. */
   "APPL_SERVER",
@@ -547,6 +553,18 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
+
+      strcpy (br_info[num_brs].cgw_link_server,
+	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_server_ip,
+	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER_IP", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_server_port,
+	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER_PORT", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_odbc_driver_name,
+	      ini_getstr (ini, sec_name, "CGW_LINK_ODBC_DRIVER_NAME", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_connect_url_property,
+	      ini_getstr (ini, sec_name, "CGW_LINK_CONNECT_URL_PROPERTY", DEFAULT_EMPTY_STRING, &lineno));
+
 
       br_info[num_brs].appl_server =
 	get_conf_value (ini_getstr (ini, sec_name, "APPL_SERVER", DEFAULT_APPL_SERVER, &lineno), tbl_appl_server);
@@ -1480,6 +1498,12 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	{
 	  fprintf (fp, "REJECT_CLIENT_FLAG\t=%s\n", tmp_str);
 	}
+
+      fprintf (fp, "CGW_LINK_SERVER\t\t=%s\n", br_info[i].cgw_link_server);
+      fprintf (fp, "CGW_LINK_SERVER_IP\t=%s\n", br_info[i].cgw_link_server_ip);
+      fprintf (fp, "CGW_LINK_SERVER_PORT\t=%s\n", br_info[i].cgw_link_server_port);
+      fprintf (fp, "CGW_LINK_ODBC_DRIVER_NAME\t=%s\n", br_info[i].cgw_link_odbc_driver_name);
+      fprintf (fp, "CGW_LINK_CONNECT_URL_PROPERTY\t=%s\n", br_info[i].cgw_link_connect_url_property);
 
       if (br_info[i].shard_flag == OFF)
 	{

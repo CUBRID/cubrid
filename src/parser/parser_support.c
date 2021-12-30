@@ -1471,6 +1471,11 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_REMOVE_TRIGGER:
 	case PT_RENAME_TRIGGER:
 	case PT_UPDATE_STATS:
+	  /* TODO: check it  */
+	case PT_CREATE_SERVER:
+	case PT_DROP_SERVER:
+	case PT_RENAME_SERVER:
+	case PT_ALTER_SERVER:
 	case PT_TRUNCATE:
 	  return true;
 	default:
@@ -3437,6 +3442,7 @@ pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+>>>>>>> upstream/develop
  * pt_insert_host_var () - insert a host_var into a list based on
  *                         its ordinal position
  *   return: a list of PT_HOST_VAR type nodes

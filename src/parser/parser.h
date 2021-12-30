@@ -666,6 +666,9 @@ extern "C"
   extern void pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
 								DB_DEFAULT_EXPR * default_expr);
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
+  extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);
+  extern int pt_remake_dblink_password (const char *passwd, DB_VALUE * outval, bool is_external);
 #ifdef __cplusplus
 }
 #endif

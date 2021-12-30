@@ -10257,6 +10257,14 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
       break;
 
+    case PT_DBLINK_TABLE:
+      if (pt_has_error (parser))
+	{
+	  break;
+	}
+
+      break;
+
     default:			/* other node types */
       break;
     }
@@ -11038,6 +11046,12 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
     case PT_RENAME:
     case PT_RENAME_TRIGGER:
     case PT_UPDATE_STATS:
+      break;
+
+    case PT_CREATE_SERVER:
+    case PT_DROP_SERVER:
+    case PT_RENAME_SERVER:
+    case PT_ALTER_SERVER:
       break;
 
     case PT_ALTER:
