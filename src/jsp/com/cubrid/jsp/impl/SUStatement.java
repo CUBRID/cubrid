@@ -120,6 +120,7 @@ public class SUStatement {
 
     public SUStatement(
             SUConnection conn, GetByOIDInfo info, CUBRIDOID oid, String attributeName[]) {
+        suConn = conn;
         type = GET_BY_OID;
         handlerId = -1;
 
@@ -156,6 +157,7 @@ public class SUStatement {
     }
 
     public SUStatement(SUConnection conn, GetGeneratedKeysInfo info) {
+        suConn = conn;
         type = GET_AUTOINCREMENT_KEYS;
 
         /* init column infos */
