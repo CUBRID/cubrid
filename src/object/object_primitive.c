@@ -11131,37 +11131,13 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
       assert (false);
       return DB_UNK;
     }
+
   if (!ignore_trailing_space)
     {
-/*
-      int i;
-
-      if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
+      if (type1 != DB_TYPE_CHAR && type1 != DB_TYPE_NCHAR && type2 != DB_TYPE_CHAR && type2 != DB_TYPE_NCHAR)
 	{
-	  for (i = size1; i > 1; i--)
-	    {
-	      if (string1[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size1 = i;
+	  ti = false;
 	}
-
-      if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
-	{
-	  ti = true;
-	  for (i = size2; i > 1; i--)
-	    {
-	      if (string2[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size2 = i;
-	}
-*/
-      ti = false;
     }
 
   strc = QSTR_COMPARE (collation, string1, size1, string2, size2, ti);
@@ -12017,62 +11993,13 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   size2 = db_get_string_size (value2);
 
   /*
-   * do_coercion = 2:
-   * from btree compare key
-   * we need to process the ignore trailing space
-   */
-  if (do_coercion == 2)
-    {
-      ti = true;
-    }
-  /*
    * do_coercion = 3:
    * from eliminate_duplicated_keys and scan_key_compre
    * we need to process enforcing no-ignore-trailing space.
    */
-  else if (do_coercion == 3)
+  if (do_coercion == 3)
     {
       ti = false;
-    }
-  else if (!ignore_trailing_space &&
-	   (type1 == DB_TYPE_STRING || type1 == DB_TYPE_VARNCHAR || type2 == DB_TYPE_STRING
-	    || type2 == DB_TYPE_VARNCHAR))
-    {
-      int i;
-
-      ti = false;
-
-      if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
-	{
-	  ti = true;
-/*
-	  for (i = size1; i > 1; i--)
-	    {
-	      if (string1[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size1 = i;
-*/
-	}
-
-      if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
-	{
-	  ti = true;
-/*
-	  for (i = size2; i > 1; i--)
-	    {
-	      if (string2[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size2 = i;
-*/
-	}
-
-      //ti = false;
     }
 
   strc = QSTR_CHAR_COMPARE (collation, string1, size1, string2, size2, ti);
