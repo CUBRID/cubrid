@@ -11075,7 +11075,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   int size1, size2;
   int strc;
 
-  bool ti = false;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   DB_TYPE type1 = (DB_TYPE) value1->domain.char_info.type;
@@ -11131,15 +11131,13 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
       assert (false);
       return DB_UNK;
     }
-
   if (!ignore_trailing_space)
     {
+/*
       int i;
 
       if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
 	{
-	  ti = true;
-/*
 	  for (i = size1; i > 1; i--)
 	    {
 	      if (string1[i - 1] != 0x20)
@@ -11148,13 +11146,11 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 		}
 	    }
 	  size1 = i;
-*/
 	}
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
 	{
 	  ti = true;
-/*
 	  for (i = size2; i > 1; i--)
 	    {
 	      if (string2[i - 1] != 0x20)
@@ -11163,10 +11159,9 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 		}
 	    }
 	  size2 = i;
-*/
 	}
-
-      //ti = false;
+*/
+      ti = false;
     }
 
   strc = QSTR_COMPARE (collation, string1, size1, string2, size2, ti);
