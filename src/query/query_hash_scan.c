@@ -73,7 +73,7 @@ static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY * ckey1, H
 typedef unsigned int FHS_HASH_KEY;
 #define FHS_KEY_SIZE (sizeof (FHS_HASH_KEY))
 #define FHS_ALIGNMENT ((char) FHS_KEY_SIZE)
-#define FHS_MAX_DUP_KEY 3	/* 10% of MAXNUM (PAGE 16K / RECORD 14 bytes) */
+#define FHS_MAX_DUP_KEY 100	/* 10% of MAXNUM (PAGE 16K / RECORD 14 bytes) */
 				/* TO_DO : adjust it properly using statistical information in optimizer */
 
 #define SET_VPID(dest_vpid, vol_id, page_id)  \
