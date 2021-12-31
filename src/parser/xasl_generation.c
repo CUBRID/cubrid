@@ -11672,7 +11672,7 @@ pt_fix_first_term_func_index_for_iss (PARSER_CONTEXT * parser, QO_INDEX_ENTRY * 
   seg = QO_ENV_SEG (index_entryp->terms.env, index_entryp->seg_idxs[1]);
   head = QO_SEG_HEAD (seg);
   spec = head->entity_spec;
-  class_name = (char *) spec->info.spec.range_var->info.name.original;
+  class_name = parser_print_tree(parser,spec->info.spec.entity_name);
 
   query_str_len = (int) strlen (func_index->expr_str) + (int) strlen (class_name) + 7 /* strlen("SELECT ") */  +
     6 /* strlen(" FROM ") */  +
@@ -11840,7 +11840,12 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
     {
       assert (index_entryp->is_iss_candidate);
 
-      pt_fix_first_term_expr_for_iss (parser, index_entryp, term_exprs);
+      rc = pt_fix_first_term_expr_for_iss (parser, index_entryp, term_exprs);
+      if (rc != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "index plan generation - invalid expr for iss");
+	  return NULL;
+	}
     }
 
   if (nterms > 0)
