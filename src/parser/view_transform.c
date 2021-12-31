@@ -453,7 +453,7 @@ mq_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (!PT_IS_QUERY_NODE_TYPE (node->node_type))
+  if (!PT_IS_SELECT (node))
     return node;
 
   /* Can not increment threshold for list portion of walk. Since those queries are not sub-queries of this query.
@@ -12711,7 +12711,7 @@ mq_bump_order_dep_corr_lvl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
   PT_NODE *stack_head = NULL, *stack_end = NULL;
   PT_NODE *stack_item = NULL, *stack_prev = NULL;
 
-  if (node == NULL || parser == NULL || stack == NULL || !PT_IS_QUERY (node))
+  if (node == NULL || parser == NULL || stack == NULL || !PT_IS_SELECT (node))
     {
       return node;
     }
@@ -12778,14 +12778,11 @@ mq_bump_order_dep_corr_lvl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	  corr_diff = item->info.query.correlation_level - prev->info.query.correlation_level;
 
 	  /* check correlation levels */
-	  if (item != NULL && prev != NULL && corr_diff <= 0)
+	  if (item != NULL && prev != NULL && corr_diff <= 0 && item->info.query.correlation_level != 0)
 	    {
 	      /* same correlation level or parent has greater correlation level; not acceptable */
 	      corr_diff = -corr_diff + 1;
-
 	      (void) mq_bump_correlation_level (parser, item, corr_diff, item->info.query.correlation_level);
-
-	      item->info.query.correlation_level += corr_diff;
 	    }
 
 	  /* peek back in stack list */
