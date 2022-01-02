@@ -73,9 +73,9 @@ namespace cubmethod
       void set_server_info (int idx, int rc, char *host);
 
       /* find query handler */
-      query_handler *get_query_handler_by_id (int id);
-      query_handler *get_query_handler_by_query_id (uint64_t qid); /* used for out resultset */
-      query_handler *get_query_handler_by_sql (std::string &sql); /* used for statement handler cache */
+      query_handler *get_query_handler_by_id (const int id);
+      query_handler *get_query_handler_by_query_id (const uint64_t qid); /* used for out resultset */
+      query_handler *get_query_handler_by_sql (const std::string &sql); /* used for statement handler cache */
 
     private:
       /* handle related to query */
@@ -97,25 +97,25 @@ namespace cubmethod
 
       int new_oid_handler ();
 
-      #if defined (CS_MODE)
+#if defined (CS_MODE)
       /* server info */
       template<typename ... Args>
       int send_packable_object_to_server (Args &&... args)
       {
-        int depth = tran_get_libcas_depth () - 1;
-        return method_send_data_to_server (m_conn_info [depth], std::forward<Args> (args)...);
+	int depth = tran_get_libcas_depth () - 1;
+	return method_send_data_to_server (m_conn_info [depth], std::forward<Args> (args)...);
       }
 
       method_server_conn_info m_conn_info [METHOD_MAX_RECURSION_DEPTH];
-      #else
+#else
       /* server info */
       template<typename ... Args>
       int send_packable_object_to_server (Args &&... args)
       {
-        return NO_ERROR;
+	return NO_ERROR;
       }
 
-      #endif
+#endif
 
       std::multimap <std::string, int> m_sql_handler_map;
       std::unordered_map <uint64_t, int> m_qid_handler_map;

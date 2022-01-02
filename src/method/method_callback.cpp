@@ -390,7 +390,7 @@ namespace cubmethod
   }
 
   query_handler *
-  callback_handler::get_query_handler_by_id (int id)
+  callback_handler::get_query_handler_by_id (const int id)
   {
     if (id < 0 || id >= (int) m_query_handlers.size())
       {
@@ -432,7 +432,7 @@ namespace cubmethod
   }
 
   query_handler *
-  callback_handler::get_query_handler_by_query_id (uint64_t qid)
+  callback_handler::get_query_handler_by_query_id (const uint64_t qid)
   {
     const auto &iter = m_qid_handler_map.find (qid);
     if (iter == m_qid_handler_map.end() )
@@ -446,7 +446,7 @@ namespace cubmethod
   }
 
   query_handler *
-  callback_handler::get_query_handler_by_sql (std::string &sql)
+  callback_handler::get_query_handler_by_sql (const std::string &sql)
   {
     query_handler *handler = nullptr;
     for (auto it = m_sql_handler_map.lower_bound (sql); it != m_sql_handler_map.upper_bound (sql); it++)
