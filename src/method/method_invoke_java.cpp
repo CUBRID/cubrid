@@ -26,7 +26,7 @@
 #include "connection_support.h"
 #include "dbtype_def.h"
 
-#include "method_connection.hpp"
+#include "method_connection_sr.hpp"
 #include "method_struct_invoke.hpp"
 #include "method_struct_value.hpp"
 #include "method_struct_oid_info.hpp"

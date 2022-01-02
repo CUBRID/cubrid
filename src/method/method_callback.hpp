@@ -29,11 +29,14 @@
 
 #include <unordered_map>
 
+#include "method_connection_cl.hpp"
 #include "method_def.hpp"
 #include "method_error.hpp"
 #include "method_oid_handler.hpp"
 #include "method_query_handler.hpp"
 #include "method_struct_query.hpp"
+
+#include "transaction_cl.h"
 
 #include "packer.hpp"
 #include "packable_object.hpp"
@@ -94,11 +97,25 @@ namespace cubmethod
 
       int new_oid_handler ();
 
-      template<typename ... Args>
-      int send_packable_object_to_server (Args &&... args);
-
+      #if defined (CS_MODE)
       /* server info */
+      template<typename ... Args>
+      int send_packable_object_to_server (Args &&... args)
+      {
+        int depth = tran_get_libcas_depth () - 1;
+        return method_send_data_to_server (m_conn_info [depth], std::forward<Args> (args)...);
+      }
+
       method_server_conn_info m_conn_info [METHOD_MAX_RECURSION_DEPTH];
+      #else
+      /* server info */
+      template<typename ... Args>
+      int send_packable_object_to_server (Args &&... args)
+      {
+        return NO_ERROR;
+      }
+
+      #endif
 
       std::multimap <std::string, int> m_sql_handler_map;
       std::unordered_map <uint64_t, int> m_qid_handler_map;

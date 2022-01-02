@@ -16,7 +16,7 @@
  *
  */
 
-#include "method_connection.hpp"
+#include "method_connection_sr.hpp"
 
 #if defined (SERVER_MODE)
 #include "network.h" /* METHOD_CALL */

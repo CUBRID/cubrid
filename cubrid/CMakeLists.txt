@@ -267,7 +267,7 @@ set(JSP_HEADERS
   )
 
 set(METHOD_SOURCES
-  ${METHOD_DIR}/method_connection.cpp
+  ${METHOD_DIR}/method_connection_sr.cpp
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_invoke_builtin.cpp
   ${METHOD_DIR}/method_invoke_group.cpp

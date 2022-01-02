@@ -17,7 +17,7 @@
  */
 
 /*
- * method_connection.hpp
+ * method_connection_sr.hpp
  */
 
 #ifndef _METHOD_CONNECTION_HPP_

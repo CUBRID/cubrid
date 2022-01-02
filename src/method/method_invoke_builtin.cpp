@@ -25,7 +25,7 @@
 #include "packer.hpp"
 
 #if defined (SERVER_MODE)
-#include "method_connection.hpp"
+#include "method_connection_sr.hpp"
 #include "method_struct_query.hpp"
 #endif
 

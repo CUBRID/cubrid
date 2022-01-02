@@ -102,13 +102,6 @@ struct method_arg_info
   method_arg_info () = default;
 };
 
-struct method_server_conn_info
-{
-  unsigned int rc;
-  char *host;
-  char *server_name;
-};
-
 typedef struct method_sig_node METHOD_SIG;
 struct method_sig_node
 {

@@ -22,7 +22,6 @@
 #include "method_def.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
-#include "network_interface_cl.h"
 
 #include "object_primitive.h"
 #include "oid.h"
@@ -45,41 +44,13 @@ namespace cubmethod
       }
   }
 
+#if defined (CS_MODE)
   void
   callback_handler::set_server_info (int idx, int rc, char *host)
   {
     method_server_conn_info &info = m_conn_info [idx];
     info.rc = rc;
     info.host = host;
-  }
-
-#if defined (CS_MODE)
-  template<typename ... Args>
-  int
-  callback_handler::send_packable_object_to_server (Args &&... args)
-  {
-    packing_packer packer;
-    cubmem::extensible_block eb;
-
-    packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
-
-    int depth = tran_get_libcas_depth () - 1;
-    method_server_conn_info &info = m_conn_info [depth];
-    int error = net_client_send_data (info.host, info.rc, eb.get_ptr (), packer.get_current_size ());
-    if (error != NO_ERROR)
-      {
-	return ER_FAILED;
-      }
-
-    return NO_ERROR;
-  }
-#else
-  template<typename ... Args>
-  int
-  callback_handler::send_packable_object_to_server (Args &&... args)
-  {
-    // TODO: not implemented yet
-    return NO_ERROR;
   }
 #endif
 

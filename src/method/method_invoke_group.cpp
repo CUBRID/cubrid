@@ -28,7 +28,7 @@
 
 #if defined (SERVER_MODE)
 #include "jsp_sr.h" /* jsp_server_port(), jsp_connect_server() */
-#include "method_connection.hpp"
+#include "method_connection_sr.hpp"
 #endif
 
 namespace cubmethod
