@@ -155,6 +155,53 @@ public class SpOIDSet {
         }
     }
 
+    /* from SpTest6.testoid1 */
+    public static CUBRIDOID testOidArgs1(CUBRIDOID oid) {
+        return oid;
+    }
+
+    public static String testOidArgs2(CUBRIDOID oid) {
+        Connection conn = null;
+        Statement stmt = null;
+        String ret = "";
+
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+            String[] attrs = {"id"};
+
+            Integer[] values = {new Integer(10)};
+
+            conn.setAutoCommit(false);
+            ret = ret + oid.getTableName() + " | ";
+            ret = ret + oid.isInstance() + " | ";
+            ResultSet rs = oid.getValues(attrs);
+            int i = 0;
+            while (rs.next()) {
+                ret = ret + " || " + rs.getString(1);
+            }
+            oid.setValues(attrs, values);
+            oid.getValues(attrs);
+            rs = oid.getValues(attrs);
+            while (rs.next()) {
+                ret = ret + " || " + rs.getString(1);
+            }
+            oid.remove();
+            conn.close();
+            return ret;
+        } catch (SQLException e) {
+            // e.printStackTrace();
+        } catch (Exception e) {
+            // e.printStackTrace();
+        }
+        return "";
+    }
+
+    /* from SpTest6.testoid3 */
+    public static java.lang.Object[] testOidArgs3(java.lang.Object[] set) {
+        return set;
+    }
+
     /* from SpTest6.testset5 */
     public static void testset5(Integer[][] set) {
         for (int i = 0; i < set[0].length; i++) {
