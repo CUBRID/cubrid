@@ -84,7 +84,7 @@ namespace cubmethod
   }
 #else
   template<typename ... Args>
-  int method_send_data_to_server (method_server_conn_info &info, Args &&... args)
+  int method_send_data_to_server (Args &&... args)
   {
     return NO_ERROR;
   }

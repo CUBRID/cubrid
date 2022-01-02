@@ -60,10 +60,8 @@ static int method_fixup_set_vobjs (DB_VALUE *value_p);
 static int method_fixup_vobjs (DB_VALUE *value_p);
 
 #if defined (CS_MODE)
-static int method_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &conn_info);
-static int method_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn_info);
-static int method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_inf);
-static int method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info);
+static int method_prepare_arguments (packing_unpacker &unpacker);
+static int method_invoke_builtin (packing_unpacker &unpacker);
 #endif
 
 void method_reset ()
@@ -73,77 +71,26 @@ void method_reset ()
 
 #if defined (CS_MODE)
 /*
- * method_send_value_to_server () - Send an error indication to the server
+ * method_error () - Send error code to the server
  *   return:
  *   rc(in)     : enquiry return code
  *   host(in)   : host name
  *   server_name(in)    : server name
+ *   error_id (in)    : error code
  */
 int
-method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p, DB_VALUE &value)
+method_error (unsigned int rc, char *host_p, char *server_name, int error_id)
 {
-  packing_packer packer;
-  cubmem::extensible_block ext_blk;
-  int code = METHOD_SUCCESS;
-  packer.set_buffer_and_pack_all (ext_blk, code, value);
-
-  pr_clear_value (&value);
-
-  int error = net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
-  if (error != NO_ERROR)
+  int error = NO_ERROR;
+  tran_begin_libcas_function ();
+  int depth = tran_get_libcas_depth ();
+  error = cubmethod::set_connection_info (depth - 1, rc, host_p);
+  if (error == NO_ERROR)
     {
-      return ER_FAILED;
+      error = cubmethod::method_send_data_to_server (METHOD_ERROR, error_id);
     }
-
-  return NO_ERROR;
-}
-
-/*
- * method_send_value_to_server () - Send an error indication to the server
- *   return:
- *   rc(in)     : enquiry return code
- *   host(in)   : host name
- *   server_name(in)    : server name
- */
-template<typename ... Args>
-int
-method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p, Args &&... args)
-{
-  packing_packer packer;
-  cubmem::extensible_block ext_blk;
-  int code = METHOD_SUCCESS;
-  packer.set_buffer_and_pack_all (ext_blk, std::forward<Args> (args)...);
-  int error = net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
-  if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * method_send_error_to_server () - Send an error indication to the server
- *   return:
- *   rc (in)     : enquiry return code
- *   host_p (in)   : host name
- *   error_id (in)    : error_id to send
- */
-int
-method_send_error_to_server (unsigned int rc, char *host_p, char *server_name, int error_id)
-{
-  packing_packer packer;
-  cubmem::extensible_block ext_blk;
-  int code = METHOD_ERROR;
-  packer.set_buffer_and_pack_all (ext_blk, code, error_id);
-
-  int error = net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
-  if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
+  tran_begin_libcas_function();
+  return error;
 }
 
 /*
@@ -158,46 +105,47 @@ method_send_error_to_server (unsigned int rc, char *host_p, char *server_name, i
 int
 method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddata, int methoddata_size)
 {
-  using dispatch_function_type = std::function<int (packing_unpacker &, method_server_conn_info &)>;
-
   int error = NO_ERROR;
 
   packing_unpacker unpacker (methoddata, (size_t) methoddata_size);
-  method_server_conn_info conn_info {rc, host, server_name};
 
   int method_dispatch_code;
   unpacker.unpack_int (method_dispatch_code);
 
-  dispatch_function_type dispatch_function;
-
-  int save_auth = 0;
-  switch (method_dispatch_code)
+  tran_begin_libcas_function ();
+  int depth = tran_get_libcas_depth ();
+  error = cubmethod::set_connection_info (depth - 1, rc, host);
+  if (error == NO_ERROR)
     {
-    case METHOD_REQUEST_ARG_PREPARE:
-      error = method_prepare_arguments (unpacker, conn_info);
-      break;
-    case METHOD_REQUEST_INVOKE:
-      AU_SAVE_AND_ENABLE (save_auth);
-      error = method_invoke_builtin (unpacker, conn_info);
-      AU_RESTORE (save_auth);
-      break;
-    case METHOD_REQUEST_CALLBACK:
-      AU_SAVE_AND_ENABLE (save_auth);
-      error = method_callback (unpacker, conn_info);
-      AU_RESTORE (save_auth);
-      break;
-    case METHOD_REQUEST_END:
-      error = method_end (unpacker, conn_info);
-      break;
-    default:
-      assert (false); // the other callbacks are disabled now
-      return ER_FAILED;
-      break;
+      int save_auth = 0;
+      switch (method_dispatch_code)
+	{
+	case METHOD_REQUEST_ARG_PREPARE:
+	  error = method_prepare_arguments (unpacker);
+	  break;
+	case METHOD_REQUEST_INVOKE:
+	  AU_SAVE_AND_ENABLE (save_auth);
+	  error = method_invoke_builtin (unpacker);
+	  AU_RESTORE (save_auth);
+	  break;
+	case METHOD_REQUEST_CALLBACK:
+	  AU_SAVE_AND_ENABLE (save_auth);
+	  error = cubmethod::get_callback_handler()->callback_dispatch (unpacker);
+	  AU_RESTORE (save_auth);
+	  break;
+	case METHOD_REQUEST_END:
+	  cubmethod::get_callback_handler()->free_query_handle_all (false);
+	  break;
+	default:
+	  assert (false); // the other callbacks are disabled now
+	  return ER_FAILED;
+	  break;
+	}
     }
 
+  tran_end_libcas_function ();
   return error;
 }
-
 
 /*
  * method_invoke_builtin () - Invoke C Method with runtime arguments
@@ -206,7 +154,7 @@ method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddat
  *   conn_info (in)   : enquiry return code, host name, server name
  */
 static int
-method_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn_info)
+method_invoke_builtin (packing_unpacker &unpacker)
 {
   int error = NO_ERROR;
   UINT64 id;
@@ -227,7 +175,7 @@ method_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn
       if (error == NO_ERROR)
 	{
 	  /* send a result value to server */
-	  method_send_value_to_server (conn_info.rc, conn_info.host, conn_info.server_name, result);
+	  error = cubmethod::method_send_data_to_server (METHOD_SUCCESS, result);
 	}
       db_value_clear (&result);
     }
@@ -240,29 +188,6 @@ method_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn
   return error;
 }
 
-static int
-method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_info)
-{
-  int error = NO_ERROR;
-  tran_begin_libcas_function ();
-  int depth = tran_get_libcas_depth ();
-  error = cubmethod::set_connection_info (depth - 1, conn_info.rc, conn_info.host);
-  if (error == NO_ERROR)
-    {
-      error = cubmethod::get_callback_handler()->callback_dispatch (unpacker);
-    }
-  tran_end_libcas_function ();
-  return error;
-}
-
-static int
-method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info)
-{
-  cubmethod::get_callback_handler()->free_query_handle_all (false);
-  return NO_ERROR;
-}
-
-#endif
 /*
  * method_prepare_arguments () - Stores at DB_VALUE arguments (runtime_args) for C Method
  *   return:
@@ -270,7 +195,7 @@ method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info)
  *   conn_info (in)   : enquiry return code, host name, server name
  */
 static int
-method_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &conn_info)
+method_prepare_arguments (packing_unpacker &unpacker)
 {
   UINT64 id;
   unpacker.unpack_bigint (id);
@@ -302,6 +227,7 @@ method_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &c
   runtime_args.insert ({id, arguments});
   return NO_ERROR;
 }
+#endif
 
 /*
  * method_invoke () -
