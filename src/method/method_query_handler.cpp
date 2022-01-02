@@ -61,15 +61,6 @@ namespace cubmethod
     m_prepare_call_info.clear ();
   }
 
-  next_result_info
-  query_handler::next_result (int flag)
-  {
-    // TODO: not implemented yet
-    next_result_info info;
-    assert (false);
-    return info;
-  }
-
   query_result::query_result ()
   {
     column_info = nullptr;

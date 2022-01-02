@@ -78,7 +78,6 @@ namespace cubmethod
       /* request */
       prepare_info prepare (std::string sql, int flag);
       execute_info execute (const execute_request &request);
-      next_result_info next_result (int flag);
       get_generated_keys_info generated_keys ();
 
       /* TODO: execute_batch, execute_array */

@@ -172,19 +172,6 @@ namespace cubmethod
     void dump ();
   };
 
-  struct next_result_info : public cubpacking::packable_object
-  {
-    int tuple_count;
-    int stmt_type;
-    std::vector<column_info> column_infos;
-
-    void pack (cubpacking::packer &serializator) const override;
-    void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
-
-    void dump ();
-  };
-
   struct result_tuple_info : public cubpacking::packable_object
   {
     result_tuple_info ();
