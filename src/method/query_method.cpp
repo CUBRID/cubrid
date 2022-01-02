@@ -79,16 +79,11 @@ void method_reset ()
  *   error_id (in)    : error code
  */
 int
-method_error (unsigned int rc, char *host_p, char *server_name, int error_id)
+method_error (unsigned int rc, int error_id)
 {
   int error = NO_ERROR;
   tran_begin_libcas_function ();
-  int depth = tran_get_libcas_depth ();
-  error = cubmethod::set_connection_info (depth - 1, rc, host_p);
-  if (error == NO_ERROR)
-    {
-      error = cubmethod::method_send_data_to_server (METHOD_ERROR, error_id);
-    }
+  error = cubmethod::method_send_data_to_server (METHOD_ERROR, error_id);
   tran_begin_libcas_function();
   return error;
 }
@@ -103,7 +98,7 @@ method_error (unsigned int rc, char *host_p, char *server_name, int error_id)
  *   methoddata_size (in) : data buffer size
  */
 int
-method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddata, int methoddata_size)
+method_dispatch (unsigned int rc, char *methoddata, int methoddata_size)
 {
   int error = NO_ERROR;
 
@@ -114,7 +109,7 @@ method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddat
 
   tran_begin_libcas_function ();
   int depth = tran_get_libcas_depth ();
-  error = cubmethod::set_connection_info (depth - 1, rc, host);
+  error = cubmethod::set_connection_info (depth - 1, rc);
   if (error == NO_ERROR)
     {
       int save_auth = 0;

@@ -36,8 +36,8 @@ struct qfile_list_id;
 struct method_sig_node;
 
 #if defined(CS_MODE)
-extern int method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddata, int methoddata_size);
-extern int method_error (unsigned int rc, char *host, char *server_name, int error_id);
+extern int method_dispatch (unsigned int rc, char *methoddata, int methoddata_size);
+extern int method_error (unsigned int rc, int error_id);
 #else
 // TODO: for standalone
 #endif

@@ -23,7 +23,7 @@ namespace cubmethod
 #if defined (CS_MODE)
   static method_server_conn_info g_conn_info [METHOD_MAX_RECURSION_DEPTH];
 
-  int set_connection_info (int idx, int rc, char *host)
+  int set_connection_info (int idx, int rc)
   {
     if (idx >= METHOD_MAX_RECURSION_DEPTH)
       {
@@ -32,7 +32,6 @@ namespace cubmethod
 
     method_server_conn_info &info = g_conn_info [idx];
     info.rc = rc;
-    info.host = host;
     return NO_ERROR;
   }
 

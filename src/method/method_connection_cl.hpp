@@ -36,8 +36,6 @@
 struct method_server_conn_info
 {
   unsigned int rc;
-  char *host;
-  char *server_name;
 };
 
 namespace cubmethod
@@ -49,7 +47,7 @@ namespace cubmethod
 
   /*
   */
-  int set_connection_info (int idx, int rc, char *host);
+  int set_connection_info (int idx, int rc);
   method_server_conn_info *get_connection_info (int idx);
 
   template<typename ... Args>
@@ -67,7 +65,7 @@ namespace cubmethod
 
     if (info)
       {
-	int error = net_client_send_data (info->host, info->rc, eb.get_ptr (), packer.get_current_size ());
+	int error = net_client_send_data (net_client_get_server_host(), info->rc, eb.get_ptr (), packer.get_current_size ());
 	if (error != NO_ERROR)
 	  {
 	    return ER_FAILED;
