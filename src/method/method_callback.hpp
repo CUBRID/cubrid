@@ -70,7 +70,6 @@ namespace cubmethod
       /* main functions */
       int callback_dispatch (packing_unpacker &unpacker);
       void free_query_handle_all (bool is_free);
-      void set_server_info (int idx, int rc, char *host);
 
       /* find query handler */
       query_handler *get_query_handler_by_id (const int id);
@@ -102,11 +101,8 @@ namespace cubmethod
       template<typename ... Args>
       int send_packable_object_to_server (Args &&... args)
       {
-	int depth = tran_get_libcas_depth () - 1;
-	return method_send_data_to_server (m_conn_info [depth], std::forward<Args> (args)...);
+	return method_send_data_to_server (std::forward<Args> (args)...);
       }
-
-      method_server_conn_info m_conn_info [METHOD_MAX_RECURSION_DEPTH];
 #else
       /* server info */
       template<typename ... Args>

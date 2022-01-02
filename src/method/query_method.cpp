@@ -246,13 +246,9 @@ method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_info)
   int error = NO_ERROR;
   tran_begin_libcas_function ();
   int depth = tran_get_libcas_depth ();
-  if (depth > METHOD_MAX_RECURSION_DEPTH)
+  error = cubmethod::set_connection_info (depth - 1, conn_info.rc, conn_info.host);
+  if (error == NO_ERROR)
     {
-      error = ER_SP_TOO_MANY_NESTED_CALL;
-    }
-  else
-    {
-      cubmethod::get_callback_handler()->set_server_info (depth - 1, conn_info.rc, conn_info.host);
       error = cubmethod::get_callback_handler()->callback_dispatch (unpacker);
     }
   tran_end_libcas_function ();

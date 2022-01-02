@@ -44,16 +44,6 @@ namespace cubmethod
       }
   }
 
-#if defined (CS_MODE)
-  void
-  callback_handler::set_server_info (int idx, int rc, char *host)
-  {
-    method_server_conn_info &info = m_conn_info [idx];
-    info.rc = rc;
-    info.host = host;
-  }
-#endif
-
   int
   callback_handler::callback_dispatch (packing_unpacker &unpacker)
   {

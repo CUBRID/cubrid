@@ -27,6 +27,7 @@
 #include "method_def.hpp"
 #include "mem_block.hpp"
 #include "packer.hpp"
+#include "transaction_cl.h"
 
 #if defined (SERVER_MODE)
 #error does not belong to server
@@ -45,17 +46,37 @@ namespace cubmethod
   //////////////////////////////////////////////////////////////////////////
   // Interface to communicate with DB Server
   //////////////////////////////////////////////////////////////////////////
+
+  /*
+  */
+  int set_connection_info (int idx, int rc, char *host);
+  method_server_conn_info *get_connection_info (int idx);
+
   template<typename ... Args>
-  int method_send_data_to_server (method_server_conn_info &info, Args &&... args)
+  int method_send_data_to_server (Args &&... args)
   {
     packing_packer packer;
     cubmem::extensible_block eb;
 
     packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
 
-    int error = net_client_send_data (info.host, info.rc, eb.get_ptr (), packer.get_current_size ());
-    if (error != NO_ERROR)
+    int depth = tran_get_libcas_depth () - 1;
+    method_server_conn_info *info = get_connection_info (depth);
+
+    assert (info->rc > 0);
+
+    if (info)
       {
+	int error = net_client_send_data (info->host, info->rc, eb.get_ptr (), packer.get_current_size ());
+	if (error != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
+      }
+    else
+      {
+	/* should not happened */
+	assert (false);
 	return ER_FAILED;
       }
 

@@ -17,3 +17,36 @@
  */
 
 #include "method_connection_cl.hpp"
+
+namespace cubmethod
+{
+#if defined (CS_MODE)
+  static method_server_conn_info g_conn_info [METHOD_MAX_RECURSION_DEPTH];
+
+  int set_connection_info (int idx, int rc, char *host)
+  {
+    if (idx >= METHOD_MAX_RECURSION_DEPTH)
+      {
+	return ER_SP_TOO_MANY_NESTED_CALL;
+      }
+
+    method_server_conn_info &info = g_conn_info [idx];
+    info.rc = rc;
+    info.host = host;
+    return NO_ERROR;
+  }
+
+  method_server_conn_info *get_connection_info (int idx)
+  {
+    if (idx < METHOD_MAX_RECURSION_DEPTH)
+      {
+	return &g_conn_info[idx];
+      }
+    else
+      {
+	return nullptr;
+      }
+  }
+#endif
+
+} // cubmethod
