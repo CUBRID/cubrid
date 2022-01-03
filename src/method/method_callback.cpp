@@ -110,21 +110,16 @@ namespace cubmethod
     else
       {
 	/* not found in statement handler */
-	int handle_id = new_query_handler (); /* new handler */
-	if (handle_id < 0)
-	  {
-	    // TODO: proper error code
-	    m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
-	    return ER_FAILED;
-	  }
-
-	handler = get_query_handler_by_id (handle_id);
+	handler = new_query_handler ();
 	if (handler == nullptr)
 	  {
 	    // TODO: proper error code
-	    m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
 	  }
-	info = handler->prepare (sql, flag);
+	else
+	  {
+	    info = handler->prepare (sql, flag);
+	  }
       }
 
     if (m_error_ctx.has_error())
@@ -229,18 +224,20 @@ namespace cubmethod
 // OID
 //////////////////////////////////////////////////////////////////////////
 
-  int
-  callback_handler::new_oid_handler ()
+  oid_handler *
+  callback_handler::get_oid_handler ()
   {
     if (m_oid_handler == nullptr)
       {
 	m_oid_handler = new (std::nothrow) oid_handler (m_error_ctx);
 	if (m_oid_handler == nullptr)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    assert (false);
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
 	  }
       }
-    return NO_ERROR;
+
+    return m_oid_handler;
   }
 
   int
@@ -251,24 +248,15 @@ namespace cubmethod
     oid_get_request request;
     request.unpack (unpacker);
 
-    error = new_oid_handler ();
-    if (error != NO_ERROR)
+    oid_get_info info = get_oid_handler()->oid_get (request.oid, request.attr_names);
+    if (m_error_ctx.has_error())
       {
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	oid_get_info info = m_oid_handler->oid_get (request.oid, request.attr_names);
-	if (m_error_ctx.has_error())
-	  {
-	    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
-	  }
-	else
-	  {
-	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
-	  }
+	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
       }
-    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
   int
@@ -277,20 +265,15 @@ namespace cubmethod
     oid_put_request request;
     request.unpack (unpacker);
 
-    int error = new_oid_handler ();
-    if (error != NO_ERROR)
+    int result = get_oid_handler()->oid_put (request.oid, request.attr_names, request.db_values);
+    if (m_error_ctx.has_error())
       {
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	int result = m_oid_handler->oid_put (request.oid, request.attr_names, request.db_values);
-	if (!m_error_ctx.has_error())
-	  {
-	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, result);
-	  }
+	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, result);
       }
-    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
   int
@@ -304,20 +287,15 @@ namespace cubmethod
 
     std::string res; // result for OID_CLASS_NAME
 
-    int error = new_oid_handler ();
-    if (error != NO_ERROR)
+    int res_code = get_oid_handler()->oid_cmd (oid, cmd, res);
+    if (m_error_ctx.has_error())
       {
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	int res_code = m_oid_handler->oid_cmd (oid, cmd, res);
-	if (!m_error_ctx.has_error())
-	  {
-	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, res_code, res);
-	  }
+	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, res_code, res);
       }
-    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
 //////////////////////////////////////////////////////////////////////////
@@ -348,7 +326,7 @@ namespace cubmethod
 // Managing Query Handler Table
 //////////////////////////////////////////////////////////////////////////
 
-  int
+  query_handler *
   callback_handler::new_query_handler ()
   {
     int idx = 0;
@@ -365,7 +343,7 @@ namespace cubmethod
     query_handler *handler = new query_handler (m_error_ctx, idx);
     if (handler == nullptr)
       {
-	return ER_FAILED;
+	assert (false);
       }
 
     if (idx < handler_size)
@@ -376,7 +354,8 @@ namespace cubmethod
       {
 	m_query_handlers.push_back (handler);
       }
-    return idx;
+
+    return handler;
   }
 
   query_handler *

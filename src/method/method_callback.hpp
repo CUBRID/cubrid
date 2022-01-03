@@ -17,7 +17,7 @@
  */
 
 //
-// method_callback.hpp: implement callback for server-side driver's request
+// method_callback.hpp: implement callback for server-side JDBC's request
 //
 
 #ifndef _METHOD_CALLBACK_HPP_
@@ -43,7 +43,6 @@
 
 namespace cubmethod
 {
-
   /*
    * cubmethod::callback_handler
    *
@@ -76,6 +75,8 @@ namespace cubmethod
       query_handler *get_query_handler_by_query_id (const uint64_t qid); /* used for out resultset */
       query_handler *get_query_handler_by_sql (const std::string &sql); /* used for statement handler cache */
 
+      oid_handler *get_oid_handler ();
+
     private:
       /* handle related to query */
       int prepare (packing_unpacker &unpacker);
@@ -90,11 +91,8 @@ namespace cubmethod
       int collection_cmd (packing_unpacker &unpacker);
 
       /* ported from cas_handle */
-      int new_query_handler ();
-
+      query_handler *new_query_handler ();
       void free_query_handle (int id, bool is_free);
-
-      int new_oid_handler ();
 
 #if defined (CS_MODE)
       /* server info */
@@ -110,7 +108,6 @@ namespace cubmethod
       {
 	return NO_ERROR;
       }
-
 #endif
 
       std::multimap <std::string, int> m_sql_handler_map;
