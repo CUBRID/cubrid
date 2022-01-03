@@ -158,7 +158,6 @@ struct mht_hls_table
   unsigned int nprealloc_entries;	/* Number of preallocated entries for future insertions */
   unsigned int ncollisions;	/* Number of collisions in HT */
   HL_HEAPID heap_id;		/* Id of heap allocator */
-  bool build_lru_list;		/* true if LRU list must be built */
 };
 
 extern const void *mht_put_hls (MHT_HLS_TABLE * ht, const void *key, void *data);

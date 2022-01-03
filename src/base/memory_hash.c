@@ -63,6 +63,7 @@
 #define GET_PTR_FOR_HASH(key) (((UINT64)(key)) & 0xFFFFFFFFUL)
 #endif
 
+//#define USE_HLS_ORDERED_LIST  // Keep the entry of MHT_HLS_TABLE in ascending order with respect to key value.
 #if defined(USE_HASHVAL_ORDERED_LIST)
 #define HASHVAL_NOT_ORDERED(hent, val) ((hent)->orig_hash_value > (val))
 #endif
@@ -1050,7 +1051,6 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
   ht->nentries = 0;
   ht->nprealloc_entries = 0;
   ht->ncollisions = 0;
-  ht->build_lru_list = false;
 
   /* Initialize each of the hash entries */
   for (; ht_estsize > 0; ht_estsize--)
@@ -1292,6 +1292,31 @@ mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data,
       for (hentry = *hvector; hentry != NULL; hentry = next_hentry)
 	{
 	  /* free */
+#if defined(USE_HLS_ORDERED_LIST)
+	  if (hentry->tail)
+	    {
+	      HENTRY_HLS_PTR tmp;
+	      for (tmp = hentry->tail; tmp != NULL; tmp = next_hentry)
+		{
+		  if (rem_func)
+		    {
+		      error_code = (*rem_func) (NULL, tmp->data, func_args);
+		      if (error_code != NO_ERROR)
+			{
+			  return error_code;
+			}
+
+		      tmp->data = NULL;
+		    }
+
+		  next_hentry = tmp->tail;
+		  /* Save the entries for future insertions */
+		  ht->nprealloc_entries++;
+		  tmp->tail = ht->prealloc_entries;
+		  ht->prealloc_entries = tmp;
+		}
+	    }
+#endif
 	  if (rem_func)
 	    {
 	      error_code = (*rem_func) (NULL, hentry->data, func_args);
@@ -1434,6 +1459,13 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
 	      /* Go over the linked list */
 	      for (hentry = *hvector; cont == TRUE && hentry != NULL; hentry = hentry->next)
 		{
+#if defined(USE_HLS_ORDERED_LIST)
+		  HENTRY_HLS_PTR tmp;
+		  for (tmp = hentry->tail; cont == TRUE && tmp != NULL; tmp = tmp->tail)
+		    {
+		      cont = (*print_func) (thread_p, out_fp, tmp->data, func_args);
+		    }
+#endif
 		  cont = (*print_func) (thread_p, out_fp, hentry->data, func_args);
 		}
 	    }
@@ -1621,6 +1653,12 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 	  *((HENTRY_HLS_PTR *) last) = hentry;
 	  return hentry->data;
 	}
+#if defined(USE_HLS_ORDERED_LIST)
+      else if (hentry->key > hash)
+	{
+	  break;
+	}
+#endif
     }
   return NULL;
 }
@@ -1642,6 +1680,13 @@ mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 
   assert (ht != NULL && key != NULL && last != NULL);
 
+#if defined(USE_HLS_ORDERED_LIST)
+  for (hentry = (*(HENTRY_HLS_PTR *) last)->tail; hentry != NULL; hentry = hentry->tail)
+    {
+      *((HENTRY_HLS_PTR *) last) = hentry;
+      return hentry->data;
+    }
+#else
   if ((*(HENTRY_HLS_PTR *) last)->next == NULL)
     {
       return NULL;
@@ -1657,6 +1702,7 @@ mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 	  return hentry->data;
 	}
     }
+#endif
   return NULL;
 }
 
@@ -2668,6 +2714,78 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_O
   hentry->data = data;
   hentry->key = *((unsigned int *) key);
 
+#if defined(USE_HLS_ORDERED_LIST)
+/*
+ *  The structure of the hls hash table is approximately as follows;
+ *
+ *   hls table
+ *   ----                              --------        --------      --------
+ *   |  |                              | tail -|----> | tail -|----> | tail -|  
+ *   |  |                              | key   |      | key   |  --->| key   | 
+ *   |  |    --------     --------     | next -|----  | next  |  |   | next  |           
+ *   |  |    | tail  |    | tail -|--> --------    |   --------  |   --------
+ *   | -|--> | key   |    | key   |     --------   |             |
+ *   |  |    | next -|--> | next -|--> | tail  |   ---------------
+ *   ----    --------     --------     | key   |
+ *                                     | next  | 
+ *                                     --------  
+ * 
+ * It consists of an ascending list of key values.
+ * This list follows next.
+ * However, for the same key value, it consists of a separate list that follows the tail.
+ */
+  hentry->tail = NULL;
+  ht->nentries++;
+
+  if (ht->table[hash] == NULL)
+    {
+      ht->table[hash] = hentry;
+      hentry->next = NULL;
+    }
+  else
+    {
+      ht->ncollisions++;
+      HENTRY_HLS_PTR prev = NULL;
+      HENTRY_HLS_PTR cur = ht->table[hash];
+      do
+	{
+	  if (cur->key == hentry->key)
+	    {
+	      /* To input in order, use the tail node. */
+	      if (cur->tail == NULL)
+		{
+		  cur->tail = hentry;
+		  hentry->next = hentry;	/* self */
+		}
+	      else
+		{
+		  cur->tail->next->tail = hentry;
+		  cur->tail->next = hentry;
+		  hentry->next = NULL;
+		}
+
+	      return key;
+	    }
+	  else if (cur->key > hentry->key)
+	    {
+	      break;
+	    }
+	  prev = cur;
+	  cur = cur->next;
+	}
+      while (cur);
+
+      hentry->next = cur;
+      if (prev)
+	{
+	  prev->next = hentry;
+	}
+      else
+	{
+	  ht->table[hash] = hentry;
+	}
+    }
+#else
   /* To input in order, use the tail node. */
   if (ht->table[hash] == NULL)
     {
@@ -2681,6 +2799,7 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_O
   hentry->next = NULL;
   ht->table[hash]->tail = hentry;
   ht->nentries++;
+#endif
 
   return key;
 }
