@@ -11672,7 +11672,7 @@ pt_fix_first_term_func_index_for_iss (PARSER_CONTEXT * parser, QO_INDEX_ENTRY * 
   seg = QO_ENV_SEG (index_entryp->terms.env, index_entryp->seg_idxs[1]);
   head = QO_SEG_HEAD (seg);
   spec = head->entity_spec;
-  class_name = parser_print_tree (parser,spec->info.spec.entity_name);
+  class_name = parser_print_tree (parser, spec->info.spec.entity_name);
 
   query_str_len = (int) strlen (func_index->expr_str) + (int) strlen (class_name) + 7 /* strlen("SELECT ") */  +
     6 /* strlen(" FROM ") */  +

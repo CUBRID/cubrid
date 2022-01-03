@@ -1465,6 +1465,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - Class is Spec set(spec set??)
  *  - select for schema
  *  - has CONNECT BY
+ *  - is merge query
  *  - view spec is outer join spec
  *  - main query's where has define_vars ':='
  *  - subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation function
@@ -1566,6 +1567,12 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
   /* check for CONNECT BY */
   if (PT_IS_SELECT (mainquery) && mainquery->info.query.q.select.connect_by)
+    {
+      /* not pushable */
+      return 0;
+    }
+  /* check for MERGE query */
+  if (PT_IS_SELECT (mainquery) && PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_IS_MERGE_QUERY))
     {
       /* not pushable */
       return 0;
