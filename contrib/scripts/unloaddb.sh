@@ -31,6 +31,24 @@ from_file=""
 
 slot=()
 
+function show_usage ()
+{
+  echo "Usage: $0 [OPTIONS] [TARGET]"
+  echo " OPTIONS"
+  echo "  -t arg  Set number of parallel process; default 8"
+  echo "  -i arg  input FILE of table names; default: dump all classes"
+  echo "  -u arg  Set database user name; default dba"
+  echo "  -p arg  Set dbuser password"
+  echo "  -v      Set verbose mode on"
+
+  echo ""
+  echo " EXAMPLES"
+  echo "  $0 -t 4 -v demodb          # unload all tables in demodb"
+  echo "  $0 -i file demodb          # unload tables listed in file in demodb"
+  echo "  $0 -u user1 -p 1234 -i file -t 4 -v demodb"
+  echo ""
+}
+
 function get_options ()
 {
          while getopts ":u:i:t:v" opt; do
@@ -56,7 +74,8 @@ function extract_db_name ()
         # extract last argument & set as database name
 
         if [ $nelem -eq 0 ];then
-                return
+                show_usage
+                exit
         fi
 
         database=$(echo ${@:$nelem:1})
