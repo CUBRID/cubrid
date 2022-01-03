@@ -2139,6 +2139,53 @@ au_is_dba_group_member (MOP user)
   return is_member;
 }
 
+bool
+au_is_user_group_member (MOP group_user, MOP user)
+{
+  DB_SET *groups;
+  DB_VALUE group_user_val;
+  int error = NO_ERROR;
+
+  db_make_null (&group_user_val);
+
+  if (group_user == NULL)
+    {
+      /* youngjinj */
+      assert (false);
+      return false;
+    }
+
+  if (user == NULL)
+    {
+      /* youngjinj */
+      assert (false);
+      return false;
+    }
+
+  if (ws_is_same_object (group_user, user))
+    {
+      return true;
+    }
+
+  error = au_get_set (user, "groups", &groups);
+  if (error != NO_ERROR)
+    {
+      /* youngjinj */
+      assert (false);
+      return false;
+    }
+
+  db_make_object (&group_user_val, group_user);
+
+  if (set_ismember (groups, &group_user_val))
+    {
+      set_free (groups);
+      return true;
+    }
+
+  return false;
+}
+
 /*
  * au_add_user -  Add a user object if one does not already exist.
  *   return: new or existing user object

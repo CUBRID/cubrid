@@ -220,6 +220,7 @@ extern MOP au_get_class_owner (MOP classmop);
 extern int au_check_user (void);
 extern char *au_get_user_name (MOP obj);
 extern bool au_is_dba_group_member (MOP user);
+extern bool au_is_user_group_member (MOP group_user, MOP user);
 extern void au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial, DB_VALUE * owner);
 
 /* debugging functions */
