@@ -660,7 +660,9 @@ pt_get_titles (PARSER_CONTEXT * parser, PT_NODE * query)
       else
 	{
 	  parser->custom_print |= PT_SUPPRESS_CHARSET_PRINT;
+	  parser->custom_print |= PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME;
 	  t = pt_get_node_title (parser, s, f);
+	  parser->custom_print &= ~PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME;
 	  parser->custom_print &= ~PT_SUPPRESS_CHARSET_PRINT;
 
 	  if (t == NULL)

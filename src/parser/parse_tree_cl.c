@@ -13038,7 +13038,6 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
   unsigned int save_custom = parser->custom_print;
 
   char *dot = NULL;
-  const char *qualifier_name = NULL;
 
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
 
@@ -13073,14 +13072,14 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else if (p->info.name.resolved)
 	{
-	  /*
-	   * e.g. select t1 from dba.t1;
-	   *                                             p->info.name.original  : NULL
-	   *                                             p->info.name.resolved  : dba.t1
-	   *      pt_get_name_without_current_user_name (p->info.name.resolved) : t1
-	   * 
-	   */
-	  q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.resolved));
+	  if (parser->custom_print & PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME)
+	    {
+	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.resolved));
+	    }
+	  else
+	    {
+	      q = pt_append_name (parser, q, p->info.name.resolved);
+	    }
 	}
     }
   else
@@ -13089,15 +13088,6 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	&& p->info.name.meta_class != PT_CLASS && p->info.name.meta_class != PT_PARAMETER
 	&& p->info.name.meta_class != PT_HINT_NAME)
     {
-      /*
-       * e.g. select c1 from dba.t1;
-       *                                             p->info.name.resolved  : dba.t1
-       *      pt_get_name_without_current_user_name (p->info.name.resolved) : t1
-       * 
-       */
-      qualifier_name = pt_get_name_without_current_user_name (p->info.name.resolved);
-      // qualifier_name = p->info.name.resolved;
-
       /* Print both resolved name and original name If there is a non-zero length resolved name, print it, followed by
        * ".". */
       if ((parser->custom_print & PT_FORCE_ORIGINAL_TABLE_NAME) && (p->info.name.meta_class == PT_NORMAL))
@@ -13107,28 +13097,55 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  assert (p->info.name.spec_id);
 	  original_spec = (PT_NODE *) p->info.name.spec_id;
-	  if (original_spec->info.spec.entity_name
-	      && original_spec->info.spec.entity_name->info.name.original
-	      && original_spec->info.spec.entity_name->info.name.original[0] != '\0')
+	  if (original_spec->info.spec.entity_name && original_spec->info.spec.entity_name->info.name.original)
 	    {
-	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (original_spec->info.spec.entity_name->info.name.original));
+	      if (parser->custom_print & PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME)
+		{
+		  q = pt_append_name (parser, q, pt_get_name_without_current_user_name (original_spec->info.spec.entity_name->info.name.original));
+		}
+	      else
+		{
+		  q = pt_append_name (parser, q, original_spec->info.spec.entity_name->info.name.original);
+		}
 	    }
 	  else
 	    {
-	      q = pt_append_name (parser, q, qualifier_name);
+	      if (parser->custom_print & PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME)
+		{
+		  q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.resolved));
+		}
+	      else
+		{
+		  q = pt_append_name (parser, q, p->info.name.resolved);
+		}
 	    }
 	}
       else
 	{
-	  q = pt_append_name (parser, q, qualifier_name);
+	  if (parser->custom_print & PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME)
+	    {
+	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.resolved));
+	    }
+	  else
+	    {
+	      q = pt_append_name (parser, q, p->info.name.resolved);
+	    }
 	}
-
       /* this is to catch OID_ATTR's which don't have their meta class set correctly. It should probably not by
        * unconditional. */
       if (p->info.name.meta_class != PT_META_CLASS && p->info.name.original && p->info.name.original[0])
 	{
 	  q = pt_append_nulstring (parser, q, ".");
-	  q = pt_append_name (parser, q, p->info.name.original);
+
+	  if (parser->custom_print & PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME)
+	    {
+	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.original));
+	    }
+	  else
+	    {
+	       q = pt_append_name (parser, q, p->info.name.original);
+	    }
+	 
 	  if (p->info.name.meta_class == PT_INDEX_NAME)
 	    {
 	      if (p->etc == (void *) PT_IDX_HINT_FORCE)
@@ -13165,32 +13182,13 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
       /* here we print whatever the length */
       if (p->info.name.original)
 	{
-	  if (parser->custom_print & PT_PRINT_USER_SPECIFIED_NAME)
+	  if (parser->custom_print & PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME)
 	    {
-	      dot = (char *) strchr (p->info.name.original, '.');
-	      if (dot)
-		{
-		  dot[0] = '\0';
-		  q = pt_append_name (parser, q, p->info.name.original);
-		  dot[0] = '.';
-		  q = pt_append_nulstring (parser, q, ".");
-		  q = pt_append_name (parser, q, (dot + 1));
-		}
-	      else
-		{
-		  q = pt_append_name (parser, q, p->info.name.original);
-		}
+	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.original));
 	    }
 	  else
 	    {
-	      /*
-	       * e.g. select 1 from dba.t1;
-	       *                                             p->info.name.original  : dba.t1
-	       *                                             p->info.name.resolved  : NULL
-	       *      pt_get_name_without_current_user_name (p->info.name.original) : t1
-	       * 
-	       */
-	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.original));
+	      q = pt_append_name (parser, q, p->info.name.original);
 	    }
 
 	  if (p->info.name.meta_class == PT_INDEX_NAME)
