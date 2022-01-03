@@ -51,6 +51,17 @@ function show_usage ()
   echo ""
 }
 
+function veryfy_user_pass ()
+{
+         local msg
+         msg=$(csql $user $pass -c "select 1" $database)
+
+         if [ $? -ne 0 ];then
+                echo "Invalid user/pass: please check user and password"
+                exit
+         fi
+}
+
 function get_options ()
 {
          while getopts ":u:p:i:t:v" opt; do
@@ -193,6 +204,7 @@ function get_table_name ()
 
 extract_db_name $*
 get_options "$@"
+veryfy_user_pass
 
 get_table_name $*
 
