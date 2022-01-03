@@ -1473,6 +1473,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  * It is not pushable(mergeable) in the following cases.
  *  - NOT SELECT node (UNION, DIFFERENCE, INTERSECTION)
  *  - is value query
+ *  - has 'for update'
  *  - is correlated subquery
  *  - is CTE query
  *  - has NOT 'FROM'
@@ -1602,6 +1603,12 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
   /* check for value query */
   if (PT_IS_VALUE_QUERY (subquery))
+    {
+      /* not pushable */
+      return 0;
+    }
+  /* check for 'for update' */
+  if (PT_SELECT_INFO_IS_FLAGED (subquery, PT_SELECT_INFO_FOR_UPDATE))
     {
       /* not pushable */
       return 0;
