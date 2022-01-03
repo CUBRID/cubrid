@@ -144,12 +144,11 @@ function do_unloaddb ()
 
 function get_table_name ()
 {
-        local file=$HOME/.unload_temp_file
-        local db=${database:-hdb1}
         local found=0
         local line
         local idx=0
         local table_name
+        local db=$database
 
         # Get all table names from CATALOG
 
