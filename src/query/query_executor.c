@@ -23782,14 +23782,6 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	  break;
 	}
 
-      /* Temporary disable count optimization. To enable it just remove these lines and also restore the condition in
-       * pt_find_lck_classes and also enable load global statistics in logtb_get_mvcc_snapshot_data. */
-      if (agg_ptr->function == PT_COUNT_STAR)
-	{
-	  *is_scan_needed = true;
-	  break;
-	}
-
       /* If we deal with a count optimization and the snapshot wasn't already taken then prepare current class for
        * optimization and force a snapshot */
       if (!*is_scan_needed && agg_ptr->function == PT_COUNT_STAR)

@@ -596,7 +596,8 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 #endif /* CUBRID_DEBUG */
   for (i = 0; i < class_table->num; i++)
     {
-      if (WS_IS_DELETED (class_table->mops[i]) || class_table->mops[i] == sm_Root_class_mop)
+      if (WS_IS_DELETED (class_table->mops[i]) || class_table->mops[i] == sm_Root_class_mop
+	  || db_is_vclass (class_table->mops[i]))
 	{
 	  continue;
 	}

@@ -962,7 +962,7 @@ int
 qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p, HFID *hfid_p,
 				   OID *super_oid)
 {
-  int oid_count = 0, null_count = 0, key_count = 0;
+  long long oid_count = 0, null_count = 0, key_count = 0;
   int flag_btree_stat_needed = true;
 
   if (!agg_p->flag_agg_optimize)

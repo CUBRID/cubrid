@@ -247,7 +247,7 @@ static int list_length (const BTREE_NODE * this_list);
 static void list_print (const BTREE_NODE * this_list);
 #endif /* defined(CUBRID_DEBUG) */
 static int btree_pack_root_header (RECDES * Rec, BTREE_ROOT_HEADER * header, TP_DOMAIN * key_type);
-static void btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta, RECDES * recdes);
+static void btree_rv_save_root_head (long long null_delta, long long oid_delta, long long key_delta, RECDES * recdes);
 static int btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid,
 						    PAGE_PTR * pg_ptr, INT16 * slot_id, DB_VALUE * key,
 						    bool * clear_key, bool is_desc, int *key_cnt,
@@ -458,15 +458,16 @@ btree_node_header_redo_log (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_
  *
  */
 int
-btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, int null_delta, int oid_delta,
-				int key_delta)
+btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, long long null_delta,
+				long long oid_delta, long long key_delta)
 {
   RECDES rec, delta_rec;
-  char delta_rec_buf[(3 * OR_INT_SIZE) + BTREE_MAX_ALIGN];
+  char delta_rec_buf[(3 * OR_BIGINT_SIZE) + BTREE_MAX_ALIGN];
   BTREE_ROOT_HEADER *root_header = NULL;
+  int old_version;
 
   delta_rec.data = NULL;
-  delta_rec.area_size = 3 * OR_INT_SIZE;
+  delta_rec.area_size = 3 * OR_BIGINT_SIZE;
   delta_rec.data = PTR_ALIGN (delta_rec_buf, BTREE_MAX_ALIGN);
 
   if (spage_get_record (thread_p, page_ptr, HEADER, &rec, PEEK) != S_SUCCESS)
@@ -609,20 +610,20 @@ btree_init_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OV
  * Note: This is a UTILITY routine, but not an actual recovery routine.
  */
 static void
-btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta, RECDES * recdes)
+btree_rv_save_root_head (long long null_delta, long long oid_delta, long long key_delta, RECDES * recdes)
 {
   char *datap;
 
-  assert (recdes->area_size >= 3 * OR_INT_SIZE);
+  assert (recdes->area_size >= 3 * OR_BIGINT_SIZE);
 
   recdes->length = 0;
   datap = (char *) recdes->data;
-  OR_PUT_INT (datap, null_delta);
-  datap += OR_INT_SIZE;
-  OR_PUT_INT (datap, oid_delta);
-  datap += OR_INT_SIZE;
-  OR_PUT_INT (datap, key_delta);
-  datap += OR_INT_SIZE;
+  OR_PUT_BIGINT (datap, &null_delta);
+  datap += OR_BIGINT_SIZE;
+  OR_PUT_BIGINT (datap, &oid_delta);
+  datap += OR_BIGINT_SIZE;
+  OR_PUT_BIGINT (datap, &key_delta);
+  datap += OR_BIGINT_SIZE;
 
   recdes->length = CAST_STRLEN (datap - recdes->data);
 }
@@ -642,26 +643,27 @@ btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta, RECDES * 
  * Note: This is a UTILITY routine, but not an actual recovery routine.
  */
 void
-btree_rv_mvcc_save_increments (const BTID * btid, int key_delta, int oid_delta, int null_delta, RECDES * recdes)
+btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta, long long null_delta,
+			       RECDES * recdes)
 {
   char *datap;
 
-  assert (recdes != NULL && (recdes->area_size >= ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE)));
+  assert (recdes != NULL && (recdes->area_size >= ((3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE)));
 
-  recdes->length = (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE;
+  recdes->length = (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE;
   datap = (char *) recdes->data;
 
   OR_PUT_BTID (datap, btid);
   datap += OR_BTID_ALIGNED_SIZE;
 
-  OR_PUT_INT (datap, key_delta);
-  datap += OR_INT_SIZE;
+  OR_PUT_BIGINT (datap, &key_delta);
+  datap += OR_BIGINT_SIZE;
 
-  OR_PUT_INT (datap, oid_delta);
-  datap += OR_INT_SIZE;
+  OR_PUT_BIGINT (datap, &oid_delta);
+  datap += OR_BIGINT_SIZE;
 
-  OR_PUT_INT (datap, null_delta);
-  datap += OR_INT_SIZE;
+  OR_PUT_BIGINT (datap, &null_delta);
+  datap += OR_BIGINT_SIZE;
 
   recdes->length = CAST_STRLEN (datap - recdes->data);
 }
@@ -1850,6 +1852,11 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   VPID_SET_NULL (&(root_header->node.prev_vpid));
   root_header->node.split_info.pivot = 0.0f;
   root_header->node.split_info.index = 0;
+
+  /* the 64 bit extending should be initialized to 0 
+   * because only the 32bit count is used at this point */
+  root_header->_64.over = 0;
+  root_header->_64.num_nulls = root_header->_64.num_oids = root_header->num_keys = 0;
 
   if (load_args->btid->unique_pk)
     {
