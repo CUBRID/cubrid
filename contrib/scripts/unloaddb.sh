@@ -18,7 +18,6 @@
 
 verbose="no"   # set 'yes' for verbose mode
 num_proc=8
-table=()
 table_size=()
 table_selected=()
 num_tables=0
