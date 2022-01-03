@@ -25,7 +25,9 @@ slot_selected=0
 slot_size=(0 0 0 0 0 0 0 0)
 num_tables_slot=(0 0 0 0 0 0 0 0)
 database=
-user="dba"
+user="-u dba"
+pass=""
+password=""
 total_pages=0
 from_file=""
 
@@ -51,9 +53,10 @@ function show_usage ()
 
 function get_options ()
 {
-         while getopts ":u:i:t:v" opt; do
+         while getopts ":u:p:i:t:v" opt; do
                 case $opt in
-                        u ) user="$OPTARG" ;;
+                        u ) user="-u $OPTARG" ;;
+                        p ) pass="-p $OPTARG" ;;
                         i ) from_file="$OPTARG" ;;
                         t ) num_proc="$OPTARG" ;;
                         v ) verbose="yes" ;;
@@ -117,7 +120,7 @@ function do_unloaddb ()
                 echo "Proc $slot_num: num tables: $num_tables_in_slot, page size: ${slot_size[$slot_num]}"
         fi
 
-	cubrid unloaddb --input-class-only --input-class-file $file $database
+	cubrid unloaddb $user $pass --input-class-only --input-class-file $file $database
 
         if [ $? -ne 0 ];then
                 msg="Failed"
@@ -142,7 +145,7 @@ function get_table_name ()
         if [ X$from_file != X"" ];then  # Read table name from file
                 result=$(cat $from_file)
         else
-                result=$(csql -u $user -c "select class_name from db_class where is_system_class = 'NO' AND class_type = 'CLASS' order by class_name" $db)
+                result=$(csql $user $pass -c "select class_name from db_class where is_system_class = 'NO' AND class_type = 'CLASS' order by class_name" $db)
         fi
 
         for token in $result
@@ -174,7 +177,7 @@ function get_table_name ()
         for ((i = 0; i < ${#table_selected[@]}; i++))
         do
                 table_name=${table_selected[i]}
-                this_table_size=$(csql -u dba -l -c "show heap capacity of $table_name" $db | grep Num_pages | awk '{print $3}')
+                this_table_size=$(csql $user $pass -l -c "show heap capacity of $table_name" $db | grep Num_pages | awk '{print $3}')
 
                 if [ -z $this_table_size ];then
                         echo "Unknown table: $table_name"
