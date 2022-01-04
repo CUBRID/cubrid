@@ -692,6 +692,11 @@ static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_H
 					    AGGREGATE_HASH_KEY * key, bool * found);
 static int qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE * default_val);
 
+static inline SCAN_CODE evaluate_xptr_list (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, XASL_NODE * xptr_list,
+					    SCAN_OPERATION_TYPE scan_operation_type, bool * keep_going);
+static inline SCAN_CODE evaluate_one_scanned_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+						    QFILE_TUPLE_RECORD * tplrec, bool * keep_going);
+
 /*
  * Utility routines
  */
@@ -7791,6 +7796,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
     }
   return S_SUCCESS;
 }
+
 
 static inline SCAN_CODE
 evaluate_xptr_list (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, XASL_NODE * xptr_list,
