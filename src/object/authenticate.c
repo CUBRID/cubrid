@@ -5216,7 +5216,7 @@ au_change_owner (MOP classmop, MOP owner)
 	      owner_name = au_get_user_name(owner);
 
 	      len = snprintf (NULL, 0, "%s.%s", owner_name, class_simple_name) + 1;
-	      class_full_name = (char *) db_ws_alloc (len * sizeof (char));
+	      class_full_name = (char *) calloc (len, sizeof (char));
 	      snprintf (class_full_name, len, "%s.%s", owner_name, class_simple_name);
 
 	      error = sm_rename_class (classmop, class_full_name);
@@ -5234,7 +5234,7 @@ au_change_owner (MOP classmop, MOP owner)
 
 	      if (class_full_name)
 		{
-		  db_ws_free_and_init (class_full_name);
+		  free_and_init (class_full_name);
 	      }
 	    }
 	}
@@ -5260,8 +5260,8 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_owner = 0;
   MOP *sub_partitions = NULL;
   const char *class_name = NULL, *owner_name = NULL;
+  char *class_full_name = NULL;
   SM_CLASS *clsobj;
-  char *user_specified_name = NULL;
 
   db_make_null (returnval);
 
@@ -5278,17 +5278,21 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
       return;
     }
 
-  sm_user_specified_name (class_name, NULL, &user_specified_name);
-  if (user_specified_name == NULL)
+  error = sm_user_specified_name (class_name, NULL, &class_full_name);
+  if (error != NO_ERROR)
     {
       /* youngjinj */
       assert (false);
+      return;
     }
-  classmop = sm_find_class (user_specified_name);
-  if (user_specified_name)
+
+  classmop = sm_find_class (class_full_name);
+
+  if (class_full_name)
     {
-      db_ws_free_and_init (user_specified_name);
+      free_and_init (class_full_name);
     }
+
   if (classmop == NULL)
     {
       db_make_error (returnval, er_errid ());
@@ -5613,23 +5617,22 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
 {
   MOP user;
   MOP classmop;
+  char *class_name_p = NULL;
   int error = NO_ERROR;
-
-  char *user_specified_name = NULL;
 
   db_make_null (returnval);
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
-      sm_user_specified_name (db_get_string (class_), NULL, &user_specified_name);
-      if (user_specified_name == NULL)
+      error = sm_user_specified_name (db_get_string (class_), NULL, &class_name_p);
+      if (error != NO_ERROR)
         {
 	  /* youngjinj */
 	  assert (false);
 	}
-      classmop = sm_find_class (user_specified_name);
-      if (user_specified_name)
+      classmop = sm_find_class (class_name_p);
+      if (class_name_p)
         {
-	  db_ws_free_and_init (user_specified_name);
+	  free_and_init (class_name_p);
 	}
       if (classmop != NULL)
 	{

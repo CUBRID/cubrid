@@ -9905,6 +9905,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   const char *dot = NULL;
   const char *original_name = NULL;
   const char *resolved_name = NULL;
+  char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
   char *current_user_name = NULL;
   const char *user_specified_name = NULL;
   int is_user_specified_name = false;
@@ -10015,8 +10016,10 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
   if (resolved_name)
     {
+      intl_identifier_lower (resolved_name, downcase_resolved_name);
+
       /* In case 1, 2, 3, 5 */
-      user_specified_name = pt_append_string (parser, NULL, resolved_name);
+      user_specified_name = pt_append_string (parser, NULL, downcase_resolved_name);
       user_specified_name = pt_append_string (parser, user_specified_name, ".");
       user_specified_name = pt_append_string (parser, user_specified_name, original_name);
 
