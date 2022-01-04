@@ -1544,6 +1544,12 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   /*****************************/
   /**** 1. MAIN QUERY CHECK ****/
   /*****************************/
+  /* NO_MERGE hint check */
+  if (subquery->info.query.q.select.hint & PT_HINT_NO_MERGE)
+    {
+      return 0;
+    }
+
   /* determine if class_spec is the only spec in the statement */
   is_only_spec = ((statement_spec->next == NULL && pred == NULL) ? true : false);
 
