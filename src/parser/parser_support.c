@@ -6318,6 +6318,7 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
   int i;
   PT_NODE *arg, *id_string;
   PT_NODE *prev = NULL, *head = NULL;
+  char lower_table_name[DB_MAX_FULL_CLASS_LENGTH];
 
   if (arg_info_count == 0)
     {
@@ -6338,7 +6339,9 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
       if (arg_infos[i].type == AVT_IDENTIFIER)
 	{
 	  /* replace identifier node with string value node */
-	  id_string = pt_make_string_value (parser, arg->info.name.original);
+	  pt_set_user_specified_name (parser, arg, NULL, NULL);
+	  intl_identifier_lower (arg->info.name.original, lower_table_name);
+	  id_string = pt_make_string_value (parser, lower_table_name);
 	  if (id_string == NULL)
 	    {
 	      goto error;
@@ -6707,6 +6710,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
       PT_SELECT_INFO_SET_FLAG (sub_query, PT_SELECT_INFO_COLS_SCHEMA);
     }
 
+  pt_set_user_specified_name (parser, original_cls_id, NULL, NULL);
   intl_identifier_lower (original_cls_id->info.name.original, lower_table_name);
 
   db_make_int (db_valuep + 0, 0);
@@ -6887,6 +6891,8 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   parser_block_allocator alloc (parser);
   string_buffer strbuf (alloc);
 
+  pt_set_user_specified_name (parser, table_name, NULL, NULL);
+
   pt_help_show_create_table (parser, table_name, strbuf);
   if (strbuf.len () == 0)
     {
@@ -6951,6 +6957,8 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
 
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
+
+  pt_set_user_specified_name (parser, view_identifier, NULL, NULL);
 
   node = parser_new_node (parser, PT_SELECT);
   if (node == NULL)
@@ -7794,6 +7802,7 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser, PT_NODE * original
 	}
     }
 
+  pt_set_user_specified_name (parser, original_cls_id, NULL, NULL);
   node = pt_make_query_show_columns (parser, original_cls_id, (where_node == NULL) ? 0 : 2, where_node, 0);
 
   return node;
@@ -7844,6 +7853,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
 
   assert (original_cls_id != NULL);
   assert (original_cls_id->node_type == PT_NAME);
+
+  pt_set_user_specified_name (parser, original_cls_id, NULL, NULL);
 
   query = parser_new_node (parser, PT_SELECT);
   if (query == NULL)
@@ -9888,140 +9899,191 @@ pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *contin
   return node;
 }
 
-/*
- * pt_make_user_specified_name () - Make user_specified_name in user_name.object_name format.
- * return	      : node
- * parser (in)	      : parser context
- * name (in)	      : object_name node
- * user (in)	      : user_name node
- *
- * NOTE: Change info.name.original of object_name node to user_specified_name.
- */
 PT_NODE *
-pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * user)
+pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   const char *dot = NULL;
-  const char *user_name = NULL;
+  const char *original_name = NULL;
+  const char *resolved_name = NULL;
   char *current_user_name = NULL;
-  const char *class_name = NULL;
-  const char *class_full_name = NULL;
-  int error = NO_ERROR;
+  const char *user_specified_name = NULL;
+  int is_user_specified_name = false;
 
-  assert (name != NULL && name->node_type == PT_NAME);
+  if (!node)
+    {
+      return NULL;
+    }
+
+  if (PT_IS_NAME_NODE (node) && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_USER_SPECIFIED_NAME))
+    {
+      is_user_specified_name = true;
+
+      if (node->info.name.original == NULL || node->info.name.original[0] == '\0')
+	{
+	  /* youngjinj */
+	  assert (false);
+	  return NULL;
+	}
+
+	original_name = node->info.name.original;
+	resolved_name = node->info.name.resolved;
+    }
+  else if (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op))
+    {
+      if (PT_IS_DOT_NODE (node->info.expr.arg1)
+          && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg1)
+	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2))
+	{
+	  PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
+	  PT_NODE *name = node->info.expr.arg1->info.dot.arg2;
+
+	  if (name->info.name.original == NULL || name->info.name.original[0] == '\0')
+	    {
+	      /* youngjinj */
+	      assert (false);
+	      return NULL;
+	    } 
+
+	  original_name = name->info.name.original;
+	  resolved_name = owner->info.name.resolved;
+	}
+      else
+        {
+	  assert (PT_IS_NAME_NODE (node->info.expr.arg1));
+
+	  PT_NODE *name = node->info.expr.arg1;
+
+          if (name->info.name.original == NULL || name->info.name.original[0] == '\0')
+	    {
+	      /* youngjinj */
+	      assert (false);
+	      return NULL;
+	    }
+
+	  original_name = name->info.name.original;
+	  resolved_name = name->info.name.resolved;
+	}
+    }
+  else
+    {
+      return node;
+    }
+
+  dot = strchr (original_name, '.');
+  if (dot)
+    {
+      if (is_user_specified_name)
+	{
+	  PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_USER_SPECIFIED_NAME);
+	}
+
+      return node;
+    }
+
+  /* In the system_class, user_specified_name does not include user_name.
+   * So, info.name.original is different for each case below.
+   *
+   *    original_name        resolve_name        user_specified_name
+   * -------------------------------------------------------------------------------
+   * 1. common_class_name &&             NULL -> current_user_name.common_class_name
+   * 2. common_class_name && common_user_name ->  common_user_name.common_class_name
+   * 3. common_class_name &&    dba_user_name ->     dba_user_name.common_class_name
+   * 4. system_class_name &&             NULL ->                   system_class_name
+   * 5. system_class_name && common_user_name ->  common_user_name.system_class_name
+   * 6. system_class_name &&    dba_user_name ->                   system_class_name
+   * 
+   * In case 5, raises an error to inform the user of an incorrect customization.
+   */
+  if (is_user_specified_name && sm_check_system_class_by_name (original_name))
+    {
+      /* Skip in case 4, 6 */
+      if (resolved_name == NULL || resolved_name[0] == '\0' || intl_identifier_casecmp (resolved_name, "DBA") == 0)
+	{
+	  PT_NAME_INFO_CLEAR_FLAG(node, PT_NAME_USER_SPECIFIED_NAME);
+
+	  return node;
+	}
+    }
+
+  if (resolved_name == NULL || resolved_name[0] == '\0')
+    {
+      current_user_name = db_get_user_name ();
+      assert (current_user_name != NULL);
+
+      resolved_name = current_user_name;
+    }
+
+  if (resolved_name)
+    {
+      /* In case 1, 2, 3, 5 */
+      user_specified_name = pt_append_string (parser, NULL, resolved_name);
+      user_specified_name = pt_append_string (parser, user_specified_name, ".");
+      user_specified_name = pt_append_string (parser, user_specified_name, original_name);
+
+      if (is_user_specified_name && PT_IS_NAME_NODE (node))
+	{
+	  node->info.name.original = user_specified_name;
+	  node->info.name.resolved = NULL;
+
+	  PT_NAME_INFO_CLEAR_FLAG(node, PT_NAME_USER_SPECIFIED_NAME);
+	}
+      else
+	{
+	  assert (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op));
+
+	  if (PT_IS_DOT_NODE (node->info.expr.arg1))
+	    {
+	      node->info.expr.arg1->info.dot.arg2->info.name.original = user_specified_name;
+	      node->info.expr.arg1->info.dot.arg2->info.name.resolved = NULL;
+
+	      parser_free_tree (parser, node->info.expr.arg1->info.dot.arg1);
+	      node->info.expr.arg1 = node->info.expr.arg1->info.dot.arg2;
+	    }
+	  else
+	    {
+	      assert (PT_IS_NAME_NODE (node->info.expr.arg1));
+
+	      node->info.expr.arg1->info.name.original = user_specified_name;
+	      node->info.expr.arg1->info.name.resolved = NULL;
+	    }
+	}
+    }
+
+  return node;
+}
+
+const char *
+pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE *name)
+{
+  char *dot = NULL;
+  const char *original_name = NULL;
+  const char *resolved_name = NULL;
+  const char *qualifier_name = NULL;
+
+  if (name == NULL || name->node_type != PT_NAME)
+    {
+      return NULL;
+    }
 
   if (name->info.name.original == NULL || name->info.name.original[0] == '\0')
     {
       return NULL;
     }
 
-  class_name = name->info.name.original;
+  original_name = name->info.name.original;
+  resolved_name = name->info.name.resolved;
 
-  /*
-   * Assume that identifier does not contain dot(.) or can contain only 1 dot(.).
-   */
-  dot = strchr (class_name, '.');
+  dot = (char *) strchr (original_name, '.');
   if (dot)
     {
-      /*
-       * e.g. name->info.name.original == "other_user_name.object_name"
-       * 
-       * other_user_name must not be changed to current_user_name.
-       * So, the code below is executed only when 'dot == NULL'.
-       */
-      return name;
+      dot[0] = '\0';
+      qualifier_name = pt_append_string (parser, NULL, original_name);
+      dot[0] = '.';
+
+      return qualifier_name;
     }
 
-  /* 
-   * In the existing code, user_name is stored in name->info.name.resolved.
-   * To manage objects by user, it has been changed to store "user_name.object_name" in name->info.name.original.
-   * Then, duplicate user_name is stored in name->info.name.original and name->info.name.resolved.
-   * When PT_NAME is output as name->info.name.resolved + name->info.name.original, user_name is output as duplicate,
-   * so user_name is changed not to be stored in name->info.name.resolved. 
-   */
-  if (user && user->node_type == PT_NAME && user->info.name.original && user->info.name.original[0] != '\0')
-    {
-      user_name = user->info.name.original;
-    }
-  else
-    {
-      current_user_name = db_get_user_name ();
-      user_name = current_user_name;
-    }
-
-  /* In the system class, class_full_name does not include user_name.
-   * So, the value stored in info.name.original is different for each case below.
-   *
-   *  1. common class name &&             NULL -> current_user_name.common_class_name
-   *  2. common class name && common user name ->  common_user_name.common_class_name
-   *  3. common class name &&    dba user name ->     dba_user_name.common_class_name
-   *  4. system class name &&             NULL ->                   system_class_name
-   *  5. system class name && common user name ->  common_user_name.system_class_name
-   *  6. system class name &&    dba user name ->                   system_class_name
-   * 
-   * In case 5, The system_class_name is correct,
-   * but raises an error to inform the user of an incorrect customization.
-   */
-
-  if (sm_check_system_class_by_name (class_name))
-    {
-      /* Skip in case 4, 6 */
-      if (user == NULL || intl_identifier_casecmp (user_name, AU_DBA_USER_NAME) == 0)
-	{
-	  goto end;
-	}
-    }
-
-  /* In case 1, 2, 3, 5 */
-  class_full_name = pt_append_string (parser, NULL, user_name);
-  class_full_name = pt_append_string (parser, class_full_name, ".");
-  class_full_name = pt_append_string (parser, class_full_name, class_name);
-  name->info.name.original = class_full_name;
-
-end:
-  if (current_user_name)
-    {
-      db_string_free (current_user_name);
-      current_user_name = NULL;
-    }
-
-  return name;
-}
-
-const char *
-pt_get_user_name (const char *name)
-{
-  char *dot = NULL;
-  char *copy_name = NULL;
-  const char *user_name = NULL;
-  char *token = NULL;
-  char *token_save = NULL;
-  int error = NO_ERROR;
-
-  if (name == NULL || name[0] == '\0')
-    {
-      return NULL;
-    }
-
-  dot = (char *) strchr (name, '.');
-  if (dot == NULL)
-    {
-      return NULL;
-    }
-
-  dot[0] = '\0';
-
-  user_name = strndup (name, strlen (name));
-  if (user_name == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (strlen (name) + 1));
-
-      return NULL;
-    }
-
-  dot[0] = '.';
-
-  return user_name;
+  return resolved_name;
 }
 
 const char *
@@ -10077,20 +10139,4 @@ pt_get_name_without_current_user_name (const char *name)
     }
 
   return object_name;
-}
-
-/*
- * Get the name after dot(.).
- */
-const char *
-pt_get_name_after_dot (const char *name)
-{
-  if (name != NULL && name[0] != '\0')
-    {
-      const char *dot = strchr (name, '.');
-
-      return dot ? (dot + 1) : name;
-    }
-
-  return name;
 }

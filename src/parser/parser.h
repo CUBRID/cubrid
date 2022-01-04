@@ -664,13 +664,9 @@ extern "C"
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);
   extern int pt_remake_dblink_password (const char *passwd, DB_VALUE * outval, bool is_external);
 
-  extern PT_NODE *pt_check_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-  extern PT_NODE *pt_check_spec_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-
-  extern PT_NODE *pt_make_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * user);
-  extern const char *pt_get_user_name (const char *name);
+  extern PT_NODE *pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern const char *pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name);
   extern const char *pt_get_name_without_current_user_name (const char *name);
-  extern const char *pt_get_name_after_dot (const char *name);
 #ifdef __cplusplus
 }
 #endif

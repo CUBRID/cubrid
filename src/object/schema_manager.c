@@ -2169,60 +2169,153 @@ sm_downcase_name (const char *name, char *buf, int maxlen)
   intl_identifier_lower (name, buf);
 }
 
-void
+int
 sm_user_specified_name (const char *name, const char *owner_name, char **user_specified_name)
 {
-  const char *dot = NULL;
-  char *owner_name_p = NULL;
+  char *dot = NULL;
+  const char *name_p = NULL;
+  const char *owner_name_p = NULL;
+  char *resolved_name = NULL;
+  char *current_user_name = NULL;
+  char *user_specified_name_p = NULL;
   int len = 0;
-  int is_system_class = false;
+  int error = NO_ERROR;
 
   assert (*user_specified_name == NULL);
 
   if (name == NULL || name[0] == '\0')
     {
-      return;
+      /* youngjinj */
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_NAME, 1, name);
+      assert (false);
+      return error;
     }
 
-  dot = strchr (name, '.');
+  dot = (char *) strchr (name, '.');
   if (dot)
     {
-      *user_specified_name = ws_copy_string (name);
-      return;
+      len = intl_identifier_lower_string_size (name) + 1;
+      assert (len < DB_MAX_FULL_CLASS_LENGTH);
+      *user_specified_name = (char *) calloc (len, sizeof (char));
+      if (*user_specified_name == NULL)
+	{
+	  /* youngjinj */
+	  assert (false);
+	  return error;
+	}
+      intl_identifier_lower (name, *user_specified_name);
+      return error;
     }
 
-  is_system_class = sm_check_system_class_by_name (name);
+  if (sm_check_system_class_by_name (name)
+      && (owner_name == NULL || owner_name[0] == '\0' || intl_identifier_casecmp (owner_name, "DBA") == 0))
+    {
+      len = intl_identifier_lower_string_size (name) + 1;
+      assert (len < DB_MAX_SIMPLE_CLASS_LENGTH);
+      *user_specified_name = (char *) calloc (len, sizeof (char));
+      if (*user_specified_name == NULL)
+	{
+	  /* youngjinj */
+	  assert (false);
+	  return error;
+	}
+      intl_identifier_lower (name, *user_specified_name);
+      return error;
+    }
 
   if (owner_name && owner_name[0] != '\0')
     {
-      owner_name_p = au_get_user_name (au_find_user (owner_name));
-    }
-
-  if (owner_name && strncmp (owner_name_p, "DBA", strlen ("DBA")) && is_system_class)
-    {
-      *user_specified_name = ws_copy_string (name);
-      return;
-    }
-
-  if (owner_name == NULL || owner_name[0] == '\0')
-    {
-      if (is_system_class)
+      dot = (char *) strchr (owner_name, '.');
+      if (dot)
 	{
-	  *user_specified_name = ws_copy_string (name);
-	  return;
-	}
+	  dot[0] = '\0';
+	  resolved_name = strndup (owner_name, strlen (owner_name));
+	  dot[0] = '.';
 
-      owner_name_p = db_get_user_name ();
+	  owner_name_p = resolved_name;
+	}
+      else
+	{
+	  owner_name_p = owner_name;
+	}
+    }
+  else
+    {
+      current_user_name = db_get_user_name ();
+      owner_name_p = current_user_name;
     }
 
   len = snprintf (NULL, 0, "%s.%s", owner_name_p, name) + 1;
-  *user_specified_name = (char *) db_ws_alloc (len * sizeof (char));
-  snprintf (*user_specified_name, len, "%s.%s", owner_name_p, name);
-
-  if (owner_name_p)
+  user_specified_name_p = (char *) calloc (len, sizeof (char));
+  if (user_specified_name_p == NULL)
     {
-      db_string_free (owner_name_p);
+      /* youngjinj */
+      assert (false);
+      goto end;
     }
+  snprintf (user_specified_name_p, len, "%s.%s", owner_name_p, name);
+
+  len = intl_identifier_lower_string_size (user_specified_name_p) + 1;
+  assert (len < DB_MAX_FULL_CLASS_LENGTH);
+  *user_specified_name = (char *) calloc (len, sizeof (char));
+  if (*user_specified_name == NULL)
+    {
+      /* youngjinj */
+      assert (false);
+      goto end;
+    }
+  intl_identifier_lower (user_specified_name_p, *user_specified_name);
+
+end:
+  if (resolved_name)
+    {
+      free_and_init (resolved_name);
+    }
+
+  if (current_user_name)
+    {
+      db_string_free (current_user_name);
+      current_user_name = NULL;
+      owner_name_p = NULL;
+    }
+
+  if (user_specified_name_p)
+    {
+      free_and_init (user_specified_name_p);
+    }
+
+  return error;
+}
+
+char *
+sm_get_user_name (const char *name)
+{
+  char *dot = NULL;
+  char *user_name = NULL;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      /* youngjinj */
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_NAME, 1, name);
+      assert (false);
+      return NULL;
+    }
+
+  dot = (char *) strchr (name, '.');
+  if (dot)
+    {
+      dot[0] = '\0';
+      user_name = strndup (name, strlen (name));
+      dot[0] = '.';
+
+      if (user_name == NULL)
+	{
+	  /* youngjinj */
+	  assert (false);
+	}
+    }
+
+  return user_name;
 }
 
 /*

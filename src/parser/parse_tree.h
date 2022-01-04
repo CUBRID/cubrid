@@ -2573,6 +2573,7 @@ struct pt_name_info
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from derived spec */
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
+#define PT_NAME_USER_SPECIFIED_NAME 8192 /* resolved_name is added to original_name to make user_specified_name. */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))

@@ -8101,6 +8101,7 @@ pt_print_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_create_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.serial.serial_name, arg);
   PT_APPLY_WALK (parser, p->info.serial.start_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.increment_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.min_val, arg);
@@ -8119,6 +8120,7 @@ pt_apply_create_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PT_NODE *
 pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.serial.serial_name, arg);
   PT_APPLY_WALK (parser, p->info.serial.increment_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.min_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.max_val, arg);
@@ -8136,6 +8138,7 @@ pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PT_NODE *
 pt_apply_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.serial.serial_name, arg);
   return p;
 }
 

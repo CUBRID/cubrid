@@ -1421,8 +1421,9 @@ ldr_find_class (const char *class_name)
 {
   LC_FIND_CLASSNAME find;
   DB_OBJECT *class_ = NULL;
-  char realname[SM_MAX_FULL_CLASS_LENGTH];
+  char *realname = NULL;
   char *other_class_name = NULL;
+  int error = NO_ERROR;
 
   /* Check for internal error */
   if (class_name == NULL)
@@ -1432,7 +1433,12 @@ ldr_find_class (const char *class_name)
       return NULL;
     }
 
-  sm_downcase_name (class_name, realname, SM_MAX_FULL_CLASS_LENGTH);
+  error = sm_user_specified_name (class_name, NULL, &realname);
+  if (error != NO_ERROR)
+    {
+      /* youngjinj */
+      assert (false);
+    }
   ldr_Hint_class_names[0] = realname;
 
   find =
@@ -1459,8 +1465,13 @@ ldr_find_class (const char *class_name)
 		class_ = db_find_class (other_class_name);
 	      }
 	
-	  db_ws_free_and_init (other_class_name);
+	  free_and_init (other_class_name);
 	}
+    }
+
+  if (realname)
+    {
+      free_and_init (realname);
     }
 
   ldr_Hint_class_names[0] = NULL;
@@ -1482,6 +1493,7 @@ ldr_get_other_name_from_from_db_class (const char *class_name)
   
   const char *dot = NULL;
   const char *name = NULL;
+  const char *full_name = NULL;
   char *other_name = NULL;
  
   int error = NO_ERROR;
@@ -1497,7 +1509,7 @@ ldr_get_other_name_from_from_db_class (const char *class_name)
 
   query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s'";
   query_len = snprintf (NULL, 0, query, "_db_class", name) + 1;
-  query_buf = (char *) db_ws_alloc (query_len);
+  query_buf = (char *) calloc (query_len, sizeof (char));
   snprintf (query_buf, query_len, query, "_db_class", name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -1514,7 +1526,8 @@ ldr_get_other_name_from_from_db_class (const char *class_name)
         {
 	  if (!db_value_is_null (&value))
 	    {
-	      other_name = ws_copy_string (db_get_string (&value));
+	      full_name = db_get_string (&value);
+	      other_name = strndup (full_name, strlen (full_name));
 	    }
 	
 	  pr_clear_value (&value);
@@ -1529,7 +1542,7 @@ ldr_get_other_name_from_from_db_class (const char *class_name)
 end:
   if (query_buf)
     {
-      db_ws_free_and_init (query_buf);
+      free_and_init (query_buf);
     }
 
   if (query_result)

@@ -5950,6 +5950,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
   PT_NODE *temp, *temp1, *temp2, *name;
   DB_OBJECT *db;		/* a temp for class object */
   const char *class_name = NULL;	/* a temp to extract name from class */
+  const char *obj_class_name = NULL;
   PT_NODE *e_node;
   DB_AUTH type;
   AU_FETCHMODE fetchmode;
@@ -6005,6 +6006,11 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 
 	  if (au_fetch_class (classop, &class_, fetchmode, type) == NO_ERROR)
 	    {
+	      if (intl_identifier_casecmp (class_name, class_->header.ch_name))
+		{
+		  name->info.name.original = pt_append_string (parser, NULL, class_->header.ch_name);
+		}
+
 	      if (class_->partition != NULL)
 		{
 		  if (class_->partition->pname == NULL)
@@ -9022,7 +9028,6 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  entity->info.spec.range_var->info.name.original = pt_get_name_after_dot (entity->info.spec.range_var->info.name.original);
   entity->info.spec.range_var->info.name.resolved = NULL;
   node->info.update.spec = entity;
 }
@@ -9411,11 +9416,9 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
   DB_OBJECT *serial_obj = NULL;
   DB_IDENTIFIER serial_obj_id;
 
-  const char *name = NULL;
-  char *full_name = NULL;
+  const char *serial_name = NULL;
+  const char *serial_full_name = NULL;
   const char *owner_name = NULL;
-  char *current_user_name = NULL;
-  int len = 0;
 
   if (serial_name_node == NULL)
     {
@@ -9428,40 +9431,36 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
       assert (PT_IS_NAME_NODE (serial_name_node->info.dot.arg2));
 
       owner_name = serial_name_node->info.dot.arg1->info.name.original;
-      name = serial_name_node->info.dot.arg2->info.name.original;
+      serial_name = serial_name_node->info.dot.arg2->info.name.original;
     }
   else
     {
       assert (PT_IS_NAME_NODE (serial_name_node));
 
-      name = serial_name_node->info.name.original;
+      serial_name = serial_name_node->info.name.original;
     }
 
-  if (owner_name == NULL || owner_name[0] == '\0')
+  if (owner_name && owner_name[0] != '\0')
     {
-      current_user_name = db_get_user_name ();
-      owner_name = current_user_name;
+      serial_full_name = pt_append_string (parser, NULL, owner_name);
+      serial_full_name = pt_append_string (parser, serial_name, ".");
     }
 
-  len = snprintf (NULL, 0, "%s.%s", owner_name, name) + 1;
-  full_name = (char *) db_ws_alloc (len * sizeof (char));
-  snprintf (full_name, len, "%s.%s", owner_name, name);
+  if (serial_name && serial_name[0] != '\0')
+    {
+      serial_full_name = pt_append_string (parser, NULL, serial_name);
+    }
+  else
+    {
+      /* youngjinj */
+      assert (false);
+    }
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
-  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, full_name);
+  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_full_name);
   if (serial_obj == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, full_name);
-    }
-
-  if (full_name)
-    {
-      db_ws_free_and_init (full_name);
-    }
-
-  if (current_user_name)
-    {
-      db_string_free (current_user_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_full_name);
     }
 
   return serial_obj;
@@ -10481,134 +10480,4 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
   pr_clear_value (&(values[2]));
 
   return NO_ERROR;
-}
-
-PT_NODE *
-pt_check_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  const char *name = NULL;
-
-  if (node == NULL)
-    {
-      return NULL;
-    }
-
-  if (node->node_type == PT_SPEC)
-    {
-      if (node->info.spec.entity_name && node->info.spec.entity_name->node_type == PT_NAME)
-
-      name = node->info.spec.entity_name->info.name.original;
-      return node;
-    }
-
-  if (node->node_type == PT_NAME)
-    {
-      name = node->info.name.original;
-      return node;
-    }
-
-  PT_NODE *obj_node = NULL;
-  PT_NODE *owner_node = NULL;
-  PT_NODE *on_call_target_node = NULL;
-  const char *obj_name = NULL;
-  const char *owner_name = NULL;
-  const char *on_call_target_name = NULL;
-  const char *dot = NULL;
-  char *user_name = NULL;
-  const char *full_name = NULL;
-
-  if (node->node_type == PT_METHOD_CALL
-      && node->info.method_call.method_name->node_type == PT_NAME
-      && node->info.method_call.method_name->info.name.original
-      && node->info.method_call.method_name->info.name.original[0] != '\0'
-      && (pt_str_compare (name = node->info.method_call.method_name->info.name.original, "change_serial_owner", CASE_INSENSITIVE) == 0))
-    {
-      obj_node = node->info.method_call.arg_list;
-      owner_node = obj_node->next;
-      on_call_target_node = node->info.method_call.on_call_target;
-
-      if (obj_node
-	  && obj_node->node_type == PT_VALUE
-	  && obj_node->info.value.data_value.str->bytes
-	  && obj_node->info.value.data_value.str->bytes[0] != '\0')
-	{
-	  obj_name = (char *) obj_node->info.value.data_value.str->bytes;
-
-	  if (dot == NULL)
-	    {
-	      user_name = db_get_user_name ();
-
-	      full_name = pt_append_string (parser, NULL, user_name);
-	      full_name = pt_append_string (parser, full_name, ".");
-	      full_name = pt_append_string (parser, full_name, obj_name);
-
-	      obj_node->info.value.data_value.str = pt_append_bytes (parser, NULL, full_name, strlen (full_name));
-	      obj_node->info.value.text = (const char *) obj_node->info.value.data_value.str->bytes;
-
-	      if (user_name)
-		{
-		  db_string_free (user_name);
-		  user_name = NULL;
-		}
-	    }
-	}
-
-      if (owner_node
-	  && owner_node->node_type == PT_VALUE
-	  && owner_node->info.value.data_value.str->bytes
-	  && owner_node->info.value.data_value.str->bytes[0] != '\0')
-	{
-	  owner_name = (char *) owner_node->info.value.data_value.str->bytes;
-	}
-
-      if (on_call_target_node
-	  && on_call_target_node->node_type == PT_NAME	
-	  && on_call_target_node->info.name.original
-	  && on_call_target_node->info.name.original[0] != '\0')
-	{
-	  on_call_target_name = on_call_target_node->info.name.original;
-
-	  if ((pt_str_compare (on_call_target_name, "db_serial", CASE_INSENSITIVE) == 0)
-	      && (pt_str_compare (name = node->info.method_call.method_name->info.name.original, "change_serial_owner", CASE_INSENSITIVE) == 0))
-	    {
-	      on_call_target_node->info.name.original = pt_append_string (parser, NULL, "db_serial");
-	    }
-	}
-
-      return node;
-    }
-
-  return node;
-}
-
-PT_NODE *
-pt_check_spec_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  const char *name = NULL;
-
-  if (node->node_type == PT_SPEC)
-    {
-      if (node->info.spec.entity_name && node->info.spec.entity_name->node_type == PT_NAME)
-
-      name = node->info.spec.entity_name->info.name.original;
-      return node;
-    }
-
-  if (node->node_type == PT_NAME)
-    {
-      name = node->info.name.original;
-      return node;
-    }
-
-  if (node->node_type == PT_METHOD_CALL
-      && node->info.method_call.method_name->node_type == PT_NAME
-      && node->info.method_call.method_name->info.name.original
-      && node->info.method_call.method_name->info.name.original[0] != '\0'
-      && (pt_str_compare (name = node->info.method_call.method_name->info.name.original, "change_serial_owner", CASE_INSENSITIVE) == 0))
-    {
-      name = node->info.method_call.method_name->info.name.original;
-      return node;
-    }
-
-  return node;
 }

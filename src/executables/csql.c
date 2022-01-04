@@ -1067,8 +1067,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
         {
-	  sm_user_specified_name (argument, NULL, &user_specified_name);
-	  if (user_specified_name == NULL)
+	  error_code = sm_user_specified_name (argument, NULL, &user_specified_name);
+	  if (error_code != NO_ERROR)
 	    {
 	      /* youngjinj */
 	      assert (false);
@@ -1076,7 +1076,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  csql_help_schema (user_specified_name);
 	  if (user_specified_name)
 	    {
-	      db_ws_free_and_init (user_specified_name);
+	      free_and_init (user_specified_name);
 	    }
 	}
       if (csql_is_auto_commit_requested (csql_arg))

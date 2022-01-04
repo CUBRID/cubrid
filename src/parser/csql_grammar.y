@@ -5231,9 +5231,11 @@ user_specified_name_without_dot
 			    && user->node_type == PT_NAME
 			    && name->node_type == PT_NAME)
 			  {
-			    name = pt_make_user_specified_name (this_parser, name, user);
+			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
 
 			    parser_free_tree (this_parser, user);
+
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_USER_SPECIFIED_NAME);
 			  }
 
 			$$ = name;
@@ -5248,7 +5250,7 @@ user_specified_name_without_dot
 			if (name
 			    && name->node_type == PT_NAME)
 			  {
-			    name = pt_make_user_specified_name (this_parser, name, NULL);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_USER_SPECIFIED_NAME);
 			  }
 
 			$$ = name;
@@ -5280,9 +5282,11 @@ user_specified_name
 			    && user->node_type == PT_NAME
 			    && name->node_type == PT_NAME)
 			  {
-			    name = pt_make_user_specified_name (this_parser, name, user);
+			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
 
 			    parser_free_tree (this_parser, user);
+			    
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_USER_SPECIFIED_NAME);
 			  }
 
 			$$ = name;
@@ -5297,7 +5301,7 @@ user_specified_name
 			if (name
 			    && name->node_type == PT_NAME)
 			  {
-			    name = pt_make_user_specified_name (this_parser, name, NULL);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_USER_SPECIFIED_NAME);
 			  }
 
 			$$ = name;
@@ -14158,7 +14162,7 @@ from_param
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CLASS identifier // user_specified_name? to_be_delete youngjinj
+	| CLASS user_specified_name
 		{{
 
 			PT_NODE *val = $2;
