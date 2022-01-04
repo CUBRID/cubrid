@@ -37,7 +37,7 @@ namespace cubmethod
     //
   }
 
-  int method_invoke_builtin::invoke (cubthread::entry *thread_p, std::vector <DB_VALUE> &arg_base)
+  int method_invoke_builtin::invoke (cubthread::entry *thread_p, std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
     int error = NO_ERROR;
 #if defined (SERVER_MODE)
@@ -49,7 +49,8 @@ namespace cubmethod
   }
 
   int
-  method_invoke_builtin::get_return (cubthread::entry *thread_p, std::vector <DB_VALUE> &arg_base, DB_VALUE &result)
+  method_invoke_builtin::get_return (cubthread::entry *thread_p, std::vector<std::reference_wrapper<DB_VALUE>> &arg_base,
+				     DB_VALUE &result)
   {
     int error = NO_ERROR;
 #if defined (SERVER_MODE)

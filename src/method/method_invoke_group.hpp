@@ -33,6 +33,7 @@
 #include <functional>		/* std::function */
 #include <vector>
 #include <unordered_set>
+#include <memory> /* unique_ptr */
 
 #include "method_def.hpp"	/* method_sig_node */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */
@@ -56,7 +57,7 @@ namespace cubmethod
   {
     public:
       method_invoke_group () = delete; // Not DefaultConstructible
-      method_invoke_group (cubthread::entry *thread_p, method_sig_list *sigs);
+      method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sigs);
 
       method_invoke_group (method_invoke_group &&other) = delete; // Not MoveConstructible
       method_invoke_group (const method_invoke_group &copy) = delete; // Not CopyConstructible
@@ -67,8 +68,8 @@ namespace cubmethod
       ~method_invoke_group ();
 
       int begin ();
-      int prepare (std::vector <DB_VALUE> &arg_base);
-      int execute (std::vector <DB_VALUE> &arg_base);
+      int prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
+      int execute (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int reset (bool is_end_query);
       int end ();
 

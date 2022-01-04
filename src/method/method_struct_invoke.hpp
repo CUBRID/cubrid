@@ -60,14 +60,15 @@ namespace cubmethod
   struct prepare_args : public cubpacking::packable_object
   {
     prepare_args () = delete;
-    prepare_args (METHOD_TYPE type, std::vector<DB_VALUE> &args);
+    prepare_args (METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &args);
+    ~prepare_args () = default;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     METHOD_TYPE type;
-    std::vector<DB_VALUE> &args;
+    std::vector<std::reference_wrapper<DB_VALUE>> &args;
   };
 
   /*

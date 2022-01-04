@@ -69,7 +69,7 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Common structure implementation
 //////////////////////////////////////////////////////////////////////////
-  prepare_args::prepare_args (METHOD_TYPE type, std::vector<DB_VALUE> &vec)
+  prepare_args::prepare_args (METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &vec)
     : type (type), args (vec)
   {
     //

@@ -51,7 +51,7 @@ namespace cubmethod
     //
   }
 
-  int method_invoke_java::invoke (cubthread::entry *thread_p, std::vector <DB_VALUE> &arg_base)
+  int method_invoke_java::invoke (cubthread::entry *thread_p, std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
     int error = NO_ERROR;
 
@@ -65,7 +65,8 @@ namespace cubmethod
   }
 
   int
-  method_invoke_java::get_return (cubthread::entry *thread_p, std::vector <DB_VALUE> &arg_base, DB_VALUE &returnval)
+  method_invoke_java::get_return (cubthread::entry *thread_p, std::vector<std::reference_wrapper<DB_VALUE>> &arg_base,
+				  DB_VALUE &returnval)
   {
     int start_code, error_code = NO_ERROR;
 
@@ -174,7 +175,8 @@ namespace cubmethod
   }
 
   int
-  method_invoke_java::receive_result (cubmem::extensible_block &blk, std::vector <DB_VALUE> &arg_base,
+  method_invoke_java::receive_result (cubmem::extensible_block &blk,
+				      std::vector<std::reference_wrapper<DB_VALUE>> &arg_base,
 				      DB_VALUE &returnval)
   {
     int error_code = NO_ERROR;
@@ -225,8 +227,8 @@ namespace cubmethod
 	  }
 
 	int pos = m_method_sig->method_arg_pos[i];
-	db_value_clear (&arg_base[pos]);
-	db_value_clone (&temp, &arg_base[pos]);
+	db_value_clear (& (arg_base[pos].get()));
+	db_value_clone (&temp, & (arg_base[pos].get()));
 	db_value_clear (&temp);
       }
 

@@ -26,6 +26,7 @@
 #include <string>
 
 #include "packer.hpp"
+#include "packable_object.hpp"
 
 #define METHOD_MAX_RECURSION_DEPTH 15
 
@@ -127,7 +128,7 @@ struct method_sig_node
   method_sig_node ();
 };
 
-struct method_sig_list
+struct method_sig_list : public cubpacking::packable_object
 {
   /* signature for methods */
   METHOD_SIG *method_sig;	/* one method signature */

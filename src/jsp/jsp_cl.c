@@ -31,6 +31,9 @@
 #include <winsock2.h>
 #endif /* not WINDOWS */
 
+#include <vector>
+#include <functional>
+
 #include "authenticate.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
@@ -562,7 +565,7 @@ jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE ret_value;
   db_make_null (&ret_value);
 
-  std::vector < DB_VALUE * >args;
+  std::vector < std::reference_wrapper < DB_VALUE >> args;
   PT_NODE *vc = statement->info.method_call.arg_list;
   while (vc)
     {
@@ -580,7 +583,7 @@ jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  db_value = (DB_VALUE *) calloc (1, sizeof (DB_VALUE));
+	  db_value = (DB_VALUE *) malloc (sizeof (DB_VALUE));
 	  if (db_value == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE));
@@ -596,7 +599,7 @@ jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      args.push_back (db_value);
+      args.push_back (std::ref (*db_value));
       vc = vc->next;
 
       if (to_break)
@@ -631,8 +634,9 @@ jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (!PT_IS_CONST (vc))
 	{
-	  db_value_clear (args[i]);
-	  free_and_init (args[i]);
+	  DB_VALUE & arg = args[i];
+	  db_value_clear (&arg);
+	  free (&arg);
 	}
       vc = vc->next;
     }

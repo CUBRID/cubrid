@@ -36,12 +36,12 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Method Group to invoke together
 //////////////////////////////////////////////////////////////////////////
-  method_invoke_group::method_invoke_group (cubthread::entry *thread_p, method_sig_list *sig_list)
+  method_invoke_group::method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list)
     : m_id ((int64_t) this), m_thread_p (thread_p)
   {
-    assert (sig_list && sig_list->num_methods > 0);
+    assert (sig_list.num_methods > 0);
 
-    method_sig_node *sig = sig_list->method_sig;
+    method_sig_node *sig = sig_list.method_sig;
     while (sig)
       {
 	method_invoke *mi = nullptr;
@@ -73,7 +73,7 @@ namespace cubmethod
 
     DB_VALUE v;
     db_make_null (&v);
-    for (int i = 0; i < sig_list->num_methods; i++)
+    for (int i = 0; i < sig_list.num_methods; i++)
       {
 	m_result_vector.push_back (v);
       }
@@ -157,7 +157,7 @@ namespace cubmethod
   }
 
   int
-  method_invoke_group::prepare (std::vector <DB_VALUE> &arg_base)
+  method_invoke_group::prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
     int error = NO_ERROR;
 
@@ -193,7 +193,7 @@ namespace cubmethod
     return error;
   }
 
-  int method_invoke_group::execute (std::vector <DB_VALUE> &arg_base)
+  int method_invoke_group::execute (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
     int error = NO_ERROR;
 
