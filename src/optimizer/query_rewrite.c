@@ -6051,9 +6051,19 @@ qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       * resolved */
 	      assert (hint_node->info.name.resolved != NULL && next_node->info.name.resolved != NULL);
 
+	      /*
+	       * Case of comparing names after dot(.).
+	       * 1. When comparing owner_name.class_name and class_name.
+	       *    class_name used in index_name must be in from. So, only class_name should be compared,
+	       *    not owner_name.
+	       *    e.g. select c1 from t1 force index (i1) where c1 >= 0 using index i1(+);
+	       *      - resolved_name of "force index (i1)"  : "t1"
+	       *      - resolved_name of "using index i1(+)" : "dba.t1"
+	       */
+
 	      /* compare the tables on which the indexes are defined */
 	      res_cmp_tbl_names =
-		intl_identifier_casecmp (hint_node->info.name.resolved, next_node->info.name.resolved);
+		pt_qualifier_compare (hint_node->info.name.resolved, next_node->info.name.resolved);
 
 	      if (res_cmp_tbl_names == 0)
 		{
