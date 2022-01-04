@@ -490,7 +490,8 @@ opzioni valide:\n\
   -d, --data-file=FILE           dati di carico con FILE\n\
   -t, --table=TABLE              nome della tabella che viene sostituito con manca intestazione di classe nel file di dati\n\
       --error-control-file=FILE  FILE per il controllo di errore (s) durante il carico\n\
-      --ignore-class-file=FILE   ifile di input di nomi di classe che saltino carico\n
+      --ignore-class-file=FILE   ifile di input di nomi di classe che saltino carico\n\
+      --no-user-specified-name   Find class, serial, and trigger by object-name and don't use user-specified-name.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

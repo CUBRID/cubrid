@@ -490,7 +490,8 @@ geçerli seçenekler:\n\
   -d, --data-file=FILE           FILE ile yük verileri\n\
   -t, --table=TABLE              Veri belgeleri içi kaybolan düzeyindeki şeflerin forum adıdır\n\
       --error-control-file=FILE  Yükleme sırasında bir hata (lar) kontrol etmek için FILE\n\
-      --ignore-class-file=FILE   yük atlamak sınıf adları girdi dosyası\n
+      --ignore-class-file=FILE   yük atlamak sınıf adları girdi dosyası\n\
+      --no-user-specified-name   Find class, serial, and trigger by object-name and don't use user-specified-name.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

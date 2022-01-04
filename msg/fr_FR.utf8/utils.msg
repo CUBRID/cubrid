@@ -493,7 +493,8 @@ options valids:\n\
   -t, --table=TABLE                  nom de la TABLE qui se substitue à en-tête de\n\
                                      classe manquante dans le fichier de données\n\
       --error-control-file=FICHIER   FICHIER de contrôle d'erreur(s) pendant le chargement\n\
-      --ignore-class-file=FICHIER    FICHIER d'entrée avec les noms de classe qui saut le chargement\n
+      --ignore-class-file=FICHIER    FICHIER d'entrée avec les noms de classe qui saut le chargement\n\
+      --no-user-specified-name       Find class, serial, and trigger by object-name and don't use user-specified-name.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

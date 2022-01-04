@@ -491,7 +491,8 @@ valid options:\n\
   -d, --data-file=FILE           load data with FILE\n\
   -t, --table=TABLE              table name that is substituted for missing class header in data file\n\
       --error-control-file=FILE  FILE to control error(s) during loading\n\
-      --ignore-class-file=FILE   input file of class names that skip load\n
+      --ignore-class-file=FILE   input file of class names that skip load\n\
+      --no-user-specified-name   Find class, serial, and trigger by object-name and don't use user-specified-name.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

@@ -490,7 +490,8 @@ opciones validas:\n\
   -d, --data-file=FILE           cargar datos con ARCHIVO\n\
   -t, --table=TABLE              nombre de tabla que es sustituido por falta de encabezamiento de clase en archivo de datos\n\
       --error-control-file=FILE  ARCHIVO para controlar error(es) al cargar\n\
-      --ignore-class-file=FILE   archivo de entrada de nombres de clase que saltan carga\n
+      --ignore-class-file=FILE   archivo de entrada de nombres de clase que saltan carga\n\
+      --no-user-specified-name   Find class, serial, and trigger by object-name and don't use user-specified-name.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

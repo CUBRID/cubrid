@@ -490,7 +490,9 @@ loaddb: データベースにオブジェクトやスキーマロード\n\
   -d, --data-file=FILE           ロードするデータファイル\n\
   -t, --table=TABLE              データをロードするテーブル名; データファイルにテーブル情報がない場合使う\n\
       --error-control-file=FILE  ロード中に発生するエラーに関するコントロールファイル\n\
-      --ignore-class-file=FILE   ロードしないクラス名が入っているファイル\n
+      --ignore-class-file=FILE   ロードしないクラス名が入っているファイル\n\
+      --no-user-specified-name   Find class, serial, and trigger by object-name and don't use user-specified-name.\n
+
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pagesが正しくありません。\n
