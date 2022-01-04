@@ -185,6 +185,8 @@ static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_N
 						   PT_NODE * class_);
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						      PT_NODE * query_spec, PT_NODE * derived_table);
+static PT_NODE *mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
+							PT_NODE * subquery, PT_NODE * derived_spec, PT_NODE * order_by);
 static PT_NODE *mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 						    int *continue_walk);
 static PT_NODE *mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
