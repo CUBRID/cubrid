@@ -2575,6 +2575,7 @@ process_javasp_status (const char *db_name)
 static int
 process_javasp (int command_type, int argc, const char **argv, bool show_usage, bool process_window_service)
 {
+  const int buf_size = 4096;
   char *buf = NULL;
   char *list = NULL, *save = NULL;
   const char *delim = " ,:";
@@ -2593,9 +2594,9 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
     }
   else				/* cubrid javasp command */
     {
-      buf = (char *) malloc (4096);
-      memset (buf, 0, 4096);
-      strncpy (buf, argv[0], sizeof (buf) - 1);
+      buf = (char *) malloc (buf_size);
+      memset (buf, 0, buf_size);
+      strncpy (buf, argv[0], buf_size);
     }
 
   if (command_type != STATUS && buf == NULL)
