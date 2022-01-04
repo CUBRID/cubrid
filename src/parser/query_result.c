@@ -643,6 +643,7 @@ pt_get_titles (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   DB_QUERY_TYPE *q, *t, *tail;
   PT_NODE *s, *f;
+  unsigned int save_custom;
 
   s = pt_get_select_list (parser, query);
   if (pt_length_of_select_list (s, EXCLUDE_HIDDEN_COLUMNS) <= 0)
@@ -659,11 +660,11 @@ pt_get_titles (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
       else
 	{
+	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_SUPPRESS_CHARSET_PRINT;
 	  parser->custom_print |= PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME;
 	  t = pt_get_node_title (parser, s, f);
-	  parser->custom_print &= ~PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME;
-	  parser->custom_print &= ~PT_SUPPRESS_CHARSET_PRINT;
+	  parser->custom_print = save_custom;
 
 	  if (t == NULL)
 	    {

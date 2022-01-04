@@ -9946,7 +9946,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	    } 
 
 	  original_name = name->info.name.original;
-	  resolved_name = owner->info.name.resolved;
+	  resolved_name = owner->info.name.original;
 	}
       else
         {

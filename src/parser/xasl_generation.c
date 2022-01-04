@@ -17359,6 +17359,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_CONVERT_RANGE;
+	  parser->custom_print |= PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME;
 	  fprintf (query_Plan_dump_fp, "\nQuery stmt:%s\n\n%s\n\n", ((hint_ignored) ? " [Warning: HINT ignored]" : ""),
 		   parser_print_tree (parser, select_node));
 	  parser->custom_print = save_custom;
