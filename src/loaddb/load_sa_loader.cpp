@@ -1444,7 +1444,7 @@ ldr_find_class (const char *class_name)
       class_ = db_find_class (class_name);
     }
 
-  if (find != LC_CLASSNAME_EXIST && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+  if (find != LC_CLASSNAME_EXIST && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
       other_class_name = ldr_get_other_name_from_from_db_class (realname);
 

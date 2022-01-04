@@ -1372,7 +1372,7 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
    *  For compatibility, do not check the owner of DB_OBJECT when loading a lower version unload file.
    *  When running loaddb as dba account, client_type becomes DB_CLIENT_TYPE_ADMIN_UTILITY.
    */
-  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
       return result;
     }

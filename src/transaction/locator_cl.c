@@ -3143,24 +3143,27 @@ locator_find_class (const char *classname)
 {
   MOP class_mop;
   LOCK lock = SCH_S_LOCK;	/* This is done to avoid some deadlocks caused by our parsing */
+  LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
 
-  if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
+  found = locator_find_class_by_name (classname, lock, &class_mop);
+  if (found != LC_CLASSNAME_EXIST)
     {
       class_mop = NULL;
     }
 
-  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
-      char * other_class_name = do_get_other_name_from_db_class (classname);
+      char *other_class_name = do_get_other_name_from_db_class (classname);
 
       if (other_class_name)
         {
-	  if (locator_find_class_by_name (other_class_name, lock, &class_mop) != LC_CLASSNAME_EXIST)
+	  found = locator_find_class_by_name (other_class_name, lock, &class_mop);
+	  if (found != LC_CLASSNAME_EXIST)
 	    {
 	      class_mop = NULL;
 	    }
 
-	  db_ws_free_and_init (other_class_name);
+	  free_and_init (other_class_name);
 	}
     }
 
@@ -3183,32 +3186,29 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
 {
   MOP class_mop;
   LOCK lock = SCH_S_LOCK;	/* This is done to avoid some deadlocks caused by our parsing */
-  if (for_update == false)
-    {
-      lock = SCH_S_LOCK;
-    }
-  else
-    {
-      lock = SCH_M_LOCK;
-    }
+  LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
 
-  if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
+  lock = for_update ? SCH_M_LOCK : SCH_S_LOCK;
+
+  found = locator_find_class_by_name (classname, lock, &class_mop);
+  if (found != LC_CLASSNAME_EXIST)
     {
       class_mop = NULL;
     }
 
-  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+  if (class_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
-      char * other_class_name = do_get_other_name_from_db_class (classname);
+      char *other_class_name = do_get_other_name_from_db_class (classname);
 
       if (other_class_name)
         {
-	  if (locator_find_class_by_name (other_class_name, lock, &class_mop) != LC_CLASSNAME_EXIST)
+	  found = locator_find_class_by_name (other_class_name, lock, &class_mop);
+	  if (found != LC_CLASSNAME_EXIST)
 	    {
 	      class_mop = NULL;
 	    }
 
-	  db_ws_free_and_init (other_class_name);
+	  free_and_init (other_class_name);
 	}
     }
 

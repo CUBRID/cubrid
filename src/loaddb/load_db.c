@@ -1003,6 +1003,11 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
   logddl_set_start_time (NULL);
 
+  if (args->no_user_specified_name && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+    {
+      prm_set_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME, true);
+    }
+
   while (true)
     {
       if (interrupt_query)
@@ -1151,6 +1156,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->compare_storage_order = utility_get_option_bool_value (arg_map, LOAD_COMPARE_STORAGE_ORDER_S);
   args->table_name = table_name ? table_name : empty;
   args->ignore_class_file = ignore_class_file ? ignore_class_file : empty;
+  args->no_user_specified_name = utility_get_option_bool_value (arg_map, LOAD_NO_USER_SPECIFIED_NAME_S);
 }
 
 static void
