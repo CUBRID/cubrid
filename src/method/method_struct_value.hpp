@@ -43,6 +43,9 @@ namespace cubmethod
    *        sp_val.value = &db_val[i];
    *        sp_val.unpack (deserializator); // deserializator is cubpacking::unpacker
    *
+   * note
+   *    - packing/unpacking shoudld should sync with CUBRIDPacker.java and CUBRIDUnpacker.java
+   *
    */
   struct dbvalue_java : public cubpacking::packable_object
   {
