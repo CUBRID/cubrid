@@ -463,10 +463,10 @@ namespace cubpacking
 
     if (count > 0)
       {
-	t.resize (count);
+	container.resize (count);
 	for (int i = 0; i < count; i++)
 	  {
-	    unpack_overloaded (t[i]);
+	    unpack_overloaded (container[i]);
 	  }
       }
   }
