@@ -9516,7 +9516,7 @@ mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * d
   PT_NODE *crt_list = NULL, *attr_names = NULL, *attr_names_crt = NULL;
   bool build_att_names_list = false, for_update = false;
   PT_NODE **lhs, **rhs, *lhs_next, *rhs_next;
-  const char *newresolved = derived_spec->info.spec.range_var->info.name.original;	/* 확인필요  class_->info.name.resolved; */
+  const char *newresolved = derived_spec->info.spec.range_var->info.name.original;
 
   if (statement == NULL)
     {
