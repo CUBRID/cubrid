@@ -22,9 +22,11 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa_utils.hpp"
+#include "log_manager.h"
 #include "log_prior_recv.hpp"
 #include "log_replication.hpp"
 #include "packer.hpp"
+#include "page_buffer.h"
 #include "server_type.hpp"
 #include "system_parameter.h"
 #include "vpid_utilities.hpp"
@@ -107,64 +109,34 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
   log_Gl.get_log_prior_receiver ().push_message (std::move (a_ip.pull_payload ()));
 }
 
+template<class F, class ... Args>
+void
+page_server::connection_handler::push_async_response (F &&a_func, tran_server_conn_t::sequenced_payload &&a_sp,
+    Args &&... args)
+{
+  auto handler_func = std::bind (std::forward<F> (a_func), std::placeholders::_1, std::placeholders::_2,
+				 std::forward<Args> (args)...);
+  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
+}
+
 void
 page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  LOG_PAGEID pageid;
-  std::string message = a_sp.pull_payload ();
-
-  assert (message.size () == sizeof (pageid));
-  std::memcpy (&pageid, message.c_str (), sizeof (pageid));
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-    {
-      _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
-    }
-
-  auto callback_func = [this, sp = a_sp] (const LOG_PAGE *log_page, int error_code) mutable
-  {
-    on_log_page_read_result (std::move (sp), log_page, error_code);
-  };
-
-  m_ps.get_page_fetcher ().fetch_log_page (pageid, std::move (callback_func));
+  push_async_response (&logpb_respond_fetch_log_page_request, std::move (a_sp));
 }
 
 void
 page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  std::string message = a_sp.pull_payload ();
-
-  cubpacking::unpacker message_upk (message.c_str (), message.size ());
-  VPID vpid;
-  vpid_utils::unpack (message_upk, vpid);
-
-  LOG_LSA target_repl_lsa;
-  cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
-
-  auto callback_func = [this, sp = a_sp] (const FILEIO_PAGE *iopage, int error_code) mutable
-  {
-    on_data_page_read_result (std::move (sp), iopage, error_code);
-  };
-
-  m_ps.get_page_fetcher ().fetch_data_page (vpid, target_repl_lsa, std::move (callback_func));
+  push_async_response (&pgbuf_respond_data_fetch_page_request, std::move (a_sp));
 }
 
 void
 page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  // empty request message
-
-  auto callback_func = [this, sp = a_sp] (std::string &&message) mutable
-  {
-    on_log_boot_info_result (std::move (sp), std::move (message));
-  };
-
-  // the underlying infrastructure will add this functor as a sink for log prior info packing and
-  // sending that log prior info down the line to the connected passive transaction server
   m_prior_sender_sink_hook_func =
 	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
-
-  m_ps.get_page_fetcher ().fetch_log_boot_info (m_prior_sender_sink_hook_func, std::move (callback_func));
+  push_async_response (&log_pack_log_boot_info, std::move (a_sp), m_prior_sender_sink_hook_func);
 }
 
 void
@@ -181,20 +153,9 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
     m_prior_sender_sink_hook_func = nullptr;
   }
 
-  // empty response message, the roundtrip is synchronous
+  // empty response message, the round trip is synchronous
   a_sp.push_payload (std::string ());
   m_conn->respond (std::move (a_sp));
-}
-
-void
-page_server::connection_handler::on_log_boot_info_result (tran_server_conn_t::sequenced_payload &&sp,
-    std::string &&message)
-{
-  assert (m_conn != nullptr);
-  assert (message.size () > 0);
-
-  sp.push_payload (std::move (message));
-  m_conn->respond (std::move (sp));
 }
 
 void
@@ -220,63 +181,6 @@ page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::
 
   a_sp.push_payload (std::move (response_message));
   m_conn->respond (std::move (a_sp));
-}
-
-void
-page_server::connection_handler::on_log_page_read_result (tran_server_conn_t::sequenced_payload &&sp,
-    const LOG_PAGE *log_page, int error_code)
-{
-  std::string message;
-
-  message.append (reinterpret_cast<const char *> (&error_code), sizeof (error_code));
-
-  if (error_code == NO_ERROR)
-    {
-      message.append (reinterpret_cast<const char *> (log_page), db_log_page_size ());
-    }
-
-  sp.push_payload (std::move (message));
-  m_conn->respond (std::move (sp));
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-    {
-      LOG_PAGEID page_id = NULL_PAGEID;
-      if (error_code == NO_ERROR)
-	{
-	  page_id = log_page->hdr.logical_pageid;
-	}
-
-      _er_log_debug (ARG_FILE_LINE, "Sending log page to Active Tran Server. Page ID: %lld Error code: %ld\n", page_id,
-		     error_code);
-    }
-}
-
-void
-page_server::connection_handler::on_data_page_read_result (tran_server_conn_t::sequenced_payload &&sp,
-    const FILEIO_PAGE *io_page, int error_code)
-{
-  std::string message;
-  message.append (reinterpret_cast<const char *> (&error_code), sizeof (error_code));
-
-  if (error_code != NO_ERROR)
-    {
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sending data page.. VPID: %d|%d, LSA: %lld|%d\n",
-			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
-	}
-    }
-  else
-    {
-      message.append (reinterpret_cast<const char *> (io_page), db_io_page_size ());
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Sending data page.. Error code: %d\n", error_code);
-	}
-    }
-
-  sp.push_payload (std::move (message));
-  m_conn->respond (std::move (sp));
 }
 
 void
@@ -385,11 +289,11 @@ page_server::is_active_tran_server_connected () const
   return m_active_tran_server_conn != nullptr;
 }
 
-cublog::async_page_fetcher &
-page_server::get_page_fetcher ()
+page_server::responder_t &
+page_server::get_responder ()
 {
-  assert (m_page_fetcher != nullptr);
-  return *m_page_fetcher.get ();
+  assert (m_responder);
+  return *m_responder;
 }
 
 void
@@ -430,13 +334,13 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 }
 
 void
-page_server::init_page_fetcher ()
+page_server::init_request_responder ()
 {
-  m_page_fetcher.reset (new cublog::async_page_fetcher ());
+  m_responder = std::make_unique<responder_t> ();
 }
 
 void
-page_server::finalize_page_fetcher ()
+page_server::finalize_request_responder ()
 {
-  m_page_fetcher.reset (nullptr);
+  m_responder.reset (nullptr);
 }

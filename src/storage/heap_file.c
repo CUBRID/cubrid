@@ -59,6 +59,7 @@
 #include "string_opfunc.h"
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
+#include "passive_tran_server.hpp"
 #include "scope_exit.hpp"
 #include "server_type.hpp"
 #include "stream_to_xasl.h"
@@ -24973,7 +24974,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
 
-  scan = heap_get_visible_version_internal (thread_p, &context, false);
+  scan = heap_get_visible_version_with_repl_desync (thread_p, &context, false);
 
   heap_clean_get_context (thread_p, &context);
 
@@ -25010,11 +25011,65 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
 
-  scan = heap_get_visible_version_internal (thread_p, &context, true);
+  scan = heap_get_visible_version_with_repl_desync (thread_p, &context, true);
 
   heap_clean_get_context (thread_p, &context);
 
   return scan;
+}
+
+/*
+ * heap_get_visible_version_with_repl_desync () - Retry to retrieve the visible version of an object
+ * according to snapshot util bad page id error does not show
+ *
+ *  return SCAN_CODE.
+ *  thread_p (in): Thread entry.
+ *  context (in): Heap get context.
+ *  is_heap_scan (in): required for heap_prepare_get_context
+ */
+SCAN_CODE
+heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan)
+{
+  SCAN_CODE ret;
+#if defined (SERVER_MODE)
+  do
+    {
+      ret = heap_get_visible_version_internal (thread_p, context, is_heap_scan);
+      if (ret != S_ERROR || er_errid () != ER_PAGE_AHEAD_OF_REPLICATION)
+	{
+	  // We'll continue here only if we have a page desynchronization error. Break the loop in any other cases.
+	  break;
+	}
+      assert (is_passive_transaction_server ());
+      // Handle the page desynchronization error
+      if (context->home_page_watcher.pgptr)
+	{
+	  /* Unfix home page. */
+	  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+	}
+
+      if (context->fwd_page_watcher.pgptr != NULL)
+	{
+	  /* Unfix forward page. */
+	  pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
+	}
+
+      passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+      assert (tdes->page_desync_lsa.is_null ());
+      pts_ptr->wait_replication_pasts_target_lsa (tdes->page_desync_lsa);
+      tdes->page_desync_lsa.set_null ();
+    }
+  while (true);
+#else
+  // SA_MODE doesn't have the page desynchronization issue.
+  ret = heap_get_visible_version_internal (thread_p, context, is_heap_scan);
+  if (ret == S_ERROR)
+    {
+      assert (er_errid () != ER_PAGE_AHEAD_OF_REPLICATION);
+    }
+#endif
+  return ret;
 }
 
 /*

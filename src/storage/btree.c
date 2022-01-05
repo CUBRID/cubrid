@@ -2493,7 +2493,7 @@ btree_get_num_visible_oids_from_all_ovf (THREAD_ENTRY * thread_p, BTID_INT * bti
   /* search for OID into overflow page */
   while (!VPID_ISNULL (&next_ovfl_vpid))
     {
-      ovfl_page = pgbuf_fix (thread_p, &next_ovfl_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      ovfl_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, next_ovfl_vpid, PGBUF_UNCONDITIONAL_LATCH);
       if (ovfl_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
@@ -11133,7 +11133,7 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
   do
     {
       PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-      overflow_page = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      overflow_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, overflow_vpid, PGBUF_UNCONDITIONAL_LATCH);
       btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
       if (overflow_page == NULL)
 	{
@@ -22276,7 +22276,7 @@ btree_key_find_first_visible_row_from_all_ovf (THREAD_ENTRY * thread_p, BTID_INT
   /* find first visible OID into overflow page */
   while (!VPID_ISNULL (&next_ovfl_vpid))
     {
-      ovfl_page = pgbuf_fix (thread_p, &next_ovfl_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      ovfl_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, next_ovfl_vpid, PGBUF_UNCONDITIONAL_LATCH);
       if (ovfl_page == NULL)
 	{
 	  ASSERT_ERROR ();
@@ -23818,7 +23818,7 @@ btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
     {
       /* Fix overflow page. */
       PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-      ovf_page = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      ovf_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, ovf_vpid, PGBUF_UNCONDITIONAL_LATCH);
       btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
       if (ovf_page == NULL)
 	{
@@ -25238,7 +25238,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	   * is used when key has too many objects. See comment from BTS_IS_HARD_CAPACITY_ENOUGH. */
 	  /* Resume from next page of last overflow page. */
 	  prev_overflow_page =
-	    pgbuf_fix (thread_p, &bts->O_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	    pgbuf_fix_read_old_and_check_repl_desync (thread_p, bts->O_vpid, PGBUF_UNCONDITIONAL_LATCH);
 	  if (prev_overflow_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
@@ -25302,7 +25302,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     {
       /* Fix next overflow page. */
       PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-      overflow_page = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      overflow_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, overflow_vpid, PGBUF_UNCONDITIONAL_LATCH);
       btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
       if (overflow_page == NULL)
 	{
@@ -25672,7 +25672,7 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   while (!VPID_ISNULL (&ovf_vpid))
     {
       /* Fix overflow page. */
-      bts->O_page = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      bts->O_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, ovf_vpid, PGBUF_UNCONDITIONAL_LATCH);
       if (bts->O_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);

@@ -371,7 +371,7 @@ static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
 static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			    LOG_PAGE * log_pgptr);
-static int request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr);
+static int logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr);
 
 static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_flush, const char *file_name,
 					const int lineno, const char *fmt, va_list ap);
@@ -1604,7 +1604,7 @@ logpb_fetch_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
   assert (is_tran_server_with_remote_storage ());
 
-  int err = request_log_page_from_page_server (LOGPB_HEADER_PAGE_ID, log_pgptr);
+  int err = logpb_request_log_page_from_page_server (LOGPB_HEADER_PAGE_ID, log_pgptr);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2092,10 +2092,10 @@ exit:
   return rv;
 }
 
-static int
-request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr)
-{
 #if defined(SERVER_MODE)
+static int
+logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr)
+{
   // *INDENT-OFF*
   std::string request_message;
   request_message.append (reinterpret_cast<const char *> (&log_pageid), sizeof (log_pageid));
@@ -2142,8 +2142,49 @@ request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr)
   assert (message_ptr == (response_message.c_str () + response_message.size ()));
   return error_code;
   // *INDENT-ON*
-#endif // SERVER_MODE
 }
+
+// *INDENT-OFF*
+void
+logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &payload_in_out)
+{
+  assert (is_page_server ());
+
+  // Unpack the message data
+  LOG_PAGEID log_pageid;
+  assert (payload_in_out.size () == sizeof (log_pageid));
+  std::memcpy (&log_pageid, payload_in_out.c_str (), sizeof (log_pageid));
+
+  log_lsa fetch_lsa { log_pageid, 0 };
+  log_reader lr { LOG_CS_SAFE_READER };
+
+  if (log_pageid == LOGPB_HEADER_PAGE_ID)
+    {
+      // Make sure log page header is updated
+      logpb_force_flush_header_and_pages (&thread_r);
+    }
+
+  int error = lr.set_lsa_and_fetch_page (fetch_lsa);
+
+  // Response message
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "[READ LOG] Sending log page to Active Tran Server. Page ID: %lld Error code: %ld\n",
+		     log_pageid, error);
+    }
+
+  // pack error first
+  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+
+  if (error == NO_ERROR)
+    {
+      // pack page data too
+      payload_in_out.append (reinterpret_cast<const char *> (lr.get_page ()), db_log_page_size ());
+    }
+}
+// *INDENT-ON*
+#endif // SERVER_MODE
 
 #if defined (SERVER_MODE)
 void
@@ -2203,16 +2244,17 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
       if (!read_from_disk)
 	{
 	  // context 1)
-	  return request_log_page_from_page_server (pageid, log_pgptr);
+	  return logpb_request_log_page_from_page_server (pageid, log_pgptr);
 	}
       else
 	{
 	  // context 2)
 	  // *INDENT-OFF*
-	  auto log_page_buffer_uptr = std::make_unique<char> (IO_MAX_PAGE_SIZE);
+	  const size_t log_page_size = static_cast<size_t> (db_log_page_size ());
+	  std::unique_ptr<char []> log_page_buffer_uptr = std::make_unique<char []> (log_page_size);
 	  auto second_log_page = (LOG_PAGE *) log_page_buffer_uptr.get ();
 
-	  int err = request_log_page_from_page_server (pageid, second_log_page);
+	  int err = logpb_request_log_page_from_page_server (pageid, second_log_page);
 	  if (err != NO_ERROR)
 	    {
 	      return err;
