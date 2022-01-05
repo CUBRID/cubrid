@@ -199,6 +199,8 @@ namespace cubpacking
     public:
       unpacker () = default;
       unpacker (const char *storage, const size_t amount);
+      unpacker (const cubmem::block &blk);
+
       void set_buffer (const char *storage, const size_t amount);
 
       void unpack_int (int &value);
