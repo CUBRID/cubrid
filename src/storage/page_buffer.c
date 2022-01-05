@@ -8140,7 +8140,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
       if (read_from_local)
 	{
 	  // *INDENT-OFF*
-	  auto buffer_uptr = std::make_unique<char> (db_io_page_size ());
+	  auto buffer_uptr = std::make_unique<char []> (db_io_page_size ());
 	  FILEIO_PAGE *second_io_page = reinterpret_cast<FILEIO_PAGE *> (buffer_uptr.get ());
 	  error_code = pgbuf_request_data_page_from_page_server (vpid, target_repl_lsa, second_io_page);
 	  if (error_code != NO_ERROR)

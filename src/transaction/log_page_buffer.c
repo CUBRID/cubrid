@@ -2250,7 +2250,7 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
 	{
 	  // context 2)
 	  // *INDENT-OFF*
-	  auto log_page_buffer_uptr = std::make_unique<char> (IO_MAX_PAGE_SIZE);
+	  auto log_page_buffer_uptr = std::make_unique<char []> (IO_MAX_PAGE_SIZE);
 	  auto second_log_page = (LOG_PAGE *) log_page_buffer_uptr.get ();
 
 	  int err = logpb_request_log_page_from_page_server (pageid, second_log_page);
