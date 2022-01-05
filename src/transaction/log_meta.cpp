@@ -178,6 +178,7 @@ namespace cublog
   void
   meta::add_checkpoint_info (const log_lsa &chkpt_lsa, const checkpoint_info &chkpt_info)
   {
+    assert (m_checkpoints.find (chkpt_lsa) == m_checkpoints.cend ());
     m_checkpoints.insert ({ chkpt_lsa, chkpt_info });
   }
 
