@@ -223,7 +223,10 @@ struct btree_scan
 
   BTS_KEY_STATUS key_status;
 
-  LOG_LSA page_desync_lsa;
+  LOG_LSA page_desync_lsa;	/* Only on passive transaction server (PTS): the LSA of a page found to be
+				 * ahead of replication, that could cause a page desynchronization issue;
+				 * the LSA is used in combination with ER_PAGE_AHEAD_OF_REPLICATION error
+				 * to suspend/resume searches when desynchronization occurs */
 
   bool end_scan;
   bool end_one_iteration;

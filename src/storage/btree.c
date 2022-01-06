@@ -13572,8 +13572,10 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
 #if !defined(NDEBUG)
-  int node_level = btree_get_node_level (thread_p, P);
-  assert (node_level >= 1);
+  {
+    int node_level = btree_get_node_level (thread_p, P);
+    assert (node_level >= 1);
+  }
 #endif
 
   pheader = btree_get_root_header (thread_p, P);
@@ -24899,6 +24901,16 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   return ER_FAILED;
 }
 
+/* btree_range_scan_handle_page_ahead_repl_error - handle passive transaction server specific error
+ *              where a page is found to be ahead of the replication's current state; the function expects
+ *              to find a specific error, and with it, the transaction descriptor to contain a valid LSA
+ *              from reading the page - which produces the error in the first place; it then copies the error
+ *              to the btree scan context and clears it from the transaction descriptor; if the btree scan
+ *              already contains some results, commands ending the current search iteration (with the ideea that
+ *              while the current bactch of results are processed, the replication might already advance enough
+ *              for the next iteration to find the replication already past the point needed (LSA in btree scan
+ *              context) for the page to be considered in a valid replication state
+ */
 void
 btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_scan & bts)
 {
@@ -24920,27 +24932,38 @@ btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_sc
   //
   if (bts.n_oids_read_last_iteration > 0 && !BTS_IS_INDEX_MRO (&bts) && !BTS_NEED_COUNT_ONLY (&bts))
     {
-      bts.end_one_iteration;
+      bts.end_one_iteration = true;
     }
 }
 
+/* btree_range_scan_wait_for_replication - wait for replication to have passed past a certain LSA;
+ *              blocking call; if replication has already passed that LSA, function will just exit
+ */
 void
 btree_range_scan_wait_for_replication (btree_scan & bts)
 {
+#if defined (SERVER_MODE)
+  assert (is_passive_transaction_server ());
+
   if (bts.page_desync_lsa.is_null ())
     {
       // no need to wait
       return;
     }
-#if defined (SERVER_MODE)
-  assert (is_passive_transaction_server ());
-  get_passive_tran_server_ptr ()->wait_replication_pasts_target_lsa (bts.page_desync_lsa);
+
+  // a lock is expended in this call; currently, there's no way to avoid that lock
+  get_passive_tran_server_ptr ()->wait_replication_past_target_lsa (bts.page_desync_lsa);
   bts.page_desync_lsa.set_null ();
 #else
   assert (false);
 #endif
 }
 
+/* btree_range_scan_handle_error - handle error that results from btree range scans
+ *        functions (start, resume, advance); specifically look for and handle passive transaction server
+ *        replication desynchronization errors where pages retrieved from page server might be received
+ *        in a state which is ahead of the state the PTS replication arrived at
+ */
 int
 btree_range_scan_handle_error (THREAD_ENTRY * thread_p, btree_scan & bts, int error_code)
 {
