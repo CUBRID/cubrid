@@ -2229,7 +2229,7 @@ log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
 
   lr.advance_when_does_not_fit (sizeof (log_rec_trantable_snapshot));
   const log_rec_trantable_snapshot log_rec = lr.reinterpret_copy_and_add_align<log_rec_trantable_snapshot> ();
-  std::unique_ptr<char []> snapshot_data_buf { new char[log_rec.length] };
+  std::unique_ptr<char []> snapshot_data_buf = std::make_unique<char []> (static_cast<size_t> (log_rec.length));
   lr.copy_from_log (snapshot_data_buf.get (), log_rec.length);
 
   snapshot_lsa = log_rec.snapshot_lsa;
@@ -2308,8 +2308,6 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
 	  const log_tdes *const tdes = log_Gl.trantable.all_tdes[i];
 	  if (tdes != nullptr && tdes->trid != NULL_TRANID)
 	    {
-	      //assert (tdes->mvccinfo.id != smallest_mvccid);
-	      //assert (tdes->mvccinfo.id != largest_mvccid);
 	      if (tdes->mvccinfo.id < smallest_mvccid)
 		{
 		  smallest_mvccid = tdes->mvccinfo.id;
@@ -2318,17 +2316,16 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
 		{
 		  largest_mvccid = tdes->mvccinfo.id;
 		}
-	      //assert (present_mvccids.find (tdes->mvccinfo.id) == present_mvccids.cend ());
 	      present_mvccids.insert (tdes->mvccinfo.id);
 	    }
 	}
     }
-  //assert (smallest_mvccid != MVCCID_NULL);
   log_Gl.hdr.mvcc_next_id = smallest_mvccid;
   log_Gl.mvcc_table.reset_start_mvccid ();
 
   if (!present_mvccids.empty ())
     {
+      // complete each mvccid between the smallest and the highest, that is missing from the table
       std::set<MVCCID>::const_iterator present_mvccids_it = present_mvccids.cbegin ();
       MVCCID prev_mvccid = *present_mvccids_it;
       ++present_mvccids_it;
