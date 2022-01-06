@@ -93,6 +93,13 @@ enum METHOD_CALLBACK_RESPONSE
   METHOD_CALLBACK_CURSOR_CLOSE = 42
 };
 
+enum METHOD_ARG_MODE
+{
+  METHOD_ARG_MODE_IN = 1,
+  METHOD_ARG_MODE_OUT,
+  METHOD_ARG_MODE_INOUT
+};
+
 typedef struct method_arg_info METHOD_ARG_INFO;
 struct method_arg_info
 {
