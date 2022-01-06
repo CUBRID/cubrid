@@ -1052,7 +1052,7 @@ $ LOADDB
 982 为事务 %1$d 设置中断.
 983 可重用 OID 类的实例是 non-referable 的. 这项操作在 non-referable 的实例上不被允许.
 984 无法设置 %3$s 为 "%6$s" 在 "[%5$s]" 部分, 当它被设置为 "%4$s" 在 "[%2$s]" section of the configuration file "%1$s".
-985 数据库连接字符串中的主机名应当被指明，当在 "databases.txt" 设定有多个主机时.
+985 数据库连接字符串中的主机名应当被指明，当在 "databases.txt" 设定有多个主机时. ex) csql demodb@localhost
 986 CUBRID heartbeat 函数启动.
 987 CUBRID heartbeat 函数停止.
 988 结点事件: %1$s.
@@ -1355,6 +1355,18 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 由于在 %1$s 上引用了主键，因此无法截断表。 使用 CASCADE 选项重试。
 1285 无法级联截断，因为外键 (%1$s) 的 ON DELETE 操作未设置为 CASCADE。
+
+1286 在提取时找不到日志 lsa。 （输入时间：%1$s）。
+1287 尝试提取日志信息超时。 （已用时间：%1$d 秒，提取超时：%2$d 秒）
+1288 跳过为内部不支持的日志记录生成日志信息。
+1289 跳过为无效交易生成日志信息。 （三：%1$d）
+1290 提取日志信息的日志 lsa (%1$lld|%2$d) 无效。
+1291 无法连接到服务器以提取日志信息。设置“supplemental_log”参数再试一次。
+1292 当时找不到日志 lsa (%1$s)。日志 lsa 调整到时间 (%2$s)。
+1293 生成日志信息时无法获取日志页面。生成日志信息的日志 lsa 指示 NULL。
+1294 日志信息已生成。 （类型：“%1$s”）。
+1295 跳过为无效表生成日志信息。 （class OID ：%1$d|%2$d|%3$d）
+
 1296 日志恢复: 开始分析阶段。
 1297 日志恢复: REDO阶段开始。 重做日志页面: %1$lld，重做日志记录: %2$lld。
 1298 日志恢复: 启动 UNDE 阶段。 要撤消的日志页面: %1$lld，要撤消的事务处理: %2$d。
@@ -1386,7 +1398,7 @@ $ LOADDB
 1322 Not supported data type.
 1323 Invalid Statement handle.
 1324 Invalid db connection handle.
-1325 Both dsn name and link server connection url do not exist.
+1325 Link server connection url do not exist.
 1326 Invalid numeric value.
 1327 Invalid precision value of "%1$s" column.
 
