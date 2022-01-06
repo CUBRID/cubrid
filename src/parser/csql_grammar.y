@@ -27903,6 +27903,7 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
         length = node->info.value.data_value.str->length;
 
         node->type_enum = char_type;
+/*
         if (string)
           {
             if (string[length - 1] == 0x20)
@@ -27917,7 +27918,7 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
                   }
               }
           }
-
+*/
         if (char_type == PT_TYPE_NCHAR)
           {
             node->info.value.string_type = 'N';

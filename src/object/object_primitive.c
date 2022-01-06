@@ -11134,10 +11134,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
   if (!ignore_trailing_space)
     {
-      if (type1 != DB_TYPE_CHAR && type1 != DB_TYPE_NCHAR && type2 != DB_TYPE_CHAR && type2 != DB_TYPE_NCHAR)
-	{
-	  ti = false;
-	}
+      ti = false;
     }
 
   strc = QSTR_COMPARE (collation, string1, size1, string2, size2, ti);
@@ -12000,6 +11997,14 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   if (do_coercion == 3)
     {
       ti = false;
+    }
+
+  if (!ignore_trailing_space)
+    {
+      if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
+	{
+	  ti = false;
+	}
     }
 
   strc = QSTR_CHAR_COMPARE (collation, string1, size1, string2, size2, ti);
