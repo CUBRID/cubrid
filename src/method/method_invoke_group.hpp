@@ -34,6 +34,7 @@
 #include <vector>
 #include <unordered_set>
 #include <memory> /* unique_ptr */
+#include <set>
 
 #include "method_def.hpp"	/* method_sig_node */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */
@@ -73,7 +74,7 @@ namespace cubmethod
       int reset (bool is_end_query);
       int end ();
 
-      DB_VALUE *get_return_value (int index);
+      DB_VALUE &get_return_value (int index);
 
       int get_num_methods () const;
       int64_t get_id () const;
@@ -89,7 +90,7 @@ namespace cubmethod
 
       int64_t m_id;
       cubthread::entry *m_thread_p;
-      std::vector <METHOD_TYPE> m_kind_type;
+      std::set <METHOD_TYPE> m_kind_type;
       std::vector <method_invoke *> m_method_vector;
 
       std::vector <DB_VALUE> m_result_vector;	/* placeholder for result value */

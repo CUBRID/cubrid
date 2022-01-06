@@ -23,12 +23,14 @@
 #include "mem_block.hpp" /* cubmem::extensible_block */
 #include "method_invoke.hpp"
 #include "method_struct_invoke.hpp"
+#include "object_primitive.h"
 #include "object_representation.h"	/* OR_ */
 #include "packer.hpp"
-
-#if defined (SERVER_MODE)
 #include "jsp_sr.h" /* jsp_server_port(), jsp_connect_server() */
 #include "method_connection_sr.hpp"
+
+#if defined (SA_MODE)
+#include "query_method.hpp"
 #endif
 
 namespace cubmethod
@@ -61,23 +63,15 @@ namespace cubmethod
 	    break;
 	  }
 
-	m_kind_type.push_back (type);
+	m_kind_type.insert (type);
 	m_method_vector.push_back (mi);
 
 	sig = sig->next;
       }
 
-    /* to remove duplicated values */
-    std::sort (m_kind_type.begin(), m_kind_type.end ());
-    m_kind_type.erase (std::unique (m_kind_type.begin(), m_kind_type.end()), m_kind_type.end());
-
     DB_VALUE v;
     db_make_null (&v);
-    for (int i = 0; i < sig_list.num_methods; i++)
-      {
-	m_result_vector.push_back (v);
-      }
-
+    m_result_vector.resize (sig_list.num_methods, v);
     m_socket = INVALID_SOCKET;
   }
 
@@ -90,11 +84,11 @@ namespace cubmethod
     m_method_vector.clear ();
   }
 
-  DB_VALUE *
+  DB_VALUE &
   method_invoke_group::get_return_value (int index)
   {
     assert (index >= 0 && index < (int) get_num_methods ());
-    return &m_result_vector.at (index);
+    return m_result_vector[index];
   }
 
   int
@@ -136,13 +130,11 @@ namespace cubmethod
 	  }
 	  case METHOD_TYPE_JAVA_SP:
 	  {
-#if defined (SERVER_MODE)
 	    if (m_socket == INVALID_SOCKET)
 	      {
 		int server_port = jsp_server_port ();
 		m_socket = jsp_connect_server (server_port);
 	      }
-#endif
 	    break;
 	  }
 	  default:
@@ -161,7 +153,6 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-#if defined (SERVER_MODE)
     /* send base arguments */
     for (const auto &elem : m_kind_type)
       {
@@ -172,7 +163,13 @@ namespace cubmethod
 	  {
 	    cubmethod::header header (METHOD_REQUEST_ARG_PREPARE, m_id);
 	    cubmethod::prepare_args arg (elem, arg_base);
+#if defined (SERVER_MODE)
 	    error = method_send_data_to_client (m_thread_p, header, arg);
+#else
+	    cubmem::block b = method_pack_data (m_thread_p, header, arg);
+	    packing_unpacker unpacker (b);
+	    error = method_dispatch (unpacker);
+#endif
 	    break;
 	  }
 	  case METHOD_TYPE_JAVA_SP:
@@ -188,7 +185,6 @@ namespace cubmethod
 	    break;
 	  }
       }
-#endif
 
     return error;
   }
@@ -229,10 +225,7 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    for (DB_VALUE &val : m_result_vector)
-      {
-	db_value_clear (&val);
-      }
+    pr_clear_value_vector (m_result_vector);
 
     for (method_invoke *method: m_method_vector)
       {
@@ -241,9 +234,13 @@ namespace cubmethod
 
     if (!is_end_query)
       {
-#if defined (SERVER_MODE)
 	cubmethod::header header (METHOD_REQUEST_END, get_id());
+#if defined (SERVER_MODE)
 	error = method_send_data_to_client (m_thread_p, header);
+#else
+	cubmem::block b = method_pack_data (m_thread_p, header);
+	packing_unpacker unpacker (b);
+	error = method_dispatch (unpacker);
 #endif
       }
 
@@ -254,15 +251,7 @@ namespace cubmethod
   {
     int error = NO_ERROR;
     reset (true);
-
-#if defined (SERVER_MODE)
-    if (m_socket != INVALID_SOCKET)
-      {
-	jsp_disconnect_server (m_socket);
-	m_socket = INVALID_SOCKET;
-      }
-#endif
-
+    jsp_disconnect_server (m_socket);
     return error;
   }
 }	// namespace cubmethod
