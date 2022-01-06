@@ -61,7 +61,7 @@ namespace cubmethod
     int depth = tran_get_libcas_depth () - 1;
     method_server_conn_info *info = get_connection_info (depth);
 
-    assert (info->rc > 0);
+    assert (info);
 
     if (info)
       {
@@ -78,12 +78,6 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
-    return NO_ERROR;
-  }
-#else
-  template<typename ... Args>
-  int method_send_data_to_server (Args &&... args)
-  {
     return NO_ERROR;
   }
 #endif

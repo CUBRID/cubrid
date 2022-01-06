@@ -21,15 +21,10 @@
 namespace cubmethod
 {
 #if defined (CS_MODE)
-  static method_server_conn_info g_conn_info [METHOD_MAX_RECURSION_DEPTH];
+  static method_server_conn_info g_conn_info [METHOD_MAX_RECURSION_DEPTH + 1];
 
   int set_connection_info (int idx, int rc)
   {
-    if (idx >= METHOD_MAX_RECURSION_DEPTH)
-      {
-	return ER_SP_TOO_MANY_NESTED_CALL;
-      }
-
     method_server_conn_info &info = g_conn_info [idx];
     info.rc = rc;
     return NO_ERROR;
@@ -37,7 +32,7 @@ namespace cubmethod
 
   method_server_conn_info *get_connection_info (int idx)
   {
-    if (idx < METHOD_MAX_RECURSION_DEPTH)
+    if (idx <= METHOD_MAX_RECURSION_DEPTH)
       {
 	return &g_conn_info[idx];
       }

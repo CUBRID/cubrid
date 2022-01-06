@@ -64,6 +64,15 @@ namespace cubmethod
     cubmem::block b (packer.get_current_size (), eb.get_ptr ());
     return xs_send (thread_p, b);
   }
+#else
+  template <typename ... Args>
+  cubmem::block method_pack_data (cubthread::entry *thread_p, Args &&... args)
+  {
+    packing_packer packer;
+    cubmem::extensible_block eb;
+    packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
+    return cubmem::block (packer.get_current_size (), eb.release_ptr ()); // by release_ptr (), eb is not freed
+  }
 #endif
 
   //////////////////////////////////////////////////////////////////////////
