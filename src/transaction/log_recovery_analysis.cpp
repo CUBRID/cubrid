@@ -78,6 +78,8 @@ static void log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_a
 static int log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
     log_lsa most_recent_trantable_snapshot_lsa,
     cublog::checkpoint_info chkpt_info, log_lsa &snapshot_lsa);
+static void log_recovery_build_mvcc_table_from_trantable_snapshot (THREAD_ENTRY *thread_p);
+
 class corruption_checker
 {
     //////////////////////////////////////////////////////////////////////////
@@ -2242,6 +2244,57 @@ log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
   return NO_ERROR;
 }
 
+static void
+log_recovery_build_mvcc_table_from_trantable_snapshot (THREAD_ENTRY *thread_p)
+{
+  assert (is_passive_transaction_server ());
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  MVCCID smallest_mvccid = std::numeric_limits<MVCCID>::max ();
+  MVCCID largest_mvccid = std::numeric_limits<MVCCID>::min ();
+  std::set<MVCCID> present_mvccids;
+  for (int i = 0; i < log_Gl.trantable.num_total_indices; ++i)
+    {
+      if (i != LOG_SYSTEM_TRAN_INDEX)
+	{
+	  const log_tdes *const tdes = log_Gl.trantable.all_tdes[i];
+	  if (tdes != nullptr && tdes->trid != NULL_TRANID)
+	    {
+	      if (tdes->mvccinfo.id < smallest_mvccid)
+		{
+		  smallest_mvccid = tdes->mvccinfo.id;
+		}
+	      if (tdes->mvccinfo.id > largest_mvccid)
+		{
+		  largest_mvccid = tdes->mvccinfo.id;
+		}
+	      present_mvccids.insert (tdes->mvccinfo.id);
+	    }
+	}
+    }
+  log_Gl.hdr.mvcc_next_id = smallest_mvccid;
+  log_Gl.mvcc_table.reset_start_mvccid ();
+
+  if (!present_mvccids.empty ())
+    {
+      // complete each mvccid between the smallest and the highest, that is missing from the table
+      std::set<MVCCID>::const_iterator present_mvccids_it = present_mvccids.cbegin ();
+      MVCCID prev_mvccid = *present_mvccids_it;
+      ++present_mvccids_it;
+      for (; present_mvccids_it != present_mvccids.cend (); ++present_mvccids_it)
+	{
+	  const MVCCID curr_mvccid = *present_mvccids_it;
+	  for (MVCCID missing_mvccid = prev_mvccid + 1; missing_mvccid < curr_mvccid; ++missing_mvccid)
+	    {
+	      log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, missing_mvccid, true);
+	    }
+	  prev_mvccid = curr_mvccid;
+	}
+    }
+
+  log_Gl.hdr.mvcc_next_id = largest_mvccid + 1;
+}
+
 /* log_recovery_analysis_from_trantable_snapshot - perform recovery for a passive transaction server
  *                  starting from a [recent] transaction table snapshot relayed via log and page server from
  *                  the active transaction server
@@ -2298,47 +2351,5 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 
-  MVCCID smallest_mvccid = std::numeric_limits<MVCCID>::max ();
-  MVCCID largest_mvccid = std::numeric_limits<MVCCID>::min ();
-  std::set<MVCCID> present_mvccids;
-  for (int i = 0; i < log_Gl.trantable.num_total_indices; ++i)
-    {
-      if (i != LOG_SYSTEM_TRAN_INDEX)
-	{
-	  const log_tdes *const tdes = log_Gl.trantable.all_tdes[i];
-	  if (tdes != nullptr && tdes->trid != NULL_TRANID)
-	    {
-	      if (tdes->mvccinfo.id < smallest_mvccid)
-		{
-		  smallest_mvccid = tdes->mvccinfo.id;
-		}
-	      if (tdes->mvccinfo.id > largest_mvccid)
-		{
-		  largest_mvccid = tdes->mvccinfo.id;
-		}
-	      present_mvccids.insert (tdes->mvccinfo.id);
-	    }
-	}
-    }
-  log_Gl.hdr.mvcc_next_id = smallest_mvccid;
-  log_Gl.mvcc_table.reset_start_mvccid ();
-
-  if (!present_mvccids.empty ())
-    {
-      // complete each mvccid between the smallest and the highest, that is missing from the table
-      std::set<MVCCID>::const_iterator present_mvccids_it = present_mvccids.cbegin ();
-      MVCCID prev_mvccid = *present_mvccids_it;
-      ++present_mvccids_it;
-      for (; present_mvccids_it != present_mvccids.cend (); ++present_mvccids_it)
-	{
-	  const MVCCID curr_mvccid = *present_mvccids_it;
-	  for (MVCCID missing_mvccid = prev_mvccid + 1; missing_mvccid < curr_mvccid; ++missing_mvccid)
-	    {
-	      log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, missing_mvccid, true);
-	    }
-	  prev_mvccid = curr_mvccid;
-	}
-    }
-
-  log_Gl.hdr.mvcc_next_id = largest_mvccid + 1;
+  log_recovery_build_mvcc_table_from_trantable_snapshot (thread_p);
 }
