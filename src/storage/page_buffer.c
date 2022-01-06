@@ -2315,8 +2315,11 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
     {
       // Maybe page is deallocated, or maybe there was another error. If page is deallocated, the error must be
       // ER_PB_BAD_PAGEID
-
-      (void) pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, PGBUF_LATCH_READ, vpid);
+      if (er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  // Check if page is ahead
+	  (void) pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, PGBUF_LATCH_READ, vpid);
+	}
       return nullptr;
     }
 
