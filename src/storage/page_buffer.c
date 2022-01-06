@@ -2315,8 +2315,11 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
     {
       // Maybe page is deallocated, or maybe there was another error. If page is deallocated, the error must be
       // ER_PB_BAD_PAGEID
-
-      (void) pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, PGBUF_LATCH_READ, vpid);
+      if (er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  // Check if page is ahead
+	  (void) pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, PGBUF_LATCH_READ, vpid);
+	}
       return nullptr;
     }
 
@@ -8140,7 +8143,8 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
       if (read_from_local)
 	{
 	  // *INDENT-OFF*
-	  auto buffer_uptr = std::make_unique<char> (db_io_page_size ());
+	  const size_t io_page_size = static_cast<size_t> (db_io_page_size ());
+	  std::unique_ptr<char []> buffer_uptr = std::make_unique<char []> (io_page_size);
 	  FILEIO_PAGE *second_io_page = reinterpret_cast<FILEIO_PAGE *> (buffer_uptr.get ());
 	  error_code = pgbuf_request_data_page_from_page_server (vpid, target_repl_lsa, second_io_page);
 	  if (error_code != NO_ERROR)
