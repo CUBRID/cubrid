@@ -78,7 +78,7 @@ static void log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_a
 static int log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
     log_lsa most_recent_trantable_snapshot_lsa,
     cublog::checkpoint_info chkpt_info, log_lsa &snapshot_lsa);
-static void log_recovery_build_mvcc_table_from_trantable_snapshot (THREAD_ENTRY *thread_p);
+static void log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p);
 
 class corruption_checker
 {
@@ -2210,6 +2210,9 @@ corruption_checker::check_log_record (const log_lsa &record_lsa, const log_rec_h
     }
 }
 
+/* log_recovery_analysis_load_trantable_snapshot - starting from a [most recent] trantable snapshot LSA, read
+ *                the log record and deserialize its contents as a checkpoint info
+ */
 static int
 log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
     log_lsa most_recent_trantable_snapshot_lsa, cublog::checkpoint_info chkpt_info, log_lsa &snapshot_lsa)
@@ -2244,8 +2247,10 @@ log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
   return NO_ERROR;
 }
 
+/* log_recovery_build_mvcc_table_from_trantable - build mvcc table using transaction table
+ */
 static void
-log_recovery_build_mvcc_table_from_trantable_snapshot (THREAD_ENTRY *thread_p)
+log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p)
 {
   assert (is_passive_transaction_server ());
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -2351,5 +2356,5 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 
-  log_recovery_build_mvcc_table_from_trantable_snapshot (thread_p);
+  log_recovery_build_mvcc_table_from_trantable (thread_p);
 }
