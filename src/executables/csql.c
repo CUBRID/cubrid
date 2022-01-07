@@ -1022,7 +1022,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
-	      au_disable ();
+	      au_sysadm_disable ();
 	    }
 	  csql_Database_connected = true;
 
@@ -1818,10 +1818,15 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
   logddl_set_commit_mode (csql_is_auto_commit_requested (csql_arg));
 
+  if (csql_Is_interactive)
+    {
+      csql_yyset_lineno (1);
+    }
+
   /* execute the statements one-by-one */
   for (num_stmts = 0; num_stmts < total; num_stmts++)
     {
-      TSC_TICKS start_tick, end_tick;
+      TSC_TICKS start_tick, end_tick, start_commit_tick, end_commit_tick;
       TSCTIMEVAL elapsed_time;
 
       int stmt_id;
@@ -2056,6 +2061,10 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (csql_is_auto_commit_requested (csql_arg) && stmt_type != CUBRID_STMT_COMMIT_WORK
 	  && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	{
+	  if (csql_Is_time_on)
+	    {
+	      tsc_getticks (&start_commit_tick);
+	    }
 	  db_error = db_commit_transaction ();
 	  if (db_error < 0)
 	    {
@@ -2088,6 +2097,14 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  else
 	    {
 	      strncat (stmt_msg, csql_get_message (CSQL_STAT_COMMITTED_TEXT), LINE_BUFFER_SIZE - 1);
+	      if (csql_Is_time_on)
+		{
+		  char time[100];
+		  tsc_getticks (&end_commit_tick);
+		  tsc_elapsed_time_usec (&elapsed_time, end_commit_tick, start_commit_tick);
+		  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
+		  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);
+		}
 	    }
 	}
 
@@ -2866,7 +2883,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_disable ();
+      au_sysadm_disable ();
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */

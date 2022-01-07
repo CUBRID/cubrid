@@ -4647,6 +4647,7 @@ do_redistribute_partitions_data (const char *classname, const char *keyname, cha
     {
       query_size = 0;
       query_size += 7;		/* 'UPDATE ' */
+      query_size += 28;		// ' /*+ NO_SUPPLEMENTAL_LOG */ ' 
       query_size += strlen (classname) + 2;
       query_size += 5;		/* ' SET ' */
       query_size += strlen (keyname) * 2 + 6;	/* [keyname]=[keyname]; */
@@ -4656,7 +4657,7 @@ do_redistribute_partitions_data (const char *classname, const char *keyname, cha
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size + 1);
 	  return ER_FAILED;
 	}
-      sprintf (query_buf, "UPDATE [%s] SET [%s]=[%s];", classname, keyname, keyname);
+      sprintf (query_buf, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ [%s] SET [%s]=[%s];", classname, keyname, keyname);
 
       error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
       if (error >= 0)
@@ -8616,28 +8617,39 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
       /* check for mis-creating string type with -1 precision */
       for (column = query_columns; column != NULL; column = db_query_format_next (column))
-        {
-          switch (column->domain->type->id)
-            {
-              case DB_TYPE_VARCHAR:
-                if (column->domain->precision == DB_DEFAULT_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARCHAR_PRECISION;
-                  }
-                break;
-              case DB_TYPE_VARNCHAR:
-                if (column->domain->precision == DB_DEFAULT_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-                  }
-                else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-                  }
-                default:
-                break;
-            }
-        }
+	{
+	  if (column->domain == NULL)
+	    {
+	      /*
+	       * this might be from dblink which has errors for column definition
+	       * the error code is not need to set at this point
+	       * because the error code is already set from dblink
+	       */
+	      error = ER_FAILED;
+	      goto error_exit;
+	    }
+
+	  switch (column->domain->type->id)
+	    {
+	    case DB_TYPE_VARCHAR:
+	      if (column->domain->precision == DB_DEFAULT_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARCHAR_PRECISION;
+		}
+	      break;
+	    case DB_TYPE_VARNCHAR:
+	      if (column->domain->precision == DB_DEFAULT_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
+		}
+	      else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
+		}
+	    default:
+	      break;
+	    }
+	}
     }
   assert (!(create_like != NULL && create_select != NULL));
 
@@ -8709,6 +8721,18 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 	    default:
 	      break;
+	    }
+	}
+
+      if (tbl_opt_encrypt)
+	{
+	  int tde_loaded = 0;
+	  (void) tde_is_loaded (&tde_loaded);
+	  if (!tde_loaded)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+	      error = er_errid ();
+	      goto error_exit;
 	    }
 	}
 
@@ -10572,7 +10596,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
   /* the serial property has not changed, we are only dealing with renaming */
   if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF)
-      && attribute->info.attr_def.auto_increment != NULL
+      && is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_PRESENT_OLD)
       && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
       && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_LOST)
       && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_GAINED))
@@ -10610,7 +10634,6 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
     {
       MOP auto_increment_obj = NULL;
 
-      assert (attribute->info.attr_def.auto_increment != NULL);
       assert_release (found_att->auto_increment != NULL);
 
       error = do_update_maxvalue_of_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
@@ -10982,6 +11005,8 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  chg_prop_idx = P_S_CONSTR_UNI;
 	  save_pt_costraint = true;
 	  break;
+	case PT_CONSTRAIN_NULL:
+	  attr_chg_properties->p[P_NOT_NULL] = ATT_CHG_PROPERTY_LOST;
 	case PT_CONSTRAIN_NOT_NULL:
 	  constr_att_list = cnstr->info.constraint.un.not_null.attr;
 	  chg_prop_idx = P_NOT_NULL;
@@ -11064,6 +11089,11 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       {
 	int *const p = &(attr_chg_properties->p[i]);
 
+	if (*p & ATT_CHG_PROPERTY_LOST)
+	  {
+	    continue;
+	  }
+
 	if (*p & ATT_CHG_PROPERTY_PRESENT_OLD)
 	  {
 	    if (*p & ATT_CHG_PROPERTY_PRESENT_NEW)
@@ -11072,7 +11102,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	      }
 	    else
 	      {
-		*p |= ATT_CHG_PROPERTY_LOST;
+		*p |= ATT_CHG_PROPERTY_UNCHANGED;
 	      }
 	  }
 	else
@@ -11217,7 +11247,6 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 
   /* comment */
   attr_chg_properties->p[P_COMMENT] = 0;
-  attr_chg_properties->p[P_COMMENT] |= ATT_CHG_PROPERTY_LOST;
   comment = attr_def->info.attr_def.comment;
   if (comment != NULL)
     {
@@ -11228,6 +11257,10 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  /* remove "LOST" flag */
 	  attr_chg_properties->p[P_COMMENT] &= ~ATT_CHG_PROPERTY_LOST;
 	}
+    }
+  else
+    {
+      attr_chg_properties->p[P_COMMENT] |= ATT_CHG_PROPERTY_UNCHANGED;
     }
 
   return error;
@@ -13095,9 +13128,9 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * a
 
   /* Allocate enough for each attribute's name, its default value, and for the "UPDATE table_name" part of the query.
    * 42 is more than the maximum length of any default value for an attribute, including three spaces, the coma sign
-   * and an equal. */
+   * and an equal. And size of 28 is added for NO_SUPPLEMENTAL_LOG hint. */
 
-  query_len = remaining = (attr_count + 1) * (DB_MAX_IDENTIFIER_LENGTH + 42);
+  query_len = remaining = (attr_count + 1) * (DB_MAX_IDENTIFIER_LENGTH + 42 + 28);
   if (query_len > QUERY_MAX_SIZE)
     {
       ERROR1 (error, ER_UNEXPECTED, "Too many attributes.");
@@ -13115,7 +13148,9 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * a
 
   /* Using UPDATE ALL to update the current class and all its children. */
 
-  n = snprintf (q, remaining, "UPDATE ALL [%s] SET ", alter->info.alter.entity_name->info.name.original);
+  n =
+    snprintf (q, remaining, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ ALL [%s] SET ",
+	      alter->info.alter.entity_name->info.name.original);
   if (n < 0)
     {
       ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
@@ -13203,7 +13238,9 @@ do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, 
   query[0] = 0;
 
   /* Using UPDATE ALL to update the current class and all its children. */
-  n = snprintf (q, remaining, "UPDATE ALL [%s] SET ", alter->info.alter.entity_name->info.name.original);
+  n =
+    snprintf (q, remaining, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ ALL [%s] SET ",
+	      alter->info.alter.entity_name->info.name.original);
   if (n < 0)
     {
       ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");

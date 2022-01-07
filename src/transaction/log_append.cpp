@@ -29,14 +29,14 @@
 #include "thread_manager.hpp"
 #include "vacuum.h"
 
-static bool log_Zip_support = false;
-static int log_Zip_min_size_to_compress = 255;
 #if !defined(SERVER_MODE)
 static LOG_ZIP *log_zip_undo = NULL;
 static LOG_ZIP *log_zip_redo = NULL;
 static char *log_data_ptr = NULL;
 static int log_data_length = 0;
 #endif
+bool log_Zip_support = false;
+int log_Zip_min_size_to_compress = 255;
 
 size_t
 LOG_PRIOR_LSA_LAST_APPEND_OFFSET ()
@@ -70,8 +70,6 @@ static void prior_lsa_append_data (int length);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
 static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
-static LOG_ZIP *log_append_get_zip_undo (THREAD_ENTRY *thread_p);
-static LOG_ZIP *log_append_get_zip_redo (THREAD_ENTRY *thread_p);
 static char *log_append_get_data_ptr (THREAD_ENTRY *thread_p);
 static bool log_append_realloc_data_ptr (THREAD_ENTRY *thread_p, int length);
 
@@ -287,6 +285,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
 
   node->tde_encrypted = false;
 
+  node->data_header_length = 0;
   node->data_header = NULL;
   node->ulength = 0;
   node->udata = NULL;
@@ -339,6 +338,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
+    case LOG_SUPPLEMENTAL_INFO:
 
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
@@ -1279,7 +1279,9 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
     case LOG_END_CHKPT:
       node->data_header_length = sizeof (LOG_REC_CHKPT);
       break;
-
+    case LOG_SUPPLEMENTAL_INFO:
+      node->data_header_length = sizeof (LOG_REC_SUPPLEMENT);
+      break;
     default:
       break;
     }
@@ -1468,6 +1470,12 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
       assert (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa));
       tdes->rcv.atomic_sysop_start_lsa = start_lsa;
     }
+  else if (node->log_header.type == LOG_COMMIT || node->log_header.type == LOG_ABORT)
+    {
+      /* mark the commit/abort in the transaction,  */
+      assert (tdes->commit_abort_lsa.is_null ());
+      LSA_COPY (&tdes->commit_abort_lsa, &start_lsa);
+    }
 
   log_prior_lsa_append_advance_when_doesnot_fit (node->data_header_length);
   log_prior_lsa_append_add_align (node->data_header_length);
@@ -1548,15 +1556,13 @@ prior_lsa_next_record_with_lock (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, l
 int
 prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex)
 {
-  if (!tde_Cipher.is_loaded)
+  if (!tde_is_loaded())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
-#if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE, "TDE: prior_set_tde_encrypted(): rcvindex = %s\n", rv_rcvindex_string (recvindex));
-#endif /* !NDEBUG */
+  tde_er_log ("prior_set_tde_encrypted(): rcvindex = %s\n", rv_rcvindex_string (recvindex));
 
   node->tde_encrypted = true;
 
@@ -1707,7 +1713,7 @@ prior_lsa_append_data (int length)
   log_prior_lsa_append_align ();
 }
 
-static LOG_ZIP *
+LOG_ZIP *
 log_append_get_zip_undo (THREAD_ENTRY *thread_p)
 {
 #if defined (SERVER_MODE)
@@ -1733,7 +1739,7 @@ log_append_get_zip_undo (THREAD_ENTRY *thread_p)
 #endif
 }
 
-static LOG_ZIP *
+LOG_ZIP *
 log_append_get_zip_redo (THREAD_ENTRY *thread_p)
 {
 #if defined (SERVER_MODE)

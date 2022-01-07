@@ -136,6 +136,8 @@ typedef struct tde_mk_file_item
    || (rcvindex) == RVBT_ONLINE_INDEX_UNDO_TRAN_INSERT \
    || (rcvindex) == RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE)
 
+#define tde_er_log(...) if (prm_get_bool_value (PRM_ID_ER_LOG_TDE)) _er_log_debug (ARG_FILE_LINE, "TDE: " __VA_ARGS__)
+
 /*
  * TDE Cipher, the core object on memory, which is loaded at restart 
  * and used everywhere encryption or decription is requested.
@@ -169,6 +171,7 @@ typedef struct tde_keyinfo
 extern int tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid);
 extern int tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const char *mk_path_given);
 extern int tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo);
+extern bool tde_is_loaded ();
 
 /*
  * tde functions for the master key management

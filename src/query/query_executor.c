@@ -1942,6 +1942,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  break;
 	case S_VALUES_SCAN:
 	  break;
+	case S_DBLINK_SCAN:
+	  break;
 	}
       if (p->s_id.val_list)
 	{
@@ -2024,6 +2026,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.method_node.method_regu_list, is_final);
 	  break;
 	case TARGET_REGUVAL_LIST:
+	  break;
+	case TARGET_DBLINK:
 	  break;
 	}
     }
@@ -6449,6 +6453,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   QFILE_LIST_ID *list_id;
   bool mvcc_select_lock_needed = false;
   int error_code = NO_ERROR;
+  DBLINK_HOST_VARS host_vars;
 
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && !curr_spec->pruned)
     {
@@ -6713,7 +6718,27 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  goto exit_on_error;
 	}
       break;
+    case TARGET_DBLINK:
+      host_vars.count = curr_spec->s.dblink_node.host_var_count;
+      host_vars.index = curr_spec->s.dblink_node.host_var_index;
+      error_code = scan_open_dblink_scan (thread_p, s_id, curr_spec, vd, val_list, &host_vars);
 
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+
+      /* DBLINK(..., "SELECT <result columns part> FROM ...") AS tnmae( <alias columns part> )
+       ** s_id->s.dblid.scan_buf.col_cnt is the number of elements in the list <result columns part>.
+       ** val_list->val_cnt is the number of elements in the list <alias columns part>.             */
+      if (val_list->val_cnt != s_id->s.dblid.scan_info.col_cnt)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_COLUMNS_SPECIFIED, 0);
+	  error_code = ER_DBLINK_INVALID_COLUMNS_SPECIFIED;
+	  goto exit_on_error;
+	}
+      break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       error_code = ER_QPROC_INVALID_XASLNODE;
@@ -6810,6 +6835,9 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 
     case TARGET_METHOD:
       perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
+      break;
+
+    case TARGET_DBLINK:
       break;
     }
 
@@ -8772,6 +8800,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
   thread_p->no_logging = (bool) update->no_logging;
 
+  thread_p->no_supplemental_log = (bool) update->no_supplemental_log;
+
   /* get the snapshot, before acquiring locks, since the transaction may be blocked and we need the snapshot when
    * update starts, not later */
   (void) logtb_get_mvcc_snapshot (thread_p);
@@ -9633,6 +9663,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
   thread_p->no_logging = (bool) delete_->no_logging;
+
+  thread_p->no_supplemental_log = (bool) delete_->no_supplemental_log;
 
   /* get the snapshot, before acquiring locks, since the transaction may be blocked and we need the snapshot when
    * delete starts, not later */
@@ -23744,14 +23776,6 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
       if (!agg_ptr->flag_agg_optimize)
 	{
 	  /* scan is needed for this aggregate */
-	  *is_scan_needed = true;
-	  break;
-	}
-
-      /* Temporary disable count optimization. To enable it just remove these lines and also restore the condition in
-       * pt_find_lck_classes and also enable load global statistics in logtb_get_mvcc_snapshot_data. */
-      if (agg_ptr->function == PT_COUNT_STAR)
-	{
 	  *is_scan_needed = true;
 	  break;
 	}

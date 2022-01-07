@@ -70,7 +70,7 @@
 #endif // SA_MODE
 #include "xasl.h"
 #include "lob_locator.hpp"
-
+#include "crypt_opfunc.h"
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
  */
@@ -1886,6 +1886,99 @@ tde_get_data_keys ()
 }
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
+
+int
+dblink_get_cipher_master_key ()
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, area_size;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply, *area;
+  int length;
+
+  dblink_Cipher.is_loaded = false;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request2 (NET_SERVER_DBLINK_GET_CRYPT_KEY, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error);
+      if (area_size > 0)
+	{
+	  ptr = or_unpack_int (area, &length);
+	  ptr = or_unpack_stream (ptr, (char *) dblink_Cipher.crypt_key, length);
+	  if (length != sizeof (dblink_Cipher.crypt_key))
+	    {
+	      memset (dblink_Cipher.crypt_key + length, 0x00, sizeof (dblink_Cipher.crypt_key) - length);
+	    }
+	  dblink_Cipher.is_loaded = true;
+	}
+      free_and_init (area);
+    }
+
+  return error;
+#else /* CS_MODE */
+  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH];
+  int length;
+
+  dblink_Cipher.is_loaded = false;
+
+  length = dblink_get_encrypt_key (crypt_key, sizeof (crypt_key));
+  if (length < 0)
+    {
+      return length;
+    }
+
+  dblink_Cipher.is_loaded = true;
+  memcpy (dblink_Cipher.crypt_key, crypt_key, length);
+  if (length != sizeof (crypt_key))
+    {
+      memset (dblink_Cipher.crypt_key + length, 0x00, sizeof (dblink_Cipher.crypt_key) - length);
+    }
+
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+
+/*
+ * tde_is_loaded -
+ *
+ * return:
+ *
+ */
+int
+tde_is_loaded (int *is_loaded)
+{
+#if defined(CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request (NET_SERVER_TDE_IS_LOADED, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      (void *) or_unpack_int (reply, is_loaded);
+    }
+
+  return NO_ERROR;
+#else /* CS_MODE */
+
+  *is_loaded = tde_is_loaded ();
+
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
 /*
  * tde_get_mk_file_path -
  *
@@ -2632,6 +2725,56 @@ log_drop_lob_locator (const char *locator)
   return error_code;
 }
 #endif // CS_MODE
+
+int
+log_supplement_statement (int ddl_type, int objtype, OID * classoid, OID * objoid, const char *stmt_text)
+{
+#if defined(CS_MODE)
+  int req_error, rep_error = ER_FAILED;
+  int request_size = 0;
+  char *request = NULL, *ptr, *start_ptr;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* ddl_type, object type, class OID, object OID, statement */
+
+  request_size = OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_OID_SIZE + or_packed_string_length (stmt_text, NULL);
+
+  request = (char *) malloc (request_size + MAX_ALIGNMENT);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_FAILED;
+    }
+
+  ptr = start_ptr = PTR_ALIGN (request, INT_ALIGNMENT);
+
+  ptr = or_pack_int (ptr, ddl_type);
+  ptr = or_pack_int (ptr, objtype);
+  ptr = or_pack_oid (ptr, classoid);
+  ptr = or_pack_oid (ptr, objoid);
+  ptr = or_pack_string (ptr, stmt_text);
+
+  request_size = ptr - start_ptr;
+
+  req_error =
+    net_client_request (NET_SERVER_SUPPLEMENT_STMT, start_ptr, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+			0, NULL, 0);
+
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rep_error);
+    }
+
+  free_and_init (request);
+
+  return rep_error;
+#endif // CS_MODE
+  return ER_NOT_IN_STANDALONE;
+}
 
 /*
  * tran_server_commit -

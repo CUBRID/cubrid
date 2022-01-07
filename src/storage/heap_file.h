@@ -318,6 +318,11 @@ struct heap_operation_context
 
   bool use_bulk_logging;	// note - currently for bulk insert only
 
+  bool do_supplemental_log;	/* flag for whether do supplemental logging or do not */
+  LOG_LSA supp_undo_lsa;	/* lsa of the log that contains undo or redo image and it is used 
+				 * in supplemental log for INSERT/UPDATE/DELETE */
+  LOG_LSA supp_redo_lsa;
+
   /* Performance stat dump. */
   PERF_UTIME_TRACKER *time_track;
 };
