@@ -758,7 +758,8 @@ namespace cubload
   }
 
   int
-  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id, int64_t line_offset,
+  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id,
+		int64_t line_offset,
 		int64_t &rows)
   {
     if (batch_content.empty ())

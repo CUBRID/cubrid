@@ -13106,8 +13106,8 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		{
 		  q =
 		    pt_append_name (parser, q,
-				    pt_get_name_without_current_user_name (original_spec->info.spec.entity_name->info.
-									   name.original));
+				    pt_get_name_without_current_user_name (original_spec->info.spec.entity_name->
+									   info.name.original));
 		}
 	      else
 		{
