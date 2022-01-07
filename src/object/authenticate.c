@@ -2148,17 +2148,8 @@ au_is_user_group_member (MOP group_user, MOP user)
 
   db_make_null (&group_user_val);
 
-  if (group_user == NULL)
+  if (!group_user || !user)
     {
-      /* youngjinj */
-      assert (false);
-      return false;
-    }
-
-  if (user == NULL)
-    {
-      /* youngjinj */
-      assert (false);
       return false;
     }
 
@@ -2167,20 +2158,24 @@ au_is_user_group_member (MOP group_user, MOP user)
       return true;
     }
 
-  error = au_get_set (user, "groups", &groups);
-  if (error != NO_ERROR)
-    {
-      /* youngjinj */
-      assert (false);
-      return false;
-    }
-
   db_make_object (&group_user_val, group_user);
 
-  if (set_ismember (groups, &group_user_val))
+  if (au_get_set (user, "groups", &groups) == NO_ERROR)
+    {
+      if (set_ismember (groups, &group_user_val))
+	{
+	  set_free (groups);
+	  return true;
+	}
+    }
+  else
+    {
+      assert (er_errid () != NO_ERROR);
+    }
+
+  if (groups)
     {
       set_free (groups);
-      return true;
     }
 
   return false;
