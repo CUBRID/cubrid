@@ -9915,19 +9915,12 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       return NULL;
     }
 
-  if (PT_IS_NAME_NODE (node) && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_USER_SPECIFIED_NAME))
+  if (PT_IS_NAME_NODE (node) && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
     {
       is_user_specified_name = true;
 
-      if (node->info.name.original == NULL || node->info.name.original[0] == '\0')
-	{
-	  /* youngjinj */
-	  assert (false);
-	  return NULL;
-	}
-
-	original_name = node->info.name.original;
-	resolved_name = node->info.name.resolved;
+      original_name = node->info.name.original;
+      resolved_name = node->info.name.resolved;
     }
   else if (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op))
     {
@@ -9938,28 +9931,14 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
 	  PT_NODE *name = node->info.expr.arg1->info.dot.arg2;
 
-	  if (name->info.name.original == NULL || name->info.name.original[0] == '\0')
-	    {
-	      /* youngjinj */
-	      assert (false);
-	      return NULL;
-	    } 
-
 	  original_name = name->info.name.original;
 	  resolved_name = owner->info.name.original;
 	}
       else
-        {
+	{
 	  assert (PT_IS_NAME_NODE (node->info.expr.arg1));
 
 	  PT_NODE *name = node->info.expr.arg1;
-
-          if (name->info.name.original == NULL || name->info.name.original[0] == '\0')
-	    {
-	      /* youngjinj */
-	      assert (false);
-	      return NULL;
-	    }
 
 	  original_name = name->info.name.original;
 	  resolved_name = name->info.name.resolved;
@@ -9970,12 +9949,26 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       return node;
     }
 
-  dot = strchr (original_name, '.');
-  if (dot)
+  if (original_name == NULL || original_name[0] == '\0' )
+    {
+      return node;
+    }
+
+  if (strchr (original_name, '.'))
     {
       if (is_user_specified_name)
 	{
-	  PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_USER_SPECIFIED_NAME);
+	  PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_USER_SPECIFIED);
+	}
+
+      return node;
+    }
+
+  if (resolved_name && resolved_name[0] != '\0' && strchr (resolved_name, '.'))
+    {
+      if (is_user_specified_name)
+	{
+	  PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_USER_SPECIFIED);
 	}
 
       return node;
@@ -10000,7 +9993,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       /* Skip in case 4, 6 */
       if (resolved_name == NULL || resolved_name[0] == '\0' || intl_identifier_casecmp (resolved_name, "DBA") == 0)
 	{
-	  PT_NAME_INFO_CLEAR_FLAG(node, PT_NAME_USER_SPECIFIED_NAME);
+	  PT_NAME_INFO_CLEAR_FLAG(node, PT_NAME_INFO_USER_SPECIFIED);
 
 	  return node;
 	}
@@ -10028,7 +10021,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  node->info.name.original = user_specified_name;
 	  node->info.name.resolved = NULL;
 
-	  PT_NAME_INFO_CLEAR_FLAG(node, PT_NAME_USER_SPECIFIED_NAME);
+	  PT_NAME_INFO_CLEAR_FLAG(node, PT_NAME_INFO_USER_SPECIFIED);
 	}
       else
 	{

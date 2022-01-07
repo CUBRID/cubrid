@@ -5235,7 +5235,7 @@ user_specified_name_without_dot
 
 			    parser_free_tree (this_parser, user);
 
-			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_USER_SPECIFIED_NAME);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
 
 			$$ = name;
@@ -5250,7 +5250,7 @@ user_specified_name_without_dot
 			if (name
 			    && name->node_type == PT_NAME)
 			  {
-			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_USER_SPECIFIED_NAME);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
 
 			$$ = name;
@@ -5286,7 +5286,7 @@ user_specified_name
 
 			    parser_free_tree (this_parser, user);
 			    
-			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_USER_SPECIFIED_NAME);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
 
 			$$ = name;
@@ -5301,7 +5301,7 @@ user_specified_name
 			if (name
 			    && name->node_type == PT_NAME)
 			  {
-			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_USER_SPECIFIED_NAME);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
 
 			$$ = name;
