@@ -5168,9 +5168,8 @@ au_change_owner (MOP classmop, MOP owner)
   SM_ATTRIBUTE *attr;
 
   char *owner_name = NULL;
-  const char *class_simple_name = NULL;
-  char *class_full_name = NULL;
-  int len = 0;
+  const char *class_name = NULL;
+  char class_full_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0'};
 
   AU_DISABLE (save);
   if (!au_is_dba_group_member (Au_user))
@@ -5206,8 +5205,8 @@ au_change_owner (MOP classmop, MOP owner)
 	   * Since class_full_name includes owner_name, if owner of class is changed,
 	   * class_full_name must be changed as well.
 	   */
-	  class_simple_name = sm_ch_simple_name ((MOBJ) class_);
-	  if (sm_check_system_class_by_name (class_simple_name))
+	  class_name = sm_ch_simple_name ((MOBJ) class_);
+	  if (sm_check_system_class_by_name (class_name))
 	    {
 	      error = locator_flush_class(classmop);
 	    }
@@ -5215,13 +5214,12 @@ au_change_owner (MOP classmop, MOP owner)
 	    {
 	      owner_name = au_get_user_name(owner);
 
-	      len = snprintf (NULL, 0, "%s.%s", owner_name, class_simple_name) + 1;
-	      class_full_name = (char *) calloc (len, sizeof (char));
-	      snprintf (class_full_name, len, "%s.%s", owner_name, class_simple_name);
+	      snprintf (class_full_name, DB_MAX_FULL_CLASS_LENGTH, "%s.%s", owner_name, class_name);
 
 	      error = sm_rename_class (classmop, class_full_name);
 	      if (error == ER_LC_CLASSNAME_EXIST)
 		{
+		  /* youngjinj */
 		  er_clear ();
 		  error = NO_ERROR;
 		}
@@ -5230,11 +5228,6 @@ au_change_owner (MOP classmop, MOP owner)
 		{
 		  db_string_free (owner_name);
 		  owner_name = NULL;
-	      }
-
-	      if (class_full_name)
-		{
-		  free_and_init (class_full_name);
 	      }
 	    }
 	}
@@ -5260,7 +5253,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_owner = 0;
   MOP *sub_partitions = NULL;
   const char *class_name = NULL, *owner_name = NULL;
-  char *class_full_name = NULL;
+  char realname[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
   SM_CLASS *clsobj;
 
   db_make_null (returnval);
@@ -5278,21 +5271,8 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
       return;
     }
 
-  error = sm_user_specified_name (class_name, NULL, &class_full_name);
-  if (error != NO_ERROR)
-    {
-      /* youngjinj */
-      assert (false);
-      return;
-    }
-
-  classmop = sm_find_class (class_full_name);
-
-  if (class_full_name)
-    {
-      free_and_init (class_full_name);
-    }
-
+  sm_user_specified_name (class_name, NULL, realname, DB_MAX_IDENTIFIER_LENGTH_287);
+  classmop = sm_find_class (realname);
   if (classmop == NULL)
     {
       db_make_error (returnval, er_errid ());
@@ -5617,23 +5597,15 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
 {
   MOP user;
   MOP classmop;
-  char *class_name_p = NULL;
+  char realname[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (returnval);
+
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
-      error = sm_user_specified_name (db_get_string (class_), NULL, &class_name_p);
-      if (error != NO_ERROR)
-        {
-	  /* youngjinj */
-	  assert (false);
-	}
-      classmop = sm_find_class (class_name_p);
-      if (class_name_p)
-        {
-	  free_and_init (class_name_p);
-	}
+      sm_user_specified_name (db_get_string (class_), NULL, realname, DB_MAX_IDENTIFIER_LENGTH_287);
+      classmop = sm_find_class (realname);
       if (classmop != NULL)
 	{
 	  user = au_get_class_owner (classmop);

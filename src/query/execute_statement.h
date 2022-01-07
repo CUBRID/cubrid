@@ -59,8 +59,6 @@ extern int do_reset_auto_increment_serial (MOP serial_obj);
 extern int do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, PT_NODE * new_cur_val);
 
 extern MOP do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *serial_name);
-extern char *do_get_other_name_from_db_class (const char *class_name);
-extern char *do_get_other_name_from_db_serial (const char *serial_name);
 extern int do_get_serial_cached_num (int *cached_num, MOP serial_obj);
 
 extern int do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -190,5 +188,8 @@ extern int do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
+
+extern int do_find_other_class_name (const char *name, char *buf, size_t buf_size);
+extern int do_find_other_serial_name (const char *name, char *buf, size_t buf_size);
 
 #endif /* _EXECUTE_STATEMENT_H_ */

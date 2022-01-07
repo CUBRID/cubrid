@@ -1284,7 +1284,6 @@ do_get_obj_id (DB_IDENTIFIER * obj_id, DB_OBJECT * class_mop, const char *name, 
   return mop;
 }
 
-
 /*
  * do_get_serial_obj_id() -
  *   return: serial object
@@ -1298,194 +1297,30 @@ MOP
 do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *serial_name)
 {
   MOP serial_mop = NULL;
-  char *other_serial_name = NULL;
 
   serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, serial_name, SERIAL_ATTR_FULL_NAME);
-
-  if (serial_mop == NULL && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+  if (serial_mop)
     {
-      other_serial_name = do_get_other_name_from_db_serial (serial_name);
+      return serial_mop;
+    }
 
-      serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, other_serial_name, SERIAL_ATTR_FULL_NAME);
+  /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+    {
+      char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
 
+      do_find_other_serial_name (serial_name, other_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
       if (other_serial_name)
 	{
-	  free_and_init (other_serial_name);
-	}
-    }
-
-  return serial_mop;
-}
-
-char *
-do_get_other_name_from_db_class (const char *class_name)
-{
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE value;
-
-  const char *query = NULL;
-  char *query_buf = NULL;
-  int query_len = 0;
-  
-  const char *dot = NULL;
-  const char *name = NULL;
-  const char *full_name = NULL;
-  char *other_name = NULL;
- 
-  int error = NO_ERROR;
-
-  /* initialization */
-  query_error.err_lineno = 0;
-  query_error.err_posno = 0;
-
-  db_make_null (&value);
-
-  dot = strchr (class_name, '.');
-  name = dot ? (dot + 1) : class_name;
-
-  query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s'";
-  query_len = snprintf (NULL, 0, query, CT_CLASS_NAME, name) + 1;
-  query_buf = (char *) calloc (query_len, sizeof (char));
-  snprintf (query_buf, query_len, query, CT_CLASS_NAME, name);
-
-  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
-  if (error < NO_ERROR)
-    {
-      /* youngjinj */
-      assert (false);
-      goto end;
-    }
-
-  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
-    {
-      if (db_query_get_tuple_value (query_result, 0, &value) == NO_ERROR)
-        {
-          if (!db_value_is_null (&value))
+	  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, other_serial_name, SERIAL_ATTR_FULL_NAME);
+	  if (serial_mop)
 	    {
-	      full_name = db_get_string (&value);
-	      other_name = strndup (full_name, strlen (full_name));
-	      if (other_name == NULL)
-		{
-		  /* youngjinj */
-		  assert (false);
-		  goto end;
-		}
-	    }
-	
-	  pr_clear_value (&value);
-	}
-
-      if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-        {
-	  other_name = NULL;
-
-	  if (other_name)
-	    {
-	      free_and_init (other_name);
+	      return serial_mop;
 	    }
 	}
     }
 
-end:
-  if (query_buf)
-    {
-      free_and_init (query_buf);
-    }
-
-  if (query_result)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return other_name;
-}
-
-char *
-do_get_other_name_from_db_serial (const char *serial_name)
-{
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE value;
-
-  const char *query = NULL;
-  char *query_buf = NULL;
-  int query_len = 0;
-
-  const char *dot = NULL;
-  const char *name = NULL;
-  const char *full_name = NULL;
-  char *other_name = NULL;
-
-  int error = NO_ERROR;
-
-  /* initialization */
-  query_error.err_lineno = 0;
-  query_error.err_posno = 0;
-
-  db_make_null (&value);
-
-  dot = strchr (serial_name, '.');
-  name = dot ? (dot + 1) : serial_name;
-
-  /* Get private synonyms before public synonyms. */
-  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s'";
-  query_len = snprintf (NULL, 0, query, CT_SERIAL_NAME, name) + 1;
-  query_buf = (char *) calloc (query_len, sizeof (char));
-  snprintf (query_buf, query_len, query, CT_SERIAL_NAME, name);
-
-  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
-  if (error < NO_ERROR)
-    {
-      /* youngjinj */
-      assert (false);
-      goto end;
-    }
-
-  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
-    {
-      if (db_query_get_tuple_value (query_result, 0, &value) == NO_ERROR)
-        {
-          if (!db_value_is_null (&value))
-	    {
-	      full_name = db_get_string (&value);
-	      other_name = strndup (full_name, strlen (full_name));
-	      if (other_name == NULL)
-		{
-		  /* youngjinj */
-		  assert (false);
-		  goto end;
-		}
-	    }
-	
-	  pr_clear_value (&value);
-	}
-
-      if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-        {
-	  other_name = NULL;
-
-	  if (other_name)
-	    {
-	      free_and_init (other_name);
-	    }
-	}
-    }
-
-end:
-  if (query_buf)
-    {
-      free_and_init (query_buf);
-    }
-
-  if (query_result)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return other_name;
+  return NULL;
 }
 
 /*
@@ -18612,6 +18447,149 @@ do_kill (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   return error;
 #endif
+}
+
+int
+do_find_other_class_name (const char *name, char *buf, size_t buf_size)
+{
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+
+  const char *query = NULL;
+  char query_buf[1024] = { '\0' };	// 1024
+  
+  const char *dot = NULL;
+  const char *name_p = NULL;
+ 
+  int error = NO_ERROR;
+
+  /* initialization */
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  db_make_null (&value);
+
+  memset (buf, 0, buf_size);
+
+  if (name == NULL || name[0] == '\0')
+    {
+      return NO_ERROR;
+    }
+
+  dot = strchr (name, '.');
+  name_p = dot ? (dot + 1) : name;
+
+  query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s'";
+  snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, name_p);
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (!db_value_is_null (&value))
+    {
+      snprintf (buf, buf_size, "%s", db_get_string (&value));
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because class_full_name is not unique. */
+      memset (buf, 0, buf_size);
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+}
+
+int
+do_find_other_serial_name (const char *name, char *buf, size_t buf_size)
+{
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+
+  const char *query = NULL;
+  char query_buf[2048] = { '\0' };	// 2048
+
+  const char *dot = NULL;
+  const char *name_p = NULL;
+ 
+  int error = NO_ERROR;
+
+  /* initialization */
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  db_make_null (&value);
+
+  memset (buf, 0, buf_size);
+
+  dot = strchr (name, '.');
+  name_p = dot ? (dot + 1) : name;
+
+  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s'";
+  snprintf (query_buf, sizeof (query_buf), query, CT_SERIAL_NAME, name_p);
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (!db_value_is_null (&value))
+    {
+      snprintf (buf, buf_size, "%s", db_get_string (&value));
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because class_full_name is not unique. */
+      memset (buf, 0, buf_size);
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
 }
 
 /*

@@ -528,7 +528,7 @@ static void idmap_final (void);
 static int idmap_grow (int size);
 static int ldr_assign_class_id (DB_OBJECT *class_, int id);
 static DB_OBJECT *ldr_find_class (const char *class_name);
-static char *ldr_get_other_name_from_from_db_class (const char *class_name);
+static int ldr_find_other_class_name (const char *name, char *buf, size_t buf_size);
 static DB_OBJECT *ldr_get_class_from_id (int id);
 static void ldr_clear_context (LDR_CONTEXT *context);
 static void ldr_clear_and_free_context (LDR_CONTEXT *context);
@@ -1419,139 +1419,131 @@ ldr_assign_class_id (DB_OBJECT *class_, int id)
 static DB_OBJECT *
 ldr_find_class (const char *class_name)
 {
-  LC_FIND_CLASSNAME find;
   DB_OBJECT *class_ = NULL;
-  char *realname = NULL;
-  char *other_class_name = NULL;
-  int error = NO_ERROR;
+  LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
+  char realname[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
 
   /* Check for internal error */
-  if (class_name == NULL)
+  if (class_name == NULL || class_name[0] == '\0')
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       display_error (0);
       return NULL;
     }
 
-  error = sm_user_specified_name (class_name, NULL, &realname);
-  if (error != NO_ERROR)
-    {
-      /* youngjinj */
-      assert (false);
-    }
+  sm_user_specified_name (class_name, NULL, realname, DB_MAX_FULL_CLASS_LENGTH);
+
   ldr_Hint_class_names[0] = realname;
 
-  find =
-	  locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1,
-				    NULL_LOCK);
-
-  if (find == LC_CLASSNAME_EXIST)
+  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1, NULL_LOCK);
+  if (found == LC_CLASSNAME_EXIST)
     {
       class_ = db_find_class (class_name);
+
+      ldr_Hint_class_names[0] = NULL;
+
+      return class_;
     }
 
-  if (find != LC_CLASSNAME_EXIST && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+  /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
-      other_class_name = ldr_get_other_name_from_from_db_class (realname);
+      char other_class_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
 
+      ldr_find_other_class_name (realname, other_class_name, DB_MAX_FULL_CLASS_LENGTH);
       if (other_class_name)
 	{
 	  ldr_Hint_class_names[0] = other_class_name;
 
-	  find = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1, NULL_LOCK);
+	  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1, NULL_LOCK);
+	  if (found == LC_CLASSNAME_EXIST)
+	    {
+	      class_ = db_find_class (other_class_name);
 
-	    if (find == LC_CLASSNAME_EXIST)
-	      {
-		class_ = db_find_class (other_class_name);
-	      }
-	
-	  free_and_init (other_class_name);
+	      ldr_Hint_class_names[0] = NULL;
+
+	      return class_;
+	    }
 	}
-    }
-
-  if (realname)
-    {
-      free_and_init (realname);
     }
 
   ldr_Hint_class_names[0] = NULL;
 
-  return (class_);
+  return class_;
 }
 
-static char *
-ldr_get_other_name_from_from_db_class (const char *class_name)
+static int
+ldr_find_other_class_name (const char *name, char *buf, size_t buf_size)
 {
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   DB_VALUE value;
 
   const char *query = NULL;
-  char *query_buf = NULL;
-  int query_len = 0;
-  // const char *result = NULL;
-  
+  char query_buf[1024] = { '\0' };	// 1024
+
   const char *dot = NULL;
-  const char *name = NULL;
-  const char *full_name = NULL;
-  char *other_name = NULL;
+  const char *name_p = NULL;
  
   int error = NO_ERROR;
 
-  /* initialization */
+  /* Initialization. */
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
   db_make_null (&value);
 
-  dot = strchr (class_name, '.');
-  name = dot ? (dot + 1) : class_name;
+  memset (buf, 0, buf_size);
+
+  if (name == NULL || name[0] == '\0')
+    {
+      return NO_ERROR;
+    }
+
+  dot = strchr (name, '.');
+  name_p = dot ? (dot + 1) : name;
 
   query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s'";
-  query_len = snprintf (NULL, 0, query, "_db_class", name) + 1;
-  query_buf = (char *) calloc (query_len, sizeof (char));
-  snprintf (query_buf, query_len, query, "_db_class", name);
+  snprintf (query_buf, sizeof (query_buf), query, "_db_class", name_p);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
     {
-      /* youngjinj */
-      assert (false);
       goto end;
     }
 
-  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
     {
-      if (db_query_get_tuple_value (query_result, 0, &value) == NO_ERROR)
-        {
-	  if (!db_value_is_null (&value))
-	    {
-	      full_name = db_get_string (&value);
-	      other_name = strndup (full_name, strlen (full_name));
-	    }
-	
-	  pr_clear_value (&value);
-	}
+      goto end;
+    }
 
-      if (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-        {
-	  other_name = NULL;
-	}
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (!db_value_is_null (&value))
+    {
+      snprintf (buf, buf_size, "%s", db_get_string (&value));
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because class_full_name is not unique. */
+      memset (buf, 0, buf_size);
     }
 
 end:
-  if (query_buf)
-    {
-      free_and_init (query_buf);
-    }
-
   if (query_result)
     {
       db_query_end (query_result);
       query_result = NULL;
     }
 
-  return other_name;
+  return error;
 }
 
 /*

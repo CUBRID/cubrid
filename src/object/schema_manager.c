@@ -2169,58 +2169,51 @@ sm_downcase_name (const char *name, char *buf, int maxlen)
   intl_identifier_lower (name, buf);
 }
 
+/* AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH is not a target. 
+ * Trigger and serial names can be longer than DB_MAX_FULL_CLASS_LENGTH.
+ */
 int
-sm_user_specified_name (const char *name, const char *owner_name, char **user_specified_name)
+sm_user_specified_name (const char *name, const char *owner_name, char *buf, int buf_size)
 {
   char *dot = NULL;
   const char *name_p = NULL;
   const char *owner_name_p = NULL;
-  char *resolved_name = NULL;
   char *current_user_name = NULL;
-  char *user_specified_name_p = NULL;
-  int len = 0;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char user_specified_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  int name_size = 0;
   int error = NO_ERROR;
-
-  assert (*user_specified_name == NULL);
 
   if (name == NULL || name[0] == '\0')
     {
-      /* youngjinj */
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_NAME, 1, name);
-      assert (false);
-      return error;
+      return er_errid ();
     }
+
+  memset (buf, 0, buf_size);
 
   dot = (char *) strchr (name, '.');
   if (dot)
     {
-      len = intl_identifier_lower_string_size (name) + 1;
-      assert (len < DB_MAX_FULL_CLASS_LENGTH);
-      *user_specified_name = (char *) calloc (len, sizeof (char));
-      if (*user_specified_name == NULL)
-	{
-	  /* youngjinj */
-	  assert (false);
-	  return error;
-	}
-      intl_identifier_lower (name, *user_specified_name);
-      return error;
+      name_size = intl_identifier_lower_string_size (name);
+      assert (name_size < buf_size);
+      assert (name_size < DB_MAX_FULL_CLASS_LENGTH);
+
+      intl_identifier_lower (name, buf);
+
+      return NO_ERROR;
     }
 
   if (sm_check_system_class_by_name (name)
       && (owner_name == NULL || owner_name[0] == '\0' || intl_identifier_casecmp (owner_name, "DBA") == 0))
     {
-      len = intl_identifier_lower_string_size (name) + 1;
-      assert (len < DB_MAX_SIMPLE_CLASS_LENGTH);
-      *user_specified_name = (char *) calloc (len, sizeof (char));
-      if (*user_specified_name == NULL)
-	{
-	  /* youngjinj */
-	  assert (false);
-	  return error;
-	}
-      intl_identifier_lower (name, *user_specified_name);
-      return error;
+      name_size = intl_identifier_lower_string_size (name);
+      assert (name_size < buf_size);
+      assert (name_size < DB_MAX_SIMPLE_CLASS_LENGTH);
+
+      intl_identifier_lower (name, buf);
+
+      return NO_ERROR;
     }
 
   if (owner_name && owner_name[0] != '\0')
@@ -2229,10 +2222,10 @@ sm_user_specified_name (const char *name, const char *owner_name, char **user_sp
       if (dot)
 	{
 	  dot[0] = '\0';
-	  resolved_name = strndup (owner_name, strlen (owner_name));
+	  snprintf (qualifier_name, DB_MAX_USER_LENGTH, "%s", owner_name);
 	  dot[0] = '.';
 
-	  owner_name_p = resolved_name;
+	  owner_name_p = qualifier_name;
 	}
       else
 	{
@@ -2242,80 +2235,21 @@ sm_user_specified_name (const char *name, const char *owner_name, char **user_sp
   else
     {
       current_user_name = db_get_user_name ();
+      assert (current_user_name != NULL);
+
       owner_name_p = current_user_name;
     }
 
-  len = snprintf (NULL, 0, "%s.%s", owner_name_p, name) + 1;
-  user_specified_name_p = (char *) calloc (len, sizeof (char));
-  if (user_specified_name_p == NULL)
-    {
-      /* youngjinj */
-      assert (false);
-      goto end;
-    }
-  snprintf (user_specified_name_p, len, "%s.%s", owner_name_p, name);
-
-  len = intl_identifier_lower_string_size (user_specified_name_p) + 1;
-  assert (len < DB_MAX_FULL_CLASS_LENGTH);
-  *user_specified_name = (char *) calloc (len, sizeof (char));
-  if (*user_specified_name == NULL)
-    {
-      /* youngjinj */
-      assert (false);
-      goto end;
-    }
-  intl_identifier_lower (user_specified_name_p, *user_specified_name);
-
-end:
-  if (resolved_name)
-    {
-      free_and_init (resolved_name);
-    }
+  snprintf (user_specified_name, DB_MAX_FULL_CLASS_LENGTH, "%s.%s", owner_name_p, name);
+  intl_identifier_lower (user_specified_name, buf);
 
   if (current_user_name)
     {
       db_string_free (current_user_name);
       current_user_name = NULL;
-      owner_name_p = NULL;
-    }
-
-  if (user_specified_name_p)
-    {
-      free_and_init (user_specified_name_p);
     }
 
   return error;
-}
-
-char *
-sm_get_user_name (const char *name)
-{
-  char *dot = NULL;
-  char *user_name = NULL;
-
-  if (name == NULL || name[0] == '\0')
-    {
-      /* youngjinj */
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_NAME, 1, name);
-      assert (false);
-      return NULL;
-    }
-
-  dot = (char *) strchr (name, '.');
-  if (dot)
-    {
-      dot[0] = '\0';
-      user_name = strndup (name, strlen (name));
-      dot[0] = '.';
-
-      if (user_name == NULL)
-	{
-	  /* youngjinj */
-	  assert (false);
-	}
-    }
-
-  return user_name;
 }
 
 /*
@@ -3276,11 +3210,10 @@ sm_check_system_class_by_name (const char *name)
 
   const char *dot = NULL;
   const char *simple_name = NULL;
-  char *downcase_simple_name = NULL;
-  int len = 0;
-  int num = 0;
+  char downcase_simple_name[SM_MAX_SIMPLE_CLASS_LENGTH] = { '\0' };
+  int name_size = 0;
+  int count = 0;
   int i = 0;
-  int error = NO_ERROR;
 
   if (name == NULL || name[0] == '\0')
     {
@@ -3288,27 +3221,12 @@ sm_check_system_class_by_name (const char *name)
     }
 
   dot = strchr (name, '.');
-  if (dot)
-    {
-      simple_name = dot + 1;
-    }
-  else
-    {
-      simple_name = name;
-    }
+  simple_name = dot ? (dot + 1) : name;
 
-  len = intl_identifier_lower_string_size (simple_name);
-  assert (len < SM_MAX_SIMPLE_CLASS_LENGTH);
-  downcase_simple_name = (char *) calloc (len + 1, sizeof (char));
-  if (downcase_simple_name == NULL)
-    {
-      /* youngjinj */
-      assert (false);
-      return error;
-    }
+  name_size = intl_identifier_lower_string_size (simple_name);
+  assert (name_size < SM_MAX_SIMPLE_CLASS_LENGTH);
+
   intl_identifier_lower (simple_name, downcase_simple_name);
-
-
 
   if (strncmp (downcase_simple_name, ROOTCLASS_NAME, strlen (ROOTCLASS_NAME)) == 0)
     {
@@ -3325,23 +3243,13 @@ sm_check_system_class_by_name (const char *name)
       return false;
     }
 
-  num = sizeof (system_classes) / sizeof (system_classes[0]);
-  for (i = 0; i < num; i++)
+  count = sizeof (system_classes) / sizeof (system_classes[0]);
+  for (i = 0; i < count; i++)
     {
       if (strncmp (downcase_simple_name, system_classes[i].name, system_classes[i].len) == 0)
 	{
-	  if (downcase_simple_name)
-	    {
-	      free_and_init (downcase_simple_name);
-	    }
-
 	  return true;
 	}
-    }
-
-  if (downcase_simple_name)
-    {
-      free_and_init (downcase_simple_name);
     }
 
   return false;
@@ -12971,8 +12879,6 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   SM_CLASS *class_;
   DB_OBJLIST *cursupers, *oldsupers, *newsupers, *cursubs, *newsubs;
   SM_TEMPLATE *flat;
-  char *user_name = NULL;
-  char *current_user_name = NULL;
 
   sm_bump_local_schema_version ();
   class_ = NULL;
@@ -13126,26 +13032,16 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	    }
 	  else
 	    {
-	      user_name = db_get_specified_user_name (template_->name);
-	      current_user_name = db_get_user_name ();
-	      if (user_name && intl_identifier_casecmp (user_name, current_user_name))
+	      char *dot = (char *) strchr (template_->name, '.');
+	      if (dot)
 		{
-		  class_->owner = db_find_user (user_name);
+		  dot[0] = '\0';
+		  class_->owner = db_find_user (template_->name);
+		  dot[0] = '.';
 		}
 	      else
 		{
-		  class_->owner = Au_user;	/* remember the owner id */
-		}
-
-	      if (user_name)
-		{
-		  db_ws_free_and_init (user_name);
-		}
-
-	      if (current_user_name)
-		{
-		  db_string_free (current_user_name);
-		  current_user_name = NULL;
+		  class_->owner = Au_user;
 		}
 	    }
 

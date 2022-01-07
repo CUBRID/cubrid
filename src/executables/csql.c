@@ -802,7 +802,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 #if !defined(WINDOWS)
   HIST_ENTRY *hist_entry;
 #endif /* !WINDOWS */
-  char *user_specified_name = NULL;
+  char realname[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
 
   /* get session command and argument */
   ptr = line_read;
@@ -1067,17 +1067,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
         {
-	  error_code = sm_user_specified_name (argument, NULL, &user_specified_name);
-	  if (error_code != NO_ERROR)
-	    {
-	      /* youngjinj */
-	      assert (false);
-	    }
-	  csql_help_schema (user_specified_name);
-	  if (user_specified_name)
-	    {
-	      free_and_init (user_specified_name);
-	    }
+	  sm_user_specified_name (argument, NULL, realname, DB_MAX_IDENTIFIER_LENGTH_287);
+	  csql_help_schema (realname);
 	}
       if (csql_is_auto_commit_requested (csql_arg))
 	{
