@@ -7974,7 +7974,6 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return;
     }
 
-
   if (stmt->node_type == PT_CREATE_ENTITY)
     {
       name = stmt->info.create_entity.entity_name->info.name.original;

@@ -180,9 +180,13 @@ typedef struct tf_ct_class
 
 #define AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH (4)
 
-/* sprintf(SR_NAME, "%s_ai_%s", class_full_name, attribute_name) */
-#define AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH ((DB_MAX_FULL_CLASS_LENGTH - 1) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + (DB_MAX_IDENTIFIER_LENGTH - 1) + 1)
-#define MAX_SERIAL_NAME_LENGTH                (AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH)
+/*
+ * AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH : (287 - 1) + 4 + (255 -1) + 1 = 545
+ *   - sprintf (..., "%s_ai_%s", class_full_name, attribute_name)
+ */
+#define AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH \
+  ((DB_MAX_FULL_CLASS_LENGTH - 1) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + (DB_MAX_IDENTIFIER_LENGTH - 1) + 1)
+#define DB_MAX_SERIAL_NAME_LENGTH             (AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH)
 
 /*
  * Metaclass definitions
