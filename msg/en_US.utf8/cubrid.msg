@@ -1874,7 +1874,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
 306 dblink - Required information is missing.
-400 Operation "%1$s" cannot be performed on table "%2$s" of "%3$s". Because "%4$s" is not the DBA or a DBA group member.
+400 A member of owner group or a member of DBA group can create table.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

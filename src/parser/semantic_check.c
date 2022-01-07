@@ -8200,8 +8200,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
   DB_OBJECT *db_obj, *existing_entity;
-  const char *user_name = NULL;
-  const char *current_user_name = NULL;
+  const char *owner_name = NULL;
   int found, partition_status = DB_NOT_PARTITIONED_CLASS;
   int collation_id, charset;
   bool found_reuse_oid_option = false, reuse_oid = false;
@@ -8368,17 +8367,26 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  /* check name doesn't already exist as a class */
-  name = node->info.create_entity.entity_name;
-
-  current_user_name = db_get_user_name ();
-  user_name = db_get_specified_user_name (name->info.name.original);
-  if (intl_identifier_casecmp (current_user_name, user_name) && au_is_dba_group_member (Au_user) == false)
+  /* check if the class can be created with the specified owner. */
+  owner_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
+  if (owner_name && owner_name[0] != '\0' && au_is_dba_group_member (Au_user) == false)
     {
-	  PT_ERRORmf4 (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ER_AU_DBA_ONLY, "CREATE", name->info.name.original, user_name, current_user_name);
-	  return;
+      MOP owner = NULL;
+      DB_SET *groups = NULL;
+
+      owner = db_find_user (owner_name);
+
+      if (ws_is_same_object (owner, Au_user) == false)
+	{
+	  if (au_is_user_group_member (owner, Au_user) == false)
+	    {
+	      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_MEMBER_CREATE_NOT_ALLOWED);
+	    }
+	}
     }
 
+  /* check name doesn't already exist as a class */
+  name = node->info.create_entity.entity_name;
   existing_entity = pt_find_class (parser, name, false);
   if (existing_entity != NULL)
     {
