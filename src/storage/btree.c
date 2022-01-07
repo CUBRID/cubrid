@@ -18787,12 +18787,6 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 
       if (are_types_comparable)
 	{
-	  /*
-	   * for do_coercion = 2, we need to process key comparing as char-type
-	   * in case that one of two arguments has varchar-type
-	   * if the other argument has char-type
-	   */
-	  do_coercion = 1;
 	  c = key_domain->type->cmpval (key1, key2, do_coercion, total_order, NULL, key_domain->collation_id);
 	}
       else
