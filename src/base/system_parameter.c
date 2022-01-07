@@ -86,6 +86,7 @@
 #include "fault_injection.h"
 #include "tde.h"
 #if defined (SERVER_MODE)
+#include "thread_worker_pool.hpp"	// for cubthread::system_core_count
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 
@@ -698,6 +699,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
 #define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
+
+#define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2376,6 +2379,15 @@ static UINT64 prm_first_log_pageid_default = 0LL;
 static UINT64 prm_first_log_pageid_lower = 0LL;
 static UINT64 prm_first_log_pageid_upper = LOGPAGEID_MAX;
 static unsigned int prm_first_log_pageid_flag = 0;
+
+static const int lower_bound_core_count = (prm_css_max_clients_default / 3);
+static const int upper_bound_core_count = (prm_css_max_clients_upper / 3);
+
+int PRM_THREAD_CORE_COUNT = lower_bound_core_count;	// this value will be tuned
+static int prm_thread_core_count_default = lower_bound_core_count;
+static int prm_thread_core_count_lower = 1;
+static int prm_thread_core_count_upper = upper_bound_core_count;
+static unsigned int prm_thread_core_count_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6126,6 +6138,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_FIRST_LOG_PAGEID,
    (void *) &prm_first_log_pageid_upper,
    (void *) &prm_first_log_pageid_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_CORE_COUNT,
+   PRM_NAME_THREAD_CORE_COUNT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_thread_core_count_flag,
+   (void *) &prm_thread_core_count_default,
+   (void *) &PRM_THREAD_CORE_COUNT,
+   (void *) &prm_thread_core_count_upper,
+   (void *) &prm_thread_core_count_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -10485,6 +10509,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *fault_injection_test_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
+  SYSPRM_PARAM *thread_core_count_prm;
 
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
@@ -10499,6 +10524,7 @@ prm_tune_parameters (void)
   query_cache_size_in_pages_prm = prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES, NULL);
   test_mode_prm = prm_find (PRM_NAME_TEST_MODE, NULL);
   tz_leap_second_support_prm = prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
+  thread_core_count_prm = prm_find (PRM_NAME_THREAD_CORE_COUNT, NULL);
 
   /* disable AOUT list until we fix CBRD-20741 */
   if (pb_aout_ratio_prm != NULL)
@@ -10542,6 +10568,19 @@ prm_tune_parameters (void)
 	{
 	  sprintf (newval, "%d", max_clients);
 	  (void) prm_set (max_clients_prm, newval, false);
+	}
+
+      int safe_uppercore_count = ((css_get_max_conn () + 1) / 3);
+#if defined (SERVER_MODE)
+      int system_core_count = cubthread::system_core_count ();
+#else
+      int system_core_count = 1;	// SA_MODE
+#endif
+      int tuned_max_core_count = MIN (safe_uppercore_count, system_core_count);
+      if (PRM_GET_INT (thread_core_count_prm->value) > tuned_max_core_count)
+	{
+	  sprintf (newval, "%d", tuned_max_core_count);
+	  (void) prm_set (thread_core_count_prm, newval, false);
 	}
     }
 

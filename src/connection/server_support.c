@@ -254,6 +254,7 @@ static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_
 static bool css_get_connection_thread_pooling_configuration (void);
 static cubthread::wait_seconds css_get_connection_thread_timeout_configuration (void);
 static bool css_get_server_request_thread_pooling_configuration (void);
+static int css_get_server_request_thread_core_count_configruation (void);
 static cubthread::wait_seconds css_get_server_request_thread_timeout_configuration (void);
 static void css_start_all_threads (void);
 // *INDENT-ON*
@@ -1326,7 +1327,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // create request worker pool
   css_Server_request_worker_pool =
     cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, "transaction workers", NULL,
-						   cubthread::system_core_count (),
+						   css_get_server_request_thread_core_count_configruation (),
 						   cubthread::is_logging_configured
 						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
 						   css_get_server_request_thread_pooling_configuration (),
@@ -3254,6 +3255,12 @@ static bool
 css_get_server_request_thread_pooling_configuration (void)
 {
   return prm_get_bool_value (PRM_ID_THREAD_WORKER_POOLING);
+}
+
+static int
+css_get_server_request_thread_core_count_configruation (void)
+{
+  return prm_get_integer_value (PRM_ID_THREAD_CORE_COUNT);
 }
 
 static cubthread::wait_seconds
