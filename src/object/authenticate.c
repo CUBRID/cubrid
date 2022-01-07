@@ -5164,7 +5164,7 @@ au_change_owner (MOP classmop, MOP owner)
 
   char *owner_name = NULL;
   const char *class_name = NULL;
-  char class_full_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0'};
+  char class_full_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
 
   AU_DISABLE (save);
   if (!au_is_dba_group_member (Au_user))
@@ -5203,11 +5203,11 @@ au_change_owner (MOP classmop, MOP owner)
 	  class_name = sm_ch_simple_name ((MOBJ) class_);
 	  if (sm_check_system_class_by_name (class_name))
 	    {
-	      error = locator_flush_class(classmop);
+	      error = locator_flush_class (classmop);
 	    }
 	  else
 	    {
-	      owner_name = au_get_user_name(owner);
+	      owner_name = au_get_user_name (owner);
 
 	      snprintf (class_full_name, DB_MAX_FULL_CLASS_LENGTH, "%s.%s", owner_name, class_name);
 
@@ -5223,7 +5223,7 @@ au_change_owner (MOP classmop, MOP owner)
 		{
 		  db_string_free (owner_name);
 		  owner_name = NULL;
-	      }
+		}
 	    }
 	}
     }

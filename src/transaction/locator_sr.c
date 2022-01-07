@@ -6224,7 +6224,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	   goto error;
+	  goto error;
 	}
       classname = string;
 

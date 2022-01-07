@@ -1066,7 +1066,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  csql_help_schema (NULL);
 	}
       else
-        {
+	{
 	  sm_user_specified_name (argument, NULL, realname, DB_MAX_IDENTIFIER_LENGTH_287);
 	  csql_help_schema (realname);
 	}

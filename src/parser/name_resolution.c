@@ -1876,8 +1876,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      assert (!PT_SPEC_IS_DERIVED (spec) || !PT_SPEC_IS_CTE (spec));
 			      flat = spec->info.spec.flat_entity_list;
 
-			      if (pt_qualifier_compare (attr->info.name.original, flat->info.name.resolved)
-				  == 0)
+			      if (pt_qualifier_compare (attr->info.name.original, flat->info.name.resolved) == 0)
 				{
 				  /* find spec set attr's spec_id */
 				  attr->info.name.spec_id = flat->info.name.spec_id;
@@ -3832,7 +3831,8 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
 	   *      - exposed_name of "t1"    : "u1.t1"
 	   *      - exposed_name of "t2 t1" : "t1"
 	   */
-	  if (!pt_qualifier_compare (p->info.spec.range_var->info.name.original, q->info.spec.range_var->info.name.original))
+	  if (!pt_qualifier_compare
+	      (p->info.spec.range_var->info.name.original, q->info.spec.range_var->info.name.original))
 	    {
 	      PT_MISC_TYPE p_type = p->info.spec.range_var->info.name.meta_class;
 	      PT_MISC_TYPE q_type = q->info.spec.range_var->info.name.meta_class;
@@ -7011,8 +7011,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 
 	  range = spec->info.spec.range_var;
 	  entity = spec->info.spec.entity_name;
-	  if (range && entity
-	      && (pt_qualifier_compare (range->info.name.original, index->info.name.resolved) == 0))
+	  if (range && entity && (pt_qualifier_compare (range->info.name.original, index->info.name.resolved) == 0))
 	    {
 	      classop = db_find_class (entity->info.name.original);
 	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)

@@ -1435,7 +1435,8 @@ ldr_find_class (const char *class_name)
 
   ldr_Hint_class_names[0] = realname;
 
-  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1, NULL_LOCK);
+  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1,
+				    NULL_LOCK);
   if (found == LC_CLASSNAME_EXIST)
     {
       class_ = db_find_class (class_name);
@@ -1455,7 +1456,8 @@ ldr_find_class (const char *class_name)
 	{
 	  ldr_Hint_class_names[0] = other_class_name;
 
-	  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1, NULL_LOCK);
+	  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1,
+					    NULL_LOCK);
 	  if (found == LC_CLASSNAME_EXIST)
 	    {
 	      class_ = db_find_class (other_class_name);
@@ -1484,7 +1486,7 @@ ldr_find_other_class_name (const char *name, char *buf, size_t buf_size)
 
   const char *dot = NULL;
   const char *name_p = NULL;
- 
+
   int error = NO_ERROR;
 
   /* Initialization. */

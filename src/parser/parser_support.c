@@ -9925,7 +9925,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   else if (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op))
     {
       if (PT_IS_DOT_NODE (node->info.expr.arg1)
-          && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg1)
+	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg1)
 	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2))
 	{
 	  PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
@@ -9949,7 +9949,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       return node;
     }
 
-  if (original_name == NULL || original_name[0] == '\0' )
+  if (original_name == NULL || original_name[0] == '\0')
     {
       return node;
     }
@@ -9993,7 +9993,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       /* Skip in case 4, 6 */
       if (resolved_name == NULL || resolved_name[0] == '\0' || intl_identifier_casecmp (resolved_name, "DBA") == 0)
 	{
-	  PT_NAME_INFO_CLEAR_FLAG(node, PT_NAME_INFO_USER_SPECIFIED);
+	  PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_USER_SPECIFIED);
 
 	  return node;
 	}
@@ -10021,7 +10021,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  node->info.name.original = user_specified_name;
 	  node->info.name.resolved = NULL;
 
-	  PT_NAME_INFO_CLEAR_FLAG(node, PT_NAME_INFO_USER_SPECIFIED);
+	  PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_USER_SPECIFIED);
 	}
       else
 	{
@@ -10049,7 +10049,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 }
 
 const char *
-pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE *name)
+pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name)
 {
   char *dot = NULL;
   const char *original_name = NULL;

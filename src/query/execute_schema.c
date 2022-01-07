@@ -9800,8 +9800,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 
 		  assert (class_name != NULL && att_name != NULL && hard_default != NULL);
 
-		  snprintf (query, SM_MAX_FULL_CLASS_LENGTH + SM_MAX_IDENTIFIER_LENGTH * 3 + 30, "UPDATE [%s] SET [%s]=%s WHERE [%s] IS NULL",
-			    class_name, att_name, hard_default, att_name);
+		  snprintf (query, SM_MAX_FULL_CLASS_LENGTH + SM_MAX_IDENTIFIER_LENGTH * 3 + 30,
+			    "UPDATE [%s] SET [%s]=%s WHERE [%s] IS NULL", class_name, att_name, hard_default, att_name);
 		  error = do_run_update_query_for_class (query, class_mop, &update_rows_count);
 		  if (error != NO_ERROR)
 		    {

@@ -1004,7 +1004,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
   logddl_set_start_time (NULL);
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (args->no_user_specified_name && db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY)
+  if (args->no_user_specified_name && db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY)
     {
       prm_set_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME, true);
     }

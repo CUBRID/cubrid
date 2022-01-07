@@ -6062,8 +6062,7 @@ qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       */
 
 	      /* compare the tables on which the indexes are defined */
-	      res_cmp_tbl_names =
-		pt_qualifier_compare (hint_node->info.name.resolved, next_node->info.name.resolved);
+	      res_cmp_tbl_names = pt_qualifier_compare (hint_node->info.name.resolved, next_node->info.name.resolved);
 
 	      if (res_cmp_tbl_names == 0)
 		{

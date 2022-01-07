@@ -631,7 +631,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 
 				      if (temp && temp < &(hint_p[j]) && !IS_HINT_ON_TABLE (hint_table[i].hint))
 					{
-					  
+
 					  *temp = '\0';
 					  arg->info.name.resolved = pt_trim_as_identifier (arg_start);
 					  arg->info.name.resolved = pt_makename (arg->info.name.resolved);

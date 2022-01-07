@@ -911,7 +911,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   pr_clear_value (&value);
   if (error != NO_ERROR)
     {
-     goto update_auto_increment_error;
+      goto update_auto_increment_error;
     }
 
   /* name */
@@ -1305,7 +1305,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
       char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
 
@@ -5942,7 +5942,8 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
 	  goto cleanup;
 	}
       classes_names[idx] = (char *) db_private_alloc (NULL, SM_MAX_FULL_CLASS_LENGTH * sizeof (char));
-      sm_downcase_name (node->info.delete_.spec->info.spec.entity_name->info.name.original, classes_names[idx], SM_MAX_FULL_CLASS_LENGTH);
+      sm_downcase_name (node->info.delete_.spec->info.spec.entity_name->info.name.original, classes_names[idx],
+			SM_MAX_FULL_CLASS_LENGTH);
       locks[idx] = X_LOCK;
       if (node->info.delete_.spec->info.spec.only_all == PT_ALL)
 	{
@@ -18457,10 +18458,10 @@ do_find_other_class_name (const char *name, char *buf, size_t buf_size)
 
   const char *query = NULL;
   char query_buf[1024] = { '\0' };	// 1024
-  
+
   const char *dot = NULL;
   const char *name_p = NULL;
- 
+
   int error = NO_ERROR;
 
   /* initialization */
@@ -18534,7 +18535,7 @@ do_find_other_serial_name (const char *name, char *buf, size_t buf_size)
 
   const char *dot = NULL;
   const char *name_p = NULL;
- 
+
   int error = NO_ERROR;
 
   /* initialization */

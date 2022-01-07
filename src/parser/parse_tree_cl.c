@@ -10021,7 +10021,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
 	}
       else
-        {
+	{
 	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
 	}
 
@@ -10043,7 +10043,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
 	}
       else
-        {
+	{
 	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
 	}
 
@@ -13104,7 +13104,10 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	    {
 	      if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
 		{
-		  q = pt_append_name (parser, q, pt_get_name_without_current_user_name (original_spec->info.spec.entity_name->info.name.original));
+		  q =
+		    pt_append_name (parser, q,
+				    pt_get_name_without_current_user_name (original_spec->info.spec.entity_name->info.
+									   name.original));
 		}
 	      else
 		{
@@ -13148,7 +13151,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	    {
 	      q = pt_append_name (parser, q, p->info.name.original);
 	    }
-	 
+
 	  if (p->info.name.meta_class == PT_INDEX_NAME)
 	    {
 	      if (p->etc == (void *) PT_IDX_HINT_FORCE)

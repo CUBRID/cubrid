@@ -4054,7 +4054,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 
   /* variable 1 */
   class_->header.ch_simple_name = get_string (buf, vars[ORC_SIMPLE_NAME_INDEX].length);
-  
+
   /* variable 2 */
   class_->loader_commands = get_string (buf, vars[ORC_LOADER_COMMANDS_INDEX].length);
 

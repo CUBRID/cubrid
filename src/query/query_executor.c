@@ -21852,7 +21852,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       GOTO_EXIT_ON_ERROR;
     }
   class_name = string;
-  
+
   for (i = 0; i < rep->n_indexes; i++)
     {
       /* class name */
