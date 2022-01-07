@@ -7832,7 +7832,7 @@ static inline SCAN_CODE
 evaluate_one_scanned_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 			    QFILE_TUPLE_RECORD * tplrec, bool * keep_going)
 {
-  DB_LOGICAL ev_res;
+  DB_LOGICAL ev_res = V_UNKNOWN;
 
   *keep_going = false;
 
