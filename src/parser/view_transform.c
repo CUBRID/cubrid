@@ -13019,7 +13019,7 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
 				dest_query->info.query.q.select.index_ss);
 	}
 
-      if (!is_index_ls || dest_query->info.query.q.select.index_ls != NULL)
+      if ((!is_index_ls || dest_query->info.query.q.select.index_ls != NULL) && !is_index_ss)
 	{
 	  dest_query->info.query.q.select.index_ls =
 	    parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.index_ls),

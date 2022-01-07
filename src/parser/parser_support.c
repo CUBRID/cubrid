@@ -723,27 +723,36 @@ pt_is_json_function (PARSER_CONTEXT * parser, const PT_NODE * node)
   if (node->node_type == PT_FUNCTION)
     {
       function_type = node->info.function.function_type;
-      if (function_type == F_JSON_ARRAY
-	  || function_type == F_JSON_ARRAY_APPEND || function_type == F_JSON_ARRAY_INSERT
-	  || function_type == F_JSON_CONTAINS || function_type == F_JSON_CONTAINS_PATH
-	  || function_type == F_JSON_DEPTH
-	  || function_type == F_JSON_EXTRACT
-	  || function_type == F_JSON_GET_ALL_PATHS
-	  || function_type == F_JSON_INSERT
-	  || function_type == F_JSON_KEYS
-	  || function_type == F_JSON_LENGTH
-	  || function_type == F_JSON_MERGE || function_type == F_JSON_MERGE_PATCH
-	  || function_type == F_JSON_OBJECT
-	  || function_type == F_JSON_PRETTY
-	  || function_type == F_JSON_QUOTE
-	  || function_type == F_JSON_REMOVE
-	  || function_type == F_JSON_REPLACE
-	  || function_type == F_JSON_SEARCH
-	  || function_type == F_JSON_SET
-	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID
-	  || function_type == PT_JSON_ARRAYAGG || function_type == PT_JSON_OBJECTAGG)
+      switch (function_type)
 	{
+	case F_JSON_ARRAY:
+	case F_JSON_ARRAY_APPEND:
+	case F_JSON_ARRAY_INSERT:
+	case F_JSON_CONTAINS:
+	case F_JSON_CONTAINS_PATH:
+	case F_JSON_DEPTH:
+	case F_JSON_EXTRACT:
+	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_INSERT:
+	case F_JSON_KEYS:
+	case F_JSON_LENGTH:
+	case F_JSON_MERGE:
+	case F_JSON_MERGE_PATCH:
+	case F_JSON_OBJECT:
+	case F_JSON_PRETTY:
+	case F_JSON_QUOTE:
+	case F_JSON_REMOVE:
+	case F_JSON_REPLACE:
+	case F_JSON_SEARCH:
+	case F_JSON_SET:
+	case F_JSON_TYPE:
+	case F_JSON_UNQUOTE:
+	case F_JSON_VALID:
+	case PT_JSON_ARRAYAGG:
+	case PT_JSON_OBJECTAGG:
 	  return true;
+	default:
+	  return false;
 	}
     }
 
