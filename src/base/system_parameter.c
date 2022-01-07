@@ -2380,7 +2380,7 @@ static UINT64 prm_first_log_pageid_upper = LOGPAGEID_MAX;
 static unsigned int prm_first_log_pageid_flag = 0;
 
 bool PRM_NO_USER_SPECIFIED_NAME = false;
-static bool prm_no_user_specified_name_default = false;
+/* set to true for testing. It should be false when the test is complete. (by youngjinj) */
 static unsigned int prm_no_user_specified_name_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
