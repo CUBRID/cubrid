@@ -12818,7 +12818,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       for (dt = attribute->data_type; dt != NULL; dt = dt->next)
 	{
 	  if (dt->info.data_type.entity != NULL && dt->info.data_type.entity->node_type == PT_NAME
-	      && intl_identifier_casecmp (dt->info.data_type.entity->info.name.original, classname) == 0)
+	      && pt_qualifier_compare (dt->info.data_type.entity->info.name.original, classname) == 0)
 	    {
 	      has_self_ref = true;
 	      break;

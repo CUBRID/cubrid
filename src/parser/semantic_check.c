@@ -1328,16 +1328,7 @@ pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
 
   assert (parser != NULL);
 
-  if (cls_ref && cls_ref->node_type == PT_NAME)
-    {
-      user_name = cls_ref->info.name.resolved;
-
-      if (user_name == NULL || user_name[0] == '\0')
-	{
-	  user_name = pt_get_user_name (cls_ref->info.name.original);
-	}
-    }
-
+  user_name = pt_get_qualifier_name (parser, cls_ref);
   if (user_name == NULL || user_name[0] == '\0')
     {
       return NULL;
@@ -1368,10 +1359,7 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
       return NULL;
     }
 
-  /* 
-   *  For compatibility, do not check the owner of DB_OBJECT when loading a lower version unload file.
-   *  When running loaddb as dba account, client_type becomes DB_CLIENT_TYPE_ADMIN_UTILITY.
-   */
+  /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
   if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
       return result;
@@ -1653,7 +1641,7 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
 	  PT_NODE *const name = i_attr->info.attr_def.attr_name;
 
 	  if (pt_str_compare (resolv_attr->info.name.original, name->info.name.original, CASE_INSENSITIVE) == 0
-	      && pt_str_compare (resolv_class->info.name.original, name->info.name.resolved, CASE_INSENSITIVE) == 0)
+	      && pt_qualifier_compare (resolv_class->info.name.original, name->info.name.resolved) == 0)
 	    {
 	      name->info.name.original = new_name->info.name.original;
 	    }
@@ -1684,7 +1672,7 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
 	    }
 	  else
 	    {
-	      if (pt_str_compare (resolv_class->info.name.original, name->info.name.resolved, CASE_INSENSITIVE) == 0)
+	      if (pt_qualifier_compare (resolv_class->info.name.original, name->info.name.resolved) == 0)
 		{
 		  /* i_attr is a keeper. keep the user-specified inherited attribute */
 		  t_attr = i_attr;
@@ -7087,7 +7075,7 @@ pt_attr_refers_to_self (PARSER_CONTEXT * parser, PT_NODE * attr, const char *sel
   for (type = attr->data_type->info.data_type.entity; type && type->node_type == PT_NAME; type = type->next)
     {
       /* self is a string because in the create case, self does not exist yet */
-      if (!intl_identifier_casecmp (self, type->info.name.original))
+      if (!pt_qualifier_compare (self, type->info.name.original))
 	{
 	  return true;
 	}
@@ -8498,7 +8486,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  for (parent = node->info.create_entity.supclass_list; parent && !found; parent = parent->next)
 	    {
-	      found = !pt_str_compare (resolv_class->info.name.original, parent->info.name.original, CASE_INSENSITIVE);
+	      found = !pt_qualifier_compare (resolv_class->info.name.original, parent->info.name.original);
 	    }
 
 	  if (!found)

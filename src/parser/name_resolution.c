@@ -5658,7 +5658,7 @@ pt_is_on_list (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * list)
 	  return NULL;		/* this is an error */
 	}
 
-      if (pt_str_compare (p->info.name.original, list->info.name.original, CASE_INSENSITIVE) == 0)
+      if (pt_qualifier_compare (p->info.name.original, list->info.name.original) == 0)
 	{
 	  return (PT_NODE *) list;	/* found a match */
 	}
@@ -7164,58 +7164,6 @@ pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag)
     }
 }
 
-/*
- * pt_dot_compare () -
- *   return: 0 if two strings followed first '.' are equal.
- *           1 if not equal
- *   p(in): A string
- *   q(in): A string
- *
- * Note :
- * two NULL strings are considered a match.
- * two strings of length zero match
- * A NULL string does NOT match a zero length string
- */
-int
-pt_dot_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag)
-{
-  char *dot;
-
-  if (!p && !q)
-    {
-      return 0;
-    }
-  if (!p || !q)
-    {
-      return 1;
-    }
-
-  /* search the first dot,
-   * * which is supposed to mean user-name */
-  dot = strchr ((char *) p, '.');
-  if (dot != NULL)
-    {
-      p = dot + 1;
-    }
-
-  /* search the first dot,
-   * * which is supposed to mean user-name */
-  dot = strchr ((char *) q, '.');
-  if (dot != NULL)
-    {
-      q = dot + 1;
-    }
-
-  if (case_flag == CASE_INSENSITIVE)
-    {
-      return intl_identifier_casecmp (p, q);
-    }
-  else
-    {
-      return intl_identifier_cmp (p, q);
-    }
-}
-
 int
 pt_qualifier_compare (const char *p, const char *q)
 {
@@ -7224,12 +7172,12 @@ pt_qualifier_compare (const char *p, const char *q)
   const char *qualifier_p = NULL;
   const char *qualifier_q = NULL;
 
-  if (p == NULL && q == NULL)
+  if (!p && !q)
     {
       return 0;
     }
 
-  if (p == NULL || q == NULL)
+  if (!p || !q)
     {
       return 1;
     }
@@ -7242,18 +7190,13 @@ pt_qualifier_compare (const char *p, const char *q)
       /*
        * In the case below, only after dot(.) is compared.
        *
-       * e.g. p : object_name
-       *      q : object_name
-       *
-       *      or
-       *
-       *      p : user_name.object_name
-       *      q : object_name
+       * e.g. p : user_name.object_name -> object_name
+       *      q : object_name           -> object_name
        *
        *      or
        * 
-       *      p : object_name
-       *      q : user_name.object_name
+       *      p : object_name           -> object_name
+       *      q : user_name.object_name -> object_name
        */
       qualifier_p = dot_p ? (dot_p + 1) : p;
       qualifier_q = dot_q ? (dot_q + 1) : q;
@@ -7261,8 +7204,15 @@ pt_qualifier_compare (const char *p, const char *q)
   else
     {
       /*
+       * In the case below, compare all.
+       *
        * e.g. p : user_name.object_name
        *      q : user_name.object_name
+       *
+       *      or
+       * 
+       *      p : object_name
+       *      q : object_name
        */
       qualifier_p = p;
       qualifier_q = q;
@@ -9440,21 +9390,18 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
       serial_name = serial_name_node->info.name.original;
     }
 
+  if (serial_name == NULL || serial_name[0] == '\0')
+    {
+      return NULL;
+    }
+
   if (owner_name && owner_name[0] != '\0')
     {
       serial_full_name = pt_append_string (parser, NULL, owner_name);
       serial_full_name = pt_append_string (parser, serial_name, ".");
     }
 
-  if (serial_name && serial_name[0] != '\0')
-    {
-      serial_full_name = pt_append_string (parser, NULL, serial_name);
-    }
-  else
-    {
-      /* youngjinj */
-      assert (false);
-    }
+  serial_full_name = pt_append_string (parser, NULL, serial_name);
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
   serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_full_name);

@@ -10116,7 +10116,7 @@ pt_get_name_without_current_user_name (const char *name)
 
   dot[0] = '\0';
 
-  if (current_user_name && name && intl_identifier_casecmp (current_user_name, name) == 0)
+  if (name && current_user_name && intl_identifier_casecmp (name, current_user_name) == 0)
     {
       /*
        * e.g.        name: current_user_name.object_name

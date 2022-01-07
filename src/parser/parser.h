@@ -393,7 +393,6 @@ extern "C"
   extern PT_NODE *pt_bind_param_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern int pt_statement_have_methods (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern int pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag);
-  extern int pt_dot_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag);
   extern int pt_qualifier_compare (const char *p, const char *q);
 
   extern void pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node);
