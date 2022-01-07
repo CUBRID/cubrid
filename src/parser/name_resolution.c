@@ -10097,6 +10097,7 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 				   PT_NODE * derived_alias)
 {
   PT_NODE *as_attr_list = NULL, *select_list;
+  unsigned int save_custom;
   int i, id;
 
   switch (derived_table_type)
@@ -10154,7 +10155,10 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 	      else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
 		{
 		  PARSER_VARCHAR *alias;
+		  save_custom = parser->custom_print;
+		  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;;
 		  alias = pt_print_bytes (parser, att);
+		  parser->custom_print = save_custom;
 		  col = pt_name (parser, (const char *) alias->bytes);
 		}
 	      else

@@ -662,7 +662,7 @@ pt_get_titles (PARSER_CONTEXT * parser, PT_NODE * query)
 	{
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_SUPPRESS_CHARSET_PRINT;
-	  parser->custom_print |= PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME;
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
 	  t = pt_get_node_title (parser, s, f);
 	  parser->custom_print = save_custom;
 
@@ -736,7 +736,14 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 	      if (col->info.name.meta_class == PT_META_ATTR)
 		{
 		  name = pt_append_string (parser, NULL, "class ");
-		  name = pt_append_string (parser, name, pt_get_name_without_current_user_name (col->info.name.resolved));
+		  if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+		    {
+		      name = pt_append_string (parser, name, pt_get_name_without_current_user_name (col->info.name.resolved));
+		    }
+		  else
+		    {
+		      name = pt_append_string (parser, name, col->info.name.resolved);
+		    }
 		  name = pt_append_string (parser, name, ".");
 		  name = pt_append_string (parser, name, original_name);
 		  original_name = name;
@@ -744,9 +751,14 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 	      else if (PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_DOT_NAME))
 		{
 		  /* PT_NAME comes from PT_DOT_ */
-		  original_name =
-		    pt_append_string (parser, pt_append_string (parser, pt_get_name_without_current_user_name (col->info.name.resolved), "."),
-				      original_name);
+		  if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+		    {
+		      original_name = pt_append_string (parser, pt_append_string (parser, pt_get_name_without_current_user_name (col->info.name.resolved), "."), original_name);
+		    }
+		  else
+		    {
+		      original_name = pt_append_string (parser, pt_append_string (parser, col->info.name.resolved, "."), original_name);
+		    }
 		}
 	      else if (PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_DOT_STAR))
 		{

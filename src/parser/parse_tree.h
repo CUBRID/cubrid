@@ -786,7 +786,7 @@ enum pt_custom_print
 
   PT_PRINT_NO_HOST_VAR_INDEX = (0x1 << 22),
 
-  PT_PRINT_NAME_WITHOUT_CURRENT_USER_NAME = (0x1 << 23)
+  PT_PRINT_NO_CURRENT_USER_NAME = (0x1 << 23)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
