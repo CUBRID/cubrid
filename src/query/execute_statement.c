@@ -2068,7 +2068,6 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
 
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
 
-  assert_release (att->info.attr_def.auto_increment != NULL);
   assert (serial_object != NULL);
 
   /* find db_serial */
