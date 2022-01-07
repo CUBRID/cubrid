@@ -1509,10 +1509,18 @@ qfile_allocate_new_page_if_need (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       *page_p = new_page_p;
     }
 
-  QFILE_PUT_TUPLE_COUNT (*page_p, QFILE_GET_TUPLE_COUNT (*page_p) + 1);
-  QFILE_PUT_LAST_TUPLE_OFFSET (*page_p, list_id_p->last_offset);
+  if (page_p)
+    {
+      if (*page_p)
+	{
+	  QFILE_PUT_TUPLE_COUNT (*page_p, QFILE_GET_TUPLE_COUNT (*page_p) + 1);
+	  QFILE_PUT_LAST_TUPLE_OFFSET (*page_p, list_id_p->last_offset);
 
-  return NO_ERROR;
+	  return NO_ERROR;
+	}
+    }
+
+  return ER_FAILED;
 }
 
 static void

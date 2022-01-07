@@ -4423,10 +4423,13 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
 	}
     }
 
-  error = smt_set_attribute_on_update (def, ((new_name != NULL) ? new_name : name), is_class_attr, on_update_expr);
-  if (error != NO_ERROR)
+  if (on_update_expr != DB_DEFAULT_NONE)
     {
-      return error;
+      error = smt_set_attribute_on_update (def, ((new_name != NULL) ? new_name : name), is_class_attr, on_update_expr);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   /* change original default : continue only for normal attributes */
