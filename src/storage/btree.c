@@ -24946,13 +24946,14 @@ void
 btree_range_scan_wait_for_replication (btree_scan & bts)
 {
 #if defined (SERVER_MODE)
-  assert (is_passive_transaction_server ());
-
+  // early out, on non-(passive transaction server) this lsa is set to null and unused
   if (bts.page_desync_lsa.is_null ())
     {
       // no need to wait
       return;
     }
+
+  assert (is_passive_transaction_server ());
 
   // a lock is expended in this call; currently, there's no way to avoid that lock
   get_passive_tran_server_ptr ()->wait_replication_past_target_lsa (bts.page_desync_lsa);

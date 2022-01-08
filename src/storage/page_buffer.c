@@ -2281,7 +2281,7 @@ try_again:
 }
 
 /* pgbuf_fix_old_and_check_repl_desync - fix an old page with specific latch; for active transaction
- *                  server, the behaviour is same as pgbuf_fix; for passive transaction server, an
+ *                  server, the behaviour is same as pgbuf_fix; for passive transaction server, there is an
  *                  extra check to see whether page is ahead of replication
  */
 PAGE_PTR
