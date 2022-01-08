@@ -787,7 +787,7 @@ int g_original_buffer_len;
 %type <node> data_type_list
 %type <node> opt_prec_1
 %type <node> opt_padding
-%type <node> signed_literal_
+%type <node> siggned_literal_
 %type <node> literal_
 %type <node> literal_w_o_param
 %type <node> constant_set
@@ -5272,10 +5272,6 @@ user_specified_name
 		DBG_PRINT}}
 	;
 
-/*
- * It is class_name_list before change.
- *
- */
 user_specified_name_list
 	: user_specified_name_list ',' user_specified_name
 		{{
