@@ -787,7 +787,7 @@ int g_original_buffer_len;
 %type <node> data_type_list
 %type <node> opt_prec_1
 %type <node> opt_padding
-%type <node> siggned_literal_
+%type <node> signed_literal_
 %type <node> literal_
 %type <node> literal_w_o_param
 %type <node> constant_set
