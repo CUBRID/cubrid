@@ -2863,7 +2863,7 @@ create_stmt
 	  opt_or_replace                		/* 2 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }	/* 3 */
 	  PROCEDURE					/* 4 */
-	  identifier_without_dot '(' opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
+	  identifier '(' opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
 	  opt_of_is_as LANGUAGE JAVA			/* 9, 10, 11 */
 	  NAME char_string_literal			/* 12, 13 */
 	  opt_comment_spec				/* 14 */
