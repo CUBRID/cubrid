@@ -21718,25 +21718,27 @@ simple_path_id_list
 identifier_without_dot
 	: identifier
 		{{
-		
+
 			PT_NODE *p = $1;
-			
-			if (p)
+
+			if (p && p->node_type == PT_NAME)
 			  {
 			    const char *name = p->info.name.original;
-			
-			    /* check if it contains dot(.). */
-			    if (name != NULL && strchr (name, '.') != NULL)
+
+			    /* Check if it contains dot(.). */
+			    if (name && strchr (name, '.'))
 			      {
 				PT_ERRORf (this_parser, p,
-					   "Identifier name [%s] not allowed. It cannot contain dot(.).",
+					   "Identifier name %s not allowed. It cannot contain dot(.).",
 					   name);
+
+				p = NULL;
 			      }
 			  }
-			
+
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-			
+
 		DBG_PRINT}}
 	;
 
