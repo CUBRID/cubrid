@@ -3918,7 +3918,7 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME TRIGGER user_specified_name AS user_specified_name
+	| RENAME TRIGGER user_specified_name as_or_to identifier_without_dot
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_TRIGGER);
@@ -3933,7 +3933,7 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME SERVER dblink_server_name AS identifier
+	| RENAME SERVER dblink_server_name as_or_to identifier_without_dot
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SERVER);
 			if (node)
@@ -3967,7 +3967,7 @@ rename_class_list
 	;
 
 rename_class_pair
-	:  only_class_name as_or_to only_class_name
+	:  only_class_name as_or_to identifier_without_dot
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME);
@@ -21729,7 +21729,7 @@ identifier_without_dot
 			    if (name != NULL && strchr (name, '.') != NULL)
 			      {
 				PT_ERRORf (this_parser, p,
-					   "Identifier name %s not allowed. It cannot contain dot(.).",
+					   "Identifier name [%s] not allowed. It cannot contain dot(.).",
 					   name);
 			      }
 			  }
