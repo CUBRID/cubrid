@@ -11989,21 +11989,17 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   size1 = db_get_string_size (value1);
   size2 = db_get_string_size (value2);
 
-  /*
-   * do_coercion = 3:
-   * from eliminate_duplicated_keys and scan_key_compre
-   * we need to process enforcing no-ignore-trailing space.
-   */
-#if 0
-  if (do_coercion == 3)
-    {
-      ti = false;
-    }
-  else 
-#endif
   if (!ignore_trailing_space)
     {
-      if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
+      if (do_coercion == 2)
+	{
+	  /* only for btree_get_prefix_sparator */
+	  if (TP_IS_FIXED_LEN_CHAR_TYPE (type1) || TP_IS_FIXED_LEN_CHAR_TYPE (type2))
+	    {
+	      ti = true;
+	    }
+	}
+      else if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
 	{
 	  ti = false;
 	}
@@ -12906,20 +12902,20 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
   size1 = db_get_string_size (value1);
   size2 = db_get_string_size (value2);
 
-  /*
-   * do_coercion = 3:
-   * from eliminate_duplicated_keys and scan_key_compre
-   * we need to process enforcing no-ignore-trailing space.
-   */
-  if (do_coercion == 3)
+  if (!ignore_trailing_space)
     {
-      ti = false;
-    }
-  else if (!ignore_trailing_space &&
-	   (type1 == DB_TYPE_STRING || type1 == DB_TYPE_VARNCHAR || type2 == DB_TYPE_STRING
-	    || type2 == DB_TYPE_VARNCHAR))
-    {
-      ti = false;
+      if (do_coercion == 2)
+	{
+	  /* only for btree_get_prefix_sparator */
+	  if (TP_IS_FIXED_LEN_CHAR_TYPE (type1) || TP_IS_FIXED_LEN_CHAR_TYPE (type2))
+	    {
+	      ti = true;
+	    }
+	}
+      else if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
+	{
+	  ti = true;
+	}
     }
 
   strc = QSTR_NCHAR_COMPARE (collation, string1, size1, string2, size2, db_get_string_codeset (value2), ti);
