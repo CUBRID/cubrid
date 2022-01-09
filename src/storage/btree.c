@@ -11811,7 +11811,7 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
       return ER_FAILED;
     }
 
-  c = btree_compare_key ((DB_VALUE *) key1, prefix_key, key_domain, 1, 1, NULL);
+  c = btree_compare_key ((DB_VALUE *) key1, prefix_key, key_domain, 2, 1, NULL);
 
   if (c != DB_LT)
     {
@@ -11819,7 +11819,7 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
       return ER_FAILED;
     }
 
-  c = btree_compare_key (prefix_key, (DB_VALUE *) key2, key_domain, 1, 1, NULL);
+  c = btree_compare_key (prefix_key, (DB_VALUE *) key2, key_domain, 2, 1, NULL);
 
   if (!(c == DB_LT || c == DB_EQ))
     {

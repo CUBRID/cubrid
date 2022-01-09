@@ -3785,7 +3785,7 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
 
 	  if (!ignore_trailing_space)
 	    {
-	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) || QSTR_IS_FIXED_LENGTH (str2_type));
+	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) && QSTR_IS_FIXED_LENGTH (str2_type));
 	    }
 	  cmp_result = QSTR_COMPARE (coll_id, DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
 				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2), ti);
