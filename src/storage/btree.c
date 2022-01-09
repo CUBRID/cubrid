@@ -24945,14 +24945,17 @@ btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_sc
 void
 btree_range_scan_wait_for_replication (btree_scan & bts)
 {
-#if defined (SERVER_MODE)
-  // early out, on non-(passive transaction server) this lsa is set to null and unused
+  // early out, on:
+  //  - non-passive transaction server
+  //  - stand-alone
+  // this lsa is initialized to null and unused
   if (bts.page_desync_lsa.is_null ())
     {
       // no need to wait
       return;
     }
 
+#if defined (SERVER_MODE)
   assert (is_passive_transaction_server ());
 
   // a lock is expended in this call; currently, there's no way to avoid that lock
