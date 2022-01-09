@@ -21718,13 +21718,10 @@ identifier_without_dot
 
 			PT_NODE *p = $1;
 
-			if (p)
+			if (p && p->node_type == PT_NAME)
 			  {
-			    assert (p->node_type == PT_NAME);
-
 			    const char *name = p->info.name.original;
 
-			    /* Check if it contains dot(.). */
 			    if (name && strchr (name, '.'))
 			      {
 				PT_ERRORf (this_parser, p,
