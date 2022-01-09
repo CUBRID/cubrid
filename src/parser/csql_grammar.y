@@ -21725,7 +21725,6 @@ identifier_without_dot
 			  {
 			    const char *name = p->info.name.original;
 
-			    /* Check if it contains dot(.). */
 			    if (name && strchr (name, '.'))
 			      {
 				PT_ERRORf (this_parser, p,
