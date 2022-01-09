@@ -3967,7 +3967,7 @@ rename_class_list
 	;
 
 rename_class_pair
-	:  only_class_name as_or_to identifier_without_dot
+	: only_class_name as_or_to identifier_without_dot
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME);
