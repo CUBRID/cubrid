@@ -5559,9 +5559,9 @@ alter_auto_increment_mysql_specific
 				val->info.value.data_value.str =
 				  pt_append_bytes (this_parser, NULL, $3,
 						   strlen ($3));
-			        val->type_enum = PT_TYPE_NUMERIC;
-			        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
-			       }
+				val->type_enum = PT_TYPE_NUMERIC;
+				PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+			      }
 
 			    node->info.alter.code = PT_CHANGE_AUTO_INCREMENT;
 			    node->info.alter.alter_clause.auto_increment.start_value = val;
