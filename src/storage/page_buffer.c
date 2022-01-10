@@ -2280,17 +2280,22 @@ try_again:
   return pgptr;
 }
 
+/* pgbuf_fix_old_and_check_repl_desync - fix an old page with specific latch; for active transaction
+ *                  server, the behaviour is same as pgbuf_fix; for passive transaction server, there is an
+ *                  extra check to see whether page is ahead of replication
+ */
 PAGE_PTR
-pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid, PGBUF_LATCH_CONDITION cond)
+pgbuf_fix_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid, PGBUF_LATCH_MODE latch_mode,
+				     PGBUF_LATCH_CONDITION cond)
 {
   assert (is_transaction_server ());
 
-  PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, cond);
+  PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, cond);
 
 #if defined (SERVER_MODE)
   if (is_active_transaction_server ())
     {
-      // No replication, no page - replication desynchronization is possible
+      // No replication, no page desynchronization is possible
       // Use regular fix
       return page;
     }
@@ -2318,7 +2323,7 @@ pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & 
       if (er_errid () == ER_PB_BAD_PAGEID)
 	{
 	  // Check if page is ahead
-	  (void) pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, PGBUF_LATCH_READ, vpid);
+	  (void) pgbuf_check_for_deallocated_page_or_desynchronization (thread_p, latch_mode, vpid);
 	}
       return nullptr;
     }
@@ -2373,8 +2378,8 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
 }
 
 int
-pgbuf_check_for_deallocated_page_or_desyncronization (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode,
-						      const VPID & vpid)
+pgbuf_check_for_deallocated_page_or_desynchronization (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode,
+						       const VPID & vpid)
 {
   assert (er_errid () == ER_PB_BAD_PAGEID);
   int ret = ER_PB_BAD_PAGEID;

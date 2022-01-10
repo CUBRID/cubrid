@@ -7549,7 +7549,7 @@ try_again:
 	      goto error;
 	    }
 	  // Check if page is ahead of replication; if it is, the bad pageid error is overwritten.
-	  (void) pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, context->latch_mode, *vpid);
+	  (void) pgbuf_check_for_deallocated_page_or_desynchronization (thread_p, context->latch_mode, *vpid);
 	  ASSERT_ERROR_AND_SET (ret);
 	}
 
@@ -7601,7 +7601,7 @@ try_again:
 	      goto error;
 	    }
 	  // Check if page is ahead of replication; if it is, the bad pageid error is overwritten.
-	  (void) pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, context->latch_mode, *vpid);
+	  (void) pgbuf_check_for_deallocated_page_or_desynchronization (thread_p, context->latch_mode, *vpid);
 	  ret = er_errid ();
 	}
 
