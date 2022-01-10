@@ -5199,10 +5199,7 @@ user_specified_name_without_dot
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
 
-			if (user
-			    && name
-			    && user->node_type == PT_NAME
-			    && name->node_type == PT_NAME)
+			if (user && name)
 			  {
 			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
 
@@ -5220,8 +5217,7 @@ user_specified_name_without_dot
 
 			PT_NODE *name = $1;
 
-			if (name
-			    && name->node_type == PT_NAME)
+			if (name)
 			  {
 			    // PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
@@ -5239,10 +5235,7 @@ user_specified_name
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
 
-			if (user
-			    && name
-			    && user->node_type == PT_NAME
-			    && name->node_type == PT_NAME)
+			if (user && name)
 			  {
 			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
 
@@ -5260,8 +5253,7 @@ user_specified_name
 
 			PT_NODE *name = $1;
 
-			if (name
-			    && name->node_type == PT_NAME)
+			if (name)
 			  {
 			    // PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
@@ -5296,10 +5288,7 @@ object_name
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
 
-			if (user
-			    && name
-			    && user->node_type == PT_NAME
-			    && name->node_type == PT_NAME)
+			if (user && name)
 			  {
 			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
 
@@ -21721,7 +21710,7 @@ identifier_without_dot
 
 			PT_NODE *p = $1;
 
-			if (p && p->node_type == PT_NAME)
+			if (p)
 			  {
 			    const char *name = p->info.name.original;
 
