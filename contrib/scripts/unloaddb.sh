@@ -51,6 +51,12 @@ function show_usage ()
          echo ""
 }
 
+function cleanup ()
+{
+	echo "Catch interrupt"
+	exit
+}
+
 function veryfy_user_pass ()
 {
          local msg
@@ -94,6 +100,57 @@ function extract_db_name ()
 
         database=$(echo ${@:$nelem:1})
 }
+
+function get_table_size ()
+{
+        local num_rows=0
+        local table_name=$1
+        local row_size=0
+        local table_size=0
+        local j="2147483647"
+
+        num_rows=$(csql $user $pass -l -c "show heap capacity of $table_name" $db | grep Num_recs | awk '{print $3}')
+        row_size=$(get_schema_size $table_name)
+        let "table_size = num_rows * row_size"
+
+        echo $table_size
+}
+
+function get_schema_size ()
+{
+        local table_name=$1
+        local size=0
+        local query=" select CAST(SUM(CASE \
+         WHEN "data_type" = 'BIGINT' THEN 8.0 \
+         WHEN "data_type" = 'INTEGER' THEN 4.0 \
+         WHEN "data_type" = 'SMALLINT' THEN 2.0 \
+         WHEN "data_type" = 'FLOAT' THEN 4.0 \
+         WHEN "data_type" = 'DOUBLE' THEN 8.0 \
+         WHEN "data_type" = 'MONETARY' THEN 12.0 \
+         WHEN "data_type" = 'STRING' THEN prec \
+         WHEN "data_type" = 'VARCHAR' THEN prec \
+         WHEN "data_type" = 'NVARCHAR' THEN prec \
+         WHEN "data_type" = 'CHAR' THEN prec \
+         WHEN "data_type" = 'NCHAR' THEN prec \
+         WHEN "data_type" = 'TIMESTAMP' THEN 8.0 \
+         WHEN "data_type" = 'DATE' THEN 4.0 \
+         WHEN "data_type" = 'TIME' THEN 4.0 \
+         WHEN "data_type" = 'DATETIME' THEN 4.0 \
+         WHEN "data_type" = 'BIT' THEN FLOOR(prec / 8.0) \
+         WHEN "data_type" = 'BIT VARYING' THEN FLOOR(prec / 8.0) \
+         ELSE 0 \
+     END) as BIGINT)  AS [size] \
+ from db_attribute where class_name = '$table_name';"
+
+        if [ $# -eq 0 ];then
+                echo "0"
+                return
+        fi
+
+        size=$(csql $user $pass -l -c "$query" $db | grep "^<0000" | awk '{print $3}')
+        echo $size
+}
+
 function find_slot ()
 {
         local selected=0
@@ -115,7 +172,7 @@ function do_unloaddb ()
 {
         local slot_num=$1
         local i
-        local file="Table_list_$database.$slot_num"
+        local file="Tables_unloaded_$database.$slot_num"
         local num_tables_in_slot=0
         local msg="Success"
 
@@ -128,10 +185,10 @@ function do_unloaddb ()
         done
 
         if [ $verbose = "yes" ];then
-                echo "Proc $slot_num: num tables: $num_tables_in_slot, page size: ${slot_size[$slot_num]}"
+                echo "Proc $slot_num: num tables: $num_tables_in_slot, ${slot_size[$slot_num]} bytes"
         fi
 
-	cubrid unloaddb $user $pass --input-class-only --input-class-file $file $database
+	  cubrid unloaddb $user $pass --input-class-only --input-class-file $file $database
 
         if [ $? -ne 0 ];then
                 msg="Failed"
@@ -187,7 +244,7 @@ function get_table_name ()
         for ((i = 0; i < ${#table_selected[@]}; i++))
         do
                 table_name=${table_selected[i]}
-                this_table_size=$(csql $user $pass -l -c "show heap capacity of $table_name" $db | grep Num_pages | awk '{print $3}')
+                this_table_size=$(get_table_size $table_name)
 
                 if [ -z $this_table_size ];then
                         echo "Unknown table: $table_name"
@@ -200,6 +257,8 @@ function get_table_name ()
 }
 
 # MAIN
+
+trap "cleanup; exit" SIGHUP SIGINT SIGTERM
 
 extract_db_name $*
 get_options "$@"
@@ -226,7 +285,7 @@ do
 
         if [ $verbose = "yes" ];then
                 index=$(printf "%3d" $i)
-                echo "[$index:${slot[i]}] ${table_selected[i]}: pages = ${table_size[i]}"
+                echo "[$index:${slot[i]}] ${table_selected[i]}: ${table_size[i]} bytes"
         fi
 done
 
