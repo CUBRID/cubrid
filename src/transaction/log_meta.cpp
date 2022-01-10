@@ -178,7 +178,14 @@ namespace cublog
   void
   meta::add_checkpoint_info (const log_lsa &chkpt_lsa, const checkpoint_info &chkpt_info)
   {
-    assert (m_checkpoints.find (chkpt_lsa) == m_checkpoints.cend ());
+    const checkpoint_container_t::const_iterator found_it = m_checkpoints.find (chkpt_lsa);
+    if (found_it != m_checkpoints.cend ())
+      {
+	// if same LSA checkpoint already exists, replace with new one
+	// to be in line with what happens in calling code where the checkpoint is also
+	// added to the log for the purpose of being transferred to passive transaction servers
+	m_checkpoints.erase (found_it);
+      }
     m_checkpoints.insert ({ chkpt_lsa, chkpt_info });
   }
 
