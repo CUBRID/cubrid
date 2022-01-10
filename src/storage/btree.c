@@ -46,7 +46,6 @@
 #include "query_opfunc.h"
 #include "object_primitive.h"
 #include "object_representation.h"
-#include "passive_tran_server.hpp"
 #include "perf_monitor.h"
 #include "regu_var.hpp"
 #include "server_type.hpp"
@@ -14354,10 +14353,10 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
 
   do
     {
+#ifdef SERVER_MODE
       P_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, P_vpid, PGBUF_UNCONDITIONAL_LATCH);
       if (P_page == NULL)
 	{
-#ifdef SERVER_MODE
 	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
 	    {
 	      if (P_page != nullptr)
@@ -14371,6 +14370,10 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
 	      pts_ptr->wait_replication_pasts_target_lsa (tdes->page_desync_lsa);
 	      continue;
 	    }
+#else
+      P_page = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (P_page == NULL)
+	{
 #endif
 	  ASSERT_ERROR ();
 	  goto error;
@@ -14423,7 +14426,6 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
       C_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, C_vpid, PGBUF_UNCONDITIONAL_LATCH);
       if (C_page == NULL)
 	{
-#ifdef SERVER_MODE
 	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
 	    {
 	      if (C_page != nullptr)
@@ -14442,9 +14444,10 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
 
 	      root_level = root_header->node.node_level;
 	      node_type = (root_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
+
 	      continue;
 	    }
-#endif
+
 	  ASSERT_ERROR ();
 	  goto error;
 	}
