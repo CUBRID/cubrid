@@ -34,6 +34,8 @@
 #include "system_parameter.h"
 #include "util_func.h"
 
+#include <set>
+
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_context &context,
     LOG_PAGE *log_page_p, const LOG_RECORD_HEADER *log_rec,
     const log_lsa &prev_lsa, const log_lsa &prev_prev_lsa);
@@ -73,6 +75,10 @@ static bool log_is_page_of_record_broken (THREAD_ENTRY *thread_p, const LOG_LSA 
 static void log_recovery_resetlog (THREAD_ENTRY *thread_p, const LOG_LSA *new_append_lsa,
 				   const LOG_LSA *new_prev_lsa);
 static void log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_arv_num, const char *info_reason);
+static int log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
+    log_lsa most_recent_trantable_snapshot_lsa,
+    cublog::checkpoint_info chkpt_info, log_lsa &snapshot_lsa);
+static void log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p);
 
 class corruption_checker
 {
@@ -2204,35 +2210,22 @@ corruption_checker::check_log_record (const log_lsa &record_lsa, const log_rec_h
     }
 }
 
-/* log_recovery_analysis_from_transaction_table_snapshot - perform recovery for a passive transaction server
- *                  starting from a [recent] transaction table snapshot relayed via log and page server from
- *                  the active transaction server
- *
- * most_recent_trantable_snapshot_lsa (in): the lsa where a record containing, as payload, the packed contents
- *                                of a recent transaction table snapshot; starting from that snapshot, analyze the log
- *                                to construct an actual starting transaction table
+/* log_recovery_analysis_load_trantable_snapshot - starting from a [most recent] trantable snapshot LSA, read
+ *                the log record and deserialize its contents as a checkpoint info
  */
-void
-log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
-    log_lsa most_recent_trantable_snapshot_lsa)
+static int
+log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
+    log_lsa most_recent_trantable_snapshot_lsa, cublog::checkpoint_info chkpt_info, log_lsa &snapshot_lsa)
 {
-  assert (is_passive_transaction_server ());
   assert (!most_recent_trantable_snapshot_lsa.is_null ());
-  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-
-  // analysis changes the transaction index and leaves it in an indefinite state
-  // therefore reset to system transaction index afterwards;
-  // first make sure we're executing on the system thread
-  const int sys_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (sys_tran_index == LOG_SYSTEM_TRAN_INDEX);
 
   log_reader lr (LOG_CS_SAFE_READER);
   int log_page_read_err = lr.set_lsa_and_fetch_page (most_recent_trantable_snapshot_lsa);
   if (log_page_read_err != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_initialize_passive_tran_server: error reading transaction table snapshot log page");
-      return;
+			 "log_recovery_analysis_load_trantable_snapshot: error reading trantable snapshot log page");
+      return log_page_read_err;
     }
 
   // always copy because the next add might advance to the next log page
@@ -2241,20 +2234,107 @@ log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
 
   lr.advance_when_does_not_fit (sizeof (log_rec_trantable_snapshot));
   const log_rec_trantable_snapshot log_rec = lr.reinterpret_copy_and_add_align<log_rec_trantable_snapshot> ();
-  std::unique_ptr<char []> snapshot_data_buf { new char[log_rec.length] };
+  std::unique_ptr<char []> snapshot_data_buf = std::make_unique<char []> (static_cast<size_t> (log_rec.length));
   lr.copy_from_log (snapshot_data_buf.get (), log_rec.length);
+
+  snapshot_lsa = log_rec.snapshot_lsa;
 
   cubpacking::unpacker unpacker;
   unpacker.set_buffer (snapshot_data_buf.get (), log_rec.length);
 
-  cublog::checkpoint_info chkpt_info;
   chkpt_info.unpack (unpacker);
+
+  return NO_ERROR;
+}
+
+/* log_recovery_build_mvcc_table_from_trantable - build mvcc table using transaction table
+ */
+static void
+log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p)
+{
+  assert (is_passive_transaction_server ());
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  MVCCID smallest_mvccid = std::numeric_limits<MVCCID>::max ();
+  MVCCID largest_mvccid = std::numeric_limits<MVCCID>::min ();
+  std::set<MVCCID> present_mvccids;
+  for (int i = 0; i < log_Gl.trantable.num_total_indices; ++i)
+    {
+      if (i != LOG_SYSTEM_TRAN_INDEX)
+	{
+	  const log_tdes *const tdes = log_Gl.trantable.all_tdes[i];
+	  if (tdes != nullptr && tdes->trid != NULL_TRANID)
+	    {
+	      if (tdes->mvccinfo.id < smallest_mvccid)
+		{
+		  smallest_mvccid = tdes->mvccinfo.id;
+		}
+	      if (tdes->mvccinfo.id > largest_mvccid)
+		{
+		  largest_mvccid = tdes->mvccinfo.id;
+		}
+	      present_mvccids.insert (tdes->mvccinfo.id);
+	    }
+	}
+    }
+  log_Gl.hdr.mvcc_next_id = smallest_mvccid;
+  log_Gl.mvcc_table.reset_start_mvccid ();
+
+  if (!present_mvccids.empty ())
+    {
+      // complete each mvccid between the smallest and the highest, that is missing from the table
+      std::set<MVCCID>::const_iterator present_mvccids_it = present_mvccids.cbegin ();
+      MVCCID prev_mvccid = *present_mvccids_it;
+      ++present_mvccids_it;
+      for (; present_mvccids_it != present_mvccids.cend (); ++present_mvccids_it)
+	{
+	  const MVCCID curr_mvccid = *present_mvccids_it;
+	  for (MVCCID missing_mvccid = prev_mvccid + 1; missing_mvccid < curr_mvccid; ++missing_mvccid)
+	    {
+	      log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, missing_mvccid, true);
+	    }
+	  prev_mvccid = curr_mvccid;
+	}
+    }
+
+  log_Gl.hdr.mvcc_next_id = largest_mvccid + 1;
+}
+
+/* log_recovery_analysis_from_trantable_snapshot - perform recovery for a passive transaction server
+ *                  starting from a [recent] transaction table snapshot relayed via log and page server from
+ *                  the active transaction server
+ *
+ * most_recent_trantable_snapshot_lsa (in): the lsa where a record containing, as payload, the packed contents
+ *                                of a recent transaction table snapshot; starting from that snapshot, analyze the log
+ *                                to construct an actual starting transaction table
+ */
+void
+log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
+    log_lsa most_recent_trantable_snapshot_lsa)
+{
+  assert (is_passive_transaction_server ());
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  // analysis changes the transaction index and leaves it in an indefinite state
+  // therefore reset to system transaction index afterwards;
+  // first make sure we're executing on the system thread
+  const int sys_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (sys_tran_index == LOG_SYSTEM_TRAN_INDEX);
+
+  cublog::checkpoint_info chkpt_info;
+  log_lsa snapshot_lsa;
+  int error = log_recovery_analysis_load_trantable_snapshot (thread_p, most_recent_trantable_snapshot_lsa,
+	      chkpt_info, snapshot_lsa);
+  if (error != NO_ERROR)
+    {
+      return;
+    }
 
   log_lsa start_redo_lsa;
   chkpt_info.recovery_analysis (thread_p, start_redo_lsa);
 
   log_recovery_context log_rcv_context;
-  log_rcv_context.init_for_recovery (log_rec.snapshot_lsa);
+  log_rcv_context.init_for_recovery (snapshot_lsa);
   // no recovery is done, start redo lsa may remain invalid
   log_rcv_context.set_start_redo_lsa (NULL_LSA);
   log_rcv_context.set_end_redo_lsa (NULL_LSA);
@@ -2275,4 +2355,6 @@ log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
   });
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
+
+  log_recovery_build_mvcc_table_from_trantable (thread_p);
 }

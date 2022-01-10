@@ -1685,7 +1685,7 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     //        - during log analysis, the PTS will ignore (skip) the newer transaction table snapshot log records
     //
     assert (!most_recent_trantable_snapshot_lsa.is_null ());
-    log_recovery_analysis_from_transaction_table_snapshot (thread_p, most_recent_trantable_snapshot_lsa);
+    log_recovery_analysis_from_trantable_snapshot (thread_p, most_recent_trantable_snapshot_lsa);
   }
   // prior lists are consumed and flushed to log pages
 
