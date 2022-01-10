@@ -14439,7 +14439,6 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
 	      //restart search
 	      P_vpid.volid = btid->vfid.volid;
 	      P_vpid.pageid = btid->root_pageid;
-	      depth = 0;
 
 	      root_level = root_header->node.node_level;
 	      node_type = (root_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
