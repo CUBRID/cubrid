@@ -14350,36 +14350,12 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
   /* read the root page */
   P_vpid.volid = btid->vfid.volid;
   P_vpid.pageid = btid->root_pageid;
-
-  do
+  P_page = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (P_page == NULL)
     {
-#ifdef SERVER_MODE
-      P_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, P_vpid, PGBUF_UNCONDITIONAL_LATCH);
-      if (P_page == NULL)
-	{
-	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
-	    {
-	      if (P_page != nullptr)
-		{
-		  pgbuf_unfix (thread_p, P_page);
-		}
-
-	      passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-	      assert (tdes->page_desync_lsa.is_null ());
-	      pts_ptr->wait_replication_pasts_target_lsa (tdes->page_desync_lsa);
-	      continue;
-	    }
-#else
-      P_page = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (P_page == NULL)
-	{
-#endif
-	  ASSERT_ERROR ();
-	  goto error;
-	}
+      ASSERT_ERROR ();
+      goto error;
     }
-  while (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION);
 
   (void) pgbuf_check_page_ptype (thread_p, P_page, PAGE_BTREE);
 
@@ -14423,31 +14399,9 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
 
       btree_read_fixed_portion_of_non_leaf_record (&rec, &nleaf);
       C_vpid = nleaf.pnt;
-      C_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, C_vpid, PGBUF_UNCONDITIONAL_LATCH);
+      C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (C_page == NULL)
 	{
-	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
-	    {
-	      if (C_page != nullptr)
-		{
-		  pgbuf_unfix (thread_p, P_page);
-		}
-	      //wait for replication
-	      passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-	      assert (tdes->page_desync_lsa.is_null ());
-	      pts_ptr->wait_replication_pasts_target_lsa (tdes->page_desync_lsa);
-
-	      //restart search
-	      P_vpid.volid = btid->vfid.volid;
-	      P_vpid.pageid = btid->root_pageid;
-
-	      root_level = root_header->node.node_level;
-	      node_type = (root_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
-
-	      continue;
-	    }
-
 	  ASSERT_ERROR ();
 	  goto error;
 	}
