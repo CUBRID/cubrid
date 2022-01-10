@@ -693,9 +693,9 @@ static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_H
 static int qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE * default_val);
 
 static inline SCAN_CODE evaluate_xptr_list (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, XASL_NODE * xptr_list,
-					    SCAN_OPERATION_TYPE scan_operation_type, bool * keep_going);
+					    SCAN_OPERATION_TYPE scan_operation_type, bool * qualified);
 static inline SCAN_CODE evaluate_one_scanned_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-						    QFILE_TUPLE_RECORD * tplrec, bool * keep_going);
+						    QFILE_TUPLE_RECORD * tplrec, bool * qualified);
 
 /*
  * Utility routines
@@ -7249,7 +7249,6 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   SCAN_CODE sc_scan;
   SCAN_CODE xs_scan;
   DB_LOGICAL ev_res;
-  int qualified;
   SCAN_OPERATION_TYPE scan_operation_type;
 
   /* check if further scan procedure are still active */
@@ -7266,32 +7265,22 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 
   do
     {
+    try_scan_next_scan:
+
       sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
       if (sc_scan != S_SUCCESS)
 	{
 	  return sc_scan;
 	}
 
-      /* set scan item as qualified */
-      qualified = true;
-
-      if (qualified)
+      /* clear bptr subquery list files */
+      if (xasl->bptr_list)
 	{
-	  /* clear bptr subquery list files */
-	  if (xasl->bptr_list)
-	    {
-	      qexec_clear_head_lists (thread_p, xasl->bptr_list);
-	      if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE)
-		{
-		  scan_operation_type = S_UPDATE;
-		}
-	      else
-		{
-		  scan_operation_type = S_SELECT;
-		}
-	    }
+	  qexec_clear_head_lists (thread_p, xasl->bptr_list);
+	  scan_operation_type = (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE) ? S_UPDATE : S_SELECT;
+
 	  /* evaluate bptr list */
-	  for (xptr = xasl->bptr_list; qualified && xptr != NULL; xptr = xptr->next)
+	  for (xptr = xasl->bptr_list; xptr != NULL; xptr = xptr->next)
 	    {
 	      if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state, scan_operation_type) != NO_ERROR)
 		{
@@ -7299,77 +7288,65 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 		}
 	      else if (xptr->proc.fetch.fetch_res == false)
 		{
-		  qualified = false;
+		  goto try_scan_next_scan;
 		}
 	    }
-	}			/* if (qualified) */
+	}
 
-      if (qualified)
-	{
-	  /* evaluate dptr list */
-	  for (xptr = xasl->dptr_list; xptr != NULL; xptr = xptr->next)
-	    {
-	      /* clear correlated subquery list files */
-	      qexec_clear_head_lists (thread_p, xptr);
-	      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
-		{
-		  /* skip if linked to regu var */
-		  continue;
-		}
-	      if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
-		{
-		  return S_ERROR;
-		}
-	    }
-	}			/* if (qualified) */
 
-      if (qualified)
+      /* evaluate dptr list */
+      for (xptr = xasl->dptr_list; xptr != NULL; xptr = xptr->next)
 	{
-	  /* evaluate after join predicate */
-	  ev_res = V_UNKNOWN;
-	  if (xasl->after_join_pred != NULL)
+	  /* clear correlated subquery list files */
+	  qexec_clear_head_lists (thread_p, xptr);
+	  if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
 	    {
-	      ev_res = eval_pred (thread_p, xasl->after_join_pred, &xasl_state->vd, NULL);
-	      if (ev_res == V_ERROR)
-		{
-		  return S_ERROR;
-		}
+	      /* skip if linked to regu var */
+	      continue;
 	    }
-	  qualified = (xasl->after_join_pred == NULL || ev_res == V_TRUE);
-	}			/* if (qualified) */
+	  if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
 
-      if (qualified)
+      /* evaluate after join predicate */
+      if (xasl->after_join_pred != NULL)
 	{
-	  /* evaluate if predicate */
-	  ev_res = V_UNKNOWN;
-	  if (xasl->if_pred != NULL)
+	  ev_res = eval_pred (thread_p, xasl->after_join_pred, &xasl_state->vd, NULL);
+	  if (ev_res == V_ERROR)
 	    {
-	      ev_res = eval_pred (thread_p, xasl->if_pred, &xasl_state->vd, NULL);
-	      if (ev_res == V_ERROR)
-		{
-		  return S_ERROR;
-		}
+	      return S_ERROR;
 	    }
-	  qualified = (xasl->if_pred == NULL || ev_res == V_TRUE);
-	}			/* if (qualified) */
+	  if (ev_res != V_TRUE)
+	    {
+	      goto try_scan_next_scan;
+	    }
+	}
 
-      if (qualified)
+      /* evaluate if predicate */
+      if (xasl->if_pred != NULL)
 	{
-	  /* clear fptr subquery list files */
-	  if (xasl->fptr_list)
+	  ev_res = eval_pred (thread_p, xasl->if_pred, &xasl_state->vd, NULL);
+	  if (ev_res == V_ERROR)
 	    {
-	      qexec_clear_head_lists (thread_p, xasl->fptr_list);
-	      if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE)
-		{
-		  scan_operation_type = S_UPDATE;
-		}
-	      else
-		{
-		  scan_operation_type = S_SELECT;
-		}
+	      return S_ERROR;
 	    }
+	  if (ev_res != V_TRUE)
+	    {
+	      goto try_scan_next_scan;
+	    }
+	}
+
+
+      /* clear fptr subquery list files */
+      if (xasl->fptr_list)
+	{
+	  qexec_clear_head_lists (thread_p, xasl->fptr_list);
+	  scan_operation_type = (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE) ? S_UPDATE : S_SELECT;
+
 	  /* evaluate fptr list */
-	  for (xptr = xasl->fptr_list; qualified && xptr != NULL; xptr = xptr->next)
+	  for (xptr = xasl->fptr_list; xptr != NULL; xptr = xptr->next)
 	    {
 	      if (qexec_execute_obj_fetch (thread_p, xptr, xasl_state, scan_operation_type) != NO_ERROR)
 		{
@@ -7377,45 +7354,41 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 		}
 	      else if (xptr->proc.fetch.fetch_res == false)
 		{
-		  qualified = false;
+		  goto try_scan_next_scan;
 		}
 	    }
-	}			/* if (qualified) */
+	}
 
-      if (qualified)
+      if (!xasl->scan_ptr)
 	{
-	  if (!xasl->scan_ptr)
+	  /* no scan procedure block */
+	  return S_SUCCESS;
+	}
+      else
+	{
+	  /* current scan block has at least one qualified item */
+	  xasl->curr_spec->s_id.qualified_block = true;
+
+	  /* start following scan procedure */
+	  xasl->scan_ptr->next_scan_on = false;
+	  if (scan_reset_scan_block (thread_p, &xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
 	    {
-	      /* no scan procedure block */
-	      return S_SUCCESS;
+	      return S_ERROR;
+	    }
+
+	  xasl->next_scan_on = true;
+
+	  /* execute following scan procedure */
+	  xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
+	  if (xs_scan == S_END)
+	    {
+	      xasl->next_scan_on = false;
 	    }
 	  else
 	    {
-	      /* current scan block has at least one qualified item */
-	      xasl->curr_spec->s_id.qualified_block = true;
-
-	      /* start following scan procedure */
-	      xasl->scan_ptr->next_scan_on = false;
-	      if (scan_reset_scan_block (thread_p, &xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
-		{
-		  return S_ERROR;
-		}
-
-	      xasl->next_scan_on = true;
-
-	      /* execute following scan procedure */
-	      xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
-	      if (xs_scan == S_END)
-		{
-		  xasl->next_scan_on = false;
-		}
-	      else
-		{
-		  return xs_scan;
-		}
+	      return xs_scan;
 	    }
-	}			/* if (qualified) */
-
+	}
     }
   while (1);
 
@@ -7800,11 +7773,11 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 
 static inline SCAN_CODE
 evaluate_xptr_list (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, XASL_NODE * xptr_list,
-		    SCAN_OPERATION_TYPE scan_operation_type, bool * keep_going)
+		    SCAN_OPERATION_TYPE scan_operation_type, bool * qualified)
 {
   XASL_NODE *xptr = NULL;
 
-  *keep_going = true;
+  *qualified = true;
 
   /* evaluate xptr_list list */
   /* if path expression fetch fails, this instance disqualifies */
@@ -7816,13 +7789,9 @@ evaluate_xptr_list (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, XASL_NODE 
 	}
       else if (xptr->proc.fetch.fetch_res == false)
 	{
+	  *qualified = false;
 	  break;
 	}
-    }
-
-  if (xptr != NULL)
-    {
-      *keep_going = false;
     }
 
   return S_SUCCESS;
@@ -7830,11 +7799,11 @@ evaluate_xptr_list (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, XASL_NODE 
 
 static inline SCAN_CODE
 evaluate_one_scanned_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-			    QFILE_TUPLE_RECORD * tplrec, bool * keep_going)
+			    QFILE_TUPLE_RECORD * tplrec, bool * qualified)
 {
   DB_LOGICAL ev_res = V_UNKNOWN;
 
-  *keep_going = false;
+  *qualified = false;
 
   /* if hierarchical query do special processing */
   if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
@@ -7886,7 +7855,7 @@ evaluate_one_scanned_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STAT
 	}
     }
 
-  *keep_going = true;
+  *qualified = true;
   return S_SUCCESS;
 }
 
@@ -7918,14 +7887,13 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
   SCAN_CODE xb_scan;
   SCAN_CODE ls_scan;
   DB_LOGICAL ev_res;
-  int qualified;
+  bool qualified;
   AGGREGATE_TYPE *agg_ptr = NULL;
   bool count_star_with_iscan_opt = false;
   SCAN_OPERATION_TYPE scan_operation_type;
   int curr_iteration_last_cursor = 0;
   int recursive_iterations = 0;
   bool cte_start_new_iteration = false;
-  bool keep_going;
   SCAN_CODE scan_code;
 
   if (xasl->type == BUILDVALUE_PROC)
@@ -8044,11 +8012,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	    {
 	      scan_operation_type = (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE) ? S_UPDATE : S_SELECT;
 	      if (S_SUCCESS !=
-		  evaluate_xptr_list (thread_p, xasl_state, xasl->bptr_list, scan_operation_type, &keep_going))
+		  evaluate_xptr_list (thread_p, xasl_state, xasl->bptr_list, scan_operation_type, &qualified))
 		{
 		  return S_ERROR;
 		}
-	      if (keep_going == false)
+	      if (qualified == false)
 		{
 		  qexec_clear_all_lists (thread_p, xasl);
 		  continue;
@@ -8105,11 +8073,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  if (xasl->fptr_list)
 	    {
 	      if (S_SUCCESS !=
-		  evaluate_xptr_list (thread_p, xasl_state, xasl->fptr_list, scan_operation_type, &keep_going))
+		  evaluate_xptr_list (thread_p, xasl_state, xasl->fptr_list, scan_operation_type, &qualified))
 		{
 		  return S_ERROR;
 		}
-	      if (keep_going == false)
+	      if (qualified == false)
 		{
 		  qexec_clear_all_lists (thread_p, xasl);
 		  continue;
@@ -8118,8 +8086,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (!xasl->scan_ptr)
 	    {			/* no scan procedure block */
-	      scan_code = evaluate_one_scanned_tuple (thread_p, xasl, xasl_state, tplrec, &keep_going);
-	      if (keep_going == false)
+	      scan_code = evaluate_one_scanned_tuple (thread_p, xasl, xasl_state, tplrec, &qualified);
+	      if (qualified == false)
 		{
 		  return scan_code;
 		}
@@ -8140,8 +8108,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	      while (S_SUCCESS ==
 		     (xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, tplrec, next_scan_fnc + 1)))
 		{
-		  scan_code = evaluate_one_scanned_tuple (thread_p, xasl, xasl_state, tplrec, &keep_going);
-		  if (keep_going == false)
+		  scan_code = evaluate_one_scanned_tuple (thread_p, xasl, xasl_state, tplrec, &qualified);
+		  if (qualified == false)
 		    {
 		      return scan_code;
 		    }
@@ -8194,7 +8162,7 @@ qexec_merge_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
   SCAN_ID *s_id1;		/* first list file scan identifier */
   SCAN_ID *s_id2;		/* second list file scan identifier */
   ACCESS_SPEC_TYPE *spec;
-  bool keep_going;
+  bool qualified;
 
   /* set first scan parameters */
   s_id1 = &xasl->spec_list->s_id;
@@ -8245,11 +8213,11 @@ qexec_merge_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 		}
 	    }
 	  /* evaluate bptr list */
-	  if (evaluate_xptr_list (thread_p, xasl_state, xasl->bptr_list, S_SELECT, &keep_going) != S_SUCCESS)
+	  if (evaluate_xptr_list (thread_p, xasl_state, xasl->bptr_list, S_SELECT, &qualified) != S_SUCCESS)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
-	  if (keep_going == false)
+	  if (qualified == false)
 	    {
 	      continue;
 	    }
@@ -8284,11 +8252,11 @@ qexec_merge_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 	  if (xasl->if_pred == NULL || ev_res == V_TRUE)
 	    {
 	      /* evaluate fptr list */
-	      if (evaluate_xptr_list (thread_p, xasl_state, xasl->fptr_list, S_SELECT, &keep_going) != S_SUCCESS)
+	      if (evaluate_xptr_list (thread_p, xasl_state, xasl->fptr_list, S_SELECT, &qualified) != S_SUCCESS)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      if (keep_going == false)
+	      if (qualified == false)
 		{
 		  continue;
 		}
