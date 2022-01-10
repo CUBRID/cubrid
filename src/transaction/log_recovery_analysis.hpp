@@ -36,7 +36,7 @@ class log_recovery_context;
  */
 void log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_recovery_context &context);
 
-void log_recovery_analysis_from_transaction_table_snapshot (THREAD_ENTRY *thread_p,
+void log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
     log_lsa most_recent_trantable_snapshot_lsa);
 
 #endif // !_LOG_RECOVERY_ANALYSIS_HPP_

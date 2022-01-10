@@ -7548,7 +7548,9 @@ try_again:
 	      ret = ER_PB_BAD_PAGEID;
 	      goto error;
 	    }
-	  ret = pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, context->latch_mode, *vpid);
+	  // Check if page is ahead of replication; if it is, the bad pageid error is overwritten.
+	  (void) pgbuf_check_for_deallocated_page_or_desynchronization (thread_p, context->latch_mode, *vpid);
+	  ASSERT_ERROR_AND_SET (ret);
 	}
 
       goto error;
@@ -7598,7 +7600,9 @@ try_again:
 	      ret = ER_PB_BAD_PAGEID;
 	      goto error;
 	    }
-	  ret = pgbuf_check_for_deallocated_page_or_desyncronization (thread_p, context->latch_mode, *vpid);
+	  // Check if page is ahead of replication; if it is, the bad pageid error is overwritten.
+	  (void) pgbuf_check_for_deallocated_page_or_desynchronization (thread_p, context->latch_mode, *vpid);
+	  ret = er_errid ();
 	}
 
       goto error;
@@ -25057,7 +25061,7 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
       passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       assert (tdes->page_desync_lsa.is_null ());
-      pts_ptr->wait_replication_pasts_target_lsa (tdes->page_desync_lsa);
+      pts_ptr->wait_replication_past_target_lsa (tdes->page_desync_lsa);
       tdes->page_desync_lsa.set_null ();
     }
   while (true);
