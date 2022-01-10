@@ -21843,11 +21843,24 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	}
     }
 
-  class_name = or_class_name (&class_record);
+  string = NULL;
+  alloced_string = 0;
+  error = or_class_name (&class_record, &string, &alloced_string);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      GOTO_EXIT_ON_ERROR;
+    }
+  class_name = string;
+
   for (i = 0; i < rep->n_indexes; i++)
     {
       /* class name */
       db_make_string (out_values[0], class_name);
+      if (string != NULL && alloced_string == 1)
+	{
+	  out_values[0]->need_clear = true;
+	}
 
       /* packed */
       db_make_null (out_values[8]);

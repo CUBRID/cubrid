@@ -249,6 +249,9 @@ locator_initialize (THREAD_ENTRY * thread_p)
   HFID root_hfid;
   OID class_oid;
   char *classname = NULL;
+  char *string = NULL;
+  int alloced_string = 0;
+  int error = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   LOCATOR_CLASSNAME_ENTRY *entry;
 
@@ -300,9 +303,18 @@ locator_initialize (THREAD_ENTRY * thread_p)
     {
       assert (!OID_ISNULL (&class_oid));
 
-      classname = or_class_name (&peek);
+      string = NULL;
+      alloced_string = 0;
+      error = or_class_name (&peek, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      classname = string;
+
       assert (classname != NULL);
-      assert (strlen (classname) < 255);
+      assert (strlen (classname) < 255);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
       entry = ((LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry)));
       if (entry == NULL)
@@ -317,6 +329,11 @@ locator_initialize (THREAD_ENTRY * thread_p)
 	  free_and_init (entry);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (classname) + 1));
 	  goto error;
+	}
+
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
 	}
 
       entry->e_tran_index = NULL_TRAN_INDEX;
@@ -344,6 +361,10 @@ locator_initialize (THREAD_ENTRY * thread_p)
   return NO_ERROR;
 
 error:
+  if (string != NULL && alloced_string == 1)
+    {
+      db_private_free_and_init (thread_p, string);
+    }
 
   csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
@@ -1927,6 +1948,9 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
   HFID root_hfid;
   OID class_oid;
   char *classname = NULL;
+  char *string = NULL;
+  int alloced_string = 0;
+  int error = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   LOCATOR_CLASSNAME_ENTRY *entry;
@@ -1971,9 +1995,18 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
   isvalid = DISK_VALID;
   while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK) == S_SUCCESS)
     {
-      classname = or_class_name (&peek);
+      string = NULL;
+      alloced_string = 0;
+      error = or_class_name (&peek, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      classname = string;
+
       assert (classname != NULL);
-      assert (strlen (classname) < 255);
+      assert (strlen (classname) < 255);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
       /*
        * Make sure that this class exists in classname_to_OID table and that
@@ -1996,6 +2029,11 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
 		      class_oid.volid, class_oid.pageid, class_oid.slotid);
 	      isvalid = DISK_INVALID;
 	    }
+	}
+
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
 	}
     }				/* while (...) */
 
@@ -5315,6 +5353,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   char *rep_dir_offset;
   char *classname = NULL;	/* Classname to update */
   char *old_classname = NULL;	/* Classname that may have been renamed */
+  char *string = NULL;
+  int alloced_string = 0;
 
   bool isold_object;		/* Make sure that this is an old object */
   RECDES copy_recdes = RECDES_INITIALIZER;
@@ -5363,9 +5403,18 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
        * A CLASS: classes do not have any indices...however, the classname
        * to oid table may need to be updated
        */
-      classname = or_class_name (recdes);
+      string = NULL;
+      alloced_string = 0;
+      error_code = or_class_name (recdes, &string, &alloced_string);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      classname = string;
+
       assert (classname != NULL);
-      assert (strlen (classname) < 255);
+      assert (strlen (classname) < 255);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
       if (heap_get_class_name_alloc_if_diff (thread_p, oid, classname, &old_classname) != NO_ERROR)
 	{
@@ -5381,7 +5430,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       if (old_classname != NULL && old_classname != classname)
 	{
 	  assert (old_classname != NULL);
-	  assert (strlen (old_classname) < 255);
+	  assert (strlen (old_classname) < 255);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
 	  /* Different names, the class was renamed. */
 	  error_code = log_add_to_modified_class_list (thread_p, old_classname, oid);
@@ -5993,6 +6042,11 @@ error:
       free_and_init (old_classname);
     }
 
+  if (string != NULL && alloced_string == 1)
+    {
+      db_private_free_and_init (thread_p, string);
+    }
+
   if (cache_attr_copyarea != NULL)
     {
       locator_free_copy_area (cache_attr_copyarea);
@@ -6083,6 +6137,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   OID class_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   /* Class identifier */
   char *classname;		/* Classname to update */
+  char *string = NULL;
+  int alloced_string = 0;
   RECDES copy_recdes;
   int error_code = NO_ERROR;
   bool deleted = false;
@@ -6167,9 +6223,18 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
        */
 
       /* Delete the classname entry */
-      classname = or_class_name (&copy_recdes);
+      string = NULL;
+      alloced_string = 0;
+      error_code = or_class_name (&copy_recdes, &string, &alloced_string);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      classname = string;
+
       assert (classname != NULL);
-      assert (strlen (classname) < 255);
+      assert (strlen (classname) < 255);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
       /* Note: by now, the client has probably already requested this class be deleted. We try again here just to be
        * sure it has been marked properly.  Note that we would normally want to check the return code, but we must not
@@ -6321,6 +6386,10 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 #endif
 
 error:
+  if (string != NULL && alloced_string == 1)
+    {
+      db_private_free_and_init (thread_p, string);
+    }
 
   return error_code;
 }

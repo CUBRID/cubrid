@@ -2689,6 +2689,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   char *string = NULL;
   int alloced_string = 0;
   HEAP_SCANCACHE scan_cache;
+  int error = NO_ERROR;
 
   /*
    * The class is fetched to print the attribute names.
@@ -2708,7 +2709,15 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
       goto exit_on_error;
     }
 
-  classname = or_class_name (&recdes);
+  string = NULL;
+  alloced_string = 0;
+  error = or_class_name (&recdes, &string, &alloced_string);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+  classname = string;
   assert (classname != NULL);
 
   fprintf (fp, "\n");
@@ -2718,6 +2727,11 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 	   (int) class_oid->volid, class_oid->pageid, (int) class_oid->slotid, classname, repr->id, repr->n_attributes,
 	   (repr->n_attributes - repr->n_variable - repr->n_shared_attrs - repr->n_class_attrs), repr->n_variable,
 	   repr->n_shared_attrs, repr->n_class_attrs, repr->fixed_length);
+
+  if (string != NULL && alloced_string == 1)
+    {
+      db_private_free_and_init (thread_p, string);
+    }
 
   if (repr->n_attributes > 0)
     {
@@ -9362,6 +9376,8 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
 				   char **classname_out)
 {
   char *classname = NULL;
+  char *string = NULL;
+  int alloced_string = 0;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
   int error_code = NO_ERROR;
@@ -9370,7 +9386,15 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
 
   if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
     {
-      classname = or_class_name (&recdes);
+      string = NULL;
+      alloced_string = 0;
+      error_code = or_class_name (&recdes, &string, &alloced_string);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      classname = string;
       if (guess_classname == NULL || strcmp (guess_classname, classname) != 0)
 	{
 	  /*
@@ -9390,6 +9414,11 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
 	   * The classnames are identical
 	   */
 	  *classname_out = guess_classname;
+	}
+
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
 	}
     }
   else
@@ -23288,6 +23317,8 @@ exit:
 static int
 heap_get_class_info_from_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, char **classname)
 {
+  char *string = NULL;
+  int alloced_string = 0;
   int error_code = NO_ERROR;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
@@ -23309,7 +23340,21 @@ heap_get_class_info_from_record (THREAD_ENTRY * thread_p, const OID * class_oid,
 
   if (classname != NULL)
     {
-      *classname = strdup (or_class_name (&recdes));
+      string = NULL;
+      alloced_string = 0;
+      error_code = or_class_name (&recdes, &string, &alloced_string);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      *classname = strdup (string);
+
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
+	}
     }
 
   error_code = heap_scancache_end (thread_p, &scan_cache);

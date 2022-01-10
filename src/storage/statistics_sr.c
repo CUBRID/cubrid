@@ -361,6 +361,8 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
   OID class_oid;
 #if !defined(NDEBUG)
   char *classname = NULL;
+  char *string = NULL;
+  int alloced_string = 0;
 #endif
   HEAP_SCANCACHE scan_cache;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
@@ -392,9 +394,22 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
   while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &recdes, &scan_cache, COPY) == S_SUCCESS)
     {
 #if !defined(NDEBUG)
-      classname = or_class_name (&recdes);
+      string = NULL;
+      alloced_string = 0;
+      error = or_class_name (&recdes, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+      classname = string;
       assert (classname != NULL);
-      assert (strlen (classname) < 255);
+      assert (strlen (classname) < 255);	// to be: DB_MAX_FULL_CLASS_LENGTH
+
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
+	}
 #endif
 
       error = xstats_update_statistics (thread_p, &class_oid, with_fullscan);

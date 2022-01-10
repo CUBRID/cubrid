@@ -4679,6 +4679,9 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
   OID class_oid;
 #if !defined(NDEBUG)
   char *classname = NULL;
+  char *string = NULL;
+  int alloced_string = 0;
+  int error = NO_ERROR;
 #endif
   HEAP_SCANCACHE scan_cache;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
@@ -4711,9 +4714,23 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
   while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK) == S_SUCCESS)
     {
 #if !defined(NDEBUG)
-      classname = or_class_name (&peek);
+      string = NULL;
+      alloced_string = 0;
+      error = or_class_name (&peek, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+      classname = string;
+
       assert (classname != NULL);
-      assert (strlen (classname) < 255);
+      assert (strlen (classname) < 255);	// to be: DB_MAX_FULL_CLASS_LENGTH
+
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
+	}
 #endif
       if (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, LK_COND_LOCK) != LK_GRANTED)
 	{
@@ -4979,6 +4996,9 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
   OID class_oid;
 #if !defined(NDEBUG)
   char *classname = NULL;
+  char *string = NULL;
+  int alloced_string = 0;
+  int error = NO_ERROR;
 #endif
   HEAP_SCANCACHE scan_cache;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
@@ -5021,9 +5041,23 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
   while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK) == S_SUCCESS)
     {
 #if !defined(NDEBUG)
-      classname = or_class_name (&peek);
+      string = NULL;
+      alloced_string = 0;
+      error = or_class_name (&peek, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return;
+	}
+      classname = string;
+
       assert (classname != NULL);
-      assert (strlen (classname) < 255);
+      assert (strlen (classname) < 255);	// to be: DB_MAX_FULL_CLASS_LENGTH
+
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
+	}
 #endif
 
       fprintf (fp, " -------------------------------------------------\n");
