@@ -293,6 +293,9 @@ or_class_name (RECDES * record, char **string, int *alloced_string)
   int decompressed_length = 0;
   int rc = NO_ERROR;
 
+  assert (string != NULL);
+  assert (alloced_string != NULL);
+
   /* Initialization */
   *string = NULL;
   *alloced_string == 0;
