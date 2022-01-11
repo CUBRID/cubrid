@@ -18524,6 +18524,7 @@ pt_apply_create_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   return p;
 }
 
+static PARSER_VARCHAR *
 pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r;
