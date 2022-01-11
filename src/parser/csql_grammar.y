@@ -3053,7 +3053,7 @@ create_stmt
 			    p->info.create_synonym.or_replace = $2;
 			    p->info.create_synonym.access_modifier = $4;
 
-			    /* synonym_name, synonym_owner_name */
+			    /* synonym_owner_name, synonym_name */
 			    PT_NODE *synonym = $6;
 			    if (synonym)
 			      {
@@ -4172,7 +4172,7 @@ rename_stmt
 			      }
 
 			    if (p->info.rename_synonym.old_owner_name
-			        && p->info.rename_synonym.old_owner_name->node_type == PT_NAME
+				&& p->info.rename_synonym.old_owner_name->node_type == PT_NAME
 				&& p->info.rename_synonym.new_owner_name
 				&& p->info.rename_synonym.new_owner_name->node_type == PT_NAME
 				&& strcmp(p->info.rename_synonym.old_owner_name->info.name.original,
@@ -4505,7 +4505,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}   
+		DBG_PRINT}}
 	| DROP			/* 1 */
 		{ push_msg (MSGCAT_SYNTAX_INVALID_DROP_SYNONYM); }	/* 2 */
 	  opt_access_modifier	/* 3 */
