@@ -77,7 +77,7 @@ namespace cubthread
   entry::entry ()
   // public:
     : index (-1)
-    , type (TT_WORKER)
+    , type (TT_NONE)
     , emulate_tid ()
     , client_id (-1)
     , tran_index (NULL_TRAN_INDEX)
@@ -258,6 +258,10 @@ namespace cubthread
     no_logging = false;
 
     no_supplemental_log = false;
+
+    trigger_involved = false;
+
+    is_cdc_daemon = false;
 
     end_resource_tracks ();
 

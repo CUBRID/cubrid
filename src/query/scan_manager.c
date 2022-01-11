@@ -184,6 +184,7 @@ static SCAN_CODE scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 static SCAN_CODE scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
 static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static void resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list);
@@ -4018,6 +4019,36 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
+ * scan_open_dblink_scan () -
+ *   return: NO_ERROR, or ER_code
+ *   scan_id(out): Scan identifier
+ *   conn_url(in):
+ *   conn_user(in):
+ *   conn_password(in):
+ *   sql_text(in):
+ *
+ */
+int
+scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+		       struct access_spec_node *spec, VAL_DESCR * vd, VAL_LIST * val_list, DBLINK_HOST_VARS * host_vars)
+{
+  DBLINK_SCAN_ID *dblid = &scan_id->s.dblid;
+  DB_TYPE single_node_type = DB_TYPE_NULL;
+
+  /* scan type is DBLINK SCAN */
+  scan_id->type = S_DBLINK_SCAN;
+
+  /* initialize SCAN_ID structure */
+  scan_init_scan_id (scan_id, false, S_SELECT, true, 0, spec->single_fetch, NULL, val_list, vd);
+
+  /* scan predicates */
+  scan_init_scan_pred (&dblid->scan_pred, NULL, spec->where_pred,
+		       ((spec->where_pred) ? eval_fnc (thread_p, spec->where_pred, &single_node_type) : NULL));
+
+  return dblink_open_scan (&scan_id->s.dblid.scan_info, spec, vd, host_vars);
+}
+
+/*
  * scan_start_scan () - Start the scan process on the given scan identifier.
  *   return: NO_ERROR, or ER_code
  *   scan_id(out): Scan identifier
@@ -4299,6 +4330,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_METHOD_SCAN:
+    case S_DBLINK_SCAN:
       break;
 
     default:
@@ -4446,6 +4478,10 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       s_id->position = S_BEFORE;
       break;
 
+    case S_DBLINK_SCAN:
+      status = dblink_scan_reset (&s_id->s.dblid.scan_info);
+      break;
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       status = S_ERROR;
@@ -4587,6 +4623,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_SHOWSTMT_SCAN:
     case S_SET_SCAN:
     case S_METHOD_SCAN:
+    case S_DBLINK_SCAN:
     case S_JSON_TABLE_SCAN:
     case S_VALUES_SCAN:
       return (s_id->position == S_BEFORE) ? S_SUCCESS : S_END;
@@ -4713,6 +4750,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_METHOD_SCAN:
+    case S_DBLINK_SCAN:
       break;
 
     default:
@@ -4910,6 +4948,10 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       method_close_scan (thread_p, &scan_id->s.vaid.scan_buf);
       break;
 
+    case S_DBLINK_SCAN:
+      dblink_close_scan (&scan_id->s.dblid.scan_info);
+      break;
+
     case S_JSON_TABLE_SCAN:
       break;
 
@@ -5097,6 +5139,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_METHOD_SCAN:
       status = scan_next_method_scan (thread_p, scan_id);
+      break;
+
+    case S_DBLINK_SCAN:
+      status = scan_next_dblink_scan (thread_p, scan_id);
       break;
 
     default:
@@ -6824,6 +6870,91 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
+ * scan_next_dblink_scan () - The scan is moved to the next dblink scan item.
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   scan_id(in/out): Scan identifier
+ *
+ * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
+ */
+static SCAN_CODE
+scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  DBLINK_SCAN_ID *vaidp;
+  SCAN_CODE qp_scan;
+  DB_LOGICAL ev_res;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+
+  vaidp = &scan_id->s.dblid;
+
+  /* execute dblink scan */
+
+  while ((qp_scan = dblink_scan_next (&vaidp->scan_info, scan_id->val_list)) == S_SUCCESS)
+    {
+      /* evaluate the predicate to see if the tuple qualifies */
+      ev_res = V_TRUE;
+      if (vaidp->scan_pred.pr_eval_fnc && vaidp->scan_pred.pred_expr)
+	{
+	  ev_res = (*vaidp->scan_pred.pr_eval_fnc) (thread_p, vaidp->scan_pred.pred_expr, scan_id->vd, NULL);
+	  if (ev_res == V_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+
+      if (scan_id->qualification == QPROC_QUALIFIED)
+	{
+	  if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+	    {
+	      continue;		/* not qualified, continue to the next tuple */
+	    }
+	}
+      else if (scan_id->qualification == QPROC_NOT_QUALIFIED)
+	{
+	  if (ev_res != V_FALSE)	/* V_TRUE || V_UNKNOWN */
+	    {
+	      continue;		/* qualified, continue to the next tuple */
+	    }
+	}
+      else if (scan_id->qualification == QPROC_QUALIFIED_OR_NOT)
+	{
+	  if (ev_res == V_TRUE)
+	    {
+	      scan_id->qualification = QPROC_QUALIFIED;
+	    }
+	  else if (ev_res == V_FALSE)
+	    {
+	      scan_id->qualification = QPROC_NOT_QUALIFIED;
+	    }
+	  else			/* V_UNKNOWN */
+	    {
+	      /* nop */
+	      ;
+	    }
+	}
+      else
+	{			/* invalid value; the same as QPROC_QUALIFIED */
+	  if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+	    {
+	      continue;		/* not qualified, continue to the next tuple */
+	    }
+	}
+
+      return S_SUCCESS;
+    }
+
+  /* scan error or end of scan */
+  if (qp_scan == S_END)
+    {
+      scan_id->position = S_AFTER;
+      return S_END;
+    }
+  else
+    {
+      return S_ERROR;
+    }
+}
+
+/*
  * scan_handle_single_scan () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
@@ -7696,6 +7827,10 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
       json_object_set_new (scan_stats, "method", scan);
       break;
 
+    case S_DBLINK_SCAN:
+      json_object_set_new (scan_stats, "dblink", scan);
+      break;
+
     case S_CLASS_ATTR_SCAN:
       json_object_set_new (scan_stats, "class_attr", scan);
       break;
@@ -7758,6 +7893,10 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 
     case S_METHOD_SCAN:
       fprintf (fp, "(method");
+      break;
+
+    case S_DBLINK_SCAN:
+      fprintf (fp, "(dblink");
       break;
 
     case S_CLASS_ATTR_SCAN:

@@ -704,7 +704,7 @@ struct json_t;
 #define PT_IS_FALSE_WHERE_VALUE(node) \
  (((node) != NULL && (node)->node_type == PT_VALUE \
   && ((node)->type_enum == PT_TYPE_NULL \
-       || ((node)->type_enum == PT_TYPE_SET \
+       || (PT_IS_SET_TYPE (node) \
            && ((node)->info.value.data_value.set == NULL)))) ? true : false)
 
 #define PT_IS_SPEC_REAL_TABLE(spec_) PT_SPEC_IS_ENTITY(spec_)
@@ -782,7 +782,9 @@ enum pt_custom_print
 
   PT_PRINT_USER = (0x1 << 20),
 
-  PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21)
+  PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21),
+
+  PT_PRINT_NO_HOST_VAR_INDEX = (0x1 << 22)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -848,6 +850,11 @@ enum pt_node_type
   PT_SET_NAMES = CUBRID_STMT_SET_NAMES,
   PT_SET_TIMEZONE = CUBRID_STMT_SET_TIMEZONE,
 
+  PT_CREATE_SERVER = CUBRID_STMT_CREATE_SERVER,
+  PT_DROP_SERVER = CUBRID_STMT_DROP_SERVER,
+  PT_RENAME_SERVER = CUBRID_STMT_RENAME_SERVER,
+  PT_ALTER_SERVER = CUBRID_STMT_ALTER_SERVER,
+
   PT_ALTER_SYNONYM = CUBRID_STMT_ALTER_SYNONYM,
   PT_CREATE_SYNONYM = CUBRID_STMT_CREATE_SYNONYM,
   PT_DROP_SYNONYM = CUBRID_STMT_DROP_SYNONYM,
@@ -905,7 +912,7 @@ enum pt_node_type
   PT_JSON_TABLE,
   PT_JSON_TABLE_NODE,
   PT_JSON_TABLE_COLUMN,
-
+  PT_DBLINK_TABLE,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -1150,10 +1157,12 @@ typedef enum
 
   PT_DERIVED_JSON_TABLE,	// json table spec derivation
 
+  PT_DERIVED_DBLINK_TABLE,	// dblink table spec derivation
+
   PT_PRIVATE,
   PT_PUBLIC,
   PT_SYNONYM
-// todo: separate into relevant enumerations
+  // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -2558,6 +2567,7 @@ struct pt_name_info
   PT_TYPE_ENUM virt_type_enum;	/* type of oid's in ldb for proxies. */
   PT_MISC_TYPE meta_class;	/* 0 or PT_META or PT_PARAMETER or PT_CLASS */
   PT_NODE *default_value;	/* PT_VALUE the default value of the attribute */
+  PT_NODE *constant_value;	/* constant value derived from qo_reduce_equality_terms () */
   unsigned int custom_print;
   unsigned short correlation_level;	/* for correlated attributes */
   char hidden_column;		/* used for updates and deletes for the class OID column */
@@ -3264,6 +3274,79 @@ struct pt_json_table_info
   bool is_correlated;
 };
 
+typedef struct host_vars_info
+{
+  int count;
+  int *index;
+} PT_HOST_VAR_IDX_INFO;
+
+typedef struct pt_dblink_info
+{
+  PT_NODE *conn;		/* name for DBLINK */
+  PT_NODE *owner_name;
+  PT_NODE *url;			/* url info */
+  PT_NODE *user;
+  PT_NODE *pwd;
+  PT_NODE *qstr;		/* query string */
+  PT_NODE *cols;		/* column definition  */
+  PT_NODE *pushed_pred;		/* pushed predicate from main query */
+  PARSER_VARCHAR *rewritten;	/* rewritten query string for dblink */
+  PT_HOST_VAR_IDX_INFO host_vars;	/* host variable index info for rewritten query */
+  bool is_name;			/*  */
+} PT_DBLINK_INFO;
+
+typedef struct pt_create_server_info
+{
+  PT_NODE *server_name;
+  PT_NODE *owner_name;
+  PT_NODE *host;
+  PT_NODE *port;
+  PT_NODE *dbname;
+  PT_NODE *user;
+  PT_NODE *pwd;
+  PT_NODE *prop;
+  PT_NODE *comment;
+} PT_CREATE_SERVER_INFO;
+
+typedef struct pt_alter_server_info
+{
+  PT_NODE *server_name;
+  PT_NODE *current_owner_name;
+  PT_NODE *host;
+  PT_NODE *port;
+  PT_NODE *dbname;
+  PT_NODE *user;
+  PT_NODE *pwd;
+  PT_NODE *prop;
+  PT_NODE *comment;
+  PT_NODE *owner_name;
+  struct
+  {
+    unsigned int bit_host:1;
+    unsigned int bit_port:1;
+    unsigned int bit_dbname:1;
+    unsigned int bit_user:1;
+    unsigned int bit_pwd:1;
+    unsigned int bit_prop:1;
+    unsigned int bit_comment:1;
+    unsigned int bit_owner:1;
+  } xbits;
+} PT_ALTER_SERVER_INFO;
+
+typedef struct pt_drop_server_info
+{
+  bool if_exists;		/* IF EXISTS clause for DROP SERVER */
+  PT_NODE *owner_name;		/* name */
+  PT_NODE *server_name;		/* name */
+} PT_DROP_SERVER_INFO;
+
+typedef struct pt_rename_server_info
+{
+  PT_NODE *old_name;		/* PT_NAME */
+  PT_NODE *owner_name;		/* name */
+  PT_NODE *new_name;		/* PT_NAME */
+} PT_RENAME_SERVER_INFO;
+
 struct pt_alter_synonym_info
 {
   PT_NODE *synonym_name;
@@ -3313,6 +3396,7 @@ union pt_statement_info
   PT_ALTER_INFO alter;
   PT_ALTER_TRIGGER_INFO alter_trigger;
   PT_ALTER_USER_INFO alter_user;
+  PT_ALTER_SERVER_INFO alter_server;
   PT_ATTACH_INFO attach;
   PT_ATTR_DEF_INFO attr_def;
   PT_ATTR_ORDERING_INFO attr_ordering;
@@ -3322,16 +3406,19 @@ union pt_statement_info
   PT_COMMIT_WORK_INFO commit_work;
   PT_CONSTRAINT_INFO constraint;
   PT_CREATE_ENTITY_INFO create_entity;
+  PT_CREATE_SERVER_INFO create_server;
   PT_CREATE_TRIGGER_INFO create_trigger;
   PT_CREATE_USER_INFO create_user;
   PT_CTE_INFO cte;
   PT_DATA_DEFAULT_INFO data_default;
   PT_DATA_TYPE_INFO data_type;
+  PT_DBLINK_INFO dblink_table;
   PT_DELETE_INFO delete_;
   PT_DO_INFO do_;
   PT_DOT_INFO dot;
   PT_DROP_INFO drop;
   PT_DROP_SESSION_VAR_INFO drop_session_var;
+  PT_DROP_SERVER_INFO drop_server;
   PT_DROP_TRIGGER_INFO drop_trigger;
   PT_DROP_USER_INFO drop_user;
   PT_DROP_VARIABLE_INFO drop_variable;
@@ -3370,6 +3457,7 @@ union pt_statement_info
   PT_QUERY_INFO query;
   PT_REMOVE_TRIGGER_INFO remove_trigger;
   PT_RENAME_INFO rename;
+  PT_RENAME_SERVER_INFO rename_server;
   PT_RENAME_TRIGGER_INFO rename_trigger;
   PT_RESOLUTION_INFO resolution;
   PT_REVOKE_INFO revoke;
@@ -3532,6 +3620,7 @@ struct parser_node
     unsigned is_wrapped_res_for_coll:1;	/* is a result node wrapped with CAST by collation inference */
     unsigned is_system_generated_stmt:1;	/* is internally generated by system */
     unsigned use_auto_commit:1;	/* use autocommit */
+    unsigned done_reduce_equality_terms:1;	/* reduce_equality_terms() is already called */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };

@@ -208,6 +208,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/method_scan.c
+  ${QUERY_DIR}/dblink_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
@@ -506,6 +507,9 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
+# for dblink
+target_link_libraries(cubrid cascci)
+target_link_libraries(cubrid cubridcs)
 
 add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer)
 
