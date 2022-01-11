@@ -394,8 +394,6 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
   while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &recdes, &scan_cache, COPY) == S_SUCCESS)
     {
 #if !defined(NDEBUG)
-      string = NULL;
-      alloced_string = 0;
       error = or_class_name (&recdes, &string, &alloced_string);
       if (error != NO_ERROR)
 	{
@@ -404,9 +402,9 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 	}
       classname = string;
       assert (classname != NULL);
-      assert (strlen (classname) < 255);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
-      if (string != NULL && alloced_string == 1)
+      if (alloced_string)
 	{
 	  db_private_free_and_init (thread_p, string);
 	}

@@ -2709,8 +2709,6 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
       goto exit_on_error;
     }
 
-  string = NULL;
-  alloced_string = 0;
   error = or_class_name (&recdes, &string, &alloced_string);
   if (error != NO_ERROR)
     {
@@ -2728,7 +2726,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 	   (repr->n_attributes - repr->n_variable - repr->n_shared_attrs - repr->n_class_attrs), repr->n_variable,
 	   repr->n_shared_attrs, repr->n_class_attrs, repr->fixed_length);
 
-  if (string != NULL && alloced_string == 1)
+  if (alloced_string)
     {
       db_private_free_and_init (thread_p, string);
     }
@@ -9386,8 +9384,6 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
 
   if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
     {
-      string = NULL;
-      alloced_string = 0;
       error_code = or_class_name (&recdes, &string, &alloced_string);
       if (error_code != NO_ERROR)
 	{
@@ -9416,7 +9412,7 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
 	  *classname_out = guess_classname;
 	}
 
-      if (string != NULL && alloced_string == 1)
+      if (alloced_string)
 	{
 	  db_private_free_and_init (thread_p, string);
 	}
@@ -23340,8 +23336,6 @@ heap_get_class_info_from_record (THREAD_ENTRY * thread_p, const OID * class_oid,
 
   if (classname != NULL)
     {
-      string = NULL;
-      alloced_string = 0;
       error_code = or_class_name (&recdes, &string, &alloced_string);
       if (error_code != NO_ERROR)
 	{
@@ -23351,7 +23345,7 @@ heap_get_class_info_from_record (THREAD_ENTRY * thread_p, const OID * class_oid,
 
       *classname = strdup (string);
 
-      if (string != NULL && alloced_string == 1)
+      if (alloced_string)
 	{
 	  db_private_free_and_init (thread_p, string);
 	}
