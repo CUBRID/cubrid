@@ -108,9 +108,8 @@ OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Authorization_class, CT_AUTHORIZATION_NAME},
   {&oid_Authorizations_class, CT_AUTHORIZATIONS_NAME},
   {&oid_DBServer_class, CT_DB_SERVER_NAME},
-  {&oid_DB_root_class, CT_ROOT_NAME},
-  {&oid_DB_root_class, CT_ROOT_NAME},
-  {&oid_Synonym_class, CT_SYNONYM_NAME}
+  {&oid_Synonym_class, CT_SYNONYM_NAME},
+  {&oid_DB_root_class, CT_ROOT_NAME}
 };
 
 /*

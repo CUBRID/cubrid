@@ -18524,6 +18524,62 @@ pt_apply_create_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   return p;
 }
 
+static PARSER_VARCHAR *
+pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = 0, *r;
+  PT_CREATE_SERVER_INFO *si = &(p->info.create_server);
+
+  q = pt_append_nulstring (parser, q, "CREATE SERVER ");
+
+  if (si->owner_name)
+    {
+      r = pt_print_bytes (parser, si->owner_name);
+      q = pt_append_varchar (parser, q, r);
+      q = pt_append_nulstring (parser, q, ".");
+    }
+  r = pt_print_bytes (parser, si->server_name);
+  q = pt_append_varchar (parser, q, r);
+
+  q = pt_append_nulstring (parser, q, " ( HOST=");
+  r = pt_print_bytes (parser, si->host);
+  q = pt_append_varchar (parser, q, r);
+
+  q = pt_append_nulstring (parser, q, ", PORT=");
+  r = pt_print_bytes (parser, si->port);
+  q = pt_append_varchar (parser, q, r);
+
+  q = pt_append_nulstring (parser, q, ", DBNAME=");
+  r = pt_print_bytes (parser, si->dbname);
+  q = pt_append_varchar (parser, q, r);
+
+  q = pt_append_nulstring (parser, q, ", USER=");
+  r = pt_print_bytes (parser, si->user);
+  q = pt_append_varchar (parser, q, r);
+
+  q = pt_append_nulstring (parser, q, ", PASSWORD=");
+  r = pt_print_bytes (parser, si->pwd);
+  q = pt_append_varchar (parser, q, r);
+
+  if (si->prop != NULL)
+    {
+      q = pt_append_nulstring (parser, q, ", PROPERTIES=");
+      r = pt_print_bytes (parser, si->prop);
+      q = pt_append_varchar (parser, q, r);
+    }
+
+  if (si->comment != NULL)
+    {
+      q = pt_append_nulstring (parser, q, ", COMMENT=");
+      r = pt_print_bytes (parser, si->comment);
+      q = pt_append_varchar (parser, q, r);
+    }
+
+  q = pt_append_nulstring (parser, q, " )");
+
+  return q;
+}
+
 static PT_NODE *
 pt_apply_drop_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
@@ -18939,57 +18995,4 @@ pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.rename_synonym.new_name);
   q = pt_append_varchar (parser, q, r1);
-pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p)
-{
-  PARSER_VARCHAR *q = 0, *r;
-  PT_CREATE_SERVER_INFO *si = &(p->info.create_server);
-
-  q = pt_append_nulstring (parser, q, "CREATE SERVER ");
-
-  if (si->owner_name)
-    {
-      r = pt_print_bytes (parser, si->owner_name);
-      q = pt_append_varchar (parser, q, r);
-      q = pt_append_nulstring (parser, q, ".");
-    }
-  r = pt_print_bytes (parser, si->server_name);
-  q = pt_append_varchar (parser, q, r);
-
-  q = pt_append_nulstring (parser, q, " ( HOST=");
-  r = pt_print_bytes (parser, si->host);
-  q = pt_append_varchar (parser, q, r);
-
-  q = pt_append_nulstring (parser, q, ", PORT=");
-  r = pt_print_bytes (parser, si->port);
-  q = pt_append_varchar (parser, q, r);
-
-  q = pt_append_nulstring (parser, q, ", DBNAME=");
-  r = pt_print_bytes (parser, si->dbname);
-  q = pt_append_varchar (parser, q, r);
-
-  q = pt_append_nulstring (parser, q, ", USER=");
-  r = pt_print_bytes (parser, si->user);
-  q = pt_append_varchar (parser, q, r);
-
-  q = pt_append_nulstring (parser, q, ", PASSWORD=");
-  r = pt_print_bytes (parser, si->pwd);
-  q = pt_append_varchar (parser, q, r);
-
-  if (si->prop != NULL)
-    {
-      q = pt_append_nulstring (parser, q, ", PROPERTIES=");
-      r = pt_print_bytes (parser, si->prop);
-      q = pt_append_varchar (parser, q, r);
-    }
-
-  if (si->comment != NULL)
-    {
-      q = pt_append_nulstring (parser, q, ", COMMENT=");
-      r = pt_print_bytes (parser, si->comment);
-      q = pt_append_varchar (parser, q, r);
-    }
-
-  q = pt_append_nulstring (parser, q, " )");
-
-  return q;
 }
