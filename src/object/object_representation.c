@@ -316,7 +316,7 @@ or_class_name (RECDES * record, char **string, int *alloced_string)
    * Knowledge of the format of packed varchars should be in a different
    * or_ function.
    */
-  len = (int) * ((unsigned char *) start);
+  len = (int) *((unsigned char *) start);
   if (len < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       *string = start + 1;
