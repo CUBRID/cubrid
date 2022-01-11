@@ -30,6 +30,7 @@ pass=""
 password=""
 total_pages=0
 from_file=""
+target_dir=$(pwd)
 
 slot=()
 
@@ -41,6 +42,7 @@ function show_usage ()
          echo "  -i arg  input FILE of table names; default: dump all classes"
          echo "  -u arg  Set database user name; default dba"
          echo "  -p arg  Set dbuser password"
+         echo "  -D arg  Set directory for unloaddb output dir/files"
          echo "  -v      Set verbose mode on"
 
          echo ""
@@ -70,12 +72,13 @@ function veryfy_user_pass ()
 
 function get_options ()
 {
-         while getopts ":u:p:i:t:v" opt; do
+         while getopts ":D:u:p:i:t:v" opt; do
                 case $opt in
                         u ) user="-u $OPTARG" ;;
                         p ) pass="-p $OPTARG" ;;
                         i ) from_file="$OPTARG" ;;
                         t ) num_proc="$OPTARG" ;;
+                        D ) target_dir="$OPTARG" ;;
                         v ) verbose="yes" ;;
                 esac
         done
@@ -262,6 +265,14 @@ trap "cleanup; exit" SIGHUP SIGINT SIGTERM
 
 extract_db_name $*
 get_options "$@"
+
+if [ ! -d $target_dir ];then
+        echo "$target_dir: directory not exists or permission denied"
+        exit
+else
+   silent_cd $target_dir
+fi
+
 veryfy_user_pass
 
 get_table_name $*
