@@ -72,12 +72,18 @@ namespace cublog
        */
       bool m_clean_shutdown = false;
 
-      /* as the system is designed, it is not needed to hold a map of checkpoints since there should
-       * be, at most, 2 checkpoints:
-       *  - the current checkpoint: the one to be used in case of crash
-       *  - the new - in progress - checkpoint: at the moment the new checkpoint is commited to disk, the
-       *      previous - current - checkpoint is discarded and the new checkpoint becomes the current one
-       * but the implementation is simpler with a container
+      /* a container is needed only to allow safe persistence of checkpoints in the meta log:
+       *  - inbetween consecutive executions of checkpoint trantable daemon that periodically saves
+       *    a new checkpoint, the container only has one element - the last checkpoint
+       *  - when the daemon executes to create a new checkpoint:
+       *    - it first adds the new checkpoint (always with a higher LSA)
+       *    - saves the meta log - containing both the last and at least (usually) one more
+       *      (older) checkpoint to file
+       *    - removes the older checkpoint(s) from the container
+       *    - saves again the meta log to file
+       *    - if somewhere along the road the server crashes, the two checkpoints will be loaded
+       *      at next start but only one will be used, and the older ones will be discarded upon
+       *      subsequent executions of the checkpoint trantable daemon
        */
       checkpoint_container_t m_checkpoints;
   };
