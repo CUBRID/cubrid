@@ -520,6 +520,8 @@ gültige Optionen:\n\
   -d, --data-only              nur Objekte exportieren; Standard: Schema und die Objekte\n\
       --output-prefix=PRÄFIX   PRÄFIX für die Ausgangdateien; Standard: Datenbanknamen\n\
       --hash-file=DATEI        Datei für Hash; Standard: erzeugt bei tmpnam()\n\
+      --latest-image           beim Dumpen von Objekten wird das neueste Image von Objekten in Datenvolumes ausgegeben, nicht auf Log-Volumes (ohne MVCC)\n\
+                               Es könnte nicht festgeschriebene Daten und gelöschte Daten enthalten, die nicht bereinigt wurden; Standard: deaktiviert\n\
   -v, --verbose                ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
       --use-delimiter          '"' verwenden, wo ein Identifikator anfängt und endet; Standard: nicht verwenden\n\
   -S, --SA-mode                Stand-Alone-Ausführung\n\
@@ -623,6 +625,7 @@ gültige Optionen:\n\
 39 -i(--immediately) option muss mit --deact-stop-all verwendet werden.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Bitte ohne die Option --recreate-log ausführen oder das aktive Protokoll-Volume manuell entfernen.\n
 60 \
 emergency_patchlog: Eine Datenbank im Notfall patchen.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1223,6 +1226,7 @@ Verwendung: %1$s tde OPERATION (-s|-n|-d|-c) [OPTION] Datenbankname\n\
 \n\
 gültige Optionen:\n\
     -p, --dba-password=PASS-Passwort    des DBA-Benutzers; wird gefragt, wenn nicht angegeben wird\n\
+\n\
 OPERATIONEN: Eine der Operationen muss angegeben werden und sie sind exklusiv\n\
     -s, --show-keys                     druckt Schlüsselinformationen, die in der Datenbank und in der Schlüsseldatei (_keys) festgelegt sind\n\
     -n, --generate-new-key              generiert einen neuen Schlüssel in der Schlüsseldatei (_keys); maximale Anzahl: 128\n\

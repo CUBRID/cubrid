@@ -143,6 +143,7 @@ typedef struct tf_ct_class
 #define CT_AUTHORIZATIONS_NAME     "db_authorizations"
 #define CT_CHARSET_NAME		   "_db_charset"
 #define CT_DUAL_NAME               "dual"
+#define CT_DB_SERVER_NAME          "_db_server"
 #define CT_SYNONYM_NAME            "_db_synonym"
 
 /* catalog vclasses */
@@ -164,6 +165,7 @@ typedef struct tf_ct_class
 #define CTV_PARTITION_NAME         "db_partition"
 #define CTV_DB_COLLATION_NAME      "db_collation"
 #define CTV_DB_CHARSET_NAME	   "db_charset"
+#define CTV_DB_SERVER_NAME         "db_server"
 #define CTV_SYNONYM_NAME           "db_synonym"
 
 #define CT_DBCOLL_COLL_ID_COLUMN	   "coll_id"

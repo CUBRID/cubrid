@@ -524,6 +524,8 @@ options valids:\n\
   -d, --data-only                 sauvegarde seulement les objets; par défaut: schéma et les objets\n\
       --output-prefix=PRÉFIXE     PRÉFIXE pour les fichiers de sortie, par défaut: le nom de de base de données\n\
       --hash-file=FICHIER         FICHIER pour hachage; valeur par défaut: générer par tmpnam ()\n\
+      --latest-image              lors du vidage d'objets, il vide la dernière image des objets dans les volumes de données, sans se référer aux volumes de journaux (ignorant MVCC)\n\
+                                  Cela peut inclure des données non validées et des données supprimées qui ne sont pas aspirées ; par défaut : désactivé\n\
   -v, --verbose                   active les messages verbeux d'état; par défaut: désactivé\n\
       --use-delimiter             utilise '"' dans les endroits où un identificateur commence ou se termine; par défaut: ne pas utiliser\n\
   -S, --SA-mode                   exécution en mode autonome\n\
@@ -627,6 +629,7 @@ options valids:\n\
 39 L'option -i(--immediately) doit être utilisée avec l'option --deact-stop-all.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Veuillez exécuter sans l'option --recreate-log ou supprimez le volume de journal actif manuellement.\n
 60 \
 emergency_patchlog: Patche une base de données en cas d'urgence.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1234,6 +1237,7 @@ utilisation: %1$s tde OPERATION (-s|-n|-d|-c) [OPTION] nom-base de données\n\
 \n\
 options valides:\n\
     -p, --dba-password=PASS 	mot de passe de l'utilisateur DBA; demandera si ne spécifiez pas\n\
+\n\
 OPÉRATIONS: l'une des opérations doit être donnée, et elles sont exclusives\n\
     -s, --show-keys             imprime les informations de clé définies sur la base de données et le fichier de clé (_keys)\n\
     -n, --generate-new-key      génère une nouvelle clé dans le fichier de clé (_keys); nombre maximum: 128\n\

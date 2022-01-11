@@ -904,7 +904,7 @@ $ LOADDB
 834 to_number() 함수에 주어진 source 문자열 "%1$s"과 format 문자열 "%2$s"이 매칭되지 않습니다.
 835 정의되지 않은 통계 아이템입니다.
 836 페이지(%1$d|%2$d)에 대한 래치 획득 요청이 시간을 초과하였습니다.
-837 데이터베이스 객체(클래스/뷰/트리거/serial/synonym 등)을 소유한 사용자는 삭제할 수 없습니다.
+837 데이터베이스 객체(클래스/뷰/트리거/serial 등)을 소유한 사용자는 삭제할 수 없습니다.
 838 동시에 %1$d개를 초과하는 인덱스 스캔을 열 수 없습니다.
 839 "%1$s": 알 수 없는 시스템 파라미터 이거나 값이 잘못되었습니다.
 840 시스템 파라미터 "%1$s"를 바꿀 수 없습니다.
@@ -1052,7 +1052,7 @@ $ LOADDB
 982 트랜잭션 %1$d에 인터럽트 설정
 983 해당 테이블에 대해 허용되지 않는 작업이 시도되었습니다. REUSE_OID 옵션이 정의된 테이블 내 레코드를 참조할 수 없습니다.
 984 설정 파일 "%1$s"의 "[%2$s]" 섹션에서 %3$s가 "%4$s"로 설정되어 있으면 "[%5$s]" 섹션에서 "%6$s"로 설정할 수 없습니다. 
-985 "databases.txt"에 다중 호스트가 설정된 경우에는 데이터베이스 연결 문자열에 호스트 이름이 지정되어야 합니다.
+985 "databases.txt"에 다중 호스트가 설정된 경우에는 데이터베이스 연결 문자열에 호스트 이름이 지정되어야 합니다. ex) csql demodb@localhost
 986 CUBRID heartbeat 기능을 시작합니다.
 987 CUBRID heartbeat 기능을 정지합니다.
 988 노드 이벤트: %1$s.
@@ -1329,7 +1329,7 @@ $ LOADDB
 1258 데이터베이스에 설정된 키를 "%1$s"에서 찾을 수 없습니다. 백업 볼륨의 키 파일을 참조합니다.
 1259 데이터베이스의 키 파일 "%1$s"를 "$2%s"로 변경합니다.
 1260 키 파일 "%1$s"를 데이터베이스의 키 파일 "%2$s"로 복사합니다.
-1261 백업 시점의 키 (키 인덱스: %1$d, 생성 시간: %2$s)를 찾을 수 없으므로 새로운 키 (키 인덱스: %3$d)로 변경합니다.
+1261 복구된 키 파일의 첫번째 키 (키 인덱스: %1$d, 생성 시간: %2$s)가 등록되었습니다.
 1262 키 파일 (_keys)이 가득 찼습니다.
 1263 로그 페이지 (pageid: %1$lld) 암호화에 실패했습니다. 해당 페이지는 더 이상 암호화되지 않습니다.
 1264 Error reserved for scalability development.
@@ -1354,11 +1354,59 @@ $ LOADDB
 1283 Error reserved for scalability development.
 1284 %1$s 의 기본키는 외래키 참조로 인해 truncate될 수 없습니다.
 1285 외래키 (%1$s) 의 ON DELETE action이 CASCADE가 아니기 때문에 truncate할 수 없습니다.
+
+1286 입력한 시간에 맞는 로그 LSA를 찾을 수 없습니다. (입력 시간 : %1$s).
+1287 로그 정보를 추출하는 동안 시간이 초과되었습니다. (경과시간 : %1$d 초, timeout 시간 : %2$d 초)
+1288 내부적으로 지원하지 않는 로그 레코드에 대한 로그 정보는 생성하지 않습니다.
+1289 유효하지 않은 트랜잭션에 대한 로그 정보는 생성하지 않습니다. (trid: %1$d)
+1290 유효하지 않은 로그 LSA (%1$lld|%2$d)입니다. 해당 로그 LSA로 로그 정보를 추출할 수 없습니다.
+1291 로그 정보를 추출하기 위해 서버에 연결할 수 없습니다. 'supplemental_log' 매개변수를 설정하여 다시 시도하십시오.
+1292 (%1$s) 시간에 근사한 로그 LSA를 찾을 수 없습니다. 조정된 시간(%2$s)에 맞춰 로그 LSA를 반환합니다.
+1293 로그 정보를 생성하기 위한 로그 LSA는 현재 NULL을 가리킵니다. 로그 정보를 추출하기 위한 로그 페이지를 가져올 수 없습니다. 
+1294 로그 정보가 생성되었습니다. (유형: "%1$s").
+1295 유효하지 않은 테이블에 대한 로그 정보는 생성하지 않습니다. (class OID : %1$d|%2$d|%3$d)
+
 1296 Log recovery: ANALYSIS 단계가 시작되었습니다.
 1297 Log recovery: REDO 단계가 시작되었습니다. redo할 로그 페이지 수: %1$lld, redo할 로그 레코드 수: %2$lld.
 1298 Log recovery: UNDO 단계가 시작되었습니다. undo할 로그 페이지 수: %1$lld, undo할 트랜잭션 수: %2$d.
 1299 Log recovery: %1$s 단계를 마무리 중입니다.
 1300 Log recovery: %1$s 단계가 끝났습니다.
+1301 Log recovery: %1$s 진행도: (%2$lld/%3$lld), %4$.2f 퍼센트, 경과 시간: %5$.2f (s), 추정 남은 시간: %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - 명시된 열의 개수가 올바르지 않습니다.
+1304 dblink - _db_server 카탈로그를 찾을 수 없습니다.
+1305 dblink - "%1$s" 서버를 찾을 수 없습니다.
+1306 dblink - "%1$s" 서버는 이미 존재합니다.
+1307 dblink - 서버 객체에 대한 소유권이 없습니다.
+1308 dblink - 지원하지 않는 유형입니다.
+1309 dblink - 유효하지 않은 바인드 파라메터입니다.
+1310 dblink - 암호화할 비밀번호의 길이가 최댓값을 넘어섰습니다.
+1311 dblink - 암호화된 비밀번호의 길이가 올바르지 않습니다.
+1312 dblink - 암호화된 비밀번호의 체크섬이 일치하지 않습니다.
+1313 dblink - 암호 문자열의 형식이 올바르지 않습니다.
+1314 dblink - 암호화된 비밀번호를 복호화하는 데 실패했습니다.. error=%1$d".
+1315 dblink - 비밀번호를 암호화하는 데 실패했습니다. error=%1$d".
+1316 dblink - 이름이 "%1$s"인 서버가 여러 개 있습니다.
+1317 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다. 
+
+1318 [%1$5.5s] %2$s (%3$d)
+1319 매개 변수 바인딩 오류.
+1320 잘못된 ODBC Handle 입니다.
+1321 데이터 형식 변환 오류.
+1322 지원되지 않는 Data Type 입니다.
+1323 잘못된 Statement Handle 입니다.
+1324 Connection Handle이 잘못되었습니다.
+1325 Connection URL이 존재하지 않습니다.
+1326 유효하지 않은 Numeric 값입니다.
+1327 "%1$s" 열의 정밀도 값이 잘못되었습니다.
+
+1328 Error reserved for dblink development.
+1329 Error reserved for dblink development.
+1330 Error reserved for dblink development.
+1331 Error reserved for dblink development.
+
+1332 액티브 로그 볼륨 (%1$s)에서 문제를 발견할 수 없어 재생성할 수 없습니다. 액티브 로그 볼륨을 제거할 경우에 예측할 수 없는 문제가 발생할 수 있으며, 되돌릴 수 없습니다.
 
 $
 $ I have spaced them out to avoid error number conflicts with other PR.
@@ -1846,6 +1894,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 잘못된 인자 갯수 %1$d.
 304 함수 %1$s()에 대해 호환되는 함수 정의를 찾을 수 없습니다.
 305 함수 인자와 함수 정의 %1$s 은 호환되지 않습니다.
+306 dblink - 필수 정보가 누락되었습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
@@ -2111,19 +2160,4 @@ $set 16 MSGCAT_SET_LOG
 22 DELETE POSTPONED: Archives %1$d %2$s to \n \
         %3$d %4$s \n \
         are no longer needed unless a restore from current backup occurs.\n
-23 A newer backup has released archives previously marked DELETE POSTPONED.\n
-24 COMMENT: Log archive %1$s is not DELETE POSTPONED any longer due to more recent\n \
-     backup and therefore is not needed unless a database media crash occurs.\n
-25 COMMENT: Log archives from %1$s to %2$s are not DELETE POSTPONED any longer due to\n \
-   more recent backup and therefore are not needed unless a database media\n \
-   crash occurs.\n
-26 데이터베이스를 복구하는 도중에 에러가 발생하였습니다\n\
-     Backup Volume: %1$s\n\
-          Unit Num: %2$d\n\
-   Database Volume: %3$s\n\
-    Database Volid: %4$d\n\
-** 경고: 에러 없이 데이터베이스가 복구되기 전까지는 데이터베이스를 사용하지 마시오. 
-27 입력 오류, %1$d와 %2$d 사이의 값을 선택하시오.\n
-28 복구 시점(%1$s)은 반드시 백업 시점(%2$s) 이후로 지정해야 합니다. \n
-29 COMMENT: 보관 로그 %1$s는 로그 페이지 %2$lld 이전까지만 포함되어 HA 유틸리티에서 더 이상 사용되지 않습니다.
-30 보관 로그의 개수가 허용 최대치를 초과했습니다.
+23 
