@@ -3053,7 +3053,7 @@ create_stmt
 			    p->info.create_synonym.or_replace = $2;
 			    p->info.create_synonym.access_modifier = $4;
 
-			    /* synonym_name, synonym_owner_name */
+			    /* synonym_owner_name, synonym_name */
 			    PT_NODE *synonym = $6;
 			    if (synonym)
 			      {
@@ -3948,7 +3948,7 @@ alter_stmt
 			  {
 			    p->info.alter_synonym.access_modifier = $3;
 
-			    /* synonym_name, synonym_owner_name */
+			    /* synonym_owner_name, synonym_name */
 			    PT_NODE *synonym = $5;
 			    if (synonym)
 			      {
@@ -4505,7 +4505,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}            
+		DBG_PRINT}}
 	| DROP			/* 1 */
 		{ push_msg (MSGCAT_SYNTAX_INVALID_DROP_SYNONYM); }	/* 2 */
 	  opt_access_modifier	/* 3 */
@@ -4527,7 +4527,7 @@ drop_stmt
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}    
+		DBG_PRINT}}
 	| deallocate_or_drop PREPARE identifier
 		{{
 
