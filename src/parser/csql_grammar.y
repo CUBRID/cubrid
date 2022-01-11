@@ -3053,7 +3053,7 @@ create_stmt
 			    p->info.create_synonym.or_replace = $2;
 			    p->info.create_synonym.access_modifier = $4;
 
-			    /* synonym_owner_name, synonym_name */
+			    /* synonym_name, synonym_owner_name */
 			    PT_NODE *synonym = $6;
 			    if (synonym)
 			      {

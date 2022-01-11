@@ -4967,7 +4967,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_DROP_SERVER] = pt_apply_drop_server;
   pt_apply_func_array[PT_RENAME_SERVER] = pt_apply_rename_server;
   pt_apply_func_array[PT_ALTER_SERVER] = pt_apply_alter_server;
-    pt_apply_func_array[PT_ALTER_SYNONYM] = pt_apply_alter_synonym;
+  pt_apply_func_array[PT_ALTER_SYNONYM] = pt_apply_alter_synonym;
   pt_apply_func_array[PT_CREATE_SYNONYM] = pt_apply_create_synonym;
   pt_apply_func_array[PT_DROP_SYNONYM] = pt_apply_drop_synonym;
   pt_apply_func_array[PT_RENAME_SYNONYM] = pt_apply_rename_synonym;
