@@ -1431,8 +1431,7 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
    * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
    * But The side effects described in CBRD-24157 occurred.
    */
-  conn->invalidate_snapshot = 1;
-  if (conn->invalidate_snapshot)
+  if (true)			// if (conn->invalidate_snapshot)
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
     }
