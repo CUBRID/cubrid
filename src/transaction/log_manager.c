@@ -1685,7 +1685,7 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     //        - during log analysis, the PTS will ignore (skip) the newer transaction table snapshot log records
     //
     assert (!most_recent_trantable_snapshot_lsa.is_null ());
-    log_recovery_analysis_from_transaction_table_snapshot (thread_p, most_recent_trantable_snapshot_lsa);
+    log_recovery_analysis_from_trantable_snapshot (thread_p, most_recent_trantable_snapshot_lsa);
   }
   // prior lists are consumed and flushed to log pages
 
@@ -3491,43 +3491,58 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
  *                              the page server and the passive transaction server connected to this page server
  */
 // *INDENT-OFF*
-std::string log_pack_log_boot_info (THREAD_ENTRY * thread_p, log_lsa &append_lsa,
-                                    log_lsa &prev_lsa, log_lsa &most_recent_trantable_snapshot_lsa,
-                                    const cublog::prior_sender::sink_hook_t  &log_prior_sender_sink)
+void
+log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
+			const cublog::prior_sender::sink_hook_t &log_prior_sender_sink)
 {
-  LOG_CS_ENTER_READ_MODE (thread_p);
-  scope_exit log_cs_exit_ftor ([thread_p] { LOG_CS_EXIT (thread_p); });
-  std::lock_guard<std::mutex> { log_Gl.prior_info.prior_lsa_mutex };
+  assert (is_page_server ());
+  assert (payload_in_out.empty ());   // empty request message
 
-  std::string packed_message;
+  log_lsa append_lsa;
+  log_lsa prev_lsa;
+  log_lsa most_recent_trantable_snapshot_lsa;
+  
+  {
+    LOG_CS_ENTER_READ_MODE (&thread_r);
+    scope_exit log_cs_exit_ftor ([&thread_r] { LOG_CS_EXIT (&thread_r); });
+    std::lock_guard<std::mutex> { log_Gl.prior_info.prior_lsa_mutex };
 
-  // log header
-  packed_message.append (reinterpret_cast<const char*> (&log_Gl.hdr), sizeof (log_header));
-  append_lsa = log_Gl.hdr.append_lsa;
+    // log header
+    payload_in_out = "";
+    payload_in_out.append (reinterpret_cast<const char*> (&log_Gl.hdr), sizeof (log_header));
+    append_lsa = log_Gl.hdr.append_lsa;
 
-  // log append
-  assert (log_Gl.append.log_pgptr != nullptr);
-  const int log_page_size = db_log_page_size ();
-  packed_message.append (reinterpret_cast<const char*> (log_Gl.append.log_pgptr), log_page_size);
+    // log append
+    assert (log_Gl.append.log_pgptr != nullptr);
+    const int log_page_size = db_log_page_size ();
+    payload_in_out.append (reinterpret_cast<const char*> (log_Gl.append.log_pgptr), log_page_size);
 
-  // prev lsa
-  packed_message.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (log_lsa));
-  prev_lsa = log_Gl.append.prev_lsa;
+    // prev lsa
+    payload_in_out.append (reinterpret_cast<const char *> (&log_Gl.append.prev_lsa), sizeof (log_lsa));
+    prev_lsa = log_Gl.append.prev_lsa;
 
-  // most recent trantable snapshot lsa
-  most_recent_trantable_snapshot_lsa = ps_Gl.get_replicator().get_most_recent_trantable_snapshot_lsa ();
-  packed_message.append(reinterpret_cast<const char *> (&most_recent_trantable_snapshot_lsa),
-                        sizeof (log_lsa));
+    // most recent trantable snapshot lsa
+    most_recent_trantable_snapshot_lsa = ps_Gl.get_replicator().get_most_recent_trantable_snapshot_lsa ();
+    payload_in_out.append(reinterpret_cast<const char *> (&most_recent_trantable_snapshot_lsa),
+			  sizeof (log_lsa));
 
-  // within the same locks, initialize log prior dispatch to the newly connected passive transaction server
-  log_Gl.m_prior_sender.add_sink (log_prior_sender_sink);
-  // TODO: in the future, this needs to be made explicit:
-  //  - as passive transaction servers (PTS) go on/off-line at a random pace
-  //  - and, as each PTS has the list of available page servers (PS) it can connect to
-  //  - it is the PTS's responsibility to register itself as a log prior consumer with all/some/one of the
-  //    connected PS's
+    // within the same locks, initialize log prior dispatch to the newly connected passive transaction server
+    log_Gl.m_prior_sender.add_sink (log_prior_sender_sink);
+    // TODO: in the future, this needs to be made explicit:
+    //  - as passive transaction servers (PTS) go on/off-line at a random pace
+    //  - and, as each PTS has the list of available page servers (PS) it can connect to
+    //  - it is the PTS's responsibility to register itself as a log prior consumer with all/some/one of the
+    //    connected PS's
+  }
 
-  return packed_message;
+  if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "[LOG PRIOR TRANSFER] Sent log boot info to passive tran server with prev_lsa = (%lld|%d), "
+		     "append_lsa = (%lld|%d), most_recent_trantable_snapshot_lsa = (%lld|%d)\n",
+		     LSA_AS_ARGS (&prev_lsa), LSA_AS_ARGS (&append_lsa),
+		     LSA_AS_ARGS (&most_recent_trantable_snapshot_lsa));
+    }
 }
 // *INDENT-ON*
 #endif // SERVER_MODE

@@ -676,6 +676,8 @@ extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, P
 extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan,
 					   NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
+extern SCAN_CODE heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
+							    bool is_heap_scan);
 extern SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 						    bool is_heap_scan);
 extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes_p,

@@ -41,6 +41,7 @@
 #include "utility.h"
 #include "transform.h"
 #include "partition_sr.h"
+#include "passive_tran_server.hpp"
 #include "porting_inline.hpp"
 #include "query_executor.h"
 #include "query_opfunc.h"
@@ -1548,6 +1549,9 @@ static int btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, B
 static int btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_range_scan_count_oids_leaf_and_one_ovf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
+static void btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_scan & bts);
+static void btree_range_scan_wait_for_replication (btree_scan & bts);
+static int btree_range_scan_handle_error (THREAD_ENTRY * thread_p, btree_scan & bts, int error_code);
 static int btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, key_val_range * kv_range);
 static int btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 
@@ -2493,7 +2497,8 @@ btree_get_num_visible_oids_from_all_ovf (THREAD_ENTRY * thread_p, BTID_INT * bti
   /* search for OID into overflow page */
   while (!VPID_ISNULL (&next_ovfl_vpid))
     {
-      ovfl_page = pgbuf_fix (thread_p, &next_ovfl_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      ovfl_page = pgbuf_fix_old_and_check_repl_desync (thread_p, next_ovfl_vpid, PGBUF_LATCH_READ,
+						       PGBUF_UNCONDITIONAL_LATCH);
       if (ovfl_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
@@ -11146,7 +11151,8 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
   do
     {
       PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-      overflow_page = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      overflow_page = pgbuf_fix_old_and_check_repl_desync (thread_p, overflow_vpid, PGBUF_LATCH_WRITE,
+							   PGBUF_UNCONDITIONAL_LATCH);
       btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
       if (overflow_page == NULL)
 	{
@@ -13530,7 +13536,6 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   char recset_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int key_type;
   BTREE_NODE_SPLIT_INFO split_info;
-  int node_level;
   bool flag_fence_insert = false;
   OID dummy_oid = { NULL_PAGEID, 0, 0 };
   int leftsize, rightsize;
@@ -13582,8 +13587,10 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
 #if !defined(NDEBUG)
-  node_level = btree_get_node_level (thread_p, P);
-  assert (node_level >= 1);
+  {
+    int node_level = btree_get_node_level (thread_p, P);
+    assert (node_level >= 1);
+  }
 #endif
 
   pheader = btree_get_root_header (thread_p, P);
@@ -22330,7 +22337,8 @@ btree_key_find_first_visible_row_from_all_ovf (THREAD_ENTRY * thread_p, BTID_INT
   /* find first visible OID into overflow page */
   while (!VPID_ISNULL (&next_ovfl_vpid))
     {
-      ovfl_page = pgbuf_fix (thread_p, &next_ovfl_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      ovfl_page = pgbuf_fix_old_and_check_repl_desync (thread_p, next_ovfl_vpid, PGBUF_LATCH_READ,
+						       PGBUF_UNCONDITIONAL_LATCH);
       if (ovfl_page == NULL)
 	{
 	  ASSERT_ERROR ();
@@ -23877,7 +23885,7 @@ btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
     {
       /* Fix overflow page. */
       PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-      ovf_page = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      ovf_page = pgbuf_fix_old_and_check_repl_desync (thread_p, ovf_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
       if (ovf_page == NULL)
 	{
@@ -24356,6 +24364,8 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (bts->C_page == NULL);
   assert (!DB_IS_NULL (&bts->cur_key));
   assert (!BTS_IS_INDEX_ILS (bts));
+
+  btree_range_scan_wait_for_replication (*bts);
 
   /* Resume range scan. It can be resumed from same leaf or by looking up the key again from root. */
   if (!bts->force_restart_from_root)
@@ -24953,6 +24963,88 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   return ER_FAILED;
 }
 
+/* btree_range_scan_handle_page_ahead_repl_error - handle passive transaction server specific error
+ *              where a page is found to be ahead of the replication's current state; the function expects
+ *              to find a specific error, and with it, the transaction descriptor to contain a valid LSA
+ *              from reading the page - which produces the error in the first place; it then copies the error
+ *              to the btree scan context and clears it from the transaction descriptor; if the btree scan
+ *              already contains some results, commands ending the current search iteration (with the ideea that
+ *              while the current bactch of results are processed, the replication might already advance enough
+ *              for the next iteration to find the replication already past the point needed (LSA in btree scan
+ *              context) for the page to be considered in a valid replication state
+ */
+void
+btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_scan & bts)
+{
+  assert (is_passive_transaction_server ());
+  assert (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION);
+
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
+
+  assert (bts.page_desync_lsa.is_null ());
+  bts.page_desync_lsa = tdes->page_desync_lsa;
+  tdes->page_desync_lsa.set_null ();
+  er_clear ();
+
+  bts.force_restart_from_root = true;
+
+  // If there are objects selected, end this iteration and maybe replication will catch-up in the meantime.
+  // If MRO is used or if only counting is required, ending an iteration will not help.
+  //
+  if (bts.n_oids_read_last_iteration > 0 && !BTS_IS_INDEX_MRO (&bts) && !BTS_NEED_COUNT_ONLY (&bts))
+    {
+      bts.end_one_iteration = true;
+    }
+}
+
+/* btree_range_scan_wait_for_replication - wait for replication to have passed past a certain LSA;
+ *              blocking call; if replication has already passed that LSA, function will just exit
+ */
+void
+btree_range_scan_wait_for_replication (btree_scan & bts)
+{
+  // early out, on:
+  //  - non-passive transaction server
+  //  - stand-alone
+  // this lsa is initialized to null and unused
+  if (bts.page_desync_lsa.is_null ())
+    {
+      // no need to wait
+      return;
+    }
+
+#if defined (SERVER_MODE)
+  assert (is_passive_transaction_server ());
+
+  // a lock is expended in this call; currently, there's no way to avoid that lock
+  get_passive_tran_server_ptr ()->wait_replication_past_target_lsa (bts.page_desync_lsa);
+  bts.page_desync_lsa.set_null ();
+#else
+  assert (false);
+#endif
+}
+
+/* btree_range_scan_handle_error - handle error that results from btree range scans
+ *        functions (start, resume, advance); specifically look for and handle passive transaction server
+ *        replication desynchronization errors where pages retrieved from page server might be received
+ *        in a state which is ahead of the state the PTS replication arrived at
+ */
+int
+btree_range_scan_handle_error (THREAD_ENTRY * thread_p, btree_scan & bts, int error_code)
+{
+  assert (error_code != NO_ERROR);
+  ASSERT_ERROR ();
+  if (error_code == ER_PAGE_AHEAD_OF_REPLICATION)
+    {
+      btree_range_scan_handle_page_ahead_repl_error (thread_p, bts);
+      ASSERT_NO_ERROR ();
+      return NO_ERROR;
+    }
+
+  return error_code;
+}
+
 /*
  * btree_range_scan () - Generic function to do a range scan on b-tree. It can scan key by key starting with first
  * 			 (or last key for descending scans). For each key, it calls an internal function to process
@@ -25008,8 +25100,11 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
+	  error_code = btree_range_scan_handle_error (thread_p, *bts, error_code);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 	}
       if (bts->end_scan)
 	{
@@ -25063,8 +25158,11 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  error_code = btree_range_scan_advance_over_filtered_keys (thread_p, bts);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR ();
-	      goto exit_on_error;
+	      error_code = btree_range_scan_handle_error (thread_p, *bts, error_code);
+	      if (error_code != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
 	    }
 	  if (bts->end_scan)
 	    {
@@ -25297,7 +25395,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	   * is used when key has too many objects. See comment from BTS_IS_HARD_CAPACITY_ENOUGH. */
 	  /* Resume from next page of last overflow page. */
 	  prev_overflow_page =
-	    pgbuf_fix (thread_p, &bts->O_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	    pgbuf_fix_old_and_check_repl_desync (thread_p, bts->O_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	  if (prev_overflow_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
@@ -25361,7 +25459,8 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     {
       /* Fix next overflow page. */
       PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-      overflow_page = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      overflow_page = pgbuf_fix_old_and_check_repl_desync (thread_p, overflow_vpid, PGBUF_LATCH_READ,
+							   PGBUF_UNCONDITIONAL_LATCH);
       btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
       if (overflow_page == NULL)
 	{
@@ -25731,7 +25830,8 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   while (!VPID_ISNULL (&ovf_vpid))
     {
       /* Fix overflow page. */
-      bts->O_page = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      bts->O_page = pgbuf_fix_old_and_check_repl_desync (thread_p, ovf_vpid, PGBUF_LATCH_READ,
+							 PGBUF_UNCONDITIONAL_LATCH);
       if (bts->O_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);

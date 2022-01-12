@@ -108,7 +108,8 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "Received log boot info to from page server with prev_lsa = (%lld|%d), append_lsa = (%lld|%d)\n",
+		     "[LOG PRIOR TRANSFER] Received log boot info to from page server with prev_lsa = (%lld|%d), "
+		     "append_lsa = (%lld|%d)\n",
 		     LSA_AS_ARGS (&log_Gl.append.prev_lsa), LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
     }
 }
@@ -146,4 +147,9 @@ void passive_tran_server::finish_replication_during_shutdown (cubthread::entry &
 
   m_replicator->wait_replication_finish_during_shutdown ();
   m_replicator.reset (nullptr);
+}
+
+void passive_tran_server::wait_replication_past_target_lsa (LOG_LSA lsa)
+{
+  m_replicator->wait_past_target_lsa (lsa);
 }
