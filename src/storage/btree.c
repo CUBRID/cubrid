@@ -14344,60 +14344,37 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
   VPID P_vpid, C_vpid;
   BTREE_ROOT_HEADER *root_header = NULL;
   BTREE_NODE_HEADER *header = NULL;
-  BTREE_NODE_TYPE node_type = BTREE_NON_LEAF_NODE;
+  BTREE_NODE_TYPE node_type;
   NON_LEAF_REC nleaf;
   RECDES rec;
   int key_cnt = 0, index = 0;
   int root_level = 0, depth = 0;
-  bool first_time = true;
+
+  VPID_SET_NULL (pg_vpid);
+
+  /* read the root page */
+  P_vpid.volid = btid->vfid.volid;
+  P_vpid.pageid = btid->root_pageid;
+  P_page = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (P_page == NULL)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, P_page, PAGE_BTREE);
+
+  root_header = btree_get_root_header (thread_p, P_page);
+  if (root_header == NULL)
+    {
+      goto error;
+    }
+
+  root_level = root_header->node.node_level;
+  node_type = (root_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
   while (node_type == BTREE_NON_LEAF_NODE)
     {
-      if (first_time)
-	{
-	  key_cnt = index = root_level = depth = 0;
-	  VPID_SET_NULL (pg_vpid);
-
-	  do
-	    {
-	      /* read the root page */
-	      P_vpid.volid = btid->vfid.volid;
-	      P_vpid.pageid = btid->root_pageid;
-	      P_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, P_vpid, PGBUF_UNCONDITIONAL_LATCH);
-	      if (P_page == NULL)
-		{
-#ifdef SERVER_MODE
-		  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
-		    {
-		      //wait for replication
-		      passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-		      const LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
-		      assert (tdes->page_desync_lsa.is_null ());
-		      pts_ptr->wait_replication_past_target_lsa (tdes->page_desync_lsa);
-		    }
-#endif
-		  ASSERT_ERROR ();
-		  goto error;
-		}
-	    }
-	  while (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION);
-
-	  (void) pgbuf_check_page_ptype (thread_p, P_page, PAGE_BTREE);
-
-	  root_header = btree_get_root_header (thread_p, P_page);
-	  if (root_header == NULL)
-	    {
-	      goto error;
-	    }
-
-	  root_level = root_header->node.node_level;
-	  node_type = (root_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
-
-	  first_time = false;
-	  continue;		// to re-check again against node_type
-	}
-
-
       key_cnt = btree_node_number_of_keys (thread_p, P_page);
       if (key_cnt <= 0)
 	{			/* node record underflow */
@@ -14427,25 +14404,9 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
 
       btree_read_fixed_portion_of_non_leaf_record (&rec, &nleaf);
       C_vpid = nleaf.pnt;
-      C_page = pgbuf_fix_read_old_and_check_repl_desync (thread_p, C_vpid, PGBUF_UNCONDITIONAL_LATCH);
+      C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (C_page == NULL)
 	{
-#ifdef SERVER_MODE
-	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
-	    {
-	      pgbuf_unfix (thread_p, P_page);
-
-	      //wait for replication
-	      passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-	      const LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
-	      assert (tdes->page_desync_lsa.is_null ());
-	      pts_ptr->wait_replication_past_target_lsa (tdes->page_desync_lsa);
-
-	      //reset the search
-	      first_time = true;
-	      continue;
-	    }
-#endif
 	  ASSERT_ERROR ();
 	  goto error;
 	}
