@@ -2380,13 +2380,14 @@ static UINT64 prm_first_log_pageid_lower = 0LL;
 static UINT64 prm_first_log_pageid_upper = LOGPAGEID_MAX;
 static unsigned int prm_first_log_pageid_flag = 0;
 
-static const int lower_bound_core_count = (prm_css_max_clients_default / 3);
-static const int upper_bound_core_count = (prm_css_max_clients_upper / 3);
-
-int PRM_THREAD_CORE_COUNT = lower_bound_core_count;	// this value will be tuned
-static int prm_thread_core_count_default = lower_bound_core_count;
+#if defined (SERVER_MODE)
+static int prm_thread_core_count_default = (int) cubthread::system_core_count ();
+#else
+static int prm_thread_core_count_default = 1;
+#endif
 static int prm_thread_core_count_lower = 1;
-static int prm_thread_core_count_upper = upper_bound_core_count;
+static int prm_thread_core_count_upper = 1024;
+int PRM_THREAD_CORE_COUNT = prm_thread_core_count_default;	// this value will be tuned
 static unsigned int prm_thread_core_count_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
@@ -10570,18 +10571,16 @@ prm_tune_parameters (void)
 	  (void) prm_set (max_clients_prm, newval, false);
 	}
 
-      int safe_uppercore_count = ((css_get_max_conn () + 1) / 3);
 #if defined (SERVER_MODE)
-      int system_core_count = cubthread::system_core_count ();
-#else
-      int system_core_count = 1;	// SA_MODE
-#endif
-      int tuned_max_core_count = MIN (safe_uppercore_count, system_core_count);
-      if (PRM_GET_INT (thread_core_count_prm->value) > tuned_max_core_count)
+      int safe_core_count = (css_get_max_workers () / 3);
+      int system_cpu_count = cubthread::system_core_count ();
+      int core_upper_limit = MIN (safe_core_count, system_cpu_count);
+      if (PRM_GET_INT (thread_core_count_prm->value) > core_upper_limit)
 	{
-	  sprintf (newval, "%d", tuned_max_core_count);
+	  sprintf (newval, "%d", core_upper_limit);
 	  (void) prm_set (thread_core_count_prm, newval, false);
 	}
+#endif
     }
 
   /* check Plan Cache and Query Cache parameters */
@@ -10750,6 +10749,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *ha_check_disk_failure_interval_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
+  SYSPRM_PARAM *thread_core_count_prm;
 
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];

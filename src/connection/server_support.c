@@ -1320,9 +1320,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 #endif /* WINDOWS */
 
   // initialize worker pool for server requests
-  const std::size_t MAX_WORKERS = css_get_max_conn () + 1;	// = css_Num_max_conn in connection_sr.c
-  const std::size_t MAX_TASK_COUNT = 2 * MAX_WORKERS;	// not that it matters...
-  const std::size_t MAX_CONNECTIONS = css_get_max_conn () + 1;
+  const std::size_t MAX_WORKERS = css_get_max_workers ();
+  const std::size_t MAX_TASK_COUNT = css_get_max_task_count ();
+  const std::size_t MAX_CONNECTIONS = css_get_max_connections ();
 
   // create request worker pool
   css_Server_request_worker_pool =
@@ -3235,6 +3235,19 @@ css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, i
                                                         tran_index, client_id, count);
 
   return count;
+}
+
+size_t css_get_max_workers ()
+{
+  return css_get_max_conn () + 1; // = css_Num_max_conn in connection_sr.c
+}
+size_t css_get_max_task_count ()
+{
+  return 2 * css_get_max_workers ();	// not that it matters...
+}
+size_t css_get_max_connections ()
+{
+  return css_get_max_conn () + 1;
 }
 
 static bool
