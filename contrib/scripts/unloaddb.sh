@@ -81,7 +81,9 @@ function cleanup ()
 
 function get_password ()
 {
-	read -sp "Retype Password : " password
+	local password
+
+	read -sp "Enter Password : " password
 	echo $password
 	echo "" > /dev/tty
 }
@@ -104,35 +106,26 @@ function verify_user_pass ()
 		exit 2
 	fi
 
-	# Try with current password
-	passwd=$(csql $user $pass -c "SELECT 1" $database 2> /dev/null)
+	# Try with NULL password
+	passwd=$(csql $user --password="" -c "SELECT 1" $database 2> /dev/null)
 
 	if [ $? -ne 0 ];then
-		echo "$dbuser: invalid user/password. Please check user and password"
-		exit 3
-	else
-		if [ "X$pass" = "X" ];then 		# typed correct passwd
-			passwd=$(get_password)		# we need passwd of own
-			if [ ! -z $passwd ];then
-				pass="-p $passwd"
-			fi
+		passwd=$(get_password)
+		pass="-p $passwd"
+
+		passwd=$(csql $user $pass -c "SELECT 1" $database 2> /dev/null)
+		if [ $? -ne 0 ];then
+			echo "$dbuser: Incorrect or missing password"
+			exit 4
 		fi
-	fi
-
-	msg=$(csql $user $pass -c "select 1" $database 2> /dev/null)
-
-	if [ $? -ne 0 ];then
-	       echo "$dbuser: invalid user/password. Please check user and password"
-	       exit 3
 	fi
 }
 
 function get_options ()
 {
-         while getopts ":D:u:p:i:t:v" opt; do
+         while getopts ":D:u:i:t:v" opt; do
                 case $opt in
                         u ) user="-u $OPTARG" ;;
-                        p ) pass="-p $OPTARG" ;;
                         i ) from_file="$OPTARG" ;;
                         t ) num_proc="$OPTARG" ;;
                         D ) target_dir="$OPTARG" ;;
