@@ -28,7 +28,7 @@
 #error server_support.h belongs to server or stand-alone modules
 #endif // not SERVER_MODE and not SA_MODE
 
-#include "connection_globals.h"
+#include "connection_defs.h"
 #include "connection_sr.h"
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
