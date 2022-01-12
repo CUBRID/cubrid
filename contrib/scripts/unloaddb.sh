@@ -79,15 +79,52 @@ function cleanup ()
         done
 }
 
-function veryfy_user_pass ()
+function get_password ()
 {
-         local msg
-         msg=$(csql $user $pass -c "select 1" $database)
+	read -sp "Retype Password : " password
+	echo $password
+	echo "" > /dev/tty
+}
 
-         if [ $? -ne 0 ];then
-                echo "Invalid user/pass: please check user and password"
-                exit
-         fi
+function verify_user_pass ()
+{
+	local msg
+	local USERNAME
+	local dbuser
+	local passwd
+	local qry_dba_grp="SELECT u.name FROM db_user AS u, TABLE(u.groups) AS g(x) where x.name = 'DBA'"
+
+	dbuser=$(echo ${user} | cut -d' ' -f2-2)
+	USERNAME=$(echo ${dbuser} | tr [:lower:] [:upper:])
+
+	dba_groups=$(csql -u public -l -c "$qry_dba_grp" $database | grep -w $USERNAME | wc -l)
+
+	if [ $USERNAME != "DBA" ] && [ $dba_groups -eq 0 ];then
+		echo "User '$dbuser' is not a member of DBA group"
+		exit 2
+	fi
+
+	# Try with current password
+	passwd=$(csql $user $pass -c "SELECT 1" $database 2> /dev/null)
+
+	if [ $? -ne 0 ];then
+		echo "$dbuser: invalid user/password. Please check user and password"
+		exit 3
+	else
+		if [ "X$pass" = "X" ];then 		# typed correct passwd
+			passwd=$(get_password)		# we need passwd of own
+			if [ ! -z $passwd ];then
+				pass="-p $passwd"
+			fi
+		fi
+	fi
+
+	msg=$(csql $user $pass -c "select 1" $database 2> /dev/null)
+
+	if [ $? -ne 0 ];then
+	       echo "$dbuser: invalid user/password. Please check user and password"
+	       exit 3
+	fi
 }
 
 function get_options ()
@@ -130,7 +167,6 @@ function get_table_size ()
         local table_name=$1
         local row_size=0
         local table_size=0
-        local j="2147483647"
 
         num_rows=$(csql $user $pass -l -c "show heap capacity of $table_name" $db | grep Num_recs | awk '{print $3}')
         row_size=$(get_schema_size $table_name)
@@ -233,7 +269,7 @@ function do_unloaddb ()
         fi
 }
 
-function get_table_name ()
+function analyze_table_info ()
 {
         local found=0
         local line
@@ -305,16 +341,18 @@ else
    silent_cd $target_dir
 fi
 
-veryfy_user_pass
+verify_user_pass
 
 echo -n "Analyzing table spacace ..."
 
-get_table_name $*
+analyze_table_info $*
 
 if [ $num_tables -eq 0 ];then
         echo "No Table SELECTED."
         exit
 fi
+
+echo ""
 
 # Assign all tables to unloaddb slot
 # Assign and calculate total table size & num tables assigned in each slot
