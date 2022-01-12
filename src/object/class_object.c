@@ -4110,12 +4110,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 			  continue;
 			}
 
-		      if (!cons->filter_predicate->pred_string)
-			{
-			  continue;
-			}
-
-		      if (!filter_predicate->pred_string)
+		      if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
 			{
 			  continue;
 			}
