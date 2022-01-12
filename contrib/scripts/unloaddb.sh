@@ -337,17 +337,27 @@ done
 echo "Total $num_tables tables, $total_pages pages"
 # Do unloaddb for each process
 #
+# check and create sub-directories for each process
 for ((i = 0; i < $num_proc; i++))
 do
-        if [ ${num_tables_slot[i]} -ne 0 ];then
-                if [ -f $database.$i ] || [ -d $database.$i ];then
-                        echo "$database.$i: File or directory already exist."
-                        continue
-                fi
-                mkdir $database.$i
-                (silent_cd $database.$i; do_unloaddb $i) &
-        fi
+	if [ ${num_tables_slot[i]} -ne 0 ];then
+		if [ -f $database.$i ] || [ -d $database.$i ];then
+			echo "$database.$i: File or directory already exist."
+			exit 1
+		fi
+
+		mkdir $database.$i
+	fi
 done
+
+#
+# RUN unloaddb process cuncurrently
+#
+for ((i = 0; i < $num_proc; i++))
+do
+	(silent_cd $database.$i; do_unloaddb $i) &
+done
+
 wait
 
 echo "Completed."
