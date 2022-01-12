@@ -10877,13 +10877,6 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, O
       return ER_FAILED;
     }
 
-  scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (scan_cache.mvcc_snapshot == NULL)
-    {
-      error = ER_FAILED;
-      goto cleanup;
-    }
-
   if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
       error = ER_FAILED;

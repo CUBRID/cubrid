@@ -1292,10 +1292,10 @@ static bool
 has_vclass_domains (DB_OBJECT * vclass)
 {
   /*
-   * this doesn't seem to be enough, always return 1 so we make two full passes
-   * on the query specs of all vclasses
+   * Previously, it force two full passes on the query specs of all vclasses,
+   * Now, force one pass
    */
-  return 1;
+  return 0;
 }
 
 
