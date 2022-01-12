@@ -3544,11 +3544,13 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long
   if (write_to_log)
     {
       /* log statistics */
-      constexpr size_t DATA_SIZE = OR_BTID_ALIGNED_SIZE + (3 * OR_INT_SIZE);
+      constexpr size_t DATA_SIZE = OR_BTID_ALIGNED_SIZE + (3 * OR_BIGINT_SIZE);
 
       alignas (MAX_ALIGNMENT) char data[DATA_SIZE];
       size_t data_written_size = 0;
       btree_rv_data_pack_btid_and_stats (btid, -n_nulls, -n_oids, -n_keys, data, DATA_SIZE, data_written_size);
+
+      // redo data has no use; not added
 
       log_append_undo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, NULL_OFFSET, data_written_size, data);
     }
@@ -4902,7 +4904,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
       /* although we don't change the btree header, we still need to log here the new values of statistics so that they
        * can be recovered at recover stage. For undo purposes we log the increments. */
 
-      constexpr size_t DATA_SIZE = OR_BTID_ALIGNED_SIZE + (3 * OR_INT_SIZE);
+      constexpr size_t DATA_SIZE = OR_BTID_ALIGNED_SIZE + (3 * OR_BIGINT_SIZE);
 
       alignas (MAX_ALIGNMENT) char undo_data[DATA_SIZE];
       size_t undo_data_written_size = 0;
