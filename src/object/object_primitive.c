@@ -11985,13 +11985,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
   if (!ignore_trailing_space)
     {
-      if (do_coercion == 2)
-	{
-	  /* only for btree_get_prefix_sparator
-	   * string comparison is done with ignoring trailing space */
-	  ;
-	}
-      else if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
+      if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
 	{
 	  ti = false;
 	}
@@ -12896,13 +12890,7 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 
   if (!ignore_trailing_space)
     {
-      if (do_coercion == 2)
-	{
-	  /* only for btree_get_prefix_sparator
-	   * string comparison is done with ignoring trailing space */
-	  ;
-	}
-      else if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
+      if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
 	{
 	  ti = false;
 	}

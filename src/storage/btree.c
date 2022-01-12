@@ -5760,22 +5760,9 @@ btree_generate_prefix_domain (BTID_INT * btid)
   dbtype = TP_DOMAIN_TYPE (domain);
 
   /* varying domains did not come into use until btree revision level 1 */
-  if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_NCHAR || dbtype == DB_TYPE_BIT)
+  if (dbtype == DB_TYPE_BIT)
     {
-      switch (dbtype)
-	{
-	case DB_TYPE_CHAR:
-	  vartype = DB_TYPE_VARCHAR;
-	  break;
-	case DB_TYPE_NCHAR:
-	  vartype = DB_TYPE_VARNCHAR;
-	  break;
-	case DB_TYPE_BIT:
-	  vartype = DB_TYPE_VARBIT;
-	  break;
-	default:
-	  return NULL;
-	}
+      vartype = DB_TYPE_VARBIT;
 
       var_domain =
 	tp_domain_resolve (vartype, domain->class_mop, domain->precision, domain->scale, domain->setdomain,
@@ -11811,7 +11798,7 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
       return ER_FAILED;
     }
 
-  c = btree_compare_key ((DB_VALUE *) key1, prefix_key, key_domain, 2, 1, NULL);
+  c = btree_compare_key ((DB_VALUE *) key1, prefix_key, key_domain, 1, 1, NULL);
 
   if (c != DB_LT)
     {
@@ -11819,7 +11806,7 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
       return ER_FAILED;
     }
 
-  c = btree_compare_key (prefix_key, (DB_VALUE *) key2, key_domain, 2, 1, NULL);
+  c = btree_compare_key (prefix_key, (DB_VALUE *) key2, key_domain, 1, 1, NULL);
 
   if (!(c == DB_LT || c == DB_EQ))
     {
