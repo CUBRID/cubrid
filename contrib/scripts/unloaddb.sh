@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 #
 #  Copyright 2016 CUBRID Corporation
@@ -53,10 +53,30 @@ function show_usage ()
          echo ""
 }
 
+#
+# Kill unloaddb processes in progress and delete the directory, and delete incomplete files
+# Directories/files created by the normally terminated unloaddb process is not deleted.
+#
 function cleanup ()
 {
-	echo "Catch interrupt"
-	exit
+        local i
+        local pid
+        local exit_stat
+
+	echo "interrupted"
+
+        for ((i = 0; i < $num_proc; i++))
+        do
+                if [ -f $database.$i/unloaddb_$i.pid ];then
+                        pid=$(cat $database.$i/unloaddb_$i.pid)
+
+                        kill -0 $pid 2> /dev/null
+                        if [ $? -eq 0 ];then
+                                kill -9 $pid
+                                rm -rf $database.$i
+                        fi
+                fi
+        done
 }
 
 function veryfy_user_pass ()
@@ -178,6 +198,7 @@ function do_unloaddb ()
         local file="Tables_unloaded_$database.$slot_num"
         local num_tables_in_slot=0
         local msg="Success"
+        local pid
 
         for ((i = 0; i < $num_tables; i++))
         do
@@ -191,10 +212,20 @@ function do_unloaddb ()
                 echo "Proc $slot_num: num tables: $num_tables_in_slot, ${slot_size[$slot_num]} bytes"
         fi
 
-	  cubrid unloaddb $user $pass --input-class-only --input-class-file $file $database
+        echo "process $slot_num: starting" > unloaddb_$slot_num.status
+
+	cubrid unloaddb $user $pass --input-class-only --input-class-file $file $database &
+        pid=$!
+
+        echo $pid > unloaddb_$slot_num.pid
+
+        wait $pid
 
         if [ $? -ne 0 ];then
                 msg="Failed"
+                echo "process $slot_num: failed" > unloaddb_$slot_num.status
+        else
+                echo "process $slot_num: success" > unloaddb_$slot_num.status
         fi
 
         if [ $verbose = "yes" ];then
@@ -260,8 +291,9 @@ function get_table_name ()
 }
 
 # MAIN
-
-trap "cleanup; exit" SIGHUP SIGINT SIGTERM
+#
+trap "cleanup" SIGHUP SIGINT SIGTERM
+set -o monitor
 
 extract_db_name $*
 get_options "$@"
@@ -274,6 +306,8 @@ else
 fi
 
 veryfy_user_pass
+
+echo -n "Analyzing table spacace ..."
 
 get_table_name $*
 
@@ -301,7 +335,6 @@ do
 done
 
 echo "Total $num_tables tables, $total_pages pages"
-
 # Do unloaddb for each process
 #
 for ((i = 0; i < $num_proc; i++))
