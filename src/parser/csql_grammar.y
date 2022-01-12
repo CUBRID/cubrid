@@ -5205,7 +5205,7 @@ user_specified_name_without_dot
 
 			    parser_free_tree (this_parser, user);
 
-			    // PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
+				// PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
 
 			$$ = name;
@@ -5219,7 +5219,7 @@ user_specified_name_without_dot
 
 			if (name)
 			  {
-			    // PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
+				// PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
 
 			$$ = name;
@@ -5229,53 +5229,17 @@ user_specified_name_without_dot
 	;
 
 user_specified_name
-	: identifier DOT identifier
-		{{
-
-			PT_NODE *user = $1;
-			PT_NODE *name = $3;
-
-			if (user && name)
-			  {
-			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
-
-			    parser_free_tree (this_parser, user);
-			    
-			    // PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
-			  }
-
-			$$ = name;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| identifier
+	: object_name
 		{{
 
 			PT_NODE *name = $1;
 
 			if (name)
 			  {
-			    // PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
+				// PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
 
 			$$ = name;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	;
-
-user_specified_name_list
-	: user_specified_name_list ',' user_specified_name
-		{{
-
-			$$ = parser_make_link($1, $3);
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| user_specified_name
-		{{
-
-			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -5300,6 +5264,23 @@ object_name
 
 		DBG_PRINT}}
 	| identifier
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+user_specified_name_list
+	: user_specified_name_list ',' user_specified_name
+		{{
+
+			$$ = parser_make_link($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| user_specified_name
 		{{
 
 			$$ = $1;
