@@ -346,7 +346,7 @@ css_send_close_request (CSS_CONN_ENTRY * conn)
 	{
 	  flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
 	}
-      header.flags = ntohs (flags);
+      header.flags = htons (flags);
       header.db_error = htonl (conn->db_error);
       /* timeout in milli-second in css_net_send() */
       css_net_send (conn, (char *) &header, sizeof (NET_HEADER), -1);
