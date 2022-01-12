@@ -466,11 +466,11 @@ extern void pgbuf_daemons_destroy ();
 
 // Check if page is ahead of replication; only relevant on passive transaction server, don't call elsewhere.
 extern int pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page);
-extern int pgbuf_check_for_deallocated_page_or_desyncronization (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode,
-								 const VPID & vpid);
-// Fix an old page with read latch; and if this is a PTS, check if it is ahead of replication.
-extern PAGE_PTR pgbuf_fix_read_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid,
-							  PGBUF_LATCH_CONDITION cond);
+extern int pgbuf_check_for_deallocated_page_or_desynchronization (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode,
+								  const VPID & vpid);
+// Fix an old page with specific latch; and if this is a PTS, check if it is ahead of replication.
+extern PAGE_PTR pgbuf_fix_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid,
+						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION cond);
 
 extern int pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr);
 

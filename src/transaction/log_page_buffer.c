@@ -7525,11 +7525,13 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
 	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
 		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
       }
+
+    // - in nominal conditions, there should be one previous checkpoint that is removed
+    // - in abnormal conditions - such as when the system crashed just after adding a new
+    //    checkpoint and before deleting the outdated checkpoint - there can be more than
+    //    one checkpoint to be removed
     log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
 
-    // - in nominal conditions, there should be at most one previous trantable checkpoint
-    // - in abnormal conditions (such as when the system crashed just after adding a new trantable
-    //    checkpoint and before deleting the outdated checkpoint) there can be at most two
     assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
 
     log_write_metalog_to_file (false);
