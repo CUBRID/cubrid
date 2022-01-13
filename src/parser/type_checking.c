@@ -4429,10 +4429,23 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      sig.return_type.val.type = PT_TYPE_CHAR;
       def->overloads[num++] = sig;
 
       /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.type = PT_TYPE_VARCHAR;
+      /* arg2 */
+      sig.arg2_type.type = pt_arg_type::GENERIC;
+      sig.arg2_type.val.type = PT_TYPE_VARCHAR;
+      /* arg3 */
+      sig.arg3_type.type = pt_arg_type::GENERIC;
+      sig.arg3_type.val.type = PT_TYPE_CHAR;
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
       sig.arg1_type.type = pt_arg_type::GENERIC;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
       /* arg2 */
@@ -4443,7 +4456,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_VARNCHAR;
+      sig.return_type.val.type = PT_TYPE_NCHAR;
       def->overloads[num++] = sig;
 
       /* arg1 */
