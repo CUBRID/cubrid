@@ -29755,8 +29755,8 @@ btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
 static int
 btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
 		       DB_VALUE * key, OR_BUF * buffered_key, int *unique, int op_type,
-		       btree_unique_stats * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo, const LOG_LSA * ref_lsa,
-		       BTREE_OBJECT_INFO * second_object_info, BTREE_OP_PURPOSE purpose)
+		       btree_unique_stats * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo,
+		       const LOG_LSA * ref_lsa, BTREE_OBJECT_INFO * second_object_info, BTREE_OP_PURPOSE purpose)
 {
   /* Structure used by internal functions. */
   BTREE_DELETE_HELPER delete_helper;
