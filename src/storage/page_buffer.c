@@ -2361,7 +2361,7 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
   if (page_lsa > repl_lsa)
     {
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      assert (tdes->page_desync_lsa.is_null ());
+      assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
       tdes->page_desync_lsa = page_lsa;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_AHEAD_OF_REPLICATION, 6, PGBUF_PAGE_VPID_AS_ARGS (page),
 	      LSA_AS_ARGS (&page_lsa), LSA_AS_ARGS (&repl_lsa));

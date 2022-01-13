@@ -1342,7 +1342,7 @@ static PAGE_PTR btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, 
 					  BTREE_BOUNDARY where);
 static PAGE_PTR btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 								 BTREE_STATS * stat_info, BTREE_BOUNDARY where,
-								 bool * desync_occured);
+								 bool & desync_occured);
 static int btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_find_next_index_record_holding_current (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, RECDES * peek_rec);
 static int btree_find_next_index_record_holding_current_helper (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
@@ -14341,16 +14341,23 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
 
   do
     {
+      desync_occured = false;
       page =
-	btree_find_boundary_leaf_with_repl_desync_check (thread_p, btid, pg_vpid, stat_info, where, &desync_occured);
+	btree_find_boundary_leaf_with_repl_desync_check (thread_p, btid, pg_vpid, stat_info, where, desync_occured);
 #ifdef SERVER_MODE
       if (desync_occured)
 	{
+	  //page desyncronization can only occur on PTS
+	  assert (is_passive_transaction_server ());
+
 	  //wait for replication
 	  passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
 	  const LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
-	  assert (tdes->page_desync_lsa.is_null ());
+	  assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
 	  pts_ptr->wait_replication_past_target_lsa (tdes->page_desync_lsa);
+
+	  //claer the errors for next search
+	  er_clear ();
 	}
 #endif
     }
@@ -14370,7 +14377,7 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
  */
 static PAGE_PTR
 btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
-						 BTREE_STATS * stat_info, BTREE_BOUNDARY where, bool * desync_occured)
+						 BTREE_STATS * stat_info, BTREE_BOUNDARY where, bool & desync_occured)
 {
   PAGE_PTR P_page = NULL, C_page = NULL;
   VPID P_vpid, C_vpid;
@@ -14382,6 +14389,8 @@ btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, BTID *
   int key_cnt = 0, index = 0;
   int root_level = 0, depth = 0;
 
+  ASSERT_NO_ERROR ();
+
   VPID_SET_NULL (pg_vpid);
 
   /* read the root page */
@@ -14392,7 +14401,7 @@ btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, BTID *
     {
       if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
 	{
-	  *desync_occured = true;
+	  desync_occured = true;
 	}
 
       ASSERT_ERROR ();
@@ -14446,7 +14455,7 @@ btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, BTID *
 	{
 	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
 	    {
-	      *desync_occured = true;
+	      desync_occured = true;
 	    }
 
 	  ASSERT_ERROR ();
@@ -14503,7 +14512,7 @@ again:
 	{
 	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
 	    {
-	      *desync_occured = true;
+	      desync_occured = true;
 	    }
 
 	  ASSERT_ERROR ();
