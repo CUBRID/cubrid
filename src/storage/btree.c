@@ -35056,9 +35056,8 @@ btree_is_delete_object_purpose (BTREE_OP_PURPOSE purpose)
 // redo_data (in)     : redo log (is always physical)
 //
 static void
-btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER & delete_helper,
-			    LOG_DATA_ADDR & addr, int undo_length, int redo_length, const char *undo_data,
-			    const char *redo_data)
+btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER & delete_helper, LOG_DATA_ADDR & addr,
+			    int undo_length, int redo_length, const char *undo_data, const char *redo_data)
 {
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   assert (btree_is_delete_object_purpose (delete_helper.purpose));
@@ -35091,8 +35090,8 @@ btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER &
 	case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
 	case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
 	  log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-						 pgbuf_get_vpid_ptr (addr.pgptr), addr.offset, addr.pgptr,
-						 redo_length, redo_data, LOG_FIND_CURRENT_TDES (thread_p),
+						 pgbuf_get_vpid_ptr (addr.pgptr), addr.offset, addr.pgptr, redo_length,
+						 redo_data, LOG_FIND_CURRENT_TDES (thread_p),
 						 &delete_helper.reference_lsa);
 	  break;
 	case BTREE_OP_DELETE_VACUUM_OBJECT:
@@ -35118,9 +35117,8 @@ btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER &
 // redo_data (in)     : redo log (is always physical)
 //
 static void
-btree_rv_log_insert_object (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER & insert_helper,
-			    LOG_DATA_ADDR & addr, int undo_length, int redo_length, const char *undo_data,
-			    const char *redo_data)
+btree_rv_log_insert_object (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER & insert_helper, LOG_DATA_ADDR & addr,
+			    int undo_length, int redo_length, const char *undo_data, const char *redo_data)
 {
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   assert (btree_is_insert_object_purpose (insert_helper.purpose));
@@ -35201,8 +35199,8 @@ static int
 btree_find_oid_with_page_and_record (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
 				     BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo, RECDES * record,
 				     LEAF_REC * leaf_info, int offset_after_key, PAGE_PTR * found_page,
-				     PAGE_PTR * prev_page, int *offset_to_object,
-				     BTREE_MVCC_INFO * object_mvcc_info, RECDES * new_record)
+				     PAGE_PTR * prev_page, int *offset_to_object, BTREE_MVCC_INFO * object_mvcc_info,
+				     RECDES * new_record)
 {
   int error_code = NO_ERROR;
 
