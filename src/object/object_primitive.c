@@ -11920,7 +11920,14 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 
   if (!ignore_trailing_space)
     {
-      ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
+      if (do_coercion == 3)
+	{
+	  ti = false;
+	}
+      else
+	{
+	  ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
+	}
     }
 
   strc = QSTR_CHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,
@@ -11985,7 +11992,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
   if (!ignore_trailing_space)
     {
-      if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
+      if (do_coercion == 3 || !TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
 	{
 	  ti = false;
 	}

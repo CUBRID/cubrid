@@ -1181,7 +1181,7 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
       if (key_type == DB_TYPE_MIDXKEY)
 	{
 	  rc =
-	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL, NULL,
+	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), coerce, 1, num_index_term, NULL, NULL,
 				NULL, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
 	}
       else
