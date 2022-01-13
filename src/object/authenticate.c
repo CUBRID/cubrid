@@ -2140,6 +2140,48 @@ au_is_dba_group_member (MOP user)
   return is_member;
 }
 
+bool
+au_is_user_group_member (MOP group_user, MOP user)
+{
+  DB_SET *groups;
+  DB_VALUE group_user_val;
+  int error = NO_ERROR;
+
+  db_make_null (&group_user_val);
+
+  if (!group_user || !user)
+    {
+      return false;
+    }
+
+  if (ws_is_same_object (group_user, user))
+    {
+      return true;
+    }
+
+  db_make_object (&group_user_val, group_user);
+
+  if (au_get_set (user, "groups", &groups) == NO_ERROR)
+    {
+      if (set_ismember (groups, &group_user_val))
+	{
+	  set_free (groups);
+	  return true;
+	}
+    }
+  else
+    {
+      assert (er_errid () != NO_ERROR);
+    }
+
+  if (groups)
+    {
+      set_free (groups);
+    }
+
+  return false;
+}
+
 /*
  * au_add_user -  Add a user object if one does not already exist.
  *   return: new or existing user object
@@ -3390,7 +3432,7 @@ au_drop_user (MOP user)
   DB_SET *new_groups, *direct_groups;
   int g, gcard, i;
   DB_VALUE name;
-  const char *class_name[] = {
+  static const char *class_name[] = {
     /*
      * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
@@ -8713,10 +8755,12 @@ au_check_serial_authorization (MOP serial_object)
   int ret_val;
 
   ret_val = db_get (serial_object, "owner", &creator_val);
-  if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
+  if (ret_val != NO_ERROR)
     {
       return ret_val;
     }
+
+  assert (!DB_IS_NULL (&creator_val));
 
   ret_val = au_check_owner (&creator_val);
   if (ret_val != NO_ERROR)
@@ -8771,12 +8815,11 @@ au_check_synonym_authorization (MOP synonym_object)
   DB_VALUE creator_val;
   MOP creator;
   DB_SET *groups;
-  int ret_val;
+  int ret_val = ER_FAILED;
 
-  CHECK_1ARG_ERROR (synonym_object);
+  assert (synonym_object != NO_ERROR);
 
   ret_val = db_get (synonym_object, "owner", &creator_val);
-
   if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
     {
       return ret_val;
@@ -8784,19 +8827,10 @@ au_check_synonym_authorization (MOP synonym_object)
 
   creator = db_get_object (&creator_val);
 
-  ret_val = ER_QPROC_CANNOT_UPDATE_SYNONYM;
-
-  if (ws_is_same_object (creator, Au_user) || au_is_dba_group_member (Au_user))
+  if (au_is_user_group_member (creator, Au_user) || au_is_dba_group_member (Au_user))
     {
-      ret_val = NO_ERROR;
+      return NO_ERROR;
     }
-
-  if (ret_val != NO_ERROR)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ret_val, 0);
-    }
-
-  pr_clear_value (&creator_val);
 
   return ret_val;
 }

@@ -3624,12 +3624,13 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_SESSION_VARIABLES:
     case PT_SET_NAMES:
     case PT_SET_TIMEZONE:
+
       /* TODO: check it  */
     case PT_CREATE_SERVER:
     case PT_DROP_SERVER:
     case PT_RENAME_SERVER:
     case PT_ALTER_SERVER:
-      /**/
+
     case PT_ALTER_SYNONYM:
     case PT_CREATE_SYNONYM:
     case PT_DROP_SYNONYM:
@@ -17617,7 +17618,7 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  * return: error code
  *    ER_AU_DBA_ONLY
  *    ER_QPROC_CANNOT_USE_CATALOG_NAME
- *    ER_QPROC_CANNOT_EXIST_PUBLIC_SYNONYM
+ *    ER_QPROC_INVALID_PUBLIC_SYNONYM_OWNER
  *    ER_QPROC_CANNOT_PRIAVTE_SYNONYM_FOR_USER
  *    ER_QPROC_PUBLIC_SYNONYM_ALREADY_EXIST
  *    ER_QPROC_PRIVATE_SYNONYM_ALREADY_EXIST
@@ -17632,6 +17633,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   const char *synonym_name = NULL;
   const char *synonym_owner_name = NULL;
+  char *owner_name = NULL;
   int is_public_synonym = 0;
   const char *target_name = NULL;
   const char *target_owner_name = NULL;
@@ -17666,7 +17668,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
       sm_downcase_name (synonym_name, synonym_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
 
       /* cannot use catalog class names as synonym names. */
-      if (db_is_system_class_by_name (synonym_downcase_name))
+      if (sm_is_system_class_by_name (synonym_downcase_name))
 	{
 	  error = ER_QPROC_CANNOT_USE_CATALOG_NAME;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -17708,9 +17710,9 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (synonym_owner)
 	{
-	  error = ER_QPROC_CANNOT_EXIST_PUBLIC_SYNONYM;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, au_get_user_name (synonym_owner));
-	  return error;
+	  error = ER_QPROC_INVALID_PUBLIC_SYNONYM_OWNER;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, synonym_owner_name);
+	  goto end;
 	}
 
       /* only DBA and a members of the DBA group can create public synonyms. */
@@ -17721,7 +17723,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
-	      return error;
+	      goto end;
 	    }
 
 	  is_public_synonym = 1;
@@ -17730,7 +17732,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  error = ER_AU_DBA_ONLY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "CREATE PUBLIC SYNONYM");
-	  return error;
+	  goto end;
 	}
     }
   else
@@ -17743,11 +17745,11 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* creating private synonym for other user can only be performed by DBA or a DBA group member. */
-      if (ws_is_same_object (current_user, synonym_owner) == false)
+      if (au_is_user_group_member (current_user, synonym_owner) == false)
 	{
 	  error = ER_QPROC_CANNOT_PRIAVTE_SYNONYM_FOR_USER;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  return error;
+	  goto end;
 	}
 
       is_public_synonym = 0;
@@ -17756,7 +17758,15 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   or_replace = statement->info.create_synonym.or_replace;
 
   /* check if the same synonym exists. */
-  synonym_owner_name = au_get_user_name (synonym_owner);
+  owner_name = au_get_user_name (synonym_owner);
+  if (owner_name == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+  synonym_owner_name = owner_name;
+
   if (do_get_synonym (synonym_downcase_name, synonym_owner_name, is_public_synonym))
     {
       if (or_replace)
@@ -17767,7 +17777,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  error = is_public_synonym ? ER_QPROC_PUBLIC_SYNONYM_ALREADY_EXIST : ER_QPROC_PRIVATE_SYNONYM_ALREADY_EXIST;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 2, synonym_owner_name, synonym_downcase_name);
-	  return error;
+	  goto end;
 	}
     }
 
@@ -17778,6 +17788,10 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       target_name = statement->info.create_synonym.target_name->info.name.original;
       sm_downcase_name (target_name, target_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
+    }
+  else
+    {
+      assert (false);
     }
 
   /* target_owner */
@@ -17791,19 +17805,19 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  return error;
+	  goto end;
 	}
     }
   else
     {
-      if (db_is_system_class_by_name (target_downcase_name))
+      if (sm_is_system_class_by_name (target_downcase_name))
 	{
 	  target_owner = au_get_dba_user ();
 	  if (target_owner == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
-	      return error;
+	      goto end;
 	    }
 	}
       else
@@ -17829,12 +17843,18 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = do_drop_synonym_internal (synonym_downcase_name, synonym_owner_name, is_public_synonym, true);
       if (error < NO_ERROR)
 	{
-	  return error;
+	  goto end;
 	}
     }
 
   error = do_create_synonym_internal (synonym_downcase_name, synonym_owner, is_public_synonym, target_downcase_name,
 				      target_owner, comment, has_already);
+
+end:
+  if (owner_name)
+    {
+      db_ws_free_and_init (owner_name);
+    }
 
   return error;
 }
@@ -17972,7 +17992,7 @@ end:
  * do_drop_synonym () - drop synonym.
  * return: error code
  *    ER_AU_DBA_ONLY
- *    ER_QPROC_CANNOT_EXIST_PUBLIC_SYNONYM
+ *    ER_QPROC_INVALID_PUBLIC_SYNONYM_OWNER
  *    ER_QPROC_CANNOT_UPDATE_SYNONYM
  * parser(in): parser context
  * statement(in): parse tree of a statement
@@ -17984,6 +18004,7 @@ do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *synonym = NULL;
   const char *synonym_name = NULL;
   const char *synonym_owner_name = NULL;
+  char *owner_name = NULL;
   int is_public_synonym = 0;
   bool if_exists = 0;
   char synonym_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
@@ -18037,7 +18058,7 @@ do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
-	      return error;
+	      goto end;
 	    }
 
 	  synonym_name = synonym->info.dot.arg2->info.name.original;
@@ -18054,9 +18075,9 @@ do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* cannot drop public synonym for user. */
 	  if (synonym_owner)
 	    {
-	      error = ER_QPROC_CANNOT_EXIST_PUBLIC_SYNONYM;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, au_get_user_name (synonym_owner));
-	      return error;
+	      error = ER_QPROC_INVALID_PUBLIC_SYNONYM_OWNER;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, synonym_owner_name);
+	      goto end;
 	    }
 
 	  synonym_owner = au_get_public_user ();
@@ -18064,7 +18085,7 @@ do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
-	      return error;
+	      goto end;
 	    }
 	}
 
@@ -18074,30 +18095,36 @@ do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  synonym_owner = current_user;
 	}
 
-      synonym_owner_name = au_get_user_name (synonym_owner);
-      if (synonym_owner_name == NULL)
+      owner_name = au_get_user_name (synonym_owner);
+      if (owner_name == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  return error;
+	  goto end;
 	}
-
+      synonym_owner_name = owner_name;
       sm_downcase_name (synonym_name, synonym_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
 
-      if (is_dba_group_member || ws_is_same_object (current_user, synonym_owner))
+      if (is_dba_group_member || au_is_user_group_member (current_user, synonym_owner))
 	{
 	  error = do_drop_synonym_internal (synonym_downcase_name, synonym_owner_name, is_public_synonym, if_exists);
 	  if (error < NO_ERROR)
 	    {
-	      return error;
+	      goto end;
 	    }
 	}
       else
 	{
 	  error = ER_QPROC_CANNOT_UPDATE_SYNONYM;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, synonym_owner_name, synonym_downcase_name);
-	  return error;
+	  goto end;
 	}
+    }
+
+end:
+  if (owner_name)
+    {
+      db_ws_free_and_init (owner_name);
     }
 
   return error;
@@ -18134,12 +18161,10 @@ do_drop_synonym_internal (const char *name, const char *owner_name, const int is
     }
 
   error = au_check_synonym_authorization (synonym_object);
-  if (error < NO_ERROR)
+  if (error != NO_ERROR)
     {
-      if (error == ER_QPROC_CANNOT_UPDATE_SYNONYM)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, owner_name, name);
-	}
+      error = ER_QPROC_CANNOT_UPDATE_SYNONYM;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, owner_name, name);
 
       goto end;
     }
@@ -18195,13 +18220,8 @@ do_get_synonym (const char *name, const char *owner_name, const int is_public)
   memset (&query_buf, 0, sizeof (char) * QUERY_BUF_SIZE);
   memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
 
-  query = "SELECT [%s] FROM [%s] WHERE [name] = '%s' AND [owner].[name] = '%s' AND [is_public] = %d LIMIT 1";
-  error = snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SYNONYM_NAME, CT_SYNONYM_NAME, name, owner_name, is_public);
-  if (error < NO_ERROR)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto end;
-    }
+  query = "SELECT [%s] FROM [%s] WHERE [name] = '%s' AND [owner].[name] = UPPER('%s') AND [is_public] = %d LIMIT 1";
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SYNONYM_NAME, CT_SYNONYM_NAME, name, owner_name, is_public);
 
   AU_DISABLE (save);
 
@@ -18239,6 +18259,7 @@ end:
       db_query_end (query_result);
     }
 
+#undef QUERY_BUF_SIZE
   return synonym_object;
 }
 

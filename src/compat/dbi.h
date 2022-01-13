@@ -284,7 +284,6 @@ extern "C"
   extern int db_is_superclass (DB_OBJECT * supermop, DB_OBJECT * classobj);
   extern int db_is_partition (DB_OBJECT * classobj, DB_OBJECT * superobj);
   extern int db_is_system_class (DB_OBJECT * op);
-  extern bool db_is_system_class_by_name (const char *class_name);
   extern int db_is_deleted (DB_OBJECT * obj);
 
   extern int db_class_has_instance (DB_OBJECT * classobj);

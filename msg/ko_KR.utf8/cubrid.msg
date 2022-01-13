@@ -1413,7 +1413,7 @@ $ I have spaced them out to avoid error number conflicts with other PR.
 $ I will correct it after merging it into feature branch.
 $
 1400 Synonym 이름으로 System 테이블/뷰의 이름을 사용할 수 없습니다.
-1401 %2$s의 Public Synonym은 존재할 수 없습니다.
+1401 PUBLIC SYNONYM은 %1$s가 소유할 수 없습니다.
 1402 DBA 또는 DBA 그룹의 멤버 사용자만 다른 사용자의 Private Synonym을 생성할 수 있습니다.
 1403 _db_synonym 시스템 테이블이 존재하지 않습니다.
 1404 db_synonym 시스템 뷰가 존재하지 않습니다.

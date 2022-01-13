@@ -1414,7 +1414,7 @@ $ I have spaced them out to avoid error number conflicts with other PR.
 $ I will correct it after merging it into feature branch.
 $
 1400 Cannot use system class/vclass name as synonym name.
-1401 Public synonym of %1$s cannot exist.
+1401 PUBLIC SYNONYM cannot be owned by %1$s.
 1402 Creating private synonym for other user can only be performed by DBA or a DBA group member.
 1403 _db_synonym class not found.
 1404 db_synonym vclass not found.

@@ -3046,12 +3046,12 @@ create_stmt
 	  	{ pop_msg(); }
 		{{
 
-			PT_NODE *p = parser_new_node(this_parser, PT_CREATE_SYNONYM);
+			PT_NODE *node = parser_new_node(this_parser, PT_CREATE_SYNONYM);
 
-			if (p)
+			if (node)
 			  {
-			    p->info.create_synonym.or_replace = $2;
-			    p->info.create_synonym.access_modifier = $4;
+			    node->info.create_synonym.or_replace = $2;
+			    node->info.create_synonym.access_modifier = $4;
 
 			    /* synonym_owner_name, synonym_name */
 			    PT_NODE *synonym = $6;
@@ -3060,12 +3060,20 @@ create_stmt
 				if (synonym->node_type == PT_DOT_)
 				  {
 				    assert (synonym->info.dot.arg1);
-				    assert (synonym->info.dot.arg1->node_type == PT_NAME);
 				    assert (synonym->info.dot.arg2);
+				    assert (synonym->info.dot.arg1->node_type == PT_NAME);
 				    assert (synonym->info.dot.arg2->node_type == PT_NAME);
 
-				    p->info.create_synonym.synonym_owner_name = synonym->info.dot.arg1;
-				    p->info.create_synonym.synonym_name = synonym->info.dot.arg2;
+				    if (node->info.create_synonym.access_modifier == PT_PUBLIC)
+				      {
+					PT_ERRORf2 (this_parser, node,
+						   "Identifier name %s.%s not allowed. It cannot contain dot(.).",
+						   synonym->info.dot.arg1->info.name.original,
+						   synonym->info.dot.arg2->info.name.original);
+				      }
+
+				    node->info.create_synonym.synonym_owner_name = synonym->info.dot.arg1;
+				    node->info.create_synonym.synonym_name = synonym->info.dot.arg2;
 
 				    synonym->info.dot.arg1 = NULL; /* cut */
 				    synonym->info.dot.arg2 = NULL; /* cut */
@@ -3075,8 +3083,8 @@ create_stmt
 				  {
 				    assert (synonym->node_type == PT_NAME);
 
-				    p->info.create_synonym.synonym_owner_name = NULL;
-				    p->info.create_synonym.synonym_name = synonym;
+				    node->info.create_synonym.synonym_owner_name = NULL;
+				    node->info.create_synonym.synonym_name = synonym;
 				  }
 			      }
 
@@ -3087,12 +3095,12 @@ create_stmt
 				if (target->node_type == PT_DOT_)
 				  {
 				    assert (target->info.dot.arg1);
-				    assert (target->info.dot.arg1->node_type == PT_NAME);
 				    assert (target->info.dot.arg2);
+				    assert (target->info.dot.arg1->node_type == PT_NAME);
 				    assert (target->info.dot.arg2->node_type == PT_NAME);
 
-				    p->info.create_synonym.target_owner_name = target->info.dot.arg1;
-				    p->info.create_synonym.target_name = target->info.dot.arg2;
+				    node->info.create_synonym.target_owner_name = target->info.dot.arg1;
+				    node->info.create_synonym.target_name = target->info.dot.arg2;
 
 				    target->info.dot.arg1 = NULL; /* cut */
 				    target->info.dot.arg2 = NULL; /* cut */
@@ -3102,15 +3110,15 @@ create_stmt
 				  {
 				    assert (target->node_type == PT_NAME);
 
-				    p->info.create_synonym.target_owner_name = NULL;
-				    p->info.create_synonym.target_name = target;
+				    node->info.create_synonym.target_owner_name = NULL;
+				    node->info.create_synonym.target_name = target;
 				  }
 			      }
 
-			    p->info.create_synonym.comment = $9;
+			    node->info.create_synonym.comment = $9;
 			  }
 
-			$$ = p;
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}

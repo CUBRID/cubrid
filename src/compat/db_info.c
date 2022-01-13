@@ -512,21 +512,6 @@ db_is_system_class (MOP op)
 }
 
 /*
- * db_is_system_class_by_name () - This function is a convenience function to determine
- *    if a class is one of the system defined classes or a user defined class.
- * return: bool
- * name(in): class name
- */
-bool
-db_is_system_class_by_name (const char *name)
-{
-  CHECK_CONNECT_ZERO ();
-  CHECK_1ARG_ERROR (name);
-
-  return sm_is_system_class_by_name (name);
-}
-
-/*
  * db_is_deleted() - This function is used to determine whether or not the
  *    database object associated with an object handle has been deleted.
  * return : status code
