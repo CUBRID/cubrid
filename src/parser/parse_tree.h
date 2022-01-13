@@ -1160,7 +1160,7 @@ typedef enum
   PT_DERIVED_DBLINK_TABLE,	// dblink table spec derivation
 
   PT_SYNONYM
-  // todo: separate into relevant enumerations
+    // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
