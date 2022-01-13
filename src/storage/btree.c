@@ -29384,18 +29384,17 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, b
 	  if (node_type == BTREE_LEAF_NODE && !btree_leaf_is_flaged (&update_record, BTREE_LEAF_RECORD_OVERFLOW_KEY))
 	    {
 	      btree_init_temp_key_value (&clear_key, &key);
-	      (void) btree_read_record (thread_p, &btid_int_for_debug, rcv->pgptr, &update_record, &key,
-					&leaf_rec_info, node_type, &clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
+	      (void) btree_read_record (thread_p, &btid_int_for_debug, rcv->pgptr, &update_record, &key, &leaf_rec_info,
+					node_type, &clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
 	      printed_key = pr_valstring (&key);
 	      btree_clear_key_value (&clear_key, &key);
 	    }
 
 	  _er_log_debug (ARG_FILE_LINE,
 			 "%s: update slotid=%d from %s page %d|%d, lsa=%lld|%d, in an unknown index."
-			 "key=%s, rv_debug_id=%d. Record length = %d.\n", is_undo ? "BTREE_UNDO" : "BTREE_REDO",
-			 slotid, node_type == BTREE_LEAF_NODE ? "leaf" : "overflow",
-			 PGBUF_PAGE_STATE_ARGS (rcv->pgptr), printed_key != NULL ? printed_key : "unknown",
-			 rv_debug_id, update_record.length);
+			 "key=%s, rv_debug_id=%d. Record length = %d.\n", is_undo ? "BTREE_UNDO" : "BTREE_REDO", slotid,
+			 node_type == BTREE_LEAF_NODE ? "leaf" : "overflow", PGBUF_PAGE_STATE_ARGS (rcv->pgptr),
+			 printed_key != NULL ? printed_key : "unknown", rv_debug_id, update_record.length);
 	  if (printed_key != NULL)
 	    {
 	      db_private_free (thread_p, printed_key);
@@ -29485,8 +29484,8 @@ btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
  * unique_stat_info (in) : Unique statistics information.
  */
 int
-btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * oid, OID * class_oid,
-		       int *unique, int op_type, btree_unique_stats * unique_stat_info)
+btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * oid, OID * class_oid, int *unique,
+		       int op_type, btree_unique_stats * unique_stat_info)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
 
@@ -29584,14 +29583,14 @@ btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "BTREE_DELETE: Start vacuum object %d|%d|%d, class_oid %d|%d|%d and delete MVCCID %lld in "
-		     "index (%d, %d|%d).\n", oid->volid, oid->pageid, oid->slotid, class_oid->volid,
-		     class_oid->pageid, class_oid->slotid, (long long int) delete_mvccid, btid->root_pageid,
-		     btid->vfid.volid, btid->vfid.fileid);
+		     "index (%d, %d|%d).\n", oid->volid, oid->pageid, oid->slotid, class_oid->volid, class_oid->pageid,
+		     class_oid->slotid, (long long int) delete_mvccid, btid->root_pageid, btid->vfid.volid,
+		     btid->vfid.fileid);
     }
 
   BTREE_MVCC_INFO_SET_DELID (&match_mvccinfo, delete_mvccid);
-  return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL,
-				SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, NULL, NULL, BTREE_OP_DELETE_VACUUM_OBJECT);
+  return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
+				NULL, &match_mvccinfo, NULL, NULL, BTREE_OP_DELETE_VACUUM_OBJECT);
 }
 
 /*
@@ -29622,9 +29621,8 @@ btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
 		     btid->vfid.fileid);
     }
 
-  return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL,
-				SINGLE_ROW_MODIFY, NULL, match_mvccinfo, undo_nxlsa, NULL,
-				BTREE_OP_DELETE_UNDO_INSERT_DELID);
+  return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
+				NULL, match_mvccinfo, undo_nxlsa, NULL, BTREE_OP_DELETE_UNDO_INSERT_DELID);
 }
 
 /*
@@ -29659,9 +29657,8 @@ btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffere
     {
       BTREE_MVCC_INFO_SET_INSID (&match_mvccinfo, insert_mvccid);
     }
-  return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL,
-				SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, undo_nxlsa, NULL,
-				BTREE_OP_DELETE_UNDO_INSERT);
+  return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
+				NULL, &match_mvccinfo, undo_nxlsa, NULL, BTREE_OP_DELETE_UNDO_INSERT);
 }
 
 /*
@@ -29763,10 +29760,10 @@ btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
  * purpose (in)		   : Purpose/context for function call.
  */
 static int
-btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid,
-		       BTREE_MVCC_INFO * mvcc_info, DB_VALUE * key, OR_BUF * buffered_key, int *unique, int op_type,
-		       btree_unique_stats * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo,
-		       const LOG_LSA * ref_lsa, BTREE_OBJECT_INFO * second_object_info, BTREE_OP_PURPOSE purpose)
+btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
+		       DB_VALUE * key, OR_BUF * buffered_key, int *unique, int op_type,
+		       btree_unique_stats * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo, const LOG_LSA * ref_lsa,
+		       BTREE_OBJECT_INFO * second_object_info, BTREE_OP_PURPOSE purpose)
 {
   /* Structure used by internal functions. */
   BTREE_DELETE_HELPER delete_helper;
