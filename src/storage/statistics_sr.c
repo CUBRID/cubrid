@@ -403,6 +403,7 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 	  goto exit_on_error;
 	}
       classname = string;
+
       assert (classname != NULL);
       assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);
 

@@ -331,6 +331,11 @@ locator_initialize (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
+	}
+
       entry->e_tran_index = NULL_TRAN_INDEX;
 
       entry->e_current.action = LC_CLASSNAME_EXIST;
