@@ -11920,6 +11920,12 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 
   if (!ignore_trailing_space)
     {
+      /*
+       * do_coercion = 3: comparing by varchar-type style
+       * from eliminate_duplicated_keys, scan_key_compre,
+       *   and some query re-write routines
+       * we need to process enforcing no-ignore-trailing space.
+       */
       if (do_coercion == 3)
 	{
 	  ti = false;
@@ -11992,6 +11998,12 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
   if (!ignore_trailing_space)
     {
+      /*
+       * do_coercion = 3: comparing by varchar-type style
+       * from eliminate_duplicated_keys, scan_key_compre,
+       *   and some query re-write routines
+       * we need to process enforcing no-ignore-trailing space.
+       */
       if (do_coercion == 3 || !TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
 	{
 	  ti = false;
@@ -12897,7 +12909,13 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 
   if (!ignore_trailing_space)
     {
-      if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
+      /*
+       * do_coercion = 3: comparing by varchar-type style
+       * from eliminate_duplicated_keys, scan_key_compre,
+       *   and some query re-write routines
+       * we need to process enforcing no-ignore-trailing space.
+       */
+      if (do_coercion == 3 || !TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
 	{
 	  ti = false;
 	}

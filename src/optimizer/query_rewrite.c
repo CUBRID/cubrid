@@ -2992,6 +2992,7 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	{
 	  lower_val = pt_value_to_db (parser, lower);
 	  upper_val = pt_value_to_db (parser, upper);
+	  /* coercion = 3, it should be compared by varchar-type style */
 	  cmp = (DB_VALUE_COMPARE_RESULT) tp_value_compare (lower_val, upper_val, 3, 0);
 	  if (cmp == DB_GT
 	      || (cmp == DB_EQ
@@ -4245,6 +4246,7 @@ qo_compare_dbvalue_with_optype (DB_VALUE * val1, PT_OP_TYPE op1, DB_VALUE * val2
       return (op2 == op1) ? CompResultEqual : CompResultLess;
     }
 
+  /* coercion = 3, it should be compared by varchar-type style */
   rc = tp_value_compare (val1, val2, 3, 1);
   if (rc == DB_EQ)
     {
