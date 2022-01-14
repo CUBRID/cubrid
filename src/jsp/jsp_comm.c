@@ -46,6 +46,10 @@
 #include "porting.h"
 #include "error_manager.h"
 
+#if defined(CS_MODE)
+#include "network_interface_cl.h"
+#endif
+
 /*
  * jsp_connect_server
  *   return: connect fail - return Error Code
@@ -75,6 +79,11 @@ jsp_connect_server (int server_port)
     {
       return sockfd;		/* INVALID_SOCKET (-1) */
     }
+
+#if defined(CS_MODE)
+  /* check for remote host */
+  server_host = net_client_get_server_host ();
+#endif
 
   inaddr = inet_addr (server_host);
   memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
