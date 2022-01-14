@@ -4714,8 +4714,6 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
   while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK) == S_SUCCESS)
     {
 #if !defined(NDEBUG)
-      string = NULL;
-      alloced_string = 0;
       error = or_class_name (&peek, &string, &alloced_string);
       if (error != NO_ERROR)
 	{
@@ -4725,9 +4723,9 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
-      if (string != NULL && alloced_string == 1)
+      if (alloced_string)
 	{
 	  db_private_free_and_init (thread_p, string);
 	}
@@ -5041,8 +5039,6 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
   while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK) == S_SUCCESS)
     {
 #if !defined(NDEBUG)
-      string = NULL;
-      alloced_string = 0;
       error = or_class_name (&peek, &string, &alloced_string);
       if (error != NO_ERROR)
 	{
@@ -5052,9 +5048,9 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
-      if (string != NULL && alloced_string == 1)
+      if (alloced_string)
 	{
 	  db_private_free_and_init (thread_p, string);
 	}

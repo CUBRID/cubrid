@@ -296,7 +296,12 @@ or_class_name (RECDES * record, char **string, int *alloced_string)
   int decompressed_length = 0;
   int rc = NO_ERROR;
 
-  assert (*alloced_string == 0);
+  assert (string != NULL);
+  assert (alloced_string != NULL);
+
+  /* Initialization */
+  *string = NULL;
+  *alloced_string == 0;
 
   /*
    * the first variable attribute for both classes and the rootclass
@@ -318,7 +323,7 @@ or_class_name (RECDES * record, char **string, int *alloced_string)
    * or_ function.
    */
   len = (int) *((unsigned char *) start);
-  if (len != 0xFF)
+  if (len < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       *string = start + 1;
     }
@@ -330,28 +335,25 @@ or_class_name (RECDES * record, char **string, int *alloced_string)
       if (rc != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  *string = NULL;
 	  return rc;
 	}
 
-      assert (*string == NULL);
       *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
       if (*string == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      *alloced_string = 1;
 
       rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  db_private_free (NULL, *string);
-	  *alloced_string = 0;
-	  *string = NULL;
+	  db_private_free_and_init (NULL, *string);
 	  return rc;
 	}
+
+      *alloced_string = 1;
     }
 
   return rc;
