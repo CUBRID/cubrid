@@ -17626,7 +17626,7 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  * statement(in): parse tree of a statement
  *
  * note: synonym is created by changing the synonym name to lowercase and
- *    only DBA users and members of the DBA group can create public synonyms.
+ *       only DBA users and members of the DBA group can create public synonyms.
  */
 int
 do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
