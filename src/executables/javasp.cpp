@@ -202,9 +202,7 @@ main (int argc, char *argv[])
 	// check java stored procedure is not enabled
 	if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE) == false)
 	  {
-	    char err_msg[PATH_MAX];
-	    snprintf (err_msg, PATH_MAX, "%s system parameter is not enabled", prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE));
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
+	    fprintf (stdout, "%s system parameter is not enabled\n", prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE));
 	    status = ER_SP_CANNOT_START_JVM;
 	    goto exit;
 	  }
