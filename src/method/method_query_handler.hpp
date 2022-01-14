@@ -94,6 +94,8 @@ namespace cubmethod
 
       int get_id ();
       std::string get_sql_stmt ();
+      int get_num_markers ();
+
       bool get_is_occupied ();
       void set_is_occupied (bool flag);
       bool get_prepare_info (prepare_info &info);

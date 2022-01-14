@@ -28,6 +28,7 @@
 #endif /* SERVER_MODE */
 
 #include <unordered_map>
+#include <queue>
 
 #include "method_connection_cl.hpp"
 #include "method_def.hpp"
@@ -77,6 +78,11 @@ namespace cubmethod
 
       oid_handler *get_oid_handler ();
 
+      std::queue <cubmem::extensible_block> &get_data_queue ()
+      {
+	return m_data_queue;
+      }
+
     private:
       /* handle related to query */
       int prepare (packing_unpacker &unpacker);
@@ -94,21 +100,19 @@ namespace cubmethod
       query_handler *new_query_handler ();
       void free_query_handle (int id, bool is_free);
 
-#if defined (CS_MODE)
-      /* server info */
       template<typename ... Args>
-      int send_packable_object_to_server (Args &&... args)
+      int pack_and_queue (Args &&... args)
       {
-	return method_send_data_to_server (std::forward<Args> (args)...);
-      }
-#else
-      /* server info */
-      template<typename ... Args>
-      int send_packable_object_to_server (Args &&... args)
-      {
+	packing_packer packer;
+	cubmem::extensible_block eb;
+	packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
+	eb.extend_to (packer.get_current_size ()); // ensure eb.get_size () == packer.get_current_size ()
+
+	m_data_queue.push (std::move (eb));
 	return NO_ERROR;
       }
-#endif
+
+      std::queue <cubmem::extensible_block> m_data_queue;
 
       std::multimap <std::string, int> m_sql_handler_map;
       std::unordered_map <uint64_t, int> m_qid_handler_map;

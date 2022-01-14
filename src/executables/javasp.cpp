@@ -478,10 +478,7 @@ javasp_ping_server (const int server_port, char *buf)
     }
 
 exit:
-  if (socket != INVALID_SOCKET)
-    {
-      jsp_disconnect_server (socket);
-    }
+  jsp_disconnect_server (socket);
   return er_errid ();
 }
 

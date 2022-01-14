@@ -79,6 +79,17 @@ namespace cubmethod
     return m_id;
   }
 
+  int
+  query_handler::get_num_markers ()
+  {
+    std::string &sql = m_sql_stmt;
+    if (m_num_markers == -1 && !sql.empty ())
+      {
+	m_num_markers = calculate_num_markers (sql);
+      }
+    return m_num_markers;
+  }
+
   bool query_handler::is_prepared ()
   {
     return m_is_prepared;
@@ -393,7 +404,7 @@ namespace cubmethod
     OID ins_oid = OID_INITIALIZER;
     set_dbobj_to_oid (obj, &ins_oid);
 
-    std::vector <DB_VALUE> attribute_values;
+    std::vector<DB_VALUE> attribute_values;
     for (DB_ATTRIBUTE *attr = attributes; attr; attr = db_attribute_next (attr))
       {
 	DB_VALUE value;
@@ -760,7 +771,6 @@ namespace cubmethod
 	if (stmt_id == ER_PT_SEMANTIC && stmt_type != CUBRID_MAX_STMT_TYPE)
 	  {
 	    close_and_free_session ();
-	    num_markers = get_num_markers (m_sql_stmt);
 	  }
 	else
 	  {
@@ -771,7 +781,6 @@ namespace cubmethod
       }
     else
       {
-	num_markers = get_num_markers (m_sql_stmt);
 	stmt_type = db_get_statement_type (m_session, stmt_id);
 	m_is_prepared = true;
       }
@@ -779,7 +788,7 @@ namespace cubmethod
     db_get_cacheinfo (m_session, stmt_id, &m_use_plan_cache, NULL);
 
     /* prepare result set */
-    m_num_markers = num_markers;
+    m_num_markers = get_num_markers ();
     m_prepare_flag = flag;
 
     query_result &q_result = m_query_result;
@@ -830,7 +839,7 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
-    int num_markers = get_num_markers (m_sql_stmt);
+    int num_markers = get_num_markers ();
     stmt_type = CUBRID_STMT_CALL_SP;
     m_is_prepared = true;
     m_prepare_call_info.set_prepare_call_info (num_markers);

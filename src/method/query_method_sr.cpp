@@ -45,8 +45,8 @@ int xmethod_invoke_fold_constants (THREAD_ENTRY *thread_p, const method_sig_list
       return error_code;
     }
 
-  DB_VALUE *res = method_group.get_return_value (0);
-  db_value_clone (res, &result);
+  DB_VALUE &res = method_group.get_return_value (0);
+  db_value_clone (&res, &result);
 
   method_group.end ();
   return error_code;

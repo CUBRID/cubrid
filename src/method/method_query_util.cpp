@@ -515,7 +515,7 @@ namespace cubmethod
   }
 
   int
-  get_num_markers (std::string sql)
+  calculate_num_markers (const std::string sql)
   {
     if (sql.empty())
       {

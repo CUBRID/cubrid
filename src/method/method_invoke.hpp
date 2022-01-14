@@ -27,12 +27,18 @@
 
 #include <vector>
 #include <unordered_map>
+#include <queue>
 
 #include "dbtype.h"		/* db_value_* */
 #include "method_def.hpp"	/* method_sig_node */
 #include "method_query_cursor.hpp"
+#include "method_struct_invoke.hpp" /* cubmethod::header */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */
 #include "porting.h" /* SOCKET */
+
+#if defined (SA_MODE)
+#include "query_method.hpp"
+#endif
 
 // thread_entry.hpp
 namespace cubthread
@@ -66,6 +72,11 @@ namespace cubmethod
 	return 0;
       }
 
+      uint64_t get_id ()
+      {
+	return (uint64_t) this;
+      }
+
     protected:
       method_invoke_group *m_group;
       method_sig_node *m_method_sig;
@@ -95,26 +106,34 @@ namespace cubmethod
       int reset (cubthread::entry *thread_p) override;
 
     private:
-      int alloc_response (cubmem::extensible_block &blk);
-      int receive_result (cubmem::extensible_block &blk, std::vector<std::reference_wrapper<DB_VALUE>> &arg_base,
+      int alloc_response ();
+      int receive_result (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base,
 			  DB_VALUE &returnval);
-      int receive_error (cubmem::extensible_block &blk);
+      int receive_error ();
 
-      int callback_dispatch (cubthread::entry &thread_ref, cubmem::extensible_block &blk);
-      int callback_get_db_parameter (cubmem::block &blk);
-      int callback_prepare (cubthread::entry &thread_ref, cubmem::block &blk);
-      int callback_execute (cubthread::entry &thread_ref, cubmem::block &blk);
-      int callback_fetch (cubthread::entry &thread_ref, cubmem::block &blk);
-      int callback_oid_get (cubthread::entry &thread_ref, cubmem::block &blk);
-      int callback_oid_put (cubthread::entry &thread_ref, cubmem::block &blk);
-      int callback_oid_cmd (cubthread::entry &thread_ref, cubmem::block &blk);
-      int callback_collection_cmd (cubthread::entry &thread_ref, cubmem::block &blk);
-      int callback_make_outresult (cubthread::entry &thread_ref, cubmem::block &blk);
-      int callback_get_generated_keys (cubthread::entry &thread_ref, cubmem::block &blk);
+      int callback_dispatch (cubthread::entry &thread_ref);
+
+      int callback_get_db_parameter (packing_unpacker &unpacker);
+      int callback_prepare (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_execute (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_fetch (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_oid_get (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_oid_put (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_oid_cmd (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_collection_cmd (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_make_outresult (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_get_generated_keys (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+
+      void erase_query_cursor (const std::uint64_t query_id);
+      int close_query_cursor_all (cubthread::entry &thread_ref);
 
       static int bypass_block (SOCKET socket, cubmem::block &b);
 
       std::unordered_map <std::uint64_t, query_cursor *> m_cursor_map;
+
+      std::queue<cubmem::extensible_block> m_data_queue;
+
+      cubmethod::header *m_header;
   };
 
 } // namespace cubmethod

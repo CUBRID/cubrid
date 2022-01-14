@@ -10611,7 +10611,7 @@ method_invoke_fold_constants (const method_sig_list & sig_list,
 	    method_sig_node *sig = sig_list.method_sig;
 	    for (int i = 0; i < sig->num_method_args; i++)
 	      {
-		if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
+		if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
 		  {
 		    continue;
 		  }

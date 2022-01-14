@@ -41,6 +41,33 @@ namespace cubmethod
 	return nullptr;
       }
   }
+
+  int
+  method_send_buffer_to_server (cubmem::block &block)
+  {
+    int depth = tran_get_libcas_depth () - 1;
+    method_server_conn_info *info = get_connection_info (depth);
+
+    assert (info);
+
+    if (info)
+      {
+	int error = net_client_send_data (net_client_get_server_host(), info->rc, block.ptr, block.dim);
+	if (error != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
+      }
+    else
+      {
+	/* should not happened */
+	assert (false);
+	return ER_FAILED;
+      }
+
+    return NO_ERROR;
+  }
+
 #endif
 
 } // cubmethod

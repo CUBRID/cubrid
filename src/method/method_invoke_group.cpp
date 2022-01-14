@@ -166,8 +166,8 @@ namespace cubmethod
 #if defined (SERVER_MODE)
 	    error = method_send_data_to_client (m_thread_p, header, arg);
 #else
-	    cubmem::block b = method_pack_data (m_thread_p, header, arg);
-	    packing_unpacker unpacker (b);
+	    cubmem::extensible_block b = method_pack_data (m_thread_p, header, arg);
+	    packing_unpacker unpacker (b.get_ptr (), b.get_size ());
 	    error = method_dispatch (unpacker);
 #endif
 	    break;
@@ -238,8 +238,8 @@ namespace cubmethod
 #if defined (SERVER_MODE)
 	error = method_send_data_to_client (m_thread_p, header);
 #else
-	cubmem::block b = method_pack_data (m_thread_p, header);
-	packing_unpacker unpacker (b);
+	cubmem::extensible_block b = method_pack_data (m_thread_p, header);
+	packing_unpacker unpacker (b.get_ptr (), b.get_size ());
 	error = method_dispatch (unpacker);
 #endif
       }

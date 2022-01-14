@@ -23,10 +23,12 @@
 #include "method_struct_invoke.hpp"
 #include "method_invoke_group.hpp"
 #include "packer.hpp"
+#include "method_connection_sr.hpp"
 
 #if defined (SERVER_MODE)
-#include "method_connection_sr.hpp"
 #include "method_struct_query.hpp"
+#else
+#include "query_method.hpp"
 #endif
 
 namespace cubmethod
@@ -40,10 +42,14 @@ namespace cubmethod
   int method_invoke_builtin::invoke (cubthread::entry *thread_p, std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
     int error = NO_ERROR;
-#if defined (SERVER_MODE)
     cubmethod::header header (METHOD_REQUEST_INVOKE /* default */, m_group->get_id());
     cubmethod::invoke_builtin arg (m_method_sig);
+#if defined (SERVER_MODE)
     error = method_send_data_to_client (thread_p, header, arg);
+#else
+    cubmem::extensible_block b = method_pack_data (thread_p, header, arg);
+    packing_unpacker unpacker (b.get_ptr (), b.get_size ());
+    error = method_dispatch (unpacker);
 #endif
     return error;
   }
@@ -59,7 +65,7 @@ namespace cubmethod
     auto get_method_result = [&] (cubmem::block & b)
     {
       int e = NO_ERROR;
-      packing_unpacker unpacker (b.ptr, (size_t) b.dim);
+      packing_unpacker unpacker (b);
       int status;
       unpacker.unpack_int (status);
       if (status == METHOD_SUCCESS)

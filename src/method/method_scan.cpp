@@ -22,8 +22,6 @@
 #include "list_file.h" /* qfile_ */
 #include "object_representation.h" /* OR_ */
 
-int method_Num_method_jsp_calls = 0;
-
 namespace cubscan
 {
   namespace method
@@ -156,11 +154,11 @@ namespace cubscan
 
 	      db_make_null (dbval_p);
 
-	      DB_VALUE *result = m_method_group->get_return_value (i);
-	      db_value_clone (result, dbval_p);
+	      DB_VALUE &result = m_method_group->get_return_value (i);
+	      db_value_clone (&result, dbval_p);
 
 	      m_dbval_list[i].val = dbval_p;
-	      db_value_clear (result);
+	      db_value_clear (&result);
 	    }
 
 	  m_method_group->reset (false);

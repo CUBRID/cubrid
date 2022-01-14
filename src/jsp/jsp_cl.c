@@ -656,7 +656,9 @@ jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+#if defined (CS_MODE)
   db_value_clear (&ret_value);
+#endif
 
   return error;
 }

@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "dbtype_def.h"
+#include "packer.hpp"
 
 // forward def
 struct method_sig_list;
@@ -39,10 +40,8 @@ struct method_sig_node;
 extern int method_dispatch (unsigned int rc, char *methoddata, int methoddata_size);
 extern int method_error (unsigned int rc, int error_id);
 #else
-// TODO: for standalone
+extern int method_dispatch (packing_unpacker &unpacker);
 #endif
-
-extern int method_invoke (DB_VALUE &result, std::vector <DB_VALUE> &args, method_sig_node *method_sig);
 extern void method_reset ();
 
 #endif /* _QUERY_METHOD_H_ */

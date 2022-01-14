@@ -80,6 +80,8 @@ namespace cubmethod
 
     return NO_ERROR;
   }
+
+  int method_send_buffer_to_server (cubmem::block &block);
 #endif
 } // cubmethod
 
