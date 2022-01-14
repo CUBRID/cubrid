@@ -281,11 +281,24 @@ int or_Type_sizes[] = {
  *    need to copy the string out of the record for some architectures
  *    if there are weird alignment or character set problems.
  */
-char *
-or_class_name (RECDES * record)
+int
+or_class_name (RECDES * record, char **string, int *alloced_string)
 {
-  char *start, *name;
-  int offset, len;
+  char *start = NULL;
+  int offset = 0;
+  int len = 0;
+
+  OR_BUF buffer;
+  int compressed_length = 0;
+  int decompressed_length = 0;
+  int rc = NO_ERROR;
+
+  assert (string != NULL);
+  assert (alloced_string != NULL);
+
+  /* Initialization */
+  *string = NULL;
+  *alloced_string == 0;
 
   /*
    * the first variable attribute for both classes and the rootclass
@@ -307,16 +320,40 @@ or_class_name (RECDES * record)
    * or_ function.
    */
   len = (int) *((unsigned char *) start);
-  if (len != 0xFF)
+  if (len < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
-      name = start + 1;
+      *string = start + 1;
     }
   else
     {
-      name = start + 1 + OR_INT_SIZE;
+      OR_BUF_INIT (buffer, start, -1);
+
+      rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return rc;
+	}
+
+      *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
+      if (*string == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_private_free_and_init (NULL, *string);
+	  return rc;
+	}
+
+      *alloced_string = 1;
     }
 
-  return name;
+  return rc;
 }
 
 /*
