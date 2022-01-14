@@ -27,7 +27,6 @@ num_tables_slot=(0 0 0 0 0 0 0 0)
 database=
 user="-u dba"
 pass=""
-password=""
 total_pages=0
 from_file=""
 target_dir=$(pwd)
@@ -95,9 +94,18 @@ function verify_user_pass ()
 	local dbuser
 	local passwd
 	local qry_dba_grp="SELECT u.name FROM db_user AS u, TABLE(u.groups) AS g(x) where x.name = 'DBA'"
+	local retcode
 
 	dbuser=$(echo ${user} | cut -d' ' -f2-2)
 	USERNAME=$(echo ${dbuser} | tr [:lower:] [:upper:])
+
+	# check the database server is running
+	retcode=$(ps -ef | grep cub_server | grep $database | wc -l)
+
+	if [ $retcode -eq 0 ];then
+		echo "Database server '$database' is not running"
+		exit 1
+	fi
 
 	dba_groups=$(csql -u public -l -c "$qry_dba_grp" $database | grep -w $USERNAME | wc -l)
 
