@@ -18995,4 +18995,6 @@ pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.rename_synonym.new_name);
   q = pt_append_varchar (parser, q, r1);
+
+  return q;
 }
