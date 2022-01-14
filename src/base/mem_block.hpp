@@ -306,6 +306,8 @@ namespace cubmem
   extensible_block::extensible_block (extensible_block &&b)
     : extensible_block { *b.m_allocator }
   {
+    m_block.dim = b.m_block.dim;
+    m_block.ptr = b.m_block.ptr;
     b.m_block.dim = 0;
     b.m_block.ptr = NULL;
   }
