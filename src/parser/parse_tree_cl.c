@@ -18832,6 +18832,7 @@ pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.rename_synonym.old_owner_name, arg);
   PT_APPLY_WALK (parser, p->info.rename_synonym.new_name, arg);
   PT_APPLY_WALK (parser, p->info.rename_synonym.new_owner_name, arg);
+  return p;
 }
 
 static PARSER_VARCHAR *
