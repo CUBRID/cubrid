@@ -47,7 +47,7 @@ namespace cubmethod
   int
   callback_handler::callback_dispatch (packing_unpacker &unpacker)
   {
-    UINT64 id;
+    int64_t id;
     int code;
     unpacker.unpack_all (id, code);
 

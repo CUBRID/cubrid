@@ -171,6 +171,8 @@ method_dispatch_internal (packing_unpacker &unpacker)
 
 #if defined (SA_MODE)
   HL_HEAPID save_pri_heap_id;
+  EXIT_SERVER_IN_METHOD_CALL (save_pri_heap_id);
+  ++method_Num_method_jsp_calls;
 #endif
 
   tran_begin_libcas_function ();
@@ -180,11 +182,6 @@ method_dispatch_internal (packing_unpacker &unpacker)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
       error = ER_SP_TOO_MANY_NESTED_CALL;
     }
-
-#if defined (SA_MODE)
-  EXIT_SERVER_IN_METHOD_CALL (save_pri_heap_id);
-  ++method_Num_method_jsp_calls;
-#endif
 
   if (error == NO_ERROR)
     {

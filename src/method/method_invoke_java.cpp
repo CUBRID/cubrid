@@ -605,9 +605,9 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    int code;
+    int code = METHOD_CALLBACK_MAKE_OUT_RS;
     uint64_t query_id;
-    unpacker.unpack_all (code, query_id);
+    unpacker.unpack_all (query_id);
 
 #if defined (SERVER_MODE)
     error = method_send_data_to_client (&thread_ref, *m_header, code, query_id);
@@ -658,8 +658,9 @@ namespace cubmethod
   method_invoke_java::callback_get_generated_keys (cubthread::entry &thread_ref, packing_unpacker &unpacker)
   {
     int error = NO_ERROR;
-    int code, handler_id;
-    unpacker.unpack_all (code, handler_id);
+    int code = METHOD_CALLBACK_GET_GENERATED_KEYS;
+    int handler_id;
+    unpacker.unpack_all (handler_id);
 
 #if defined (SERVER_MODE)
     error = method_send_data_to_client (&thread_ref, *m_header, code, handler_id);
