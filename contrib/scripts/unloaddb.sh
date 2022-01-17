@@ -17,13 +17,15 @@
 #
 
 verbose="no"   # set 'yes' for verbose mode
+max_num_proc=16
 num_proc=8
 table_size=()
 table_selected=()
 num_tables=0
 slot_selected=0
-slot_size=(0 0 0 0 0 0 0 0)
-num_tables_slot=(0 0 0 0 0 0 0 0)
+# following two variable are depend on max_num_proc
+slot_size=(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
+num_tables_slot=(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
 database=""
 user="-u dba"
 pass=""
@@ -319,6 +321,11 @@ get_options "$@"
 if [ $num_args_remain -ne 1 ] || [ -z $database ];then
         show_usage
         exit 1
+fi
+
+if [ $num_proc -gt $max_num_proc ];then
+        echo "Num Proc exeed Max Proc. Force set num proc to $max_num_proc"
+        num_proc=$max_num_proc
 fi
 
 if [ ! -d $target_dir ];then
