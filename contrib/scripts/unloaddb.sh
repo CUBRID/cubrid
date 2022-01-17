@@ -98,13 +98,6 @@ function verify_user_pass ()
 	dbuser=$(echo ${user} | cut -d' ' -f2-2)
 	USERNAME=$(echo ${dbuser} | tr [:lower:] [:upper:])
 
-	dba_groups=$(csql -u public -l -c "$qry_dba_grp" $database | grep -w $USERNAME | wc -l)
-
-	if [ $USERNAME != "DBA" ] && [ $dba_groups -eq 0 ];then
-		echo "User '$dbuser' is not a member of DBA group"
-		exit 2
-	fi
-
 	# Try with NULL password
 	passwd=$(csql $user --password="" -c "SELECT 1" $database 2> /dev/null)
 
@@ -115,9 +108,16 @@ function verify_user_pass ()
 		passwd=$(csql $user $pass -c "SELECT 1" $database 2> /dev/null)
 		if [ $? -ne 0 ];then
 			echo "$dbuser: Incorrect or missing password"
-			exit 4
+			exit 1
 		fi
+
 	fi
+
+        dba_groups=$(csql $user $pass -l -c "$qry_dba_grp" $database | grep -w $USERNAME | wc -l)
+        if [ $USERNAME != "DBA" ] && [ $dba_groups -eq 0 ];then
+                echo "User '$dbuser' is not a member of DBA group"
+                exit 2
+        fi
 }
 
 function get_options ()
