@@ -166,49 +166,16 @@ function get_table_size ()
 {
         local num_rows=0
         local table_name=$1
-        local row_size=0
+        local Avg_rec_len=0
         local table_size=0
+        local csql_output
 
         num_rows=$(csql $user $pass -l -c "show heap capacity of $table_name" $db | grep Num_recs | awk '{print $3}')
-        row_size=$(get_schema_size $table_name)
-        let "table_size = num_rows * row_size"
+        Avg_rec_len=$(csql $user $pass -l -c "show heap capacity of $table_name" $db | grep Avg_rec_len | awk '{print $3}')
+
+        let "table_size = num_rows * Avg_rec_len"
 
         echo $table_size
-}
-
-function get_schema_size ()
-{
-        local table_name=$1
-        local size=0
-        local query=" select CAST(SUM(CASE \
-         WHEN "data_type" = 'BIGINT' THEN 8.0 \
-         WHEN "data_type" = 'INTEGER' THEN 4.0 \
-         WHEN "data_type" = 'SMALLINT' THEN 2.0 \
-         WHEN "data_type" = 'FLOAT' THEN 4.0 \
-         WHEN "data_type" = 'DOUBLE' THEN 8.0 \
-         WHEN "data_type" = 'MONETARY' THEN 12.0 \
-         WHEN "data_type" = 'STRING' THEN prec \
-         WHEN "data_type" = 'VARCHAR' THEN prec \
-         WHEN "data_type" = 'NVARCHAR' THEN prec \
-         WHEN "data_type" = 'CHAR' THEN prec \
-         WHEN "data_type" = 'NCHAR' THEN prec \
-         WHEN "data_type" = 'TIMESTAMP' THEN 8.0 \
-         WHEN "data_type" = 'DATE' THEN 4.0 \
-         WHEN "data_type" = 'TIME' THEN 4.0 \
-         WHEN "data_type" = 'DATETIME' THEN 4.0 \
-         WHEN "data_type" = 'BIT' THEN FLOOR(prec / 8.0) \
-         WHEN "data_type" = 'BIT VARYING' THEN FLOOR(prec / 8.0) \
-         ELSE 0 \
-     END) as BIGINT)  AS [size] \
- from db_attribute where class_name = '$table_name';"
-
-        if [ $# -eq 0 ];then
-                echo "0"
-                return
-        fi
-
-        size=$(csql $user $pass -l -c "$query" $db | grep "^<0000" | awk '{print $3}')
-        echo $size
 }
 
 function find_slot ()
@@ -343,8 +310,6 @@ if [ $num_args_remain -ne 1 ] || [ -z $database ];then
         exit 1
 fi
 
-check_database $database
-
 if [ $num_proc -gt $max_num_proc ];then
         echo "Num Proc exeed Max Proc. Force set num proc to $max_num_proc"
         num_proc=$max_num_proc
@@ -357,7 +322,7 @@ else
         silent_cd $target_dir
 fi
 
-
+check_database $database
 
 verify_user_pass
 
