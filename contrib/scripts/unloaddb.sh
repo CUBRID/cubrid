@@ -142,6 +142,21 @@ function get_options ()
         database=$*
 }
 
+function check_database ()
+{
+        local db=$database
+
+        # check the database server is running
+
+        db=${database%%@*}
+
+        retcode=$(ps -ef | grep cub_server | grep $db | wc -l)
+        if [ $retcode -eq 0 ];then
+                echo "Database server '$database' is not running"
+              exit 1
+        fi
+}
+
 function silent_cd ()
 {
         cd $* > /dev/null
@@ -323,6 +338,8 @@ if [ $num_args_remain -ne 1 ] || [ -z $database ];then
         exit 1
 fi
 
+check_database $database
+
 if [ $num_proc -gt $max_num_proc ];then
         echo "Num Proc exeed Max Proc. Force set num proc to $max_num_proc"
         num_proc=$max_num_proc
@@ -335,12 +352,7 @@ else
         silent_cd $target_dir
 fi
 
-# check the database server is running
-retcode=$(ps -ef | grep cub_server | grep $database | wc -l)
-if [ $retcode -eq 0 ];then
-        echo "Database server '$database' is not running"
-        exit 1
-fi
+
 
 verify_user_pass
 
