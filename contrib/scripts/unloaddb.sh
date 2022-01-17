@@ -296,6 +296,10 @@ function analyze_table_info ()
                         continue
                 fi
 
+                # if table name comes from csql it is the pattern of 'code'
+                # and end with string like this
+                # "\n16 rows selected. (0.009125 sec) Committed."
+                # If it comes from file it is the pattern of code
                 if [ $from_file -eq 0 ] && [ ${token:0:1} != "'" ];then
                         break
                 fi
