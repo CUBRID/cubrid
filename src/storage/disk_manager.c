@@ -2559,7 +2559,7 @@ disk_cache_load_volume (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
       assert (disk_Cache->perm_purpose_info.extend_info.nsect_free
 	      <= disk_Cache->perm_purpose_info.extend_info.nsect_total);
       assert (disk_Cache->perm_purpose_info.extend_info.nsect_total
-	      <= disk_Cache->perm_purpose_info.extend_info.n_max_sects);
+	      <= disk_Cache->perm_purpose_info.extend_info.nsect_max);
 
       if (space_info.n_total_sects < space_info.n_max_sects)
 	{
