@@ -131,26 +131,15 @@ function get_options ()
                         v ) verbose="yes" ;;
                 esac
         done
+
+        shift $(($OPTIND - 1))
+        database="$*"
+        echo $#
 }
 
 function silent_cd ()
 {
         cd $* > /dev/null
-}
-
-function extract_db_name ()
-{
-        local nelem=$#
-        local i
-
-        # extract last argument & set as database name
-
-        if [ $nelem -eq 0 ];then
-                show_usage
-                exit
-        fi
-
-        database=$(echo ${@:$nelem:1})
 }
 
 function get_table_size ()
@@ -324,7 +313,10 @@ trap "cleanup" SIGHUP SIGINT SIGTERM
 set -o monitor
 
 extract_db_name $*
-get_options "$@"
+if [ $(get_options "$@") -ne 1 ];then
+        show_usage
+        exit 1
+fi
 
 if [ ! -d $target_dir ];then
         echo "$target_dir: directory not exists or permission denied"
