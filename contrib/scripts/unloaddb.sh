@@ -277,12 +277,13 @@ function analyze_table_info ()
         local idx=0
         local table_name
         local db=$database
+        local query="show tables"
 
-        # Get all table names from CATALOG
+        # Get all table names if $from_file equals 0, otherwise from input file
         if [ $from_file -eq 1 ];then  # Read table name from file
                 result=$(cat $filename)
         else
-                result=$(csql $user $pass -c "select class_name from db_class where is_system_class = 'NO' AND class_type = 'CLASS' order by class_name" $db)
+                result=$(csql $user $pass -c "$query" $db)
         fi
 
         for token in $result
