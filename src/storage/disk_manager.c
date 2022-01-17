@@ -478,10 +478,10 @@ STATIC_INLINE void disk_check_own_reserve_for_purpose (DB_VOLPURPOSE purpose) __
 static DISK_ISVALID disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair);
 
 // *INDENT-OFF*
-static cubthread::daemon *disk_Auto_volume_expansion_daemon = NULL;
+// static cubthread::daemon *disk_Auto_volume_expansion_daemon = NULL;
 
-static void disk_auto_volume_expansion_daemon_init ();
-static void disk_auto_volume_expansion_daemon_destroy ();
+// static void disk_auto_volume_expansion_daemon_init ();
+// static void disk_auto_volume_expansion_daemon_destroy ();
 // *INDENT-ON*
 
 /************************************************************************/
@@ -2483,13 +2483,13 @@ disk_auto_expansion_execute (cubthread::entry & thread_ref)
 }
 #endif /* SERVER_MODE */
 
-#if defined (SERVER_MODE)
+// #if defined (SERVER_MODE)
 /*
  * disk_auto_volume_expansion_daemon_init () - initialize disk auto volume expansion daemon
  */
-static void
-disk_auto_volume_expansion_daemon_init ()
-{
+// static void
+// disk_auto_volume_expansion_daemon_init ()
+// {
   // disk auto volume expansion is not yet implemented, uncomment below code when functionality will be available
   // see disk_auto_expand (THREAD_ENTRY *) function for more details
   /*
@@ -2499,23 +2499,23 @@ disk_auto_volume_expansion_daemon_init ()
   disk_Auto_volume_expansion_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
 				      new cubthread::entry_callable_task (disk_auto_expansion_execute));
   */
-}
-#endif /* SERVER_MODE */
+// }
+// #endif /* SERVER_MODE */
 
-#if defined (SERVER_MODE)
+// #if defined (SERVER_MODE)
 /*
  * disk_auto_volume_expansion_daemon_destroy () - destroy disk auto volume expansion daemon
  */
-static void
-disk_auto_volume_expansion_daemon_destroy ()
-{
+// static void
+// disk_auto_volume_expansion_daemon_destroy ()
+// {
   // disk auto volume expansion is not yet implemented, uncomment below code when functionality will be available
   // see disk_auto_expand (THREAD_ENTRY *) function for more details
   /*
     cubthread::get_manager ()->destroy_daemon (disk_Auto_volume_expansion_daemon);
   */
-}
-#endif /* SERVER_MODE */
+// }
+// #endif /* SERVER_MODE */
 // *INDENT-ON*
 
 /************************************************************************/
@@ -4966,9 +4966,9 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
       return error_code;
     }
 
-#if defined (SERVER_MODE)
-  disk_auto_volume_expansion_daemon_init ();
-#endif /* SERVER_MODE */
+// #if defined (SERVER_MODE)
+  // disk_auto_volume_expansion_daemon_init ();
+// #endif /* SERVER_MODE */
 
   return NO_ERROR;
 }
@@ -4979,9 +4979,9 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
 void
 disk_manager_final (void)
 {
-#if defined (SERVER_MODE)
-  disk_auto_volume_expansion_daemon_destroy ();
-#endif /* SERVER_MODE */
+// #if defined (SERVER_MODE)
+  // disk_auto_volume_expansion_daemon_destroy ();
+// #endif /* SERVER_MODE */
 
   disk_cache_final ();
 }
