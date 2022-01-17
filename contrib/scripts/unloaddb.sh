@@ -203,6 +203,7 @@ function do_unloaddb ()
         local num_tables_in_slot=0
         local msg="Success"
         local pid
+        local buf
 
         for ((i = 0; i < $num_tables; i++))
         do
@@ -213,7 +214,8 @@ function do_unloaddb ()
         done
 
         if [ $verbose = "yes" ];then
-                echo "Proc $slot_num: num tables: $num_tables_in_slot, ${slot_size[$slot_num]} bytes"
+                buf=$(printf %3d $num_tables_in_slot)
+                echo "Proc $slot_num: num tables: $buf, ${slot_size[$slot_num]} bytes"
         fi
 
         echo "process $slot_num: starting" > unloaddb_$slot_num.status
