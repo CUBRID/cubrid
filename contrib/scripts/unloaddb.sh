@@ -37,7 +37,7 @@ slot=()
 
 function show_usage ()
 {
-         echo "Usage: $0 [OPTIONS] [TARGET]"
+         echo "Usage: $0 [OPTIONS] [database]"
          echo " OPTIONS"
          echo "  -t arg  Set number of parallel process; default 8"
          echo "  -i arg  input FILE of table names; default: dump all classes"
