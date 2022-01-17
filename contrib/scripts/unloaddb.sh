@@ -24,12 +24,14 @@ num_tables=0
 slot_selected=0
 slot_size=(0 0 0 0 0 0 0 0)
 num_tables_slot=(0 0 0 0 0 0 0 0)
-database=
+database=""
 user="-u dba"
 pass=""
 total_pages=0
-from_file=""
+filename=""
 target_dir=$(pwd)
+from_file=0
+num_args_remain=0
 
 slot=()
 
@@ -125,7 +127,7 @@ function get_options ()
          while getopts ":D:u:i:t:v" opt; do
                 case $opt in
                         u ) user="-u $OPTARG" ;;
-                        i ) from_file="$OPTARG" ;;
+                        i ) filename="$OPTARG" ;from_file=1 ;;
                         t ) num_proc="$OPTARG" ;;
                         D ) target_dir="$OPTARG" ;;
                         v ) verbose="yes" ;;
@@ -133,8 +135,9 @@ function get_options ()
         done
 
         shift $(($OPTIND - 1))
-        database="$*"
-        echo $#
+
+        num_args_remain=$#
+        database=$*
 }
 
 function silent_cd ()
@@ -259,16 +262,15 @@ function analyze_table_info ()
         local db=$database
 
         # Get all table names from CATALOG
-
-        if [ X$from_file != X"" ];then  # Read table name from file
-                result=$(cat $from_file)
+        if [ $from_file -eq 1 ];then  # Read table name from file
+                result=$(cat $filename)
         else
                 result=$(csql $user $pass -c "select class_name from db_class where is_system_class = 'NO' AND class_type = 'CLASS' order by class_name" $db)
         fi
 
         for token in $result
         do
-                if  [ X$from_file = X"" ] && [ $found -eq 0 ];then
+                if  [ $from_file -eq 0 ] && [ $found -eq 0 ];then
                         str=$(echo $token | grep "====") # skip until we found table names in csql
                         if [ $? -eq 0 ];then
                                 found=1
@@ -276,13 +278,13 @@ function analyze_table_info ()
                         continue
                 fi
 
-                if [ X$from_file = X"" ] && [ ${token:0:1} != "'" ];then
+                if [ $from_file -eq 0 ] && [ ${token:0:1} != "'" ];then
                         break
                 fi
 
                 table_selected[idx]="$token"
 
-                if [ X$from_file = X"" ];then        # remove single quota from csql output
+                if [ $from_file -eq 0 ];then        # remove single quota from csql output
                         table_selected[idx]=$(echo ${table_selected[idx]} | sed "s/[\']//g")
                 fi
 
@@ -312,8 +314,9 @@ function analyze_table_info ()
 trap "cleanup" SIGHUP SIGINT SIGTERM
 set -o monitor
 
-extract_db_name $*
-if [ $(get_options "$@") -ne 1 ];then
+get_options "$@"
+
+if [ $num_args_remain -ne 1 ] || [ -z $database ];then
         show_usage
         exit 1
 fi
@@ -336,7 +339,7 @@ verify_user_pass
 
 echo -n "Analyzing table spacace ..."
 
-analyze_table_info $*
+analyze_table_info
 
 if [ $num_tables -eq 0 ];then
         echo "No Table SELECTED."
