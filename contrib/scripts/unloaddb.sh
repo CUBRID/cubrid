@@ -168,7 +168,6 @@ function get_table_size ()
         local table_name=$1
         local Avg_rec_len=0
         local table_size=0
-        local csql_output
 
         num_rows=$(csql $user $pass -l -c "show heap capacity of $table_name" $db | grep Num_recs | awk '{print $3}')
         Avg_rec_len=$(csql $user $pass -l -c "show heap capacity of $table_name" $db | grep Avg_rec_len | awk '{print $3}')
