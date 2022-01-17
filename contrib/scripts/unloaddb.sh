@@ -94,18 +94,9 @@ function verify_user_pass ()
 	local dbuser
 	local passwd
 	local qry_dba_grp="SELECT u.name FROM db_user AS u, TABLE(u.groups) AS g(x) where x.name = 'DBA'"
-	local retcode
 
 	dbuser=$(echo ${user} | cut -d' ' -f2-2)
 	USERNAME=$(echo ${dbuser} | tr [:lower:] [:upper:])
-
-	# check the database server is running
-	retcode=$(ps -ef | grep cub_server | grep $database | wc -l)
-
-	if [ $retcode -eq 0 ];then
-		echo "Database server '$database' is not running"
-		exit 1
-	fi
 
 	dba_groups=$(csql -u public -l -c "$qry_dba_grp" $database | grep -w $USERNAME | wc -l)
 
@@ -339,7 +330,14 @@ if [ ! -d $target_dir ];then
         echo "$target_dir: directory not exists or permission denied"
         exit
 else
-   silent_cd $target_dir
+        silent_cd $target_dir
+fi
+
+# check the database server is running
+retcode=$(ps -ef | grep cub_server | grep $database | wc -l)
+if [ $retcode -eq 0 ];then
+        echo "Database server '$database' is not running"
+        exit 1
 fi
 
 verify_user_pass
