@@ -2485,6 +2485,12 @@ acquire_locks_for_multiple_rename (const PT_NODE * statement)
 
       for (i = 0; i < num_names; i++)
 	{
+	  /*
+	   * Check if old_name to be changed next is in the list of new_name that has been changed before.
+	   *   - e.g. rename table a as b, b as c, c as a;
+	   *     1. b vs b
+	   *     2. b vs c, c vs c
+	   */
 	  if (pt_str_compare (name_set[i], old_name, CASE_INSENSITIVE) == 0)
 	    {
 	      found = true;

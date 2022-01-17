@@ -2364,7 +2364,7 @@ session_variable
 get_stmt
 	: GET
 		{ push_msg(MSGCAT_SYNTAX_INVALID_GET_STAT); }
-	  STATISTICS char_string_literal  OF user_specified_name into_clause_opt
+	  STATISTICS char_string_literal  OF class_name into_clause_opt
 		{ pop_msg(); }
 		{{
 
@@ -3632,7 +3632,7 @@ alter_stmt
 	  INDEX				/* 2 */
 	  identifier			/* 3 */
 	  ON_				/* 4 */
-	  user_specified_name		/* 5 */
+	  class_name			/* 5 */
 	  INVISIBLE			/* 6 */
 		{{
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
@@ -3667,7 +3667,7 @@ alter_stmt
 	  INDEX				/* 2 */
 	  identifier			/* 3 */
 	  ON_				/* 4 */
-	  user_specified_name		/* 5 */
+	  class_name			/* 5 */
 	  VISIBLE			/* 6 */
 		{{
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
@@ -3926,7 +3926,7 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME TRIGGER trigger_name as_or_to identifier_without_dot
+	| RENAME TRIGGER trigger_name as_or_to trigger_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_TRIGGER);
@@ -3975,7 +3975,7 @@ rename_class_list
 	;
 
 rename_class_pair
-	: only_class_name as_or_to identifier_without_dot
+	: only_class_name as_or_to only_class_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME);
@@ -5167,7 +5167,7 @@ only_all_class_spec
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALL user_specified_name '(' EXCEPT class_spec_list ')'
+	| ALL class_name '(' EXCEPT class_spec_list ')'
 		{{
 
 			PT_NODE *acs = parser_new_node (this_parser, PT_SPEC);
@@ -5183,7 +5183,7 @@ only_all_class_spec
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALL user_specified_name
+	| ALL class_name
 		{{
 
 			PT_NODE *acs = parser_new_node (this_parser, PT_SPEC);
@@ -14737,7 +14737,7 @@ opt_for_update_clause
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| For UPDATE OF class_name
+	| For UPDATE OF class_name_list
 		{{
 
 			PT_NODE *node = parser_top_orderby_node ();
@@ -20490,7 +20490,7 @@ primitive_type
 			$$ = ctn;
 
 		DBG_PRINT}}
-	| user_specified_name opt_identity
+	| class_name opt_identity
 		{{
 
 			container_2 ctn;

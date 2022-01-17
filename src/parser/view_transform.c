@@ -4147,7 +4147,7 @@ mq_check_delete (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
       for (search = table->next; search; search = search->next)
 	{
 	  /* check if search is duplicate of table */
-	  if (!pt_str_compare (table->info.name.resolved, search->info.name.resolved, CASE_INSENSITIVE)
+	  if (!pt_qualifier_compare (table->info.name.resolved, search->info.name.resolved)
 	      && table->info.name.spec_id == search->info.name.spec_id)
 	    {
 	      /* same class found twice in table_list */
