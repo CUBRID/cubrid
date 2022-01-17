@@ -289,8 +289,8 @@ function analyze_table_info ()
                 table_name=${table_selected[i]}
                 this_table_size=$(get_table_size $table_name)
 
-                if [ -z $this_table_size ];then
-                        echo "Unknown table: $table_name"
+                if [ -z $this_table_size ] || [ $this_table_size -eq 0 ];then
+                        echo "'$table_name': unknown table"
                         exit
                 fi
 
