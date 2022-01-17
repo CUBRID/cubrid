@@ -130,6 +130,8 @@ namespace cubscan
     {
       SCAN_CODE scan_code = S_SUCCESS;
 
+      next_value_array (vl);
+
       scan_code = get_single_tuple ();
       if (scan_code == S_SUCCESS && m_method_group->prepare (m_arg_vector) != NO_ERROR)
 	{
@@ -143,21 +145,26 @@ namespace cubscan
 
       if (scan_code == S_SUCCESS)
 	{
-	  next_value_array (vl);
 	  int num_methods = m_method_group->get_num_methods ();
 	  for (int i = 0; i < num_methods; i++)
 	    {
 	      DB_VALUE *dbval_p = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE));
+	      if (dbval_p == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE));
+		  return S_ERROR;
+		}
+
 	      db_make_null (dbval_p);
 
-	      DB_VALUE &result = m_method_group->get_return_value (i);
-	      db_value_clone (&result, dbval_p);
+	      DB_VALUE *result = m_method_group->get_return_value (i);
+	      db_value_clone (result, dbval_p);
 
 	      m_dbval_list[i].val = dbval_p;
-	      db_value_clear (&result);
+	      db_value_clear (result);
 	    }
 
-	  m_method_group->reset ();
+	  m_method_group->reset (false);
 	}
 
       // clear

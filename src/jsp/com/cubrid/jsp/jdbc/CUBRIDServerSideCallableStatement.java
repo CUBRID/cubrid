@@ -32,6 +32,7 @@
 package com.cubrid.jsp.jdbc;
 
 import cubrid.sql.CUBRIDTimestamptz;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.math.BigDecimal;
@@ -67,6 +68,25 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
                 Statement.NO_GENERATED_KEYS);
     }
 
+    @Override
+    protected void prepareInternal(String sql) throws SQLException, IOException {
+        byte prepareFlag = (byte) 0;
+
+        prepareFlag |= CUBRIDServerSideConstants.PREPARE_CALL;
+        if (isUpdatable() || isSensitive()) {
+            prepareFlag |= CUBRIDServerSideConstants.PREPARE_UPDATABLE;
+        }
+
+        /*
+         * NOTE: unsupported query_info and holdable cursor in server-side JDBC if
+         * (false) { // query info prepareFlag |=
+         * CUBRIDServerSideConstants.PREPARE_QUERY_INFO; } if (false) { // is_holdable
+         * prepareFlag |= CUBRIDServerSideConstants.PREPARE_HOLDABLE; }
+         */
+
+        statementHandler = connection.getSUConnection().prepare(sql, prepareFlag, false);
+    }
+
     private void beforeGetValue(int index) throws SQLException {
         if (index < 0 || index > statementHandler.getParameterCount()) {
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -89,132 +109,72 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
 
     public int getInt(int index) throws SQLException {
         beforeGetValue(index);
-
-        int value = statementHandler.getInt(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getInt(index);
     }
 
     public String getString(int index) throws SQLException {
-        // TODO
-        return null;
+        beforeGetValue(index);
+        return statementHandler.getString(index);
     }
 
     public boolean getBoolean(int index) throws SQLException {
         beforeGetValue(index);
-
-        boolean value = statementHandler.getBoolean(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getBoolean(index);
     }
 
     public byte getByte(int index) throws SQLException {
         beforeGetValue(index);
-
-        byte value = statementHandler.getByte(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getByte(index);
     }
 
     public short getShort(int index) throws SQLException {
         beforeGetValue(index);
-
-        short value = statementHandler.getShort(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getShort(index);
     }
 
     public long getLong(int index) throws SQLException {
         beforeGetValue(index);
-
-        long value = statementHandler.getLong(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getLong(index);
     }
 
     public float getFloat(int index) throws SQLException {
         beforeGetValue(index);
-
-        float value = statementHandler.getFloat(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getFloat(index);
     }
 
     public double getDouble(int index) throws SQLException {
         beforeGetValue(index);
-
-        double value = statementHandler.getDouble(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getDouble(index);
     }
 
     public byte[] getBytes(int index) throws SQLException {
         beforeGetValue(index);
-
-        byte[] value = statementHandler.getBytes(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getBytes(index);
     }
 
     public Date getDate(int index) throws SQLException {
         beforeGetValue(index);
-
-        Date value = statementHandler.getDate(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getDate(index);
     }
 
     public Time getTime(int index) throws SQLException {
         beforeGetValue(index);
-
-        Time value = statementHandler.getTime(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getTime(index);
     }
 
     public Timestamp getTimestamp(int index) throws SQLException {
         beforeGetValue(index);
-
-        Timestamp value = statementHandler.getTimestamp(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getTimestamp(index);
     }
 
     public Object getObject(int index) throws SQLException {
-        // TODO: not implemented yet
-        return null;
+        beforeGetValue(index);
+        return statementHandler.getObject(index);
     }
 
     public BigDecimal getBigDecimal(int index) throws SQLException {
         beforeGetValue(index);
-
-        BigDecimal value = statementHandler.getBigDecimal(index);
-
-        // TODO error handling
-
-        return value;
+        return statementHandler.getBigDecimal(index);
     }
 
     public BigDecimal getBigDecimal(int index, int scale) throws SQLException {
@@ -462,15 +422,15 @@ public class CUBRIDServerSideCallableStatement extends CUBRIDServerSidePreparedS
     }
 
     public void registerOutParameter(int index, int sqlType) throws SQLException {
-        // TODO
+        statementHandler.registerOutParameter(index, sqlType);
     }
 
     public void registerOutParameter(int index, int sqlType, int scale) throws SQLException {
-        // TODO
+        statementHandler.registerOutParameter(index, sqlType);
     }
 
     public void registerOutParameter(int index, int sqlType, String typeName) throws SQLException {
-        // TODO
+        statementHandler.registerOutParameter(index, sqlType);
     }
 
     public void registerOutParameter(String pName, int sqlType) throws SQLException {

@@ -245,6 +245,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
+  ${QUERY_DIR}/dblink_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
@@ -324,14 +325,23 @@ set(JSP_HEADERS
   )
 
 set(METHOD_SOURCES
+  ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_connection.cpp
   ${METHOD_DIR}/method_def.cpp
+  ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_scan.cpp
   ${METHOD_DIR}/method_invoke_builtin.cpp
   ${METHOD_DIR}/method_invoke_java.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp
+  ${METHOD_DIR}/method_struct_query.cpp
+  ${METHOD_DIR}/method_struct_oid_info.cpp
   ${METHOD_DIR}/method_invoke_group.cpp
+  ${METHOD_DIR}/method_query_util.cpp
+  ${METHOD_DIR}/method_query_handler.cpp
+  ${METHOD_DIR}/method_query_cursor.cpp
+  ${METHOD_DIR}/method_oid_handler.cpp
+  ${METHOD_DIR}/query_method.cpp
   )
 
 set(THREAD_SOURCES
@@ -655,6 +665,8 @@ if(UNIX)
   target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
   target_link_libraries(cubridsa PUBLIC stdc++fs)
 endif(UNIX)
+# for dblink
+target_link_libraries(cubridsa cascci)
 
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 #add_dependencies(cubridsa ${EP_TARGETS})

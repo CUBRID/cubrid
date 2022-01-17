@@ -522,6 +522,8 @@ valid options:\n\
   -d, --data-only             dump objects only; default: schema and objects\n\
       --output-prefix=PREFIEX PREFIX for output files; default: the database name\n\
       --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
+      --latest-image          when dumping objects, it dumps the latest image of objects in data volumes, not referring to log volumes (ignoring MVCC)\n\
+                              It could include uncommitted data and deleted data which is not vacuummed; default: disabled\n\
   -v, --verbose               enable verbose status messages; default: disabled\n\
       --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
   -S, --SA-mode               stand-alone mode execution\n\
@@ -626,6 +628,7 @@ valid options:\n\
 
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Please run without the --recreate-log option or remove the active log volume manually.\n
 60 \
 emergency_patchlog: Patch a database in case of emergency.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1225,6 +1228,7 @@ usage: %1$s tde OPERATION(-s|-n|-d|-c) [OPTION] database-name\n\
 \n\
 valid options:\n\
     -p, --dba-password=PASS       password of the DBA user; will prompt if don't specify\n\
+\n\
 OPERATIONs: one of the operations must be given, and they are exclusive \n\
     -s, --show-keys               print key information set on the database and the key file (_keys)\n\
     -n, --generate-new-key        generate a new key in the key file (_keys); max count: 128\n\

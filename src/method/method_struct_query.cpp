@@ -308,6 +308,138 @@ namespace cubmethod
     fprintf (stdout, "==============================\n");
   }
 
+  prepare_call_info::prepare_call_info ()
+  {
+    num_args = 0;
+    is_first_out = false;
+  }
+
+  prepare_call_info::~prepare_call_info ()
+  {
+    clear ();
+  }
+
+  int
+  prepare_call_info::set_is_first_out (std::string &sql_stmt)
+  {
+    if (!sql_stmt.empty() && sql_stmt[0] == '?')
+      {
+	is_first_out = true;
+
+	std::size_t found = sql_stmt.find ('=');
+	/* '=' is not found */
+	if (found == std::string::npos)
+	  {
+	    return ER_FAILED;
+	  }
+
+	sql_stmt = sql_stmt.substr (found + 1);
+      }
+
+    return NO_ERROR;
+  }
+
+  void
+  prepare_call_info::clear ()
+  {
+    int i = 0;
+    if (is_first_out)
+      {
+	db_value_clear (&dbval_args[0]);
+	i++;
+      }
+
+    while (i < (int) dbval_args.size())
+      {
+	db_make_null (&dbval_args[i]);
+	i++;
+      }
+  }
+
+  int
+  prepare_call_info::set_prepare_call_info (int num_args)
+  {
+    this->num_args = num_args;
+    if (num_args > 0)
+      {
+	param_modes.resize (num_args);
+	for (int i = 0; i < (int) param_modes.size(); i++)
+	  {
+	    param_modes[i] = 0;
+	  }
+
+	dbval_args.resize (num_args + 1);
+	for (int i = 0; i < (int) dbval_args.size(); i++)
+	  {
+	    db_make_null (&dbval_args[i]);
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
+  void
+  prepare_call_info::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (num_args);
+    serializator.pack_bool (is_first_out);
+
+    dbvalue_java sp_val;
+    for (int i = 0; i < (int) dbval_args.size(); i++)
+      {
+	sp_val.value = (DB_VALUE *) &dbval_args[i];
+	sp_val.pack (serializator);
+      }
+
+    for (int i = 0; i < (int) param_modes.size(); i++)
+      {
+	serializator.pack_int (param_modes[i]);
+      }
+  }
+
+  void
+  prepare_call_info::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_int (num_args);
+    deserializator.unpack_bool (is_first_out);
+
+    dbval_args.resize (is_first_out ? num_args + 1 : num_args);
+    param_modes.resize (num_args);
+
+    dbvalue_java sp_val;
+    for (int i = 0; i < (int) dbval_args.size (); i++)
+      {
+	sp_val.value = &dbval_args[i];
+	sp_val.unpack (deserializator);
+      }
+
+    for (int i = 0; i < (int) param_modes.size (); i++)
+      {
+	deserializator.unpack_int (param_modes[i]);
+      }
+  }
+
+  size_t
+  prepare_call_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // num_args
+    size += serializator.get_packed_bool_size (size); // is_first_out
+
+    dbvalue_java sp_val;
+    for (int i = 0; i < (int) dbval_args.size(); i++)
+      {
+	sp_val.value = (DB_VALUE *) &dbval_args[i];
+	size += sp_val.get_packed_size (serializator, size); // dbval_args[i]
+      }
+
+    for (int i = 0; i < (int) param_modes.size(); i++)
+      {
+	size += serializator.get_packed_int_size (size); // param_modes[i]
+      }
+
+    return size;
+  }
+
   query_result_info::query_result_info ()
   {
     //
@@ -373,30 +505,30 @@ namespace cubmethod
     serializator.pack_int (is_forward_only);
     serializator.pack_int (has_parameter);
 
-    if (has_parameter == 2)
+    if (has_parameter > 0)
       {
 	serializator.pack_int (param_values.size());
 
 	dbvalue_java sp_val;
 	for (int i = 0; i < (int) param_values.size(); i++)
 	  {
-	    sp_val.value = (DB_VALUE *) &param_values[i];
-	    sp_val.pack (serializator);
-	  }
-      }
-    else if (has_parameter == 1)
-      {
-	serializator.pack_int (param_values.size());
-	for (int i = 0; i < (int) param_values.size(); i++)
-	  {
-	    serializator.pack_db_value (param_values[i]);
+	    if (has_parameter == 2)
+	      {
+		sp_val.value = (DB_VALUE *) &param_values[i];
+		sp_val.pack (serializator);
+	      }
+	    else if (has_parameter == 1)
+	      {
+		serializator.pack_db_value (param_values[i]);
+	      }
+	    serializator.pack_int (param_modes[i]);
 	  }
       }
   }
 
   execute_request::~execute_request()
   {
-
+    clear ();
   }
 
   void
@@ -408,28 +540,27 @@ namespace cubmethod
     deserializator.unpack_int (is_forward_only);
     deserializator.unpack_int (has_parameter);
 
-    if (has_parameter == 2)
+    int parameter_cnt;
+    if (has_parameter > 0)
       {
-	int parameter_cnt;
 	deserializator.unpack_int (parameter_cnt);
+
+	param_values.resize (parameter_cnt);
+	param_modes.resize (parameter_cnt);
 
 	dbvalue_java sp_val;
-	param_values.resize (parameter_cnt);
 	for (int i = 0; i < parameter_cnt; i++)
 	  {
-	    sp_val.value = &param_values[i];
-	    sp_val.unpack (deserializator);
-	  }
-      }
-    else if (has_parameter == 1)
-      {
-	int parameter_cnt;
-	deserializator.unpack_int (parameter_cnt);
-
-	param_values.resize (parameter_cnt);
-	for (int i = 0; i < parameter_cnt; i++)
-	  {
-	    deserializator.unpack_db_value (param_values[i]);
+	    if (has_parameter == 2)
+	      {
+		sp_val.value = &param_values[i];
+		sp_val.unpack (deserializator);
+	      }
+	    else if (has_parameter == 1)
+	      {
+		deserializator.unpack_db_value (param_values[i]);
+	      }
+	    deserializator.unpack_int (param_modes[i]);
 	  }
       }
   }
@@ -443,23 +574,23 @@ namespace cubmethod
     size += serializator.get_packed_int_size (size); // is_forward_only
     size += serializator.get_packed_int_size (size); // has_parameter
 
-    if (has_parameter == 2)
+    if (has_parameter > 0)
       {
 	size += serializator.get_packed_int_size (size); // param_values.size()
 	dbvalue_java sp_val;
 
 	for (int i = 0; i < (int) param_values.size(); i++)
 	  {
-	    sp_val.value = (DB_VALUE *) &param_values[i];
-	    size += sp_val.get_packed_size (serializator, size);
-	  }
-      }
-    else if (has_parameter == 1)
-      {
-	size += serializator.get_packed_int_size (size); // param_values.size()
-	for (int i = 0; i < (int) param_values.size(); i++)
-	  {
-	    size += serializator.get_packed_db_value_size (param_values[i], size);
+	    if (has_parameter == 2)
+	      {
+		sp_val.value = (DB_VALUE *) &param_values[i];
+		size += sp_val.get_packed_size (serializator, size);
+	      }
+	    else if (has_parameter == 1)
+	      {
+		size += serializator.get_packed_db_value_size (param_values[i], size);
+	      }
+	    size += serializator.get_packed_int_size (size);
 	  }
       }
 
@@ -475,15 +606,24 @@ namespace cubmethod
       }
   }
 
+  execute_info::execute_info ()
+  {
+    num_affected = 0;
+    stmt_type = CUBRID_STMT_NONE;
+    num_markers = 0;
+    call_info = nullptr;
+  }
+
+  execute_info::~execute_info ()
+  {
+    call_info = nullptr;
+  }
+
   void
   execute_info::pack (cubpacking::packer &serializator) const
   {
     serializator.pack_int (num_affected);
-    serializator.pack_int (qresult_infos.size ());
-    for (int i = 0; i < (int) qresult_infos.size(); i++)
-      {
-	qresult_infos[i].pack (serializator);
-      }
+    qresult_info.pack (serializator);
 
     serializator.pack_int (column_infos.size());
     if (column_infos.size() > 0)
@@ -495,23 +635,23 @@ namespace cubmethod
 	    column_infos[i].pack (serializator);
 	  }
       }
+
+    if (call_info != nullptr)
+      {
+	serializator.pack_bool (true);
+	call_info->pack (serializator);
+      }
+    else
+      {
+	serializator.pack_bool (false);
+      }
   }
 
   void
   execute_info::unpack (cubpacking::unpacker &deserializator)
   {
     deserializator.unpack_int (num_affected);
-
-    int num_q_result;
-    deserializator.unpack_int (num_q_result);
-    if (num_q_result > 0)
-      {
-	qresult_infos.resize (num_q_result);
-	for (int i = 0; i < (int) num_q_result; i++)
-	  {
-	    qresult_infos[i].unpack (deserializator);
-	  }
-      }
+    qresult_info.unpack (deserializator);
 
     int num_column_info;
     deserializator.unpack_int (num_column_info);
@@ -526,18 +666,21 @@ namespace cubmethod
 	    column_infos[i].unpack (deserializator);
 	  }
       }
+
+    bool has_call_info = false;
+    deserializator.unpack_bool (has_call_info);
+    if (has_call_info)
+      {
+	call_info = new prepare_call_info (); // need to be freed;
+      }
   }
 
   size_t
   execute_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t size = serializator.get_packed_int_size (start_offset); // num_affected
-    size += serializator.get_packed_int_size (size); // num_q_result
 
-    for (int i = 0; i < (int) qresult_infos.size(); i++)
-      {
-	size += qresult_infos[i].get_packed_size (serializator, size);
-      }
+    size += qresult_info.get_packed_size (serializator, size);
 
     size += serializator.get_packed_int_size (size); // num_columns
     if (column_infos.size() > 0)
@@ -549,20 +692,25 @@ namespace cubmethod
 	    size += column_infos[i].get_packed_size (serializator, size);
 	  }
       }
+
+    size += serializator.get_packed_bool_size (size); // has_prepare_info
+    if (call_info != nullptr)
+      {
+	size += call_info->get_packed_size (serializator, size);
+      }
+
     return size;
   }
 
   void
   execute_info::dump ()
   {
+    fprintf (stdout, "handle_id: %d\n", handle_id);
     fprintf (stdout, "num_affected: %d\n", num_affected);
-    fprintf (stdout, "qresult_infos.size(): %d\n", (int) qresult_infos.size());
+
     fprintf (stdout, "==============================\n");
-    for (int i = 0; i < (int) qresult_infos.size(); i++)
-      {
-	fprintf (stdout, "=> qresult_infos[%d]:\n", i);
-	qresult_infos[i].dump();
-      }
+    fprintf (stdout, "=> qresult_info:\n");
+    qresult_info.dump();
     fprintf (stdout, "==============================\n");
 
     fprintf (stdout, "column_infos.size(): %d\n", (int) column_infos.size());
@@ -740,6 +888,109 @@ namespace cubmethod
       {
 	size += tuples[i].get_packed_size (serializator, size);
       }
+    return size;
+  }
+
+  void
+  make_outresult_info::pack (cubpacking::packer &serializator) const
+  {
+    qresult_info.pack (serializator);
+
+    serializator.pack_int (column_infos.size());
+    if (column_infos.size() > 0)
+      {
+	for (int i = 0; i < (int) column_infos.size(); i++)
+	  {
+	    column_infos[i].pack (serializator);
+	  }
+      }
+  }
+
+  void
+  make_outresult_info::unpack (cubpacking::unpacker &deserializator)
+  {
+    qresult_info.unpack (deserializator);
+
+    int num_column_info;
+    deserializator.unpack_int (num_column_info);
+    if (num_column_info > 0)
+      {
+	column_infos.resize (num_column_info);
+	for (int i = 0; i < (int) num_column_info; i++)
+	  {
+	    column_infos[i].unpack (deserializator);
+	  }
+      }
+  }
+
+  size_t
+  make_outresult_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = qresult_info.get_packed_size (serializator, start_offset);
+
+    size += serializator.get_packed_int_size (size); // num_columns
+    if (column_infos.size() > 0)
+      {
+	for (int i = 0; i < (int) column_infos.size(); i++)
+	  {
+	    size += column_infos[i].get_packed_size (serializator, size);
+	  }
+      }
+
+    return size;
+  }
+
+  void
+  get_generated_keys_info::pack (cubpacking::packer &serializator) const
+  {
+    qresult_info.pack (serializator);
+
+    serializator.pack_int (column_infos.size());
+    if (column_infos.size() > 0)
+      {
+	for (int i = 0; i < (int) column_infos.size(); i++)
+	  {
+	    column_infos[i].pack (serializator);
+	  }
+      }
+
+    generated_keys.pack (serializator);
+  }
+
+  void
+  get_generated_keys_info::unpack (cubpacking::unpacker &deserializator)
+  {
+    qresult_info.unpack (deserializator);
+
+    int num_column_info;
+    deserializator.unpack_int (num_column_info);
+    if (num_column_info > 0)
+      {
+	column_infos.resize (num_column_info);
+	for (int i = 0; i < (int) num_column_info; i++)
+	  {
+	    column_infos[i].unpack (deserializator);
+	  }
+      }
+
+    generated_keys.unpack (deserializator);
+  }
+
+  size_t
+  get_generated_keys_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = qresult_info.get_packed_size (serializator, start_offset);
+
+    size += serializator.get_packed_int_size (size); // num_columns
+    if (column_infos.size() > 0)
+      {
+	for (int i = 0; i < (int) column_infos.size(); i++)
+	  {
+	    size += column_infos[i].get_packed_size (serializator, size);
+	  }
+      }
+
+    size += generated_keys.get_packed_size (serializator, size);
     return size;
   }
 }

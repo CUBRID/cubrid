@@ -521,6 +521,8 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -d, --data-only             오브젝트만 처리; 기본값: 스키마와 오브젝트 처리\n\
       --output-prefix=PREFIEX 출력 파일의 prefix; 기본값: 데이터베이스 이름 사용\n\
       --hash-file=FILE        해쉬 파일이름; 기본값: 파일을 생성하기 위해 tmpnam()을 사용함\n\
+      --latest-image          오브젝트 (객체)를 언로드할 때, 데이터 볼륨의 최신 이미지를 언로드합니다. 이 과정에서 로그 볼륨은 참조되지 않으며, MVCC는 무시됩니다.\n\
+                              커밋되지않은 데이터와 제거되었지만 배큠되지 않은 데이터가 포함될 수 있습니다; 기본 값: 사용 안 함\n\
   -v, --verbose               많은 상태 메시지를 출력; 기본값: 출력 안 함\n\
       --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\
   -S, --SA-mode               독립 모드 실행\n\
@@ -624,6 +626,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' �
 39 -i(--immediately)옵션은 --deact-stop-all 옵션이 지정되어야합니다.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 --recreate-log 옵션 없이 실행하거나 액티브 로그 볼륨을 직접 제거해주세요.\n
 60 \
 emergency_patchlog: 긴급한 상황에서 데이터베이스 로그 패치\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1212,6 +1215,7 @@ usage: %1$s tde <operation> [옵션] <데이터베이스-이름>\n\
 \n\
 valid options:\n\
     -p, --dba-password=PASS       DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
+\n\
 operations:\n\
     -s, --show-keys               데이터베이스에 등록된 키, 키 파일 (_keys)내의 키들에 대한 정보를 출력 \n\
     -n, --generate-new-key        키 파일 (_keys)에 새로운 키를 추가; 최대 갯수: 128\n\

@@ -1,11 +1,14 @@
 package com.cubrid.jsp.impl;
 
+import com.cubrid.jsp.data.CallInfo;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.ExecuteInfo;
 import com.cubrid.jsp.data.FetchInfo;
 import com.cubrid.jsp.data.GetByOIDInfo;
+import com.cubrid.jsp.data.GetGeneratedKeysInfo;
 import com.cubrid.jsp.data.GetSchemaInfo;
+import com.cubrid.jsp.data.MakeOutResultSetInfo;
 import com.cubrid.jsp.data.PrepareInfo;
 import com.cubrid.jsp.data.QueryResultInfo;
 import com.cubrid.jsp.data.SOID;
@@ -15,6 +18,7 @@ import com.cubrid.jsp.jdbc.CUBRIDServerSideConstants;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorManager;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideOID;
+import com.cubrid.jsp.value.ResultSetValue;
 import com.cubrid.jsp.value.Value;
 import cubrid.jdbc.jci.CUBRIDCommandType;
 import cubrid.sql.CUBRIDOID;
@@ -58,9 +62,9 @@ public class SUStatement {
 
     /* execute info */
     private ExecuteInfo executeInfo = null;
-    int resultIndex = -1;
 
     /* fetch info */
+    private long queryId = -1;
     FetchInfo fetchInfo; // last fetched result
     private boolean wasNull = false;
     SUResultTuple tuples[] = null;
@@ -108,14 +112,15 @@ public class SUStatement {
         maxFetchSize = 0;
         isFetched = false;
         wasNull = false;
-        /*
-         * if (info.stmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) { columnNumber =
-         * parameterNumber + 1; }
-         */
+
+        if (commandType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+            columnNumber = parameterNumber + 1;
+        }
     }
 
     public SUStatement(
             SUConnection conn, GetByOIDInfo info, CUBRIDOID oid, String attributeName[]) {
+        suConn = conn;
         type = GET_BY_OID;
         handlerId = -1;
 
@@ -149,6 +154,40 @@ public class SUStatement {
         fetchSize = 1;
         maxFetchSize = 0;
         isSensitive = false;
+    }
+
+    public SUStatement(SUConnection conn, GetGeneratedKeysInfo info) {
+        suConn = conn;
+        type = GET_AUTOINCREMENT_KEYS;
+
+        /* init column infos */
+        setColumnInfo(info.columnInfos);
+
+        /* init fetch infos */
+        fetchedStartCursorPosition = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
+        fetchDirection = ResultSet.FETCH_FORWARD; // TODO: temporary init to FORWARD
+
+        commandType = (byte) info.getResultInfo().stmtType;
+        totalTupleNumber = info.getResultInfo().tupleCount;
+
+        fetchInfo = info.getFetchInfo();
+
+        handlerId = -1;
+    }
+
+    /* out resultset */
+    public SUStatement(SUConnection conn, long queryId) throws IOException, SQLException {
+        suConn = conn;
+        type = NORMAL;
+
+        this.queryId = queryId;
+
+        MakeOutResultSetInfo info = suConn.makeOutResult(queryId);
+
+        /* init column infos */
+        setColumnInfo(info.columnInfos);
+
+        totalTupleNumber = info.getResultInfo().tupleCount;
     }
 
     public boolean getSQLType() {
@@ -192,12 +231,7 @@ public class SUStatement {
         bindValue(index, DBType.DB_SEQUENCE, values);
     }
 
-    public void execute(
-            int maxRow,
-            int maxField,
-            boolean isExecuteAll,
-            boolean isSensitive,
-            boolean isScrollable)
+    public void execute(int maxRow, int maxField, boolean isSensitive, boolean isScrollable)
             throws IOException, SQLException {
 
         if (type == GET_SCHEMA_INFO) {
@@ -209,19 +243,24 @@ public class SUStatement {
             return;
         }
 
-        setExecuteFlags(maxRow, isExecuteAll, isSensitive);
+        setExecuteFlags(maxRow, isSensitive);
 
         executeInfo = suConn.execute(handlerId, executeFlag, isScrollable, maxField, bindParameter);
-        resultIndex = -1;
 
         fetchedStartCursorPosition = cursorPosition = -1;
-        /*
-         * TODO if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
-         * cursorPosition = 0; } else
-         */
-        {
-            cursorPosition = -1;
+
+        if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+            cursorPosition = 0; // already fetched
+            fetchedStartCursorPosition = 0;
+            fetchedTupleNumber = 1;
+
+            CallInfo callInfo = executeInfo.callInfo;
+            tuples = new SUResultTuple[fetchedTupleNumber];
+            tuples[0] = callInfo.getTuple();
+        } else if (getSQLType() == true) {
+            queryId = executeInfo.getResultInfo().queryId;
         }
+
         totalTupleNumber = executeInfo.numAffected;
     }
 
@@ -252,12 +291,8 @@ public class SUStatement {
         return null;
     }
 
-    private void setExecuteFlags(int maxRow, boolean isExecuteAll, boolean isSensitive) {
+    private void setExecuteFlags(int maxRow, boolean isSensitive) {
         executeFlag = 0;
-
-        if (isExecuteAll) {
-            executeFlag |= CUBRIDServerSideConstants.EXEC_FLAG_QUERY_ALL;
-        }
 
         if (isGeneratedKeys) {
             executeFlag |= CUBRIDServerSideConstants.EXEC_FLAG_GET_GENERATED_KEYS;
@@ -287,7 +322,11 @@ public class SUStatement {
     }
 
     public void fetch() throws SQLException {
-        if (type == GET_BY_OID) {
+        if (type == GET_BY_OID || type == GET_AUTOINCREMENT_KEYS) {
+            return;
+        }
+
+        if (commandType == CUBRIDCommandType.CUBRID_STMT_CALL) {
             return;
         }
 
@@ -300,9 +339,7 @@ public class SUStatement {
 
         // send fetch request
         try {
-            fetchInfo =
-                    suConn.fetch(
-                            executeInfo.getResultInfo(0).queryId, cursorPosition, fetchSize, 0);
+            fetchInfo = suConn.fetch(queryId, cursorPosition, fetchSize, 0);
         } catch (IOException ioe) {
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
                     CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, ioe);
@@ -347,14 +384,14 @@ public class SUStatement {
         }
 
         try {
-            execute(0, 0, false, false, false);
+            execute(0, 0, false, false);
         } catch (IOException e) {
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
                     CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, null);
         }
 
-        if (executeInfo != null && executeInfo.getResultInfo(0) != null) {
-            SOID oid = executeInfo.getResultInfo(0).getCUBRIDOID();
+        if (executeInfo != null && executeInfo.getResultInfo() != null) {
+            SOID oid = executeInfo.getResultInfo().getCUBRIDOID();
             return new CUBRIDServerSideOID(con, oid);
         }
 
@@ -365,31 +402,8 @@ public class SUStatement {
     // The following is to manage Result Info
     // ==============================================================
 
-    public QueryResultInfo getResultInfo(int idx) {
-        if (idx < 0 || idx >= getResultSize()) {
-            return null;
-        }
-
-        return executeInfo.getResultInfo(idx);
-    }
-
-    public QueryResultInfo getCurrentResultInfo() {
-        return executeInfo.getResultInfo(resultIndex);
-    }
-
-    public void incrementResultIndex() {
-        resultIndex++;
-    }
-
-    public int getResultIndex() {
-        return resultIndex;
-    }
-
-    public int getResultSize() {
-        if (executeInfo != null) {
-            return executeInfo.getResultInfoSize();
-        }
-        return 0;
+    public QueryResultInfo getResultInfo() {
+        return executeInfo.getResultInfo();
     }
 
     // ==============================================================
@@ -403,7 +417,13 @@ public class SUStatement {
         }
 
         if (type == NORMAL) {
-            tuples = fetchInfo.tuples; // get tuples from fetchInfo
+            if (commandType == CUBRIDCommandType.CUBRID_STMT_CALL) {
+                /* do nothing, tuples is already retrived when executing the call stmt */
+            } else if (commandType != CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+                tuples = fetchInfo.tuples; // get tuples from fetchInfo
+            }
+        } else if (type == GET_AUTOINCREMENT_KEYS) {
+            tuples = fetchInfo.tuples;
         } else {
             // GET_BY_OID initialized 1 tuple at constructor
         }
@@ -630,15 +650,31 @@ public class SUStatement {
 
     public Object getObject(int columnIndex) throws SQLException {
         int idx = columnIndex - 1;
-        Value obj = (Value) beforeGetTuple(idx);
-        if (obj == null) return null;
+        Value v = (Value) beforeGetTuple(idx);
+        if (v == null) return null;
 
         // TODO: not implemented yet
         try {
-            return obj.toObject();
+            Object obj = null;
+            if (v instanceof ResultSetValue) {
+                obj = v.toResultSet(suConn);
+            } else {
+                obj = v.toObject();
+            }
+            return obj;
         } catch (TypeMismatchException e) {
             return null;
         }
+    }
+
+    public void registerOutParameter(int index, int sqlType) throws SQLException {
+        int idx = index - 1;
+        if (idx < 0 || idx >= parameterNumber) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_BIND_INDEX, null);
+        }
+
+        bindParameter.setOutParam(idx, sqlType);
     }
 
     public int getParameterCount() {
@@ -655,5 +691,13 @@ public class SUStatement {
 
     public int getColumnLength() {
         return columnNumber;
+    }
+
+    public long getQueryId() {
+        return queryId;
+    }
+
+    public int getHandlerId() {
+        return handlerId;
     }
 }

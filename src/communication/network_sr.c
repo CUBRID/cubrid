@@ -440,7 +440,16 @@ net_server_init (void)
   req_p->processing_function = sfile_apply_tde_to_class_files;
   req_p->name = "NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES";
 
+  /* dblink */
+  req_p = &net_Requests[NET_SERVER_DBLINK_GET_CRYPT_KEY];
+  req_p->processing_function = sdblink_get_crypt_keys;
+  req_p->name = "NET_SERVER_DBLINK_GET_CRYPT_KEY";
+
   /* tde */
+  req_p = &net_Requests[NET_SERVER_TDE_IS_LOADED];
+  req_p->processing_function = stde_is_loaded;
+  req_p->name = "NET_SERVER_TDE_IS_LOADED";
+
   req_p = &net_Requests[NET_SERVER_TDE_GET_DATA_KEYS];
   req_p->processing_function = stde_get_data_keys;
   req_p->name = "NET_SERVER_TDE_GET_DATA_KEYS";
@@ -903,9 +912,10 @@ net_server_init (void)
   req_p->name = "NET_SERVER_VACUUM_DUMP";
 
   req_p = &net_Requests[NET_SERVER_METHOD_FOLD_CONSTANTS];
+  req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = smethod_invoke_fold_constants;
   req_p->name = "NET_SERVER_METHOD_FOLD_CONSTANTS";
-  
+
   req_p = &net_Requests[NET_SERVER_SUPPLEMENT_STMT];
   req_p->processing_function = slog_supplement_statement;
   req_p->name = "NET_SERVER_SUPPLEMENT_STMT";

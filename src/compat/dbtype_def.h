@@ -138,6 +138,11 @@ extern "C"
     CUBRID_STMT_VACUUM,
     CUBRID_STMT_SET_TIMEZONE,
 
+    CUBRID_STMT_CREATE_SERVER,
+    CUBRID_STMT_DROP_SERVER,
+    CUBRID_STMT_RENAME_SERVER,
+    CUBRID_STMT_ALTER_SERVER,
+
     CUBRID_MAX_STMT_TYPE
   } CUBRID_STMT_TYPE;
 
@@ -1014,7 +1019,7 @@ extern "C"
   typedef DB_CHAR DB_NCHAR;
   typedef DB_CHAR DB_BIT;
 
-  typedef int DB_RESULTSET;
+  typedef uint64_t DB_RESULTSET;
 
   /* Structure for an ENUMERATION element */
   typedef struct db_enum_element DB_ENUM_ELEMENT;

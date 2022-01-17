@@ -18,6 +18,8 @@
 
 #include "method_invoke.hpp"
 
+#include <functional>
+
 #include "jsp_comm.h"		/* common communcation functions for javasp */
 #include "object_representation.h"	/* OR_ */
 
@@ -30,7 +32,10 @@
 #include "method_struct_oid_info.hpp"
 #include "method_invoke_group.hpp"
 #include "method_struct_query.hpp"
+#include "method_query_util.hpp"
+
 #include "log_impl.h"
+#include "xserver_interface.h"
 
 namespace cubmethod
 {
@@ -43,16 +48,7 @@ namespace cubmethod
 
   method_invoke_java::~method_invoke_java ()
   {
-#if defined (SERVER_MODE)
-    query_cursor *cursor = nullptr;
-    for (auto &cursor_iter: m_cursor_map)
-      {
-	cursor = cursor_iter.second;
-	cursor->close ();
-	delete cursor;
-      }
-    m_cursor_map.clear ();
-#endif
+    //
   }
 
   int method_invoke_java::invoke (cubthread::entry *thread_p, std::vector <DB_VALUE> &arg_base)
@@ -122,6 +118,33 @@ namespace cubmethod
     return error_code;
   }
 
+  int method_invoke_java::reset (cubthread::entry *thread_p)
+  {
+    int error = NO_ERROR;
+
+#if defined (SERVER_MODE)
+    query_cursor *cursor = nullptr;
+
+    for (const auto &cursor_iter: m_cursor_map)
+      {
+	cursor = cursor_iter.second;
+	cursor->close ();
+	error += xqmgr_end_query (thread_p, cursor->get_query_id ());
+	delete cursor;
+      }
+    m_cursor_map.clear ();
+#endif
+
+    if (error > 0)
+      {
+	return ER_FAILED;
+      }
+    else
+      {
+	return NO_ERROR;
+      }
+  }
+
   int method_invoke_java::alloc_response (cubmem::extensible_block &blk)
   {
     int nbytes, res_size;
@@ -164,6 +187,18 @@ namespace cubmethod
     value_unpacker.value = &returnval;
     value_unpacker.unpack (unpacker);
 
+    if (db_value_type (&returnval) == DB_TYPE_RESULTSET)
+      {
+	std::uint64_t query_id = db_get_resultset (&returnval);
+	query_cursor *cursor = m_cursor_map [query_id];
+	if (cursor)
+	  {
+	    cursor->close ();
+	    delete cursor;
+	  }
+	m_cursor_map.erase (query_id);
+      }
+
     /* out arguments */
     DB_VALUE temp;
     int num_args = m_method_sig->num_method_args;
@@ -176,6 +211,18 @@ namespace cubmethod
 
 	value_unpacker.value = &temp;
 	value_unpacker.unpack (unpacker);
+
+	if (db_value_type (&temp) == DB_TYPE_RESULTSET)
+	  {
+	    std::uint64_t query_id = db_get_resultset (&temp);
+	    query_cursor *cursor = m_cursor_map [query_id];
+	    if (cursor)
+	      {
+		cursor->close ();
+		delete cursor;
+	      }
+	    m_cursor_map.erase (query_id);
+	  }
 
 	int pos = m_method_sig->method_arg_pos[i];
 	db_value_clear (&arg_base[pos]);
@@ -277,7 +324,14 @@ namespace cubmethod
 	error = callback_collection_cmd (thread_ref, blk);
 	break;
 
+      case METHOD_CALLBACK_MAKE_OUT_RS:
+	error = callback_make_outresult (thread_ref, blk);
+	break;
+
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
+	error = callback_get_generated_keys (thread_ref, blk);
+	break;
+
       case METHOD_CALLBACK_NEXT_RESULT:
       case METHOD_CALLBACK_CURSOR:
       case METHOD_CALLBACK_CURSOR_CLOSE:
@@ -286,7 +340,7 @@ namespace cubmethod
       case METHOD_CALLBACK_LOB_NEW:
       case METHOD_CALLBACK_LOB_WRITE:
       case METHOD_CALLBACK_LOB_READ:
-      case METHOD_CALLBACK_MAKE_OUT_RS:
+
 	// TODO: not implemented yet
 	assert (false);
 	error = ER_FAILED;
@@ -349,13 +403,10 @@ namespace cubmethod
     INT64 id = (INT64) this;
     cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
     error = method_send_data_to_client (&thread_ref, header, code, sql, flag);
-
-    auto get_prepare_info = [&] (cubmem::block & b)
-    {
-      int err = method_send_buffer_to_java (m_group->get_socket (), b);
-      return err;
-    };
-    error = xs_receive (&thread_ref, get_prepare_info);
+    if (error == NO_ERROR)
+      {
+	error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+      }
 #endif
     return error;
   }
@@ -395,30 +446,31 @@ namespace cubmethod
 	  execute_info info;
 	  info.unpack (unpacker);
 
-	  query_result_info &current_result_info = info.qresult_infos[0];
-	  if (current_result_info.stmt_type == CUBRID_STMT_SELECT)
+	  query_result_info &current_result_info = info.qresult_info;
+	  int stmt_type = current_result_info.stmt_type;
+	  if (stmt_type == CUBRID_STMT_SELECT)
 	    {
 	      std::uint64_t qid = current_result_info.query_id;
 	      const auto &iter = m_cursor_map.find (qid);
+	      if (iter != m_cursor_map.end ())
+		{
+		  assert (false); // should not happen
+
+		  query_cursor *cursor = iter->second;
+		  cursor->close ();
+		  xqmgr_end_query (&thread_ref, cursor->get_query_id ());
+		  delete cursor;
+		  m_cursor_map.erase (iter);
+		}
 
 	      query_cursor *cursor = nullptr;
-	      if (iter == m_cursor_map.end ())
+	      // not found, new cursor is created
+	      bool is_oid_included = current_result_info.include_oid;
+	      cursor = m_cursor_map[qid] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
+	      if (cursor == nullptr)
 		{
-		  /* not found, new cursor is created */
-		  bool is_oid_included = current_result_info.include_oid;
-		  cursor = m_cursor_map[qid] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
-		  if (cursor == nullptr)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
-		      return ER_OUT_OF_VIRTUAL_MEMORY;
-		    }
-		}
-	      else
-		{
-		  /* found, cursur is reset */
-		  cursor = iter->second;
-		  cursor->close ();
-		  cursor->reset (qid);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
 
 	      cursor->open ();
@@ -604,6 +656,84 @@ namespace cubmethod
     cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
     request.is_compatible_java = false;
     error = method_send_data_to_client (&thread_ref, header, code, request);
+    if (error != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
+
+    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+#endif
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_make_outresult (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code;
+    uint64_t query_id;
+    unpacker.unpack_all (code, query_id);
+
+    INT64 id = (INT64) this;
+    cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
+    error = method_send_data_to_client (&thread_ref, header, code, query_id);
+    if (error != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
+
+    auto get_make_outresult_info = [&] (cubmem::block & b)
+    {
+      packing_unpacker unpacker (b.ptr, (size_t) b.dim);
+
+      int res_code;
+      make_outresult_info info;
+      unpacker.unpack_all (res_code, info);
+
+      query_result_info &current_result_info = info.qresult_info;
+      const auto &iter = m_cursor_map.find (current_result_info.query_id);
+      if (iter == m_cursor_map.end ())
+	{
+	  query_cursor *cursor = nullptr;
+	  // not found, new cursor is created
+	  bool is_oid_included = current_result_info.include_oid;
+	  cursor = m_cursor_map[query_id] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), query_id,
+	      is_oid_included);
+	  if (cursor == nullptr)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
+	  cursor->open ();
+	}
+
+      return method_send_buffer_to_java (m_group->get_socket(), b);
+    };
+
+    error = xs_receive (&thread_ref, get_make_outresult_info);
+#endif
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_get_generated_keys (cubthread::entry &thread_ref, cubmem::block &blk)
+  {
+    int error = NO_ERROR;
+#if defined (SERVER_MODE)
+    packing_unpacker unpacker;
+    unpacker.set_buffer (blk.ptr, blk.dim);
+
+    int code, handler_id;
+    unpacker.unpack_all (code, handler_id);
+
+    INT64 id = (INT64) this;
+    cubmethod::header header (METHOD_REQUEST_CALLBACK /* default */, id);
+    error = method_send_data_to_client (&thread_ref, header, code, handler_id);
     if (error != NO_ERROR)
       {
 	return ER_FAILED;

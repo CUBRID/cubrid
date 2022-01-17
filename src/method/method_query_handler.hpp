@@ -27,6 +27,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 #include "dbtype.h"
 #include "mem_block.hpp"
@@ -36,8 +37,6 @@
 
 namespace cubmethod
 {
-#define CUBRID_STMT_CALL_SP	0x7e
-
   /* PREPARE_FLAG, EXEC_FLAG are ported from cas_cci.h */
   enum PREPARE_FLAG
   {
@@ -61,20 +60,6 @@ namespace cubmethod
 #define CLASS_NAME_PATTERN_MATCH 1
 #define ATTR_NAME_PATTERN_MATCH	2
 
-  struct prepare_call_info
-  {
-    prepare_call_info () = default;
-
-    DB_VALUE dbval_ret;
-    int num_args;
-    std::vector<DB_VALUE> dbval_args; /* # of num_args + 1 */
-    std::vector<char> param_mode; /* # of num_args */
-    bool is_first_out;
-
-    int set_is_first_out (std::string &sql_stmt);
-    int set_prepare_call_info (int num_args);
-  };
-
   /*
    * cubmethod::query_handler
    *
@@ -87,41 +72,44 @@ namespace cubmethod
   class query_handler
   {
     public:
-      query_handler (error_context &ctx, int id)
-	: m_id (id), m_error_ctx (ctx)
-      {
-	m_is_prepared = false;
-	m_use_plan_cache = false;
-
-	m_session = nullptr;
-	m_current_result = nullptr;
-
-	m_num_markers = -1;
-	m_max_col_size = -1;
-	m_max_row = -1;
-
-	m_has_result_set = false;
-      }
-
+      query_handler (error_context &ctx, int id);
       ~query_handler ();
 
       /* request */
       prepare_info prepare (std::string sql, int flag);
-      execute_info execute (std::vector<DB_VALUE> &bind_values, int flag, int max_col_size, int max_row);
+      execute_info execute (const execute_request &request);
       next_result_info next_result (int flag);
+      get_generated_keys_info generated_keys ();
 
-      int get_generated_keys ();
       /* TODO: execute_batch, execute_array */
       // TODO: int get_system_parameter ();
 
-      void end_qresult (bool is_self_free);
+      void end_qresult ();
 
-      /* getter : TODO for statement handler cache */
+      void reset (); /* called after 1 iteration on method scan */
+
+      /* getters */
       bool is_prepared ();
       bool get_query_count ();
       bool has_result_set ();
 
+      int get_id ();
       std::string get_sql_stmt ();
+      bool get_is_occupied ();
+      void set_is_occupied (bool flag);
+      bool get_prepare_info (prepare_info &info);
+      DB_SESSION *get_db_session ();
+      DB_QUERY_TYPE *get_column_info ();
+
+      const query_result &get_result ();
+
+      /* set result info */
+      void set_prepare_column_list_info (std::vector<column_info> &infos);
+      int set_qresult_info (query_result_info &qinfo);
+
+      /* set result info */
+      void set_prepare_column_list_info (std::vector<column_info> &infos, query_result &result);
+      int set_qresult_info (std::vector<query_result_info> &qinfo);
 
     protected:
       /* prepare */
@@ -129,23 +117,23 @@ namespace cubmethod
       int prepare_call (prepare_info &info, int &flag);
 
       /* execute */
-      int execute_internal (execute_info &info, int flag, int max_col_size, int max_row, std::vector<DB_VALUE> &bind_values);
+      int execute_internal (execute_info &info, int flag, int max_col_size, int max_row,
+			    const std::vector<DB_VALUE> &bind_values);
       int execute_internal_call (execute_info &info, int flag, int max_col_size, int max_row,
-				 std::vector<DB_VALUE> &bind_values);
-      int execute_internal_all (execute_info &info, int flag, int max_col_size, int max_row,
-				std::vector<DB_VALUE> &bind_values);
+				 const std::vector<DB_VALUE> &bind_values);
 
       int set_host_variables (int num_bind, DB_VALUE *value_list);
       bool has_stmt_result_set (char stmt_type);
 
+      /* generated keys */
+      int get_generated_keys_client_insert (get_generated_keys_info &info, DB_QUERY_RESULT &qres);
+      int get_generated_keys_server_insert (get_generated_keys_info &info, DB_QUERY_RESULT &qres);
+      int make_attributes_by_oid_value (get_generated_keys_info &info, const DB_VALUE &oid_val, int tuple_offset);
+
       /* column info */
-      void set_prepare_column_list_info (std::vector<column_info> &infos, query_result &result);
       column_info set_column_info (int dbType, int setType, short scale, int prec, char charset, const char *col_name,
 				   const char *attr_name,
 				   const char *class_name, char is_non_null);
-
-      /* qresult */
-      int set_qresult_info (std::vector<query_result_info> &qinfo);
 
       /* session */
       void close_and_free_session ();
@@ -177,9 +165,10 @@ namespace cubmethod
       int m_max_row;
 
       bool m_has_result_set;
-      std::vector<query_result> m_q_result;
-      query_result *m_current_result;
-      int m_current_result_index; // It has a value of -1 when no queries have been executed
+      query_result m_query_result;
+
+      /* statement handler cache */
+      bool m_is_occupied; // Is occupied by CUBRIDServerSideStatement
 
       bool m_is_updatable; // TODO: not implemented yet
       bool m_query_info_flag; // TODO: not implemented yet

@@ -69,10 +69,10 @@ namespace cubmethod
       int begin ();
       int prepare (std::vector <DB_VALUE> &arg_base);
       int execute (std::vector <DB_VALUE> &arg_base);
-      int reset ();
+      int reset (bool is_end_query);
       int end ();
 
-      DB_VALUE &get_return_value (int index);
+      DB_VALUE *get_return_value (int index);
 
       int get_num_methods () const;
       int64_t get_id () const;

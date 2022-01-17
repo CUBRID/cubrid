@@ -286,6 +286,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->set_tran_index (NULL_TRAN_INDEX);
   conn->init_pending_request ();
   conn->invalidate_snapshot = 1;
+  conn->in_method = false;
   err = css_get_next_client_id ();
   if (err < 0)
     {
@@ -1424,10 +1425,23 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
   header.request_id = htonl (rid);
   header.transaction_id = htonl (conn->get_tran_index ());
 
-  if (conn->invalidate_snapshot)
+  /**
+   * FIXME!!
+   * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
+   *
+   * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
+   * But The side effects described in CBRD-24157 occurred.
+   */
+  if (true)			// if (conn->invalidate_snapshot)
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
     }
+
+  if (conn->in_method)
+    {
+      flags |= NET_HEADER_FLAG_METHOD_MODE;
+    }
+
   header.flags = htons (flags);
   header.db_error = htonl (conn->db_error);
 
@@ -1502,7 +1516,8 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
   conn->db_error = (int) ntohl (local_header->db_error);
 
   flags = ntohs (local_header->flags);
-  conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->in_method = flags & NET_HEADER_FLAG_METHOD_MODE ? true : false;
 
   return rc;
 }
@@ -2161,7 +2176,8 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
   transaction_id = ntohl (header->transaction_id);
   db_error = (int) ntohl (header->db_error);
   flags = ntohs (header->flags);
-  invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  bool in_method = flags & NET_HEADER_FLAG_METHOD_MODE ? true : false;
 
   r = rmutex_lock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
@@ -2176,6 +2192,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
   conn->set_tran_index (transaction_id);
   conn->db_error = db_error;
   conn->invalidate_snapshot = invalidate_snapshot;
+  conn->in_method = in_method;
 
   switch (type)
     {
@@ -2579,6 +2596,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 
 	  conn->set_tran_index (p->transaction_id);
 	  conn->invalidate_snapshot = p->invalidate_snapshot;
+	  conn->in_method = p->in_method;
 	  conn->db_error = p->db_error;
 
 	  css_retire_net_header_entry (conn, buffer);
@@ -2705,6 +2723,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 	  *rc = data_entry->rc;
 	  conn->set_tran_index (data_entry->transaction_id);
 	  conn->invalidate_snapshot = data_entry->invalidate_snapshot;
+	  conn->in_method = data_entry->in_method;
 	  conn->db_error = data_entry->db_error;
 
 	  css_free_queue_entry (conn, data_entry);

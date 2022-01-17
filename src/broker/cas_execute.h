@@ -82,15 +82,25 @@ extern int ux_database_reconnect (void);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #endif /* !LIBCAS_FOR_JSP */
 extern int ux_is_database_connected (void);
+#if defined(CAS_FOR_CGW)
+extern int ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+			   unsigned int query_seq_num);
+#else
 extern int ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * ne_buf, T_REQ_INFO * req_info,
 		       unsigned int query_seq_num);
+#endif /* CAS_FOR_CGW */
 extern int ux_end_tran (int tran_type, bool reset_con_status);
 extern int ux_end_session (void);
 extern int ux_get_row_count (T_NET_BUF * net_buf);
 extern int ux_get_last_insert_id (T_NET_BUF * net_buf);
 extern int ux_auto_commit (T_NET_BUF * CAS_FN_ARG_NET_BUF, T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
+#if defined(CAS_FOR_CGW)
+extern int ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
+			   T_NET_BUF *, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable);
+#else
 extern int ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
 		       T_NET_BUF *, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable);
+#endif /* CAS_FOR_CGW */
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern void ux_get_tran_setting (int *lock_wait, int *isol_level);
 extern int ux_set_isolation_level (int isol_level, T_NET_BUF * net_buf);
@@ -167,7 +177,9 @@ extern int ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_si
 #if !defined(CAS_FOR_MYSQL)
 extern void ux_call_info_cp_param_mode (T_SRV_HANDLE * srv_handle, char *param_mode, int num_param);
 
-extern int ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * result, int stmt_type, int num_column,
+							  DB_QUERY_TYPE * column_info, bool is_holdable);
 #endif /* !CAS_FOR_MYSQL */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)

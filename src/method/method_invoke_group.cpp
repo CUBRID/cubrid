@@ -90,11 +90,11 @@ namespace cubmethod
     m_method_vector.clear ();
   }
 
-  DB_VALUE &
+  DB_VALUE *
   method_invoke_group::get_return_value (int index)
   {
     assert (index >= 0 && index < (int) get_num_methods ());
-    return m_result_vector.at (index);
+    return &m_result_vector.at (index);
   }
 
   int
@@ -225,7 +225,7 @@ namespace cubmethod
     return error;
   }
 
-  int method_invoke_group::reset ()
+  int method_invoke_group::reset (bool is_end_query)
   {
     int error = NO_ERROR;
 
@@ -234,10 +234,18 @@ namespace cubmethod
 	db_value_clear (&val);
       }
 
+    for (method_invoke *method: m_method_vector)
+      {
+	method->reset (m_thread_p);
+      }
+
+    if (!is_end_query)
+      {
 #if defined (SERVER_MODE)
-    cubmethod::header header (METHOD_REQUEST_END, get_id());
-    error = method_send_data_to_client (m_thread_p, header);
+	cubmethod::header header (METHOD_REQUEST_END, get_id());
+	error = method_send_data_to_client (m_thread_p, header);
 #endif
+      }
 
     return error;
   }
@@ -245,7 +253,7 @@ namespace cubmethod
   int method_invoke_group::end ()
   {
     int error = NO_ERROR;
-    reset ();
+    reset (true);
 
 #if defined (SERVER_MODE)
     if (m_socket != INVALID_SOCKET)

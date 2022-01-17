@@ -43,7 +43,6 @@
 #include "cas.h"
 #include "cas_common.h"
 #include "cas_handle.h"
-#include "cas_handle_procedure.hpp"
 #include "cas_log.h"
 
 #define SRV_HANDLE_ALLOC_SIZE		256
@@ -62,7 +61,6 @@ static int current_handle_count = 0;
 /* implemented in transaction_cl.c */
 extern bool tran_is_in_libcas (void);
 
-static cas_procedure_handle_table procedure_handle_table;
 static int current_handle_id = -1;	/* it is used for javasp */
 
 int
@@ -133,6 +131,10 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle->has_mysql_last_insert_id = false;
 #endif /* CAS_FOR_MYSQL */
 
+#if defined (CAS_FOR_CGW)
+  srv_handle->cgw_handle = NULL;
+#endif /* CAS_FOR_CGW */
+
   *new_handle = srv_handle;
   srv_handle_table[new_handle_id - 1] = srv_handle;
   if (new_handle_id > max_handle_id)
@@ -143,9 +145,6 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
 #if !defined(LIBCAS_FOR_JSP)
   current_handle_count++;
 #endif
-
-  /* register handler id created from server-side JDBC */
-  cas_procedure_handle_add (procedure_handle_table, current_handle_id, new_handle_id);
 
   return new_handle_id;
 }
@@ -177,7 +176,6 @@ hm_srv_handle_free (int h_id)
       return;
     }
 
-  cas_procedure_handle_free (procedure_handle_table, current_handle_id, h_id);
   srv_handle_content_free (srv_handle);
   srv_handle_rm_tmp_file (h_id, srv_handle);
 
@@ -185,6 +183,10 @@ hm_srv_handle_free (int h_id)
   FREE_MEM (srv_handle->classes);
   FREE_MEM (srv_handle->classes_chn);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+#if defined (CAS_FOR_CGW)
+  srv_handle->cgw_handle = NULL;
+#endif
 
   FREE_MEM (srv_handle);
   srv_handle_table[h_id - 1] = NULL;
@@ -216,6 +218,9 @@ hm_srv_handle_free_all (bool free_holdable)
 
       srv_handle_content_free (srv_handle);
       srv_handle_rm_tmp_file (i + 1, srv_handle);
+#if defined (CAS_FOR_CGW)
+      srv_handle->cgw_handle = NULL;
+#endif /* CAS_FOR_CGW */
       FREE_MEM (srv_handle);
       srv_handle_table[i] = NULL;
 #if !defined(LIBCAS_FOR_JSP)

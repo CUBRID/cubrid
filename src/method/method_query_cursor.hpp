@@ -38,7 +38,6 @@ namespace cubthread
 
 namespace cubmethod
 {
-
   class query_cursor
   {
     public:
@@ -59,6 +58,7 @@ namespace cubmethod
 
       void clear ();
 
+      QUERY_ID get_query_id ();
       int get_current_index ();
       std::vector<DB_VALUE> get_current_tuple ();
       OID *get_current_oid ();

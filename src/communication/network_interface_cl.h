@@ -128,6 +128,8 @@ extern int file_apply_tde_to_class_files (const OID * class_oid);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern int tde_get_data_keys ();
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+extern int dblink_get_cipher_master_key ();
+extern int tde_is_loaded (int *is_loaded);
 extern int tde_get_mk_file_path (char *mk_path);
 extern int tde_get_mk_info (int *mk_index, time_t * created_time, time_t * set_time);
 extern int tde_change_mk_on_server (int mk_index);
@@ -177,6 +179,7 @@ extern TRAN_STATE tran_server_end_topop (LOG_RESULT_TOPOP result, LOG_LSA * topo
 extern int tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa);
 extern TRAN_STATE tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa);
 extern const char *tran_get_tranlist_state_name (TRAN_STATE state);
+extern bool tran_is_in_libcas (void);
 #ifdef __cplusplus
 extern "C"
 {

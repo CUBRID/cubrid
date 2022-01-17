@@ -31,18 +31,38 @@
 
 package com.cubrid.jsp.value;
 
-import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.impl.SUConnection;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideOutResultSet;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import java.sql.ResultSet;
 
 public class ResultSetValue extends Value {
-    private ResultSet rset;
+    private long queryId;
+    private ResultSet rset = null;
+
+    public ResultSetValue(long queryId) {
+        super();
+        this.queryId = queryId;
+    }
 
     public ResultSetValue(ResultSet rset) {
         super();
         this.rset = rset;
+        this.queryId = ((CUBRIDServerSideResultSet) rset).getQueryId();
     }
 
-    public ResultSet toResultSet() throws TypeMismatchException {
+    public ResultSet toResultSet(SUConnection ucon) {
+        if (rset == null) {
+            try {
+                rset = new CUBRIDServerSideOutResultSet(ucon, queryId);
+            } catch (Exception e) {
+                // ignore and leave it null
+            }
+        }
         return rset;
+    }
+
+    public long toLong() {
+        return queryId;
     }
 }

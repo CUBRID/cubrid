@@ -36,18 +36,14 @@ struct qfile_list_id;
 struct method_sig_node;
 
 #if defined(CS_MODE)
+extern int method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddata, int methoddata_size);
 extern int method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p, DB_VALUE &value);
 extern int method_send_error_to_server (unsigned int rc, char *host_p, char *server_name, int error_id);
-
-extern int method_invoke (DB_VALUE &result, std::vector <DB_VALUE> &args, method_sig_node *method_sig);
 #else
-
 // TODO: for standalone
-
 #endif
 
+extern int method_invoke (DB_VALUE &result, std::vector <DB_VALUE> &args, method_sig_node *method_sig);
 extern void method_reset ();
-extern int method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddata, int methoddata_size);
-
 
 #endif /* _QUERY_METHOD_H_ */

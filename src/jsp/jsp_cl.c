@@ -112,8 +112,6 @@ static int jsp_get_value_size (DB_VALUE * value);
 static int jsp_get_argument_size (DB_ARG_LIST * args);
 
 extern int libcas_main (SOCKET fd);
-extern void *libcas_get_db_result_set (int h_id);
-extern void libcas_srv_handle_free (int h_id);
 
 static int jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args);
 static int jsp_alloc_response (const SOCKET sockfd, cubmem::extensible_block & blk);
@@ -227,6 +225,99 @@ jsp_is_exist_stored_procedure (const char *name)
   er_clear ();
 
   return mop != NULL;
+}
+
+/*
+ * jsp_check_param_type_supported
+ *
+ * Note:
+ */
+
+int
+jsp_check_param_type_supported (PT_NODE * node)
+{
+  assert (node && node->node_type == PT_SP_PARAMETERS);
+
+  PT_TYPE_ENUM pt_type = node->type_enum;
+  DB_TYPE domain_type = pt_type_enum_to_db (pt_type);
+
+  switch (domain_type)
+    {
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_STRING:
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATE:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_DATETIME:
+      return NO_ERROR;
+      break;
+
+    case DB_TYPE_RESULTSET:
+      if (node->info.sp_param.mode != PT_OUTPUT)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_INPUT_RESULTSET, 0);
+	}
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1, pr_type_name (domain_type));
+      break;
+    }
+
+  return er_errid ();
+}
+
+
+/*
+ * jsp_check_return_type_supported
+ *
+ * Note:
+ */
+
+int
+jsp_check_return_type_supported (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_NULL:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_STRING:
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATE:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_RESULTSET:
+      return NO_ERROR;
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_RETURN_TYPE, 1, pr_type_name (type));
+      break;
+    }
+
+  return er_errid ();
 }
 
 /*
@@ -533,7 +624,6 @@ jsp_call_stored_procedure_ng (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = method_invoke_fold_constants (sig_list, args, ret_value);
 	}
       sig_list.freemem ();
-      // error = jsp_do_call_stored_procedure (&ret_value, value_list, proc);
     }
 
   vc = statement->info.method_call.arg_list;
@@ -1081,6 +1171,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
   bool has_savepoint = false;
   char *checked_name;
   const char *arg_comment;
+  DB_TYPE return_type_value;
 
   if (java_method == NULL)
     {
@@ -1132,7 +1223,14 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_int (&value, pt_type_enum_to_db (return_type));
+  return_type_value = pt_type_enum_to_db (return_type);
+  if (jsp_check_return_type_supported (return_type_value) != NO_ERROR)
+    {
+      err = er_errid ();
+      goto error;
+    }
+
+  db_make_int (&value, (int) return_type_value);
   err = dbt_put_internal (obt_p, SP_ATTR_RETURN_TYPE, &value);
   if (err != NO_ERROR)
     {
@@ -1151,12 +1249,12 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
     {
       MOP mop = NULL;
 
-      if (node_p->type_enum == PT_TYPE_RESULTSET && node_p->info.sp_param.mode != PT_OUTPUT)
+      if (jsp_check_param_type_supported (node_p) != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_INPUT_RESULTSET, 0);
 	  err = er_errid ();
 	  goto error;
 	}
+
       name_info = node_p->info.sp_param.name->info.name;
 
       arg_comment = (char *) PT_NODE_SP_ARG_COMMENT (node_p);
@@ -2052,7 +2150,8 @@ jsp_call_from_server (DB_VALUE * returnval, DB_VALUE ** argarray, const char *na
 void
 jsp_set_prepare_call (void)
 {
-  is_prepare_call[call_cnt] = true;
+  int depth = tran_get_libcas_depth ();
+  is_prepare_call[depth] = true;
 }
 
 /*
@@ -2065,35 +2164,22 @@ jsp_set_prepare_call (void)
 void
 jsp_unset_prepare_call (void)
 {
-  is_prepare_call[call_cnt] = false;
+  int depth = tran_get_libcas_depth ();
+  is_prepare_call[depth] = false;
 }
 
 /*
- * jsp_get_db_result_set -
- *   return: none
- *   h_id(in):
- *
- * Note: require cubrid cas library
- */
-
-void *
-jsp_get_db_result_set (int h_id)
-{
-  return libcas_get_db_result_set (h_id);
-}
-
-/*
- * jsp_srv_handle_free -
- *   return: none
- *   h_id(in):
+ * jsp_is_prepare_call -
+ *   return: bool
  *
  * Note:
  */
 
-void
-jsp_srv_handle_free (int h_id)
+bool
+jsp_is_prepare_call ()
 {
-  libcas_srv_handle_free (h_id);
+  int depth = tran_get_libcas_depth ();
+  return is_prepare_call[depth];
 }
 
 /*
@@ -2166,7 +2252,14 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 
 		if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
 		  {
-		    sig_arg_type.push_back (db_get_int (&arg_type));
+		    int type_val = db_get_int (&arg_type);
+		    if (type_val == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
+			error = er_errid ();
+			goto end;
+		      }
+		    sig_arg_type.push_back (type_val);
 		  }
 
 		pr_clear_value (&mode);
@@ -2183,6 +2276,12 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 	    goto end;
 	  }
 	sig_result_type = db_get_int (&result_type);
+	if (sig_result_type == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
+	    error = er_errid ();
+	    goto end;
+	  }
       }
     else
       {

@@ -104,6 +104,11 @@ extern void css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid
 extern int css_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int css_get_comm_request_id (THREAD_ENTRY * thread_p);
 extern struct css_conn_entry *css_get_current_conn_entry (void);
+extern int css_check_conn (CSS_CONN_ENTRY * p);
+
+extern size_t css_get_max_workers ();
+extern size_t css_get_max_task_count ();
+extern size_t css_get_max_connections ();
 
 #if defined (SERVER_MODE)
 extern int css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,

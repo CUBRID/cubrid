@@ -27,6 +27,7 @@
 #error Does not belong to server module
 #endif /* SERVER_MODE */
 
+#include "method_def.hpp"
 #include "method_error.hpp"
 #include "method_oid_handler.hpp"
 #include "method_query_handler.hpp"
@@ -49,6 +50,8 @@ namespace cubmethod
       int prepare (packing_unpacker &unpacker);
       int execute (packing_unpacker &unpacker);
       int schema_info (packing_unpacker &unpacker);
+      int make_out_resultset (packing_unpacker &unpacker);
+      int generated_keys (packing_unpacker &unpacker);
 
       /* handle related to OID */
       int oid_get (packing_unpacker &unpacker);
@@ -56,29 +59,46 @@ namespace cubmethod
       int oid_cmd (packing_unpacker &unpacker);
       int collection_cmd (packing_unpacker &unpacker);
 
-      void set_server_info (int rc, char *host);
-      void free_query_handle_all ();
+      void set_server_info (int idx, int rc, char *host);
+      void free_query_handle_all (bool is_free);
+
+      query_handler *get_query_handler_by_qid (uint64_t qid);
 
     private:
       /* ported from cas_handle */
       int new_query_handler ();
       query_handler *find_query_handler (int id);
-      void free_query_handle (int id);
+      void free_query_handle (int id, bool is_free);
 
       int new_oid_handler ();
+
+      /* statement handler cache */
+      int find_query_handler_by_sql (std::string &sql);
+
 
       template<typename ... Args>
       int send_packable_object_to_server (Args &&... args);
 
       /* server info */
-      int m_rid; // method callback's rid
-      char *m_host;
+      method_server_conn_info m_conn_info [METHOD_MAX_RECURSION_DEPTH];
+
+      std::multimap <std::string, int> m_sql_handler_map;
+      std::unordered_map <uint64_t, int> m_qid_handler_map;
 
       error_context m_error_ctx;
 
       std::vector<query_handler *> m_query_handlers;
       oid_handler *m_oid_handler;
   };
-}
 
-#endif
+  //////////////////////////////////////////////////////////////////////////
+  // global functions
+  //////////////////////////////////////////////////////////////////////////
+
+  callback_handler *get_callback_handler (void);
+
+} // namespace cubmethod
+
+extern int method_make_out_rs (DB_BIGINT query_id);
+
+#endif // _METHOD_CALLBACK_HPP_
