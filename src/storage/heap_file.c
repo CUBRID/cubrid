@@ -25057,12 +25057,8 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 	  /* Unfix forward page. */
 	  pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
 	}
-
-      passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
-      pts_ptr->wait_replication_past_target_lsa (tdes->page_desync_lsa);
-      tdes->page_desync_lsa.set_null ();
+      VPID null_vpid = VPID_INITIALIZER;
+      pgbuf_wait_for_replication (thread_p, &null_vpid);
     }
   while (true);
 #else

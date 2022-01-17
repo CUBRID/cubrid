@@ -2347,6 +2347,30 @@ pgbuf_fix_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid,
   return page;
 }
 
+void
+pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * vpid)
+{
+#if defined (SERVER_MODE)
+  //page desyncronization can only occur on PTS
+  assert (is_passive_transaction_server ());
+
+  //wait for replication
+  passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
+  LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
+  pts_ptr->wait_replication_past_target_lsa (tdes->page_desync_lsa);
+
+  const LOG_LSA replication_lsa = pts_ptr->get_replicator_lsa ();
+  er_log_debug (ARG_FILE_LINE,
+		"Page %1d|%2d is ahead of replication. Page LSA is %3lld|%4d, replication LSA is %5lld|%6d.",
+		vpid->pageid, vpid->volid, tdes->page_desync_lsa.pageid, tdes->page_desync_lsa.offset,
+		replication_lsa.pageid, replication_lsa.offset);
+  tdes->page_desync_lsa.set_null ();
+  //clear the errors for next search
+  er_clear ();
+#endif
+}
+
 int
 pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
 {
@@ -2360,8 +2384,8 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
   LOG_LSA repl_lsa = get_passive_tran_server_ptr ()->get_replicator_lsa ();
   if (page_lsa > repl_lsa)
     {
-      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
+      LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
+      assert (tdes != nullptr && tdes->page_desync_lsa.is_null ());
       tdes->page_desync_lsa = page_lsa;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_AHEAD_OF_REPLICATION, 6, PGBUF_PAGE_VPID_AS_ARGS (page),
 	      LSA_AS_ARGS (&page_lsa), LSA_AS_ARGS (&repl_lsa));

@@ -1340,9 +1340,9 @@ static PAGE_PTR btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * bti
 					     BTREE_STATS * stat_info_p, bool * found_p);
 static PAGE_PTR btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info,
 					  BTREE_BOUNDARY where);
-static PAGE_PTR btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
-								 BTREE_STATS * stat_info, BTREE_BOUNDARY where,
-								 bool & desync_occured);
+static PAGE_PTR btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, const BTID * btid,
+								 VPID * pg_vpid, BTREE_STATS * stat_info,
+								 const BTREE_BOUNDARY where, bool & desync_occured);
 static int btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_find_next_index_record_holding_current (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, RECDES * peek_rec);
 static int btree_find_next_index_record_holding_current_helper (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
@@ -14344,22 +14344,10 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
       desync_occured = false;
       page =
 	btree_find_boundary_leaf_with_repl_desync_check (thread_p, btid, pg_vpid, stat_info, where, desync_occured);
-#ifdef SERVER_MODE
       if (desync_occured)
 	{
-	  //page desyncronization can only occur on PTS
-	  assert (is_passive_transaction_server ());
-
-	  //wait for replication
-	  passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-	  const LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
-	  assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
-	  pts_ptr->wait_replication_past_target_lsa (tdes->page_desync_lsa);
-
-	  //claer the errors for next search
-	  er_clear ();
+	  pgbuf_wait_for_replication (thread_p, pg_vpid);
 	}
-#endif
     }
   while (desync_occured);
 
@@ -14376,8 +14364,9 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
  * Note: Find the page identifier for the first/last leaf page of the B+tree index.
  */
 static PAGE_PTR
-btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
-						 BTREE_STATS * stat_info, BTREE_BOUNDARY where, bool & desync_occured)
+btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, const BTID * btid, VPID * pg_vpid,
+						 BTREE_STATS * stat_info, const BTREE_BOUNDARY where,
+						 bool & desync_occured)
 {
   PAGE_PTR P_page = NULL, C_page = NULL;
   VPID P_vpid, C_vpid;
@@ -24974,7 +24963,7 @@ btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_sc
   assert (is_passive_transaction_server ());
   assert (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION);
 
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
   assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
 
   assert (bts.page_desync_lsa.is_null ());
