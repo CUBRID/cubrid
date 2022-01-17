@@ -387,7 +387,9 @@ done
 #
 for ((i = 0; i < $num_proc; i++))
 do
-	(silent_cd $database.$i; do_unloaddb $i) &
+        if [ ${slot_size[i]} -gt 0 ];then
+	       (silent_cd $database.$i; do_unloaddb $i) &
+        fi
 done
 
 wait
