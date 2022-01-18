@@ -318,8 +318,6 @@ fi
 if [ ! -d $target_dir ];then
         echo "$target_dir: directory not exists or permission denied"
         exit
-else
-        silent_cd $target_dir
 fi
 
 check_database $database
@@ -367,7 +365,7 @@ do
 			exit 1
 		fi
 
-		mkdir $database.$i
+		mkdir $target_dir/$database.$i
 	fi
 done
 
@@ -377,7 +375,7 @@ done
 for ((i = 0; i < $num_proc; i++))
 do
         if [ ${slot_size[i]} -gt 0 ];then
-	       (silent_cd $database.$i; do_unloaddb $i) &
+	       (silent_cd $target_dir/$database.$i; do_unloaddb $i) &
         fi
 done
 
