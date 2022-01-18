@@ -23,6 +23,7 @@
 #include "network_interface_sr.h" /* xs_receive_data_from_client() */
 #include "server_support.h"	/* css_send_reply_and_data_to_client(), css_get_comm_request_id() */
 #else
+#include "query_method.hpp"
 #include "method_callback.hpp"
 #endif
 
@@ -85,14 +86,13 @@ namespace cubmethod
 #else
   int xs_send (cubthread::entry *thread_p, cubmem::extensible_block &ext_blk)
   {
-    std::queue <cubmem::extensible_block> &queue = get_callback_handler()->get_data_queue ();
-    queue.push (std::move (ext_blk));
-    return NO_ERROR;
+    packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
+    return method_dispatch (unpacker);
   }
 
   int xs_receive (cubthread::entry *thread_p, const xs_callback_func &func)
   {
-    std::queue <cubmem::extensible_block> &queue = get_callback_handler()->get_data_queue ();
+    std::queue <cubmem::extensible_block> &queue = mcon_get_data_queue ();
 
     assert (!queue.empty());
 
@@ -106,7 +106,7 @@ namespace cubmethod
 
   int xs_receive (cubthread::entry *thread_p, SOCKET socket, const xs_callback_func_with_sock &func)
   {
-    std::queue <cubmem::extensible_block> &queue = get_callback_handler()->get_data_queue ();
+    std::queue <cubmem::extensible_block> &queue = mcon_get_data_queue ();
 
     assert (!queue.empty());
 
@@ -124,7 +124,7 @@ namespace cubmethod
   // Interface to communicate with Java SP Server
   //////////////////////////////////////////////////////////////////////////
 
-  int method_send_buffer_to_java (SOCKET socket, cubmem::block &blk)
+  int mcon_send_buffer_to_java (SOCKET socket, cubmem::block &blk)
   {
     int error = NO_ERROR;
     OR_ALIGNED_BUF (OR_INT_SIZE) a_request;

@@ -130,9 +130,6 @@ namespace cubmethod
       static int bypass_block (SOCKET socket, cubmem::block &b);
 
       std::unordered_map <std::uint64_t, query_cursor *> m_cursor_map;
-
-      std::queue<cubmem::extensible_block> m_data_queue;
-
       cubmethod::header *m_header;
   };
 

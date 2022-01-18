@@ -42,6 +42,5 @@ extern int method_error (unsigned int rc, int error_id);
 #else
 extern int method_dispatch (packing_unpacker &unpacker);
 #endif
-extern void method_reset ();
 
 #endif /* _QUERY_METHOD_H_ */

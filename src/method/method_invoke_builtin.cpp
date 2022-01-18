@@ -44,13 +44,7 @@ namespace cubmethod
     int error = NO_ERROR;
     cubmethod::header header (METHOD_REQUEST_INVOKE /* default */, m_group->get_id());
     cubmethod::invoke_builtin arg (m_method_sig);
-#if defined (SERVER_MODE)
     error = method_send_data_to_client (thread_p, header, arg);
-#else
-    cubmem::extensible_block b = method_pack_data (thread_p, header, arg);
-    packing_unpacker unpacker (b.get_ptr (), b.get_size ());
-    error = method_dispatch (unpacker);
-#endif
     return error;
   }
 
@@ -59,7 +53,6 @@ namespace cubmethod
 				     DB_VALUE &result)
   {
     int error = NO_ERROR;
-#if defined (SERVER_MODE)
     db_value_clear (&result);
 
     auto get_method_result = [&] (cubmem::block & b)
@@ -80,7 +73,6 @@ namespace cubmethod
     };
 
     error = xs_receive (thread_p, get_method_result);
-#endif
     return error;
   }
 } // namespace cubmethod

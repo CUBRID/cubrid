@@ -86,15 +86,11 @@ namespace cubmethod
 	break;
       }
 
-    if (!m_data_queue.empty())
-      {
 #if defined (CS_MODE)
-	cubmem::extensible_block &blk = m_data_queue.front ();
-	cubmem::block b (blk.get_size(), blk.get_ptr ());
-	method_send_buffer_to_server (b);
-	m_data_queue.pop ();
+    mcon_send_queue_data_to_server ();
+#else
+    /* do nothing for SA_MODE */
 #endif
-      }
 
     return error;
   }
@@ -134,7 +130,7 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
@@ -145,7 +141,7 @@ namespace cubmethod
 	  }
 	info.handle_id = handler->get_id ();
 
-	return pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
   }
 
@@ -175,11 +171,11 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	return pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
   }
 
@@ -197,12 +193,12 @@ namespace cubmethod
 	make_outresult_info info;
 	query_handler->set_prepare_column_list_info (info.column_infos);
 	query_handler->set_qresult_info (info.qresult_info);
-	return pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
 
     /* unexpected error, should not be here */
     m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
-    return pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+    return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
   int
@@ -222,11 +218,11 @@ namespace cubmethod
     get_generated_keys_info info = handler->generated_keys ();
     if (m_error_ctx.has_error())
       {
-	return pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	return pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
   }
 
@@ -261,11 +257,11 @@ namespace cubmethod
     oid_get_info info = get_oid_handler()->oid_get (request.oid, request.attr_names);
     if (m_error_ctx.has_error())
       {
-	return pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	return pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
   }
 
@@ -278,11 +274,11 @@ namespace cubmethod
     int result = get_oid_handler()->oid_put (request.oid, request.attr_names, request.db_values);
     if (m_error_ctx.has_error())
       {
-	return pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	return pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
       }
   }
 
@@ -300,11 +296,11 @@ namespace cubmethod
     int res_code = get_oid_handler()->oid_cmd (oid, cmd, res);
     if (m_error_ctx.has_error())
       {
-	return pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	return pack_and_queue (METHOD_RESPONSE_SUCCESS, res_code, res);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, res_code, res);
       }
   }
 
@@ -324,11 +320,11 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	return pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
       }
   }
 

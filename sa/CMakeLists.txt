@@ -343,7 +343,6 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_query_cursor.cpp
   ${METHOD_DIR}/method_oid_handler.cpp
   ${METHOD_DIR}/query_method.cpp
-  ${METHOD_DIR}/query_method_sr.cpp
   )
 
 set(THREAD_SOURCES

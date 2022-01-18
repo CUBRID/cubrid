@@ -18,23 +18,30 @@
 
 #include "method_connection_cl.hpp"
 
+
 namespace cubmethod
 {
-#if defined (CS_MODE)
-  static method_server_conn_info g_conn_info [METHOD_MAX_RECURSION_DEPTH + 1];
+  static std::queue <cubmem::extensible_block> s_data_queue;
 
-  int set_connection_info (int idx, int rc)
+  std::queue <cubmem::extensible_block> &mcon_get_data_queue ()
   {
-    method_server_conn_info &info = g_conn_info [idx];
+    return s_data_queue;
+  }
+
+#if defined (CS_MODE)
+  static method_server_conn_info s_conn_info [METHOD_MAX_RECURSION_DEPTH + 1];
+
+  void mcon_set_connection_info (int idx, int rc)
+  {
+    method_server_conn_info &info = s_conn_info [idx];
     info.rc = rc;
-    return NO_ERROR;
   }
 
   method_server_conn_info *get_connection_info (int idx)
   {
     if (idx <= METHOD_MAX_RECURSION_DEPTH)
       {
-	return &g_conn_info[idx];
+	return &s_conn_info[idx];
       }
     else
       {
@@ -43,29 +50,18 @@ namespace cubmethod
   }
 
   int
-  method_send_buffer_to_server (cubmem::block &block)
+  mcon_send_queue_data_to_server ()
   {
     int depth = tran_get_libcas_depth () - 1;
     method_server_conn_info *info = get_connection_info (depth);
 
     assert (info);
+    assert (!mcon_get_data_queue().empty());
 
-    if (info)
-      {
-	int error = net_client_send_data (net_client_get_server_host(), info->rc, block.ptr, block.dim);
-	if (error != NO_ERROR)
-	  {
-	    return ER_FAILED;
-	  }
-      }
-    else
-      {
-	/* should not happened */
-	assert (false);
-	return ER_FAILED;
-      }
-
-    return NO_ERROR;
+    cubmem::extensible_block &blk = mcon_get_data_queue().front ();
+    int error = net_client_send_data (net_client_get_server_host(), info->rc, blk.get_ptr (), blk.get_size());
+    mcon_get_data_queue().pop ();
+    return error;
   }
 
 #endif

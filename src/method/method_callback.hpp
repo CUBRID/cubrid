@@ -78,11 +78,6 @@ namespace cubmethod
 
       oid_handler *get_oid_handler ();
 
-      std::queue <cubmem::extensible_block> &get_data_queue ()
-      {
-	return m_data_queue;
-      }
-
     private:
       /* handle related to query */
       int prepare (packing_unpacker &unpacker);
@@ -99,20 +94,6 @@ namespace cubmethod
       /* ported from cas_handle */
       query_handler *new_query_handler ();
       void free_query_handle (int id, bool is_free);
-
-      template<typename ... Args>
-      int pack_and_queue (Args &&... args)
-      {
-	packing_packer packer;
-	cubmem::extensible_block eb;
-	packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
-	eb.extend_to (packer.get_current_size ()); // ensure eb.get_size () == packer.get_current_size ()
-
-	m_data_queue.push (std::move (eb));
-	return NO_ERROR;
-      }
-
-      std::queue <cubmem::extensible_block> m_data_queue;
 
       std::multimap <std::string, int> m_sql_handler_map;
       std::unordered_map <uint64_t, int> m_qid_handler_map;

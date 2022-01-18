@@ -35,6 +35,7 @@
 #include <unordered_set>
 #include <memory> /* unique_ptr */
 #include <set>
+#include <queue>
 
 #include "method_def.hpp"	/* method_sig_node */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */
@@ -80,6 +81,7 @@ namespace cubmethod
       int64_t get_id () const;
       SOCKET get_socket () const;
       cubthread::entry *get_thread_entry () const;
+      std::queue<cubmem::extensible_block> &mcon_get_data_queue ();
 
     private:
       /* Temporarily, method_invoke_group has socket fd here */
@@ -87,6 +89,7 @@ namespace cubmethod
       SOCKET m_socket;
       int connect ();
       int disconnect ();
+      std::queue<cubmem::extensible_block> m_data_queue;
 
       int64_t m_id;
       cubthread::entry *m_thread_p;

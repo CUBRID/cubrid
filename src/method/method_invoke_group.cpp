@@ -115,6 +115,12 @@ namespace cubmethod
     return m_thread_p;
   }
 
+  std::queue<cubmem::extensible_block> &
+  method_invoke_group::mcon_get_data_queue ()
+  {
+    return m_data_queue;
+  }
+
   int
   method_invoke_group::connect ()
   {
@@ -163,13 +169,7 @@ namespace cubmethod
 	  {
 	    cubmethod::header header (METHOD_REQUEST_ARG_PREPARE, m_id);
 	    cubmethod::prepare_args arg (elem, arg_base);
-#if defined (SERVER_MODE)
 	    error = method_send_data_to_client (m_thread_p, header, arg);
-#else
-	    cubmem::extensible_block b = method_pack_data (m_thread_p, header, arg);
-	    packing_unpacker unpacker (b.get_ptr (), b.get_size ());
-	    error = method_dispatch (unpacker);
-#endif
 	    break;
 	  }
 	  case METHOD_TYPE_JAVA_SP:
@@ -177,7 +177,7 @@ namespace cubmethod
 	    // send to Java SP Server
 	    cubmethod::header header (SP_CODE_PREPARE_ARGS, m_id);
 	    cubmethod::prepare_args arg (elem, arg_base);
-	    error = method_send_data_to_java (get_socket (), header, arg);
+	    error = mcon_send_data_to_java (get_socket (), header, arg);
 	    break;
 	  }
 	  default:
@@ -235,13 +235,7 @@ namespace cubmethod
     if (!is_end_query)
       {
 	cubmethod::header header (METHOD_REQUEST_END, get_id());
-#if defined (SERVER_MODE)
 	error = method_send_data_to_client (m_thread_p, header);
-#else
-	cubmem::extensible_block b = method_pack_data (m_thread_p, header);
-	packing_unpacker unpacker (b.get_ptr (), b.get_size ());
-	error = method_dispatch (unpacker);
-#endif
       }
 
     return error;
