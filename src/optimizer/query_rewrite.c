@@ -2992,7 +2992,6 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	{
 	  lower_val = pt_value_to_db (parser, lower);
 	  upper_val = pt_value_to_db (parser, upper);
-	  /* coercion = 3, it should be compared by varchar-type style */
 	  cmp = (DB_VALUE_COMPARE_RESULT) db_value_compare (lower_val, upper_val);
 	  if (cmp == DB_GT
 	      || (cmp == DB_EQ
