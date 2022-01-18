@@ -5375,15 +5375,38 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	{
 	  /* we cannot make a cast decision here. to keep backwards compatibility we will call pt_coerce_value which
 	   * will only work on constants */
-	  PT_NODE *temp = NULL, *msg_temp = NULL;
-	  msg_temp = parser->error_msgs;
-	  (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET, arg2->data_type);
-	  if (pt_has_error (parser))
+	  PT_NODE *temp = NULL, *msg_temp = NULL, *temp2 = NULL, *elem = NULL;
+	  int idx;
+
+	  /* case of "(col1,col2) in (('a','a'),('a ','a '))" */
+	  /* In this case, Reset ('a','a') type from CHAR to VARCHAR based on (col1,col2) type. */
+	  /* TO_DO: A set of set type evaluation routine should be added. */
+	  if (pt_is_set_type (arg1) && PT_IS_FUNCTION (arg1) && pt_is_set_type (arg2) && PT_IS_VALUE_NODE (arg2))
 	    {
-	      /* ignore errors */
-	      parser_free_tree (parser, parser->error_msgs);
-	      parser->error_msgs = msg_temp;
+	      for (temp = arg1->info.function.arg_list, idx = 0; temp; temp = temp->next, idx++)
+		{
+		  if (temp->type_enum == PT_TYPE_VARCHAR || temp->type_enum == PT_TYPE_VARNCHAR)
+		    {
+		      for (temp2 = arg2->info.value.data_value.set; temp2; temp2 = temp2->next)
+			{
+			  if (pt_is_set_type (temp2) && PT_IS_VALUE_NODE (temp2))
+			    {
+			      elem = temp2->info.value.data_value.set;
+			      for (int i = 0; i < idx && elem; i++)
+				{
+				  elem = elem->next;
+				}
+			      if (elem && (elem->type_enum == PT_TYPE_CHAR || elem->type_enum == PT_TYPE_NCHAR))
+				{
+				  (void) pt_coerce_value (parser, elem, elem, temp->type_enum, elem->data_type);
+				}
+			    }
+			}
+		    }
+		}
+
 	    }
+
 	  if (pt_coerce_value (parser, arg1, arg1, common_type, NULL) != NO_ERROR)
 	    {
 	      expr->type_enum = PT_TYPE_NONE;
@@ -5428,8 +5451,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       if (common_type == PT_TYPE_NONE	/* check if there is a valid common type between members of arg2 and arg1. */
 	  || (!should_cast	/* check if there are at least two different types in arg2 */
 	      && (collection_type == common_type
-		  || (PT_IS_NUMERIC_TYPE (collection_type) && PT_IS_NUMERIC_TYPE (common_type))
-		  || (PT_IS_CHAR_STRING_TYPE (collection_type) && PT_IS_CHAR_STRING_TYPE (common_type)))))
+		  || (PT_IS_NUMERIC_TYPE (collection_type) && PT_IS_NUMERIC_TYPE (common_type)))))
 	{
 	  return expr;
 	}
@@ -5790,6 +5812,13 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 
   if (op != PT_WIDTH_BUCKET)
     {
+      if (arg2_eq_type == PT_TYPE_CHAR || arg2_eq_type == PT_TYPE_NCHAR)
+	{
+	  if (arg1_eq_type == PT_TYPE_VARCHAR || arg1_eq_type == PT_TYPE_VARNCHAR)
+	    {
+	      arg2_eq_type = arg1_eq_type;
+	    }
+	}
       error = pt_coerce_expression_argument (parser, expr, &arg2, arg2_eq_type, arg2_dt);
       if (error != NO_ERROR)
 	{

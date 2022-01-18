@@ -11920,20 +11920,7 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 
   if (!ignore_trailing_space)
     {
-      /*
-       * do_coercion = 3: comparing by varchar-type style
-       * from eliminate_duplicated_keys, scan_key_compre,
-       *   and some query re-write routines
-       * we need to process enforcing no-ignore-trailing space.
-       */
-      if (do_coercion == 3)
-	{
-	  ti = false;
-	}
-      else
-	{
-	  ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
-	}
+      ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
     }
 
   strc = QSTR_CHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,
@@ -11998,13 +11985,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
   if (!ignore_trailing_space)
     {
-      /*
-       * do_coercion = 3: comparing by varchar-type style
-       * from eliminate_duplicated_keys, scan_key_compre,
-       *   and some query re-write routines
-       * we need to process enforcing no-ignore-trailing space.
-       */
-      if (do_coercion == 3 || !TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
+      if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
 	{
 	  ti = false;
 	}
@@ -12846,6 +12827,8 @@ mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
 {
   DB_VALUE_COMPARE_RESULT c;
   int mem_length1, mem_length2, strc;
+  bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   if (IS_FLOATING_PRECISION (domain->precision))
     {
@@ -12869,6 +12852,11 @@ mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
   else
     {
       mem_length1 = mem_length2 = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
+    }
+
+  if (!ignore_trailing_space)
+    {
+      ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
     }
 
   strc = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,
@@ -12909,13 +12897,7 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 
   if (!ignore_trailing_space)
     {
-      /*
-       * do_coercion = 3: comparing by varchar-type style
-       * from eliminate_duplicated_keys, scan_key_compre,
-       *   and some query re-write routines
-       * we need to process enforcing no-ignore-trailing space.
-       */
-      if (do_coercion == 3 || !TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
+      if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
 	{
 	  ti = false;
 	}

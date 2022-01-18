@@ -1311,19 +1311,13 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
   int n;
   KEY_VAL_RANGE *curp, *nextp;
-  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
-  static int coerce = (ignore_trailing_space) ? 1 : 3;
 
   curp = key_vals;
   nextp = key_vals + 1;
   n = 0;
   while (key_cnt > 1 && n < key_cnt - 1)
     {
-      /*
-       * we need to compare without ignoring trailing space
-       * corece = 3 enforce"no-ignore trailing space
-       */
-      if (tp_value_compare (&curp->key1, &nextp->key1, coerce, 1) == DB_EQ)
+      if (tp_value_compare (&curp->key1, &nextp->key1, 1, 1) == DB_EQ)
 	{
 	  pr_clear_value (&nextp->key1);
 	  pr_clear_value (&nextp->key2);
