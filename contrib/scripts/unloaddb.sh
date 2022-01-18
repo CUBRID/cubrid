@@ -41,10 +41,9 @@ function show_usage ()
 {
          echo "Usage: $0 [OPTIONS] [database]"
          echo " OPTIONS"
-         echo "  -t arg  Set number of parallel process; default 8"
+         echo "  -t arg  Set number of parallel process; default 8, max 16"
          echo "  -i arg  input FILE of table names; default: dump all classes"
          echo "  -u arg  Set database user name; default dba"
-         echo "  -p arg  Set dbuser password"
          echo "  -D arg  Set directory for unloaddb output dir/files"
          echo "  -v      Set verbose mode on"
 
