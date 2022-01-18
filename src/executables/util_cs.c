@@ -3993,3 +3993,293 @@ print_tde_usage:
 error_exit:
   return EXIT_FAILURE;
 }
+
+static int
+string_to_date (char *date_string, struct tm *time_data)
+{
+  int status;
+  int date_index;
+  char *save_ptr, *token;
+  const char *delim = "-:";
+
+  status = NO_ERROR;
+  date_index = 0;
+  token = strtok_r (date_string, delim, &save_ptr);
+  while (status == NO_ERROR && token != NULL)
+    {
+      switch (date_index)
+	{
+	case 0:		/* month-day */
+	  time_data->tm_mday = atoi (token);
+	  if (time_data->tm_mday < 1 || time_data->tm_mday > 31)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	case 1:		/* month */
+	  time_data->tm_mon = atoi (token) - 1;
+	  if (time_data->tm_mon < 0 || time_data->tm_mon > 11)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	case 2:		/* year */
+	  time_data->tm_year = atoi (token) - 1900;
+	  if (time_data->tm_year < 0)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	case 3:		/* hour */
+	  time_data->tm_hour = atoi (token);
+	  if (time_data->tm_hour < 0 || time_data->tm_hour > 23)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	case 4:		/* minute */
+	  time_data->tm_min = atoi (token);
+	  if (time_data->tm_min < 0 || time_data->tm_min > 59)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	case 5:		/* second */
+	  time_data->tm_sec = atoi (token);
+	  if (time_data->tm_sec < 0 || time_data->tm_sec > 59)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	default:
+	  status = ER_GENERIC_ERROR;
+	  break;
+	}
+      date_index++;
+      token = strtok_r (NULL, delim, &save_ptr);
+    }
+
+  return date_index != 6 ? ER_GENERIC_ERROR : status;
+}
+
+int
+flashback (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+
+  const char *database_name;
+  int num_tables = 0;
+  dynamic_array *darray = NULL;
+  int i = 0;
+
+  const char *output_file = NULL;
+  FILE *outfp = NULL;
+  const char *user;
+  const char *dba_password;
+
+  char *start_date = NULL;
+  char *end_date = NULL;
+  time_t start_time = 0;
+  time_t end_time = 0;
+  struct tm time_data;
+  int status = NO_ERROR;
+
+  bool is_detail = false;
+  bool is_oldest = false;
+
+  char *passbuf = NULL;
+  int error = NO_ERROR;
+
+  num_tables = utility_get_option_string_table_size (arg_map) - 1;
+  if (num_tables < 1)
+    {
+      goto print_flashback_usage;
+    }
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_flashback_usage;
+    }
+
+  output_file = utility_get_option_string_value (arg_map, FLASHBACK_OUTPUT_S, 0);
+  user = utility_get_option_string_value (arg_map, FLASHBACK_USER_S, 0);
+  dba_password = utility_get_option_string_value (arg_map, FLASHBACK_DBA_PASSWORD_S, 0);
+  start_date = utility_get_option_string_value (arg_map, FLASHBACK_START_DATE_S, 0);
+  end_date = utility_get_option_string_value (arg_map, FLASHBACK_END_DATE_S, 0);
+  is_detail = utility_get_option_bool_value (arg_map, FLASHBACK_DETAIL_S);
+  is_oldest = utility_get_option_bool_value (arg_map, FLASHBACK_OLDEST_S);
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  /* create table list */
+  /* class existence and classoid will be found at server side. if is checked at utility side, it needs addtional access to the server through locator */
+  darray = da_create (num_tables, SM_MAX_IDENTIFIER_LENGTH);
+  if (darray == NULL)
+    {
+      perror ("calloc");
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+      goto error_exit;
+    }
+
+  if (num_tables > 0)
+    {
+      char n[SM_MAX_IDENTIFIER_LENGTH];
+      char *p;
+
+      for (i = 0; i < num_tables; i++)
+	{
+	  p = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
+	  if (p == NULL)
+	    {
+	      continue;
+	    }
+
+	  strncpy_bufsize (n, p);
+	  if (da_add (darray, n) != NO_ERROR)
+	    {
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	      perror ("calloc");
+	      goto error_exit;
+	    }
+	}
+    }
+
+  num_tables = da_size (darray);
+
+  /* start date check */
+  if (start_date != NULL && strlen (start_date) > 0)
+    {
+      status = string_to_date (start_date, &time_data);
+      start_time = mktime (&time_data);
+      if (status != NO_ERROR || start_time < 0)
+	{
+	  goto error_exit;
+	}
+    }
+
+  /* end date check */
+  if (end_date != NULL && strlen (end_date) > 0)
+    {
+      status = string_to_date (end_date, &time_data);
+      end_time = mktime (&time_data);
+      if (status != NO_ERROR || end_time < 0)
+	{
+	  goto error_exit;
+	}
+    }
+
+  /* start time and end time setting.
+   * 1. 10 minutes before end time, if only end time is specified
+   * 2. 10 minutes after start time, if only start time is specified
+   * 3. if no time is specified, then get current execution time for end time */
+
+  if (start_time == 0 && end_time != 0)
+    {
+      start_time = end_time - 600;
+    }
+  else if (start_time != 0 && end_time == 0)
+    {
+      end_time = start_time + 600;
+    }
+  else if (start_time == 0 && end_time == 0)
+    {
+      end_time = time (NULL);
+      start_time = end_time - 600;
+    }
+
+  /* 1. start time < end time
+   * 2. start time is required to be set after db_creation time (server side check)
+   * 3. start time, and end time are required to be set within the log volume range (server side check) */
+  if (start_time > end_time)
+    {
+      goto error_exit;
+    }
+
+  /* output file check */
+  if (output_file == NULL)
+    {
+      outfp = stdout;
+    }
+  else
+    {
+      outfp = fopen (output_file, "w");
+      if (outfp == NULL)
+	{
+	  goto error_exit;
+	}
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (db_login ("DBA", dba_password) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  /* first try to restart with the password given (possibly none) */
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error)
+    {
+      if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
+	{
+	  /*
+	   * prompt for a valid password and try again, need a reusable
+	   * password prompter so we can use getpass() on platforms that
+	   * support it.
+	   */
+
+	  /* get password interactively if interactive mode */
+	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_DBA_PASSWORD));
+	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+	    {
+	      passbuf = (char *) NULL;
+	    }
+	  dba_password = passbuf;
+	  if (db_login ("DBA", dba_password) != NO_ERROR)
+	    {
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      goto error_exit;
+	    }
+	  else
+	    {
+	      error = db_restart (arg->command_name, TRUE, database_name);
+	    }
+	}
+
+      if (error)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+    }
+
+  db_shutdown ();
+
+  if (darray != NULL)
+    {
+      da_destroy (darray);
+    }
+
+  return EXIT_SUCCESS;
+
+print_flashback_usage:
+  fprintf (stdout, "usage");
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+error_exit:
+  fprintf (stdout, "error");
+  if (darray != NULL)
+    {
+      da_destroy (darray);
+    }
+
+  return EXIT_FAILURE;
+}

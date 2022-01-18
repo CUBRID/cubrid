@@ -750,6 +750,7 @@ typedef enum
   VACUUMDB,
   CHECKSUMDB,
   TDE,
+  FLASHBACK,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -956,6 +957,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_VACUUMDB			"vacuumdb"
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
 #define UTIL_OPTION_TDE			        "tde"
+#define UTIL_OPTION_FLASHBACK                   "flashback"
 
 #define HIDDEN_CS_MODE_S                        15000
 
@@ -1626,6 +1628,22 @@ typedef struct _ha_config
 #define TDE_DBA_PASSWORD_S    'p'
 #define TDE_DBA_PASSWORD_L    "dba-password"
 
+/* flashback option list */
+#define FLASHBACK_OUTPUT_S          'o'
+#define FLASHBACK_OUTPUT_L          "output"
+#define FLASHBACK_USER_S            'u'
+#define FLASHBACK_USER_L            "user"
+#define FLASHBACK_DBA_PASSWORD_S    'p'
+#define FLASHBACK_DBA_PASSWORD_L    "password"
+#define FLASHBACK_START_DATE_S      's'
+#define FLASHBACK_START_DATE_L      "start-date"
+#define FLASHBACK_END_DATE_S        'e'
+#define FLASHBACK_END_DATE_L        "end-date"
+#define FLASHBACK_DETAIL_S          14101
+#define FLASHBACK_DETAIL_L          "detail"
+#define FLASHBACK_OLDEST_S          14102
+#define FLASHBACK_OLDEST_L          "oldest"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1759,6 +1777,7 @@ extern "C"
   extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int tde (UTIL_FUNCTION_ARG * arg_map);
+  extern int flashback (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);
