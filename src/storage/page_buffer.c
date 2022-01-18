@@ -8158,6 +8158,24 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	      return error_code;
 	    }
 	  assert (io_page->prv == second_io_page->prv);
+
+//	  assert (io_page->prv.ptype == second_io_page->prv.ptype);
+//	  if (io_page->prv.ptype != PAGE_CATALOG)
+//	    {
+//	      assert (io_page->prv == second_io_page->prv);
+//	    }
+
+//          const bool page_reserved_equal = io_page->prv == second_io_page->prv;
+//          if (!page_reserved_equal)
+//            {
+//              er_print_callstack(ARG_FILE_LINE, "pgbuf_read_page_from_file_or_page_server"
+//                                                " VPID: %d|%d, LSA ATS: %lld|%d, LSA PS: %lld|%d, repl LSA: %lld|%d\n",
+//                                 VPID_AS_ARGS (vpid), LSA_AS_ARGS(&io_page->prv.lsa), LSA_AS_ARGS (&second_io_page->prv.lsa),
+//                                 LSA_AS_ARGS (&target_repl_lsa));
+//            }
+//          assert (io_page->prv == second_io_page->prv ||
+//                  ((io_page->prv.ptype == second_io_page->prv.ptype) && io_page->prv.ptype == PAGE_CATALOG));
+
 	  return NO_ERROR;
 	  // *INDENT-ON*
 	}
@@ -8321,14 +8339,15 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       // add io_page
       payload_in_out.append (reinterpret_cast<const char *> (io_pgptr), (size_t) db_io_page_size ());
 
-      pgbuf_unfix (&thread_r, page_ptr);
-
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[READ DATA] Successful while fixing page %d|%d, replication LSA = %lld|%d\n",
-			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+			 "[READ DATA] Successful while fixing page VPID = %d|%d,"
+			 " LSA = %lld|%d, replication LSA = %lld|%d\n",
+			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS(&io_pgptr->prv.lsa), LSA_AS_ARGS (&target_repl_lsa));
 	}
+
+      pgbuf_unfix (&thread_r, page_ptr);
     }
 }
 // *INDENT-ON*
