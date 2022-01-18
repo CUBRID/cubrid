@@ -167,6 +167,8 @@ struct set_names_info
   UINTPTR id;
 };
 
+typedef enum
+{ ERROR = 0, NON_PUSHABLE, PUSHABLE } PUSHABLE_TYPE;
 
 static PT_NODE *mq_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *mq_bump_corr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
@@ -207,7 +209,7 @@ static PT_NODE *pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void
 static bool pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query, int pos);
 static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
-static int mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
+static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
 				    PT_NODE * class_spec);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
@@ -1487,7 +1489,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - has inst num or orderby_num
  *  - has method
  */
-static int
+static PUSHABLE_TYPE
 mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec)
 {
   PT_NODE *pred, *statement_spec = NULL;
@@ -1499,7 +1501,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   if (subquery == NULL)
     {
       PT_INTERNAL_ERROR (parser, "wrong arguments passed to function");
-      return -1;
+      return ERROR;
     }
 
   assert (parser);
@@ -1538,7 +1540,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       /* should not get here */
       assert (false);
       PT_INTERNAL_ERROR (parser, "unknown node");
-      return -1;
+      return ERROR;
     }
 
   /*****************************/
@@ -1547,7 +1549,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   /* NO_MERGE hint check */
   if (subquery->info.query.q.select.hint & PT_HINT_NO_MERGE)
     {
-      return 0;
+      return NON_PUSHABLE;
     }
 
   /* determine if class_spec is the only spec in the statement */
@@ -1557,13 +1559,13 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   if (mainquery->node_type == PT_INSERT)
     {
       /* pushable */
-      return 1;
+      return PUSHABLE;
     }
   /* check for (non-pushable) spec set (spec set??) */
   if (class_spec->info.spec.entity_name != NULL && class_spec->info.spec.entity_name->node_type == PT_SPEC)
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* select for schema */
   if (PT_IS_SELECT (mainquery)
@@ -1571,31 +1573,31 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 	  || PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_FULL_INFO_COLS_SCHEMA)))
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* check for CONNECT BY */
   if (PT_IS_SELECT (mainquery) && mainquery->info.query.q.select.connect_by)
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* check for MERGE query */
   if (PT_IS_SELECT (mainquery) && PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_IS_MERGE_QUERY))
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* determine if spec is outer joined */
   if (mq_is_outer_join_spec (parser, class_spec))
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* determine if main query's where has define_vars ':=' */
   if (pt_has_define_vars (parser, pred))
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
   if (subquery->info.query.order_by
@@ -1603,7 +1605,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 	  || pt_has_order_sensitive_agg (parser, mainquery)))
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
 
   /*****************************/
@@ -1614,37 +1616,37 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   if (!PT_IS_SELECT (subquery))
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* check for value query */
   if (PT_IS_VALUE_QUERY (subquery))
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* check for 'for update' */
   if (PT_SELECT_INFO_IS_FLAGED (subquery, PT_SELECT_INFO_FOR_UPDATE))
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* check for correlated subquery */
   if (pt_is_correlated_subquery (subquery))
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* check for CTE query */
   if (subquery->info.query.with != NULL)
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* check for FROM */
   if (subquery->info.query.q.select.from == NULL)
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
   /* determine if spec is outer joined and CTE spec */
   for (PT_NODE * spec = subquery->info.query.q.select.from; spec; spec = spec->next)
@@ -1652,12 +1654,12 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       if (mq_is_outer_join_spec (parser, spec))
 	{
 	  /* subquery has outer joins; not pushable */
-	  return 0;
+	  return NON_PUSHABLE;
 	}
       if (PT_SPEC_IS_CTE (spec))
 	{
 	  /* subquery has CTE spec; not pushable */
-	  return 0;
+	  return NON_PUSHABLE;
 	}
     }
 
@@ -1665,27 +1667,27 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   if (subquery->info.query.q.select.connect_by)
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
 
   /* check for DISTINCT */
   if (pt_is_distinct (subquery))
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
 
   /* check for aggregate or orderby_for or analytic */
   if (pt_has_aggregate (parser, subquery) || subquery->info.query.orderby_for || pt_has_analytic (parser, subquery))
     {
       /* not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
 
   /* check inst num or orderby_num */
   if (!is_only_spec && pt_has_inst_in_where_and_select_list (parser, subquery))
     {
-      return 0;
+      return NON_PUSHABLE;
     }
 
   /* check method */
@@ -1699,11 +1701,11 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   if (cpi.method_found)
     {
       /* query not pushable */
-      return 0;
+      return NON_PUSHABLE;
     }
 
   /* if we got this far, query is pushable */
-  return 1;
+  return PUSHABLE;
 }
 
 /*
@@ -1922,10 +1924,10 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 {
   PT_NODE *tmp_result, *result, *arg1, *arg2, *statement_next;
   PT_NODE *derived_table, *derived_class;
-  int is_mergeable;
+  PUSHABLE_TYPE is_mergeable;
 
   result = tmp_result = NULL;	/* init */
-  is_mergeable = 1;
+  is_mergeable = PUSHABLE;
 
   statement_next = statement->next;
   /* make a local copy of the statement */
@@ -1945,12 +1947,12 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 
   /* check whether subquery is pushable */
   is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec);
-  if (is_mergeable < 0)
+  if (is_mergeable == ERROR)
     {
       goto exit_on_error;
     }
 
-  if (!is_mergeable)
+  if (is_mergeable == NON_PUSHABLE)
     {
       /* rewrite vclass spec */
 
@@ -2002,7 +2004,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
     {
       if (subquery->info.query.all_distinct == PT_DISTINCT)
 	{
-	  if (is_mergeable == 0)
+	  if (is_mergeable == NON_PUSHABLE)
 	    {
 	      /* result has been substituted. skip and go ahead */
 	    }
@@ -2067,11 +2069,11 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
   PT_NODE *derived_table, *derived_spec, *derived_class;
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec;
-  int is_mergeable;
+  PUSHABLE_TYPE is_mergeable;
 
   result = tmp_result = NULL;	/* init */
   class_spec = NULL;
-  is_mergeable = 1;
+  is_mergeable = PUSHABLE;
 
   statement_next = statement->next;
   switch (query_spec->node_type)
@@ -2134,12 +2136,12 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 
       /* check whether subquery is pushable */
       is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec);
-      if (is_mergeable < 0)
+      if (is_mergeable == ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      if (!is_mergeable)
+      if (is_mergeable == NON_PUSHABLE)
 	{
 	  /* rewrite vclass query as a derived table */
 	  PT_NODE *tmp_class = NULL;
@@ -2400,7 +2402,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
     {
       if (query_spec->info.query.all_distinct == PT_DISTINCT)
 	{
-	  if (is_mergeable == 0)
+	  if (is_mergeable == NON_PUSHABLE)
 	    {
 	      /* result has been substituted. skip and go ahead */
 	    }
