@@ -127,7 +127,6 @@ static LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_create_btid_unique_stats (THREAD_E
 static int logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_tran_reset_cos_func (THREAD_ENTRY * thread_p, void *data, void *args);
-static int logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p);
 static int logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid);
 static GLOBAL_UNIQUE_STATS *logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
 								 bool load_at_creation);
@@ -3496,7 +3495,8 @@ logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool cre
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids, int n_nulls)
+logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys, long long n_oids,
+				     long long n_nulls)
 {
   /* search and create if not found */
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
@@ -3529,8 +3529,8 @@ logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid,
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids, int n_nulls,
-				bool write_to_log)
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys, long long n_oids,
+				long long n_nulls, bool write_to_log)
 {
   int error = NO_ERROR;
 
@@ -3544,11 +3544,13 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int 
   if (write_to_log)
     {
       /* log statistics */
-      constexpr size_t DATA_SIZE = OR_BTID_ALIGNED_SIZE + (3 * OR_INT_SIZE);
+      constexpr size_t DATA_SIZE = OR_BTID_ALIGNED_SIZE + (3 * OR_BIGINT_SIZE);
 
       alignas (MAX_ALIGNMENT) char data[DATA_SIZE];
       size_t data_written_size = 0;
       btree_rv_data_pack_btid_and_stats (btid, -n_nulls, -n_oids, -n_keys, data, DATA_SIZE, data_written_size);
+
+      // redo data has no use; not added
 
       log_append_undo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, NULL_OFFSET, data_written_size, data);
     }
@@ -3565,8 +3567,8 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const
     {
       return NO_ERROR;
     }
-  return logtb_tran_update_unique_stats (thread_p, &btid, (int) ustats.get_key_count (), (int) ustats.get_row_count (),
-                                         (int) ustats.get_null_count (), write_to_log);
+  return logtb_tran_update_unique_stats (thread_p, &btid, ustats.get_key_count (), ustats.get_row_count (),
+                                         ustats.get_null_count (), write_to_log);
 }
 
 int
@@ -3719,7 +3721,7 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *ar
 	      goto cleanup;
 	    }
 
-	  error_code = logtb_create_unique_stats_from_repr (thread_p, &entry->class_oid);
+	  error_code = logtb_create_unique_stats_from_repr (thread_p, &new_entry->class_oid);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -3763,7 +3765,7 @@ cleanup:
  *	 count optimization state. This function is used when a snapshot is
  *	 taken.
  */
-static int
+int
 logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
@@ -4005,43 +4007,10 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
     }
   else
     {
-#if defined(SA_MODE)
       if (committed && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
 	{
 	  assert (false);
 	}
-#else	/* !SA_MODE */	       /* SERVER_MODE */
-      if (committed)
-	{
-	  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This
-	   * could happen in a transaction that only does a create serial and commits. Next code makes sure serial
-	   * index statistics are reflected. */
-	  BTID serial_index_btid = BTID_INITIALIZER;
-	  LOG_TRAN_BTID_UNIQUE_STATS *serial_unique_stats = NULL;
-
-	  /* Get serial index BTID. */
-	  serial_get_index_btid (&serial_index_btid);
-	  assert (!BTID_IS_NULL (&serial_index_btid));
-
-	  /* Get statistics for serial unique index. */
-	  serial_unique_stats = logtb_tran_find_btid_stats (thread_p, &serial_index_btid, false);
-	  if (serial_unique_stats != NULL)
-	    {
-	      /* Reflect serial unique statistics. */
-	      if (logtb_update_global_unique_stats_by_delta (thread_p, &serial_index_btid,
-							     serial_unique_stats->tran_stats.num_oids,
-							     serial_unique_stats->tran_stats.num_nulls,
-							     serial_unique_stats->tran_stats.num_keys,
-							     true) != NO_ERROR)
-		{
-		  /* No errors are permitted here. */
-		  assert (false);
-
-		  /* Fall through to do everything we would do in case of no error. */
-		}
-	    }
-	}
-#endif /* SERVER_MODE */
 
       /* atomic set transaction lowest active MVCCID */
       log_Gl.mvcc_table.reset_transaction_lowest_active (tran_index);
@@ -4762,7 +4731,7 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool 
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   GLOBAL_UNIQUE_STATS *stats = NULL;
-  int num_oids, num_nulls, num_keys;
+  long long num_oids, num_nulls, num_keys;
 
   assert (btid != NULL);
 
@@ -4821,7 +4790,8 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool 
  *		     of keys for the given btid
  */
 int
-logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oids, int *num_nulls, int *num_keys)
+logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, long long *num_oids, long long *num_nulls,
+			       long long *num_keys)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
@@ -4856,8 +4826,8 @@ logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oi
  *   num_keys (in) : the new number of keys
  */
 int
-logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, int num_oids, int num_nulls,
-					    int num_keys)
+logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, long long num_oids,
+					    long long num_nulls, long long num_keys)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
@@ -4906,13 +4876,13 @@ logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid
  *   log (in) : true if we need to log the changes
  */
 int
-logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, int oid_delta, int null_delta,
-					   int key_delta, bool log)
+logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, long long oid_delta,
+					   long long null_delta, long long key_delta, bool log)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  int num_oids, num_nulls, num_keys;
+  long long num_oids, num_nulls, num_keys;
 
   if (oid_delta == 0 && key_delta == 0 && null_delta == 0)
     {
@@ -4934,7 +4904,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
       /* although we don't change the btree header, we still need to log here the new values of statistics so that they
        * can be recovered at recover stage. For undo purposes we log the increments. */
 
-      constexpr size_t DATA_SIZE = OR_BTID_ALIGNED_SIZE + (3 * OR_INT_SIZE);
+      constexpr size_t DATA_SIZE = OR_BTID_ALIGNED_SIZE + (3 * OR_BIGINT_SIZE);
 
       alignas (MAX_ALIGNMENT) char undo_data[DATA_SIZE];
       size_t undo_data_written_size = 0;
@@ -4959,8 +4929,8 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "Update stats for index (%d, %d|%d) by nulls=%d, "
-		     "oids=%d, keys=%d to nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", btid->root_pageid,
+		     "Update stats for index (%d, %d|%d) by nulls=%lld, "
+		     "oids=%lld, keys=%lld to nulls=%lld, oids=%lld, keys=%lld. LSA=%lld|%d.\n", btid->root_pageid,
 		     btid->vfid.volid, btid->vfid.fileid, null_delta, oid_delta, key_delta, num_nulls, num_oids,
 		     num_keys, (long long int) stats->last_log_lsa.pageid, (int) stats->last_log_lsa.offset);
     }

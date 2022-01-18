@@ -1271,6 +1271,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
       /* for debug only */
+      (void) log_Gl.mvcc_table.update_global_oldest_visible ();
+
       return NO_ERROR;
     }
 

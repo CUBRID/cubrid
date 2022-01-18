@@ -1499,6 +1499,12 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	  fprintf (fp, "REJECT_CLIENT_FLAG\t=%s\n", tmp_str);
 	}
 
+      fprintf (fp, "CGW_LINK_SERVER\t\t=%s\n", br_info[i].cgw_link_server);
+      fprintf (fp, "CGW_LINK_SERVER_IP\t=%s\n", br_info[i].cgw_link_server_ip);
+      fprintf (fp, "CGW_LINK_SERVER_PORT\t=%s\n", br_info[i].cgw_link_server_port);
+      fprintf (fp, "CGW_LINK_ODBC_DRIVER_NAME\t=%s\n", br_info[i].cgw_link_odbc_driver_name);
+      fprintf (fp, "CGW_LINK_CONNECT_URL_PROPERTY\t=%s\n", br_info[i].cgw_link_connect_url_property);
+
       if (br_info[i].shard_flag == OFF)
 	{
 	  fprintf (fp, "\n");

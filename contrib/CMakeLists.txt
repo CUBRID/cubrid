@@ -94,3 +94,11 @@ if(WIN32)
     ${CMAKE_SOURCE_DIR}/contrib/windows_scripts/cubrid_env.bat
     DESTINATION ${CUBRID_DATADIR}/windows_scripts/)
 endif(Win32)
+
+# scripts for installation
+if(UNIX)
+  install(PROGRAMS
+    ${CMAKE_SOURCE_DIR}/contrib/install/install.sh
+    DESTINATION ${CUBRID_DATADIR}/install/)
+endif(UNIX)
+
