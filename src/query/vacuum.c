@@ -8086,7 +8086,7 @@ vacuum_data_page::is_empty () const
 bool
 vacuum_data_page::is_index_valid (INT16 index) const
 {
-  return index >= index_unvacuumed || index < index_free;
+  return index >= index_unvacuumed && index < index_free;
 }
 
 INT16
