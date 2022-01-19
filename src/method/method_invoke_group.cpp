@@ -116,7 +116,7 @@ namespace cubmethod
   }
 
   std::queue<cubmem::extensible_block> &
-  method_invoke_group::mcon_get_data_queue ()
+  method_invoke_group::get_data_queue ()
   {
     return m_data_queue;
   }

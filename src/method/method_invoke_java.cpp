@@ -114,7 +114,7 @@ namespace cubmethod
 	    error_code = ER_SP_NETWORK_ERROR;
 	  }
 
-	m_group->mcon_get_data_queue().pop ();
+	m_group->get_data_queue().pop ();
       }
     while (error_code == NO_ERROR && start_code == SP_CODE_INTERNAL_JDBC);
 
@@ -153,7 +153,7 @@ namespace cubmethod
 	return ER_SP_NETWORK_ERROR;
       }
 
-    m_group->mcon_get_data_queue().emplace (std::move (blk));
+    m_group->get_data_queue().emplace (std::move (blk));
 
     return NO_ERROR;
   }
@@ -164,7 +164,7 @@ namespace cubmethod
   {
     int error_code = NO_ERROR;
 
-    cubmem::extensible_block &ext_blk = m_group->mcon_get_data_queue().front ();
+    cubmem::extensible_block &ext_blk = m_group->get_data_queue().front ();
     packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
 
     dbvalue_java value_unpacker;
@@ -217,7 +217,7 @@ namespace cubmethod
     db_make_null (&error_value);
     db_make_null (&error_msg);
 
-    cubmem::extensible_block &ext_blk = m_group->mcon_get_data_queue().front ();
+    cubmem::extensible_block &ext_blk = m_group->get_data_queue().front ();
     packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
 
     dbvalue_java value_unpacker;
@@ -245,7 +245,7 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    cubmem::extensible_block &ext_blk = m_group->mcon_get_data_queue().front ();
+    cubmem::extensible_block &ext_blk = m_group->get_data_queue().front ();
     packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
 
     int code;

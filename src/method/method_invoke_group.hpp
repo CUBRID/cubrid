@@ -81,7 +81,7 @@ namespace cubmethod
       int64_t get_id () const;
       SOCKET get_socket () const;
       cubthread::entry *get_thread_entry () const;
-      std::queue<cubmem::extensible_block> &mcon_get_data_queue ();
+      std::queue<cubmem::extensible_block> &get_data_queue ();
 
     private:
       /* Temporarily, method_invoke_group has socket fd here */
