@@ -105,6 +105,6 @@ endif(UNIX)
 # multi-process unloaddb scripts
 if(UNIX)
   install(PROGRAMS
-    ${CMAKE_SOURCE_DIR}/contrib/script/unloaddb.sh.sh
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/unloaddb.sh
     DESTINATION ${CUBRID_DATADIR}/scripts/)
 endif(UNIX)
