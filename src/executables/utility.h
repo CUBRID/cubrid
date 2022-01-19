@@ -1634,7 +1634,7 @@ typedef struct _ha_config
 #define FLASHBACK_USER_S            'u'
 #define FLASHBACK_USER_L            "user"
 #define FLASHBACK_DBA_PASSWORD_S    'p'
-#define FLASHBACK_DBA_PASSWORD_L    "password"
+#define FLASHBACK_DBA_PASSWORD_L    "dba-password"
 #define FLASHBACK_START_DATE_S      's'
 #define FLASHBACK_START_DATE_L      "start-date"
 #define FLASHBACK_END_DATE_S        'e'

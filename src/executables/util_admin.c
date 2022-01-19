@@ -865,11 +865,11 @@ static GETOPT_LONG ua_Tde_Option[] = {
 
 static UTIL_ARG_MAP ua_Flashback_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
-  {FLASHBACK_OUTPUT_S, {ARG_STRING}, {(void *) ""}},
+  {FLASHBACK_OUTPUT_S, {ARG_STRING}, {0}},
   {FLASHBACK_USER_S, {ARG_STRING}, {(void *) ""}},
   {FLASHBACK_DBA_PASSWORD_S, {ARG_STRING}, {(void *) ""}},
-  {FLASHBACK_START_DATE_S, {ARG_STRING}, {(void *) ""}},
-  {FLASHBACK_END_DATE_S, {ARG_STRING}, {(void *) ""}},
+  {FLASHBACK_START_DATE_S, {ARG_STRING}, {0}},
+  {FLASHBACK_END_DATE_S, {ARG_STRING}, {0}},
   {FLASHBACK_DETAIL_S, {ARG_BOOLEAN}, {0}},
   {FLASHBACK_OLDEST_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}

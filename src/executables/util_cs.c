@@ -4068,15 +4068,15 @@ flashback (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
 
-  const char *database_name;
+  const char *database_name = NULL;
   int num_tables = 0;
   dynamic_array *darray = NULL;
   int i = 0;
 
   const char *output_file = NULL;
   FILE *outfp = NULL;
-  const char *user;
-  const char *dba_password;
+  const char *user = NULL;
+  const char *dba_password = NULL;
 
   char *start_date = NULL;
   char *end_date = NULL;
@@ -4094,12 +4094,14 @@ flashback (UTIL_FUNCTION_ARG * arg)
   num_tables = utility_get_option_string_table_size (arg_map) - 1;
   if (num_tables < 1)
     {
+      fprintf (stderr, "too less arguments\n");
       goto print_flashback_usage;
     }
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
+      fprintf (stderr, "no database name\n");
       goto print_flashback_usage;
     }
 
@@ -4113,6 +4115,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   if (check_database_name (database_name))
     {
+      fprintf (stderr, "wrong dbname\n");
       goto error_exit;
     }
 
@@ -4158,6 +4161,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
       start_time = mktime (&time_data);
       if (status != NO_ERROR || start_time < 0)
 	{
+	  fprintf (stderr, "start time err\n");
 	  goto error_exit;
 	}
     }
@@ -4169,6 +4173,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
       end_time = mktime (&time_data);
       if (status != NO_ERROR || end_time < 0)
 	{
+	  fprintf (stderr, "end time err\n");
 	  goto error_exit;
 	}
     }
@@ -4197,6 +4202,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
    * 3. start time, and end time are required to be set within the log volume range (server side check) */
   if (start_time > end_time)
     {
+      fprintf (stderr, "start time  > end time\n");
       goto error_exit;
     }
 
@@ -4210,6 +4216,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
       outfp = fopen (output_file, "w");
       if (outfp == NULL)
 	{
+	  fprintf (stderr, "can not open output file\n");
 	  goto error_exit;
 	}
     }
@@ -4272,10 +4279,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
   return EXIT_SUCCESS;
 
 print_flashback_usage:
-  fprintf (stdout, "usage");
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 error_exit:
-  fprintf (stdout, "error");
+  fprintf (stderr, "Flashback Error Exit\n");
   if (darray != NULL)
     {
       da_destroy (darray);
