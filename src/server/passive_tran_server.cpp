@@ -108,7 +108,7 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
   if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "[LOG PRIOR TRANSFER] Received log boot info to from page server with prev_lsa = (%lld|%d), "
+		     "[LOG_PRIOR_TRANSFER] Received log boot info to from page server with prev_lsa = (%lld|%d), "
 		     "append_lsa = (%lld|%d)\n",
 		     LSA_AS_ARGS (&log_Gl.append.prev_lsa), LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
     }

@@ -3538,7 +3538,7 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
   if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "[LOG PRIOR TRANSFER] Sent log boot info to passive tran server with prev_lsa = (%lld|%d), "
+		     "[LOG_PRIOR_TRANSFER] Sent log boot info to passive tran server with prev_lsa = (%lld|%d), "
 		     "append_lsa = (%lld|%d), most_recent_trantable_snapshot_lsa = (%lld|%d)\n",
 		     LSA_AS_ARGS (&prev_lsa), LSA_AS_ARGS (&append_lsa),
 		     LSA_AS_ARGS (&most_recent_trantable_snapshot_lsa));
