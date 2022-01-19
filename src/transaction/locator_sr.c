@@ -312,7 +312,7 @@ locator_initialize (THREAD_ENTRY * thread_p)
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
       entry = ((LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry)));
       if (entry == NULL)
@@ -2002,7 +2002,7 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
       /*
        * Make sure that this class exists in classname_to_OID table and that
@@ -5408,7 +5408,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
       if (heap_get_class_name_alloc_if_diff (thread_p, oid, classname, &old_classname) != NO_ERROR)
 	{
@@ -5424,7 +5424,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       if (old_classname != NULL && old_classname != classname)
 	{
 	  assert (old_classname != NULL);
-	  assert (strlen (old_classname) < DB_MAX_IDENTIFIER_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+	  assert (strlen (old_classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
 	  /* Different names, the class was renamed. */
 	  error_code = log_add_to_modified_class_list (thread_p, old_classname, oid);
@@ -6226,7 +6226,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
 
       /* Note: by now, the client has probably already requested this class be deleted. We try again here just to be
        * sure it has been marked properly.  Note that we would normally want to check the return code, but we must not

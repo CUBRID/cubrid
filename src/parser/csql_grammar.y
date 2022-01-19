@@ -5296,7 +5296,7 @@ class_name_list
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| user_specified_name
+	| class_name
 		{{
 
 			$$ = $1;
@@ -21787,12 +21787,10 @@ identifier
 			  {
 			    int size_in;
 			    char *str_name = $1;
-			    const char *dot = NULL;
 
 			    size_in = strlen(str_name);
 
-			    dot = strchr (str_name, '.');
-			    if (dot == NULL && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
+			    if (!strchr (str_name, '.') && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 			      {
 				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 			      }
@@ -21813,12 +21811,10 @@ identifier
 			  {
 			    int size_in;
 			    char *str_name = $1;
-			    const char *dot = NULL;
 
 			    size_in = strlen(str_name);
 
-			    dot = strchr (str_name, '.');
-			    if (dot == NULL && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
+			    if (!strchr (str_name, '.') && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 			      {
 				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 			      }
@@ -21839,12 +21835,10 @@ identifier
 			  {
 			    int size_in;
 			    char *str_name = $1;
-			    const char *dot = NULL;
 
 			    size_in = strlen(str_name);
 
-			    dot = strchr (str_name, '.');
-			    if (dot == NULL && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
+			    if (!strchr (str_name, '.') && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 			      {
 				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 			      }
@@ -21865,12 +21859,10 @@ identifier
 			  {
 			    int size_in;
 			    char *str_name = $1;
-			    const char *dot = NULL;
 
 			    size_in = strlen(str_name);
 
-			    dot = strchr (str_name, '.');
-			    if (dot == NULL && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
+			    if (!strchr (str_name, '.') && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
 			      {
 				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
 			      }
