@@ -25057,7 +25057,7 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 	  /* Unfix forward page. */
 	  pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
 	}
-      VPID null_vpid = VPID_INITIALIZER;
+      constexpr VPID null_vpid = VPID_INITIALIZER;
       pgbuf_wait_for_replication (thread_p, &null_vpid);
     }
   while (true);
