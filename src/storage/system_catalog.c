@@ -1614,13 +1614,13 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
 
   spage_get_record (thread_p, page_p, CATALOG_HEADER_SLOT, &record, COPY);
 
-  log_append_undo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, CATALOG_HEADER_SLOT, &record);
-
   overflow_vpid.pageid = CATALOG_GET_PGHEADER_OVFL_PGID_PAGEID (record.data);
   overflow_vpid.volid = CATALOG_GET_PGHEADER_OVFL_PGID_VOLID (record.data);
 
   if (overflow_vpid.pageid != NULL_PAGEID)
     {
+      log_append_undo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, CATALOG_HEADER_SLOT, &record);
+
       CATALOG_PUT_PGHEADER_OVFL_PGID_PAGEID (record.data, NULL_PAGEID);
       CATALOG_PUT_PGHEADER_OVFL_PGID_VOLID (record.data, NULL_VOLID);
 
