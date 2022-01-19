@@ -1152,9 +1152,6 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
   int dummy_diff_column;
   bool dummy_dom_is_desc, dummy_next_dom_is_desc;
 
-  /* it should be compared by varchar-type style for valid operation */
-  int do_coercion = 3;
-
   if (val1 == NULL || val2 == NULL)
     {
       assert_release (0);
@@ -1182,16 +1179,12 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
       if (key_type == DB_TYPE_MIDXKEY)
 	{
 	  rc =
-	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), do_coercion, 1, num_index_term, NULL,
+	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL,
 				NULL, NULL, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
 	}
       else
 	{
-	  /*
-	   * we need to compare without ignoring trailing space
-	   * corece = 3 enforce"no-ignore trailing space
-	   */
-	  rc = tp_value_compare (val1, val2, do_coercion, 1);
+	  rc = tp_value_compare (val1, val2, 1, 1);
 	}
     }
 
