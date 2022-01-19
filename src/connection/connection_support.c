@@ -1486,10 +1486,19 @@ css_set_net_header (NET_HEADER * header_p, int type, short function_code, int re
   header_p->transaction_id = htonl (transaction_id);
   header_p->db_error = htonl (db_error);
 
+  /**
+   * FIXME!!
+   * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
+   *
+   * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
+   * But The side effects described in CBRD-24157 occurred.
+   */
+  invalidate_snapshot = 1;
   if (invalidate_snapshot)
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
     }
+
   header_p->flags = htons (flags);
 }
 
