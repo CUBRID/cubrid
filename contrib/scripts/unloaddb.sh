@@ -34,6 +34,7 @@ filename=""
 target_dir=$(pwd)
 from_file=0
 num_args_remain=0
+logdir=""
 
 slot=()
 
@@ -163,15 +164,21 @@ function silent_cd ()
 
 function get_table_size ()
 {
-        local num_rows=0
+        local Num_recs=0
         local table_name=$1
         local Avg_rec_len=0
         local table_size=0
+        local csql_output
 
-        num_rows=$(csql $user $pass -l -c "show heap capacity of $table_name" $db | grep Num_recs | awk '{print $3}')
-        Avg_rec_len=$(csql $user $pass -l -c "show heap capacity of $table_name" $db | grep Avg_rec_len | awk '{print $3}')
+        csql_output=$(csql $user $pass -l -c "show heap capacity of $table_name" $db)
 
-        let "table_size = num_rows * Avg_rec_len"
+        if [ $? -ne 0 ];then
+		table_size=-1
+        else
+		Avg_rec_len=$(echo ${csql_output##*Avg_rec_len} | awk '{print $2}')
+		Num_recs=$(echo ${csql_output##*Num_recs} | awk '{print $2}')
+		let "table_size = Num_recs * Avg_rec_len"
+        fi
 
         echo $table_size
 }
@@ -288,8 +295,10 @@ function analyze_table_info ()
                 table_name=${table_selected[i]}
                 this_table_size=$(get_table_size $table_name)
 
-                if [ -z $this_table_size ] || [ $this_table_size -eq 0 ];then
-                        echo "'$table_name': unknown table"
+                echo "$table_name: $this_table_size"
+
+                if [ -z $this_table_size ] || [ $this_table_size -lt 0 ];then
+                        echo "'$table_name': unknown table ($this_table_size)"
                         exit
                 fi
 
