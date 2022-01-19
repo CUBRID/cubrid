@@ -1340,6 +1340,9 @@ static PAGE_PTR btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * bti
 					     BTREE_STATS * stat_info_p, bool * found_p);
 static PAGE_PTR btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info,
 					  BTREE_BOUNDARY where);
+static PAGE_PTR btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, const BTID * btid,
+								 VPID * pg_vpid, BTREE_STATS * stat_info,
+								 const BTREE_BOUNDARY where, bool & desync_occured);
 static int btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_find_next_index_record_holding_current (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, RECDES * peek_rec);
 static int btree_find_next_index_record_holding_current_helper (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
@@ -14349,8 +14352,30 @@ btree_find_rightmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
   return btree_find_boundary_leaf (thread_p, btid, pg_vpid, stat_info, BTREE_BOUNDARY_LAST);
 }
 
+static PAGE_PTR
+btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info,
+			  BTREE_BOUNDARY where)
+{
+  PAGE_PTR page = nullptr;
+  bool desync_occured = false;
+
+  do
+    {
+      desync_occured = false;
+      page =
+	btree_find_boundary_leaf_with_repl_desync_check (thread_p, btid, pg_vpid, stat_info, where, desync_occured);
+      if (desync_occured)
+	{
+	  pgbuf_wait_for_replication (thread_p, pg_vpid);
+	}
+    }
+  while (desync_occured);
+
+  return page;
+}
+
 /*
- * btree_find_boundary_leaf () -
+ * btree_find_boundary_leaf_with_repl_desync_check () -
  *   return: page pointer
  *   btid(in):
  *   pg_vpid(in):
@@ -14359,8 +14384,9 @@ btree_find_rightmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
  * Note: Find the page identifier for the first/last leaf page of the B+tree index.
  */
 static PAGE_PTR
-btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info,
-			  BTREE_BOUNDARY where)
+btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, const BTID * btid, VPID * pg_vpid,
+						 BTREE_STATS * stat_info, const BTREE_BOUNDARY where,
+						 bool & desync_occured)
 {
   PAGE_PTR P_page = NULL, C_page = NULL;
   VPID P_vpid, C_vpid;
@@ -14372,14 +14398,22 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
   int key_cnt = 0, index = 0;
   int root_level = 0, depth = 0;
 
+  desync_occured = false;
+  ASSERT_NO_ERROR ();
+
   VPID_SET_NULL (pg_vpid);
 
   /* read the root page */
   P_vpid.volid = btid->vfid.volid;
   P_vpid.pageid = btid->root_pageid;
-  P_page = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  P_page = pgbuf_fix_old_and_check_repl_desync (thread_p, P_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (P_page == NULL)
     {
+      if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	{
+	  desync_occured = true;
+	}
+
       ASSERT_ERROR ();
       goto error;
     }
@@ -14426,9 +14460,14 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
 
       btree_read_fixed_portion_of_non_leaf_record (&rec, &nleaf);
       C_vpid = nleaf.pnt;
-      C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      C_page = pgbuf_fix_old_and_check_repl_desync (thread_p, C_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (C_page == NULL)
 	{
+	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      desync_occured = true;
+	    }
+
 	  ASSERT_ERROR ();
 	  goto error;
 	}
@@ -14478,9 +14517,14 @@ again:
 
   if (!VPID_ISNULL (&C_vpid))
     {
-      C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      C_page = pgbuf_fix_old_and_check_repl_desync (thread_p, C_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (C_page == NULL)
 	{
+	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      desync_occured = true;
+	    }
+
 	  ASSERT_ERROR ();
 	  goto error;
 	}
@@ -24979,7 +25023,7 @@ btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_sc
   assert (is_passive_transaction_server ());
   assert (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION);
 
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
   assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
 
   assert (bts.page_desync_lsa.is_null ());
