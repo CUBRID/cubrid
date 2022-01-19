@@ -4152,8 +4152,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  num_tables = da_size (darray);
-
   /* start date check */
   if (start_date != NULL && strlen (start_date) > 0)
     {
