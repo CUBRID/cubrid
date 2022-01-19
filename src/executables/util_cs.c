@@ -3994,59 +3994,62 @@ error_exit:
   return EXIT_FAILURE;
 }
 
-static int
-string_to_date (char *date_string, struct tm *time_data)
+static time_t
+parse_date_string_to_time (char *date_string)
 {
-  int status;
-  int date_index;
+  int status = NO_ERROR;
+  int date_index = 0;
   char *save_ptr, *token;
   const char *delim = "-:";
 
-  status = NO_ERROR;
-  date_index = 0;
+  struct tm time_data;
+  time_t result_time;
+
+  assert (date_string != NULL);
+
   token = strtok_r (date_string, delim, &save_ptr);
   while (status == NO_ERROR && token != NULL)
     {
       switch (date_index)
 	{
 	case 0:		/* month-day */
-	  time_data->tm_mday = atoi (token);
-	  if (time_data->tm_mday < 1 || time_data->tm_mday > 31)
+	  time_data.tm_mday = atoi (token);
+	  if (time_data.tm_mday < 1 || time_data.tm_mday > 31)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
 	case 1:		/* month */
-	  time_data->tm_mon = atoi (token) - 1;
-	  if (time_data->tm_mon < 0 || time_data->tm_mon > 11)
+	  time_data.tm_mon = atoi (token) - 1;
+	  if (time_data.tm_mon < 0 || time_data.tm_mon > 11)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
 	case 2:		/* year */
-	  time_data->tm_year = atoi (token) - 1900;
-	  if (time_data->tm_year < 0)
+	  time_data.tm_year = atoi (token) - 1900;
+	  if (time_data.tm_year < 0)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
 	case 3:		/* hour */
-	  time_data->tm_hour = atoi (token);
-	  if (time_data->tm_hour < 0 || time_data->tm_hour > 23)
+	  time_data.tm_hour = atoi (token);
+	  if (time_data.tm_hour < 0 || time_data.tm_hour > 23)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
 	case 4:		/* minute */
-	  time_data->tm_min = atoi (token);
-	  if (time_data->tm_min < 0 || time_data->tm_min > 59)
+	  time_data.tm_min = atoi (token);
+	  if (time_data.tm_min < 0 || time_data.tm_min > 59)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
 	case 5:		/* second */
-	  time_data->tm_sec = atoi (token);
-	  if (time_data->tm_sec < 0 || time_data->tm_sec > 59)
+	  time_data.tm_sec = atoi (token);
+	  if (time_data.tm_sec < 0 || time_data.tm_sec > 59)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
@@ -4059,7 +4062,20 @@ string_to_date (char *date_string, struct tm *time_data)
       token = strtok_r (NULL, delim, &save_ptr);
     }
 
-  return date_index != 6 ? ER_GENERIC_ERROR : status;
+  time_data.tm_isdst = -1;
+
+  if (date_index != 6 || status != NO_ERROR)
+    {
+      return 0;
+    }
+
+  result_time = mktime (&time_data);
+  if (result_time < (time_t) 0)
+    {
+      return 0;
+    }
+
+  return result_time;
 }
 
 int
@@ -4082,8 +4098,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
   char *end_date = NULL;
   time_t start_time = 0;
   time_t end_time = 0;
-  struct tm time_data;
-  int status = NO_ERROR;
 
   bool is_detail = false;
   bool is_oldest = false;
@@ -4094,7 +4108,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
   num_tables = utility_get_option_string_table_size (arg_map) - 1;
   if (num_tables < 1)
     {
-      fprintf (stderr, "too less arguments\n");
+      fprintf (stderr, "too less arguments, dbname and table list are required\n");
       goto print_flashback_usage;
     }
 
@@ -4155,11 +4169,10 @@ flashback (UTIL_FUNCTION_ARG * arg)
   /* start date check */
   if (start_date != NULL && strlen (start_date) > 0)
     {
-      status = string_to_date (start_date, &time_data);
-      start_time = mktime (&time_data);
-      if (status != NO_ERROR || start_time < 0)
+      start_time = parse_date_string_to_time (start_date);
+      if (start_time == 0)
 	{
-	  fprintf (stderr, "start time err\n");
+	  fprintf (stderr, "start-date error : follow  DATE format (DD-MM-YYYY:hh:MM:ss)\n");
 	  goto error_exit;
 	}
     }
@@ -4167,11 +4180,10 @@ flashback (UTIL_FUNCTION_ARG * arg)
   /* end date check */
   if (end_date != NULL && strlen (end_date) > 0)
     {
-      status = string_to_date (end_date, &time_data);
-      end_time = mktime (&time_data);
-      if (status != NO_ERROR || end_time < 0)
+      end_time = parse_date_string_to_time (end_date);
+      if (end_time == 0)
 	{
-	  fprintf (stderr, "end time err\n");
+	  fprintf (stderr, "end-date error : follow  DATE format (DD-MM-YYYY:hh:MM:ss)\n");
 	  goto error_exit;
 	}
     }
@@ -4200,7 +4212,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
    * 3. start time, and end time are required to be set within the log volume range (server side check) */
   if (start_time > end_time)
     {
-      fprintf (stderr, "start time  > end time\n");
+      fprintf (stderr, "start time(%lld) is larger than end time(%lld)\n", start_time, end_time);
       goto error_exit;
     }
 
