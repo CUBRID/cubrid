@@ -4108,6 +4108,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
   num_tables = utility_get_option_string_table_size (arg_map) - 1;
   if (num_tables < 1)
     {
+      /* TODO : error message will be dealt in other issue. Temporarily used fprintf */
       fprintf (stderr, "too less arguments, dbname and table list are required\n");
       goto print_flashback_usage;
     }
@@ -4255,6 +4256,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	   */
 
 	  /* get password interactively if interactive mode */
+	  /* TODO : MSGCAT setting will be dealt in other issue, it temporarily uses TDE MSGCAT value */
 	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_DBA_PASSWORD));
 	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
 	    {
