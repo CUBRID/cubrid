@@ -1125,9 +1125,9 @@ STATIC_INLINE void pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder, PAG
 static PGBUF_HOLDER *pgbuf_get_holder (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 static void pgbuf_remove_watcher (PGBUF_HOLDER * holder, PGBUF_WATCHER * watcher_object);
 static int pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher,
-				        LOG_LSA * chkpt_smallest_lsa);
+                 LOG_LSA * chkpt_smallest_lsa);
 static int pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, struct timeval *limit_time,
-				        LOG_LSA * chkpt_smallest_lsa, int *time_rem);
+				   LOG_LSA * chkpt_smallest_lsa, int *time_rem);
 static int pgbuf_initialize_seq_flusher (PGBUF_SEQ_FLUSHER * seq_flusher, PGBUF_VICTIM_CANDIDATE_LIST * f_list,
 					 const int cnt);
 static const char *pgbuf_latch_mode_str (PGBUF_LATCH_MODE latch_mode);
@@ -3689,8 +3689,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
  *
  */
 static int
-pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher,
-			    LOG_LSA * chkpt_smallest_lsa)
+pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, LOG_LSA * chkpt_smallest_lsa)
 {
 #define WAIT_FLUSH_VICTIMS_MAX_MSEC	1500.0f
   int error = NO_ERROR;
@@ -3753,8 +3752,7 @@ pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flu
 	}
 #endif
 
-      error = pgbuf_flush_seq_list (thread_p, seq_flusher, p_limit_time, chkpt_smallest_lsa,
-				    &time_rem);
+      error = pgbuf_flush_seq_list (thread_p, seq_flusher, p_limit_time, chkpt_smallest_lsa,&time_rem);
       total_flushed += seq_flusher->flushed_pages;
 
       if (error != NO_ERROR)
