@@ -5406,7 +5406,17 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		}
 
 	    }
-
+	  else
+	    {
+	      msg_temp = parser->error_msgs;
+	      (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET, arg2->data_type);
+	      if (pt_has_error (parser))
+		{
+		  /* ignore errors */
+		  parser_free_tree (parser, parser->error_msgs);
+		  parser->error_msgs = msg_temp;
+		}
+	    }
 	  if (pt_coerce_value (parser, arg1, arg1, common_type, NULL) != NO_ERROR)
 	    {
 	      expr->type_enum = PT_TYPE_NONE;
@@ -5451,7 +5461,8 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       if (common_type == PT_TYPE_NONE	/* check if there is a valid common type between members of arg2 and arg1. */
 	  || (!should_cast	/* check if there are at least two different types in arg2 */
 	      && (collection_type == common_type
-		  || (PT_IS_NUMERIC_TYPE (collection_type) && PT_IS_NUMERIC_TYPE (common_type)))))
+		  || (PT_IS_NUMERIC_TYPE (collection_type) && PT_IS_NUMERIC_TYPE (common_type))
+		  || (PT_IS_CHAR_STRING_TYPE (collection_type) && PT_IS_CHAR_STRING_TYPE (common_type)))))
 	{
 	  return expr;
 	}
