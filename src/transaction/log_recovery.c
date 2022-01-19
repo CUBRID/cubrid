@@ -5544,6 +5544,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
   LOG_RESET_PREV_LSA (new_prev_lsa);
 
   log_Gl.hdr.mvcc_op_log_lsa.set_null ();
+  log_Gl.hdr.vacuum_last_blockid = 0;
 
   // set a flag that active log was reset; some operations may be affected
   log_Gl.hdr.was_active_log_reset = true;
