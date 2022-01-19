@@ -27,7 +27,6 @@
 #include "system.h" /* QUERY_ID */
 #include "dbtype_def.h"
 #include "packable_object.hpp"
-#include "jsp_struct.hpp"
 
 namespace cubmethod
 {

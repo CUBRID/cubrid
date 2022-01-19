@@ -21,7 +21,6 @@
 
 #include <string>
 
-#include "jsp_struct.hpp"
 #include "method_def.hpp"
 #include "mem_block.hpp"
 #include "packable_object.hpp"
