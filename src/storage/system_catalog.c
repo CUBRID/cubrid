@@ -1631,12 +1631,10 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
 	}
 
       log_append_redo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, CATALOG_HEADER_SLOT, &record);
-    }
 
-  recdes_free_data_area (&record);
+      // free data because it is used only for peeking below
+      recdes_free_data_area (&record);
 
-  while (overflow_vpid.pageid != NULL_PAGEID)
-    {
       /* delete the records in the overflow pages, if any */
       overflow_page_p = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (overflow_page_p == NULL)
