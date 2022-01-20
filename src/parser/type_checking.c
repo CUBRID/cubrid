@@ -110,6 +110,10 @@ static GENERIC_FUNCTION_RECORD pt_Generic_functions[] = {
 
 /* Two types are comparable if they are NUMBER types or same CHAR type */
 #define PT_ARE_COMPARABLE(typ1, typ2) \
+  ((typ1 == typ2) || PT_ARE_COMPARABLE_CHAR_TYPE(typ1, typ2) || PT_ARE_COMPARABLE_NUMERIC_TYPE (typ1, typ2))
+
+/* Two types are comparable if they are NUMBER types without CHAR type */
+#define PT_ARE_COMPARABLE_NO_CHAR(typ1, typ2) \
   ((typ1 == typ2) || PT_ARE_COMPARABLE_NUMERIC_TYPE (typ1, typ2))
 
 #define PT_IS_RECURSIVE_EXPRESSION(node) \
@@ -203,6 +207,7 @@ static PT_NODE *pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * exp
 					  PT_NODE * arg3, EXPRESSION_SIGNATURE sig);
 static PT_NODE *pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg1, PT_NODE * arg2,
 						PT_NODE * arg3, EXPRESSION_SIGNATURE sig);
+static bool pt_is_range_comp_op (const PT_OP_TYPE op);
 static bool pt_is_range_expression (const PT_OP_TYPE op);
 static bool pt_are_unmatchable_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type);
 static PT_TYPE_ENUM pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type,
@@ -5729,16 +5734,6 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		  arg1_eq_type = PT_TYPE_DOUBLE;
 		}
 	    }
-	  else if (PT_IS_NAME_NODE (arg2) && PT_IS_VALUE_NODE (arg1) && arg3_type == PT_TYPE_NONE
-		   && arg2_type != PT_TYPE_ENUMERATION)
-	    {
-	      arg1_eq_type = arg2_eq_type = arg2_type;
-	      if (arg1_type != arg2_type && PT_IS_NUMERIC_TYPE (arg2_type) && arg2_type != PT_TYPE_NUMERIC
-		  && op != PT_EQ && op != PT_EQ_SOME && op != PT_EQ_ALL)
-		{
-		  arg1_eq_type = PT_TYPE_DOUBLE;
-		}
-	    }
 	  else if (PT_ARE_COMPARABLE_CHAR_TYPE (arg1_type, arg2_type))
 	    {
 	      if (PT_IS_NAME_NODE (arg1) && !PT_IS_NAME_NODE (arg2))
@@ -5760,7 +5755,22 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	    }
 	}
 
-      if (pt_is_comp_op (op))
+      if (pt_is_range_comp_op (op))
+	{
+	  if (PT_ARE_COMPARABLE_NO_CHAR (arg1_eq_type, arg1_type))
+	    {
+	      arg1_eq_type = arg1_type;
+	    }
+	  if (PT_ARE_COMPARABLE_NO_CHAR (arg2_eq_type, arg2_type))
+	    {
+	      arg2_eq_type = arg2_type;
+	    }
+	  if (PT_ARE_COMPARABLE_NO_CHAR (arg3_eq_type, arg3_type))
+	    {
+	      arg3_eq_type = arg3_type;
+	    }
+	}
+      else if (pt_is_comp_op (op))
 	{
 	  /* do not cast between numeric types or char types for comparison operators */
 	  if (PT_ARE_COMPARABLE (arg1_eq_type, arg1_type))
@@ -5921,6 +5931,38 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
     }
 
   return expr;
+}
+
+/*
+ * pt_is_range_comp_op () - return true if the op is related to range
+ *  return  : true if the operatior is of range
+ *  op (in) : operator
+ */
+static bool
+pt_is_range_comp_op (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_GE:
+    case PT_GT:
+    case PT_LT:
+    case PT_LE:
+    case PT_GT_INF:
+    case PT_LT_INF:
+    case PT_BETWEEN_GE_LE:
+    case PT_BETWEEN_GE_LT:
+    case PT_BETWEEN_GT_LE:
+    case PT_BETWEEN_GT_LT:
+    case PT_BETWEEN_EQ_NA:
+    case PT_BETWEEN_INF_LE:
+    case PT_BETWEEN_INF_LT:
+    case PT_BETWEEN_GE_INF:
+    case PT_BETWEEN_GT_INF:
+    case PT_RANGE:
+      return 1;
+    default:
+      return 0;
+    }
 }
 
 /*
@@ -21192,7 +21234,6 @@ pt_is_between_range_op (PT_OP_TYPE op)
       return 0;
     }
 }
-
 
 /*
  * pt_is_comp_op () -
