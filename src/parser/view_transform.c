@@ -167,8 +167,13 @@ struct set_names_info
   UINTPTR id;
 };
 
-typedef enum
-{ ERROR = 0, NON_PUSHABLE, PUSHABLE } PUSHABLE_TYPE;
+enum pushable_type
+{
+  ERROR = 0,
+  NON_PUSHABLE = 1,
+  PUSHABLE = 2
+};
+typedef enum pushable_type PUSHABLE_TYPE;
 
 static PT_NODE *mq_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *mq_bump_corr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
