@@ -5412,7 +5412,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		}
 	      /*
 	         (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET, arg2->data_type);
-		 This routine is disabled.
+	         This routine is disabled.
 	         Because arg2->data_type(set of set) might not be evaluated correctly, the corresponding routine is disabled.
 	         Enable it after the data type of set of set is evaluated correctly.
 	         The same routine is performed in eliminate_duplicated_keys().
