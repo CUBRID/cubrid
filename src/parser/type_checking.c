@@ -5378,6 +5378,19 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	  PT_NODE *temp = NULL, *msg_temp = NULL, *temp2 = NULL, *elem = NULL;
 	  int idx;
 
+	  msg_temp = parser->error_msgs;
+	  (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET, arg2->data_type);
+	  if (pt_has_error (parser))
+	    {
+	      /* ignore errors */
+	      parser_free_tree (parser, parser->error_msgs);
+	      parser->error_msgs = msg_temp;
+	    }
+	  if (pt_coerce_value (parser, arg1, arg1, common_type, NULL) != NO_ERROR)
+	    {
+	      expr->type_enum = PT_TYPE_NONE;
+	    }
+
 	  /* case of "(col1,col2) in (('a','a'),('a ','a '))" */
 	  /* In this case, Reset ('a','a') type from CHAR to VARCHAR based on (col1,col2) type. */
 	  /* TO_DO: A set of set type evaluation routine should be added. */
@@ -5408,33 +5421,21 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	    }
 	  else
 	    {
-	      msg_temp = parser->error_msgs;
-	      (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET, arg2->data_type);
-	      if (pt_has_error (parser))
+	      if (arg2->node_type == PT_VALUE)
 		{
-		  /* ignore errors */
-		  parser_free_tree (parser, parser->error_msgs);
-		  parser->error_msgs = msg_temp;
-		}
-	    }
-	  if (pt_coerce_value (parser, arg1, arg1, common_type, NULL) != NO_ERROR)
-	    {
-	      expr->type_enum = PT_TYPE_NONE;
-	    }
-	  if (arg2->node_type == PT_VALUE)
-	    {
-	      for (temp = arg2->info.value.data_value.set; temp; temp = temp->next)
-		{
-		  if (common_type != temp->type_enum)
+		  for (temp = arg2->info.value.data_value.set; temp; temp = temp->next)
 		    {
-		      msg_temp = parser->error_msgs;
-		      parser->error_msgs = NULL;
-		      (void) pt_coerce_value (parser, temp, temp, common_type, NULL);
-		      if (pt_has_error (parser))
+		      if (common_type != temp->type_enum)
 			{
-			  parser_free_tree (parser, parser->error_msgs);
+			  msg_temp = parser->error_msgs;
+			  parser->error_msgs = NULL;
+			  (void) pt_coerce_value (parser, temp, temp, common_type, NULL);
+			  if (pt_has_error (parser))
+			    {
+			      parser_free_tree (parser, parser->error_msgs);
+			    }
+			  parser->error_msgs = msg_temp;
 			}
-		      parser->error_msgs = msg_temp;
 		    }
 		}
 	    }
