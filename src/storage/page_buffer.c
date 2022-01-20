@@ -1125,9 +1125,9 @@ STATIC_INLINE void pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder, PAG
 static PGBUF_HOLDER *pgbuf_get_holder (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 static void pgbuf_remove_watcher (PGBUF_HOLDER * holder, PGBUF_WATCHER * watcher_object);
 static int pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher,
-					LOG_LSA * chkpt_smallest_lsa);
+				       const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * chkpt_smallest_lsa);
 static int pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, struct timeval *limit_time,
-					LOG_LSA * chkpt_smallest_lsa, int *time_rem);
+				 const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * chkpt_smallest_lsa, int *time_rem);
 static int pgbuf_initialize_seq_flusher (PGBUF_SEQ_FLUSHER * seq_flusher, PGBUF_VICTIM_CANDIDATE_LIST * f_list,
 					 const int cnt);
 static const char *pgbuf_latch_mode_str (PGBUF_LATCH_MODE latch_mode);
@@ -3597,7 +3597,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
 	  qsort (f_list, seq_flusher->flush_cnt, sizeof (f_list[0]), pgbuf_compare_victim_list);
 
-	  error = pgbuf_flush_chkpt_seq_list (thread_p, seq_flusher, smallest_lsa);
+	  error = pgbuf_flush_chkpt_seq_list (thread_p, seq_flusher, prev_chkpt_redo_lsa, smallest_lsa);
 	  if (error != NO_ERROR)
 	    {
 #if defined (SERVER_MODE)
@@ -3660,7 +3660,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
       qsort (f_list, seq_flusher->flush_cnt, sizeof (f_list[0]), pgbuf_compare_victim_list);
 
-      error = pgbuf_flush_chkpt_seq_list (thread_p, seq_flusher, smallest_lsa);
+      error = pgbuf_flush_chkpt_seq_list (thread_p, seq_flusher, prev_chkpt_redo_lsa, smallest_lsa);
       flushed_page_cnt_local += seq_flusher->flushed_pages;
     }
 
@@ -3685,11 +3685,13 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
  *   return:error code or NO_ERROR
  *   thread_p(in):
  *   seq_flusher(in): container for list of pages
+ *   prev_chkpt_redo_lsa(in): LSA of previous checkpoint
  *   chkpt_smallest_lsa(out): smallest LSA found in a page
  *
  */
 static int
-pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, LOG_LSA * chkpt_smallest_lsa)
+pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher,
+			    const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * chkpt_smallest_lsa)
 {
 #define WAIT_FLUSH_VICTIMS_MAX_MSEC	1500.0f
   int error = NO_ERROR;
@@ -3752,7 +3754,8 @@ pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flu
 	}
 #endif
 
-      error = pgbuf_flush_seq_list (thread_p, seq_flusher, p_limit_time, chkpt_smallest_lsa, &time_rem);
+      error = pgbuf_flush_seq_list (thread_p, seq_flusher, p_limit_time, prev_chkpt_redo_lsa, chkpt_smallest_lsa,
+				    &time_rem);
       total_flushed += seq_flusher->flushed_pages;
 
       if (error != NO_ERROR)
@@ -3781,6 +3784,7 @@ pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flu
  *   thread_p(in):
  *   seq_flusher(in): container for list of pages
  *   limit_time(in): absolute time limit allowed for this call
+ *   prev_chkpt_redo_lsa(in): LSA of previous checkpoint
  *   chkpt_smallest_lsa(out): smallest LSA found in a page
  *   time_rem(in): time remaining until limit time expires
  *
@@ -3795,7 +3799,7 @@ pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flu
  */
 static int
 pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, struct timeval *limit_time,
-		      LOG_LSA * chkpt_smallest_lsa, int *time_rem)
+		      const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * chkpt_smallest_lsa, int *time_rem)
 {
 #define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
   PGBUF_BCB *bufptr;
@@ -13302,6 +13306,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 
 /*
  * pgbuf_assign_private_lru () -
+ *
  *   return: NO_ERROR
  */
 int
