@@ -1256,7 +1256,8 @@ struct btree_helper
 
 STATIC_INLINE PAGE_PTR btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE latch_mode,
 						 VPID * root_vpid_p, BTREE_ROOT_HEADER ** root_header_p,
-						 BTID_INT * btid_int_p) __attribute__ ((ALWAYS_INLINE));
+						 BTID_INT * btid_int_p, bool check_for_desync)
+  __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE bool btree_is_fence_key (PAGE_PTR leaf_page, PGSLOTID slotid) __attribute__ ((ALWAYS_INLINE));
 
@@ -1804,7 +1805,7 @@ static bool btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, cons
  */
 STATIC_INLINE PAGE_PTR
 btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE latch_mode, VPID * root_vpid_p,
-			  BTREE_ROOT_HEADER ** root_header_p, BTID_INT * btid_int_p)
+			  BTREE_ROOT_HEADER ** root_header_p, BTID_INT * btid_int_p, bool check_for_desync)
 {
   PAGE_PTR root_page = NULL;
   VPID vpid;
@@ -1822,7 +1823,14 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
   root_vpid_p->volid = btid->vfid.volid;
 
   /* Fix root page. */
-  root_page = pgbuf_fix (thread_p, root_vpid_p, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  if (check_for_desync)
+    {
+      root_page = pgbuf_fix_old_and_check_repl_desync (thread_p, *root_vpid_p, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+    }
+  else
+    {
+      root_page = pgbuf_fix (thread_p, root_vpid_p, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+    }
   if (root_page == NULL)
     {
       /* Failed fixing root page. */
@@ -15153,7 +15161,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
     {
       root_vpid.pageid = btid->root_pageid;
       root_vpid.volid = btid->vfid.volid;
-      root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, NULL, &bts->btid_int);
+      root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, NULL, &bts->btid_int, false);
       if (root_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -22812,9 +22820,18 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
 
   /* Get root page and BTID_INT. */
   *root_page =
-    btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, (reuse_btid_int ? NULL : btid_int));
+    btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, (reuse_btid_int ? NULL : btid_int),
+			      true);
   if (*root_page == NULL)
     {
+      if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	{
+	  *restart = true;
+	  constexpr VPID null_vpid = VPID_INITIALIZER;
+	  pgbuf_wait_for_replication (thread_p, &null_vpid);
+
+	  return NO_ERROR;
+	}
       /* Error! */
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
@@ -22914,9 +22931,17 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 
       /* Advance to child. */
       assert (!VPID_ISNULL (&child_vpid));
-      *advance_to_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      *advance_to_page =
+	pgbuf_fix_old_and_check_repl_desync (thread_p, child_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (*advance_to_page == NULL)
 	{
+	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      *restart = true;
+	      pgbuf_wait_for_replication (thread_p, &child_vpid);
+
+	      return NO_ERROR;
+	    }
 	  /* Error fixing child. */
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
@@ -26462,7 +26487,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
     {
       /* Fix root and get header/b-tree info to do some additional operations on b-tree. */
       *root_page =
-	btree_fix_root_with_info (thread_p, btid, insert_helper->nonleaf_latch_mode, NULL, &root_header, btid_int);
+	btree_fix_root_with_info (thread_p, btid, insert_helper->nonleaf_latch_mode, NULL, &root_header, btid_int,
+				  false);
       if (*root_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -26472,7 +26498,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   else
     {
       /* Just fix root page. */
-      *root_page = btree_fix_root_with_info (thread_p, btid, insert_helper->nonleaf_latch_mode, NULL, NULL, NULL);
+      *root_page =
+	btree_fix_root_with_info (thread_p, btid, insert_helper->nonleaf_latch_mode, NULL, NULL, NULL, false);
       if (*root_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -26621,7 +26648,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	{
 	  /* Unfix and re-fix root page. */
 	  pgbuf_unfix_and_init (thread_p, *root_page);
-	  *root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_WRITE, NULL, &root_header, btid_int);
+	  *root_page =
+	    btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_WRITE, NULL, &root_header, btid_int, false);
 	  if (*root_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
@@ -29985,7 +30013,8 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   if (delete_helper->is_first_search)
     {
       /* First search: read b-tree info. */
-      *root_page = btree_fix_root_with_info (thread_p, btid, delete_helper->nonleaf_latch_mode, NULL, NULL, btid_int);
+      *root_page =
+	btree_fix_root_with_info (thread_p, btid, delete_helper->nonleaf_latch_mode, NULL, NULL, btid_int, false);
       if (*root_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -29995,7 +30024,8 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   else
     {
       /* Just fix root page. */
-      *root_page = btree_fix_root_with_info (thread_p, btid, delete_helper->nonleaf_latch_mode, NULL, NULL, NULL);
+      *root_page =
+	btree_fix_root_with_info (thread_p, btid, delete_helper->nonleaf_latch_mode, NULL, NULL, NULL, false);
       if (*root_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -35499,7 +35529,7 @@ btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 
   OID_SET_NULL (class_oid);
 
-  root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, NULL);
+  root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, NULL, false);
   if (root_page == NULL)
     {
       return ER_FAILED;
