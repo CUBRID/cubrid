@@ -5825,13 +5825,6 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 
   if (op != PT_WIDTH_BUCKET)
     {
-      if (arg2_eq_type == PT_TYPE_CHAR || arg2_eq_type == PT_TYPE_NCHAR)
-	{
-	  if (arg1_eq_type == PT_TYPE_VARCHAR || arg1_eq_type == PT_TYPE_VARNCHAR)
-	    {
-	      arg2->type_enum = arg2_eq_type = arg1_eq_type;
-	    }
-	}
       error = pt_coerce_expression_argument (parser, expr, &arg2, arg2_eq_type, arg2_dt);
       if (error != NO_ERROR)
 	{
