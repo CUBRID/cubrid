@@ -1635,7 +1635,7 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
       // free data because it is used only for peeking below
       recdes_free_data_area (&record);
 
-      while (overflow_vpid.pageid != NULL_PAGEID)
+      do
 	{
 	  /* delete the records in the overflow pages, if any */
 	  overflow_page_p =
@@ -1661,6 +1661,7 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
 	    }
 	  overflow_vpid = new_overflow_vpid;
 	}
+      while (overflow_vpid.pageid != NULL_PAGEID);
     }
   else
     {
