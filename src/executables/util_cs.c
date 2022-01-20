@@ -4017,12 +4017,10 @@ parse_date_string_to_time (char *date_string)
     {
       return 0;
     }
-  else
-    {
-      time_data.tm_mon -= 1;
-      time_data.tm_year -= 1900;
-      time_data.tm_isdst = -1;
-    }
+
+  time_data.tm_mon -= 1;
+  time_data.tm_year -= 1900;
+  time_data.tm_isdst = -1;
 
   result = mktime (&time_data);
 
