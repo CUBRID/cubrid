@@ -3997,85 +3997,36 @@ error_exit:
 static time_t
 parse_date_string_to_time (char *date_string)
 {
-  int status = NO_ERROR;
-  int date_index = 0;
-  char *save_ptr, *token;
-  const char *delim = "-:";
-
-  struct tm time_data;
-  time_t result_time;
-
   assert (date_string != NULL);
 
-  token = strtok_r (date_string, delim, &save_ptr);
-  while (status == NO_ERROR && token != NULL)
-    {
-      switch (date_index)
-	{
-	case 0:		/* month-day */
-	  time_data.tm_mday = atoi (token);
-	  if (time_data.tm_mday < 1 || time_data.tm_mday > 31)
-	    {
-	      status = ER_GENERIC_ERROR;
-	    }
-	  break;
-	case 1:		/* month */
-	  time_data.tm_mon = atoi (token) - 1;
-	  if (time_data.tm_mon < 0 || time_data.tm_mon > 11)
-	    {
-	      status = ER_GENERIC_ERROR;
-	    }
-	  break;
-	case 2:		/* year */
-	  time_data.tm_year = atoi (token) - 1900;
-	  if (time_data.tm_year < 0)
-	    {
-	      status = ER_GENERIC_ERROR;
-	    }
-	  break;
-	case 3:		/* hour */
-	  time_data.tm_hour = atoi (token);
-	  if (time_data.tm_hour < 0 || time_data.tm_hour > 23)
-	    {
-	      status = ER_GENERIC_ERROR;
-	    }
-	  break;
-	case 4:		/* minute */
-	  time_data.tm_min = atoi (token);
-	  if (time_data.tm_min < 0 || time_data.tm_min > 59)
-	    {
-	      status = ER_GENERIC_ERROR;
-	    }
-	  break;
-	case 5:		/* second */
-	  time_data.tm_sec = atoi (token);
-	  if (time_data.tm_sec < 0 || time_data.tm_sec > 59)
-	    {
-	      status = ER_GENERIC_ERROR;
-	    }
-	  break;
-	default:
-	  status = ER_GENERIC_ERROR;
-	  break;
-	}
-      date_index++;
-      token = strtok_r (NULL, delim, &save_ptr);
-    }
+  time_t result = 0;
+  struct tm time_data = { };
 
-  time_data.tm_isdst = -1;
-
-  if (date_index != 6 || status != NO_ERROR)
+  if (sscanf
+      (date_string, "%d-%d-%d:%d:%d:%d", &time_data.tm_mday, &time_data.tm_mon, &time_data.tm_year, &time_data.tm_hour,
+       &time_data.tm_min, &time_data.tm_sec) != 6)
     {
       return 0;
     }
 
-  result_time = mktime (&time_data);
-  if (result_time < (time_t) 0)
+  if (time_data.tm_mday < 1 || time_data.tm_mday > 31
+      || time_data.tm_mon < 1 || time_data.tm_mon > 12
+      || time_data.tm_year < 1900
+      || time_data.tm_hour < 0 || time_data.tm_hour > 23
+      || time_data.tm_min < 0 || time_data.tm_min > 59 || time_data.tm_sec < 0 || time_data.tm_sec > 59)
     {
       return 0;
     }
+  else
+    {
+      time_data.tm_mon -= 1;
+      time_data.tm_year -= 1900;
+      time_data.tm_isdst = -1;
+    }
 
-  return result_time;
+  result = mktime (&time_data);
+
+  return result < 0 ? 0 : result;
 }
 
 int
@@ -4088,6 +4039,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
   int num_tables = 0;
   dynamic_array *darray = NULL;
   int i = 0;
+  char table_name_buf[SM_MAX_IDENTIFIER_LENGTH];
+  char *table_name;
 
   const char *output_file = NULL;
   FILE *outfp = NULL;
@@ -4144,26 +4097,20 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (num_tables > 0)
+  for (i = 0; i < num_tables; i++)
     {
-      char n[SM_MAX_IDENTIFIER_LENGTH];
-      char *p;
-
-      for (i = 0; i < num_tables; i++)
+      table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
+      if (table_name == NULL)
 	{
-	  p = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
-	  if (p == NULL)
-	    {
-	      continue;
-	    }
+	  continue;
+	}
 
-	  strncpy_bufsize (n, p);
-	  if (da_add (darray, n) != NO_ERROR)
-	    {
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-	      perror ("calloc");
-	      goto error_exit;
-	    }
+      strncpy_bufsize (table_name_buf, table_name);
+      if (da_add (darray, table_name_buf) != NO_ERROR)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	  perror ("calloc");
+	  goto error_exit;
 	}
     }
 
@@ -4293,7 +4240,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
 print_flashback_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 error_exit:
-  fprintf (stderr, "Flashback Error Exit\n");
   if (darray != NULL)
     {
       da_destroy (darray);
