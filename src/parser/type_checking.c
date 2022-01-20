@@ -5410,6 +5410,14 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 			}
 		    }
 		}
+	      /*
+	         (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET, arg2->data_type);
+		 This routine is disabled.
+	         Because arg2->data_type(set of set) might not be evaluated correctly, the corresponding routine is disabled.
+	         Enable it after the data type of set of set is evaluated correctly.
+	         The same routine is performed in eliminate_duplicated_keys().
+	         Here, the type is kept to MULTISET"
+	       */
 	    }
 	  else
 	    {
@@ -5456,9 +5464,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       if (common_type == PT_TYPE_NONE	/* check if there is a valid common type between members of arg2 and arg1. */
 	  || (!should_cast	/* check if there are at least two different types in arg2 */
 	      && (collection_type == common_type
-		  || (PT_IS_NUMERIC_TYPE (collection_type) && PT_IS_NUMERIC_TYPE (common_type))
-		  || (arg2_type == PT_TYPE_SEQUENCE
-		      && (PT_IS_CHAR_STRING_TYPE (collection_type) && PT_IS_CHAR_STRING_TYPE (common_type))))))
+		  || (PT_IS_NUMERIC_TYPE (collection_type) && PT_IS_NUMERIC_TYPE (common_type)))))
 	{
 	  return expr;
 	}
