@@ -5729,6 +5729,35 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		  arg1_eq_type = PT_TYPE_DOUBLE;
 		}
 	    }
+	  else if (PT_IS_NAME_NODE (arg2) && PT_IS_VALUE_NODE (arg1) && arg3_type == PT_TYPE_NONE
+		   && arg2_type != PT_TYPE_ENUMERATION)
+	    {
+	      arg1_eq_type = arg2_eq_type = arg2_type;
+	      if (arg1_type != arg2_type && PT_IS_NUMERIC_TYPE (arg2_type) && arg2_type != PT_TYPE_NUMERIC
+		  && op != PT_EQ && op != PT_EQ_SOME && op != PT_EQ_ALL)
+		{
+		  arg1_eq_type = PT_TYPE_DOUBLE;
+		}
+	    }
+	  else if (PT_ARE_COMPARABLE_CHAR_TYPE (arg1_type, arg2_type))
+	    {
+	      if (PT_IS_NAME_NODE (arg1) && !PT_IS_NAME_NODE (arg2))
+		{
+		  arg1_eq_type = arg2_eq_type = arg1_type;
+		  if (arg3_type != PT_TYPE_NONE)
+		    {
+		      arg3_eq_type = arg1_type;
+		    }
+		}
+	      if (PT_IS_NAME_NODE (arg2) && !PT_IS_NAME_NODE (arg1))
+		{
+		  arg1_eq_type = arg2_eq_type = arg2_type;
+		  if (arg3_type != PT_TYPE_NONE)
+		    {
+		      arg3_eq_type = arg1_type;
+		    }
+		}
+	    }
 	}
 
       if (pt_is_comp_op (op))
