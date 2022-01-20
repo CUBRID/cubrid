@@ -110,7 +110,7 @@ static GENERIC_FUNCTION_RECORD pt_Generic_functions[] = {
 
 /* Two types are comparable if they are NUMBER types or same CHAR type */
 #define PT_ARE_COMPARABLE(typ1, typ2) \
-  ((typ1 == typ2) || PT_ARE_COMPARABLE_CHAR_TYPE (typ1, typ2) || PT_ARE_COMPARABLE_NUMERIC_TYPE (typ1, typ2))
+  ((typ1 == typ2) || PT_ARE_COMPARABLE_NUMERIC_TYPE (typ1, typ2))
 
 #define PT_IS_RECURSIVE_EXPRESSION(node) \
   ((node)->node_type == PT_EXPR && (PT_IS_LEFT_RECURSIVE_EXPRESSION (node) || PT_IS_RIGHT_RECURSIVE_EXPRESSION (node)))
@@ -5829,7 +5829,7 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	{
 	  if (arg1_eq_type == PT_TYPE_VARCHAR || arg1_eq_type == PT_TYPE_VARNCHAR)
 	    {
-	      arg2_eq_type = arg1_eq_type;
+	      arg2->type_enum = arg2_eq_type = arg1_eq_type;
 	    }
 	}
       error = pt_coerce_expression_argument (parser, expr, &arg2, arg2_eq_type, arg2_dt);
