@@ -31,12 +31,14 @@ user="-u dba"
 pass=""
 total_pages=0
 filename=""
-target_dir=$(pwd)
 from_file=0
 num_args_remain=0
 logdir=""
 current_dir=
 cwd=$(pwd)
+target_dir=$cwd
+opt_schema=0
+opt_data=0
 
 slot=()
 
@@ -130,13 +132,15 @@ function verify_user_pass ()
 
 function get_options ()
 {
-         while getopts ":D:u:i:t:v" opt; do
+         while getopts ":D:u:i:t:sdv" opt; do
                 case $opt in
                         u ) user="-u $OPTARG" ;;
                         i ) filename="$OPTARG" ;from_file=1 ;;
                         t ) num_proc="$OPTARG" ;;
                         D ) target_dir="$OPTARG" ;;
                         v ) verbose="yes" ;;
+                        s ) opt_schema=1 ;;
+                        d ) opt_data=1 ;;
                 esac
         done
 
@@ -218,6 +222,9 @@ function do_unloaddb ()
         local current_dir=$(pwd)
         local file=$log_prefix".files"
         local unloaddb_opts="$user $pass --output-prefix=$prefix -d --input-class-only"
+        local opts="$user $pass -s "
+        local do_schema_unload=0
+        local do_data_unload=0
 
         for ((i = 0; i < $num_tables; i++))
         do
@@ -234,7 +241,30 @@ function do_unloaddb ()
 
         echo "process $slot_num: starting" > $log_prefix.status
 
-	  (silent_cd $target_dir; cubrid unloaddb $unloaddb_opts --input-class-file $file $database) &
+        #
+        # Do unloadb for whole schema in the process 0
+        if [ $opt_schema -eq 1 ] || [ $opt_schema -eq 0 -a $opt_data -eq 0 ];then
+                if [ $slot_num -eq 0 ];then
+                        do_schema_unload=1
+                fi
+        fi
+
+        if [ $opt_data -eq 1 ] || [ $opt_schema -eq 0 -a $opt_data -eq 0 ];then
+                do_data_unload=1
+        fi
+
+        if [ $do_schema_unload -eq 1 ];then
+                if [ $from_file -eq 1 ];then
+                        opts=$opts" --input-class-only --input-class-file $filename"
+                fi
+                (silent_cd $target_dir;cubrid unloaddb $opts $database) &
+        fi
+
+        if [ $do_data_unload -eq 0 ];then
+                return
+        fi
+
+        (silent_cd $target_dir; cubrid unloaddb $unloaddb_opts --input-class-file $file $database) &
         pid=$!
 
         echo $pid > $log_prefix.pid
