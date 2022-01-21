@@ -3376,7 +3376,7 @@ start:
 
       /* If version of current block is UINT64_MAX, previous block version < current block version is true */
       assert (DWB_GET_PREV_BLOCK (flush_block->block_no)->version > flush_block->version
-	      || flush_block->version == UINT64_MAX);
+	      || flush_block->block_no == 0 || flush_block->version == UINT64_MAX);
 
       error_code = dwb_flush_block (thread_p, flush_block, true, NULL);
       if (error_code != NO_ERROR)
