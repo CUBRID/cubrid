@@ -35,6 +35,8 @@ target_dir=$(pwd)
 from_file=0
 num_args_remain=0
 logdir=""
+current_dir=
+cwd=$(pwd)
 
 slot=()
 
@@ -62,24 +64,26 @@ function show_usage ()
 #
 function cleanup ()
 {
-        local i
-        local pid
-        local exit_stat
+	local i
+	local pid
+	local exit_stat
+	local pid_file
 
 	echo "interrupted"
 
-        for ((i = 0; i < $num_proc; i++))
-        do
-                if [ -f $database.$i/unloaddb_$i.pid ];then
-                        pid=$(cat $database.$i/unloaddb_$i.pid)
+	for ((i = 0; i < $num_proc; i++))
+	do
+		pid_file=$logdir/"$database"_$i.pid
+		if [ -f $pid_file ];then
+			pid=$(cat $pid_file)
 
-                        kill -0 $pid 2> /dev/null
-                        if [ $? -eq 0 ];then
-                                kill -9 $pid
-                                rm -rf $database.$i
-                        fi
-                fi
-        done
+			kill -0 $pid 2> /dev/null
+			if [ $? -eq 0 ];then
+				kill -9 $pid
+				rm -f "$database"_$i"_objects"
+			fi
+		fi
+	done
 }
 
 function get_password ()
@@ -204,11 +208,16 @@ function do_unloaddb ()
 {
         local slot_num=$1
         local i
-        local file="Tables_unloaded_$database.$slot_num"
         local num_tables_in_slot=0
         local msg="Success"
         local pid
         local buf
+        local prefix="$database"_$slot_num
+        local log_prefix=$logdir/$prefix
+        local unloaddb_log=$prefix"_unloaddb.log"
+        local current_dir=$(pwd)
+        local file=$log_prefix".files"
+        local unloaddb_opts="$user $pass --output-prefix=$prefix -d --input-class-only"
 
         for ((i = 0; i < $num_tables; i++))
         do
@@ -223,20 +232,25 @@ function do_unloaddb ()
                 echo "Proc $slot_num: num tables: $buf, ${slot_size[$slot_num]} bytes"
         fi
 
-        echo "process $slot_num: starting" > unloaddb_$slot_num.status
+        echo "process $slot_num: starting" > $log_prefix.status
 
-	cubrid unloaddb $user $pass --input-class-only --input-class-file $file $database &
+	  (silent_cd $target_dir; cubrid unloaddb $unloaddb_opts --input-class-file $file $database) &
         pid=$!
 
-        echo $pid > unloaddb_$slot_num.pid
+        echo $pid > $log_prefix.pid
 
         wait $pid
 
         if [ $? -ne 0 ];then
                 msg="Failed"
-                echo "process $slot_num: failed" > unloaddb_$slot_num.status
+                echo "process $slot_num: failed" > $log_prefix.status
         else
-                echo "process $slot_num: success" > unloaddb_$slot_num.status
+                echo "process $slot_num: success" > $log_prefix.status
+        fi
+
+        # move 'cubrid unloaddb ..' output to logdir
+        if [ -f $target_dir/$unloaddb_log ];then
+                mv $target_dir/$unloaddb_log $logdir
         fi
 
         if [ $verbose = "yes" ];then
@@ -329,7 +343,18 @@ if [ ! -d $target_dir ];then
         exit
 fi
 
+# make full path from "/"
+if [ ! -z $filename ] && [ ${filename:0:1} != "/" ];then
+        filename="$cwd/"$filename
+fi
+
 check_database $database
+
+logdir=$cwd"/"$database"_"unloaddb.log
+if [ -d $logdir ];then
+	rm -rf $logdir
+fi
+mkdir $logdir
 
 verify_user_pass
 
@@ -363,20 +388,6 @@ do
 done
 
 echo "Total $num_tables tables, $total_pages pages"
-# Do unloaddb for each process
-#
-# check and create sub-directories for each process
-for ((i = 0; i < $num_proc; i++))
-do
-	if [ ${num_tables_slot[i]} -ne 0 ];then
-		if [ -f $database.$i ] || [ -d $database.$i ];then
-			echo "$database.$i: File or directory already exist."
-			exit 1
-		fi
-
-		mkdir $target_dir/$database.$i
-	fi
-done
 
 #
 # RUN unloaddb process cuncurrently
@@ -384,7 +395,7 @@ done
 for ((i = 0; i < $num_proc; i++))
 do
         if [ ${slot_size[i]} -gt 0 ];then
-	       (silent_cd $target_dir/$database.$i; do_unloaddb $i) &
+	       do_unloaddb $i &
         fi
 done
 
