@@ -2351,7 +2351,8 @@ pgbuf_fix_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid,
  * pgbuf_wait_for_replication () - Wait for replication to catch up
  *   return: void
  *   thread_p:                  thread pointer
- *   optional_vpid_for_logging: Optional vpid argument used for logging, a null vpid can be provided if no valid value is available
+ *   optional_vpid_for_logging: Optional vpid argument used for logging, a null vpid can be provided
+ *                              if no valid value is available
  */
 void
 pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * optional_vpid_for_logging)
