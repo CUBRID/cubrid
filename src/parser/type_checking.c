@@ -5749,7 +5749,7 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		  arg1_eq_type = arg2_eq_type = arg2_type;
 		  if (arg3_type != PT_TYPE_NONE)
 		    {
-		      arg3_eq_type = arg1_type;
+		      arg3_eq_type = arg2_type;
 		    }
 		}
 	    }
