@@ -5664,12 +5664,14 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
   if (arg1)
     {
       arg1_type = arg1->type_enum;
+      arg1_dt = arg1->data_type;
     }
 
   arg2 = expr->info.expr.arg2;
   if (arg2)
     {
       arg2_type = arg2->type_enum;
+      arg2_dt = arg2->data_type;
 
       if (op == PT_WIDTH_BUCKET)
 	{
@@ -5681,6 +5683,7 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
   if (arg3)
     {
       arg3_type = arg3->type_enum;
+      arg3_dt = arg3->data_type;
     }
 
   arg1_eq_type = pt_get_equivalent_type_with_op (sig.arg1_type, arg1_type, op);
