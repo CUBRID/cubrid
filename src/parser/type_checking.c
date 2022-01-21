@@ -4955,7 +4955,19 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
 	}
       else
 	{
-	  new_node = pt_wrap_with_cast_op (parser, node, def_type, precision, scale, new_dt);
+	  /* if the node is comparable with char-type we don't need to cast it */
+	  if (PT_ARE_COMPARABLE_CHAR_TYPE (node->type_enum, def_type))
+	    {
+	      if (pt_coerce_value (parser, node, node, def_type, data_type) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	      new_node = node;
+	    }
+	  else
+	    {
+	      new_node = pt_wrap_with_cast_op (parser, node, def_type, precision, scale, new_dt);
+	    }
 	}
       if (new_node == NULL)
 	{
