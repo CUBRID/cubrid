@@ -7471,8 +7471,8 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     }
 
   log_lsa trantable_checkpoint_lsa = NULL_LSA;
-  {
-    LOG_CS_ENTER (thread_p);
+
+  LOG_CS_ENTER (thread_p);
     // *INDENT-OFF*
     scope_exit<std::function<void (void)>> unlock_log_cs_on_exit ([thread_p] ()
     {
@@ -7482,60 +7482,58 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     cublog::checkpoint_info trantable_checkpoint_info;
     // *INDENT-ON*
 
-    if (detailed_logging)
-      {
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: started, loading trantable\n");
-      }
-    LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
-    trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: started, loading trantable\n");
+    }
+  LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
+  trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
 
-    // Currently the transaction table snapshot is saved in two places:
-    //
-    //    1) In the log, to be passed to the passive transaction server; the PTS will use it during the boot.
-    //    2) In the local meta-log, to be used by the ATS for recovery after a crash.
-    //
-    // todo: The local meta-log snapshot copy could be removed and also the ATS recovery could get its snapshot from
-    // the log.
+  // Currently the transaction table snapshot is saved in two places:
+  //
+  //    1) In the log, to be passed to the passive transaction server; the PTS will use it during the boot.
+  //    2) In the local meta-log, to be used by the ATS for recovery after a crash.
+  //
+  // TODO: The local meta-log snapshot copy could be removed and also the ATS recovery could get its snapshot from
+  // the log.
 
-    // Append to log
-    log_append_trantable_snapshot (thread_p, trantable_checkpoint_info);
+  log_append_trantable_snapshot (thread_p, trantable_checkpoint_info);
 
-    // Write to log meta file
+  // Write to log meta file
 
-    // loading the transaction table snapshot ensures also that a snapshot lsa has been set
-    trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
+  // loading the transaction table snapshot ensures also that a snapshot lsa has been set
+  trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
 
-    if (detailed_logging)
-      {
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: adding with lsa=%lld|%d\n",
-		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
-      }
-    log_Gl.m_metainfo.add_checkpoint_info (trantable_checkpoint_lsa, std::move (trantable_checkpoint_info));
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: adding with lsa=%lld|%d\n",
+		     LSA_AS_ARGS (&trantable_checkpoint_lsa));
+    }
+  log_Gl.m_metainfo.add_checkpoint_info (trantable_checkpoint_lsa, std::move (trantable_checkpoint_info));
 
-    log_write_metalog_to_file (false);
+  log_write_metalog_to_file (false);
 
-    // function explicitly needs to be called in critical section-free context
-    LOG_CS_EXIT (thread_p);
-    logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
-    LOG_CS_ENTER (thread_p);
+  // function explicitly needs to be called in critical section-free context
+  LOG_CS_EXIT (thread_p);
+  logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
+  LOG_CS_ENTER (thread_p);
 
-    // drop previous checkpoints and persist to disk
-    if (detailed_logging)
-      {
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
-		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
-      }
+  // drop previous checkpoints and persist to disk
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
+		     LSA_AS_ARGS (&trantable_checkpoint_lsa));
+    }
 
-    // - in nominal conditions, there should be one previous checkpoint that is removed
-    // - in abnormal conditions - such as when the system crashed just after adding a new
-    //    checkpoint and before deleting the outdated checkpoint - there can be more than
-    //    one checkpoint to be removed
-    log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
+  // - in nominal conditions, there should be one previous checkpoint that is removed
+  // - in abnormal conditions - such as when the system crashed just after adding a new
+  //    checkpoint and before deleting the outdated checkpoint - there can be more than
+  //    one checkpoint to be removed
+  log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
 
-    assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
+  assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
 
-    log_write_metalog_to_file (false);
-  }
+  log_write_metalog_to_file (false);
 
   if (detailed_logging)
     {
