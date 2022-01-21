@@ -4071,6 +4071,12 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto print_flashback_usage;
     }
 
+  if (check_database_name (database_name))
+    {
+      fprintf (stderr, "wrong dbname\n");
+      goto error_exit;
+    }
+
   output_file = utility_get_option_string_value (arg_map, FLASHBACK_OUTPUT_S, 0);
   user = utility_get_option_string_value (arg_map, FLASHBACK_USER_S, 0);
   dba_password = utility_get_option_string_value (arg_map, FLASHBACK_DBA_PASSWORD_S, 0);
@@ -4078,12 +4084,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
   end_date = utility_get_option_string_value (arg_map, FLASHBACK_END_DATE_S, 0);
   is_detail = utility_get_option_bool_value (arg_map, FLASHBACK_DETAIL_S);
   is_oldest = utility_get_option_bool_value (arg_map, FLASHBACK_OLDEST_S);
-
-  if (check_database_name (database_name))
-    {
-      fprintf (stderr, "wrong dbname\n");
-      goto error_exit;
-    }
 
   /* create table list */
   /* class existence and classoid will be found at server side. if is checked at utility side, it needs addtional access to the server through locator */
@@ -4098,10 +4098,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
   for (i = 0; i < num_tables; i++)
     {
       table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
-      if (table_name == NULL)
-	{
-	  continue;
-	}
 
       strncpy_bufsize (table_name_buf, table_name);
       if (da_add (darray, table_name_buf) != NO_ERROR)
@@ -4156,7 +4152,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
   /* 1. start time < end time
    * 2. start time is required to be set after db_creation time (server side check)
    * 3. start time, and end time are required to be set within the log volume range (server side check) */
-  if (start_time > end_time)
+  if (start_time >= end_time)
     {
       fprintf (stderr, "start time(%lld) is larger than end time(%lld)\n", start_time, end_time);
       goto error_exit;
