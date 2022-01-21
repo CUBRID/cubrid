@@ -146,7 +146,7 @@ function get_options ()
         database=$*
 }
 
-function check_database ()
+function is_db_server_running ()
 {
         local db=$database
 
@@ -348,7 +348,7 @@ if [ ! -z $filename ] && [ ${filename:0:1} != "/" ];then
         filename="$cwd/"$filename
 fi
 
-check_database $database
+is_db_server_running $database
 
 logdir=$cwd"/"$database"_"unloaddb.log
 if [ -d $logdir ];then
