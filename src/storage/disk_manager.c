@@ -4665,9 +4665,8 @@ disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
 static int
 disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, int nsects, VSID * vsids)
 {
-  int start_index = 0;
-  int end_index = 0;
   int index;
+  int anchor;
   VOLID volid = NULL_VOLID;
   DISK_RESERVE_CONTEXT context;
   int error_code = NO_ERROR;
@@ -4680,19 +4679,19 @@ disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPUR
   context.purpose = purpose;
 
   /* note: vsids are ordered */
-  for (start_index = 0; start_index < nsects; start_index = end_index)
+  anchor = 0; /*variable for index remembering*/
+  for (index = 0; index < nsects - 1; index++)
     {
-      assert (volid < vsids[start_index].volid);
-      volid = vsids[start_index].volid;
-      for (end_index = start_index + 1; end_index < nsects && vsids[end_index].volid == volid; end_index++)
-	{
-	  assert (vsids[end_index].sectid > vsids[end_index - 1].sectid);
-	}
-      context.cache_vol_reserve[context.n_cache_vol_reserve].nsect = end_index - start_index;
-      context.cache_vol_reserve[context.n_cache_vol_reserve].volid = volid;
-      context.n_cache_vol_reserve++;
+      assert (volid < vsids[index].volid);
+      if (volid > vsids[index].volid || index == nsects - 2) {
+        volid = vsids[index].volid;
+        context.cache_vol_reserve[context.n_cache_vol_reserve].nsect = anchor - index + 1;
+        context.cache_vol_reserve[context.n_cache_vol_reserve].volid = volid;
+        context.n_cache_vol_reserve++;
+        anchor = index;
+      }
     }
-  assert (end_index == nsects);
+  assert (anchor == nsects);
 
   disk_log ("disk_unreserve_ordered_sectors", "unreserve sectors.\n" DISK_RESERVE_CONTEXT_MSG,
 	    DISK_RESERVE_CONTEXT_AS_ARGS (&context));
