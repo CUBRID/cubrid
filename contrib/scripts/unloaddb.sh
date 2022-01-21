@@ -143,6 +143,7 @@ function get_options ()
                         v ) verbose="yes" ;;
                         s ) opt_schema=1 ;;
                         d ) opt_data=1 ;;
+                        \? ) echo "unknown option -$OPTARG"; show_usage; exit 1 ;;
                 esac
         done
 
