@@ -1027,6 +1027,10 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   log_system_tdes::rv_final ();
   // *INDENT-ON*
 
+  // boot has not yet finished; calling this here should not collide with a possible execution
+  // of the checkpoint triggered by the checkpoint trantable daemon
+  logpb_checkpoint_trantable (thread_p);
+
   error_code = locator_initialize (thread_p);
   if (error_code != NO_ERROR)
     {
