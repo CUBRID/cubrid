@@ -4955,19 +4955,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
 	}
       else
 	{
-	  /* if the node is comparable with char-type we don't need to cast it */
-	  if (PT_ARE_COMPARABLE_CHAR_TYPE (node->type_enum, def_type))
-	    {
-	      if (pt_coerce_value (parser, node, node, def_type, data_type) != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
-	      new_node = node;
-	    }
-	  else
-	    {
-	      new_node = pt_wrap_with_cast_op (parser, node, def_type, precision, scale, new_dt);
-	    }
+	  new_node = pt_wrap_with_cast_op (parser, node, def_type, precision, scale, new_dt);
 	}
       if (new_node == NULL)
 	{
@@ -5664,14 +5652,12 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
   if (arg1)
     {
       arg1_type = arg1->type_enum;
-      arg1_dt = arg1->data_type;
     }
 
   arg2 = expr->info.expr.arg2;
   if (arg2)
     {
       arg2_type = arg2->type_enum;
-      arg2_dt = arg2->data_type;
 
       if (op == PT_WIDTH_BUCKET)
 	{
@@ -5683,7 +5669,6 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
   if (arg3)
     {
       arg3_type = arg3->type_enum;
-      arg3_dt = arg3->data_type;
     }
 
   arg1_eq_type = pt_get_equivalent_type_with_op (sig.arg1_type, arg1_type, op);
