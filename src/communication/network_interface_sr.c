@@ -10698,3 +10698,187 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
 
   return;
 }
+
+static int
+flashback_verfy_time (THREAD_ENTRY * thread_p, time_t time, LOG_LSA * lsa)
+{
+  int error_code = NO_ERROR;
+
+  if (time < log_Gl.hdr.db_creation)
+    {
+      return ER_FLASHBACK_INVALID_TIME;
+    }
+  else
+    {
+      time_t tmp = time;
+      error_code = cdc_find_lsa (thread_p, &time, lsa);
+      if (abs (tmp - time) > 1)
+	{
+	  return ER_FLASHBACK_INVALID_TIME;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+void
+sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area = NULL;
+  int area_size = 0;
+
+  int error_code = NO_ERROR;
+  char *ptr;
+  char *start_ptr;
+  OID *oid = NULL;
+  LC_FIND_CLASSNAME status;
+  int num_table;
+
+  char *user = NULL;
+  time_t start_time = 0;
+  time_t end_time = 0;
+
+  LOG_LSA start_lsa = LSA_INITIALIZER;
+  LOG_LSA end_lsa = LSA_INITIALIZER;
+
+  ptr = or_unpack_int (request, &num_table);
+
+  oid = (OID *) malloc (sizeof (OID) * num_table);
+  if (oid == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  for (int i = 0; i < num_table; i++)
+    {
+      char *classname = NULL;
+
+      ptr = or_unpack_string_nocopy (ptr, &classname);
+
+      status = xlocator_find_class_oid (thread_p, classname, &oid[i], NULL_LOCK);
+      if (status != LC_CLASSNAME_EXIST)
+	{
+	  error_code = ER_FLASHBACK_INVALID_CLASS;
+	  goto error;
+	}
+    }
+  ptr = or_unpack_string_nocopy (ptr, &user);
+  ptr = or_unpack_int64 (ptr, &start_time);
+  if ((error_code = flashback_verfy_time (thread_p, start_time, &start_lsa)) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  ptr = or_unpack_int64 (ptr, &end_time);
+  if ((error_code = flashback_verfy_time (thread_p, end_time, &end_lsa)) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  area_size = OR_INT_SIZE + OR_OID_SIZE * num_table;
+
+  area = (char *) db_private_alloc (thread_p, area_size);	/* summary info size will be added */
+  if (area == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  /* reply packing : error_code | area size */
+  ptr = or_pack_int (reply, error_code);
+  ptr = or_pack_int (ptr, area_size);
+
+  /* area packing : OID list | summary info list */
+  ptr = area;
+  for (int i = 0; i < num_table; i++)
+    {
+      ptr = or_pack_oid (ptr, &oid[i]);
+    }
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+
+  db_private_free_and_init (thread_p, area);
+error:
+  or_pack_int (reply, error_code);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (oid != NULL)
+    {
+      free_and_init (oid);
+    }
+  return;
+}
+
+void
+sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area = NULL;
+  int area_size = 0;
+
+  int error_code = NO_ERROR;
+  char *ptr;
+  char *start_ptr;
+  OID *oid = NULL;
+
+  int trid;
+  int num_table;
+  char *user = NULL;
+
+  LOG_LSA start_lsa = LSA_INITIALIZER;
+  LOG_LSA end_lsa = LSA_INITIALIZER;
+
+  int num_item;
+  bool forward;
+
+  /* request : trid | user | num_table | table oid list | start_lsa | end_lsa | num_item | forward/backward */
+
+  ptr = or_unpack_int (request, &trid);
+  ptr = or_unpack_string_nocopy (ptr, &user);
+  ptr = or_unpack_int (ptr, &num_table);
+  for (int i = 0; i < num_table; i++)
+    {
+      ptr = or_unpack_oid (ptr, &oid[i]);
+    }
+
+  ptr = or_unpack_log_lsa (ptr, &start_lsa);
+  ptr = or_unpack_log_lsa (ptr, &end_lsa);
+  ptr = or_unpack_int (ptr, &num_item);
+  ptr = or_unpack_int (ptr, (int *) &forward);
+
+  /* reply : start lsa | end lsa | num item | ...| */
+
+  /* TODO : flashback result will be added */
+  area_size = OR_LOG_LSA_ALIGNED_SIZE * 2 + OR_INT_SIZE;
+
+  area = (char *) db_private_alloc (thread_p, area_size);
+  if (area == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  /* reply packing : error_code | area size */
+  ptr = or_pack_int (reply, error_code);
+  ptr = or_pack_int (ptr, area_size);
+
+  /* area packing : start lsa | end lsa | num item | item list */
+  ptr = or_pack_log_lsa (area, &start_lsa);
+  ptr = or_pack_log_lsa (ptr, &end_lsa);
+  ptr = or_pack_int (ptr, num_item);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+
+  db_private_free_and_init (thread_p, area);
+error:
+  or_pack_int (reply, error_code);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
+}
