@@ -4679,7 +4679,7 @@ disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPUR
   context.purpose = purpose;
 
   /* note: vsids are ordered */
-  anchor = 0; /*variable for index remembering*/
+  anchor = 0;
   for (index = 0; index < nsects - 1; index++)
     {
       assert (volid < vsids[index].volid);
