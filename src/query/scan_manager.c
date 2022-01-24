@@ -1179,16 +1179,12 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
       if (key_type == DB_TYPE_MIDXKEY)
 	{
 	  rc =
-	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL, NULL,
-				NULL, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
+	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL,
+				NULL, NULL, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
 	}
       else
 	{
-	  /*
-	   * we need to compare without ignoring trailing space
-	   * corece = 3 enforce"no-ignore trailing space
-	   */
-	  rc = tp_value_compare (val1, val2, coerce, 1);
+	  rc = tp_value_compare (val1, val2, 1, 1);
 	}
     }
 
@@ -1308,19 +1304,13 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
   int n;
   KEY_VAL_RANGE *curp, *nextp;
-  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
-  static int coerce = (ignore_trailing_space) ? 1 : 3;
 
   curp = key_vals;
   nextp = key_vals + 1;
   n = 0;
   while (key_cnt > 1 && n < key_cnt - 1)
     {
-      /*
-       * we need to compare without ignoring trailing space
-       * corece = 3 enforce"no-ignore trailing space
-       */
-      if (tp_value_compare (&curp->key1, &nextp->key1, coerce, 1) == DB_EQ)
+      if (tp_value_compare (&curp->key1, &nextp->key1, 1, 1) == DB_EQ)
 	{
 	  pr_clear_value (&nextp->key1);
 	  pr_clear_value (&nextp->key2);
@@ -8028,7 +8018,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
-	      MAKE_TUPLE_POSTION(tuple_pos, hvalue->pos, scan_id_p);
+	      MAKE_TUPLE_POSTION (tuple_pos, hvalue->pos, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
 		  return S_ERROR;
@@ -8059,7 +8049,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
 	      simple_pos = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->pos;
-	      MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p);
+	      MAKE_TUPLE_POSTION (tuple_pos, simple_pos, scan_id_p);
 
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
@@ -8171,11 +8161,11 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     {
       return HASH_METH_IN_MEM;
     }
-  else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
+  else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
     {
       /* bytes of 1 row = sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS) = 36 bytes (64bit) */
-      /* HENTRY_HLS = pointer(8bytes) * 3 = 24 bytes*/
-      /* SIMPLE_POS = pageid(4bytes) + voldid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes*/
+      /* HENTRY_HLS = pointer(8bytes) * 3 = 24 bytes */
+      /* SIMPLE_POS = pageid(4bytes) + voldid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes */
       return HASH_METH_HYBRID;
     }
   else
