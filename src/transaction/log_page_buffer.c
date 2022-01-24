@@ -1915,9 +1915,10 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, pageid);
       if (log_csect_entered)
         {
-          LOG_CS_EXIT (thread_p);
+          rv = ER_LOG_PAGE_CORRUPTED;
+          goto exit;
         }
-	  return ER_LOG_PAGE_CORRUPTED;
+      return ER_LOG_PAGE_CORRUPTED;
     }
 
   if (log_bufptr->pageid == pageid)
