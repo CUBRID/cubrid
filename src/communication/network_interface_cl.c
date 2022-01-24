@@ -10564,7 +10564,7 @@ loaddb_update_stats ()
 
 int
 flashback_get_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
-		       void *summary_list, OID * oid_list)
+		       void *summary_list, OID ** oid_list)
 {
 #if defined(CS_MODE)
   int req_error = ER_FAILED;
@@ -10575,15 +10575,14 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 
   char table[SM_MAX_IDENTIFIER_LENGTH];
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *area;
   int area_size;
 
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
   num_tables = da_size (class_list);
 
+  /* request : num tables | table name list | user | start_time | end_time */
   request_size = or_packed_string_length (user, NULL) + OR_INT64_SIZE + OR_INT64_SIZE;
 
   for (int i = 0; i < num_tables; i++)
@@ -10602,7 +10601,7 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
       return ER_FAILED;
     }
 
-  ptr = start_ptr = PTR_ALIGN (request, INT_ALIGNMENT);
+  ptr = start_ptr = PTR_ALIGN (request, MAX_ALIGNMENT);
 
   ptr = or_pack_int (ptr, num_tables);
   for (int i = 0; i < num_tables; i++)
@@ -10626,15 +10625,15 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 
   if (!req_error)
     {
-      ptr = or_unpack_int (reply, &rep_error);
-      ptr = or_unpack_int (ptr, &area_size);
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &rep_error);
       if (area_size > 0)
 	{
 	  ptr = area;
-	  /* get OID list | summary info list  */
+	  /* area : OID list | summary info list  */
 	  for (int i = 0; i < num_tables; i++)
 	    {
-	      ptr = or_unpack_oid (ptr, &oid_list[i]);
+	      ptr = or_unpack_oid (ptr, &(*oid_list)[i]);
 	    }
 	  /* get summary info */
 	}
@@ -10659,12 +10658,12 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_table, LOG
   int request_size = 0;
   char *request = NULL, *ptr, *start_ptr;
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *area;
   int area_size;
 
-  /* request with : tranid, user, classlist, start_lsa, end_lsa, num_item, forward/backward */
+  /* request with : tranid, user, num class, classlist, start_lsa, end_lsa, num_item, forward/backward */
 
   request_size =
     OR_INT_SIZE + or_packed_string_length (user,
@@ -10678,7 +10677,7 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_table, LOG
       return ER_FAILED;
     }
 
-  ptr = start_ptr = PTR_ALIGN (request, INT_ALIGNMENT);
+  ptr = start_ptr = PTR_ALIGN (request, MAX_ALIGNMENT);
 
   ptr = or_pack_int (ptr, trid);
   ptr = or_pack_string (ptr, user);
@@ -10690,18 +10689,18 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_table, LOG
   ptr = or_pack_log_lsa (ptr, start_lsa);
   ptr = or_pack_log_lsa (ptr, end_lsa);
   ptr = or_pack_int (ptr, *num_item);
-  ptr = or_pack_int (ptr, forward);
+  ptr = or_pack_int (ptr, (int) forward);
 
   request_size = ptr - start_ptr;
 
   req_error =
-    net_client_request2 (NET_SERVER_FLASHBACK_GET_SUMMARY, start_ptr, request_size, reply,
+    net_client_request2 (NET_SERVER_FLASHBACK_GET_LOGINFO, start_ptr, request_size, reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
 
   if (!req_error)
     {
-      ptr = or_unpack_int (reply, &rep_error);
-      ptr = or_unpack_int (ptr, &area_size);
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &rep_error);
       if (area_size > 0)
 	{
 	  /* area : start lsa | end lsa | num item | item list */
