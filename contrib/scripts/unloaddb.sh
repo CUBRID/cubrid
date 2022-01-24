@@ -438,7 +438,6 @@ echo ""
 for ((i = 0; i < $num_tables; i++))
 do
 	this_slot=$(find_least_loaded_proc)
-	tbl=${table_selected[i]}
 	slot[i]=$this_slot
 
 	let "slot_size[$this_slot]+=${table_size[$i]}"
