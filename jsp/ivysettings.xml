@@ -12,9 +12,13 @@
         <!-- from CUBRID artifactory -->
         <ibiblio name="cubrid-artifactory" m2compatible="true" root="http://maven.cubrid.org/"/>
 
+        <!-- from Maven Repository -->
+        <ibiblio name="maven-repo1" m2compatible="true" root="https://repo1.maven.org/maven2/"/>
+
         <chain name="cubrid-javasp-chain" returnFirst="true">
             <resolver ref="cubrid-jdbc-submodule"/>
             <resolver ref="cubrid-artifactory"/>
+            <resolver ref="maven-repo1"/>
         </chain>
     </resolvers>
     <latest-strategies>

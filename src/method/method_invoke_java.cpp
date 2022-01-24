@@ -523,7 +523,7 @@ namespace cubmethod
 	while (s_code == S_SUCCESS)
 	  {
 	    s_code = cursor->next_row ();
-	    if (s_code == S_END || i > 1000)
+	    if (s_code == S_END || i > 100)
 	      {
 		break;
 	      }
