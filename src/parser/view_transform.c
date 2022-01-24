@@ -169,7 +169,7 @@ struct set_names_info
 
 enum pushable_type
 {
-  ERROR = 0,
+  HAS_ERROR = 0,
   NON_PUSHABLE = 1,
   PUSHABLE = 2
 };
@@ -1506,7 +1506,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   if (subquery == NULL)
     {
       PT_INTERNAL_ERROR (parser, "wrong arguments passed to function");
-      return ERROR;
+      return HAS_ERROR;
     }
 
   assert (parser);
@@ -1545,7 +1545,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       /* should not get here */
       assert (false);
       PT_INTERNAL_ERROR (parser, "unknown node");
-      return ERROR;
+      return HAS_ERROR;
     }
 
   /*****************************/
@@ -1952,7 +1952,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 
   /* check whether subquery is pushable */
   is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec);
-  if (is_mergeable == ERROR)
+  if (is_mergeable == HAS_ERROR)
     {
       goto exit_on_error;
     }
@@ -2141,7 +2141,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 
       /* check whether subquery is pushable */
       is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec);
-      if (is_mergeable == ERROR)
+      if (is_mergeable == HAS_ERROR)
 	{
 	  goto exit_on_error;
 	}
