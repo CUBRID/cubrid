@@ -3568,8 +3568,6 @@ disk_stab_unit_reserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool
 	   cursor->offset_to_bit < DISK_STAB_UNIT_BIT_COUNT && context->nsects_lastvol_remaining > 0;
 	   cursor->offset_to_bit++, cursor->sectid++)
 	{
-	  disk_stab_cursor_check_valid (cursor);
-
 	  if (!disk_stab_cursor_is_bit_set (cursor))
 	    {
 	      /* reserve this sector */
