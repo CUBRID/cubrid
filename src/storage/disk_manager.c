@@ -4683,16 +4683,17 @@ disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPUR
   for (index = 0; index < nsects - 1; index++)
     {
       assert (volid < vsids[index].volid);
-      if (volid > vsids[index].volid || index == nsects - 2)
+      volid = vsids[index].volid;
+      if (volid != vsids[index + 1].volid || index == nsects - 2)
 	{
-	  volid = vsids[index].volid;
-	  context.cache_vol_reserve[context.n_cache_vol_reserve].nsect = anchor - index + 1;
+	  assert (vsids[index].sectid > vsids[index - 1].sectid);
+	  context.cache_vol_reserve[context.n_cache_vol_reserve].nsect = index - anchor + 1;
 	  context.cache_vol_reserve[context.n_cache_vol_reserve].volid = volid;
 	  context.n_cache_vol_reserve++;
 	  anchor = index;
 	}
     }
-  assert (anchor == nsects);
+  assert (anchor == nsects - 2);
 
   disk_log ("disk_unreserve_ordered_sectors", "unreserve sectors.\n" DISK_RESERVE_CONTEXT_MSG,
 	    DISK_RESERVE_CONTEXT_AS_ARGS (&context));
