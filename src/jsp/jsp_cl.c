@@ -1871,9 +1871,9 @@ jsp_execute_stored_procedure (const SP_ARGS * args)
   bool mode = ssl_client;
 
 #if defined (CS_MODE)
-  const char* db_name = net_client_get_server_name ();
+  const char *db_name = net_client_get_server_name ();
 #else
-  const char* db_name = boot_db_name ();
+  const char *db_name = boot_db_name ();
 #endif
 
 retry:

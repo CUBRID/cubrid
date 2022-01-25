@@ -84,7 +84,7 @@ static int javasp_stop_server (const JAVASP_SERVER_INFO jsp_info, const std::str
 static int javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_name);
 
 static void javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info);
-static int javasp_ping_server (const int server_port, const char* db_name, char *buf);
+static int javasp_ping_server (const int server_port, const char *db_name, char *buf);
 static bool javasp_is_running (const int server_port, const std::string &db_name);
 
 static bool javasp_is_terminated_process (int pid);
@@ -436,7 +436,7 @@ exit:
 }
 
 static int
-javasp_ping_server (const int server_port, const char* db_name, char *buf)
+javasp_ping_server (const int server_port, const char *db_name, char *buf)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
