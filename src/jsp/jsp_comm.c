@@ -58,9 +58,10 @@
 #endif
 
 static char *jsp_get_socket_file_path (const char *db_name);
-static SOCKET jsp_connect_server_uds (const char *db_name);
 static SOCKET jsp_connect_server_tcp (int server_port);
-
+#if !defined (WINDOWS)
+static SOCKET jsp_connect_server_uds (const char *db_name);
+#endif
 /*
  * jsp_connect_server
  *   return: connect fail - return Error Code
@@ -243,6 +244,7 @@ jsp_get_socket_file_path (const char *db_name)
   return path;
 }
 
+#if !defined (WINDOWS)
 static SOCKET
 jsp_connect_server_uds (const char *db_name)
 {
@@ -271,6 +273,7 @@ jsp_connect_server_uds (const char *db_name)
   setsockopt (sockfd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
   return sockfd;
 }
+#endif
 
 static SOCKET
 jsp_connect_server_tcp (int server_port)
