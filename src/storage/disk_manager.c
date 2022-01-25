@@ -4693,6 +4693,16 @@ disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPUR
 	  anchor = index;
 	}
     }
+  if (volid == vsids[nsects - 1].volid)
+    {
+      context.cache_vol_reserve[context.n_cache_vol_reserve].nsect++;
+    }
+  else
+    {
+      context.cache_vol_reserve[context.n_cache_vol_reserve].nsect = 1;
+      context.cache_vol_reserve[context.n_cache_vol_reserve].volid = vsids[nsects - 1].volid;
+      context.n_cache_vol_reserve++;
+    }
   assert (anchor == nsects - 2);
 
   disk_log ("disk_unreserve_ordered_sectors", "unreserve sectors.\n" DISK_RESERVE_CONTEXT_MSG,
