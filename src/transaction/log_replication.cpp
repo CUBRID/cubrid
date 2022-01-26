@@ -313,8 +313,8 @@ namespace cublog
   replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa)
   {
     m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
-					 m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
+    const log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
+	m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
 
     // To allow reads on the page server, make sure that all changes are visible.
     // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
