@@ -3993,3 +3993,251 @@ print_tde_usage:
 error_exit:
   return EXIT_FAILURE;
 }
+
+static time_t
+parse_date_string_to_time (char *date_string)
+{
+  assert (date_string != NULL);
+
+  time_t result = 0;
+  struct tm time_data = { };
+
+  if (sscanf
+      (date_string, "%d-%d-%d:%d:%d:%d", &time_data.tm_mday, &time_data.tm_mon, &time_data.tm_year, &time_data.tm_hour,
+       &time_data.tm_min, &time_data.tm_sec) != 6)
+    {
+      return 0;
+    }
+
+  if (time_data.tm_mday < 1 || time_data.tm_mday > 31
+      || time_data.tm_mon < 1 || time_data.tm_mon > 12
+      || time_data.tm_year < 1900
+      || time_data.tm_hour < 0 || time_data.tm_hour > 23
+      || time_data.tm_min < 0 || time_data.tm_min > 59 || time_data.tm_sec < 0 || time_data.tm_sec > 59)
+    {
+      return 0;
+    }
+
+  time_data.tm_mon -= 1;
+  time_data.tm_year -= 1900;
+  time_data.tm_isdst = -1;
+
+  result = mktime (&time_data);
+
+  return result < 0 ? 0 : result;
+}
+
+int
+flashback (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+
+  const char *database_name = NULL;
+  int num_tables = 0;
+  dynamic_array *darray = NULL;
+  int i = 0;
+  char table_name_buf[SM_MAX_IDENTIFIER_LENGTH];
+  char *table_name;
+
+  const char *output_file = NULL;
+  FILE *outfp = NULL;
+  const char *user = NULL;
+  const char *dba_password = NULL;
+
+  char *start_date = NULL;
+  char *end_date = NULL;
+  time_t start_time = 0;
+  time_t end_time = 0;
+
+  bool is_detail = false;
+  bool is_oldest = false;
+
+  char *passbuf = NULL;
+  int error = NO_ERROR;
+
+  num_tables = utility_get_option_string_table_size (arg_map) - 1;
+  if (num_tables < 1)
+    {
+      /* TODO : error message will be dealt in other issue. Temporarily used fprintf */
+      fprintf (stderr, "too less arguments, dbname and table list are required\n");
+      goto print_flashback_usage;
+    }
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      fprintf (stderr, "no database name\n");
+      goto print_flashback_usage;
+    }
+
+  if (check_database_name (database_name))
+    {
+      fprintf (stderr, "wrong dbname\n");
+      goto error_exit;
+    }
+
+  output_file = utility_get_option_string_value (arg_map, FLASHBACK_OUTPUT_S, 0);
+  user = utility_get_option_string_value (arg_map, FLASHBACK_USER_S, 0);
+  dba_password = utility_get_option_string_value (arg_map, FLASHBACK_DBA_PASSWORD_S, 0);
+  start_date = utility_get_option_string_value (arg_map, FLASHBACK_START_DATE_S, 0);
+  end_date = utility_get_option_string_value (arg_map, FLASHBACK_END_DATE_S, 0);
+  is_detail = utility_get_option_bool_value (arg_map, FLASHBACK_DETAIL_S);
+  is_oldest = utility_get_option_bool_value (arg_map, FLASHBACK_OLDEST_S);
+
+  /* create table list */
+  /* class existence and classoid will be found at server side. if is checked at utility side, it needs addtional access to the server through locator */
+  darray = da_create (num_tables, SM_MAX_IDENTIFIER_LENGTH);
+  if (darray == NULL)
+    {
+      perror ("calloc");
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+      goto error_exit;
+    }
+
+  for (i = 0; i < num_tables; i++)
+    {
+      table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
+
+      strncpy_bufsize (table_name_buf, table_name);
+      if (da_add (darray, table_name_buf) != NO_ERROR)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	  perror ("calloc");
+	  goto error_exit;
+	}
+    }
+
+  /* start date check */
+  if (start_date != NULL && strlen (start_date) > 0)
+    {
+      start_time = parse_date_string_to_time (start_date);
+      if (start_time == 0)
+	{
+	  fprintf (stderr, "start-date error : follow  DATE format (DD-MM-YYYY:hh:MM:ss)\n");
+	  goto error_exit;
+	}
+    }
+
+  /* end date check */
+  if (end_date != NULL && strlen (end_date) > 0)
+    {
+      end_time = parse_date_string_to_time (end_date);
+      if (end_time == 0)
+	{
+	  fprintf (stderr, "end-date error : follow  DATE format (DD-MM-YYYY:hh:MM:ss)\n");
+	  goto error_exit;
+	}
+    }
+
+  /* start time and end time setting.
+   * 1. 10 minutes before end time, if only end time is specified
+   * 2. 10 minutes after start time, if only start time is specified
+   * 3. if no time is specified, then get current execution time for end time */
+
+  if (start_time == 0 && end_time != 0)
+    {
+      start_time = end_time - 600;
+    }
+  else if (start_time != 0 && end_time == 0)
+    {
+      end_time = start_time + 600;
+    }
+  else if (start_time == 0 && end_time == 0)
+    {
+      end_time = time (NULL);
+      start_time = end_time - 600;
+    }
+
+  /* 1. start time < end time
+   * 2. start time is required to be set after db_creation time (server side check)
+   * 3. start time, and end time are required to be set within the log volume range (server side check) */
+  if (start_time >= end_time)
+    {
+      fprintf (stderr, "start time(%lld) is larger than end time(%lld)\n", start_time, end_time);
+      goto error_exit;
+    }
+
+  /* output file check */
+  if (output_file == NULL)
+    {
+      outfp = stdout;
+    }
+  else
+    {
+      outfp = fopen (output_file, "w");
+      if (outfp == NULL)
+	{
+	  fprintf (stderr, "can not open output file\n");
+	  goto error_exit;
+	}
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (db_login ("DBA", dba_password) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  /* first try to restart with the password given (possibly none) */
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error)
+    {
+      if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
+	{
+	  /*
+	   * prompt for a valid password and try again, need a reusable
+	   * password prompter so we can use getpass() on platforms that
+	   * support it.
+	   */
+
+	  /* get password interactively if interactive mode */
+	  /* TODO : MSGCAT setting will be dealt in other issue, it temporarily uses TDE MSGCAT value */
+	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_DBA_PASSWORD));
+	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+	    {
+	      passbuf = (char *) NULL;
+	    }
+	  dba_password = passbuf;
+	  if (db_login ("DBA", dba_password) != NO_ERROR)
+	    {
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      goto error_exit;
+	    }
+	  else
+	    {
+	      error = db_restart (arg->command_name, TRUE, database_name);
+	    }
+	}
+
+      if (error)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+    }
+
+  db_shutdown ();
+
+  if (darray != NULL)
+    {
+      da_destroy (darray);
+    }
+
+  return EXIT_SUCCESS;
+
+print_flashback_usage:
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+error_exit:
+  if (darray != NULL)
+    {
+      da_destroy (darray);
+    }
+
+  return EXIT_FAILURE;
+}
