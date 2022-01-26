@@ -2347,8 +2347,15 @@ pgbuf_fix_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid,
   return page;
 }
 
+/*
+ * pgbuf_wait_for_replication () - Wait for replication to catch up
+ *   return: void
+ *   thread_p:                  thread pointer
+ *   optional_vpid_for_logging: Optional vpid argument used for logging, a null vpid can be provided
+ *                              if no valid value is available
+ */
 void
-pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * vpid)
+pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * optional_vpid_for_logging)
 {
 #if defined (SERVER_MODE)
   // page desyncronization can only occur on PTS
@@ -2364,7 +2371,8 @@ pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * vpid)
   const LOG_LSA replication_lsa = pts_ptr->get_replicator_lsa ();
   er_log_debug (ARG_FILE_LINE,
 		"Page %d|%d is ahead of replication. Page LSA is %lld|%d, replication LSA is %lld|%d.",
-		VPID_AS_ARGS (vpid), LSA_AS_ARGS (&tdes->page_desync_lsa), LSA_AS_ARGS (&replication_lsa));
+		VPID_AS_ARGS (optional_vpid_for_logging), LSA_AS_ARGS (&tdes->page_desync_lsa),
+		LSA_AS_ARGS (&replication_lsa));
   tdes->page_desync_lsa.set_null ();
   // clear the errors for next search
   er_clear ();
