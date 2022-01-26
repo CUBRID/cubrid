@@ -1822,7 +1822,8 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
   root_vpid_p->volid = btid->vfid.volid;
 
   /* Fix root page. */
-  root_page = pgbuf_fix (thread_p, root_vpid_p, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  root_page = pgbuf_fix_old_and_check_repl_desync (thread_p, *root_vpid_p, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+
   if (root_page == NULL)
     {
       /* Failed fixing root page. */
@@ -22815,6 +22816,14 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
     btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, (reuse_btid_int ? NULL : btid_int));
   if (*root_page == NULL)
     {
+      if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	{
+	  *restart = true;
+	  constexpr VPID null_vpid = VPID_INITIALIZER;
+	  pgbuf_wait_for_replication (thread_p, &null_vpid);
+
+	  return NO_ERROR;
+	}
       /* Error! */
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
@@ -22914,9 +22923,17 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 
       /* Advance to child. */
       assert (!VPID_ISNULL (&child_vpid));
-      *advance_to_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      *advance_to_page =
+	pgbuf_fix_old_and_check_repl_desync (thread_p, child_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (*advance_to_page == NULL)
 	{
+	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      *restart = true;
+	      pgbuf_wait_for_replication (thread_p, &child_vpid);
+
+	      return NO_ERROR;
+	    }
 	  /* Error fixing child. */
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;

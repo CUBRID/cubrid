@@ -465,7 +465,7 @@ extern void pgbuf_daemons_destroy ();
 #endif /* SERVER_MODE */
 
 // wait for replication to catch up; only relevant on passive transaction server
-extern void pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * vpid);
+extern void pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * optional_vpid_for_logging);
 // Check if page is ahead of replication; only relevant on passive transaction server, don't call elsewhere.
 extern int pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page);
 extern int pgbuf_check_for_deallocated_page_or_desynchronization (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode,
