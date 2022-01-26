@@ -3291,9 +3291,9 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
   /* to tde-encrypt pages which is being created while appending */
   log_Gl.append.appending_page_tde_encrypted = prior_is_tde_encrypted (node);
 
-  logpb_log ("logpb_append_next_record: append a record\n"
-	     "log_Gl.hdr.append_lsa.offset = %d, total record size = %d, TDE-encryption = %d\n",
-	     log_Gl.hdr.append_lsa.offset,
+  logpb_log ("logpb_append_next_record: start\n"
+	     "    log_Gl.hdr.append_lsa = %lld|%d, total record size = %d, TDE-encryption = %d\n",
+	     LSA_AS_ARGS (&log_Gl.hdr.append_lsa),
 	     sizeof (LOG_RECORD_HEADER) + node->data_header_length + node->ulength + node->rlength,
 	     log_Gl.append.appending_page_tde_encrypted);
 
@@ -3320,7 +3320,7 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
 
   log_Gl.append.appending_page_tde_encrypted = false;
 
-  logpb_log ("logpb_append_next_record: append a record end.\n");
+  logpb_log ("logpb_append_next_record: end.\n");
 
   return NO_ERROR;
 }
