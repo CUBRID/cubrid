@@ -771,8 +771,7 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 		      original_name =
 			pt_append_string (parser,
 					  pt_append_string (parser,
-							    pt_get_simple_name (col->info.
-										name.resolved), "."),
+							    pt_get_simple_name (col->info.name.resolved), "."),
 					  original_name);
 		    }
 		  else

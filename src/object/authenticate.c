@@ -5534,7 +5534,8 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * trigge
 		  error = au_change_trigger_owner (trigger_mop, user);
 		  if (error == NO_ERROR)
 		    {
-		      snprintf (trigger_full_name, DB_MAX_IDENTIFIER_LENGTH_287, "%s.%s", db_get_string (owner), sm_simple_name (db_get_string (trigger)));
+		      snprintf (trigger_full_name, DB_MAX_IDENTIFIER_LENGTH_287, "%s.%s", db_get_string (owner),
+				sm_simple_name (db_get_string (trigger)));
 		      error = tr_rename_trigger (trigger_mop, trigger_full_name, true);
 		      if (error == NO_ERROR)
 			{

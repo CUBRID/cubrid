@@ -8715,7 +8715,8 @@ pt_insert_entity (PARSER_CONTEXT * parser, PT_NODE * path, PT_NODE * prev_entity
 	      entity->info.spec.entity_name->info.name.meta_class = PT_CLASS;
 	      entity->info.spec.only_all = PT_ALL;
 	      entity->info.spec.range_var = parser_copy_tree (parser, entity->info.spec.entity_name);
-	      entity->info.spec.range_var->info.name.original = sm_simple_name (entity->info.spec.range_var->info.name.original);
+	      entity->info.spec.range_var->info.name.original =
+		sm_simple_name (entity->info.spec.range_var->info.name.original);
 	      entity->info.spec.range_var->info.name.resolved = NULL;
 	      entity->info.spec.flat_entity_list = pt_make_flat_list_from_data_types (parser, res, entity);
 	    }

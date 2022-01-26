@@ -13115,7 +13115,9 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		}
 	      else if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 		{
-		  q = pt_append_name (parser, q, pt_get_simple_name (original_spec->info.spec.entity_name->info.name.original));
+		  q =
+		    pt_append_name (parser, q,
+				    pt_get_simple_name (original_spec->info.spec.entity_name->info.name.original));
 		}
 	      else
 		{

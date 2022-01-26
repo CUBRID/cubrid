@@ -1145,7 +1145,8 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
       owner_name_p = strtok_r (class_name_copy, ".", &save_token);
       class_name_p = strtok_r (NULL, ".", &save_token);
 
-      output_ctx ("CREATE %s %s%s%s.%s%s%s", is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+      output_ctx ("CREATE %s %s%s%s.%s%s%s", is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (owner_name_p),
+		  PRINT_IDENTIFIER (class_name_p));
 
       free_and_init (class_name_copy);
 
@@ -1586,7 +1587,8 @@ emit_superclasses (print_output & output_ctx, DB_OBJECT * class_, const char *cl
       owner_name_p = strtok_r (class_name_copy, ".", &save_token);
       class_name_p = strtok_r (NULL, ".", &save_token);
 
-      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD SUPERCLASS ", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD SUPERCLASS ", class_type, PRINT_IDENTIFIER (owner_name_p),
+		  PRINT_IDENTIFIER (class_name_p));
 
       free_and_init (class_name_copy);
 
@@ -1886,7 +1888,8 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	  owner_name_p = strtok_r (class_name_copy, ".", &save_token);
 	  class_name_p = strtok_r (NULL, ".", &save_token);
 
-	  output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+	  output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (owner_name_p),
+		      PRINT_IDENTIFIER (class_name_p));
 
 	  free_and_init (class_name_copy);
 
@@ -1917,7 +1920,8 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
       owner_name_p = strtok_r (class_name_copy, ".", &save_token);
       class_name_p = strtok_r (NULL, ".", &save_token);
 
-      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name_p),
+		  PRINT_IDENTIFIER (class_name_p));
 
       free_and_init (class_name_copy);
 
@@ -2112,7 +2116,8 @@ emit_class_attributes (print_output & output_ctx, DB_OBJECT * class_, const char
       owner_name_p = strtok_r (class_name_copy, ".", &save_token);
       class_name_p = strtok_r (NULL, ".", &save_token);
 
-      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD CLASS ATTRIBUTE \n", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD CLASS ATTRIBUTE \n", class_type, PRINT_IDENTIFIER (owner_name_p),
+		  PRINT_IDENTIFIER (class_name_p));
 
       free_and_init (class_name_copy);
 
@@ -2281,7 +2286,8 @@ emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_t
       owner_name_p = strtok_r (class_name_copy, ".", &save_token);
       class_name_p = strtok_r (NULL, ".", &save_token);
 
-      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (owner_name_p),
+		  PRINT_IDENTIFIER (class_name_p));
 
       free_and_init (class_name_copy);
 
@@ -2311,7 +2317,8 @@ emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_t
       owner_name_p = strtok_r (class_name_copy, ".", &save_token);
       class_name_p = strtok_r (NULL, ".", &save_token);
 
-      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (owner_name_p),
+		  PRINT_IDENTIFIER (class_name_p));
 
       free_and_init (class_name_copy);
 
@@ -2587,7 +2594,8 @@ emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *clas
   owner_name_p = strtok_r (class_name_copy, ".", &save_token);
   class_name_p = strtok_r (NULL, ".", &save_token);
 
-  output_ctx ("\nALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+  output_ctx ("\nALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name_p),
+	      PRINT_IDENTIFIER (class_name_p));
 
   free_and_init (class_name_copy);
 
