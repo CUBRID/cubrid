@@ -10710,6 +10710,7 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
   /* 1. Check start_time */
   if (start_time < log_Gl.hdr.db_creation)
     {
+      /* TODO : er_set() */
       return ER_FLASHBACK_INVALID_TIME;
     }
   else
@@ -10725,12 +10726,14 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
 	  if (ret_time > end_time)
 	    {
 	      /* out of range : start_time (ret_time) can not be greater than end_time */
+	      /* TODO : er_set() */
 	      return ER_FLASHBACK_INVALID_TIME;
 	    }
 	}
       else
 	{
 	  /* failed to find a log at the time due to failure while reading log page or volume (ER_FAILED, ER_LOG_READ) */
+	  /* TODO : er_set() */
 	  return ER_FAILED;
 	}
     }
@@ -10743,6 +10746,7 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
   if (!(error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA))
     {
       /* failed to find a log record */
+      /* TODO : er_set() */
       return ER_FAILED;
     }
 
@@ -10762,7 +10766,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *start_ptr;
   OID *oid = NULL;
   LC_FIND_CLASSNAME status;
-  int num_table;
+  int num_class;
 
   char *user = NULL;
   time_t start_time = 0;
@@ -10771,16 +10775,17 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   LOG_LSA start_lsa = LSA_INITIALIZER;
   LOG_LSA end_lsa = LSA_INITIALIZER;
 
-  ptr = or_unpack_int (request, &num_table);
+  ptr = or_unpack_int (request, &num_class);
 
-  oid = (OID *) db_private_alloc (thread_p, sizeof (OID) * num_table);
+  oid = (OID *) db_private_alloc (thread_p, sizeof (OID) * num_class);
   if (oid == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID) * num_class);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
 
-  for (int i = 0; i < num_table; i++)
+  for (int i = 0; i < num_class; i++)
     {
       char *classname = NULL;
 
@@ -10789,6 +10794,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       status = xlocator_find_class_oid (thread_p, classname, &oid[i], NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
 	{
+	  /* TODO : er_set() */
 	  error_code = ER_FLASHBACK_INVALID_CLASS;
 	  goto error;
 	}
@@ -10802,11 +10808,12 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto error;
     }
 
-  area_size = OR_OID_SIZE * num_table;
+  area_size = OR_OID_SIZE * num_class;
 
   area = (char *) db_private_alloc (thread_p, area_size);	/* summary info size will be added */
   if (area == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -10817,7 +10824,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   /* area packing : OID list | summary info list */
   ptr = area;
-  for (int i = 0; i < num_table; i++)
+  for (int i = 0; i < num_class; i++)
     {
       ptr = or_pack_oid (ptr, &oid[i]);
     }
@@ -10856,7 +10863,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   OID *oid = NULL;
 
   int trid = 0;
-  int num_table = 0;
+  int num_class = 0;
   char *user = NULL;
 
   LOG_LSA start_lsa = LSA_INITIALIZER;
@@ -10865,20 +10872,21 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   int num_item = 0;
   int forward = false;
 
-  /* request : trid | user | num_table | table oid list | start_lsa | end_lsa | num_item | forward/backward */
+  /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
   ptr = or_unpack_int (request, &trid);
   ptr = or_unpack_string_nocopy (ptr, &user);
-  ptr = or_unpack_int (ptr, &num_table);
+  ptr = or_unpack_int (ptr, &num_class);
 
-  oid = (OID *) db_private_alloc (thread_p, num_table * sizeof (OID));
+  oid = (OID *) db_private_alloc (thread_p, sizeof (OID) * num_class);
   if (oid == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID) * num_class);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
 
-  for (int i = 0; i < num_table; i++)
+  for (int i = 0; i < num_class; i++)
     {
       ptr = or_unpack_oid (ptr, &oid[i]);
     }
@@ -10894,6 +10902,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   area = (char *) db_private_alloc (thread_p, area_size);
   if (area == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
