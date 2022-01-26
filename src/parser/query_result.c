@@ -762,8 +762,8 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 		      original_name =
 			pt_append_string (parser,
 					  pt_append_string (parser,
-							    pt_get_name_without_current_user_name (col->info.
-												   name.resolved), "."),
+							    pt_get_name_without_current_user_name (col->info.name.
+												   resolved), "."),
 					  original_name);
 		    }
 		  else if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
@@ -811,8 +811,8 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 		      name =
 			pt_append_string (parser,
 					  pt_append_string (parser,
-							    pt_get_name_without_current_user_name (node->info.
-												   name.resolved), "."),
+							    pt_get_name_without_current_user_name (node->info.name.
+												   resolved), "."),
 					  name);
 		      name = pt_append_string (parser, pt_append_string (parser, NULL, "class "), name);
 		      original_name = name;
@@ -823,8 +823,8 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 		      original_name =
 			pt_append_string (parser,
 					  pt_append_string (parser,
-							    pt_get_name_without_current_user_name (node->info.
-												   name.resolved), "."),
+							    pt_get_name_without_current_user_name (node->info.name.
+												   resolved), "."),
 					  original_name);
 		    }
 		}
