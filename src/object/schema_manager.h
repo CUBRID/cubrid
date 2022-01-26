@@ -203,6 +203,7 @@ extern int sm_update_all_statistics (bool with_fullscan);
 
 /* Misc information functions */
 extern const char *sm_get_ch_name (MOP op);
+extern const char *sm_get_ch_simple_name (MOP op);
 extern HFID *sm_get_ch_heap (MOP classmop);
 #if 0				/* TODO - do not use */
 extern OID *sm_get_ch_rep_dir (MOP classmop);

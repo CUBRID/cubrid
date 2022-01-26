@@ -2170,7 +2170,7 @@ sm_downcase_name (const char *name, char *buf, int maxlen)
 }
 
 /* AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH is not a target. 
- * Trigger and serial names can be longer than DB_MAX_FULL_CLASS_LENGTH.
+ * Trigger and serial names can be longer than DB_MAX_IDENTIFIER_LENGTH_287.
  */
 int
 sm_user_specified_name (const char *name, const char *owner_name, char *buf, int buf_size)
@@ -2180,7 +2180,7 @@ sm_user_specified_name (const char *name, const char *owner_name, char *buf, int
   const char *owner_name_p = NULL;
   char *current_user_name = NULL;
   char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char user_specified_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char user_specified_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
   int name_size = 0;
   int error = NO_ERROR;
 
@@ -2197,7 +2197,7 @@ sm_user_specified_name (const char *name, const char *owner_name, char *buf, int
     {
       name_size = intl_identifier_lower_string_size (name);
       assert (name_size < buf_size);
-      assert (name_size < DB_MAX_FULL_CLASS_LENGTH);
+      assert (name_size < DB_MAX_IDENTIFIER_LENGTH_287);
 
       intl_identifier_lower (name, buf);
 
@@ -2209,7 +2209,7 @@ sm_user_specified_name (const char *name, const char *owner_name, char *buf, int
     {
       name_size = intl_identifier_lower_string_size (name);
       assert (name_size < buf_size);
-      assert (name_size < DB_MAX_SIMPLE_CLASS_LENGTH);
+      assert (name_size < DB_MAX_IDENTIFIER_LENGTH);
 
       intl_identifier_lower (name, buf);
 
@@ -2240,7 +2240,7 @@ sm_user_specified_name (const char *name, const char *owner_name, char *buf, int
       owner_name_p = current_user_name;
     }
 
-  snprintf (user_specified_name, DB_MAX_FULL_CLASS_LENGTH, "%s.%s", owner_name_p, name);
+  snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH_287, "%s.%s", owner_name_p, name);
   intl_identifier_lower (user_specified_name, buf);
 
   if (current_user_name)
@@ -2708,12 +2708,12 @@ sm_rename_class (MOP op, const char *new_name)
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;
   const char *current, *newname;
-  char realname[SM_MAX_FULL_CLASS_LENGTH];
+  char realname[SM_MAX_IDENTIFIER_LENGTH_287];
   int is_partition = 0;
 /*  TR_STATE *trstate; */
 
   /* make sure this gets into the server table with no capitalization */
-  sm_downcase_name (new_name, realname, SM_MAX_FULL_CLASS_LENGTH);
+  sm_downcase_name (new_name, realname, SM_MAX_IDENTIFIER_LENGTH_287);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   if (sm_has_text_domain (db_get_attributes (op), 1))
@@ -3210,7 +3210,7 @@ sm_check_system_class_by_name (const char *name)
 
   const char *dot = NULL;
   const char *simple_name = NULL;
-  char downcase_simple_name[SM_MAX_SIMPLE_CLASS_LENGTH] = { '\0' };
+  char downcase_simple_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int name_size = 0;
   int count = 0;
   int i = 0;
@@ -3224,7 +3224,7 @@ sm_check_system_class_by_name (const char *name)
   simple_name = dot ? (dot + 1) : name;
 
   name_size = intl_identifier_lower_string_size (simple_name);
-  assert (name_size < SM_MAX_SIMPLE_CLASS_LENGTH);
+  assert (name_size < SM_MAX_IDENTIFIER_LENGTH);
 
   intl_identifier_lower (simple_name, downcase_simple_name);
 
@@ -4817,6 +4817,23 @@ sm_get_ch_name (MOP op)
   return name;
 }
 
+const char *
+sm_get_ch_simple_name (MOP op)
+{
+  SM_CLASS *class_;
+  const char *name = NULL;
+
+  if (op != NULL)
+    {
+      if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
+	{
+	  name = sm_ch_simple_name ((MOBJ) class_);
+	}
+    }
+
+  return name;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sm_get_class_name_internal()
@@ -5316,11 +5333,11 @@ sm_class_constraints (MOP classop)
 MOP
 sm_find_class (const char *name)
 {
-  char realname[SM_MAX_FULL_CLASS_LENGTH];
+  char realname[SM_MAX_IDENTIFIER_LENGTH_287];
 
-  sm_downcase_name (name, realname, SM_MAX_FULL_CLASS_LENGTH);
+  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH_287);
 
-  return locator_find_class (realname);
+  return (locator_find_class (realname));
 }
 
 /*
@@ -5335,11 +5352,11 @@ sm_find_class (const char *name)
 MOP
 sm_find_class_with_purpose (const char *name, bool for_update)
 {
-  char realname[SM_MAX_FULL_CLASS_LENGTH];
+  char realname[SM_MAX_IDENTIFIER_LENGTH_287];
 
-  sm_downcase_name (name, realname, SM_MAX_FULL_CLASS_LENGTH);
+  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH_287);
 
-  return locator_find_class_with_purpose (realname, for_update);
+  return (locator_find_class_with_purpose (realname, for_update));
 }
 
 /*
@@ -14392,7 +14409,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
     {
       const char *prefix;
       int i, k;
-      int class_name_prefix_size = DB_MAX_SIMPLE_CLASS_LENGTH;
+      int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
 
@@ -14509,7 +14526,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	    }
 	  else
 	    {
-	      char class_name_trunc[DB_MAX_SIMPLE_CLASS_LENGTH];
+	      char class_name_trunc[DB_MAX_IDENTIFIER_LENGTH];
 
 	      strncpy (class_name_trunc, class_simple_name, class_name_prefix_size);
 
@@ -14609,7 +14626,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	      k++;
 	    }
 
-	  if (att_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH || class_name_prefix_size != DB_MAX_SIMPLE_CLASS_LENGTH)
+	  if (att_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH || class_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH)
 	    {
 	      /* append MD5 */
 	      strcat (name, "_");
@@ -15804,7 +15821,7 @@ int
 sm_truncate_using_delete (MOP class_mop)
 {
   DB_SESSION *session = NULL;
-  char delete_query[DB_MAX_FULL_CLASS_LENGTH + 64] = { 0 };
+  char delete_query[DB_MAX_IDENTIFIER_LENGTH_287 + 64] = { 0 };
   int stmt_id = 0;
   int error = NO_ERROR;
   const char *class_name;

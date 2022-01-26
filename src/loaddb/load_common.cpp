@@ -333,7 +333,7 @@ namespace cubload
     for (std::string line; std::getline (file, line);)
       {
 	rtrim (line);
-	if (line.size () > DB_MAX_FULL_CLASS_LENGTH)
+	if (line.size () > DB_MAX_IDENTIFIER_LENGTH_287)
 	  {
 	    file.close ();
 	    ignore_classes.clear ();
@@ -346,9 +346,9 @@ namespace cubload
 	// scan first string, and ignore rest of the line
 	sscanf (line.c_str (), fmt, class_name.c_str ());
 
-	char lower_case_string[DB_MAX_FULL_CLASS_LENGTH] = { 0 };
+	char lower_case_string[DB_MAX_IDENTIFIER_LENGTH_287] = { 0 };
 
-	assert (intl_identifier_lower_string_size (class_name.c_str ()) <= DB_MAX_FULL_CLASS_LENGTH);
+	assert (intl_identifier_lower_string_size (class_name.c_str ()) <= DB_MAX_IDENTIFIER_LENGTH_287);
 
 	// Make the string to be lower case and take into consideration all types of characters.
 	intl_identifier_lower (class_name.c_str (), lower_case_string);
@@ -758,8 +758,7 @@ namespace cubload
   }
 
   int
-  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id,
-		int64_t line_offset,
+  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id, int64_t line_offset,
 		int64_t &rows)
   {
     if (batch_content.empty ())

@@ -107,6 +107,7 @@ typedef enum
 
 typedef enum
 {
+  SERIAL_FULL_NAME,
   SERIAL_NAME,
   SERIAL_OWNER_NAME,
   SERIAL_CURRENT_VAL,
@@ -618,6 +619,10 @@ export_serial (print_output & output_ctx)
   DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
   DB_DOMAIN *domain;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
+  char *serial_name_copy = NULL;
+  char *owner_name_p = NULL;
+  char *serial_name_p = NULL;
+  char *save_token = NULL;
 
   /*
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
@@ -665,6 +670,7 @@ export_serial (print_output & output_ctx)
 	      }
 	      break;
 
+	    case SERIAL_FULL_NAME:
 	    case SERIAL_NAME:
 	      {
 		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
@@ -774,7 +780,15 @@ export_serial (print_output & output_ctx)
 
       output_ctx ("call [find_user]('%s') on class [db_user] to [auser];\n",
 		  db_get_string (&values[SERIAL_OWNER_NAME]));
-      output_ctx ("create serial %s%s%s\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+
+      serial_name_copy = strdup (db_get_string (&values[SERIAL_FULL_NAME]));
+      owner_name_p = strtok_r (serial_name_copy, ".", &save_token);
+      serial_name_p = strtok_r (NULL, ".", &save_token);
+
+      output_ctx ("create serial %s%s%s.%s%s%s\n", PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (serial_name_p));
+
+      free_and_init (serial_name_copy);
+
       output_ctx ("\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
       output_ctx ("\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
       output_ctx ("\t minvalue %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL], str_buf));
@@ -797,7 +811,7 @@ export_serial (print_output & output_ctx)
 	}
       output_ctx (";\n");
       output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
-		  db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
+		  db_get_string (&values[SERIAL_FULL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
 
       db_value_clear (&diff_value);
       db_value_clear (&answer_value);
@@ -1107,6 +1121,10 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
   const char *class_type;
   int has_indexes = 0;
   const char *name;
+  char *class_name_copy = NULL;
+  char *owner_name_p = NULL;
+  char *class_name_p = NULL;
+  char *save_token = NULL;
   const char *tde_algo_name;
   int is_partitioned = 0;
   SM_CLASS *class_ = NULL;
@@ -1123,7 +1141,13 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  continue;
 	}
 
-      output_ctx ("CREATE %s %s%s%s", is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (name));
+      class_name_copy = strdup (name);
+      owner_name_p = strtok_r (class_name_copy, ".", &save_token);
+      class_name_p = strtok_r (NULL, ".", &save_token);
+
+      output_ctx ("CREATE %s %s%s%s.%s%s%s", is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+
+      free_and_init (class_name_copy);
 
       if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ) != NO_ERROR)
 	{
@@ -1543,6 +1567,10 @@ emit_superclasses (print_output & output_ctx, DB_OBJECT * class_, const char *cl
 {
   DB_OBJLIST *supers, *s;
   const char *name;
+  char *class_name_copy = NULL;
+  char *owner_name_p = NULL;
+  char *class_name_p = NULL;
+  char *save_token = NULL;
 
   supers = db_get_superclasses (class_);
   if (supers != NULL)
@@ -1554,7 +1582,13 @@ emit_superclasses (print_output & output_ctx, DB_OBJECT * class_, const char *cl
 	  return (supers != NULL);
 	}
 
-      output_ctx ("ALTER %s %s%s%s ADD SUPERCLASS ", class_type, PRINT_IDENTIFIER (name));
+      class_name_copy = strdup (name);
+      owner_name_p = strtok_r (class_name_copy, ".", &save_token);
+      class_name_p = strtok_r (NULL, ".", &save_token);
+
+      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD SUPERCLASS ", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+
+      free_and_init (class_name_copy);
 
       for (s = supers; s != NULL; s = s->next)
 	{
@@ -1563,7 +1597,14 @@ emit_superclasses (print_output & output_ctx, DB_OBJECT * class_, const char *cl
 	    {
 	      output_ctx (", ");
 	    }
-	  output_ctx ("%s%s%s", PRINT_IDENTIFIER (name));
+
+	  class_name_copy = strdup (name);
+	  owner_name_p = strtok_r (class_name_copy, ".", &save_token);
+	  class_name_p = strtok_r (NULL, ".", &save_token);
+
+	  output_ctx ("%s%s%s.%s%s%s", PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+
+	  free_and_init (class_name_copy);
 	}
 
       output_ctx (";\n");
@@ -1703,6 +1744,12 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
   int index_flag = 0;
   DB_VALUE cur_val, started_val, min_val, max_val, inc_val, sr_name;
   const char *name, *start_with;
+  char *class_name_copy = NULL;
+  char *serial_name_copy = NULL;
+  char *owner_name_p = NULL;
+  char *class_name_p = NULL;
+  char *serial_name_p = NULL;
+  char *save_token = NULL;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
 
   attribute_list = db_get_attributes (class_);
@@ -1835,7 +1882,14 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	      old_attribute_name = "";
 	    }
 
-	  output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (name));
+	  class_name_copy = strdup (name);
+	  owner_name_p = strtok_r (class_name_copy, ".", &save_token);
+	  class_name_p = strtok_r (NULL, ".", &save_token);
+
+	  output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+
+	  free_and_init (class_name_copy);
+
 	  if (db_attribute_is_shared (a))
 	    {
 	      emit_attribute_def (output_ctx, a, SHARED_ATTRIBUTE);
@@ -1859,7 +1913,14 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
     }
   else
     {
-      output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (name));
+      class_name_copy = strdup (name);
+      owner_name_p = strtok_r (class_name_copy, ".", &save_token);
+      class_name_p = strtok_r (NULL, ".", &save_token);
+
+      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+
+      free_and_init (class_name_copy);
+
       for (a = first_attribute; a != NULL; a = db_attribute_next (a))
 	{
 	  if (db_attribute_class (a) == class_)
@@ -1899,7 +1960,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	      db_make_null (&max_val);
 	      db_make_null (&inc_val);
 
-	      sr_error = db_get (a->auto_increment, "name", &sr_name);
+	      sr_error = db_get (a->auto_increment, "full_name", &sr_name);
 	      if (sr_error < 0)
 		{
 		  continue;
@@ -1987,9 +2048,14 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 		  start_with = "NULL";
 		}
 
-	      output_ctx ("ALTER SERIAL %s%s%s START WITH %s;\n",
-			  PRINT_IDENTIFIER (db_get_string (&sr_name)), start_with);
+	      serial_name_copy = strdup (db_get_string (&sr_name));
+	      owner_name_p = strtok_r (serial_name_copy, ".", &save_token);
+	      serial_name_p = strtok_r (NULL, ".", &save_token);
 
+	      output_ctx ("ALTER SERIAL %s%s%s.%s%s%s START WITH %s;\n",
+			  PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (serial_name_p), start_with);
+
+	      free_and_init (serial_name_copy);
 	      pr_clear_value (&sr_name);
 	    }
 	}
@@ -2022,6 +2088,10 @@ emit_class_attributes (print_output & output_ctx, DB_OBJECT * class_, const char
 {
   DB_ATTRIBUTE *class_attribute_list, *first_class_attribute, *a;
   const char *name;
+  char *class_name_copy = NULL;
+  char *owner_name_p = NULL;
+  char *class_name_p = NULL;
+  char *save_token = NULL;
 
   class_attribute_list = db_get_class_attributes (class_);
   first_class_attribute = NULL;
@@ -2037,7 +2107,14 @@ emit_class_attributes (print_output & output_ctx, DB_OBJECT * class_, const char
   if (first_class_attribute != NULL)
     {
       name = db_get_class_name (class_);
-      output_ctx ("ALTER %s %s%s%s ADD CLASS ATTRIBUTE \n", class_type, PRINT_IDENTIFIER (name));
+
+      class_name_copy = strdup (name);
+      owner_name_p = strtok_r (class_name_copy, ".", &save_token);
+      class_name_p = strtok_r (NULL, ".", &save_token);
+
+      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD CLASS ATTRIBUTE \n", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+
+      free_and_init (class_name_copy);
 
       for (a = first_class_attribute; a != NULL; a = db_attribute_next (a))
 	{
@@ -2170,6 +2247,10 @@ emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_t
   DB_METHOD *method_list, *class_method_list, *m;
   DB_METHOD *first_method, *first_class_method;
   const char *name;
+  char *class_name_copy = NULL;
+  char *owner_name_p = NULL;
+  char *class_name_p = NULL;
+  char *save_token = NULL;
 
   method_list = db_get_methods (class_);
   class_method_list = db_get_class_methods (class_);
@@ -2195,7 +2276,14 @@ emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_t
   if (first_method != NULL)
     {
       name = db_get_class_name (class_);
-      output_ctx ("ALTER %s %s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (name));
+
+      class_name_copy = strdup (name);
+      owner_name_p = strtok_r (class_name_copy, ".", &save_token);
+      class_name_p = strtok_r (NULL, ".", &save_token);
+
+      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+
+      free_and_init (class_name_copy);
 
       for (m = first_method; m != NULL; m = db_method_next (m))
 	{
@@ -2218,7 +2306,14 @@ emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_t
   if (first_class_method != NULL)
     {
       name = db_get_class_name (class_);
-      output_ctx ("ALTER %s %s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (name));
+
+      class_name_copy = strdup (name);
+      owner_name_p = strtok_r (class_name_copy, ".", &save_token);
+      class_name_p = strtok_r (NULL, ".", &save_token);
+
+      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+
+      free_and_init (class_name_copy);
 
       for (m = first_class_method; m != NULL; m = db_method_next (m))
 	{
@@ -2449,6 +2544,10 @@ emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *clas
   bool has_inherited_atts;
   int num_printed = 0;
   const char *name, *class_name;
+  char *class_name_copy = NULL;
+  char *owner_name_p = NULL;
+  char *class_name_p = NULL;
+  char *save_token = NULL;
   int not_online = 0;
 
   class_name = db_get_class_name (class_);
@@ -2484,7 +2583,13 @@ emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *clas
       return;
     }
 
-  output_ctx ("\nALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (class_name));
+  class_name_copy = strdup (class_name);
+  owner_name_p = strtok_r (class_name_copy, ".", &save_token);
+  class_name_p = strtok_r (NULL, ".", &save_token);
+
+  output_ctx ("\nALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+
+  free_and_init (class_name_copy);
 
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
@@ -2571,6 +2676,10 @@ emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_)
   DB_ATTRIBUTE **atts, **att;
   bool has_inherited_atts;
   const char *name;
+  char *class_name_copy = NULL;
+  char *owner_name_p = NULL;
+  char *class_name_p = NULL;
+  char *save_token = NULL;
 
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
@@ -2606,8 +2715,15 @@ emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_)
       if (!has_inherited_atts)
 	{
 	  name = db_get_class_name (class_);
-	  output_ctx ("CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s (", PRINT_IDENTIFIER (constraint->name),
-		      PRINT_IDENTIFIER (name));
+
+	  class_name_copy = strdup (name);
+	  owner_name_p = strtok_r (class_name_copy, ".", &save_token);
+	  class_name_p = strtok_r (NULL, ".", &save_token);
+
+	  output_ctx ("CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s.%s%s%s (", PRINT_IDENTIFIER (constraint->name),
+		      PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+
+	  free_and_init (class_name_copy);
 
 	  for (att = atts; *att != NULL; att++)
 	    {
@@ -3144,6 +3260,10 @@ emit_partition_info (print_output & output_ctx, MOP clsobj)
   int partcnt = 0;
   char *ptr, *ptr2;
   const char *name;
+  char *class_name_copy = NULL;
+  char *owner_name_p = NULL;
+  char *class_name_p = NULL;
+  char *save_token = NULL;
   SM_CLASS *class_, *subclass;
   DB_OBJLIST *user;
 
@@ -3158,7 +3278,14 @@ emit_partition_info (print_output & output_ctx, MOP clsobj)
       return;
     }
 
-  output_ctx ("\nALTER CLASS %s%s%s ", PRINT_IDENTIFIER (name));
+  class_name_copy = strdup (name);
+  owner_name_p = strtok_r (class_name_copy, ".", &save_token);
+  class_name_p = strtok_r (NULL, ".", &save_token);
+
+  output_ctx ("\nALTER CLASS %s%s%s.%s%s%s ", PRINT_IDENTIFIER (owner_name_p), PRINT_IDENTIFIER (class_name_p));
+
+  free_and_init (class_name_copy);
+
   output_ctx ("\nPARTITION BY ");
 
   if (class_->partition->expr != NULL)

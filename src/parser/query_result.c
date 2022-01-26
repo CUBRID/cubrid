@@ -742,6 +742,10 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 			pt_append_string (parser, name,
 					  pt_get_name_without_current_user_name (col->info.name.resolved));
 		    }
+		  else if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+		    {
+		      name = pt_append_string (parser, name, pt_get_simple_name (col->info.name.resolved));
+		    }
 		  else
 		    {
 		      name = pt_append_string (parser, name, col->info.name.resolved);
@@ -760,6 +764,15 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 					  pt_append_string (parser,
 							    pt_get_name_without_current_user_name (col->info.
 												   name.resolved), "."),
+					  original_name);
+		    }
+		  else if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+		    {
+		      original_name =
+			pt_append_string (parser,
+					  pt_append_string (parser,
+							    pt_get_simple_name (col->info.
+										name.resolved), "."),
 					  original_name);
 		    }
 		  else

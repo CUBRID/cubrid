@@ -7181,6 +7181,11 @@ pt_qualifier_compare (const char *p, const char *q)
       return 1;
     }
 
+  if (p[0] == '.' || q[0] == '.')
+    {
+      return 1;
+    }
+
   dot_p = strchr (p, '.');
   dot_q = strchr (q, '.');
 
@@ -7199,6 +7204,20 @@ pt_qualifier_compare (const char *p, const char *q)
        */
       qualifier_p = dot_p ? (dot_p + 1) : p;
       qualifier_q = dot_q ? (dot_q + 1) : q;
+
+      /*
+       * e.g. qualifier_p : object_name.          -> NULL
+       *      qualifier_q : user_name.object_name -> object_name
+       *
+       *      or
+       * 
+       *      qualifier_p : user_name.object_name -> object_name
+       *      qualifier_q : object_name.          -> NULL
+       */
+      if (!qualifier_p || !qualifier_q)
+	{
+	  return 1;
+	}
     }
   else
     {
@@ -8696,6 +8715,7 @@ pt_insert_entity (PARSER_CONTEXT * parser, PT_NODE * path, PT_NODE * prev_entity
 	      entity->info.spec.entity_name->info.name.meta_class = PT_CLASS;
 	      entity->info.spec.only_all = PT_ALL;
 	      entity->info.spec.range_var = parser_copy_tree (parser, entity->info.spec.entity_name);
+	      entity->info.spec.range_var->info.name.original = sm_simple_name (entity->info.spec.range_var->info.name.original);
 	      entity->info.spec.range_var->info.name.resolved = NULL;
 	      entity->info.spec.flat_entity_list = pt_make_flat_list_from_data_types (parser, res, entity);
 	    }
@@ -8971,6 +8991,7 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
   entity->info.spec.entity_name->info.name.original = db_get_class_name (class_op);
   entity->info.spec.only_all = PT_ONLY;
   entity->info.spec.range_var = parser_copy_tree (parser, entity->info.spec.entity_name);
+  entity->info.spec.range_var->info.name.original = sm_simple_name (entity->info.spec.range_var->info.name.original);
   if (entity->info.spec.range_var == NULL)
     {
       PT_INTERNAL_ERROR (parser, "parser_copy_tree");
@@ -10102,7 +10123,7 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 		{
 		  PARSER_VARCHAR *alias;
 		  save_custom = parser->custom_print;
-		  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;;
+		  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
 		  alias = pt_print_bytes (parser, att);
 		  parser->custom_print = save_custom;
 		  col = pt_name (parser, (const char *) alias->bytes);

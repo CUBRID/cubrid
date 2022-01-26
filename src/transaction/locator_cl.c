@@ -2998,12 +2998,15 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
 {
   LC_FIND_CLASSNAME found;
   int error_code;
+  char realname[DB_MAX_IDENTIFIER_LENGTH_287] = { 0 };
 
   assert (classname != NULL);
 
+  sm_user_specified_name (classname, NULL, realname, DB_MAX_IDENTIFIER_LENGTH_287);
+
   /* Need to check the classname to oid in the server */
   *class_mop = NULL;
-  found = locator_find_class_oid (classname, class_oid, lock);
+  found = locator_find_class_oid (realname, class_oid, lock);
   switch (found)
     {
     case LC_CLASSNAME_EXIST:
@@ -3017,7 +3020,7 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
 	    }
 	  else
 	    {
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, classname);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, realname);
 	    }
 
 	  return found;
@@ -3039,7 +3042,7 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
       break;
 
     case LC_CLASSNAME_DELETED:
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, classname);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, realname);
       break;
 
     case LC_CLASSNAME_ERROR:
@@ -3154,9 +3157,9 @@ locator_find_class (const char *classname)
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
   if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
-      char other_class_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+      char other_class_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
 
-      do_find_other_class_name (classname, other_class_name, DB_MAX_FULL_CLASS_LENGTH);
+      do_find_class_by_query (classname, other_class_name, DB_MAX_IDENTIFIER_LENGTH_287);
       if (other_class_name)
 	{
 	  found = locator_find_class_by_name (other_class_name, lock, &class_mop);
@@ -3199,9 +3202,9 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
   if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
-      char other_class_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+      char other_class_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
 
-      do_find_other_class_name (classname, other_class_name, DB_MAX_FULL_CLASS_LENGTH);
+      do_find_class_by_query (classname, other_class_name, DB_MAX_IDENTIFIER_LENGTH_287);
       if (other_class_name)
 	{
 	  found = locator_find_class_by_name (other_class_name, lock, &class_mop);

@@ -696,20 +696,21 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
 static SM_TEMPLATE *
 def_class_internal (const char *name, int class_type)
 {
-  char realname[SM_MAX_FULL_CLASS_LENGTH];
+  char realname[SM_MAX_IDENTIFIER_LENGTH_287];
   SM_TEMPLATE *template_ = NULL;
   PR_TYPE *type;
+  const char *simple_name = sm_simple_name (name);
 
   if (sm_check_name (name))
     {
-      type = pr_find_type (sm_simple_name (name));
+      type = pr_find_type (simple_name);
       if (type != NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, sm_simple_name (name));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, simple_name);
 	}
       else
 	{
-	  sm_downcase_name (name, realname, SM_MAX_FULL_CLASS_LENGTH);
+	  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH_287);
 	  name = realname;
 	  template_ = classobj_make_template (name, NULL, NULL);
 	  if (template_ != NULL)
@@ -2319,11 +2320,11 @@ smt_add_method_any (SM_TEMPLATE * template_, const char *name, const char *funct
 	{
 	  if (template_->name != NULL)
 	    {
-	      sprintf (iname, "%s_%s", template_->name, name);
+	      sprintf (iname, "%s_%s", sm_simple_name (template_->name), name);
 	    }
 	  else if (template_->op != NULL)
 	    {
-	      sprintf (iname, "%s_%s", sm_get_ch_name (template_->op), name);
+	      sprintf (iname, "%s_%s", sm_get_ch_simple_name (template_->op), name);
 	    }
 	  else
 	    {

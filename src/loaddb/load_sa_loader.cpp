@@ -528,7 +528,7 @@ static void idmap_final (void);
 static int idmap_grow (int size);
 static int ldr_assign_class_id (DB_OBJECT *class_, int id);
 static DB_OBJECT *ldr_find_class (const char *class_name);
-static int ldr_find_other_class_name (const char *name, char *buf, size_t buf_size);
+static int ldr_find_class_by_query (const char *name, char *buf, size_t buf_size);
 static DB_OBJECT *ldr_get_class_from_id (int id);
 static void ldr_clear_context (LDR_CONTEXT *context);
 static void ldr_clear_and_free_context (LDR_CONTEXT *context);
@@ -1421,7 +1421,7 @@ ldr_find_class (const char *class_name)
 {
   DB_OBJECT *class_ = NULL;
   LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
-  char realname[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char realname[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
 
   /* Check for internal error */
   if (class_name == NULL || class_name[0] == '\0')
@@ -1431,7 +1431,7 @@ ldr_find_class (const char *class_name)
       return NULL;
     }
 
-  sm_user_specified_name (class_name, NULL, realname, DB_MAX_FULL_CLASS_LENGTH);
+  sm_user_specified_name (class_name, NULL, realname, DB_MAX_IDENTIFIER_LENGTH_287);
 
   ldr_Hint_class_names[0] = realname;
 
@@ -1449,9 +1449,9 @@ ldr_find_class (const char *class_name)
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
   if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
-      char other_class_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+      char other_class_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
 
-      ldr_find_other_class_name (realname, other_class_name, DB_MAX_FULL_CLASS_LENGTH);
+      ldr_find_class_by_query (realname, other_class_name, DB_MAX_IDENTIFIER_LENGTH_287);
       if (other_class_name)
 	{
 	  ldr_Hint_class_names[0] = other_class_name;
@@ -1475,7 +1475,7 @@ ldr_find_class (const char *class_name)
 }
 
 static int
-ldr_find_other_class_name (const char *name, char *buf, size_t buf_size)
+ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
 {
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
@@ -4912,11 +4912,11 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
     }
   if (class_name)
     {
-      if (intl_identifier_lower_string_size (class_name) >= SM_MAX_FULL_CLASS_LENGTH)
+      if (intl_identifier_lower_string_size (class_name) >= SM_MAX_IDENTIFIER_LENGTH_287)
 	{
 	  display_error_line (0);
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_EXCEED_MAX_LEN),
-		   SM_MAX_FULL_CLASS_LENGTH - 1);
+		   SM_MAX_IDENTIFIER_LENGTH_287 - 1);
 	  CHECK_CONTEXT_VALIDITY (context, true);
 	  ldr_abort ();
 	  goto error_exit;

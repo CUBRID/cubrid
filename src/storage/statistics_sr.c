@@ -402,7 +402,7 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 	}
       classname = string;
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH_287);
 
       if (alloced_string)
 	{

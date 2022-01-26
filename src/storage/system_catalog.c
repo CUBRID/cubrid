@@ -4723,7 +4723,7 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH_287);
 
       if (alloced_string)
 	{
@@ -5048,7 +5048,7 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH_287);
 
       if (alloced_string)
 	{
@@ -5626,7 +5626,7 @@ catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p, const char *class_name
   BTID found_btid;
   BTID curr_bitd;
   OID class_oid;
-  char cls_lower[DB_MAX_FULL_CLASS_LENGTH] = { 0 };
+  char cls_lower[DB_MAX_IDENTIFIER_LENGTH_287] = { 0 };
   LC_FIND_CLASSNAME status;
 
   BTID_SET_NULL (&found_btid);

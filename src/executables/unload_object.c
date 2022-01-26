@@ -98,14 +98,14 @@ static char *class_processed = NULL;
 static OID null_oid;
 
 static const char *prohibited_classes[] = {
-  AU_OLD_ROOT_CLASS_NAME,	/* old name for db_root */
-  AU_ROOT_CLASS_NAME,
-  AU_USER_CLASS_NAME,
-  AU_AUTH_CLASS_NAME,
-  AU_PASSWORD_CLASS_NAME,
-  TR_CLASS_NAME,
-  CT_SERIAL_NAME,
-  CT_HA_APPLY_INFO_NAME,
+  "db_authorizations",		/* old name for db_root */
+  "db_root",
+  "db_user",
+  "db_authorization",
+  "db_password",
+  "db_trigger",
+  "db_serial",
+  "db_ha_apply_info",
   /* catalog classes */
   CT_CLASS_NAME,
   CT_ATTRIBUTE_NAME,
@@ -1873,9 +1873,9 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
   int i, j, is_partition = 0, error;
   int len_clsname = 0;
   FILE *input_file;
-  char buffer[DB_MAX_FULL_CLASS_LENGTH];
-  char class_name[DB_MAX_FULL_CLASS_LENGTH];
-  char downcase_class_name[SM_MAX_FULL_CLASS_LENGTH];
+  char buffer[DB_MAX_IDENTIFIER_LENGTH_287];
+  char class_name[DB_MAX_IDENTIFIER_LENGTH_287];
+  char downcase_class_name[SM_MAX_IDENTIFIER_LENGTH_287];
   MOP *sub_partitions = NULL;
   char scan_format[16];
   char *trimmed_buf;
@@ -1893,7 +1893,7 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
     }
   snprintf (scan_format, sizeof (scan_format), "%%%ds\n", (int) (sizeof (buffer) - 1));
   i = 0;
-  while (fgets ((char *) buffer, DB_MAX_FULL_CLASS_LENGTH, input_file) != NULL)
+  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH_287, input_file) != NULL)
     {
       DB_OBJECT *class_;
 
@@ -1912,7 +1912,7 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 	{
 	  sscanf ((char *) buffer, scan_format, (char *) class_name);
 
-	  sm_downcase_name (class_name, downcase_class_name, SM_MAX_FULL_CLASS_LENGTH);
+	  sm_downcase_name (class_name, downcase_class_name, SM_MAX_IDENTIFIER_LENGTH_287);
 
 	  class_ = locator_find_class (downcase_class_name);
 	  if (class_ != NULL)

@@ -7988,7 +7988,7 @@ path_expression_list
 	;
 
 delete_name
-	: class_name
+	: identifier
 		{{
 
 			PT_NODE *node = $1;
@@ -7997,7 +7997,7 @@ delete_name
 			$$ = node;
 
 		DBG_PRINT}}
-	| class_name DOT '*'
+	| identifier DOT '*'
 		{{
 
 			PT_NODE *node = $1;
@@ -11697,7 +11697,7 @@ trigger_action
 	;
 
 trigger_spec_list
-	: class_name_list
+	: trigger_name_list
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_TRIGGER_SPEC_LIST);
@@ -14113,7 +14113,13 @@ from_param
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CLASS class_name
+	/*
+	 * It must be changed to "CLASS class_name" by User Schema support.
+	 * However, it is difficult to change to "CLASS class_name"
+	 * because it is a syntax not supported by AS-IS.
+	 * Even on AS-IS, PT_INTERNAL_ERROR (parser, "resolution") occurs on pt_resolve_object.
+	 */
+	| CLASS identifier
 		{{
 
 			PT_NODE *val = $2;

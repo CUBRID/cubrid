@@ -138,7 +138,7 @@ int trigger_description::init (struct db_object *trobj)
 
       /* format the full event specification so csql can display it without being dependent on syntax */
 
-      char buffer[SM_MAX_FULL_CLASS_LENGTH + SM_MAX_IDENTIFIER_LENGTH + 32] = { '\0' };
+      char buffer[SM_MAX_IDENTIFIER_LENGTH_287 + SM_MAX_IDENTIFIER_LENGTH + 32] = { '\0' };
 
       if (this->attribute != NULL)
 	{
@@ -242,6 +242,10 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
   DB_TRIGGER_TIME time;
   int save;
   const char *name;
+  char *trigger_name_copy = NULL;
+  char *owner_name_p = NULL;
+  char *trigger_name_p = NULL;
+  char *save_token = NULL;
 
   AU_DISABLE (save);
 
@@ -255,10 +259,16 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
     {
       /* automatically filter out invalid triggers */
 
+      trigger_name_copy = strdup (trigger->name);
+      owner_name_p = strtok_r (trigger_name_copy, ".", &save_token);
+      trigger_name_p = strtok_r (NULL, ".", &save_token);
+
       output_ctx ("CREATE TRIGGER ");
-      output_ctx ("[%s]\n", trigger->name);
+      output_ctx ("[%s].[%s]\n", owner_name_p, trigger_name_p);
       output_ctx ("  STATUS %s\n", tr_status_as_string (trigger->status));
       output_ctx ("  PRIORITY %f\n", trigger->priority);
+
+      free_and_init (trigger_name_copy);
 
       time = TR_TIME_BEFORE;
       if (trigger->condition != NULL)

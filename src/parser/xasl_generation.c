@@ -19807,7 +19807,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 	  PT_NODE *lhs, *rhs;
 
 	  save_custom = parser->custom_print;
-	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
 	  for (rhs = statement->info.query.q.select.list, lhs = select_names;
 	       rhs != NULL && lhs != NULL; rhs = rhs->next, lhs = lhs->next)
 	    {

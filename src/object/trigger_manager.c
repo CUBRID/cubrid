@@ -3928,7 +3928,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 {
   TR_TRIGGER *trigger;
   DB_OBJECT *object;
-  char realname[SM_MAX_IDENTIFIER_LENGTH];	/* attribute name */
+  char realname[SM_MAX_IDENTIFIER_LENGTH];
   bool tr_object_map_added = false;
   bool has_savepoint = false;
 
@@ -4232,6 +4232,24 @@ tr_find_trigger (const char *name)
 
   if (trigger_table_find (name, &object) == NO_ERROR)
     {
+      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+	{
+	  if (object == NULL)
+	    {
+	      char other_trigger_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+
+	      do_find_trigger_by_query (name, other_trigger_name, DB_MAX_IDENTIFIER_LENGTH_287);
+	      if (other_trigger_name)
+		{
+		  if (trigger_table_find (other_trigger_name, &object) != NO_ERROR)
+		    {
+		      goto end;
+		    }
+		}
+	    }
+	}
+
       if (object == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_NOT_FOUND, 1, name);
@@ -4254,6 +4272,7 @@ tr_find_trigger (const char *name)
 	}
     }
 
+end:
   AU_ENABLE (save);
   return object;
 }
@@ -6766,7 +6785,7 @@ tr_dump_all_triggers (FILE * fp, bool quoted_id_flag)
 				{
 				  tr_dump_trigger (trigger_object, fp, quoted_id_flag);
 				  fprintf (fp, "call [change_trigger_owner]('%s'," " '%s') on class [db_root];\n\n",
-					   trigger->name, get_user_name (trigger->owner));
+					   sm_simple_name (trigger->name), get_user_name (trigger->owner));
 				}
 			    }
 			}
@@ -6832,6 +6851,12 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 	}
       else
 	{
+	  /* Don't change owner if same owner */
+	  if (intl_identifier_casecmp (tr_name, newname) == 0)
+	    {
+	      goto end;
+	    }
+
 	  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
 	    {
 	      /* protect against multiple flushes to server */
@@ -6857,14 +6882,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 
 	      db_make_string (&value, trigger->name);
 	      error = db_put_internal (trigger_object, TR_ATT_FULL_NAME, &value);
-
-	      db_make_string (&value, sm_simple_name (trigger->name));
-	      error = db_put_internal (trigger_object, TR_ATT_NAME, &value);
-	      if (error == NO_ERROR)
-		{
-		  error = locator_flush_instance (trigger_object);
-		}
-
 	      if (error != NO_ERROR)
 		{
 		  /*
@@ -6878,6 +6895,28 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 		  (void) trigger_table_rename (trigger_object, oldname);
 		  oldname = NULL;
 		}
+
+	      db_make_string (&value, sm_simple_name (trigger->name));
+	      error = db_put_internal (trigger_object, TR_ATT_NAME, &value);
+	      if (error != NO_ERROR)
+		{
+		  /*
+		   * hmm, couldn't set the new name, put the old one back,
+		   * we might need to abort the transaction here ?
+		   */
+		  ASSERT_ERROR ();
+		  newname = trigger->name;
+		  trigger->name = oldname;
+		  /* if we can't do this, the transaction better abort */
+		  (void) trigger_table_rename (trigger_object, oldname);
+		  oldname = NULL;
+		}
+
+	      if (error == NO_ERROR)
+		{
+		  error = locator_flush_instance (trigger_object);
+		}
+
 	      if (oldname != NULL)
 		{
 		  free_and_init (oldname);
@@ -6891,6 +6930,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 	}
     }
 
+end:
   AU_ENABLE (save);
 
   if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
@@ -7309,12 +7349,12 @@ define_trigger_classes (void)
       goto tmp_error;
     }
 
-  if (dbt_add_attribute (tmp, TR_ATT_OWNER, AU_USER_CLASS_NAME, NULL))
+  if (dbt_add_attribute (tmp, TR_ATT_FULL_NAME, "string", NULL))
     {
       goto tmp_error;
     }
 
-  if (dbt_add_attribute (tmp, TR_ATT_FULL_NAME, "string", NULL))
+  if (dbt_add_attribute (tmp, TR_ATT_OWNER, AU_USER_CLASS_NAME, NULL))
     {
       goto tmp_error;
     }

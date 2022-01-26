@@ -5164,7 +5164,7 @@ au_change_owner (MOP classmop, MOP owner)
 
   char *owner_name = NULL;
   const char *class_name = NULL;
-  char class_full_name[DB_MAX_FULL_CLASS_LENGTH] = { '\0' };
+  char class_full_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
 
   AU_DISABLE (save);
   if (!au_is_dba_group_member (Au_user))
@@ -5175,60 +5175,63 @@ au_change_owner (MOP classmop, MOP owner)
   else
     {
       error = au_fetch_class_force (classmop, &class_, AU_FETCH_UPDATE);
-      if (error == NO_ERROR)
+      if (error != NO_ERROR)
 	{
-	  /*
-	   * Change serial object's owner when the class has auto_increment
-	   * attribute column.
-	   */
-	  for (attr = class_->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
+	  goto exit_on_error;
+	}
+
+      if (ws_is_same_object (class_->owner, owner))
+	{
+	  goto exit_on_error;
+	}
+
+      /*
+       * Change serial object's owner when the class has auto_increment
+       * attribute column.
+       */
+      for (attr = class_->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
+	{
+	  if (attr->auto_increment != NULL)
 	    {
-	      if (attr->auto_increment != NULL)
+	      error = au_change_serial_owner (&attr->auto_increment, owner);
+	      if (error != NO_ERROR)
 		{
-		  error = au_change_serial_owner (&attr->auto_increment, owner);
-		  if (error != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
-		}
-	    }
-
-	  /* Change class owner */
-	  class_->owner = owner;
-
-	  /*
-	   * Since class_full_name includes owner_name, if owner of class is changed,
-	   * class_full_name must be changed as well.
-	   */
-	  class_name = sm_ch_simple_name ((MOBJ) class_);
-	  if (sm_check_system_class_by_name (class_name))
-	    {
-	      error = locator_flush_class (classmop);
-	    }
-	  else
-	    {
-	      owner_name = au_get_user_name (owner);
-
-	      snprintf (class_full_name, DB_MAX_FULL_CLASS_LENGTH, "%s.%s", owner_name, class_name);
-
-	      error = sm_rename_class (classmop, class_full_name);
-	      if (error == ER_LC_CLASSNAME_EXIST)
-		{
-		  /* youngjinj */
-		  er_clear ();
-		  error = NO_ERROR;
-		}
-
-	      if (owner_name)
-		{
-		  db_string_free (owner_name);
-		  owner_name = NULL;
+		  goto exit_on_error;
 		}
 	    }
 	}
+
+      /* Change class owner */
+      class_->owner = owner;
+
+      /*
+       * Since class_full_name includes owner_name, if owner of class is changed,
+       * class_full_name must be changed as well.
+       */
+      class_name = sm_ch_simple_name ((MOBJ) class_);
+
+      if (sm_check_system_class_by_name (class_name))
+	{
+	  error = locator_flush_class (classmop);
+	  goto exit_on_error;
+	}
+
+      owner_name = au_get_user_name (owner);
+
+      snprintf (class_full_name, DB_MAX_IDENTIFIER_LENGTH_287, "%s.%s", owner_name, class_name);
+
+      error = sm_rename_class (classmop, class_full_name);
     }
+
 exit_on_error:
   AU_ENABLE (save);
+
+  if (owner_name)
+    {
+      db_string_free (owner_name);
+      owner_name = NULL;
+    }
+
   return (error);
 }
 
@@ -5510,6 +5513,9 @@ void
 au_change_trigger_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * trigger, DB_VALUE * owner)
 {
   MOP user, trigger_mop;
+  char trigger_full_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+  char *trigger_name = NULL;
+  char *owner_name = NULL;
   int error;
   int ok = 0;
 
@@ -5528,7 +5534,12 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * trigge
 		  error = au_change_trigger_owner (trigger_mop, user);
 		  if (error == NO_ERROR)
 		    {
-		      ok = 1;
+		      snprintf (trigger_full_name, DB_MAX_IDENTIFIER_LENGTH_287, "%s.%s", db_get_string (owner), sm_simple_name (db_get_string (trigger)));
+		      error = tr_rename_trigger (trigger_mop, trigger_full_name, true);
+		      if (error == NO_ERROR)
+			{
+			  ok = 1;
+			}
 		    }
 		}
 	    }

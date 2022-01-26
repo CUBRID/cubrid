@@ -6318,7 +6318,7 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
   int i;
   PT_NODE *arg, *id_string;
   PT_NODE *prev = NULL, *head = NULL;
-  char lower_table_name[DB_MAX_FULL_CLASS_LENGTH];
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH_287];
 
   if (arg_info_count == 0)
     {
@@ -6664,7 +6664,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
   PT_NODE *order_by_item = NULL;
   PT_NODE *sub_query = NULL;
   PT_NODE *outer_query = NULL;
-  char lower_table_name[DB_MAX_FULL_CLASS_LENGTH];
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH_287];
   PT_NODE *value = NULL, *value_list = NULL;
   DB_VALUE db_valuep[10];
   const char **psubquery_aliases = NULL, **pquery_names = NULL, **pquery_aliases = NULL;
@@ -6953,7 +6953,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
 {
   PT_NODE *node = NULL;
   PT_NODE *from_item = NULL;
-  char lower_view_name[DB_MAX_FULL_CLASS_LENGTH];
+  char lower_view_name[DB_MAX_IDENTIFIER_LENGTH_287];
 
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
@@ -7318,10 +7318,10 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   PT_NODE *where_expr = NULL;
   PT_NODE *concat_node = NULL;
   PT_NODE *group_by_item = NULL;
-  char user_name[DB_MAX_USER_LENGTH];
+  char user_name[SM_MAX_IDENTIFIER_LENGTH];
 
   assert (original_user_name != NULL);
-  assert (strlen (original_user_name) < DB_MAX_USER_LENGTH);
+  assert (strlen (original_user_name) < SM_MAX_IDENTIFIER_LENGTH);
 
   /* conversion to uppercase can cause <original_user_name> to double size, if internationalization is used : size
    * <user_name> accordingly */
@@ -7841,7 +7841,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_NODE *from_item = NULL;
   PT_NODE *order_by_item = NULL;
   PT_NODE *query = NULL;
-  char lower_table_name[DB_MAX_FULL_CLASS_LENGTH];
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH_287];
   PT_NODE *value = NULL, *value_list = NULL;
   DB_VALUE db_valuep[14];
   const char *aliases[] = {
@@ -10135,4 +10135,19 @@ pt_get_name_without_current_user_name (const char *name)
     }
 
   return object_name;
+}
+
+const char *
+pt_get_simple_name (const char *name)
+{
+  const char *dot = NULL;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      return NULL;
+    }
+
+  dot = strchr (name, '.');
+
+  return dot ? (dot + 1) : name;
 }

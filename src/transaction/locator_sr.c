@@ -312,7 +312,7 @@ locator_initialize (THREAD_ENTRY * thread_p)
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < SM_MAX_IDENTIFIER_LENGTH_287);
 
       entry = ((LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry)));
       if (entry == NULL)
@@ -433,7 +433,7 @@ xlocator_reserve_class_names (THREAD_ENTRY * thread_p, const int num_classes, co
   for (i = 0; i < num_classes; ++i)
     {
       assert (classnames[i] != NULL);
-      assert (strlen (classnames[i]) < DB_MAX_FULL_CLASS_LENGTH);
+      assert (strlen (classnames[i]) < DB_MAX_IDENTIFIER_LENGTH_287);
 
       result = xlocator_reserve_class_name (thread_p, classnames[i], &class_oids[i]);
       if (result != LC_CLASSNAME_RESERVED)
@@ -484,7 +484,7 @@ xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname, OID
     }
 
   assert (classname != NULL);
-  assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);
+  assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH_287);
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
@@ -785,7 +785,7 @@ xlocator_delete_class_name (THREAD_ENTRY * thread_p, const char *classname)
     }
 
   assert (classname != NULL);
-  assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);
+  assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH_287);
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
@@ -2002,7 +2002,7 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH_287);
 
       /*
        * Make sure that this class exists in classname_to_OID table and that
@@ -5408,7 +5408,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH_287);
 
       if (heap_get_class_name_alloc_if_diff (thread_p, oid, classname, &old_classname) != NO_ERROR)
 	{
@@ -5424,7 +5424,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       if (old_classname != NULL && old_classname != classname)
 	{
 	  assert (old_classname != NULL);
-	  assert (strlen (old_classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+	  assert (strlen (old_classname) < DB_MAX_IDENTIFIER_LENGTH_287);
 
 	  /* Different names, the class was renamed. */
 	  error_code = log_add_to_modified_class_list (thread_p, old_classname, oid);
@@ -6226,7 +6226,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       classname = string;
 
       assert (classname != NULL);
-      assert (strlen (classname) < DB_MAX_FULL_CLASS_LENGTH);	// to be: DB_MAX_FULL_CLASS_LENGTH
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH_287);
 
       /* Note: by now, the client has probably already requested this class be deleted. We try again here just to be
        * sure it has been marked properly.  Note that we would normally want to check the return code, but we must not

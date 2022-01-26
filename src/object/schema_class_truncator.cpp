@@ -527,7 +527,7 @@ namespace cubschema
 	DB_QUERY_RESULT *result = NULL;
 	STATEMENT_ID stmt_id;
 	DB_VALUE value;
-	char select_query[DB_MAX_FULL_CLASS_LENGTH + 256] = { 0 };
+	char select_query[DB_MAX_IDENTIFIER_LENGTH_287 + 256] = { 0 };
 	constexpr int CNT_CATCLS_OBJECTS = 5;
 	DB_BIGINT cnt_refers = CNT_CATCLS_OBJECTS + 1;
 	int au_save;

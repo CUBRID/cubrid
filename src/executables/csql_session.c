@@ -221,8 +221,8 @@ void
 csql_help_schema (const char *class_name)
 {
   char **line_ptr;
-  char class_title[2 * DB_MAX_FULL_CLASS_LENGTH + 2];
-  char fixed_class_name[DB_MAX_FULL_CLASS_LENGTH];
+  char class_title[2 * DB_MAX_IDENTIFIER_LENGTH_287 + 2];
+  char fixed_class_name[DB_MAX_IDENTIFIER_LENGTH_287];
   char *class_name_composed = NULL;
   int composed_size, class_name_size;
   class_description class_descr;
@@ -258,7 +258,7 @@ csql_help_schema (const char *class_name)
 	}
     }
 
-  if (strlen (class_name) >= DB_MAX_FULL_CLASS_LENGTH)
+  if (strlen (class_name) >= DB_MAX_IDENTIFIER_LENGTH_287)
     {
       csql_Error_code = CSQL_ERR_TOO_LONG_LINE;
       goto error;
@@ -281,7 +281,7 @@ csql_help_schema (const char *class_name)
       goto error;
     }
 
-  snprintf (class_title, (2 * DB_MAX_FULL_CLASS_LENGTH + 2),
+  snprintf (class_title, (2 * DB_MAX_IDENTIFIER_LENGTH_287 + 2),
 	    msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_HELP_CLASS_HEAD_TEXT),
 	    class_descr.class_type);
   APPEND_HEAD_LINE (class_title);

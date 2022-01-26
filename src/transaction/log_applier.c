@@ -7634,7 +7634,7 @@ la_create_repl_filter (void)
   char filter_file_real_path[PATH_MAX];
   char buffer[LINE_MAX];
   char error_msg[LINE_MAX];
-  char classname[SM_MAX_FULL_CLASS_LENGTH];
+  char classname[SM_MAX_IDENTIFIER_LENGTH_287];
   int classname_len = 0;
   LA_REPL_FILTER *filter;
   FILE *fp;
@@ -7698,7 +7698,7 @@ la_create_repl_filter (void)
 	  continue;
 	}
 
-      if (classname_len >= SM_MAX_FULL_CLASS_LENGTH)
+      if (classname_len >= SM_MAX_IDENTIFIER_LENGTH_287)
 	{
 	  snprintf_dots_truncate (error_msg, LINE_MAX - 1, "invalid table name %s", buffer);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
@@ -7707,7 +7707,7 @@ la_create_repl_filter (void)
 	  goto error_return;
 	}
 
-      sm_downcase_name (buffer, classname, SM_MAX_FULL_CLASS_LENGTH);
+      sm_downcase_name (buffer, classname, SM_MAX_IDENTIFIER_LENGTH_287);
 
       class_ = locator_find_class (classname);
       if (class_ == NULL)

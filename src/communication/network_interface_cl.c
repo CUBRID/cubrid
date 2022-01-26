@@ -10408,7 +10408,7 @@ loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std
       ptr = or_unpack_int (reply, &area_size);
       ptr = or_unpack_int (ptr, &rc);
       ptr = or_unpack_int (ptr, &class_ignored);
-      assert (area_size < DB_MAX_FULL_CLASS_LENGTH);
+      assert (area_size < DB_MAX_IDENTIFIER_LENGTH_287);
 
       class_name = std::string (area, area_size);
 
