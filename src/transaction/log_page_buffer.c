@@ -2136,7 +2136,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
 	}
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received log page message from Page Server. Error code: %d\n", error_code);
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n", error_code);
 	}
     }
   assert (message_ptr == (response_message.c_str () + response_message.size ()));
