@@ -7988,7 +7988,7 @@ path_expression_list
 	;
 
 delete_name
-	: class_name
+	: identifier
 		{{
 
 			PT_NODE *node = $1;
@@ -7997,7 +7997,7 @@ delete_name
 			$$ = node;
 
 		DBG_PRINT}}
-	| class_name DOT '*'
+	| identifier DOT '*'
 		{{
 
 			PT_NODE *node = $1;

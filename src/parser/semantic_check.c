@@ -1641,7 +1641,7 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
 	  PT_NODE *const name = i_attr->info.attr_def.attr_name;
 
 	  if (pt_str_compare (resolv_attr->info.name.original, name->info.name.original, CASE_INSENSITIVE) == 0
-	      && pt_qualifier_compare (resolv_class->info.name.original, name->info.name.resolved) == 0)
+	      && pt_user_specified_name_compare (resolv_class->info.name.original, name->info.name.resolved) == 0)
 	    {
 	      name->info.name.original = new_name->info.name.original;
 	    }
@@ -1672,7 +1672,7 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
 	    }
 	  else
 	    {
-	      if (pt_qualifier_compare (resolv_class->info.name.original, name->info.name.resolved) == 0)
+	      if (pt_user_specified_name_compare (resolv_class->info.name.original, name->info.name.resolved) == 0)
 		{
 		  /* i_attr is a keeper. keep the user-specified inherited attribute */
 		  t_attr = i_attr;
@@ -7075,7 +7075,7 @@ pt_attr_refers_to_self (PARSER_CONTEXT * parser, PT_NODE * attr, const char *sel
   for (type = attr->data_type->info.data_type.entity; type && type->node_type == PT_NAME; type = type->next)
     {
       /* self is a string because in the create case, self does not exist yet */
-      if (!pt_qualifier_compare (self, type->info.name.original))
+      if (!pt_user_specified_name_compare (self, type->info.name.original))
 	{
 	  return true;
 	}
@@ -8495,7 +8495,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  for (parent = node->info.create_entity.supclass_list; parent && !found; parent = parent->next)
 	    {
-	      found = !pt_qualifier_compare (resolv_class->info.name.original, parent->info.name.original);
+	      found = !pt_user_specified_name_compare (resolv_class->info.name.original, parent->info.name.original);
 	    }
 
 	  if (!found)
@@ -13118,11 +13118,11 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
        * 
        */
     case PT_NAME:
-      if (pt_qualifier_compare (p->info.name.original, q->info.name.original))
+      if (pt_user_specified_name_compare (p->info.name.original, q->info.name.original))
 	{
 	  return 1;
 	}
-      if (pt_qualifier_compare (p->info.name.resolved, q->info.name.resolved))
+      if (pt_user_specified_name_compare (p->info.name.resolved, q->info.name.resolved))
 	{
 	  return 1;
 	}

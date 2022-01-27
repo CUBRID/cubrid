@@ -1876,7 +1876,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      assert (!PT_SPEC_IS_DERIVED (spec) || !PT_SPEC_IS_CTE (spec));
 			      flat = spec->info.spec.flat_entity_list;
 
-			      if (pt_qualifier_compare (attr->info.name.original, flat->info.name.resolved) == 0)
+			      if (pt_user_specified_name_compare (attr->info.name.original, flat->info.name.resolved) ==
+				  0)
 				{
 				  /* find spec set attr's spec_id */
 				  attr->info.name.spec_id = flat->info.name.spec_id;
@@ -1888,7 +1889,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      /* derived table or cte */
 			      assert (PT_SPEC_IS_DERIVED (spec) || PT_SPEC_IS_CTE (spec));
 			      range_var = spec->info.spec.range_var;
-			      if (pt_qualifier_compare (attr->info.name.original, range_var->info.name.original) == 0)
+			      if (pt_user_specified_name_compare
+				  (attr->info.name.original, range_var->info.name.original) == 0)
 				{
 				  break;
 				}
@@ -3831,7 +3833,7 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
 	   *      - exposed_name of "t1"    : "u1.t1"
 	   *      - exposed_name of "t2 t1" : "t1"
 	   */
-	  if (!pt_qualifier_compare
+	  if (!pt_user_specified_name_compare
 	      (p->info.spec.range_var->info.name.original, q->info.spec.range_var->info.name.original))
 	    {
 	      PT_MISC_TYPE p_type = p->info.spec.range_var->info.name.meta_class;
@@ -3921,7 +3923,7 @@ pt_check_unique_names (PARSER_CONTEXT * parser, const PT_NODE * p)
 	      q = q->next;
 	      continue;
 	    }
-	  if (!pt_qualifier_compare (p_name, q_name))
+	  if (!pt_user_specified_name_compare (p_name, q_name))
 	    {
 	      PT_ERRORmf (parser, q, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_CLASS_OR_ALIAS, q_name);
 	      return 0;
@@ -5538,7 +5540,8 @@ pt_is_correlation_name (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * nam)
 
       if (specs->info.spec.range_var
 	  && ((nam->info.name.meta_class != PT_META_CLASS) || (specs->info.spec.meta_class == PT_META_CLASS))
-	  && (pt_qualifier_compare (nam->info.name.original, specs->info.spec.range_var->info.name.original) == 0))
+	  && (pt_user_specified_name_compare (nam->info.name.original, specs->info.spec.range_var->info.name.original)
+	      == 0))
 	{
 	  if (!owner)
 	    {
@@ -5551,7 +5554,7 @@ pt_is_correlation_name (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * nam)
 	      entity_name = specs->info.spec.entity_name;
 	      if (entity_name && entity_name->node_type == PT_NAME && entity_name->info.name.resolved
 		  /* actual class ownership test is done for spec no need to repeat that here. */
-		  && (pt_qualifier_compare (entity_name->info.name.resolved, owner->info.name.original) == 0))
+		  && (pt_user_specified_name_compare (entity_name->info.name.resolved, owner->info.name.original) == 0))
 		{
 		  return specs;
 		}
@@ -5658,7 +5661,7 @@ pt_is_on_list (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * list)
 	  return NULL;		/* this is an error */
 	}
 
-      if (pt_qualifier_compare (p->info.name.original, list->info.name.original) == 0)
+      if (pt_user_specified_name_compare (p->info.name.original, list->info.name.original) == 0)
 	{
 	  return (PT_NODE *) list;	/* found a match */
 	}
@@ -6738,7 +6741,7 @@ pt_resolve_hint_args (PARSER_CONTEXT * parser, PT_NODE ** arg_list, PT_NODE * sp
 	    }
 
 	  if ((range = spec->info.spec.range_var)
-	      && (pt_qualifier_compare (range->info.name.original, arg->info.name.original) == 0))
+	      && (pt_user_specified_name_compare (range->info.name.original, arg->info.name.original) == 0))
 	    {
 	      /* found match */
 	      arg->info.name.spec_id = spec->info.spec.id;
@@ -7011,7 +7014,8 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 
 	  range = spec->info.spec.range_var;
 	  entity = spec->info.spec.entity_name;
-	  if (range && entity && (pt_qualifier_compare (range->info.name.original, index->info.name.resolved) == 0))
+	  if (range && entity
+	      && (pt_user_specified_name_compare (range->info.name.original, index->info.name.resolved) == 0))
 	    {
 	      classop = db_find_class (entity->info.name.original);
 	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
@@ -7164,7 +7168,7 @@ pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag)
 }
 
 int
-pt_qualifier_compare (const char *p, const char *q)
+pt_user_specified_name_compare (const char *p, const char *q)
 {
   const char *dot_p = NULL;
   const char *dot_q = NULL;
@@ -8310,7 +8314,8 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       assert (cte_name != NULL);
 
       if (pt_name_equal (parser, cte_name, node->info.spec.entity_name)
-	  || pt_qualifier_compare (cte_name->info.name.original, node->info.spec.entity_name->info.name.original) == 0)
+	  || pt_user_specified_name_compare (cte_name->info.name.original,
+					     node->info.spec.entity_name->info.name.original) == 0)
 	{
 	  node->info.spec.cte_name = node->info.spec.entity_name;
 	  node->info.spec.entity_name = NULL;

@@ -4147,7 +4147,7 @@ mq_check_delete (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
       for (search = table->next; search; search = search->next)
 	{
 	  /* check if search is duplicate of table */
-	  if (!pt_qualifier_compare (table->info.name.resolved, search->info.name.resolved)
+	  if (!pt_user_specified_name_compare (table->info.name.resolved, search->info.name.resolved)
 	      && table->info.name.spec_id == search->info.name.spec_id)
 	    {
 	      /* same class found twice in table_list */
@@ -5246,7 +5246,7 @@ mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
 	       */
 	      if (search_node->info.name.original != NULL && search_node->info.name.resolved != NULL
 		  && (search_node->etc == (void *) PT_IDX_HINT_USE || search_node->etc == (void *) PT_IDX_HINT_FORCE)
-		  && !pt_qualifier_compare (node->info.name.resolved, search_node->info.name.resolved))
+		  && !pt_user_specified_name_compare (node->info.name.resolved, search_node->info.name.resolved))
 		{
 		  /* class_name.idx_name and class_name.none found in USE INDEX and/or USING INDEX clauses */
 		  PT_ERRORmf2 (parser, using_index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INDEX_HINT_CONFLICT,
@@ -9426,7 +9426,7 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 		  for (class_spec = lambda_arg->spec_frames->extra_specs; class_spec; class_spec = class_spec->next)
 		    {
 		      entity = class_spec->info.spec.entity_name;
-		      if (!pt_qualifier_compare (entity->info.name.original, result->info.name.resolved))
+		      if (!pt_user_specified_name_compare (entity->info.name.original, result->info.name.resolved))
 			{
 			  break;	/* found */
 			}
