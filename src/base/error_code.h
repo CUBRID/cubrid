@@ -1698,7 +1698,9 @@
 
 #define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
 
-#define ER_LAST_ERROR                               -1333
+#define ER_FLASHBACK_TOO_MANY_SUMMARY               -1335
+
+#define ER_LAST_ERROR                               -1336
 /*
  * CAUTION!
  *
