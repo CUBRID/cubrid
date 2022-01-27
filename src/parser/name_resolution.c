@@ -7172,8 +7172,8 @@ pt_user_specified_name_compare (const char *p, const char *q)
 {
   const char *dot_p = NULL;
   const char *dot_q = NULL;
-  const char *qualifier_p = NULL;
-  const char *qualifier_q = NULL;
+  const char *original_p = NULL;
+  const char *original_q = NULL;
 
   if (!p && !q)
     {
@@ -7206,19 +7206,19 @@ pt_user_specified_name_compare (const char *p, const char *q)
        *      p : object_name           -> object_name
        *      q : user_name.object_name -> object_name
        */
-      qualifier_p = dot_p ? (dot_p + 1) : p;
-      qualifier_q = dot_q ? (dot_q + 1) : q;
+      original_p = dot_p ? (dot_p + 1) : p;
+      original_q = dot_q ? (dot_q + 1) : q;
 
       /*
-       * e.g. qualifier_p : object_name.          -> NULL
-       *      qualifier_q : user_name.object_name -> object_name
+       * e.g. original_p : object_name.          -> NULL
+       *      original_q : user_name.object_name -> object_name
        *
        *      or
        * 
-       *      qualifier_p : user_name.object_name -> object_name
-       *      qualifier_q : object_name.          -> NULL
+       *      original_p : user_name.object_name -> object_name
+       *      original_q : object_name.          -> NULL
        */
-      if (!qualifier_p || !qualifier_q)
+      if (!original_p || !original_q)
 	{
 	  return 1;
 	}
@@ -7236,11 +7236,11 @@ pt_user_specified_name_compare (const char *p, const char *q)
        *      p : object_name
        *      q : object_name
        */
-      qualifier_p = p;
-      qualifier_q = q;
+      original_p = p;
+      original_q = q;
     }
 
-  return intl_identifier_casecmp (qualifier_p, qualifier_q);
+  return intl_identifier_casecmp (original_p, original_q);
 }
 
 /*
