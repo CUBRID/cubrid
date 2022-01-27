@@ -6555,6 +6555,18 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 	   log_header_p->has_logging_been_skipped, LSA_AS_ARGS (&log_header_p->bkup_level0_lsa),
 	   LSA_AS_ARGS (&log_header_p->bkup_level1_lsa), LSA_AS_ARGS (&log_header_p->bkup_level2_lsa),
 	   log_header_p->prefix_name);
+
+  // guarded because tests that depend on investigating/comparing log might fail
+#if 0
+  // vacuum related fields
+  fprintf (out_fp,
+	   "     vacuum_last_blockid = %lld, mvcc_op_log_lsa = %lld|%d,\n"
+	   "     oldest_visible_mvccid = %llu, newest_block_mvccid = %llu,\n"
+	   "     does_block_need_vacuum = %d\n",
+	   (long long int) log_header_p->vacuum_last_blockid, LSA_AS_ARGS (&log_header_p->mvcc_op_log_lsa),
+	   (long long unsigned) log_header_p->oldest_visible_mvccid,
+	   (long long unsigned) log_header_p->newest_block_mvccid, log_header_p->does_block_need_vacuum);
+#endif
 }
 
 static LOG_PAGE *
