@@ -2102,7 +2102,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
-      _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
+      _er_log_debug (ARG_FILE_LINE, "[READ LOG] Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
     }
   std::string response_message;
   ts_Gl->send_receive (tran_to_page_request::SEND_LOG_PAGE_FETCH, std::move (request_message), response_message);
@@ -2120,7 +2120,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received log page message from Page Server. Page ID: %lld\n",
 			 log_pgptr->hdr.logical_pageid);
 	}
     }
@@ -2136,7 +2136,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
 	}
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Error code: %d\n", error_code);
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received log page message from Page Server. Error code: %d\n", error_code);
 	}
     }
   assert (message_ptr == (response_message.c_str () + response_message.size ()));
