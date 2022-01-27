@@ -24711,7 +24711,8 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	  else
 	    {
 	      /* Fix next leaf page. */
-	      next_node_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      next_node_page =
+		pgbuf_fix_old_and_check_repl_desync (thread_p, next_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	      if (next_node_page == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error_code);
@@ -24826,7 +24827,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   VPID_COPY (&prev_leaf_vpid, next_vpid);
 
   /* Conditional latch for previous page. */
-  prev_leaf = pgbuf_fix (thread_p, &prev_leaf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+  prev_leaf = pgbuf_fix_old_and_check_repl_desync (thread_p, prev_leaf_vpid, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
   if (prev_leaf != NULL)
     {
       /* Previous leaf was successfully latched. Advance. */
@@ -24877,7 +24878,16 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   /* Pages are still linked. */
 
   /* Fix current page too. */
-  bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (bts->force_restart_from_root)
+    {
+      bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    }
+  else
+    {
+      bts->C_page =
+	pgbuf_fix_old_and_check_repl_desync (thread_p, bts->C_vpid, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+    }
+
   if (bts->C_page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
