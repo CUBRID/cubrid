@@ -110,7 +110,11 @@ static GENERIC_FUNCTION_RECORD pt_Generic_functions[] = {
 
 /* Two types are comparable if they are NUMBER types or same CHAR type */
 #define PT_ARE_COMPARABLE(typ1, typ2) \
-  ((typ1 == typ2) || PT_ARE_COMPARABLE_CHAR_TYPE (typ1, typ2) || PT_ARE_COMPARABLE_NUMERIC_TYPE (typ1, typ2))
+  ((typ1 == typ2) || PT_ARE_COMPARABLE_CHAR_TYPE(typ1, typ2) || PT_ARE_COMPARABLE_NUMERIC_TYPE (typ1, typ2))
+
+/* Two types are comparable if they are NUMBER types without CHAR type */
+#define PT_ARE_COMPARABLE_NO_CHAR(typ1, typ2) \
+  ((typ1 == typ2) || PT_ARE_COMPARABLE_NUMERIC_TYPE (typ1, typ2))
 
 #define PT_IS_RECURSIVE_EXPRESSION(node) \
   ((node)->node_type == PT_EXPR && (PT_IS_LEFT_RECURSIVE_EXPRESSION (node) || PT_IS_RIGHT_RECURSIVE_EXPRESSION (node)))
@@ -203,6 +207,7 @@ static PT_NODE *pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * exp
 					  PT_NODE * arg3, EXPRESSION_SIGNATURE sig);
 static PT_NODE *pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg1, PT_NODE * arg2,
 						PT_NODE * arg3, EXPRESSION_SIGNATURE sig);
+static bool pt_is_range_comp_op (const PT_OP_TYPE op);
 static bool pt_is_range_expression (const PT_OP_TYPE op);
 static bool pt_are_unmatchable_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type);
 static PT_TYPE_ENUM pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type,
@@ -5346,6 +5351,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
        * correctly on the expression during expression evaluation. This means that we consider that the user knew what
        * he was doing in the first case but wanted to write something else in the second case. */
       PT_TYPE_ENUM collection_type = PT_TYPE_NONE;
+      PT_TYPE_ENUM arg1_type = arg1->type_enum;
       bool should_cast = false;
       PT_NODE *data_type = NULL;
 
@@ -5375,33 +5381,68 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	{
 	  /* we cannot make a cast decision here. to keep backwards compatibility we will call pt_coerce_value which
 	   * will only work on constants */
-	  PT_NODE *temp = NULL, *msg_temp = NULL;
-	  msg_temp = parser->error_msgs;
-	  (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET, arg2->data_type);
-	  if (pt_has_error (parser))
-	    {
-	      /* ignore errors */
-	      parser_free_tree (parser, parser->error_msgs);
-	      parser->error_msgs = msg_temp;
-	    }
+	  PT_NODE *temp = NULL, *msg_temp = NULL, *temp2 = NULL, *elem = NULL;
+	  int idx;
+
 	  if (pt_coerce_value (parser, arg1, arg1, common_type, NULL) != NO_ERROR)
 	    {
 	      expr->type_enum = PT_TYPE_NONE;
 	    }
-	  if (arg2->node_type == PT_VALUE)
+
+	  /* case of "(col1,col2) in (('a','a'),('a ','a '))" */
+	  /* In this case, Reset ('a','a') type from CHAR to VARCHAR based on (col1,col2) type. */
+	  /* TO_DO: A set of set type evaluation routine should be added. */
+	  if (pt_is_set_type (arg1) && PT_IS_FUNCTION (arg1) && pt_is_set_type (arg2) && PT_IS_VALUE_NODE (arg2))
 	    {
-	      for (temp = arg2->info.value.data_value.set; temp; temp = temp->next)
+	      for (temp = arg1->info.function.arg_list, idx = 0; temp; temp = temp->next, idx++)
 		{
-		  if (common_type != temp->type_enum)
+		  if (temp->type_enum == PT_TYPE_VARCHAR || temp->type_enum == PT_TYPE_VARNCHAR)
 		    {
-		      msg_temp = parser->error_msgs;
-		      parser->error_msgs = NULL;
-		      (void) pt_coerce_value (parser, temp, temp, common_type, NULL);
-		      if (pt_has_error (parser))
+		      for (temp2 = arg2->info.value.data_value.set; temp2; temp2 = temp2->next)
 			{
-			  parser_free_tree (parser, parser->error_msgs);
+			  if (pt_is_set_type (temp2) && PT_IS_VALUE_NODE (temp2))
+			    {
+			      elem = temp2->info.value.data_value.set;
+			      for (int i = 0; i < idx && elem; i++)
+				{
+				  elem = elem->next;
+				}
+			      if (elem && (elem->type_enum == PT_TYPE_CHAR || elem->type_enum == PT_TYPE_NCHAR))
+				{
+				  (void) pt_coerce_value (parser, elem, elem, temp->type_enum, elem->data_type);
+				}
+			    }
 			}
-		      parser->error_msgs = msg_temp;
+		    }
+		}
+	      /*
+	         (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET, arg2->data_type);
+	         This routine is disabled.
+	         Because arg2->data_type(set of set) might not be evaluated correctly, the corresponding routine is disabled.
+	         Enable it after the data type of set of set is evaluated correctly.
+	         The same routine is performed in eliminate_duplicated_keys().
+	         Here, the type is kept to MULTISET"
+	       */
+	    }
+	  else
+	    {
+	      msg_temp = parser->error_msgs;
+	      (void) pt_coerce_value (parser, arg2, arg2, PT_TYPE_SET, arg2->data_type);
+	      if (arg2->node_type == PT_VALUE)
+		{
+		  for (temp = arg2->info.value.data_value.set; temp; temp = temp->next)
+		    {
+		      if (common_type != temp->type_enum)
+			{
+			  msg_temp = parser->error_msgs;
+			  parser->error_msgs = NULL;
+			  (void) pt_coerce_value (parser, temp, temp, common_type, NULL);
+			  if (pt_has_error (parser))
+			    {
+			      parser_free_tree (parser, parser->error_msgs);
+			    }
+			  parser->error_msgs = msg_temp;
+			}
 		    }
 		}
 	    }
@@ -5428,8 +5469,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       if (common_type == PT_TYPE_NONE	/* check if there is a valid common type between members of arg2 and arg1. */
 	  || (!should_cast	/* check if there are at least two different types in arg2 */
 	      && (collection_type == common_type
-		  || (PT_IS_NUMERIC_TYPE (collection_type) && PT_IS_NUMERIC_TYPE (common_type))
-		  || (PT_IS_CHAR_STRING_TYPE (collection_type) && PT_IS_CHAR_STRING_TYPE (common_type)))))
+		  || (PT_IS_NUMERIC_TYPE (collection_type) && PT_IS_NUMERIC_TYPE (common_type)))))
 	{
 	  return expr;
 	}
@@ -5694,9 +5734,43 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		  arg1_eq_type = PT_TYPE_DOUBLE;
 		}
 	    }
+	  else if (PT_ARE_COMPARABLE_CHAR_TYPE (arg1_type, arg2_type))
+	    {
+	      if (PT_IS_NAME_NODE (arg1) && !PT_IS_NAME_NODE (arg2))
+		{
+		  arg1_eq_type = arg2_eq_type = arg1_type;
+		  if (arg3_type != PT_TYPE_NONE)
+		    {
+		      arg3_eq_type = arg1_type;
+		    }
+		}
+	      if (PT_IS_NAME_NODE (arg2) && !PT_IS_NAME_NODE (arg1))
+		{
+		  arg1_eq_type = arg2_eq_type = arg2_type;
+		  if (arg3_type != PT_TYPE_NONE)
+		    {
+		      arg3_eq_type = arg2_type;
+		    }
+		}
+	    }
 	}
 
-      if (pt_is_comp_op (op))
+      if (pt_is_range_comp_op (op))
+	{
+	  if (PT_ARE_COMPARABLE_NO_CHAR (arg1_eq_type, arg1_type))
+	    {
+	      arg1_eq_type = arg1_type;
+	    }
+	  if (PT_ARE_COMPARABLE_NO_CHAR (arg2_eq_type, arg2_type))
+	    {
+	      arg2_eq_type = arg2_type;
+	    }
+	  if (PT_ARE_COMPARABLE_NO_CHAR (arg3_eq_type, arg3_type))
+	    {
+	      arg3_eq_type = arg3_type;
+	    }
+	}
+      else if (pt_is_comp_op (op))
 	{
 	  /* do not cast between numeric types or char types for comparison operators */
 	  if (PT_ARE_COMPARABLE (arg1_eq_type, arg1_type))
@@ -5857,6 +5931,38 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
     }
 
   return expr;
+}
+
+/*
+ * pt_is_range_comp_op () - return true if the op is related to range
+ *  return  : true if the operatior is of range
+ *  op (in) : operator
+ */
+static bool
+pt_is_range_comp_op (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_GE:
+    case PT_GT:
+    case PT_LT:
+    case PT_LE:
+    case PT_GT_INF:
+    case PT_LT_INF:
+    case PT_BETWEEN_GE_LE:
+    case PT_BETWEEN_GE_LT:
+    case PT_BETWEEN_GT_LE:
+    case PT_BETWEEN_GT_LT:
+    case PT_BETWEEN_EQ_NA:
+    case PT_BETWEEN_INF_LE:
+    case PT_BETWEEN_INF_LT:
+    case PT_BETWEEN_GE_INF:
+    case PT_BETWEEN_GT_INF:
+    case PT_RANGE:
+      return 1;
+    default:
+      return 0;
+    }
 }
 
 /*
@@ -21128,7 +21234,6 @@ pt_is_between_range_op (PT_OP_TYPE op)
       return 0;
     }
 }
-
 
 /*
  * pt_is_comp_op () -
