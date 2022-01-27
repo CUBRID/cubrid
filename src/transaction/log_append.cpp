@@ -70,6 +70,8 @@ static int prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE *node, int num_cru
 static void prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes);
 static void prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 static void prior_lsa_append_data (int length);
+static void prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node, LOG_VACUUM_INFO *&dest_vacuum_info,
+    MVCCID &mvccid);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
 static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
@@ -1357,6 +1359,39 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
   log_Gl.hdr.does_block_need_vacuum = true;
 }
 
+void
+prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node, LOG_VACUUM_INFO *&dest_vacuum_info,
+    MVCCID &mvccid)
+{
+  dest_vacuum_info = nullptr;
+  mvccid = MVCCID_NULL;
+
+  if (node->log_header.type == LOG_MVCC_UNDO_DATA)
+    {
+      /* Read from mvcc_undo structure */
+      LOG_REC_MVCC_UNDO *const mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
+      dest_vacuum_info = &mvcc_undo->vacuum_info;
+      mvccid = mvcc_undo->mvccid;
+    }
+  else if (node->log_header.type == LOG_SYSOP_END)
+    {
+      /* Read from mvcc_undo structure */
+      LOG_REC_MVCC_UNDO *const mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
+      dest_vacuum_info = &mvcc_undo->vacuum_info;
+      mvccid = mvcc_undo->mvccid;
+    }
+  else
+    {
+      /* Read for mvcc_undoredo structure */
+      assert (node->log_header.type == LOG_MVCC_UNDOREDO_DATA
+	      || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA);
+
+      LOG_REC_MVCC_UNDOREDO *const mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
+      dest_vacuum_info = &mvcc_undoredo->vacuum_info;
+      mvccid = mvcc_undoredo->mvccid;
+    }
+}
+
 /*
  * prior_lsa_next_record_internal -
  *
@@ -1405,30 +1440,9 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
     {
       /* Link the log record to previous MVCC delete/update log record */
       /* Will be used by vacuum */
-      if (node->log_header.type == LOG_MVCC_UNDO_DATA)
-	{
-	  /* Read from mvcc_undo structure */
-	  mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
-	  vacuum_info = &mvcc_undo->vacuum_info;
-	  mvccid = mvcc_undo->mvccid;
-	}
-      else if (node->log_header.type == LOG_SYSOP_END)
-	{
-	  /* Read from mvcc_undo structure */
-	  mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
-	  vacuum_info = &mvcc_undo->vacuum_info;
-	  mvccid = mvcc_undo->mvccid;
-	}
-      else
-	{
-	  /* Read for mvcc_undoredo structure */
-	  assert (node->log_header.type == LOG_MVCC_UNDOREDO_DATA
-		  || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA);
-
-	  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
-	  vacuum_info = &mvcc_undoredo->vacuum_info;
-	  mvccid = mvcc_undoredo->mvccid;
-	}
+      prior_extract_vacuum_info_from_prior_node (node, vacuum_info, mvccid);
+      assert (vacuum_info != nullptr);
+      assert (mvccid != MVCCID_NULL);
 
       /* Save previous mvcc operation log lsa to vacuum info */
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
@@ -1445,6 +1459,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   else if (node->log_header.type == LOG_MVCC_REDO_DATA)
     {
       tdes->last_mvcc_lsa = node->start_lsa;
+      // TODO: why isn't prior_update_header_mvcc_info called in this case as for the previous 'if' scope
+      // as LOG_REC_MVCC_REDO does have mvccid?
     }
   else if (node->log_header.type == LOG_SYSOP_START_POSTPONE)
     {
