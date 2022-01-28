@@ -17347,8 +17347,6 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
       {
 	extern void print_hint_dump (FILE * fp);
-
-	fputs ("\nQuery hints:\n", query_Plan_dump_fp);
 	print_hint_dump (query_Plan_dump_fp);
       }
     }

@@ -148,10 +148,14 @@ set_plan_include_hint (bool is_include)
 void
 print_hint_dump (FILE * output)
 {
-  if (s_hint_msg.msg_ptr && *s_hint_msg.msg_ptr)
+  if (plan_include_hint)
     {
-      s_hint_msg.msg_ptr[s_hint_msg.m_used] = '\0';
-      fprintf (output, "%s", s_hint_msg.msg_ptr);
+      fputs ("\nQuery hints:\n", output);
+      if (s_hint_msg.msg_ptr && *s_hint_msg.msg_ptr)
+	{
+	  s_hint_msg.msg_ptr[s_hint_msg.m_used] = '\0';
+	  fprintf (output, "%s", s_hint_msg.msg_ptr);
+	}
     }
 
   s_hint_msg.reset ();
