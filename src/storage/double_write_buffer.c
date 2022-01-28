@@ -741,57 +741,46 @@ dwb_adjust_write_buffer_values (unsigned int *p_double_write_buffer_size, unsign
     {
       *p_double_write_buffer_size = min_size;
     }
-  else if (*p_double_write_buffer_size > min_size)
+  else if (*p_double_write_buffer_size > max_size)
     {
-      if (*p_double_write_buffer_size > max_size)
-	{
-	  *p_double_write_buffer_size = max_size;
-	}
-      else
-	{
-	  /* find smallest number multiple of 512 k */
-	  unsigned int limit1 = min_size;
-
-	  while (*p_double_write_buffer_size > limit1)
-	    {
-	      assert (limit1 <= DWB_MAX_SIZE);
-	      if (limit1 == DWB_MAX_SIZE)
-		{
-		  break;
-		}
-	      limit1 = limit1 << 1;
-	    }
-
-	  *p_double_write_buffer_size = limit1;
-	}
+      *p_double_write_buffer_size = max_size;
     }
+  else if (!IS_POWER_OF_2 (*p_double_write_buffer_size))
+    {
+      unsigned int dwb_limit = min_size << 1;
+
+      while (dwb_limit < DWB_MAX_SIZE && dwb_limit < *p_double_write_buffer_size)
+	{
+	  dwb_limit = dwb_limit << 1;
+	}
+
+      *p_double_write_buffer_size = dwb_limit;
+    }
+
+  assert (IS_POWER_OF_2 (*p_double_write_buffer_size));
 
   min_size = DWB_MIN_BLOCKS;
   max_size = DWB_MAX_BLOCKS;
 
   assert (*p_num_blocks >= min_size);
 
-  if (*p_num_blocks > min_size)
+  if (*p_num_blocks > max_size)
     {
-      if (*p_num_blocks > max_size)
-	{
-	  *p_num_blocks = max_size;
-	}
-      else if (!IS_POWER_OF_2 (*p_num_blocks))
-	{
-	  unsigned int num_blocks = *p_num_blocks;
-
-	  do
-	    {
-	      num_blocks = num_blocks & (num_blocks - 1);
-	    }
-	  while (!IS_POWER_OF_2 (num_blocks));
-
-	  *p_num_blocks = num_blocks << 1;
-
-	  assert (*p_num_blocks <= max_size);
-	}
+      *p_num_blocks = max_size;
     }
+  else if (!IS_POWER_OF_2 (*p_num_blocks))
+    {
+      unsigned int block_limit = min_size << 2;
+
+      while (block_limit < DWB_MAX_BLOCKS && block_limit < *p_num_blocks)
+	{
+	  block_limit = block_limit << 1;
+	}
+
+      *p_num_blocks = block_limit;
+    }
+
+  assert (IS_POWER_OF_2 (*p_num_blocks));
 }
 
 /*
