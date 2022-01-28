@@ -171,6 +171,7 @@ typedef struct tde_keyinfo
 extern int tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid);
 extern int tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const char *mk_path_given);
 extern int tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo);
+extern bool tde_is_loaded ();
 
 /*
  * tde functions for the master key management

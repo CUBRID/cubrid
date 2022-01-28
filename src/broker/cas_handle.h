@@ -34,6 +34,12 @@
 #include "cas_db_inc.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+#if defined(CAS_FOR_CGW)
+#include <sqltypes.h>
+#include <sql.h>
+#include <sqlext.h>
+#endif /* CAS_FOR_CGW */
+
 #define SRV_HANDLE_QUERY_SEQ_NUM(SRV_HANDLE)    \
         ((SRV_HANDLE) ? (SRV_HANDLE)->query_seq_num : 0)
 
@@ -146,6 +152,17 @@ struct t_query_result
 #endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 };
 
+#if defined (CAS_FOR_CGW)
+typedef struct t_cgw_handle T_CGW_HANDLE;
+struct t_cgw_handle
+{
+  SQLHENV henv;
+  SQLHDBC hdbc;
+  SQLHSTMT hstmt;
+  SQLHDESC hdesc;
+};
+#endif /* CAS_FOR_CGW */
+
 typedef struct t_srv_handle T_SRV_HANDLE;
 struct t_srv_handle
 {
@@ -199,6 +216,11 @@ struct t_srv_handle
 #if defined(CAS_FOR_MYSQL)
   bool has_mysql_last_insert_id;
 #endif				/* CAS_FOR_MYSQL */
+#if defined (CAS_FOR_CGW)
+  T_CGW_HANDLE *cgw_handle;
+  int tuple_count;
+  int stmt_type;
+#endif				/* CAS_FOR_CGW */
 };
 
 extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num);

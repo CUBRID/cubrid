@@ -1857,7 +1857,9 @@ qo_add_dep_term (QO_NODE * derived_node, BITSET * depend_nodes, BITSET * depend_
 static QO_TERM *
 qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
 {
-  QO_TERM *term;
+  int i;
+  QO_TERM *term, *temp_term;
+  QO_NODE *temp_node;
 
   QO_ASSERT (env, env->nterms < env->Nterms);
   QO_ASSERT (env, QO_NODE_IDX (p_node) >= 0);
@@ -1886,6 +1888,20 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
     case PT_JOIN_LEFT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
       QO_ADD_RIGHT_DEP_SET (on_node, p_node);
+      for (i = 0; i < env->nterms; i++)
+	{
+	  temp_term = QO_ENV_TERM (env, i);
+	  temp_node = QO_ENV_NODE (env, QO_TERM_LOCATION (temp_term));
+	  if (temp_node == on_node && QO_OUTER_JOIN_TERM (temp_term))
+	    {
+	      break;
+	    }
+	}
+      if (i == env->nterms)
+	{
+	  /* if join term does not exists, add outer dep set */
+	  QO_ADD_OUTER_DEP_SET (on_node, p_node);
+	}
       break;
     case PT_JOIN_RIGHT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
@@ -2825,6 +2841,10 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
       *continue_walk = PT_LIST_WALK;
       break;
 
+    case PT_DBLINK_TABLE:
+      *continue_walk = PT_LIST_WALK;
+      break;
+
     default:
       break;
     }
@@ -2959,6 +2979,9 @@ is_dependent_table (PT_NODE * entity)
       return true;
 
     case PT_DERIVED_JSON_TABLE:
+      return true;
+
+    case PT_DERIVED_DBLINK_TABLE:
       return true;
 
     case PT_IS_SUBQUERY:

@@ -73,6 +73,9 @@ extern "C"
 
   extern void pt_parser_line_col (PT_NODE * node);
 
+  extern bool pt_check_ipv4 (char *p);
+  extern bool pt_check_hostname (char *p);
+
 #ifdef __cplusplus
 }
 #endif
