@@ -61,7 +61,8 @@ public class Server {
 
     private static Server serverInstance = null;
 
-    private Server(String name, String path, String version, String rPath, String port)
+    private Server(
+            String name, String path, String version, String rPath, String tmpPath, String port)
             throws IOException, ClassNotFoundException {
         serverName = name;
         spPath = path;
@@ -69,7 +70,7 @@ public class Server {
         shutdown = new AtomicBoolean(false);
 
         if (OSValidator.IS_UNIX) {
-            String socketName = rPath + "/tmp/junixsocket-" + name + ".sock";
+            String socketName = rPath + tmpPath + "/junixsocket-" + name + ".sock";
             final File socketFile = new File(socketName);
 
             try {
@@ -150,7 +151,7 @@ public class Server {
 
     public static int start(String[] args) {
         try {
-            serverInstance = new Server(args[0], args[1], args[2], args[3], args[4]);
+            serverInstance = new Server(args[0], args[1], args[2], args[3], args[4], args[5]);
             serverInstance.startSocketListener();
             return getServerPort();
         } catch (Exception e) {
