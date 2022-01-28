@@ -146,6 +146,8 @@
 #define EXECUTE_BATCH	1
 #define EXECUTE_EXEC	2
 
+#define CCI_CHARSET_MASK		0x07
+
 /************************************************************************
  * PRIVATE TYPE DEFINITIONS						*
  ************************************************************************/
@@ -204,7 +206,7 @@ static bool is_set_default_value_if_null (T_CON_HANDLE * con_handle, T_CCI_CUBRI
 static T_CCI_U_EXT_TYPE get_ext_utype_from_net_bytes (T_CCI_U_TYPE basic_type, T_CCI_U_TYPE set_type);
 static void confirm_schema_type_info (T_REQ_HANDLE * req_handle, int col_no, T_CCI_U_TYPE u_type, char *col_value_p,
 				      int data_size);
-
+static int get_charset_type (char type);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -5317,6 +5319,8 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info, char **
 		{
 		  goto get_column_info_error;
 		}
+
+	      col_info[i].charset = get_charset_type (type);
 	      NET_STR_TO_BYTE (set_type, cur_p);
 	      col_info[i].ext_type = get_ext_utype_from_net_bytes ((T_CCI_U_TYPE) type, (T_CCI_U_TYPE) set_type);
 	      remain_size -= NET_SIZE_BYTE;
@@ -5325,6 +5329,7 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info, char **
 	  else
 	    {
 	      /* legacy server : one byte */
+	      col_info[i].charset = CCI_CHARSET_NONE;
 	      col_info[i].ext_type = type;
 	    }
 
@@ -6558,22 +6563,16 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
     }
 
   bind_value->u_type = u_type;
-  if (u_type == CCI_U_TYPE_SHORT)
-    {
-      bind_value->u_type = CCI_U_TYPE_INT;
-    }
-  else if (u_type == CCI_U_TYPE_USHORT)
-    {
-      bind_value->u_type = CCI_U_TYPE_UINT;
-    }
 
   switch (u_type)
     {
-    case CCI_U_TYPE_SHORT:
     case CCI_U_TYPE_INT:
-    case CCI_U_TYPE_USHORT:
     case CCI_U_TYPE_UINT:
       bind_value->size = NET_SIZE_INT;
+      break;
+    case CCI_U_TYPE_SHORT:
+    case CCI_U_TYPE_USHORT:
+      bind_value->size = NET_SIZE_SHORT;
       break;
     case CCI_U_TYPE_BIGINT:
     case CCI_U_TYPE_UBIGINT:
@@ -6699,9 +6698,7 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, T_CCI_U_TYPE u_type, void *value, in
 	}
       break;
     case CCI_U_TYPE_INT:
-    case CCI_U_TYPE_SHORT:
     case CCI_U_TYPE_UINT:
-    case CCI_U_TYPE_USHORT:
       if (value == NULL)
 	{
 	  ADD_ARG_INT (net_buf, 0);
@@ -6709,6 +6706,17 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, T_CCI_U_TYPE u_type, void *value, in
       else
 	{
 	  ADD_ARG_INT (net_buf, *((int *) value));
+	}
+      break;
+    case CCI_U_TYPE_SHORT:
+    case CCI_U_TYPE_USHORT:
+      if (value == NULL)
+	{
+	  ADD_ARG_SHORT (net_buf, 0);
+	}
+      else
+	{
+	  ADD_ARG_SHORT (net_buf, *((short *) value));
 	}
       break;
     case CCI_U_TYPE_FLOAT:
@@ -7315,4 +7323,24 @@ confirm_schema_type_info (T_REQ_HANDLE * req_handle, int col_no, T_CCI_U_TYPE u_
     }
 
 #undef SCHEMA_INFO_TYPE_COL_INDEX
+}
+
+static int
+get_charset_type (char type)
+{
+  int charset = CCI_CHARSET_NONE;
+
+  if ((type & CCI_CHARSET_MASK) == 6)
+    {
+      charset = CCI_CHARSET_ERROR;
+    }
+  else if ((type & CCI_CHARSET_MASK) == 7)
+    {
+      charset = CCI_CHARSET_NONE;
+    }
+  else
+    {
+      charset = (type & CCI_CHARSET_MASK);
+    }
+  return charset;
 }

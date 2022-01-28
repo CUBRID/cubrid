@@ -1424,7 +1424,14 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
   header.request_id = htonl (rid);
   header.transaction_id = htonl (conn->get_tran_index ());
 
-  if (conn->invalidate_snapshot)
+  /**
+   * FIXME!!
+   * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
+   *
+   * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
+   * But The side effects described in CBRD-24157 occurred.
+   */
+  if (true)			// if (conn->invalidate_snapshot)
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
     }
@@ -1502,7 +1509,7 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
   conn->db_error = (int) ntohl (local_header->db_error);
 
   flags = ntohs (local_header->flags);
-  conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
 
   return rc;
 }
@@ -2161,7 +2168,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
   transaction_id = ntohl (header->transaction_id);
   db_error = (int) ntohl (header->db_error);
   flags = ntohs (header->flags);
-  invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
 
   r = rmutex_lock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);

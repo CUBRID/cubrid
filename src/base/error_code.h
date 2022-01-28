@@ -1648,7 +1648,7 @@
 
 #define ER_CDC_LSA_NOT_FOUND                        -1286
 #define ER_CDC_EXTRACTION_TIMEOUT                   -1287
-#define ER_CDC_NOTHING_TO_RETURN                    -1288
+#define ER_CDC_IGNORE_LOG_INFO_INTERNAL             -1288
 #define ER_CDC_IGNORE_TRANSACTION                   -1289
 #define ER_CDC_INVALID_LOG_LSA                      -1290
 #define ER_CDC_NOT_AVAILABLE                        -1291
