@@ -4475,7 +4475,7 @@ pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM 
   FILEIO_PAGE *iopage = NULL;
   TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
 
-  assert (tde_Cipher.is_loaded || tde_algo == TDE_ALGORITHM_NONE);
+  assert (tde_is_loaded () || tde_algo == TDE_ALGORITHM_NONE);
 
   prev_tde_algo = pgbuf_get_tde_algorithm (pgptr);
 
@@ -13305,13 +13305,12 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_assign_private_lru_id () -
+ * pgbuf_assign_private_lru () -
+ *
  *   return: NO_ERROR
- *   is_vacuum(in): true if client is a vacuum thread
- *   id(in): id of client (vacuum index or session id)
  */
 int
-pgbuf_assign_private_lru (THREAD_ENTRY * thread_p, bool is_vacuum, const int id)
+pgbuf_assign_private_lru (THREAD_ENTRY * thread_p)
 {
   int i;
   int min_activitity;

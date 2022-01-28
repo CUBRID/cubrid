@@ -125,6 +125,8 @@ extern int file_apply_tde_to_class_files (const OID * class_oid);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern int tde_get_data_keys ();
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+extern int dblink_get_cipher_master_key ();
+extern int tde_is_loaded (int *is_loaded);
 extern int tde_get_mk_file_path (char *mk_path);
 extern int tde_get_mk_info (int *mk_index, time_t * created_time, time_t * set_time);
 extern int tde_change_mk_on_server (int mk_index);

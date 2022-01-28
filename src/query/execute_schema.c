@@ -8617,28 +8617,39 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
       /* check for mis-creating string type with -1 precision */
       for (column = query_columns; column != NULL; column = db_query_format_next (column))
-        {
-          switch (column->domain->type->id)
-            {
-              case DB_TYPE_VARCHAR:
-                if (column->domain->precision == DB_DEFAULT_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARCHAR_PRECISION;
-                  }
-                break;
-              case DB_TYPE_VARNCHAR:
-                if (column->domain->precision == DB_DEFAULT_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-                  }
-                else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-                  }
-                default:
-                break;
-            }
-        }
+	{
+	  if (column->domain == NULL)
+	    {
+	      /*
+	       * this might be from dblink which has errors for column definition
+	       * the error code is not need to set at this point
+	       * because the error code is already set from dblink
+	       */
+	      error = ER_FAILED;
+	      goto error_exit;
+	    }
+
+	  switch (column->domain->type->id)
+	    {
+	    case DB_TYPE_VARCHAR:
+	      if (column->domain->precision == DB_DEFAULT_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARCHAR_PRECISION;
+		}
+	      break;
+	    case DB_TYPE_VARNCHAR:
+	      if (column->domain->precision == DB_DEFAULT_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
+		}
+	      else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
+		}
+	    default:
+	      break;
+	    }
+	}
     }
   assert (!(create_like != NULL && create_select != NULL));
 
@@ -8710,6 +8721,18 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 	    default:
 	      break;
+	    }
+	}
+
+      if (tbl_opt_encrypt)
+	{
+	  int tde_loaded = 0;
+	  (void) tde_is_loaded (&tde_loaded);
+	  if (!tde_loaded)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+	      error = er_errid ();
+	      goto error_exit;
 	    }
 	}
 
@@ -10573,7 +10596,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
   /* the serial property has not changed, we are only dealing with renaming */
   if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF)
-      && attribute->info.attr_def.auto_increment != NULL
+      && is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_PRESENT_OLD)
       && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
       && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_LOST)
       && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_GAINED))
@@ -10611,7 +10634,6 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
     {
       MOP auto_increment_obj = NULL;
 
-      assert (attribute->info.attr_def.auto_increment != NULL);
       assert_release (found_att->auto_increment != NULL);
 
       error = do_update_maxvalue_of_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
@@ -10983,6 +11005,8 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  chg_prop_idx = P_S_CONSTR_UNI;
 	  save_pt_costraint = true;
 	  break;
+	case PT_CONSTRAIN_NULL:
+	  attr_chg_properties->p[P_NOT_NULL] = ATT_CHG_PROPERTY_LOST;
 	case PT_CONSTRAIN_NOT_NULL:
 	  constr_att_list = cnstr->info.constraint.un.not_null.attr;
 	  chg_prop_idx = P_NOT_NULL;
@@ -11065,6 +11089,11 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       {
 	int *const p = &(attr_chg_properties->p[i]);
 
+	if (*p & ATT_CHG_PROPERTY_LOST)
+	  {
+	    continue;
+	  }
+
 	if (*p & ATT_CHG_PROPERTY_PRESENT_OLD)
 	  {
 	    if (*p & ATT_CHG_PROPERTY_PRESENT_NEW)
@@ -11073,7 +11102,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	      }
 	    else
 	      {
-		*p |= ATT_CHG_PROPERTY_LOST;
+		*p |= ATT_CHG_PROPERTY_UNCHANGED;
 	      }
 	  }
 	else
@@ -11218,7 +11247,6 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 
   /* comment */
   attr_chg_properties->p[P_COMMENT] = 0;
-  attr_chg_properties->p[P_COMMENT] |= ATT_CHG_PROPERTY_LOST;
   comment = attr_def->info.attr_def.comment;
   if (comment != NULL)
     {
@@ -11229,6 +11257,10 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  /* remove "LOST" flag */
 	  attr_chg_properties->p[P_COMMENT] &= ~ATT_CHG_PROPERTY_LOST;
 	}
+    }
+  else
+    {
+      attr_chg_properties->p[P_COMMENT] |= ATT_CHG_PROPERTY_UNCHANGED;
     }
 
   return error;

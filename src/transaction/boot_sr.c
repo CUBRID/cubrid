@@ -1648,7 +1648,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       else
 	{
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lob_path);
-	  if (mkdir (lob_path, 0777) < 0)
+	  if (mkdir (lob_path, 0700) < 0)
 	    {
 	      cub_dirname_r (lob_path, fixed_pathbuf, PATH_MAX);
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", fixed_pathbuf);
@@ -2912,7 +2912,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
     }
   else
     {
-      if (tde_Cipher.is_loaded)
+      if (tde_is_loaded ())
 	{
 	  if (boot_reset_mk_after_restart_from_backup (thread_p, r_args) != NO_ERROR)
 	    {
@@ -2956,7 +2956,7 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
   int backup_mk_vdes = NULL_VOLDES;
   int err = NO_ERROR;
 
-  assert (tde_Cipher.is_loaded);
+  assert (tde_is_loaded ());
 
   if (thread_p == NULL)
     {
