@@ -128,6 +128,9 @@ log_prior_lsa_info::log_prior_lsa_info ()
 {
 }
 
+/* log_prior_lsa_info::push_list - function called on server instances that perform replication
+ *            (page server, passive transaction server)
+ */
 void
 log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list_tail)
 {
@@ -152,6 +155,39 @@ log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list
 
   assert (list_head->start_lsa == prior_lsa);
   assert (list_head->log_header.back_lsa == prev_lsa);
+
+  for (const log_prior_node *node = list_head; node != nullptr; node = node->next)
+    {
+      /* Maintain the mvcc-related fields in header in roughly the same way that happens in function
+       * prior_lsa_next_record_internal which is executed on active transaction server (ATS).
+       * This, because the log header is fetched by a booting-up ATS from PS and these fields have to reflect
+       * the correct state according to replication.
+       * This is mostly a [temporary] workaround.
+       * The proper solution is for an ATS to properly build its own mvccid/vacuum bookkeeping when
+       * it comes online based on information in the log (probably a simplified version of the
+       * function vacuum_recover_lost_block_data).
+       * For now, keeping this info up to date guarantees that a booting up ATS will receive correct
+       * mvccid/vacuum bookkeeping that it can use for its own bootstrapping.
+       */
+      if (node->log_header.type == LOG_MVCC_UNDO_DATA || node->log_header.type == LOG_MVCC_UNDOREDO_DATA
+	  || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA
+	  || (node->log_header.type == LOG_SYSOP_END
+	      && ((LOG_REC_SYSOP_END *)node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO))
+	{
+	  LOG_VACUUM_INFO *dummy_vacuum_info = nullptr;
+	  MVCCID mvccid = MVCCID_NULL;
+	  prior_extract_vacuum_info_from_prior_node (node, dummy_vacuum_info, mvccid);
+	  assert (dummy_vacuum_info != nullptr);
+	  assert (mvccid != MVCCID_NULL);
+
+	  if (log_Gl.hdr.newest_block_mvccid < mvccid)
+	    {
+	      log_Gl.hdr.newest_block_mvccid = mvccid;
+	    }
+	  log_Gl.hdr.mvcc_op_log_lsa = node->start_lsa;
+	  log_Gl.hdr.does_block_need_vacuum = true;
+	}
+    }
 
   if (prior_list_header == nullptr)
     {
