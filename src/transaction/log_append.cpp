@@ -1409,7 +1409,15 @@ prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node, LOG_VACUU
       dest_vacuum_info = &mvcc_undo->vacuum_info;
       mvccid = mvcc_undo->mvccid;
     }
-  else if (node->log_header.type == LOG_SYSOP_END)
+  else if (node->log_header.type == LOG_MVCC_UNDOREDO_DATA || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+    {
+      /* Read for mvcc_undoredo structure */
+      LOG_REC_MVCC_UNDOREDO *const mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
+      dest_vacuum_info = &mvcc_undoredo->vacuum_info;
+      mvccid = mvcc_undoredo->mvccid;
+    }
+  else if (node->log_header.type == LOG_SYSOP_END
+	   && ((LOG_REC_SYSOP_END *)node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
     {
       /* Read from mvcc_undo structure */
       LOG_REC_MVCC_UNDO *const mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
@@ -1418,13 +1426,7 @@ prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node, LOG_VACUU
     }
   else
     {
-      /* Read for mvcc_undoredo structure */
-      assert (node->log_header.type == LOG_MVCC_UNDOREDO_DATA
-	      || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA);
-
-      LOG_REC_MVCC_UNDOREDO *const mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
-      dest_vacuum_info = &mvcc_undoredo->vacuum_info;
-      mvccid = mvcc_undoredo->mvccid;
+      assert ("not an mvcc prior node" == nullptr);
     }
 }
 
