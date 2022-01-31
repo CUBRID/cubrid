@@ -103,7 +103,9 @@ struct vacuum_data_entry
   MVCCID newest_mvccid;             // newest MVCCID in log block
 
   vacuum_data_entry () = default;
+private:
   vacuum_data_entry (const log_lsa & lsa, MVCCID oldest, MVCCID newest);
+public:
   vacuum_data_entry (const log_header & hdr);
 
   VACUUM_LOG_BLOCKID get_blockid () const;
