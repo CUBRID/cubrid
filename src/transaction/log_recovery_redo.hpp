@@ -204,6 +204,22 @@ inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_COMPENSATE> (const LOG_REC_COMPE
   return MVCCID_NULL;
 }
 
+template <>
+inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_END &log_rec)
+{
+  if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+    {
+      return log_rec.mvcc_undo.mvccid;
+    }
+  return MVCCID_NULL;
+}
+
+template <>
+inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_MVCC_UNDO> (const LOG_REC_MVCC_UNDO &log_rec)
+{
+  return log_rec.mvccid;
+}
+
 template <typename T>
 VPID log_rv_get_log_rec_vpid (const T &log_rec)
 {
