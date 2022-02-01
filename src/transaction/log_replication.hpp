@@ -81,6 +81,8 @@ namespace cublog
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
       template <typename T>
+      void read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &rec_lsa, bool assert_mvccid_non_null);
+      template <typename T>
       void read_and_redo_btree_stats (cubthread::entry &thread_entry, const log_rv_redo_rec_info<T> &record_info);
       template <typename T>
       void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,

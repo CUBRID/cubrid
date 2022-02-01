@@ -245,6 +245,12 @@ namespace cublog
 	    // only needed on the passive transaction server
 	    m_most_recent_trantable_snapshot_lsa.store (m_redo_lsa);
 	    break;
+	  case LOG_MVCC_UNDO_DATA:
+	    read_and_bookkeep_mvcc_vacuum<log_rec_mvcc_undo> (header.type, m_redo_lsa, true);
+	    break;
+	  case LOG_SYSOP_END:
+	    read_and_bookkeep_mvcc_vacuum<log_rec_sysop_end> (header.type, m_redo_lsa, false);
+	    break;
 	  default:
 	    // do nothing
 	    break;
@@ -318,7 +324,8 @@ namespace cublog
 
     // To allow reads on the page server, make sure that all changes are visible.
     // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
-    MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
+    // Only mvccids that pertain to redo's are processed here. Thow with only undo are processed elsewhere.
+    const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
     if (mvccid != MVCCID_NULL && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
       {
 	log_Gl.hdr.mvcc_next_id = mvccid;
@@ -327,7 +334,7 @@ namespace cublog
 
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
     // proceed.
-    LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (record_info.m_logrec).rcvindex;
+    const LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (record_info.m_logrec).rcvindex;
     if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
       {
 	read_and_redo_btree_stats (thread_entry, record_info);
@@ -336,6 +343,25 @@ namespace cublog
       {
 	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_redo_context, record_info,
 	    m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
+      }
+  }
+
+  template <typename T>
+  void
+  replicator::read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &rec_lsa, bool assert_mvccid_non_null)
+  {
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
+    const log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
+	m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
+
+    // To allow reads on the page server, make sure that all changes are visible.
+    // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
+    const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
+    assert (!assert_mvccid_non_null || (mvccid != MVCCID_NULL));
+    if (mvccid != MVCCID_NULL && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
+      {
+	log_Gl.hdr.mvcc_next_id = mvccid;
+	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
       }
   }
 
