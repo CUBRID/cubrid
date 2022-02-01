@@ -70,8 +70,8 @@ static int prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE *node, int num_cru
 static void prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes);
 static void prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 static void prior_lsa_append_data (int length);
-static void prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node, LOG_VACUUM_INFO *&dest_vacuum_info,
-    MVCCID &mvccid);
+STATIC_INLINE void prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node,
+    LOG_VACUUM_INFO *&dest_vacuum_info, MVCCID &mvccid);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
 static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
@@ -151,24 +151,23 @@ log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list
   assert (nodep == list_tail);
 #endif
 
-  std::unique_lock<std::mutex> ulock (log_Gl.prior_info.prior_lsa_mutex);
-
-  assert (list_head->start_lsa == prior_lsa);
-  assert (list_head->log_header.back_lsa == prev_lsa);
-
+  /* Maintain the mvcc-related fields in header in roughly the same way that happens in function
+   * prior_lsa_next_record_internal which is executed on active transaction server (ATS).
+   * This, because the log header is fetched by a booting-up ATS from PS and these fields have to reflect
+   * the correct state according to replication.
+   * This is mostly a [temporary] workaround.
+   * The proper solution is for an ATS to properly build its own mvccid/vacuum bookkeeping when
+   * it comes online based on information in the log (probably a simplified version of the
+   * function vacuum_recover_lost_block_data).
+   * For now, keeping this info up to date guarantees that a booting up ATS will receive correct
+   * mvccid/vacuum bookkeeping that it can use for its own bootstrapping.
+   *
+   * Precalculate the values outside the prior lsa mutex and then, only record the results under the mutex.
+   */
+  MVCCID list_largest_mvccid = MVCCID_NULL;
+  LOG_LSA list_last_node_lsa = NULL_LSA;
   for (const log_prior_node *node = list_head; node != nullptr; node = node->next)
     {
-      /* Maintain the mvcc-related fields in header in roughly the same way that happens in function
-       * prior_lsa_next_record_internal which is executed on active transaction server (ATS).
-       * This, because the log header is fetched by a booting-up ATS from PS and these fields have to reflect
-       * the correct state according to replication.
-       * This is mostly a [temporary] workaround.
-       * The proper solution is for an ATS to properly build its own mvccid/vacuum bookkeeping when
-       * it comes online based on information in the log (probably a simplified version of the
-       * function vacuum_recover_lost_block_data).
-       * For now, keeping this info up to date guarantees that a booting up ATS will receive correct
-       * mvccid/vacuum bookkeeping that it can use for its own bootstrapping.
-       */
       if (node->log_header.type == LOG_MVCC_UNDO_DATA || node->log_header.type == LOG_MVCC_UNDOREDO_DATA
 	  || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA
 	  || (node->log_header.type == LOG_SYSOP_END
@@ -180,14 +179,30 @@ log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list
 	  assert (dummy_vacuum_info != nullptr);
 	  assert (mvccid != MVCCID_NULL);
 
-	  if (log_Gl.hdr.newest_block_mvccid < mvccid)
+	  if (list_largest_mvccid == MVCCID_NULL || list_largest_mvccid < mvccid)
 	    {
-	      log_Gl.hdr.newest_block_mvccid = mvccid;
+	      list_largest_mvccid = mvccid;
 	    }
-	  log_Gl.hdr.mvcc_op_log_lsa = node->start_lsa;
-	  log_Gl.hdr.does_block_need_vacuum = true;
+	  assert (list_last_node_lsa == NULL_LSA || list_last_node_lsa < node->start_lsa);
+	  list_last_node_lsa = node->start_lsa;
 	}
     }
+
+  std::unique_lock<std::mutex> ulock (log_Gl.prior_info.prior_lsa_mutex);
+
+  assert (list_head->start_lsa == prior_lsa);
+  assert (list_head->log_header.back_lsa == prev_lsa);
+
+  if (list_largest_mvccid != MVCCID_NULL)
+    {
+      if (log_Gl.hdr.newest_block_mvccid < list_largest_mvccid)
+	{
+	  log_Gl.hdr.newest_block_mvccid = list_largest_mvccid;
+	}
+      log_Gl.hdr.mvcc_op_log_lsa = list_last_node_lsa;
+      log_Gl.hdr.does_block_need_vacuum = true;
+    }
+  // otherwise, this list of log prior nodes does not contain any mvccid node
 
   if (prior_list_header == nullptr)
     {
@@ -1395,7 +1410,7 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
   log_Gl.hdr.does_block_need_vacuum = true;
 }
 
-void
+STATIC_INLINE void
 prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node, LOG_VACUUM_INFO *&dest_vacuum_info,
     MVCCID &mvccid)
 {
