@@ -737,6 +737,8 @@ dwb_adjust_write_buffer_values (unsigned int *p_double_write_buffer_size, unsign
   min_size = DWB_MIN_SIZE;
   max_size = DWB_MAX_SIZE;
 
+  assert (IS_POWER_OF_2 (min_size) && IS_POWER_OF_2 (max_size));
+
   if (*p_double_write_buffer_size < min_size)
     {
       *p_double_write_buffer_size = min_size;
@@ -762,6 +764,7 @@ dwb_adjust_write_buffer_values (unsigned int *p_double_write_buffer_size, unsign
   min_size = DWB_MIN_BLOCKS;
   max_size = DWB_MAX_BLOCKS;
 
+  assert (IS_POWER_OF_2 (min_size) && IS_POWER_OF_2 (max_size));
   assert (*p_num_blocks >= min_size);
 
   if (*p_num_blocks > max_size)
@@ -770,7 +773,7 @@ dwb_adjust_write_buffer_values (unsigned int *p_double_write_buffer_size, unsign
     }
   else if (!IS_POWER_OF_2 (*p_num_blocks))
     {
-      unsigned int block_limit = min_size << 2;
+      unsigned int block_limit = min_size << 1;
 
       while (block_limit < DWB_MAX_BLOCKS && block_limit < *p_num_blocks)
 	{
