@@ -19,6 +19,7 @@
 #include "log_replication.hpp"
 
 #include "btree_load.h"
+#include "log_append.hpp"
 #include "log_impl.h"
 #include "log_reader.hpp"
 #include "log_recovery.h"
@@ -198,24 +199,24 @@ namespace cublog
 	switch (header.type)
 	  {
 	  case LOG_REDO_DATA:
-	    read_and_redo_record<log_rec_redo> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_redo> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_MVCC_REDO_DATA:
-	    read_and_redo_record<log_rec_mvcc_redo> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_mvcc_redo> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_UNDOREDO_DATA:
 	  case LOG_DIFF_UNDOREDO_DATA:
-	    read_and_redo_record<log_rec_undoredo> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_undoredo> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_MVCC_UNDOREDO_DATA:
 	  case LOG_MVCC_DIFF_UNDOREDO_DATA:
-	    read_and_redo_record<log_rec_mvcc_undoredo> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_mvcc_undoredo> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_RUN_POSTPONE:
-	    read_and_redo_record<log_rec_run_postpone> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_run_postpone> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_COMPENSATE:
-	    read_and_redo_record<log_rec_compensate> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_compensate> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_DBEXTERN_REDO_DATA:
 	  {
@@ -246,10 +247,10 @@ namespace cublog
 	    m_most_recent_trantable_snapshot_lsa.store (m_redo_lsa);
 	    break;
 	  case LOG_MVCC_UNDO_DATA:
-	    read_and_bookkeep_mvcc_vacuum<log_rec_mvcc_undo> (header.type, m_redo_lsa, true);
+	    read_and_bookkeep_mvcc_vacuum<log_rec_mvcc_undo> (header.type, header.back_lsa, m_redo_lsa, true);
 	    break;
 	  case LOG_SYSOP_END:
-	    read_and_bookkeep_mvcc_vacuum<log_rec_sysop_end> (header.type, m_redo_lsa, false);
+	    read_and_bookkeep_mvcc_vacuum<log_rec_sysop_end> (header.type, header.back_lsa, m_redo_lsa, false);
 	    break;
 	  default:
 	    // do nothing
@@ -314,23 +315,65 @@ namespace cublog
       }
   }
 
+//  void
+//  process (const MVCCID &mvccid, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa)
+//  {
+//    const VACUUM_LOG_BLOCKID prev_log_record_vacuum_blockid = vacuum_get_log_blockid (prev_rec_lsa.pageid);
+//    const VACUUM_LOG_BLOCKID curr_log_record_vacuum_blockid = vacuum_get_log_blockid (rec_lsa.pageid);
+//    if (prev_log_record_vacuum_blockid != curr_log_record_vacuum_blockid)
+//      {
+//	// advance to new vacuum block, reset vacuum block dependent variables in log header
+//	// if current log record is mvcc/vacuum relevant, variables will be properly set
+//	log_Gl.hdr.newest_block_mvccid = MVCCID_NULL;
+//	log_Gl.hdr.does_block_need_vacuum = false;
+//      }
+
+//    if (mvccid != MVCCID_NULL)
+//      {
+//	// log header variables which ARE NOT vacuum block dependent
+//	if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
+//	  {
+//	    // To allow reads on the page server, make sure that all changes are visible.
+//	    // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
+//	    log_Gl.hdr.mvcc_next_id = mvccid;
+//	    MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
+//	  }
+
+//	assert (log_Gl.hdr.mvcc_op_log_lsa == NULL_LSA || log_Gl.hdr.mvcc_op_log_lsa < rec_lsa);
+//	log_Gl.hdr.mvcc_op_log_lsa = rec_lsa;
+
+//	// log header variables which ARE vacuum block dependent
+//	if (log_Gl.hdr.newest_block_mvccid == MVCCID_NULL || log_Gl.hdr.newest_block_mvccid < mvccid)
+//	  {
+//	    log_Gl.hdr.newest_block_mvccid = mvccid;
+//	  }
+//	log_Gl.hdr.does_block_need_vacuum = true;
+//      }
+//  }
+
   template <typename T>
   void
-  replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa)
+  replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
+				    const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa)
   {
     m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
     const log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
 	m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
 
-    // To allow reads on the page server, make sure that all changes are visible.
-    // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
-    // Only mvccids that pertain to redo's are processed here. Thow with only undo are processed elsewhere.
+//    // To allow reads on the page server, make sure that all changes are visible.
+//    // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
+//    // Only mvccids that pertain to redo's are processed here. Thow with only undo are processed elsewhere.
+//    const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
+//    if (mvccid != MVCCID_NULL && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
+//      {
+//	log_Gl.hdr.mvcc_next_id = mvccid;
+//	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
+//      }
+
+    // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    if (mvccid != MVCCID_NULL && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
-      {
-	log_Gl.hdr.mvcc_next_id = mvccid;
-	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
-      }
+    assert_correct_mvccid (record_info.m_logrec, mvccid);
+    log_replication_update_header_mvcc_info (mvccid, prev_rec_lsa, rec_lsa);
 
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
     // proceed.
@@ -348,21 +391,27 @@ namespace cublog
 
   template <typename T>
   void
-  replicator::read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &rec_lsa, bool assert_mvccid_non_null)
+  replicator::read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
+      bool assert_mvccid_non_null)
   {
     m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
     const log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
 	m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
 
-    // To allow reads on the page server, make sure that all changes are visible.
-    // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
+//    // To allow reads on the page server, make sure that all changes are visible.
+//    // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
+//    const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
+//    assert (!assert_mvccid_non_null || (mvccid != MVCCID_NULL));
+//    if (mvccid != MVCCID_NULL && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
+//      {
+//	log_Gl.hdr.mvcc_next_id = mvccid;
+//	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
+//      }
+
+    // only mvccids that pertain to undo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    assert (!assert_mvccid_non_null || (mvccid != MVCCID_NULL));
-    if (mvccid != MVCCID_NULL && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
-      {
-	log_Gl.hdr.mvcc_next_id = mvccid;
-	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
-      }
+    assert_correct_mvccid (record_info.m_logrec, mvccid);
+    log_replication_update_header_mvcc_info (mvccid, prev_rec_lsa, rec_lsa);
   }
 
   template <typename T>

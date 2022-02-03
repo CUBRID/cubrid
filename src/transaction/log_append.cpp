@@ -151,86 +151,86 @@ log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list
   assert (nodep == list_tail);
 #endif
 
-  /* Vacuum subsystem makes use of some log header fields to bookkeep info that is needed to decide
-   * when to dispatch vacuum jobs.
-   * In a standalone server, this information is updated when log records are about to be added to log prior
-   * lists in prior_lsa_next_record_internal.
-   * In scalability setup, active transaction server (ATS) executes the same routine, but page server (PS)
-   * will need to also perform this bookkeeping update when replication (is about to) happen(s).
-   * This is needed because ATS receives its initial state from PS upon boot and this bookkeeping is part of
-   * that state - as being part of log header structure.
-   *
-   * NOTE: when an ATS boots up (eg: as part of a stop/crash and restart sequence), it is presumed that
-   * a functioning PS would have already caught up with replicating all previous supplied log data and sits idle.
-   *
-   * NOTE: it might be possible that another option is to properly restore these fields on a booting-up
-   * ATS based on investigating already saved log that is also received from PS
-   */
-  // TODO: race condition taking info out of log header?
-  LOG_LSA prev_mvcc_op_log_lsa = log_Gl.hdr.mvcc_op_log_lsa;
-  MVCCID prev_newest_block_mvccid = log_Gl.hdr.newest_block_mvccid;
-  bool prev_does_block_need_vacuum = log_Gl.hdr.does_block_need_vacuum;
-  // block id of any last processed log record, not just mvcc/vacuum log record because all log records
-  // participate in making up vacuum blocks, not just mvcc/vacuum ones; so, it can be that there are
-  // entire blocks (series of pages) of log records without mvcc/vacuum related log records
-  assert (prev_lsa != NULL_LSA);
-  VACUUM_LOG_BLOCKID prev_log_record_vacuum_blockid = vacuum_get_log_blockid (prev_lsa.pageid);
-  for (const log_prior_node *node = list_head; node != nullptr; node = node->next)
-    {
-      // does this log record cross boundary between vacuum blocks?
-      const VACUUM_LOG_BLOCKID current_log_record_vacuum_blockid= vacuum_get_log_blockid (node->start_lsa.pageid);
-      const bool advance_to_new_vacuum_blockid
-	= prev_log_record_vacuum_blockid != current_log_record_vacuum_blockid;
+//  /* Vacuum subsystem makes use of some log header fields to bookkeep info that is needed to decide
+//   * when to dispatch vacuum jobs.
+//   * In a standalone server, this information is updated when log records are about to be added to log prior
+//   * lists in prior_lsa_next_record_internal.
+//   * In scalability setup, active transaction server (ATS) executes the same routine, but page server (PS)
+//   * will need to also perform this bookkeeping update when replication (is about to) happen(s).
+//   * This is needed because ATS receives its initial state from PS upon boot and this bookkeeping is part of
+//   * that state - as being part of log header structure.
+//   *
+//   * NOTE: when an ATS boots up (eg: as part of a stop/crash and restart sequence), it is presumed that
+//   * a functioning PS would have already caught up with replicating all previous supplied log data and sits idle.
+//   *
+//   * NOTE: it might be possible that another option is to properly restore these fields on a booting-up
+//   * ATS based on investigating already saved log that is also received from PS
+//   */
+//  // TODO: race condition taking info out of log header?
+//  LOG_LSA prev_mvcc_op_log_lsa = log_Gl.hdr.mvcc_op_log_lsa;
+//  MVCCID prev_newest_block_mvccid = log_Gl.hdr.newest_block_mvccid;
+//  bool prev_does_block_need_vacuum = log_Gl.hdr.does_block_need_vacuum;
+//  // block id of any last processed log record, not just mvcc/vacuum log record because all log records
+//  // participate in making up vacuum blocks, not just mvcc/vacuum ones; so, it can be that there are
+//  // entire blocks (series of pages) of log records without mvcc/vacuum related log records
+//  assert (prev_lsa != NULL_LSA);
+//  VACUUM_LOG_BLOCKID prev_log_record_vacuum_blockid = vacuum_get_log_blockid (prev_lsa.pageid);
+//  for (const log_prior_node *node = list_head; node != nullptr; node = node->next)
+//    {
+//      // does this log record cross boundary between vacuum blocks?
+//      const VACUUM_LOG_BLOCKID current_log_record_vacuum_blockid= vacuum_get_log_blockid (node->start_lsa.pageid);
+//      const bool advance_to_new_vacuum_blockid
+//	= prev_log_record_vacuum_blockid != current_log_record_vacuum_blockid;
 
-      if (node->log_header.type == LOG_MVCC_UNDO_DATA || node->log_header.type == LOG_MVCC_UNDOREDO_DATA
-	  || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA
-	  || (node->log_header.type == LOG_SYSOP_END
-	      && ((LOG_REC_SYSOP_END *)node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO))
-	{
-	  LOG_VACUUM_INFO *dummy_vacuum_info = nullptr;
-	  MVCCID mvccid = MVCCID_NULL;
-	  prior_extract_vacuum_info_from_prior_node (node, dummy_vacuum_info, mvccid);
-	  assert (dummy_vacuum_info != nullptr);
-	  assert (mvccid != MVCCID_NULL);
+//      if (node->log_header.type == LOG_MVCC_UNDO_DATA || node->log_header.type == LOG_MVCC_UNDOREDO_DATA
+//	  || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA
+//	  || (node->log_header.type == LOG_SYSOP_END
+//	      && ((LOG_REC_SYSOP_END *)node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO))
+//	{
+//	  LOG_VACUUM_INFO *dummy_vacuum_info = nullptr;
+//	  MVCCID mvccid = MVCCID_NULL;
+//	  prior_extract_vacuum_info_from_prior_node (node, dummy_vacuum_info, mvccid);
+//	  assert (dummy_vacuum_info != nullptr);
+//	  assert (mvccid != MVCCID_NULL);
 
-	  // not vacuum block dependent
-	  assert (prev_mvcc_op_log_lsa == NULL_LSA || prev_mvcc_op_log_lsa < node->start_lsa);
-	  prev_mvcc_op_log_lsa = node->start_lsa;
+//	  // not vacuum block dependent
+//	  assert (prev_mvcc_op_log_lsa == NULL_LSA || prev_mvcc_op_log_lsa < node->start_lsa);
+//	  prev_mvcc_op_log_lsa = node->start_lsa;
 
-	  // vacuum block dependent; reset for each new vacuum block
-	  if (prev_newest_block_mvccid == MVCCID_NULL || prev_newest_block_mvccid < mvccid)
-	    {
-	      prev_newest_block_mvccid = mvccid;
-	    }
-	  prev_does_block_need_vacuum = true;
-	}
-      else
-	{
-	  if (advance_to_new_vacuum_blockid)
-	    {
-	      // new vacuum page block; reset mvcc/vacuum to values that mark that there are no
-	      // vacuum related log records yet in this new block
-	      prev_newest_block_mvccid = MVCCID_NULL;
-	      prev_does_block_need_vacuum = false;
-	    }
-	}
-      // very unlikely, but one such list of log prior nodes can cross multiple vacuum blocks
-      prev_log_record_vacuum_blockid = current_log_record_vacuum_blockid;
-    }
+//	  // vacuum block dependent; reset for each new vacuum block
+//	  if (prev_newest_block_mvccid == MVCCID_NULL || prev_newest_block_mvccid < mvccid)
+//	    {
+//	      prev_newest_block_mvccid = mvccid;
+//	    }
+//	  prev_does_block_need_vacuum = true;
+//	}
+//      else
+//	{
+//	  if (advance_to_new_vacuum_blockid)
+//	    {
+//	      // new vacuum page block; reset mvcc/vacuum to values that mark that there are no
+//	      // vacuum related log records yet in this new block
+//	      prev_newest_block_mvccid = MVCCID_NULL;
+//	      prev_does_block_need_vacuum = false;
+//	    }
+//	}
+//      // very unlikely, but one such list of log prior nodes can cross multiple vacuum blocks
+//      prev_log_record_vacuum_blockid = current_log_record_vacuum_blockid;
+//    }
 
   std::unique_lock<std::mutex> ulock (log_Gl.prior_info.prior_lsa_mutex);
 
   assert (list_head->start_lsa == prior_lsa);
   assert (list_head->log_header.back_lsa == prev_lsa);
 
-  // equal if no mvcc/vacuum log records in current list
-  assert ((log_Gl.hdr.mvcc_op_log_lsa.is_null () && prev_mvcc_op_log_lsa.is_null ())
-	  || log_Gl.hdr.mvcc_op_log_lsa <= prev_mvcc_op_log_lsa);
-  log_Gl.hdr.mvcc_op_log_lsa = prev_mvcc_op_log_lsa;
-  assert ((prev_newest_block_mvccid != MVCCID_NULL && prev_does_block_need_vacuum)
-	  || (prev_newest_block_mvccid == MVCCID_NULL && !prev_does_block_need_vacuum));
-  log_Gl.hdr.newest_block_mvccid = prev_newest_block_mvccid;
-  log_Gl.hdr.does_block_need_vacuum = prev_does_block_need_vacuum;
+//  // equal if no mvcc/vacuum log records in current list
+//  assert ((log_Gl.hdr.mvcc_op_log_lsa.is_null () && prev_mvcc_op_log_lsa.is_null ())
+//	  || log_Gl.hdr.mvcc_op_log_lsa <= prev_mvcc_op_log_lsa);
+//  log_Gl.hdr.mvcc_op_log_lsa = prev_mvcc_op_log_lsa;
+//  assert ((prev_newest_block_mvccid != MVCCID_NULL && prev_does_block_need_vacuum)
+//	  || (prev_newest_block_mvccid == MVCCID_NULL && !prev_does_block_need_vacuum));
+//  log_Gl.hdr.newest_block_mvccid = prev_newest_block_mvccid;
+//  log_Gl.hdr.does_block_need_vacuum = prev_does_block_need_vacuum;
 
   if (prior_list_header == nullptr)
     {
@@ -1408,6 +1408,47 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
     }
 
   return error_code;
+}
+
+/* log_replication_update_header_mvcc_info -
+ *
+ * NOTE: function is used by the log replication infrastructure, but is placed here to be near the corresponding
+ *    function used by the active transaction server (ie: by a non-replicating server)
+ */
+void
+log_replication_update_header_mvcc_info (const MVCCID &mvccid, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa)
+{
+  const VACUUM_LOG_BLOCKID prev_log_record_vacuum_blockid = vacuum_get_log_blockid (prev_rec_lsa.pageid);
+  const VACUUM_LOG_BLOCKID curr_log_record_vacuum_blockid = vacuum_get_log_blockid (rec_lsa.pageid);
+  if (prev_log_record_vacuum_blockid != curr_log_record_vacuum_blockid)
+    {
+      // advance to new vacuum block, reset vacuum block dependent variables in log header
+      // if current log record is mvcc/vacuum relevant, variables will be properly set
+      log_Gl.hdr.newest_block_mvccid = MVCCID_NULL;
+      log_Gl.hdr.does_block_need_vacuum = false;
+    }
+
+  if (mvccid != MVCCID_NULL)
+    {
+      // log header variables which ARE NOT vacuum block dependent
+      if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
+	{
+	  // To allow reads on the page server, make sure that all changes are visible.
+	  // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
+	  log_Gl.hdr.mvcc_next_id = mvccid;
+	  MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
+	}
+
+      assert (log_Gl.hdr.mvcc_op_log_lsa == NULL_LSA || log_Gl.hdr.mvcc_op_log_lsa < rec_lsa);
+      log_Gl.hdr.mvcc_op_log_lsa = rec_lsa;
+
+      // log header variables which ARE vacuum block dependent
+      if (log_Gl.hdr.newest_block_mvccid == MVCCID_NULL || log_Gl.hdr.newest_block_mvccid < mvccid)
+	{
+	  log_Gl.hdr.newest_block_mvccid = mvccid;
+	}
+      log_Gl.hdr.does_block_need_vacuum = true;
+    }
 }
 
 static void
