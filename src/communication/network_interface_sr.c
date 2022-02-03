@@ -10723,7 +10723,7 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
 	  /* find log record at the time
 	   * ret_time : time of the commit record or dummy record that is found to be greater than or equal to the start_time at first */
 
-	  if (ret_time > end_time)
+	  if (ret_time >= end_time)
 	    {
 	      /* out of range : start_time (ret_time) can not be greater than end_time */
 	      /* TODO : er_set() */
