@@ -83,7 +83,7 @@ namespace cubmethod
     free_and_init (buffer.ptr);
     return error;
   }
-#else
+#else // SA_MODE
   int xs_send (cubthread::entry *thread_p, cubmem::extensible_block &ext_blk)
   {
     packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
