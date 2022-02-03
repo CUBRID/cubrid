@@ -14754,6 +14754,14 @@ pgbuf_fix_if_not_deallocated_with_repl_desync_check (THREAD_ENTRY * thread_p, co
       if (error_code == NO_ERROR && page != nullptr)
 	{
 	  error_code = pgbuf_check_page_ahead_of_replication (thread_p, *page);
+
+	  if (error_code == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      // Unfix the page
+	      pgbuf_unfix (thread_p, *page);
+	      *page = nullptr;
+	      error_code = NO_ERROR;
+	    }
 	}
     }
 
