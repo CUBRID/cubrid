@@ -423,19 +423,17 @@ namespace cubmethod
   query_handler *
   callback_handler::get_query_handler_by_sql (const std::string &sql)
   {
-    query_handler *handler = nullptr;
     for (auto it = m_sql_handler_map.lower_bound (sql); it != m_sql_handler_map.upper_bound (sql); it++)
       {
-	handler = get_query_handler_by_id (it->second);
+	query_handler *handler = get_query_handler_by_id (it->second);
 	if (handler != nullptr && handler->get_is_occupied() == false)
 	  {
 	    /* found */
-	    break;
+	    return handler;
 	  }
-	handler = nullptr;
       }
 
-    return handler;
+    return nullptr;
   }
 
   //////////////////////////////////////////////////////////////////////////
