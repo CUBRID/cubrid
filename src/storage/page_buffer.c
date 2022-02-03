@@ -14741,6 +14741,25 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
   return error_code;
 }
 
+int
+pgbuf_fix_if_not_deallocated_with_repl_desync_check (THREAD_ENTRY * thread_p, const VPID * vpid,
+						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,
+						     PAGE_PTR * page)
+{
+  int error_code =
+    pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE);
+
+  if (is_passive_transaction_server ())
+    {
+      if (error_code == NO_ERROR && page != nullptr)
+	{
+	  error_code = pgbuf_check_page_ahead_of_replication (thread_p, *page);
+	}
+    }
+
+  return error_code;
+}
+
 #if defined (SERVER_MODE)
 /*
  * pgbuf_keep_victim_flush_thread_running () - keep flush thread running
