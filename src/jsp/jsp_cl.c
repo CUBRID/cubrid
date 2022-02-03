@@ -1870,6 +1870,12 @@ jsp_execute_stored_procedure (const SP_ARGS * args)
   int retry_count = 0;
   bool mode = ssl_client;
 
+#if defined (CS_MODE)
+  const char *db_name = net_client_get_server_name ();
+#else
+  const char *db_name = boot_db_name ();
+#endif
+
 retry:
   if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
     {
@@ -1880,13 +1886,13 @@ retry:
 
       if (server_port != -1)
 	{
-	  sock_fds[call_cnt] = jsp_connect_server (server_port);
+	  sock_fds[call_cnt] = jsp_connect_server (db_name, server_port);
 
 	  /* ask port number of javasp server from cub_server and try connection again  */
 	  if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
 	    {
 	      server_port = jsp_get_server_port ();
-	      sock_fds[call_cnt] = jsp_connect_server (server_port);
+	      sock_fds[call_cnt] = jsp_connect_server (db_name, server_port);
 	    }
 
 	  /* Java SP Server may have a problem */
