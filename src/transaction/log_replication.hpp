@@ -91,6 +91,7 @@ namespace cublog
 	  const log_lsa &rec_lsa);
 
     private:
+      const bool m_bookkeep_mvcc_vacuum_info;
       std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
 

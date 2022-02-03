@@ -1362,22 +1362,28 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
  */
 void
 log_replication_update_header_mvcc_vacuum_info (const MVCCID &mvccid, const log_lsa &prev_rec_lsa,
-    const log_lsa &rec_lsa)
+    const log_lsa &rec_lsa, bool bookkeep_mvcc_vacuum_info)
 {
-  const VACUUM_LOG_BLOCKID prev_log_record_vacuum_blockid = vacuum_get_log_blockid (prev_rec_lsa.pageid);
-  const VACUUM_LOG_BLOCKID curr_log_record_vacuum_blockid = vacuum_get_log_blockid (rec_lsa.pageid);
-  if (prev_log_record_vacuum_blockid != curr_log_record_vacuum_blockid)
+  if (bookkeep_mvcc_vacuum_info)
     {
-      // advance to new vacuum block, reset vacuum block dependent variables in log header
-      // if current log record is mvcc/vacuum relevant, variables will be properly set
-      log_Gl.hdr.newest_block_mvccid = MVCCID_NULL;
-      log_Gl.hdr.does_block_need_vacuum = false;
+      const VACUUM_LOG_BLOCKID prev_log_record_vacuum_blockid = vacuum_get_log_blockid (prev_rec_lsa.pageid);
+      const VACUUM_LOG_BLOCKID curr_log_record_vacuum_blockid = vacuum_get_log_blockid (rec_lsa.pageid);
+      if (prev_log_record_vacuum_blockid != curr_log_record_vacuum_blockid)
+	{
+	  // advance to new vacuum block, reset vacuum block dependent variables in log header
+	  // if current log record is mvcc/vacuum relevant, variables will be properly set
+	  log_Gl.hdr.newest_block_mvccid = MVCCID_NULL;
+	  log_Gl.hdr.does_block_need_vacuum = false;
 
-      log_Gl.hdr.oldest_visible_mvccid = MVCCID_NULL;
+	  log_Gl.hdr.oldest_visible_mvccid = MVCCID_NULL;
+	}
     }
 
   if (mvccid != MVCCID_NULL)
     {
+      // TODO: check whether passive transaction server uses mvcc_next_id and, if not, only perform this
+      // updating on page server only as well
+
       // log header variables which ARE NOT vacuum block dependent
       if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
 	{
@@ -1387,24 +1393,28 @@ log_replication_update_header_mvcc_vacuum_info (const MVCCID &mvccid, const log_
 	  MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
 	}
 
-      assert (log_Gl.hdr.mvcc_op_log_lsa == NULL_LSA || log_Gl.hdr.mvcc_op_log_lsa < rec_lsa);
-      log_Gl.hdr.mvcc_op_log_lsa = rec_lsa;
+      // NOTE: following only needs to be done on page servers
+      if (bookkeep_mvcc_vacuum_info)
+	{
+	  assert (log_Gl.hdr.mvcc_op_log_lsa == NULL_LSA || log_Gl.hdr.mvcc_op_log_lsa < rec_lsa);
+	  log_Gl.hdr.mvcc_op_log_lsa = rec_lsa;
 
-      // log header variables which ARE vacuum block dependent
-      if (log_Gl.hdr.newest_block_mvccid == MVCCID_NULL || log_Gl.hdr.newest_block_mvccid < mvccid)
-	{
-	  log_Gl.hdr.newest_block_mvccid = mvccid;
-	}
-      log_Gl.hdr.does_block_need_vacuum = true;
+	  // log header variables which ARE vacuum block dependent
+	  if (log_Gl.hdr.newest_block_mvccid == MVCCID_NULL || log_Gl.hdr.newest_block_mvccid < mvccid)
+	    {
+	      log_Gl.hdr.newest_block_mvccid = mvccid;
+	    }
+	  log_Gl.hdr.does_block_need_vacuum = true;
 
-      // keep a minimum mvccid id value, per block
-      if (log_Gl.hdr.oldest_visible_mvccid == MVCCID_NULL)
-	{
-	  log_Gl.hdr.oldest_visible_mvccid = mvccid;
-	}
-      else if (mvccid < log_Gl.hdr.oldest_visible_mvccid)
-	{
-	  log_Gl.hdr.oldest_visible_mvccid = mvccid;
+	  // keep a minimum mvccid id value, per block
+	  if (log_Gl.hdr.oldest_visible_mvccid == MVCCID_NULL)
+	    {
+	      log_Gl.hdr.oldest_visible_mvccid = mvccid;
+	    }
+	  else if (mvccid < log_Gl.hdr.oldest_visible_mvccid)
+	    {
+	      log_Gl.hdr.oldest_visible_mvccid = mvccid;
+	    }
 	}
     }
 }

@@ -28,6 +28,7 @@
 #include "object_representation.h"
 #include "page_buffer.h"
 #include "recovery.h"
+#include "server_type.hpp"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
 #include "transaction_global.hpp"
@@ -110,7 +111,8 @@ namespace cublog
    *********************************************************************/
 
   replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
-    : m_redo_lsa { start_redo_lsa }
+    : m_bookkeep_mvcc_vacuum_info { is_page_server () }
+    , m_redo_lsa { start_redo_lsa }
     , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_most_recent_trantable_snapshot_lsa { NULL_LSA }
@@ -327,7 +329,7 @@ namespace cublog
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
     assert_correct_mvccid (record_info.m_logrec, mvccid);
-    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa);
+    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
 
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
     // proceed.
@@ -355,7 +357,7 @@ namespace cublog
     // mvccids that pertain to undo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
     assert_correct_mvccid (record_info.m_logrec, mvccid);
-    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa);
+    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
   }
 
   template <typename T>

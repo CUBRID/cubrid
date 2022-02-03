@@ -175,7 +175,7 @@ void prior_list_deserialize (const std::string &str, log_prior_node *&head, log_
 size_t logpb_get_memsize ();
 
 void log_replication_update_header_mvcc_vacuum_info (const MVCCID &mvccid, const log_lsa &prev_rec_lsa,
-    const log_lsa &rec_lsa);
+    const log_lsa &rec_lsa, bool bookkeep_mvcc_vacuum_info);
 
 extern bool log_Zip_support;
 extern int log_Zip_min_size_to_compress;
