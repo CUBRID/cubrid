@@ -49,6 +49,7 @@
 #include "parse_tree.h"
 #include "load_common.hpp"
 #include "timezone_lib_common.h"
+#include "dynamic_array.h"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -442,4 +443,9 @@ extern int loaddb_fetch_status (load_status & status);
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
 extern int loaddb_update_stats ();
+
+extern int flashback_get_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
+				  void *summary_list, OID ** oid_list);
+extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa,
+				  LOG_LSA * end_lsa, int *num_item, bool forward, void *info_list);
 #endif /* _NETWORK_INTERFACE_CL_H_ */
