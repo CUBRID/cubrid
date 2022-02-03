@@ -2295,7 +2295,7 @@ pgbuf_fix_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid,
   PAGE_PTR const page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, cond);
 
 #if defined (SERVER_MODE)
-  const bool passive_transaction_server = is_passive_transaction_server();
+  const bool passive_transaction_server = is_passive_transaction_server ();
   if (!passive_transaction_server)
     {
       // No replication, no page desynchronization is possible
