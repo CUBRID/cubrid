@@ -72,7 +72,7 @@ extern "C"
 {
 #endif
 
-  SOCKET jsp_connect_server (int server_port);
+  SOCKET jsp_connect_server (const char *db_name, int server_port);
   void jsp_disconnect_server (const SOCKET sockfd);
   int jsp_writen (SOCKET fd, const void *vptr, int n);
   int jsp_readn (SOCKET fd, void *vptr, int n);
