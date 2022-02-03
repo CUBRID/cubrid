@@ -37,6 +37,7 @@
 #else
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/time.h>
 #endif
 
 #include "CRC.h"
@@ -49,6 +50,7 @@
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
+#include "base64.h"
 
 #include <openssl/evp.h>
 #include <openssl/sha.h>
@@ -697,3 +699,613 @@ crypt_generate_random_bytes (char *dest, int length)
 
   return NO_ERROR;
 }
+
+
+// 
+// *INDENT-OFF*
+DBLINK_CHPHER_KEY dblink_Cipher = {false, {0x00, }};
+static struct
+{
+  unsigned char nonce[16];
+  unsigned char *crypt_key;
+} evp_cipher = { {0, }, dblink_Cipher.crypt_key };  // Do not omit the this initialization settings.
+// *INDENT-ON*
+
+static int
+init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool is_aes_algorithm)
+{
+  static int is_init_done = 0;
+
+  if (is_init_done == 0)
+    {
+      memset (evp_cipher.nonce, 0x07, sizeof (evp_cipher.nonce));
+      is_init_done = 1;
+    }
+
+#if defined(CS_MODE)
+  if (dblink_Cipher.is_loaded == false)
+    {
+      int err;
+      extern int dblink_get_cipher_master_key ();	// declared in "network_interface_cl.c"
+      if ((err = dblink_get_cipher_master_key ()) != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	  return err;
+	}
+    }
+#endif
+
+  if ((*ctx = EVP_CIPHER_CTX_new ()) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  if (is_aes_algorithm)
+    {
+      *cipher_type = EVP_aes_256_ctr ();
+    }
+  else
+    {
+      *cipher_type = EVP_aria_256_ctr ();
+    }
+
+  if (*cipher_type == NULL)
+    {
+      EVP_CIPHER_CTX_free (*ctx);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * crypt_dblink_encrypt ()  : Converts binary encrypted by AES/ARIA to readable string data. 
+ *
+ * return	      : NO_ERROR or error code.
+ * str(in)	      : password string data(In fact, the binary data).
+ * str_len(in)        : length of "src"
+ * cipher_buffer(out) : Encrypted binary data (by AES/ARIA)
+ * pk(in)             : The private key(master key) used to create the encrypted binary 
+ * 
+ * Remark:  
+ *          If pk is an empty string, the internal master key is used and the AES algorithm is used.
+ *          Otherwise, it is selected between AES and ARIA algorithms according to the value of a specific location.                             
+ */
+int
+crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer, unsigned char *pk)
+{
+  int len, cipher_len, err;
+  EVP_CIPHER_CTX *ctx;
+  const EVP_CIPHER *cipher_type;
+  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+  unsigned char *key;
+
+  assert (pk);
+  err = init_dblink_cipher (&ctx, &cipher_type, (*pk) ? ((pk[13] & 0x01) == 0x00) : true);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  if (pk[0] == 0x00)
+    {
+      key = evp_cipher.crypt_key;
+    }
+  else
+    {
+      assert ((int) strlen ((char *) pk) < DBLINK_CRYPT_KEY_LENGTH);
+      strcpy ((char *) crypt_key, (char *) pk);
+      key = crypt_key;
+    }
+
+  if (EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, evp_cipher.nonce) != 1)
+    {
+      goto cleanup;
+    }
+
+  if (EVP_EncryptUpdate (ctx, cipher_buffer, &len, str, str_len) != 1)
+    {
+      goto cleanup;
+    }
+  cipher_len = len;
+
+  // Further ciphertext bytes may be written at finalizing (Partial block).
+  if (EVP_EncryptFinal_ex (ctx, cipher_buffer + len, &len) != 1)
+    {
+      goto cleanup;
+    }
+  cipher_len += len;
+
+  // CTR_MODE is stream mode so that there is no need to check,
+  // but check it for safe.
+  assert (cipher_len == str_len);
+
+cleanup:
+  EVP_CIPHER_CTX_free (ctx);
+
+exit:
+  if (err != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+  return err;
+}
+
+/*
+ * crypt_dblink_decrypt ()  : Decrypt the encrypted binary to extract the password string 
+ *
+ * return	      : NO_ERROR or error code.
+ * cipher(in)	      : Encrypted password data(binary).
+ * cipher_len(in)     : length of "cipher"
+ * str_buffer(out)    : Decrypted string data(In fact, the binary data).
+ * pk(in)             : Private key (master key) used for decryption
+ * 
+ * Remark:  
+ *                        
+ */
+int
+crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer, unsigned char *pk)
+{
+  int len, str_len, err;
+  EVP_CIPHER_CTX *ctx;
+  const EVP_CIPHER *cipher_type;
+  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+  unsigned char *key;
+
+  assert (pk);
+  err = init_dblink_cipher (&ctx, &cipher_type, (*pk) ? ((pk[13] & 0x01) == 0x00) : true);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (pk[0] == 0x00)
+    {
+      key = evp_cipher.crypt_key;
+    }
+  else
+    {
+      assert ((int) strlen ((char *) pk) < DBLINK_CRYPT_KEY_LENGTH);
+      strcpy ((char *) crypt_key, (char *) pk);
+      key = crypt_key;
+    }
+
+  if (EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, evp_cipher.nonce) != 1)
+    {
+      goto cleanup;
+    }
+  if (EVP_DecryptUpdate (ctx, str_buffer, &len, cipher, cipher_len) != 1)
+    {
+      goto cleanup;
+    }
+  str_len = len;
+
+  // Further plaintext bytes may be written at finalizing (Partial block).
+  if (EVP_DecryptFinal_ex (ctx, str_buffer + len, &len) != 1)
+    {
+      goto cleanup;
+    }
+  str_len += len;
+
+  // CTR_MODE is stream mode so that there is no need to check,
+  // but check it for safe.
+  assert (str_len == cipher_len);
+
+cleanup:
+  EVP_CIPHER_CTX_free (ctx);
+
+exit:
+  if (err != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+  return err;
+}
+
+// *INDENT-OFF*
+#define BYTE_2_HEX(u, b)  (    \
+                (b)[0] = upper_hextable[((unsigned char)(u)) >> 4],     \
+                (b)[1] = upper_hextable[((unsigned char)(u)) & 0x0F]    \
+        )
+
+#define HEX_2_BYTE(h, u) (     \
+                (u) = (((h)[0] <= '9') ? ((h)[0] - '0') << 4 : ((h)[0] - 'A' + 10) << 4),       \
+                (u) |= (((h)[1] <= '9') ? ((h)[1] - '0') :  ((h)[1] - 'A' + 10))                \
+        )
+// *INDENT-ON*
+
+/*
+ * crypt_dblink_bin_to_str ()  : Converts binary encrypted by AES/ARIA to readable string data. 
+ *
+ * return	      : NO_ERROR or error code.
+ * src(in)	      : Encrypted binary data.
+ * src_len(in)        : length of "src"
+ * dest(out)          : Buffer to contain the final processed encrypted string
+ * dest_len(in)       : Size of "dest" buffer. 
+ * pk(in)             : The private key(master key) used to create the encrypted binary 
+ * tm(in)             : The value to be used to reorder the encrypted data  
+ * 
+ * Remark:  
+ *        The length of binary data encrypted with AES/ARIA is variable.
+ *        It includes additional information to make it a specific path encrypted string.
+ *                             
+ */
+int
+crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len, unsigned char *pk, long tm)
+{
+  int err, i, pk_len, idx, even, odd;
+  const char *hextable = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890";
+  int hextable_mod = 62;	/* strlen (hextable) */
+  unsigned char *enc_ptr = NULL;
+  int enc_len = 0;
+  unsigned char empty_str[4] = { 0x00, };
+
+  assert (src != NULL && dest != NULL);
+
+  err = base64_encode ((unsigned char *) src, src_len, &enc_ptr, &enc_len);
+  if (err != NO_ERROR)
+    {
+      db_private_free (NULL, enc_ptr);
+      return err;
+    }
+
+  // remove '\n' character
+  char *p, *t;
+  p = (char *) enc_ptr;
+  while (*p && (*p != '\n'))
+    {
+      p++;
+    }
+
+  for (t = p; *p; p++)
+    {
+      if (*p == '\n')
+	{
+	  enc_len--;
+	  continue;
+	}
+
+      *t = *p;
+      t++;
+    }
+  *t = 0x00;
+
+  if (!pk)
+    {
+      pk = empty_str;
+    }
+
+  assert (dest_len >= (enc_len + 4));
+
+  odd = (tm >> 3) % 15;
+  even = tm % 15;
+  for (i = 0; pk[i]; i++)
+    {
+      pk[i] += ('a' - '0' + odd);
+      if (pk[i + 1] == '\0')
+	{
+	  break;
+	}
+      i++;
+      pk[i] += ('a' - '0' + even);
+    }
+
+  idx = 0;
+  BYTE_2_HEX (enc_len, dest + idx);
+  idx += 2;
+  BYTE_2_HEX ((odd << 4) | even, dest + idx);
+  idx += 2;
+  pk_len = (int) strlen ((char *) pk);
+  BYTE_2_HEX (pk_len, dest + idx);
+  idx += 2;
+
+  memcpy (dest + idx, pk, pk_len);
+  pk_len += idx;
+  memcpy (dest + pk_len, enc_ptr, enc_len);
+  db_private_free (NULL, enc_ptr);
+
+  /* Adjust the length so that it is a multiple of 4. */
+  dest_len >>= 2;
+  dest_len <<= 2;
+
+  dest_len -= 2;
+  even = 0;
+  for (i = enc_len + pk_len; i < dest_len; i++)
+    {
+      dest[i] = hextable[rand () % hextable_mod];
+      even += (dest[i] + i);
+    }
+  dest[i++] = ((even >> 8) % 26) + 'A';
+  dest[i++] = (even % 26) + 'a';
+  dest[i] = '\0';
+
+  return NO_ERROR;
+}
+
+/*
+ * crypt_dblink_str_to_bin ()  : Extract the original encrypted binary 
+ *                                from the string created via crypt_dblink_bin_to_str().
+ *
+ * return	      : NO_ERROR or error code.
+ * src(in)	      : String created via crypt_dblink_bin_to_str().
+ * src_len(in)        : length of "src"
+ * dest(out)          : Buffer to contain the original encrypted binary.
+ * dest_len(in)       : Size of "dest" buffer. 
+ * pk(out)            : The private key(master key) used to create the encrypted binary 
+ * 
+ * Remark:  
+ *        
+ *                             
+ */
+int
+crypt_dblink_str_to_bin (const char *src, int src_len, char *dest, int *dest_len, unsigned char *pk)
+{
+  int i, err, pk_len, idx, odd, even;
+  unsigned char *dec_ptr = NULL;
+  char *src_bk = (char *) src;
+
+  assert (src && dest && pk && dest_len);
+  assert (src_len >= 6);
+
+  idx = 0;
+  HEX_2_BYTE (src + idx, pk_len);
+  idx += 2;
+  if (pk_len >= src_len)
+    {
+      return ER_FAILED;
+    }
+  src_len = pk_len;
+
+  HEX_2_BYTE (src + idx, even);
+  idx += 2;
+  odd = even >> 4;
+  even &= 0x0F;
+
+  HEX_2_BYTE (src + idx, pk_len);
+  idx += 2;
+
+  src += idx;
+  memcpy (pk, src, pk_len);
+  pk[pk_len] = '\0';
+
+  for (i = 0; pk[i]; i++)
+    {
+      pk[i] -= ('a' - '0' + odd);
+      if (pk[i + 1] == '\0')
+	{
+	  break;
+	}
+      i++;
+      pk[i] -= ('a' - '0' + even);
+    }
+
+  src += pk_len;
+  err = base64_decode ((unsigned char *) src, src_len, &dec_ptr, dest_len);
+  if (err == NO_ERROR)
+    {
+      memcpy (dest, dec_ptr, *dest_len);
+      err = NO_ERROR;
+    }
+
+  db_private_free (NULL, dec_ptr);
+
+  if (err == NO_ERROR)
+    {
+      // check validation 
+      even = 0;
+      src += src_len;
+      for (i = src - src_bk; src_bk[i + 2]; i++)
+	{
+	  even += (src_bk[i] + i);
+	}
+
+      if ((src_bk[i] != (((even >> 8) % 26) + 'A')) || (src_bk[i + 1] != ((even % 26) + 'a')))
+	{
+	  err = ER_FAILED;
+	}
+    }
+
+  return err;
+}
+
+/*
+ * shake_dblink_password ()  : Transforms the input password to create a new one.
+ *
+ * return	       : length of newly created password.
+ * passwd(in)	       : Raw password.
+ * confused(out)       : Newly created password.
+ * confused_size(in)   : size of confused buffer.
+ * chk_time(out)       : Time of creation of new password
+ * 
+ * Remark:  
+ *         Even if the same raw password is entered, a different password is always generated.
+ *         This is to make it difficult to guess the password from the outside. 
+ *         Newly created password is binary.     
+ *         <header part><garbage part><data part><checksum part>               
+ */
+int
+shake_dblink_password (const char *passwd, char *confused, int confused_size, struct timeval *chk_time)
+{
+  const char *tmpx = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%%^&*()_-+=;:[]{}(),./?<>";
+  int i, pwdlen, start;
+  int shift, safe;
+  unsigned char *p;
+  unsigned char checksum;
+  int tmpx_len = 90;		/* strlen(tmpx) */
+
+  p = (unsigned char *) confused;
+  pwdlen = (int) strlen (passwd);
+
+  gettimeofday (chk_time, NULL);
+  shift = (chk_time->tv_usec & 0x7FFF);
+  memcpy (p, &shift, sizeof (int));
+  p += sizeof (int);
+  *p = (unsigned char) pwdlen;	// pwdlen is less than or equal to DBLINK_PASSWORD_MAX_LENGTH.
+  p++;
+
+  safe = pwdlen + 11;		/* 11? int + char + char + some safe */
+  start = 0;
+  if (confused_size > safe)
+    {
+      if ((start = (confused_size - safe) / 2) > 2)
+	{
+	  start = (chk_time->tv_usec >> 3) % start;
+	}
+    }
+  *p = (unsigned char) start;
+  p++;
+
+  for (i = 0; i < start; i++)
+    {
+      p[i] = tmpx[rand () % tmpx_len];
+    }
+  p += start;
+
+  if (pwdlen > 0)
+    {
+      shift %= pwdlen;
+      if (shift == 0)
+	{
+	  shift++;
+	}
+
+      // conceptual example) password --> ordpassw
+      for (i = 0; i < pwdlen; i++)
+	{
+	  p[((i + shift) < pwdlen) ? (i + shift) : ((i + shift) - pwdlen)] = passwd[i];
+	}
+
+      // conceptual example) ordpassw --> pseqbttx
+      shift = ((chk_time->tv_usec & 0x7A5A) % 127) + 1;
+      for (i = 0; i < pwdlen; i++)
+	{
+	  p[i] = ((p[i] + shift) < 128) ? (p[i] + shift) : (p[i] + shift - 128);
+	}
+
+      p += pwdlen;
+    }
+
+  pwdlen = p - ((unsigned char *) confused);
+  checksum = 0x7C;
+  p = (unsigned char *) confused;
+  for (i = 0; i < pwdlen; i++)
+    {
+      checksum += p[i];
+    }
+  p[pwdlen++] = checksum;
+
+  /* Adjust the length so that it is a multiple of 3.
+   * This is to prevent the '=' character from appearing in the base64 conversion result.  */
+  while (pwdlen % 3)
+    {
+      p[pwdlen++] = checksum;
+    }
+
+  p[pwdlen] = '\0';
+  return pwdlen;
+}
+
+/*
+ * reverse_shake_dblink_password ()  : Extract the raw password from the re-created password.
+ *
+ * return	       : NO_ERROR or error code.
+ * confused(in)	       : Password created via shake_dblink_password(). This is binary.
+ * length(in)          : lelgth of "confused" 
+ * passwd(out)         : Raw password.
+ * 
+ * Remark: 
+ *      
+ */
+int
+reverse_shake_dblink_password (char *confused, int length, char *passwd)
+{
+  int i, pwdlen;
+  int shift;
+  unsigned char *p;
+  unsigned char checksum;
+
+  p = (unsigned char *) confused;
+  memcpy (&shift, p, sizeof (int));
+  p += sizeof (int);
+  pwdlen = *p;
+  p++;
+  p += (*p + 1);
+
+  if (length < pwdlen)
+    {
+      return ER_FAILED;
+    }
+
+  if (pwdlen > 0)
+    {
+      shift %= pwdlen;
+      if (shift == 0)
+	{
+	  shift++;
+	}
+      // conceptual example) pseqbttx --> ordpassw 
+      for (i = 0; i < pwdlen; i++)
+	{
+	  passwd[i] = p[((i + shift) < pwdlen) ? (i + shift) : ((i + shift) - pwdlen)];
+	}
+
+      memcpy (&shift, confused, sizeof (int));
+      shift = ((shift & 0x7A5A) % 127) + 1;
+      // conceptual example) ordpassw --> password
+      for (i = 0; i < pwdlen; i++)
+	{
+	  passwd[i] = ((passwd[i] - shift) >= 0) ? (passwd[i] - shift) : (passwd[i] - shift + 128);
+	}
+    }
+  passwd[pwdlen] = '\0';
+  p += pwdlen;
+
+  pwdlen = p - ((unsigned char *) confused);
+  checksum = 0x7C;
+  p = (unsigned char *) confused;
+  for (i = 0; i < pwdlen; i++)
+    {
+      checksum += p[i];
+    }
+
+  do
+    {
+      if (p[pwdlen] != checksum)
+	{
+	  return ER_FAILED;
+	}
+    }
+  while (++pwdlen % 3);
+
+  return NO_ERROR;
+}
+
+#if !defined(CS_MODE)
+/*
+ * dblink_get_encrypt_key () - Passing log key to support DBLINK.
+ *
+ * return               : length of copied or error code.
+ * key_buf (in)         : Copied log key
+ * key_buf_sz (in/out)  : size of key_buf
+ */
+int
+dblink_get_encrypt_key (unsigned char *key_buf, int key_buf_sz)
+{
+  if (!tde_Cipher.is_loaded)
+    {
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
+    }
+
+  if (key_buf_sz >= TDE_DATA_KEY_LENGTH)
+    {
+      memcpy (key_buf, tde_Cipher.data_keys.log_key, TDE_DATA_KEY_LENGTH);
+      return TDE_DATA_KEY_LENGTH;
+    }
+
+  memcpy (key_buf, tde_Cipher.data_keys.log_key, key_buf_sz);
+  return key_buf_sz;
+}
+#endif

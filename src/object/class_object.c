@@ -4062,7 +4062,7 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
  */
 SM_CLASS_CONSTRAINT *
 classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAINT_TYPE new_cons, const char **att_names,
-				   const int *asc_desc)
+				   const int *asc_desc, const SM_PREDICATE_INFO * filter_predicate)
 {
   SM_CLASS_CONSTRAINT *cons;
   SM_ATTRIBUTE **attp;
@@ -4103,9 +4103,28 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
 	      if (i == len)
 		{
-		  return cons;	/* match */
+		  if (filter_predicate)
+		    {
+		      if (!cons->filter_predicate)
+			{
+			  continue;
+			}
+
+		      if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
+			{
+			  continue;
+			}
+
+		      if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
+			{
+			  continue;
+			}
+		    }
+
+		  return cons;
 		}
 	    }
+
 	}
     }
 
@@ -8046,7 +8065,7 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
       return error;
     }
 
-  existing_con = classobj_find_constraint_by_attrs (constraints, constraint_type, att_names, asc_desc);
+  existing_con = classobj_find_constraint_by_attrs (constraints, constraint_type, att_names, asc_desc, filter_index);
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
   if (existing_con != NULL)
     {

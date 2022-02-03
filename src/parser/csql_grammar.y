@@ -83,6 +83,8 @@ void csql_yyerror (const char *s);
 extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
+
+static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
 /*%CODE_END%*/%}
 
 %{
@@ -260,16 +262,28 @@ typedef enum
   SERIAL_CACHE,
 } SERIAL_DEFINE;
 
+typedef enum
+{
+  CONN_INFO_HOST = 0,
+  CONN_INFO_PORT,
+  CONN_INFO_DBNAME,
+  CONN_INFO_USER,
+  CONN_INFO_PASSWORD,
+  CONN_INFO_PROPERTIES,
+  CONN_INFO_COMMENT,
+  CONN_INFO_OWNER,
+} CONN_INFO_DEFINE;
+
+FUNCTION_MAP *keyword_offset (const char *name);
 
 static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
 static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
                                                  size_t min_args, size_t max_args);
 static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
                                                       size_t min_args, size_t max_args, size_t mod2);
+
 static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
 static PT_NODE *parser_make_link_or (PT_NODE * list, PT_NODE * node);
-
-
 
 static void parser_save_and_set_cannot_cache (bool value);
 static void parser_restore_cannot_cache (void);
@@ -367,6 +381,11 @@ static PT_NODE * pt_create_date_value (PARSER_CONTEXT *parser,
 static PT_NODE * pt_create_json_value (PARSER_CONTEXT *parser,
 				       const char *str);
 static void pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_nested);
+
+#define DBLINK_CONN_PARAM_CNT   (6)
+static bool pt_ct_check_fill_connection_info (char *pIn, char *pInfo[], char *perr_msg );
+static bool pt_ct_check_select (char* p, char *perr_msg);
+
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
 				       const int codeset_id,
@@ -432,6 +451,16 @@ int g_original_buffer_len;
     fprintf (File, "%d.%d-%d.%d",			\
 	     (Loc).first_line, (Loc).first_column,	\
 	     (Loc).last_line,  (Loc).last_column)
+
+#define SET_CPTR_2_PTNAME(rv, iv, b_p) do {             \
+   (rv) = parser_new_node (this_parser, PT_NAME);       \
+   if ((rv))                                            \
+     {                                                  \
+             (rv)->info.name.original = (iv);           \
+     }                                                  \
+   PARSER_SAVE_ERR_CONTEXT ((rv), (b_p))                \
+   DBG_PRINT                                            \
+} while (0)
 
 %}
 
@@ -875,6 +904,19 @@ int g_original_buffer_len;
 %type <node> json_table_node_rule
 %type <node> json_table_column_rule
 %type <node> json_table_column_list_rule
+
+%type <node> dblink_server_name
+%type <node> server_identifier
+%type <node> dblink_expr
+%type <node> dblink_conn
+%type <node> dblink_conn_str
+%type <c2> dblink_identifier_col_attrs  
+%type <node> dblink_column_definition_list
+%type <node> dblink_column_definition
+%type <c10> connect_info
+%type <c2>  connect_item
+%type <c10> alter_server_list
+%type <c2>  alter_server_item
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -934,7 +976,6 @@ int g_original_buffer_len;
 %token ACTION
 %token ADD
 %token ADD_MONTHS
-%token AES
 %token AFTER
 %token ALL
 %token ALLOCATE
@@ -942,7 +983,6 @@ int g_original_buffer_len;
 %token AND
 %token ANY
 %token ARE
-%token ARIA
 %token AS
 %token ASC
 %token ASSERTION
@@ -953,7 +993,6 @@ int g_original_buffer_len;
 %token AVG
 %token BEFORE
 %token BEGIN_
-%token BENCHMARK
 %token BETWEEN
 %token BIGINT
 %token BINARY
@@ -1041,12 +1080,9 @@ int g_original_buffer_len;
 %token EACH
 %token ELSE
 %token ELSEIF
-%token EMPTY
-%token ENCRYPT
 %token END
 %token ENUM
 %token EQUALS
-%token ERROR_
 %token ESCAPE
 %token EVALUATE
 %token EXCEPT
@@ -1143,7 +1179,6 @@ int g_original_buffer_len;
 %token NATIONAL
 %token NATURAL
 %token NCHAR
-%token NESTED
 %token NEXT
 %token NO
 %token NOT
@@ -1154,20 +1189,17 @@ int g_original_buffer_len;
 %token OCTET_LENGTH
 %token OF
 %token OFF_
-%token ONLINE
 %token ON_
 %token ONLY
 %token OPTIMIZATION
 %token OPTION
 %token OR
 %token ORDER
-%token ORDINALITY
 %token OUT_
 %token OUTER
 %token OUTPUT
 %token OVER
 %token OVERLAPS
-%token PARALLEL
 %token PARAMETERS
 %token PARTIAL
 %token PARTITION
@@ -1188,11 +1220,6 @@ int g_original_buffer_len;
 %token REFERENCES
 %token REFERENCING
 %token REGEXP
-%token REGEXP_COUNT
-%token REGEXP_INSTR
-%token REGEXP_LIKE
-%token REGEXP_REPLACE
-%token REGEXP_SUBSTR
 %token RELATIVE_
 %token RENAME
 %token REPLACE
@@ -1266,7 +1293,7 @@ int g_original_buffer_len;
 %token TIMESTAMP
 %token TIMESTAMPTZ
 %token TIMESTAMPLTZ
-%token TIMEZONE
+%token TIMEZONES
 %token TIMEZONE_HOUR
 %token TIMEZONE_MINUTE
 %token TO
@@ -1350,9 +1377,12 @@ int g_original_buffer_len;
 %token <cptr> ACCESS
 %token <cptr> ACTIVE
 %token <cptr> ADDDATE
+%token <cptr> AES
 %token <cptr> ANALYZE
 %token <cptr> ARCHIVE
+%token <cptr> ARIA
 %token <cptr> AUTO_INCREMENT
+%token <cptr> BENCHMARK
 %token <cptr> BIT_AND
 %token <cptr> BIT_OR
 %token <cptr> BIT_XOR
@@ -1373,10 +1403,15 @@ int g_original_buffer_len;
 %token <cptr> CUME_DIST
 %token <cptr> DATE_ADD
 %token <cptr> DATE_SUB
+%token <cptr> DBLINK
+%token <cptr> DBNAME
 %token <cptr> DECREMENT
 %token <cptr> DENSE_RANK
 %token <cptr> DONT_REUSE_OID
 %token <cptr> ELT
+%token <cptr> EMPTY
+%token <cptr> ENCRYPT
+%token <cptr> ERROR_
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
 %token <cptr> FULLSCAN
@@ -1392,6 +1427,7 @@ int g_original_buffer_len;
 %token <cptr> HASH
 %token <cptr> HEADER
 %token <cptr> HEAP
+%token <cptr> HOST
 %token <cptr> IFNULL
 %token <cptr> INACTIVE
 %token <cptr> INCREMENT
@@ -1447,6 +1483,7 @@ int g_original_buffer_len;
 %token <cptr> MEMBERS
 %token <cptr> MINVALUE
 %token <cptr> NAME
+%token <cptr> NESTED
 %token <cptr> NOCYCLE
 %token <cptr> NOCACHE
 %token <cptr> NOMAXVALUE
@@ -1456,22 +1493,32 @@ int g_original_buffer_len;
 %token <cptr> NTILE
 %token <cptr> NULLS
 %token <cptr> OFFSET
+%token <cptr> ONLINE
 %token <cptr> OPEN
+%token <cptr> ORDINALITY
 %token <cptr> PATH
 %token <cptr> OWNER
 %token <cptr> PAGE
+%token <cptr> PARALLEL
 %token <cptr> PARTITIONING
 %token <cptr> PARTITIONS
 %token <cptr> PASSWORD
 %token <cptr> PERCENT_RANK
 %token <cptr> PERCENTILE_CONT
 %token <cptr> PERCENTILE_DISC
+%token <cptr> PORT
 %token <cptr> PRINT
 %token <cptr> PRIORITY
+%token <cptr> PROPERTIES
 %token <cptr> QUARTER
 %token <cptr> QUEUES
 %token <cptr> RANGE_
 %token <cptr> RANK
+%token <cptr> REGEXP_COUNT
+%token <cptr> REGEXP_INSTR
+%token <cptr> REGEXP_LIKE
+%token <cptr> REGEXP_REPLACE
+%token <cptr> REGEXP_SUBSTR
 %token <cptr> REJECT_
 %token <cptr> REMOVE
 %token <cptr> REORGANIZE
@@ -1485,8 +1532,8 @@ int g_original_buffer_len;
 %token <cptr> SECTIONS
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
+%token <cptr> SERVER
 %token <cptr> SHOW
-%token <cptr> SLEEP
 %token <cptr> SLOTS
 %token <cptr> SLOTTED
 %token <cptr> STABILITY
@@ -1504,6 +1551,7 @@ int g_original_buffer_len;
 %token <cptr> THAN
 %token <cptr> THREADS
 %token <cptr> TIMEOUT
+%token <cptr> TIMEZONE
 %token <cptr> TRACE
 %token <cptr> TRAN
 %token <cptr> TRIGGERS
@@ -1517,7 +1565,6 @@ int g_original_buffer_len;
 %token <cptr> WEEK
 %token <cptr> WITHIN
 %token <cptr> WORKSPACE
-%token <cptr> TIMEZONES
 
 
 %token <cptr> IdName
@@ -1537,6 +1584,7 @@ int g_original_buffer_len;
 %token <cptr> EUCKR_STRING
 %token <cptr> ISO_STRING
 %token <cptr> UTF8_STRING
+%token <cptr> IPV4_ADDRESS
 
 /*}}}*/
 
@@ -2444,7 +2492,7 @@ create_stmt
 	  opt_method_files 				/* 12 */
 	  opt_inherit_resolution_list			/* 13 */
 	  opt_partition_clause 				/* 14 */
-      opt_create_as_clause				/* 15 */
+          opt_create_as_clause				/* 15 */
 		{{
 
 			PT_NODE *qc = parser_pop_hint_node ();
@@ -2914,6 +2962,67 @@ create_stmt
 			  }
 
 			$$ = qc;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+
+	| CREATE SERVER dblink_server_name '(' connect_info ')'
+		{{
+                        PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SERVER);
+			if (node)
+			  {
+                                node->info.create_server.server_name = $3;
+                                if ($3->next)
+                                  {
+                                     node->info.create_server.owner_name = $3->next;
+                                     $3->next = NULL;
+                                  }
+
+                                PT_CREATE_SERVER_INFO *si = &node->info.create_server;
+                                /* container order
+                                * 1: HOST(IP/NAME)
+                                * 2: PORT
+                                * 3: DBNMAE
+                                * 4: USER
+                                * 5: PASSWORD
+                                * 6: PROPERTIES
+                                * 7: COMMENT
+                                */
+                                si->host = CONTAINER_AT_0($5);
+                                si->port = CONTAINER_AT_1($5);
+                                si->dbname = CONTAINER_AT_2($5);
+                                si->user = CONTAINER_AT_3($5);
+                                si->pwd = CONTAINER_AT_4($5);
+                                if(si->pwd == NULL)
+                                {
+                                   PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+                                   if (val)                    
+                                     {
+                                        char    cipher[512];
+
+                                        val->type_enum = PT_TYPE_CHAR;
+                                        val->info.value.string_type = ' ';
+
+                                        if (pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher)) == NO_ERROR)
+                                        {
+                                          val->info.value.data_value.str =
+                                                pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
+                                        }
+                                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+                                     }
+                                     si->pwd = val;
+                                }
+
+                                if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
+                                  { 
+                                      PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
+                                  }
+                                si->prop = CONTAINER_AT_5($5);
+                                si->comment = CONTAINER_AT_6($5);
+			  }
+
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -3642,6 +3751,98 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| ALTER  SERVER  dblink_server_name alter_server_list
+                {{
+                        PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERVER);
+			if (node)
+			  {
+                                char *str;  
+                                bool is_not_allowed = false;  
+                                int  item_bits = (int)TO_NUMBER(CONTAINER_AT_9($4));
+                                PT_ALTER_SERVER_INFO *server = &node->info.alter_server;
+
+                                node->info.alter_server.server_name = $3;
+                                if ($3->next)
+                                  {
+                                     node->info.alter_server.current_owner_name = $3->next;
+                                     $3->next = NULL;
+                                  }                                
+                                is_not_allowed = (bool)(item_bits == 0);
+
+                                /* container order
+                                * 1: HOST(IP/NAME)
+                                * 2: PORT
+                                * 3: DBNMAE
+                                * 4: USER
+                                * 5: PASSWORD
+                                * 6: PROPERTIES
+                                * 7: COMMENT
+                                * 8: OWNER
+                                * 9: --
+                                *10: bits
+                                */
+                                server->host = CONTAINER_AT_0($4);
+                                server->port = CONTAINER_AT_1($4);
+                                server->dbname = CONTAINER_AT_2($4);
+                                server->user = CONTAINER_AT_3($4);
+                                server->pwd = CONTAINER_AT_4($4);
+                                server->prop = CONTAINER_AT_5($4);
+                                server->comment = CONTAINER_AT_6($4);
+                                server->owner_name = CONTAINER_AT_7($4);
+
+                                if (item_bits & (0x01 << CONN_INFO_HOST))
+                                {
+                                    server->xbits.bit_host = 1;
+                                    str = (char *) PT_VALUE_GET_BYTES (server->host);                                                                       
+                                    is_not_allowed |= (!str || str[0] == '\0');
+                                }
+                                if (item_bits & (0x01 << CONN_INFO_PORT))
+                                {
+                                    server->xbits.bit_port = 1;
+                                    is_not_allowed |= (!server->port);
+                                }
+                                if (item_bits & (0x01 << CONN_INFO_DBNAME))
+                                {
+                                    server->xbits.bit_dbname = 1;
+                                    str = server->dbname->info.name.original;
+                                    is_not_allowed |= (!str || str[0] == '\0');
+                                }
+                                if (item_bits & (0x01 << CONN_INFO_USER))
+                                {
+                                    server->xbits.bit_user = 1;
+                                    str = server->user->info.name.original;
+                                    is_not_allowed |= (!str || str[0] == '\0');
+                                }  
+                                if (item_bits & (0x01 << CONN_INFO_PASSWORD))
+                                {
+                                    server->xbits.bit_pwd = 1;
+                                }
+                                if (item_bits & (0x01 << CONN_INFO_PROPERTIES))
+                                {
+                                    server->xbits.bit_prop = 1;
+                                }
+                                if (item_bits & (0x01 << CONN_INFO_COMMENT))
+                                {
+                                    server->xbits.bit_comment = 1;
+                                }  
+                                if (item_bits & (0x01 << CONN_INFO_OWNER))
+                                {
+                                    server->xbits.bit_owner = 1;
+                                    str = server->owner_name->info.name.original;
+                                    is_not_allowed |= (!str || str[0] == '\0');
+                                }
+
+                                if(is_not_allowed)
+                                  {                                       
+                                        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
+                                  }                 
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 view_or_vclass
@@ -3719,6 +3920,20 @@ rename_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+	| RENAME SERVER dblink_server_name AS identifier
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SERVER);
+			if (node)
+			  {
+			    node->info.rename_server.old_name = $3;
+                            node->info.rename_server.owner_name = $3->next;
+                            $3->next = NULL;
+                            node->info.rename_server.new_name = $5;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 
@@ -4020,6 +4235,25 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| DROP SERVER opt_if_exists dblink_server_name
+		{{
+                        PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERVER);
+
+			if (node)
+			  {
+                            node->info.drop_server.if_exists = $3;
+			    node->info.drop_server.server_name = $4;
+                            if ($4->next)
+                              {
+                                node->info.drop_server.owner_name = $4->next;
+                                $4->next = NULL;
+                              }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}                
 	| deallocate_or_drop PREPARE identifier
 		{{
 
@@ -4699,6 +4933,19 @@ original_table_spec
 			$$ = ent;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+        | DBLINK  '('  dblink_expr ')'   dblink_identifier_col_attrs 
+                {{                       
+			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
+			if (ent)
+			  {
+			    ent->info.spec.derived_table = $3;  // dblink_expr
+			    ent->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;                            
+			    ent->info.spec.range_var = CONTAINER_AT_0 ($5); // table name                                                        
+			    ent->info.spec.derived_table->info.dblink_table.cols = CONTAINER_AT_1 ($5); // def. columns 
+			  }
+			$$ = ent;                        
+		        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 
@@ -21380,7 +21627,6 @@ identifier
 	: IdName
 		{{//identifier : IdName
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-
 			if (p)
 			  {
 			    int size_in;
@@ -21394,12 +21640,10 @@ identifier
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
-
 		DBG_PRINT}}
 	| BracketDelimitedIdName
 		{{//identifier | BracketDelimitedIdName
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-
 			if (p)
 			  {
 			    int size_in;
@@ -21413,12 +21657,10 @@ identifier
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
-
 		DBG_PRINT}}
 	| BacktickDelimitedIdName
 		{{//identifier | BacktickDelimitedIdName
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-
 			if (p)
 			  {
 			    int size_in;
@@ -21432,12 +21674,10 @@ identifier
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
-
 		DBG_PRINT}}
 	| DelimitedIdName
 		{{//identifier | DelimitedIdName
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-
 			if (p)
 			  {
 			    int size_in;
@@ -21451,1689 +21691,196 @@ identifier
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
-
 		DBG_PRINT}}
 /*{{{*/
-	| ACTIVE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ANALYZE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ARCHIVE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| AUTO_INCREMENT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| CACHE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| CAPACITY
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| CHARACTER_SET_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| CHARSET
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| CHR
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			    p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| CLOB_TO_CHAR
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			    p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| CLOSE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			    p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| COLLATION
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| COLUMNS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| COMMENT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| COMMITTED
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| COST
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| CRITICAL
-		{{
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| CUME_DIST
-		{{
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-				p->info.name.original = $1;
-			  }
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| DECREMENT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| DENSE_RANK
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ELT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| EXPLAIN
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-        | FULLSCAN
-                {{
-
-                        PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-                        if (p)
-                          p->info.name.original = $1;
-                        $$ = p;
-                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-                DBG_PRINT}}
-	| GE_INF_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| GE_LE_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| GE_LT_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| GRANTS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| GROUP_CONCAT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| GROUPS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| GT_INF_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| GT_LE_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| GT_LT_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| HASH
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| HEADER
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| HEAP
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| INACTIVE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| INCREMENT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| INDEX_PREFIX
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| INDEXES
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| INFINITE_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| INF_LE_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| INF_LT_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| INSTANCES
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| INVALIDATE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| INVISIBLE
-               {{
-                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-                       if (p)
-                         p->info.name.original = $1;
-                       $$ = p;
-                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                DBG_PRINT}}
-	| JAVA
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-
-	| JOB
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-
-	| JSON_ARRAYAGG
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_ARRAY_LEX
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_ARRAY_APPEND
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_ARRAY_INSERT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_CONTAINS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_CONTAINS_PATH
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_DEPTH
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_EXTRACT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_GET_ALL_PATHS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_INSERT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_KEYS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_LENGTH
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_MERGE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_MERGE_PATCH
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_MERGE_PRESERVE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_OBJECTAGG
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_OBJECT_LEX
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_PRETTY
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_QUOTE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_REMOVE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_REPLACE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_SEARCH
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_SET
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_TABLE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_TYPE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_UNQUOTE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_VALID
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| KEYS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| LAG
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| LEAD
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| LOCK_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| LOG
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| MAXIMUM
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| MAXVALUE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| MEMBERS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| MINVALUE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| NAME
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| NOCACHE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| NOMAXVALUE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| NOMINVALUE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| OFFSET
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| OPEN
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| OWNER
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| PAGE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| PARTITIONING
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| PARTITIONS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| PASSWORD
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| PATH
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| PERCENT_RANK
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-				p->info.name.original = $1;
-			  }
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| PRINT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| PRIORITY
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| QUEUES
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| RANGE_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| RANK
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| REJECT_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| REMOVE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| REORGANIZE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| REPEATABLE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| RETAIN
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| REUSE_OID
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| DONT_REUSE_OID
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| REVERSE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| DISK_SIZE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ROW_NUMBER
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| SECTIONS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| SEPARATOR
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| SERIAL
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| SHOW
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| SLOTS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| SLOTTED
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| STABILITY
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| START_
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| STATEMENT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| STATUS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| STDDEV
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| STDDEV_POP
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| STDDEV_SAMP
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| SYSTEM
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| TABLES
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| TEXT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-
-		DBG_PRINT}}
-	| THAN
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| THREADS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| TIMEOUT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| TRACE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| TRAN
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| TRIGGERS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| UNCOMMITTED
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| VAR_POP
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| VAR_SAMP
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| VARIANCE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| VISIBLE
-               {{
-                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-                       if (p)
-                         p->info.name.original = $1;
-                       $$ = p;
-                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                DBG_PRINT}}
-	| VOLUME
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| WORKSPACE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ADDDATE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| BIT_AND
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| BIT_OR
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| BIT_XOR
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| BUFFER
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| DATE_ADD
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| DATE_SUB
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| IFNULL
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ISNULL
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| LCASE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| QUARTER
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| STR_TO_DATE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| SUBDATE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| UCASE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| WEEK
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
+	| ACTIVE                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ADDDATE                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| AES                              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ANALYZE                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ARCHIVE                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ARIA                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| AUTO_INCREMENT                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| BENCHMARK                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| BIT_AND                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| BIT_OR                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| BIT_XOR                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| BUFFER                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CACHE                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CAPACITY                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CHARACTER_SET_                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CHARSET                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CHR                              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CLOB_TO_CHAR                     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CLOSE                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| COLLATION                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| COLUMNS                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| COMMENT                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| COMMITTED                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| COST                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CRITICAL                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CUME_DIST                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DATE_ADD                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DATE_SUB                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DBLINK                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DBNAME                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DECREMENT                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DENSE_RANK                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DISK_SIZE                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DONT_REUSE_OID                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ELT                              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| EMPTY                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ENCRYPT                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ERROR_                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| EXPLAIN                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| FIRST_VALUE                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| FULLSCAN                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| GE_INF_                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| GE_LE_                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| GE_LT_                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| GRANTS                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| GROUPS                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| GROUP_CONCAT                     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| GT_INF_                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| GT_LE_                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| GT_LT_                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| HASH                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| HEADER                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| HEAP                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| HOST                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| IFNULL                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| INACTIVE                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| INCREMENT                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| INDEXES                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| INDEX_PREFIX                     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| INFINITE_                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| INF_LE_                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| INF_LT_                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| INSTANCES                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| INVALIDATE                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| INVISIBLE                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ISNULL                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JAVA                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JOB                              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_ARRAYAGG                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_ARRAY_APPEND                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_ARRAY_INSERT                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_ARRAY_LEX                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_CONTAINS                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_CONTAINS_PATH               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_DEPTH                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_EXTRACT                     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_GET_ALL_PATHS               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_INSERT                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_KEYS                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_LENGTH                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_MERGE                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_MERGE_PATCH                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_MERGE_PRESERVE              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_OBJECTAGG                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_OBJECT_LEX                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_PRETTY                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_QUOTE                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_REMOVE                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_REPLACE                     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_SEARCH                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_SET                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_TABLE                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_TYPE                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_UNQUOTE                     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| JSON_VALID                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| KEYS                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| LAG                              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| LAST_VALUE                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| LCASE                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| LEAD                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| LOCK_                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| LOG                              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| MAXIMUM                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| MAXVALUE                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| MEDIAN                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| MEMBERS                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| MINVALUE                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| NAME                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| NESTED                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| NOCACHE                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| NOMAXVALUE                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| NOMINVALUE                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| NTH_VALUE                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| NTILE                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| NULLS                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| OFFSET                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ONLINE                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| OPEN                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ORDINALITY                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| OWNER                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PAGE                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PARALLEL                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PARTITIONING                     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PARTITIONS                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PASSWORD                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PATH                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PERCENTILE_CONT                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PERCENTILE_DISC                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PERCENT_RANK                     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PORT                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PRINT                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PRIORITY                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PROPERTIES                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| QUARTER                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| QUEUES                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| RANGE_                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| RANK                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REGEXP_COUNT                     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REGEXP_INSTR                     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REGEXP_LIKE                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REGEXP_REPLACE                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REGEXP_SUBSTR                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REJECT_                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REMOVE                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REORGANIZE                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REPEATABLE                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| RESPECT                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| RETAIN                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REUSE_OID                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REVERSE                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ROW_NUMBER                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SECTIONS                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SEPARATOR                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SERIAL                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SERVER                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SHOW                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SLOTS                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SLOTTED                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| STABILITY                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| START_                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| STATEMENT                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| STATUS                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| STDDEV                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| STDDEV_POP                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| STDDEV_SAMP                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| STR_TO_DATE                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SUBDATE                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SYSTEM                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| TABLES                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| TEXT                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| THAN                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| THREADS                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| TIMEOUT                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| TIMEZONE                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| TRACE                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| TRAN                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| TRIGGERS                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| UCASE                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| UNCOMMITTED                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| VARIANCE                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| VAR_POP                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| VAR_SAMP                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| VISIBLE                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| VOLUME                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| WEEK                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| WITHIN                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| WORKSPACE                        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}  
 /*}}}*/
-	| NTILE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-			    p->info.name.original = $1;
-			  }
-
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| FIRST_VALUE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-			    p->info.name.original = $1;
-			  }
-
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| LAST_VALUE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-			    p->info.name.original = $1;
-			  }
-
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| NTH_VALUE
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-			    p->info.name.original = $1;
-			  }
-
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| RESPECT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-			    p->info.name.original = $1;
-			  }
-
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| NULLS
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-			    p->info.name.original = $1;
-			  }
-
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| MEDIAN
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-			    p->info.name.original = $1;
-			  }
-
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| PERCENTILE_CONT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-			    p->info.name.original = $1;
-			  }
-
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| PERCENTILE_DISC
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-			    p->info.name.original = $1;
-			  }
-
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| WITHIN
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p != NULL)
-			  {
-			    p->info.name.original = $1;
-			  }
-
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
 	;
 
 escape_literal
@@ -24559,6 +23306,405 @@ json_table_rule
         $$ = jt;
       DBG_PRINT}}
     ;
+
+connect_info
+        : connect_info ',' connect_item
+          {{
+               container_10 ctn = $1;
+
+               pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $3);
+	        $$ = ctn;
+           DBG_PRINT }}
+        | connect_item
+          {{               
+                container_10 ctn;
+                memset(&ctn, 0x00, sizeof(container_10));
+
+                pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $1);    
+	        $$ = ctn;
+           DBG_PRINT}}
+        ;
+
+connect_item    
+        :  HOST '=' CHAR_STRING 
+          {{
+                container_2 ctn;
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+                if (val)
+                  {
+                     val->info.value.data_value.str =
+                               pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                     val->type_enum = PT_TYPE_CHAR;
+                     if (!pt_check_ipv4($3) && !pt_check_hostname($3))
+                     { 
+                        PT_ERROR (this_parser, val, "Incorrect hostname format");
+                     }
+                     PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+                  }
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_HOST), val);
+                $$ = ctn;
+            DBG_PRINT}}
+        | PORT '=' UNSIGNED_INTEGER 
+          {{
+                container_2 ctn;
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+                if (val)
+                  {
+                        val->info.value.data_value.i = atoi($3);
+                        val->type_enum = PT_TYPE_INTEGER;
+                        if( val->info.value.data_value.i < 0 || val->info.value.data_value.i > 65535 )
+                          {                                
+                            PT_ERROR (this_parser, val, "Invalid PORT number.");
+                          }
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+                  }
+
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PORT), val);
+                $$ = ctn;
+           DBG_PRINT}}
+        | DBNAME '=' identifier 
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_DBNAME), $3);
+                $$ = ctn;
+           DBG_PRINT}}
+        | USER '=' identifier
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_USER), $3);
+                $$ = ctn;
+            DBG_PRINT}}
+        | PASSWORD '=' 
+          {{
+               container_2 ctn;
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+	        if (val)                    
+		  {
+                        char    cipher[512];
+
+                        val->type_enum = PT_TYPE_CHAR;
+                        val->info.value.string_type = ' ';
+
+                        if (pt_check_dblink_password(this_parser, NULL, cipher, sizeof(cipher)) == NO_ERROR)
+                          {
+                             val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
+                          }
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+		   }
+
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), val);
+                 $$ = ctn;
+           DBG_PRINT}}
+        | PASSWORD '=' CHAR_STRING
+          {{
+                container_2 ctn;
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+	        if (val)                    
+		  {
+                        char    cipher[512];
+
+                        val->type_enum = PT_TYPE_CHAR;
+                        val->info.value.string_type = ' ';
+
+                        if (pt_check_dblink_password(this_parser, $3, cipher, sizeof(cipher)) == NO_ERROR)
+                          {                             
+                             val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
+                          }
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+		   }
+
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), val);
+                $$ = ctn;
+           DBG_PRINT}}
+        | PROPERTIES '=' 
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PROPERTIES), NULL);
+                $$ = ctn;
+           DBG_PRINT}}
+        | PROPERTIES '=' CHAR_STRING 
+          {{
+                container_2 ctn;
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+	        if (val)                    
+		  {
+                        if( $3 && $3[0] &&  $3[0] != '?' )
+                        {                           
+                           PT_ERROR (this_parser, val, "Invalid properties of connection information for dblink");
+                        }
+                        val->type_enum = PT_TYPE_CHAR;
+                        val->info.value.string_type = ' ';
+                        val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                        
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+		   }
+
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PROPERTIES), val);
+                $$ = ctn;
+           DBG_PRINT}}
+        | COMMENT '='
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), NULL);
+                $$ = ctn;
+           DBG_PRINT }}
+        | COMMENT '=' char_string
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), $3);
+                $$ = ctn;
+           DBG_PRINT}}
+        ;
+
+alter_server_list
+        : alter_server_list ',' alter_server_item
+          {{
+               container_10 ctn = $1;
+
+               pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $3);
+	        $$ = ctn;
+           DBG_PRINT }}
+        | alter_server_item
+          {{
+                container_10 ctn;
+                memset(&ctn, 0x00, sizeof(container_10));
+
+                pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $1);
+	        $$ = ctn;
+           DBG_PRINT}}
+        ;
+
+alter_server_item
+        : OWNER TO identifier
+          {{
+                container_2 ctn;                 
+
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_OWNER), $3);
+                $$ = ctn;
+          }}
+        | CHANGE connect_item
+          {{   
+	        $$ = $2;
+           DBG_PRINT}}
+        ;
+
+dblink_server_name
+	: identifier DOT server_identifier
+          {{                
+             if($3)
+               {
+                  $3->next = $1;                  
+               }
+             else if($1)
+               {
+                  parser_free_node (this_parser, $1);
+               }  
+              $$ = $3;
+              PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+          DBG_PRINT}}
+        | server_identifier
+          {{
+              $$ = $1;
+          DBG_PRINT}}
+        ;
+
+server_identifier
+        : identifier
+            {{  
+                if ($1)
+                  {                
+                     if (strchr($1->info.name.original, '.')) 
+                       {                 
+                          PT_ERRORm (this_parser, $1, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_SERVER_NAME);
+                       }
+                  }
+                $$ = $1;
+                PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
+         ;
+dblink_expr
+        :   dblink_conn  ','  CHAR_STRING  
+            {{
+             PT_NODE *ct = parser_new_node(this_parser, PT_DBLINK_TABLE) ;           
+             if(ct)
+             {
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+	        if (val)                    
+		  {                  
+                        char err_msg[256]; 
+                        
+                        if (pt_ct_check_select($3, err_msg) == false)
+                        {
+                             PT_ERROR (this_parser, val, err_msg);                                
+                        }                        
+
+                        val->type_enum = PT_TYPE_CHAR;
+                        val->info.value.string_type = ' ';
+                        val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                        
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+		   }
+
+                if( $1 )
+                {
+                        if( $1->node_type == PT_NAME )
+                        {
+                                ct->info.dblink_table.is_name = true;
+                                ct->info.dblink_table.conn = $1;
+                                if ($1->next)
+                                  {
+                                    ct->info.dblink_table.owner_name = $1->next;
+                                    $1->next = NULL;
+                                  }
+                        }
+                        else // ( $1->node_type == PT_VALUE )
+                        {
+                                ct->info.dblink_table.is_name = false;
+                                // in the order url, user, password
+                                ct->info.dblink_table.conn = 0x00;
+                                ct->info.dblink_table.url = $1;
+                                ct->info.dblink_table.user = $1->next;
+                                ct->info.dblink_table.pwd = $1->next->next;
+                                $1->next->next = 0x00;
+                                $1->next = 0x00;
+                        }
+                }
+                ct->info.dblink_table.qstr = val;
+             }
+
+             $$ = ct;   
+             DBG_PRINT}}    
+        ;
+
+dblink_conn:
+        dblink_server_name      
+        {{  
+                $$ = $1;                
+                DBG_PRINT}}
+        | dblink_conn_str
+        {{
+                $$ = $1;
+		DBG_PRINT}}
+        ;   
+
+dblink_conn_str:
+        CHAR_STRING
+        {{
+                char *zInfo[DBLINK_CONN_PARAM_CNT];     
+                char err_msg[512]; 
+                PT_NODE *node_list = NULL;
+
+                memset(zInfo, 0x00, sizeof(zInfo));
+                if ( pt_ct_check_fill_connection_info($1, zInfo, err_msg) == false )
+                 {
+                       node_list = parser_new_node (this_parser, PT_VALUE);
+                       PT_ERROR (this_parser, node_list, err_msg);
+                       if (node_list)
+                         {
+                                 parser_free_node (this_parser, node_list);
+                                 node_list = NULL;
+                         }
+                 }
+                 else
+                 {
+                        PT_NODE *node;
+                        int  i;
+                        char dblink_url[4096];
+                        static const char* dblink_url_fmt = "cci:CUBRID:%s:%s:%s:::%s" ;
+                        // cci:CUBRID:<host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]
+
+                        sprintf(dblink_url, dblink_url_fmt, 
+                                zInfo[0], zInfo[1],zInfo[2], zInfo[DBLINK_CONN_PARAM_CNT-1]);
+                        zInfo[2] = dblink_url;
+
+                        for( i = DBLINK_CONN_PARAM_CNT - 2; i >= 2; i--)
+                        {                       
+                                node = parser_new_node (this_parser, PT_VALUE);
+                                if( node == NULL )
+                                {
+                                        while (node_list)
+                                        {
+                                                node = node_list;
+                                                node_list = node->next;
+                                                parser_free_node (this_parser, node);
+                                        }                            
+
+                                        break;
+                                }
+                                                        
+                                node->type_enum = PT_TYPE_CHAR;
+                                node->info.value.string_type = ' ';
+                                node->info.value.data_value.str =
+                                        pt_append_bytes (this_parser, NULL, zInfo[i], strlen (zInfo[i]));
+                                PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+
+                                node->next = node_list;
+                                node_list = node;
+                        } 
+                 }
+
+                $$ = node_list;
+		DBG_PRINT}}
+        ;             
+
+dblink_identifier_col_attrs  
+        :  opt_as identifier '('  dblink_column_definition_list ')' 
+        {{                
+             container_2 ctn;
+             
+	     SET_CONTAINER_2 (ctn, $2, $4);
+             $$ = ctn;              
+             DBG_PRINT}}
+        ;
+
+dblink_column_definition_list
+        :  dblink_column_definition_list ','  dblink_column_definition
+           {{
+                $$ = parser_make_link($1, $3);
+	        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
+                DBG_PRINT}}
+        | dblink_column_definition
+           {{
+               $$ = $1;
+               PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+             DBG_PRINT}}
+        ;
+
+dblink_column_definition
+        : identifier primitive_type
+        {{
+                PT_NODE *node;              
+
+                node = parser_new_node (this_parser, PT_ATTR_DEF);
+                if (node)                            
+                {                    
+                        PT_NODE *dt;
+                        PT_TYPE_ENUM typ;
+
+                        node->type_enum = typ = TO_NUMBER (CONTAINER_AT_0 ($2));
+                        node->data_type = dt = CONTAINER_AT_1 ($2);
+                        node->info.attr_def.attr_name = $1;
+
+                        if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
+                          {
+                                PT_ERROR (this_parser, node, "not supported type for dblink");
+                          }
+
+                        if (typ == PT_TYPE_CHAR && dt)
+                        {
+                                node->info.attr_def.size_constraint = dt->info.data_type.precision;
+                        }
+                }
+
+                $$ = node;
+		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+        DBG_PRINT}}
+        ;
 
 %%
 
@@ -27226,20 +26372,6 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
         length = node->info.value.data_value.str->length;
 
         node->type_enum = char_type;
-        if (string)
-          {
-            if (string[length - 1] == 0x20)
-              {
-                if (char_type == PT_TYPE_CHAR)
-                  {
-                    node->type_enum = PT_TYPE_VARCHAR;
-                  }
-                else if (char_type == PT_TYPE_NCHAR)
-                  {
-                    node->type_enum = PT_TYPE_VARNCHAR;
-                  }
-              }
-          }
 
         if (char_type == PT_TYPE_NCHAR)
           {
@@ -27565,6 +26697,78 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
     }
 }
 
+static bool pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
+{   
+   //  <host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]     
+   int   nCnt, i;
+   char* s;
+ 
+   perr_msg[0] = 0x00;
+   if ( *p == ':' )
+     {
+         sprintf(perr_msg, "Incorrect format of connection information for dblink");
+         return false;    
+     }
+     
+   nCnt = 0;
+   for (s = p; *p; p++ )
+     {
+        if (*p == '\\')
+        {
+           if ( p[1] == ':' || p[1] == '\\' || p[1] == '\'' ) 
+             {
+                p++;
+             }            
+        }
+        else if (*p == ':')
+        {
+           pInfo[nCnt++] = s;
+           *p = 0x00;
+           s = p + 1;
+           if (nCnt == (DBLINK_CONN_PARAM_CNT-1))
+             {
+                pInfo[nCnt] = s;                 
+                break;
+             }
+        }
+     }  
+
+   // Check essential items
+   for( i = 0; i < (DBLINK_CONN_PARAM_CNT-1); i++ ) 
+     {
+          if ( !pInfo[i] )
+            {
+                sprintf(perr_msg, "Incorrect format of connection information for dblink");
+                return false;
+            }
+     }
+
+   //
+   if ( pt_check_ipv4(pInfo[0]) == false )
+   {
+          if( pt_check_hostname(pInfo[0]) == false )
+          {
+                sprintf(perr_msg, "Incorrect host(IP) format of connection information for dblink");
+                return false;
+          }
+   }
+
+   int port = atoi(pInfo[1]);
+   if( port < 0 || port > 65535 )
+   {
+           sprintf(perr_msg, "Invalid PORT of connection information for dblink");
+           return false;
+   }
+
+   if( pInfo[DBLINK_CONN_PARAM_CNT-1][0] &&  pInfo[DBLINK_CONN_PARAM_CNT-1][0] != '?' )
+     {
+           sprintf(perr_msg, "Invalid properties of connection information for dblink");
+           return false;
+     }
+
+   return true;
+}
+
 static PT_NODE *
 pt_create_paren_expr_list (PT_NODE * exp)
 {
@@ -27598,4 +26802,201 @@ pt_create_paren_expr_list (PT_NODE * exp)
       parser_groupby_exception = PT_EXPR;
     }
   return exp;
+}
+
+static void
+pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_10 *ctn, container_2 info)
+{
+  /* container order
+  * 1: HOST(IP/NAME)
+  * 2: PORT
+  * 3: DBNMAE
+  * 4: USER
+  * 5: PASSWORD
+  * 6: PROPERTIES
+  * 7: COMMENT
+  */                 
+   PT_NODE* node = pt_top(parser);
+   PARSER_SAVE_ERR_CONTEXT (node, buffer_pos)
+
+   switch(TO_NUMBER (CONTAINER_AT_0(info)))
+     {
+        case CONN_INFO_HOST:
+                if (ctn->c1 != NULL)
+                {
+                        PT_ERROR (parser, node, "HOST information was duplicated.");
+                }
+                ctn->c1 = CONTAINER_AT_1(info);
+                break;
+        case CONN_INFO_PORT:
+                if( ctn->c2 != NULL )
+                {
+                    PT_ERROR (parser, node, "PORT information was duplicated.");
+                }
+                ctn->c2 = CONTAINER_AT_1(info);
+                break;
+        case CONN_INFO_DBNAME:
+                if( ctn->c3 != NULL )
+                {
+                    PT_ERROR (parser, node, "DBNAME information was duplicated.");
+                }
+                ctn->c3 = CONTAINER_AT_1(info);
+                break;                
+        case CONN_INFO_USER:
+                if( ctn->c4 != NULL )
+                {
+                    PT_ERROR (parser, node, "USER information was duplicated.");
+                }
+                ctn->c4 = CONTAINER_AT_1(info);
+                break;                
+        case CONN_INFO_PASSWORD:
+                if( ctn->c5 != NULL )
+                {
+                    PT_ERROR (parser, node, "PASSWORD information was duplicated.");
+                }
+                ctn->c5 = CONTAINER_AT_1(info);
+                break;
+        case CONN_INFO_PROPERTIES:
+                if( ctn->c6 != NULL )
+                {
+                    PT_ERROR (parser, node, "PROPERTIES information was duplicated.");
+                }
+                ctn->c6 = CONTAINER_AT_1(info);
+                break;                
+        case CONN_INFO_COMMENT:
+                if( ctn->c7 != NULL )
+                {
+                    PT_ERROR (parser, node, "COMMENT information was duplicated.");
+                }
+                ctn->c7 = CONTAINER_AT_1(info);        
+                break;
+
+        case CONN_INFO_OWNER:
+                if( ctn->c8 != NULL )
+                {
+                    PT_ERROR (parser, node, "OWNER information was duplicated.");
+                }
+                ctn->c8 = CONTAINER_AT_1(info);
+                break;
+
+        default:
+                assert(0);
+                break;
+    }
+
+    unsigned int set_bits = (unsigned int)TO_NUMBER(CONTAINER_AT_9(*ctn));
+    set_bits |= (0x01 << TO_NUMBER (CONTAINER_AT_0(info)));
+    ctn->c10 = FROM_NUMBER(set_bits);
+}
+
+static bool
+pt_check_one_stmt(char* p)
+{
+    char end;
+    char* t = strchr(p, ';');
+    if(!t)
+     {
+        return true;
+     }
+
+    t++;
+    while (*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n')
+     {
+        t++;
+     }
+    if(*t == '\0')
+       return true;
+
+    while(*p)
+    {
+        if( *p == '[' || *p == '"' || *p == '`' || *p == '\'')
+          {
+                end = (*p == '[') ? ']' : *p;
+                for(p++; *p ; p++)
+                {
+                    if (*p == end)
+                    {
+                       p++;
+                       break;
+                    }
+                }
+          }
+        else if((p[0] == '-' && p[1] == '-') || (p[0] == '/' && p[1] == '/'))
+        {
+                for(p += 2; *p ; p++)
+                {
+                    if (*p == '\n')
+                    {
+                       p++;
+                       break;
+                    }
+                }
+        }
+        else if(p[0] == '/' && p[1] == '*')
+        {
+                for(p += 2; *p ; p++)
+                {
+                    if (p[0] == '*' && p[1] == '/')
+                    {
+                       p += 2;
+                       break;
+                    }
+                }
+        }
+        else if(*p == ';')
+          {
+             p++;
+
+             /* Notice;
+             **   Forces not to have multiple statements.
+             **   Because of this processing, this function will in fact always return true.
+             **   When multiple statements come,
+             **   it is a policy that forces only the first statement to be executed without error handling.
+             **   For this, a single line of code is added below: "*p = '\0'".
+             */
+             *p = '\0';
+
+             break;
+          }
+        else
+          {
+            p++;
+          }
+    }
+
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
+     {
+        p++;
+     }
+
+    return (*p == '\0');
+}
+
+static bool 
+pt_ct_check_select (char* p, char *perr_msg)
+{  
+   perr_msg[0] = 0x00;
+   while (*p == ' ' || *p == '(' || *p == '\t' || *p == '\r' || *p == '\n')
+     {
+        p++;
+     }
+
+   if(*p)
+   {
+        if( strncasecmp(p, "SELECT", 6) == 0 )
+        {
+            if( p[6] == ' ' || p[6] == '\t' || p[6] == '\r' || p[6] == '\n' )
+              {    
+                 if (pt_check_one_stmt(p + 6))
+                   {
+                     return true;
+                   }
+                  /* sprintf(perr_msg, "Only one statement is allowed."); */
+                  return false;
+              }
+        }
+   }
+
+   sprintf(perr_msg, "Only SELECT statements are supported.");
+   return false;
 }

@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Set interrupt to the transaction %1$d.
 983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
 984 Cannot set %3$s to "%6$s" in the "[%5$s]" section when it is set to "%4$s" in the "[%2$s]" section of the configuration file "%1$s".
-985 The hostname on the database connection string should be specified when multihost is set in "databases.txt".
+985 The hostname on the database connection string should be specified when multihost is set in "databases.txt". ex) csql demodb@localhost
 986 CUBRID heartbeat feature started. 
 987 CUBRID heartbeat feature stopped.
 988 Node event: %1$s.
@@ -1332,6 +1332,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1261 The first key (key index: %1$d, created time: %2$s) on the restored key file has been set.
 1262 The key file is full.
 1263 It fails to TDE-encrypt the log page (pageid: %1$lld). It won't be tried to encrypt this page any longer.
+
 1264 Error reserved for scalability development.
 1265 Error reserved for scalability development.
 1266 Error reserved for scalability development.
@@ -1354,6 +1355,18 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1283 Error reserved for scalability development.
 1284 Cannot truncate the table due to the primary key referred to on %1$s. Try again with CASCADE option.
 1285 Cannot cascade truncate because the ON DELETE action of the foreign key (%1$s) is not set to CASCADE.
+
+1286 Cannot find the log lsa at the time to extract. (input time : %1$s).
+1287 Timed out attempting to extract log info. (elapsed time : %1$d sec, extraction timeout : %2$d sec)
+1288 Skip producing log info for unsupported log record internally.
+1289 Skip producing log info for invalid transaction. (trid : %1$d)
+1290 Invalid log lsa (%1$lld|%2$d) to extract log info.
+1291 Cannot connect to server for extracting log info. Try again with setting 'supplemental_log' parameter.
+1292 Cannot find the log lsa at the time (%1$s). Log lsa is adjusted to the time (%2$s).
+1293 Cannot get log page while producing log infos. Log lsa to generate log info indicates NULL.
+1294 Log info has been generated. (type : "%1$s").
+1295 Skip producing log info for invalid table. (class OID : %1$d|%2$d|%3$d)
+
 1296 Log recovery: ANALYSIS Phase is started.
 1297 Log recovery: REDO Phase is started. Log pages to redo: %1$lld, Log records to redo: %2$lld.
 1298 Log recovery: UNDO Phase is started. Log pages to undo: %1$lld, transactions to undo: %2$d.
@@ -1385,7 +1398,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1322 Not supported data type.
 1323 Invalid Statement handle.
 1324 Invalid db connection handle.
-1325 Both dsn name and link server connection url do not exist.
+1325 Link server connection url do not exist.
 1326 Invalid numeric value.
 1327 Invalid precision value of "%1$s" column.
 
@@ -1554,6 +1567,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Maximum length of a comment is %1$d bytes.
 128 Invalid number of arguments for JSON_OBJECTAGG
 129 PARALLEL count argument must be between %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.

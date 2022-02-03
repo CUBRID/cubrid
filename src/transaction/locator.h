@@ -199,6 +199,8 @@ typedef enum
 #define LC_FLAG_HAS_INDEX	0x01	/* Used for flushing, set if object has index */
 #define LC_FLAG_UPDATED_BY_ME	0x02	/* Used by MVCC to identify that an object was updated by current transaction. */
 #define LC_FLAG_HAS_UNIQUE_INDEX 0x04	/* Used for flushing, set if object has unique index */
+#define LC_FLAG_TRIGGER_INVOLVED 0x08	/* Used for supplemental logging to know whether trigger is involved
+					   or not, set if do_Trigger_involved is true */
 
 #define LC_ONEOBJ_SET_HAS_INDEX(obj) \
   (obj)->flag |= LC_FLAG_HAS_INDEX
@@ -212,6 +214,11 @@ typedef enum
 #define LC_ONEOBJ_SET_UPDATED_BY_ME(obj) \
   (obj)->flag |= LC_FLAG_UPDATED_BY_ME
 
+#define LC_ONEOBJ_SET_TRIGGER_INVOLVED(obj) \
+  (obj)->flag |= LC_FLAG_TRIGGER_INVOLVED
+
+#define LC_ONEOBJ_IS_TRIGGER_INVOLVED(obj) \
+  (((obj)->flag & LC_FLAG_TRIGGER_INVOLVED) != 0)
 
 typedef struct lc_copyarea_oneobj LC_COPYAREA_ONEOBJ;
 struct lc_copyarea_oneobj

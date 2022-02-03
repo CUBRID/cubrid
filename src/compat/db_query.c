@@ -1836,8 +1836,18 @@ int
 db_execute (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error)
 {
   int retval;
+  char *sql_buf = strdup (CSQL_query);
 
-  retval = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 1, true);
+  if (sql_buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (CSQL_query));
+      return er_errid ();
+    }
+
+  retval = db_compile_and_execute_queries_internal (sql_buf, result, query_error, DB_NO_OIDS, 1, true);
+
+  free (sql_buf);
+
   return (retval);
 }
 
