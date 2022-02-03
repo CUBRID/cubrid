@@ -684,7 +684,7 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p, OID 
   DB_VALUE key_val;
   int error = NO_ERROR;
 
-  error = db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH_287, name_p, (int) strlen (name_p), LANG_SYS_CODESET,
+  error = db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, name_p, (int) strlen (name_p), LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION);
   if (error != NO_ERROR)
     {
@@ -1046,7 +1046,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   /* full name */
   attr_val_p = &attrs[11].value;
   tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_NAME_INDEX].length, true, NULL, 0);
-  db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH_287);
+  db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* simple name */
   attr_val_p = &attrs[12].value;

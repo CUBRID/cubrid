@@ -138,7 +138,7 @@ int trigger_description::init (struct db_object *trobj)
 
       /* format the full event specification so csql can display it without being dependent on syntax */
 
-      char buffer[SM_MAX_IDENTIFIER_LENGTH_287 + SM_MAX_IDENTIFIER_LENGTH + 32] = { '\0' };
+      char buffer[SM_MAX_IDENTIFIER_LENGTH * 2 + 32];
 
       if (this->attribute != NULL)
 	{

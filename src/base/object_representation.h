@@ -1116,7 +1116,7 @@ extern int or_replace_chn (RECDES * record, int chn);
 extern int or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error);
 extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit,
 					int variable_offset_size);
-extern int or_class_name (RECDES * record, char **string, int *alloced_string);
+extern char *or_class_name (RECDES * record);
 
 /* Pointer based decoding functions */
 extern int or_set_element_offset (char *setptr, int element);

@@ -5164,7 +5164,7 @@ au_change_owner (MOP classmop, MOP owner)
 
   char *owner_name = NULL;
   const char *class_name = NULL;
-  char class_full_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+  char class_full_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   AU_DISABLE (save);
   if (!au_is_dba_group_member (Au_user))
@@ -5218,7 +5218,7 @@ au_change_owner (MOP classmop, MOP owner)
 
       owner_name = au_get_user_name (owner);
 
-      snprintf (class_full_name, DB_MAX_IDENTIFIER_LENGTH_287, "%s.%s", owner_name, class_name);
+      snprintf (class_full_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", owner_name, class_name);
 
       error = sm_rename_class (classmop, class_full_name);
     }
@@ -5251,7 +5251,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_owner = 0;
   MOP *sub_partitions = NULL;
   const char *class_name = NULL, *owner_name = NULL;
-  char realname[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_CLASS *clsobj;
 
   db_make_null (returnval);
@@ -5269,7 +5269,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
       return;
     }
 
-  sm_user_specified_name (class_name, NULL, realname, DB_MAX_IDENTIFIER_LENGTH_287);
+  sm_user_specified_name (class_name, NULL, realname, DB_MAX_IDENTIFIER_LENGTH);
   classmop = sm_find_class (realname);
   if (classmop == NULL)
     {
@@ -5513,7 +5513,7 @@ void
 au_change_trigger_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * trigger, DB_VALUE * owner)
 {
   MOP user, trigger_mop;
-  char trigger_full_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+  char trigger_full_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *trigger_name = NULL;
   char *owner_name = NULL;
   int error;
@@ -5534,7 +5534,7 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * trigge
 		  error = au_change_trigger_owner (trigger_mop, user);
 		  if (error == NO_ERROR)
 		    {
-		      snprintf (trigger_full_name, DB_MAX_IDENTIFIER_LENGTH_287, "%s.%s", db_get_string (owner),
+		      snprintf (trigger_full_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", db_get_string (owner),
 				sm_simple_name (db_get_string (trigger)));
 		      error = tr_rename_trigger (trigger_mop, trigger_full_name, true);
 		      if (error == NO_ERROR)
@@ -5604,14 +5604,14 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
 {
   MOP user;
   MOP classmop;
-  char realname[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (returnval);
 
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
-      sm_user_specified_name (db_get_string (class_), NULL, realname, DB_MAX_IDENTIFIER_LENGTH_287);
+      sm_user_specified_name (db_get_string (class_), NULL, realname, DB_MAX_IDENTIFIER_LENGTH);
       classmop = sm_find_class (realname);
       if (classmop != NULL)
 	{

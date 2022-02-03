@@ -2998,11 +2998,11 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
 {
   LC_FIND_CLASSNAME found;
   int error_code;
-  char realname[DB_MAX_IDENTIFIER_LENGTH_287] = { 0 };
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 
   assert (classname != NULL);
 
-  sm_user_specified_name (classname, NULL, realname, DB_MAX_IDENTIFIER_LENGTH_287);
+  sm_user_specified_name (classname, NULL, realname, DB_MAX_IDENTIFIER_LENGTH);
 
   /* Need to check the classname to oid in the server */
   *class_mop = NULL;
@@ -3157,10 +3157,10 @@ locator_find_class (const char *classname)
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
   if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
-      char other_class_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+      char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-      do_find_class_by_query (classname, other_class_name, DB_MAX_IDENTIFIER_LENGTH_287);
-      if (other_class_name)
+      do_find_class_by_query (classname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
+      if (other_class_name[0] != '\0')
 	{
 	  found = locator_find_class_by_name (other_class_name, lock, &class_mop);
 	  if (found == LC_CLASSNAME_EXIST)
@@ -3202,10 +3202,10 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
   if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
     {
-      char other_class_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+      char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-      do_find_class_by_query (classname, other_class_name, DB_MAX_IDENTIFIER_LENGTH_287);
-      if (other_class_name)
+      do_find_class_by_query (classname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
+      if (other_class_name[0] != '\0')
 	{
 	  found = locator_find_class_by_name (other_class_name, lock, &class_mop);
 	  if (found == LC_CLASSNAME_EXIST)

@@ -1873,9 +1873,9 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
   int i, j, is_partition = 0, error;
   int len_clsname = 0;
   FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH_287];
-  char class_name[DB_MAX_IDENTIFIER_LENGTH_287];
-  char downcase_class_name[SM_MAX_IDENTIFIER_LENGTH_287];
+  char buffer[DB_MAX_IDENTIFIER_LENGTH];
+  char class_name[DB_MAX_IDENTIFIER_LENGTH];
+  char downcase_class_name[SM_MAX_IDENTIFIER_LENGTH];
   MOP *sub_partitions = NULL;
   char scan_format[16];
   char *trimmed_buf;
@@ -1893,7 +1893,7 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
     }
   snprintf (scan_format, sizeof (scan_format), "%%%ds\n", (int) (sizeof (buffer) - 1));
   i = 0;
-  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH_287, input_file) != NULL)
+  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
     {
       DB_OBJECT *class_;
 
@@ -1912,7 +1912,7 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 	{
 	  sscanf ((char *) buffer, scan_format, (char *) class_name);
 
-	  sm_downcase_name (class_name, downcase_class_name, SM_MAX_IDENTIFIER_LENGTH_287);
+	  sm_downcase_name (class_name, downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
 
 	  class_ = locator_find_class (downcase_class_name);
 	  if (class_ != NULL)

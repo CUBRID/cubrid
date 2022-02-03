@@ -14941,6 +14941,7 @@ opt_orderby_clause
 			int index_of_col;
 			char *n_str, *c_str;
 			bool is_col, is_alias;
+			unsigned int save_custom;
 
 			parser_restore_oc ();
 			if (stmt)
@@ -15026,7 +15027,10 @@ opt_orderby_clause
 					    continue;
 					  }
 
+					save_custom = this_parser->custom_print;
+					this_parser->custom_print |= PT_SUPPRESS_QUOTES;
 					n_str = parser_print_tree (this_parser, n);
+					this_parser->custom_print = save_custom;
 					if (n_str == NULL)
 					  {
 					    continue;
@@ -15035,7 +15039,10 @@ opt_orderby_clause
 					for (col = list, index_of_col = 1; col;
 					     col = col->next, index_of_col++)
 					  {
+					    save_custom = this_parser->custom_print;
+					    this_parser->custom_print |= PT_SUPPRESS_QUOTES;
 					    c_str = parser_print_tree (this_parser, col);
+					    this_parser->custom_print = save_custom;
 					    if (c_str == NULL)
 					      {
 					        continue;
@@ -21796,11 +21803,6 @@ identifier
 
 			    size_in = strlen(str_name);
 
-			    if (!strchr (str_name, '.') && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
-			      {
-				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
-			      }
-
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
@@ -21819,11 +21821,6 @@ identifier
 			    char *str_name = $1;
 
 			    size_in = strlen(str_name);
-
-			    if (!strchr (str_name, '.') && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
-			      {
-				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
-			      }
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
@@ -21844,11 +21841,6 @@ identifier
 
 			    size_in = strlen(str_name);
 
-			    if (!strchr (str_name, '.') && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
-			      {
-				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
-			      }
-
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
@@ -21867,11 +21859,6 @@ identifier
 			    char *str_name = $1;
 
 			    size_in = strlen(str_name);
-
-			    if (!strchr (str_name, '.') && size_in >= (DB_MAX_IDENTIFIER_LENGTH - 1))
-			      {
-				str_name[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';	// truncate
-			      }
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
 			    str_name = pt_check_identifier (this_parser, p,

@@ -5233,6 +5233,8 @@ boot_define_view_trigger (void)
 	}
     }
 
+  /* Why? {[c]} SUBSETEQ (SELECT SUM(SET{[au].[class_of]}) FROM ... */
+  /* {[c]} -> {[t].[target_class]} ? */
   sprintf (stmt,
 	   "SELECT CAST([t].[name] AS VARCHAR(255)), [c].[class_name], CAST([t].[target_attribute] AS VARCHAR(255)),"
 	   " CASE [t].[target_class_attribute] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END,"

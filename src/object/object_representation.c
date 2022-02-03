@@ -267,11 +267,8 @@ int or_Type_sizes[] = {
 /*
  * or_class_name - This is used to extract the class name from the disk
  * representation of a class object
- *    return: NO_ERROR or error code
+ *    return: class name string pointer inside recode data
  *    record(in): disk record
- *    string(out) : class name string pointer
- *    alloced_string(out) : States whether the returned string was alloc'ed due do decompression,
- *			    or is just a pointer from the record.
  *
  * Note:
  *    To avoid a lot of dependencies with the schema code, we make the
@@ -284,24 +281,11 @@ int or_Type_sizes[] = {
  *    need to copy the string out of the record for some architectures
  *    if there are weird alignment or character set problems.
  */
-int
-or_class_name (RECDES * record, char **string, int *alloced_string)
+char *
+or_class_name (RECDES * record)
 {
-  char *start = NULL;
-  int offset = 0;
-  int len = 0;
-
-  OR_BUF buffer;
-  int compressed_length = 0;
-  int decompressed_length = 0;
-  int rc = NO_ERROR;
-
-  assert (string != NULL);
-  assert (alloced_string != NULL);
-
-  /* Initialization */
-  *string = NULL;
-  *alloced_string == 0;
+  char *start, *name;
+  int offset, len;
 
   /*
    * the first variable attribute for both classes and the rootclass
@@ -323,40 +307,16 @@ or_class_name (RECDES * record, char **string, int *alloced_string)
    * or_ function.
    */
   len = (int) *((unsigned char *) start);
-  if (len < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (len != 0xFF)
     {
-      *string = start + 1;
+      name = start + 1;
     }
   else
     {
-      OR_BUF_INIT (buffer, start, -1);
-
-      rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return rc;
-	}
-
-      *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
-      if (*string == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  db_private_free_and_init (NULL, *string);
-	  return rc;
-	}
-
-      *alloced_string = 1;
+      name = start + 1 + OR_INT_SIZE;
     }
 
-  return rc;
+  return name;
 }
 
 /*

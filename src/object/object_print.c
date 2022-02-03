@@ -351,7 +351,7 @@ help_class_names (const char *qualifier)
   const char *cname, *tmp;
   int count, i, outcount;
   DB_OBJECT *requested_owner, *owner;
-  char buffer[2 * DB_MAX_IDENTIFIER_LENGTH_287 + 4] = { '\0' };
+  char buffer[2 * DB_MAX_IDENTIFIER_LENGTH + 4];
   DB_VALUE owner_name;
 
   requested_owner = NULL;

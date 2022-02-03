@@ -54,7 +54,7 @@
 
 #define DOWNCASE_NAME(a, b) \
   do { \
-    sm_downcase_name(a, b, SM_MAX_IDENTIFIER_LENGTH_287); \
+    sm_downcase_name(a, b, SM_MAX_IDENTIFIER_LENGTH); \
     ws_free_string(a); \
     a = ws_copy_string(b); \
   } while(0)
@@ -696,7 +696,7 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
 static SM_TEMPLATE *
 def_class_internal (const char *name, int class_type)
 {
-  char realname[SM_MAX_IDENTIFIER_LENGTH_287];
+  char realname[SM_MAX_IDENTIFIER_LENGTH];
   SM_TEMPLATE *template_ = NULL;
   PR_TYPE *type;
   const char *simple_name = sm_simple_name (name);
@@ -710,7 +710,7 @@ def_class_internal (const char *name, int class_type)
 	}
       else
 	{
-	  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH_287);
+	  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 	  name = realname;
 	  template_ = classobj_make_template (name, NULL, NULL);
 	  if (template_ != NULL)

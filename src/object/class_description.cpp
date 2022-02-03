@@ -209,7 +209,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
   bool include_inherited;
   bool force_print_att_coll = false;
   bool has_comment = false;
-  int max_name_size = SM_MAX_IDENTIFIER_LENGTH_287 + 50;
+  int max_name_size = SM_MAX_IDENTIFIER_LENGTH + 50;
   size_t buf_size = 0;
   object_printer printer (sb);
 
@@ -234,7 +234,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
   if (class_->comment != NULL && class_->comment[0] != '\0')
     {
       has_comment = true;
-      max_name_size = SM_MAX_IDENTIFIER_LENGTH_287 + SM_MAX_CLASS_COMMENT_LENGTH + 50;
+      max_name_size = SM_MAX_IDENTIFIER_LENGTH + SM_MAX_CLASS_COMMENT_LENGTH + 50;
     }
 
   force_print_att_coll = (class_->collation_id != LANG_SYS_COLLATION) ? true : false;

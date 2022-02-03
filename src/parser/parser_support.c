@@ -4667,7 +4667,7 @@ pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser, const char *identif
   char *p_dot = NULL;
 
   assert (depth >= 0);
-  if (strlen (identifier_str) >= SM_MAX_IDENTIFIER_LENGTH_287)
+  if (strlen (identifier_str) >= SM_MAX_IDENTIFIER_LENGTH)
     {
       assert (false);
       return NULL;
@@ -4677,8 +4677,8 @@ pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser, const char *identif
 
   if (p_dot != NULL)
     {
-      char string_name1[SM_MAX_IDENTIFIER_LENGTH_287] = { 0 };
-      char string_name2[SM_MAX_IDENTIFIER_LENGTH_287] = { 0 };
+      char string_name1[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+      char string_name2[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
       PT_NODE *name1 = NULL;
       PT_NODE *name2 = NULL;
       int position = CAST_BUFLEN (p_dot - identifier_str);
@@ -6318,7 +6318,7 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
   int i;
   PT_NODE *arg, *id_string;
   PT_NODE *prev = NULL, *head = NULL;
-  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH_287];
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
 
   if (arg_info_count == 0)
     {
@@ -6664,7 +6664,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
   PT_NODE *order_by_item = NULL;
   PT_NODE *sub_query = NULL;
   PT_NODE *outer_query = NULL;
-  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH_287];
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
   DB_VALUE db_valuep[10];
   const char **psubquery_aliases = NULL, **pquery_names = NULL, **pquery_aliases = NULL;
@@ -6953,7 +6953,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
 {
   PT_NODE *node = NULL;
   PT_NODE *from_item = NULL;
-  char lower_view_name[DB_MAX_IDENTIFIER_LENGTH_287];
+  char lower_view_name[DB_MAX_IDENTIFIER_LENGTH];
 
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
@@ -7841,7 +7841,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_NODE *from_item = NULL;
   PT_NODE *order_by_item = NULL;
   PT_NODE *query = NULL;
-  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH_287];
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
   DB_VALUE db_valuep[14];
   const char *aliases[] = {
@@ -9903,7 +9903,7 @@ PT_NODE *
 pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   const char *dot = NULL;
-  const char *original_name = NULL;
+  char *original_name = NULL;
   const char *resolved_name = NULL;
   char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
   char *current_user_name = NULL;
@@ -9919,7 +9919,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     {
       is_user_specified_name = true;
 
-      original_name = node->info.name.original;
+      original_name = (char *) node->info.name.original;
       resolved_name = node->info.name.resolved;
     }
   else if (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op))
@@ -9931,7 +9931,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
 	  PT_NODE *name = node->info.expr.arg1->info.dot.arg2;
 
-	  original_name = name->info.name.original;
+	  original_name = (char *) name->info.name.original;
 	  resolved_name = owner->info.name.original;
 	}
       else
@@ -9940,7 +9940,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
 	  PT_NODE *name = node->info.expr.arg1;
 
-	  original_name = name->info.name.original;
+	  original_name = (char *) name->info.name.original;
 	  resolved_name = name->info.name.resolved;
 	}
     }
@@ -9956,21 +9956,11 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
   if (strchr (original_name, '.'))
     {
-      if (is_user_specified_name)
-	{
-	  PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_USER_SPECIFIED);
-	}
-
       return node;
     }
 
   if (resolved_name && resolved_name[0] != '\0' && strchr (resolved_name, '.'))
     {
-      if (is_user_specified_name)
-	{
-	  PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_USER_SPECIFIED);
-	}
-
       return node;
     }
 
@@ -9993,8 +9983,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       /* Skip in case 4, 6 */
       if (resolved_name == NULL || resolved_name[0] == '\0' || intl_identifier_casecmp (resolved_name, "DBA") == 0)
 	{
-	  PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_USER_SPECIFIED);
-
 	  return node;
 	}
     }
@@ -10011,6 +9999,11 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     {
       intl_identifier_lower (resolved_name, downcase_resolved_name);
 
+      if (is_user_specified_name && strlen (original_name) >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH)
+        {
+	  original_name[222] = '\0';
+	}
+
       /* In case 1, 2, 3, 5 */
       user_specified_name = pt_append_string (parser, NULL, downcase_resolved_name);
       user_specified_name = pt_append_string (parser, user_specified_name, ".");
@@ -10020,8 +10013,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	{
 	  node->info.name.original = user_specified_name;
 	  node->info.name.resolved = NULL;
-
-	  PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_USER_SPECIFIED);
 	}
       else
 	{
@@ -10043,6 +10034,11 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	      node->info.expr.arg1->info.name.resolved = NULL;
 	    }
 	}
+    }
+
+  if (current_user_name)
+    {
+      db_string_free (current_user_name);
     }
 
   return node;

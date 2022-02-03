@@ -153,7 +153,7 @@ int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
 OID tr_Stack[TR_MAX_RECURSION_LEVEL + 1];
 
 bool tr_Invalid_transaction = false;
-char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH_287 + 2];
+char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
 
 bool tr_Trace = true;
 
@@ -308,12 +308,12 @@ time_as_string (DB_TRIGGER_TIME tr_time)
 static char *
 tr_process_name (const char *name_string)
 {
-  char buffer[SM_MAX_IDENTIFIER_LENGTH_287 + 2];
+  char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
 
   if (sm_check_name (name_string))
     {
-      sm_downcase_name (name_string, buffer, SM_MAX_IDENTIFIER_LENGTH_287);
+      sm_downcase_name (name_string, buffer, SM_MAX_IDENTIFIER_LENGTH);
       name = strdup (buffer);
     }
   return name;
@@ -4237,10 +4237,10 @@ tr_find_trigger (const char *name)
 	{
 	  if (object == NULL)
 	    {
-	      char other_trigger_name[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+	      char other_trigger_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-	      do_find_trigger_by_query (name, other_trigger_name, DB_MAX_IDENTIFIER_LENGTH_287);
-	      if (other_trigger_name)
+	      do_find_trigger_by_query (name, other_trigger_name, DB_MAX_IDENTIFIER_LENGTH);
+	      if (other_trigger_name[0] != '\0')
 		{
 		  if (trigger_table_find (other_trigger_name, &object) != NO_ERROR)
 		    {

@@ -3120,9 +3120,6 @@ intl_identifier_upper (const char *src, char *dst)
  *	   DB_MAX_IDENTIFIER_LENGTH is the buffer size for string identifier
  *	   This includes the nul-terminator byte; the useful bytes are
  *	   (DB_MAX_IDENTIFIER_LENGTH - 1).
- *
- *  Changes : Changed to use DB_MAX_IDENTIFIER_LENGTH_287 instead of
- *            DB_MAX_IDENTIFIER_LENGTH to handle user_specified_name.
  */
 int
 intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow)
@@ -3135,10 +3132,10 @@ intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow
 
   if (ident_max_size == -1)
     {
-      ident_max_size = DB_MAX_IDENTIFIER_LENGTH_287 - 1;
+      ident_max_size = DB_MAX_IDENTIFIER_LENGTH - 1;
     }
 
-  assert (ident_max_size > 0 && ident_max_size < DB_MAX_IDENTIFIER_LENGTH_287);
+  assert (ident_max_size > 0 && ident_max_size < DB_MAX_IDENTIFIER_LENGTH);
 
   original_size = strlen (name);
   if (INTL_CODESET_MULT (codeset) == 1)

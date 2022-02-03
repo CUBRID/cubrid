@@ -1310,7 +1310,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
       char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
 
       do_find_serial_by_query (serial_name, other_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
-      if (other_serial_name)
+      if (other_serial_name[0] != '\0')
 	{
 	  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, other_serial_name, SERIAL_ATTR_FULL_NAME);
 	  if (serial_mop)
@@ -5941,9 +5941,9 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
 	  error = ER_GENERIC_ERROR;
 	  goto cleanup;
 	}
-      classes_names[idx] = (char *) db_private_alloc (NULL, SM_MAX_IDENTIFIER_LENGTH_287 * sizeof (char));
+      classes_names[idx] = (char *) db_private_alloc (NULL, SM_MAX_IDENTIFIER_LENGTH * sizeof (char));
       sm_downcase_name (node->info.delete_.spec->info.spec.entity_name->info.name.original, classes_names[idx],
-			SM_MAX_IDENTIFIER_LENGTH_287);
+			SM_MAX_IDENTIFIER_LENGTH);
       locks[idx] = X_LOCK;
       if (node->info.delete_.spec->info.spec.only_all == PT_ALL)
 	{

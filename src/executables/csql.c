@@ -802,7 +802,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 #if !defined(WINDOWS)
   HIST_ENTRY *hist_entry;
 #endif /* !WINDOWS */
-  char realname[DB_MAX_IDENTIFIER_LENGTH_287] = { '\0' };
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   /* get session command and argument */
   ptr = line_read;
@@ -1067,7 +1067,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  sm_user_specified_name (argument, NULL, realname, DB_MAX_IDENTIFIER_LENGTH_287);
+	  sm_user_specified_name (argument, NULL, realname, DB_MAX_IDENTIFIER_LENGTH);
 	  csql_help_schema (realname);
 	}
       if (csql_is_auto_commit_requested (csql_arg))

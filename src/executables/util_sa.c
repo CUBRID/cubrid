@@ -3033,7 +3033,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			{
 			  if (vclass_names_alloced == 0)
 			    {
-			      vclass_names_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH_287;
+			      vclass_names_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
 			  vclass_names = (char *) db_private_realloc (thread_p, vclass_names, 2 * vclass_names_alloced);
 
@@ -3060,7 +3060,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			{
 			  if (part_tables_alloced == 0)
 			    {
-			      part_tables_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH_287;
+			      part_tables_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
 			  part_tables = (char *) db_private_realloc (thread_p, part_tables, 2 * part_tables_alloced);
 

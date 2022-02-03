@@ -499,9 +499,6 @@ extern "C"
    */
 #define DB_MAX_IDENTIFIER_LENGTH 255
 
-/* (DB_MAX_SCHEMA_LENGTH - 1) + 1 (DOT) + (DB_MAX_IDENTIFIER_LENGTH - 1) + 1 (NULL_TERM) */
-#define DB_MAX_IDENTIFIER_LENGTH_287 287
-
 /* Maximum allowable user name.*/
 #define DB_MAX_USER_LENGTH 32
 
