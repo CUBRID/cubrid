@@ -2283,24 +2283,26 @@ try_again:
 /* pgbuf_fix_old_and_check_repl_desync - fix an old page with specific latch; for active transaction
  *                  server, the behaviour is same as pgbuf_fix; for passive transaction server, there is an
  *                  extra check to see whether page is ahead of replication
+ *
+ * NOTE: function can also be called on a page server when an utility is executed against the server
+ *    (eg: stat dump), in which case, the function should behave just like normal fix and not perform any
+ *    synchronization check
  */
 PAGE_PTR
 pgbuf_fix_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid, PGBUF_LATCH_MODE latch_mode,
 				     PGBUF_LATCH_CONDITION cond)
 {
-  assert (is_transaction_server ());
-
-  PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, cond);
+  PAGE_PTR const page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, cond);
 
 #if defined (SERVER_MODE)
-  if (is_active_transaction_server ())
+  const bool passive_transaction_server = is_passive_transaction_server ();
+  if (!passive_transaction_server)
     {
       // No replication, no page desynchronization is possible
       // Use regular fix
       return page;
     }
 
-  assert (is_passive_transaction_server ());
 
   // Passive Transaction Server
   //
