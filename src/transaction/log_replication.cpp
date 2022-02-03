@@ -315,42 +315,6 @@ namespace cublog
       }
   }
 
-//  void
-//  process (const MVCCID &mvccid, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa)
-//  {
-//    const VACUUM_LOG_BLOCKID prev_log_record_vacuum_blockid = vacuum_get_log_blockid (prev_rec_lsa.pageid);
-//    const VACUUM_LOG_BLOCKID curr_log_record_vacuum_blockid = vacuum_get_log_blockid (rec_lsa.pageid);
-//    if (prev_log_record_vacuum_blockid != curr_log_record_vacuum_blockid)
-//      {
-//	// advance to new vacuum block, reset vacuum block dependent variables in log header
-//	// if current log record is mvcc/vacuum relevant, variables will be properly set
-//	log_Gl.hdr.newest_block_mvccid = MVCCID_NULL;
-//	log_Gl.hdr.does_block_need_vacuum = false;
-//      }
-
-//    if (mvccid != MVCCID_NULL)
-//      {
-//	// log header variables which ARE NOT vacuum block dependent
-//	if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
-//	  {
-//	    // To allow reads on the page server, make sure that all changes are visible.
-//	    // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
-//	    log_Gl.hdr.mvcc_next_id = mvccid;
-//	    MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
-//	  }
-
-//	assert (log_Gl.hdr.mvcc_op_log_lsa == NULL_LSA || log_Gl.hdr.mvcc_op_log_lsa < rec_lsa);
-//	log_Gl.hdr.mvcc_op_log_lsa = rec_lsa;
-
-//	// log header variables which ARE vacuum block dependent
-//	if (log_Gl.hdr.newest_block_mvccid == MVCCID_NULL || log_Gl.hdr.newest_block_mvccid < mvccid)
-//	  {
-//	    log_Gl.hdr.newest_block_mvccid = mvccid;
-//	  }
-//	log_Gl.hdr.does_block_need_vacuum = true;
-//      }
-//  }
-
   template <typename T>
   void
   replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
@@ -359,16 +323,6 @@ namespace cublog
     m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
     const log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
 	m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
-
-//    // To allow reads on the page server, make sure that all changes are visible.
-//    // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
-//    // Only mvccids that pertain to redo's are processed here. Thow with only undo are processed elsewhere.
-//    const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-//    if (mvccid != MVCCID_NULL && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
-//      {
-//	log_Gl.hdr.mvcc_next_id = mvccid;
-//	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
-//      }
 
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
@@ -398,17 +352,7 @@ namespace cublog
     const log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
 	m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
 
-//    // To allow reads on the page server, make sure that all changes are visible.
-//    // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
-//    const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-//    assert (!assert_mvccid_non_null || (mvccid != MVCCID_NULL));
-//    if (mvccid != MVCCID_NULL && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
-//      {
-//	log_Gl.hdr.mvcc_next_id = mvccid;
-//	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
-//      }
-
-    // only mvccids that pertain to undo's are processed here
+    // mvccids that pertain to undo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
     assert_correct_mvccid (record_info.m_logrec, mvccid);
     log_replication_update_header_mvcc_info (mvccid, prev_rec_lsa, rec_lsa);
