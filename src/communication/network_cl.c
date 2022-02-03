@@ -955,6 +955,17 @@ net_client_get_server_host (void)
 }
 
 /*
+ * net_client_get_server_name () - the name of the current sever
+ *
+ * return: string
+ */
+char *
+net_client_get_server_name (void)
+{
+  return net_Server_name;
+}
+
+/*
  * net_client_request_internal -
  *
  * return: error status

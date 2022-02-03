@@ -18,6 +18,7 @@
 
 #include "method_invoke_group.hpp"
 
+#include "boot_sr.h"
 #include "dbtype.h"		/* db_value_* */
 #include "jsp_comm.h"		/* common communcation functions for javasp */
 #include "mem_block.hpp" /* cubmem::extensible_block */
@@ -140,7 +141,7 @@ namespace cubmethod
 	    if (m_socket == INVALID_SOCKET)
 	      {
 		int server_port = jsp_server_port ();
-		m_socket = jsp_connect_server (server_port);
+		m_socket = jsp_connect_server (boot_db_name (), server_port);
 	      }
 	    break;
 	  }

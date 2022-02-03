@@ -379,6 +379,7 @@ extern int net_client_send_data (char *host, unsigned int rc, char *databuf, int
 extern int net_client_receive_action (int rc, int *action);
 
 extern char *net_client_get_server_host (void);
+extern char *net_client_get_server_name (void);
 
 extern int boot_compact_classes (OID ** class_oids, int num_classes, int space_to_process, int instance_lock_timeout,
 				 int class_lock_timeout, bool delete_old_repr, OID * last_processed_class_oid,
