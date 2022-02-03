@@ -191,15 +191,15 @@ struct log_header
 
   LOG_LSA mvcc_op_log_lsa;	/* MVCC/Vacuum: LSA of last MVCC operation log record */
   MVCCID oldest_visible_mvccid;	/* MVCC/Vacuum: oldest visible MVCCID;
-				 * value kept per vacuum block */
+				 * value correspondingt to last - in progress - vacuum block only */
   MVCCID newest_block_mvccid;	/* MVCC/Vacuum: newest MVCCID for *last* block
-				 * value kept per vacuum block */
+				 * value correspondingt to last - in progress - vacuum block only */
 
   INT64 ha_promotion_time;
   INT64 db_restore_time;
   bool mark_will_del;
   bool does_block_need_vacuum;  /* MVCC/Vacuum: does *last* log vacuum block needs vacuum;
-				 * value kept per vacuum block */
+				 * value correspondingt to last - in progress - vacuum block only */
   bool was_active_log_reset;
 
   log_header ()

@@ -174,7 +174,7 @@ void prior_list_deserialize (const std::string &str, log_prior_node *&head, log_
 // todo - move to header of log page buffer
 size_t logpb_get_memsize ();
 
-void log_replication_update_header_mvcc_info (const MVCCID &mvccid, const log_lsa &prev_rec_lsa,
+void log_replication_update_header_mvcc_vacuum_info (const MVCCID &mvccid, const log_lsa &prev_rec_lsa,
     const log_lsa &rec_lsa);
 
 extern bool log_Zip_support;

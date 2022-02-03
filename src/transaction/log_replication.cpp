@@ -327,7 +327,7 @@ namespace cublog
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
     assert_correct_mvccid (record_info.m_logrec, mvccid);
-    log_replication_update_header_mvcc_info (mvccid, prev_rec_lsa, rec_lsa);
+    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa);
 
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
     // proceed.
@@ -355,7 +355,7 @@ namespace cublog
     // mvccids that pertain to undo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
     assert_correct_mvccid (record_info.m_logrec, mvccid);
-    log_replication_update_header_mvcc_info (mvccid, prev_rec_lsa, rec_lsa);
+    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa);
   }
 
   template <typename T>

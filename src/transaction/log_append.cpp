@@ -1334,8 +1334,8 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
   return error_code;
 }
 
-/* log_replication_update_header_mvcc_info - during replication, update mvcc/vacuum related fields in log header
- *                            to be able to supply a valid/consistent state to a re-booting ATS
+/* log_replication_update_header_mvcc_vacuum_info - during replication, update mvcc/vacuum related fields in
+ *                    log header to be able to supply a valid/consistent state to a re-booting ATS
  *
  * NOTE: Vacuum subsystem makes use of some log header fields to bookkeep info that is needed to decide
  * when to dispatch vacuum jobs.
@@ -1361,7 +1361,8 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
  *    function used by the active transaction server (ie: by a non-replicating server)
  */
 void
-log_replication_update_header_mvcc_info (const MVCCID &mvccid, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa)
+log_replication_update_header_mvcc_vacuum_info (const MVCCID &mvccid, const log_lsa &prev_rec_lsa,
+    const log_lsa &rec_lsa)
 {
   const VACUUM_LOG_BLOCKID prev_log_record_vacuum_blockid = vacuum_get_log_blockid (prev_rec_lsa.pageid);
   const VACUUM_LOG_BLOCKID curr_log_record_vacuum_blockid = vacuum_get_log_blockid (rec_lsa.pageid);
@@ -1371,6 +1372,8 @@ log_replication_update_header_mvcc_info (const MVCCID &mvccid, const log_lsa &pr
       // if current log record is mvcc/vacuum relevant, variables will be properly set
       log_Gl.hdr.newest_block_mvccid = MVCCID_NULL;
       log_Gl.hdr.does_block_need_vacuum = false;
+
+      log_Gl.hdr.oldest_visible_mvccid = MVCCID_NULL;
     }
 
   if (mvccid != MVCCID_NULL)
@@ -1393,6 +1396,16 @@ log_replication_update_header_mvcc_info (const MVCCID &mvccid, const log_lsa &pr
 	  log_Gl.hdr.newest_block_mvccid = mvccid;
 	}
       log_Gl.hdr.does_block_need_vacuum = true;
+
+      // keep a minimum mvccid id value, per block
+      if (log_Gl.hdr.oldest_visible_mvccid == MVCCID_NULL)
+	{
+	  log_Gl.hdr.oldest_visible_mvccid = mvccid;
+	}
+      else if (mvccid < log_Gl.hdr.oldest_visible_mvccid)
+	{
+	  log_Gl.hdr.oldest_visible_mvccid = mvccid;
+	}
     }
 }
 
