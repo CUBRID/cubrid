@@ -14746,8 +14746,7 @@ pgbuf_fix_if_not_deallocated_with_repl_desync_check (THREAD_ENTRY * thread_p, co
 						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,
 						     PAGE_PTR * page)
 {
-  int error_code =
-    pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE);
+  int error_code = pgbuf_fix_if_not_deallocated (thread_p, vpid, latch_mode, latch_condition, page);
 
   if (is_passive_transaction_server ())
     {
