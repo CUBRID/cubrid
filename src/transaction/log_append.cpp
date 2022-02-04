@@ -1375,6 +1375,11 @@ log_replication_update_header_mvcc_vacuum_info (const MVCCID &mvccid, const log_
 	  log_Gl.hdr.newest_block_mvccid = MVCCID_NULL;
 	  log_Gl.hdr.does_block_need_vacuum = false;
 
+	  // according to how this value is initialized in vacuum_recover_lost_block_data:
+	  //    for the last recovered and unconsumed vacuum block, the smallest mvccid encountered
+	  //    in that block is calculated
+	  // also, the value is reset in vacuum_rv_redo_vacuum_complete which is executed
+	  //    after each vacuumn complete log record (which is also executed on a per-block) basis
 	  log_Gl.hdr.oldest_visible_mvccid = MVCCID_NULL;
 	}
     }
