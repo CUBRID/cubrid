@@ -10561,6 +10561,36 @@ loaddb_update_stats ()
 #endif /* !CS_MODE */
 }
 
+static char *
+unpacking_summary_entry (char *ptr)
+{
+  TRANID trid;
+  char *user = NULL;
+  time_t start_time, end_time;
+  int num_insert, num_update, num_delete;
+  LOG_LSA start_lsa, end_lsa;
+  int num_table;
+  OID tablelist[32];
+
+  ptr = or_unpack_int (ptr, &trid);
+  ptr = or_unpack_string_nocopy (ptr, &user);
+  ptr = or_unpack_int64 (ptr, &start_time);
+  ptr = or_unpack_int64 (ptr, &end_time);
+  ptr = or_unpack_int (ptr, &num_insert);
+  ptr = or_unpack_int (ptr, &num_update);
+  ptr = or_unpack_int (ptr, &num_delete);
+  ptr = or_unpack_log_lsa (ptr, &start_lsa);
+  ptr = or_unpack_log_lsa (ptr, &end_lsa);
+  ptr = or_unpack_int (ptr, &num_table);
+
+  for (int j = 0; j < num_table; j++)
+    {
+      ptr = or_unpack_oid (ptr, &tablelist[j]);
+    }
+
+  return ptr;
+}
+
 int
 flashback_get_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
 		       void *summary_list, OID ** oid_list)
@@ -10578,6 +10608,8 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *area;
   int area_size;
+
+  int num_summary = 0;
 
   num_class = da_size (class_list);
 
@@ -10637,6 +10669,12 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 	      ptr = or_unpack_oid (ptr, &(*oid_list)[i]);
 	    }
 	  /* get summary info */
+	  ptr = or_unpack_int (ptr, &num_summary);
+
+	  for (int i = 0; i < num_summary; i++)
+	    {
+	      ptr = unpacking_summary_entry (ptr);
+	    }
 	}
 
       free_and_init (area);

@@ -964,11 +964,11 @@ typedef enum cdc_dml_type
 /* flashback */
 #define FLASHBACK_MAX_SUMMARY   INT_MAX
 #define FLASHBACK_MAX_TABLE     32
+#define OR_SUMMARY_ENTRY_SIZE   (OR_INT_SIZE + OR_INT64_SIZE * 2 + OR_INT_SIZE * 3 + OR_LOG_LSA_SIZE * 2 + OR_INT_SIZE + FLASHBACK_MAX_TABLE * OR_OID_SIZE)
 
 typedef struct flashback_summary_entry
 {
   TRANID trid;
-  char user[DB_MAX_USER_LENGTH + 1];
   time_t start_time;
   time_t end_time;
   int num_insert;
@@ -976,8 +976,8 @@ typedef struct flashback_summary_entry
   int num_delete;
   LOG_LSA start_lsa;
   LOG_LSA end_lsa;
-  int num_table;
-  OID tablelist[FLASHBACK_MAX_TABLE];
+  int num_class;
+  OID classlist[FLASHBACK_MAX_TABLE];
 } FLASHBACK_SUMMARY_ENTRY;
 
 typedef struct flashback_summary_context
@@ -985,7 +985,7 @@ typedef struct flashback_summary_context
   LOG_LSA start_lsa;
   LOG_LSA end_lsa;
   int num_class;
-  OID classoid_list[FLASHBACK_MAX_TABLE];
+  OID classlist[FLASHBACK_MAX_TABLE];
   char *user;
   int num_summary;
   // *INDENT-OFF*

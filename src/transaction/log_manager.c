@@ -14697,7 +14697,6 @@ flashback_create_summary_entry (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_ENTRY
     }
 
   (*summary)->trid = NULL_TRANID;
-  (*summary)->user[0] = '\0';
   (*summary)->start_time = -1;
   (*summary)->end_time = -1;
   (*summary)->num_insert = 0;
@@ -14705,8 +14704,8 @@ flashback_create_summary_entry (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_ENTRY
   (*summary)->num_delete = 0;
   (*summary)->start_lsa = LSA_INITIALIZER;
   (*summary)->end_lsa = LSA_INITIALIZER;
-  (*summary)->num_table = 0;
-  (*summary)->tablelist[0] = OID_INITIALIZER;
+  (*summary)->num_class = 0;
+  (*summary)->classlist[0] = OID_INITIALIZER;
 
   return NO_ERROR;
 }
@@ -14728,12 +14727,12 @@ flashback_fill_dml_summary (FLASHBACK_SUMMARY_ENTRY * summary_entry, OID classoi
   int i = 0;
 
   /* fill in the summary_entry info entry
-   * 1. number of tables and put the classoid into the tablelist
+   * 1. number of class and put the classoid into the classlist
    * 2. number of DML operation */
 
-  for (i = 0; i < summary_entry->num_table; i++)
+  for (i = 0; i < summary_entry->num_class; i++)
     {
-      if (OID_EQ (&summary_entry->tablelist[i], &classoid))
+      if (OID_EQ (&summary_entry->classlist[i], &classoid))
 	{
 	  found = true;
 	  break;
@@ -14742,8 +14741,8 @@ flashback_fill_dml_summary (FLASHBACK_SUMMARY_ENTRY * summary_entry, OID classoi
 
   if (!found)
     {
-      summary_entry->num_table += 1;
-      COPY_OID (&summary_entry->tablelist[i], &classoid);
+      summary_entry->num_class += 1;
+      COPY_OID (&summary_entry->classlist[i], &classoid);
     }
 
   switch (rec_type)
@@ -14935,9 +14934,9 @@ begin:
 	    {
 	      FLASHBACK_CHECK_AND_GET_SUMMARY (context->summary_list, trid, summary_entry);
 
-	      /* user filtering 
-	       * TODO : lower case str cmp function 찾아놓기 */
-	      if (strlen (context->user) != 0 && strncmp (context->user, supplement_data, supplement_length) != 0)
+	      /* user filtering */
+	      if (strlen (context->user) != 0
+		  && intl_identifier_ncasecmp (context->user, supplement_data, supplement_length) != 0)
 		{
 		  if (summary_entry != NULL)
 		    {
@@ -14946,15 +14945,6 @@ begin:
 		      context->summary_list.erase (trid);
                       // *INDENT-ON*
 		      context->num_summary -= 1;
-		    }
-		}
-
-	      if (summary_entry != NULL)
-		{
-		  if (summary_entry->user[0] == '\0')
-		    {
-		      memcpy (summary_entry->user, supplement_data, supplement_length);
-		      summary_entry->user[supplement_length] = '\0';
 		    }
 		}
 
@@ -14974,7 +14964,7 @@ begin:
 	      /* Check if it is extraction target */
 	      for (int i = 0; i < context->num_class; i++)
 		{
-		  if (OID_EQ (&context->classoid_list[i], &classoid))
+		  if (OID_EQ (&context->classlist[i], &classoid))
 		    {
 		      found = true;
 		      break;

@@ -10753,6 +10753,36 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
   return NO_ERROR;
 }
 
+static char *
+packing_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT context)
+{
+  FLASHBACK_SUMMARY_ENTRY *entry;
+
+for (auto iter:context.summary_list)
+    {
+      entry = iter.second;
+      if (entry != NULL)
+	{
+	  ptr = or_pack_int (ptr, entry->trid);
+	  ptr = or_pack_int64 (ptr, entry->start_time);
+	  ptr = or_pack_int64 (ptr, entry->end_time);
+	  ptr = or_pack_int (ptr, entry->num_insert);
+	  ptr = or_pack_int (ptr, entry->num_update);
+	  ptr = or_pack_int (ptr, entry->num_delete);
+	  ptr = or_pack_log_lsa (ptr, &entry->start_lsa);
+	  ptr = or_pack_log_lsa (ptr, &entry->end_lsa);
+	  ptr = or_pack_int (ptr, entry->num_class);
+
+	  for (int i = 0; i < entry->num_class; i++)
+	    {
+	      ptr = or_pack_oid (ptr, &entry->classlist[i]);
+	    }
+	}
+    }
+
+  return ptr;
+}
+
 void
 sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -10780,7 +10810,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
       ptr = or_unpack_string_nocopy (ptr, &classname);
 
-      status = xlocator_find_class_oid (thread_p, classname, &context.classoid_list[i], NULL_LOCK);
+      status = xlocator_find_class_oid (thread_p, classname, &context.classlist[i], NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
 	{
 	  /* TODO : er_set() */
@@ -10805,7 +10835,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto error;
     }
 
-  area_size = OR_OID_SIZE * context.num_class;
+  area_size = OR_OID_SIZE * context.num_class + OR_SUMMARY_ENTRY_SIZE * context.num_summary;
 
   area = (char *) db_private_alloc (thread_p, area_size);	/* summary info size will be added */
   if (area == NULL)
@@ -10819,12 +10849,15 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_pack_int (reply, area_size);
   ptr = or_pack_int (ptr, error_code);
 
-  /* area packing : OID list | summary info list */
+  /* area packing : OID list | num summary | summary info list */
   ptr = area;
   for (int i = 0; i < context.num_class; i++)
     {
-      ptr = or_pack_oid (ptr, &context.classoid_list[i]);
+      ptr = or_pack_oid (ptr, &context.classlist[i]);
     }
+
+  ptr = or_pack_int (ptr, context.num_summary);
+  ptr = packing_summary_entry (ptr, context);
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
