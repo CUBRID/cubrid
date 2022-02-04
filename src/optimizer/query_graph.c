@@ -1490,7 +1490,8 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node, QO_ENV * env,
   if (node)
     {
       /* If it is not PT_NAME, an empty string is used for name. */
-      QO_SEG_NAME (seg) = node->node_type == PT_NAME ? node->info.name.original : pt_append_string (QO_ENV_PARSER (env), NULL, "");
+      QO_SEG_NAME (seg) =
+	node->node_type == PT_NAME ? node->info.name.original : pt_append_string (QO_ENV_PARSER (env), NULL, "");
       if (PT_IS_OID_NAME (node))
 	{
 	  /* this is an oid segment */

@@ -225,7 +225,7 @@ static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE *
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 					      PT_NODE * subquery, FIND_ID_INFO * infop);
 static PT_NODE *mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
-						   PT_NODE * query_spec);
+						   PT_NODE * query_spec, bool remove_sel_list);
 static PT_NODE *mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement);
 static void mq_check_update (PARSER_CONTEXT * parser, PT_NODE * update_statement);
 static void mq_check_delete (PARSER_CONTEXT * parser, PT_NODE * delete_stmt);
@@ -2256,7 +2256,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  PT_NODE *tmp_class = NULL;
 
 	  /* rewrite vclass spec */
-	  class_spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec);
+	  class_spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec, true);
 
 	  /* get derived expending spec node */
 	  if (!class_spec || !(derived_table = class_spec->info.spec.derived_table)
@@ -2485,7 +2485,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	      goto exit_on_error;
 	    }
 
-	  class_spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec);
+	  class_spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec, false);
 	  if (class_spec == NULL)
 	    {
 	      goto exit_on_error;
@@ -3833,10 +3833,11 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
  *   query_spec(in):
  */
 static PT_NODE *
-mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec, PT_NODE * query_spec)
+mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec, PT_NODE * query_spec,
+				   bool remove_sel_list)
 {
   PT_NODE *new_query = parser_new_node (parser, PT_SELECT);
-  PT_NODE *new_spec, *new_select_list;
+  PT_NODE *new_spec, *v_attr_list;
   PT_NODE *v_attr;
   PT_NODE *from, *entity_name;
   FIND_ID_INFO info;
@@ -3880,22 +3881,55 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
   else
     {
-      new_select_list = mq_get_references (parser, statement, spec);
-      if (new_select_list == NULL)
-	{
-	  /* case of constant attr. e.g.) count(*), count(1) */
-	  /* just add one of integer value */
-	  new_select_list = pt_make_integer_value (parser, 1);
-	}
+      new_query->info.query.q.select.list = mq_get_references (parser, statement, spec);
 
-      for (col = new_select_list; col; col = col->next)
+      for (col = new_query->info.query.q.select.list; col; col = col->next)
 	{
 	  if (col->flag.is_hidden_column)
 	    {
 	      col->flag.is_hidden_column = 0;
 	    }
 	}
-      new_query->info.query.q.select.list = new_select_list;
+
+      if (remove_sel_list)
+	{
+	  /* Do not add except for referenced columns. */
+	  if (new_query->info.query.q.select.list == NULL)
+	    {
+	      /* case of constant attr. e.g.) count(*), count(1) */
+	      /* just add one of integer value */
+	      new_query->info.query.q.select.list = pt_make_integer_value (parser, 1);
+	    }
+	}
+      else
+	{
+	  /* add view's attributes to select list */
+	  v_attr_list = mq_fetch_attributes (parser, spec->info.spec.flat_entity_list);
+	  if (v_attr_list == NULL && (pt_has_error (parser) || er_has_error ()))
+	    {
+	      return NULL;
+	    }
+
+	  v_attr_list = parser_copy_tree_list (parser, v_attr_list);
+
+	  /* exclude the first oid attr, append non-exist attrs to select list */
+	  if (v_attr_list && v_attr_list->type_enum == PT_TYPE_OBJECT)
+	    {
+	      v_attr_list = v_attr_list->next;	/* skip oid attr */
+	    }
+
+	  for (v_attr = v_attr_list; v_attr; v_attr = v_attr->next)
+	    {
+	      v_attr->info.name.spec_id = spec->info.spec.id;	/* init spec id */
+	      mq_insert_symbol (parser, &new_query->info.query.q.select.list, v_attr);
+	    }			/* for (v_attr = ...) */
+
+	  /* free alloced */
+	  if (v_attr_list)
+	    {
+	      parser_free_tree (parser, v_attr_list);
+	    }
+	}
     }
 
   new_spec = parser_copy_tree (parser, spec);
@@ -5189,7 +5223,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
       if (is_union_translation != 0)
 	{
 	  select_statement->info.query.q.select.from = from =
-	    mq_rewrite_vclass_spec_as_derived (parser, select_statement, from, NULL);
+	    mq_rewrite_vclass_spec_as_derived (parser, select_statement, from, NULL, false);
 	  if (from == NULL)
 	    {
 	      return NULL;
@@ -5206,7 +5240,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 
 	  if (is_union_translation != 0)
 	    {
-	      from->next = mq_rewrite_vclass_spec_as_derived (parser, select_statement, from->next, NULL);
+	      from->next = mq_rewrite_vclass_spec_as_derived (parser, select_statement, from->next, NULL, false);
 	    }
 	  from = from->next;
 	}
@@ -5227,7 +5261,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	  if (is_union_translation != 0)
 	    {
 	      select_statement->info.query.q.select.from =
-		mq_rewrite_vclass_spec_as_derived (parser, select_statement, from, NULL);
+		mq_rewrite_vclass_spec_as_derived (parser, select_statement, from, NULL, false);
 	    }
 	}
     }
@@ -6799,7 +6833,7 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
 	  if (rewrite)
 	    {
 	      /* rewrite is necessary */
-	      *spec = mq_rewrite_vclass_spec_as_derived (parser, statement, *spec, subquery);
+	      *spec = mq_rewrite_vclass_spec_as_derived (parser, statement, *spec, subquery, false);
 	    }
 	}
 
