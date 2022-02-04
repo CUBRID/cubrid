@@ -2197,24 +2197,14 @@ sm_user_specified_name (const char *name, const char *owner_name, char *buf, int
   dot = (char *) strchr (name, '.');
   if (dot)
     {
-      name_size = intl_identifier_lower_string_size (name);
-      assert (name_size < buf_size);
-      assert (name_size < DB_MAX_IDENTIFIER_LENGTH);
-
-      intl_identifier_lower (name, buf);
-
+      sm_downcase_name (name, buf, buf_size);
       return NO_ERROR;
     }
 
   if (sm_check_system_class_by_name (name)
       && (owner_name == NULL || owner_name[0] == '\0' || intl_identifier_casecmp (owner_name, "DBA") == 0))
     {
-      name_size = intl_identifier_lower_string_size (name);
-      assert (name_size < buf_size);
-      assert (name_size < DB_MAX_IDENTIFIER_LENGTH);
-
-      intl_identifier_lower (name, buf);
-
+      sm_downcase_name (name, buf, buf_size);
       return NO_ERROR;
     }
 
@@ -2243,7 +2233,7 @@ sm_user_specified_name (const char *name, const char *owner_name, char *buf, int
     }
 
   snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", owner_name_p, name);
-  intl_identifier_lower (user_specified_name, buf);
+  sm_downcase_name (user_specified_name, buf, buf_size);
 
   if (current_user_name)
     {
@@ -16849,120 +16839,4 @@ sm_domain_copy (SM_DOMAIN * ptr)
     }
 
   return new_ptr;
-}
-
-int
-sm_serial_midxkey_key_generate (DB_VALUE * value, const char *name, const char *owner_name)
-{
-  DB_VALUE name_val;
-  TP_DOMAIN *name_domain = NULL;
-
-  DB_OBJECT *owner_obj = NULL;
-  OID *owner_obj_id = NULL;
-  DB_VALUE owner_val;
-  TP_DOMAIN *owner_domain = NULL;
-
-  DB_MIDXKEY midxkey;
-  OR_BUF buf;
-  char *key_ptr;
-  char *nullmap_ptr;
-  TP_DOMAIN *set_domain = NULL;
-
-  char *dot = NULL;
-  const char *name_p = NULL;
-
-  int error = NO_ERROR;
-
-  db_make_null (&name_val);
-  db_make_null (&owner_val);
-
-  if (name == NULL || name[0] == '\0')
-    {
-      /* youngjinj */
-      assert (false);
-      return error;
-    }
-
-  dot = (char *) strchr (name, '.');
-  if (dot)
-    {
-      name_p = dot + 1;
-
-      if (owner_name && owner_name[0] != '\0')
-	{
-	  owner_obj = db_find_user (owner_name);
-	}
-      else
-        {
-	  dot[0] = '\0';
-	  owner_obj = db_find_user (name);
-	  dot[0] = '.';
-	}
-    }
-  else
-    {
-      name_p = name;
-
-      if (owner_name && owner_name[0] != '\0')
-	{
-	  owner_obj = db_find_user (owner_name);
-	}
-      else
-        {
-	  owner_obj = db_get_user ();
-	}
-    }
-
-  if (owner_obj == NULL)
-    {
-      /* youngjinj */
-      assert (false);
-    }
-
-  /* serial name */
-  error = db_make_varchar (&name_val, DB_MAX_IDENTIFIER_LENGTH, name_p, strlen (name_p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  if (error < NO_ERROR)
-    {
-      /* youngjinj */
-      assert (false);
-    }
-
-  /* serial name domain */
-  name_domain = tp_domain_resolve_default (db_value_domain_type (&name_val));
-
-  /* serial owner */
-  db_make_object (&owner_val, owner_obj);
-
-  /* serial owner domain */
-  owner_domain = tp_domain_resolve_default (db_value_domain_type (&owner_val));
-
-  /* midxkey */
-  midxkey.ncolumns = 2;
-  midxkey.buf = (char *) db_private_alloc (NULL, DB_MAX_IDENTIFIER_LENGTH + OR_OID_SIZE + MAX_ALIGNMENT);
-  memset (midxkey.buf, 0, DB_MAX_IDENTIFIER_LENGTH + OR_OID_SIZE + MAX_ALIGNMENT);
-  or_init (&buf, midxkey.buf, -1);
-  nullmap_ptr = midxkey.buf;
-  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, midxkey.ncolumns));
-
-  name_domain->type->index_writeval (&buf, &name_val);
-  OR_ENABLE_BOUND_BIT (nullmap_ptr, 0);
-
-  owner_domain->type->index_writeval (&buf, &owner_val);
-  OR_ENABLE_BOUND_BIT (nullmap_ptr, 1);
-
-  midxkey.size = CAST_BUFLEN (buf.ptr - buf.buffer);
-
-  set_domain = tp_domain_copy (name_domain, false);
-  set_domain->next = tp_domain_copy (owner_domain, false);
-  midxkey.domain =  tp_domain_construct (DB_TYPE_MIDXKEY, NULL, midxkey.ncolumns, 0, set_domain);
-
-  error = db_make_midxkey (value, &midxkey);
-  if (error < NO_ERROR)
-    {
-      assert (false);
-    }
-
-  (*value).need_clear = true;
-
-  return error;
 }
