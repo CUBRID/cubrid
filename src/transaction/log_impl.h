@@ -984,13 +984,13 @@ typedef struct flashback_summary_context
 {
   LOG_LSA start_lsa;
   LOG_LSA end_lsa;
-  OID *classoid_list;
   int num_class;
+  OID classoid_list[FLASHBACK_MAX_TABLE];
   char *user;
+  int num_summary;
   // *INDENT-OFF*
   std::unordered_map <TRANID, FLASHBACK_SUMMARY_ENTRY*> summary_list;
   // *INDENT-ON*
-  int num_summary;
 } FLASHBACK_SUMMARY_CONTEXT;
 
 // todo - move to manager

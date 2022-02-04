@@ -10764,34 +10764,23 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   int error_code = NO_ERROR;
   char *ptr;
   char *start_ptr;
-  OID *oid = NULL;
-  LC_FIND_CLASSNAME status;
-  int num_class;
 
-  char *user = NULL;
+  LC_FIND_CLASSNAME status;
+
+  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, NULL, 0 };
+
   time_t start_time = 0;
   time_t end_time = 0;
 
-  LOG_LSA start_lsa = LSA_INITIALIZER;
-  LOG_LSA end_lsa = LSA_INITIALIZER;
+  ptr = or_unpack_int (request, &context.num_class);
 
-  ptr = or_unpack_int (request, &num_class);
-
-  oid = (OID *) db_private_alloc (thread_p, sizeof (OID) * num_class);
-  if (oid == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID) * num_class);
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto error;
-    }
-
-  for (int i = 0; i < num_class; i++)
+  for (int i = 0; i < context.num_class; i++)
     {
       char *classname = NULL;
 
       ptr = or_unpack_string_nocopy (ptr, &classname);
 
-      status = xlocator_find_class_oid (thread_p, classname, &oid[i], NULL_LOCK);
+      status = xlocator_find_class_oid (thread_p, classname, &context.classoid_list[i], NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
 	{
 	  /* TODO : er_set() */
@@ -10799,16 +10788,24 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 	  goto error;
 	}
     }
-  ptr = or_unpack_string_nocopy (ptr, &user);
+  ptr = or_unpack_string_nocopy (ptr, &context.user);
   ptr = or_unpack_int64 (ptr, &start_time);
   ptr = or_unpack_int64 (ptr, &end_time);
 
-  if ((error_code = flashback_verify_time (thread_p, start_time, end_time, &start_lsa, &end_lsa)) != NO_ERROR)
+  if ((error_code =
+       flashback_verify_time (thread_p, start_time, end_time, &context.start_lsa, &context.end_lsa)) != NO_ERROR)
     {
       goto error;
     }
 
-  area_size = OR_OID_SIZE * num_class;
+  /* get summary list */
+  error_code = flashback_make_summary_list (thread_p, &context);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  area_size = OR_OID_SIZE * context.num_class;
 
   area = (char *) db_private_alloc (thread_p, area_size);	/* summary info size will be added */
   if (area == NULL)
@@ -10824,15 +10821,15 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   /* area packing : OID list | summary info list */
   ptr = area;
-  for (int i = 0; i < num_class; i++)
+  for (int i = 0; i < context.num_class; i++)
     {
-      ptr = or_pack_oid (ptr, &oid[i]);
+      ptr = or_pack_oid (ptr, &context.classoid_list[i]);
     }
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
   db_private_free_and_init (thread_p, area);
-  db_private_free_and_init (thread_p, oid);
+  flashback_cleanup (thread_p, &context);
 
   return;
 error:
@@ -10841,11 +10838,7 @@ error:
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
-  if (oid != NULL)
-    {
-      db_private_free_and_init (thread_p, oid);
-    }
-
+  flashback_cleanup (thread_p, &context);
   return;
 }
 

@@ -260,6 +260,7 @@ extern void cdc_wakeup_consumer ();
 
 /* flashback */
 extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
+extern void flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
 
 //
 // log critical section
