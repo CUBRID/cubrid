@@ -192,6 +192,8 @@ static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_N
 						   PT_NODE * class_);
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						      PT_NODE * query_spec, PT_NODE * derived_table);
+static PT_NODE *mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
+						       PT_NODE * query_spec, PT_NODE * derived_table);
 static PT_NODE *mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 							PT_NODE * subquery, PT_NODE * derived_spec, PT_NODE * order_by);
 static PT_NODE *mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
@@ -1434,6 +1436,98 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
 }
 
 /*
+ * mq_remove_select_list_for_inline_view () - remove unnecessary select list
+ *   return: PT_NODE *, select list
+ *   parser(in): parser context
+ *   statement(in/out): statement into which class will be expanded
+ *   query_spec(in): query of class that will be expanded
+ *   derived_spec(in): class name of class that will be expanded
+ */
+static PT_NODE *
+mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * subquery,
+				       PT_NODE * derived_spec)
+{
+  PT_NODE *query_spec_columns;
+  PT_NODE *attributes, *attr;
+  PT_NODE *col, *new_select_list;
+
+  /* Replace columns/attributes. for each column/attribute name in table/class class, replace with actual select
+   * column. */
+
+  if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
+    {
+      PT_INTERNAL_ERROR (parser, "remove select list");
+      return NULL;
+    }
+
+  query_spec_columns = subquery->info.query.q.select.list;
+
+  /* get derived spec attrs */
+  attributes = derived_spec->info.spec.as_attr_list;
+  if (attributes == NULL)
+    {
+      return NULL;
+    }
+
+  col = query_spec_columns;
+  attr = attributes;
+  if (PT_IS_VALUE_QUERY (subquery) && col != NULL && attr != NULL)
+    {
+      assert (col->node_type == PT_NODE_LIST);
+
+      col = col->info.node_list.list;
+
+      /* skip oid */
+      attr = attr->next;
+    }
+
+  for (; col && attr; col = col->next, attr = attr->next)
+    {
+      /* set spec_id */
+      attr->info.name.spec_id = derived_spec->info.spec.id;
+    }
+
+  while (col)
+    {
+      if (col->flag.is_hidden_column)
+	{
+	  col = col->next;
+	  continue;
+	}
+      break;
+    }
+
+  if (col)
+    {				/* error */
+      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_QSPEC_COLS_GT_ATTRS,
+		  derived_spec->info.spec.range_var->info.name.original);
+      return NULL;
+    }
+  if (attr)
+    {				/* error */
+      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ATTRS_GT_QSPEC_COLS,
+		  derived_spec->info.spec.range_var->info.name.original);
+      return NULL;
+    }
+
+  new_select_list = mq_get_references (parser, statement, derived_spec);
+  for (col = new_select_list; col; col = col->next)
+    {
+      if (col->flag.is_hidden_column)
+	{
+	  col->flag.is_hidden_column = 0;
+	}
+    }
+
+  /*mq_update_order_by (parser, tmp_result, subquery, NULL, derived_spec); /* 박세훈 */
+
+  /* substitute attributes for query_spec_columns in statement */
+  new_select_list = mq_lambda (parser, new_select_list, attributes, query_spec_columns);
+
+  return new_select_list;
+}
+
+/*
  * mq_substitute_spec_in_method_names() - substitue spec id in method names
  *   return:
  *   parser(in):
@@ -1963,6 +2057,16 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 
       /* TO_DO : check only the referenced select list. */
       /* refer to mq_rewrite_vclass_spec_as_derived () */
+
+/*      PT_NODE *select_list; /* = tmp_result->info.query.q.select.list;
+      /* parser_free_tree (parser, tmp_result); */
+
+/*      select_list = mq_remove_select_list_for_inline_view (parser, statement, subquery, derived_spec);
+      if (select_list == NULL)
+      {
+      	goto exit_on_error;
+      }
+      subquery->info.query.q.select.list = select_list;*/
 
       /* no translation per se, but need to fix up proxy objects */
       result = mq_fix_derived_in_union (parser, tmp_result, derived_spec->info.spec.id);
@@ -3732,8 +3836,8 @@ static PT_NODE *
 mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec, PT_NODE * query_spec)
 {
   PT_NODE *new_query = parser_new_node (parser, PT_SELECT);
-  PT_NODE *new_spec;
-  PT_NODE *v_attr_list, *v_attr;
+  PT_NODE *new_spec, *new_select_list;
+  PT_NODE *v_attr;
   PT_NODE *from, *entity_name;
   FIND_ID_INFO info;
   PT_NODE *col;
@@ -3776,41 +3880,22 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
   else
     {
-      new_query->info.query.q.select.list = mq_get_references (parser, statement, spec);
+      new_select_list = mq_get_references (parser, statement, spec);
+      if (new_select_list == NULL)
+	{
+	  /* case of constant attr. e.g.) count(*), count(1) */
+	  /* just add one of integer value */
+	  new_select_list = pt_make_integer_value (parser, 1);
+	}
 
-      for (col = new_query->info.query.q.select.list; col; col = col->next)
+      for (col = new_select_list; col; col = col->next)
 	{
 	  if (col->flag.is_hidden_column)
 	    {
 	      col->flag.is_hidden_column = 0;
 	    }
 	}
-
-      v_attr_list = mq_fetch_attributes (parser, spec->info.spec.flat_entity_list);
-      if (v_attr_list == NULL && (pt_has_error (parser) || er_has_error ()))
-	{
-	  return NULL;
-	}
-
-      v_attr_list = parser_copy_tree_list (parser, v_attr_list);
-
-      /* exclude the first oid attr, append non-exist attrs to select list */
-      if (v_attr_list && v_attr_list->type_enum == PT_TYPE_OBJECT)
-	{
-	  v_attr_list = v_attr_list->next;	/* skip oid attr */
-	}
-
-      for (v_attr = v_attr_list; v_attr; v_attr = v_attr->next)
-	{
-	  v_attr->info.name.spec_id = spec->info.spec.id;	/* init spec id */
-	  mq_insert_symbol (parser, &new_query->info.query.q.select.list, v_attr);
-	}			/* for (v_attr = ...) */
-
-      /* free alloced */
-      if (v_attr_list)
-	{
-	  parser_free_tree (parser, v_attr_list);
-	}
+      new_query->info.query.q.select.list = new_select_list;
     }
 
   new_spec = parser_copy_tree (parser, spec);
