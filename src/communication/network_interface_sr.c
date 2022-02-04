@@ -10698,3 +10698,240 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
 
   return;
 }
+
+static int
+flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_time, LOG_LSA * start_lsa,
+		       LOG_LSA * end_lsa)
+{
+  int error_code = NO_ERROR;
+  time_t ret_time = 0;
+
+
+  /* 1. Check start_time */
+  if (start_time < log_Gl.hdr.db_creation)
+    {
+      /* TODO : er_set() */
+      return ER_FLASHBACK_INVALID_TIME;
+    }
+  else
+    {
+      ret_time = start_time;
+
+      error_code = cdc_find_lsa (thread_p, &ret_time, start_lsa);
+      if (error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA)
+	{
+	  /* find log record at the time
+	   * ret_time : time of the commit record or dummy record that is found to be greater than or equal to the start_time at first */
+
+	  if (ret_time >= end_time)
+	    {
+	      /* out of range : start_time (ret_time) can not be greater than end_time */
+	      /* TODO : er_set() */
+	      return ER_FLASHBACK_INVALID_TIME;
+	    }
+	}
+      else
+	{
+	  /* failed to find a log at the time due to failure while reading log page or volume (ER_FAILED, ER_LOG_READ) */
+	  /* TODO : er_set() */
+	  return ER_FAILED;
+	}
+    }
+
+  /* 2. If start_time is valid, then get end_lsa */
+
+  ret_time = end_time;
+  error_code = cdc_find_lsa (thread_p, &ret_time, end_lsa);
+
+  if (!(error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA))
+    {
+      /* failed to find a log record */
+      /* TODO : er_set() */
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+void
+sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area = NULL;
+  int area_size = 0;
+
+  int error_code = NO_ERROR;
+  char *ptr;
+  char *start_ptr;
+  OID *oid = NULL;
+  LC_FIND_CLASSNAME status;
+  int num_class;
+
+  char *user = NULL;
+  time_t start_time = 0;
+  time_t end_time = 0;
+
+  LOG_LSA start_lsa = LSA_INITIALIZER;
+  LOG_LSA end_lsa = LSA_INITIALIZER;
+
+  ptr = or_unpack_int (request, &num_class);
+
+  oid = (OID *) db_private_alloc (thread_p, sizeof (OID) * num_class);
+  if (oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID) * num_class);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  for (int i = 0; i < num_class; i++)
+    {
+      char *classname = NULL;
+
+      ptr = or_unpack_string_nocopy (ptr, &classname);
+
+      status = xlocator_find_class_oid (thread_p, classname, &oid[i], NULL_LOCK);
+      if (status != LC_CLASSNAME_EXIST)
+	{
+	  /* TODO : er_set() */
+	  error_code = ER_FLASHBACK_INVALID_CLASS;
+	  goto error;
+	}
+    }
+  ptr = or_unpack_string_nocopy (ptr, &user);
+  ptr = or_unpack_int64 (ptr, &start_time);
+  ptr = or_unpack_int64 (ptr, &end_time);
+
+  if ((error_code = flashback_verify_time (thread_p, start_time, end_time, &start_lsa, &end_lsa)) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  area_size = OR_OID_SIZE * num_class;
+
+  area = (char *) db_private_alloc (thread_p, area_size);	/* summary info size will be added */
+  if (area == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  /* reply packing : error_code | area size */
+  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, error_code);
+
+  /* area packing : OID list | summary info list */
+  ptr = area;
+  for (int i = 0; i < num_class; i++)
+    {
+      ptr = or_pack_oid (ptr, &oid[i]);
+    }
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+
+  db_private_free_and_init (thread_p, area);
+  db_private_free_and_init (thread_p, oid);
+
+  return;
+error:
+  ptr = or_pack_int (reply, 0);
+  or_pack_int (ptr, error_code);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (oid != NULL)
+    {
+      db_private_free_and_init (thread_p, oid);
+    }
+
+  return;
+}
+
+void
+sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area = NULL;
+  int area_size = 0;
+
+  int error_code = NO_ERROR;
+  char *ptr;
+  char *start_ptr;
+  OID *oid = NULL;
+
+  int trid = 0;
+  int num_class = 0;
+  char *user = NULL;
+
+  LOG_LSA start_lsa = LSA_INITIALIZER;
+  LOG_LSA end_lsa = LSA_INITIALIZER;
+
+  int num_item = 0;
+  int forward = false;
+
+  /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
+
+  ptr = or_unpack_int (request, &trid);
+  ptr = or_unpack_string_nocopy (ptr, &user);
+  ptr = or_unpack_int (ptr, &num_class);
+
+  oid = (OID *) db_private_alloc (thread_p, sizeof (OID) * num_class);
+  if (oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID) * num_class);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  for (int i = 0; i < num_class; i++)
+    {
+      ptr = or_unpack_oid (ptr, &oid[i]);
+    }
+
+  ptr = or_unpack_log_lsa (ptr, &start_lsa);
+  ptr = or_unpack_log_lsa (ptr, &end_lsa);
+  ptr = or_unpack_int (ptr, &num_item);
+  ptr = or_unpack_int (ptr, &forward);
+
+  /* TODO : flashback result will be added */
+  area_size = OR_LOG_LSA_ALIGNED_SIZE * 2 + OR_INT_SIZE;
+
+  area = (char *) db_private_alloc (thread_p, area_size);
+  if (area == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  /* reply packing :  area size | error_code */
+  ptr = or_pack_int (reply, area_size);
+  or_pack_int (ptr, error_code);
+
+  /* area packing : start lsa | end lsa | num item | item list */
+  ptr = or_pack_log_lsa (area, &start_lsa);
+  ptr = or_pack_log_lsa (ptr, &end_lsa);
+  ptr = or_pack_int (ptr, num_item);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+
+  db_private_free_and_init (thread_p, oid);
+  db_private_free_and_init (thread_p, area);
+
+  return;
+error:
+  ptr = or_pack_int (reply, 0);
+  or_pack_int (ptr, error_code);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (oid != NULL)
+    {
+      db_private_free_and_init (thread_p, oid);
+    }
+
+  return;
+}

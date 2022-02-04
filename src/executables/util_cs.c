@@ -3747,7 +3747,7 @@ tde (UTIL_FUNCTION_ARG * arg)
   delete_op_idx = utility_get_option_int_value (arg_map, TDE_DELETE_KEY_S);
 
   print_val = utility_get_option_bool_value (arg_map, TDE_PRINT_KEY_VALUE_S);
-  dba_password = utility_get_option_string_value (arg_map, KILLTRAN_DBA_PASSWORD_S, 0);
+  dba_password = utility_get_option_string_value (arg_map, TDE_DBA_PASSWORD_S, 0);
 
   if (gen_op)
     {
@@ -4040,9 +4040,11 @@ flashback (UTIL_FUNCTION_ARG * arg)
   char table_name_buf[SM_MAX_IDENTIFIER_LENGTH];
   char *table_name;
 
+  OID *oid_list = NULL;
+
   const char *output_file = NULL;
   FILE *outfp = NULL;
-  const char *user = NULL;
+  char *user = NULL;
   const char *dba_password = NULL;
 
   char *start_date = NULL;
@@ -4055,6 +4057,13 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   char *passbuf = NULL;
   int error = NO_ERROR;
+
+  int trid = 0;
+  int num_item = 0;
+
+  /* temporary variables for test */
+  LOG_LSA start_lsa = LSA_INITIALIZER;
+  LOG_LSA end_lsa = LSA_INITIALIZER;
 
   num_tables = utility_get_option_string_table_size (arg_map) - 1;
   if (num_tables < 1)
@@ -4222,11 +4231,42 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
+  oid_list = (OID *) malloc (sizeof (OID) * num_tables);
+  if (oid_list == NULL)
+    {
+      db_shutdown ();
+      perror ("malloc");
+      goto error_exit;
+    }
+
+  error = flashback_get_summary (darray, user, start_time, end_time, NULL, &oid_list);
+  if (error != NO_ERROR)
+    {
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  /* temporary setting for test */
+  trid = 10;
+  num_item = 5;
+
+  error = flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest, NULL);
+  if (error != NO_ERROR)
+    {
+      db_shutdown ();
+      goto error_exit;
+    }
+
   db_shutdown ();
 
   if (darray != NULL)
     {
       da_destroy (darray);
+    }
+
+  if (oid_list != NULL)
+    {
+      free_and_init (oid_list);
     }
 
   return EXIT_SUCCESS;
@@ -4237,6 +4277,11 @@ error_exit:
   if (darray != NULL)
     {
       da_destroy (darray);
+    }
+
+  if (oid_list != NULL)
+    {
+      free_and_init (oid_list);
     }
 
   return EXIT_FAILURE;
