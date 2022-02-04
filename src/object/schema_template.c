@@ -699,10 +699,11 @@ def_class_internal (const char *name, int class_type)
   char realname[SM_MAX_IDENTIFIER_LENGTH];
   SM_TEMPLATE *template_ = NULL;
   PR_TYPE *type;
-  const char *simple_name = sm_simple_name (name);
 
   if (sm_check_name (name))
     {
+      const char *simple_name = sm_simple_name (name);
+
       type = pr_find_type (simple_name);
       if (type != NULL)
 	{

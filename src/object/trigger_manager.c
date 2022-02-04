@@ -6882,22 +6882,11 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 
 	      db_make_string (&value, trigger->name);
 	      error = db_put_internal (trigger_object, TR_ATT_FULL_NAME, &value);
-	      if (error != NO_ERROR)
+	      if (error == NO_ERROR)
 		{
-		  /*
-		   * hmm, couldn't set the new name, put the old one back,
-		   * we might need to abort the transaction here ?
-		   */
-		  ASSERT_ERROR ();
-		  newname = trigger->name;
-		  trigger->name = oldname;
-		  /* if we can't do this, the transaction better abort */
-		  (void) trigger_table_rename (trigger_object, oldname);
-		  oldname = NULL;
+		  db_make_string (&value, sm_simple_name (trigger->name));
+		  error = db_put_internal (trigger_object, TR_ATT_NAME, &value);
 		}
-
-	      db_make_string (&value, sm_simple_name (trigger->name));
-	      error = db_put_internal (trigger_object, TR_ATT_NAME, &value);
 	      if (error != NO_ERROR)
 		{
 		  /*

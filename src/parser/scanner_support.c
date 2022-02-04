@@ -617,28 +617,12 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 				  if (arg)
 				    {
 				      temp = strstr (arg_start, ".");
-
-				      /*
-				       * "user_name + dot(.)" is added in front of the table name to distinguish
-				       * the user schema. So we cannot separate index names with dot(.).
-				       * dot(.) does not appear more than 2 times, and the last name is the index name.
-				       */
-				      char *resolved_buf = NULL;
-				      if (temp && strstr (temp + 1, ".") != NULL)
-					{
-					  temp = strstr (temp + 1, ".");
-					}
-
 				      if (temp && temp < &(hint_p[j]) && !IS_HINT_ON_TABLE (hint_table[i].hint))
 					{
-
 					  *temp = '\0';
 					  arg->info.name.resolved = pt_trim_as_identifier (arg_start);
 					  arg->info.name.resolved = pt_makename (arg->info.name.resolved);
-					  *temp = '.';
-
-					  temp++;
-
+					  *temp++ = '.';
 					  arg->info.name.original = pt_trim_as_identifier (temp);
 					  arg->info.name.original = pt_makename (arg->info.name.original);
 					}
@@ -692,17 +676,6 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 			      if (arg)
 				{
 				  temp = strstr (arg_start, ".");
-
-				  /*
-				   * "user_name + dot(.)" is added in front of the table name to distinguish
-				   * the user schema. So we cannot separate index names with dot(.).
-				   * dot(.) does not appear more than 2 times, and the last name is the index name.
-				   */
-				  if (temp && strstr (temp + 1, ".") != NULL)
-				    {
-				      temp = strstr (temp + 1, ".");
-				    }
-
 				  if (temp && temp < &(hint_p[j]) && !IS_HINT_ON_TABLE (hint_table[i].hint))
 				    {
 				      *temp = '\0';

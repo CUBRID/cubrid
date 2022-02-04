@@ -2192,9 +2192,9 @@ ldr_null_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRI
 
   if (att->flags & SM_ATTFLAG_NON_NULL)
     {
-      char class_attr[512];
+      char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
 
-      snprintf (class_attr, 512, "%s.%s", context->class_name, att->header.name);
+      snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", context->class_name, att->header.name);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, class_attr);
       CHECK_ERR (err, ER_OBJ_ATTRIBUTE_CANT_BE_NULL);
     }
@@ -5065,9 +5065,9 @@ ldr_act_check_missing_non_null_attrs (LDR_CONTEXT *context)
 	  /* not found */
 	  if (i >= context->num_attrs)
 	    {
-	      char class_attr[512];
+	      char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
 
-	      snprintf (class_attr, 512, "%s.%s", context->class_name, att->header.name);
+	      snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", context->class_name, att->header.name);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, class_attr);
 	      CHECK_ERR (err, ER_OBJ_ATTRIBUTE_CANT_BE_NULL);
 	    }
