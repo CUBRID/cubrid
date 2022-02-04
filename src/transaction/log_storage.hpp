@@ -154,7 +154,7 @@ struct log_header
   bool is_shutdown;		/* Was the log shutdown ? */
   /* Here exists 3 bytes */
   TRANID next_trid;		/* Next Transaction identifier */
-  MVCCID mvcc_next_id;		/* Next MVCC ID */
+  MVCCID mvcc_next_id;		/* MVCC/Vacuum: Next MVCC ID */
   int avg_ntrans;		/* Number of average transactions */
   int avg_nlocks;		/* Average number of object locks */
   DKNPAGES npages;		/* Number of pages in the active log portion. Does not include the log header page. */
@@ -176,7 +176,8 @@ struct log_header
   char prefix_name[MAXLOGNAME];	/* Log prefix name */
   bool has_logging_been_skipped;	/* Has logging been skipped ? */
   /* Here exists 5 bytes */
-  VACUUM_LOG_BLOCKID vacuum_last_blockid;	/* Last processed blockid needed for vacuum. */
+  VACUUM_LOG_BLOCKID vacuum_last_blockid;	/* MVCC/Vacuum: Last processed blockid needed for vacuum.
+                                                 * Only populated in SA mode. */
   int perm_status_obsolete;
   /* Here exists 4 bytes */
   LOG_HDR_BKUP_LEVEL_INFO bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
@@ -188,15 +189,17 @@ struct log_header
 
   LOG_LSA smallest_lsa_at_last_chkpt;
 
-  // next fields track MVCC info relevant for vacuum
-  LOG_LSA mvcc_op_log_lsa;	/* LSA of last MVCC operation log record */
-  MVCCID oldest_visible_mvccid;	/* oldest visible MVCCID */
-  MVCCID newest_block_mvccid;	/* newest MVCCID for current block */
+  LOG_LSA mvcc_op_log_lsa;	/* MVCC/Vacuum: LSA of last MVCC operation log record */
+  MVCCID oldest_visible_mvccid;	/* MVCC/Vacuum: oldest visible MVCCID;
+				 * value correspondingt to last - in progress - vacuum block only */
+  MVCCID newest_block_mvccid;	/* MVCC/Vacuum: newest MVCCID for *last* block
+				 * value correspondingt to last - in progress - vacuum block only */
 
   INT64 ha_promotion_time;
   INT64 db_restore_time;
   bool mark_will_del;
-  bool does_block_need_vacuum;
+  bool does_block_need_vacuum;  /* MVCC/Vacuum: does *last* log vacuum block needs vacuum;
+				 * value correspondingt to last - in progress - vacuum block only */
   bool was_active_log_reset;
 
   log_header ()

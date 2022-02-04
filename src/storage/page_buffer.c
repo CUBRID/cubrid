@@ -8259,7 +8259,9 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
     {
-      _er_log_debug (ARG_FILE_LINE, "[READ DATA] Send request for Page to Page Server. VPID: %d|%d\n", VPID_AS_ARGS (vpid));
+      _er_log_debug (ARG_FILE_LINE, "[READ DATA] Send request for Page to Page Server."
+                                    " VPID: %d|%d, target repl LSA: %lld|%d\n",
+                     VPID_AS_ARGS (vpid), LSA_AS_ARGS(&target_repl_lsa));
     }
 
   std::string response_message;
@@ -8295,7 +8297,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, LSA: %lld|%d \n",
+	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, page LSA: %lld|%d \n",
 			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
 	}
     }
@@ -8339,7 +8341,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[READ DATA] Error %lld while fixing page %d|%d, replication LSA = %lld|%d\n",
+			 "[READ DATA] Error %lld while fixing page VPID = %d|%d, target repl LSA = %lld|%d\n",
 			 error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
 	}
     }
@@ -8359,7 +8361,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
 	{
 	  _er_log_debug (ARG_FILE_LINE,
 			 "[READ DATA] Successful while fixing page VPID = %d|%d,"
-			 " LSA = %lld|%d, replication LSA = %lld|%d\n",
+			 " page LSA = %lld|%d, target repl LSA = %lld|%d\n",
 			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS(&io_pgptr->prv.lsa), LSA_AS_ARGS (&target_repl_lsa));
 	}
 

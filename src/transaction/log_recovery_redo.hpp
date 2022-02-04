@@ -89,6 +89,11 @@ MVCCID log_rv_get_log_rec_mvccid (const T &log_rec);
 /*
  */
 template <typename T>
+void assert_correct_mvccid (const T &log_rec, MVCCID mvccid);
+
+/*
+ */
+template <typename T>
 VPID log_rv_get_log_rec_vpid (const T &log_rec);
 
 /*
@@ -111,7 +116,7 @@ rvfun::fun_t log_rv_get_fun (const T &, LOG_RCVINDEX rcvindex);
  */
 
 template <typename T>
-const LOG_DATA &log_rv_get_log_rec_data (const T &log_rec)
+inline const LOG_DATA &log_rv_get_log_rec_data (const T &log_rec)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   static constexpr log_data LOG_DATA_INITIALIZER =
@@ -162,7 +167,7 @@ inline const LOG_DATA &log_rv_get_log_rec_data<LOG_REC_COMPENSATE> (const LOG_RE
 }
 
 template <typename T>
-MVCCID log_rv_get_log_rec_mvccid (const T &)
+inline MVCCID log_rv_get_log_rec_mvccid (const T &)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   return MVCCID_NULL;
@@ -204,8 +209,78 @@ inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_COMPENSATE> (const LOG_REC_COMPE
   return MVCCID_NULL;
 }
 
+template <>
+inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_END &log_rec)
+{
+  if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+    {
+      return log_rec.mvcc_undo.mvccid;
+    }
+  return MVCCID_NULL;
+}
+
+template <>
+inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_MVCC_UNDO> (const LOG_REC_MVCC_UNDO &log_rec)
+{
+  return log_rec.mvccid;
+}
+
 template <typename T>
-VPID log_rv_get_log_rec_vpid (const T &log_rec)
+inline void assert_correct_mvccid (const T &, MVCCID)
+{
+  static_assert (sizeof (T) == 0, "purposefully not implemented");
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_REDO> (const LOG_REC_REDO &, MVCCID mvccid)
+{
+  assert (mvccid == MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_MVCC_REDO> (const LOG_REC_MVCC_REDO &, MVCCID mvccid)
+{
+  assert (mvccid == MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_UNDOREDO> (const LOG_REC_UNDOREDO &, MVCCID mvccid)
+{
+  assert (mvccid == MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MVCC_UNDOREDO &, MVCCID mvccid)
+{
+  assert (mvccid != MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_RUN_POSTPONE> (const LOG_REC_RUN_POSTPONE &, MVCCID mvccid)
+{
+  assert (mvccid == MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_COMPENSATE> (const LOG_REC_COMPENSATE &, MVCCID mvccid)
+{
+  assert (mvccid == MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_MVCC_UNDO> (const LOG_REC_MVCC_UNDO &, MVCCID mvccid)
+{
+  assert (mvccid != MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_END &log_rec, MVCCID mvccid)
+{
+  assert (log_rec.type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO || mvccid != MVCCID_NULL);
+}
+
+template <typename T>
+inline VPID log_rv_get_log_rec_vpid (const T &log_rec)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   return VPID_INITIALIZER;
@@ -272,7 +347,7 @@ inline VPID log_rv_get_log_rec_vpid<LOG_REC_COMPENSATE> (const LOG_REC_COMPENSAT
 }
 
 template <typename T>
-int log_rv_get_log_rec_redo_length (const T &log_rec)
+inline int log_rv_get_log_rec_redo_length (const T &log_rec)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   return -1;
@@ -315,7 +390,7 @@ inline int log_rv_get_log_rec_redo_length<LOG_REC_COMPENSATE> (const LOG_REC_COM
 }
 
 template <typename T>
-int log_rv_get_log_rec_offset (const T &log_rec)
+inline int log_rv_get_log_rec_offset (const T &log_rec)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   return -1;
@@ -358,7 +433,7 @@ inline int log_rv_get_log_rec_offset<LOG_REC_COMPENSATE> (const LOG_REC_COMPENSA
 }
 
 template <typename T>
-rvfun::fun_t log_rv_get_fun (const T &, LOG_RCVINDEX rcvindex)
+inline rvfun::fun_t log_rv_get_fun (const T &, LOG_RCVINDEX rcvindex)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   return nullptr;
