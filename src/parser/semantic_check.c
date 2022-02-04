@@ -8382,6 +8382,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (au_is_user_group_member (owner, Au_user) == false)
 	    {
 	      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_MEMBER_CREATE_NOT_ALLOWED);
+	      return;
 	    }
 	}
     }

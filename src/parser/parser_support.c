@@ -10000,7 +10000,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       intl_identifier_lower (resolved_name, downcase_resolved_name);
 
       if (is_user_specified_name && strlen (original_name) >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH)
-        {
+	{
 	  original_name[222] = '\0';
 	}
 

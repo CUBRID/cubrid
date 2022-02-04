@@ -494,7 +494,8 @@ options valids:\n\
                                      classe manquante dans le fichier de données\n\
       --error-control-file=FICHIER   FICHIER de contrôle d'erreur(s) pendant le chargement\n\
       --ignore-class-file=FICHIER    FICHIER d'entrée avec les noms de classe qui saut le chargement\n\
-      --no-user-specified-name       Find class, serial, and trigger by object-name and don't use user-specified-name.\n
+      --no-user-specified-name       Find class, serial, and trigger by object-name and don't use user-specified-name.\n\
+                                     For backward compatibility with the load file of the previous version of 11.2.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

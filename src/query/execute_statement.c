@@ -6360,7 +6360,7 @@ int
 do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_NODE *cond, *action, *target, *attr, *pri, *comment_node;
-  const char *name, *target_class_name, *comment;
+  const char *name, *comment;
   DB_TRIGGER_STATUS status;
   double priority;
   DB_TRIGGER_EVENT event;

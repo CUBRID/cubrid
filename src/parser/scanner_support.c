@@ -637,7 +637,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 					  arg->info.name.resolved = pt_makename (arg->info.name.resolved);
 					  *temp = '.';
 
-					  *temp++;
+					  temp++;
 
 					  arg->info.name.original = pt_trim_as_identifier (temp);
 					  arg->info.name.original = pt_makename (arg->info.name.original);

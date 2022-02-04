@@ -1874,6 +1874,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 No se pudo encontrar la signatura compatible para la función %1$s()
 305 Signatura %1$s no es compatible con argumentos de función.
 306 dblink - Falta la información requerida.
+307 A member of owner group or a member of DBA group can CREATE TABLE.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.

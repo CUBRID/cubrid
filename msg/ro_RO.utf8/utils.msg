@@ -505,7 +505,8 @@ opţiuni valide:\n\
   -t, --table=TABELA                numele tabelei înlocuite pentru antetul de clasă absent din fişierul de date\n\
       --error-control-file=FIŞIER   FIŞIER de control al erorilor în timpul încărcării\n\
       --ignore-class-file=FIŞIER    FIŞIER de intrare cu numele claselor ce nu vor fi încărcate\n\
-      --no-user-specified-name      Find class, serial, and trigger by object-name and don't use user-specified-name.\n
+      --no-user-specified-name      Find class, serial, and trigger by object-name and don't use user-specified-name.\n\
+                                    For backward compatibility with the load file of the previous version of 11.2.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

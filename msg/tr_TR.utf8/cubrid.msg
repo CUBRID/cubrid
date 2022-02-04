@@ -1874,6 +1874,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 %1$s() fonksiyonu için uyumlu bir imza bulunamadı
 305 İmza %1$s, argümanları ile uyumlu değildir.
 306 dblink - Gerekli bilgiler eksik.
+307 A member of owner group or a member of DBA group can CREATE TABLE.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

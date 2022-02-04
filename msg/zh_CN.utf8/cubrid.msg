@@ -1875,6 +1875,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 没有找到与 %1$s() 函数兼容的签名.
 305 函数签名 %1$s 与函数参数不匹配.
 306 dblink - 缺少必需的信息.
+307 A member of owner group or a member of DBA group can CREATE TABLE.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

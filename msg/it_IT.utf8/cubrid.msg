@@ -1874,6 +1874,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Impossibile trovare una firma compatibile per la funzione %1$s()
 305 Firma %1$s non è compatibile con gli argomenti delle funzioni.
 306 dblink - Mancano le informazioni richieste.
+307 A member of owner group or a member of DBA group can CREATE TABLE.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.

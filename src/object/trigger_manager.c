@@ -6785,7 +6785,7 @@ tr_dump_all_triggers (FILE * fp, bool quoted_id_flag)
 				{
 				  tr_dump_trigger (trigger_object, fp, quoted_id_flag);
 				  fprintf (fp, "call [change_trigger_owner]('%s'," " '%s') on class [db_root];\n\n",
-					   sm_simple_name (trigger->name), get_user_name (trigger->owner));
+					   trigger->name, get_user_name (trigger->owner));
 				}
 			    }
 			}
