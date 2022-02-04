@@ -39,13 +39,11 @@ import java.net.URLClassLoader;
 import java.util.HashMap;
 
 public class StoredProcedureClassLoader extends URLClassLoader {
-    private static volatile StoredProcedureClassLoader instance = null;
-
     private HashMap<String, Long> files = new HashMap<String, Long>();
 
     private File root;
 
-    private StoredProcedureClassLoader() {
+    public StoredProcedureClassLoader() {
         super(new URL[0]);
         init();
     }
@@ -102,55 +100,7 @@ public class StoredProcedureClassLoader extends URLClassLoader {
     }
 
     public Class<?> loadClass(String name) throws ClassNotFoundException {
-        if (!modified()) {
-            return super.loadClass(name);
-        }
-
-        instance = new StoredProcedureClassLoader();
-        return instance.loadClass(name);
-    }
-
-    private boolean modified() {
-        File[] files =
-                root.listFiles(
-                        new FileFilter() {
-                            public boolean accept(File f) {
-                                return isJarFile(f) || isClassFile(f);
-                            }
-                        });
-
-        if (files == null) {
-            return !this.files.isEmpty();
-        }
-
-        if (this.files.size() != files.length) {
-            return true;
-        }
-
-        for (int i = 0; i < files.length; i++) {
-            if (!this.files.containsKey(files[i].getName())) {
-                return true;
-            }
-
-            long l = this.files.get(files[i].getName());
-            if (files[i].lastModified() != l) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public static StoredProcedureClassLoader getInstance() {
-        if (instance == null) {
-            synchronized (StoredProcedureClassLoader.class) {
-                if (instance == null) {
-                    instance = new StoredProcedureClassLoader();
-                }
-            }
-        }
-
-        return instance;
+        return super.loadClass(name);
     }
 
     private boolean isJarFile(File f) {
