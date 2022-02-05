@@ -1421,7 +1421,7 @@ ldr_find_class (const char *class_name)
 {
   DB_OBJECT *class_ = NULL;
   LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
-  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   /* Check for internal error */
   if (class_name == NULL || class_name[0] == '\0')
@@ -1431,7 +1431,7 @@ ldr_find_class (const char *class_name)
       return NULL;
     }
 
-  sm_user_specified_name (class_name, NULL, realname, DB_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (class_name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
   ldr_Hint_class_names[0] = realname;
 

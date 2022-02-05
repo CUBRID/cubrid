@@ -2998,15 +2998,12 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
 {
   LC_FIND_CLASSNAME found;
   int error_code;
-  char realname[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 
   assert (classname != NULL);
 
-  sm_user_specified_name (classname, NULL, realname, DB_MAX_IDENTIFIER_LENGTH);
-
   /* Need to check the classname to oid in the server */
   *class_mop = NULL;
-  found = locator_find_class_oid (realname, class_oid, lock);
+  found = locator_find_class_oid (classname, class_oid, lock);
   switch (found)
     {
     case LC_CLASSNAME_EXIST:
@@ -3020,7 +3017,7 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
 	    }
 	  else
 	    {
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, realname);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, classname);
 	    }
 
 	  return found;
@@ -3042,7 +3039,7 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
       break;
 
     case LC_CLASSNAME_DELETED:
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, realname);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, classname);
       break;
 
     case LC_CLASSNAME_ERROR:

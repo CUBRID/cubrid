@@ -5251,7 +5251,6 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_owner = 0;
   MOP *sub_partitions = NULL;
   const char *class_name = NULL, *owner_name = NULL;
-  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_CLASS *clsobj;
 
   db_make_null (returnval);
@@ -5269,8 +5268,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
       return;
     }
 
-  sm_user_specified_name (class_name, NULL, realname, DB_MAX_IDENTIFIER_LENGTH);
-  classmop = sm_find_class (realname);
+  classmop = sm_find_class (class_name);
   if (classmop == NULL)
     {
       db_make_error (returnval, er_errid ());
@@ -5604,15 +5602,12 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
 {
   MOP user;
   MOP classmop;
-  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (returnval);
-
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
-      sm_user_specified_name (db_get_string (class_), NULL, realname, DB_MAX_IDENTIFIER_LENGTH);
-      classmop = sm_find_class (realname);
+      classmop = sm_find_class (db_get_string (class_));
       if (classmop != NULL)
 	{
 	  user = au_get_class_owner (classmop);

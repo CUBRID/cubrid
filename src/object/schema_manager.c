@@ -2159,80 +2159,47 @@ sm_check_name (const char *name)
 
 void
 sm_downcase_name (const char *name, char *buf, int maxlen)
-{
-#ifndef NDEBUG
-  int name_size;
-
-  name_size = intl_identifier_lower_string_size (name);
+{ 
+  assert (name && name[0] != '\0');
+  assert (buf != NULL);
   /* the sizes of lower and upper version of an identifier are checked when entering the system */
-  assert (name_size < maxlen);
-#endif
+  assert (maxlen > intl_identifier_lower_string_size (name));
 
   intl_identifier_lower (name, buf);
 }
 
-/* AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH is not a target. 
- * Trigger and serial names can be longer than DB_MAX_IDENTIFIER_LENGTH.
- */
-int
-sm_user_specified_name (const char *name, const char *owner_name, char *buf, int buf_size)
+void
+sm_user_specified_name (const char *name, char *buf, int buf_size)
 {
-  char *dot = NULL;
-  const char *name_p = NULL;
-  const char *owner_name_p = NULL;
+  char user_specified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *current_user_name = NULL;
-  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  int name_size = 0;
   int error = NO_ERROR;
 
-  if (name == NULL || name[0] == '\0')
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_NAME, 1, name);
-      return er_errid ();
-    }
+  assert (name && name[0] != '\0');
+  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
+  assert (buf != NULL);
+  assert (buf_size >= SM_MAX_IDENTIFIER_LENGTH);
 
   memset (buf, 0, buf_size);
 
-  dot = (char *) strchr (name, '.');
-  if (dot)
+  if (strchr (name, '.'))
     {
+      /* It is already user_specified_name. */
       sm_downcase_name (name, buf, buf_size);
-      return NO_ERROR;
+      return;
     }
 
-  if (sm_check_system_class_by_name (name)
-      && (owner_name == NULL || owner_name[0] == '\0' || intl_identifier_casecmp (owner_name, "DBA") == 0))
+  if (sm_check_system_class_by_name (name))
     {
+      /* The user_specified_name of the system class is the same as the class_name. */
       sm_downcase_name (name, buf, buf_size);
-      return NO_ERROR;
+      return;
     }
 
-  if (owner_name && owner_name[0] != '\0')
-    {
-      dot = (char *) strchr (owner_name, '.');
-      if (dot)
-	{
-	  dot[0] = '\0';
-	  snprintf (qualifier_name, DB_MAX_USER_LENGTH, "%s", owner_name);
-	  dot[0] = '.';
+  current_user_name = db_get_user_name ();
+  assert (current_user_name != NULL);
 
-	  owner_name_p = qualifier_name;
-	}
-      else
-	{
-	  owner_name_p = owner_name;
-	}
-    }
-  else
-    {
-      current_user_name = db_get_user_name ();
-      assert (current_user_name != NULL);
-
-      owner_name_p = current_user_name;
-    }
-
-  snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", owner_name_p, name);
+  snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_user_name, name);
   sm_downcase_name (user_specified_name, buf, buf_size);
 
   if (current_user_name)
@@ -2240,8 +2207,6 @@ sm_user_specified_name (const char *name, const char *owner_name, char *buf, int
       db_string_free (current_user_name);
       current_user_name = NULL;
     }
-
-  return error;
 }
 
 /*
@@ -5327,7 +5292,7 @@ sm_find_class (const char *name)
 {
   char realname[SM_MAX_IDENTIFIER_LENGTH];
 
-  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
   return (locator_find_class (realname));
 }
@@ -5346,7 +5311,7 @@ sm_find_class_with_purpose (const char *name, bool for_update)
 {
   char realname[SM_MAX_IDENTIFIER_LENGTH];
 
-  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
   return (locator_find_class_with_purpose (realname, for_update));
 }

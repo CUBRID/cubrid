@@ -19690,6 +19690,17 @@ path_expression
 				  = dot->info.dot.arg1;
 				dot->info.dot.arg1 = NULL; /* cut */
 
+				if (PT_IS_DOT_NODE (serial_value->info.expr.arg1))
+				  {
+				    PT_NAME_INFO_SET_FLAG (serial_value->info.expr.arg1->info.dot.arg2,
+							    PT_NAME_INFO_USER_SPECIFIED);
+				  }
+				else
+				  {
+				    assert (PT_IS_NAME_NODE (serial_value->info.expr.arg1));
+				    PT_NAME_INFO_SET_FLAG (serial_value->info.expr.arg1, PT_NAME_INFO_USER_SPECIFIED);
+				  }
+
 				serial_value->info.expr.arg2 = NULL;
 
 				PICE (serial_value);
@@ -19714,6 +19725,17 @@ path_expression
 				serial_value->info.expr.arg1
 				  = dot->info.dot.arg1;
 				dot->info.dot.arg1 = NULL; /* cut */
+
+				if (PT_IS_DOT_NODE (serial_value->info.expr.arg1))
+				  {
+				    PT_NAME_INFO_SET_FLAG (serial_value->info.expr.arg1->info.dot.arg2,
+							    PT_NAME_INFO_USER_SPECIFIED);
+				  }
+				else
+				  {
+				    assert (PT_IS_NAME_NODE (serial_value->info.expr.arg1));
+				    PT_NAME_INFO_SET_FLAG (serial_value->info.expr.arg1, PT_NAME_INFO_USER_SPECIFIED);
+				  }
 
 				serial_value->info.expr.arg2
 				  = parser_new_node (this_parser, PT_VALUE);
@@ -21778,7 +21800,7 @@ identifier_without_dot
 			    if (name && strchr (name, '.'))
 			      {
 				PT_ERRORf (this_parser, p,
-					   "Identifier name %s not allowed. It cannot contain dot(.).",
+					   "Identifier name [%s] not allowed. It cannot contain dot(.).",
 					   name);
 
 				p = NULL;

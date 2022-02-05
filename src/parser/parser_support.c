@@ -9903,45 +9903,47 @@ PT_NODE *
 pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   const char *dot = NULL;
-  char *original_name = NULL;
+  const char *original_name = NULL;
   const char *resolved_name = NULL;
   char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
   char *current_user_name = NULL;
   const char *user_specified_name = NULL;
-  int is_user_specified_name = false;
 
   if (!node)
     {
       return NULL;
     }
 
-  if (PT_IS_NAME_NODE (node) && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+  if (PT_IS_NAME_NODE (node)
+      && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
     {
-      is_user_specified_name = true;
-
-      original_name = (char *) node->info.name.original;
+      original_name = node->info.name.original;
       resolved_name = node->info.name.resolved;
     }
   else if (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op))
     {
       if (PT_IS_DOT_NODE (node->info.expr.arg1)
 	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg1)
-	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2))
+	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2)
+	  && PT_NAME_INFO_IS_FLAGED (node->info.expr.arg1->info.dot.arg2, PT_NAME_INFO_USER_SPECIFIED))
 	{
 	  PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
 	  PT_NODE *name = node->info.expr.arg1->info.dot.arg2;
 
-	  original_name = (char *) name->info.name.original;
+	  original_name = name->info.name.original;
 	  resolved_name = owner->info.name.original;
 	}
-      else
+      else if (PT_IS_NAME_NODE (node->info.expr.arg1)
+      	       && PT_NAME_INFO_IS_FLAGED (node->info.expr.arg1, PT_NAME_INFO_USER_SPECIFIED))
 	{
-	  assert (PT_IS_NAME_NODE (node->info.expr.arg1));
-
 	  PT_NODE *name = node->info.expr.arg1;
 
-	  original_name = (char *) name->info.name.original;
+	  original_name = name->info.name.original;
 	  resolved_name = name->info.name.resolved;
+	}
+      else
+        {
+	  return node;
 	}
     }
   else
@@ -9949,18 +9951,11 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       return node;
     }
 
-  if (original_name == NULL || original_name[0] == '\0')
-    {
-      return node;
-    }
+  assert (original_name && original_name[0] != '\0');
 
   if (strchr (original_name, '.'))
     {
-      return node;
-    }
-
-  if (resolved_name && resolved_name[0] != '\0' && strchr (resolved_name, '.'))
-    {
+      /* It is already user_specified_name. */
       return node;
     }
 
@@ -9978,7 +9973,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
    * 
    * In case 5, raises an error to inform the user of an incorrect customization.
    */
-  if (is_user_specified_name && sm_check_system_class_by_name (original_name))
+  if (!PT_IS_SERIAL (node->info.expr.op) && sm_check_system_class_by_name (original_name))
     {
       /* Skip in case 4, 6 */
       if (resolved_name == NULL || resolved_name[0] == '\0' || intl_identifier_casecmp (resolved_name, "DBA") == 0)
@@ -9995,50 +9990,58 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       resolved_name = current_user_name;
     }
 
-  if (resolved_name)
+  if (strlen (resolved_name) >= DB_MAX_USER_LENGTH)
     {
-      intl_identifier_lower (resolved_name, downcase_resolved_name);
+      PT_ERRORf2 (parser, node,
+		  "User name [%s] not allowed. It cannot exceed %d bytes.", resolved_name, DB_MAX_USER_LENGTH);
+    }
 
-      if (is_user_specified_name && strlen (original_name) >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH)
+  intl_identifier_lower (resolved_name, downcase_resolved_name);
+
+  if (strlen (original_name) >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH)
+    {
+      char *name = (char *) original_name;
+      strcpy (name + 60, "...");
+      PT_ERRORf2 (parser, node,
+		  "Identifier name [%s] not allowed. It cannot exceed %d bytes.",
+		  original_name, DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
+    }
+
+  /* In case 1, 2, 3, 5 */
+  user_specified_name = pt_append_string (parser, NULL, downcase_resolved_name);
+  user_specified_name = pt_append_string (parser, user_specified_name, ".");
+  user_specified_name = pt_append_string (parser, user_specified_name, original_name);
+
+  if (PT_IS_NAME_NODE (node))
+    {
+      node->info.name.original = user_specified_name;
+      node->info.name.resolved = NULL;
+    }
+  else
+    {
+      assert (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op));
+
+      if (PT_IS_DOT_NODE (node->info.expr.arg1))
 	{
-	  original_name[222] = '\0';
-	}
+	  node->info.expr.arg1->info.dot.arg2->info.name.original = user_specified_name;
+	  node->info.expr.arg1->info.dot.arg2->info.name.resolved = NULL;
 
-      /* In case 1, 2, 3, 5 */
-      user_specified_name = pt_append_string (parser, NULL, downcase_resolved_name);
-      user_specified_name = pt_append_string (parser, user_specified_name, ".");
-      user_specified_name = pt_append_string (parser, user_specified_name, original_name);
-
-      if (is_user_specified_name && PT_IS_NAME_NODE (node))
-	{
-	  node->info.name.original = user_specified_name;
-	  node->info.name.resolved = NULL;
+	  parser_free_tree (parser, node->info.expr.arg1->info.dot.arg1);
+	  node->info.expr.arg1 = node->info.expr.arg1->info.dot.arg2;
 	}
       else
 	{
-	  assert (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op));
+	  assert (PT_IS_NAME_NODE (node->info.expr.arg1));
 
-	  if (PT_IS_DOT_NODE (node->info.expr.arg1))
-	    {
-	      node->info.expr.arg1->info.dot.arg2->info.name.original = user_specified_name;
-	      node->info.expr.arg1->info.dot.arg2->info.name.resolved = NULL;
-
-	      parser_free_tree (parser, node->info.expr.arg1->info.dot.arg1);
-	      node->info.expr.arg1 = node->info.expr.arg1->info.dot.arg2;
-	    }
-	  else
-	    {
-	      assert (PT_IS_NAME_NODE (node->info.expr.arg1));
-
-	      node->info.expr.arg1->info.name.original = user_specified_name;
-	      node->info.expr.arg1->info.name.resolved = NULL;
-	    }
+	  node->info.expr.arg1->info.name.original = user_specified_name;
+	  node->info.expr.arg1->info.name.resolved = NULL;
 	}
     }
 
   if (current_user_name)
     {
       db_string_free (current_user_name);
+      current_user_name = NULL;
     }
 
   return node;
