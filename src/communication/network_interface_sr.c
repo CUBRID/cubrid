@@ -84,7 +84,7 @@
 #include "elo.h"
 #include "transaction_transient.hpp"
 #include "crypt_opfunc.h"
-
+#include "flashback.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */

@@ -257,10 +257,8 @@ extern void cdc_kill_producer ();
 
 extern void cdc_pause_consumer ();
 extern void cdc_wakeup_consumer ();
-
-/* flashback */
-extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
-extern void flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
+extern SCAN_CODE cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa,
+				      RECDES * undo_recdes);
 
 //
 // log critical section

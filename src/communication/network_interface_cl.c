@@ -10561,8 +10561,8 @@ loaddb_update_stats ()
 #endif /* !CS_MODE */
 }
 
-static char *
-unpacking_summary_entry (char *ptr)
+static int
+unpacking_summary_entry (char **ptr, Map_Summary & summary)
 {
   TRANID trid;
   char *user = NULL;
@@ -10572,32 +10572,48 @@ unpacking_summary_entry (char *ptr)
   int num_table;
   OID tablelist[32];
 
-  ptr = or_unpack_int (ptr, &trid);
-  ptr = or_unpack_string_nocopy (ptr, &user);
-  ptr = or_unpack_int64 (ptr, &start_time);
-  ptr = or_unpack_int64 (ptr, &end_time);
-  ptr = or_unpack_int (ptr, &num_insert);
-  ptr = or_unpack_int (ptr, &num_update);
-  ptr = or_unpack_int (ptr, &num_delete);
-  ptr = or_unpack_log_lsa (ptr, &start_lsa);
-  ptr = or_unpack_log_lsa (ptr, &end_lsa);
-  ptr = or_unpack_int (ptr, &num_table);
+  char *tmp_ptr = *ptr;
 
-  for (int j = 0; j < num_table; j++)
+  FLASHBACK_SUMMARY_INFO *info = (FLASHBACK_SUMMARY_INFO *) malloc (sizeof (FLASHBACK_SUMMARY_INFO));
+  if (info == NULL)
     {
-      ptr = or_unpack_oid (ptr, &tablelist[j]);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  return ptr;
+  tmp_ptr = or_unpack_int (tmp_ptr, &trid);
+  tmp_ptr = or_unpack_int64 (tmp_ptr, &start_time);
+  tmp_ptr = or_unpack_int64 (tmp_ptr, &end_time);
+  tmp_ptr = or_unpack_int (tmp_ptr, &num_insert);
+  tmp_ptr = or_unpack_int (tmp_ptr, &num_update);
+  tmp_ptr = or_unpack_int (tmp_ptr, &num_delete);
+  tmp_ptr = or_unpack_log_lsa (tmp_ptr, &start_lsa);
+  tmp_ptr = or_unpack_log_lsa (tmp_ptr, &end_lsa);
+  tmp_ptr = or_unpack_int (tmp_ptr, &num_table);
+
+  info->trid = trid;
+  info->start_lsa = start_lsa;
+  info->end_lsa = end_lsa;
+
+/* *INDENT-OFF* */
+  summary.insert (std::make_pair (trid, info));
+/* *INDENT-ON* */
+  for (int j = 0; j < num_table; j++)
+    {
+      tmp_ptr = or_unpack_oid (tmp_ptr, &tablelist[j]);
+    }
+
+  *ptr = tmp_ptr;
+
+  return NO_ERROR;
 }
 
 int
 flashback_get_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
-		       void *summary_list, OID ** oid_list)
+		       Map_Summary & summary, OID ** oid_list)
 {
 #if defined(CS_MODE)
-  int req_error = ER_FAILED;
-  int rep_error = ER_FAILED;
+  int error_code = NO_ERROR;
+
   int request_size = 0;
   char *request = NULL, *ptr, *start_ptr;
   int num_class = 0;
@@ -10652,14 +10668,14 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 
   request_size = ptr - start_ptr;
 
-  req_error =
+  error_code =
     net_client_request2 (NET_SERVER_FLASHBACK_GET_SUMMARY, start_ptr, request_size, reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
 
-  if (req_error == NO_ERROR)
+  if (error_code == NO_ERROR)
     {
       ptr = or_unpack_int (reply, &area_size);
-      ptr = or_unpack_int (ptr, &rep_error);
+      ptr = or_unpack_int (ptr, &error_code);
       if (area_size > 0)
 	{
 	  ptr = area;
@@ -10673,7 +10689,11 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 
 	  for (int i = 0; i < num_summary; i++)
 	    {
-	      ptr = unpacking_summary_entry (ptr);
+	      error_code = unpacking_summary_entry (&ptr, summary);
+	      if (error_code != NO_ERROR)
+		{
+		  break;
+		}
 	    }
 	}
 
@@ -10682,7 +10702,7 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 
   free_and_init (request);
 
-  return req_error != NO_ERROR ? req_error : rep_error;
+  return error_code;
 #endif // CS_MODE
   return ER_NOT_IN_STANDALONE;
 }

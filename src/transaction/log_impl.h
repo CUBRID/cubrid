@@ -324,20 +324,6 @@ extern int db_Disable_modifications;
     } \
   while (0)
 
-#define FLASHBACK_CHECK_AND_GET_SUMMARY(summary_list, trid, summary_entry) \
-  do \
-    { \
-      if ((summary_list).count(trid) != 0) \
-      { \
-        summary_entry = (summary_list).at(trid); \
-      } \
-      else \
-      { \
-        summary_entry = NULL; \
-      } \
-    } \
-  while (0)
-
 #define cdc_log(...) if (cdc_Logging) _er_log_debug (ARG_FILE_LINE, "CDC: " __VA_ARGS__)
 
 #define MAX_CDC_LOGINFO_QUEUE_ENTRY  2048
@@ -960,38 +946,6 @@ typedef enum cdc_dml_type
 } CDC_DML_TYPE;
 
 /*Data structure for CDC interface end */
-
-/* flashback */
-#define FLASHBACK_MAX_SUMMARY   INT_MAX
-#define FLASHBACK_MAX_TABLE     32
-#define OR_SUMMARY_ENTRY_SIZE   (OR_INT_SIZE + OR_INT64_SIZE * 2 + OR_INT_SIZE * 3 + OR_LOG_LSA_SIZE * 2 + OR_INT_SIZE + FLASHBACK_MAX_TABLE * OR_OID_SIZE)
-
-typedef struct flashback_summary_entry
-{
-  TRANID trid;
-  time_t start_time;
-  time_t end_time;
-  int num_insert;
-  int num_update;
-  int num_delete;
-  LOG_LSA start_lsa;
-  LOG_LSA end_lsa;
-  int num_class;
-  OID classlist[FLASHBACK_MAX_TABLE];
-} FLASHBACK_SUMMARY_ENTRY;
-
-typedef struct flashback_summary_context
-{
-  LOG_LSA start_lsa;
-  LOG_LSA end_lsa;
-  int num_class;
-  OID classlist[FLASHBACK_MAX_TABLE];
-  char *user;
-  int num_summary;
-  // *INDENT-OFF*
-  std::unordered_map <TRANID, FLASHBACK_SUMMARY_ENTRY*> summary_list;
-  // *INDENT-ON*
-} FLASHBACK_SUMMARY_CONTEXT;
 
 // todo - move to manager
 enum log_cs_access_mode

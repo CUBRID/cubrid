@@ -59,6 +59,7 @@
 #include "xasl.h"
 #include "log_volids.hpp"
 #include "tde.h"
+#include "flashback.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -4027,6 +4028,20 @@ parse_date_string_to_time (char *date_string)
   return result < 0 ? 0 : result;
 }
 
+/* *INDENT-OFF* */
+static int
+cleanup_summary_info (Map_Summary &summary_info)
+{
+  for (auto iter:summary_info)
+    {
+      if (iter.second != NULL)
+        {
+          free_and_init (iter.second);
+        }
+    }
+}
+/* *INDENT-ON* */
+
 int
 flashback (UTIL_FUNCTION_ARG * arg)
 {
@@ -4060,6 +4075,10 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   int trid = 0;
   int num_item = 0;
+
+/* *INDENT-OFF* */
+  Map_Summary summary_info;
+/* *INDENT-ON* */
 
   /* temporary variables for test */
   LOG_LSA start_lsa = LSA_INITIALIZER;
@@ -4239,7 +4258,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  error = flashback_get_summary (darray, user, start_time, end_time, NULL, &oid_list);
+  error = flashback_get_summary (darray, user, start_time, end_time, summary_info, &oid_list);
   if (error != NO_ERROR)
     {
       db_shutdown ();
