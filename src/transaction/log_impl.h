@@ -951,13 +951,14 @@ typedef enum cdc_dml_type
 typedef struct flashback_loginfo_context
 {
   TRANID trid;
-  char user[DB_MAX_USER_LENGTH + 1];
+  char *user;
   LOG_LSA start_lsa;
   LOG_LSA end_lsa;
   int num_class;
   OID classlist[32];
-  bool forward;
+  int forward;
   int num_item;
+  int queue_size;
   // *INDENT-OFF*
   std::queue<CDC_LOGINFO_ENTRY *> loginfo_queue;
   // *INDENT-ON*

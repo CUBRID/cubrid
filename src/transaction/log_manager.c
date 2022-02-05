@@ -14801,7 +14801,7 @@ flashback_class_filter (FLASHBACK_LOGINFO_CONTEXT * context, OID classoid)
 }
 
 int
-flashback_get_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context)
+flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context)
 {
   LOG_LSA cur_log_rec_lsa;
   LOG_LSA next_lsa, process_lsa;
@@ -14930,9 +14930,10 @@ begin:
 
 	  if (error == NO_ERROR)
 	    {
-                // *INDENT-OFF*
-                context->loginfo_queue.push (log_info_entry);
-                // *INDENT-ON*
+              // *INDENT-OFF*
+              context->loginfo_queue.push (log_info_entry);
+              // *INDENT-ON*
+	      context->queue_size += log_info_entry->length;
 	      num_loginfo++;
 	    }
 	  else
@@ -14983,9 +14984,10 @@ begin:
 
 	  if (error == NO_ERROR)
 	    {
-                // *INDENT-OFF*
-                context->loginfo_queue.push (log_info_entry);
-                // *INDENT-ON*
+              // *INDENT-OFF*
+              context->loginfo_queue.push (log_info_entry);
+              // *INDENT-ON*
+	      context->queue_size += log_info_entry->length;
 	      num_loginfo++;
 	    }
 	  else
@@ -15017,9 +15019,10 @@ begin:
 
 	  if (error == NO_ERROR)
 	    {
-                // *INDENT-OFF*
-                context->loginfo_queue.push (log_info_entry);
-                // *INDENT-ON*
+              // *INDENT-OFF*
+              context->loginfo_queue.push (log_info_entry);
+              // *INDENT-ON*
+	      context->queue_size += log_info_entry->length;
 	      num_loginfo++;
 	    }
 	  else

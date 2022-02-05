@@ -257,6 +257,9 @@ extern void cdc_kill_producer ();
 
 extern void cdc_pause_consumer ();
 extern void cdc_wakeup_consumer ();
+
+/* flashback */
+extern int flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context);
 //
 // log critical section
 //
