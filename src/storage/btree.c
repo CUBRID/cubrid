@@ -24851,7 +24851,8 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   /* Unfix current page and retry. */
   pgbuf_unfix_and_init (thread_p, bts->C_page);
   error_code =
-    pgbuf_fix_if_not_deallocated (thread_p, &prev_leaf_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &prev_leaf);
+    pgbuf_fix_if_not_deallocated_with_repl_desync_check (thread_p, &prev_leaf_vpid, PGBUF_LATCH_READ,
+							 PGBUF_UNCONDITIONAL_LATCH, &prev_leaf);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -24891,7 +24892,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
 	{
 	  bts->force_restart_from_root = true;
-	  pgbuf_unfix_and_init (thread_p, bts->C_page);
+	  pgbuf_unfix_and_init (thread_p, prev_leaf);
 	  return NO_ERROR;
 	}
 
