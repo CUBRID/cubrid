@@ -70,6 +70,8 @@ static int prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE *node, int num_cru
 static void prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes);
 static void prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 static void prior_lsa_append_data (int length);
+STATIC_INLINE void prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node,
+    LOG_VACUUM_INFO *&dest_vacuum_info, MVCCID &mvccid);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
 static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
@@ -126,6 +128,9 @@ log_prior_lsa_info::log_prior_lsa_info ()
 {
 }
 
+/* log_prior_lsa_info::push_list - function called on server instances that perform replication
+ *            (page server, passive transaction server)
+ */
 void
 log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list_tail)
 {
@@ -1329,6 +1334,96 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
   return error_code;
 }
 
+/* log_replication_update_header_mvcc_vacuum_info - during replication, update mvcc/vacuum related fields in
+ *                    log header to be able to supply a valid/consistent state to a re-booting ATS
+ *
+ * NOTE: Vacuum subsystem makes use of some log header fields to bookkeep info that is needed to decide
+ * when to dispatch vacuum jobs.
+ * In a standalone server, this information is updated when log records are about to be added to log prior
+ * lists in prior_lsa_next_record_internal.
+ * In scalability setup, active transaction server (ATS) executes the same routine, but page server (PS)
+ * will need to also perform this bookkeeping update when replication (is about to) happen(s).
+ * This is needed because ATS receives its initial state from PS upon boot and this bookkeeping is part of
+ * that state - as being part of log header structure.
+ *
+ * NOTE: when an ATS boots up (eg: as part of a stop/crash and restart sequence), it is presumed that
+ * a functioning PS would have already caught up with replicating all previous supplied log data and sits idle.
+ * Therefore, the state that the ATS will receive will be consistent.
+ * Normally, on ATS (or single non-scalability-architecture server, for that matter) updating the log header
+ * mvcc/vacuum fields is consistently done under 'prior lsa mutex'. On a PS, this is not needed as the
+ * image does not need to be consistent at all time, but only at the point where PS has finished replicating
+ * received log and sits idle.
+ *
+ * NOTE: it might be possible that another option is to properly restore these fields on a booting-up
+ * ATS based on investigating already saved log.
+ *
+ * NOTE: function is used by the log replication infrastructure, but is placed here to be near the corresponding
+ *    function used by the active transaction server (ie: by a non-replicating server)
+ */
+void
+log_replication_update_header_mvcc_vacuum_info (const MVCCID &mvccid, const log_lsa &prev_rec_lsa,
+    const log_lsa &rec_lsa, bool bookkeep_mvcc_vacuum_info)
+{
+  if (bookkeep_mvcc_vacuum_info)
+    {
+      const VACUUM_LOG_BLOCKID prev_log_record_vacuum_blockid = vacuum_get_log_blockid (prev_rec_lsa.pageid);
+      const VACUUM_LOG_BLOCKID curr_log_record_vacuum_blockid = vacuum_get_log_blockid (rec_lsa.pageid);
+      if (prev_log_record_vacuum_blockid != curr_log_record_vacuum_blockid)
+	{
+	  // advance to new vacuum block, reset vacuum block dependent variables in log header
+	  // if current log record is mvcc/vacuum relevant, variables will be properly set
+	  log_Gl.hdr.newest_block_mvccid = MVCCID_NULL;
+	  log_Gl.hdr.does_block_need_vacuum = false;
+
+	  // according to how this value is initialized in vacuum_recover_lost_block_data:
+	  //    for the last recovered and unconsumed vacuum block, the smallest mvccid encountered
+	  //    in that block is calculated
+	  // also, the value is reset in vacuum_rv_redo_vacuum_complete which is executed
+	  //    after each vacuumn complete log record (which is also executed on a per-block) basis
+	  log_Gl.hdr.oldest_visible_mvccid = MVCCID_NULL;
+	}
+    }
+
+  if (mvccid != MVCCID_NULL)
+    {
+      // TODO: check whether passive transaction server uses mvcc_next_id and, if not, only perform this
+      // updating on page server only as well
+
+      // log header variables which ARE NOT vacuum block dependent
+      if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
+	{
+	  // To allow reads on the page server, make sure that all changes are visible.
+	  // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
+	  log_Gl.hdr.mvcc_next_id = mvccid;
+	  MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
+	}
+
+      // NOTE: following only needs to be done on page servers
+      if (bookkeep_mvcc_vacuum_info)
+	{
+	  assert (log_Gl.hdr.mvcc_op_log_lsa == NULL_LSA || log_Gl.hdr.mvcc_op_log_lsa < rec_lsa);
+	  log_Gl.hdr.mvcc_op_log_lsa = rec_lsa;
+
+	  // log header variables which ARE vacuum block dependent
+	  if (log_Gl.hdr.newest_block_mvccid == MVCCID_NULL || log_Gl.hdr.newest_block_mvccid < mvccid)
+	    {
+	      log_Gl.hdr.newest_block_mvccid = mvccid;
+	    }
+	  log_Gl.hdr.does_block_need_vacuum = true;
+
+	  // keep a minimum mvccid id value, per block
+	  if (log_Gl.hdr.oldest_visible_mvccid == MVCCID_NULL)
+	    {
+	      log_Gl.hdr.oldest_visible_mvccid = mvccid;
+	    }
+	  else if (mvccid < log_Gl.hdr.oldest_visible_mvccid)
+	    {
+	      log_Gl.hdr.oldest_visible_mvccid = mvccid;
+	    }
+	}
+    }
+}
+
 static void
 prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
 {
@@ -1355,6 +1450,41 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
     }
   log_Gl.hdr.mvcc_op_log_lsa = record_lsa;
   log_Gl.hdr.does_block_need_vacuum = true;
+}
+
+STATIC_INLINE void
+prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node, LOG_VACUUM_INFO *&dest_vacuum_info,
+    MVCCID &mvccid)
+{
+  dest_vacuum_info = nullptr;
+  mvccid = MVCCID_NULL;
+
+  if (node->log_header.type == LOG_MVCC_UNDO_DATA)
+    {
+      /* Read from mvcc_undo structure */
+      LOG_REC_MVCC_UNDO *const mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
+      dest_vacuum_info = &mvcc_undo->vacuum_info;
+      mvccid = mvcc_undo->mvccid;
+    }
+  else if (node->log_header.type == LOG_MVCC_UNDOREDO_DATA || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+    {
+      /* Read for mvcc_undoredo structure */
+      LOG_REC_MVCC_UNDOREDO *const mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
+      dest_vacuum_info = &mvcc_undoredo->vacuum_info;
+      mvccid = mvcc_undoredo->mvccid;
+    }
+  else if (node->log_header.type == LOG_SYSOP_END
+	   && ((LOG_REC_SYSOP_END *)node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+    {
+      /* Read from mvcc_undo structure */
+      LOG_REC_MVCC_UNDO *const mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
+      dest_vacuum_info = &mvcc_undo->vacuum_info;
+      mvccid = mvcc_undo->mvccid;
+    }
+  else
+    {
+      assert ("not an mvcc prior node" == nullptr);
+    }
 }
 
 /*
@@ -1405,30 +1535,9 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
     {
       /* Link the log record to previous MVCC delete/update log record */
       /* Will be used by vacuum */
-      if (node->log_header.type == LOG_MVCC_UNDO_DATA)
-	{
-	  /* Read from mvcc_undo structure */
-	  mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
-	  vacuum_info = &mvcc_undo->vacuum_info;
-	  mvccid = mvcc_undo->mvccid;
-	}
-      else if (node->log_header.type == LOG_SYSOP_END)
-	{
-	  /* Read from mvcc_undo structure */
-	  mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
-	  vacuum_info = &mvcc_undo->vacuum_info;
-	  mvccid = mvcc_undo->mvccid;
-	}
-      else
-	{
-	  /* Read for mvcc_undoredo structure */
-	  assert (node->log_header.type == LOG_MVCC_UNDOREDO_DATA
-		  || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA);
-
-	  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
-	  vacuum_info = &mvcc_undoredo->vacuum_info;
-	  mvccid = mvcc_undoredo->mvccid;
-	}
+      prior_extract_vacuum_info_from_prior_node (node, vacuum_info, mvccid);
+      assert (vacuum_info != nullptr);
+      assert (mvccid != MVCCID_NULL);
 
       /* Save previous mvcc operation log lsa to vacuum info */
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
@@ -1445,6 +1554,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   else if (node->log_header.type == LOG_MVCC_REDO_DATA)
     {
       tdes->last_mvcc_lsa = node->start_lsa;
+      // TODO: why isn't prior_update_header_mvcc_info called in this case as for the previous 'if' scope
+      // as LOG_REC_MVCC_REDO does have mvccid?
     }
   else if (node->log_header.type == LOG_SYSOP_START_POSTPONE)
     {
