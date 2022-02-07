@@ -48,7 +48,7 @@ namespace cubmethod
   using xs_callback_func_with_sock = std::function <int (SOCKET socket, cubmem::block &)>;
 
   template <typename ... Args>
-  cubmem::extensible_block mcon_method_pack_data (cubthread::entry *thread_p, Args &&... args)
+  cubmem::extensible_block mcon_method_pack_data (Args &&... args)
   {
     packing_packer packer;
     cubmem::extensible_block eb;
@@ -65,7 +65,7 @@ namespace cubmethod
   template <typename ... Args>
   int method_send_data_to_client (cubthread::entry *thread_p, Args &&... args)
   {
-    cubmem::extensible_block b = std::move (mcon_method_pack_data (thread_p, std::forward<Args> (args)...));
+    cubmem::extensible_block b = std::move (mcon_method_pack_data (std::forward<Args> (args)...));
     return xs_send (thread_p, b);
   }
 
