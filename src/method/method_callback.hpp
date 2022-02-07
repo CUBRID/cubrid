@@ -17,7 +17,7 @@
  */
 
 //
-// method_callback.hpp: implement callback for server-side driver's request
+// method_callback.hpp: implement callback for server-side JDBC's request
 //
 
 #ifndef _METHOD_CALLBACK_HPP_
@@ -27,29 +27,61 @@
 #error Does not belong to server module
 #endif /* SERVER_MODE */
 
+#include <unordered_map>
+#include <queue>
+
+#include "method_connection_cl.hpp"
 #include "method_def.hpp"
 #include "method_error.hpp"
 #include "method_oid_handler.hpp"
 #include "method_query_handler.hpp"
 #include "method_struct_query.hpp"
 
+#include "transaction_cl.h"
+
 #include "packer.hpp"
 #include "packable_object.hpp"
 
 namespace cubmethod
 {
+  /*
+   * cubmethod::callback_handler
+   *
+   * description
+   *    This class serves as an entry point to perform CAS functions requested by Server-side JDBC.
+   *
+   *    * callback_dispatch() is the main public function that performs each function according to the code in the header of the request.
+   *    * free_query_handle_all () frees all used resources at the end of each Stored procedure call.
+   *
+   */
+
   class callback_handler
   {
     public:
       callback_handler (int max_query_handler);
       ~callback_handler ();
 
-      int callback_dispatch (packing_unpacker &unpacker);
+      callback_handler (callback_handler &&other) = delete; // Not MoveConstructible
+      callback_handler (const callback_handler &copy) = delete; // Not CopyConstructible
 
-      /* query handler required */
+      callback_handler &operator= (callback_handler &&other) = delete; // Not MoveAssignable
+      callback_handler &operator= (const callback_handler &copy) = delete; // Not CopyAssignable
+
+      /* main functions */
+      int callback_dispatch (packing_unpacker &unpacker);
+      void free_query_handle_all (bool is_free);
+
+      /* find query handler */
+      query_handler *get_query_handler_by_id (const int id);
+      query_handler *get_query_handler_by_query_id (const uint64_t qid); /* used for out resultset */
+      query_handler *get_query_handler_by_sql (const std::string &sql); /* used for statement handler cache */
+
+      oid_handler *get_oid_handler ();
+
+    private:
+      /* handle related to query */
       int prepare (packing_unpacker &unpacker);
       int execute (packing_unpacker &unpacker);
-      int schema_info (packing_unpacker &unpacker);
       int make_out_resultset (packing_unpacker &unpacker);
       int generated_keys (packing_unpacker &unpacker);
 
@@ -59,28 +91,9 @@ namespace cubmethod
       int oid_cmd (packing_unpacker &unpacker);
       int collection_cmd (packing_unpacker &unpacker);
 
-      void set_server_info (int idx, int rc, char *host);
-      void free_query_handle_all (bool is_free);
-
-      query_handler *get_query_handler_by_qid (uint64_t qid);
-
-    private:
       /* ported from cas_handle */
-      int new_query_handler ();
-      query_handler *find_query_handler (int id);
+      query_handler *new_query_handler ();
       void free_query_handle (int id, bool is_free);
-
-      int new_oid_handler ();
-
-      /* statement handler cache */
-      int find_query_handler_by_sql (std::string &sql);
-
-
-      template<typename ... Args>
-      int send_packable_object_to_server (Args &&... args);
-
-      /* server info */
-      method_server_conn_info m_conn_info [METHOD_MAX_RECURSION_DEPTH];
 
       std::multimap <std::string, int> m_sql_handler_map;
       std::unordered_map <uint64_t, int> m_qid_handler_map;

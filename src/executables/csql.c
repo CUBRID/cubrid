@@ -1958,8 +1958,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	      csql_Num_failures += 1;
 
 	      free_attr_spec (&attr_spec);
-	      // temporary disabled
-	      // jsp_send_destroy_request_all ();
 	      if (logddl_get_jsp_mode () == false)
 		{
 		  logddl_write_end ();
@@ -2179,8 +2177,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   return csql_Num_failures;
 
 error:
-  // temporary disabled
-  // jsp_send_destroy_request_all ();
   display_error (session, stmt_start_line_no);
   logddl_set_err_code (db_error_code ());
   if (do_abort_transaction)

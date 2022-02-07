@@ -27,7 +27,6 @@
 #include "system.h" /* QUERY_ID */
 #include "dbtype_def.h"
 #include "packable_object.hpp"
-#include "jsp_struct.hpp"
 
 namespace cubmethod
 {
@@ -164,19 +163,6 @@ namespace cubmethod
 
     /* If this struct is for execute_call, the following variables are packed */
     prepare_call_info *call_info;
-
-    void pack (cubpacking::packer &serializator) const override;
-    void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
-
-    void dump ();
-  };
-
-  struct next_result_info : public cubpacking::packable_object
-  {
-    int tuple_count;
-    int stmt_type;
-    std::vector<column_info> column_infos;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;

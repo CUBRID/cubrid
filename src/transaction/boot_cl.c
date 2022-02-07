@@ -1263,8 +1263,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   tr_init ();			/* initialize trigger manager */
 
-  jsp_init ();
-
   /* TODO: how about to call es_init() only for normal client? */
   if (boot_Server_credential.lob_path[0] != '\0')
     {
@@ -1439,7 +1437,6 @@ boot_shutdown_client (bool is_er_final)
 	}
 
       boot_client_all_finalize (is_er_final);
-      jsp_close_connection ();
     }
 
   return NO_ERROR;

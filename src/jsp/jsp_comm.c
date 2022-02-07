@@ -99,18 +99,22 @@ jsp_connect_server (const char *db_name, int server_port)
  */
 
 void
-jsp_disconnect_server (const SOCKET sockfd)
+jsp_disconnect_server (SOCKET & sockfd)
 {
-  struct linger linger_buffer;
+  if (!IS_INVALID_SOCKET (sockfd))
+    {
+      struct linger linger_buffer;
 
-  linger_buffer.l_onoff = 1;
-  linger_buffer.l_linger = 0;
-  setsockopt (sockfd, SOL_SOCKET, SO_LINGER, (char *) &linger_buffer, sizeof (linger_buffer));
+      linger_buffer.l_onoff = 1;
+      linger_buffer.l_linger = 0;
+      setsockopt (sockfd, SOL_SOCKET, SO_LINGER, (char *) &linger_buffer, sizeof (linger_buffer));
 #if defined(WINDOWS)
-  closesocket (sockfd);
+      closesocket (sockfd);
 #else /* not WINDOWS */
-  close (sockfd);
+      close (sockfd);
 #endif /* not WINDOWS */
+      sockfd = INVALID_SOCKET;
+    }
 }
 
 /*

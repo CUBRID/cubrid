@@ -1885,7 +1885,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			if (error == NO_ERROR)
 			  {
 			    COMPARE_AND_FREE_BUFFER (methoddata, reply);
-			    error = method_dispatch (rc, net_Server_host, net_Server_name, methoddata, methoddata_size);
+			    error = method_dispatch (rc, methoddata, methoddata_size);
 			    free_and_init (methoddata);
 			  }
 
@@ -1918,8 +1918,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		  {
 		    return_error_to_server (net_Server_host, rc);
 #if defined(CS_MODE)
-		    // NOTE: To avoid error -495, method_send_error_to_server should be called after return_error_to_server()
-		    method_send_error_to_server (rc, net_Server_host, net_Server_name, error);
+		    // NOTE: To avoid error -495, method_error should be called after return_error_to_server()
+		    method_error (rc, error);
 #endif
 		  }
 
@@ -2305,9 +2305,14 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 		      }
 #endif /* CS_MODE */
 		    error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
-		    COMPARE_AND_FREE_BUFFER (methoddata, reply);
-		    error = method_dispatch (rc, net_Server_host, net_Server_name, methoddata, methoddata_size);
-		    free_and_init (methoddata);
+
+		    if (error == NO_ERROR)
+		      {
+			COMPARE_AND_FREE_BUFFER (methoddata, reply);
+			error = method_dispatch (rc, methoddata, methoddata_size);
+			free_and_init (methoddata);
+		      }
+
 		    if (error != NO_ERROR)
 		      {
 			assert (er_errid () != NO_ERROR);
@@ -2337,8 +2342,8 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 	      {
 		return_error_to_server (net_Server_host, rc);
 #if defined(CS_MODE)
-		// NOTE: To avoid error -495, method_send_error_to_server should be called after return_error_to_server()
-		method_send_error_to_server (rc, net_Server_host, net_Server_name, error);
+		// NOTE: To avoid error -495, method_error should be called after return_error_to_server()
+		method_error (rc, error);
 #endif
 	      }
 
