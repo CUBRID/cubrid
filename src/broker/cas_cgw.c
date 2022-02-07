@@ -2118,7 +2118,7 @@ cgw_is_supported_dbms (char *dbms)
 {
   for (int i = 0; i < SUPPORTED_DBMS_MAX_NUM; i++)
     {
-      if (stricmp (dbms, supported_dbms_list[i].dbms_name) == 0)
+      if (strcmp (dbms, supported_dbms_list[i].dbms_name) == 0)
 	{
 	  return supported_dbms_list[i].dbms_type;
 	}
