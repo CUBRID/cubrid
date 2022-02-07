@@ -6817,8 +6817,7 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   trigger = tr_find_trigger (old_name);
   if (trigger == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
     }
   else
     {

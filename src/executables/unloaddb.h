@@ -68,7 +68,7 @@ extern int lo_count;
 	do \
 	  { \
 	    memset (owner_name, 0, sizeof (owner_name)); \
-	    memcpy (owner_name, name, strlen (name) + 1); \
+	    strcpy (owner_name, name); \
 	    class_name = strchr (owner_name, '.'); \
 	    *class_name++ = '\0'; \
 	  } \

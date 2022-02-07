@@ -85,6 +85,46 @@
     } \
   while (0)
 
+#define ERROR_SET_ERROR(error, code) \
+  do \
+    { \
+      error = code; \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, code, 0); \
+    } \
+  while (0)
+
+#define ERROR_SET_ERROR_1ARG(error, code, arg1) \
+  do \
+    { \
+      error = code; \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, code, 1, arg1); \
+    } \
+  while (0)
+
+#define ERROR_SET_ERROR_2ARGS(error, code, arg1, arg2) \
+  do \
+    { \
+      error = code; \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, code, 2, arg1, arg2); \
+    } \
+  while (0)
+
+#define ERROR_SET_ERROR_3ARGS(error, code, arg1, arg2, arg3) \
+  do \
+    { \
+      error = code; \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, code, 3, arg1, arg2, arg3); \
+    } \
+  while (0)
+
+#define ERROR_SET_ERROR_4ARGS(error, code, arg1, arg2, arg3, arg4) \
+  do \
+    { \
+      error = code; \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, code, 4, arg1, arg2, arg3, arg4); \
+    } \
+  while (0)
+
 /*
  * custom assert macro for release mode
  */
