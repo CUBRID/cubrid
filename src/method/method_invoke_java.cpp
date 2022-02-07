@@ -317,20 +317,6 @@ namespace cubmethod
     TRAN_ISOLATION tran_isolation = logtb_find_isolation (tran_index);
     int wait_msec = logtb_find_wait_msecs (tran_index);
 
-    const int PACKET_SIZE = OR_INT_SIZE * 3;
-    OR_ALIGNED_BUF (PACKET_SIZE) a_request;
-    char *request = OR_ALIGNED_BUF_START (a_request);
-
-    char *ptr = or_pack_int (request, OR_INT_SIZE);
-    ptr = or_pack_int (ptr, (int) tran_isolation);
-    ptr = or_pack_int (ptr, (int) wait_msec);
-
-    int nbytes = jsp_writen (m_group->get_socket (), request, PACKET_SIZE);
-    if (nbytes != PACKET_SIZE)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	return ER_SP_NETWORK_ERROR;
-      }
     error = mcon_send_data_to_java (m_group->get_socket (), tran_isolation, wait_msec);
     return error;
   }
