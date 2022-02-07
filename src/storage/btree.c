@@ -24711,7 +24711,8 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	  else
 	    {
 	      /* Fix next leaf page. */
-	      next_node_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      next_node_page =
+		pgbuf_fix_old_and_check_repl_desync (thread_p, next_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	      if (next_node_page == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error_code);
@@ -24826,7 +24827,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   VPID_COPY (&prev_leaf_vpid, next_vpid);
 
   /* Conditional latch for previous page. */
-  prev_leaf = pgbuf_fix (thread_p, &prev_leaf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+  prev_leaf = pgbuf_fix_old_and_check_repl_desync (thread_p, prev_leaf_vpid, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
   if (prev_leaf != NULL)
     {
       /* Previous leaf was successfully latched. Advance. */
@@ -24840,11 +24841,18 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       return NO_ERROR;
     }
   /* Conditional latch failed. */
-
+  /* The page can also be null due to page desyncronization only on PTS, in this case the scan must be restarted */
+  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+    {
+      bts->force_restart_from_root = true;
+      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      return NO_ERROR;
+    }
   /* Unfix current page and retry. */
   pgbuf_unfix_and_init (thread_p, bts->C_page);
   error_code =
-    pgbuf_fix_if_not_deallocated (thread_p, &prev_leaf_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &prev_leaf);
+    pgbuf_fix_if_not_deallocated_with_repl_desync_check (thread_p, &prev_leaf_vpid, PGBUF_LATCH_READ,
+							 PGBUF_UNCONDITIONAL_LATCH, &prev_leaf);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -24852,7 +24860,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
     }
   if (prev_leaf == NULL)
     {
-      /* deallocated */
+      /* deallocated or found to be ahead of replication, in either case the scan needs to restart */
       bts->force_restart_from_root = true;
       return NO_ERROR;
     }
@@ -24877,9 +24885,17 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   /* Pages are still linked. */
 
   /* Fix current page too. */
-  bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  bts->C_page = pgbuf_fix_old_and_check_repl_desync (thread_p, bts->C_vpid, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+
   if (bts->C_page == NULL)
     {
+      if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	{
+	  bts->force_restart_from_root = true;
+	  pgbuf_unfix_and_init (thread_p, prev_leaf);
+	  return NO_ERROR;
+	}
+
       ASSERT_ERROR_AND_SET (error_code);
       pgbuf_unfix_and_init (thread_p, prev_leaf);
       return error_code;
