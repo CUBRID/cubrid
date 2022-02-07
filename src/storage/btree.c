@@ -24860,7 +24860,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
     }
   if (prev_leaf == NULL)
     {
-      /* deallocated */
+      /* deallocated or found to be ahead of replication, in either case the scan needs to restart */
       bts->force_restart_from_root = true;
       return NO_ERROR;
     }
