@@ -90,6 +90,15 @@ flashback_drop_summary_entry (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_ENTRY *
   db_private_free_and_init (thread_p, *summary);
 }
 
+/*
+ * flashback_fill_dml_summary - fill the dml information into summary entry
+ *
+ * thread_p (in)             : thread entry
+ * summary_entry (in/out)    : flashback summary entry
+ * classoid (in)             : OID of DML target class
+ * rec_type(in)              : record type that can be classified as DML types
+ */
+
 static void
 flashback_fill_dml_summary (FLASHBACK_SUMMARY_ENTRY * summary_entry, OID classoid, SUPPLEMENT_REC_TYPE rec_type)
 {
@@ -138,6 +147,13 @@ flashback_fill_dml_summary (FLASHBACK_SUMMARY_ENTRY * summary_entry, OID classoi
 
   return;
 }
+
+/*
+ * flashback_cleanup - dealloc memory of summary entries iterating summary list
+ *
+ * thread_p (in)         : thread entry
+ * context (in/out)      : flashback summary context that contains summary list
+ */
 
 void
 flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context)
@@ -264,7 +280,6 @@ begin:
       }
     case LOG_SUPPLEMENTAL_INFO:
       {
-	/*supplemental log info types : time, tran_user, undo image */
 	LOG_REC_SUPPLEMENT *supplement;
 	int supplement_length;
 	SUPPLEMENT_REC_TYPE rec_type;
@@ -295,8 +310,7 @@ begin:
 	    goto exit;
 	  }
 
-	memcpy (supplement_data, &supp_recdes.type, sizeof (supp_recdes.type));
-	memcpy (supplement_data + sizeof (supp_recdes.type), supp_recdes.data, supp_recdes.length);
+	CDC_MAKE_SUPPLEMENT_DATA (supplement_data, supp_recdes);
 
 	free_and_init (supp_recdes.data);
 
@@ -364,7 +378,6 @@ begin:
       break;
     }
 
-end:
   if (LSA_LT (&next_log_rec_lsa, &context->start_lsa))
     {
       /* parse done */

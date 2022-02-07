@@ -447,7 +447,7 @@ extern int loaddb_update_stats ();
 
 /* *INDENT-OFF* */
 extern int flashback_get_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
-				  Map_Summary &summary, OID ** oid_list);
+				  Map_Summary & summary, OID ** oid_list);
 /* *INDENT-ON* */
 extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa,
 				  LOG_LSA * end_lsa, int *num_item, bool forward, void *info_list);

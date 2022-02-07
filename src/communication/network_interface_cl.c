@@ -10577,9 +10577,11 @@ unpacking_summary_entry (char **ptr, Map_Summary & summary)
   FLASHBACK_SUMMARY_INFO *info = (FLASHBACK_SUMMARY_INFO *) malloc (sizeof (FLASHBACK_SUMMARY_INFO));
   if (info == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (FLASHBACK_SUMMARY_INFO));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
+  /* testing code, it will be replaced with print function */
   tmp_ptr = or_unpack_int (tmp_ptr, &trid);
   tmp_ptr = or_unpack_int64 (tmp_ptr, &start_time);
   tmp_ptr = or_unpack_int64 (tmp_ptr, &end_time);

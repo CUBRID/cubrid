@@ -27,17 +27,16 @@
 
 #ident "$Id$"
 
+#include <map>
+
 #include "config.h"
 #include "error_manager.h"
 #include "file_io.h"
 #include "log_lsa.hpp"
 #include "thread_compat.hpp"
 
-#include <map>
-
 #define FLASHBACK_MAX_SUMMARY   INT_MAX
 #define FLASHBACK_MAX_TABLE     32
-#define OR_SUMMARY_ENTRY_SIZE   (OR_INT_SIZE + OR_INT64_SIZE * 2 + OR_INT_SIZE * 3 + OR_LOG_LSA_SIZE * 2 + OR_INT_SIZE + FLASHBACK_MAX_TABLE * OR_OID_SIZE)
 
 #define FLASHBACK_CHECK_AND_GET_SUMMARY(summary_list, trid, summary_entry) \
   do \
@@ -53,6 +52,7 @@
     } \
   while (0)
 
+/* flashback summary information stored in utility side */
 typedef struct flashback_summary_info
 {
   TRANID trid;
@@ -60,6 +60,11 @@ typedef struct flashback_summary_info
   LOG_LSA end_lsa;
 } FLASHBACK_SUMMARY_INFO;
 
+// *INDENT-OFF*
+typedef std::map<TRANID, FLASHBACK_SUMMARY_INFO *> Map_Summary;
+// *INDENT-ON*
+
+/* flashback summary information for each transaction generated in server side */
 typedef struct flashback_summary_entry
 {
   TRANID trid;
@@ -74,6 +79,9 @@ typedef struct flashback_summary_entry
   OID classlist[FLASHBACK_MAX_TABLE];
 } FLASHBACK_SUMMARY_ENTRY;
 
+#define OR_SUMMARY_ENTRY_SIZE   (OR_INT_SIZE + OR_INT64_SIZE * 2 + OR_INT_SIZE * 3 + OR_LOG_LSA_SIZE * 2 + OR_INT_SIZE + FLASHBACK_MAX_TABLE * OR_OID_SIZE)
+
+/* context for making summary information */
 typedef struct flashback_summary_context
 {
   LOG_LSA start_lsa;
@@ -86,10 +94,6 @@ typedef struct flashback_summary_context
   std::unordered_map <TRANID, FLASHBACK_SUMMARY_ENTRY*> summary_list;
   // *INDENT-ON*
 } FLASHBACK_SUMMARY_CONTEXT;
-
-// *INDENT-OFF*
-typedef std::map<TRANID, FLASHBACK_SUMMARY_INFO *> Map_Summary;
-// *INDENT-ON*
 
 extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
 extern void flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
