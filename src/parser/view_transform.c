@@ -1447,12 +1447,9 @@ static PT_NODE *
 mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * subquery,
 				       PT_NODE * derived_spec)
 {
-  PT_NODE *query_spec_columns;
-  PT_NODE *attributes, *attr;
+  PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list;
+  PT_NODE *attributes, *attr, *as_attr_list;
   PT_NODE *col, *new_select_list;
-
-  /* Replace columns/attributes. for each column/attribute name in table/class class, replace with actual select
-   * column. */
 
   if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
     {
@@ -1519,12 +1516,58 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 	}
     }
 
-  /*mq_update_order_by (parser, tmp_result, subquery, NULL, derived_spec); /* 박세훈 */
+  if (new_select_list == NULL)
+    {
+      /* case of constant attr. e.g.) count(*), count(1) */
+      /* just add one of integer value */
+      new_select_list = pt_make_integer_value (parser, 1);
+    }
+
+  /* cut off select list and order by */
+  save_order_by = subquery->info.query.order_by;
+  save_select_list = subquery->info.query.q.select.list;
+  subquery->info.query.order_by = NULL;
+  subquery->info.query.q.select.list = NULL;
+
+  tmp_query = parser_copy_tree (parser, subquery);
+  tmp_query->info.query.q.select.list = new_select_list;
+
+  /* revert subquery */
+  subquery->info.query.order_by = save_order_by;
+  subquery->info.query.q.select.list = save_select_list;
+
+  if (subquery->info.query.order_by && !pt_has_aggregate (parser, statement))
+    {
+      tmp_query = mq_update_order_by (parser, tmp_query, subquery, NULL, derived_spec);
+      if (tmp_query == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  /* copy select_list to as_attr_list before mq_lambda() */
+  as_attr_list = parser_copy_tree_list (parser, tmp_query->info.query.q.select.list);
 
   /* substitute attributes for query_spec_columns in statement */
-  new_select_list = mq_lambda (parser, new_select_list, attributes, query_spec_columns);
+  tmp_query = mq_lambda (parser, tmp_query, attributes, query_spec_columns);
 
-  return new_select_list;
+  /* assign tmp_query */
+  derived_spec->info.spec.derived_table = tmp_query;
+  parser_free_tree (parser, subquery);
+
+  parser_free_tree (parser, derived_spec->info.spec.as_attr_list);
+  derived_spec->info.spec.as_attr_list = as_attr_list;
+
+  return derived_spec;
+
+exit_on_error:
+
+  if (tmp_query)
+    {
+      parser_free_tree (parser, tmp_query);
+    }
+
+  return NULL;
 }
 
 /*
@@ -2021,78 +2064,61 @@ static PT_NODE *
 mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * subquery,
 					PT_NODE * derived_spec, PT_NODE * order_by)
 {
-  PT_NODE *tmp_result, *result, *arg1, *arg2, *statement_next;
+  PT_NODE *result, *arg1, *arg2, *statement_next;
   PT_NODE *derived_table, *derived_class;
   PUSHABLE_TYPE is_mergeable;
 
-  result = tmp_result = NULL;	/* init */
+  result = NULL;		/* init */
   is_mergeable = PUSHABLE;
 
   statement_next = statement->next;
-  /* make a local copy of the statement */
-  tmp_result = parser_copy_tree (parser, statement);
-  if (tmp_result == NULL)
-    {
-      if (!pt_has_error (parser))
-	{
-	  PT_INTERNAL_ERROR (parser, "failed to copy node tree");
-	}
-
-      goto exit_on_error;
-    }
-
-  /* Due to tree copy, the spec ids of methods are broken. Reset spec ids */
-  mq_reset_ids_in_methods (parser, tmp_result);
 
   /* check whether subquery is pushable */
-  is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec);
+  is_mergeable = mq_is_pushable_subquery (parser, subquery, statement, derived_spec);
   if (is_mergeable == HAS_ERROR)
     {
-      goto exit_on_error;
+      return NULL;
     }
 
   if (is_mergeable == NON_PUSHABLE)
     {
-      /* rewrite vclass spec */
-
-      /* TO_DO : check only the referenced select list. */
-      /* refer to mq_rewrite_vclass_spec_as_derived () */
-
-/*      PT_NODE *select_list; /* = tmp_result->info.query.q.select.list;
-      /* parser_free_tree (parser, tmp_result); */
-
-/*      select_list = mq_remove_select_list_for_inline_view (parser, statement, subquery, derived_spec);
-      if (select_list == NULL)
-      {
-      	goto exit_on_error;
-      }
-      subquery->info.query.q.select.list = select_list;*/
+      /* rewrite inline view spec */
+      /* remove unnecessary select list of subquery. */
+      derived_spec = mq_remove_select_list_for_inline_view (parser, statement, subquery, derived_spec);
+      if (derived_spec == NULL)
+	{
+	  return NULL;
+	}
+      else
+	{
+	  subquery = derived_spec->info.spec.derived_table;
+	}
 
       /* no translation per se, but need to fix up proxy objects */
-      result = mq_fix_derived_in_union (parser, tmp_result, derived_spec->info.spec.id);
+      result = mq_fix_derived_in_union (parser, statement, derived_spec->info.spec.id);
 
     }
   else
     {
       /* expand vclass_query in parent statement */
-      mq_copy_sql_hint (parser, tmp_result, subquery);
+      mq_copy_sql_hint (parser, statement, subquery);
 
-      if (tmp_result->node_type == PT_SELECT)
+      if (statement->node_type == PT_SELECT)
 	{
 	  assert (subquery->info.query.orderby_for == NULL);
-	  if (!order_by && subquery->info.query.order_by && !pt_has_aggregate (parser, tmp_result))
+	  if (!order_by && subquery->info.query.order_by && !pt_has_aggregate (parser, statement))
 	    {
 	      /* update the position number of order by clause and add a hidden column into the output list if
 	       * necessary. */
-	      tmp_result = mq_update_order_by (parser, tmp_result, subquery, NULL, derived_spec);
-	      if (tmp_result == NULL)
+	      statement = mq_update_order_by (parser, statement, subquery, NULL, derived_spec);
+	      if (statement == NULL)
 		{
-		  goto exit_on_error;
+		  return NULL;
 		}
 	    }
 	}
 
-      result = mq_substitute_select_for_inline_view (parser, tmp_result, subquery, derived_spec);
+      result = mq_substitute_select_for_inline_view (parser, statement, subquery, derived_spec);
     }
 
   /* set query id # */
@@ -2105,7 +2131,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
     }
   else
     {
-      goto exit_on_error;
+      return NULL;
     }
 
 
@@ -2130,15 +2156,6 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
     }
 
   return result;
-
-exit_on_error:
-
-  if (tmp_result)
-    {
-      parser_free_tree (parser, tmp_result);
-    }
-
-  return NULL;
 }
 
 /*
