@@ -2083,15 +2083,20 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
   if (is_mergeable == NON_PUSHABLE)
     {
       /* rewrite inline view spec */
+
       /* remove unnecessary select list of subquery. */
-      derived_spec = mq_remove_select_list_for_inline_view (parser, statement, subquery, derived_spec);
-      if (derived_spec == NULL)
+      /* TO_DO : support for union query */
+      if (PT_IS_SELECT (subquery))
 	{
-	  return NULL;
-	}
-      else
-	{
-	  subquery = derived_spec->info.spec.derived_table;
+	  derived_spec = mq_remove_select_list_for_inline_view (parser, statement, subquery, derived_spec);
+	  if (derived_spec == NULL)
+	    {
+	      return NULL;
+	    }
+	  else
+	    {
+	      subquery = derived_spec->info.spec.derived_table;
+	    }
 	}
 
       /* no translation per se, but need to fix up proxy objects */
