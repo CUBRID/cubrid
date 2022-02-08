@@ -144,11 +144,19 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define PRINT_(a) printf(a)
 #define PRINT_1(a, b) printf(a, b)
 #define PRINT_2(a, b, c) printf(a, b, c)
+#define DBG_PRINT_MATCH(...)    do { fprintf(stdout, "  *** RULE) "__VA_ARGS__);  fflush(stdout); } while(0)
+#define DBG_PRINT_MATCH_LN(...) do {                        \
+                fprintf(stdout, "  *** RULE) "__VA_ARGS__); \
+                fprintf(stdout, "\n");                      \
+                fflush(stdout);                             \
+              } while(0)
 #else
 #define DBG_PRINT
 #define PRINT_(a)
 #define PRINT_1(a, b)
 #define PRINT_2(a, b, c)
+#define DBG_PRINT_MATCH(...)    
+#define DBG_PRINT_MATCH_LN(...) 
 #endif
 
 #define STACK_SIZE	128
@@ -403,6 +411,8 @@ static bool allow_attribute_ordering;
 int parse_one_statement (int state);
 static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 					   PT_NODE *node, PT_NODE *coll_node);
+
+static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
 
 #define push_msg(a) _push_msg(a, __LINE__)
@@ -15299,14 +15309,14 @@ opt_nulls_first_or_last
 
 expression_
 	: normal_expression
-		{{
+		{{DBG_PRINT_MATCH_LN("expression_ > : normal_expression");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| predicate_expression
-		{{
+		{{DBG_PRINT_MATCH_LN("expression_ > | predicate_expression");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -15669,7 +15679,7 @@ primary
 
 		DBG_PRINT}}
 	| '(' search_condition_query ')' %dprec 2
-		{{
+		{{DBG_PRINT_MATCH_LN("primary > | '(' search_condition_query ')' ");
 
 			PT_NODE *exp = $2;
 
@@ -15684,7 +15694,7 @@ primary
 
 		DBG_PRINT}}
 	| subquery    %dprec 1
-		{{
+		{{DBG_PRINT_MATCH_LN("primary > | subquery ");
 			parser_groupby_exception = PT_IS_SUBQUERY;
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -18369,17 +18379,16 @@ table_set_function_call
 
 search_condition
 	: search_condition OR boolean_term_xor
-		{{
-			PT_NODE *arg1 = pt_convert_to_logical_expr(this_parser, $1, 1,1);
-			PT_NODE *arg2 = pt_convert_to_logical_expr(this_parser, $3, 1,1);
+		{{DBG_PRINT_MATCH_LN("search_condition > : search_condition OR boolean_term_xor");
+			PT_NODE *arg1 = pt_check_non_logical_expr(this_parser, $1);
+			PT_NODE *arg2 = pt_check_non_logical_expr(this_parser, $3);
 			$$ = parser_make_expression (this_parser, PT_OR, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| boolean_term_xor
-		{{
-
-			$$ = pt_convert_to_logical_expr(this_parser, $1, 1, 1);
+		{{DBG_PRINT_MATCH_LN("search_condition > | boolean_term_xor");
+			$$ = pt_check_non_logical_expr(this_parser, $1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -18387,15 +18396,15 @@ search_condition
 
 boolean_term_xor
 	: boolean_term_xor XOR boolean_term_is
-		{{
-			PT_NODE *arg1 = pt_convert_to_logical_expr(this_parser, $1, 1,1);
-			PT_NODE *arg2 = pt_convert_to_logical_expr(this_parser, $3, 1,1);
+		{{DBG_PRINT_MATCH_LN("boolean_term_xor > : boolean_term_xor XOR boolean_term_is");
+			PT_NODE *arg1 = pt_check_non_logical_expr(this_parser, $1);
+			PT_NODE *arg2 = pt_check_non_logical_expr(this_parser, $3);
 			$$ = parser_make_expression (this_parser, PT_XOR, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| boolean_term_is
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_term_xor > | boolean_term_is");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -18404,14 +18413,14 @@ boolean_term_xor
 
 boolean_term_is
 	: boolean_term_is is_op boolean
-		{{
-			PT_NODE *arg = pt_convert_to_logical_expr(this_parser, $1, 1,1);
+		{{DBG_PRINT_MATCH_LN("boolean_term_xor > : boolean_term_is");
+	                PT_NODE *arg = pt_check_non_logical_expr(this_parser, $1);
 			$$ = parser_make_expression (this_parser, $2, arg, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| boolean_term
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_term_xor > | boolean_term_is");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -18436,15 +18445,15 @@ is_op
 
 boolean_term
 	: boolean_term AND boolean_factor
-		{{
-			PT_NODE *arg1 = pt_convert_to_logical_expr(this_parser, $1, 1,1);
-			PT_NODE *arg2 = pt_convert_to_logical_expr(this_parser, $3, 1,1);
+		{{DBG_PRINT_MATCH_LN("boolean_term > : boolean_term AND boolean_factor");
+			PT_NODE *arg1 = pt_check_non_logical_expr(this_parser, $1);
+			PT_NODE *arg2 = pt_check_non_logical_expr(this_parser, $3);
 			$$ = parser_make_expression (this_parser, PT_AND, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| boolean_factor
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_term > | boolean_factor");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -18454,23 +18463,23 @@ boolean_term
 
 boolean_factor
 	: NOT predicate
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_factor > : NOT predicate");
 
-			PT_NODE *arg = pt_convert_to_logical_expr(this_parser, $2, 1,1);
+			PT_NODE *arg = pt_check_non_logical_expr(this_parser, $2);
 			$$ = parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| '!' predicate
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_factor > | '!' predicate");
 
-			PT_NODE *arg = pt_convert_to_logical_expr(this_parser, $2, 1,1);
+			PT_NODE *arg = pt_check_non_logical_expr(this_parser, $2);
 			$$ = parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| predicate
-		{{
+		{{DBG_PRINT_MATCH_LN("boolean_factor > | predicate");
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -18481,7 +18490,6 @@ boolean_factor
 predicate
 	: EXISTS expression_
 		{{
-
 			$$ = parser_make_expression (this_parser, PT_EXISTS, $2, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -26806,6 +26814,21 @@ pt_create_paren_expr_list (PT_NODE * exp)
       parser_groupby_exception = PT_EXPR;
     }
   return exp;
+}
+
+
+static PT_NODE *
+pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+   if(node)
+     {
+        if (node->type_enum != PT_TYPE_LOGICAL)
+          {
+             PT_ERROR (parser, node, "operand must be logical expression.");
+          }
+     }
+
+     return node;
 }
 
 static void
