@@ -1437,7 +1437,7 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
 
 /*
  * mq_remove_select_list_for_inline_view () - remove unnecessary select list
- *   return: PT_NODE *, select list
+ *   return: PT_NODE *, statement
  *   parser(in): parser context
  *   statement(in/out): statement into which class will be expanded
  *   query_spec(in): query of class that will be expanded
@@ -1449,7 +1449,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 {
   PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list;
   PT_NODE *attributes, *attr, *as_attr_list;
-  PT_NODE *col, *new_select_list;
+  PT_NODE *col, *new_select_list, *spec;
 
   if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
     {
@@ -1551,14 +1551,26 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   /* substitute attributes for query_spec_columns in statement */
   tmp_query = mq_lambda (parser, tmp_query, attributes, query_spec_columns);
 
+  /* find derived_spec */
+  assert (PT_IS_SELECT (statement));
+  spec = statement->info.query.q.select.from;
+  while (spec && derived_spec->info.spec.id != spec->info.spec.id)
+    {
+      spec = spec->next;
+    }
+  if (spec == NULL)
+    {
+      goto exit_on_error;
+    }
+
   /* assign tmp_query */
-  derived_spec->info.spec.derived_table = tmp_query;
-  parser_free_tree (parser, subquery);
+  parser_free_tree (parser, spec->info.spec.derived_table);
+  spec->info.spec.derived_table = tmp_query;
 
-  parser_free_tree (parser, derived_spec->info.spec.as_attr_list);
-  derived_spec->info.spec.as_attr_list = as_attr_list;
+  parser_free_tree (parser, spec->info.spec.as_attr_list);
+  spec->info.spec.as_attr_list = as_attr_list;
 
-  return derived_spec;
+  return statement;
 
 exit_on_error:
 
@@ -2064,20 +2076,34 @@ static PT_NODE *
 mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * subquery,
 					PT_NODE * derived_spec, PT_NODE * order_by)
 {
-  PT_NODE *result, *arg1, *arg2, *statement_next;
-  PT_NODE *derived_table, *derived_class;
+  PT_NODE *tmp_result, *result, *statement_next;
+  PT_NODE *spec;
   PUSHABLE_TYPE is_mergeable;
 
-  result = NULL;		/* init */
+  result = tmp_result = NULL;	/* init */
   is_mergeable = PUSHABLE;
 
   statement_next = statement->next;
+  /* make a local copy of the statement */
+  tmp_result = parser_copy_tree (parser, statement);
+  if (tmp_result == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "failed to copy node tree");
+	}
+
+      goto exit_on_error;
+    }
+
+  /* Due to tree copy, the spec ids of methods are broken. Reset spec ids */
+  mq_reset_ids_in_methods (parser, tmp_result);
 
   /* check whether subquery is pushable */
-  is_mergeable = mq_is_pushable_subquery (parser, subquery, statement, derived_spec);
+  is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec);
   if (is_mergeable == HAS_ERROR)
     {
-      return NULL;
+      goto exit_on_error;
     }
 
   if (is_mergeable == NON_PUSHABLE)
@@ -2086,44 +2112,40 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 
       /* remove unnecessary select list of subquery. */
       /* TO_DO : support for union query */
-      if (PT_IS_SELECT (subquery))
+      if (PT_IS_SELECT (subquery) && PT_IS_SELECT (tmp_result))
 	{
-	  derived_spec = mq_remove_select_list_for_inline_view (parser, statement, subquery, derived_spec);
-	  if (derived_spec == NULL)
+	  tmp_result = mq_remove_select_list_for_inline_view (parser, tmp_result, subquery, derived_spec);
+	  if (tmp_result == NULL)
 	    {
-	      return NULL;
-	    }
-	  else
-	    {
-	      subquery = derived_spec->info.spec.derived_table;
+	      goto exit_on_error;
 	    }
 	}
 
       /* no translation per se, but need to fix up proxy objects */
-      result = mq_fix_derived_in_union (parser, statement, derived_spec->info.spec.id);
+      result = mq_fix_derived_in_union (parser, tmp_result, derived_spec->info.spec.id);
 
     }
   else
     {
       /* expand vclass_query in parent statement */
-      mq_copy_sql_hint (parser, statement, subquery);
+      mq_copy_sql_hint (parser, tmp_result, subquery);
 
-      if (statement->node_type == PT_SELECT)
+      if (tmp_result->node_type == PT_SELECT)
 	{
 	  assert (subquery->info.query.orderby_for == NULL);
-	  if (!order_by && subquery->info.query.order_by && !pt_has_aggregate (parser, statement))
+	  if (!order_by && subquery->info.query.order_by && !pt_has_aggregate (parser, tmp_result))
 	    {
 	      /* update the position number of order by clause and add a hidden column into the output list if
 	       * necessary. */
-	      statement = mq_update_order_by (parser, statement, subquery, NULL, derived_spec);
-	      if (statement == NULL)
+	      tmp_result = mq_update_order_by (parser, tmp_result, subquery, NULL, derived_spec);
+	      if (tmp_result == NULL)
 		{
-		  return NULL;
+		  goto exit_on_error;
 		}
 	    }
 	}
 
-      result = mq_substitute_select_for_inline_view (parser, statement, subquery, derived_spec);
+      result = mq_substitute_select_for_inline_view (parser, tmp_result, subquery, derived_spec);
     }
 
   /* set query id # */
@@ -2136,7 +2158,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
     }
   else
     {
-      return NULL;
+      goto exit_on_error;
     }
 
 
@@ -2161,6 +2183,15 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
     }
 
   return result;
+
+exit_on_error:
+
+  if (tmp_result)
+    {
+      parser_free_tree (parser, tmp_result);
+    }
+
+  return NULL;
 }
 
 /*
@@ -2839,6 +2870,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 	  if (class_spec->info.spec.derived_table_type == PT_IS_SUBQUERY && PT_IS_QUERY (subquery))
 	    {
 	      /* in-line view is merged into main query if it is possible */
+	      delete_old_node = true;
 	      tree = mq_substitute_inline_view_in_statement (parser, tree, subquery, class_spec, order_by);
 	      if (tree == NULL)
 		{
