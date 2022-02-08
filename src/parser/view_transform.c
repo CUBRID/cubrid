@@ -2112,7 +2112,9 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 
       /* remove unnecessary select list of subquery. */
       /* TO_DO : support for union query */
-      if (PT_IS_SELECT (subquery) && PT_IS_SELECT (tmp_result))
+      if (PT_IS_SELECT (subquery) && PT_IS_SELECT (tmp_result)
+	  && !(PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_INFO_COLS_SCHEMA)
+	       || PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_FULL_INFO_COLS_SCHEMA)))
 	{
 	  tmp_result = mq_remove_select_list_for_inline_view (parser, tmp_result, subquery, derived_spec);
 	  if (tmp_result == NULL)
