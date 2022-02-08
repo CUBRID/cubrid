@@ -10850,7 +10850,7 @@ error:
 }
 
 static char *
-packing_loginfos (char *ptr, FLASHBACK_LOGINFO_CONTEXT context)
+packing_loginfos (THREAD_ENTRY * thread_p, char *ptr, FLASHBACK_LOGINFO_CONTEXT context)
 {
   CDC_LOGINFO_ENTRY *entry;
 
@@ -10864,7 +10864,8 @@ packing_loginfos (char *ptr, FLASHBACK_LOGINFO_CONTEXT context)
 
       ptr = ptr + entry->length;
 
-      free_and_init (entry);
+      free_and_init (entry->log_info);
+      db_private_free_and_init (thread_p, entry);
 
       // *INDENT-OFF*
       context.loginfo_queue.pop ();
@@ -10935,7 +10936,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_pack_log_lsa (ptr, &context.end_lsa);
   ptr = or_pack_int (ptr, context.num_item);
 
-  ptr = packing_loginfos (ptr, context);
+  ptr = packing_loginfos (thread_p, ptr, context);
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 

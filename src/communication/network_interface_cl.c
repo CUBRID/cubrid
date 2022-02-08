@@ -10728,7 +10728,7 @@ unpacking_loginfo (char *ptr, int num_item)
 	  ptr = or_unpack_int (ptr, &cond_index);
 	}
 
-      for (int j = 0; j < cond_index; j++)
+      for (int j = 0; j < num_cond_col; j++)
 	{
 	  ptr = or_unpack_int (ptr, &func_code);
 

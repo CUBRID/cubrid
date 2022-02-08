@@ -14803,8 +14803,9 @@ flashback_class_filter (FLASHBACK_LOGINFO_CONTEXT * context, OID classoid)
 int
 flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context)
 {
-  LOG_LSA cur_log_rec_lsa;
-  LOG_LSA next_lsa, process_lsa;
+  LOG_LSA cur_log_rec_lsa = LSA_INITIALIZER;
+  LOG_LSA next_log_rec_lsa = LSA_INITIALIZER;
+  LOG_LSA process_lsa = LSA_INITIALIZER;
 
   LOG_PAGE *log_page_p = NULL;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
@@ -14855,13 +14856,15 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 
 begin:
 
+  LSA_COPY (&cur_log_rec_lsa, &process_lsa);
+
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
 
   log_type = log_rec_header->type;
   trid = log_rec_header->trid;
 
-  context->forward ? LSA_COPY (&next_lsa, &log_rec_header->forw_lsa) : LSA_COPY (&next_lsa,
-										 &log_rec_header->prev_tranlsa);
+  context->forward ? LSA_COPY (&next_log_rec_lsa, &log_rec_header->forw_lsa) : LSA_COPY (&next_log_rec_lsa,
+											 &log_rec_header->prev_tranlsa);
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
 
@@ -14923,6 +14926,13 @@ begin:
 	      goto exit;
 	    }
 
+	  log_info_entry = (CDC_LOGINFO_ENTRY *) db_private_alloc (thread_p, sizeof (CDC_LOGINFO_ENTRY));
+	  if (log_info_entry == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto exit;
+	    }
+
 	  error =
 	    cdc_make_dml_loginfo (thread_p, trid, tran_user,
 				  rec_type == LOG_SUPPLEMENT_INSERT ? CDC_INSERT : CDC_TRIGGER_INSERT, classoid, NULL,
@@ -14935,6 +14945,7 @@ begin:
               // *INDENT-ON*
 	      context->queue_size += log_info_entry->length;
 	      num_loginfo++;
+	      log_info_entry = NULL;
 	    }
 	  else
 	    {
@@ -14956,6 +14967,13 @@ begin:
 
 	  if ((error = cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes, true)) != NO_ERROR)
 	    {
+	      goto exit;
+	    }
+
+	  log_info_entry = (CDC_LOGINFO_ENTRY *) db_private_alloc (thread_p, sizeof (CDC_LOGINFO_ENTRY));
+	  if (log_info_entry == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto exit;
 	    }
 
@@ -14989,6 +15007,7 @@ begin:
               // *INDENT-ON*
 	      context->queue_size += log_info_entry->length;
 	      num_loginfo++;
+	      log_info_entry = NULL;
 	    }
 	  else
 	    {
@@ -15012,6 +15031,13 @@ begin:
 	      goto exit;
 	    }
 
+	  log_info_entry = (CDC_LOGINFO_ENTRY *) db_private_alloc (thread_p, sizeof (CDC_LOGINFO_ENTRY));
+	  if (log_info_entry == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto exit;
+	    }
+
 	  error =
 	    cdc_make_dml_loginfo (thread_p, trid, tran_user,
 				  rec_type == LOG_SUPPLEMENT_DELETE ? CDC_DELETE : CDC_TRIGGER_DELETE, classoid,
@@ -15024,6 +15050,7 @@ begin:
               // *INDENT-ON*
 	      context->queue_size += log_info_entry->length;
 	      num_loginfo++;
+	      log_info_entry = NULL;
 	    }
 	  else
 	    {
@@ -15039,10 +15066,10 @@ begin:
 end:
   if (context->forward)
     {
-      if (LSA_EQ (&next_lsa, &context->end_lsa) || num_loginfo == context->num_item)
+      if (LSA_EQ (&next_log_rec_lsa, &context->end_lsa) || num_loginfo == context->num_item)
 	{
 	  context->num_item = num_loginfo;
-	  LSA_COPY (&context->start_lsa, &next_lsa);
+	  LSA_COPY (&context->start_lsa, &next_log_rec_lsa);
 
 	  error = NO_ERROR;
 	  goto exit;
@@ -15050,17 +15077,17 @@ end:
     }
   else
     {
-      if (LSA_ISNULL (&next_lsa) || num_loginfo == context->num_item)
+      if (LSA_ISNULL (&next_log_rec_lsa) || num_loginfo == context->num_item)
 	{
 	  context->num_item = num_loginfo;
-	  LSA_COPY (&context->end_lsa, &next_lsa);
+	  LSA_COPY (&context->end_lsa, &next_log_rec_lsa);
 
 	  error = NO_ERROR;
 	  goto exit;
 	}
     }
 
-  LSA_COPY (&process_lsa, &next_lsa);
+  LSA_COPY (&process_lsa, &next_log_rec_lsa);
 
   if (log_page_p->hdr.logical_pageid != process_lsa.pageid)
     {
@@ -15070,7 +15097,6 @@ end:
 	  goto exit;
 	}
     }
-
 
   if (supplement_data != NULL)
     {
