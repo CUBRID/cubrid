@@ -1536,7 +1536,8 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   subquery->info.query.order_by = save_order_by;
   subquery->info.query.q.select.list = save_select_list;
 
-  if (subquery->info.query.order_by && !pt_has_aggregate (parser, statement))
+  if (subquery->info.query.order_by
+      && (!pt_has_aggregate (parser, statement) || pt_has_inst_in_where_and_select_list (parser, subquery)))
     {
       tmp_query = mq_update_order_by (parser, tmp_query, subquery, NULL, derived_spec);
       if (tmp_query == NULL)
@@ -2113,6 +2114,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
       /* remove unnecessary select list of subquery. */
       /* TO_DO : support for union query */
       if (PT_IS_SELECT (subquery) && PT_IS_SELECT (tmp_result)
+	  && !PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_INFO_IS_MERGE_QUERY)
 	  && !(PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_INFO_COLS_SCHEMA)
 	       || PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_FULL_INFO_COLS_SCHEMA)))
 	{
