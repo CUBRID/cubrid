@@ -50,7 +50,7 @@ struct t_supported_dbms
 };
 
 static T_SUPPORTED_DBMS supported_dbms_list[SUPPORTED_DBMS_MAX_NUM] =
-  { {"ORACLE", SUPPORTED_DBMS_ORACLE}, {"MYSQL", SUPPORTED_DBMS_MYSQL} };
+  { {"oracle", SUPPORTED_DBMS_ORACLE}, {"mysql", SUPPORTED_DBMS_MYSQL} };
 
 T_CGW_HANDLE *local_odbc_handle = NULL;
 int is_database_connected = -1;
@@ -2116,6 +2116,11 @@ cgw_count_number_of_digits (int num_bits)
 SUPPORTED_DBMS_TYPE
 cgw_is_supported_dbms (char *dbms)
 {
+  if (dbms == NULL)
+    return NOT_SUPPORTED_DBMS;
+
+  ut_tolower (dbms);
+
   for (int i = 0; i < SUPPORTED_DBMS_MAX_NUM; i++)
     {
       if (strcmp (dbms, supported_dbms_list[i].dbms_name) == 0)
