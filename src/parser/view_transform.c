@@ -2115,6 +2115,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
       /* TO_DO : support for union query */
       if (PT_IS_SELECT (subquery) && PT_IS_SELECT (tmp_result)
 	  && !PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_INFO_IS_MERGE_QUERY)
+	  && !PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_INFO_IS_UPD_DEL_QUERY)
 	  && !(PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_INFO_COLS_SCHEMA)
 	       || PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_FULL_INFO_COLS_SCHEMA)))
 	{
