@@ -61,7 +61,8 @@ struct log_topop_range
 
 extern const char *log_to_string (LOG_RECTYPE type);
 extern bool log_is_in_crash_recovery (void);
-extern bool log_is_in_crash_recovery_and_not_yet_completes_redo (void);
+inline bool log_is_in_crash_recovery_and_not_yet_completes_redo (void);
+inline bool log_is_in_crash_recovery_but_past_redo_or_restarted (void);
 extern LOG_LSA *log_get_restart_lsa (void);
 extern LOG_LSA *log_get_crash_point_lsa (void);
 extern LOG_LSA *log_get_append_lsa (void);
@@ -287,5 +288,33 @@ void LOG_CS_PROMOTE (THREAD_ENTRY * thread_p);
 
 bool LOG_CS_OWN (THREAD_ENTRY * thread_p);
 bool LOG_CS_OWN_WRITE_MODE (THREAD_ENTRY * thread_p);
+
+//
+// inline implementations
+//
+
+inline bool
+log_is_in_crash_recovery_and_not_yet_completes_redo (void)
+{
+  if (log_Gl.rcv_phase == LOG_RECOVERY_ANALYSIS_PHASE || log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
+inline bool
+log_is_in_crash_recovery_but_past_redo_or_restarted (void)
+{
+  if (LOG_RESTARTED == log_Gl.rcv_phase || LOG_RECOVERY_UNDO_PHASE == log_Gl.rcv_phase
+      || LOG_RECOVERY_FINISH_2PC_PHASE == log_Gl.rcv_phase)
+    {
+      return true;
+    }
+  return false;
+}
 
 #endif /* _LOG_MANAGER_H_ */
