@@ -2311,9 +2311,10 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	{
 	  /* rewrite vclass query as a derived table */
 	  PT_NODE *tmp_class = NULL;
+	  bool is_removable_select_list = PT_IS_SELECT (tmp_result) && PT_IS_SELECT (query_spec);
 
 	  /* rewrite vclass spec */
-	  class_spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec, true);
+	  class_spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec, is_removable_select_list);
 
 	  /* get derived expending spec node */
 	  if (!class_spec || !(derived_table = class_spec->info.spec.derived_table)
