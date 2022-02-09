@@ -254,12 +254,16 @@ enum net_server_request
 
   NET_SERVER_SUPPLEMENT_STMT,
 
-  /*FOR CDC */
+  /* FOR CDC */
   NET_SERVER_CDC_START_SESSION,
   NET_SERVER_CDC_FIND_LSA,
   NET_SERVER_CDC_GET_LOGINFO_METADATA,
   NET_SERVER_CDC_GET_LOGINFO,
   NET_SERVER_CDC_END_SESSION,
+
+  /* flashback */
+  NET_SERVER_FLASHBACK_GET_SUMMARY,
+  NET_SERVER_FLASHBACK_GET_LOGINFO,
 
   /*
    * This is the last entry. It is also used for the end of an
