@@ -8202,7 +8202,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	   *    active transaction server (ie: the page still exists), but the log has been applied on
 	   *    page server and the page cannot be retrieved
 	   */
-	  if (log_is_restarted_or_in_crash_recovery_but_past_redo ())
+	  if (log_is_in_crash_recovery_but_past_redo_or_restarted ())
 	    {
 #if !defined(NDEBUG)
 	      if (!(io_page->prv == second_io_page->prv))
@@ -8226,7 +8226,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	      const bool local_lsa_is_less_than_or_equal_to_page_server_lsa
 		= (io_page->prv.lsa <= second_io_page->prv.lsa);
 	      const bool equal_vpid = io_page->prv.volid == second_io_page->prv.volid
-		&& io_page->prv.pageid == second_io_page->prv.pageid && io_page->prv.ptype == second_io_page->prv.ptype;
+		&& io_page->prv.pageid == second_io_page->prv.pageid;
 #if !defined(NDEBUG)
 	      if (!local_lsa_is_less_than_or_equal_to_page_server_lsa && !equal_vpid)
 		{
