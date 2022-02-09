@@ -2192,7 +2192,80 @@ logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, cons
 {
   bool pages_equal (*left_log_pgptr == *rite_log_pgptr || pageid == LOGPB_HEADER_PAGE_ID);
 
-  if (!pages_equal && pageid == log_Gl.hdr.append_lsa.pageid)
+  if (!pages_equal && log_Gl.rcv_phase == LOG_RECOVERY_ANALYSIS_PHASE)
+    {
+      /* NOTE:
+       *  - during early stages of the recovery phase, we cannot rely on log header append lsa to
+       *    know how much of the page area to compare because it is not updated until later in the
+       *    recovery process
+       *  - check if page is the last one in the log record by iterating log records
+       * the last log record (the one that contains the end of the log) is allowed to be different
+       *
+       * TODO: this iteration is too simplistic and brittle (as opposed to the one in log recovery analysis); but,
+       *  as this code has more of a temporary nature, it is considered good enough
+       */
+      const LOG_RECORD_HEADER *left_log_rec_header = nullptr;
+      const LOG_RECORD_HEADER *rite_log_rec_header = nullptr;
+      log_lsa curr_left_lsa = { pageid, left_log_pgptr->hdr.offset };
+      log_lsa curr_rite_lsa = { pageid, rite_log_pgptr->hdr.offset };
+
+      left_log_rec_header = (const LOG_RECORD_HEADER *) (left_log_pgptr->area + curr_left_lsa.offset);
+      rite_log_rec_header = (const LOG_RECORD_HEADER *) (rite_log_pgptr->area + curr_rite_lsa.offset);
+//      bool contains_end_of_log = false;
+      for (;;)
+	{
+	  // if current log record is the last one, it must be the end of log
+	  if (left_log_rec_header->forw_lsa.is_null () || rite_log_rec_header->forw_lsa.is_null ())
+	    {
+	      // TODO: active transaction server and page server append the end of log with different
+	      // transactions
+	      assert (left_log_rec_header->prev_tranlsa == rite_log_rec_header->prev_tranlsa
+		      && left_log_rec_header->back_lsa == rite_log_rec_header->back_lsa
+		      && left_log_rec_header->forw_lsa == rite_log_rec_header->forw_lsa
+		      //&& left_log_rec_header->trid == rite_log_rec_header->trid
+		      && left_log_rec_header->type == rite_log_rec_header->type);
+
+	      assert (left_log_rec_header->forw_lsa.is_null () && rite_log_rec_header->forw_lsa.is_null ());
+	      assert (left_log_rec_header->type == LOG_END_OF_LOG);
+	      pages_equal = true;
+	      //contains_end_of_log = left_log_rec_header->type == LOG_END_OF_LOG;
+	      break;
+	    }
+
+	  assert (left_log_rec_header->prev_tranlsa == rite_log_rec_header->prev_tranlsa
+		  && left_log_rec_header->back_lsa == rite_log_rec_header->back_lsa
+		  && left_log_rec_header->forw_lsa == rite_log_rec_header->forw_lsa
+		  && left_log_rec_header->trid == rite_log_rec_header->trid
+		  && left_log_rec_header->type == rite_log_rec_header->type);
+
+	  // might not be the last page, must stop, the pages are not equal
+	  if (left_log_rec_header->forw_lsa.pageid != curr_left_lsa.pageid
+	      || rite_log_rec_header->forw_lsa.pageid != curr_rite_lsa.pageid)
+	    {
+	      assert (left_log_rec_header->forw_lsa.pageid != curr_left_lsa.pageid
+		      && rite_log_rec_header->forw_lsa.pageid != curr_rite_lsa.pageid);
+	      pages_equal = false;
+	      break;
+	    }
+	  // next log record still in the same page, advance to it
+	  curr_left_lsa = left_log_rec_header->forw_lsa;
+	  curr_rite_lsa = rite_log_rec_header->forw_lsa;
+
+	  left_log_rec_header = (const LOG_RECORD_HEADER *) (left_log_pgptr->area + curr_left_lsa.offset);
+	  rite_log_rec_header = (const LOG_RECORD_HEADER *) (rite_log_pgptr->area + curr_rite_lsa.offset);
+	}
+
+//      if (contains_end_of_log)
+//	{
+//	  pages_equal = true;
+//	}
+//      else
+//	{
+//	  // pages are not equal
+//	  pages_equal = false;
+//	}
+    }
+  else if (!pages_equal && pageid == log_Gl.hdr.append_lsa.pageid)
     {
       const char *const left_log_page_area = left_log_pgptr->area;
       const char *const rite_log_page_area = rite_log_pgptr->area;
