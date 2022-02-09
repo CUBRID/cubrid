@@ -2593,6 +2593,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
   DB_VALUE val;
   DB_OBJECT *ins_obj_p;
   T_BROKER_VERSION client_version = req_info->client_version;
+  int retried_query_num = 0;
 
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
@@ -2708,6 +2709,10 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
       if (res_count < 0)
 	{
+	  if (res_count == ER_QPROC_INVALID_XASLNODE && retried_query_num != num_query)
+	    {
+	      goto exec_retry_xasl_error;
+	    }
 	  goto exec_db_error;
 	}
 
@@ -2804,6 +2809,40 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	{
 	  break;
 	}
+      continue;
+
+    exec_retry_xasl_error:
+      cas_log_write_and_end (0, false, "== xasl error : %d", num_query);
+
+      if (session != NULL)
+	{
+	  db_close_session (session);
+	  session = NULL;
+	}
+
+      session = db_open_buffer (srv_handle->sql_stmt);
+      if (!session)
+	{
+	  goto exec_db_error;
+	}
+
+      if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+	{
+	  db_session_set_xasl_cache_pinned (session, true, false);
+	}
+
+      stmt_id = db_compile_statement (session);
+      if (stmt_id < 0)
+	{
+	  goto exec_db_error;
+	}
+
+      retried_query_num = num_query;
+
+      srv_handle->session = session;
+      srv_handle->q_result->stmt_id = stmt_id;
+
+      num_query--;
     }
 
   net_buf_overwrite_int (net_buf, num_query_msg_offset, num_query);
