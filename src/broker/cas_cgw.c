@@ -40,8 +40,6 @@
                                 } \
                             }
 
-#define SUPPORTED_DBMS_MAX_NUM     2
-
 typedef struct t_supported_dbms T_SUPPORTED_DBMS;
 struct t_supported_dbms
 {
@@ -49,8 +47,10 @@ struct t_supported_dbms
   SUPPORTED_DBMS_TYPE dbms_type;
 };
 
-static T_SUPPORTED_DBMS supported_dbms_list[SUPPORTED_DBMS_MAX_NUM] =
-  { {"oracle", SUPPORTED_DBMS_ORACLE}, {"mysql", SUPPORTED_DBMS_MYSQL} };
+static T_SUPPORTED_DBMS supported_dbms_list[] = { {"oracle", SUPPORTED_DBMS_ORACLE}, {"mysql", SUPPORTED_DBMS_MYSQL} };
+
+static int supported_dbms_max_num = sizeof (supported_dbms_list) / sizeof (T_SUPPORTED_DBMS);
+
 
 T_CGW_HANDLE *local_odbc_handle = NULL;
 int is_database_connected = -1;
@@ -2121,7 +2121,7 @@ cgw_is_supported_dbms (char *dbms)
 
   ut_tolower (dbms);
 
-  for (int i = 0; i < SUPPORTED_DBMS_MAX_NUM; i++)
+  for (int i = 0; i < supported_dbms_max_num; i++)
     {
       if (strcmp (dbms, supported_dbms_list[i].dbms_name) == 0)
 	{
