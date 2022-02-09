@@ -2812,8 +2812,6 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
       continue;
 
     exec_retry_xasl_error:
-      cas_log_write_and_end (0, false, "== xasl error : %d", num_query);
-
       if (session != NULL)
 	{
 	  db_close_session (session);
