@@ -1698,7 +1698,10 @@
 
 #define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
 
-#define ER_LAST_ERROR                               -1333
+#define ER_AU_CANT_ALTER_OWNER_OF_AUTO_INCREMENT    -1333
+#define ER_SM_RENAME_CANT_ALTER_OWNER               -1334
+
+#define ER_LAST_ERROR                               -1335
 /*
  * CAUTION!
  *

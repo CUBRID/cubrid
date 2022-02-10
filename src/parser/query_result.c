@@ -1454,37 +1454,9 @@ db_get_attributes_force (DB_OBJECT * obj)
 DB_OBJECT *
 pt_find_users_class (PARSER_CONTEXT * parser, PT_NODE * name)
 {
-  DB_OBJECT *object = NULL;
-  char *current_user_name = NULL;
-  const char *class_name = NULL;
-  const char *class_full_name = NULL;
+  DB_OBJECT *object;
 
-  class_name = name->info.name.original;
-
-  object = db_find_class (class_name);
-  if (object == NULL)
-    {
-      if (strchr (class_name, '.') == NULL && !sm_check_system_class_by_name (class_name))
-	{
-	  current_user_name = db_get_user_name ();
-
-	  class_full_name = pt_append_string (parser, NULL, current_user_name);
-	  class_full_name = pt_append_string (parser, class_full_name, ".");
-	  class_full_name = pt_append_string (parser, class_full_name, class_name);
-
-	  if (current_user_name)
-	    {
-	      db_string_free (current_user_name);
-	      current_user_name = NULL;
-	    }
-
-	  object = db_find_class (class_full_name);
-	  if (object)
-	    {
-	      name->info.name.original = class_full_name;
-	    }
-	}
-    }
+  object = db_find_class (name->info.name.original);
 
   if (!object)
     {

@@ -2197,7 +2197,11 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
     }
 
   current_user_name = db_get_user_name ();
-  assert (current_user_name != NULL);
+  if (!current_user_name)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return;
+    }
 
   snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_user_name, name);
   sm_downcase_name (user_specified_name, buf, buf_size);
@@ -2205,7 +2209,6 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   if (current_user_name)
     {
       db_string_free (current_user_name);
-      current_user_name = NULL;
     }
 }
 
@@ -2659,114 +2662,137 @@ sm_get_all_objects (DB_OBJECT * op)
  */
 
 int
-sm_rename_class (MOP op, const char *new_name)
+sm_rename_class (MOP class_mop, const char *new_name)
 {
-  int error;
-  SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
-  const char *current, *newname;
-  char realname[SM_MAX_IDENTIFIER_LENGTH];
+  SM_CLASS *class_ = NULL;
+  SM_ATTRIBUTE *att = NULL;
+  MOBJ obj = NULL;
+  DB_VALUE value;
+  char *class_old_name = NULL;
+  char *class_new_name = NULL;
+  const char *class_name_of_serial = NULL;
+  char buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int is_partition = 0;
-/*  TR_STATE *trstate; */
+  bool has_savepoint = false;
+  int error = NO_ERROR;
 
-  /* make sure this gets into the server table with no capitalization */
-  sm_downcase_name (new_name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  db_make_null (&value);
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-  if (sm_has_text_domain (db_get_attributes (op), 1))
-    {
-      /* prevent to rename class */
-      ERROR1 (error, ER_REGU_NOT_IMPLEMENTED, rel_major_release_string ());
-      return error;
-    }
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-  error = sm_partitioned_class_type (op, &is_partition, NULL, NULL);
+  error = sm_partitioned_class_type (class_mop, &is_partition, NULL, NULL);
   if (is_partition == DB_PARTITIONED_CLASS)
     {
       error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  return error;
 	}
+
+      has_savepoint = true;
     }
 
-  if (!sm_check_name (realname))
+  if (new_name == NULL || new_name[0] == '\0')
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      ERROR_SET_WARNING_1ARG (error, ER_SM_INVALID_NAME, new_name);
+      return error;
     }
-  else if ((error = au_fetch_class (op, &class_, AU_FETCH_UPDATE, AU_ALTER)) == NO_ERROR)
+
+  error = au_fetch_class (class_mop, &class_, AU_FETCH_UPDATE, AU_ALTER);
+  if (error != NO_ERROR)
     {
-      /* We need to go ahead and copy the string since prepare_rename uses the address of the string in the hash table. */
-      current = sm_ch_name ((MOBJ) class_);
-      newname = ws_copy_string (realname);
-      if (newname == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
+      ASSERT_ERROR ();
+      return error;
+    }
 
-      if (locator_prepare_rename_class (op, current, newname) == NULL)
-	{
-	  ws_free_string (newname);
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
-      else
-	{
-	  class_->header.ch_name = newname;
-	  class_->header.ch_simple_name = sm_simple_name (newname);
-	  error = sm_flush_objects (op);
+  /* We need to go ahead and copy the string since prepare_rename uses the address of the string in the hash table. */
+  class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_)); 
 
-	  if (error == NO_ERROR)
+  /* make sure this gets into the server table with no capitalization */
+  sm_user_specified_name (new_name, buf, SM_MAX_IDENTIFIER_LENGTH);
+  class_new_name = db_private_strdup (NULL, buf);
+  if (class_new_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  obj = locator_prepare_rename_class (class_mop, class_old_name, class_new_name);
+  if (obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  class_->header.ch_name = class_new_name;
+  class_->header.ch_simple_name = sm_simple_name (class_new_name);
+
+  error = sm_flush_objects (class_mop);
+  if (obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  /* rename related auto_increment serial obj name */
+  for (att = class_->attributes; att; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (att->auto_increment != NULL)
+	{
+	  error = db_get (att->auto_increment, SERIAL_ATTR_CLASS_FULL_NAME, &value);
+	  if (error != NO_ERROR)
 	    {
-	      /* rename related auto_increment serial obj name */
-	      for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+	      ASSERT_ERROR ();
+	      goto end;
+	    }
+
+	  class_name_of_serial = db_get_string (&value);
+	  if (class_name_of_serial == NULL)
+	    {
+	      ERROR_SET_ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+	      goto end;
+	    }
+
+	  if (intl_identifier_casecmp (class_old_name, class_name_of_serial) == 0)
+	    {
+	      error = do_update_auto_increment_serial_on_rename (att->auto_increment, class_new_name, att->header.name);
+	      if (error != NO_ERROR)
 		{
-		  if (att->auto_increment != NULL)
-		    {
-		      DB_VALUE name_val;
-		      const char *class_name;
-
-		      if (db_get (att->auto_increment, "class_full_name", &name_val) != NO_ERROR)
-			{
-			  break;
-			}
-
-		      class_name = db_get_string (&name_val);
-		      if (class_name != NULL && (strcmp (current, class_name) == 0))
-			{
-			  int save;
-			  AU_DISABLE (save);
-			  error =
-			    do_update_auto_increment_serial_on_rename (att->auto_increment, newname, att->header.name);
-			  AU_ENABLE (save);
-			}
-		      db_value_clear (&name_val);
-
-		      if (error != NO_ERROR)
-			{
-			  break;
-			}
-		    }
+		  ASSERT_ERROR ();
+		  goto end;
 		}
 	    }
-	  ws_free_string (current);
+
+	  db_value_clear (&value);
 	}
     }
 
   if (is_partition == DB_PARTITIONED_CLASS)
     {
-      if (error == NO_ERROR)
+      error = do_rename_partition (class_mop, class_new_name);
+      if (error != NO_ERROR)
 	{
-	  error = do_rename_partition (op, realname);
-	}
+	  ASSERT_ERROR ();
 
-      if (error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
-	{
-	  (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
+	  if (error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
+	    }
+
+	  goto end;
 	}
+    }
+
+  if (class_old_name)
+    {
+      db_private_free_and_init (NULL, class_old_name);
+    }
+
+  class_new_name = NULL;
+
+end:
+  if (class_new_name)
+    {
+      db_private_free_and_init (NULL, class_new_name);
     }
 
   return error;

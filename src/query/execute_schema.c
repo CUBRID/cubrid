@@ -2590,7 +2590,7 @@ error_exit:
  *   statement(in): Parse tree of a rename statement
  */
 int
-do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
+do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   const PT_NODE *current_rename = NULL;
@@ -2617,6 +2617,15 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     {
       const char *old_name = current_rename->info.rename.old_name->info.name.original;
       const char *new_name = current_rename->info.rename.new_name->info.name.original;
+
+      const char *old_qualifier_name = pt_get_qualifier_name (parser, current_rename->info.rename.old_name);
+      const char *new_qualifier_name = pt_get_qualifier_name (parser, current_rename->info.rename.new_name);
+
+      if (old_qualifier_name && new_qualifier_name && intl_identifier_casecmp (old_qualifier_name, new_qualifier_name))
+	{
+	  ERROR_SET_ERROR (error, ER_SM_RENAME_CANT_ALTER_OWNER);
+	  goto error_exit;
+	}
 
       error = do_rename_internal (old_name, new_name);
       if (error != NO_ERROR)

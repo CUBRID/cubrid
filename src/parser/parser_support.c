@@ -9908,6 +9908,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
   char *current_user_name = NULL;
   const char *user_specified_name = NULL;
+  int error = NO_ERROR;
 
   if (!node)
     {
@@ -9924,8 +9925,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     {
       if (PT_IS_DOT_NODE (node->info.expr.arg1)
 	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg1)
-	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2)
-	  && PT_NAME_INFO_IS_FLAGED (node->info.expr.arg1->info.dot.arg2, PT_NAME_INFO_USER_SPECIFIED))
+	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2))
 	{
 	  PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
 	  PT_NODE *name = node->info.expr.arg1->info.dot.arg2;
@@ -9933,17 +9933,14 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  original_name = name->info.name.original;
 	  resolved_name = owner->info.name.original;
 	}
-      else if (PT_IS_NAME_NODE (node->info.expr.arg1)
-      	       && PT_NAME_INFO_IS_FLAGED (node->info.expr.arg1, PT_NAME_INFO_USER_SPECIFIED))
+      else
 	{
+	  assert (PT_IS_NAME_NODE (node->info.expr.arg1));
+
 	  PT_NODE *name = node->info.expr.arg1;
 
 	  original_name = name->info.name.original;
 	  resolved_name = name->info.name.resolved;
-	}
-      else
-        {
-	  return node;
 	}
     }
   else
@@ -9985,7 +9982,13 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   if (resolved_name == NULL || resolved_name[0] == '\0')
     {
       current_user_name = db_get_user_name ();
-      assert (current_user_name != NULL);
+      if (!current_user_name)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  PT_ERROR (parser, node, er_msg ());
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
 
       resolved_name = current_user_name;
     }
@@ -9994,6 +9997,8 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     {
       PT_ERRORf2 (parser, node,
 		  "User name [%s] not allowed. It cannot exceed %d bytes.", resolved_name, DB_MAX_USER_LENGTH);
+      *continue_walk = PT_STOP_WALK;
+      return node;
     }
 
   intl_identifier_lower (resolved_name, downcase_resolved_name);
@@ -10005,6 +10010,8 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       PT_ERRORf2 (parser, node,
 		  "Identifier name [%s] not allowed. It cannot exceed %d bytes.",
 		  original_name, DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
+      *continue_walk = PT_STOP_WALK;
+      return node;
     }
 
   /* In case 1, 2, 3, 5 */
@@ -10041,7 +10048,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   if (current_user_name)
     {
       db_string_free (current_user_name);
-      current_user_name = NULL;
     }
 
   return node;
@@ -10087,6 +10093,7 @@ pt_get_name_without_current_user_name (const char *name)
   char *dot = NULL;
   char *current_user_name = NULL;
   const char *object_name = NULL;
+  int error = NO_ERROR;
 
   if (name == NULL || name[0] == '\0')
     {
@@ -10104,11 +10111,15 @@ pt_get_name_without_current_user_name (const char *name)
     }
 
   current_user_name = db_get_user_name ();
-  assert (current_user_name != NULL);
+  if (!current_user_name)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return name;
+    }
 
   dot[0] = '\0';
 
-  if (name && current_user_name && intl_identifier_casecmp (name, current_user_name) == 0)
+  if (intl_identifier_casecmp (name, current_user_name) == 0)
     {
       /*
        * e.g.        name: current_user_name.object_name
@@ -10130,7 +10141,6 @@ pt_get_name_without_current_user_name (const char *name)
   if (current_user_name)
     {
       db_string_free (current_user_name);
-      current_user_name = NULL;
     }
 
   return object_name;

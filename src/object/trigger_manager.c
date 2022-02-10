@@ -6810,24 +6810,27 @@ tr_dump_all_triggers (FILE * fp, bool quoted_id_flag)
  *    call_from_api(in): call from api
  */
 int
-tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api)
+tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api, bool deferred_flush)
 {
   TR_TRIGGER *trigger = NULL;
+  DB_VALUE value;
   char *new_name = NULL;
   char *old_name = NULL;
-  DB_VALUE value;
-  int save = 0;;
   bool has_savepoint = false;
   bool is_abort = false;
+  int save = 0;
   int error = NO_ERROR;
 
-  assert (trigger_object != NULL);
-  assert (name != NULL);
+  if (trigger_object == NULL || name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
 
   db_make_null (&value);
 
   trigger = tr_map_trigger (trigger_object, true);
-  if (trigger == NULL)
+  if (!trigger)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
@@ -6843,7 +6846,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 
   old_name = trigger->name;
   new_name = tr_process_name (name);
-  if (new_name == NULL)
+  if (!new_name)
     {
       ASSERT_ERROR_AND_SET (error);
       goto end;
@@ -6861,6 +6864,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
       error = tran_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto end;
 	}
 
@@ -6894,15 +6898,18 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
       goto end;
     }
 
-  error = locator_flush_instance (trigger_object);
-  if (error != NO_ERROR)
+  if (!deferred_flush)
     {
-      ASSERT_ERROR ();
-      is_abort = true;
-      goto end;
+      error = locator_flush_instance (trigger_object);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  is_abort = true;
+	  goto end;
+	}
     }
 
-  if (old_name != NULL)
+  if (old_name)
     {
       free_and_init (old_name);
     }
@@ -6918,9 +6925,12 @@ end:
        *    we might need to abort the transaction here ?
        * 2. if we can't do this, the transaction better abort
        */
-      trigger_table_rename (trigger_object, old_name);
+      if (trigger_table_rename (trigger_object, old_name) != NO_ERROR)
+	{
+	  assert (false);
+	}
 
-      if (new_name != NULL)
+      if (new_name)
 	{
 	  free_and_init (new_name);
 	}

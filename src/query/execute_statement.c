@@ -6821,7 +6821,7 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      error = tr_rename_trigger (trigger, new_name, false);
+      error = tr_rename_trigger (trigger, new_name, false, false);
     }
 
   return error;
@@ -18451,58 +18451,81 @@ do_kill (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_find_class_by_query (const char *name, char *buf, size_t buf_size)
 {
+#define QUERY_BUF_SIZE 2048
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   DB_VALUE value;
-
   const char *query = NULL;
-  char query_buf[1024] = { '\0' };	// 1024
-
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *dot = NULL;
   const char *name_p = NULL;
-
+  char *current_user_name = NULL;
   int error = NO_ERROR;
 
-  /* initialization */
+  db_make_null (&value);
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  db_make_null (&value);
-
-  memset (buf, 0, buf_size);
-
-  if (name == NULL || name[0] == '\0')
+  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < DB_MAX_IDENTIFIER_LENGTH)
     {
-      return NO_ERROR;
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
     }
 
   dot = strchr (name, '.');
   name_p = dot ? (dot + 1) : name;
 
-  query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s'";
-  snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, name_p);
+  current_user_name = db_get_user_name ();
+  if (!current_user_name)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+  }
+
+  query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s' AND [class_full_name] NOT LIKE LOWER ('%s') || '.%%'";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, name_p, current_user_name));
+  snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, name_p, current_user_name);
+
+  db_private_free_and_init (NULL, current_user_name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto end;
     }
 
   error = db_query_first_tuple (query_result);
   if (error != DB_CURSOR_SUCCESS)
     {
+      if (error == DB_CURSOR_END)
+	{
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
       goto end;
     }
 
   error = db_query_get_tuple_value (query_result, 0, &value);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto end;
     }
 
-  if (!db_value_is_null (&value))
+  if (!DB_IS_NULL (&value))
     {
+      memset (buf, 0, buf_size);
       snprintf (buf, buf_size, "%s", db_get_string (&value));
+    }
+  else
+    {
+      /* class_full_name must not be null. */
+      assert (false);
     }
 
   error = db_query_next_tuple (query_result);
@@ -18520,58 +18543,94 @@ end:
     }
 
   return error;
+#undef QUERY_BUF_SIZE
 }
 
 int
 do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
 {
+#define QUERY_BUF_SIZE 2048
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   DB_VALUE value;
-
   const char *query = NULL;
-  char query_buf[2048] = { '\0' };	// 2048
-
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *dot = NULL;
   const char *name_p = NULL;
-
+  char *current_user_name = NULL;
   int error = NO_ERROR;
 
-  /* initialization */
+  db_make_null (&value);
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  db_make_null (&value);
-
-  memset (buf, 0, buf_size);
+  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < DB_MAX_IDENTIFIER_LENGTH)
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
 
   dot = strchr (name, '.');
   name_p = dot ? (dot + 1) : name;
 
-  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s'";
-  snprintf (query_buf, sizeof (query_buf), query, CT_SERIAL_NAME, name_p);
+  current_user_name = db_get_user_name ();
+  if (!current_user_name)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+  }
+
+  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s' AND [full_name] NOT LIKE LOWER ('%s') || '.%%'";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, name_p, current_user_name));
+  snprintf (query_buf, sizeof (query_buf), query, CT_SERIAL_NAME, name_p, current_user_name);
+
+  db_private_free_and_init (NULL, current_user_name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto end;
     }
 
   error = db_query_first_tuple (query_result);
   if (error != DB_CURSOR_SUCCESS)
     {
+      if (error == DB_CURSOR_END)
+	{
+	  /*
+	   * In the do_get_obj_id () function, if the MOP is NULL and the error is ER_OBJ_OBJECT_NOT_FOUND,
+	   * the error is cleared. So NO_ERROR is returned.
+	   *
+	   * In the do_create_auto_increment_serial() function, there should be no error even if the serial
+	   * cannot be found when the do_get_serial_obj_id() function is called. So it should return NO_ERROR.
+	   */
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
       goto end;
     }
 
   error = db_query_get_tuple_value (query_result, 0, &value);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto end;
     }
 
-  if (!db_value_is_null (&value))
+  if (!DB_IS_NULL (&value))
     {
+      memset (buf, 0, buf_size);
       snprintf (buf, buf_size, "%s", db_get_string (&value));
+    }
+  else
+    {
+      /* full_name must not be null. */
+      assert (false);
     }
 
   error = db_query_next_tuple (query_result);
@@ -18589,58 +18648,87 @@ end:
     }
 
   return error;
+#undef QUERY_BUF_SIZE
 }
 
 int
 do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
 {
+#define QUERY_BUF_SIZE 2048
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   DB_VALUE value;
-
   const char *query = NULL;
-  char query_buf[2048] = { '\0' };	// 2048
-
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *dot = NULL;
   const char *name_p = NULL;
-
+  char *current_user_name = NULL;
   int error = NO_ERROR;
 
-  /* initialization */
+  db_make_null (&value);
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  db_make_null (&value);
-
-  memset (buf, 0, buf_size);
+  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < DB_MAX_IDENTIFIER_LENGTH)
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
 
   dot = strchr (name, '.');
   name_p = dot ? (dot + 1) : name;
 
-  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s'";
-  snprintf (query_buf, sizeof (query_buf), query, CT_TRIGGER_NAME, name_p);
+  current_user_name = db_get_user_name ();
+  if (!current_user_name)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+  }
+
+  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s' AND [full_name] NOT LIKE LOWER ('%s') || '.%%'";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, name_p, current_user_name));
+  snprintf (query_buf, sizeof (query_buf), query, CT_TRIGGER_NAME, name_p, current_user_name);
+
+  db_private_free_and_init (NULL, current_user_name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto end;
     }
 
   error = db_query_first_tuple (query_result);
   if (error != DB_CURSOR_SUCCESS)
     {
+      if (error == DB_CURSOR_END)
+	{
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
       goto end;
     }
 
   error = db_query_get_tuple_value (query_result, 0, &value);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto end;
     }
 
-  if (!db_value_is_null (&value))
+  if (!DB_IS_NULL (&value))
     {
+      memset (buf, 0, buf_size);
       snprintf (buf, buf_size, "%s", db_get_string (&value));
+    }
+  else
+    {
+      /* full_name must not be null. */
+      assert (false);
     }
 
   error = db_query_next_tuple (query_result);
@@ -18658,6 +18746,7 @@ end:
     }
 
   return error;
+#undef QUERY_BUF_SIZE
 }
 
 /*

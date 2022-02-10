@@ -616,7 +616,19 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 				  arg = parser_new_node (this_parser, PT_NAME);
 				  if (arg)
 				    {
-				      temp = strstr (arg_start, ".");
+				      temp = strchr (arg_start, '.');
+
+				      /*
+				       * "user_name + dot(.)" is added in front of the table name to distinguish
+				       * the user schema. So we cannot separate index names with dot(.).
+				       * dot(.) does not appear more than 3 times, and the last name is the index name.
+				       */
+				      char *next_dot = NULL;
+				      if (temp && (next_dot = strchr (temp + 1, '.')) != NULL)
+					{
+					  temp = next_dot;
+					}
+
 				      if (temp && temp < &(hint_p[j]) && !IS_HINT_ON_TABLE (hint_table[i].hint))
 					{
 					  *temp = '\0';
@@ -676,6 +688,18 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 			      if (arg)
 				{
 				  temp = strstr (arg_start, ".");
+
+				  /*
+				   * "user_name + dot(.)" is added in front of the table name to distinguish
+				   * the user schema. So we cannot separate index names with dot(.).
+				   * dot(.) does not appear more than 3 times, and the last name is the index name.
+				   */
+				  char *next_dot = NULL;
+				  if (temp && (next_dot = strchr (temp + 1, '.')) != NULL)
+				    {
+				      temp = next_dot;
+				    }
+
 				  if (temp && temp < &(hint_p[j]) && !IS_HINT_ON_TABLE (hint_table[i].hint))
 				    {
 				      *temp = '\0';
