@@ -43,6 +43,7 @@
 #define DWB_SLOTS_HASH_SIZE		    1000
 #define DWB_SLOTS_FREE_LIST_SIZE	    100
 
+/* These values must be power of two. */
 #define DWB_MIN_SIZE			    (512 * 1024)
 #define DWB_MAX_SIZE			    (32 * 1024 * 1024)
 #define DWB_MIN_BLOCKS			    1
@@ -337,7 +338,7 @@ STATIC_INLINE void dwb_signal_waiting_threads (DWB_WAIT_QUEUE * wait_queue, pthr
 STATIC_INLINE void dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex);
 
 /* DWB functions */
-STATIC_INLINE void dwb_adjust_value (unsigned int min, unsigned int max, unsigned int *p_value)
+STATIC_INLINE void dwb_power2_ceil (unsigned int min, unsigned int max, unsigned int *p_value)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool dwb_load_buffer_size (unsigned int *p_double_write_buffer_size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool dwb_load_block_count (unsigned int *p_num_blocks) __attribute__ ((ALWAYS_INLINE));
@@ -719,7 +720,7 @@ dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex)
 }
 
 /*
- * dwb_adjust_value () - Adjust value to power of 2.
+ * dwb_power2_ceil () - Adjust value to power of 2.
  *
  * return   : Error code.
  * min (in) : minimum of value to be adjusted.
@@ -729,7 +730,7 @@ dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex)
  *  Note: The adjusted value is a power of 2 that is greater than the value.
  */
 STATIC_INLINE void
-dwb_adjust_value (unsigned int min, unsigned int max, unsigned int *p_value)
+dwb_power2_ceil (unsigned int min, unsigned int max, unsigned int *p_value)
 {
   unsigned int limit;
 
@@ -760,14 +761,16 @@ dwb_adjust_value (unsigned int min, unsigned int max, unsigned int *p_value)
 /*
  * dwb_load_buffer_size () - Load the buffer size value of double write buffer.
  *
- * return   : true of false.
+ * return   : true or false.
  * p_double_write_buffer_size (in/out) : the buffer size of double write buffer.
  *
+ *  Note: The buffer size must be a multiple of 512 K.
  */
 STATIC_INLINE bool
 dwb_load_buffer_size (unsigned int *p_double_write_buffer_size)
 {
   assert (IS_POWER_OF_2 (DWB_MIN_SIZE) && IS_POWER_OF_2 (DWB_MAX_SIZE));
+  assert (DWB_MAX_SIZE >= DWB_MIN_SIZE);
 
   *p_double_write_buffer_size = prm_get_integer_value (PRM_ID_DWB_SIZE);
   if (*p_double_write_buffer_size == 0)
@@ -775,21 +778,25 @@ dwb_load_buffer_size (unsigned int *p_double_write_buffer_size)
       /* Do not use double write buffer. */
       return false;
     }
-  dwb_adjust_value (DWB_MIN_SIZE, DWB_MAX_SIZE, p_double_write_buffer_size);
+
+  dwb_power2_ceil (DWB_MIN_SIZE, DWB_MAX_SIZE, p_double_write_buffer_size);
+
   return true;
 }
 
 /*
  * dwb_load_block_count () - Load the block count value of double write buffer.
  *
- * return   : true of false.
+ * return   : true or false.
  * p_num_blocks (in/out) : the block count of double write buffer.
  *
+ *  Note: The number of blocks must be a power of 2.
  */
 STATIC_INLINE bool
 dwb_load_block_count (unsigned int *p_num_blocks)
 {
   assert (IS_POWER_OF_2 (DWB_MIN_BLOCKS) && IS_POWER_OF_2 (DWB_MAX_BLOCKS));
+  assert (DWB_MAX_BLOCKS >= DWB_MIN_BLOCKS);
 
   *p_num_blocks = prm_get_integer_value (PRM_ID_DWB_BLOCKS);
   if (*p_num_blocks == 0)
@@ -797,7 +804,9 @@ dwb_load_block_count (unsigned int *p_num_blocks)
       /* Do not use double write buffer. */
       return false;
     }
-  dwb_adjust_value (DWB_MIN_BLOCKS, DWB_MAX_BLOCKS, p_num_blocks);
+
+  dwb_power2_ceil (DWB_MIN_BLOCKS, DWB_MAX_BLOCKS, p_num_blocks);
+
   return true;
 }
 
