@@ -1507,7 +1507,7 @@ ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
-  }
+    }
 
   query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, name_p, current_user_name));

@@ -737,15 +737,15 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 	      if (col->info.name.meta_class == PT_META_ATTR)
 		{
 		  name = pt_append_string (parser, NULL, "class ");
-		  if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+		  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+		    {
+		      name = pt_append_string (parser, name, pt_get_simple_name (col->info.name.resolved));
+		    }
+		  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
 		    {
 		      name =
 			pt_append_string (parser, name,
 					  pt_get_name_without_current_user_name (col->info.name.resolved));
-		    }
-		  else if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
-		    {
-		      name = pt_append_string (parser, name, pt_get_simple_name (col->info.name.resolved));
 		    }
 		  else
 		    {
@@ -758,16 +758,16 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 	      else if (PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_DOT_NAME))
 		{
 		  /* PT_NAME comes from PT_DOT_ */
-		  if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+		  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+		    {
+		      tmp_name = pt_append_string (parser, pt_get_simple_name (col->info.name.resolved), ".");
+		      original_name = pt_append_string (parser, tmp_name, original_name);
+		    }
+		  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
 		    {
 		      tmp_name = pt_append_string (parser,
 						   pt_get_name_without_current_user_name (col->info.name.resolved),
 						   ".");
-		      original_name = pt_append_string (parser, tmp_name, original_name);
-		    }
-		  else if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
-		    {
-		      tmp_name = pt_append_string (parser, pt_get_simple_name (col->info.name.resolved), ".");
 		      original_name = pt_append_string (parser, tmp_name, original_name);
 		    }
 		  else

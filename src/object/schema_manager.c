@@ -2759,7 +2759,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
     }
 
   /* We need to go ahead and copy the string since prepare_rename uses the address of the string in the hash table. */
-  class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_)); 
+  class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_));
 
   /* make sure this gets into the server table with no capitalization */
   sm_user_specified_name (new_name, buf, SM_MAX_IDENTIFIER_LENGTH);

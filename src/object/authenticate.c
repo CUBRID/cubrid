@@ -5215,7 +5215,7 @@ au_change_owner (MOP class_mop, MOP owner_mop)
   for (attr = class_->attributes; attr; attr = (SM_ATTRIBUTE *) attr->header.next)
     {
       if (attr->auto_increment)
-        {
+	{
 	  error = au_change_serial_owner (attr->auto_increment, owner_mop, true);
 	  if (error != NO_ERROR)
 	    {
@@ -5229,7 +5229,7 @@ au_change_owner (MOP class_mop, MOP owner_mop)
   class_->owner = owner_mop;
 
   /* class_full_name contains owner_name. if owner of class is changed, class_full_name must be changed as well. */
-  class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_)); 
+  class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_));
 
   /* class_full_name of system class does not contain owner_name. class_full_name does not need to be changed. */
   if (sm_check_system_class_by_name (sm_simple_name (class_old_name)))
@@ -5277,14 +5277,12 @@ au_change_owner (MOP class_mop, MOP owner_mop)
 	{
 	  if (constraints->type != SM_CONSTRAINT_INDEX
 	      && constraints->type != SM_CONSTRAINT_REVERSE_INDEX
-	      && constraints->type != SM_CONSTRAINT_UNIQUE
-	      && constraints->type != SM_CONSTRAINT_REVERSE_UNIQUE)
+	      && constraints->type != SM_CONSTRAINT_UNIQUE && constraints->type != SM_CONSTRAINT_REVERSE_UNIQUE)
 	    {
 	      continue;
 	    }
 
-	  if (constraints->func_index_info
-	      || constraints->filter_predicate)
+	  if (constraints->func_index_info || constraints->filter_predicate)
 	    {
 	      error = sm_save_constraint_info (&save_constraints, constraints);
 	      if (error != NO_ERROR)
@@ -5314,20 +5312,22 @@ au_change_owner (MOP class_mop, MOP owner_mop)
 		      ASSERT_ERROR ();
 		      goto end;
 		    }
-		
+
 		  continue;
 		}
 
 	      if (constraints->filter_predicate)
 		{
 		  /* recompile filter index expression */
-		  error = do_recreate_filter_index_constr (NULL, saved->filter_predicate, NULL, class_old_name, class_new_name);
+		  error =
+		    do_recreate_filter_index_constr (NULL, saved->filter_predicate, NULL, class_old_name,
+						     class_new_name);
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
 		      goto end;
 		    }
-		
+
 		  continue;
 		}
 	    }
@@ -5339,7 +5339,7 @@ au_change_owner (MOP class_mop, MOP owner_mop)
 	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	    {
 	      error = sm_drop_constraint (class_mop, saved->constraint_type, saved->name,
-	      				  (const char **) saved->att_names, false, false);
+					  (const char **) saved->att_names, false, false);
 	      if (error != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -5647,8 +5647,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
   sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
   db_ws_free_and_init (owner_name);
 
-  snprintf (serial_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
-	    sm_simple_name (serial_old_name));
+  snprintf (serial_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, sm_simple_name (serial_old_name));
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
   if (serial_class_mop == NULL)
@@ -5848,7 +5847,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   db_ws_free_and_init (owner_name);
 
   snprintf (trigger_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
-  	    sm_simple_name (trigger_old_name));
+	    sm_simple_name (trigger_old_name));
 
   error = tr_rename_trigger (trigger_mop, trigger_new_name, false, true);
   if (error != NO_ERROR)
@@ -5933,7 +5932,7 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigg
 
   owner_mop = au_find_user (owner_name);
   if (owner_mop == NULL)
-    {  
+    {
       ASSERT_ERROR_AND_SET (error);
       db_make_error (return_val, error);
       return;

@@ -257,7 +257,8 @@ extern void au_drop_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * me
 extern void au_drop_user_method (MOP root, DB_VALUE * returnval, DB_VALUE * name);
 extern void au_change_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * class_val, DB_VALUE * owner_val);
 extern int au_change_trigger_owner (MOP trigger_mop, MOP owner_mop);
-extern void au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigger_val, DB_VALUE * owner_val);
+extern void au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigger_val,
+					    DB_VALUE * owner_val);
 extern void au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_);
 extern void au_check_authorization_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VALUE * auth);
 extern int au_change_sp_owner (MOP sp, MOP owner);

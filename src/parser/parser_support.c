@@ -9915,8 +9915,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       return NULL;
     }
 
-  if (PT_IS_NAME_NODE (node)
-      && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+  if (PT_IS_NAME_NODE (node) && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
     {
       original_name = node->info.name.original;
       resolved_name = node->info.name.resolved;
@@ -10057,8 +10056,6 @@ const char *
 pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name)
 {
   char *dot = NULL;
-  const char *original_name = NULL;
-  const char *resolved_name = NULL;
   const char *qualifier_name = NULL;
 
   if (name == NULL || name->node_type != PT_NAME)
@@ -10071,20 +10068,16 @@ pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name)
       return NULL;
     }
 
-  original_name = name->info.name.original;
-  resolved_name = name->info.name.resolved;
+  qualifier_name = pt_append_string (parser, NULL, name->info.name.original);
 
-  dot = (char *) strchr (original_name, '.');
+  dot = CONST_CAST (char *, strchr (name->info.name.original, '.'));
   if (dot)
     {
       dot[0] = '\0';
-      qualifier_name = pt_append_string (parser, NULL, original_name);
-      dot[0] = '.';
-
       return qualifier_name;
     }
 
-  return resolved_name;
+  return name->info.name.resolved;
 }
 
 const char *
