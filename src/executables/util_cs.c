@@ -4039,8 +4039,20 @@ check_sql_memory (char **sql, int req_size, int *max_sql_size)
   return NO_ERROR;
 }
 
+#define IS_QOUTES_NEEDED(type)   (type == DB_TYPE_STRING || \
+                                  type == DB_TYPE_TIME || \
+                                  type == DB_TYPE_TIMESTAMP || \
+                                  type == DB_TYPE_TIMESTAMPTZ || \
+                                  type == DB_TYPE_TIMESTAMPLTZ || \
+                                  type == DB_TYPE_DATE || \
+                                  type == DB_TYPE_DATETIME || \
+                                  type == DB_TYPE_DATETIMETZ || \
+                                  type == DB_TYPE_DATETIMELTZ || \
+                                  type == DB_TYPE_CHAR)
+
+
 static int
-process_column_data (char **data, char **sql, int *max_sql_size)
+process_column_data (char **data, char **sql, int *max_sql_size, DB_TYPE type)
 {
   char *ptr = *data;
 
@@ -4113,26 +4125,42 @@ process_column_data (char **data, char **sql, int *max_sql_size)
 	}
 
       sprintf (*sql + sql_length, "%d", sh_data);
+      break;
     case 5:
       ptr = or_unpack_string_nocopy (ptr, &s_data);
-      error = check_sql_memory (sql, sql_length + strlen (s_data), max_sql_size);
+      error = check_sql_memory (sql, sql_length + strlen (s_data) + 3, max_sql_size);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
 
-      sprintf (*sql + sql_length, "%s", s_data);
+      if (IS_QOUTES_NEEDED (type))
+	{
+	  sprintf (*sql + sql_length, "\'%s\'", s_data);
+	}
+      else
+	{
+	  sprintf (*sql + sql_length, "%s", s_data);
+	}
       break;
     case 7:
       ptr = or_unpack_string_nocopy (ptr, &s_data);
 
-      error = check_sql_memory (sql, sql_length + strlen (s_data), max_sql_size);
+      error = check_sql_memory (sql, sql_length + strlen (s_data) + 3, max_sql_size);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
 
-      sprintf (*sql + sql_length, "%s", s_data);
+      if (IS_QOUTES_NEEDED (type))
+	{
+	  sprintf (*sql + sql_length, "\'%s\'", s_data);
+	}
+      else
+	{
+	  sprintf (*sql + sql_length, "%s", s_data);
+	}
+
       break;
     default:
       break;
@@ -4141,6 +4169,15 @@ process_column_data (char **data, char **sql, int *max_sql_size)
   *data = ptr;
 
   return NO_ERROR;
+}
+
+static void
+print_flashback_detail (int trid, char *user, char *flashback, char *original, FILE * outfp)
+{
+  fprintf (outfp, "[TRANSACTION ID] %d \n", trid);
+  fprintf (outfp, "[USER]           %s \n", user);
+  fprintf (outfp, "[ORIGINAL]       %s \n", original);
+  fprintf (outfp, "[FLASHBACK]      %s \n", flashback);
 }
 
 static int
@@ -4157,6 +4194,9 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
 
   char *cond_sql = NULL;
   int max_cond_sql_size = 1024;
+
+  char *original_sql = NULL;
+  int max_original_size = 1024;
 
   char *start_ptr;
   char *ptr;
@@ -4211,8 +4251,8 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
 	}
 
       sprintf (cond_sql + strlen (cond_sql), "%s = ", attr->header.name);
-      /* have to know the type of attribute (bit, date , or .. something */
-      process_column_data (&ptr, &cond_sql, &max_cond_sql_size);
+
+      process_column_data (&ptr, &cond_sql, &max_cond_sql_size, attr->type->id);
       if (i != num_change_col - 1)
 	{
 	  strcat (cond_sql, " and ");
@@ -4241,8 +4281,8 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
 	}
 
       sprintf (sql + strlen (sql), "%s = ", attr->header.name);
-      /* have to know the type of attribute (bit, date , or .. something */
-      process_column_data (&ptr, &sql, &max_sql_size);
+
+      process_column_data (&ptr, &sql, &max_sql_size, attr->type->id);
       if (i != num_cond_col - 1)
 	{
 	  strcat (sql, ", ");
@@ -4250,8 +4290,6 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
 
       attr = attr->order_link;
     }
-
-  *loginfo = ptr;
 
   error = check_sql_memory (&sql, strlen (sql) + strlen (cond_sql) + 1, &max_sql_size);
   if (error != NO_ERROR)
@@ -4261,10 +4299,106 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
 
   strcat (sql, cond_sql);
 
-  fprintf (outfp, "%s\n", sql);
+  if (is_detail)
+    {
+      ptr = *loginfo;
+
+      original_sql = (char *) malloc (max_original_size);
+      if (original_sql == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      sprintf (original_sql, "update %s set ", classname);
+
+      ptr = or_unpack_int (ptr, &num_change_col);
+      for (i = 0; i < num_change_col; i++)
+	{
+	  ptr = or_unpack_int (ptr, &change_index);
+	}
+
+      attr = class_->ordered_attributes;
+      for (i = 0; i < num_change_col; i++)
+	{
+	  error =
+	    check_sql_memory (&original_sql, strlen (original_sql) + strlen (attr->header.name) + 12,
+			      &max_original_size);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  sprintf (original_sql + strlen (original_sql), "%s = ", attr->header.name);
+
+	  process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
+	  if (i != num_change_col - 1)
+	    {
+	      strcat (original_sql, ", ");
+	    }
+
+	  attr = attr->order_link;
+	}
+
+      error = check_sql_memory (&original_sql, strlen (original_sql) + 7, &max_original_size);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      strcat (original_sql, " where ");
+
+      ptr = or_unpack_int (ptr, &num_cond_col);
+      for (i = 0; i < num_cond_col; i++)
+	{
+	  ptr = or_unpack_int (ptr, &cond_index);
+	}
+
+      attr = class_->ordered_attributes;
+      for (i = 0; i < num_cond_col; i++)
+	{
+	  error =
+	    check_sql_memory (&original_sql, strlen (original_sql) + strlen (attr->header.name) + 12,
+			      &max_original_size);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  sprintf (original_sql + strlen (original_sql), "%s = ", attr->header.name);
+
+	  process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
+	  if (i != num_cond_col - 1)
+	    {
+	      strcat (original_sql, " and ");
+	    }
+	  else
+	    {
+	      strcat (original_sql, " limit 1");
+	    }
+
+	  attr = attr->order_link;
+	}
+    }
+
+  *loginfo = ptr;
+
+  if (is_detail)
+    {
+      print_flashback_detail (trid, user, sql, original_sql, outfp);
+    }
+  else
+    {
+      fprintf (outfp, "%s\n", sql);
+    }
 
   free_and_init (sql);
   free_and_init (cond_sql);
+
+  if (original_sql != NULL)
+    {
+      free_and_init (original_sql);
+    }
 
   return NO_ERROR;
 
@@ -4278,6 +4412,13 @@ error:
     {
       free_and_init (cond_sql);
     }
+
+  if (original_sql != NULL)
+    {
+      free_and_init (original_sql);
+    }
+
+  return error;
 }
 
 static int
@@ -4292,7 +4433,9 @@ print_flashback_delete (char **loginfo, int trid, char *user, const char *classn
   char *sql = NULL;
   int max_sql_size = 1024;
 
-  char *start_ptr;
+  char *original_sql = NULL;
+  int max_original_size = 1024;
+
   char *ptr;
 
   int num_change_col;
@@ -4309,7 +4452,7 @@ print_flashback_delete (char **loginfo, int trid, char *user, const char *classn
       goto error;
     }
 
-  start_ptr = ptr = *loginfo;
+  ptr = *loginfo;
 
   classop = sm_find_class (classname);
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
@@ -4337,8 +4480,7 @@ print_flashback_delete (char **loginfo, int trid, char *user, const char *classn
 	  goto error;
 	}
 
-      /* have to know the type of attribute (bit, date , or .. something */
-      process_column_data (&ptr, &sql, &max_sql_size);
+      process_column_data (&ptr, &sql, &max_sql_size, attr->type->id);
       if (i != num_cond_col - 1)
 	{
 	  strcat (sql, ", ");
@@ -4351,11 +4493,68 @@ print_flashback_delete (char **loginfo, int trid, char *user, const char *classn
       attr = attr->order_link;
     }
 
+  if (is_detail)
+    {
+      ptr = *loginfo;
+
+      original_sql = (char *) malloc (max_original_size);
+      if (original_sql == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+      sprintf (original_sql, "delete from %s where ", classname);
+
+      ptr = or_unpack_int (ptr, &num_change_col);
+      ptr = or_unpack_int (ptr, &num_cond_col);
+
+      for (i = 0; i < num_cond_col; i++)
+	{
+	  ptr = or_unpack_int (ptr, &cond_index);
+	}
+
+      attr = class_->ordered_attributes;
+      for (i = 0; i < num_cond_col; i++)
+	{
+	  error = check_sql_memory (&sql, strlen (original_sql) + strlen (attr->header.name) + 12, &max_sql_size);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  sprintf (original_sql + strlen (original_sql), "%s = ", attr->header.name);
+
+	  process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
+
+	  if (i != num_cond_col - 1)
+	    {
+	      strcat (original_sql, " and ");
+	    }
+	  else
+	    {
+	      strcat (original_sql, " limit 1");
+	    }
+
+	  attr = attr->order_link;
+	}
+    }
+
   *loginfo = ptr;
 
-  fprintf (outfp, "%s\n", sql);
+  if (is_detail)
+    {
+      print_flashback_detail (trid, user, sql, original_sql, outfp);
+    }
+  else
+    {
+      fprintf (outfp, "%s\n", sql);
+    }
 
   free_and_init (sql);
+  if (original_sql != NULL)
+    {
+      free_and_init (original_sql);
+    }
 
   return NO_ERROR;
 
@@ -4363,6 +4562,11 @@ error:
   if (sql != NULL)
     {
       free_and_init (sql);
+    }
+
+  if (original_sql != NULL)
+    {
+      free_and_init (original_sql);
     }
 
   return error;
@@ -4380,7 +4584,9 @@ print_flashback_insert (char **loginfo, int trid, char *user, const char *classn
   char *sql = NULL;
   int max_sql_size = 1024;
 
-  char *start_ptr;
+  char *original_sql = NULL;
+  int max_original_size = 1024;
+
   char *ptr;
 
   int num_change_col;
@@ -4397,7 +4603,7 @@ print_flashback_insert (char **loginfo, int trid, char *user, const char *classn
       goto error;
     }
 
-  start_ptr = ptr = *loginfo;
+  ptr = *loginfo;
 
   classop = sm_find_class (classname);
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
@@ -4424,8 +4630,8 @@ print_flashback_insert (char **loginfo, int trid, char *user, const char *classn
 	}
 
       sprintf (sql + strlen (sql), "%s = ", attr->header.name);
-      /* have to know the type of attribute (bit, date , or .. something */
-      process_column_data (&ptr, &sql, &max_sql_size);
+
+      process_column_data (&ptr, &sql, &max_sql_size, attr->type->id);
       if (i != num_change_col - 1)
 	{
 	  strcat (sql, " and ");
@@ -4438,13 +4644,68 @@ print_flashback_insert (char **loginfo, int trid, char *user, const char *classn
       attr = attr->order_link;
     }
 
+  if (is_detail)
+    {
+      ptr = *loginfo;
+
+      original_sql = (char *) malloc (max_original_size);
+      if (original_sql == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      sprintf (original_sql, "insert into %s values ( ", classname);
+
+      ptr = or_unpack_int (ptr, &num_change_col);
+      for (i = 0; i < num_change_col; i++)
+	{
+	  ptr = or_unpack_int (ptr, &change_index);
+	}
+
+      attr = class_->ordered_attributes;
+      for (i = 0; i < num_change_col; i++)
+	{
+	  error =
+	    check_sql_memory (&original_sql, strlen (original_sql) + strlen (attr->header.name) + 12,
+			      &max_original_size);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
+	  if (i != num_change_col - 1)
+	    {
+	      strcat (original_sql, ", ");
+	    }
+	  else
+	    {
+	      strcat (original_sql, " )");
+	    }
+
+	  attr = attr->order_link;
+	}
+    }
+
   ptr = or_unpack_int (ptr, &num_cond_col);
 
   *loginfo = ptr;
 
-  fprintf (outfp, "%s\n", sql);
+  if (is_detail)
+    {
+      print_flashback_detail (trid, user, sql, original_sql, outfp);
+    }
+  else
+    {
+      fprintf (outfp, "%s\n", sql);
+    }
 
   free_and_init (sql);
+  if (original_sql != NULL)
+    {
+      free_and_init (original_sql);
+    }
 
   return NO_ERROR;
 
@@ -4452,6 +4713,11 @@ error:
   if (sql != NULL)
     {
       free_and_init (sql);
+    }
+
+  if (original_sql != NULL)
+    {
+      free_and_init (original_sql);
     }
 
   return error;
