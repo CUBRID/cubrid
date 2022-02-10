@@ -4394,7 +4394,7 @@ print_flashback_insert (char **loginfo, int trid, char *user, const char *classn
   if (sql == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      return error;
+      goto error;
     }
 
   start_ptr = ptr = *loginfo;
@@ -4403,7 +4403,7 @@ print_flashback_insert (char **loginfo, int trid, char *user, const char *classn
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
-      return error;
+      goto error;
     }
 
   sprintf (sql, "delete from %s where ", classname);
@@ -4420,7 +4420,7 @@ print_flashback_insert (char **loginfo, int trid, char *user, const char *classn
       error = check_sql_memory (&sql, strlen (sql) + strlen (attr->header.name) + 12, &max_sql_size);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto error;
 	}
 
       sprintf (sql + strlen (sql), "%s = ", attr->header.name);
@@ -4516,6 +4516,8 @@ print_flashback_info (char *loginfo, int num_item, dynamic_array * classlist, OI
 	  return error;
 	}
     }
+
+  return NO_ERROR;
 }
 
 static time_t
@@ -4584,7 +4586,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   int trid = 0;
   int num_item = 0;
-
+  char *loginfo_list;
   /* temporary variables for test */
   LOG_LSA start_lsa = LSA_INITIALIZER;
   LOG_LSA end_lsa = LSA_INITIALIZER;
@@ -4774,7 +4776,15 @@ flashback (UTIL_FUNCTION_ARG * arg)
   trid = 10;
   num_item = 5;
 
-  error = flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest, NULL);
+  error =
+    flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest, &loginfo_list);
+  if (error != NO_ERROR)
+    {
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  error = print_flashback_info (loginfo_list, num_item, darray, oid_list, is_detail, outfp);
   if (error != NO_ERROR)
     {
       db_shutdown ();
@@ -4783,14 +4793,13 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   db_shutdown ();
 
-  if (darray != NULL)
-    {
-      da_destroy (darray);
-    }
+  da_destroy (darray);
 
-  if (oid_list != NULL)
+  free_and_init (oid_list);
+
+  if (loginfo_list != NULL)
     {
-      free_and_init (oid_list);
+      free_and_init (loginfo_list);
     }
 
   return EXIT_SUCCESS;
@@ -4806,6 +4815,11 @@ error_exit:
   if (oid_list != NULL)
     {
       free_and_init (oid_list);
+    }
+
+  if (loginfo_list != NULL)
+    {
+      free_and_init (loginfo_list);
     }
 
   return EXIT_FAILURE;

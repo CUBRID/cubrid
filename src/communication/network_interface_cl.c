@@ -10651,7 +10651,7 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 
 int
 flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa, LOG_LSA * end_lsa,
-		       int *num_item, bool forward, void *info_list)
+		       int *num_item, bool forward, char **info_list)
 {
 #if defined(CS_MODE)
   int req_error = ER_FAILED;
