@@ -2192,7 +2192,12 @@ logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, cons
 {
   bool pages_equal (*left_log_pgptr == *rite_log_pgptr || pageid == LOGPB_HEADER_PAGE_ID);
 
-  if (!pages_equal && log_Gl.rcv_phase == LOG_RECOVERY_ANALYSIS_PHASE)
+  if (pages_equal)
+    {
+      return;
+    }
+
+  if (log_Gl.rcv_phase == LOG_RECOVERY_ANALYSIS_PHASE)
     {
       /* NOTE:
        *  - during analysis phase of the recovery on ATS, the value of log header append lsa cannot be relied
@@ -2227,15 +2232,17 @@ logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, cons
 
 	      assert (left_log_rec_header->forw_lsa.is_null () && rite_log_rec_header->forw_lsa.is_null ());
 	      assert (left_log_rec_header->type == LOG_END_OF_LOG);
-	      pages_equal = true;
+
+	      // compare everything until end of log
+	      const char *const left_log_page_area = left_log_pgptr->area;
+	      const char *const rite_log_page_area = rite_log_pgptr->area;
+	      const int cmp_res = strncmp (left_log_page_area, rite_log_page_area, curr_left_lsa.offset
+					   + offsetof (LOG_RECORD_HEADER, trid));
+	      pages_equal = (cmp_res == 0);
 	      break;
 	    }
 
-	  assert (left_log_rec_header->prev_tranlsa == rite_log_rec_header->prev_tranlsa
-		  && left_log_rec_header->back_lsa == rite_log_rec_header->back_lsa
-		  && left_log_rec_header->forw_lsa == rite_log_rec_header->forw_lsa
-		  && left_log_rec_header->trid == rite_log_rec_header->trid
-		  && left_log_rec_header->type == rite_log_rec_header->type);
+	  assert (*left_log_rec_header == *rite_log_rec_header);
 
 	  // might not be the last page, must stop, the pages are not equal
 	  if (left_log_rec_header->forw_lsa.pageid != curr_left_lsa.pageid
@@ -2243,7 +2250,12 @@ logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, cons
 	    {
 	      assert (left_log_rec_header->forw_lsa.pageid != curr_left_lsa.pageid
 		      && rite_log_rec_header->forw_lsa.pageid != curr_rite_lsa.pageid);
-	      pages_equal = false;
+
+	      // it is not this function's job to validate page corruption
+	      // if any of the pages is corrupted, decide withhold decision for log recovery analysis logic
+	      const bool left_has_valid_checksum = logpb_page_has_valid_checksum (left_log_pgptr);
+	      const bool rite_has_valid_checksum = logpb_page_has_valid_checksum (rite_log_pgptr);
+	      pages_equal = (!left_has_valid_checksum || !rite_has_valid_checksum);
 	      break;
 	    }
 	  // next log record still in the same page, advance to it
@@ -2254,8 +2266,9 @@ logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, cons
 	  rite_log_rec_header = (const LOG_RECORD_HEADER *) (rite_log_pgptr->area + curr_rite_lsa.offset);
 	}
     }
-  else if (!pages_equal && pageid == log_Gl.hdr.append_lsa.pageid)
+  else if (pageid == log_Gl.hdr.append_lsa.pageid)
     {
+      // last page, not in recovery analysis
       const char *const left_log_page_area = left_log_pgptr->area;
       const char *const rite_log_page_area = rite_log_pgptr->area;
       const int cmp_res = strncmp (left_log_page_area, rite_log_page_area, log_Gl.hdr.append_lsa.offset);
