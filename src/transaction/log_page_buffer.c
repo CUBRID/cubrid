@@ -2259,6 +2259,7 @@ logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, cons
 	      pages_equal = (!left_has_valid_checksum || !rite_has_valid_checksum);
 	      break;
 	    }
+
 	  // next log record still in the same page, advance to it
 	  curr_left_lsa = left_log_rec_header->forw_lsa;
 	  curr_rite_lsa = rite_log_rec_header->forw_lsa;
