@@ -1700,8 +1700,9 @@
 
 #define ER_AU_CANT_ALTER_OWNER_OF_AUTO_INCREMENT    -1333
 #define ER_SM_RENAME_CANT_ALTER_OWNER               -1334
+#define ER_QPROC_MEMBER_CREATE_NOT_ALLOWED          -1335
 
-#define ER_LAST_ERROR                               -1335
+#define ER_LAST_ERROR                               -1336
 /*
  * CAUTION!
  *

@@ -3372,12 +3372,6 @@ boot_define_serial (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "class_full_name", "string", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
   error_code = smt_add_attribute (def, "class_name", "string", NULL);
   if (error_code != NO_ERROR)
     {

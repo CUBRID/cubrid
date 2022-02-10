@@ -3929,8 +3929,11 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
   TR_TRIGGER *trigger;
   DB_OBJECT *object;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  MOP owner = NULL;
   bool tr_object_map_added = false;
   bool has_savepoint = false;
+  int error = NO_ERROR;
 
   object = NULL;
 
@@ -3940,8 +3943,21 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       return NULL;
     }
 
+  sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH);
+  if (er_errid () != NO_ERROR)
+    {
+      goto error;
+    }
+  owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+
+  if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_QPROC_MEMBER_CREATE_NOT_ALLOWED, "TRIGGER");
+      goto error;
+    }
+
   /* Initialize a trigger */
-  trigger->owner = Au_user;
+  trigger->owner = owner;
   trigger->status = status;
   trigger->priority = priority;
   trigger->event = event;

@@ -664,6 +664,8 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE value;
   DB_OBJECT *serial_class = NULL;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  MOP owner = NULL;
   int au_save, error = NO_ERROR;
 
   db_make_null (&value);
@@ -706,7 +708,20 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* owner */
-  db_make_object (&value, Au_user);
+  sm_qualifier_name (serial_name, owner_name, DB_MAX_USER_LENGTH);
+  if (er_errid () != NO_ERROR)
+    {
+      goto end;
+    }
+  owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+
+  if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_QPROC_MEMBER_CREATE_NOT_ALLOWED, "SERIAL");
+      goto end;
+    }
+
+  db_make_object (&value, owner);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_OWNER, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -769,17 +784,9 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
       goto end;
     }
 
-  /* class_name */
+  /* class name */
   if (class_name)
     {
-      db_make_string (&value, class_name);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_FULL_NAME, &value);
-      pr_clear_value (&value);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
       db_make_string (&value, sm_simple_name (class_name));
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
       pr_clear_value (&value);
@@ -917,22 +924,13 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   /* name */
   db_make_string (&value, sm_simple_name (serial_name));
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      goto update_auto_increment_error;
-    }
-
-  /* class full name */
-  db_make_string (&value, class_name);
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_FULL_NAME, &value);
-  pr_clear_value (&value);
   if (error != NO_ERROR)
     {
       goto update_auto_increment_error;
     }
 
   /* class name */
+  pr_clear_value (&value);
   db_make_string (&value, sm_simple_name (class_name));
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
   pr_clear_value (&value);
@@ -1284,6 +1282,7 @@ do_get_obj_id (DB_IDENTIFIER * obj_id, DB_OBJECT * class_mop, const char *name, 
   return mop;
 }
 
+
 /*
  * do_get_serial_obj_id() -
  *   return: serial object
@@ -1366,7 +1365,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_IDENTIFIER serial_obj_id;
   DB_VALUE value, *pval = NULL;
 
-  char *name = NULL;
+  char *serial_name = NULL;
+  char *downcase_serial_name = NULL;
   PT_NODE *start_val_node;
   PT_NODE *inc_val_node;
   PT_NODE *max_val_node;
@@ -1392,7 +1392,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   int save;
   bool au_disable_flag = false;
-  char *p = NULL;
   size_t name_size;
   const char *comment = NULL;
 
@@ -1424,23 +1423,23 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * lookup if serial object name already exists?
    */
 
-  name = (char *) PT_NODE_SR_NAME (statement);
-  name_size = intl_identifier_lower_string_size (name);
-  p = (char *) malloc (name_size + 1);
-  if (p == NULL)
+  serial_name = (char *) PT_NODE_SR_NAME (statement);
+  name_size = intl_identifier_lower_string_size (serial_name);
+  downcase_serial_name = (char *) malloc (name_size + 1);
+  if (downcase_serial_name == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (name_size + 1));
       goto end;
     }
-  intl_identifier_lower (name, p);
+  intl_identifier_lower (serial_name, downcase_serial_name);
 
-  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, p);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, downcase_serial_name);
   if (serial_mop != NULL)
     {
       error = ER_QPROC_SERIAL_ALREADY_EXIST;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALREADY_EXIST, name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, serial_name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALREADY_EXIST, serial_name);
       goto end;
     }
 
@@ -1802,8 +1801,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_DISABLE (save);
   au_disable_flag = true;
 
-  error = do_create_serial_internal (&serial_object, p, &start_val, &inc_val, &min_val, &max_val, cyclic, cached_num,
-				     0, comment, NULL, NULL);
+  error = do_create_serial_internal (&serial_object, downcase_serial_name, &start_val, &inc_val, &min_val,
+				     &max_val, cyclic, cached_num, 0, comment, NULL, NULL);
 
   AU_ENABLE (save);
   au_disable_flag = false;
@@ -1813,9 +1812,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  if (p != NULL)
+  if (downcase_serial_name != NULL)
     {
-      free_and_init (p);
+      free_and_init (downcase_serial_name);
     }
 
   return NO_ERROR;
@@ -1826,9 +1825,9 @@ end:
       AU_ENABLE (save);
     }
 
-  if (p != NULL)
+  if (downcase_serial_name != NULL)
     {
-      free_and_init (p);
+      free_and_init (downcase_serial_name);
     }
 
   return error;
@@ -2401,7 +2400,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error = db_get (serial_object, SERIAL_ATTR_CLASS_FULL_NAME, &class_name_val);
+  error = db_get (serial_object, SERIAL_ATTR_CLASS_NAME, &class_name_val);
   if (error < 0)
     {
       goto end;
@@ -2949,7 +2948,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error = db_get (serial_object, SERIAL_ATTR_CLASS_FULL_NAME, &class_name_val);
+  error = db_get (serial_object, SERIAL_ATTR_CLASS_NAME, &class_name_val);
   if (error < 0)
     {
       goto end;
@@ -6056,9 +6055,9 @@ cleanup:
     {
       for (idx = 0; idx < num_classes; idx++)
 	{
-	  db_private_free (NULL, classes_names[idx]);
+	  db_private_free_and_init (NULL, classes_names[idx]);
 	}
-      db_private_free (NULL, classes_names);
+      db_private_free_and_init (NULL, classes_names);
     }
 
   if (locks != NULL)
@@ -18482,7 +18481,7 @@ do_find_class_by_query (const char *name, char *buf, size_t buf_size)
       return error;
   }
 
-  query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s' AND [class_full_name] NOT LIKE LOWER ('%s') || '.%%'";
+  query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, name_p, current_user_name));
   snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, name_p, current_user_name);
 
@@ -18580,7 +18579,7 @@ do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
       return error;
   }
 
-  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s' AND [full_name] NOT LIKE LOWER ('%s') || '.%%'";
+  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, name_p, current_user_name));
   snprintf (query_buf, sizeof (query_buf), query, CT_SERIAL_NAME, name_p, current_user_name);
 
@@ -18685,7 +18684,7 @@ do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
       return error;
   }
 
-  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s' AND [full_name] NOT LIKE LOWER ('%s') || '.%%'";
+  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, name_p, current_user_name));
   snprintf (query_buf, sizeof (query_buf), query, CT_TRIGGER_NAME, name_p, current_user_name);
 

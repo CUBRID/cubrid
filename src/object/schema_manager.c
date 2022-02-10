@@ -2159,12 +2159,19 @@ sm_check_name (const char *name)
 
 void
 sm_downcase_name (const char *name, char *buf, int maxlen)
-{ 
-  assert (name && name[0] != '\0');
-  assert (buf != NULL);
+{
+  int error = NO_ERROR;
+
+  if (name == NULL || name[0] == '\0' || buf == NULL)
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return;
+    }
+
   /* the sizes of lower and upper version of an identifier are checked when entering the system */
   assert (maxlen > intl_identifier_lower_string_size (name));
 
+  memset (buf, 0, maxlen);
   intl_identifier_lower (name, buf);
 }
 
@@ -2175,12 +2182,11 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   char *current_user_name = NULL;
   int error = NO_ERROR;
 
-  assert (name && name[0] != '\0');
-  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
-  assert (buf != NULL);
-  assert (buf_size >= SM_MAX_IDENTIFIER_LENGTH);
-
-  memset (buf, 0, buf_size);
+  if (name == NULL || name[0] == '\0' || buf == NULL)
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return;
+    }
 
   if (strchr (name, '.'))
     {
@@ -2209,6 +2215,50 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   if (current_user_name)
     {
       db_string_free (current_user_name);
+    }
+}
+
+void
+sm_qualifier_name (const char *name, char *buf, int buf_size)
+{
+  char qualifier_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *dot = NULL;
+  int error = NO_ERROR;
+
+  if (name == NULL || name[0] == '\0' || buf == NULL)
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return;
+    }
+
+  assert (DB_MAX_IDENTIFIER_LENGTH > strlen (name));
+
+  strcpy (qualifier_name, name);
+  if (!qualifier_name[0])
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return;
+    }
+
+  dot = strchr (qualifier_name, '.');
+  if (dot)
+    {
+      dot[0] = '\0';
+
+      memset (buf, 0, buf_size);
+
+      assert (buf_size > strlen (qualifier_name));
+
+      strcpy (buf, qualifier_name);
+      if (!qualifier_name[0])
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return;
+	}
+
+      dot[0] = '.';
+
+      return;
     }
 }
 
@@ -2738,7 +2788,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
     {
       if (att->auto_increment != NULL)
 	{
-	  error = db_get (att->auto_increment, SERIAL_ATTR_CLASS_FULL_NAME, &value);
+	  error = db_get (att->auto_increment, SERIAL_ATTR_CLASS_NAME, &value);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -2752,7 +2802,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	      goto end;
 	    }
 
-	  if (intl_identifier_casecmp (class_old_name, class_name_of_serial) == 0)
+	  if (pt_user_specified_name_compare (class_old_name, class_name_of_serial) == 0)
 	    {
 	      error = do_update_auto_increment_serial_on_rename (att->auto_increment, class_new_name, att->header.name);
 	      if (error != NO_ERROR)
@@ -12879,6 +12929,8 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   SM_CLASS *class_;
   DB_OBJLIST *cursupers, *oldsupers, *newsupers, *cursubs, *newsubs;
   SM_TEMPLATE *flat;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  MOP owner = NULL;
 
   sm_bump_local_schema_version ();
   class_ = NULL;
@@ -13032,17 +13084,12 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	    }
 	  else
 	    {
-	      char *dot = (char *) strchr (template_->name, '.');
-	      if (dot)
+	      sm_qualifier_name (template_->name, owner_name, DB_MAX_USER_LENGTH);
+	      if (er_errid () != NO_ERROR)
 		{
-		  dot[0] = '\0';
-		  class_->owner = db_find_user (template_->name);
-		  dot[0] = '.';
+		  goto end;
 		}
-	      else
-		{
-		  class_->owner = Au_user;
-		}
+	      class_->owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
 	    }
 
 	  /* NOTE: Garbage collection can occur in the following function as a result of the allocation of the class
@@ -13425,11 +13472,11 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	  DB_VALUE name_val;
 	  const char *class_name;
 
-	  error = db_get (att->auto_increment, SERIAL_ATTR_CLASS_FULL_NAME, &name_val);
+	  error = db_get (att->auto_increment, SERIAL_ATTR_CLASS_NAME, &name_val);
 	  if (error == NO_ERROR)
 	    {
 	      class_name = db_get_string (&name_val);
-	      if (class_name != NULL && (strcmp (sm_ch_name ((MOBJ) class_), class_name) == 0))
+	      if (class_name != NULL && (strcmp (sm_ch_simple_name ((MOBJ) class_), class_name) == 0))
 		{
 		  int save;
 		  OID *oidp, serial_obj_id;

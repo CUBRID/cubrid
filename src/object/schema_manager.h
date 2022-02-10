@@ -226,6 +226,7 @@ extern bool sm_has_indexes (MOBJ class_);
 /* Interpreter support functions */
 extern void sm_downcase_name (const char *name, char *buf, int maxlen);
 extern void sm_user_specified_name (const char *name, char *buf, int buf_size);
+extern void sm_qualifier_name (const char *name, char *buf, int buf_size);
 extern MOP sm_find_class (const char *name);
 extern MOP sm_find_class_with_purpose (const char *name, bool for_update);
 
