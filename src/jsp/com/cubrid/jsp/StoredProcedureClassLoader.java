@@ -50,11 +50,16 @@ public class StoredProcedureClassLoader extends URLClassLoader {
 
     private void init() {
         root = new File(Server.getSpPath() + "/java");
-        initJars();
-        initClasses();
+        try {
+            addURL(root.toURI().toURL());
+            initJars();
+            initClasses();
+        } catch (MalformedURLException e) {
+            Server.log(e);
+        }
     }
 
-    private void initJars() {
+    private void initJars() throws MalformedURLException {
         File[] jars =
                 root.listFiles(
                         new FileFilter() {
@@ -71,17 +76,12 @@ public class StoredProcedureClassLoader extends URLClassLoader {
             files.put(jars[i].getName(), jars[i].lastModified());
         }
 
-        try {
-            addURL(root.toURI().toURL());
-            for (int i = 0; i < jars.length; i++) {
-                addURL(jars[i].toURI().toURL());
-            }
-        } catch (MalformedURLException e) {
-            Server.log(e);
+        for (int i = 0; i < jars.length; i++) {
+            addURL(jars[i].toURI().toURL());
         }
     }
 
-    private void initClasses() {
+    private void initClasses() throws MalformedURLException {
         File[] classes =
                 root.listFiles(
                         new FileFilter() {
@@ -96,6 +96,7 @@ public class StoredProcedureClassLoader extends URLClassLoader {
 
         for (int i = 0; i < classes.length; i++) {
             files.put(classes[i].getName(), classes[i].lastModified());
+            addURL(classes[i].toURI().toURL());
         }
     }
 
