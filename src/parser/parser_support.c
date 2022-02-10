@@ -10070,7 +10070,7 @@ pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name)
 
   qualifier_name = pt_append_string (parser, NULL, name->info.name.original);
 
-  dot = CONST_CAST (char *, strchr (name->info.name.original, '.'));
+  dot = CONST_CAST (char *, strchr (qualifier_name, '.'));
   if (dot)
     {
       dot[0] = '\0';
