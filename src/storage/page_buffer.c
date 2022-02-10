@@ -8202,7 +8202,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	   *    active transaction server (ie: the page still exists), but the log has been applied on
 	   *    page server and the page cannot be retrieved
 	   */
-	  if (log_is_in_crash_recovery_but_past_redo_or_restarted ())
+	  if (log_is_in_past_redo_crash_recovery_or_restarted ())
 	    {
 #if !defined(NDEBUG)
 	      if (!(io_page->prv == second_io_page->prv))
