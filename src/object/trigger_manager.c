@@ -3944,10 +3944,6 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
     }
 
   sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH);
-  if (er_errid () != NO_ERROR)
-    {
-      goto error;
-    }
   owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
@@ -6836,6 +6832,8 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   bool is_abort = false;
   int save = 0;
   int error = NO_ERROR;
+
+   er_clear ();
 
   if (trigger_object == NULL || name == NULL || name[0] == '\0')
     {

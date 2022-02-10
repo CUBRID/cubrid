@@ -5174,6 +5174,7 @@ au_change_owner (MOP class_mop, MOP owner_mop)
   int save = 0;
   int error = NO_ERROR;
 
+  er_clear ();
 
   if (!class_mop || !owner_mop)
     {
@@ -5428,6 +5429,8 @@ au_change_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * class_val, DB
   int i;
   int error = NO_ERROR;
 
+  er_clear ();
+
   if (!return_val || !class_val || !owner_val)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
@@ -5564,6 +5567,8 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
   bool is_abort = false;
   int save = 0;
   int error = NO_ERROR;
+
+  er_clear ();
 
   if (!serial_mop || !owner_mop)
     {
@@ -5726,6 +5731,8 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * serial
   const char *owner_name = NULL;
   int error = NO_ERROR;
 
+  er_clear ();
+
   if (!return_val || !serial_val || !owner_val)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
@@ -5794,6 +5801,8 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   int save = 0;
   int error = NO_ERROR;
+
+  er_clear ();
 
   if (!trigger_mop || !owner_mop)
     {
@@ -5886,6 +5895,8 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigg
   char user_specified_trigger_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
   const char *owner_name = NULL;
   int error = NO_ERROR;
+
+  er_clear ();
 
   if (!return_val || !trigger_val || !owner_val)
     {

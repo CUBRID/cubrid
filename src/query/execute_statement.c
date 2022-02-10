@@ -709,10 +709,6 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 
   /* owner */
   sm_qualifier_name (serial_name, owner_name, DB_MAX_USER_LENGTH);
-  if (er_errid () != NO_ERROR)
-    {
-      goto end;
-    }
   owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
@@ -6807,6 +6803,8 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   const char *old_name, *new_name;
   DB_OBJECT *trigger;
+
+  er_clear ();
 
   CHECK_MODIFICATION_ERROR ();
 

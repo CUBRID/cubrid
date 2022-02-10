@@ -2182,6 +2182,8 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   char *current_user_name = NULL;
   int error = NO_ERROR;
 
+  er_clear ();
+
   if (name == NULL || name[0] == '\0' || buf == NULL)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
@@ -2727,6 +2729,8 @@ sm_rename_class (MOP class_mop, const char *new_name)
   int error = NO_ERROR;
 
   db_make_null (&value);
+
+  er_clear ();
 
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, NULL);
   if (is_partition == DB_PARTITIONED_CLASS)
@@ -13085,10 +13089,6 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	  else
 	    {
 	      sm_qualifier_name (template_->name, owner_name, DB_MAX_USER_LENGTH);
-	      if (er_errid () != NO_ERROR)
-		{
-		  goto end;
-		}
 	      class_->owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
 	    }
 

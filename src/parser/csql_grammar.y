@@ -15049,9 +15049,9 @@ opt_orderby_clause
 					      }
 
 					    if ((col->alias_print
-						 && intl_identifier_namecmp (n_str, col->alias_print) == 0
+						 && intl_identifier_casecmp (n_str, col->alias_print) == 0
 						 && (is_alias = true))
-						|| (intl_identifier_namecmp (n_str, c_str) == 0
+						|| (intl_identifier_casecmp (n_str, c_str) == 0
 						    && (is_col = true)))
 					      {
 						if (found_star)
