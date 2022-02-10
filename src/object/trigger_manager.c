@@ -4244,10 +4244,10 @@ tr_find_trigger (const char *name)
 
   if (trigger_table_find (name, &object) == NO_ERROR)
     {
-      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+      if (object == NULL)
 	{
-	  if (object == NULL)
+	  /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+	  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
 	    {
 	      char other_trigger_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 

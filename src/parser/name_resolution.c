@@ -7218,7 +7218,7 @@ pt_user_specified_name_compare (const char *p, const char *q)
        *      original_p : user_name.object_name -> object_name
        *      original_q : object_name.          -> NULL
        */
-      if (!original_p[0] || !original_q[0])
+      if (original_p[0] == '\0' || original_q[0] == '\0')
 	{
 	  return 1;
 	}
