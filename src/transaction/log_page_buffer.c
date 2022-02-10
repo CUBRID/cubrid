@@ -2242,9 +2242,10 @@ logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, cons
 	      break;
 	    }
 
+	  // if not the last page, headers must be equal
 	  assert (*left_log_rec_header == *rite_log_rec_header);
 
-	  // might not be the last page, must stop, the pages are not equal
+	  // if not the last log page, must stop, the pages are not equal
 	  if (left_log_rec_header->forw_lsa.pageid != curr_left_lsa.pageid
 	      || rite_log_rec_header->forw_lsa.pageid != curr_rite_lsa.pageid)
 	    {
@@ -2252,7 +2253,7 @@ logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, cons
 		      && rite_log_rec_header->forw_lsa.pageid != curr_rite_lsa.pageid);
 
 	      // it is not this function's job to validate page corruption
-	      // if any of the pages is corrupted, decide withhold decision for log recovery analysis logic
+	      // if any of the pages is corrupted, withhold decision for log recovery analysis logic
 	      const bool left_has_valid_checksum = logpb_page_has_valid_checksum (left_log_pgptr);
 	      const bool rite_has_valid_checksum = logpb_page_has_valid_checksum (rite_log_pgptr);
 	      pages_equal = (!left_has_valid_checksum || !rite_has_valid_checksum);
