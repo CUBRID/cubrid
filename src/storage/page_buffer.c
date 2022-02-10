@@ -13305,13 +13305,12 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_assign_private_lru_id () -
+ * pgbuf_assign_private_lru () -
+ *
  *   return: NO_ERROR
- *   is_vacuum(in): true if client is a vacuum thread
- *   id(in): id of client (vacuum index or session id)
  */
 int
-pgbuf_assign_private_lru (THREAD_ENTRY * thread_p, bool is_vacuum, const int id)
+pgbuf_assign_private_lru (THREAD_ENTRY * thread_p)
 {
   int i;
   int min_activitity;
