@@ -41,6 +41,15 @@
 #include <dlfcn.h>
 #endif /* WINDOWS */
 
+/*
+* PACKAGE_STRING is defined in version.h and unixodbc_conf.h of unixodbc, 
+* and "warning: "PACKAGE_STRING" redefined" is displayed when building. 
+* To remove "Warning", call #undef PACKAGE_STRING before calling ODBC related header file.
+*/
+#ifdef PACKAGE_STRING
+#undef PACKAGE_STRING
+#endif
+
 #include <sqltypes.h>
 #include <sql.h>
 #include <sqlext.h>
