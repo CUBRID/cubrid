@@ -1537,8 +1537,9 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   subquery->info.query.order_by = save_order_by;
   subquery->info.query.q.select.list = save_select_list;
 
-  if (subquery->info.query.order_by
-      && (!pt_has_aggregate (parser, statement) || pt_has_inst_in_where_and_select_list (parser, subquery)))
+  if (subquery->info.query.order_by &&
+      (!pt_has_aggregate (parser, statement) || pt_has_inst_in_where_and_select_list (parser, subquery)
+       || pt_has_analytic (parser, statement) || pt_has_order_sensitive_agg (parser, statement)))
     {
       tmp_query = mq_update_order_by (parser, tmp_query, subquery, NULL, derived_spec);
       if (tmp_query == NULL)
@@ -2363,7 +2364,8 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  bool is_removable_select_list = mq_is_removable_select_list (parser, query_spec, tmp_result) == PUSHABLE;
 
 	  /* rewrite vclass spec */
-	  class_spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec, is_removable_select_list);
+	  class_spec =
+	    mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec, is_removable_select_list);
 
 	  /* get derived expending spec node */
 	  if (!class_spec || !(derived_table = class_spec->info.spec.derived_table)
