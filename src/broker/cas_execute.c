@@ -2712,7 +2712,15 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	{
 	  if (res_count == ER_QPROC_INVALID_XASLNODE && retried_query_num != num_query)
 	    {
-	      goto exec_retry_xasl_error;
+	      err_code = recompile_statement (srv_handle);
+	      if (err_code < 0)
+		{
+		  goto exec_db_error;
+		}
+	      session = (DB_SESSION *) srv_handle->session;
+	      retried_query_num = num_query;
+	      num_query--;
+	      continue;
 	    }
 	  goto exec_db_error;
 	}
@@ -2810,18 +2818,6 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	{
 	  break;
 	}
-      continue;
-
-    exec_retry_xasl_error:
-      err_code = recompile_statement (srv_handle);
-      if (err_code < 0)
-	{
-	  goto exec_db_error;
-	}
-
-      session = (DB_SESSION *) srv_handle->session;
-      retried_query_num = num_query;
-      num_query--;
     }
 
   net_buf_overwrite_int (net_buf, num_query_msg_offset, num_query);
