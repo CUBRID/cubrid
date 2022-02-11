@@ -218,6 +218,7 @@ static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, v
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
 static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
 					      PT_NODE * class_spec);
+static PUSHABLE_TYPE mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
 static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
@@ -1864,6 +1865,57 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 }
 
 /*
+ * mq_is_removable_select_list () - check if a select_list is removalbe
+ *  returns: true if pushable, false otherwise
+ *   parser(in): parser context
+ *   query(in): query to check
+ *
+ * NOTE:
+ * It is not removable in the following cases.
+ *  - Not select query
+ *  - merge query
+ *  - update, delete query
+ *  - schema query
+ *  - has analitic fuction
+ *
+ */
+static PUSHABLE_TYPE
+mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery)
+{
+  /* check for select query */
+  if (!(PT_IS_SELECT (subquery) && PT_IS_SELECT (mainquery)))
+    {
+      return NON_PUSHABLE;
+    }
+
+  /* check for merge query */
+  if (PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_IS_MERGE_QUERY))
+    {
+      return NON_PUSHABLE;
+    }
+
+  /* check for update, delete query */
+  if (PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_IS_UPD_DEL_QUERY))
+    {
+      return NON_PUSHABLE;
+    }
+
+  /* check for schema query */
+  if (PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_COLS_SCHEMA)
+      || PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_FULL_INFO_COLS_SCHEMA))
+    {
+      return NON_PUSHABLE;
+    }
+
+  /* has analytic function */
+  if (pt_has_analytic (parser, subquery))
+    {
+      return NON_PUSHABLE;
+    }
+  return PUSHABLE;
+}
+
+/*
  * mq_update_order_by() - update the position number of order by clause and
  * 			add hidden column(s) at the end of the output list if
  * 			necessary.
@@ -1892,7 +1944,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   PT_NODE *order, *val;
   PT_NODE *attributes, *attr, *prev_order;
   PT_NODE *node, *result, *order_by;
-  PT_NODE *free_node = NULL, *save_next;
+  PT_NODE *save_data_type, *free_node = NULL, *save_next;
   int attr_count;
   int i;
   UINTPTR spec_id;
@@ -1950,6 +2002,9 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	      attr = attr->next;
 	    }
 
+	  save_data_type = attr->data_type;
+	  attr->data_type = NULL;
+
 	  for (i = 1, node = statement->info.query.q.select.list; node != NULL; node = node->next)
 	    {
 	      i++;
@@ -1966,6 +2021,9 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	    }
 
 	  assert (attr != NULL && attr->node_type == PT_NAME);
+	  save_data_type = attr->data_type;
+	  attr->data_type = NULL;
+
 	  for (node = statement->info.query.q.select.list, i = 1; node != NULL; node = node->next, i++)
 	    {
 	      /* 3 check whether attr is found in output list */
@@ -2026,6 +2084,8 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	{
 	  prev_order = order;
 	}
+
+      attr->data_type = save_data_type;
     }
 
   statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
@@ -2105,11 +2165,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 
       /* remove unnecessary select list of subquery. */
       /* TO_DO : support for union query */
-      if (PT_IS_SELECT (subquery) && PT_IS_SELECT (tmp_result)
-	  && !PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_INFO_IS_MERGE_QUERY)
-	  && !PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_INFO_IS_UPD_DEL_QUERY)
-	  && !(PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_INFO_COLS_SCHEMA)
-	       || PT_SELECT_INFO_IS_FLAGED (tmp_result, PT_SELECT_FULL_INFO_COLS_SCHEMA)))
+      if (mq_is_removable_select_list (parser, subquery, tmp_result) == PUSHABLE)
 	{
 	  tmp_result = mq_remove_select_list_for_inline_view (parser, tmp_result, subquery, derived_spec);
 	  if (tmp_result == NULL)
@@ -2304,11 +2360,10 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	{
 	  /* rewrite vclass query as a derived table */
 	  PT_NODE *tmp_class = NULL;
-	  bool is_removable_select_list = PT_IS_SELECT (tmp_result) && PT_IS_SELECT (query_spec);
+	  bool is_removable_select_list = mq_is_removable_select_list (parser, query_spec, tmp_result) == PUSHABLE;
 
 	  /* rewrite vclass spec */
-	  class_spec =
-	    mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec, is_removable_select_list);
+	  class_spec = mq_rewrite_vclass_spec_as_derived (parser, tmp_result, class_spec, query_spec, is_removable_select_list);
 
 	  /* get derived expending spec node */
 	  if (!class_spec || !(derived_table = class_spec->info.spec.derived_table)
