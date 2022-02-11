@@ -59,6 +59,13 @@ struct log_topop_range
 
 #define LOG_IS_SYSTEM_OP_STARTED(tdes) ((tdes)->topops.last >= 0)
 
+#define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
+   (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
+    && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
+    && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
+    && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
+    && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
+
 extern const char *log_to_string (LOG_RECTYPE type);
 extern bool log_is_in_crash_recovery (void);
 inline bool log_is_in_crash_recovery_and_not_yet_completes_redo (void);

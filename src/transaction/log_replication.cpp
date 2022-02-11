@@ -518,7 +518,12 @@ namespace cublog
       }
 
     btree_root_update_stats (&thread_entry, root_page, stats);
-    pgbuf_set_lsa (&thread_entry, root_page, &record_lsa);
+
+    // it is not needed to update page LSA for btree root statistics
+    // if this is done, in scalability scenarios with local storage, the LSA's of active transaction server's
+    // and page server's pages will differ because of this update
+    assert (!LOG_NEED_TO_SET_LSA (RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, nullptr));
+
     pgbuf_set_dirty_and_free (&thread_entry, root_page);
   }
 
