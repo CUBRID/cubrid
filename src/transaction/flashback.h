@@ -68,6 +68,7 @@ typedef std::map<TRANID, FLASHBACK_SUMMARY_INFO *> Map_Summary;
 typedef struct flashback_summary_entry
 {
   TRANID trid;
+  char user[DB_MAX_USER_LENGTH + 1];
   time_t start_time;
   time_t end_time;
   int num_insert;
@@ -79,7 +80,13 @@ typedef struct flashback_summary_entry
   OID classlist[FLASHBACK_MAX_TABLE];
 } FLASHBACK_SUMMARY_ENTRY;
 
-#define OR_SUMMARY_ENTRY_SIZE   (OR_INT_SIZE + OR_INT64_SIZE * 2 + OR_INT_SIZE * 3 + OR_LOG_LSA_SIZE * 2 + OR_INT_SIZE + FLASHBACK_MAX_TABLE * OR_OID_SIZE)
+#define OR_SUMMARY_ENTRY_SIZE   (OR_INT_SIZE \
+                                + DB_MAX_USER_LENGTH + MAX_ALIGNMENT \
+                                + OR_INT64_SIZE * 2 \
+                                + OR_INT_SIZE * 3 \
+                                + OR_LOG_LSA_SIZE * 2 \
+                                + OR_INT_SIZE \
+                                + FLASHBACK_MAX_TABLE * OR_OID_SIZE)
 
 /* context for making summary information */
 typedef struct flashback_summary_context

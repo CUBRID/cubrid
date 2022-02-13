@@ -69,6 +69,7 @@ flashback_create_summary_entry (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_ENTRY
     }
 
   (*summary)->trid = NULL_TRANID;
+  (*summary)->user = "\0";
   (*summary)->start_time = -1;
   (*summary)->end_time = -1;
   (*summary)->num_insert = 0;
@@ -333,6 +334,8 @@ begin:
 		      context->num_summary -= 1;
 		    }
 		}
+
+	      strncpy (summary_entry->user, supplement_data, supplement_length);
 
 	      break;
 	    }

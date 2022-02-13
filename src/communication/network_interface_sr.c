@@ -10764,6 +10764,7 @@ for (auto iter:context.summary_list)
       if (entry != NULL)
 	{
 	  ptr = or_pack_int (ptr, entry->trid);
+	  ptr = or_pack_string (ptr, entry->user);
 	  ptr = or_pack_int64 (ptr, entry->start_time);
 	  ptr = or_pack_int64 (ptr, entry->end_time);
 	  ptr = or_pack_int (ptr, entry->num_insert);
