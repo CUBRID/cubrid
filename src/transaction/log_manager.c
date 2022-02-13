@@ -14843,16 +14843,16 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
   int num_loginfo = 0;
   CDC_LOGINFO_ENTRY *log_info_entry = NULL;
 
+  if (LSA_ISNULL (&context->start_lsa))
+    {
+      if ((error = flashback_find_start_lsa (thread_p, context)) != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
   if (context->forward)
     {
-      if (LSA_ISNULL (&context->start_lsa))
-	{
-	  if ((error = flashback_find_start_lsa (thread_p, context)) != NO_ERROR)
-	    {
-	      goto exit;
-	    }
-	}
-
       LSA_COPY (&process_lsa, &context->start_lsa);
     }
   else
@@ -14877,9 +14877,6 @@ begin:
 
   log_type = log_rec_header->type;
   trid = log_rec_header->trid;
-
-  context->forward ? LSA_COPY (&next_log_rec_lsa, &log_rec_header->forw_lsa) : LSA_COPY (&next_log_rec_lsa,
-											 &log_rec_header->prev_tranlsa);
 
   if (context->forward)
     {
