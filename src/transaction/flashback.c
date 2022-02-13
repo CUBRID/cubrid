@@ -69,7 +69,7 @@ flashback_create_summary_entry (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_ENTRY
     }
 
   (*summary)->trid = NULL_TRANID;
-  (*summary)->user = "\0";
+  (*summary)->user[0] = '\0';
   (*summary)->start_time = -1;
   (*summary)->end_time = -1;
   (*summary)->num_insert = 0;

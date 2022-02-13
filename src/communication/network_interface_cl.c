@@ -10583,7 +10583,7 @@ unpacking_summary_entry (char **ptr, Map_Summary & summary)
 
   /* testing code, it will be replaced with print function */
   tmp_ptr = or_unpack_int (tmp_ptr, &trid);
-  tmp_ptr = or_unpack_int (tmp_ptr, &user);
+  tmp_ptr = or_unpack_string_nocopy (tmp_ptr, &user);
   tmp_ptr = or_unpack_int64 (tmp_ptr, &start_time);
   tmp_ptr = or_unpack_int64 (tmp_ptr, &end_time);
   tmp_ptr = or_unpack_int (tmp_ptr, &num_insert);
