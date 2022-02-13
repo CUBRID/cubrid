@@ -14752,6 +14752,7 @@ flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * c
 
   if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
     {
+      /* can not find the log page */
       error = ER_FAILED;
       goto exit;
     }
@@ -14773,10 +14774,24 @@ begin:
 
   if (log_page_p->hdr.logical_pageid != process_lsa.pageid)
     {
-      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+      if (logpb_is_page_in_archive (process_lsa.pageid))
 	{
-	  error = ER_FAILED;
-	  goto exit;
+	  int arv_num = 0;
+
+	  if (logpb_fetch_from_archive (thread_p, process_lsa.pageid, log_page_p, &arv_num, NULL, false) == NULL)
+	    {
+	      /* can not find the archive log volume */
+	      error = ER_FAILED;
+	      goto exit;
+	    }
+	}
+      else
+	{
+	  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto exit;
+	    }
 	}
     }
 
@@ -14812,7 +14827,7 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 
   LOG_RECORD_HEADER *log_rec_header;
 
-  char *tran_user = NULL;
+  char tran_user[DB_MAX_USER_LENGTH + 1] = "\0";
   int trid;
 
   int error = NO_ERROR;
@@ -14866,6 +14881,32 @@ begin:
   context->forward ? LSA_COPY (&next_log_rec_lsa, &log_rec_header->forw_lsa) : LSA_COPY (&next_log_rec_lsa,
 											 &log_rec_header->prev_tranlsa);
 
+  if (context->forward)
+    {
+      if (LSA_ISNULL (&log_rec_header->forw_lsa) && log_type != LOG_END_OF_LOG)
+	{
+	  if (log_startof_nxrec (thread_p, &next_log_rec_lsa, false) == NULL)
+	    {
+	      /* can not get next log record lsa */
+	      error = ER_FAILED;
+	      goto exit;
+	    }
+	}
+      else
+	{
+	  LSA_COPY (&next_log_rec_lsa, &log_rec_header->forw_lsa);
+	}
+
+      if (LSA_ISNULL (&next_log_rec_lsa) && logpb_is_page_in_archive (cur_log_rec_lsa.pageid))
+	{
+	  next_log_rec_lsa.pageid = cur_log_rec_lsa.pageid + 1;
+	}
+    }
+  else
+    {
+      LSA_COPY (&next_log_rec_lsa, &log_rec_header->prev_tranlsa);
+    }
+
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
 
   if (trid == context->trid && log_type == LOG_SUPPLEMENTAL_INFO)
@@ -14909,6 +14950,10 @@ begin:
 
       switch (rec_type)
 	{
+	case LOG_SUPPLEMENT_TRAN_USER:
+	  strncpy (tran_user, supplement_data, supplement_length);
+
+	  break;
 	case LOG_SUPPLEMENT_INSERT:
 	case LOG_SUPPLEMENT_TRIGGER_INSERT:
 	  memcpy (&classoid, supplement_data, sizeof (OID));
@@ -15093,6 +15138,13 @@ end:
     {
       if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 	{
+	  error = ER_FAILED;
+	  goto exit;
+	}
+
+      if (process_lsa.offset == NULL_OFFSET && (process_lsa.offset = log_page_p->hdr.offset) == NULL_OFFSET)
+	{
+	  /* can not find the first log record in the page */
 	  error = ER_FAILED;
 	  goto exit;
 	}
