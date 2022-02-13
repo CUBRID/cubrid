@@ -3033,13 +3033,13 @@ sm_is_system_class (MOP op)
 }
 
 /*
- * sm_is_system_class_by_name () - Checks whether the class name is
+ * sm_check_system_class_by_name () - Checks whether the class name is
  *    the same as the system class name.
  * return: int
  * name(in): class simple name
  */
-int
-sm_is_system_class_by_name (const char *name)
+bool
+sm_check_system_class_by_name (const char *name)
 {
   // *INDENT-OFF*
   static
@@ -3127,7 +3127,7 @@ sm_is_system_class_by_name (const char *name)
 
   const char *dot = NULL;
   const char *simple_name = NULL;
-  char downcase_simple_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char downcase_simple_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int name_size = 0;
   int count = 0;
   int i = 0;
@@ -3141,7 +3141,7 @@ sm_is_system_class_by_name (const char *name)
   simple_name = dot ? (dot + 1) : name;
 
   name_size = intl_identifier_lower_string_size (simple_name);
-  assert (name_size < DB_MAX_IDENTIFIER_LENGTH);
+  assert (name_size < SM_MAX_IDENTIFIER_LENGTH);
 
   intl_identifier_lower (simple_name, downcase_simple_name);
 
@@ -4187,21 +4187,11 @@ sm_update_all_catalog_statistics (bool with_fullscan)
   int i;
 
   const char *classes[] = {
-    CT_CLASS_NAME,
-    CT_ATTRIBUTE_NAME,
-    CT_DOMAIN_NAME,
-    CT_METHOD_NAME,
-    CT_METHSIG_NAME,
-    CT_METHARG_NAME,
-    CT_METHFILE_NAME,
-    CT_QUERYSPEC_NAME,
-    CT_INDEX_NAME,
-    CT_INDEXKEY_NAME,
-    CT_CLASSAUTH_NAME,
-    CT_DATATYPE_NAME,
-    CT_COLLATION_NAME,
-    CT_CHARSET_NAME,
-    CT_SYNONYM_NAME,
+    CT_CLASS_NAME, CT_ATTRIBUTE_NAME, CT_DOMAIN_NAME,
+    CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
+    CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
+    CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
+    CT_COLLATION_NAME, CT_CHARSET_NAME, CT_SYNONYM_NAME,
     NULL
   };
 

@@ -197,4 +197,5 @@ extern MOP do_get_synonym (const char *name, const char *owner_name, const int i
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int do_find_synonym_by_query (const char *name, char *buf, size_t buf_size);
 #endif /* _EXECUTE_STATEMENT_H_ */

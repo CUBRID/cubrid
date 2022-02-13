@@ -22114,7 +22114,9 @@ identifier
 	| PORT                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRINT                            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRIORITY                         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PRIVATE                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PROPERTIES                       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PUBLIC                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| QUARTER                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| QUEUES                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| RANGE_                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22149,6 +22151,7 @@ identifier
 	| STDDEV_SAMP                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| STR_TO_DATE                      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SUBDATE                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SYNONYM                          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SYSTEM                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TABLES                           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TEXT                             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}

@@ -17668,7 +17668,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
       sm_downcase_name (synonym_name, synonym_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
 
       /* cannot use catalog class names as synonym names. */
-      if (sm_is_system_class_by_name (synonym_downcase_name))
+      if (sm_check_system_class_by_name (synonym_downcase_name))
 	{
 	  error = ER_QPROC_CANNOT_USE_CATALOG_NAME;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -17810,7 +17810,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      if (sm_is_system_class_by_name (target_downcase_name))
+      if (sm_check_system_class_by_name (target_downcase_name))
 	{
 	  target_owner = au_get_dba_user ();
 	  if (target_owner == NULL)
@@ -20505,4 +20505,90 @@ err:
     }
 
   return server_obj;
+}
+
+int
+do_find_synonym_by_query (const char *name, char *buf, size_t buf_size)
+{
+#define QUERY_BUF_SIZE 2048
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  const char *query = NULL;
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
+  const char *dot = NULL;
+  const char *name_p = NULL;
+  char *current_user_name = NULL;
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < DB_MAX_IDENTIFIER_LENGTH)
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  query = "SELECT LOWER ([target_name]) FROM [%s] WHERE [synonym_name] = '%s' ORDER BY [is_public_synonym] LIMIT 1";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CTV_SYNONYM_NAME, name));
+  snprintf (query_buf, sizeof (query_buf), query, CTV_SYNONYM_NAME, name);
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      if (error == DB_CURSOR_END)
+	{
+	  ERROR_SET_WARNING_2ARGS (error, ER_QPROC_PUBLIC_SYNONYM_NOT_FOUND, "", name);
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (!DB_IS_NULL (&value))
+    {
+      memset (buf, 0, buf_size);
+      strcpy(buf, db_get_string (&value));
+    }
+  else
+    {
+      /* full_name must not be null. */
+      assert (false);
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because class_full_name is not unique. */
+      buf[0] = '\0';
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+#undef QUERY_BUF_SIZE
 }

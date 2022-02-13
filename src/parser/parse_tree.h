@@ -1159,6 +1159,8 @@ typedef enum
 
   PT_DERIVED_DBLINK_TABLE,	// dblink table spec derivation
 
+  PT_PRIVATE,
+  PT_PUBLIC,
   PT_SYNONYM
     // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
@@ -1175,12 +1177,6 @@ typedef enum
   PT_JOIN_FULL_OUTER = 0x20,	/* 0010 0000 -- not used */
   PT_JOIN_UNION = 0x40		/* 0100 0000 -- not used */
 } PT_JOIN_TYPE;
-
-typedef enum
-{
-  PT_PRIVATE,
-  PT_PUBLIC
-} PT_ACCESS_MODIFIER_TYPE;
 
 typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NONE  0x00ULL	/* no hint */
@@ -3360,7 +3356,7 @@ struct pt_alter_synonym_info
   PT_NODE *target_name;
   PT_NODE *target_owner_name;
   PT_NODE *comment;
-  PT_ACCESS_MODIFIER_TYPE access_modifier;
+  PT_MISC_TYPE access_modifier;
 };
 
 struct pt_create_synonym_info
@@ -3370,14 +3366,14 @@ struct pt_create_synonym_info
   PT_NODE *target_name;
   PT_NODE *target_owner_name;
   PT_NODE *comment;
-  PT_ACCESS_MODIFIER_TYPE access_modifier;
+  PT_MISC_TYPE access_modifier;
   bool or_replace;
 };
 
 struct pt_drop_synonym_info
 {
   PT_NODE *synonym_list;
-  PT_ACCESS_MODIFIER_TYPE access_modifier;
+  PT_MISC_TYPE access_modifier;
   bool if_exists;
 };
 
@@ -3387,7 +3383,7 @@ struct pt_rename_synonym_info
   PT_NODE *old_owner_name;
   PT_NODE *new_name;
   PT_NODE *new_owner_name;
-  PT_ACCESS_MODIFIER_TYPE access_modifier;
+  PT_MISC_TYPE access_modifier;
 };
 
 /* Info field of the basic NODE

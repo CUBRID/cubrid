@@ -567,7 +567,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto cleanup;
 	}
 
-      PT_ERRORc (parser, statement, db_error_string (3));
+      // PT_ERRORc (parser, statement, db_error_string (3));
     }
 
   /* free already assigned parser->lcks_classes if exist */
