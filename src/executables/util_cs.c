@@ -5042,20 +5042,25 @@ flashback (UTIL_FUNCTION_ARG * arg)
   trid = 10;
   num_item = 5;
 
-  error =
-    flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest, &loginfo_list);
-  if (error != NO_ERROR)
+  do
     {
-      db_shutdown ();
-      goto error_exit;
-    }
+      error =
+	flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest,
+			       &loginfo_list);
+      if (error != NO_ERROR)
+	{
+	  db_shutdown ();
+	  goto error_exit;
+	}
 
-  error = print_flashback_info (loginfo_list, num_item, darray, oid_list, is_detail, outfp);
-  if (error != NO_ERROR)
-    {
-      db_shutdown ();
-      goto error_exit;
+      error = print_flashback_info (loginfo_list, num_item, darray, oid_list, is_detail, outfp);
+      if (error != NO_ERROR)
+	{
+	  db_shutdown ();
+	  goto error_exit;
+	}
     }
+  while (LSA_ISNULL (&start_lsa) || LSA_ISNULL (&end_lsa));
 
   db_shutdown ();
 
