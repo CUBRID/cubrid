@@ -1941,7 +1941,7 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
     }
 
   /* check for CONNECT BY */
-  if (mainquery->info.query.q.select.connect_by)
+  if (mainquery->info.query.q.select.connect_by || subquery->info.query.q.select.connect_by)
     {
       /* not pushable */
       return NON_PUSHABLE;
