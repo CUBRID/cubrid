@@ -1883,7 +1883,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
  *  - schema query
  *  - has analitic fuction
  *  - cte query
- *
+ *  - hierarchical query
  */
 static PUSHABLE_TYPE
 mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery)
@@ -1939,6 +1939,14 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
           return NON_PUSHABLE;
         }
     }
+
+  /* check for CONNECT BY */
+  if (mainquery->info.query.q.select.connect_by)
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+
 
   return PUSHABLE;
 }
