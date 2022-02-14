@@ -1879,6 +1879,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
  *  - update, delete query
  *  - schema query
  *  - has analitic fuction
+ *  - cte query
  *
  */
 static PUSHABLE_TYPE
@@ -1920,6 +1921,13 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
     {
       return NON_PUSHABLE;
     }
+
+  /* check for CTE query */
+  if (mainquery->info.query.with != NULL || subquery->info.query.with != NULL)
+    {
+      return NON_PUSHABLE;
+    }
+
   return PUSHABLE;
 }
 
