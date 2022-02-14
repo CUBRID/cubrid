@@ -673,10 +673,8 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
     }
 #endif
 
-  const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (record_info.m_logrec);
-
   LOG_RCV rcv;
-  if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, log_data.rcvindex, record_info.m_start_lsa,
+  if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, record_info.m_start_lsa,
       redo_context.m_end_redo_lsa, redo_context.m_page_fetch_mode))
     {
       /* nothing else needs to be done, see explanation in function */
@@ -702,6 +700,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
   rcv.mvcc_id = log_rv_get_log_rec_mvccid<T> (record_info.m_logrec);
   rcv.offset = log_rv_get_log_rec_offset<T> (record_info.m_logrec);
 
+  const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (record_info.m_logrec);
   log_rv_redo_record_debug_logging<T> (record_info.m_start_lsa, log_data.rcvindex, rcv_vpid, rcv);
 
   const auto err_redo_data = log_rv_get_log_rec_redo_data<T> (thread_p, redo_context, record_info, rcv);
