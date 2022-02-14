@@ -3040,45 +3040,7 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
       break;
 
     case LC_CLASSNAME_DELETED:
-      do_find_synonym_by_query (classname, target_name, DB_MAX_IDENTIFIER_LENGTH);
-      if (target_name[0] != '\0')
-	{
-	  found = locator_find_class_oid (target_name, class_oid, lock);
-	
-	*class_mop = ws_mop (class_oid, sm_Root_class_mop);
-	if (*class_mop == NULL || WS_IS_DELETED (*class_mop))
-	  {
-	    *class_mop = NULL;
-	    if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
-	      {
-		found = LC_CLASSNAME_ERROR;
-	      }
-	    else
-	      {
-		er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, classname);
-	      }
-
-	    return found;
-	  }
-
-	/* no need to get last version for class */
-	error_code = locator_lock (*class_mop, LC_CLASS, lock, LC_FETCH_CURRENT_VERSION);
-	if (error_code != NO_ERROR)
-	  {
-	    /*
-	     * Fetch the class object so that it gets properly interned in
-	     * the workspace class table.  If we don't do that we can go
-	     * through here a zillion times until somebody actually *looks*
-	     * at the class object (not just its oid).
-	     */
-	    *class_mop = NULL;
-	    found = LC_CLASSNAME_ERROR;
-	  }
-	}
-      else
-	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, classname);
-	}
       break;
 
     case LC_CLASSNAME_ERROR:
@@ -3188,6 +3150,21 @@ locator_find_class (const char *classname)
       class_mop = NULL;
     }
 
+  if (!class_mop)
+    {
+      char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+      do_find_synonym_by_query (classname, target_name, DB_MAX_IDENTIFIER_LENGTH);
+      
+      if (target_name[0] != '\0')
+	{
+	  if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
+	    {
+	      class_mop = NULL;
+	    }
+	}
+    }
+
   return class_mop;
 }
 
@@ -3219,6 +3196,21 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
   if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
     {
       class_mop = NULL;
+    }
+
+  if (!class_mop)
+    {
+      char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+      do_find_synonym_by_query (classname, target_name, DB_MAX_IDENTIFIER_LENGTH);
+      
+      if (target_name[0] != '\0')
+	{
+	  if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
+	    {
+	      class_mop = NULL;
+	    }
+	}
     }
 
   return class_mop;
