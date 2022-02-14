@@ -1944,8 +1944,8 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 {
   PT_NODE *order, *val;
   PT_NODE *attributes, *attr, *prev_order;
-  PT_NODE *node, *result, *order_by;
-  PT_NODE *save_data_type, *free_node = NULL, *save_next;
+  PT_NODE *save_data_type, *node, *result, *order_by;
+  PT_NODE *free_node = NULL, *save_next;
   int attr_count;
   int i;
   UINTPTR spec_id;
@@ -2003,9 +2003,6 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	      attr = attr->next;
 	    }
 
-	  save_data_type = attr->data_type;
-	  attr->data_type = NULL;
-
 	  for (i = 1, node = statement->info.query.q.select.list; node != NULL; node = node->next)
 	    {
 	      i++;
@@ -2038,6 +2035,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 		  break;
 		}
 	    }
+	  attr->data_type = save_data_type;
 	}
 
       /* if attr is not found in output list, append a hidden column at the end of the output list. */
@@ -2085,8 +2083,6 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	{
 	  prev_order = order;
 	}
-
-      attr->data_type = save_data_type;
     }
 
   statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
