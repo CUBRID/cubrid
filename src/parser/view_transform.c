@@ -1930,6 +1930,15 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
     {
       return NON_PUSHABLE;
     }
+  /* determine if spec is CTE spec */
+  for (PT_NODE * spec = subquery->info.query.q.select.from; spec; spec = spec->next)
+    {
+      if (PT_SPEC_IS_CTE (spec))
+        {
+          /* subquery has CTE spec; not pushable */
+          return NON_PUSHABLE;
+        }
+    }
 
   return PUSHABLE;
 }
