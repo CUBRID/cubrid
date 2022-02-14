@@ -1450,8 +1450,9 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 {
   PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list;
   PT_NODE *attributes, *attr, *as_attr_list;
-  PT_NODE *col, *new_select_list, *spec;
+  PT_NODE *col, *new_select_list, *spec, *pred;
 
+  assert (PT_IS_SELECT (statement) && PT_IS_SELECT (subquery));
   if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
     {
       PT_INTERNAL_ERROR (parser, "remove select list");
@@ -1537,9 +1538,11 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   subquery->info.query.order_by = save_order_by;
   subquery->info.query.q.select.list = save_select_list;
 
+  pred = statement->info.query.q.select.where;
   if (subquery->info.query.order_by &&
       (!pt_has_aggregate (parser, statement) || pt_has_inst_in_where_and_select_list (parser, subquery)
-       || pt_has_analytic (parser, statement) || pt_has_order_sensitive_agg (parser, statement)))
+       || pt_has_analytic (parser, statement) || pt_has_order_sensitive_agg (parser, statement)
+       || pt_has_inst_num (parser, pred)))
     {
       tmp_query = mq_update_order_by (parser, tmp_query, subquery, NULL, derived_spec);
       if (tmp_query == NULL)
