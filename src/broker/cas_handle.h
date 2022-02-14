@@ -218,6 +218,7 @@ struct t_srv_handle
 #endif				/* CAS_FOR_MYSQL */
 #if defined (CAS_FOR_CGW)
   T_CGW_HANDLE *cgw_handle;
+  int total_row_count_msg_offset;
   int tuple_count;
   int stmt_type;
 #endif				/* CAS_FOR_CGW */
