@@ -25050,6 +25050,7 @@ parser_main (PARSER_CONTEXT * parser)
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 
+  pt_initialize_hint(parser, parser_hint_table); 
   rv = yyparse ();
   pt_cleanup_hint (parser, parser_hint_table);
 
@@ -25149,6 +25150,7 @@ parse_one_statement (int state)
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 
+  pt_initialize_hint(this_parser, parser_hint_table);
   rv = yyparse ();
   pt_cleanup_hint (this_parser, parser_hint_table);
 
@@ -25163,7 +25165,10 @@ parse_one_statement (int state)
   return 0;
 }
 
-
+/* NOTICE:
+  parser_hint_table.tokens must be written in uppercase.
+  It must start with an English capital letter.
+*/
 PT_HINT parser_hint_table[] = {
   {"ORDERED", NULL, PT_HINT_ORDERED}
   ,
