@@ -1068,6 +1068,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 	  sm_user_specified_name (argument, realname, SM_MAX_IDENTIFIER_LENGTH);
+	  assert (realname[0] != '\0');
 	  csql_help_schema (realname);
 	}
       if (csql_is_auto_commit_requested (csql_arg))
@@ -1093,6 +1094,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 	  sm_user_specified_name (argument, realname, SM_MAX_IDENTIFIER_LENGTH);
+	  assert (realname[0] != '\0');
 	  csql_help_trigger (realname);
 	}
       if (csql_is_auto_commit_requested (csql_arg))

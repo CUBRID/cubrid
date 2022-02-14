@@ -71,6 +71,7 @@
 #include "trigger_manager.h"
 #include "utility.h"
 #include "work_space.h"
+#include "transform.h"
 
 using namespace cubload;
 
@@ -1478,7 +1479,6 @@ static int
 ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
 {
 #define QUERY_BUF_SIZE 2048
-#define CT_CLASS_NAME "_db_class"
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   DB_VALUE value;
@@ -1513,14 +1513,14 @@ ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, name_p, current_user_name));
   snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, name_p, current_user_name);
 
+  db_private_free_and_init (NULL, current_user_name);
+
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
     {
       ASSERT_ERROR ();
       goto end;
     }
-
-  db_private_free_and_init (NULL, current_user_name);
 
   error = db_query_first_tuple (query_result);
   if (error != DB_CURSOR_SUCCESS)
@@ -1547,7 +1547,7 @@ ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
   if (!DB_IS_NULL (&value))
     {
       memset (buf, 0, buf_size);
-      snprintf (buf, buf_size, "%s", db_get_string (&value));
+      strcpy(buf, db_get_string (&value));
     }
   else
     {
@@ -1559,7 +1559,7 @@ ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
   if (error != DB_CURSOR_END)
     {
       /* No result can be returned because class_full_name is not unique. */
-      memset (buf, 0, buf_size);
+      buf[0] = '\0';
     }
 
 end:
@@ -1571,7 +1571,6 @@ end:
 
   return error;
 #undef QUERY_BUF_SIZE
-#undef CT_CLASS_NAME
 }
 
 /*

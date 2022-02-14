@@ -18517,7 +18517,7 @@ do_find_class_by_query (const char *name, char *buf, size_t buf_size)
   if (!DB_IS_NULL (&value))
     {
       memset (buf, 0, buf_size);
-      snprintf (buf, buf_size, "%s", db_get_string (&value));
+      strcpy(buf, db_get_string (&value));
     }
   else
     {
@@ -18529,7 +18529,7 @@ do_find_class_by_query (const char *name, char *buf, size_t buf_size)
   if (error != DB_CURSOR_END)
     {
       /* No result can be returned because class_full_name is not unique. */
-      memset (buf, 0, buf_size);
+      buf[0] = '\0';
     }
 
 end:
@@ -18622,7 +18622,7 @@ do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
   if (!DB_IS_NULL (&value))
     {
       memset (buf, 0, buf_size);
-      snprintf (buf, buf_size, "%s", db_get_string (&value));
+      strcpy(buf, db_get_string (&value));
     }
   else
     {
@@ -18634,7 +18634,7 @@ do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
   if (error != DB_CURSOR_END)
     {
       /* No result can be returned because class_full_name is not unique. */
-      memset (buf, 0, buf_size);
+      buf[0] = '\0';
     }
 
 end:
@@ -18720,7 +18720,7 @@ do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
   if (!DB_IS_NULL (&value))
     {
       memset (buf, 0, buf_size);
-      snprintf (buf, buf_size, "%s", db_get_string (&value));
+      strcpy(buf, db_get_string (&value));
     }
   else
     {
@@ -18732,7 +18732,7 @@ do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
   if (error != DB_CURSOR_END)
     {
       /* No result can be returned because class_full_name is not unique. */
-      memset (buf, 0, buf_size);
+      buf[0] = '\0';
     }
 
 end:

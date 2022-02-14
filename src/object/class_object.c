@@ -6774,7 +6774,8 @@ classobj_class_size (SM_CLASS * class_)
 
   size = sizeof (SM_CLASS);
   size += strlen (sm_ch_name ((MOBJ) class_)) + 1;
-  size += strlen (sm_ch_simple_name ((MOBJ) class_)) + 1;
+  /* Since ch_simple_name is a pointer variable that points after dot (.) in ch_name,
+   * it is not included in the memory size being used. */
   size += ws_list_total ((DB_LIST *) class_->representations, (LTOTALER) classobj_representation_size);
 
   size += ml_size (class_->users);

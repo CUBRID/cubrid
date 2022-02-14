@@ -9991,8 +9991,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
       resolved_name = current_user_name;
     }
-
-  if (strlen (resolved_name) >= DB_MAX_USER_LENGTH)
+  else if (strlen (resolved_name) >= DB_MAX_USER_LENGTH)
     {
       PT_ERRORf2 (parser, node,
 		  "User name [%s] not allowed. It cannot exceed %d bytes.", resolved_name, DB_MAX_USER_LENGTH);
@@ -10004,11 +10003,9 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
   if (strlen (original_name) >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH)
     {
-      char *name = (char *) original_name;
-      strcpy (name + 60, "...");
       PT_ERRORf2 (parser, node,
 		  "Identifier name [%s] not allowed. It cannot exceed %d bytes.",
-		  original_name, DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
+		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
       *continue_walk = PT_STOP_WALK;
       return node;
     }
