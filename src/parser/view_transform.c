@@ -1874,6 +1874,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
  * NOTE:
  * It is not removable in the following cases.
  *  - Not select query
+ *  - value query
  *  - merge query
  *  - update, delete query
  *  - schema query
@@ -1885,6 +1886,12 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
 {
   /* check for select query */
   if (!(PT_IS_SELECT (subquery) && PT_IS_SELECT (mainquery)))
+    {
+      return NON_PUSHABLE;
+    }
+
+  /* check for value query */
+  if (PT_IS_VALUE_QUERY (subquery))
     {
       return NON_PUSHABLE;
     }
