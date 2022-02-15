@@ -1456,7 +1456,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
     {
       PT_INTERNAL_ERROR (parser, "remove select list");
-      return NULL;
+      goto exit_on_error;
     }
 
   query_spec_columns = subquery->info.query.q.select.list;
@@ -1465,7 +1465,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   attributes = derived_spec->info.spec.as_attr_list;
   if (attributes == NULL)
     {
-      return NULL;
+      goto exit_on_error;
     }
 
   col = query_spec_columns;
@@ -1585,7 +1585,8 @@ exit_on_error:
       parser_free_tree (parser, tmp_query);
     }
 
-  return NULL;
+  /* When an error occurs, the statement before the change is returned. */
+  return statement;
 }
 
 /*
