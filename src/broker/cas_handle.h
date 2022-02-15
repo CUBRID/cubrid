@@ -35,13 +35,13 @@
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if defined(CAS_FOR_CGW)
-/*
-* PACKAGE_STRING is defined in version.h and unixodbc_conf.h of unixodbc, 
-* and "warning: "PACKAGE_STRING" redefined" is displayed when building. 
-* To remove "Warning", call #undef PACKAGE_STRING before calling ODBC related header file.
+/* 
+* If SIZEOF_LONG_INT is not defined in sqltypes.h, build including unixodbc_conf.h.
+* When building including unixodbc_conf.h, "warning: "PACKAGE_STRING" is displayed.
+* So I added the following code before including sqltypes.h to remove of the build warning.
 */
-#ifdef PACKAGE_STRING
-#undef PACKAGE_STRING
+#if !defined (SIZEOF_LONG_INT)
+#define SIZEOF_LONG_INT 8
 #endif
 
 #include <sqltypes.h>
