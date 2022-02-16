@@ -203,7 +203,6 @@ extern int sm_update_all_statistics (bool with_fullscan);
 
 /* Misc information functions */
 extern const char *sm_get_ch_name (MOP op);
-extern const char *sm_get_ch_simple_name (MOP op);
 extern HFID *sm_get_ch_heap (MOP classmop);
 #if 0				/* TODO - do not use */
 extern OID *sm_get_ch_rep_dir (MOP classmop);
@@ -216,17 +215,16 @@ extern SM_CLASS_CONSTRAINT *sm_class_constraints (MOP classop);
 
 /* Locator support functions */
 extern const char *sm_ch_name (const MOBJ clobj);
-extern const char *sm_ch_simple_name (const MOBJ clobj);
-extern const char *sm_simple_name (const char *name);
 extern HFID *sm_ch_heap (MOBJ clobj);
 extern OID *sm_ch_rep_dir (MOBJ clobj);
 
 extern bool sm_has_indexes (MOBJ class_);
 
 /* Interpreter support functions */
-extern void sm_downcase_name (const char *name, char *buf, int maxlen);
-extern void sm_user_specified_name (const char *name, char *buf, int buf_size);
-extern void sm_qualifier_name (const char *name, char *buf, int buf_size);
+extern char *sm_downcase_name (const char *name, char *buf, int buf_size);
+extern char *sm_user_specified_name (const char *name, char *buf, int buf_size);
+extern char *sm_qualifier_name (const char *name, char *buf, int buf_size);
+extern const char *sm_remove_qualifier_name (const char *name);
 extern MOP sm_find_class (const char *name);
 extern MOP sm_find_class_with_purpose (const char *name, bool for_update);
 

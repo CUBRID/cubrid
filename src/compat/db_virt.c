@@ -144,7 +144,7 @@ db_create_vclass (const char *name)
   DB_OBJECT *virtual_class;
   PR_TYPE *type;
   OID class_oid = OID_INITIALIZER;
-  const char *simple_name = NULL;
+  const char *class_name = NULL;
 
   CHECK_CONNECT_NULL ();
   CHECK_MODIFICATION_NULL ();
@@ -152,12 +152,12 @@ db_create_vclass (const char *name)
   virtual_class = NULL;
   if (name != NULL)
     {
-      simple_name = sm_simple_name (name);
-      type = pr_find_type (simple_name);
-      if (type != NULL || pt_is_reserved_word (simple_name))
+      class_name = sm_remove_qualifier_name (name);
+      type = pr_find_type (class_name);
+      if (type != NULL || pt_is_reserved_word (class_name))
 	{
 	  error = ER_SM_CLASS_WITH_PRIM_NAME;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, simple_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, class_name);
 	}
       else
 	{

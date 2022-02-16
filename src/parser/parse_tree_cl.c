@@ -13078,7 +13078,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 	    {
-	      q = pt_append_name (parser, q, pt_get_simple_name (p->info.name.resolved));
+	      q = pt_append_name (parser, q, pt_get_remove_qualifier_name (p->info.name.resolved));
 	    }
 	  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
 	    {
@@ -13111,7 +13111,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		{
 		  q =
 		    pt_append_name (parser, q,
-				    pt_get_simple_name (original_spec->info.spec.entity_name->info.name.original));
+				    pt_get_remove_qualifier_name (original_spec->info.spec.entity_name->info.name.original));
 		}
 	      else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
 		{
@@ -13127,7 +13127,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	    {
 	      if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 		{
-		  q = pt_append_name (parser, q, pt_get_simple_name (p->info.name.resolved));
+		  q = pt_append_name (parser, q, pt_get_remove_qualifier_name (p->info.name.resolved));
 		}
 	      else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
 		{
@@ -13143,7 +13143,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 	    {
-	      q = pt_append_name (parser, q, pt_get_simple_name (p->info.name.resolved));
+	      q = pt_append_name (parser, q, pt_get_remove_qualifier_name (p->info.name.resolved));
 	    }
 	  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
 	    {
@@ -13162,7 +13162,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 	    {
-	      q = pt_append_name (parser, q, pt_get_simple_name (p->info.name.original));
+	      q = pt_append_name (parser, q, pt_get_remove_qualifier_name (p->info.name.original));
 	    }
 	  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
 	    {
@@ -13211,7 +13211,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 	    {
-	      q = pt_append_name (parser, q, pt_get_simple_name (p->info.name.original));
+	      q = pt_append_name (parser, q, pt_get_remove_qualifier_name (p->info.name.original));
 	    }
 	  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
 	    {
@@ -13255,7 +13255,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	      /* always print resolved for "class_name.NONE" index names */
 	      if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 		{
-		  q = pt_append_name (parser, q, pt_get_simple_name (p->info.name.resolved));
+		  q = pt_append_name (parser, q, pt_get_remove_qualifier_name (p->info.name.resolved));
 		}
 	      else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
 		{

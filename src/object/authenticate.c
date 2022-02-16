@@ -1548,7 +1548,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
     }
 
   db_make_string (&class_name_val, sm_get_ch_name (class_mop));
-  db_class_inst = obj_find_unique (db_class, "class_full_name", &class_name_val, AU_FETCH_READ);
+  db_class_inst = obj_find_unique (db_class, "unique_name", &class_name_val, AU_FETCH_READ);
   if (db_class_inst == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -1592,7 +1592,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
   const char *sql_query =
     "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
     " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?"
-    " AND [au].[class_of].[class_full_name] = ? AND [au].[auth_type] = ?";
+    " AND [au].[class_of].[unique_name] = ? AND [au].[auth_type] = ?";
   enum
   {
     INDEX_FOR_GRANTEE_NAME = 0,
@@ -2018,7 +2018,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
   int error = NO_ERROR, save;
   const char *sql_query =
     "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[class_of] IN" " (SELECT [cl] FROM " CT_CLASS_NAME
-    " [cl] WHERE [class_full_name] = ?);";
+    " [cl] WHERE [unique_name] = ?);";
   DB_VALUE val;
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
@@ -5174,11 +5174,9 @@ au_change_owner (MOP class_mop, MOP owner_mop)
   int save = 0;
   int error = NO_ERROR;
 
-  er_clear ();
-
-  if (!class_mop || !owner_mop)
+  if (class_mop == NULL || owner_mop == NULL)
     {
-      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      ERROR_SET_WARNING (error, ER_AU_INVALID_ARGUMENTS);
       return error;
     }
 
@@ -5228,11 +5226,11 @@ au_change_owner (MOP class_mop, MOP owner_mop)
   /* Change the owner of the class. */
   class_->owner = owner_mop;
 
-  /* class_full_name contains owner_name. if owner of class is changed, class_full_name must be changed as well. */
+  /* unique_name contains owner_name. if owner of class is changed, unique_name must be changed as well. */
   class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_));
 
-  /* class_full_name of system class does not contain owner_name. class_full_name does not need to be changed. */
-  if (sm_check_system_class_by_name (sm_simple_name (class_old_name)))
+  /* unique_name of system class does not contain owner_name. unique_name does not need to be changed. */
+  if (sm_check_system_class_by_name (sm_remove_qualifier_name (class_old_name)))
     {
       error = locator_flush_class (class_mop);
       if (error != NO_ERROR)
@@ -5251,9 +5249,9 @@ au_change_owner (MOP class_mop, MOP owner_mop)
       goto end;
     }
   sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
-  db_private_free_and_init (NULL, owner_name);
+  db_ws_free_and_init (owner_name);
 
-  snprintf (buf, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, sm_simple_name (class_old_name));
+  snprintf (buf, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, sm_remove_qualifier_name (class_old_name));
   class_new_name = db_private_strdup (NULL, buf);
   if (class_new_name == NULL)
     {
@@ -5269,7 +5267,6 @@ au_change_owner (MOP class_mop, MOP owner_mop)
     }
 
   class_->header.ch_name = class_new_name;
-  class_->header.ch_simple_name = sm_simple_name (class_new_name);
 
   if (class_->class_type == SM_CLASS_CT && class_->constraints != NULL)
     {
@@ -5363,7 +5360,6 @@ au_change_owner (MOP class_mop, MOP owner_mop)
 	  error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				     saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
 				     saved->func_index_info, saved->comment, saved->index_status);
-
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -5429,26 +5425,21 @@ au_change_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * class_val, DB
   int i;
   int error = NO_ERROR;
 
-  er_clear ();
-
   if (!return_val || !class_val || !owner_val)
     {
-      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
-      db_make_null (return_val);
+      ERROR_SET_WARNING (error, ER_AU_INVALID_ARGUMENTS);
       db_make_error (return_val, error);
       return;
     }
 
-  db_make_null (return_val);
-
-  if (!IS_STRING (class_val) || (class_name = db_get_string (class_val)) == NULL)
+  if (!DB_IS_STRING (class_val) || (class_name = db_get_string (class_val)) == NULL)
     {
       ERROR_SET_WARNING_1ARG (error, ER_AU_INVALID_CLASS, "");
       db_make_error (return_val, error);
       return;
     }
 
-  if (!IS_STRING (owner_val) || (owner_name = db_get_string (owner_val)) == NULL)
+  if (!DB_IS_STRING (owner_val) || (owner_name = db_get_string (owner_val)) == NULL)
     {
       ERROR_SET_WARNING_1ARG (error, ER_AU_INVALID_USER, "");
       db_make_error (return_val, error);
@@ -5568,8 +5559,6 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
   int save = 0;
   int error = NO_ERROR;
 
-  er_clear ();
-
   if (!serial_mop || !owner_mop)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
@@ -5577,7 +5566,6 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
     }
 
   OID_SET_NULL (&serial_obj_id);
-  db_make_null (&value);
 
   if (!au_is_dba_group_member (Au_user))
     {
@@ -5607,7 +5595,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
 
   if (!is_auto_increment)
     {
-      /* It can be checked as one of class_full_name, class_name, and att_name. */
+      /* It can be checked as one of unique_name, class_name, and att_name. */
       error = obj_get (serial_mop, SERIAL_ATTR_ATT_NAME, &value);
       if (error != NO_ERROR)
 	{
@@ -5624,7 +5612,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
       pr_clear_value (&value);
     }
 
-  error = obj_get (serial_mop, SERIAL_ATTR_FULL_NAME, &value);
+  error = obj_get (serial_mop, SERIAL_ATTR_UNIQUE_NAME, &value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5647,7 +5635,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
   sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
   db_ws_free_and_init (owner_name);
 
-  snprintf (serial_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, sm_simple_name (serial_old_name));
+  snprintf (serial_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, sm_remove_qualifier_name (serial_old_name));
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
   if (serial_class_mop == NULL)
@@ -5669,10 +5657,9 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
       goto end;
     }
 
-  /* full_name */
-  pr_clear_value (&value);
+  /* unique_name */
   db_make_string (&value, serial_new_name);
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_FULL_NAME, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_UNIQUE_NAME, &value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5681,7 +5668,6 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
     }
 
   /* owner */
-  pr_clear_value (&value);
   db_make_object (&value, owner_mop);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_OWNER, &value);
   if (error != NO_ERROR)
@@ -5730,26 +5716,21 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * serial
   const char *owner_name = NULL;
   int error = NO_ERROR;
 
-  er_clear ();
-
   if (!return_val || !serial_val || !owner_val)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
-      db_make_null (return_val);
       db_make_error (return_val, error);
       return;
     }
 
-  db_make_null (return_val);
-
-  if (!IS_STRING (serial_val) || (serial_name = db_get_string (serial_val)) == NULL)
+  if (!DB_IS_STRING (serial_val) || (serial_name = db_get_string (serial_val)) == NULL)
     {
       ERROR_SET_WARNING_1ARG (error, ER_OBJ_INVALID_ARGUMENT, "");
       db_make_error (return_val, error);
       return;
     }
 
-  if (!IS_STRING (owner_val) || (owner_name = db_get_string (owner_val)) == NULL)
+  if (!DB_IS_STRING (owner_val) || (owner_name = db_get_string (owner_val)) == NULL)
     {
       ERROR_SET_WARNING_1ARG (error, ER_AU_INVALID_USER, "");
       db_make_error (return_val, error);
@@ -5801,15 +5782,11 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   int save = 0;
   int error = NO_ERROR;
 
-  er_clear ();
-
   if (!trigger_mop || !owner_mop)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
       return error;
     }
-
-  db_make_null (&value);
 
   if (!au_is_dba_group_member (Au_user))
     {
@@ -5820,11 +5797,11 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   AU_DISABLE (save);
 
   /*
-   * class, serial, and trigger distinguish user schema by full_name (user_specified_name).
-   * so if the owner of class, serial, trigger changes, the full_name must also change.
+   * class, serial, and trigger distinguish user schema by unique_name (user_specified_name).
+   * so if the owner of class, serial, trigger changes, the unique_name must also change.
    */
 
-  error = obj_get (trigger_mop, TR_ATT_FULL_NAME, &value);
+  error = obj_get (trigger_mop, TR_ATT_UNIQUE_NAME, &value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5847,7 +5824,9 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   db_ws_free_and_init (owner_name);
 
   snprintf (trigger_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
-	    sm_simple_name (trigger_old_name));
+	    sm_remove_qualifier_name (trigger_old_name));
+
+  pr_clear_value (&value);
 
   error = tr_rename_trigger (trigger_mop, trigger_new_name, false, true);
   if (error != NO_ERROR)
@@ -5857,7 +5836,6 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
     }
 
   /* owner */
-  pr_clear_value (&value);
   db_make_object (&value, owner_mop);
   error = obj_set (trigger_mop, TR_ATT_OWNER, &value);
   if (error != NO_ERROR)
@@ -5870,6 +5848,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 	  assert (false);
 	}
     }
+  pr_clear_value (&value);
 
 end:
   AU_ENABLE (save);
@@ -5895,26 +5874,21 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigg
   const char *owner_name = NULL;
   int error = NO_ERROR;
 
-  er_clear ();
-
   if (!return_val || !trigger_val || !owner_val)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
-      db_make_null (return_val);
       db_make_error (return_val, error);
       return;
     }
 
-  db_make_null (return_val);
-
-  if (!IS_STRING (trigger_val) || (trigger_name = db_get_string (trigger_val)) == NULL)
+  if (!DB_IS_STRING (trigger_val) || (trigger_name = db_get_string (trigger_val)) == NULL)
     {
       ERROR_SET_WARNING_1ARG (error, ER_TR_TRIGGER_NOT_FOUND, "");
       db_make_error (return_val, error);
       return;
     }
 
-  if (!IS_STRING (owner_val) || (owner_name = db_get_string (owner_val)) == NULL)
+  if (!DB_IS_STRING (owner_val) || (owner_name = db_get_string (owner_val)) == NULL)
     {
       ERROR_SET_WARNING_1ARG (error, ER_AU_INVALID_USER, "");
       db_make_error (return_val, error);
@@ -6206,6 +6180,65 @@ au_check_user (void)
     }
 
   return (error);
+}
+
+/*
+ * au_current_user_name() - Get the user name currently connected.
+ *    return: output buffer pointer or NULL on error
+ *    buf(out): output buffer
+ *    buf_size(in): output buffer length
+ */
+char *
+au_current_user_name (char *buf, int buf_size)
+{
+  DB_VALUE value;
+  const char *user_name = NULL;
+  int save = 0;
+  int error = NO_ERROR;
+
+  if (buf == NULL || buf_size < 0)
+    {
+      ERROR_SET_WARNING (error, ER_AU_INVALID_ARGUMENTS);
+      return NULL;
+    }
+
+  if (Au_user == NULL)
+    {
+      ERROR_SET_WARNING (error, ER_AU_NO_USER_LOGGED_IN);
+      return NULL;
+    }
+
+  AU_DISABLE (save);
+
+  error = obj_get (Au_user, "name", &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+  AU_ENABLE (save);
+
+  if (DB_IS_NULL (&value))
+    {
+      return NULL;
+    }
+
+  if (!DB_IS_STRING (&value))
+    {
+      ERROR_SET_ERROR (error, ER_AU_CORRUPTED);
+      pr_clear_value (&value);
+      return NULL;
+    }
+
+  user_name = db_get_string (&value);
+
+  assert (strlen (user_name) < buf_size);
+  strlcpy (buf, user_name, buf_size);
+
+  pr_clear_value (&value);
+
+  return buf;
 }
 
 /*

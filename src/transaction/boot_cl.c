@@ -1802,7 +1802,7 @@ boot_define_class (MOP class_mop)
   SM_TEMPLATE *def;
   char domain_string[32];
   int error_code = NO_ERROR;
-  const char *index1_col_names[2] = { "class_full_name", NULL };
+  const char *index1_col_names[2] = { "unique_name", NULL };
   const char *index2_col_names[3] = { "class_name", "owner", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
@@ -1813,14 +1813,14 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
-  /* class full name */
-  error_code = smt_add_attribute (def, "class_full_name", "varchar(287)", NULL);
+  /* unique name */
+  error_code = smt_add_attribute (def, "unique_name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  /* class simple name */
+  /* class name */
   error_code = smt_add_attribute (def, "class_name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
     {
@@ -1999,7 +1999,7 @@ boot_define_class (MOP class_mop)
    * 
    *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
    */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, "i__db_class_class_full_name", index1_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, "i__db_class_unique_name", index1_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -2017,7 +2017,7 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
-  error_code = db_constrain_non_null (class_mop, "class_full_name", 0, 1);
+  error_code = db_constrain_non_null (class_mop, "unique_name", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3287,12 +3287,12 @@ boot_define_serial (MOP class_mop)
   unsigned char num[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   DB_VALUE default_value;
   int error_code = NO_ERROR;
-  const char *index1_col_names[] = { "full_name", NULL };
+  const char *index1_col_names[] = { "unique_name", NULL };
   const char *index2_col_names[] = { "name", "owner", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
-  error_code = smt_add_attribute (def, "full_name", "string", NULL);
+  error_code = smt_add_attribute (def, "unique_name", "string", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3414,7 +3414,7 @@ boot_define_serial (MOP class_mop)
     }
 
   /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, "u_db_serial_full_name", index1_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, "u_db_serial_unique_name", index1_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;

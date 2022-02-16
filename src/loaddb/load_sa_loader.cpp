@@ -1422,7 +1422,7 @@ ldr_find_class (const char *class_name)
 {
   DB_OBJECT *class_ = NULL;
   LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
-  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   /* Check for internal error */
   if (class_name == NULL || class_name[0] == '\0')
@@ -1432,7 +1432,7 @@ ldr_find_class (const char *class_name)
       return NULL;
     }
 
-  sm_user_specified_name (class_name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
 
   ldr_Hint_class_names[0] = realname;
 
@@ -1486,7 +1486,7 @@ ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *dot = NULL;
   const char *name_p = NULL;
-  char *current_user_name = NULL;
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -1502,18 +1502,15 @@ ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
   dot = strchr (name, '.');
   name_p = dot ? (dot + 1) : name;
 
-  current_user_name = db_get_user_name ();
-  if (!current_user_name)
+  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
 
-  query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, name_p, current_user_name));
   snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, name_p, current_user_name);
-
-  db_private_free_and_init (NULL, current_user_name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
@@ -1551,14 +1548,14 @@ ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
     }
   else
     {
-      /* class_full_name must not be null. */
+      /* unique_name must not be null. */
       assert (false);
     }
 
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because class_full_name is not unique. */
+      /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
     }
 

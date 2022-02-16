@@ -1408,8 +1408,13 @@ $ LOADDB
 1331 Error reserved for dblink development.
 
 1332 活动日志卷 (%1$s) 过于健全，无法重新创建。 如果删除活动日志，可能会导致意外且不可逆转的问题。
+1333 Invalid arguments to authorization internal function.
+1334 AUTO_INCREMENT does not allow change of owner.
+1335 RENAME does not allow change of owner.
+1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1331 最后一个错误.
+1338 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1875,7 +1880,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 没有找到与 %1$s() 函数兼容的签名.
 305 函数签名 %1$s 与函数参数不匹配.
 306 dblink - 缺少必需的信息.
-307 A member of owner group or a member of DBA group can CREATE TABLE.
+307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

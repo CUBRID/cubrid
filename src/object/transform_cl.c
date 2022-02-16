@@ -3574,7 +3574,7 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
   /* compute the variable offsets relative to the end of the header (beginning of variable table) */
   offset = tf_Metaclass_class.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
 
-  /* class_full_name */
+  /* unique_name */
   or_put_offset (buf, offset);
 
   offset += string_disk_size (sm_ch_name ((MOBJ) class_));
@@ -3582,7 +3582,7 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
   /* class_name */
   or_put_offset (buf, offset);
 
-  offset += string_disk_size (sm_ch_simple_name ((MOBJ) class_));
+  offset += string_disk_size (sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)));
 
   or_put_offset (buf, offset);
 
@@ -3705,7 +3705,7 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
   /* 0: NAME */
   put_string (buf, sm_ch_name ((MOBJ) class_));
-  put_string (buf, sm_ch_simple_name ((MOBJ) class_));
+  put_string (buf, sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)));
   put_string (buf, class_->loader_commands);
 
   put_substructure_set (buf, (DB_LIST *) class_->representations, representation_to_disk_lwriter,
@@ -3821,7 +3821,7 @@ tf_class_size (MOBJ classobj)
   size += tf_Metaclass_class.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
 
   size += string_disk_size (sm_ch_name ((MOBJ) class_));
-  size += string_disk_size (sm_ch_simple_name ((MOBJ) class_));
+  size += string_disk_size (sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)));
   size += string_disk_size (class_->loader_commands);
 
   size += substructure_set_size ((DB_LIST *) class_->representations, (LSIZER) representation_size);
@@ -3882,10 +3882,6 @@ tf_dump_class_size (MOBJ classobj)
 
   s = string_disk_size (sm_ch_name ((MOBJ) class_));
   fprintf (stdout, "Header name %d\n", s);
-  size += s;
-
-  s = string_disk_size (sm_ch_simple_name ((MOBJ) class_));
-  fprintf (stdout, "Header simple name %d\n", s);
   size += s;
 
   s = string_disk_size (class_->loader_commands);
@@ -4050,10 +4046,12 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   class_->tde_algorithm = or_get_int (buf, &rc);
 
   /* variable 0 */
-  class_->header.ch_name = get_string (buf, vars[ORC_NAME_INDEX].length);
+  class_->header.ch_name = get_string (buf, vars[ORC_UNIQUE_NAME_INDEX].length);
 
   /* variable 1 */
-  class_->header.ch_simple_name = get_string (buf, vars[ORC_SIMPLE_NAME_INDEX].length);
+  /* Since unique_name includes class_name, only unique_name is stored in SM_CLASS.
+   * The code below is needed to move the buf location. */
+  get_string (buf, vars[ORC_NAME_INDEX].length);
 
   /* variable 2 */
   class_->loader_commands = get_string (buf, vars[ORC_LOADER_COMMANDS_INDEX].length);

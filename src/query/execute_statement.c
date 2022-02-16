@@ -689,9 +689,9 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
       goto end;
     }
 
-  /* full name */
+  /* unique_name */
   db_make_string (&value, serial_name);
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_FULL_NAME, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_UNIQUE_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
     {
@@ -699,7 +699,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* name */
-  db_make_string (&value, sm_simple_name (serial_name));
+  db_make_string (&value, sm_remove_qualifier_name (serial_name));
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -713,7 +713,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
-      ERROR_SET_ERROR_1ARG (error, ER_QPROC_MEMBER_CREATE_NOT_ALLOWED, "SERIAL");
+      ERROR_SET_ERROR (error, ER_QPROC_CREATE_SERIAL_NOT_OWNER);
       goto end;
     }
 
@@ -783,7 +783,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   /* class name */
   if (class_name)
     {
-      db_make_string (&value, sm_simple_name (class_name));
+      db_make_string (&value, sm_remove_qualifier_name (class_name));
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -908,9 +908,9 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
       goto update_auto_increment_error;
     }
 
-  /* full name */
+  /* unique_name */
   db_make_string (&value, serial_name);
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_FULL_NAME, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_UNIQUE_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
     {
@@ -918,7 +918,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
     }
 
   /* name */
-  db_make_string (&value, sm_simple_name (serial_name));
+  db_make_string (&value, sm_remove_qualifier_name (serial_name));
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   if (error != NO_ERROR)
     {
@@ -927,7 +927,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
 
   /* class name */
   pr_clear_value (&value);
-  db_make_string (&value, sm_simple_name (class_name));
+  db_make_string (&value, sm_remove_qualifier_name (class_name));
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -1293,7 +1293,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
 {
   MOP serial_mop = NULL;
 
-  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, serial_name, SERIAL_ATTR_FULL_NAME);
+  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, serial_name, SERIAL_ATTR_UNIQUE_NAME);
   if (serial_mop)
     {
       return serial_mop;
@@ -1307,7 +1307,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
       do_find_serial_by_query (serial_name, other_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
       if (other_serial_name[0] != '\0')
 	{
-	  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, other_serial_name, SERIAL_ATTR_FULL_NAME);
+	  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, other_serial_name, SERIAL_ATTR_UNIQUE_NAME);
 	  if (serial_mop)
 	    {
 	      return serial_mop;
@@ -18456,7 +18456,7 @@ do_find_class_by_query (const char *name, char *buf, size_t buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *dot = NULL;
   const char *name_p = NULL;
-  char *current_user_name = NULL;
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -18472,18 +18472,15 @@ do_find_class_by_query (const char *name, char *buf, size_t buf_size)
   dot = strchr (name, '.');
   name_p = dot ? (dot + 1) : name;
 
-  current_user_name = db_get_user_name ();
-  if (!current_user_name)
+  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
 
-  query = "SELECT [class_full_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, name_p, current_user_name));
   snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, name_p, current_user_name);
-
-  db_private_free_and_init (NULL, current_user_name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
@@ -18521,14 +18518,14 @@ do_find_class_by_query (const char *name, char *buf, size_t buf_size)
     }
   else
     {
-      /* class_full_name must not be null. */
+      /* unique_name must not be null. */
       assert (false);
     }
 
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because class_full_name is not unique. */
+      /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
     }
 
@@ -18554,7 +18551,7 @@ do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *dot = NULL;
   const char *name_p = NULL;
-  char *current_user_name = NULL;
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -18570,18 +18567,15 @@ do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
   dot = strchr (name, '.');
   name_p = dot ? (dot + 1) : name;
 
-  current_user_name = db_get_user_name ();
-  if (!current_user_name)
+  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
 
-  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, name_p, current_user_name));
   snprintf (query_buf, sizeof (query_buf), query, CT_SERIAL_NAME, name_p, current_user_name);
-
-  db_private_free_and_init (NULL, current_user_name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
@@ -18626,14 +18620,14 @@ do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
     }
   else
     {
-      /* full_name must not be null. */
+      /* unique_name must not be null. */
       assert (false);
     }
 
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because class_full_name is not unique. */
+      /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
     }
 
@@ -18659,7 +18653,7 @@ do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *dot = NULL;
   const char *name_p = NULL;
-  char *current_user_name = NULL;
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -18675,18 +18669,15 @@ do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
   dot = strchr (name, '.');
   name_p = dot ? (dot + 1) : name;
 
-  current_user_name = db_get_user_name ();
-  if (!current_user_name)
+  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
 
-  query = "SELECT [full_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, name_p, current_user_name));
   snprintf (query_buf, sizeof (query_buf), query, CT_TRIGGER_NAME, name_p, current_user_name);
-
-  db_private_free_and_init (NULL, current_user_name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
@@ -18724,14 +18715,14 @@ do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
     }
   else
     {
-      /* full_name must not be null. */
+      /* unique_name must not be null. */
       assert (false);
     }
 
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because class_full_name is not unique. */
+      /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
     }
 

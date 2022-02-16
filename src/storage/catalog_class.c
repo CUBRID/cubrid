@@ -55,7 +55,7 @@
     b = t; \
   } while (0)
 
-#define CATCLS_INDEX_NAME "i__db_class_class_full_name"
+#define CATCLS_INDEX_NAME "i__db_class_unique_name"
 #define CATCLS_INDEX_KEY   11
 
 #define CATCLS_OID_TABLE_SIZE   1024
@@ -1043,14 +1043,14 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 
   /* variable */
 
-  /* full name */
+  /* unique_name */
   attr_val_p = &attrs[11].value;
-  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_NAME_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_UNIQUE_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
-  /* simple name */
+  /* class_name */
   attr_val_p = &attrs[12].value;
-  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_SIMPLE_NAME_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* (class_of) */

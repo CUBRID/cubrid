@@ -6601,7 +6601,6 @@ classobj_make_class (const char *name)
   class_->header.ch_obj_header.chn = NULL_CHN;	/* start with NULL chn ? */
   class_->header.ch_type = SM_META_CLASS;
   class_->header.ch_name = NULL;
-  class_->header.ch_simple_name = NULL;
   /* shouldn't know how to initialize these, either need external init function */
   OID_SET_NULL (&(class_->header.ch_rep_dir));
   HFID_SET_NULL (&(class_->header.ch_heap));
@@ -6672,8 +6671,6 @@ classobj_make_class (const char *name)
 	  db_ws_free (class_);
 	  class_ = NULL;
 	}
-
-      class_->header.ch_simple_name = sm_simple_name (class_->header.ch_name);
     }
 
   return (class_);
@@ -6693,12 +6690,6 @@ classobj_free_class (SM_CLASS * class_)
       return;
     }
 
-  /*
-   * ch_simple_name points after dot(.) in ch_name.
-   * So, ch_simple_name should be initialized to NULL and only ch_name should be freed.
-   *
-   */
-  class_->header.ch_simple_name = NULL;
   ws_free_string_and_init (class_->header.ch_name);
   ws_free_string_and_init (class_->loader_commands);
   ws_free_string_and_init (class_->comment);
@@ -6774,8 +6765,6 @@ classobj_class_size (SM_CLASS * class_)
 
   size = sizeof (SM_CLASS);
   size += strlen (sm_ch_name ((MOBJ) class_)) + 1;
-  /* Since ch_simple_name is a pointer variable that points after dot (.) in ch_name,
-   * it is not included in the memory size being used. */
   size += ws_list_total ((DB_LIST *) class_->representations, (LTOTALER) classobj_representation_size);
 
   size += ml_size (class_->users);

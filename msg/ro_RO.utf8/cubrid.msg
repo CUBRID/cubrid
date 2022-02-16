@@ -1407,8 +1407,13 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1331 Error reserved for dblink development.
 
 1332 Volumul de jurnal activ (%1$s) este prea corect pentru a fi recreat. Dacă eliminați jurnalul activ, ar putea cauza o problemă neașteptată și ireversibilă.
+1333 Invalid arguments to authorization internal function.
+1334 AUTO_INCREMENT does not allow change of owner.
+1335 RENAME does not allow change of owner.
+1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1333 Ultima eroare
+1338 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1874,7 +1879,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Nu s-a găsit semnătură compatibilă pentru funcția %1$s()
 305 Semnătura %1$s nu este compatibilă cu argumentele funcției.
 306 dblink - Informațiile necesare lipsesc.
-307 A member of owner group or a member of DBA group can CREATE TABLE.
+307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

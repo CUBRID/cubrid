@@ -1146,9 +1146,10 @@ typedef enum
  *    This constant defines the maximum size in bytes of a class name,
  *    attribute name, method name, or any other named entity in the schema.
  */
-#define SM_MAX_IDENTIFIER_LENGTH 255
+#define SM_MAX_IDENTIFIER_LENGTH    DB_MAX_IDENTIFIER_LENGTH
+#define SM_MAX_USER_LENGTH          DB_MAX_USER_LENGTH
 
-#define SERIAL_ATTR_FULL_NAME       "full_name"
+#define SERIAL_ATTR_UNIQUE_NAME     "unique_name"
 #define SERIAL_ATTR_NAME            "name"
 #define SERIAL_ATTR_OWNER           "owner"
 #define SERIAL_ATTR_CURRENT_VAL     "current_val"

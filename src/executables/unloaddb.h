@@ -67,7 +67,8 @@ extern int lo_count;
 #define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) \
 	do \
 	  { \
-	    strcpy ((owner_name), (name)); \
+	    memset ((owner_name), '\0', DB_MAX_IDENTIFIER_LENGTH * 2); \
+	    strlcpy ((owner_name), (name), DB_MAX_IDENTIFIER_LENGTH); \
 	    (class_name) = strchr ((owner_name), '.'); \
 	    *(class_name)++ = '\0'; \
 	  } \

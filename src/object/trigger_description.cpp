@@ -242,10 +242,8 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
   DB_TRIGGER_TIME time;
   int save;
   const char *name;
-  char *trigger_name_copy = NULL;
-  char *owner_name_p = NULL;
-  char *trigger_name_p = NULL;
-  char *save_token = NULL;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *trigger_name = NULL;
 
   AU_DISABLE (save);
 
@@ -259,16 +257,17 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
     {
       /* automatically filter out invalid triggers */
 
-      trigger_name_copy = strdup (trigger->name);
-      owner_name_p = strtok_r (trigger_name_copy, ".", &save_token);
-      trigger_name_p = strtok_r (NULL, ".", &save_token);
+      if (sm_qualifier_name (trigger->name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      trigger_name = sm_remove_qualifier_name (trigger->name);
 
       output_ctx ("CREATE TRIGGER ");
-      output_ctx ("[%s].[%s]\n", owner_name_p, trigger_name_p);
+      output_ctx ("[%s].[%s]\n", owner_name, trigger_name);
       output_ctx ("  STATUS %s\n", tr_status_as_string (trigger->status));
       output_ctx ("  PRIORITY %f\n", trigger->priority);
-
-      free_and_init (trigger_name_copy);
 
       time = TR_TIME_BEFORE;
       if (trigger->condition != NULL)

@@ -129,7 +129,7 @@ static const char *EVAL_PREFIX = "EVALUATE ( ";
 static const char *EVAL_SUFFIX = " ) ";
 
 const char *TR_CLASS_NAME = "db_trigger";
-const char *TR_ATT_FULL_NAME = "full_name";
+const char *TR_ATT_UNIQUE_NAME = "unique_name";
 const char *TR_ATT_NAME = "name";
 const char *TR_ATT_OWNER = "owner";
 const char *TR_ATT_EVENT = "event";
@@ -1033,12 +1033,12 @@ trigger_to_object (TR_TRIGGER * trigger)
     }
 
   db_make_string (&value, trigger->name);
-  if (dbt_put_internal (obt_p, TR_ATT_FULL_NAME, &value) != NO_ERROR)
+  if (dbt_put_internal (obt_p, TR_ATT_UNIQUE_NAME, &value) != NO_ERROR)
     {
       goto error;
     }
 
-  db_make_string (&value, sm_simple_name (trigger->name));
+  db_make_string (&value, sm_remove_qualifier_name (trigger->name));
   if (dbt_put_internal (obt_p, TR_ATT_NAME, &value) != NO_ERROR)
     {
       goto error;
@@ -1228,7 +1228,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
     }
 
   /* NAME */
-  if (db_get (object, TR_ATT_FULL_NAME, &value))
+  if (db_get (object, TR_ATT_UNIQUE_NAME, &value))
     {
       goto error;
     }
@@ -3943,12 +3943,16 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       return NULL;
     }
 
-  sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH);
+  if (sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
   owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
-      ERROR_SET_ERROR_1ARG (error, ER_QPROC_MEMBER_CREATE_NOT_ALLOWED, "TRIGGER");
+      ERROR_SET_ERROR (error, ER_TR_CREATE_NOT_ALLOWED);
       goto error;
     }
 
@@ -6834,15 +6838,11 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   int save = 0;
   int error = NO_ERROR;
 
-  er_clear ();
-
   if (trigger_object == NULL || name == NULL || name[0] == '\0')
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
       return error;
     }
-
-  db_make_null (&value);
 
   trigger = tr_map_trigger (trigger_object, true);
   if (!trigger)
@@ -6895,16 +6895,16 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 
   /* might need to abort the transaction here */
   db_make_string (&value, new_name);
-  error = db_put_internal (trigger_object, TR_ATT_FULL_NAME, &value);
+  error = db_put_internal (trigger_object, TR_ATT_UNIQUE_NAME, &value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
       is_abort = true;
       goto end;
     }
-
   pr_clear_value (&value);
-  db_make_string (&value, sm_simple_name (new_name));
+
+  db_make_string (&value, sm_remove_qualifier_name (new_name));
   error = db_put_internal (trigger_object, TR_ATT_NAME, &value);
   if (error != NO_ERROR)
     {
@@ -6912,6 +6912,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
       is_abort = true;
       goto end;
     }
+  pr_clear_value (&value);
 
   if (!deferred_flush)
     {
@@ -7364,7 +7365,7 @@ define_trigger_classes (void)
       goto tmp_error;
     }
 
-  if (dbt_add_attribute (tmp, TR_ATT_FULL_NAME, "string", NULL))
+  if (dbt_add_attribute (tmp, TR_ATT_UNIQUE_NAME, "string", NULL))
     {
       goto tmp_error;
     }

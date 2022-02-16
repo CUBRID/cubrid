@@ -702,12 +702,12 @@ def_class_internal (const char *name, int class_type)
 
   if (sm_check_name (name))
     {
-      const char *simple_name = sm_simple_name (name);
+      const char *class_name = sm_remove_qualifier_name (name);
 
-      type = pr_find_type (simple_name);
+      type = pr_find_type (class_name);
       if (type != NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, simple_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, class_name);
 	}
       else
 	{
@@ -2321,11 +2321,11 @@ smt_add_method_any (SM_TEMPLATE * template_, const char *name, const char *funct
 	{
 	  if (template_->name != NULL)
 	    {
-	      sprintf (iname, "%s_%s", sm_simple_name (template_->name), name);
+	      sprintf (iname, "%s_%s", sm_remove_qualifier_name (template_->name), name);
 	    }
 	  else if (template_->op != NULL)
 	    {
-	      sprintf (iname, "%s_%s", sm_get_ch_simple_name (template_->op), name);
+	      sprintf (iname, "%s_%s", sm_remove_qualifier_name (sm_get_ch_name (template_->op)), name);
 	    }
 	  else
 	    {

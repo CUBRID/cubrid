@@ -619,7 +619,7 @@ export_serial (print_output & output_ctx)
   DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
   DB_DOMAIN *domain;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2];
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
   char *serial_name = NULL;
 
   /*
@@ -627,7 +627,7 @@ export_serial (print_output & output_ctx)
    * when changing the following query. Notice the order of the result.
    */
   const char *query =
-    "select [full_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
+    "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
     "from [db_serial] where [class_name] is null and [att_name] is null";
 
@@ -778,10 +778,8 @@ export_serial (print_output & output_ctx)
 
       output_ctx ("call [find_user]('%s') on class [db_user] to [auser];\n",
 		  db_get_string (&values[SERIAL_OWNER_NAME]));
-
       SPLIT_USER_SPECIFIED_NAME (db_get_string (&values[SERIAL_FULL_NAME]), owner_name, serial_name);
       output_ctx ("create serial %s%s%s.%s%s%s\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (serial_name));
-
       output_ctx ("\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
       output_ctx ("\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
       output_ctx ("\t minvalue %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL], str_buf));
@@ -1114,7 +1112,7 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
   const char *class_type;
   int has_indexes = 0;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2];
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
   char *class_name = NULL;
   const char *tde_algo_name;
   int is_partitioned = 0;
@@ -1321,6 +1319,8 @@ emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
   PARSER_CONTEXT *parser;
   PT_NODE **query_ptr;
   const char *name;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char *class_name = NULL;
   const char *null_spec;
   bool has_using_index;
   bool change_vclass_spec;
@@ -1390,8 +1390,8 @@ emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
 	      if (query_ptr != NULL)
 		{
 		  null_spec = pt_print_query_spec_no_list (parser, *query_ptr);
-
-		  output_ctx ("ALTER VCLASS %s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (name), null_spec);
+		  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
+		  output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), null_spec);
 		}
 	      parser_free_parser (parser);
 	    }
@@ -1424,14 +1424,15 @@ emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
 
       for (s = specs, i = 1; s != NULL; s = db_query_spec_next (s), i++)
 	{
+	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 	  if (change_vclass_spec)
 	    {			/* change the existing spec lists */
-	      output_ctx ("ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (name), i,
+	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), i,
 			  db_query_spec_string (s));
 	    }
 	  else
 	    {			/* emit the usual statements */
-	      output_ctx ("ALTER VCLASS %s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (name), db_query_spec_string (s));
+	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
 	    }
 	}
     }
@@ -1453,6 +1454,8 @@ emit_query_specs_has_using_index (print_output & output_ctx, DB_OBJLIST * vclass
   PARSER_CONTEXT *parser;
   PT_NODE **query_ptr;
   const char *name;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char *class_name = NULL;
   const char *null_spec;
   bool change_vclass_spec;
   int i;
@@ -1498,7 +1501,8 @@ emit_query_specs_has_using_index (print_output & output_ctx, DB_OBJLIST * vclass
 	  if (query_ptr != NULL)
 	    {
 	      null_spec = pt_print_query_spec_no_list (parser, *query_ptr);
-	      output_ctx ("ALTER VCLASS %s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (name), null_spec);
+	      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
+	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), null_spec);
 	    }
 	  parser_free_parser (parser);
 	}
@@ -1522,14 +1526,15 @@ emit_query_specs_has_using_index (print_output & output_ctx, DB_OBJLIST * vclass
 
       for (s = specs, i = 1; s; s = db_query_spec_next (s), i++)
 	{
+	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 	  if (change_vclass_spec)
 	    {			/* change the existing spec lists */
-	      output_ctx ("ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (name), i,
+	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), i,
 			  db_query_spec_string (s));
 	    }
 	  else
 	    {			/* emit the usual statements */
-	      output_ctx ("ALTER VCLASS %s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (name), db_query_spec_string (s));
+	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
 	    }
 	}
     }
@@ -1550,7 +1555,7 @@ emit_superclasses (print_output & output_ctx, DB_OBJECT * class_, const char *cl
 {
   DB_OBJLIST *supers, *s;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2];
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
   char *class_name = NULL;
 
   supers = db_get_superclasses (class_);
@@ -1716,7 +1721,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
   int index_flag = 0;
   DB_VALUE cur_val, started_val, min_val, max_val, inc_val, sr_name;
   const char *name, *start_with;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2];
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
   char *class_name = NULL;
   char *serial_name = NULL;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
@@ -1921,7 +1926,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	      db_make_null (&max_val);
 	      db_make_null (&inc_val);
 
-	      sr_error = db_get (a->auto_increment, "full_name", &sr_name);
+	      sr_error = db_get (a->auto_increment, "unique_name", &sr_name);
 	      if (sr_error < 0)
 		{
 		  continue;
@@ -2044,7 +2049,7 @@ emit_class_attributes (print_output & output_ctx, DB_OBJECT * class_, const char
 {
   DB_ATTRIBUTE *class_attribute_list, *first_class_attribute, *a;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2];
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
   char *class_name = NULL;
 
   class_attribute_list = db_get_class_attributes (class_);
@@ -2061,7 +2066,6 @@ emit_class_attributes (print_output & output_ctx, DB_OBJECT * class_, const char
   if (first_class_attribute != NULL)
     {
       name = db_get_class_name (class_);
-
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
       output_ctx ("ALTER %s %s%s%s.%s%s%s ADD CLASS ATTRIBUTE \n", class_type, PRINT_IDENTIFIER (owner_name),
 		  PRINT_IDENTIFIER (class_name));
@@ -2197,7 +2201,7 @@ emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_t
   DB_METHOD *method_list, *class_method_list, *m;
   DB_METHOD *first_method, *first_class_method;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2];
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
   char *class_name = NULL;
 
   method_list = db_get_methods (class_);
@@ -2224,7 +2228,6 @@ emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_t
   if (first_method != NULL)
     {
       name = db_get_class_name (class_);
-
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
       output_ctx ("ALTER %s %s%s%s.%s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (owner_name),
 		  PRINT_IDENTIFIER (class_name));
@@ -2250,7 +2253,6 @@ emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_t
   if (first_class_method != NULL)
     {
       name = db_get_class_name (class_);
-
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
       output_ctx ("ALTER %s %s%s%s.%s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (owner_name),
 		  PRINT_IDENTIFIER (class_name));
@@ -2484,7 +2486,7 @@ emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *clas
   bool has_inherited_atts;
   int num_printed = 0;
   const char *name, *class_name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2];
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
   char *class_name_p = NULL;
   int not_online = 0;
 
@@ -2610,7 +2612,7 @@ emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_)
   DB_ATTRIBUTE **atts, **att;
   bool has_inherited_atts;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2];
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
   char *class_name = NULL;
 
   constraint_list = db_get_constraints (class_);
@@ -2647,7 +2649,6 @@ emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_)
       if (!has_inherited_atts)
 	{
 	  name = db_get_class_name (class_);
-
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 	  output_ctx ("CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s.%s%s%s (", PRINT_IDENTIFIER (constraint->name),
 		      PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
@@ -2681,6 +2682,8 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
   DB_CONSTRAINT_TYPE ctype;
   DB_ATTRIBUTE **atts, **att;
   const char *cls_name, *att_name;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char *class_name = NULL;
   int partitioned_subclass = 0, au_save;
   SM_CLASS *supclass = NULL;
   const int *asc_desc;
@@ -2732,19 +2735,20 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	  continue;		/* same index skip */
 	}
 
+      SPLIT_USER_SPECIFIED_NAME (cls_name, owner_name, class_name);
       if (constraint->func_index_info)
 	{
-	  output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s (",
+	  output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s.%s%s%s (",
 		      (ctype == DB_CONSTRAINT_REVERSE_INDEX || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "",
 		      (ctype == DB_CONSTRAINT_UNIQUE || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "UNIQUE " : "",
-		      PRINT_FUNCTION_INDEX_NAME (constraint->name), PRINT_IDENTIFIER (cls_name));
+		      PRINT_FUNCTION_INDEX_NAME (constraint->name), PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
 	}
       else
 	{
-	  output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s (",
+	  output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s.%s%s%s (",
 		      (ctype == DB_CONSTRAINT_REVERSE_INDEX || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "",
 		      (ctype == DB_CONSTRAINT_UNIQUE || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "UNIQUE " : "",
-		      PRINT_IDENTIFIER (constraint->name), PRINT_IDENTIFIER (cls_name));
+		      PRINT_IDENTIFIER (constraint->name), PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
 	}
 
       asc_desc = NULL;		/* init */
@@ -3187,7 +3191,7 @@ emit_partition_info (print_output & output_ctx, MOP clsobj)
   int partcnt = 0;
   char *ptr, *ptr2;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2];
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
   char *class_name = NULL;
   SM_CLASS *class_, *subclass;
   DB_OBJLIST *user;
@@ -3205,7 +3209,6 @@ emit_partition_info (print_output & output_ctx, MOP clsobj)
 
   SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
   output_ctx ("\nALTER CLASS %s%s%s.%s%s%s ", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
-
   output_ctx ("\nPARTITION BY ");
 
   if (class_->partition->expr != NULL)
@@ -3454,6 +3457,8 @@ emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes)
   DB_ATTRIBUTE **atts, **att;
   bool has_inherited_atts;
   const char *cls_name, *att_name;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char *class_name = NULL;
   MOP ref_clsop;
 
   for (cl = classes; cl != NULL; cl = cl->next)
@@ -3484,7 +3489,8 @@ emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes)
 	      continue;
 	    }
 
-	  output_ctx ("ALTER CLASS [%s] ADD", cls_name);
+	  SPLIT_USER_SPECIFIED_NAME (cls_name, owner_name, class_name);
+	  output_ctx ("ALTER CLASS %s%s%s.%s%s%s ADD", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
 
 	  output_ctx (" CONSTRAINT [%s] FOREIGN KEY(", constraint->name);
 
@@ -3500,7 +3506,8 @@ emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes)
 	  output_ctx (")");
 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
-	  output_ctx (" REFERENCES %s%s%s ", PRINT_IDENTIFIER (db_get_class_name (ref_clsop)));
+	  SPLIT_USER_SPECIFIED_NAME (db_get_class_name (ref_clsop), owner_name, class_name);
+	  output_ctx (" REFERENCES %s%s%s.%s%s%s ", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
 	  output_ctx ("ON DELETE %s ", classobj_describe_foreign_key_action (constraint->fk_info->delete_action));
 	  output_ctx ("ON UPDATE %s ", classobj_describe_foreign_key_action (constraint->fk_info->update_action));
 

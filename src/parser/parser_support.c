@@ -7016,7 +7016,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   /* ------ SELECT ... WHERE ------- */
   {
     PT_NODE *where_item = NULL;
-    where_item = pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", sm_simple_name (lower_view_name));
+    where_item = pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", sm_remove_qualifier_name (lower_view_name));
 
     /* WHERE list should be empty */
     assert (node->info.query.q.select.where == NULL);
@@ -9906,12 +9906,12 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   const char *original_name = NULL;
   const char *resolved_name = NULL;
   char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char *current_user_name = NULL;
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *user_specified_name = NULL;
-  int error = NO_ERROR;
 
-  if (!node)
+  if (parser == NULL || node == NULL)
     {
+      PT_ERROR (parser, node, "Invalid arguments.");
       return NULL;
     }
 
@@ -9955,6 +9955,15 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       return node;
     }
 
+  if (strlen (original_name) >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH)
+    {
+      PT_ERRORf2 (parser, node,
+		  "Identifier name [%s] not allowed. It cannot exceed %d bytes.",
+		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
   /* In the system_class, user_specified_name does not include user_name.
    * So, info.name.original is different for each case below.
    *
@@ -9980,12 +9989,9 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
   if (resolved_name == NULL || resolved_name[0] == '\0')
     {
-      current_user_name = db_get_user_name ();
-      if (!current_user_name)
+      if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
 	{
-	  ASSERT_ERROR_AND_SET (error);
-	  PT_ERROR (parser, node, er_msg ());
-	  *continue_walk = PT_STOP_WALK;
+	  ASSERT_ERROR ();
 	  return node;
 	}
 
@@ -10000,15 +10006,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     }
 
   intl_identifier_lower (resolved_name, downcase_resolved_name);
-
-  if (strlen (original_name) >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH)
-    {
-      PT_ERRORf2 (parser, node,
-		  "Identifier name [%s] not allowed. It cannot exceed %d bytes.",
-		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
-      *continue_walk = PT_STOP_WALK;
-      return node;
-    }
 
   /* In case 1, 2, 3, 5 */
   user_specified_name = pt_append_string (parser, NULL, downcase_resolved_name);
@@ -10041,47 +10038,63 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	}
     }
 
-  if (current_user_name)
-    {
-      db_string_free (current_user_name);
-    }
-
   return node;
 }
 
+/*
+ * pt_get_qualifier_name() - If the name is a user-specified name, get the user name.
+ * return	: user name or NULL on error
+ * parser (in)	: parser context
+ * node (in)	: node of type PT_NAME
+ */
 const char *
-pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name)
+pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  char *dot = NULL;
-  const char *qualifier_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
 
-  if (name == NULL || name->node_type != PT_NAME)
+  if (node == NULL || !PT_IS_NAME_NODE (node))
+    {
+      PT_ERROR (parser, node, "Invalid arguments.");
+      return NULL;
+    }
+
+  if (node->info.name.original == NULL || node->info.name.original[0] == '\0')
     {
       return NULL;
     }
 
-  if (name->info.name.original == NULL || name->info.name.original[0] == '\0')
+  if (sm_qualifier_name (node->info.name.original, qualifier_name, DB_MAX_USER_LENGTH) == NULL)
     {
-      return NULL;
+      return node->info.name.resolved;
     }
 
-  qualifier_name = pt_append_string (parser, NULL, name->info.name.original);
-
-  dot = CONST_CAST (char *, strchr (qualifier_name, '.'));
-  if (dot)
-    {
-      dot[0] = '\0';
-      return qualifier_name;
-    }
-
-  return name->info.name.resolved;
+  return pt_append_string (parser, NULL, qualifier_name);
 }
 
+/*
+ * pt_get_qualifier_name() - If the name has a qualifier name, remove it.
+ * return	: name with qualifier name removed
+ * name (in)	: user-specified name or object name
+ */
+const char *
+pt_get_remove_qualifier_name (const char *name)
+{
+  return sm_remove_qualifier_name (name);
+}
+
+/*
+ * pt_get_name_without_current_user_name() - If the name is a user-specified name and the specified user is
+ *                                           the current user, return only the object name.
+ * return	: user name or NULL on error
+ * parser (in)	: parser context
+ * node (in)	: node of type PT_NAME
+ */
 const char *
 pt_get_name_without_current_user_name (const char *name)
 {
   char *dot = NULL;
-  char *current_user_name = NULL;
+  char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' }; 
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *object_name = NULL;
   int error = NO_ERROR;
 
@@ -10090,7 +10103,11 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
-  dot = (char *) strchr (name, '.');
+  strlcpy (name_copy, name, DB_MAX_IDENTIFIER_LENGTH);
+
+  dot = strchr (name_copy, '.');
+
+  /* If the name is not a user-specified name, it is returned as is. */
   if (dot == NULL)
     {
       /*
@@ -10100,22 +10117,21 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
-  current_user_name = db_get_user_name ();
-  if (!current_user_name)
+  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
     {
-      ASSERT_ERROR_AND_SET (error);
+      ASSERT_ERROR ();
       return name;
     }
 
   dot[0] = '\0';
 
-  if (intl_identifier_casecmp (name, current_user_name) == 0)
+  if (intl_identifier_casecmp (name_copy, current_user_name) == 0)
     {
       /*
        * e.g.        name: current_user_name.object_name
        *      object_name: object_name
        */
-      object_name = dot + 1;
+      object_name = strchr (name, '.') + 1;
     }
   else
     {
@@ -10126,27 +10142,5 @@ pt_get_name_without_current_user_name (const char *name)
       object_name = name;
     }
 
-  dot[0] = '.';
-
-  if (current_user_name)
-    {
-      db_string_free (current_user_name);
-    }
-
   return object_name;
-}
-
-const char *
-pt_get_simple_name (const char *name)
-{
-  const char *dot = NULL;
-
-  if (name == NULL || name[0] == '\0')
-    {
-      return NULL;
-    }
-
-  dot = strchr (name, '.');
-
-  return dot ? (dot + 1) : name;
 }

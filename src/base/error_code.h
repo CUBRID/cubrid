@@ -1698,9 +1698,11 @@
 
 #define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
 
-#define ER_AU_CANT_ALTER_OWNER_OF_AUTO_INCREMENT    -1333
-#define ER_SM_RENAME_CANT_ALTER_OWNER               -1334
-#define ER_QPROC_MEMBER_CREATE_NOT_ALLOWED          -1335
+#define ER_AU_INVALID_ARGUMENTS                     -1333
+#define ER_AU_CANT_ALTER_OWNER_OF_AUTO_INCREMENT    -1334
+#define ER_SM_RENAME_CANT_ALTER_OWNER               -1335
+#define ER_QPROC_CREATE_SERIAL_NOT_OWNER            -1336
+#define ER_TR_CREATE_NOT_ALLOWED                    -1337
 
 #define ER_LAST_ERROR                               -1336
 /*

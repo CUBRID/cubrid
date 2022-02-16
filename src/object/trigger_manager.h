@@ -201,7 +201,7 @@ typedef enum
  */
 
 extern const char *TR_CLASS_NAME;
-extern const char *TR_ATT_FULL_NAME;
+extern const char *TR_ATT_UNIQUE_NAME;
 extern const char *TR_ATT_NAME;
 extern const char *TR_ATT_OWNER;
 extern const char *TR_ATT_EVENT;
