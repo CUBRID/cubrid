@@ -8205,8 +8205,8 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	   */
 	  if (log_is_in_crash_recovery_and_not_yet_completes_redo ())
 	    {
-	      const bool local_lsa_is_less_than_or_equal_to_page_server_lsa
-		= (io_page->prv.lsa <= second_io_page->prv.lsa);
+	      const bool local_lsa_is_less_than_or_equal_to_page_server_lsa =
+		LSA_LE (&io_page->prv.lsa, &second_io_page->prv.lsa);
 	      const bool equal_vpid = io_page->prv.volid == second_io_page->prv.volid
 		&& io_page->prv.pageid == second_io_page->prv.pageid;
 #if !defined(NDEBUG)
@@ -8245,29 +8245,26 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 		    {
 		      // page server might already contain btree stats which are still kept in memory on the
 		      // active transaction server
-		      assert (io_page->prv.lsa <= second_io_page->prv.lsa
+		      assert (LSA_LE (&io_page->prv.lsa, &second_io_page->prv.lsa)
 			      && io_page->prv.pageid == second_io_page->prv.pageid
 			      && io_page->prv.volid == second_io_page->prv.volid
-			      && io_page->prv.pflag == second_io_page->prv.pflag
+			      && io_page->prv.ptype == second_io_page->prv.ptype
 			      && io_page->prv.pflag == second_io_page->prv.pflag
 			      && io_page->prv.tde_nonce == second_io_page->prv.tde_nonce);
 		    }
 		  else
 		    {
 #if !defined(NDEBUG)
-		      if (!fileio_pages_equal)
-			{
-			  er_log_debug (ARG_FILE_LINE, "pgbuf_read_page_from_file_or_page_server"
-					" past recovery redo pages not equal\n"
-					"    target repl LSA: %lld|%d\n"
-					"    local page  VPID: %d|%d  LSA: %lld|%d  ptype: %d\n"
-					"    remote page VPID: %d|%d  LSA: %lld|%d  ptype: %d\n",
-					LSA_AS_ARGS (&target_repl_lsa),
-					io_page->prv.volid, io_page->prv.pageid,
-					LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.ptype,
-					second_io_page->prv.volid, second_io_page->prv.pageid,
-					LSA_AS_ARGS (&second_io_page->prv.lsa), second_io_page->prv.ptype);
-			}
+		      er_log_debug (ARG_FILE_LINE, "pgbuf_read_page_from_file_or_page_server"
+				    " past recovery redo pages not equal\n"
+				    "    target repl LSA: %lld|%d\n"
+				    "    local page  VPID: %d|%d  LSA: %lld|%d  ptype: %d\n"
+				    "    remote page VPID: %d|%d  LSA: %lld|%d  ptype: %d\n",
+				    LSA_AS_ARGS (&target_repl_lsa),
+				    io_page->prv.volid, io_page->prv.pageid,
+				    LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.ptype,
+				    second_io_page->prv.volid, second_io_page->prv.pageid,
+				    LSA_AS_ARGS (&second_io_page->prv.lsa), second_io_page->prv.ptype);
 #endif
 		      assert (fileio_pages_equal);
 		    }

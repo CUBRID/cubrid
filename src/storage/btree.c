@@ -33440,6 +33440,8 @@ btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
 bool
 btree_is_btree_root_page (THREAD_ENTRY * thread_p, const PAGE_PTR page_ptr)
 {
+  assert (page_ptr != nullptr);
+
   const SPAGE_HEADER *const page_header_p = (const SPAGE_HEADER *) page_ptr;
   RECDES header_record;
   if (page_header_p->num_slots <= 0 || spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
