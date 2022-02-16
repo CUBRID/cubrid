@@ -8500,7 +8500,6 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       error = ER_FAILED;
       goto error_exit;
     }
-  mq_reset_ids_in_statement (parser, create_select_copy);
 
   insert_into =
     create_select_to_insert_into (parser, class_name, create_select_copy, create_select_action, query_columns);
@@ -8521,6 +8520,7 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       goto error_exit;
     }
 
+  insert_into = mq_reset_ids_in_statement (parser, insert_into);
   insert_into = mq_translate (parser, insert_into);
   if (!insert_into || pt_has_error (parser))
     {

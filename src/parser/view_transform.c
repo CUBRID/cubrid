@@ -7570,6 +7570,11 @@ mq_reset_ids (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec)
     {
       return statement;
     }
+  /* skip the spec before assignment */
+  if (spec->info.spec.id == 0)
+    {
+      return statement;
+    }
 
   /* make sure range var always has same id as spec */
   range = spec->info.spec.range_var;
