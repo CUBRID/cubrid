@@ -5531,7 +5531,7 @@ end:
 
   if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
+      tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
     }
 }
 
