@@ -58,6 +58,20 @@
 #include "oid.h"
 #include "storage_common.h"
 
+STATIC_INLINE bool
+flashback_is_class_exist (OID * classlist, int num_class, OID target)
+{
+  for (int i = 0; i < num_class; i++)
+    {
+      if (OID_EQ (&classlist[i], &target))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
 static int
 flashback_create_summary_entry (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_ENTRY ** summary)
 {
@@ -84,11 +98,11 @@ flashback_create_summary_entry (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_ENTRY
 }
 
 static void
-flashback_drop_summary_entry (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_ENTRY ** summary)
+flashback_drop_summary_entry (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_ENTRY * summary)
 {
-  assert (*summary != NULL);
+  assert (summary != NULL);
 
-  db_private_free_and_init (thread_p, *summary);
+  db_private_free_and_init (thread_p, summary);
 }
 
 /*
@@ -112,19 +126,9 @@ flashback_fill_dml_summary (FLASHBACK_SUMMARY_ENTRY * summary_entry, OID classoi
    * 1. number of class and put the classoid into the classlist
    * 2. number of DML operation */
 
-  for (i = 0; i < summary_entry->num_class; i++)
+  if (!flashback_is_class_exist (summary_entry->classlist, summary_entry->num_class, classoid))
     {
-      if (OID_EQ (&summary_entry->classlist[i], &classoid))
-	{
-	  found = true;
-	  break;
-	}
-    }
-
-  if (!found)
-    {
-      summary_entry->num_class += 1;
-      COPY_OID (&summary_entry->classlist[i], &classoid);
+      COPY_OID (&summary_entry->classlist[summary_entry->num_class++], &classoid);
     }
 
   switch (rec_type)
@@ -164,7 +168,7 @@ flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context)
     {
       if (iter.second != NULL)
         {
-	  db_private_free_and_init (thread_p, iter.second);
+          flashback_drop_summary_entry (thread_p, iter.second);
         }
     }
   /* *INDENT-ON* */
@@ -201,8 +205,11 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
   LOG_RECTYPE log_type;
 
   char *supplement_data = NULL;
+  int supplement_alloc_length = 0;
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+  assert (!LSA_ISNULL (&context->end_lsa));
 
   LSA_COPY (&process_lsa, &(context->end_lsa));
 
@@ -212,199 +219,194 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
       goto exit;
     }
 
-begin:
-
-  LSA_COPY (&cur_log_rec_lsa, &process_lsa);
-  log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
-
-  log_type = log_rec_header->type;
-  trid = log_rec_header->trid;
-
-  LSA_COPY (&next_log_rec_lsa, &log_rec_header->back_lsa);
-
-  if (LSA_ISNULL (&log_rec_header->prev_tranlsa))
+  while (LSA_GE (&process_lsa, &context->start_lsa))
     {
-      FLASHBACK_CHECK_AND_GET_SUMMARY (context->summary_list, trid, summary_entry);
-      if (summary_entry != NULL)
+      LSA_COPY (&cur_log_rec_lsa, &process_lsa);
+      log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
+
+      log_type = log_rec_header->type;
+      trid = log_rec_header->trid;
+
+      LSA_COPY (&next_log_rec_lsa, &log_rec_header->back_lsa);
+
+      if (LSA_ISNULL (&log_rec_header->prev_tranlsa))
 	{
-	  summary_entry->start_time = current_time - 1;	// current time is obtained before accessing this log record.
-	  LSA_COPY (&summary_entry->start_lsa, &cur_log_rec_lsa);
+	  FLASHBACK_CHECK_AND_GET_SUMMARY (context->summary_list, trid, summary_entry);
+	  if (summary_entry != NULL)
+	    {
+	      /* current time is updated whenever a log record with a time value is encountered.
+	       * this function reads the log records in reverse time order,
+	       * so the current_time represents a time in the future than the log being read now
+	       * Since LOG_DUMMY_HA_SERVER_STATE is logged every second, start_time is set to 1 second before the current_time */
+
+	      summary_entry->start_time = current_time - 1;
+	      LSA_COPY (&summary_entry->start_lsa, &cur_log_rec_lsa);
+	    }
 	}
-    }
 
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
 
-  switch (log_type)
-    {
-    case LOG_COMMIT:
-      {
-	LOG_REC_DONETIME *donetime;
-
-	if (context->num_summary == FLASHBACK_MAX_SUMMARY)
+      switch (log_type)
+	{
+	case LOG_COMMIT:
 	  {
-	    error = ER_FLASHBACK_TOO_MANY_SUMMARY;
-	    goto exit;
-	  }
+	    LOG_REC_DONETIME *donetime;
 
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
+	    if (context->num_summary == FLASHBACK_MAX_SUMMARY)
+	      {
+		error = ER_FLASHBACK_TOO_MANY_SUMMARY;
+		goto exit;
+	      }
 
-	donetime = (LOG_REC_DONETIME *) (log_page_p->area + process_lsa.offset);
+	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
 
-	/* create summary info entry, and register it to the summary list */
-	if ((error = flashback_create_summary_entry (thread_p, &summary_entry)) != NO_ERROR)
-	  {
-	    goto exit;
-	  }
+	    donetime = (LOG_REC_DONETIME *) (log_page_p->area + process_lsa.offset);
 
-	summary_entry->trid = trid;
-	LSA_COPY (&summary_entry->end_lsa, &cur_log_rec_lsa);
-	summary_entry->end_time = donetime->at_time;
+	    /* create summary info entry, and register it to the summary list */
+	    if ((error = flashback_create_summary_entry (thread_p, &summary_entry)) != NO_ERROR)
+	      {
+		goto exit;
+	      }
+
+	    summary_entry->trid = trid;
+	    LSA_COPY (&summary_entry->end_lsa, &cur_log_rec_lsa);
+	    summary_entry->end_time = donetime->at_time;
 
         // *INDENT-OFF*
 	context->summary_list.insert (std::make_pair (trid, summary_entry));
         // *INDENT-ON*
-	current_time = donetime->at_time;
-	context->num_summary += 1;
-	break;
-      }
-    case LOG_DUMMY_HA_SERVER_STATE:
-      {
-	LOG_REC_HA_SERVER_STATE *ha_dummy;
-
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*ha_dummy), &process_lsa, log_page_p);
-
-	ha_dummy = (LOG_REC_HA_SERVER_STATE *) (log_page_p->area + process_lsa.offset);
-
-	current_time = ha_dummy->at_time;
-
-	break;
-      }
-    case LOG_SUPPLEMENTAL_INFO:
-      {
-	LOG_REC_SUPPLEMENT *supplement;
-	int supplement_length;
-	SUPPLEMENT_REC_TYPE rec_type;
-	RECDES supp_recdes = RECDES_INITIALIZER;
-
-	OID classoid;
-
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
-
-	supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa.offset);
-	supplement_length = supplement->length;
-	rec_type = supplement->rec_type;
-
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
-
-	if (cdc_get_undo_record (thread_p, log_page_p, cur_log_rec_lsa, &supp_recdes) != S_SUCCESS)
-	  {
-	    error = ER_FAILED;
-	    goto exit;
+	    current_time = donetime->at_time;
+	    context->num_summary++;
+	    break;
 	  }
-
-	supplement_length = sizeof (supp_recdes.type) + supp_recdes.length;
-	supplement_data = (char *) db_private_alloc (thread_p, supplement_length);
-	if (supplement_data == NULL)
+	case LOG_DUMMY_HA_SERVER_STATE:
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, supplement_length);
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto exit;
+	    LOG_REC_HA_SERVER_STATE *ha_dummy;
+
+	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*ha_dummy), &process_lsa, log_page_p);
+
+	    ha_dummy = (LOG_REC_HA_SERVER_STATE *) (log_page_p->area + process_lsa.offset);
+
+	    current_time = ha_dummy->at_time;
+
+	    break;
 	  }
-
-	CDC_MAKE_SUPPLEMENT_DATA (supplement_data, supp_recdes);
-
-	free_and_init (supp_recdes.data);
-
-	switch (rec_type)
+	case LOG_SUPPLEMENTAL_INFO:
 	  {
-	  case LOG_SUPPLEMENT_TRAN_USER:
-	    {
-	      FLASHBACK_CHECK_AND_GET_SUMMARY (context->summary_list, trid, summary_entry);
+	    LOG_REC_SUPPLEMENT *supplement;
+	    int supplement_length;
+	    SUPPLEMENT_REC_TYPE rec_type;
+	    RECDES supp_recdes = RECDES_INITIALIZER;
 
-	      /* user filtering */
-	      if (strlen (context->user) != 0
-		  && intl_identifier_ncasecmp (context->user, supplement_data, supplement_length) != 0)
+	    OID classoid;
+
+	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
+
+	    supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa.offset);
+	    supplement_length = supplement->length;
+	    rec_type = supplement->rec_type;
+
+	    LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
+
+	    if (cdc_get_undo_record (thread_p, log_page_p, cur_log_rec_lsa, &supp_recdes) != S_SUCCESS)
+	      {
+		error = ER_FAILED;
+		goto exit;
+	      }
+
+	    supplement_length = sizeof (supp_recdes.type) + supp_recdes.length;
+	    if (supplement_length > supplement_alloc_length)
+	      {
+		char *tmp = (char *) db_private_realloc (thread_p, supplement_data, supplement_length);
+		if (tmp == NULL)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, supplement_length);
+		    error = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto exit;
+		  }
+		else
+		  {
+		    supplement_data = tmp;
+		    supplement_alloc_length = supplement_length;
+		  }
+	      }
+
+	    CDC_MAKE_SUPPLEMENT_DATA (supplement_data, supp_recdes);
+
+	    free_and_init (supp_recdes.data);
+
+	    switch (rec_type)
+	      {
+	      case LOG_SUPPLEMENT_TRAN_USER:
 		{
-		  if (summary_entry != NULL)
+		  FLASHBACK_CHECK_AND_GET_SUMMARY (context->summary_list, trid, summary_entry);
+
+		  /* user filtering */
+		  if (strlen (context->user) != 0
+		      && intl_identifier_ncasecmp (context->user, supplement_data, supplement_length) != 0)
 		    {
-		      flashback_drop_summary_entry (thread_p, &summary_entry);
+		      if (summary_entry != NULL)
+			{
+			  flashback_drop_summary_entry (thread_p, summary_entry);
                       // *INDENT-OFF*
 		      context->summary_list.erase (trid);
                       // *INDENT-ON*
-		      context->num_summary -= 1;
+			  context->num_summary--;
+			}
 		    }
-		}
-
-	      strncpy (summary_entry->user, supplement_data, supplement_length);
-
-	      break;
-	    }
-	  case LOG_SUPPLEMENT_INSERT:
-	  case LOG_SUPPLEMENT_TRIGGER_INSERT:
-	  case LOG_SUPPLEMENT_UPDATE:
-	  case LOG_SUPPLEMENT_TRIGGER_UPDATE:
-	  case LOG_SUPPLEMENT_DELETE:
-	  case LOG_SUPPLEMENT_TRIGGER_DELETE:
-	    {
-	      bool found = false;
-
-	      memcpy (&classoid, supplement_data, sizeof (OID));
-
-	      /* Check if it is extraction target */
-	      for (int i = 0; i < context->num_class; i++)
-		{
-		  if (OID_EQ (&context->classlist[i], &classoid))
+		  else
 		    {
-		      found = true;
-		      break;
+		      if (strlen (summary_entry->user) != 0)
+			{
+			  strncpy (summary_entry->user, supplement_data, supplement_length);
+			}
 		    }
-		}
 
-	      if (!found)
-		{
 		  break;
 		}
-
-	      FLASHBACK_CHECK_AND_GET_SUMMARY (context->summary_list, trid, summary_entry);
-	      if (summary_entry != NULL)
+	      case LOG_SUPPLEMENT_INSERT:
+	      case LOG_SUPPLEMENT_TRIGGER_INSERT:
+	      case LOG_SUPPLEMENT_UPDATE:
+	      case LOG_SUPPLEMENT_TRIGGER_UPDATE:
+	      case LOG_SUPPLEMENT_DELETE:
+	      case LOG_SUPPLEMENT_TRIGGER_DELETE:
 		{
-		  flashback_fill_dml_summary (summary_entry, classoid, rec_type);
+		  bool found = false;
+
+		  memcpy (&classoid, supplement_data, sizeof (OID));
+
+		  if (!flashback_is_class_exist (context->classlist, context->num_class, classoid))
+		    {
+		      break;
+		    }
+
+		  FLASHBACK_CHECK_AND_GET_SUMMARY (context->summary_list, trid, summary_entry);
+		  if (summary_entry != NULL)
+		    {
+		      flashback_fill_dml_summary (summary_entry, classoid, rec_type);
+		    }
+
+		  break;
 		}
-
-	      break;
-	    }
-	  default:
-	    break;
+	      default:
+		break;
+	      }
 	  }
-      }
-    default:
-      break;
-    }
+	default:
+	  break;
+	}
 
-  if (LSA_LT (&next_log_rec_lsa, &context->start_lsa))
-    {
-      /* parse done */
-      error = NO_ERROR;
-      goto exit;
-    }
+      LSA_COPY (&process_lsa, &next_log_rec_lsa);
 
-  LSA_COPY (&process_lsa, &next_log_rec_lsa);
-
-  if (process_lsa.pageid != log_page_p->hdr.logical_pageid)
-    {
-      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+      if (process_lsa.pageid != log_page_p->hdr.logical_pageid)
 	{
-	  error = ER_FAILED;
-	  goto exit;
+	  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto exit;
+	    }
 	}
     }
-
-  if (supplement_data != NULL)
-    {
-      db_private_free_and_init (thread_p, supplement_data);
-    }
-
-  goto begin;
 
 exit:
   if (supplement_data != NULL)

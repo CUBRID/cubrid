@@ -10823,8 +10823,8 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_unpack_int64 (ptr, &start_time);
   ptr = or_unpack_int64 (ptr, &end_time);
 
-  if ((error_code =
-       flashback_verify_time (thread_p, start_time, end_time, &context.start_lsa, &context.end_lsa)) != NO_ERROR)
+  error_code = flashback_verify_time (thread_p, start_time, end_time, &context.start_lsa, &context.end_lsa);
+  if (error_code != NO_ERROR)
     {
       goto error;
     }
@@ -10836,7 +10836,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto error;
     }
 
-  area_size = OR_OID_SIZE * context.num_class + OR_SUMMARY_ENTRY_SIZE * context.num_summary;
+  area_size = OR_OID_SIZE * context.num_class + OR_INT_SIZE + OR_SUMMARY_ENTRY_SIZE * context.num_summary;
 
   area = (char *) db_private_alloc (thread_p, area_size);	/* summary info size will be added */
   if (area == NULL)
