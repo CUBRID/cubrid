@@ -18519,7 +18519,8 @@ do_find_class_by_query (const char *name, char *buf, size_t buf_size)
   else
     {
       /* unique_name must not be null. */
-      assert (false);
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
 
   error = db_query_next_tuple (query_result);
@@ -18621,7 +18622,8 @@ do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
   else
     {
       /* unique_name must not be null. */
-      assert (false);
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
 
   error = db_query_next_tuple (query_result);
@@ -18716,7 +18718,8 @@ do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
   else
     {
       /* unique_name must not be null. */
-      assert (false);
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
 
   error = db_query_next_tuple (query_result);
