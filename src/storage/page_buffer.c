@@ -8237,8 +8237,8 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 		   * applied immediately and thus, the difference; compare everything ignoring the
 		   * statistics
 		   */
-		  const PAGE_PTR pgptr = (PAGE_PTR) ((char *) io_page->page);
-		  PAGE_PTR second_pgptr = (PAGE_PTR) ((char *) second_io_page->page);
+		  const PAGE_PTR pgptr = (const PAGE_PTR) ((char *) io_page->page);
+		  const PAGE_PTR second_pgptr = (const PAGE_PTR) ((char *) second_io_page->page);
 		  if (io_page->prv.ptype == PAGE_BTREE && second_io_page->prv.ptype == PAGE_BTREE
 		      && btree_is_btree_root_page (thread_p, pgptr)
 		      && btree_is_btree_root_page (thread_p, second_pgptr))
@@ -8266,7 +8266,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 				    second_io_page->prv.volid, second_io_page->prv.pageid,
 				    LSA_AS_ARGS (&second_io_page->prv.lsa), second_io_page->prv.ptype);
 #endif
-		      assert (fileio_pages_equal);
+		      assert ("pages are not equal after all exceptions have been verified and failed" == nullptr);
 		    }
 		}
 	    }
