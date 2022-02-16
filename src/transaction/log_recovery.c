@@ -448,7 +448,7 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
  *  - passive transaction server replication
  */
 bool
-log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv, LOG_RCVINDEX rcvindex,	// TODO: delete param
+log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
 					  const log_lsa & rcv_lsa, const LOG_LSA & end_redo_lsa,
 					  PAGE_FETCH_MODE page_fetch_mode)
 {
