@@ -10009,8 +10009,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   intl_identifier_lower (resolved_name, downcase_resolved_name);
 
   /* In case 1, 2, 3, 5 */
-  user_specified_name = pt_append_string (parser, NULL, downcase_resolved_name);
-  user_specified_name = pt_append_string (parser, user_specified_name, ".");
+  user_specified_name = pt_append_string (parser, downcase_resolved_name, ".");
   user_specified_name = pt_append_string (parser, user_specified_name, original_name);
 
   if (PT_IS_NAME_NODE (node))

@@ -9392,34 +9392,33 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
 }
 
 DB_OBJECT *
-pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
+pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  DB_OBJECT *serial_class = NULL;
+  DB_OBJECT *serial_class_obj = NULL;
   DB_OBJECT *serial_obj = NULL;
   DB_IDENTIFIER serial_obj_id;
-
   const char *serial_name = NULL;
-  const char *serial_full_name = NULL;
+  const char *serial_unique_name = NULL;
   const char *owner_name = NULL;
 
-  if (serial_name_node == NULL)
+  if (node == NULL)
     {
       return NULL;
     }
 
-  if (PT_IS_DOT_NODE (serial_name_node))
+  if (PT_IS_DOT_NODE (node))
     {
-      assert (PT_IS_NAME_NODE (serial_name_node->info.dot.arg1));
-      assert (PT_IS_NAME_NODE (serial_name_node->info.dot.arg2));
+      assert (PT_IS_NAME_NODE (node->info.dot.arg1));
+      assert (PT_IS_NAME_NODE (node->info.dot.arg2));
 
-      owner_name = serial_name_node->info.dot.arg1->info.name.original;
-      serial_name = serial_name_node->info.dot.arg2->info.name.original;
+      owner_name = node->info.dot.arg1->info.name.original;
+      serial_name = node->info.dot.arg2->info.name.original;
     }
   else
     {
-      assert (PT_IS_NAME_NODE (serial_name_node));
+      assert (PT_IS_NAME_NODE (node));
 
-      serial_name = serial_name_node->info.name.original;
+      serial_name = node->info.name.original;
     }
 
   if (serial_name == NULL || serial_name[0] == '\0')
@@ -9429,17 +9428,15 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
 
   if (owner_name && owner_name[0] != '\0')
     {
-      serial_full_name = pt_append_string (parser, NULL, owner_name);
-      serial_full_name = pt_append_string (parser, serial_name, ".");
+      serial_unique_name = pt_append_string (parser, owner_name, ".");
     }
+  serial_unique_name = pt_append_string (parser, NULL, serial_name);
 
-  serial_full_name = pt_append_string (parser, NULL, serial_name);
-
-  serial_class = sm_find_class (CT_SERIAL_NAME);
-  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_full_name);
+  serial_class_obj = sm_find_class (CT_SERIAL_NAME);
+  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class_obj, serial_unique_name);
   if (serial_obj == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_full_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_unique_name);
     }
 
   return serial_obj;

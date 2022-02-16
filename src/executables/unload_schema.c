@@ -107,7 +107,7 @@ typedef enum
 
 typedef enum
 {
-  SERIAL_FULL_NAME,
+  SERIAL_UNIQUE_NAME,
   SERIAL_NAME,
   SERIAL_OWNER_NAME,
   SERIAL_CURRENT_VAL,
@@ -668,7 +668,7 @@ export_serial (print_output & output_ctx)
 	      }
 	      break;
 
-	    case SERIAL_FULL_NAME:
+	    case SERIAL_UNIQUE_NAME:
 	    case SERIAL_NAME:
 	      {
 		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
@@ -778,7 +778,7 @@ export_serial (print_output & output_ctx)
 
       output_ctx ("call [find_user]('%s') on class [db_user] to [auser];\n",
 		  db_get_string (&values[SERIAL_OWNER_NAME]));
-      SPLIT_USER_SPECIFIED_NAME (db_get_string (&values[SERIAL_FULL_NAME]), owner_name, serial_name);
+      SPLIT_USER_SPECIFIED_NAME (db_get_string (&values[SERIAL_UNIQUE_NAME]), owner_name, serial_name);
       output_ctx ("create serial %s%s%s.%s%s%s\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (serial_name));
       output_ctx ("\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
       output_ctx ("\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
@@ -802,7 +802,7 @@ export_serial (print_output & output_ctx)
 	}
       output_ctx (";\n");
       output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
-		  db_get_string (&values[SERIAL_FULL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
+		  db_get_string (&values[SERIAL_UNIQUE_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
 
       db_value_clear (&diff_value);
       db_value_clear (&answer_value);
