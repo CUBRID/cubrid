@@ -61,13 +61,13 @@ extern int lo_count;
 
 /* 
  * name is user_specified_name.
- * owner_name must be a char array of size DB_MAX_IDENTIFIER_LENGTH * 2 to copy user_specified_name.
+ * owner_name must be a char array of size DB_MAX_IDENTIFIER_LENGTH to copy user_specified_name.
  * class_name refers to class_name after dot(.).
  */
 #define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) \
 	do \
 	  { \
-	    memset ((owner_name), '\0', DB_MAX_IDENTIFIER_LENGTH * 2); \
+	    memset ((owner_name), '\0', DB_MAX_IDENTIFIER_LENGTH); \
 	    strlcpy ((owner_name), (name), DB_MAX_IDENTIFIER_LENGTH); \
 	    (class_name) = strchr ((owner_name), '.'); \
 	    *(class_name)++ = '\0'; \

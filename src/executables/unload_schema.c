@@ -619,7 +619,7 @@ export_serial (print_output & output_ctx)
   DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
   DB_DOMAIN *domain;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *serial_name = NULL;
 
   /*
@@ -1112,7 +1112,7 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
   const char *class_type;
   int has_indexes = 0;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   const char *tde_algo_name;
   int is_partitioned = 0;
@@ -1319,7 +1319,7 @@ emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
   PARSER_CONTEXT *parser;
   PT_NODE **query_ptr;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   const char *null_spec;
   bool has_using_index;
@@ -1454,7 +1454,7 @@ emit_query_specs_has_using_index (print_output & output_ctx, DB_OBJLIST * vclass
   PARSER_CONTEXT *parser;
   PT_NODE **query_ptr;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   const char *null_spec;
   bool change_vclass_spec;
@@ -1555,7 +1555,7 @@ emit_superclasses (print_output & output_ctx, DB_OBJECT * class_, const char *cl
 {
   DB_OBJLIST *supers, *s;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
 
   supers = db_get_superclasses (class_);
@@ -1721,7 +1721,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
   int index_flag = 0;
   DB_VALUE cur_val, started_val, min_val, max_val, inc_val, sr_name;
   const char *name, *start_with;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   char *serial_name = NULL;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
@@ -2049,7 +2049,7 @@ emit_class_attributes (print_output & output_ctx, DB_OBJECT * class_, const char
 {
   DB_ATTRIBUTE *class_attribute_list, *first_class_attribute, *a;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
 
   class_attribute_list = db_get_class_attributes (class_);
@@ -2201,7 +2201,7 @@ emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_t
   DB_METHOD *method_list, *class_method_list, *m;
   DB_METHOD *first_method, *first_class_method;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
 
   method_list = db_get_methods (class_);
@@ -2486,7 +2486,7 @@ emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *clas
   bool has_inherited_atts;
   int num_printed = 0;
   const char *name, *class_name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name_p = NULL;
   int not_online = 0;
 
@@ -2612,7 +2612,7 @@ emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_)
   DB_ATTRIBUTE **atts, **att;
   bool has_inherited_atts;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
 
   constraint_list = db_get_constraints (class_);
@@ -2682,7 +2682,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
   DB_CONSTRAINT_TYPE ctype;
   DB_ATTRIBUTE **atts, **att;
   const char *cls_name, *att_name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   int partitioned_subclass = 0, au_save;
   SM_CLASS *supclass = NULL;
@@ -3191,7 +3191,7 @@ emit_partition_info (print_output & output_ctx, MOP clsobj)
   int partcnt = 0;
   char *ptr, *ptr2;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   SM_CLASS *class_, *subclass;
   DB_OBJLIST *user;
@@ -3457,7 +3457,7 @@ emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes)
   DB_ATTRIBUTE **atts, **att;
   bool has_inherited_atts;
   const char *cls_name, *att_name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH * 2] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   MOP ref_clsop;
 
