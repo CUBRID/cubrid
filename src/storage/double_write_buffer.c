@@ -762,7 +762,7 @@ dwb_power2_ceil (unsigned int min, unsigned int max, unsigned int *p_value)
  * dwb_load_buffer_size () - Load the buffer size value of double write buffer.
  *
  * return   : true or false.
- * p_double_write_buffer_size (in/out) : the buffer size of double write buffer.
+ * p_double_write_buffer_size (in/out): the buffer size of double write buffer.
  *
  *  Note: The buffer size must be a multiple of 512 K.
  */
@@ -788,7 +788,7 @@ dwb_load_buffer_size (unsigned int *p_double_write_buffer_size)
  * dwb_load_block_count () - Load the block count value of double write buffer.
  *
  * return   : true or false.
- * p_num_blocks (in/out) : the block count of double write buffer.
+ * p_num_blocks (in/out): the block count of double write buffer.
  *
  *  Note: The number of blocks must be a power of 2.
  */
