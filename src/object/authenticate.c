@@ -5635,7 +5635,8 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
   sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
   db_ws_free_and_init (owner_name);
 
-  snprintf (serial_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, sm_remove_qualifier_name (serial_old_name));
+  snprintf (serial_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
+	    sm_remove_qualifier_name (serial_old_name));
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
   if (serial_class_mop == NULL)

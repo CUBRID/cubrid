@@ -18514,7 +18514,7 @@ do_find_class_by_query (const char *name, char *buf, size_t buf_size)
   if (!DB_IS_NULL (&value))
     {
       memset (buf, 0, buf_size);
-      strcpy(buf, db_get_string (&value));
+      strlcpy (buf, db_get_string (&value), buf_size);
     }
   else
     {
@@ -18617,7 +18617,7 @@ do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
   if (!DB_IS_NULL (&value))
     {
       memset (buf, 0, buf_size);
-      strcpy(buf, db_get_string (&value));
+      strlcpy (buf, db_get_string (&value), buf_size);
     }
   else
     {
@@ -18713,7 +18713,7 @@ do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
   if (!DB_IS_NULL (&value))
     {
       memset (buf, 0, buf_size);
-      strcpy(buf, db_get_string (&value));
+      strlcpy (buf, db_get_string (&value), buf_size);
     }
   else
     {

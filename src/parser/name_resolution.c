@@ -9002,7 +9002,8 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
   entity->info.spec.entity_name->info.name.original = db_get_class_name (class_op);
   entity->info.spec.only_all = PT_ONLY;
   entity->info.spec.range_var = parser_copy_tree (parser, entity->info.spec.entity_name);
-  entity->info.spec.range_var->info.name.original = sm_remove_qualifier_name (entity->info.spec.range_var->info.name.original);
+  entity->info.spec.range_var->info.name.original =
+    sm_remove_qualifier_name (entity->info.spec.range_var->info.name.original);
   if (entity->info.spec.range_var == NULL)
     {
       PT_INTERNAL_ERROR (parser, "parser_copy_tree");

@@ -7016,7 +7016,8 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   /* ------ SELECT ... WHERE ------- */
   {
     PT_NODE *where_item = NULL;
-    where_item = pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", sm_remove_qualifier_name (lower_view_name));
+    where_item =
+      pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", sm_remove_qualifier_name (lower_view_name));
 
     /* WHERE list should be empty */
     assert (node->info.query.q.select.where == NULL);
@@ -10072,12 +10073,12 @@ pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_get_qualifier_name() - If the name has a qualifier name, remove it.
+ * pt_get_name_with_qualifier_removed() - If the name has a qualifier name, remove it.
  * return	: name with qualifier name removed
  * name (in)	: user-specified name or object name
  */
 const char *
-pt_get_remove_qualifier_name (const char *name)
+pt_get_name_with_qualifier_removed (const char *name)
 {
   return sm_remove_qualifier_name (name);
 }
@@ -10093,7 +10094,7 @@ const char *
 pt_get_name_without_current_user_name (const char *name)
 {
   char *dot = NULL;
-  char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' }; 
+  char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *object_name = NULL;
   int error = NO_ERROR;

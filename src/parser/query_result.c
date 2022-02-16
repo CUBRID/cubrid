@@ -739,7 +739,8 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 		  name = pt_append_string (parser, NULL, "class ");
 		  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 		    {
-		      name = pt_append_string (parser, name, pt_get_remove_qualifier_name (col->info.name.resolved));
+		      name = pt_append_string (parser, name,
+					       pt_get_name_with_qualifier_removed (col->info.name.resolved));
 		    }
 		  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
 		    {
@@ -760,7 +761,8 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 		  /* PT_NAME comes from PT_DOT_ */
 		  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 		    {
-		      tmp_name = pt_append_string (parser, pt_get_remove_qualifier_name (col->info.name.resolved), ".");
+		      tmp_name =
+			pt_append_string (parser, pt_get_name_with_qualifier_removed (col->info.name.resolved), ".");
 		      original_name = pt_append_string (parser, tmp_name, original_name);
 		    }
 		  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)

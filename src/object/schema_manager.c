@@ -2272,11 +2272,9 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
 }
 
 /*
- * sm_qualifier_name() - If the name is a user-specified name, get the user name.
- *   return: output buffer pointer or NULL on error
+ * sm_qualifier_name() - If the name has a qualifier name, remove it.
+ *   return: name with qualifier name removed
  *   name(in): user-specified name or object name
- *   buf(out): output buffer
- *   buf_size(in): output buffer length
  */
 const char *
 sm_remove_qualifier_name (const char *name)
@@ -3285,7 +3283,8 @@ sm_check_system_class_by_name (const char *name)
       return false;
     }
 
-  assert (intl_identifier_lower_string_size (sm_remove_qualifier_name (name)) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+  assert (intl_identifier_lower_string_size (sm_remove_qualifier_name (name)) <
+	  SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
   intl_identifier_lower (sm_remove_qualifier_name (name), downcase_name);
 
   if (strncmp (downcase_name, ROOTCLASS_NAME, strlen (ROOTCLASS_NAME)) == 0)
@@ -12901,7 +12900,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   SM_CLASS *class_;
   DB_OBJLIST *cursupers, *oldsupers, *newsupers, *cursubs, *newsubs;
   SM_TEMPLATE *flat;
-  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char owner_name[SM_MAX_USER_LENGTH] = { '\0' };
   MOP owner = NULL;
 
   sm_bump_local_schema_version ();
@@ -13058,7 +13057,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	    {
 	      /* Whether a user other than the current user can be set as the owner should be checked
 	       * in the pt_check_create_entity() function. */
-	      sm_qualifier_name (template_->name, owner_name, DB_MAX_USER_LENGTH);
+	      sm_qualifier_name (template_->name, owner_name, SM_MAX_USER_LENGTH);
 	      class_->owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
 	    }
 
@@ -13446,7 +13445,8 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	  if (error == NO_ERROR)
 	    {
 	      class_name = db_get_string (&name_val);
-	      if (class_name != NULL && (strcmp (sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)), class_name) == 0))
+	      if (class_name != NULL
+		  && (strcmp (sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)), class_name) == 0))
 		{
 		  int save;
 		  OID *oidp, serial_obj_id;

@@ -1391,7 +1391,8 @@ emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
 		{
 		  null_spec = pt_print_query_spec_no_list (parser, *query_ptr);
 		  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-		  output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), null_spec);
+		  output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name),
+			      PRINT_IDENTIFIER (class_name), null_spec);
 		}
 	      parser_free_parser (parser);
 	    }
@@ -1427,12 +1428,13 @@ emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 	  if (change_vclass_spec)
 	    {			/* change the existing spec lists */
-	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), i,
-			  db_query_spec_string (s));
+	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (owner_name),
+			  PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
 	    }
 	  else
 	    {			/* emit the usual statements */
-	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
+	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (owner_name),
+			  PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
 	    }
 	}
     }
@@ -1502,7 +1504,8 @@ emit_query_specs_has_using_index (print_output & output_ctx, DB_OBJLIST * vclass
 	    {
 	      null_spec = pt_print_query_spec_no_list (parser, *query_ptr);
 	      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), null_spec);
+	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name),
+			  PRINT_IDENTIFIER (class_name), null_spec);
 	    }
 	  parser_free_parser (parser);
 	}
@@ -1529,12 +1532,13 @@ emit_query_specs_has_using_index (print_output & output_ctx, DB_OBJLIST * vclass
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 	  if (change_vclass_spec)
 	    {			/* change the existing spec lists */
-	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), i,
-			  db_query_spec_string (s));
+	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (owner_name),
+			  PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
 	    }
 	  else
 	    {			/* emit the usual statements */
-	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
+	      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (owner_name),
+			  PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
 	    }
 	}
     }
@@ -2741,14 +2745,16 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	  output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s.%s%s%s (",
 		      (ctype == DB_CONSTRAINT_REVERSE_INDEX || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "",
 		      (ctype == DB_CONSTRAINT_UNIQUE || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "UNIQUE " : "",
-		      PRINT_FUNCTION_INDEX_NAME (constraint->name), PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
+		      PRINT_FUNCTION_INDEX_NAME (constraint->name), PRINT_IDENTIFIER (owner_name),
+		      PRINT_IDENTIFIER (class_name));
 	}
       else
 	{
 	  output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s.%s%s%s (",
 		      (ctype == DB_CONSTRAINT_REVERSE_INDEX || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "",
 		      (ctype == DB_CONSTRAINT_UNIQUE || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "UNIQUE " : "",
-		      PRINT_IDENTIFIER (constraint->name), PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
+		      PRINT_IDENTIFIER (constraint->name), PRINT_IDENTIFIER (owner_name),
+		      PRINT_IDENTIFIER (class_name));
 	}
 
       asc_desc = NULL;		/* init */
