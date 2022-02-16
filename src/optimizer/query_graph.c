@@ -326,6 +326,13 @@ qo_set_optimization_param (void *retval, QO_PARAM param, ...)
 	  *(int *) retval = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
 	}
       prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, va_arg (args, int));
+
+      {
+	extern void set_plan_include_hint (bool is_include);
+
+	int level = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
+	set_plan_include_hint ((bool) PLAN_DUMP_ENABLED (level));
+      }
       break;
 
     case QO_PARAM_COST:
@@ -4293,6 +4300,11 @@ add_hint (QO_ENV * env, PT_NODE * tree)
   int last_ordered_idx = 0;
 
   hint = tree->info.query.q.select.hint;
+
+  if (hint == PT_HINT_NONE)
+    {
+      return;
+    }
 
   if (hint & PT_HINT_ORDERED)
     {

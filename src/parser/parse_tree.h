@@ -1745,6 +1745,8 @@ struct parser_hint
   const char *tokens;
   PT_NODE *arg_list;
   PT_HINT_ENUM hint;
+  int length;			/* strlen(tokens) */
+  bool is_hit;
 };
 
 struct pt_alter_info

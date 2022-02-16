@@ -1952,7 +1952,7 @@ parser_c_hint (void)
       buff[i] = 0;
 
       yybuffer_pos += i + 2;
-      pt_check_hint (buff, parser_hint_table, &hint, false);
+      pt_check_hint (buff, parser_hint_table, &hint);
       if (hint == PT_HINT_NONE)
 	{			/* comment */
 	  return NULL;
@@ -2017,7 +2017,7 @@ loop:
       buff[i] = 0;
 
       yybuffer_pos += i + 1;
-      pt_check_hint (buff, parser_hint_table, &hint, false);
+      pt_check_hint (buff, parser_hint_table, &hint);
       if (hint == PT_HINT_NONE)
 	{			/* comment */
 	  return NULL;
