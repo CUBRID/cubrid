@@ -1885,10 +1885,14 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
  *  - has analitic fuction
  *  - cte query
  *  - hierarchical query
+ *  - has distinct
+ *  - has method
  */
 static PUSHABLE_TYPE
 mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery)
 {
+  CHECK_PUSHABLE_INFO cpi;
+
   /* check for select query */
   if (!(PT_IS_SELECT (subquery) && PT_IS_SELECT (mainquery)))
     {
@@ -1920,6 +1924,19 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
       return NON_PUSHABLE;
     }
 
+  /* check for DISTINCT */
+  if (pt_is_distinct (subquery))
+    {
+      return NON_PUSHABLE;
+    }
+
+  /* check for CONNECT BY */
+  if (mainquery->info.query.q.select.connect_by || subquery->info.query.q.select.connect_by)
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+
   /* has analytic function */
   if (pt_has_analytic (parser, subquery))
     {
@@ -1941,10 +1958,16 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
         }
     }
 
-  /* check for CONNECT BY */
-  if (mainquery->info.query.q.select.connect_by || subquery->info.query.q.select.connect_by)
+  /* check method */
+  cpi.check_query = false;	/* subqueries are pushable */
+  cpi.check_method = true;	/* methods are non-pushable */
+  cpi.method_found = false;
+  cpi.query_found = false;
+
+  parser_walk_tree (parser, subquery, pt_check_pushable, (void *) &cpi, NULL, NULL);
+
+  if (cpi.method_found)
     {
-      /* not pushable */
       return NON_PUSHABLE;
     }
 
