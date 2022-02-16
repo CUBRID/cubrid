@@ -529,7 +529,7 @@ static void idmap_final (void);
 static int idmap_grow (int size);
 static int ldr_assign_class_id (DB_OBJECT *class_, int id);
 static DB_OBJECT *ldr_find_class (const char *class_name);
-static int ldr_find_class_by_query (const char *name, char *buf, size_t buf_size);
+static int ldr_find_class_by_query (const char *name, char *buf, int buf_size);
 static DB_OBJECT *ldr_get_class_from_id (int id);
 static void ldr_clear_context (LDR_CONTEXT *context);
 static void ldr_clear_and_free_context (LDR_CONTEXT *context);
@@ -1476,7 +1476,7 @@ ldr_find_class (const char *class_name)
 }
 
 static int
-ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
+ldr_find_class_by_query (const char *name, char *buf, int buf_size)
 {
 #define QUERY_BUF_SIZE 2048
   DB_QUERY_RESULT *query_result = NULL;
@@ -1484,23 +1484,19 @@ ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
   DB_VALUE value;
   const char *query = NULL;
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
-  const char *dot = NULL;
-  const char *name_p = NULL;
   char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *class_name = NULL;
   int error = NO_ERROR;
 
   db_make_null (&value);
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < DB_MAX_IDENTIFIER_LENGTH)
+  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < 0)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
       return error;
     }
-
-  dot = strchr (name, '.');
-  name_p = dot ? (dot + 1) : name;
 
   if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
     {
@@ -1508,9 +1504,10 @@ ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
       return error;
     }
 
+  class_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, name_p, current_user_name));
-  snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, name_p, current_user_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, current_user_name));
+  snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, class_name, current_user_name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
@@ -1544,6 +1541,7 @@ ldr_find_class_by_query (const char *name, char *buf, size_t buf_size)
   if (!DB_IS_NULL (&value))
     {
       memset (buf, 0, buf_size);
+      assert (strlen (db_get_string (&value)) < buf_size);
       strlcpy (buf, db_get_string (&value), buf_size);
     }
   else

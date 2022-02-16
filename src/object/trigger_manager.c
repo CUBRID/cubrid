@@ -6845,7 +6845,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
 
   trigger = tr_map_trigger (trigger_object, true);
-  if (!trigger)
+  if (trigger == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
@@ -6861,7 +6861,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 
   old_name = trigger->name;
   new_name = tr_process_name (name);
-  if (!new_name)
+  if (new_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto end;

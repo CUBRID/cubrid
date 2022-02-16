@@ -1361,8 +1361,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_IDENTIFIER serial_obj_id;
   DB_VALUE value, *pval = NULL;
 
-  char *serial_name = NULL;
-  char *downcase_serial_name = NULL;
+  const char *serial_name = NULL;
+  char downcase_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *start_val_node;
   PT_NODE *inc_val_node;
   PT_NODE *max_val_node;
@@ -1418,18 +1418,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /*
    * lookup if serial object name already exists?
    */
-
-  serial_name = (char *) PT_NODE_SR_NAME (statement);
-  name_size = intl_identifier_lower_string_size (serial_name);
-  downcase_serial_name = (char *) malloc (name_size + 1);
-  if (downcase_serial_name == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (name_size + 1));
-      goto end;
-    }
-  intl_identifier_lower (serial_name, downcase_serial_name);
-
+  serial_name = PT_NODE_SR_NAME (statement);
+  sm_downcase_name (serial_name, downcase_serial_name, DB_MAX_IDENTIFIER_LENGTH);
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, downcase_serial_name);
   if (serial_mop != NULL)
     {
@@ -1808,22 +1798,12 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  if (downcase_serial_name != NULL)
-    {
-      free_and_init (downcase_serial_name);
-    }
-
   return NO_ERROR;
 
 end:
   if (au_disable_flag == true)
     {
       AU_ENABLE (save);
-    }
-
-  if (downcase_serial_name != NULL)
-    {
-      free_and_init (downcase_serial_name);
     }
 
   return error;
@@ -6332,11 +6312,8 @@ get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char
 	{
 	  /* complex expression */
 	  *type = TR_ACT_EXPRESSION;
-
 	  save_custom = parser->custom_print;
-
 	  *source = parser_print_tree_with_quotes (parser, statement);
-
 	  parser->custom_print = save_custom;
 	}
     }
@@ -6804,8 +6781,6 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   const char *old_name, *new_name;
   DB_OBJECT *trigger;
 
-  er_clear ();
-
   CHECK_MODIFICATION_ERROR ();
 
   old_name = statement->info.rename_trigger.old_name->info.name.original;
@@ -6815,13 +6790,10 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (trigger == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-    }
-  else
-    {
-      error = tr_rename_trigger (trigger, new_name, false, false);
+      return error;
     }
 
-  return error;
+  return tr_rename_trigger (trigger, new_name, false, false);
 }
 
 /*
@@ -18446,7 +18418,7 @@ do_kill (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 int
-do_find_class_by_query (const char *name, char *buf, size_t buf_size)
+do_find_class_by_query (const char *name, char *buf, int buf_size)
 {
 #define QUERY_BUF_SIZE 2048
   DB_QUERY_RESULT *query_result = NULL;
@@ -18454,23 +18426,19 @@ do_find_class_by_query (const char *name, char *buf, size_t buf_size)
   DB_VALUE value;
   const char *query = NULL;
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
-  const char *dot = NULL;
-  const char *name_p = NULL;
   char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *class_name = NULL;
   int error = NO_ERROR;
 
   db_make_null (&value);
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < DB_MAX_IDENTIFIER_LENGTH)
+  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < 0)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
       return error;
     }
-
-  dot = strchr (name, '.');
-  name_p = dot ? (dot + 1) : name;
 
   if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
     {
@@ -18478,9 +18446,10 @@ do_find_class_by_query (const char *name, char *buf, size_t buf_size)
       return error;
     }
 
+  class_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, name_p, current_user_name));
-  snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, name_p, current_user_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, current_user_name));
+  snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, class_name, current_user_name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
@@ -18514,6 +18483,7 @@ do_find_class_by_query (const char *name, char *buf, size_t buf_size)
   if (!DB_IS_NULL (&value))
     {
       memset (buf, 0, buf_size);
+      assert (strlen (db_get_string (&value)) < buf_size);
       strlcpy (buf, db_get_string (&value), buf_size);
     }
   else
@@ -18542,7 +18512,7 @@ end:
 }
 
 int
-do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
+do_find_serial_by_query (const char *name, char *buf, int buf_size)
 {
 #define QUERY_BUF_SIZE 2048
   DB_QUERY_RESULT *query_result = NULL;
@@ -18550,23 +18520,19 @@ do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
   DB_VALUE value;
   const char *query = NULL;
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
-  const char *dot = NULL;
-  const char *name_p = NULL;
   char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *serial_name = NULL;
   int error = NO_ERROR;
 
   db_make_null (&value);
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < DB_MAX_IDENTIFIER_LENGTH)
+  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < 0)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
       return error;
     }
-
-  dot = strchr (name, '.');
-  name_p = dot ? (dot + 1) : name;
 
   if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
     {
@@ -18574,9 +18540,10 @@ do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
       return error;
     }
 
+  serial_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, name_p, current_user_name));
-  snprintf (query_buf, sizeof (query_buf), query, CT_SERIAL_NAME, name_p, current_user_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, current_user_name));
+  snprintf (query_buf, sizeof (query_buf), query, CT_SERIAL_NAME, serial_name, current_user_name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
@@ -18617,6 +18584,7 @@ do_find_serial_by_query (const char *name, char *buf, size_t buf_size)
   if (!DB_IS_NULL (&value))
     {
       memset (buf, 0, buf_size);
+      assert (strlen (db_get_string (&value)) < buf_size);
       strlcpy (buf, db_get_string (&value), buf_size);
     }
   else
@@ -18645,7 +18613,7 @@ end:
 }
 
 int
-do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
+do_find_trigger_by_query (const char *name, char *buf, int buf_size)
 {
 #define QUERY_BUF_SIZE 2048
   DB_QUERY_RESULT *query_result = NULL;
@@ -18653,23 +18621,19 @@ do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
   DB_VALUE value;
   const char *query = NULL;
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
-  const char *dot = NULL;
-  const char *name_p = NULL;
   char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *trigger_name = NULL;
   int error = NO_ERROR;
 
   db_make_null (&value);
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < DB_MAX_IDENTIFIER_LENGTH)
+  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < 0)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
       return error;
     }
-
-  dot = strchr (name, '.');
-  name_p = dot ? (dot + 1) : name;
 
   if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
     {
@@ -18677,9 +18641,10 @@ do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
       return error;
     }
 
+  trigger_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, name_p, current_user_name));
-  snprintf (query_buf, sizeof (query_buf), query, CT_TRIGGER_NAME, name_p, current_user_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, current_user_name));
+  snprintf (query_buf, sizeof (query_buf), query, CT_TRIGGER_NAME, trigger_name, current_user_name);
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
@@ -18713,6 +18678,7 @@ do_find_trigger_by_query (const char *name, char *buf, size_t buf_size)
   if (!DB_IS_NULL (&value))
     {
       memset (buf, 0, buf_size);
+      assert (strlen (db_get_string (&value)) < buf_size);
       strlcpy (buf, db_get_string (&value), buf_size);
     }
   else
