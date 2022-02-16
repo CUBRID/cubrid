@@ -41,6 +41,15 @@
 #include <dlfcn.h>
 #endif /* WINDOWS */
 
+/* 
+* If SIZEOF_LONG_INT is not defined in sqltypes.h, build including unixodbc_conf.h.
+* When building including unixodbc_conf.h, "warning: "PACKAGE_STRING" is displayed.
+* So I added the following code before including sqltypes.h to remove of the build warning.
+*/
+#if !defined (SIZEOF_LONG_INT)
+#define SIZEOF_LONG_INT 8
+#endif
+
 #include <sqltypes.h>
 #include <sql.h>
 #include <sqlext.h>
