@@ -595,8 +595,8 @@ emit_class_owner (print_output & output_ctx, MOP class_)
 	    {
 	      if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && db_get_string (&value) != NULL)
 		{
-		  output_ctx ("call [change_owner]('%s', '%s') on class [db_root];\n", classname,
-			      db_get_string (&value));
+		  output_ctx ("call [change_owner]('%s', '%s') on class [db_root];\n",
+			      sm_remove_qualifier_name (classname), db_get_string (&value));
 		}
 	      db_value_clear (&value);
 	    }
@@ -1117,6 +1117,9 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
   const char *tde_algo_name;
   int is_partitioned = 0;
   SM_CLASS *class_ = NULL;
+
+  output_ctx ("\n\n");
+
   /*
    * First create all the classes
    */
@@ -1130,9 +1133,8 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  continue;
 	}
 
-      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-      output_ctx ("CREATE %s %s%s%s.%s%s%s", is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (owner_name),
-		  PRINT_IDENTIFIER (class_name));
+      /* Because class is created by the owner, it uses a name with the qualifier removed. */ 
+      output_ctx ("CREATE %s %s%s%s", is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
 
       if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ) != NO_ERROR)
 	{
@@ -1188,6 +1190,35 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	{
 	  emit_class_meta (output_ctx, cl->op);
 	}
+
+      /*
+       * Before version 11.2, if an auto_increment column was added after changing the class owner,
+       * owner mismatch occurred.
+       * 
+       * e.g. create user u1;
+       *      create table t1;
+       *      call change_owner ('t1', 'u1') on class db_root;
+       *      alter table t1 add attribute c1 int auto_increment;
+       *      select c.clasS_name, c.owner.name, s.name, s.owner.name
+       *      from _db_class c, db_serial s
+       *      where c.class_name = s.class_name;
+       *
+       *        clasS_name            owner.name            name                  owner.name
+       *      ========================================================================================
+       *        't2'                  'U1'                  't2_ai_c1'            'DBA'
+       *
+       * After version 11.2, when adding an auto_increment column, there is no problem
+       * because it sets the owner in unique_name.
+       * 
+       * There is a problem if the DBA does not change the owner immediately when creating multiple classes
+       * with the same name. This is because a DBA cannot own multiple classes with the same name at the same time.
+       * Therefore, the owner must be changed immediately after class creation.
+       */
+      if (do_auth)
+	{
+	  emit_class_owner (output_ctx, cl->op);
+	}
+
       output_ctx ("\n");
     }
 
@@ -1232,16 +1263,6 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
       if (is_partitioned)
 	{
 	  emit_partition_info (output_ctx, cl->op);
-	}
-
-      /*
-       * change_owner method should be called after adding all columns.
-       * If some column has auto_increment attribute, change_owner method
-       * will change serial object's owner related to that attribute.
-       */
-      if (do_auth)
-	{
-	  emit_class_owner (output_ctx, cl->op);
 	}
     }
 

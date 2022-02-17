@@ -833,20 +833,10 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 
 		      if (pt_check_path_eq (parser, range_var, node) == 0)
 			{
-
-
 			  if (original_name)
 			    {
 			      /* strip off classname.* */
-			      name = strchr (original_name, '.');
-			      if (name == NULL || name[0] == '\0')
-				{
-				  name = original_name;
-				}
-			      else
-				{
-				  name++;
-				}
+			      name += strlen (range_var->info.name.original) + 1;
 			      break;
 			    }
 			  else

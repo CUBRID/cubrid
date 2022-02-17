@@ -1704,7 +1704,7 @@
 #define ER_QPROC_CREATE_SERIAL_NOT_OWNER            -1336
 #define ER_TR_CREATE_NOT_ALLOWED                    -1337
 
-#define ER_LAST_ERROR                               -1336
+#define ER_LAST_ERROR                               -1338
 /*
  * CAUTION!
  *
