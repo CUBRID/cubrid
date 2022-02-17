@@ -215,7 +215,7 @@ static bool pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_
 static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
 static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
-					      PT_NODE * class_spec);
+					      PT_NODE * class_spec, bool is_vclass);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
 static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
@@ -1493,9 +1493,11 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - has aggregate or orderby_for or analytic
  *  - has inst num or orderby_num
  *  - has method
+ *  TO_DO : check all cases using is_vclass
  */
 static PUSHABLE_TYPE
-mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec)
+mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec,
+			 bool is_vclass)
 {
   PT_NODE *pred, *statement_spec = NULL;
   CHECK_PUSHABLE_INFO cpi;
@@ -1587,7 +1589,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return NON_PUSHABLE;
     }
   /* check for MERGE query */
-  if (PT_IS_SELECT (mainquery) && PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_IS_MERGE_QUERY))
+  if (!is_vclass && PT_IS_SELECT (mainquery) && PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_IS_MERGE_QUERY))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -1951,7 +1953,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
   mq_reset_ids_in_methods (parser, tmp_result);
 
   /* check whether subquery is pushable */
-  is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec);
+  is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec, false);
   if (is_mergeable == HAS_ERROR)
     {
       goto exit_on_error;
@@ -2140,7 +2142,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	}
 
       /* check whether subquery is pushable */
-      is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec);
+      is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec, true);
       if (is_mergeable == HAS_ERROR)
 	{
 	  goto exit_on_error;
