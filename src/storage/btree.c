@@ -25536,11 +25536,19 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     {
       /* Fix next overflow page. */
       PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-      overflow_page = pgbuf_fix_old_and_check_repl_desync (thread_p, overflow_vpid, PGBUF_LATCH_READ,
-							   PGBUF_UNCONDITIONAL_LATCH);
-      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+      if (!pgbuf_is_page_fixed_by_thread (thread_p, &overflow_vpid))
+	{
+	  overflow_page = pgbuf_fix_old_and_check_repl_desync (thread_p, overflow_vpid, PGBUF_LATCH_READ,
+							       PGBUF_UNCONDITIONAL_LATCH);
+	  btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+	}
       if (overflow_page == NULL)
 	{
+	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      bts->is_key_partially_processed = true;
+	      last_visible_overflow = bts->O_vpid;
+	    }
 	  ASSERT_ERROR_AND_SET (error_code);
 	  if (prev_overflow_page != NULL)
 	    {
