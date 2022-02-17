@@ -25496,6 +25496,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   if (!bts->is_key_partially_processed)
     {
+      //TODO: When a key is processed the first time, and it has an overflow page, fix the overflow page before processing the leaf record objects
       /* Start processing key with leaf record objects. */
       error_code =
 	btree_record_process_objects (thread_p, &bts->btid_int, BTREE_LEAF_NODE, &bts->key_record, bts->offset, &stop,
