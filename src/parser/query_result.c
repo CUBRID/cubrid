@@ -836,7 +836,7 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 			  if (original_name)
 			    {
 			      /* strip off classname.* */
-			      name += strlen (range_var->info.name.original) + 1;
+			      name += strlen (node->info.name.original) + 1;
 			      break;
 			    }
 			  else
