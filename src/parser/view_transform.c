@@ -1889,6 +1889,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
  *  - hierarchical query
  *  - has distinct
  *  - has method
+ *  - sub query's select list has define_vars ':='
  */
 static PUSHABLE_TYPE
 mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery)
@@ -1940,6 +1941,13 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
 
   /* check for CONNECT BY */
   if (mainquery->info.query.q.select.connect_by || subquery->info.query.q.select.connect_by)
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+
+  /* check for sub query's select list has define_vars ':=' */
+  if (pt_has_define_vars (parser, subquery->info.query.q.select.list))
     {
       /* not pushable */
       return NON_PUSHABLE;
