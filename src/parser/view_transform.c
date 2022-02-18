@@ -1895,6 +1895,12 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
 {
   CHECK_PUSHABLE_INFO cpi;
 
+  /* NO_MERGE hint check */
+  if (subquery->info.query.q.select.hint & PT_HINT_NO_MERGE)
+    {
+      return NON_PUSHABLE;
+    }
+
   /* check for select query */
   if (!(PT_IS_SELECT (subquery) && PT_IS_SELECT (mainquery)))
     {
