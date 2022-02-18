@@ -8334,7 +8334,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
   cublog::lsa_utils::pack (pac, target_repl_lsa);
 
   PAGE_FETCH_MODE fetch_mode;
-  if (log_Gl.rcv_phase >= LOG_RECOVERY_UNDO_PHASE)
+  if (log_Gl.rcv_phase >= LOG_RECOVERY_UNDO_PHASE || log_Gl.rcv_phase == LOG_RESTARTED)
     {
       fetch_mode = OLD_PAGE;
     }
