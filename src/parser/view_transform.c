@@ -217,7 +217,7 @@ static bool pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_
 static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
 static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
-					      PT_NODE * class_spec);
+					      PT_NODE * class_spec, bool is_vclass);
 static PUSHABLE_TYPE mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
@@ -1649,9 +1649,11 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - has aggregate or orderby_for or analytic
  *  - has inst num or orderby_num
  *  - has method
+ *  TO_DO : check all cases using is_vclass
  */
 static PUSHABLE_TYPE
-mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec)
+mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec,
+			 bool is_vclass)
 {
   PT_NODE *pred, *statement_spec = NULL;
   CHECK_PUSHABLE_INFO cpi;
@@ -1743,7 +1745,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return NON_PUSHABLE;
     }
   /* check for MERGE query */
-  if (PT_IS_SELECT (mainquery) && PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_IS_MERGE_QUERY))
+  if (!is_vclass && PT_IS_SELECT (mainquery) && PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_IS_MERGE_QUERY))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -1758,6 +1760,95 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   if (pt_has_define_vars (parser, pred))
     {
       /* not pushable */
+      return NON_PUSHABLE;
+    }
+  /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
+  if (subquery->info.query.order_by
+      && (pt_has_inst_num (parser, pred) || pt_has_analytic (parser, mainquery)
+	  || pt_has_order_sensitive_agg (parser, mainquery)))
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+
+  /*****************************/
+  /**** 2. SUB QUERY CHECK *****/
+  /*****************************/
+
+  /* check for non-SELECTs */
+  if (!PT_IS_SELECT (subquery))
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+  /* check for value query */
+  if (PT_IS_VALUE_QUERY (subquery))
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+  /* check for 'for update' */
+  if (PT_SELECT_INFO_IS_FLAGED (subquery, PT_SELECT_INFO_FOR_UPDATE))
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+  /* check for correlated subquery */
+  if (pt_is_correlated_subquery (subquery))
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+  /* check for CTE query */
+  if (subquery->info.query.with != NULL)
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+  /* check for FROM */
+  if (subquery->info.query.q.select.from == NULL)
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+  /* determine if spec is outer joined and CTE spec */
+  for (PT_NODE * spec = subquery->info.query.q.select.from; spec; spec = spec->next)
+    {
+      if (mq_is_outer_join_spec (parser, spec))
+	{
+	  /* subquery has outer joins; not pushable */
+	  return NON_PUSHABLE;
+	}
+      if (PT_SPEC_IS_CTE (spec))
+	{
+	  /* subquery has CTE spec; not pushable */
+	  return NON_PUSHABLE;
+	}
+    }
+  /* check for CONNECT BY */
+  if (subquery->info.query.q.select.connect_by)
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+
+  /* check for DISTINCT */
+  if (pt_is_distinct (subquery))
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+
+  /* check for aggregate or orderby_for or analytic */
+  if (pt_has_aggregate (parser, subquery) || subquery->info.query.orderby_for || pt_has_analytic (parser, subquery))
+    {
+      /* not pushable */
+      return NON_PUSHABLE;
+    }
+
+  /* check inst num or orderby_num */
+  if (!is_only_spec && pt_has_inst_in_where_and_select_list (parser, subquery))
+    {
       return NON_PUSHABLE;
     }
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
@@ -2209,7 +2300,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
   mq_reset_ids_in_methods (parser, tmp_result);
 
   /* check whether subquery is pushable */
-  is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec);
+  is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec, false);
   if (is_mergeable == HAS_ERROR)
     {
       goto exit_on_error;
@@ -2406,7 +2497,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	}
 
       /* check whether subquery is pushable */
-      is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec);
+      is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec, true);
       if (is_mergeable == HAS_ERROR)
 	{
 	  goto exit_on_error;
