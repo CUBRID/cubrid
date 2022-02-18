@@ -22,8 +22,6 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
@@ -58,53 +56,6 @@
 #include "oid.h"
 #include "storage_common.h"
 
-STATIC_INLINE bool
-flashback_is_class_exist (OID * classlist, int num_class, OID target)
-{
-  for (int i = 0; i < num_class; i++)
-    {
-      if (OID_EQ (&classlist[i], &target))
-	{
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-static int
-flashback_create_summary_entry (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_ENTRY ** summary)
-{
-  *summary = (FLASHBACK_SUMMARY_ENTRY *) db_private_alloc (thread_p, sizeof (FLASHBACK_SUMMARY_ENTRY));
-  if (*summary == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (FLASHBACK_SUMMARY_ENTRY));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  (*summary)->trid = NULL_TRANID;
-  (*summary)->user[0] = '\0';
-  (*summary)->start_time = -1;
-  (*summary)->end_time = -1;
-  (*summary)->num_insert = 0;
-  (*summary)->num_update = 0;
-  (*summary)->num_delete = 0;
-  (*summary)->start_lsa = LSA_INITIALIZER;
-  (*summary)->end_lsa = LSA_INITIALIZER;
-  (*summary)->num_class = 0;
-  (*summary)->classlist[0] = OID_INITIALIZER;
-
-  return NO_ERROR;
-}
-
-static void
-flashback_drop_summary_entry (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_ENTRY * summary)
-{
-  assert (summary != NULL);
-
-  db_private_free_and_init (thread_p, summary);
-}
-
 /*
  * flashback_fill_dml_summary - fill the dml information into summary entry
  *
@@ -126,9 +77,9 @@ flashback_fill_dml_summary (FLASHBACK_SUMMARY_ENTRY * summary_entry, OID classoi
    * 1. number of class and put the classoid into the classlist
    * 2. number of DML operation */
 
-  if (!flashback_is_class_exist (summary_entry->classlist, summary_entry->num_class, classoid))
+  if (summary_entry->classoid_set.find (classoid) == summary_entry->classoid_set.end ())
     {
-      COPY_OID (&summary_entry->classlist[summary_entry->num_class++], &classoid);
+      summary_entry->classoid_set.emplace (classoid);
     }
 
   switch (rec_type)
@@ -151,27 +102,6 @@ flashback_fill_dml_summary (FLASHBACK_SUMMARY_ENTRY * summary_entry, OID classoi
     }
 
   return;
-}
-
-/*
- * flashback_cleanup - dealloc memory of summary entries iterating summary list
- *
- * thread_p (in)         : thread entry
- * context (in/out)      : flashback summary context that contains summary list
- */
-
-void
-flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context)
-{
-  /* *INDENT-OFF* */
-  for (auto iter:context->summary_list)
-    {
-      if (iter.second != NULL)
-        {
-          flashback_drop_summary_entry (thread_p, iter.second);
-        }
-    }
-  /* *INDENT-ON* */
 }
 
 /*
@@ -198,7 +128,8 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 
   time_t current_time = 0;
 
-  FLASHBACK_SUMMARY_ENTRY *summary_entry = NULL;
+  FLASHBACK_SUMMARY_ENTRY *summary_entry;
+  bool found = false;
 
   int error = NO_ERROR;
 
@@ -216,6 +147,8 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
   /*fetch log page */
   if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
     {
+      /* er_set */
+      error = ER_FAILED;
       goto exit;
     }
 
@@ -232,6 +165,7 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
       if (LSA_ISNULL (&log_rec_header->prev_tranlsa))
 	{
 	  FLASHBACK_CHECK_AND_GET_SUMMARY (context->summary_list, trid, summary_entry);
+
 	  if (summary_entry != NULL)
 	    {
 	      /* current time is updated whenever a log record with a time value is encountered.
@@ -251,9 +185,11 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 	case LOG_COMMIT:
 	  {
 	    LOG_REC_DONETIME *donetime;
+	    FLASHBACK_SUMMARY_ENTRY tmp_summary_entry = { -1, "\0", 0, 0, 0, 0, 0, LSA_INITIALIZER, LSA_INITIALIZER, };
 
 	    if (context->num_summary == FLASHBACK_MAX_SUMMARY)
 	      {
+		/* er_set */
 		error = ER_FLASHBACK_TOO_MANY_SUMMARY;
 		goto exit;
 	      }
@@ -262,19 +198,13 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 
 	    donetime = (LOG_REC_DONETIME *) (log_page_p->area + process_lsa.offset);
 
-	    /* create summary info entry, and register it to the summary list */
-	    if ((error = flashback_create_summary_entry (thread_p, &summary_entry)) != NO_ERROR)
-	      {
-		goto exit;
-	      }
+	    tmp_summary_entry.trid = trid;
+	    LSA_COPY (&tmp_summary_entry.end_lsa, &cur_log_rec_lsa);
+	    tmp_summary_entry.end_time = donetime->at_time;
 
-	    summary_entry->trid = trid;
-	    LSA_COPY (&summary_entry->end_lsa, &cur_log_rec_lsa);
-	    summary_entry->end_time = donetime->at_time;
-
-        // *INDENT-OFF*
-	context->summary_list.insert (std::make_pair (trid, summary_entry));
-        // *INDENT-ON*
+            // *INDENT-OFF*
+	    context->summary_list.emplace (trid, tmp_summary_entry);
+            // *INDENT-ON*
 	    current_time = donetime->at_time;
 	    context->num_summary++;
 	    break;
@@ -300,6 +230,12 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 
 	    OID classoid;
 
+	    FLASHBACK_CHECK_AND_GET_SUMMARY (context->summary_list, trid, summary_entry);
+	    if (summary_entry == NULL)
+	      {
+		break;
+	      }
+
 	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
 
 	    supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa.offset);
@@ -310,6 +246,7 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 
 	    if (cdc_get_undo_record (thread_p, log_page_p, cur_log_rec_lsa, &supp_recdes) != S_SUCCESS)
 	      {
+		/* er_set */
 		error = ER_FAILED;
 		goto exit;
 	      }
@@ -339,24 +276,16 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 	      {
 	      case LOG_SUPPLEMENT_TRAN_USER:
 		{
-		  FLASHBACK_CHECK_AND_GET_SUMMARY (context->summary_list, trid, summary_entry);
-
 		  /* user filtering */
 		  if (strlen (context->user) != 0
 		      && intl_identifier_ncasecmp (context->user, supplement_data, supplement_length) != 0)
 		    {
-		      if (summary_entry != NULL)
-			{
-			  flashback_drop_summary_entry (thread_p, summary_entry);
-                      // *INDENT-OFF*
 		      context->summary_list.erase (trid);
-                      // *INDENT-ON*
-			  context->num_summary--;
-			}
+		      context->num_summary--;
 		    }
 		  else
 		    {
-		      if (strlen (summary_entry->user) != 0)
+		      if (strlen (summary_entry->user) == 0)
 			{
 			  strncpy (summary_entry->user, supplement_data, supplement_length);
 			}
@@ -371,20 +300,14 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 	      case LOG_SUPPLEMENT_DELETE:
 	      case LOG_SUPPLEMENT_TRIGGER_DELETE:
 		{
-		  bool found = false;
-
 		  memcpy (&classoid, supplement_data, sizeof (OID));
 
-		  if (!flashback_is_class_exist (context->classlist, context->num_class, classoid))
+		  if (context->classoid_set.find (classoid) == context->classoid_set.end ())
 		    {
 		      break;
 		    }
 
-		  FLASHBACK_CHECK_AND_GET_SUMMARY (context->summary_list, trid, summary_entry);
-		  if (summary_entry != NULL)
-		    {
-		      flashback_fill_dml_summary (summary_entry, classoid, rec_type);
-		    }
+		  flashback_fill_dml_summary (summary_entry, classoid, rec_type);
 
 		  break;
 		}
@@ -402,6 +325,7 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 	{
 	  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 	    {
+	      /* er_set */
 	      error = ER_FAILED;
 	      goto exit;
 	    }

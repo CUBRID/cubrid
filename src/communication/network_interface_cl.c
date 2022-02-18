@@ -10562,7 +10562,7 @@ loaddb_update_stats ()
 }
 
 static int
-unpacking_summary_entry (char **ptr, Map_Summary & summary)
+unpacking_summary_entry (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * summary)
 {
   TRANID trid;
   char *user = NULL;
@@ -10598,7 +10598,7 @@ unpacking_summary_entry (char **ptr, Map_Summary & summary)
   info->end_lsa = end_lsa;
 
 /* *INDENT-OFF* */
-  summary.insert (std::make_pair (trid, info));
+  summary->insert (std::make_pair (trid, info));
 /* *INDENT-ON* */
   for (int j = 0; j < num_table; j++)
     {
@@ -10612,7 +10612,7 @@ unpacking_summary_entry (char **ptr, Map_Summary & summary)
 
 int
 flashback_get_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
-		       Map_Summary & summary, OID ** oid_list)
+		       FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list)
 {
 #if defined(CS_MODE)
   int error_code = NO_ERROR;

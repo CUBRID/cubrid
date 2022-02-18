@@ -4030,7 +4030,7 @@ parse_date_string_to_time (char *date_string)
 
 /* *INDENT-OFF* */
 static int
-cleanup_summary_info (Map_Summary &summary_info)
+cleanup_summary_info (FLASHBACK_SUMMARY_INFO_MAP &summary_info)
 {
   for (auto iter:summary_info)
     {
@@ -4076,9 +4076,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
   int trid = 0;
   int num_item = 0;
 
-/* *INDENT-OFF* */
-  Map_Summary summary_info;
-/* *INDENT-ON* */
+  FLASHBACK_SUMMARY_INFO_MAP summary_info;
 
   /* temporary variables for test */
   LOG_LSA start_lsa = LSA_INITIALIZER;
@@ -4258,7 +4256,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  error = flashback_get_summary (darray, user, start_time, end_time, summary_info, &oid_list);
+  error = flashback_get_summary (darray, user, start_time, end_time, &summary_info, &oid_list);
   if (error != NO_ERROR)
     {
       db_shutdown ();
@@ -4288,6 +4286,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
       free_and_init (oid_list);
     }
 
+  cleanup_summary_info (summary_info);
+
   return EXIT_SUCCESS;
 
 print_flashback_usage:
@@ -4302,6 +4302,8 @@ error_exit:
     {
       free_and_init (oid_list);
     }
+
+  cleanup_summary_info (summary_info);
 
   return EXIT_FAILURE;
 }

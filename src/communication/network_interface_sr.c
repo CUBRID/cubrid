@@ -10756,30 +10756,29 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
 static char *
 packing_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT context)
 {
-  FLASHBACK_SUMMARY_ENTRY *entry;
+  FLASHBACK_SUMMARY_ENTRY entry;
 
-for (auto iter:context.summary_list)
+// *INDENT-OFF*
+  for (auto iter : context.summary_list)
     {
       entry = iter.second;
-      if (entry != NULL)
-	{
-	  ptr = or_pack_int (ptr, entry->trid);
-	  ptr = or_pack_string (ptr, entry->user);
-	  ptr = or_pack_int64 (ptr, entry->start_time);
-	  ptr = or_pack_int64 (ptr, entry->end_time);
-	  ptr = or_pack_int (ptr, entry->num_insert);
-	  ptr = or_pack_int (ptr, entry->num_update);
-	  ptr = or_pack_int (ptr, entry->num_delete);
-	  ptr = or_pack_log_lsa (ptr, &entry->start_lsa);
-	  ptr = or_pack_log_lsa (ptr, &entry->end_lsa);
-	  ptr = or_pack_int (ptr, entry->num_class);
+      ptr = or_pack_int (ptr, entry.trid);
+      ptr = or_pack_string (ptr, entry.user);
+      ptr = or_pack_int64 (ptr, entry.start_time);
+      ptr = or_pack_int64 (ptr, entry.end_time);
+      ptr = or_pack_int (ptr, entry.num_insert);
+      ptr = or_pack_int (ptr, entry.num_update);
+      ptr = or_pack_int (ptr, entry.num_delete);
+      ptr = or_pack_log_lsa (ptr, &entry.start_lsa);
+      ptr = or_pack_log_lsa (ptr, &entry.end_lsa);
+      ptr = or_pack_int (ptr, entry.classoid_set.size());
 
-	  for (int i = 0; i < entry->num_class; i++)
-	    {
-	      ptr = or_pack_oid (ptr, &entry->classlist[i]);
-	    }
-	}
+      for (auto item : entry.classoid_set)
+        {
+          ptr = or_pack_oid (ptr, &item);
+        }
     }
+// *INDENT-ON*
 
   return ptr;
 }
@@ -10798,7 +10797,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   LC_FIND_CLASSNAME status;
 
-  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, NULL, 0 };
+  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, };
 
   time_t start_time = 0;
   time_t end_time = 0;
@@ -10808,16 +10807,19 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   for (int i = 0; i < context.num_class; i++)
     {
       char *classname = NULL;
+      OID classoid = OID_INITIALIZER;
 
       ptr = or_unpack_string_nocopy (ptr, &classname);
 
-      status = xlocator_find_class_oid (thread_p, classname, &context.classlist[i], NULL_LOCK);
+      status = xlocator_find_class_oid (thread_p, classname, &classoid, NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
 	{
 	  /* TODO : er_set() */
 	  error_code = ER_FLASHBACK_INVALID_CLASS;
 	  goto error;
 	}
+
+      context.classoid_set.emplace (classoid);
     }
   ptr = or_unpack_string_nocopy (ptr, &context.user);
   ptr = or_unpack_int64 (ptr, &start_time);
@@ -10836,9 +10838,14 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto error;
     }
 
-  area_size = OR_OID_SIZE * context.num_class + OR_INT_SIZE + OR_SUMMARY_ENTRY_SIZE * context.num_summary;
+  /* area : | class oid list | num summary | summary entry list |
+   * summary entry : | trid | user | start/end time | num insert/update/delete | num class | class oid list |
+   * OR_OID_SIZE * context.num_class means maximum class oid list size per summary entry */
 
-  area = (char *) db_private_alloc (thread_p, area_size);	/* summary info size will be added */
+  area_size = OR_OID_SIZE * context.num_class + OR_INT_SIZE
+    + (OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS + OR_OID_SIZE * context.num_class) * context.num_summary;
+
+  area = (char *) db_private_alloc (thread_p, area_size);
   if (area == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
@@ -10852,10 +10859,13 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   /* area packing : OID list | num summary | summary info list */
   ptr = area;
-  for (int i = 0; i < context.num_class; i++)
+
+// *INDENT-OFF*
+  for (auto iter : context.classoid_set)
     {
-      ptr = or_pack_oid (ptr, &context.classlist[i]);
+      ptr = or_pack_oid (ptr, &iter);
     }
+// *INDENT-ON*
 
   ptr = or_pack_int (ptr, context.num_summary);
   ptr = packing_summary_entry (ptr, context);
@@ -10863,7 +10873,6 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
   db_private_free_and_init (thread_p, area);
-  flashback_cleanup (thread_p, &context);
 
   return;
 error:
@@ -10872,7 +10881,6 @@ error:
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
-  flashback_cleanup (thread_p, &context);
   return;
 }
 

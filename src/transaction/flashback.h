@@ -28,27 +28,30 @@
 #ident "$Id$"
 
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "config.h"
 #include "error_manager.h"
 #include "file_io.h"
 #include "log_lsa.hpp"
 #include "thread_compat.hpp"
+#include "oid.h"
 
 #define FLASHBACK_MAX_SUMMARY   INT_MAX
-#define FLASHBACK_MAX_TABLE     32
 
 #define FLASHBACK_CHECK_AND_GET_SUMMARY(summary_list, trid, summary_entry) \
   do \
     { \
-      if ((summary_list).count(trid) != 0) \
-      { \
-        summary_entry = (summary_list).at(trid); \
-      } \
+      auto iter = (summary_list).find (trid); \
+      if (iter != (summary_list).end ()) \
+        { \
+          summary_entry = &(iter->second); \
+        } \
       else \
-      { \
-        summary_entry = NULL; \
-      } \
+        { \
+          summary_entry = NULL; \
+        } \
     } \
   while (0)
 
@@ -61,7 +64,7 @@ typedef struct flashback_summary_info
 } FLASHBACK_SUMMARY_INFO;
 
 // *INDENT-OFF*
-typedef std::map<TRANID, FLASHBACK_SUMMARY_INFO *> Map_Summary;
+typedef std::unordered_map<TRANID, FLASHBACK_SUMMARY_INFO *> FLASHBACK_SUMMARY_INFO_MAP;
 // *INDENT-ON*
 
 /* flashback summary information for each transaction generated in server side */
@@ -76,29 +79,29 @@ typedef struct flashback_summary_entry
   int num_delete;
   LOG_LSA start_lsa;
   LOG_LSA end_lsa;
-  int num_class;
-  OID classlist[FLASHBACK_MAX_TABLE];
+  // *INDENT-OFF*
+  std::unordered_set<OID> classoid_set;
+  // *INDENT-ON*
 } FLASHBACK_SUMMARY_ENTRY;
 
-#define OR_SUMMARY_ENTRY_SIZE   (OR_INT_SIZE \
-                                + DB_MAX_USER_LENGTH + MAX_ALIGNMENT \
-                                + OR_INT64_SIZE * 2 \
-                                + OR_INT_SIZE * 3 \
-                                + OR_LOG_LSA_SIZE * 2 \
-                                + OR_INT_SIZE \
-                                + FLASHBACK_MAX_TABLE * OR_OID_SIZE)
+#define OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS   (OR_INT_SIZE \
+                                              + DB_MAX_USER_LENGTH + MAX_ALIGNMENT \
+                                              + OR_INT64_SIZE * 2 \
+                                              + OR_INT_SIZE * 3 \
+                                              + OR_LOG_LSA_SIZE * 2 \
+                                              + OR_INT_SIZE)
 
 /* context for making summary information */
 typedef struct flashback_summary_context
 {
   LOG_LSA start_lsa;
   LOG_LSA end_lsa;
-  int num_class;
-  OID classlist[FLASHBACK_MAX_TABLE];
   char *user;
   int num_summary;
+  int num_class;
   // *INDENT-OFF*
-  std::unordered_map <TRANID, FLASHBACK_SUMMARY_ENTRY*> summary_list;
+  std::unordered_set<OID> classoid_set;
+  std::map <TRANID, FLASHBACK_SUMMARY_ENTRY> summary_list;
   // *INDENT-ON*
 } FLASHBACK_SUMMARY_CONTEXT;
 
