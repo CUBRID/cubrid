@@ -8326,12 +8326,23 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
 
   size += cublog::lsa_utils::get_packed_size (pac, size);
   size += vpid_utils::get_packed_size (pac, size);
+  size += pac.get_packed_int_size (size);
   std::unique_ptr<char[]> buffer (new char[size]);
 
   pac.set_buffer (buffer.get (), size);
   vpid_utils::pack (pac, *vpid);
   cublog::lsa_utils::pack (pac, target_repl_lsa);
 
+  PAGE_FETCH_MODE fetch_mode;
+  if (log_Gl.rcv_phase >= LOG_RECOVERY_UNDO_PHASE)
+    {
+      fetch_mode = OLD_PAGE;
+    }
+    else
+    {
+      fetch_mode = RECOVERY_PAGE;
+    }
+  pac.pack_int(fetch_mode);
   std::string request_message (buffer.get (), size);
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
@@ -8391,12 +8402,14 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
 
   // Unpack the message data
   cubpacking::unpacker message_upk (payload_in_out.c_str (), payload_in_out.size ());
-
   VPID vpid;
   vpid_utils::unpack (message_upk, vpid);
 
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
+  int unpacked_int;
+  message_upk.unpack_int (unpacked_int);
+  PAGE_FETCH_MODE fetch_mode = static_cast<PAGE_FETCH_MODE> (unpacked_int);
 
   // Fetch data page. But first make sure that replication hits its target LSA
   if (!target_repl_lsa.is_null ())
@@ -8408,7 +8421,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
     }
 
   int error = NO_ERROR;
-  PAGE_PTR page_ptr = pgbuf_fix (&thread_r, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  PAGE_PTR page_ptr = pgbuf_fix (&thread_r, &vpid, fetch_mode, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == nullptr)
     {
       ASSERT_ERROR_AND_SET (error);
