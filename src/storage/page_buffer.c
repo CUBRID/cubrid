@@ -8334,15 +8334,15 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
   cublog::lsa_utils::pack (pac, target_repl_lsa);
 
   PAGE_FETCH_MODE fetch_mode;
-  if (log_Gl.rcv_phase >= LOG_RECOVERY_UNDO_PHASE || log_Gl.rcv_phase == LOG_RESTARTED)
-    {
-      fetch_mode = OLD_PAGE;
-    }
-    else
+  if (log_is_in_crash_recovery_and_not_yet_completes_redo ())
     {
       fetch_mode = RECOVERY_PAGE;
     }
-  pac.pack_int(fetch_mode);
+    else
+    {
+      fetch_mode = OLD_PAGE;
+    }
+  pac.pack_int (fetch_mode);
   std::string request_message (buffer.get (), size);
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
@@ -8407,9 +8407,9 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
 
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
-  int unpacked_int;
-  message_upk.unpack_int (unpacked_int);
-  PAGE_FETCH_MODE fetch_mode = static_cast<PAGE_FETCH_MODE> (unpacked_int);
+  int packed_fetch_mode;
+  message_upk.unpack_int (packed_fetch_mode);
+  const PAGE_FETCH_MODE fetch_mode = static_cast<PAGE_FETCH_MODE> (packed_fetch_mode);
 
   // Fetch data page. But first make sure that replication hits its target LSA
   if (!target_repl_lsa.is_null ())
@@ -8424,6 +8424,20 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
   PAGE_PTR page_ptr = pgbuf_fix (&thread_r, &vpid, fetch_mode, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == nullptr)
     {
+      if (error == NO_ERROR && fetch_mode == RECOVERY_PAGE)
+        {
+          error = ER_PB_BAD_PAGEID;
+          //The found page was deallocated already
+          payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+          if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+            {
+              _er_log_debug (ARG_FILE_LINE,
+                             "[READ DATA] Read on deallocated page with VPID = %d|%d, target repl LSA = %lld|%d\n",
+                             error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+            }
+          return;
+        }
+
       ASSERT_ERROR_AND_SET (error);
       // respond with the error
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
