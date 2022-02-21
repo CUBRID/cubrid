@@ -10854,7 +10854,7 @@ packing_loginfos (THREAD_ENTRY * thread_p, char *ptr, FLASHBACK_LOGINFO_CONTEXT 
 {
   CDC_LOGINFO_ENTRY *entry;
 
-  for (int i = 0; i < context.num_item; i++)
+  for (int i = 0; i < context.num_loginfo; i++)
     {
       ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
       // *INDENT-OFF*
@@ -10897,12 +10897,14 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   for (int i = 0; i < context.num_class; i++)
     {
-      ptr = or_unpack_oid (ptr, &context.classlist[i]);
+      OID classoid;
+      ptr = or_unpack_oid (ptr, &classoid);
+      context.classoid_set.emplace (classoid);
     }
 
   ptr = or_unpack_log_lsa (ptr, &context.start_lsa);
   ptr = or_unpack_log_lsa (ptr, &context.end_lsa);
-  ptr = or_unpack_int (ptr, &context.num_item);
+  ptr = or_unpack_int (ptr, &context.num_loginfo);
   ptr = or_unpack_int (ptr, &context.forward);
 
   error_code = flashback_make_loginfo (thread_p, &context);
@@ -10917,7 +10919,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
    * | lsa | lsa | num item | align | log info 1 | align | log info 2 | align | log info 3 | ..
    * */
 
-  area_size += context.queue_size + context.num_item * MAX_ALIGNMENT;
+  area_size += context.queue_size + context.num_loginfo * MAX_ALIGNMENT;
 
   area = (char *) db_private_alloc (thread_p, area_size);
   if (area == NULL)
@@ -10934,7 +10936,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   /* area packing : start lsa | end lsa | num item | item list */
   ptr = or_pack_log_lsa (area, &context.start_lsa);
   ptr = or_pack_log_lsa (ptr, &context.end_lsa);
-  ptr = or_pack_int (ptr, context.num_item);
+  ptr = or_pack_int (ptr, context.num_loginfo);
 
   ptr = packing_loginfos (thread_p, ptr, context);
 

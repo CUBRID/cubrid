@@ -14750,69 +14750,51 @@ flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * c
   assert (!LSA_ISNULL (&context->end_lsa));
   LSA_COPY (&process_lsa, &context->end_lsa);
 
+  /* fetch log page */
   if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
     {
-      /* can not find the log page */
       error = ER_FAILED;
-      goto exit;
+      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_loginfo");
+      goto error;
     }
 
-begin:
-  log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
-
-  if (LSA_ISNULL (&log_rec_header->prev_tranlsa))
+  while (!LSA_ISNULL (&process_lsa))
     {
-      LSA_COPY (&context->start_lsa, &process_lsa);
-      error = NO_ERROR;
+      /* fetch page from archive or active, if previous page is needed */
+      if (log_page_p->hdr.logical_pageid != process_lsa.pageid)
+	{
+	  if (logpb_is_page_in_archive (process_lsa.pageid))
+	    {
+	      if (logpb_fetch_from_archive (thread_p, process_lsa.pageid, log_page_p, 0, NULL, false) == NULL)
+		{
+		  /* archive log volume has been removed */
+		  /* er_set */
+		  error = ER_FLASHBACK_LOG_NOT_EXIST;;
+		  goto error;
+		}
+	    }
+	  else
+	    {
+	      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+		{
+		  logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_find_start_lsa");
+		  error = ER_FAILED;
+		  goto error;
+		}
+	    }
+	}
 
-      goto exit;
-    }
-  else
-    {
+      log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
+
       LSA_COPY (&process_lsa, &log_rec_header->prev_tranlsa);
     }
 
-  if (log_page_p->hdr.logical_pageid != process_lsa.pageid)
-    {
-      if (logpb_is_page_in_archive (process_lsa.pageid))
-	{
-	  int arv_num = 0;
+  LSA_COPY (&context->start_lsa, &process_lsa);
 
-	  if (logpb_fetch_from_archive (thread_p, process_lsa.pageid, log_page_p, &arv_num, NULL, false) == NULL)
-	    {
-	      /* can not find the archive log volume */
-	      error = ER_FAILED;
-	      goto exit;
-	    }
-	}
-      else
-	{
-	  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      goto exit;
-	    }
-	}
-    }
-
-  goto begin;
-
-exit:
   return error;
-}
 
-static bool
-flashback_class_filter (FLASHBACK_LOGINFO_CONTEXT * context, OID classoid)
-{
-  for (int i = 0; i < context->num_class; i++)
-    {
-      if (OID_EQ (&context->classlist[i], &classoid))
-	{
-	  return true;
-	}
-    }
-
-  return false;
+error:
+  return error;
 }
 
 int
@@ -14827,7 +14809,6 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 
   LOG_RECORD_HEADER *log_rec_header;
 
-  char tran_user[DB_MAX_USER_LENGTH + 1] = "\0";
   int trid;
 
   int error = NO_ERROR;
@@ -14835,6 +14816,7 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
   LOG_RECTYPE log_type;
 
   char *supplement_data = NULL;
+  int supplement_alloc_length = 0;
 
   RECDES supp_recdes = RECDES_INITIALIZER;
   RECDES undo_recdes = RECDES_INITIALIZER;
@@ -14847,7 +14829,7 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
     {
       if ((error = flashback_find_start_lsa (thread_p, context)) != NO_ERROR)
 	{
-	  goto exit;
+	  goto error;
 	}
     }
 
@@ -14860,314 +14842,317 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
       LSA_COPY (&process_lsa, &context->end_lsa);
     }
 
+  LSA_COPY (&cur_log_rec_lsa, &process_lsa);
+
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   /* fetch log page */
   if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
     {
       error = ER_FAILED;
-      goto exit;
+      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_loginfo");
+      goto error;
     }
 
-begin:
+  /* backward : if prev_tranlsa is null, then finish the while loop (process_lsa = prev_tranlsa) 
+   * forward : if forw_lsa is greater than context->end_lsa then quit (process_lsa = forw_lsa)
+   * num_loginfo will be generated less or equal than context->num_loginfo */
 
-  LSA_COPY (&cur_log_rec_lsa, &process_lsa);
-
-  log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
-
-  log_type = log_rec_header->type;
-  trid = log_rec_header->trid;
-
-  if (context->forward)
+  while (!LSA_ISNULL (&process_lsa) || LSA_LE (&process_lsa, &context->end_lsa) || num_loginfo < context->num_loginfo)
     {
-      if (LSA_ISNULL (&log_rec_header->forw_lsa) && log_type != LOG_END_OF_LOG)
+      if (log_page_p->hdr.logical_pageid != process_lsa.pageid)
 	{
-	  if (log_startof_nxrec (thread_p, &next_log_rec_lsa, false) == NULL)
+	  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 	    {
-	      /* can not get next log record lsa */
 	      error = ER_FAILED;
-	      goto exit;
+	      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_loginfo");
+	      goto error;
+	    }
+
+	  if (process_lsa.offset == NULL_OFFSET && (process_lsa.offset = log_page_p->hdr.offset) == NULL_OFFSET)
+	    {
+	      /* can not find the first log record in the page 
+	       * goto next page, this occurs only when direction is forward */
+
+	      process_lsa.pageid++;
+	      continue;
+	    }
+	}
+
+      log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
+
+      log_type = log_rec_header->type;
+      trid = log_rec_header->trid;
+
+      if (context->forward)
+	{
+	  LSA_COPY (&next_log_rec_lsa, &log_rec_header->forw_lsa);
+
+	  if (LSA_ISNULL (&next_log_rec_lsa) && logpb_is_page_in_archive (cur_log_rec_lsa.pageid))
+	    {
+	      next_log_rec_lsa.pageid = cur_log_rec_lsa.pageid + 1;
 	    }
 	}
       else
 	{
-	  LSA_COPY (&next_log_rec_lsa, &log_rec_header->forw_lsa);
+	  LSA_COPY (&next_log_rec_lsa, &log_rec_header->prev_tranlsa);
 	}
 
-      if (LSA_ISNULL (&next_log_rec_lsa) && logpb_is_page_in_archive (cur_log_rec_lsa.pageid))
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
+
+      if (trid == context->trid && log_type == LOG_SUPPLEMENTAL_INFO)
 	{
-	  next_log_rec_lsa.pageid = cur_log_rec_lsa.pageid + 1;
-	}
-    }
-  else
-    {
-      LSA_COPY (&next_log_rec_lsa, &log_rec_header->prev_tranlsa);
-    }
+	  LOG_REC_SUPPLEMENT *supplement;
+	  int supplement_length;
+	  SUPPLEMENT_REC_TYPE rec_type;
 
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
+	  OID classoid;
 
-  if (trid == context->trid && log_type == LOG_SUPPLEMENTAL_INFO)
-    {
-      /*supplemental log info types : time, tran_user, undo image */
-      LOG_REC_SUPPLEMENT *supplement;
-      int supplement_length;
-      SUPPLEMENT_REC_TYPE rec_type;
+	  LOG_LSA undo_lsa, redo_lsa;
 
-      OID classoid;
+	  /* TODO: 
+	   * modulize the process of getting supplement data 
+	   * */
 
-      LOG_LSA undo_lsa, redo_lsa;
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
 
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
+	  supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa.offset);
+	  supplement_length = supplement->length;
+	  rec_type = supplement->rec_type;
 
-      supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa.offset);
-      supplement_length = supplement->length;
-      rec_type = supplement->rec_type;
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
-
-      if (cdc_get_undo_record (thread_p, log_page_p, cur_log_rec_lsa, &supp_recdes) != S_SUCCESS)
-	{
-	  error = ER_FAILED;
-	  goto exit;
-	}
-
-      supplement_length = sizeof (supp_recdes.type) + supp_recdes.length;
-      supplement_data = (char *) malloc (supplement_length);
-      if (supplement_data == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, supplement_length);
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto exit;
-	}
-
-      memcpy (supplement_data, &supp_recdes.type, sizeof (supp_recdes.type));
-      memcpy (supplement_data + sizeof (supp_recdes.type), supp_recdes.data, supp_recdes.length);
-
-      free_and_init (supp_recdes.data);
-
-      switch (rec_type)
-	{
-	case LOG_SUPPLEMENT_TRAN_USER:
-	  strncpy (tran_user, supplement_data, supplement_length);
-
-	  break;
-	case LOG_SUPPLEMENT_INSERT:
-	case LOG_SUPPLEMENT_TRIGGER_INSERT:
-	  memcpy (&classoid, supplement_data, sizeof (OID));
-
-	  /* classoid filter */
-	  if (!flashback_class_filter (context, classoid))
+	  if (cdc_get_undo_record (thread_p, log_page_p, cur_log_rec_lsa, &supp_recdes) != S_SUCCESS)
 	    {
-	      goto end;
+	      /* TODO:
+	       * after refactor cdc_get_undo_record, then remove error setting
+	       * modify cdc_get_undo_record() to return error, not scan code 
+	       * */
+	      error = ER_FAILED;
+	      goto error;
 	    }
 
-	  memcpy (&redo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
+	  supplement_length = sizeof (supp_recdes.type) + supp_recdes.length;
 
-	  if (cdc_get_recdes (thread_p, NULL, NULL, &redo_lsa, &redo_recdes, true) != NO_ERROR)
+	  if (supplement_length > supplement_alloc_length)
 	    {
-	      goto exit;
+	      char *tmp = (char *) db_private_realloc (thread_p, supplement_data, supplement_length);
+	      if (tmp == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, supplement_length);
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto error;
+		}
+	      else
+		{
+		  supplement_data = tmp;
+		  supplement_alloc_length = supplement_length;
+		}
 	    }
 
-	  log_info_entry = (CDC_LOGINFO_ENTRY *) db_private_alloc (thread_p, sizeof (CDC_LOGINFO_ENTRY));
-	  if (log_info_entry == NULL)
+	  /* will be replaced with CDC_MAKE_SUPPLEMENT_DATA */
+	  memcpy (supplement_data, &supp_recdes.type, sizeof (supp_recdes.type));
+	  memcpy (supplement_data + sizeof (supp_recdes.type), supp_recdes.data, supp_recdes.length);
+
+	  free_and_init (supp_recdes.data);
+
+	  switch (rec_type)
 	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto exit;
-	    }
+	    case LOG_SUPPLEMENT_INSERT:
+	    case LOG_SUPPLEMENT_TRIGGER_INSERT:
+	      memcpy (&classoid, supplement_data, sizeof (OID));
 
-	  error =
-	    cdc_make_dml_loginfo (thread_p, trid, tran_user,
-				  rec_type == LOG_SUPPLEMENT_INSERT ? CDC_INSERT : CDC_TRIGGER_INSERT, classoid, NULL,
-				  &redo_recdes, log_info_entry, true);
+	      /* classoid filter */
+	      if (context->classoid_set.find (classoid) == context->classoid_set.end ())
+		{
+		  break;
+		}
 
-	  if (error == NO_ERROR)
-	    {
-              // *INDENT-OFF*
-              context->loginfo_queue.push (log_info_entry);
-              // *INDENT-ON*
-	      context->queue_size += log_info_entry->length;
-	      num_loginfo++;
-	      log_info_entry = NULL;
-	    }
-	  else
-	    {
-	      goto exit;
-	    }
+	      memcpy (&redo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
-	  break;
-	case LOG_SUPPLEMENT_UPDATE:
-	case LOG_SUPPLEMENT_TRIGGER_UPDATE:
-	  memcpy (&classoid, supplement_data, sizeof (OID));
-	  /* classoid filter */
-	  if (!flashback_class_filter (context, classoid))
-	    {
-	      goto end;
-	    }
+	      error = cdc_get_recdes (thread_p, NULL, NULL, &redo_lsa, &redo_recdes, true);
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
 
-	  memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
-	  memcpy (&redo_lsa, supplement_data + sizeof (OID) + sizeof (LOG_LSA), sizeof (LOG_LSA));
-
-	  if ((error = cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes, true)) != NO_ERROR)
-	    {
-	      goto exit;
-	    }
-
-	  log_info_entry = (CDC_LOGINFO_ENTRY *) db_private_alloc (thread_p, sizeof (CDC_LOGINFO_ENTRY));
-	  if (log_info_entry == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto exit;
-	    }
-
-	  if (undo_recdes.type == REC_ASSIGN_ADDRESS)
-	    {
-	      /* This occurs when series of logs are appended like
-	       * INSERT record for reserve OID (REC_ASSIGN_ADDRESS) then UPDATE to some record.
-	       * And this is a sequence for INSERT a record with OID reservation.
-	       * undo record with REC_ASSIGN_ADDRESS type has no undo image to extract, so this will be treated as INSERT
-	       * CUBRID engine used to do INSERT a record like this way,
-	       * for instance CREATE a class or INSERT a record by trigger execution */
-
-	      assert (rec_type == LOG_SUPPLEMENT_TRIGGER_UPDATE);
+	      log_info_entry = (CDC_LOGINFO_ENTRY *) db_private_alloc (thread_p, sizeof (CDC_LOGINFO_ENTRY));
+	      if (log_info_entry == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CDC_LOGINFO_ENTRY));
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto error;
+		}
 
 	      error =
-		cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_TRIGGER_INSERT, classoid, NULL, &redo_recdes,
-				      log_info_entry, true);
-	    }
-	  else
-	    {
+		cdc_make_dml_loginfo (thread_p, trid, context->user,
+				      rec_type == LOG_SUPPLEMENT_INSERT ? CDC_INSERT : CDC_TRIGGER_INSERT, classoid,
+				      NULL, &redo_recdes, log_info_entry, true);
+
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+
+              // *INDENT-OFF*
+              context->loginfo_queue.push (log_info_entry);
+              // *INDENT-ON*
+	      context->queue_size += log_info_entry->length;
+	      num_loginfo++;
+	      log_info_entry = NULL;
+
+	      break;
+	    case LOG_SUPPLEMENT_UPDATE:
+	    case LOG_SUPPLEMENT_TRIGGER_UPDATE:
+	      memcpy (&classoid, supplement_data, sizeof (OID));
+
+	      /* classoid filter */
+	      if (context->classoid_set.find (classoid) == context->classoid_set.end ())
+		{
+		  break;
+		}
+
+	      memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
+	      memcpy (&redo_lsa, supplement_data + sizeof (OID) + sizeof (LOG_LSA), sizeof (LOG_LSA));
+
+	      error = cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes, true);
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      log_info_entry = (CDC_LOGINFO_ENTRY *) db_private_alloc (thread_p, sizeof (CDC_LOGINFO_ENTRY));
+	      if (log_info_entry == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CDC_LOGINFO_ENTRY));
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto error;
+		}
+
+	      if (undo_recdes.type == REC_ASSIGN_ADDRESS)
+		{
+		  /* This occurs when series of logs are appended like
+		   * INSERT record for reserve OID (REC_ASSIGN_ADDRESS) then UPDATE to some record.
+		   * And this is a sequence for INSERT a record with OID reservation.
+		   * undo record with REC_ASSIGN_ADDRESS type has no undo image to extract, so this will be treated as INSERT
+		   * CUBRID engine used to do INSERT a record like this way,
+		   * for instance CREATE a class or INSERT a record by trigger execution */
+
+		  assert (rec_type == LOG_SUPPLEMENT_TRIGGER_UPDATE);
+
+		  error =
+		    cdc_make_dml_loginfo (thread_p, trid, context->user, CDC_TRIGGER_INSERT, classoid, NULL,
+					  &redo_recdes, log_info_entry, true);
+		}
+	      else
+		{
+		  error =
+		    cdc_make_dml_loginfo (thread_p, trid, context->user,
+					  rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_UPDATE : CDC_TRIGGER_UPDATE, classoid,
+					  &undo_recdes, &redo_recdes, log_info_entry, true);
+		}
+
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+
+              // *INDENT-OFF*
+              context->loginfo_queue.push (log_info_entry);
+              // *INDENT-ON*
+	      context->queue_size += log_info_entry->length;
+	      num_loginfo++;
+	      log_info_entry = NULL;
+
+	      break;
+	    case LOG_SUPPLEMENT_DELETE:
+	    case LOG_SUPPLEMENT_TRIGGER_DELETE:
+	      memcpy (&classoid, supplement_data, sizeof (OID));
+
+	      /* classoid filter */
+	      if (context->classoid_set.find (classoid) == context->classoid_set.end ())
+		{
+		  break;
+		}
+
+	      memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
+
+	      error = cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, NULL, NULL, true);
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      log_info_entry = (CDC_LOGINFO_ENTRY *) db_private_alloc (thread_p, sizeof (CDC_LOGINFO_ENTRY));
+	      if (log_info_entry == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CDC_LOGINFO_ENTRY));
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto error;
+		}
+
 	      error =
-		cdc_make_dml_loginfo (thread_p, trid, tran_user,
-				      rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_UPDATE : CDC_TRIGGER_UPDATE, classoid,
-				      &undo_recdes, &redo_recdes, log_info_entry, true);
-	    }
+		cdc_make_dml_loginfo (thread_p, trid, context->user,
+				      rec_type == LOG_SUPPLEMENT_DELETE ? CDC_DELETE : CDC_TRIGGER_DELETE, classoid,
+				      &undo_recdes, NULL, log_info_entry, true);
 
-	  if (error == NO_ERROR)
-	    {
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+
               // *INDENT-OFF*
               context->loginfo_queue.push (log_info_entry);
               // *INDENT-ON*
 	      context->queue_size += log_info_entry->length;
 	      num_loginfo++;
 	      log_info_entry = NULL;
-	    }
-	  else
-	    {
-	      goto exit;
-	    }
 
-	  break;
-	case LOG_SUPPLEMENT_DELETE:
-	case LOG_SUPPLEMENT_TRIGGER_DELETE:
-	  memcpy (&classoid, supplement_data, sizeof (OID));
-	  /* classoid filter */
-	  if (!flashback_class_filter (context, classoid))
-	    {
-	      goto end;
+	      break;
+	    default:
+	      break;
 	    }
+	}
 
-	  memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
+      LSA_COPY (&process_lsa, &next_log_rec_lsa);
+      LSA_COPY (&cur_log_rec_lsa, &process_lsa);
 
-	  if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, NULL, NULL, true) != NO_ERROR)
-	    {
-	      goto exit;
-	    }
+      if (undo_recdes.data != NULL)
+	{
+	  free_and_init (undo_recdes.data);
+	}
 
-	  log_info_entry = (CDC_LOGINFO_ENTRY *) db_private_alloc (thread_p, sizeof (CDC_LOGINFO_ENTRY));
-	  if (log_info_entry == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto exit;
-	    }
-
-	  error =
-	    cdc_make_dml_loginfo (thread_p, trid, tran_user,
-				  rec_type == LOG_SUPPLEMENT_DELETE ? CDC_DELETE : CDC_TRIGGER_DELETE, classoid,
-				  &undo_recdes, NULL, log_info_entry, true);
-
-	  if (error == NO_ERROR)
-	    {
-              // *INDENT-OFF*
-              context->loginfo_queue.push (log_info_entry);
-              // *INDENT-ON*
-	      context->queue_size += log_info_entry->length;
-	      num_loginfo++;
-	      log_info_entry = NULL;
-	    }
-	  else
-	    {
-	      goto exit;
-	    }
-
-	  break;
-	default:
-	  break;
+      if (redo_recdes.data != NULL)
+	{
+	  free_and_init (redo_recdes.data);
 	}
     }
 
-end:
+  /* end of making log info */
+
   if (context->forward)
     {
-      if (LSA_EQ (&next_log_rec_lsa, &context->end_lsa) || num_loginfo == context->num_item)
-	{
-	  context->num_item = num_loginfo;
-	  LSA_COPY (&context->start_lsa, &next_log_rec_lsa);
-
-	  error = NO_ERROR;
-	  goto exit;
-	}
+      LSA_COPY (&context->start_lsa, &process_lsa);
     }
   else
     {
-      if (LSA_ISNULL (&next_log_rec_lsa) || num_loginfo == context->num_item)
-	{
-	  context->num_item = num_loginfo;
-	  LSA_COPY (&context->end_lsa, &next_log_rec_lsa);
-
-	  error = NO_ERROR;
-	  goto exit;
-	}
+      LSA_COPY (&context->end_lsa, &process_lsa);
     }
 
-  LSA_COPY (&process_lsa, &next_log_rec_lsa);
-
-  if (log_page_p->hdr.logical_pageid != process_lsa.pageid)
-    {
-      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
-	{
-	  error = ER_FAILED;
-	  goto exit;
-	}
-
-      if (process_lsa.offset == NULL_OFFSET && (process_lsa.offset = log_page_p->hdr.offset) == NULL_OFFSET)
-	{
-	  /* can not find the first log record in the page */
-	  error = ER_FAILED;
-	  goto exit;
-	}
-    }
+  context->num_loginfo = num_loginfo;
 
   if (supplement_data != NULL)
     {
-      free_and_init (supplement_data);
+      db_private_free_and_init (thread_p, supplement_data);
     }
 
-  if (undo_recdes.data != NULL)
-    {
-      free_and_init (undo_recdes.data);
-    }
+  return error;
 
-  if (redo_recdes.data != NULL)
-    {
-      free_and_init (redo_recdes.data);
-    }
+error:
 
-  goto begin;
-
-exit:
   if (supplement_data != NULL)
     {
-      free_and_init (supplement_data);
+      db_private_free_and_init (thread_p, supplement_data);
     }
 
   if (undo_recdes.data != NULL)
@@ -15181,7 +15166,6 @@ exit:
     }
 
   return error;
-
 }
 
 //

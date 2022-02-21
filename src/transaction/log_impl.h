@@ -60,6 +60,7 @@
 #include "tde.h"
 #include "lockfree_circular_queue.hpp"
 
+#include <unordered_set>
 #include <queue>
 #include <assert.h>
 #if defined(SOLARIS)
@@ -955,11 +956,11 @@ typedef struct flashback_loginfo_context
   LOG_LSA start_lsa;
   LOG_LSA end_lsa;
   int num_class;
-  OID classlist[32];
   int forward;
-  int num_item;
+  int num_loginfo;
   int queue_size;
   // *INDENT-OFF*
+  std::unordered_set<OID> classoid_set;
   std::queue<CDC_LOGINFO_ENTRY *> loginfo_queue;
   // *INDENT-ON*
 } FLASHBACK_LOGINFO_CONTEXT;

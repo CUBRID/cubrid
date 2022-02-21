@@ -1701,8 +1701,9 @@
 #define ER_FLASHBACK_INVALID_TIME                   -1333
 #define ER_FLASHBACK_INVALID_CLASS                  -1334
 #define ER_FLASHBACK_SCHEMA_CHANGED                 -1335
+#define ER_FLASHBACK_LOG_NOT_EXIST                  -1336
 
-#define ER_LAST_ERROR                               -1336
+#define ER_LAST_ERROR                               -1337
 /*
  * CAUTION!
  *
