@@ -6008,7 +6008,7 @@ log_tdes::is_system_main_transaction () const
 bool
 log_tdes::is_system_worker_transaction () const
 {
-  return is_system_transaction () && trid < NULL_ATTRID;
+  return is_system_transaction () && trid < NULL_TRANID;
 }
 
 bool

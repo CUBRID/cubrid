@@ -3385,15 +3385,11 @@ start:
       /* Flush all pages from current block */
       assert (flush_block != NULL && flush_block->count_wb_pages == DWB_BLOCK_NUM_PAGES);
 
-      if (DWB_GET_PREV_BLOCK (flush_block->block_no)->version < flush_block->version
-	  || ((DWB_GET_PREV_BLOCK (flush_block->block_no)->version == flush_block->version)
-	      && (flush_block->block_no > DWB_GET_PREV_BLOCK_NO (flush_block->block_no))))
-	{
-	  if (DWB_GET_PREV_BLOCK (flush_block->block_no)->count_wb_pages != 0)
-	    {
-	      assert_release (false);
-	    }
-	}
+      assert ((DWB_GET_PREV_BLOCK (flush_block->block_no)->version > flush_block->version) ||
+	      (flush_block->block_no == 0
+	       && (DWB_GET_PREV_BLOCK (flush_block->block_no)->version == flush_block->version))
+	      || (flush_block->version == UINT64_MAX
+		  && (DWB_GET_PREV_BLOCK (flush_block->block_no)->version < flush_block->version)));
 
       error_code = dwb_flush_block (thread_p, flush_block, true, NULL);
       if (error_code != NO_ERROR)
