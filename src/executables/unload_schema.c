@@ -1133,8 +1133,9 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  continue;
 	}
 
-      /* Because class is created by the owner, it uses a name with the qualifier removed. */ 
-      output_ctx ("CREATE %s %s%s%s", is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+      /* Because class is created by the owner, it uses a name with the qualifier removed. */
+      output_ctx ("CREATE %s %s%s%s", is_vclass ? "VCLASS" : "CLASS",
+		  PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
 
       if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ) != NO_ERROR)
 	{
@@ -1232,7 +1233,7 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
       (void) emit_superclasses (output_ctx, cl->op, class_type);
     }
 
-  output_ctx ("\n\n");
+  output_ctx ("\n");
 
   /*
    * Now fill out the class definitions for the non-proxy classes.
@@ -1247,6 +1248,8 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	{
 	  continue;
 	}
+
+      output_ctx ("\n");
 
       class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
 
@@ -1266,7 +1269,7 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	}
     }
 
-  output_ctx ("\n");
+  output_ctx ("\n\n");
 
   /* emit super class resolutions for non-proxies */
   for (cl = classes; cl != NULL; cl = cl->next)
@@ -1276,11 +1279,15 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
       (void) emit_resolutions (output_ctx, cl->op, class_type);
     }
 
+  output_ctx ("\n");
+
   /*
    * do query specs LAST after we're sure that all potentially
    * referenced classes have their full definitions.
    */
   *vclass_list_has_using_index = emit_query_specs (output_ctx, classes);
+
+  output_ctx ("\n");
 
   /*
    * Dump authorizations.
@@ -1300,7 +1307,6 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
     }
 
   return has_indexes;
-
 }
 
 
@@ -1370,6 +1376,8 @@ emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
 	  continue;
 	}
 
+      output_ctx ("\n");
+
       has_using_index = false;
       for (s = specs; s && has_using_index == false; s = db_query_spec_next (s))
 	{
@@ -1412,7 +1420,7 @@ emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
 		{
 		  null_spec = pt_print_query_spec_no_list (parser, *query_ptr);
 		  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-		  output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name),
+		  output_ctx ("\nALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name),
 			      PRINT_IDENTIFIER (class_name), null_spec);
 		}
 	      parser_free_parser (parser);
@@ -1441,6 +1449,8 @@ emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
 	{
 	  continue;
 	}
+
+      output_ctx ("\n");
 
       change_vclass_spec = has_vclass_domains (cl->op);
 
@@ -1882,7 +1892,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	    }
 
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	  output_ctx ("\nALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (owner_name),
+	  output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (owner_name),
 		      PRINT_IDENTIFIER (class_name));
 
 	  if (db_attribute_is_shared (a))
@@ -1909,7 +1919,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
   else
     {
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-      output_ctx ("\n\nALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name),
+      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name),
 		  PRINT_IDENTIFIER (class_name));
 
       for (a = first_attribute; a != NULL; a = db_attribute_next (a))
@@ -2190,19 +2200,15 @@ emit_method_files (print_output & output_ctx, DB_OBJECT * class_mop)
 	      if (printed_once == false)
 		{
 		  printed_once = true;
-		  output_ctx ("\nFILE");
+		  output_ctx ("FILE");
 		}
 	      else
 		{
 		  output_ctx (",\n");
+		  output_ctx ("    ");
 		}
 	      emit_methfile_def (output_ctx, f);
 	    }
-	}
-
-      if (printed_once)
-	{
-	  output_ctx ("\n");
 	}
     }
 }
@@ -2293,8 +2299,6 @@ emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_t
 	      emit_method_def (output_ctx, m, CLASS_METHOD);
 	    }
 	}
-
-      output_ctx ("\n");
 
       if (first_method == NULL)
 	{
@@ -2901,6 +2905,8 @@ emit_domain_def (print_output & output_ctx, DB_DOMAIN * domains)
   int precision;
   int has_collation;
   const char *name;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *class_name = NULL;
   const char *json_schema;
 
   for (domain = domains; domain != NULL; domain = db_domain_next (domain))
@@ -2922,7 +2928,8 @@ emit_domain_def (print_output & output_ctx, DB_DOMAIN * domains)
 	  else
 	    {
 	      name = db_get_class_name (class_);
-	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (name));
+	      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
+	      output_ctx ("%s%s%s.%s%s%s", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
 	    }
 	}
       else
@@ -3133,7 +3140,7 @@ emit_method_def (print_output & output_ctx, DB_METHOD * method, METHOD_QUALIFIER
 static void
 emit_methfile_def (print_output & output_ctx, DB_METHFILE * methfile)
 {
-  output_ctx ("       '%s'", db_methfile_name (methfile));
+  output_ctx ("   '%s'", db_methfile_name (methfile));
 }
 
 /*

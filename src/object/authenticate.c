@@ -7995,7 +7995,9 @@ build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop)
 static void
 issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits)
 {
-  const char *gtype, *classname;
+  const char *gtype;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *class_name = NULL;
   char *username;
   int typebit;
 
@@ -8027,12 +8029,11 @@ issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT
       gtype = "???";
       break;
     }
-  classname = sm_get_ch_name (auth->class_mop);
+  SPLIT_USER_SPECIFIED_NAME (sm_get_ch_name (auth->class_mop), owner_name, class_name);
   username = au_get_user_name (grant->user->obj);
 
   output_ctx ("GRANT %s ON ", gtype);
-  output_ctx ("[%s]", classname);
-
+  output_ctx ("[%s].[%s]", owner_name, class_name);
   if (username != NULL)
     {
       output_ctx (" TO [%s]", username);

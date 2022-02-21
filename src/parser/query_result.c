@@ -836,14 +836,31 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col, const PT_NODE *
 			  if (original_name)
 			    {
 			      /* strip off classname.* */
-			      name += strlen (node->info.name.original) + 1;
+			      if (strchr (node->info.name.original, '.'))
+				{
+				  name = strchr (original_name, '.');
+				  name++;
+				}
+			      else
+				{
+				  name = original_name;
+				}
+
+			      name = strchr (name, '.');
+			      if (name == NULL || name[0] == '\0')
+				{
+				  name = original_name;
+				}
+			      else
+				{
+				  name++;
+				}
 			      break;
 			    }
 			  else
 			    {
 			      name = NULL;
 			    }
-
 			}
 		    }
 		}

@@ -138,6 +138,21 @@ MOP au_get_dba_user (void);
     } \
   while (0)
 
+/* 
+ * name is user_specified_name.
+ * owner_name must be a char array of size DB_MAX_IDENTIFIER_LENGTH to copy user_specified_name.
+ * class_name refers to class_name after dot(.).
+ */
+#define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) \
+	do \
+	  { \
+	    memset ((owner_name), '\0', DB_MAX_IDENTIFIER_LENGTH); \
+	    strlcpy ((owner_name), (name), DB_MAX_IDENTIFIER_LENGTH); \
+	    (class_name) = strchr ((owner_name), '.'); \
+	    *(class_name)++ = '\0'; \
+	  } \
+	while (0)
+
 #define AU_DISABLE_PASSWORDS    au_disable_passwords
 #define AU_SET_USER     au_set_user
 
