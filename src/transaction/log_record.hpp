@@ -139,7 +139,7 @@ enum log_rectype
   LOG_START_ATOMIC_REPL = 51,
   LOG_END_ATOMIC_REPL = 52,
   LOG_TRANTABLE_SNAPSHOT = 53,
-  LOG_ASSIGNED_MVCCID = 54,
+  LOG_ASSIGNED_MVCCID = 54,	/* not used or obsolete */
 
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
                                  * case. we should find a different approach */
@@ -156,6 +156,8 @@ typedef enum log_rectype LOG_RECTYPE;
 typedef struct log_rec_header LOG_RECORD_HEADER;
 struct log_rec_header
 {
+  inline bool operator== (const log_rec_header &other) const;
+
   LOG_LSA prev_tranlsa;		/* Address of previous log record for the same transaction */
   LOG_LSA back_lsa;		/* Backward log address */
   LOG_LSA forw_lsa;		/* Forward log address */
@@ -451,5 +453,16 @@ struct log_rec_supplement
    || ((type) == LOG_MVCC_REDO_DATA) \
    || ((type) == LOG_MVCC_UNDOREDO_DATA) \
    || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
+//
+// inline/template implementations
+//
+
+inline bool
+log_rec_header::operator== (const log_rec_header &other) const
+{
+  return prev_tranlsa == other.prev_tranlsa && back_lsa == other.back_lsa
+	 && forw_lsa == other.forw_lsa && trid == other.trid && type == other.type;
+}
 
 #endif // _LOG_RECORD_HPP_

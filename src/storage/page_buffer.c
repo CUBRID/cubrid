@@ -2283,24 +2283,26 @@ try_again:
 /* pgbuf_fix_old_and_check_repl_desync - fix an old page with specific latch; for active transaction
  *                  server, the behaviour is same as pgbuf_fix; for passive transaction server, there is an
  *                  extra check to see whether page is ahead of replication
+ *
+ * NOTE: function can also be called on a page server when an utility is executed against the server
+ *    (eg: stat dump), in which case, the function should behave just like normal fix and not perform any
+ *    synchronization check
  */
 PAGE_PTR
 pgbuf_fix_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid, PGBUF_LATCH_MODE latch_mode,
 				     PGBUF_LATCH_CONDITION cond)
 {
-  assert (is_transaction_server ());
-
-  PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, cond);
+  PAGE_PTR const page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, cond);
 
 #if defined (SERVER_MODE)
-  if (is_active_transaction_server ())
+  const bool passive_transaction_server = is_passive_transaction_server ();
+  if (!passive_transaction_server)
     {
       // No replication, no page desynchronization is possible
       // Use regular fix
       return page;
     }
 
-  assert (is_passive_transaction_server ());
 
   // Passive Transaction Server
   //
@@ -2347,6 +2349,38 @@ pgbuf_fix_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid,
   return page;
 }
 
+/*
+ * pgbuf_wait_for_replication () - Wait for replication to catch up
+ *   return: void
+ *   thread_p:                  thread pointer
+ *   optional_vpid_for_logging: Optional vpid argument used for logging, a null vpid can be provided
+ *                              if no valid value is available
+ */
+void
+pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * optional_vpid_for_logging)
+{
+#if defined (SERVER_MODE)
+  // page desyncronization can only occur on PTS
+  assert (is_passive_transaction_server ());
+  assert (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION);
+
+  // wait for replication
+  passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
+  LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
+  pts_ptr->wait_replication_past_target_lsa (tdes->page_desync_lsa);
+
+  const LOG_LSA replication_lsa = pts_ptr->get_replicator_lsa ();
+  er_log_debug (ARG_FILE_LINE,
+		"Page %d|%d is ahead of replication. Page LSA is %lld|%d, replication LSA is %lld|%d.",
+		VPID_AS_ARGS (optional_vpid_for_logging), LSA_AS_ARGS (&tdes->page_desync_lsa),
+		LSA_AS_ARGS (&replication_lsa));
+  tdes->page_desync_lsa.set_null ();
+  // clear the errors for next search
+  er_clear ();
+#endif
+}
+
 int
 pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
 {
@@ -2360,8 +2394,8 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
   LOG_LSA repl_lsa = get_passive_tran_server_ptr ()->get_replicator_lsa ();
   if (page_lsa > repl_lsa)
     {
-      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      assert (tdes->page_desync_lsa.is_null ());
+      LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
+      assert (tdes != nullptr && tdes->page_desync_lsa.is_null ());
       tdes->page_desync_lsa = page_lsa;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_AHEAD_OF_REPLICATION, 6, PGBUF_PAGE_VPID_AS_ARGS (page),
 	      LSA_AS_ARGS (&page_lsa), LSA_AS_ARGS (&repl_lsa));
@@ -8151,15 +8185,92 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	  const size_t io_page_size = static_cast<size_t> (db_io_page_size ());
 	  std::unique_ptr<char []> buffer_uptr = std::make_unique<char []> (io_page_size);
 	  FILEIO_PAGE *second_io_page = reinterpret_cast<FILEIO_PAGE *> (buffer_uptr.get ());
+	  // *INDENT-ON*
 	  error_code = pgbuf_request_data_page_from_page_server (vpid, target_repl_lsa, second_io_page);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  assert (io_page->prv == second_io_page->prv);
+
+	  /* NOTE:
+	   *  - heap pages are requested also during the recovery phase (after the active transaction server has
+	   *    crashed); in this case, it is normal that the pages requested from page server are out of sync with
+	   *    pages from local storage - specifically, more up to date since page server replication has
+	   *    caught up with the entire log
+	   * TODO:
+	   *  - in this scenario, what if pages have been deleted, the change is not yet applied on
+	   *    active transaction server (ie: the page still exists), but the log has been applied on
+	   *    page server and the page cannot be retrieved
+	   */
+	  if (log_is_in_crash_recovery_and_not_yet_completes_redo ())
+	    {
+	      const bool local_lsa_is_less_than_or_equal_to_page_server_lsa =
+		LSA_LE (&io_page->prv.lsa, &second_io_page->prv.lsa);
+	      const bool equal_vpid = io_page->prv.volid == second_io_page->prv.volid
+		&& io_page->prv.pageid == second_io_page->prv.pageid;
+#if !defined(NDEBUG)
+	      if (!local_lsa_is_less_than_or_equal_to_page_server_lsa && !equal_vpid)
+		{
+		  er_log_debug (ARG_FILE_LINE, "pgbuf_read_page_from_file_or_page_server"
+				" past recovery redo pages not equal\n"
+				"    target repl LSA: %lld|%d\n"
+				"    local page  VPID: %d|%d  LSA: %lld|%d  ptype: %d\n"
+				"    remote page VPID: %d|%d  LSA: %lld|%d  ptype: %d\n",
+				LSA_AS_ARGS (&target_repl_lsa),
+				io_page->prv.volid, io_page->prv.pageid,
+				LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.ptype,
+				second_io_page->prv.volid, second_io_page->prv.pageid,
+				LSA_AS_ARGS (&second_io_page->prv.lsa), second_io_page->prv.ptype);
+		}
+#endif
+	      assert (local_lsa_is_less_than_or_equal_to_page_server_lsa && equal_vpid);
+	    }
+	  else
+	    {
+	      const bool fileio_pages_equal = (io_page->prv == second_io_page->prv);
+	      if (!fileio_pages_equal)
+		{
+		  /* on a transaction server, btree statistics is not written immediately
+		   * to the btree root page; the update happens, for efficiency, only at checkpoint
+		   * time using a in-memory caching mechanism; on a page server, the statistics are
+		   * applied immediately and thus, the difference; compare everything ignoring the
+		   * statistics
+		   */
+		  const PAGE_PTR pgptr = (const PAGE_PTR) ((char *) io_page->page);
+		  const PAGE_PTR second_pgptr = (const PAGE_PTR) ((char *) second_io_page->page);
+		  if (io_page->prv.ptype == PAGE_BTREE && second_io_page->prv.ptype == PAGE_BTREE
+		      && btree_is_btree_root_page (thread_p, pgptr)
+		      && btree_is_btree_root_page (thread_p, second_pgptr))
+		    {
+		      // page server might already contain btree stats which are still kept in memory on the
+		      // active transaction server
+		      assert (LSA_LE (&io_page->prv.lsa, &second_io_page->prv.lsa)
+			      && io_page->prv.pageid == second_io_page->prv.pageid
+			      && io_page->prv.volid == second_io_page->prv.volid
+			      && io_page->prv.ptype == second_io_page->prv.ptype
+			      && io_page->prv.pflag == second_io_page->prv.pflag
+			      && io_page->prv.tde_nonce == second_io_page->prv.tde_nonce);
+		    }
+		  else
+		    {
+#if !defined(NDEBUG)
+		      er_log_debug (ARG_FILE_LINE, "pgbuf_read_page_from_file_or_page_server"
+				    " past recovery redo pages not equal\n"
+				    "    target repl LSA: %lld|%d\n"
+				    "    local page  VPID: %d|%d  LSA: %lld|%d  ptype: %d\n"
+				    "    remote page VPID: %d|%d  LSA: %lld|%d  ptype: %d\n",
+				    LSA_AS_ARGS (&target_repl_lsa),
+				    io_page->prv.volid, io_page->prv.pageid,
+				    LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.ptype,
+				    second_io_page->prv.volid, second_io_page->prv.pageid,
+				    LSA_AS_ARGS (&second_io_page->prv.lsa), second_io_page->prv.ptype);
+#endif
+		      assert ("pages are not equal after all exceptions have been verified and failed" == nullptr);
+		    }
+		}
+	    }
 	  return NO_ERROR;
-	  // *INDENT-ON*
 	}
       else
 	{
@@ -8225,7 +8336,9 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
     {
-      _er_log_debug (ARG_FILE_LINE, "[READ DATA] Send request for Page to Page Server. VPID: %d|%d\n", VPID_AS_ARGS (vpid));
+      _er_log_debug (ARG_FILE_LINE, "[READ DATA] Send request for Page to Page Server."
+                                    " VPID: %d|%d, target repl LSA: %lld|%d\n",
+                     VPID_AS_ARGS (vpid), LSA_AS_ARGS(&target_repl_lsa));
     }
 
   std::string response_message;
@@ -8261,7 +8374,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, LSA: %lld|%d \n",
+	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, page LSA: %lld|%d \n",
 			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
 	}
     }
@@ -8305,13 +8418,13 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[READ DATA] Error %lld while fixing page %d|%d, replication LSA = %lld|%d\n",
+			 "[READ DATA] Error %lld while fixing page VPID = %d|%d, target repl LSA = %lld|%d\n",
 			 error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
 	}
     }
   else
     {
-      FILEIO_PAGE *io_pgptr = nullptr;
+      const FILEIO_PAGE *io_pgptr = nullptr;
       CAST_PGPTR_TO_IOPGPTR (io_pgptr, page_ptr);
       assert (io_pgptr != nullptr);
 
@@ -8321,14 +8434,16 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       // add io_page
       payload_in_out.append (reinterpret_cast<const char *> (io_pgptr), (size_t) db_io_page_size ());
 
-      pgbuf_unfix (&thread_r, page_ptr);
-
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[READ DATA] Successful while fixing page %d|%d, replication LSA = %lld|%d\n",
-			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+			 "[READ DATA] Successful while fixing page VPID = %d|%d,"
+			 " page LSA = %lld|%d, target repl LSA = %lld|%d\n",
+			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS(&io_pgptr->prv.lsa), LSA_AS_ARGS (&target_repl_lsa));
 	}
+
+      // only unfix after having used casted IO page ptr for logging
+      pgbuf_unfix (&thread_r, page_ptr);
     }
 }
 // *INDENT-ON*
@@ -14703,6 +14818,32 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
 	  error_code = NO_ERROR;
 	}
     }
+  return error_code;
+}
+
+int
+pgbuf_fix_if_not_deallocated_with_repl_desync_check (THREAD_ENTRY * thread_p, const VPID * vpid,
+						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,
+						     PAGE_PTR * page)
+{
+  int error_code = pgbuf_fix_if_not_deallocated (thread_p, vpid, latch_mode, latch_condition, page);
+
+  if (is_passive_transaction_server ())
+    {
+      if (error_code == NO_ERROR && page != nullptr)
+	{
+	  error_code = pgbuf_check_page_ahead_of_replication (thread_p, *page);
+
+	  if (error_code == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      // Unfix the page
+	      pgbuf_unfix (thread_p, *page);
+	      *page = nullptr;
+	      error_code = NO_ERROR;
+	    }
+	}
+    }
+
   return error_code;
 }
 

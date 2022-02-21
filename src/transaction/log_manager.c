@@ -543,25 +543,6 @@ log_is_in_crash_recovery (void)
 }
 
 /*
- * log_is_in_crash_recovery_and_not_year_complets_redo - completes redo recovery?
- *
- * return:
- *
- */
-bool
-log_is_in_crash_recovery_and_not_yet_completes_redo (void)
-{
-  if (log_Gl.rcv_phase == LOG_RECOVERY_ANALYSIS_PHASE || log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
-    {
-      return true;
-    }
-  else
-    {
-      return false;
-    }
-}
-
-/*
  * log_get_restart_lsa - FIND RESTART LOG SEQUENCE ADDRESS
  *
  * return:
@@ -3535,7 +3516,7 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
   if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "[LOG PRIOR TRANSFER] Sent log boot info to passive tran server with prev_lsa = (%lld|%d), "
+		     "[LOG_PRIOR_TRANSFER] Sent log boot info to passive tran server with prev_lsa = (%lld|%d), "
 		     "append_lsa = (%lld|%d), most_recent_trantable_snapshot_lsa = (%lld|%d)\n",
 		     LSA_AS_ARGS (&prev_lsa), LSA_AS_ARGS (&append_lsa),
 		     LSA_AS_ARGS (&most_recent_trantable_snapshot_lsa));
@@ -6552,6 +6533,18 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 	   log_header_p->has_logging_been_skipped, LSA_AS_ARGS (&log_header_p->bkup_level0_lsa),
 	   LSA_AS_ARGS (&log_header_p->bkup_level1_lsa), LSA_AS_ARGS (&log_header_p->bkup_level2_lsa),
 	   log_header_p->prefix_name);
+
+  // guarded because tests that depend on investigating/comparing log might fail
+#if 0
+  // vacuum related fields
+  fprintf (out_fp,
+	   "     vacuum_last_blockid = %lld, mvcc_op_log_lsa = %lld|%d,\n"
+	   "     oldest_visible_mvccid = %llu, newest_block_mvccid = %llu,\n"
+	   "     does_block_need_vacuum = %d\n",
+	   (long long int) log_header_p->vacuum_last_blockid, LSA_AS_ARGS (&log_header_p->mvcc_op_log_lsa),
+	   (long long unsigned) log_header_p->oldest_visible_mvccid,
+	   (long long unsigned) log_header_p->newest_block_mvccid, log_header_p->does_block_need_vacuum);
+#endif
 }
 
 static LOG_PAGE *
@@ -6658,7 +6651,7 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Undo(Before) length = %d, Redo(After) length = %d,\n",
 	   mvcc_undoredo->undoredo.data.volid, mvcc_undoredo->undoredo.data.pageid, mvcc_undoredo->undoredo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.ulength), (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.rlength));
-  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
+  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)\n",
 	   (long long int) mvcc_undoredo->mvccid,
 	   (long long int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undoredo->vacuum_info.vfid.volid,
@@ -6695,7 +6688,7 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
 	   mvcc_undo->undo.data.volid, mvcc_undo->undo.data.pageid, mvcc_undo->undo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undo->undo.length));
-  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
+  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)\n",
 	   (long long int) mvcc_undo->mvccid, (long long int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undo->vacuum_info.vfid.volid,
 	   mvcc_undo->vacuum_info.vfid.fileid);

@@ -2101,7 +2101,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
-      _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
+      _er_log_debug (ARG_FILE_LINE, "[READ LOG] Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
     }
   std::string response_message;
   ts_Gl->send_receive (tran_to_page_request::SEND_LOG_PAGE_FETCH, std::move (request_message), response_message);
@@ -2119,7 +2119,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received log page message from Page Server. Page ID: %lld\n",
 			 log_pgptr->hdr.logical_pageid);
 	}
     }
@@ -2135,7 +2135,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
 	}
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Error code: %d\n", error_code);
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n", error_code);
 	}
     }
   assert (message_ptr == (response_message.c_str () + response_message.size ()));
@@ -2191,8 +2191,85 @@ logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, cons
 {
   bool pages_equal (*left_log_pgptr == *rite_log_pgptr || pageid == LOGPB_HEADER_PAGE_ID);
 
-  if (!pages_equal && pageid == log_Gl.hdr.append_lsa.pageid)
+  if (pages_equal)
     {
+      return;
+    }
+
+  if (log_Gl.rcv_phase == LOG_RECOVERY_ANALYSIS_PHASE)
+    {
+      /* NOTE:
+       *  - during analysis phase of the recovery on ATS, the value of log header append lsa cannot be relied
+       *    upon to know how much of the page area to compare because it is not updated until the end of the
+       *    analysis (see call stack: log_recovery_analysis -> log_rv_analysis_record ->
+       *      log_rv_analysis_record_on_tran_server -> log_rv_analysis_log_end)
+       *  - check if page is the last one in the log record by iterating log records
+       * the last log record (the one that contains the end of the log) is allowed to be different
+       *
+       * NOTE:
+       *  this iteration is too simplistic and brittle (as opposed to the one in log recovery analysis); but,
+       *  as this code has more of a temporary nature, it is considered good enough
+       */
+      const LOG_RECORD_HEADER *left_log_rec_header = nullptr;
+      const LOG_RECORD_HEADER *rite_log_rec_header = nullptr;
+      log_lsa curr_left_lsa = { pageid, left_log_pgptr->hdr.offset };
+      log_lsa curr_rite_lsa = { pageid, rite_log_pgptr->hdr.offset };
+
+      left_log_rec_header = (const LOG_RECORD_HEADER *) (left_log_pgptr->area + curr_left_lsa.offset);
+      rite_log_rec_header = (const LOG_RECORD_HEADER *) (rite_log_pgptr->area + curr_rite_lsa.offset);
+      for (;;)
+	{
+	  // if current log record is the last one, it must be the end of log
+	  if (left_log_rec_header->forw_lsa.is_null () || rite_log_rec_header->forw_lsa.is_null ())
+	    {
+	      // active transaction server and page server append the end of log with different transactions
+	      assert (left_log_rec_header->prev_tranlsa == rite_log_rec_header->prev_tranlsa
+		      && left_log_rec_header->back_lsa == rite_log_rec_header->back_lsa
+		      && left_log_rec_header->forw_lsa == rite_log_rec_header->forw_lsa
+		      //&& left_log_rec_header->trid == rite_log_rec_header->trid
+		      && left_log_rec_header->type == rite_log_rec_header->type);
+
+	      assert (left_log_rec_header->forw_lsa.is_null () && rite_log_rec_header->forw_lsa.is_null ());
+	      assert (left_log_rec_header->type == LOG_END_OF_LOG);
+
+	      // compare everything until end of log
+	      const char *const left_log_page_area = left_log_pgptr->area;
+	      const char *const rite_log_page_area = rite_log_pgptr->area;
+	      const int cmp_res = strncmp (left_log_page_area, rite_log_page_area, curr_left_lsa.offset
+					   + offsetof (LOG_RECORD_HEADER, trid));
+	      pages_equal = (cmp_res == 0);
+	      break;
+	    }
+
+	  // if not the last page, headers must be equal
+	  assert (*left_log_rec_header == *rite_log_rec_header);
+
+	  // if not the last log page, must stop, the pages are not equal
+	  if (left_log_rec_header->forw_lsa.pageid != curr_left_lsa.pageid
+	      || rite_log_rec_header->forw_lsa.pageid != curr_rite_lsa.pageid)
+	    {
+	      assert (left_log_rec_header->forw_lsa.pageid != curr_left_lsa.pageid
+		      && rite_log_rec_header->forw_lsa.pageid != curr_rite_lsa.pageid);
+
+	      // it is not this function's job to validate page corruption
+	      // if any of the pages is corrupted, withhold decision for log recovery analysis logic
+	      const bool left_has_valid_checksum = logpb_page_has_valid_checksum (left_log_pgptr);
+	      const bool rite_has_valid_checksum = logpb_page_has_valid_checksum (rite_log_pgptr);
+	      pages_equal = (!left_has_valid_checksum || !rite_has_valid_checksum);
+	      break;
+	    }
+
+	  // next log record still in the same page, advance to it
+	  curr_left_lsa = left_log_rec_header->forw_lsa;
+	  curr_rite_lsa = rite_log_rec_header->forw_lsa;
+
+	  left_log_rec_header = (const LOG_RECORD_HEADER *) (left_log_pgptr->area + curr_left_lsa.offset);
+	  rite_log_rec_header = (const LOG_RECORD_HEADER *) (rite_log_pgptr->area + curr_rite_lsa.offset);
+	}
+    }
+  else if (pageid == log_Gl.hdr.append_lsa.pageid)
+    {
+      // last page, not in recovery analysis
       const char *const left_log_page_area = left_log_pgptr->area;
       const char *const rite_log_page_area = rite_log_pgptr->area;
       const int cmp_res = strncmp (left_log_page_area, rite_log_page_area, log_Gl.hdr.append_lsa.offset);
@@ -3290,9 +3367,9 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
   /* to tde-encrypt pages which is being created while appending */
   log_Gl.append.appending_page_tde_encrypted = prior_is_tde_encrypted (node);
 
-  logpb_log ("logpb_append_next_record: append a record\n"
-	     "log_Gl.hdr.append_lsa.offset = %d, total record size = %d, TDE-encryption = %d\n",
-	     log_Gl.hdr.append_lsa.offset,
+  logpb_log ("logpb_append_next_record: start\n"
+	     "    log_Gl.hdr.append_lsa = %lld|%d, total record size = %d, TDE-encryption = %d\n",
+	     LSA_AS_ARGS (&log_Gl.hdr.append_lsa),
 	     sizeof (LOG_RECORD_HEADER) + node->data_header_length + node->ulength + node->rlength,
 	     log_Gl.append.appending_page_tde_encrypted);
 
@@ -3319,7 +3396,7 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
 
   log_Gl.append.appending_page_tde_encrypted = false;
 
-  logpb_log ("logpb_append_next_record: append a record end.\n");
+  logpb_log ("logpb_append_next_record: end.\n");
 
   return NO_ERROR;
 }
@@ -7470,8 +7547,8 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     }
 
   log_lsa trantable_checkpoint_lsa = NULL_LSA;
-  {
-    LOG_CS_ENTER (thread_p);
+
+  LOG_CS_ENTER (thread_p);
     // *INDENT-OFF*
     scope_exit<std::function<void (void)>> unlock_log_cs_on_exit ([thread_p] ()
     {
@@ -7481,60 +7558,58 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
     cublog::checkpoint_info trantable_checkpoint_info;
     // *INDENT-ON*
 
-    if (detailed_logging)
-      {
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: started, loading trantable\n");
-      }
-    LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
-    trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: started, loading trantable\n");
+    }
+  LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
+  trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
 
-    // Currently the transaction table snapshot is saved in two places:
-    //
-    //    1) In the log, to be passed to the passive transaction server; the PTS will use it during the boot.
-    //    2) In the local meta-log, to be used by the ATS for recovery after a crash.
-    //
-    // todo: The local meta-log snapshot copy could be removed and also the ATS recovery could get its snapshot from
-    // the log.
+  // Currently the transaction table snapshot is saved in two places:
+  //
+  //    1) In the log, to be passed to the passive transaction server; the PTS will use it during the boot.
+  //    2) In the local meta-log, to be used by the ATS for recovery after a crash.
+  //
+  // TODO: The local meta-log snapshot copy could be removed and also the ATS recovery could get its snapshot from
+  // the log.
 
-    // Append to log
-    log_append_trantable_snapshot (thread_p, trantable_checkpoint_info);
+  log_append_trantable_snapshot (thread_p, trantable_checkpoint_info);
 
-    // Write to log meta file
+  // Write to log meta file
 
-    // loading the transaction table snapshot ensures also that a snapshot lsa has been set
-    trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
+  // loading the transaction table snapshot ensures also that a snapshot lsa has been set
+  trantable_checkpoint_lsa = trantable_checkpoint_info.get_snapshot_lsa ();
 
-    if (detailed_logging)
-      {
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: adding with lsa=%lld|%d\n",
-		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
-      }
-    log_Gl.m_metainfo.add_checkpoint_info (trantable_checkpoint_lsa, std::move (trantable_checkpoint_info));
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: adding with lsa=%lld|%d\n",
+		     LSA_AS_ARGS (&trantable_checkpoint_lsa));
+    }
+  log_Gl.m_metainfo.add_checkpoint_info (trantable_checkpoint_lsa, std::move (trantable_checkpoint_info));
 
-    log_write_metalog_to_file (false);
+  log_write_metalog_to_file (false);
 
-    // function explicitly needs to be called in critical section-free context
-    LOG_CS_EXIT (thread_p);
-    logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
-    LOG_CS_ENTER (thread_p);
+  // function explicitly needs to be called in critical section-free context
+  LOG_CS_EXIT (thread_p);
+  logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
+  LOG_CS_ENTER (thread_p);
 
-    // drop previous checkpoints and persist to disk
-    if (detailed_logging)
-      {
-	_er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
-		       LSA_AS_ARGS (&trantable_checkpoint_lsa));
-      }
+  // drop previous checkpoints and persist to disk
+  if (detailed_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: droping previous before lsa=%lld|%d\n",
+		     LSA_AS_ARGS (&trantable_checkpoint_lsa));
+    }
 
-    // - in nominal conditions, there should be one previous checkpoint that is removed
-    // - in abnormal conditions - such as when the system crashed just after adding a new
-    //    checkpoint and before deleting the outdated checkpoint - there can be more than
-    //    one checkpoint to be removed
-    log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
+  // - in nominal conditions, there should be one previous checkpoint that is removed
+  // - in abnormal conditions - such as when the system crashed just after adding a new
+  //    checkpoint and before deleting the outdated checkpoint - there can be more than
+  //    one checkpoint to be removed
+  log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (trantable_checkpoint_lsa);
 
-    assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
+  assert (log_Gl.m_metainfo.get_checkpoint_count () == 1);
 
-    log_write_metalog_to_file (false);
-  }
+  log_write_metalog_to_file (false);
 
   if (detailed_logging)
     {

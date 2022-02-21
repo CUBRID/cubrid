@@ -448,7 +448,7 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
  *  - passive transaction server replication
  */
 bool
-log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv, LOG_RCVINDEX rcvindex,	// TODO: delete param
+log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
 					  const log_lsa & rcv_lsa, const LOG_LSA & end_redo_lsa,
 					  PAGE_FETCH_MODE page_fetch_mode)
 {
@@ -1026,6 +1026,10 @@ log_recovery_finish_transactions (THREAD_ENTRY * const thread_p)
   // *INDENT-OFF*
   log_system_tdes::rv_final ();
   // *INDENT-ON*
+
+  // boot has not yet finished; calling this here should not collide with a possible execution
+  // of the checkpoint triggered by the checkpoint trantable daemon
+  logpb_checkpoint_trantable (thread_p);
 
   error_code = locator_initialize (thread_p);
   if (error_code != NO_ERROR)

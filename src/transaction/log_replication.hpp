@@ -79,7 +79,11 @@ namespace cublog
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
-      void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
+      void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
+				 const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa);
+      template <typename T>
+      void read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
+					  bool assert_mvccid_non_null);
       template <typename T>
       void read_and_redo_btree_stats (cubthread::entry &thread_entry, const log_rv_redo_rec_info<T> &record_info);
       template <typename T>
@@ -87,6 +91,7 @@ namespace cublog
 	  const log_lsa &rec_lsa);
 
     private:
+      const bool m_bookkeep_mvcc_vacuum_info;
       std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
 

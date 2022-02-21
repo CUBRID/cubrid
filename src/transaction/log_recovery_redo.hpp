@@ -89,6 +89,11 @@ MVCCID log_rv_get_log_rec_mvccid (const T &log_rec);
 /*
  */
 template <typename T>
+void assert_correct_mvccid (const T &log_rec, MVCCID mvccid);
+
+/*
+ */
+template <typename T>
 VPID log_rv_get_log_rec_vpid (const T &log_rec);
 
 /*
@@ -111,7 +116,7 @@ rvfun::fun_t log_rv_get_fun (const T &, LOG_RCVINDEX rcvindex);
  */
 
 template <typename T>
-const LOG_DATA &log_rv_get_log_rec_data (const T &log_rec)
+inline const LOG_DATA &log_rv_get_log_rec_data (const T &log_rec)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   static constexpr log_data LOG_DATA_INITIALIZER =
@@ -162,7 +167,7 @@ inline const LOG_DATA &log_rv_get_log_rec_data<LOG_REC_COMPENSATE> (const LOG_RE
 }
 
 template <typename T>
-MVCCID log_rv_get_log_rec_mvccid (const T &)
+inline MVCCID log_rv_get_log_rec_mvccid (const T &)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   return MVCCID_NULL;
@@ -204,8 +209,78 @@ inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_COMPENSATE> (const LOG_REC_COMPE
   return MVCCID_NULL;
 }
 
+template <>
+inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_END &log_rec)
+{
+  if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+    {
+      return log_rec.mvcc_undo.mvccid;
+    }
+  return MVCCID_NULL;
+}
+
+template <>
+inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_MVCC_UNDO> (const LOG_REC_MVCC_UNDO &log_rec)
+{
+  return log_rec.mvccid;
+}
+
 template <typename T>
-VPID log_rv_get_log_rec_vpid (const T &log_rec)
+inline void assert_correct_mvccid (const T &, MVCCID)
+{
+  static_assert (sizeof (T) == 0, "purposefully not implemented");
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_REDO> (const LOG_REC_REDO &, MVCCID mvccid)
+{
+  assert (mvccid == MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_MVCC_REDO> (const LOG_REC_MVCC_REDO &, MVCCID mvccid)
+{
+  assert (mvccid == MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_UNDOREDO> (const LOG_REC_UNDOREDO &, MVCCID mvccid)
+{
+  assert (mvccid == MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MVCC_UNDOREDO &, MVCCID mvccid)
+{
+  assert (mvccid != MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_RUN_POSTPONE> (const LOG_REC_RUN_POSTPONE &, MVCCID mvccid)
+{
+  assert (mvccid == MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_COMPENSATE> (const LOG_REC_COMPENSATE &, MVCCID mvccid)
+{
+  assert (mvccid == MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_MVCC_UNDO> (const LOG_REC_MVCC_UNDO &, MVCCID mvccid)
+{
+  assert (mvccid != MVCCID_NULL);
+}
+
+template <>
+inline void assert_correct_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_END &log_rec, MVCCID mvccid)
+{
+  assert (log_rec.type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO || mvccid != MVCCID_NULL);
+}
+
+template <typename T>
+inline VPID log_rv_get_log_rec_vpid (const T &log_rec)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   return VPID_INITIALIZER;
@@ -272,7 +347,7 @@ inline VPID log_rv_get_log_rec_vpid<LOG_REC_COMPENSATE> (const LOG_REC_COMPENSAT
 }
 
 template <typename T>
-int log_rv_get_log_rec_redo_length (const T &log_rec)
+inline int log_rv_get_log_rec_redo_length (const T &log_rec)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   return -1;
@@ -315,7 +390,7 @@ inline int log_rv_get_log_rec_redo_length<LOG_REC_COMPENSATE> (const LOG_REC_COM
 }
 
 template <typename T>
-int log_rv_get_log_rec_offset (const T &log_rec)
+inline int log_rv_get_log_rec_offset (const T &log_rec)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   return -1;
@@ -358,7 +433,7 @@ inline int log_rv_get_log_rec_offset<LOG_REC_COMPENSATE> (const LOG_REC_COMPENSA
 }
 
 template <typename T>
-rvfun::fun_t log_rv_get_fun (const T &, LOG_RCVINDEX rcvindex)
+inline rvfun::fun_t log_rv_get_fun (const T &, LOG_RCVINDEX rcvindex)
 {
   static_assert (sizeof (T) == 0, "should not be called");
   return nullptr;
@@ -598,10 +673,8 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
     }
 #endif
 
-  const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (record_info.m_logrec);
-
   LOG_RCV rcv;
-  if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, log_data.rcvindex, record_info.m_start_lsa,
+  if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, record_info.m_start_lsa,
       redo_context.m_end_redo_lsa, redo_context.m_page_fetch_mode))
     {
       /* nothing else needs to be done, see explanation in function */
@@ -627,6 +700,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
   rcv.mvcc_id = log_rv_get_log_rec_mvccid<T> (record_info.m_logrec);
   rcv.offset = log_rv_get_log_rec_offset<T> (record_info.m_logrec);
 
+  const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (record_info.m_logrec);
   log_rv_redo_record_debug_logging<T> (record_info.m_start_lsa, log_data.rcvindex, rcv_vpid, rcv);
 
   const auto err_redo_data = log_rv_get_log_rec_redo_data<T> (thread_p, redo_context, record_info, rcv);
@@ -638,31 +712,23 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
     }
 
   rvfun::fun_t redofunc = log_rv_get_fun<T> (record_info.m_logrec, log_data.rcvindex);
-  if (redofunc != nullptr)
-    {
-      /* perf data for actually calling the log redo function; it is relevant in two contexts:
-       *  - log recovery redo after a crash (either synchronously or using the parallel
-       *    infrastructure)
-       *  - log replication on the page server; both when applying the replication redo synchronously
-       *    or in parallel will log to this entry
-       */
-      perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_FUNC_EXEC };
+  assert (redofunc != nullptr);
+  /* perf data for actually calling the log redo function; it is relevant in two contexts:
+   *  - log recovery redo after a crash (either synchronously or using the parallel
+   *    infrastructure)
+   *  - log replication on the page server; both when applying the replication redo synchronously
+   *    or in parallel will log to this entry
+   */
+  perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_FUNC_EXEC };
 
-      const int err_func = redofunc (thread_p, &rcv);
-      if (err_func != NO_ERROR)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_rv_redo_record_sync: Error applying redo record at log_lsa=(%lld, %d), "
-			     "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
-			     LSA_AS_ARGS (&record_info.m_start_lsa), (long long int) rcv.mvcc_id,
-			     VPID_AS_ARGS (&rcv_vpid), (int) rcv.offset, (int) rcv.length);
-	}
-    }
-  else
+  const int err_func = redofunc (thread_p, &rcv);
+  if (err_func != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "log_rv_redo_record_sync: WARNING.. There is not a"
-		    " REDO (or, possibly, UNDO) function to execute. May produce recovery problems.");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_rv_redo_record_sync: Error applying redo record at log_lsa=(%lld, %d), "
+			 "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
+			 LSA_AS_ARGS (&record_info.m_start_lsa), (long long int) rcv.mvcc_id,
+			 VPID_AS_ARGS (&rcv_vpid), (int) rcv.offset, (int) rcv.length);
     }
 
   if (rcv.pgptr != nullptr)

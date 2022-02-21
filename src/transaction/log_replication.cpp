@@ -19,6 +19,7 @@
 #include "log_replication.hpp"
 
 #include "btree_load.h"
+#include "log_append.hpp"
 #include "log_impl.h"
 #include "log_reader.hpp"
 #include "log_recovery.h"
@@ -27,6 +28,7 @@
 #include "object_representation.h"
 #include "page_buffer.h"
 #include "recovery.h"
+#include "server_type.hpp"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
 #include "transaction_global.hpp"
@@ -109,7 +111,8 @@ namespace cublog
    *********************************************************************/
 
   replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
-    : m_redo_lsa { start_redo_lsa }
+    : m_bookkeep_mvcc_vacuum_info { is_page_server () }
+    , m_redo_lsa { start_redo_lsa }
     , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_most_recent_trantable_snapshot_lsa { NULL_LSA }
@@ -198,24 +201,24 @@ namespace cublog
 	switch (header.type)
 	  {
 	  case LOG_REDO_DATA:
-	    read_and_redo_record<log_rec_redo> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_redo> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_MVCC_REDO_DATA:
-	    read_and_redo_record<log_rec_mvcc_redo> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_mvcc_redo> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_UNDOREDO_DATA:
 	  case LOG_DIFF_UNDOREDO_DATA:
-	    read_and_redo_record<log_rec_undoredo> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_undoredo> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_MVCC_UNDOREDO_DATA:
 	  case LOG_MVCC_DIFF_UNDOREDO_DATA:
-	    read_and_redo_record<log_rec_mvcc_undoredo> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_mvcc_undoredo> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_RUN_POSTPONE:
-	    read_and_redo_record<log_rec_run_postpone> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_run_postpone> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_COMPENSATE:
-	    read_and_redo_record<log_rec_compensate> (thread_entry, header.type, m_redo_lsa);
+	    read_and_redo_record<log_rec_compensate> (thread_entry, header.type, header.back_lsa, m_redo_lsa);
 	    break;
 	  case LOG_DBEXTERN_REDO_DATA:
 	  {
@@ -244,6 +247,12 @@ namespace cublog
 	    // save the LSA of the last transaction table snapshot that can be found in the log
 	    // only needed on the passive transaction server
 	    m_most_recent_trantable_snapshot_lsa.store (m_redo_lsa);
+	    break;
+	  case LOG_MVCC_UNDO_DATA:
+	    read_and_bookkeep_mvcc_vacuum<log_rec_mvcc_undo> (header.type, header.back_lsa, m_redo_lsa, true);
+	    break;
+	  case LOG_SYSOP_END:
+	    read_and_bookkeep_mvcc_vacuum<log_rec_sysop_end> (header.type, header.back_lsa, m_redo_lsa, false);
 	    break;
 	  default:
 	    // do nothing
@@ -310,24 +319,21 @@ namespace cublog
 
   template <typename T>
   void
-  replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa)
+  replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
+				    const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa)
   {
     m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
-					 m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
+    const log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
+	m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
 
-    // To allow reads on the page server, make sure that all changes are visible.
-    // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
-    MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    if (mvccid != MVCCID_NULL && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
-      {
-	log_Gl.hdr.mvcc_next_id = mvccid;
-	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
-      }
+    // only mvccids that pertain to redo's are processed here
+    const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
+    assert_correct_mvccid (record_info.m_logrec, mvccid);
+    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
 
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
     // proceed.
-    LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (record_info.m_logrec).rcvindex;
+    const LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (record_info.m_logrec).rcvindex;
     if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
       {
 	read_and_redo_btree_stats (thread_entry, record_info);
@@ -337,6 +343,21 @@ namespace cublog
 	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_redo_context, record_info,
 	    m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
       }
+  }
+
+  template <typename T>
+  void
+  replicator::read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
+      bool assert_mvccid_non_null)
+  {
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
+    const log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
+	m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
+
+    // mvccids that pertain to undo's are processed here
+    const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
+    assert_correct_mvccid (record_info.m_logrec, mvccid);
+    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
   }
 
   template <typename T>

@@ -438,6 +438,10 @@ extern int pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, const LOG_
 extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * vpid,
 						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,
 						     PAGE_PTR * page, const char *caller_file, int caller_line);
+extern int
+pgbuf_fix_if_not_deallocated_with_repl_desync_check (THREAD_ENTRY * thread_p, const VPID * vpid,
+						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,
+						     PAGE_PTR * page);
 #if defined (NDEBUG)
 #define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
   pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, NULL, 0)
@@ -464,6 +468,8 @@ extern void pgbuf_highest_evicted_lsa_init ();
 extern void pgbuf_daemons_destroy ();
 #endif /* SERVER_MODE */
 
+// wait for replication to catch up; only relevant on passive transaction server
+extern void pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * optional_vpid_for_logging);
 // Check if page is ahead of replication; only relevant on passive transaction server, don't call elsewhere.
 extern int pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page);
 extern int pgbuf_check_for_deallocated_page_or_desynchronization (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode,

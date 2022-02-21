@@ -1340,6 +1340,9 @@ static PAGE_PTR btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * bti
 					     BTREE_STATS * stat_info_p, bool * found_p);
 static PAGE_PTR btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info,
 					  BTREE_BOUNDARY where);
+static PAGE_PTR btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, const BTID * btid,
+								 VPID * pg_vpid, BTREE_STATS * stat_info,
+								 const BTREE_BOUNDARY where, bool & desync_occured);
 static int btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_find_next_index_record_holding_current (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, RECDES * peek_rec);
 static int btree_find_next_index_record_holding_current_helper (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
@@ -1819,7 +1822,8 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
   root_vpid_p->volid = btid->vfid.volid;
 
   /* Fix root page. */
-  root_page = pgbuf_fix (thread_p, root_vpid_p, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  root_page = pgbuf_fix_old_and_check_repl_desync (thread_p, *root_vpid_p, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+
   if (root_page == NULL)
     {
       /* Failed fixing root page. */
@@ -14336,8 +14340,30 @@ btree_find_rightmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
   return btree_find_boundary_leaf (thread_p, btid, pg_vpid, stat_info, BTREE_BOUNDARY_LAST);
 }
 
+static PAGE_PTR
+btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info,
+			  BTREE_BOUNDARY where)
+{
+  PAGE_PTR page = nullptr;
+  bool desync_occured = false;
+
+  do
+    {
+      desync_occured = false;
+      page =
+	btree_find_boundary_leaf_with_repl_desync_check (thread_p, btid, pg_vpid, stat_info, where, desync_occured);
+      if (desync_occured)
+	{
+	  pgbuf_wait_for_replication (thread_p, pg_vpid);
+	}
+    }
+  while (desync_occured);
+
+  return page;
+}
+
 /*
- * btree_find_boundary_leaf () -
+ * btree_find_boundary_leaf_with_repl_desync_check () -
  *   return: page pointer
  *   btid(in):
  *   pg_vpid(in):
@@ -14346,8 +14372,9 @@ btree_find_rightmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
  * Note: Find the page identifier for the first/last leaf page of the B+tree index.
  */
 static PAGE_PTR
-btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info,
-			  BTREE_BOUNDARY where)
+btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, const BTID * btid, VPID * pg_vpid,
+						 BTREE_STATS * stat_info, const BTREE_BOUNDARY where,
+						 bool & desync_occured)
 {
   PAGE_PTR P_page = NULL, C_page = NULL;
   VPID P_vpid, C_vpid;
@@ -14359,14 +14386,22 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
   int key_cnt = 0, index = 0;
   int root_level = 0, depth = 0;
 
+  desync_occured = false;
+  ASSERT_NO_ERROR ();
+
   VPID_SET_NULL (pg_vpid);
 
   /* read the root page */
   P_vpid.volid = btid->vfid.volid;
   P_vpid.pageid = btid->root_pageid;
-  P_page = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  P_page = pgbuf_fix_old_and_check_repl_desync (thread_p, P_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (P_page == NULL)
     {
+      if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	{
+	  desync_occured = true;
+	}
+
       ASSERT_ERROR ();
       goto error;
     }
@@ -14413,9 +14448,14 @@ btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, 
 
       btree_read_fixed_portion_of_non_leaf_record (&rec, &nleaf);
       C_vpid = nleaf.pnt;
-      C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      C_page = pgbuf_fix_old_and_check_repl_desync (thread_p, C_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (C_page == NULL)
 	{
+	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      desync_occured = true;
+	    }
+
 	  ASSERT_ERROR ();
 	  goto error;
 	}
@@ -14465,9 +14505,14 @@ again:
 
   if (!VPID_ISNULL (&C_vpid))
     {
-      C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      C_page = pgbuf_fix_old_and_check_repl_desync (thread_p, C_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (C_page == NULL)
 	{
+	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      desync_occured = true;
+	    }
+
 	  ASSERT_ERROR ();
 	  goto error;
 	}
@@ -22752,6 +22797,14 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
     btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, (reuse_btid_int ? NULL : btid_int));
   if (*root_page == NULL)
     {
+      if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	{
+	  *restart = true;
+	  constexpr VPID null_vpid = VPID_INITIALIZER;
+	  pgbuf_wait_for_replication (thread_p, &null_vpid);
+
+	  return NO_ERROR;
+	}
       /* Error! */
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
@@ -22851,9 +22904,17 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 
       /* Advance to child. */
       assert (!VPID_ISNULL (&child_vpid));
-      *advance_to_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      *advance_to_page =
+	pgbuf_fix_old_and_check_repl_desync (thread_p, child_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (*advance_to_page == NULL)
 	{
+	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      *restart = true;
+	      pgbuf_wait_for_replication (thread_p, &child_vpid);
+
+	      return NO_ERROR;
+	    }
 	  /* Error fixing child. */
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
@@ -24631,7 +24692,8 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	  else
 	    {
 	      /* Fix next leaf page. */
-	      next_node_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      next_node_page =
+		pgbuf_fix_old_and_check_repl_desync (thread_p, next_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	      if (next_node_page == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error_code);
@@ -24746,7 +24808,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   VPID_COPY (&prev_leaf_vpid, next_vpid);
 
   /* Conditional latch for previous page. */
-  prev_leaf = pgbuf_fix (thread_p, &prev_leaf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+  prev_leaf = pgbuf_fix_old_and_check_repl_desync (thread_p, prev_leaf_vpid, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
   if (prev_leaf != NULL)
     {
       /* Previous leaf was successfully latched. Advance. */
@@ -24760,11 +24822,18 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       return NO_ERROR;
     }
   /* Conditional latch failed. */
-
+  /* The page can also be null due to page desyncronization only on PTS, in this case the scan must be restarted */
+  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+    {
+      bts->force_restart_from_root = true;
+      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      return NO_ERROR;
+    }
   /* Unfix current page and retry. */
   pgbuf_unfix_and_init (thread_p, bts->C_page);
   error_code =
-    pgbuf_fix_if_not_deallocated (thread_p, &prev_leaf_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &prev_leaf);
+    pgbuf_fix_if_not_deallocated_with_repl_desync_check (thread_p, &prev_leaf_vpid, PGBUF_LATCH_READ,
+							 PGBUF_UNCONDITIONAL_LATCH, &prev_leaf);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -24772,7 +24841,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
     }
   if (prev_leaf == NULL)
     {
-      /* deallocated */
+      /* deallocated or found to be ahead of replication, in either case the scan needs to restart */
       bts->force_restart_from_root = true;
       return NO_ERROR;
     }
@@ -24797,9 +24866,17 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   /* Pages are still linked. */
 
   /* Fix current page too. */
-  bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  bts->C_page = pgbuf_fix_old_and_check_repl_desync (thread_p, bts->C_vpid, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+
   if (bts->C_page == NULL)
     {
+      if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	{
+	  bts->force_restart_from_root = true;
+	  pgbuf_unfix_and_init (thread_p, prev_leaf);
+	  return NO_ERROR;
+	}
+
       ASSERT_ERROR_AND_SET (error_code);
       pgbuf_unfix_and_init (thread_p, prev_leaf);
       return error_code;
@@ -24960,7 +25037,7 @@ btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_sc
   assert (is_passive_transaction_server ());
   assert (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION);
 
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
   assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
 
   assert (bts.page_desync_lsa.is_null ());
@@ -33333,6 +33410,45 @@ btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
       return PERF_PAGE_BTREE_ROOT;
     }
   return PERF_PAGE_BTREE_ROOT;
+}
+
+/* btree_is_btree_root_page - investigative check whether a page is a btree root page
+ *
+ * NOTE: function just assumes that it investigates a PAGE_BTREE; however, due to the low
+ *    layer the function is used within, it cannot assert that the page is of the correct
+ *    type; it is the collers responsability to ensure this
+ */
+bool
+btree_is_btree_root_page (THREAD_ENTRY * thread_p, const PAGE_PTR page_ptr)
+{
+  assert (page_ptr != nullptr);
+
+  const SPAGE_HEADER *const page_header_p = (const SPAGE_HEADER *) page_ptr;
+  RECDES header_record;
+  if (page_header_p->num_slots <= 0 || spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
+    {
+      assert ("should not happen in the contexts this function is used" == nullptr);
+      return false;
+    }
+
+  // logic below assumes incresing sizes of btree header structures
+  static_assert (sizeof (BTREE_OVERFLOW_HEADER) < sizeof (BTREE_NODE_HEADER));
+  static_assert (sizeof (BTREE_NODE_HEADER) < sizeof (BTREE_ROOT_HEADER));
+  constexpr int root_header_fixed_size = offsetof (BTREE_ROOT_HEADER, packed_key_domain);
+
+  if (header_record.length == sizeof (BTREE_OVERFLOW_HEADER) || header_record.length == sizeof (BTREE_NODE_HEADER))
+    {
+      return false;
+    }
+  else if (header_record.length >= root_header_fixed_size)
+    {
+      return true;
+    }
+  else
+    {
+      assert ("unexpected page header length" == nullptr);
+      return false;
+    }
 }
 
 //
