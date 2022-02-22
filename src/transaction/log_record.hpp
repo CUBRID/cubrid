@@ -53,8 +53,8 @@ enum log_rectype
   LOG_CLIENT_USER_POSTPONE_DATA = 11,	/* Obsolete */
   LOG_RUN_NEXT_CLIENT_UNDO = 12,	/* Obsolete */
   LOG_RUN_NEXT_CLIENT_POSTPONE = 13,	/* Obsolete */
+  LOG_WILL_COMMIT = 14,		/* Obsolete */
 #endif
-  LOG_WILL_COMMIT = 14,		/* Transaction will be committed */
   LOG_COMMIT_WITH_POSTPONE = 15,	/* Committing server postpone operations */
 #if 0
   LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS = 16,	/* Obsolete */
@@ -417,8 +417,9 @@ typedef enum supplement_rec_type
   LOG_SUPPLEMENT_INSERT,
   LOG_SUPPLEMENT_UPDATE,
   LOG_SUPPLEMENT_DELETE,
-  LOG_SUPPLEMENT_TRUNCATE,
-  LOG_SUPPLEMENT_TRUNCATE_CASCADE,
+  LOG_SUPPLEMENT_TRIGGER_INSERT, /* INSERT, UPDATE, DELETE logs appended by a trigger action */
+  LOG_SUPPLEMENT_TRIGGER_UPDATE,
+  LOG_SUPPLEMENT_TRIGGER_DELETE,
   LOG_SUPPLEMENT_LARGER_REC_TYPE,
 } SUPPLEMENT_REC_TYPE;
 

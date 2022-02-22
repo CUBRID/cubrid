@@ -1651,7 +1651,7 @@
 
 #define ER_CDC_LSA_NOT_FOUND                        -1286
 #define ER_CDC_EXTRACTION_TIMEOUT                   -1287
-#define ER_CDC_NOTHING_TO_RETURN                    -1288
+#define ER_CDC_IGNORE_LOG_INFO_INTERNAL             -1288
 #define ER_CDC_IGNORE_TRANSACTION                   -1289
 #define ER_CDC_INVALID_LOG_LSA                      -1290
 #define ER_CDC_NOT_AVAILABLE                        -1291
@@ -1659,9 +1659,49 @@
 #define ER_CDC_NULL_EXTRACTION_LSA                  -1293
 #define ER_CDC_LOGINFO_ENTRY_GENERATED              -1294
 #define ER_CDC_IGNORE_LOG_INFO                      -1295
+#define ER_LOG_RECOVERY_ANALYSIS_STARTED            -1296
+#define ER_LOG_RECOVERY_REDO_STARTED                -1297
+#define ER_LOG_RECOVERY_UNDO_STARTED                -1298
+#define ER_LOG_RECOVERY_PHASE_FINISHING_UP          -1299
+#define ER_LOG_RECOVERY_PHASE_FINISHED              -1300
+#define ER_LOG_RECOVERY_PROGRESS                    -1301
 
-#define ER_LAST_ERROR                               -1296
+#define ER_DBLINK                                   -1302
+#define ER_DBLINK_INVALID_COLUMNS_SPECIFIED         -1303
+#define ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND       -1304
+#define ER_DBLINK_SERVER_NOT_FOUND                  -1305
+#define ER_DBLINK_SERVER_ALREADY_EXISTS             -1306
+#define ER_DBLINK_CANNOT_UPDATE_SERVER              -1307
+#define ER_DBLINK_UNSUPPORTED_TYPE                  -1308
+#define ER_DBLINK_INVALID_BIND_PARAM                -1309
+#define ER_DBLINK_PASSWORD_OVER_MAX_LENGTH          -1310
+#define ER_DBLINK_PASSWORD_INVALID_LENGTH           -1311
+#define ER_DBLINK_PASSWORD_CHECKSUM                 -1312
+#define ER_DBLINK_PASSWORD_INVALID_FMT              -1313
+#define ER_DBLINK_PASSWORD_DECRYPT                  -1314
+#define ER_DBLINK_PASSWORD_ENCRYPT                  -1315
+#define ER_DBLINK_SERVER_MULTIPLE_FOUND             -1316
+#define ER_DBLINK_SERVER_ALTER_NOT_ALLOWED          -1317
 
+#define ER_CGW_NATIVE_ODBC                          -1318
+#define ER_CGW_NUM_BIND                             -1319
+#define ER_CGW_INVALID_HANDLE                       -1320
+#define ER_CGW_TYPE_CONVERSION                      -1321
+#define ER_CGW_NOT_SUPPORTED_TYPE                   -1322
+#define ER_CGW_INVALID_STMT_HANDLE                  -1323
+#define ER_CGW_INVALID_DBC_HANDLE                   -1324
+#define ER_CGW_NOT_EXIST_LINK_NAME                  -1325
+#define ER_CGW_INVALID_NUMERIC_VALUE                -1326
+#define ER_CGW_INVALID_PRECISION_VALUE              -1327
+
+#define ER_CGW_INVALID_DESC_HANDLE                  -1328
+#define ER_DBLINK_DEV_RESERVED_ERROR29              -1329
+#define ER_DBLINK_DEV_RESERVED_ERROR30              -1330
+#define ER_DBLINK_DEV_RESERVED_ERROR31              -1331
+
+#define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
+
+#define ER_LAST_ERROR                               -1333
 /*
  * CAUTION!
  *

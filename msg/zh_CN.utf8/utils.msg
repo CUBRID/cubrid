@@ -521,6 +521,8 @@ unloaddb: 从数据库导出对象和结构.\n\
   -d, --data-only             只转储对象; 默认: 结构和对象\n\
       --output-prefix=PREFIEX 指定输出文件的前缀; 默认: 数据库名\n\
       --hash-file=FILE        指定hash文件名称; 默认: 由 tmpnam() 生成\n\
+      --latest-image          转储对象时，它转储数据卷中对象的最新图像，而不是指日志卷（忽略 MVCC）\n\
+                              它可能包括未提交的数据和未清除的已删除数据； 默认值：禁用\n\
   -v, --verbose               开启详细状态信息; 默认: 不可用\n\
       --use-delimiter         用 '"' 作为一个标示符的开始和结束; 默认: 不使用\n\
   -S, --SA-mode               单机模式执行\n\
@@ -624,6 +626,7 @@ cub_commdb: 这个工具不赞成使用. 用 'cubrid' 命令来代替.\n\
 39 选项 -i(--immediately) 必须与选项 --deact-stop-all 一起使用.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 请在没有 --recreate-log 选项的情况下运行或手动删除活动日志卷。\n
 60 \
 emergency_patchlog: 紧急情况下修补一个数据库.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -1214,6 +1217,7 @@ tde: 透明数据加密（TDE）管理\n\
 \n\
 有效选项:\n\
     -p, --dba-password=PASS    DBA用户的密码；如果未指定，则会提示\n\
+\n\
 操作:必须给出一种操作，并且它们是唯一的\n\
     -s, --show-keys            打印在数据库和密钥文件（_keys）上设置的密钥信息\n\
     -n, --generate-new-key     在密钥文件（_keys）中生成一个新密钥；最大计数:128\n\

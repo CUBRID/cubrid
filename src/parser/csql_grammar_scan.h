@@ -65,12 +65,16 @@ extern "C"
   extern int pt_nextchar (void);
   extern char *pt_makename (const char *name);
   extern void pt_fix_left_parens (void);
-  extern void pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hint,
-			     bool prev_is_white_char);
+
+  extern void pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[]);
+  extern void pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hint);
   extern void pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node);
   extern void pt_cleanup_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[]);
 
   extern void pt_parser_line_col (PT_NODE * node);
+
+  extern bool pt_check_ipv4 (char *p);
+  extern bool pt_check_hostname (char *p);
 
 #ifdef __cplusplus
 }
