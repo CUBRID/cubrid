@@ -2625,7 +2625,7 @@ do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
       const char *old_qualifier_name = pt_get_qualifier_name (parser, current_rename->info.rename.old_name);
       const char *new_qualifier_name = pt_get_qualifier_name (parser, current_rename->info.rename.new_name);
 
-      if (old_qualifier_name && new_qualifier_name && pt_str_compare (old_qualifier_name, new_qualifier_name, CASE_INSENSITIVE) != 0)
+      if (old_qualifier_name && new_qualifier_name && intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
 	{
 	  ERROR_SET_ERROR (error, ER_SM_RENAME_CANT_ALTER_OWNER);
 	  goto error_exit;
