@@ -146,7 +146,6 @@ MOP au_get_dba_user (void);
 #define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) \
 	do \
 	  { \
-	    memset ((owner_name), '\0', DB_MAX_IDENTIFIER_LENGTH); \
 	    strlcpy ((owner_name), (name), DB_MAX_IDENTIFIER_LENGTH); \
 	    (class_name) = strchr ((owner_name), '.'); \
 	    *(class_name)++ = '\0'; \
