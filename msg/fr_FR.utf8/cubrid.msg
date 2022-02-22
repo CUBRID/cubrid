@@ -1390,7 +1390,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1316 dblink - Multiple "%1$s" Server found.
 1317 dblink - Not allowed "%1$s" Server.
 
-1318 [%1$5.5s] %2$s (%3$d)
+1318 [%1$5.5s][%2$d] %3$s
 1319 Parameter binding error.
 1320 Invalid ODBC handle.
 1321 Type conversion error.
@@ -1401,7 +1401,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1326 Invalid numeric value.
 1327 Invalid precision value of "%1$s" column.
 
-1328 Error reserved for dblink development.
+1328 Invalid Descriptor handle.
 1329 Error reserved for dblink development.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
