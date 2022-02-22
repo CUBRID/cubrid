@@ -193,7 +193,7 @@ static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						      PT_NODE * query_spec, PT_NODE * derived_table);
 static PT_NODE *mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
-						       PT_NODE * query_spec, PT_NODE * derived_table);
+						       PT_NODE * derived_table);
 static PT_NODE *mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 							PT_NODE * subquery, PT_NODE * derived_spec, PT_NODE * order_by);
 static PT_NODE *mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
@@ -1445,20 +1445,32 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
  *   derived_spec(in): class name of class that will be expanded
  */
 static PT_NODE *
-mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * subquery,
-				       PT_NODE * derived_spec)
+mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_spec)
 {
   PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list;
   PT_NODE *attributes, *attr, *as_attr_list;
-  PT_NODE *col, *new_select_list, *spec, *pred;
+  PT_NODE *col, *new_select_list, *spec, *pred, *subquery;
 
-  assert (PT_IS_SELECT (statement) && PT_IS_SELECT (subquery));
+  assert (PT_IS_SELECT (statement));
   if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
     {
       PT_INTERNAL_ERROR (parser, "remove select list");
       goto exit_on_error;
     }
 
+  /* find derived_spec */
+  spec = statement->info.query.q.select.from;
+  while (spec && derived_spec->info.spec.id != spec->info.spec.id)
+    {
+      spec = spec->next;
+    }
+  if (spec == NULL)
+    {
+      goto exit_on_error;
+    }
+  subquery = spec->info.spec.derived_table;
+
+  /* get query attrs */
   query_spec_columns = subquery->info.query.q.select.list;
 
   /* get derived spec attrs */
@@ -1556,18 +1568,6 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 
   /* substitute attributes for query_spec_columns in statement */
   tmp_query = mq_lambda (parser, tmp_query, attributes, query_spec_columns);
-
-  /* find derived_spec */
-  assert (PT_IS_SELECT (statement));
-  spec = statement->info.query.q.select.from;
-  while (spec && derived_spec->info.spec.id != spec->info.spec.id)
-    {
-      spec = spec->next;
-    }
-  if (spec == NULL)
-    {
-      goto exit_on_error;
-    }
 
   /* assign tmp_query */
   parser_free_tree (parser, spec->info.spec.derived_table);
@@ -1968,10 +1968,10 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
   for (PT_NODE * spec = subquery->info.query.q.select.from; spec; spec = spec->next)
     {
       if (PT_SPEC_IS_CTE (spec))
-        {
-          /* subquery has CTE spec; not pushable */
-          return NON_PUSHABLE;
-        }
+	{
+	  /* subquery has CTE spec; not pushable */
+	  return NON_PUSHABLE;
+	}
     }
 
   /* check method */
@@ -2239,7 +2239,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
       /* TO_DO : support for union query */
       if (mq_is_removable_select_list (parser, subquery, tmp_result) == PUSHABLE)
 	{
-	  tmp_result = mq_remove_select_list_for_inline_view (parser, tmp_result, subquery, derived_spec);
+	  tmp_result = mq_remove_select_list_for_inline_view (parser, tmp_result, derived_spec);
 	  if (tmp_result == NULL)
 	    {
 	      goto exit_on_error;
@@ -2941,7 +2941,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
   PT_NODE *subquery;
   PT_NODE *tree_union;
   PT_NODE *my_class;
-  PT_NODE *pt_tmp;
+  PT_NODE *first_tree, *prev_tree;
   PT_NODE *real_classes;
   PT_NODE *real_flat_classes;
   PT_NODE *real_part;
@@ -2952,7 +2952,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 
   /* for each table/class in class list, do leaf expansion or vclass/view expansion. */
 
-  pt_tmp = tree;
+  first_tree = tree;
   for (class_spec = spec_list; class_spec != NULL; class_spec = class_spec->next)
     {
       /* need to loop through entity specs! Currently, theres no way to represent the all correct results in a parse
@@ -2983,6 +2983,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
       had_some_virtual_classes = 0;
       real_classes = NULL;
       tree_union = NULL;
+      prev_tree = tree;
 
       if (((int) class_spec->info.spec.auth_bypass_mask & what_for) == what_for)
 	{
@@ -3181,20 +3182,28 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 	  /* Getting here means there were NO vclasses.  all classes involved are "real" classes, so don't rewrite this
 	   * tree. */
 	}
+
+      /* free intermediate tree */
+      if (delete_old_node && prev_tree != tree && prev_tree != first_tree)
+	{
+	  prev_tree->next = NULL;
+	  parser_free_tree (parser, prev_tree);
+	}
+
     }
 
 /*
- *  We need to free pt_tmp at this point if the original tree pointer has
+ *  We need to free first_tree at this point if the original tree pointer has
  *  been reassgned.  We can't simply parser_free_tree() the node since the new tree
  *  may still have pointers to the lower nodes in the tree.  So, we set
  *  the NEXT pointer to NULL and then free it so the new tree is not
  *  corrupted.
  */
-  if (delete_old_node && (tree != pt_tmp))
+  if (delete_old_node && (tree != first_tree))
     {
-      PT_NODE_COPY_NUMBER_OUTERLINK (tree, pt_tmp);
-      pt_tmp->next = NULL;
-      parser_free_tree (parser, pt_tmp);
+      PT_NODE_COPY_NUMBER_OUTERLINK (tree, first_tree);
+      first_tree->next = NULL;
+      parser_free_tree (parser, first_tree);
     }
 
   tree = mq_reset_ids_in_statement (parser, tree);
