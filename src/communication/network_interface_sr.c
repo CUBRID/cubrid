@@ -10699,6 +10699,17 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   return;
 }
 
+/*
+ * flashback_verify_time () - verify the availablity of log records around the 'start_time' and 'end_time'
+ *
+ * return           : error_code
+ * thread_p (in)    : thread entry
+ * start_time (in)  : start point of flashback.
+ * end_time (in)    : end point of flashback
+ * start_lsa (out)  : LSA near the 'start_time'
+ * end_lsa (out)    : LSA near the 'end_time'
+ * TODO : move to flashback_sr.c
+ */
 static int
 flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_time, LOG_LSA * start_lsa,
 		       LOG_LSA * end_lsa)
@@ -10733,8 +10744,7 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
       else
 	{
 	  /* failed to find a log at the time due to failure while reading log page or volume (ER_FAILED, ER_LOG_READ) */
-	  /* TODO : er_set() */
-	  return ER_FAILED;
+	  return error_code;
 	}
     }
 
@@ -10747,14 +10757,22 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
     {
       /* failed to find a log record */
       /* TODO : er_set() */
-      return ER_FAILED;
+      return error_code;
     }
 
   return NO_ERROR;
 }
 
+/*
+ * flashback_pack_summary_entry ()
+ *
+ * return        : memory pointer after packing summary entries
+ * ptr (in)      : memory pointer where to pack summary entries
+ * context (in)  : context which contains summary entry list
+ * TODO : move to flashback_sr.c
+ */
 static char *
-packing_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT context)
+flashback_pack_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT context)
 {
   FLASHBACK_SUMMARY_ENTRY entry;
 
@@ -10868,7 +10886,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 // *INDENT-ON*
 
   ptr = or_pack_int (ptr, context.num_summary);
-  ptr = packing_summary_entry (ptr, context);
+  ptr = flashback_pack_summary_entry (ptr, context);
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 

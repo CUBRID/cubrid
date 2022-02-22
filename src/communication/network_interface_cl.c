@@ -10561,6 +10561,7 @@ loaddb_update_stats ()
 #endif /* !CS_MODE */
 }
 
+/* for the test purpose, will be replaced */
 static int
 unpacking_summary_entry (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * summary)
 {
@@ -10609,6 +10610,18 @@ unpacking_summary_entry (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * summary)
 
   return NO_ERROR;
 }
+
+/*
+ * flashabck_get_summary () - client-side function to get flashback summary
+ *
+ * return           : error code
+ * class_list (in)  : class name list to flashback
+ * user (in)        : transaction user to flashback
+ * start_time (in)  : flashback sql logs are extracted from 'start_time'
+ * end_time (in)    : flashback sql logs are extracted until 'end_time'
+ * summary (out)    : summary information retrieved from server
+ * oid_list (out)   : class oid list that is extracted with 'class_list'
+ */
 
 int
 flashback_get_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
