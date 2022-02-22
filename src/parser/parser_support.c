@@ -10103,7 +10103,8 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
-  strlcpy (name_copy, name, DB_MAX_IDENTIFIER_LENGTH);
+  assert (strlen (name) < DB_MAX_IDENTIFIER_LENGTH);
+  strcpy (name_copy, name);
 
   dot = strchr (name_copy, '.');
 

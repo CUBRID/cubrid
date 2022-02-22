@@ -6235,7 +6235,7 @@ au_current_user_name (char *buf, int buf_size)
   user_name = db_get_string (&value);
 
   assert (strlen (user_name) < buf_size);
-  strlcpy (buf, user_name, buf_size);
+  strcpy (buf, user_name);
 
   pr_clear_value (&value);
 

@@ -2253,7 +2253,7 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
     }
 
   assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
-  strlcpy (name_copy, name, SM_MAX_IDENTIFIER_LENGTH);
+  strcpy (name_copy, name);
 
   dot = strchr (name_copy, '.');
 
@@ -2264,9 +2264,8 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
     }
 
   dot[0] = '\0';
-  memset (buf, 0, buf_size);
   assert (strlen (name_copy) < buf_size);
-  strlcpy (buf, name_copy, buf_size);
+  strcpy (buf, name_copy);
 
   return buf;
 }

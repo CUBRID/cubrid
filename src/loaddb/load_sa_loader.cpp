@@ -1540,9 +1540,8 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
 
   if (!DB_IS_NULL (&value))
     {
-      memset (buf, 0, buf_size);
       assert (strlen (db_get_string (&value)) < buf_size);
-      strlcpy (buf, db_get_string (&value), buf_size);
+      strcpy (buf, db_get_string (&value));
     }
   else
     {
