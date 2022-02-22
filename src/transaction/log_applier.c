@@ -7340,10 +7340,10 @@ check_applied_info_end:
 check_copied_info_end:
   if (error != NO_ERROR)
     {
-      printf ("%s\n", db_error_string (3));
+      printf ("\n%s\n\n", db_error_string (3));
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 void
