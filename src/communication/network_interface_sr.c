@@ -10849,8 +10849,20 @@ error:
   return;
 }
 
+/*
+ * flashback_pack_loginfo () -
+ *
+ * return: memory pointer after putting log info
+ *
+ *   thread_p(in):
+ *   ptr(in): memory pointer where to pack sequence of log info
+ *   context(in): context contains log infos to pack
+ *
+ * NOTE: will move to flashback_sr.c
+ */
+
 static char *
-packing_loginfos (THREAD_ENTRY * thread_p, char *ptr, FLASHBACK_LOGINFO_CONTEXT context)
+flashback_pack_loginfo (THREAD_ENTRY * thread_p, char *ptr, FLASHBACK_LOGINFO_CONTEXT context)
 {
   CDC_LOGINFO_ENTRY *entry;
 
@@ -10938,7 +10950,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_pack_log_lsa (ptr, &context.end_lsa);
   ptr = or_pack_int (ptr, context.num_loginfo);
 
-  ptr = packing_loginfos (thread_p, ptr, context);
+  ptr = flashback_pack_loginfo (thread_p, ptr, context);
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
