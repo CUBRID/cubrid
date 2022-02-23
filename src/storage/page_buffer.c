@@ -8229,8 +8229,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	    }
 	  else
 	    {
-	      const bool fileio_pages_equal = (io_page->prv == second_io_page->prv)
-		|| (io_page->prv.ptype == second_io_page->prv.ptype && io_page->prv.ptype == PAGE_OVERFLOW);
+	      const bool fileio_pages_equal = (io_page->prv == second_io_page->prv);
 	      if (!fileio_pages_equal)
 		{
 		  /* on a transaction server, btree statistics is not written immediately
