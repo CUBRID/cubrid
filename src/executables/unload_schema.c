@@ -1204,9 +1204,9 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
        *      from _db_class c, db_serial s
        *      where c.class_name = s.class_name;
        *
-       *        clasS_name            owner.name            name                  owner.name
+       *        class_name            owner.name            name                  owner.name
        *      ========================================================================================
-       *        't2'                  'U1'                  't2_ai_c1'            'DBA'
+       *        't1'                  'U1'                  't1emit_query_specs _ai_c1'            'DBA'
        *
        * After version 11.2, when adding an auto_increment column, there is no problem
        * because it sets the owner in unique_name.
@@ -1420,7 +1420,7 @@ emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
 		{
 		  null_spec = pt_print_query_spec_no_list (parser, *query_ptr);
 		  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-		  output_ctx ("\nALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name),
+		  output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name),
 			      PRINT_IDENTIFIER (class_name), null_spec);
 		}
 	      parser_free_parser (parser);
