@@ -59,6 +59,7 @@
 #include "xasl.h"
 #include "log_volids.hpp"
 #include "tde.h"
+#include "flashback_cl.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -4061,6 +4062,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
   int trid = 0;
   int num_item = 0;
 
+  FLASHBACK_SUMMARY_INFO_MAP summary_info;
+  FLASHBACK_SUMMARY_INFO *summary_entry = NULL;
+
   /* temporary variables for test */
   LOG_LSA start_lsa = LSA_INITIALIZER;
   LOG_LSA end_lsa = LSA_INITIALIZER;
@@ -4239,16 +4243,23 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  error = flashback_get_summary (darray, user, start_time, end_time, NULL, &oid_list);
+  error = flashback_get_summary (darray, user, start_time, end_time, &summary_info, &oid_list);
   if (error != NO_ERROR)
     {
       db_shutdown ();
       goto error_exit;
     }
 
-  /* temporary setting for test */
-  trid = 10;
-  num_item = 5;
+  printf ("Enter transaction id : ");
+  scanf ("%d", &trid);
+
+
+  FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_entry, summary_info);
+  if (summary_entry == NULL)
+    {
+      /* add message that can not find transaction id */
+      goto error_exit;
+    }
 
   error = flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest, NULL);
   if (error != NO_ERROR)

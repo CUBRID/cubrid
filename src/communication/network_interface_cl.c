@@ -71,6 +71,7 @@
 #include "xasl.h"
 #include "lob_locator.hpp"
 #include "crypt_opfunc.h"
+#include "flashback_cl.h"
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
  */
@@ -10563,14 +10564,15 @@ loaddb_update_stats ()
 
 int
 flashback_get_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
-		       void *summary_list, OID ** oid_list)
+		       FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list)
 {
 #if defined(CS_MODE)
-  int req_error = ER_FAILED;
-  int rep_error = ER_FAILED;
+  int error_code = ER_FAILED;
   int request_size = 0;
   char *request = NULL, *ptr, *start_ptr;
   int num_class = 0;
+
+  int num_summary = 0;
 
   char classname[SM_MAX_IDENTIFIER_LENGTH];
 
@@ -10620,14 +10622,14 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 
   request_size = ptr - start_ptr;
 
-  req_error =
+  error_code =
     net_client_request2 (NET_SERVER_FLASHBACK_GET_SUMMARY, start_ptr, request_size, reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
 
-  if (req_error == NO_ERROR)
+  if (error_code == NO_ERROR)
     {
       ptr = or_unpack_int (reply, &area_size);
-      ptr = or_unpack_int (ptr, &rep_error);
+      ptr = or_unpack_int (ptr, &error_code);
       if (area_size > 0)
 	{
 	  ptr = area;
@@ -10637,6 +10639,10 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 	      ptr = or_unpack_oid (ptr, &(*oid_list)[i]);
 	    }
 	  /* get summary info */
+
+	  ptr = or_unpack_int (ptr, &num_summary);
+
+	  error_code = flashback_unpack_and_print_summary (&ptr, summary, num_summary, class_list, *oid_list);
 	}
 
       free_and_init (area);
@@ -10644,7 +10650,7 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 
   free_and_init (request);
 
-  return req_error != NO_ERROR ? req_error : rep_error;
+  return error_code;
 #endif // CS_MODE
   return ER_NOT_IN_STANDALONE;
 }
