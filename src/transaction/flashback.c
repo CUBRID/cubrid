@@ -148,6 +148,7 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
   if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
     {
       /* er_set */
+      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_summary_list");
       error = ER_FAILED;
       goto exit;
     }
@@ -326,6 +327,7 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 	  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 	    {
 	      /* er_set */
+	      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_summary_list");
 	      error = ER_FAILED;
 	      goto exit;
 	    }
