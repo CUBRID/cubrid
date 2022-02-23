@@ -8423,7 +8423,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
 
   int error = NO_ERROR;
   PAGE_PTR page_ptr = pgbuf_fix (&thread_r, &vpid, fetch_mode, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (error == NO_ERROR && fetch_mode == RECOVERY_PAGE)
+  if (page_ptr == nullptr && fetch_mode == RECOVERY_PAGE)
     {
       ASSERT_NO_ERROR ();
       //The found page was deallocated already
