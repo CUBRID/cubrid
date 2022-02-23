@@ -8520,7 +8520,6 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       goto error_exit;
     }
 
-  insert_into = mq_reset_ids_in_statement (parser, insert_into);
   insert_into = mq_translate (parser, insert_into);
   if (!insert_into || pt_has_error (parser))
     {

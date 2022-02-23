@@ -193,7 +193,7 @@ static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						      PT_NODE * query_spec, PT_NODE * derived_table);
 static PT_NODE *mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
-						       PT_NODE * derived_table);
+						       PT_NODE * derived_table, PT_NODE ** new_spec);
 static PT_NODE *mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 							PT_NODE * subquery, PT_NODE * derived_spec, PT_NODE * order_by);
 static PT_NODE *mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
@@ -1445,7 +1445,8 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
  *   derived_spec(in): class name of class that will be expanded
  */
 static PT_NODE *
-mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_spec)
+mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_spec,
+				       PT_NODE ** new_spec)
 {
   PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list;
   PT_NODE *attributes, *attr, *as_attr_list;
@@ -1474,7 +1475,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   query_spec_columns = subquery->info.query.q.select.list;
 
   /* get derived spec attrs */
-  attributes = derived_spec->info.spec.as_attr_list;
+  attributes = spec->info.spec.as_attr_list;
   if (attributes == NULL)
     {
       goto exit_on_error;
@@ -1495,7 +1496,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   for (; col && attr; col = col->next, attr = attr->next)
     {
       /* set spec_id */
-      attr->info.name.spec_id = derived_spec->info.spec.id;
+      attr->info.name.spec_id = spec->info.spec.id;
     }
 
   while (col)
@@ -1510,18 +1511,18 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 
   if (col)
     {				/* error */
-      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_QSPEC_COLS_GT_ATTRS,
-		  derived_spec->info.spec.range_var->info.name.original);
-      return NULL;
+      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_QSPEC_COLS_GT_ATTRS,
+		  spec->info.spec.range_var->info.name.original);
+      goto exit_on_error;
     }
   if (attr)
     {				/* error */
-      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ATTRS_GT_QSPEC_COLS,
-		  derived_spec->info.spec.range_var->info.name.original);
-      return NULL;
+      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ATTRS_GT_QSPEC_COLS,
+		  spec->info.spec.range_var->info.name.original);
+      goto exit_on_error;
     }
 
-  new_select_list = mq_get_references (parser, statement, derived_spec);
+  new_select_list = mq_get_references (parser, statement, spec);
   for (col = new_select_list; col; col = col->next)
     {
       if (col->flag.is_hidden_column)
@@ -1556,7 +1557,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
        || pt_has_analytic (parser, statement) || pt_has_order_sensitive_agg (parser, statement)
        || pt_has_inst_num (parser, pred)))
     {
-      tmp_query = mq_update_order_by (parser, tmp_query, subquery, NULL, derived_spec);
+      tmp_query = mq_update_order_by (parser, tmp_query, subquery, NULL, spec);
       if (tmp_query == NULL)
 	{
 	  goto exit_on_error;
@@ -1576,6 +1577,8 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   parser_free_tree (parser, spec->info.spec.as_attr_list);
   spec->info.spec.as_attr_list = as_attr_list;
 
+  *new_spec = spec;
+
   return statement;
 
 exit_on_error:
@@ -1584,6 +1587,7 @@ exit_on_error:
     {
       parser_free_tree (parser, tmp_query);
     }
+  *new_spec = NULL;
 
   /* When an error occurs, the statement before the change is returned. */
   return statement;
@@ -2202,8 +2206,9 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 					PT_NODE * derived_spec, PT_NODE * order_by)
 {
   PT_NODE *tmp_result, *result, *statement_next;
-  PT_NODE *spec;
+  PT_NODE *spec, *new_spec = NULL;
   PUSHABLE_TYPE is_mergeable;
+  UINTPTR spec_id;
 
   result = tmp_result = NULL;	/* init */
   is_mergeable = PUSHABLE;
@@ -2239,7 +2244,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
       /* TO_DO : support for union query */
       if (mq_is_removable_select_list (parser, subquery, tmp_result) == PUSHABLE)
 	{
-	  tmp_result = mq_remove_select_list_for_inline_view (parser, tmp_result, derived_spec);
+	  tmp_result = mq_remove_select_list_for_inline_view (parser, tmp_result, derived_spec, &new_spec);
 	  if (tmp_result == NULL)
 	    {
 	      goto exit_on_error;
@@ -2247,7 +2252,8 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 	}
 
       /* no translation per se, but need to fix up proxy objects */
-      result = mq_fix_derived_in_union (parser, tmp_result, derived_spec->info.spec.id);
+      spec_id = new_spec ? new_spec->info.spec.id : derived_spec->info.spec.id;
+      result = mq_fix_derived_in_union (parser, tmp_result, spec_id);
 
     }
   else
