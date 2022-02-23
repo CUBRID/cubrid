@@ -177,8 +177,14 @@ GOTO :EOF
 echo Building CUBRID in %BUILD_DIR%
 cd /d %BUILD_DIR%
 
-if EXIST "%SOURCE_DIR%\cubrid-cci\src" set WITH_CCI=true
-
+if EXIST "%SOURCE_DIR%\cubrid-cci\src" (
+  set WITH_CCI=true
+) else (
+  set WITH=CCI=true 
+  %GIT_PATH% submodule deinit -f cubrid-cci
+  %GIT_PATH% submodule init cubrid-cci
+  %GIT_PATH% submodule update cubrid-cci 
+)
 rem TODO: get generator from command line
 if "%BUILD_TARGET%" == "Win32" (
   set CMAKE_GENERATOR=%BUILD_GENERATOR%
