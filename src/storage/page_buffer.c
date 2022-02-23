@@ -8186,6 +8186,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	  std::unique_ptr<char []> buffer_uptr = std::make_unique<char []> (io_page_size);
 	  FILEIO_PAGE *second_io_page = reinterpret_cast<FILEIO_PAGE *> (buffer_uptr.get ());
 	  // *INDENT-ON*
+	  // The page returned can be null during recovery in the case that the page was already deallocated on PS
 	  error_code = pgbuf_request_data_page_from_page_server (vpid, target_repl_lsa, second_io_page);
 	  if (error_code != NO_ERROR)
 	    {
@@ -8228,7 +8229,8 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	    }
 	  else
 	    {
-	      const bool fileio_pages_equal = (io_page->prv == second_io_page->prv);
+	      const bool fileio_pages_equal = (io_page->prv == second_io_page->prv)
+		|| (io_page->prv.ptype == second_io_page->prv.ptype && io_page->prv.ptype == PAGE_OVERFLOW);
 	      if (!fileio_pages_equal)
 		{
 		  /* on a transaction server, btree statistics is not written immediately
