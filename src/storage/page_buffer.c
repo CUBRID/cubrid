@@ -8423,22 +8423,21 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
 
   int error = NO_ERROR;
   PAGE_PTR page_ptr = pgbuf_fix (&thread_r, &vpid, fetch_mode, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
+  if (error == NO_ERROR && fetch_mode == RECOVERY_PAGE)
     {
-      if (error == NO_ERROR && fetch_mode == RECOVERY_PAGE)
+      ASSERT_NO_ERROR ();
+      //The found page was deallocated already
+      error = ER_PB_BAD_PAGEID;
+      payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
         {
-          error = ER_PB_BAD_PAGEID;
-          //The found page was deallocated already
-          payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
-          if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-            {
-              _er_log_debug (ARG_FILE_LINE,
-                             "[READ DATA] Read on deallocated page with VPID = %d|%d, target repl LSA = %lld|%d\n",
-                             error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
-            }
-          return;
+          _er_log_debug (ARG_FILE_LINE,
+                         "[READ DATA] Read on deallocated page with VPID = %d|%d, target repl LSA = %lld|%d\n",
+                         error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
         }
-
+    }
+  else if (page_ptr == nullptr)
+    {
       ASSERT_ERROR_AND_SET (error);
       // respond with the error
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
