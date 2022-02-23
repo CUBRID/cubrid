@@ -112,7 +112,7 @@ flashback_unpack_and_print_summary (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * sum
   int len = 0;
 
   printf
-    ("  transaction id  |    start time    |   end time   |   num_insert   |   num_update   |   num_delete   |   tables   ");
+    ("  transaction id  |    user   |   start time    |   end time   |   num_insert   |   num_update   |   num_delete   |   tables   ");
   len++;
 
   for (int i = 0; i < num_summary; i++)
@@ -121,6 +121,7 @@ flashback_unpack_and_print_summary (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * sum
 
       /* testing code, it will be replaced with print function */
       tmp_ptr = or_unpack_int (tmp_ptr, &trid);
+      tmp_ptr = or_unpack_string_nocopy (tmp_ptr, &user);
       tmp_ptr = or_unpack_int64 (tmp_ptr, &start_time);
       tmp_ptr = or_unpack_int64 (tmp_ptr, &end_time);
       tmp_ptr = or_unpack_int (tmp_ptr, &num_insert);
@@ -145,7 +146,8 @@ flashback_unpack_and_print_summary (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * sum
 
 	  strftime (stime_buf, 20, "%d-%m-%Y:%H%M%S", localtime (&start_time));
 	  strftime (etime_buf, 20, "%d-%m-%Y:%H%M%S", localtime (&end_time));
-	  printf ("\t%d\t%s\t%s\t%d\t%d\t%d\t\t", trid, stime_buf, etime_buf, num_insert, num_update, num_delete);
+
+	  printf ("\t%d\t%s\t%s\t%d\t%d\t%d\t\t", trid, user, stime_buf, etime_buf, num_insert, num_update, num_delete);
 	}
 
       for (int j = 0; j < num_table; j++)
