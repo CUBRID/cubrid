@@ -2160,16 +2160,13 @@ sm_downcase_name (const char *name, char *buf, int buf_size)
 {
   int error = NO_ERROR;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size <= 0)
+  if (name == NULL || name[0] == '\0' || buf == NULL)
     {
       ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
       return NULL;
     }
 
-  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
   assert (intl_identifier_lower_string_size (name) < buf_size);
-
-  memset (buf, 0, buf_size);
   intl_identifier_lower (name, buf);
   assert (buf[0] != '\0');
 
@@ -2190,7 +2187,7 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   char current_user_name[SM_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size <= 0)
+  if (name == NULL || name[0] == '\0' || buf == NULL)
     {
       ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
       return NULL;
@@ -2246,14 +2243,15 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
   char name_copy[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size <= 0)
+  if (name == NULL || name[0] == '\0' || buf == NULL)
     {
       ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
       return NULL;
     }
 
   assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
-  strcpy (name_copy, name);
+  strncpy (name_copy, name, SM_MAX_IDENTIFIER_LENGTH);
+  assert (name_copy[0] != '\0');
 
   dot = strchr (name_copy, '.');
 
@@ -2265,7 +2263,8 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
 
   dot[0] = '\0';
   assert (strlen (name_copy) < buf_size);
-  strcpy (buf, name_copy);
+  strncpy (buf, name_copy, buf_size);
+  assert (buf[0] != '\0');
 
   return buf;
 }

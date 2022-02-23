@@ -18434,7 +18434,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < 0)
+  if (name == NULL || name[0] == '\0' || buf == NULL)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
       return error;
@@ -18449,7 +18449,8 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
   class_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, current_user_name));
-  snprintf (query_buf, sizeof (query_buf), query, CT_CLASS_NAME, class_name, current_user_name);
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, current_user_name);
+  assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
@@ -18483,7 +18484,8 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
   if (!DB_IS_NULL (&value))
     {
       assert (strlen (db_get_string (&value)) < buf_size);
-      strcpy (buf, db_get_string (&value));
+      strncpy (buf, db_get_string (&value), buf_size);
+      assert (buf[0] != '\0');
     }
   else
     {
@@ -18527,7 +18529,7 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < 0)
+  if (name == NULL || name[0] == '\0' || buf == NULL)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
       return error;
@@ -18542,7 +18544,8 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
   serial_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, current_user_name));
-  snprintf (query_buf, sizeof (query_buf), query, CT_SERIAL_NAME, serial_name, current_user_name);
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SERIAL_NAME, serial_name, current_user_name);
+  assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
@@ -18583,7 +18586,8 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
   if (!DB_IS_NULL (&value))
     {
       assert (strlen (db_get_string (&value)) < buf_size);
-      strcpy (buf, db_get_string (&value));
+      strncpy (buf, db_get_string (&value), buf_size);
+      assert (buf[0] != '\0');
     }
   else
     {
@@ -18627,7 +18631,7 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL || buf_size < 0)
+  if (name == NULL || name[0] == '\0' || buf == NULL)
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
       return error;
@@ -18642,7 +18646,8 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
   trigger_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, current_user_name));
-  snprintf (query_buf, sizeof (query_buf), query, CT_TRIGGER_NAME, trigger_name, current_user_name);
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_TRIGGER_NAME, trigger_name, current_user_name);
+  assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
   if (error < NO_ERROR)
@@ -18676,7 +18681,8 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
   if (!DB_IS_NULL (&value))
     {
       assert (strlen (db_get_string (&value)) < buf_size);
-      strcpy (buf, db_get_string (&value));
+      strncpy (buf, db_get_string (&value), buf_size);
+      assert (buf[0] != '\0');
     }
   else
     {
