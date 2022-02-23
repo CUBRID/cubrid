@@ -181,9 +181,9 @@ if EXIST "%SOURCE_DIR%\cubrid-cci\src" (
   set WITH_CCI=true
 ) else (
   set WITH=CCI=true 
-  %GIT_PATH% submodule deinit -f cubrid-cci
-  %GIT_PATH% submodule init cubrid-cci
-  %GIT_PATH% submodule update cubrid-cci 
+  "%GIT_PATH%" submodule deinit -f "%SOURCE_DIR%\cubrid-cci"
+  "%GIT_PATH%" submodule init "%SOURCE_DIR%\cubrid-cci"
+  "%GIT_PATH%" submodule update "%SOURCE_DIR%\cubrid-cci"
 )
 rem TODO: get generator from command line
 if "%BUILD_TARGET%" == "Win32" (
