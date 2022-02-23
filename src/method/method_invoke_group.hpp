@@ -37,6 +37,7 @@
 #include <set>
 #include <queue>
 
+#include "method_connection_pool.hpp" /* cubmethod::connection */
 #include "method_def.hpp"	/* method_sig_node */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */
 #include "porting.h" /* SOCKET */
@@ -84,11 +85,7 @@ namespace cubmethod
       std::queue<cubmem::extensible_block> &get_data_queue ();
 
     private:
-      /* Temporarily, method_invoke_group has socket fd here */
-      /* javasp will get/release connection from globally */
-      SOCKET m_socket;
-      int connect ();
-      int disconnect ();
+      cubmethod::connection *m_connection;
       std::queue<cubmem::extensible_block> m_data_queue;
 
       int64_t m_id;

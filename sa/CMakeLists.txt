@@ -323,6 +323,7 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_connection_cl.cpp
   ${METHOD_DIR}/method_connection_sr.cpp
+  ${METHOD_DIR}/method_connection_pool.cpp
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_scan.cpp
