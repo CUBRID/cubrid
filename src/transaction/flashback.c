@@ -55,6 +55,52 @@
 #include "thread_entry.hpp"
 #include "oid.h"
 #include "storage_common.h"
+#include "system_parameter.h"
+
+LOG_PAGEID flashback_Min_log_pageid = NULL_LOG_PAGEID;
+time_t flashback_Last_request_time = -1;
+int flashback_Threshold_to_remove_archive = 0;
+
+/*
+ * flashback_min_log_pageid_to_keep - returns minimum log pageid to keep
+ *
+ * return   : minimum pageid that flashback have to keep
+ */
+
+LOG_PAGEID
+flashback_min_log_pageid_to_keep ()
+{
+  return flashback_Min_log_pageid;
+}
+
+/*
+ * flashback_check_time_to_remove_archive - check the time if the archive can be removed
+ *
+ * return   : true or false
+ */
+
+bool
+flashback_check_time_to_remove_archive ()
+{
+  if (flashback_Threshold_to_remove_archive == 0)
+    {
+      FLASHBACK_SET_THRESHOLD ();
+    }
+
+  return (time (NULL) - flashback_Last_request_time) >= flashback_Threshold_to_remove_archive;
+}
+
+/*
+ * flashback_is_loginfo_generation_finished - check if it is finished to generate log infos
+ *
+ * return   : true or false
+ */
+
+bool
+flashback_is_loginfo_generation_finished (LOG_LSA * start_lsa, LOG_LSA * end_lsa)
+{
+  return LSA_ISNULL (start_lsa) || LSA_GE (start_lsa, end_lsa);
+}
 
 /*
  * flashback_fill_dml_summary - fill the dml information into summary entry

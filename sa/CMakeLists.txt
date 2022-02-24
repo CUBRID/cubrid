@@ -339,6 +339,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/boot_cl.c
   ${TRANSACTION_DIR}/boot_sr.c
   ${TRANSACTION_DIR}/client_credentials.cpp
+  ${TRANSACTION_DIR}/flashback.c
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_cl.c
   ${TRANSACTION_DIR}/locator_sr.c
@@ -369,6 +370,7 @@ set(TRANSACTION_SOURCES
   )
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
+  ${TRANSACTION_DIR}/flashback.h
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp

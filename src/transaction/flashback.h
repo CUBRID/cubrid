@@ -55,6 +55,49 @@
     } \
   while (0)
 
+#define FLASHBACK_SET_MIN_LOG_PAGEID_TO_KEEP(lsa_p) \
+  do \
+    { \
+      if ((lsa_p) != NULL) \
+        { \
+          flashback_Min_log_pageid = (lsa_p)->pageid; \
+        } \
+    } \
+  while (0)
+
+#define FLASHBACK_UNSET_MIN_LOG_PAGEID_TO_KEEP() \
+  do \
+    { \
+      flashback_Min_log_pageid = NULL_LOG_PAGEID; \
+    } \
+  while (0)
+
+/* set threshold to 60 which is recommended intervals for removing archive logs */
+#define FLASHBACK_SET_THRESHOLD() \
+  do \
+    { \
+      flashback_Threshold_to_remove_archive = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL); \
+      if (flashback_Threshold_to_remove_archive == 0) \
+        { \
+          flashback_Threshold_to_remove_archive = 60; \
+        } \
+    } \
+  while (0)
+
+#define FLASHBACK_SET_REQUEST_TIME() \
+  do \
+    { \
+      flashback_Last_request_time = time (NULL); \
+    } \
+  while (0)
+
+extern LOG_PAGEID flashback_Min_log_pageid;	// Minumun log pageid to keep archive log volume from being removed
+extern time_t flashback_Last_request_time;	// The time most recently requested by flashback
+extern int flashback_Threshold_to_remove_archive;	/* If the difference between the time at which the archive log is deleted
+							 * and the time the flashback last requested exceeds this threshold,
+							 * the archive log volume can be deleted.
+							 */
+
 /* flashback summary information stored in utility side */
 typedef struct flashback_summary_info
 {
@@ -107,5 +150,9 @@ typedef struct flashback_summary_context
 
 extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
 extern void flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
+
+extern LOG_PAGEID flashback_min_log_pageid_to_keep ();
+extern bool flashback_check_time_to_remove_archive ();
+extern bool flashback_is_loginfo_generation_finished (LOG_LSA * start_lsa, LOG_LSA * end_lsa);
 
 #endif /* _FLASHBACK_H_ */

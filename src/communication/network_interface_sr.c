@@ -10849,12 +10849,16 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto error;
     }
 
+  FLASHBACK_SET_REQUEST_TIME ();
+
   /* get summary list */
   error_code = flashback_make_summary_list (thread_p, &context);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+
+  FLASHBACK_SET_MIN_LOG_PAGEID_TO_KEEP (&context.start_lsa);
 
   /* area : | class oid list | num summary | summary entry list |
    * summary entry : | trid | user | start/end time | num insert/update/delete | num class | class oid list |
@@ -10898,6 +10902,8 @@ error:
   or_pack_int (ptr, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  FLASHBACK_UNSET_MIN_LOG_PAGEID_TO_KEEP ();
 
   return;
 }
@@ -10972,10 +10978,21 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_unpack_int (ptr, &context.num_loginfo);
   ptr = or_unpack_int (ptr, &context.forward);
 
+  FLASHBACK_SET_REQUEST_TIME ();
+
   error_code = flashback_make_loginfo (thread_p, &context);
   if (error_code != NO_ERROR)
     {
       goto error;
+    }
+
+  if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa))
+    {
+      FLASHBACK_UNSET_MIN_LOG_PAGEID_TO_KEEP ();
+    }
+  else
+    {
+      FLASHBACK_SET_MIN_LOG_PAGEID_TO_KEEP (&context.start_lsa);
     }
 
   area_size = OR_LOG_LSA_ALIGNED_SIZE * 2 + OR_INT_SIZE;
@@ -11015,6 +11032,8 @@ error:
   or_pack_int (ptr, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  FLASHBACK_UNSET_MIN_LOG_PAGEID_TO_KEEP ();
 
   return;
 }
