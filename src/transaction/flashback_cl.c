@@ -67,10 +67,9 @@ flashback_util_get_winsize ()
  */
 
 static int
-flashback_find_class_index (dynamic_array * classname_list, OID * oidlist, OID classoid)
+flashback_find_class_index (OID * oidlist, int list_size, OID classoid)
 {
   int class_index = 0;
-  int list_size = da_size (classname_list);
 
   for (class_index = 0; class_index < list_size; class_index++)
     {
@@ -86,16 +85,16 @@ flashback_find_class_index (dynamic_array * classname_list, OID * oidlist, OID c
 /*
  * flashback_unpack_and_print_summary () 
  *
- * return              : error code
- * ptr (in/out)        : memory pointer where to unpack
- * summary (out)       : brief summary information
- * num_summary (in)    : number of summary to unpack
- * classname_list (in) : classnames
- * oidlist (in)        : OID of classnames
+ * return                   : error code
+ * summary_buffer (in/out)  : input buffer which contains summary info, and return advanced buffer pointer
+ * summary (out)            : brief summary information
+ * num_summary (in)         : number of summary to unpack
+ * classname_list (in)      : classnames
+ * oidlist (in)             : OID of classnames
  */
 
 int
-flashback_unpack_and_print_summary (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * summary, int num_summary,
+flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INFO_MAP * summary, int num_summary,
 				    dynamic_array * classname_list, OID * oidlist)
 {
   TRANID trid;
@@ -105,21 +104,21 @@ flashback_unpack_and_print_summary (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * sum
   LOG_LSA start_lsa, end_lsa;
   int num_table;
   OID classoid;
-  char *tmp_ptr = *ptr;
+  char *tmp_ptr = *summary_buffer;
 
   bool stop_print = false;
-  int max_window_size = flashback_util_get_winsize ();
-  int len = 0;
+  const int max_window_size = flashback_util_get_winsize ();
+  int line_cnt = 0;
 
   printf
     ("  transaction id  |    user   |   start time    |   end time   |   num_insert   |   num_update   |   num_delete   |   tables   ");
-  len++;
+
+  line_cnt++;
 
   for (int i = 0; i < num_summary; i++)
     {
       FLASHBACK_SUMMARY_INFO info = { 0, LSA_INITIALIZER, LSA_INITIALIZER };
 
-      /* testing code, it will be replaced with print function */
       tmp_ptr = or_unpack_int (tmp_ptr, &trid);
       tmp_ptr = or_unpack_string_nocopy (tmp_ptr, &user);
       tmp_ptr = or_unpack_int64 (tmp_ptr, &start_time);
@@ -135,9 +134,7 @@ flashback_unpack_and_print_summary (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * sum
       info.start_lsa = start_lsa;
       info.end_lsa = end_lsa;
 
-      /* *INDENT-OFF* */
       summary->emplace (trid, info);
-      /* *INDENT-ON* */
 
       if (!stop_print)
 	{
@@ -158,7 +155,7 @@ flashback_unpack_and_print_summary (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * sum
 	  tmp_ptr = or_unpack_oid (tmp_ptr, &classoid);
 	  if (!stop_print)
 	    {
-	      idx = flashback_find_class_index (classname_list, oidlist, classoid);
+	      idx = flashback_find_class_index (oidlist, da_size (classname_list), classoid);
 	      if (idx == -1)
 		{
 		  /* er_set */
@@ -173,10 +170,10 @@ flashback_unpack_and_print_summary (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * sum
       if (!stop_print)
 	{
 	  printf ("\n");
-	  len++;
+	  line_cnt++;
 	}
 
-      if (len >= max_window_size)
+      if (line_cnt >= max_window_size)
 	{
 	  char c;
 	  printf ("press 'q' to quit or press anything to continue");
@@ -186,12 +183,14 @@ flashback_unpack_and_print_summary (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * sum
 	      stop_print = true;
 	    }
 
-	  len = 0;
+	  line_cnt = 0;
+
+	  /* Remove the message above, because above message is no more required */
 	  printf ("\033[A\33[2K\r");
 	}
     }
 
-  *ptr = tmp_ptr;
+  *summary_buffer = tmp_ptr;
 
   return NO_ERROR;
 }
