@@ -4028,25 +4028,6 @@ parse_date_string_to_time (char *date_string)
   return result < 0 ? 0 : result;
 }
 
-/*
- * flashback_cleanup_summary_info () - deallocate the memory in summary info
- *   return       : void
- *   summary_info : summary_info map to deallocate
- */
-static void
-flashback_cleanup_summary_info (FLASHBACK_SUMMARY_INFO_MAP & summary_info)
-{
-/* *INDENT-OFF* */
-  for (auto iter:summary_info)
-    {
-      if (iter.second != NULL)
-        {
-          free_and_init (iter.second);
-        }
-    }
-/* *INDENT-ON* */
-}
-
 int
 flashback (UTIL_FUNCTION_ARG * arg)
 {
@@ -4311,8 +4292,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
       free_and_init (oid_list);
     }
 
-  flashback_cleanup_summary_info (summary_info);
-
   return EXIT_SUCCESS;
 
 print_flashback_usage:
@@ -4333,8 +4312,6 @@ error_exit:
     {
       free_and_init (oid_list);
     }
-
-  flashback_cleanup_summary_info (summary_info);
 
   return EXIT_FAILURE;
 }
