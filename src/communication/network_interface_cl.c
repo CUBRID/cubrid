@@ -10728,8 +10728,7 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 		       int *num_item, bool forward, char **info_list)
 {
 #if defined(CS_MODE)
-  int req_error = ER_FAILED;
-  int rep_error = ER_FAILED;
+  int error_code = ER_FAILED;
   int request_size = 0;
   char *request = NULL, *ptr, *start_ptr;
 
@@ -10768,14 +10767,14 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 
   request_size = ptr - start_ptr;
 
-  req_error =
+  error_code =
     net_client_request2 (NET_SERVER_FLASHBACK_GET_LOGINFO, start_ptr, request_size, reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
 
-  if (req_error == NO_ERROR)
+  if (error_code == NO_ERROR)
     {
       ptr = or_unpack_int (reply, &area_size);
-      ptr = or_unpack_int (ptr, &rep_error);
+      ptr = or_unpack_int (ptr, &error_code);
       if (area_size > 0)
 	{
 	  /* area : start lsa | end lsa | num item | item list */
@@ -10788,7 +10787,7 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 	  *info_list = (char *) malloc (area_size - (ptr - area));
 	  if (*info_list == NULL)
 	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, area_size - (ptr - area));
 	    }
 
@@ -10800,7 +10799,7 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 
   free_and_init (request);
 
-  return req_error != NO_ERROR ? req_error : rep_error;
+  return error_code;
 #endif // CS_MODE
   return ER_NOT_IN_STANDALONE;
 }
