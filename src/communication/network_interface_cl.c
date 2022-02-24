@@ -10574,8 +10574,8 @@ loaddb_update_stats ()
  */
 
 int
-flashback_get_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
-		       FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list)
+flashback_get_and_show_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
+				FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
@@ -10651,7 +10651,7 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 	      ptr = or_unpack_oid (ptr, &(*oid_list)[i]);
 	    }
 
-          /* get summary info */
+	  /* get summary info */
 	  ptr = or_unpack_int (ptr, &num_summary);
 
 	  error_code = flashback_unpack_and_print_summary (&ptr, summary, num_summary, class_list, *oid_list);

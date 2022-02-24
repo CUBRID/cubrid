@@ -4244,7 +4244,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  error = flashback_get_summary (darray, user, start_time, end_time, &summary_info, &oid_list);
+  error = flashback_get_and_show_summary (darray, user, start_time, end_time, &summary_info, &oid_list);
   if (error != NO_ERROR)
     {
       /* print error message */
