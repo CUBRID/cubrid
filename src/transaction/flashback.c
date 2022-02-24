@@ -145,11 +145,10 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
   LSA_COPY (&process_lsa, &(context->end_lsa));
 
   /*fetch log page */
-  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+  error = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p);
+  if (error != NO_ERROR)
     {
-      /* er_set */
       logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_summary_list");
-      error = ER_FAILED;
       goto exit;
     }
 
@@ -203,9 +202,7 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 	    LSA_COPY (&tmp_summary_entry.end_lsa, &cur_log_rec_lsa);
 	    tmp_summary_entry.end_time = donetime->at_time;
 
-            // *INDENT-OFF*
 	    context->summary_list.emplace (trid, tmp_summary_entry);
-            // *INDENT-ON*
 	    current_time = donetime->at_time;
 	    context->num_summary++;
 	    break;
@@ -324,11 +321,10 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 
       if (process_lsa.pageid != log_page_p->hdr.logical_pageid)
 	{
-	  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	  error = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p);
+	  if (error != NO_ERROR)
 	    {
-	      /* er_set */
 	      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_summary_list");
-	      error = ER_FAILED;
 	      goto exit;
 	    }
 	}
