@@ -4082,7 +4082,9 @@ process_column_data (char **data, char **sql, int *max_sql_size, DB_TYPE type)
   char *s_data;
   INT64 b_data;
 
-  int max_decimal_digits_len = 20;
+  /* maximum length of the string converted from a decimal
+   * INT64 represents maximum of 9223372036854775807, and is 20 characters long */
+  const int max_decimal_digits_len = 20;
 
   ptr = or_unpack_int (ptr, (int *) &func_type);
 
