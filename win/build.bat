@@ -45,7 +45,7 @@ set BUILD_TYPE=RelWithDebInfo
 set CMAKE_PATH=C:\Program Files\CMake\bin\cmake.exe
 set CPACK_PATH=C:\Program Files\CMake\bin\cpack.exe
 set GIT_PATH=C:\Program Files\Git\bin\git.exe
-set WITH_CCI=false
+set WITH_CCI=true
 
 rem default list is all
 set BUILD_LIST=ALL
@@ -129,6 +129,14 @@ echo Checking for root source path [%SOURCE_DIR%]...
 if NOT EXIST "%SOURCE_DIR%\src" echo Root path for source is not valid. & GOTO :EOF
 if NOT EXIST "%SOURCE_DIR%\VERSION" set VERSION_FILE=VERSION-DIST
 
+echo Checking CCI directory [%SOURCE_DIR%\cubrid-cci]...
+if NOT EXIST "%SOURCE_DIR%\cubrid-cci\src" (
+  echo CCI source path is not exist. It must be built for dblink
+  "%GIT_PATH%" submodule deinit -f "%SOURCE_DIR%\cubrid-cci"
+  "%GIT_PATH%" submodule init "%SOURCE_DIR%\cubrid-cci"
+  "%GIT_PATH%" submodule update "%SOURCE_DIR%\cubrid-cci"
+)
+
 echo Checking build number with [%SOURCE_DIR%\%VERSION_FILE%]...
 for /f %%i IN (%SOURCE_DIR%\%VERSION_FILE%) DO set VERSION=%%i
 if ERRORLEVEL 1 echo Cannot check build number. & GOTO :EOF
@@ -177,14 +185,6 @@ GOTO :EOF
 echo Building CUBRID in %BUILD_DIR%
 cd /d %BUILD_DIR%
 
-if EXIST "%SOURCE_DIR%\cubrid-cci\src" (
-  set WITH_CCI=true
-) else (
-  set WITH=CCI=true 
-  "%GIT_PATH%" submodule deinit -f "%SOURCE_DIR%\cubrid-cci"
-  "%GIT_PATH%" submodule init "%SOURCE_DIR%\cubrid-cci"
-  "%GIT_PATH%" submodule update "%SOURCE_DIR%\cubrid-cci"
-)
 rem TODO: get generator from command line
 if "%BUILD_TARGET%" == "Win32" (
   set CMAKE_GENERATOR=%BUILD_GENERATOR%
