@@ -1222,6 +1222,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_SELECT_KEY_INFO  0x80000000ULL	/* SELECT key information from index b-tree instead of table record data */
 #define  PT_HINT_QUERY_NO_CACHE  0x100000000ULL	/* don't use the query cache (unused) */
 #define  PT_HINT_NO_PUSH_PRED  0x200000000ULL	/* do not push predicates */
+#define  PT_HINT_NO_MERGE  0x400000000ULL	/* do not merge view or in-line view */
 
 /* Codes for error messages */
 typedef enum
@@ -1762,6 +1763,8 @@ struct parser_hint
   const char *tokens;
   PT_NODE *arg_list;
   PT_HINT_ENUM hint;
+  int length;			/* strlen(tokens) */
+  bool is_hit;
 };
 
 struct pt_alter_info
