@@ -59,6 +59,7 @@
 #include "xasl.h"
 #include "log_volids.hpp"
 #include "tde.h"
+#include "flashback.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -4027,6 +4028,25 @@ parse_date_string_to_time (char *date_string)
   return result < 0 ? 0 : result;
 }
 
+/*
+ * flashback_cleanup_summary_info () - deallocate the memory in summary info
+ *   return       : void
+ *   summary_info : summary_info map to deallocate
+ */
+static void
+flashback_cleanup_summary_info (FLASHBACK_SUMMARY_INFO_MAP & summary_info)
+{
+/* *INDENT-OFF* */
+  for (auto iter:summary_info)
+    {
+      if (iter.second != NULL)
+        {
+          free_and_init (iter.second);
+        }
+    }
+/* *INDENT-ON* */
+}
+
 int
 flashback (UTIL_FUNCTION_ARG * arg)
 {
@@ -4060,6 +4080,10 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   int trid = 0;
   int num_item = 0;
+
+  bool need_shutdown = false;
+
+  FLASHBACK_SUMMARY_INFO_MAP summary_info;
 
   /* temporary variables for test */
   LOG_LSA start_lsa = LSA_INITIALIZER;
@@ -4231,6 +4255,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
+  need_shutdown = true;
+
   oid_list = (OID *) malloc (sizeof (OID) * num_tables);
   if (oid_list == NULL)
     {
@@ -4239,10 +4265,22 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  error = flashback_get_summary (darray, user, start_time, end_time, NULL, &oid_list);
+  error = flashback_get_summary (darray, user, start_time, end_time, &summary_info, &oid_list);
   if (error != NO_ERROR)
     {
-      db_shutdown ();
+      /* print error message */
+      switch (error)
+	{
+	case ER_FLASHBACK_INVALID_TIME:
+	  break;
+	case ER_FLASHBACK_INVALID_CLASS:
+	  break;
+	case ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY:
+	  break;
+	default:
+	  break;
+	}
+
       goto error_exit;
     }
 
@@ -4253,7 +4291,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
   error = flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest, NULL);
   if (error != NO_ERROR)
     {
-      db_shutdown ();
       goto error_exit;
     }
 
@@ -4269,11 +4306,19 @@ flashback (UTIL_FUNCTION_ARG * arg)
       free_and_init (oid_list);
     }
 
+  flashback_cleanup_summary_info (summary_info);
+
   return EXIT_SUCCESS;
 
 print_flashback_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 error_exit:
+
+  if (need_shutdown)
+    {
+      db_shutdown ();
+    }
+
   if (darray != NULL)
     {
       da_destroy (darray);
@@ -4283,6 +4328,8 @@ error_exit:
     {
       free_and_init (oid_list);
     }
+
+  flashback_cleanup_summary_info (summary_info);
 
   return EXIT_FAILURE;
 }

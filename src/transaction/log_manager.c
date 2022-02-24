@@ -325,8 +325,6 @@ static int cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_pag
 				     char **data, LOG_RCVINDEX rcvindex, bool is_redo);
 static int cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recdes, LOG_LSA * redo_lsa,
 			   RECDES * redo_recdes);
-static SCAN_CODE cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa,
-				      RECDES * undo_recdes);
 static int cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id);
 static int cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type, OID classoid,
 				 RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry);
@@ -11135,7 +11133,7 @@ cdc_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * ls
   return NO_ERROR;
 }
 
-static SCAN_CODE
+SCAN_CODE
 cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa, RECDES * undo_recdes)
 {
   SCAN_CODE scan_code = S_SUCCESS;
