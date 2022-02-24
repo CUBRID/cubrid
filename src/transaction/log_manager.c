@@ -14751,9 +14751,9 @@ flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * c
   LSA_COPY (&process_lsa, &context->end_lsa);
 
   /* fetch log page */
-  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+  error = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p);
+  if (error != NO_ERROR)
     {
-      error = ER_FAILED;
       logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_loginfo");
       goto error;
     }
@@ -14775,10 +14775,10 @@ flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * c
 	    }
 	  else
 	    {
-	      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	      error = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p);
+	      if (error != NO_ERROR)
 		{
 		  logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_find_start_lsa");
-		  error = ER_FAILED;
 		  goto error;
 		}
 	    }
@@ -14827,7 +14827,8 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 
   if (LSA_ISNULL (&context->start_lsa))
     {
-      if ((error = flashback_find_start_lsa (thread_p, context)) != NO_ERROR)
+      error = flashback_find_start_lsa (thread_p, context);
+      if (error != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -14847,9 +14848,9 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   /* fetch log page */
-  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+  error = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p);
+  if (error != NO_ERROR)
     {
-      error = ER_FAILED;
       logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_loginfo");
       goto error;
     }
@@ -14862,9 +14863,9 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
     {
       if (log_page_p->hdr.logical_pageid != process_lsa.pageid)
 	{
-	  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	  error = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p);
+	  if (error != NO_ERROR)
 	    {
-	      error = ER_FAILED;
 	      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_loginfo");
 	      goto error;
 	    }
