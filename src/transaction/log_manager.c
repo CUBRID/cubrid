@@ -14848,7 +14848,7 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
    * forward : if forw_lsa is greater than context->end_lsa then quit (process_lsa = forw_lsa)
    * num_loginfo will be generated less or equal than context->num_loginfo */
 
-  while (!LSA_ISNULL (&process_lsa) || LSA_LE (&process_lsa, &context->end_lsa) || num_loginfo < context->num_loginfo)
+  while (!LSA_ISNULL (&process_lsa) && (LSA_LE (&process_lsa, &context->end_lsa) || num_loginfo < context->num_loginfo))
     {
       if (log_page_p->hdr.logical_pageid != process_lsa.pageid)
 	{
