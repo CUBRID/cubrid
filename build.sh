@@ -53,7 +53,7 @@ last_checking_msg=""
 output_packages=""
 without_cmserver=""
 without_jdbc="false"
-with_cci="false"
+with_cci="true"
 
 function print_check ()
 {
@@ -197,16 +197,14 @@ function build_configure ()
 
   print_check "Checking CCI directory"
   if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
-    with_cci="true"
-    print_error "CCI source path is not exist. It must be built for dblink"
-    git submodule deinit -f cubrid-cci
+    print_check "CCI source path is not exist. It must be built for dblink"
+    if [ -d $source_dir/.git/modules/cubrid-cci ] then
+      git submodule deinit -f cubrid-cci
+    fi
     git submodule init cubrid-cci
     git submodule update cubrid-cci
-    configure_options="$configure_options -DWITH_CCI=true"
-  else
-    with_cci="true"
-    configure_options="$configure_options -DWITH_CCI=true"
   fi
+  configure_options="$configure_options -DWITH_CCI=true"
 
   print_check "Checking manager server directory"
   if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then

@@ -132,7 +132,9 @@ if NOT EXIST "%SOURCE_DIR%\VERSION" set VERSION_FILE=VERSION-DIST
 echo Checking CCI directory [%SOURCE_DIR%\cubrid-cci]...
 if NOT EXIST "%SOURCE_DIR%\cubrid-cci\src" (
   echo CCI source path is not exist. It must be built for dblink
-  "%GIT_PATH%" submodule deinit -f "%SOURCE_DIR%\cubrid-cci"
+  if EXIST "%SOURCE_DIR%\.git\module\cubrid-cci" (
+    "%GIT_PATH%" submodule deinit -f "%SOURCE_DIR%\cubrid-cci"
+  )
   "%GIT_PATH%" submodule init "%SOURCE_DIR%\cubrid-cci"
   "%GIT_PATH%" submodule update "%SOURCE_DIR%\cubrid-cci"
 )
