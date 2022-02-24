@@ -449,4 +449,5 @@ extern int flashback_get_summary (dynamic_array * class_list, const char *user, 
 				  FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list);
 extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa,
 				  LOG_LSA * end_lsa, int *num_item, bool forward, void *info_list);
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */

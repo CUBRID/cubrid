@@ -512,6 +512,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
     }
   else
     {
+      cci_set_autocommit (scan_info->conn_handle, CCI_AUTOCOMMIT_FALSE);
       scan_info->stmt_handle = cci_prepare (scan_info->conn_handle, sql_text, 0, &err_buf);
       if (scan_info->stmt_handle < 0)
 	{
