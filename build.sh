@@ -198,7 +198,7 @@ function build_configure ()
   print_check "Checking CCI directory"
   if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
     print_check "CCI source path is not exist. It must be built for dblink"
-    if [ -d $source_dir/.git/modules/cubrid-cci ] then
+    if [ -d $source_dir/.git/modules/cubrid-cci ]; then
       git submodule deinit -f cubrid-cci
     fi
     git submodule init cubrid-cci
