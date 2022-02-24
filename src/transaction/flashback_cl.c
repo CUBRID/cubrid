@@ -111,7 +111,7 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
   int line_cnt = 0;
 
   printf
-    ("  transaction id  |    user   |   start time    |   end time   |   num_insert   |   num_update   |   num_delete   |   tables   ");
+    ("Transaction id\t\tUser name\t\tStart time\t\tEnd time\t\tNum_insert\t\tNum_update\t\tNum_delete\t\tTables\n");
 
   line_cnt++;
 
@@ -141,10 +141,11 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
 	  char stime_buf[20];
 	  char etime_buf[20];
 
-	  strftime (stime_buf, 20, "%d-%m-%Y:%H%M%S", localtime (&start_time));
-	  strftime (etime_buf, 20, "%d-%m-%Y:%H%M%S", localtime (&end_time));
+	  strftime (stime_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&start_time));
+	  strftime (etime_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&end_time));
 
-	  printf ("\t%d\t%s\t%s\t%d\t%d\t%d\t\t", trid, user, stime_buf, etime_buf, num_insert, num_update, num_delete);
+	  printf ("\t%d\t%s\t%s\t%s\t%d\t%d\t%d\t\t", trid, user, stime_buf, etime_buf, num_insert, num_update,
+		  num_delete);
 	}
 
       for (int j = 0; j < num_table; j++)

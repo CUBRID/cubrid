@@ -10562,7 +10562,7 @@ loaddb_update_stats ()
 }
 
 /*
- * flashabck_get_summary () - client-side function to get flashback summary
+ * flashabck_get_and_show_summary () - client-side function to get flashback summary
  *
  * return           : error code
  * class_list (in)  : class name list to flashback
