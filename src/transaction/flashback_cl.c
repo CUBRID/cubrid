@@ -43,7 +43,7 @@ flashback_util_get_winsize ()
 
   GetConsoleScreenBufferInfo (GetStdHandle (STD_OUTPUT_HANDLE), &csbi);
 
-  return csbi.srWindow.bottom - csbi.srWindow.Top + 1;
+  return csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
 }
 #else
 static int
