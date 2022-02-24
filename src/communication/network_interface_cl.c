@@ -10723,121 +10723,6 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
   return ER_NOT_IN_STANDALONE;
 }
 
-/* unpacking_loginfo : test purpose, will be replaced */
-static char *
-unpacking_loginfo (char *ptr, int num_item)
-{
-  int length;
-  TRANID trid;
-  char *user;
-  int dataitem_type;
-
-  int dml_type;
-  INT64 classoid;
-  int num_change_col;
-  int change_index;
-  int func_code;
-
-  int i_data;
-  double d_data;
-  float f_data;
-  short sh_data;
-  char *s_data;
-  INT64 b_data;
-
-  int num_cond_col;
-  int cond_index;
-
-  for (int i = 0; i < num_item; i++)
-    {
-      ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
-      ptr = or_unpack_int (ptr, &length);
-      ptr = or_unpack_int (ptr, &trid);
-      ptr = or_unpack_string_nocopy (ptr, &user);
-      ptr = or_unpack_int (ptr, &dataitem_type);
-
-      ptr = or_unpack_int (ptr, &dml_type);
-      ptr = or_unpack_int64 (ptr, &classoid);
-      ptr = or_unpack_int (ptr, &num_change_col);
-
-      for (int j = 0; j < num_change_col; j++)
-	{
-	  ptr = or_unpack_int (ptr, &change_index);
-	}
-
-      for (int j = 0; j < num_change_col; j++)
-	{
-	  ptr = or_unpack_int (ptr, &func_code);
-
-	  switch (func_code)
-	    {
-	    case 0:
-	      ptr = or_unpack_int (ptr, &i_data);
-	      break;
-	    case 1:
-	      ptr = or_unpack_int64 (ptr, &b_data);
-	      break;
-	    case 2:
-	      ptr = or_unpack_float (ptr, &f_data);
-	      break;
-	    case 3:
-	      ptr = or_unpack_double (ptr, &d_data);
-	      break;
-	    case 4:
-	      ptr = or_unpack_short (ptr, &sh_data);
-	    case 5:
-	      ptr = or_unpack_string_nocopy (ptr, &s_data);
-	      break;
-	    case 7:
-	      ptr = or_unpack_string_nocopy (ptr, &s_data);
-	      break;
-	    default:
-	      break;
-	    }
-	}
-
-      ptr = or_unpack_int (ptr, &num_cond_col);
-
-      for (int j = 0; j < num_cond_col; j++)
-	{
-	  ptr = or_unpack_int (ptr, &cond_index);
-	}
-
-      for (int j = 0; j < num_cond_col; j++)
-	{
-	  ptr = or_unpack_int (ptr, &func_code);
-
-	  switch (func_code)
-	    {
-	    case 0:
-	      ptr = or_unpack_int (ptr, &i_data);
-	      break;
-	    case 1:
-	      ptr = or_unpack_int64 (ptr, &b_data);
-	      break;
-	    case 2:
-	      ptr = or_unpack_float (ptr, &f_data);
-	      break;
-	    case 3:
-	      ptr = or_unpack_double (ptr, &d_data);
-	      break;
-	    case 4:
-	      ptr = or_unpack_short (ptr, &sh_data);
-	    case 5:
-	      ptr = or_unpack_string_nocopy (ptr, &s_data);
-	      break;
-	    case 7:
-	      ptr = or_unpack_string_nocopy (ptr, &s_data);
-	      break;
-	    default:
-	      break;
-	    }
-	}
-    }
-
-  return ptr;
-}
-
 /*
  * flashback_get_loginfo () - client-side function to get flashback log info
  *
@@ -10855,11 +10740,10 @@ unpacking_loginfo (char *ptr, int num_item)
 
 int
 flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa, LOG_LSA * end_lsa,
-		       int *num_item, bool forward, void *info_list)
+		       int *num_item, bool forward, char **info_list)
 {
 #if defined(CS_MODE)
-  int req_error = ER_FAILED;
-  int rep_error = ER_FAILED;
+  int error_code = ER_FAILED;
   int request_size = 0;
   char *request = NULL, *ptr, *start_ptr;
 
@@ -10898,21 +10782,31 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 
   request_size = ptr - start_ptr;
 
-  req_error =
+  error_code =
     net_client_request2 (NET_SERVER_FLASHBACK_GET_LOGINFO, start_ptr, request_size, reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
 
-  if (req_error == NO_ERROR)
+  if (error_code == NO_ERROR)
     {
       ptr = or_unpack_int (reply, &area_size);
-      ptr = or_unpack_int (ptr, &rep_error);
+      ptr = or_unpack_int (ptr, &error_code);
       if (area_size > 0)
 	{
 	  /* area : start lsa | end lsa | num item | item list */
 	  ptr = or_unpack_log_lsa (area, start_lsa);
 	  ptr = or_unpack_log_lsa (ptr, end_lsa);
 	  ptr = or_unpack_int (ptr, num_item);
-	  ptr = unpacking_loginfo (ptr, *num_item);
+
+	  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
+	  *info_list = (char *) malloc (area_size - (ptr - area));
+	  if (*info_list == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, area_size - (ptr - area));
+	    }
+
+	  memcpy (*info_list, ptr, area_size - (ptr - area));
 	}
 
       free_and_init (area);
@@ -10920,7 +10814,7 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 
   free_and_init (request);
 
-  return req_error != NO_ERROR ? req_error : rep_error;
+  return error_code;
 #endif // CS_MODE
   return ER_NOT_IN_STANDALONE;
 }
