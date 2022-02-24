@@ -4085,7 +4085,6 @@ process_column_data (char **data, char **sql, int *max_sql_size, DB_TYPE type)
 
   ptr = or_unpack_int (ptr, (int *) &func_type);
 
-  /* TODO: make enum for func code */
   switch (func_type)
     {
     case PACK_INT:
@@ -4751,6 +4750,7 @@ typedef enum
   FLASHBACK_UPDATE,
   FLASHBACK_DELETE
 } FLASHBACK_DML_TYPE;
+
 static int
 print_flashback_info (char *loginfo, int num_item, dynamic_array * classlist, OID * oidlist, bool is_detail,
 		      FILE * outfp)
@@ -4787,7 +4787,6 @@ print_flashback_info (char *loginfo, int num_item, dynamic_array * classlist, OI
 
       da_get (classlist, class_index, classname);
 
-      /* TODO: make enum for dml type */
       switch (dml_type)
 	{
 	case FLASHBACK_INSERT:
