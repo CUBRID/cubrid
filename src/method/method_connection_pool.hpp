@@ -34,57 +34,59 @@
 
 namespace cubmethod
 {
-    // forward declaration
-    class connection;
+  // forward declaration
+  class connection;
 
-    class connection_pool {
-        public:
-            connection_pool () = delete;
-            explicit connection_pool (int pool_size);
-            ~connection_pool ();
+  class connection_pool
+  {
+    public:
+      connection_pool () = delete;
+      explicit connection_pool (int pool_size);
+      ~connection_pool ();
 
-            connection_pool (connection_pool &&other) = delete; // Not MoveConstructible
-            connection_pool (const connection_pool &copy) = delete; // Not CopyConstructible
+      connection_pool (connection_pool &&other) = delete; // Not MoveConstructible
+      connection_pool (const connection_pool &copy) = delete; // Not CopyConstructible
 
-            connection_pool &operator= (connection_pool &&other) = delete; // Not MoveAssignable
-            connection_pool &operator= (const connection_pool &copy) = delete; // Not CopyAssignable
+      connection_pool &operator= (connection_pool &&other) = delete; // Not MoveAssignable
+      connection_pool &operator= (const connection_pool &copy) = delete; // Not CopyAssignable
 
-            connection* claim ();
-            void retire (connection* claimed);
+      connection *claim ();
+      void retire (connection *claimed);
 
-            int max_size () const;
+      int max_size () const;
 
-        private:
-            int m_pool_size;
-            std::queue <connection*> m_queue;
-            std::mutex m_mutex;
-    };
+    private:
+      int m_pool_size;
+      std::queue <connection *> m_queue;
+      std::mutex m_mutex;
+  };
 
-    class connection {
-        
-        friend connection_pool;
+  class connection
+  {
 
-        public:
-            connection () = delete;
-            ~connection ();
+      friend connection_pool;
 
-            connection (const connection &copy) = delete; // Not CopyConstructible
-            connection &operator= (const connection &copy) = delete; // Not CopyAssignable
+    public:
+      connection () = delete;
+      ~connection ();
 
-            connection(connection&& c) = default;
-            connection &operator= (connection &&other) = delete;
+      connection (const connection &copy) = delete; // Not CopyConstructible
+      connection &operator= (const connection &copy) = delete; // Not CopyAssignable
 
-            bool is_valid ();
-            SOCKET get_socket ();
+      connection (connection &&c) = default;
+      connection &operator= (connection &&other) = delete;
 
-        private:
-            explicit connection (connection_pool* pool, SOCKET socket);
+      bool is_valid ();
+      SOCKET get_socket ();
 
-            connection_pool *m_pool;
-            SOCKET m_socket;
-    };
+    private:
+      explicit connection (connection_pool *pool, SOCKET socket);
 
-    connection_pool * get_connection_pool (void);
+      connection_pool *m_pool;
+      SOCKET m_socket;
+  };
+
+  connection_pool *get_connection_pool (void);
 } // namespace cubmethod
 
 #endif // _METHOD_CONNECTION_POOL_HPP_

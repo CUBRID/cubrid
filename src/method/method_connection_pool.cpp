@@ -28,111 +28,111 @@
 
 namespace cubmethod
 {
-    #if defined (SERVER_MODE)
-      const std::size_t MAX_WORKERS = css_get_max_workers ();
-    #else
-      const std::size_t MAX_WORKERS = 15;
-    #endif
-    static connection_pool g_conn_pool (MAX_WORKERS);
+#if defined (SERVER_MODE)
+  const std::size_t MAX_WORKERS = css_get_max_workers ();
+#else
+  const std::size_t MAX_WORKERS = 15;
+#endif
+  static connection_pool g_conn_pool (MAX_WORKERS);
 
-    connection_pool *
-    get_connection_pool (void)
-    {
-        return &g_conn_pool;
-    }
+  connection_pool *
+  get_connection_pool (void)
+  {
+    return &g_conn_pool;
+  }
 
-    connection_pool::connection_pool (int pool_size)
+  connection_pool::connection_pool (int pool_size)
     : m_pool_size (pool_size), m_mutex ()
-    {
-        //
-    }
+  {
+    //
+  }
 
-    connection_pool::~connection_pool ()
-    {
-        std::unique_lock<std::mutex> ulock (m_mutex);
-        while (!m_queue.empty ())
-        {
-            connection* conn = m_queue.front ();
-            m_queue.pop ();
-            delete conn;
-        }
-    }
+  connection_pool::~connection_pool ()
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    while (!m_queue.empty ())
+      {
+	connection *conn = m_queue.front ();
+	m_queue.pop ();
+	delete conn;
+      }
+  }
 
-    connection*
-    connection_pool::claim ()
-    {
-        std::unique_lock<std::mutex> ulock (m_mutex);
-        while (!m_queue.empty ())
-        {
-            connection* conn = m_queue.front ();
-            m_queue.pop ();
+  connection *
+  connection_pool::claim ()
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    while (!m_queue.empty ())
+      {
+	connection *conn = m_queue.front ();
+	m_queue.pop ();
 
-            // test socket
-            if (conn->is_valid() == false)
-            {
-                conn->m_socket = jsp_connect_server (boot_db_name (), jsp_server_port ());
-            }
+	// test socket
+	if (conn->is_valid() == false)
+	  {
+	    conn->m_socket = jsp_connect_server (boot_db_name (), jsp_server_port ());
+	  }
 
-            return conn;
-        }
+	return conn;
+      }
 
-        // new connection
-        SOCKET socket = jsp_connect_server (boot_db_name (), jsp_server_port ());
-        return new connection (this, socket);
-    }
+    // new connection
+    SOCKET socket = jsp_connect_server (boot_db_name (), jsp_server_port ());
+    return new connection (this, socket);
+  }
 
-    void
-    connection_pool::retire (connection* claimed)
-    {
-        if (claimed == nullptr)
-        {
-            return;
-        }
+  void
+  connection_pool::retire (connection *claimed)
+  {
+    if (claimed == nullptr)
+      {
+	return;
+      }
 
-        std::unique_lock<std::mutex> ulock (m_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
 
-        // test connection
-        if (claimed->is_valid () == true)
-        {
-            if ((int) m_queue.size () < m_pool_size)
-            {
-                m_queue.push (claimed);
-            }
-            else
-            {
-                // overflow
-                delete claimed;
-            }
-        }
-    }
+    // test connection
+    if (claimed->is_valid () == true)
+      {
+	if ((int) m_queue.size () < m_pool_size)
+	  {
+	    m_queue.push (claimed);
+	  }
+	else
+	  {
+	    // overflow
+	    delete claimed;
+	  }
+      }
+  }
 
-    int
-    connection_pool::max_size () const
-    {
-        return m_pool_size;
-    }
-    
-    connection::connection (connection_pool* pool, SOCKET socket)
+  int
+  connection_pool::max_size () const
+  {
+    return m_pool_size;
+  }
+
+  connection::connection (connection_pool *pool, SOCKET socket)
     : m_pool (pool), m_socket (socket)
-    {
-        //
-    }
+  {
+    //
+  }
 
-    connection::~connection ()
-    {
-        jsp_disconnect_server (m_socket);
-    }
+  connection::~connection ()
+  {
+    jsp_disconnect_server (m_socket);
+  }
 
-    bool
-    connection::is_valid ()
-    {
-        return (jsp_ping (m_socket) == NO_ERROR);
-    }
+  bool
+  connection::is_valid ()
+  {
+    return (jsp_ping (m_socket) == NO_ERROR);
+  }
 
-    SOCKET
-    connection::get_socket ()
-    {
-        return m_socket;
-    }
+  SOCKET
+  connection::get_socket ()
+  {
+    return m_socket;
+  }
 
 } // namespace cubmethod
