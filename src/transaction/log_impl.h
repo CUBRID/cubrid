@@ -60,6 +60,8 @@
 #include "tde.h"
 #include "lockfree_circular_queue.hpp"
 
+#include <unordered_set>
+#include <queue>
 #include <assert.h>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
@@ -954,6 +956,22 @@ typedef enum cdc_dml_type
 } CDC_DML_TYPE;
 
 /*Data structure for CDC interface end */
+
+typedef struct flashback_loginfo_context
+{
+  TRANID trid;
+  char *user;
+  LOG_LSA start_lsa;
+  LOG_LSA end_lsa;
+  int num_class;
+  int forward;
+  int num_loginfo;
+  int queue_size;
+  // *INDENT-OFF*
+  std::unordered_set<OID> classoid_set;
+  std::queue<CDC_LOGINFO_ENTRY *> loginfo_queue;
+  // *INDENT-ON*
+} FLASHBACK_LOGINFO_CONTEXT;
 
 // todo - move to manager
 enum log_cs_access_mode
