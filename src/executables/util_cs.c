@@ -4291,10 +4291,22 @@ flashback (UTIL_FUNCTION_ARG * arg)
   error = flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest, NULL);
   if (error != NO_ERROR)
     {
+      switch (error)
+	{
+	case ER_FLASHBACK_SCHEMA_CHANGED:
+	  break;
+	case ER_FLASHBACK_LOG_NOT_EXIST:
+	  break;
+	default:
+	  break;
+	}
+
       goto error_exit;
     }
 
   db_shutdown ();
+
+  need_shutdown = false;
 
   if (darray != NULL)
     {
