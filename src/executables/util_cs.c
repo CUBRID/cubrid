@@ -5115,6 +5115,16 @@ flashback (UTIL_FUNCTION_ARG * arg)
 			       &loginfo_list);
       if (error != NO_ERROR)
 	{
+          switch (error)
+	{
+	case ER_FLASHBACK_SCHEMA_CHANGED:
+	  break;
+	case ER_FLASHBACK_LOG_NOT_EXIST:
+	  break;
+	default:
+	  break;
+	}
+
 	  goto error_exit;
 	}
 
@@ -5123,6 +5133,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	{
 	  goto error_exit;
 	}
+
     }
   while (!LSA_ISNULL (&start_lsa) && !LSA_ISNULL (&end_lsa));
 

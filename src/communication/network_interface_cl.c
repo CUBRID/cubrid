@@ -10723,6 +10723,21 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
   return ER_NOT_IN_STANDALONE;
 }
 
+/*
+ * flashback_get_loginfo () - client-side function to get flashback log info
+ *
+ * return             : error code
+ * trid (in)          : specifies transactions to flashback
+ * user (in)          : specifies transaction user
+ * classlist (in)     : specifies classes to flashback
+ * num_class (in)     : number of class in classlist
+ * start_lsa (in/out) : start lsa to extract log record
+ * end_lsa (in/out)   : end lsa to extract log record
+ * num_info (in/out)  : number of log info to extract, and number of log info that is extracted
+ * forward (in)       : direction of traversing log records
+ * info_list (out)    : log info list
+ */
+
 int
 flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa, LOG_LSA * end_lsa,
 		       int *num_item, bool forward, char **info_list)
