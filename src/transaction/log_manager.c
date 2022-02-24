@@ -325,8 +325,6 @@ static int cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_pag
 				     char **data, LOG_RCVINDEX rcvindex, bool is_redo);
 static int cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recdes, LOG_LSA * redo_lsa,
 			   RECDES * redo_recdes, bool is_flashback);
-static SCAN_CODE cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa,
-				      RECDES * undo_recdes);
 static int cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id);
 static int cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type, OID classoid,
 				 RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry,
@@ -422,9 +420,6 @@ log_to_string (LOG_RECTYPE type)
 
     case LOG_COMPENSATE:
       return "LOG_COMPENSATE";
-
-    case LOG_WILL_COMMIT:
-      return "LOG_WILL_COMMIT";
 
     case LOG_COMMIT_WITH_POSTPONE:
       return "LOG_COMMIT_WITH_POSTPONE";
@@ -6929,10 +6924,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_commit_postpone (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
-    case LOG_WILL_COMMIT:
-      fprintf (out_fp, "\n");
-      break;
-
     case LOG_COMMIT:
     case LOG_ABORT:
       log_page_p = log_dump_record_transaction_finish (thread_p, out_fp, log_lsa, log_page_p);
@@ -7914,7 +7905,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      LSA_SET_NULL (&prev_tranlsa);
 	      break;
 
-	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
 	    case LOG_2PC_COMMIT_DECISION:
@@ -8353,7 +8343,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		      /* TODO: consider to add FI here */
 		      break;
 
-		    case LOG_WILL_COMMIT:
 		    case LOG_COMMIT_WITH_POSTPONE:
 		    case LOG_SYSOP_START_POSTPONE:
 		    case LOG_2PC_PREPARE:
@@ -11145,7 +11134,7 @@ cdc_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * ls
   return NO_ERROR;
 }
 
-static SCAN_CODE
+SCAN_CODE
 cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa, RECDES * undo_recdes)
 {
   SCAN_CODE scan_code = S_SUCCESS;

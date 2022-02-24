@@ -10561,13 +10561,75 @@ loaddb_update_stats ()
 #endif /* !CS_MODE */
 }
 
+/* for the test purpose, will be replaced */
+static int
+unpacking_summary_entry (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * summary)
+{
+  TRANID trid;
+  char *user = NULL;
+  time_t start_time, end_time;
+  int num_insert, num_update, num_delete;
+  LOG_LSA start_lsa, end_lsa;
+  int num_table;
+  OID tablelist[32];
+
+  char *tmp_ptr = *ptr;
+
+  FLASHBACK_SUMMARY_INFO *info = (FLASHBACK_SUMMARY_INFO *) malloc (sizeof (FLASHBACK_SUMMARY_INFO));
+  if (info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (FLASHBACK_SUMMARY_INFO));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* testing code, it will be replaced with print function */
+  tmp_ptr = or_unpack_int (tmp_ptr, &trid);
+  tmp_ptr = or_unpack_string_nocopy (tmp_ptr, &user);
+  tmp_ptr = or_unpack_int64 (tmp_ptr, &start_time);
+  tmp_ptr = or_unpack_int64 (tmp_ptr, &end_time);
+  tmp_ptr = or_unpack_int (tmp_ptr, &num_insert);
+  tmp_ptr = or_unpack_int (tmp_ptr, &num_update);
+  tmp_ptr = or_unpack_int (tmp_ptr, &num_delete);
+  tmp_ptr = or_unpack_log_lsa (tmp_ptr, &start_lsa);
+  tmp_ptr = or_unpack_log_lsa (tmp_ptr, &end_lsa);
+  tmp_ptr = or_unpack_int (tmp_ptr, &num_table);
+
+  info->trid = trid;
+  info->start_lsa = start_lsa;
+  info->end_lsa = end_lsa;
+
+/* *INDENT-OFF* */
+  summary->insert (std::make_pair (trid, info));
+/* *INDENT-ON* */
+  for (int j = 0; j < num_table; j++)
+    {
+      tmp_ptr = or_unpack_oid (tmp_ptr, &tablelist[j]);
+    }
+
+  *ptr = tmp_ptr;
+
+  return NO_ERROR;
+}
+
+/*
+ * flashabck_get_summary () - client-side function to get flashback summary
+ *
+ * return           : error code
+ * class_list (in)  : class name list to flashback
+ * user (in)        : transaction user to flashback
+ * start_time (in)  : flashback sql logs are extracted from 'start_time'
+ * end_time (in)    : flashback sql logs are extracted until 'end_time'
+ * summary (out)    : summary information retrieved from server
+ * oid_list (out)   : class oid list that is extracted with 'class_list'
+ */
+
 int
 flashback_get_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
-		       void *summary_list, OID ** oid_list)
+		       FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list)
 {
 #if defined(CS_MODE)
-  int req_error = ER_FAILED;
-  int rep_error = ER_FAILED;
+  int error_code = NO_ERROR;
+
   int request_size = 0;
   char *request = NULL, *ptr, *start_ptr;
   int num_class = 0;
@@ -10578,6 +10640,8 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *area;
   int area_size;
+
+  int num_summary = 0;
 
   num_class = da_size (class_list);
 
@@ -10620,14 +10684,14 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 
   request_size = ptr - start_ptr;
 
-  req_error =
+  error_code =
     net_client_request2 (NET_SERVER_FLASHBACK_GET_SUMMARY, start_ptr, request_size, reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
 
-  if (req_error == NO_ERROR)
+  if (error_code == NO_ERROR)
     {
       ptr = or_unpack_int (reply, &area_size);
-      ptr = or_unpack_int (ptr, &rep_error);
+      ptr = or_unpack_int (ptr, &error_code);
       if (area_size > 0)
 	{
 	  ptr = area;
@@ -10637,6 +10701,16 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 	      ptr = or_unpack_oid (ptr, &(*oid_list)[i]);
 	    }
 	  /* get summary info */
+	  ptr = or_unpack_int (ptr, &num_summary);
+
+	  for (int i = 0; i < num_summary; i++)
+	    {
+	      error_code = unpacking_summary_entry (&ptr, summary);
+	      if (error_code != NO_ERROR)
+		{
+		  break;
+		}
+	    }
 	}
 
       free_and_init (area);
@@ -10644,7 +10718,7 @@ flashback_get_summary (dynamic_array * class_list, const char *user, time_t star
 
   free_and_init (request);
 
-  return req_error != NO_ERROR ? req_error : rep_error;
+  return error_code;
 #endif // CS_MODE
   return ER_NOT_IN_STANDALONE;
 }

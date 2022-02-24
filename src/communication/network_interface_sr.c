@@ -84,7 +84,7 @@
 #include "elo.h"
 #include "transaction_transient.hpp"
 #include "crypt_opfunc.h"
-
+#include "flashback.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -10699,6 +10699,17 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   return;
 }
 
+/*
+ * flashback_verify_time () - verify the availablity of log records around the 'start_time' and 'end_time'
+ *
+ * return           : error_code
+ * thread_p (in)    : thread entry
+ * start_time (in)  : start point of flashback.
+ * end_time (in)    : end point of flashback
+ * start_lsa (out)  : LSA near the 'start_time'
+ * end_lsa (out)    : LSA near the 'end_time'
+ * TODO : move to flashback_sr.c
+ */
 static int
 flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_time, LOG_LSA * start_lsa,
 		       LOG_LSA * end_lsa)
@@ -10733,8 +10744,7 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
       else
 	{
 	  /* failed to find a log at the time due to failure while reading log page or volume (ER_FAILED, ER_LOG_READ) */
-	  /* TODO : er_set() */
-	  return ER_FAILED;
+	  return error_code;
 	}
     }
 
@@ -10747,10 +10757,48 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
     {
       /* failed to find a log record */
       /* TODO : er_set() */
-      return ER_FAILED;
+      return error_code;
     }
 
   return NO_ERROR;
+}
+
+/*
+ * flashback_pack_summary_entry ()
+ *
+ * return        : memory pointer after packing summary entries
+ * ptr (in)      : memory pointer where to pack summary entries
+ * context (in)  : context which contains summary entry list
+ * TODO : move to flashback_sr.c
+ */
+static char *
+flashback_pack_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT context)
+{
+  FLASHBACK_SUMMARY_ENTRY entry;
+
+// *INDENT-OFF*
+  for (auto iter : context.summary_list)
+    {
+      entry = iter.second;
+      ptr = or_pack_int (ptr, entry.trid);
+      ptr = or_pack_string (ptr, entry.user);
+      ptr = or_pack_int64 (ptr, entry.start_time);
+      ptr = or_pack_int64 (ptr, entry.end_time);
+      ptr = or_pack_int (ptr, entry.num_insert);
+      ptr = or_pack_int (ptr, entry.num_update);
+      ptr = or_pack_int (ptr, entry.num_delete);
+      ptr = or_pack_log_lsa (ptr, &entry.start_lsa);
+      ptr = or_pack_log_lsa (ptr, &entry.end_lsa);
+      ptr = or_pack_int (ptr, entry.classoid_set.size());
+
+      for (auto item : entry.classoid_set)
+        {
+          ptr = or_pack_oid (ptr, &item);
+        }
+    }
+// *INDENT-ON*
+
+  return ptr;
 }
 
 void
@@ -10764,53 +10812,58 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   int error_code = NO_ERROR;
   char *ptr;
   char *start_ptr;
-  OID *oid = NULL;
-  LC_FIND_CLASSNAME status;
-  int num_class;
 
-  char *user = NULL;
+  LC_FIND_CLASSNAME status;
+
+  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, };
+
   time_t start_time = 0;
   time_t end_time = 0;
 
-  LOG_LSA start_lsa = LSA_INITIALIZER;
-  LOG_LSA end_lsa = LSA_INITIALIZER;
+  ptr = or_unpack_int (request, &context.num_class);
 
-  ptr = or_unpack_int (request, &num_class);
-
-  oid = (OID *) db_private_alloc (thread_p, sizeof (OID) * num_class);
-  if (oid == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID) * num_class);
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto error;
-    }
-
-  for (int i = 0; i < num_class; i++)
+  for (int i = 0; i < context.num_class; i++)
     {
       char *classname = NULL;
+      OID classoid = OID_INITIALIZER;
 
       ptr = or_unpack_string_nocopy (ptr, &classname);
 
-      status = xlocator_find_class_oid (thread_p, classname, &oid[i], NULL_LOCK);
+      status = xlocator_find_class_oid (thread_p, classname, &classoid, NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
 	{
 	  /* TODO : er_set() */
 	  error_code = ER_FLASHBACK_INVALID_CLASS;
 	  goto error;
 	}
+
+      context.classoid_set.emplace (classoid);
     }
-  ptr = or_unpack_string_nocopy (ptr, &user);
+  ptr = or_unpack_string_nocopy (ptr, &context.user);
   ptr = or_unpack_int64 (ptr, &start_time);
   ptr = or_unpack_int64 (ptr, &end_time);
 
-  if ((error_code = flashback_verify_time (thread_p, start_time, end_time, &start_lsa, &end_lsa)) != NO_ERROR)
+  error_code = flashback_verify_time (thread_p, start_time, end_time, &context.start_lsa, &context.end_lsa);
+  if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  area_size = OR_OID_SIZE * num_class;
+  /* get summary list */
+  error_code = flashback_make_summary_list (thread_p, &context);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
-  area = (char *) db_private_alloc (thread_p, area_size);	/* summary info size will be added */
+  /* area : | class oid list | num summary | summary entry list |
+   * summary entry : | trid | user | start/end time | num insert/update/delete | num class | class oid list |
+   * OR_OID_SIZE * context.num_class means maximum class oid list size per summary entry */
+
+  area_size = OR_OID_SIZE * context.num_class + OR_INT_SIZE
+    + (OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS + OR_OID_SIZE * context.num_class) * context.num_summary;
+
+  area = (char *) db_private_alloc (thread_p, area_size);
   if (area == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
@@ -10822,17 +10875,22 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_pack_int (reply, area_size);
   ptr = or_pack_int (ptr, error_code);
 
-  /* area packing : OID list | summary info list */
+  /* area packing : OID list | num summary | summary info list */
   ptr = area;
-  for (int i = 0; i < num_class; i++)
+
+// *INDENT-OFF*
+  for (auto iter : context.classoid_set)
     {
-      ptr = or_pack_oid (ptr, &oid[i]);
+      ptr = or_pack_oid (ptr, &iter);
     }
+// *INDENT-ON*
+
+  ptr = or_pack_int (ptr, context.num_summary);
+  ptr = flashback_pack_summary_entry (ptr, context);
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
   db_private_free_and_init (thread_p, area);
-  db_private_free_and_init (thread_p, oid);
 
   return;
 error:
@@ -10840,11 +10898,6 @@ error:
   or_pack_int (ptr, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-
-  if (oid != NULL)
-    {
-      db_private_free_and_init (thread_p, oid);
-    }
 
   return;
 }

@@ -326,6 +326,14 @@ extern int db_Disable_modifications;
     } \
   while (0)
 
+#define CDC_MAKE_SUPPLEMENT_DATA(supplement_data, recdes) \
+  do \
+    { \
+      memcpy ((supplement_data), &(recdes).type, sizeof ((recdes).type)); \
+      memcpy ((supplement_data) + sizeof((recdes).type), (recdes).data, (recdes).length); \
+    } \
+  while (0)
+
 #define cdc_log(...) if (cdc_Logging) _er_log_debug (ARG_FILE_LINE, "CDC: " __VA_ARGS__)
 
 #define MAX_CDC_LOGINFO_QUEUE_ENTRY  2048
