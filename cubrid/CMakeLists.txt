@@ -289,6 +289,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/transaction_sr.c
   ${TRANSACTION_DIR}/transaction_transient.cpp
   ${TRANSACTION_DIR}/wait_for_graph.c
+  ${TRANSACTION_DIR}/flashback.c
   )
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
@@ -307,6 +308,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/mvcc_table.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
   ${TRANSACTION_DIR}/transaction_transient.hpp
+  ${TRANSACTION_DIR}/flashback.h
   )
 
 set(STORAGE_SOURCES
