@@ -14994,9 +14994,7 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 		  goto error;
 		}
 
-              // *INDENT-OFF*
-              context->loginfo_queue.push (log_info_entry);
-              // *INDENT-ON*
+	      context->loginfo_queue.push (log_info_entry);
 	      context->queue_size += log_info_entry->length;
 	      num_loginfo++;
 	      log_info_entry = NULL;
@@ -15057,9 +15055,7 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 		  goto error;
 		}
 
-              // *INDENT-OFF*
-              context->loginfo_queue.push (log_info_entry);
-              // *INDENT-ON*
+	      context->loginfo_queue.push (log_info_entry);
 	      context->queue_size += log_info_entry->length;
 	      num_loginfo++;
 	      log_info_entry = NULL;
@@ -15101,9 +15097,7 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 		  goto error;
 		}
 
-              // *INDENT-OFF*
-              context->loginfo_queue.push (log_info_entry);
-              // *INDENT-ON*
+	      context->loginfo_queue.push (log_info_entry);
 	      context->queue_size += log_info_entry->length;
 	      num_loginfo++;
 	      log_info_entry = NULL;
