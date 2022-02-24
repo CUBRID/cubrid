@@ -4275,7 +4275,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	  break;
 	case ER_FLASHBACK_INVALID_CLASS:
 	  break;
-	case ER_FLASHBACK_TOO_MANY_SUMMARY:
+	case ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY:
 	  break;
 	default:
 	  break;

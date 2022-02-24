@@ -38,7 +38,7 @@
 #include "thread_compat.hpp"
 #include "oid.h"
 
-#define FLASHBACK_MAX_SUMMARY   INT_MAX
+#define FLASHBACK_MAX_NUM_TRAN_TO_SUMMARY   INT_MAX
 
 #define FLASHBACK_CHECK_AND_GET_SUMMARY(summary_list, trid, summary_entry) \
   do \

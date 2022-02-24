@@ -187,10 +187,10 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 	    LOG_REC_DONETIME *donetime;
 	    FLASHBACK_SUMMARY_ENTRY tmp_summary_entry = { -1, "\0", 0, 0, 0, 0, 0, LSA_INITIALIZER, LSA_INITIALIZER, };
 
-	    if (context->num_summary == FLASHBACK_MAX_SUMMARY)
+	    if (context->num_summary == FLASHBACK_MAX_NUM_TRAN_TO_SUMMARY)
 	      {
 		/* er_set */
-		error = ER_FLASHBACK_TOO_MANY_SUMMARY;
+		error = ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY;
 		goto exit;
 	      }
 
