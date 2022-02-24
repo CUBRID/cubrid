@@ -10782,6 +10782,17 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 	  ptr = or_unpack_log_lsa (area, start_lsa);
 	  ptr = or_unpack_log_lsa (ptr, end_lsa);
 	  ptr = or_unpack_int (ptr, num_item);
+
+	  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
+	  *info_list = (char *) malloc (area_size - (ptr - area));
+	  if (*info_list == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, area_size - (ptr - area));
+	    }
+
+	  memcpy (*info_list, ptr, area_size - (ptr - area));
 	}
 
       free_and_init (area);

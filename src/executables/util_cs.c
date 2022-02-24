@@ -5115,20 +5115,20 @@ flashback (UTIL_FUNCTION_ARG * arg)
 			       &loginfo_list);
       if (error != NO_ERROR)
 	{
-	  db_shutdown ();
 	  goto error_exit;
 	}
 
       error = print_flashback_info (loginfo_list, num_item, darray, oid_list, is_detail, outfp);
       if (error != NO_ERROR)
 	{
-	  db_shutdown ();
 	  goto error_exit;
 	}
     }
   while (!LSA_ISNULL (&start_lsa) && !LSA_ISNULL (&end_lsa));
 
   db_shutdown ();
+
+  need_shutdown = false;
 
   da_destroy (darray);
 
