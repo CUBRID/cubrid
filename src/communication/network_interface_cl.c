@@ -10834,6 +10834,8 @@ unpacking_loginfo (char *ptr, int num_item)
 	    }
 	}
     }
+
+  return ptr;
 }
 
 /*
