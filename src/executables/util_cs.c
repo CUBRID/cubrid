@@ -5115,15 +5115,15 @@ flashback (UTIL_FUNCTION_ARG * arg)
 			       &loginfo_list);
       if (error != NO_ERROR)
 	{
-          switch (error)
-	{
-	case ER_FLASHBACK_SCHEMA_CHANGED:
-	  break;
-	case ER_FLASHBACK_LOG_NOT_EXIST:
-	  break;
-	default:
-	  break;
-	}
+	  switch (error)
+	    {
+	    case ER_FLASHBACK_SCHEMA_CHANGED:
+	      break;
+	    case ER_FLASHBACK_LOG_NOT_EXIST:
+	      break;
+	    default:
+	      break;
+	    }
 
 	  goto error_exit;
 	}
