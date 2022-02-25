@@ -1755,7 +1755,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return NON_PUSHABLE;
     }
   /* determine if spec is outer joined */
-  if (mq_is_outer_join_spec (parser, class_spec))
+  if (!is_only_spec && mq_is_outer_join_spec (parser, class_spec))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -1818,7 +1818,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   /* determine if spec is outer joined and CTE spec */
   for (PT_NODE * spec = subquery->info.query.q.select.from; spec; spec = spec->next)
     {
-      if (mq_is_outer_join_spec (parser, spec))
+      if (!is_only_spec && mq_is_outer_join_spec (parser, spec))
 	{
 	  /* subquery has outer joins; not pushable */
 	  return NON_PUSHABLE;
@@ -1977,20 +1977,6 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
 	  return NON_PUSHABLE;
 	}
     }
-
-  /* check method */
-  cpi.check_query = false;	/* subqueries are pushable */
-  cpi.check_method = true;	/* methods are non-pushable */
-  cpi.method_found = false;
-  cpi.query_found = false;
-
-  parser_walk_tree (parser, subquery, pt_check_pushable, (void *) &cpi, NULL, NULL);
-
-  if (cpi.method_found)
-    {
-      return NON_PUSHABLE;
-    }
-
 
   return PUSHABLE;
 }
