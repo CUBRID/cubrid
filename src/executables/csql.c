@@ -1744,6 +1744,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   er_clear ();
   db_set_interrupt (0);
 
+  if (csql_Is_interactive)
+    {
+      csql_yyset_lineno (1);
+    }
+
   if (type == FILE_INPUT)
     {				/* FILE * input */
       if (!(session = db_open_file ((FILE *) stream)))
@@ -1817,11 +1822,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
   logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
   logddl_set_commit_mode (csql_is_auto_commit_requested (csql_arg));
-
-  if (csql_Is_interactive)
-    {
-      csql_yyset_lineno (1);
-    }
 
   /* execute the statements one-by-one */
   for (num_stmts = 0; num_stmts < total; num_stmts++)
