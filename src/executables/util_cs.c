@@ -4902,7 +4902,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   int trid = 0;
   int num_item = 0;
-  char *loginfo_list;
+  char *loginfo_list = NULL;
 
   bool need_shutdown = false;
 

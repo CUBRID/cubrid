@@ -1253,8 +1253,6 @@ flashback: Provides statements to flashbacksh a specific transaction.\n\
 usage: %1$s flashback [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
 valid options:\n\
-    -p, --dba-password=PASS       
-\n\
     -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
     -u, --user=ID                 specify the user who executed the SQL statement to flashback; default : ALL.\n\
     -p, --dba-password            password of the DBA user; will prompt if don't specify\n\
@@ -1268,4 +1266,4 @@ valid options:\n\
     --detail                      output a detailed information for each SQL statement.\n\
                                   Transaction ID, User name, and original SQL statement will be returned with SQL statement\n\
                                   for flashback; default : outputs only SQL statements\n\
-    --oldest                      output SQL statements from the most recently executed; default : latest\n\
+    --oldest                      output SQL statements from the most recently executed; default : latest\n
