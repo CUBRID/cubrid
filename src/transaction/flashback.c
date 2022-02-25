@@ -58,12 +58,18 @@
 #include "system_parameter.h"
 
 static LOG_PAGEID flashback_Min_log_pageid = NULL_LOG_PAGEID;	// Minumun log pageid to keep archive log volume from being removed
-static time_t flashback_Last_request_time = -1;	// The time most recently requested by flashback
+static time_t flashback_Last_request_time = -1;	                // The time most recently requested by flashback
 static int flashback_Threshold_to_remove_archive = 0;	/* If the difference between the time at which the archive log is deleted
-							 * and the time the flashback last requested exceeds this threshold,
-							 * the archive log volume can be deleted.
-							 */
-static bool flashback_Is_active = false;
+                                                         * and the time the flashback last requested exceeds this threshold,
+                                                         * the archive log volume can be deleted.
+                                                         */
+
+static bool flashback_Is_active = false;  // the status value that the flashback is processing the request
+
+
+/*
+ * flashback_set_min_log_pageid_to_keep - set flashback_Min_log_pageid
+ */
 
 void
 flashback_set_min_log_pageid_to_keep (LOG_LSA * lsa)
@@ -72,6 +78,10 @@ flashback_set_min_log_pageid_to_keep (LOG_LSA * lsa)
 
   flashback_Min_log_pageid = lsa->pageid;
 }
+
+/*
+ * flashback_unset_min_log_pageid_to_keep - unset flashback_Min_log_pageid to NULL_LOG_PAGEID
+ */
 
 void
 flashback_unset_min_log_pageid_to_keep ()
@@ -91,11 +101,20 @@ flashback_min_log_pageid_to_keep ()
   return flashback_Min_log_pageid;
 }
 
+/*
+ * flashback_set_request_time - set flashback_Last_request_time to current
+ */
+
 void
 flashback_set_request_time ()
 {
   flashback_Last_request_time = time (NULL);
 }
+
+/*
+ * flashback_set_threshold - set flashback_Threshold_to_remove_archive
+ *                           it follows PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL
+ */
 
 void
 flashback_set_threshold ()
@@ -125,11 +144,23 @@ flashback_check_time_exceed_threshold ()
   return (time (NULL) - flashback_Last_request_time) >= flashback_Threshold_to_remove_archive;
 }
 
+/*
+ * flashback_set_state - set flashback_Is_active to true or false
+ *
+ * return   : true or false
+ */
+
 void
 flashback_set_state (bool is_active)
 {
   flashback_Is_active = is_active;
 }
+
+/*
+ * flashback_is_active - get the state of flashback
+ *
+ * return   : flashback_Is_active (true or false)
+ */
 
 bool
 flashback_is_active ()
