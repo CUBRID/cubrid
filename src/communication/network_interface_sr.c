@@ -10849,7 +10849,10 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto error;
     }
 
-  FLASHBACK_SET_REQUEST_TIME ();
+  assert (!LSA_ISNULL (&context.start_lsa));
+
+  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
+  flashback_set_state (true);
 
   /* get summary list */
   error_code = flashback_make_summary_list (thread_p, &context);
@@ -10857,8 +10860,6 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     {
       goto error;
     }
-
-  FLASHBACK_SET_MIN_LOG_PAGEID_TO_KEEP (&context.start_lsa);
 
   /* area : | class oid list | num summary | summary entry list |
    * summary entry : | trid | user | start/end time | num insert/update/delete | num class | class oid list |
@@ -10896,6 +10897,9 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   db_private_free_and_init (thread_p, area);
 
+  flashback_set_state (false);
+  flashback_set_request_time ();
+
   return;
 error:
   ptr = or_pack_int (reply, 0);
@@ -10903,7 +10907,8 @@ error:
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
-  FLASHBACK_UNSET_MIN_LOG_PAGEID_TO_KEEP ();
+  flashback_set_state (false);
+  flashback_unset_min_log_pageid_to_keep ();
 
   return;
 }
@@ -10960,6 +10965,13 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0 };
 
+  if (flashback_check_time_exceed_threshold ())
+    {
+      /* er_set */
+      error_code = ER_FLASHBACK_EXCEED_THRESHOLD;
+      goto error;
+    }
+
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
   ptr = or_unpack_int (request, &context.trid);
@@ -10978,21 +10990,17 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_unpack_int (ptr, &context.num_loginfo);
   ptr = or_unpack_int (ptr, &context.forward);
 
-  FLASHBACK_SET_REQUEST_TIME ();
+  if (LSA_ISNULL (&context.start_lsa))
+    {
+      flashback_set_min_log_pageid_to_keep (&context.start_lsa);
+    }
+
+  flashback_set_state (true);
 
   error_code = flashback_make_loginfo (thread_p, &context);
   if (error_code != NO_ERROR)
     {
       goto error;
-    }
-
-  if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa))
-    {
-      FLASHBACK_UNSET_MIN_LOG_PAGEID_TO_KEEP ();
-    }
-  else
-    {
-      FLASHBACK_SET_MIN_LOG_PAGEID_TO_KEEP (&context.start_lsa);
     }
 
   area_size = OR_LOG_LSA_ALIGNED_SIZE * 2 + OR_INT_SIZE;
@@ -11026,6 +11034,18 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   db_private_free_and_init (thread_p, area);
 
+  if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa))
+    {
+      flashback_unset_min_log_pageid_to_keep ();
+    }
+  else
+    {
+      flashback_set_min_log_pageid_to_keep (&context.start_lsa);
+      flashback_set_request_time ();
+    }
+
+  flashback_set_state (false);
+
   return;
 error:
   ptr = or_pack_int (reply, 0);
@@ -11033,7 +11053,8 @@ error:
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
-  FLASHBACK_UNSET_MIN_LOG_PAGEID_TO_KEEP ();
+  flashback_set_state (false);
+  flashback_unset_min_log_pageid_to_keep ();
 
   return;
 }

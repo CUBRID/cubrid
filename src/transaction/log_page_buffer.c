@@ -6098,11 +6098,11 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	    }
 
 	  /* check flashback */
-	  if (flashback_check_time_to_remove_archive ())
+	  if (flashback_check_time_exceed_threshold () && !flashback_is_active ())
 	    {
 	      /* unset flashback minimum log page id to keep,
 	       * so that archive log volumes are able to be removed */
-	      FLASHBACK_UNSET_MIN_LOG_PAGEID_TO_KEEP ();
+	      flashback_unset_min_log_pageid_to_keep ();
 	    }
 
 	  flashback_first_pageid = flashback_min_log_pageid_to_keep ();
@@ -6184,7 +6184,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
  *
  *   info_reason(in):
  *
- * NOTE: Archive that are not needed for system crashes and vacuum are removed.
+ * NOTE: Archive that are not needed for system crashes, vacuum, cdc, and flashback are removed.
  *       That these archives may be needed for media crash recovery.
  *       Therefore, it is important that the user copy these archives
  *       to tape. Check the log information file.
@@ -6279,11 +6279,11 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 	}
 
       /* flashback */
-      if (flashback_check_time_to_remove_archive ())
+      if (flashback_check_time_exceed_threshold () && !flashback_is_active ())
 	{
 	  /* unset flashback minimum log page id to keep,
 	   * so that archive log volumes are able to be removed */
-	  FLASHBACK_UNSET_MIN_LOG_PAGEID_TO_KEEP ();
+	  flashback_unset_min_log_pageid_to_keep ();
 	}
 
       flashback_first_pageid = flashback_min_log_pageid_to_keep ();
