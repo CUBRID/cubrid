@@ -560,7 +560,7 @@ static void au_print_cache (int cache, FILE * fp);
 static void au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp);
 static void au_print_auth (MOP auth, FILE * fp);
 
-static int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment);
+static int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
 /*
  * DB_ EXTENSION FUNCTIONS
  */
@@ -5543,14 +5543,15 @@ end:
  *   is_auto_increment(in): check if auto increment serial name change is necessary
  */
 int
-au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
+au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change)
 {
+  DB_OBJECT *serial_owner_obj = NULL;
   DB_OBJECT *serial_class_mop = NULL;
   DB_OBJECT *serial_obj = NULL;
   DB_IDENTIFIER serial_obj_id;
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE value;
-  const char *serial_old_name = NULL;
+  const char *serial_name = NULL;
   char serial_new_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
   const char *att_name = NULL;
   char *owner_name = NULL;
@@ -5576,6 +5577,11 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
   AU_DISABLE (save);
 
   /*
+   * class, serial, and trigger distinguish user schema by unique_name (user_specified_name).
+   * so if the owner of class, serial, trigger changes, the unique_name must also change.
+   */
+
+  /*
    * after serial.next_value, the currect value maybe changed, but cub_cas
    * still hold the old value. To get the new value. we need decache it
    * then refetch it from server again.
@@ -5593,7 +5599,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
       goto end;
     }
 
-  if (!is_auto_increment)
+  if (!by_class_owner_change)
     {
       /* It can be checked as one of unique_name, class_name, and att_name. */
       error = obj_get (serial_mop, SERIAL_ATTR_ATT_NAME, &value);
@@ -5608,18 +5614,36 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
 	  ERROR_SET_WARNING (error, ER_AU_CANT_ALTER_OWNER_OF_AUTO_INCREMENT);
 	  goto end;
 	}
-
-      pr_clear_value (&value);
     }
 
-  error = obj_get (serial_mop, SERIAL_ATTR_UNIQUE_NAME, &value);
+  /* Check if the owner to be changed is the same. */
+  error = obj_get (serial_mop, SERIAL_ATTR_OWNER, &value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto end;
     }
 
-  if (!IS_STRING (&value) || (serial_old_name = db_get_string (&value)) == NULL)
+  if (DB_VALUE_DOMAIN_TYPE (&value) != DB_TYPE_OBJECT || (serial_owner_obj = db_get_object (&value)) == NULL)
+    {
+      /* Unable to get attribute value. */
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      goto end;
+    }
+
+  if (ws_is_same_object (serial_owner_obj, owner_mop))
+    {
+      goto end;
+    }
+
+  error = obj_get (serial_mop, SERIAL_ATTR_NAME, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (!DB_IS_STRING (&value) || (serial_name = db_get_string (&value)) == NULL)
     {
       /* Unable to get attribute value. */
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
@@ -5635,8 +5659,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool is_auto_increment)
   sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
   db_ws_free_and_init (owner_name);
 
-  snprintf (serial_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
-	    sm_remove_qualifier_name (serial_old_name));
+  snprintf (serial_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, serial_name);
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
   if (serial_class_mop == NULL)
@@ -5775,6 +5798,9 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * serial
 int
 au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 {
+  DB_OBJECT *trigger_owner_obj = NULL;
+  DB_OBJECT *target_class_obj = NULL;
+  SM_CLASS *target_class = NULL;
   DB_VALUE value;
   const char *trigger_old_name = NULL;
   char trigger_new_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -5815,6 +5841,35 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
       goto end;
     }
 
+  /* Check if the owner to be changed is the same. */
+  error = obj_get (trigger_mop, TR_ATT_OWNER, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (DB_VALUE_DOMAIN_TYPE (&value) != DB_TYPE_OBJECT || (trigger_owner_obj = db_get_object (&value)) == NULL)
+    {
+      /* Unable to get attribute value. */
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      goto end;
+    }
+
+  if (ws_is_same_object (trigger_owner_obj, owner_mop))
+    {
+      goto end;
+    }
+
+  /* TO BE: It is necessary to check the permission of the target class of the owner to be changed. */
+
+  error = au_fetch_class (target_class_obj, &target_class, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
   owner_name = au_get_user_name (owner_mop);
   if (!owner_name)
     {
@@ -5826,8 +5881,6 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 
   snprintf (trigger_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
 	    sm_remove_qualifier_name (trigger_old_name));
-
-  pr_clear_value (&value);
 
   error = tr_rename_trigger (trigger_mop, trigger_new_name, false, true);
   if (error != NO_ERROR)
@@ -5849,7 +5902,6 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 	  assert (false);
 	}
     }
-  pr_clear_value (&value);
 
 end:
   AU_ENABLE (save);
