@@ -33440,6 +33440,45 @@ btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
   return PERF_PAGE_BTREE_ROOT;
 }
 
+/* btree_is_btree_root_page - investigative check whether a page is a btree root page
+ *
+ * NOTE: function just assumes that it investigates a PAGE_BTREE; however, due to the low
+ *    layer the function is used within, it cannot assert that the page is of the correct
+ *    type; it is the collers responsability to ensure this
+ */
+bool
+btree_is_btree_root_page (THREAD_ENTRY * thread_p, const PAGE_PTR page_ptr)
+{
+  assert (page_ptr != nullptr);
+
+  const SPAGE_HEADER *const page_header_p = (const SPAGE_HEADER *) page_ptr;
+  RECDES header_record;
+  if (page_header_p->num_slots <= 0 || spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
+    {
+      assert ("should not happen in the contexts this function is used" == nullptr);
+      return false;
+    }
+
+  // logic below assumes incresing sizes of btree header structures
+  static_assert (sizeof (BTREE_OVERFLOW_HEADER) < sizeof (BTREE_NODE_HEADER));
+  static_assert (sizeof (BTREE_NODE_HEADER) < sizeof (BTREE_ROOT_HEADER));
+  constexpr int root_header_fixed_size = offsetof (BTREE_ROOT_HEADER, packed_key_domain);
+
+  if (header_record.length == sizeof (BTREE_OVERFLOW_HEADER) || header_record.length == sizeof (BTREE_NODE_HEADER))
+    {
+      return false;
+    }
+  else if (header_record.length >= root_header_fixed_size)
+    {
+      return true;
+    }
+  else
+    {
+      assert ("unexpected page header length" == nullptr);
+      return false;
+    }
+}
+
 //
 // btree_online_index_check_state () - check online index state is valid
 //

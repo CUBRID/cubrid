@@ -136,7 +136,7 @@ page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t
 {
   m_prior_sender_sink_hook_func =
 	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
-  push_async_response (&log_pack_log_boot_info, std::move (a_sp), m_prior_sender_sink_hook_func);
+  push_async_response (&log_pack_log_boot_info, std::move (a_sp), std::ref (m_prior_sender_sink_hook_func));
 }
 
 void

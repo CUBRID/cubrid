@@ -8185,15 +8185,93 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	  const size_t io_page_size = static_cast<size_t> (db_io_page_size ());
 	  std::unique_ptr<char []> buffer_uptr = std::make_unique<char []> (io_page_size);
 	  FILEIO_PAGE *second_io_page = reinterpret_cast<FILEIO_PAGE *> (buffer_uptr.get ());
+	  // *INDENT-ON*
+	  // The page returned can be null during recovery in the case that the page was already deallocated on PS
 	  error_code = pgbuf_request_data_page_from_page_server (vpid, target_repl_lsa, second_io_page);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  assert (io_page->prv == second_io_page->prv);
+
+	  /* NOTE:
+	   *  - heap pages are requested also during the recovery phase (after the active transaction server has
+	   *    crashed); in this case, it is normal that the pages requested from page server are out of sync with
+	   *    pages from local storage - specifically, more up to date since page server replication has
+	   *    caught up with the entire log
+	   * TODO:
+	   *  - in this scenario, what if pages have been deleted, the change is not yet applied on
+	   *    active transaction server (ie: the page still exists), but the log has been applied on
+	   *    page server and the page cannot be retrieved
+	   */
+	  if (log_is_in_crash_recovery_and_not_yet_completes_redo ())
+	    {
+	      const bool local_lsa_is_less_than_or_equal_to_page_server_lsa =
+		LSA_LE (&io_page->prv.lsa, &second_io_page->prv.lsa);
+	      const bool equal_vpid = io_page->prv.volid == second_io_page->prv.volid
+		&& io_page->prv.pageid == second_io_page->prv.pageid;
+#if !defined(NDEBUG)
+	      if (!local_lsa_is_less_than_or_equal_to_page_server_lsa && !equal_vpid)
+		{
+		  er_log_debug (ARG_FILE_LINE, "pgbuf_read_page_from_file_or_page_server"
+				" past recovery redo pages not equal\n"
+				"    target repl LSA: %lld|%d\n"
+				"    local page  VPID: %d|%d  LSA: %lld|%d  ptype: %d\n"
+				"    remote page VPID: %d|%d  LSA: %lld|%d  ptype: %d\n",
+				LSA_AS_ARGS (&target_repl_lsa),
+				io_page->prv.volid, io_page->prv.pageid,
+				LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.ptype,
+				second_io_page->prv.volid, second_io_page->prv.pageid,
+				LSA_AS_ARGS (&second_io_page->prv.lsa), second_io_page->prv.ptype);
+		}
+#endif
+	      assert (local_lsa_is_less_than_or_equal_to_page_server_lsa && equal_vpid);
+	    }
+	  else
+	    {
+	      const bool fileio_pages_equal = (io_page->prv == second_io_page->prv);
+	      if (!fileio_pages_equal)
+		{
+		  /* on a transaction server, btree statistics is not written immediately
+		   * to the btree root page; the update happens, for efficiency, only at checkpoint
+		   * time using a in-memory caching mechanism; on a page server, the statistics are
+		   * applied immediately and thus, the difference; compare everything ignoring the
+		   * statistics
+		   */
+		  const PAGE_PTR pgptr = (const PAGE_PTR) ((char *) io_page->page);
+		  const PAGE_PTR second_pgptr = (const PAGE_PTR) ((char *) second_io_page->page);
+		  if (io_page->prv.ptype == PAGE_BTREE && second_io_page->prv.ptype == PAGE_BTREE
+		      && btree_is_btree_root_page (thread_p, pgptr)
+		      && btree_is_btree_root_page (thread_p, second_pgptr))
+		    {
+		      // page server might already contain btree stats which are still kept in memory on the
+		      // active transaction server
+		      assert (LSA_LE (&io_page->prv.lsa, &second_io_page->prv.lsa)
+			      && io_page->prv.pageid == second_io_page->prv.pageid
+			      && io_page->prv.volid == second_io_page->prv.volid
+			      && io_page->prv.ptype == second_io_page->prv.ptype
+			      && io_page->prv.pflag == second_io_page->prv.pflag
+			      && io_page->prv.tde_nonce == second_io_page->prv.tde_nonce);
+		    }
+		  else
+		    {
+#if !defined(NDEBUG)
+		      er_log_debug (ARG_FILE_LINE, "pgbuf_read_page_from_file_or_page_server"
+				    " past recovery redo pages not equal\n"
+				    "    target repl LSA: %lld|%d\n"
+				    "    local page  VPID: %d|%d  LSA: %lld|%d  ptype: %d\n"
+				    "    remote page VPID: %d|%d  LSA: %lld|%d  ptype: %d\n",
+				    LSA_AS_ARGS (&target_repl_lsa),
+				    io_page->prv.volid, io_page->prv.pageid,
+				    LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.ptype,
+				    second_io_page->prv.volid, second_io_page->prv.pageid,
+				    LSA_AS_ARGS (&second_io_page->prv.lsa), second_io_page->prv.ptype);
+#endif
+		      assert ("pages are not equal after all exceptions have been verified and failed" == nullptr);
+		    }
+		}
+	    }
 	  return NO_ERROR;
-	  // *INDENT-ON*
 	}
       else
 	{
@@ -8249,12 +8327,23 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
 
   size += cublog::lsa_utils::get_packed_size (pac, size);
   size += vpid_utils::get_packed_size (pac, size);
+  size += pac.get_packed_int_size (size);
   std::unique_ptr<char[]> buffer (new char[size]);
 
   pac.set_buffer (buffer.get (), size);
   vpid_utils::pack (pac, *vpid);
   cublog::lsa_utils::pack (pac, target_repl_lsa);
 
+  PAGE_FETCH_MODE fetch_mode;
+  if (log_is_in_crash_recovery_and_not_yet_completes_redo ())
+    {
+      fetch_mode = RECOVERY_PAGE;
+    }
+    else
+    {
+      fetch_mode = OLD_PAGE;
+    }
+  pac.pack_int (fetch_mode);
   std::string request_message (buffer.get (), size);
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
@@ -8314,12 +8403,14 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
 
   // Unpack the message data
   cubpacking::unpacker message_upk (payload_in_out.c_str (), payload_in_out.size ());
-
   VPID vpid;
   vpid_utils::unpack (message_upk, vpid);
 
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
+  int packed_fetch_mode;
+  message_upk.unpack_int (packed_fetch_mode);
+  const PAGE_FETCH_MODE fetch_mode = static_cast<PAGE_FETCH_MODE> (packed_fetch_mode);
 
   // Fetch data page. But first make sure that replication hits its target LSA
   if (!target_repl_lsa.is_null ())
@@ -8331,8 +8422,21 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
     }
 
   int error = NO_ERROR;
-  PAGE_PTR page_ptr = pgbuf_fix (&thread_r, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
+  PAGE_PTR page_ptr = pgbuf_fix (&thread_r, &vpid, fetch_mode, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == nullptr && fetch_mode == RECOVERY_PAGE)
+    {
+      ASSERT_NO_ERROR ();
+      //The found page was deallocated already
+      error = ER_PB_BAD_PAGEID;
+      payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+        {
+          _er_log_debug (ARG_FILE_LINE,
+                         "[READ DATA] Read on deallocated page with VPID = %d|%d, target repl LSA = %lld|%d\n",
+                         error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+        }
+    }
+  else if (page_ptr == nullptr)
     {
       ASSERT_ERROR_AND_SET (error);
       // respond with the error

@@ -847,6 +847,7 @@ extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
 extern DB_VALUE_COMPARE_RESULT btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
 						  int do_coercion, int total_order, int *start_colp);
 extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
+extern bool btree_is_btree_root_page (THREAD_ENTRY * thread_p, const PAGE_PTR page_ptr);
 
 extern void btree_dump_key (FILE * fp, const DB_VALUE * key);
 
