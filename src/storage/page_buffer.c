@@ -32,41 +32,23 @@
 #include "page_buffer.h"
 
 #include "active_tran_server.hpp"
-#include "storage_common.h"
-#include "memory_alloc.h"
 #include "system_parameter.h"
-#include "error_manager.h"
-#include "file_io.h"
-#include "lockfree_circular_queue.hpp"
-#include "log_append.hpp"
 #include "log_lsa_utils.hpp"
-#include "log_manager.h"
-#include "log_impl.h"
 #include "log_volids.hpp"
-#include "transaction_sr.h"
-#include "memory_hash.h"
-#include "critical_section.h"
-#include "perf_monitor.h"
-#include "porting_inline.hpp"
-#include "environment_variable.h"
 #include "thread_daemon.hpp"
-#include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-#include "list_file.h"
-#include "tsc_timer.h"
 #include "query_manager.h"
 #include "xserver_interface.h"
-#include "btree_load.h"
 #include "boot_sr.h"
 #include "double_write_buffer.h"
+#include "tran_page_requests.hpp"
 #include "page_server.hpp"
 #include "passive_tran_server.hpp"
 #include "resource_tracker.hpp"
-#include "tde.h"
 #include "show_scan.h"
-#include "numeric_opfunc.h"
 #include "dbtype.h"
 #include "server_type.hpp"
+#include "vacuum.h"
 #include "vpid_utilities.hpp"
 
 #if defined(SERVER_MODE)
@@ -8229,7 +8211,9 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	    }
 	  else
 	    {
-	      const bool fileio_pages_equal = (io_page->prv == second_io_page->prv);
+	      const bool fileio_pages_equal = (io_page->prv == second_io_page->prv)
+		//|| (io_page->prv.ptype == second_io_page->prv.ptype && io_page->prv.ptype == PAGE_OVERFLOW)
+		;
 	      if (!fileio_pages_equal)
 		{
 		  /* on a transaction server, btree statistics is not written immediately
@@ -8253,6 +8237,18 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 			      && io_page->prv.pflag == second_io_page->prv.pflag
 			      && io_page->prv.tde_nonce == second_io_page->prv.tde_nonce);
 		    }
+//                else if (!fileio_pages_equal
+//                         && (io_page->prv.ptype == second_io_page->prv.ptype && io_page->prv.ptype == PAGE_OVERFLOW)
+//                         && (io_page->prv.volid == second_io_page->prv.volid)
+//                         && (io_page->prv.pageid == second_io_page->prv.pageid)
+//                         && (io_page->prv.pflag == second_io_page->prv.pflag)
+//                         && (io_page->prv.lsa > second_io_page->prv.lsa))
+//                  {
+//                    // overflow pages which have been touched by adding log records that only have the 'undo' component;
+//                    // as page server only replicates redo's these undo log records which advance local storage page lsa
+//                    // are not handled
+//                    // search log back starting from the more advanced
+//                  }
 		  else
 		    {
 #if !defined(NDEBUG)
