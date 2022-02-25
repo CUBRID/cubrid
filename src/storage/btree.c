@@ -25496,7 +25496,18 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   if (!bts->is_key_partially_processed)
     {
-      //TODO: When a key is processed the first time, and it has an overflow page, fix the overflow page before processing the leaf record objects
+      // When a key is processed the first time, and it has an overflow page, fix the overflow page before processing the leaf record objects
+      if (!pgbuf_is_page_fixed_by_thread (thread_p, &overflow_vpid))
+	{
+	  prev_overflow_page =
+	    pgbuf_fix_old_and_check_repl_desync (thread_p, bts->O_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+
+	  if (prev_overflow_page == NULL && er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      return ER_PAGE_AHEAD_OF_REPLICATION;
+	    }
+	}
+
       /* Start processing key with leaf record objects. */
       error_code =
 	btree_record_process_objects (thread_p, &bts->btid_int, BTREE_LEAF_NODE, &bts->key_record, bts->offset, &stop,
