@@ -4914,21 +4914,17 @@ flashback (UTIL_FUNCTION_ARG * arg)
   num_tables = utility_get_option_string_table_size (arg_map) - 1;
   if (num_tables < 1)
     {
-      /* TODO : error message will be dealt in other issue. Temporarily used fprintf */
-      fprintf (stderr, "too less arguments, dbname and table list are required\n");
       goto print_flashback_usage;
     }
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
-      fprintf (stderr, "no database name\n");
       goto print_flashback_usage;
     }
 
   if (check_database_name (database_name))
     {
-      fprintf (stderr, "wrong dbname\n");
       goto error_exit;
     }
 
@@ -4945,7 +4941,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
   darray = da_create (num_tables, SM_MAX_IDENTIFIER_LENGTH);
   if (darray == NULL)
     {
-      perror ("calloc");
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
       goto error_exit;
     }
@@ -4958,7 +4953,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
       if (da_add (darray, table_name_buf) != NO_ERROR)
 	{
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-	  perror ("calloc");
 	  goto error_exit;
 	}
     }
@@ -4969,7 +4963,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
       start_time = parse_date_string_to_time (start_date);
       if (start_time == 0)
 	{
-	  fprintf (stderr, "start-date error : follow  DATE format (DD-MM-YYYY:hh:MM:ss)\n");
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_FORMAT));
 	  goto error_exit;
 	}
     }
@@ -4980,7 +4975,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
       end_time = parse_date_string_to_time (end_date);
       if (end_time == 0)
 	{
-	  fprintf (stderr, "end-date error : follow  DATE format (DD-MM-YYYY:hh:MM:ss)\n");
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_FORMAT));
 	  goto error_exit;
 	}
     }
@@ -5009,7 +5005,24 @@ flashback (UTIL_FUNCTION_ARG * arg)
    * 3. start time, and end time are required to be set within the log volume range (server side check) */
   if (start_time >= end_time)
     {
-      fprintf (stderr, "start time(%lld) is larger than end time(%lld)\n", start_time, end_time);
+      char sdate_buf[20];
+      char edate_buf[20];
+
+      if (start_date == NULL)
+	{
+	  strftime (sdate_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&start_time));
+	  start_date = sdate_buf;
+	}
+
+      if (end_date == NULL)
+	{
+	  strftime (edate_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&end_time));
+	  end_date = edate_buf;
+	}
+
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_RANGE),
+			     start_date, end_date);
       goto error_exit;
     }
 
@@ -5023,7 +5036,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
       outfp = fopen (output_file, "w");
       if (outfp == NULL)
 	{
-	  fprintf (stderr, "can not open output file\n");
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_FORMAT));
 	  goto error_exit;
 	}
     }
@@ -5094,10 +5108,16 @@ flashback (UTIL_FUNCTION_ARG * arg)
       switch (error)
 	{
 	case ER_FLASHBACK_INVALID_TIME:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TIME));
 	  break;
 	case ER_FLASHBACK_INVALID_CLASS:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TABLE_NOT_EXIST));
 	  break;
 	case ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TOO_MANY_TRANSACTION));
 	  break;
 	default:
 	  break;
@@ -5120,8 +5140,14 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	  switch (error)
 	    {
 	    case ER_FLASHBACK_SCHEMA_CHANGED:
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+				      FLASHBACK_MSG_TABLE_SCHEMA_CHANGED));
 	      break;
 	    case ER_FLASHBACK_LOG_NOT_EXIST:
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+				      FLASHBACK_MSG_LOG_VOLUME_NOT_EXIST));
 	      break;
 	    default:
 	      break;
@@ -5157,6 +5183,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
   return EXIT_SUCCESS;
 
 print_flashback_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_USAGE),
+	   basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 error_exit:
 

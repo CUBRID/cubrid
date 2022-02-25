@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character '%1$c' in database name '%2$s'\n
@@ -128,6 +129,7 @@ Available admin utility-name:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Available administrator's utilities:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -1234,3 +1237,35 @@ OPERATIONs: one of the operations must be given, and they are exclusive \n\
     -n, --generate-new-key        generate a new key in the key file (_keys); max count: 128\n\
     -d, --delete-key=KEY_INDEX    delete a key in the key file (_keys)\n\
     -c, --change-key=KEY_INDEX    change the key set on the database for another key in the key file (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 Enter DBA password:
+2 Invalid date format, valid format is dd-mm-yyyy:hh:mm:ss\n
+3 Start date (%1$s) is required to be smaller than end date (%2$s)\n
+4 Please try with a date before the current or after the database was created\n
+5 Table does not exist in database\n
+6 Too many transactions to flashback. Please shorten the interval between start date and end date\n
+6 Table schema has been changed.\n
+7 Log volume has been removed. Please try with the later date\n
+8 Couldn't open output file '%1$s'\n
+60 \
+flashback: Provides statements to flashbacksh a specific transaction.\n\
+usage: %1$s flashback [OPTION] database-name [class_name1 class_name2 ...]\n\
+\n\
+valid options:\n\
+    -p, --dba-password=PASS       
+\n\
+    -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
+    -u, --user=ID                 specify the user who executed the SQL statement to flashback; default : ALL.\n\
+    -p, --dba-password            password of the DBA user; will prompt if don't specify\n\
+    -s, --start-date=DATE         specify starting DATE for flashback. SQL logs are extracted from the DATE.\n\
+                                  DATE is given as follows: dd-mm-yyyy:hh:mm:ss.\n\
+    -e, --end-date=DATE           specify end DATE of the flashback. SQL logs are extracted up to the DATE.\n\
+                                  if start-date is not specified, then ((END - 10min) ~ END) is set to range,\n\
+                                  and else if END is not specified, then (start ~ (start + 10min)) is set.\n\
+                                  And neither a start date nor an end date is specified,\n\
+                                  the SQL log is extracted for 10 minutes from the current.\n\
+    --detail                      output a detailed information for each SQL statement.\n\
+                                  Transaction ID, User name, and original SQL statement will be returned with SQL statement\n\
+                                  for flashback; default : outputs only SQL statements\n\
+    --oldest                      output SQL statements from the most recently executed; default : latest\n\
