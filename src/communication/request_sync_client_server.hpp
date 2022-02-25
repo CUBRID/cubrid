@@ -58,7 +58,9 @@ namespace cubcomm
       request_sync_client_server (cubcomm::channel &&a_channel,
 				  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers,
 				  T_OUTGOING_MSG_ID a_outgoing_response_msgid,
-				  T_INCOMING_MSG_ID a_incoming_response_msgid, size_t response_partition_count);
+				  T_INCOMING_MSG_ID a_incoming_response_msgid,
+				  size_t response_partition_count,
+				  const send_queue_error_handler &error_handler);
       ~request_sync_client_server ();
       request_sync_client_server (const request_sync_client_server &) = delete;
       request_sync_client_server (request_sync_client_server &&) = delete;
@@ -137,10 +139,11 @@ namespace cubcomm
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::request_sync_client_server (
 	  cubcomm::channel &&a_channel,
 	  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers,
-	  T_OUTGOING_MSG_ID a_outgoing_response_msgid,
-	  T_INCOMING_MSG_ID a_incoming_response_msgid, size_t response_partition_count)
+	  T_OUTGOING_MSG_ID a_outgoing_response_msgid, T_INCOMING_MSG_ID a_incoming_response_msgid,
+	  size_t response_partition_count,
+	  const send_queue_error_handler &error_handler)
     : m_conn { new request_client_server_t (std::move (a_channel)) }
-  , m_queue { new request_sync_send_queue_t (*m_conn) }
+  , m_queue { new request_sync_send_queue_t (*m_conn, error_handler) }
   , m_queue_autosend { new request_queue_autosend_t (*m_queue) }
   , m_outgoing_response_msgid { a_outgoing_response_msgid }
   , m_incoming_response_msgid { a_incoming_response_msgid }

@@ -76,6 +76,8 @@ class page_server
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp);
 
+	void abnormal_tran_server_disconnect (css_error_code error_code);
+
 	// Helper function to convert above functions into responder specific tasks.
 	template<class F, class ... Args>
 	void push_async_response (F &&, tran_server_conn_t::sequenced_payload &&a_sp, Args &&...args);

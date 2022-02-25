@@ -209,7 +209,7 @@ namespace cubcomm
     return NO_ERRORS;
   }
 
-  bool channel::send_int (int val)
+  css_error_code channel::send_int (int val)
   {
     return send (reinterpret_cast<const char *> (&val), sizeof (int));
   }

@@ -29,6 +29,8 @@
 
 namespace cubcomm
 {
+  using send_queue_error_handler = std::function<void (css_error_code)>;
+
   // Synchronize sending requests. Allow multiple threads to push requests and to send requests to the server.
   //
   // Template types:
@@ -57,9 +59,16 @@ namespace cubcomm
       };
       using queue_type = std::queue<queue_item_type>;
 
+    public:
       // ctor/dtor:
       request_sync_send_queue () = delete;
-      request_sync_send_queue (client_type &client);
+      request_sync_send_queue (client_type &client, const send_queue_error_handler &error_handler);
+
+      request_sync_send_queue (const request_sync_send_queue &) = delete;
+      request_sync_send_queue (request_sync_send_queue &&) = delete;
+
+      request_sync_send_queue &operator= (const request_sync_send_queue &) = delete;
+      request_sync_send_queue &operator= (request_sync_send_queue &&) = delete;
 
       // functions:
 
@@ -89,6 +98,8 @@ namespace cubcomm
       queue_type m_request_queue;                 // Queue for pushed requests
       std::mutex m_queue_mutex;                   // Synchronize request pushing and consuming
       std::condition_variable m_queue_condvar;    // Notify request consumers
+
+      send_queue_error_handler m_error_handler;
   };
 
   // The request_queue_autosend automatically sends requests pushed into request_sync_send_queue
@@ -136,9 +147,12 @@ namespace cubcomm
   //
 
   template <typename ReqClient, typename ReqPayload>
-  request_sync_send_queue<ReqClient, ReqPayload>::request_sync_send_queue (client_type &client)
+  request_sync_send_queue<ReqClient, ReqPayload>::request_sync_send_queue (client_type &client,
+      const send_queue_error_handler &error_handler)
     : m_client (client)
+    , m_error_handler { error_handler }
   {
+    //assert (m_error_handler != nullptr);
   }
 
   template <typename ReqClient, typename ReqPayload>
@@ -166,10 +180,22 @@ namespace cubcomm
     std::unique_lock<std::mutex> ulock (m_send_mutex);
     while (!q.empty ())
       {
-	if (m_client.send (q.front ().m_id, q.front ().m_payload) != NO_ERRORS)
+	typename queue_type::const_reference queue_front = q.front ();
+	const typename client_type::client_request_id &temp_id = queue_front.m_id;
+	const payload_type &temp_payload = queue_front.m_payload;
+
+	const css_error_code err_code = m_client.send (queue_front.m_id, queue_front.m_payload);
+	if (err_code != NO_ERRORS)
 	  {
-	    // what to do, what to do? we need proper handling
-	    assert (false);
+	    // TODO: there should always be an error handler here; see assert in ctor
+	    if (m_error_handler != nullptr)
+	      {
+		m_error_handler (err_code);
+	      }
+	    else
+	      {
+		assert (false);
+	      }
 	  }
 	q.pop ();
       }
