@@ -1918,21 +1918,9 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
       return NON_PUSHABLE;
     }
 
-  /* check for merge query */
-  if (PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_IS_MERGE_QUERY))
-    {
-      return NON_PUSHABLE;
-    }
-
-  /* check for update, delete query */
-  if (PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_IS_UPD_DEL_QUERY))
-    {
-      return NON_PUSHABLE;
-    }
-
-  /* check for schema query */
-  if (PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_COLS_SCHEMA)
-      || PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_FULL_INFO_COLS_SCHEMA))
+  /* check for merge, update, delete, schema query */
+  if (PT_SELECT_INFO_IS_FLAGED (mainquery, PT_SELECT_INFO_IS_MERGE_QUERY | PT_SELECT_INFO_IS_UPD_DEL_QUERY
+				| PT_SELECT_INFO_COLS_SCHEMA | PT_SELECT_FULL_INFO_COLS_SCHEMA))
     {
       return NON_PUSHABLE;
     }
