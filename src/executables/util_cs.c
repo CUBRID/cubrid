@@ -4267,7 +4267,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
   scanf ("%d", &trid);
 
 
-  FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_entry, summary_info);
+  FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
   if (summary_entry == NULL)
     {
       /* add message that can not find transaction id */

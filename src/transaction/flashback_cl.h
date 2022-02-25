@@ -30,7 +30,7 @@
 #include "storage_common.h"
 #include "log_lsa.hpp"
 
-#define FLASHBACK_FIND_SUMMARY_ENTRY(trid, summary_entry, summary_info) \
+#define FLASHBACK_FIND_SUMMARY_ENTRY(trid, summary_info, summary_entry) \
   do \
     { \
       auto iter = summary_info.find (trid); \
@@ -57,7 +57,7 @@ typedef struct flashback_summary_info
 typedef std::unordered_map<TRANID, FLASHBACK_SUMMARY_INFO> FLASHBACK_SUMMARY_INFO_MAP;
 // *INDENT-ON*
 
-extern int flashback_unpack_and_print_summary (char **ptr, FLASHBACK_SUMMARY_INFO_MAP * summary, int num_summary,
-					       dynamic_array * classname_list, OID * oidlist);
+extern int flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INFO_MAP * summary,
+					       int num_summary, dynamic_array * classname_list, OID * oidlist);
 
 #endif
