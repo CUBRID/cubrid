@@ -58,13 +58,13 @@
 #include "system_parameter.h"
 
 static LOG_PAGEID flashback_Min_log_pageid = NULL_LOG_PAGEID;	// Minumun log pageid to keep archive log volume from being removed
-static time_t flashback_Last_request_time = -1;	                // The time most recently requested by flashback
+static time_t flashback_Last_request_time = -1;	// The time most recently requested by flashback
 static int flashback_Threshold_to_remove_archive = 0;	/* If the difference between the time at which the archive log is deleted
-                                                         * and the time the flashback last requested exceeds this threshold,
-                                                         * the archive log volume can be deleted.
-                                                         */
+							 * and the time the flashback last requested exceeds this threshold,
+							 * the archive log volume can be deleted.
+							 */
 
-static bool flashback_Is_active = false;  // the status value that the flashback is processing the request
+static bool flashback_Is_active = false;	// the status value that the flashback is processing the request
 
 
 /*
