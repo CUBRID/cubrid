@@ -10667,13 +10667,27 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
   return ER_NOT_IN_STANDALONE;
 }
 
+/*
+ * flashback_get_loginfo () - client-side function to get flashback log info
+ *
+ * return             : error code
+ * trid (in)          : specifies transactions to flashback
+ * user (in)          : specifies transaction user
+ * classlist (in)     : specifies classes to flashback
+ * num_class (in)     : number of class in classlist
+ * start_lsa (in/out) : start lsa to extract log record
+ * end_lsa (in/out)   : end lsa to extract log record
+ * num_info (in/out)  : number of log info to extract, and number of log info that is extracted
+ * forward (in)       : direction of traversing log records
+ * info_list (out)    : log info list
+ */
+
 int
 flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa, LOG_LSA * end_lsa,
-		       int *num_item, bool forward, void *info_list)
+		       int *num_item, bool forward, char **info_list)
 {
 #if defined(CS_MODE)
-  int req_error = ER_FAILED;
-  int rep_error = ER_FAILED;
+  int error_code = ER_FAILED;
   int request_size = 0;
   char *request = NULL, *ptr, *start_ptr;
 
@@ -10712,20 +10726,31 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 
   request_size = ptr - start_ptr;
 
-  req_error =
+  error_code =
     net_client_request2 (NET_SERVER_FLASHBACK_GET_LOGINFO, start_ptr, request_size, reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
 
-  if (req_error == NO_ERROR)
+  if (error_code == NO_ERROR)
     {
       ptr = or_unpack_int (reply, &area_size);
-      ptr = or_unpack_int (ptr, &rep_error);
+      ptr = or_unpack_int (ptr, &error_code);
       if (area_size > 0)
 	{
 	  /* area : start lsa | end lsa | num item | item list */
 	  ptr = or_unpack_log_lsa (area, start_lsa);
 	  ptr = or_unpack_log_lsa (ptr, end_lsa);
 	  ptr = or_unpack_int (ptr, num_item);
+
+	  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
+	  *info_list = (char *) malloc (area_size - (ptr - area));
+	  if (*info_list == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, area_size - (ptr - area));
+	    }
+
+	  memcpy (*info_list, ptr, area_size - (ptr - area));
 	}
 
       free_and_init (area);
@@ -10733,7 +10758,7 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 
   free_and_init (request);
 
-  return req_error != NO_ERROR ? req_error : rep_error;
+  return error_code;
 #endif // CS_MODE
   return ER_NOT_IN_STANDALONE;
 }

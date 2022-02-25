@@ -10902,6 +10902,44 @@ error:
   return;
 }
 
+/*
+ * flashback_pack_loginfo () -
+ *
+ * return: memory pointer after putting log info
+ *
+ *   thread_p(in):
+ *   ptr(in): memory pointer where to pack sequence of log info
+ *   context(in): context contains log infos to pack
+ *
+ * NOTE: will move to flashback_sr.c
+ */
+
+static char *
+flashback_pack_loginfo (THREAD_ENTRY * thread_p, char *ptr, FLASHBACK_LOGINFO_CONTEXT context)
+{
+  CDC_LOGINFO_ENTRY *entry;
+
+  for (int i = 0; i < context.num_loginfo; i++)
+    {
+      ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+      // *INDENT-OFF*
+      entry = context.loginfo_queue.front ();
+      // *INDENT-ON*
+      memcpy (ptr, PTR_ALIGN (entry->log_info, MAX_ALIGNMENT), entry->length);
+
+      ptr = ptr + entry->length;
+
+      free_and_init (entry->log_info);
+      db_private_free_and_init (thread_p, entry);
+
+      // *INDENT-OFF*
+      context.loginfo_queue.pop ();
+      // *INDENT-ON*
+    }
+
+  return ptr;
+}
+
 void
 sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -10913,44 +10951,40 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   int error_code = NO_ERROR;
   char *ptr;
   char *start_ptr;
-  OID *oid = NULL;
 
-  int trid = 0;
-  int num_class = 0;
-  char *user = NULL;
-
-  LOG_LSA start_lsa = LSA_INITIALIZER;
-  LOG_LSA end_lsa = LSA_INITIALIZER;
-
-  int num_item = 0;
-  int forward = false;
+  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0 };
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
-  ptr = or_unpack_int (request, &trid);
-  ptr = or_unpack_string_nocopy (ptr, &user);
-  ptr = or_unpack_int (ptr, &num_class);
+  ptr = or_unpack_int (request, &context.trid);
+  ptr = or_unpack_string_nocopy (ptr, &context.user);
+  ptr = or_unpack_int (ptr, &context.num_class);
 
-  oid = (OID *) db_private_alloc (thread_p, sizeof (OID) * num_class);
-  if (oid == NULL)
+  for (int i = 0; i < context.num_class; i++)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID) * num_class);
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      OID classoid;
+      ptr = or_unpack_oid (ptr, &classoid);
+      context.classoid_set.emplace (classoid);
+    }
+
+  ptr = or_unpack_log_lsa (ptr, &context.start_lsa);
+  ptr = or_unpack_log_lsa (ptr, &context.end_lsa);
+  ptr = or_unpack_int (ptr, &context.num_loginfo);
+  ptr = or_unpack_int (ptr, &context.forward);
+
+  error_code = flashback_make_loginfo (thread_p, &context);
+  if (error_code != NO_ERROR)
+    {
       goto error;
     }
 
-  for (int i = 0; i < num_class; i++)
-    {
-      ptr = or_unpack_oid (ptr, &oid[i]);
-    }
-
-  ptr = or_unpack_log_lsa (ptr, &start_lsa);
-  ptr = or_unpack_log_lsa (ptr, &end_lsa);
-  ptr = or_unpack_int (ptr, &num_item);
-  ptr = or_unpack_int (ptr, &forward);
-
-  /* TODO : flashback result will be added */
   area_size = OR_LOG_LSA_ALIGNED_SIZE * 2 + OR_INT_SIZE;
+
+  /* log info entries are chunks of memory that already packed together, and they need to be aligned  
+   * | lsa | lsa | num item | align | log info 1 | align | log info 2 | align | log info 3 | ..
+   * */
+
+  area_size += context.queue_size + context.num_loginfo * MAX_ALIGNMENT;
 
   area = (char *) db_private_alloc (thread_p, area_size);
   if (area == NULL)
@@ -10965,13 +10999,14 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   or_pack_int (ptr, error_code);
 
   /* area packing : start lsa | end lsa | num item | item list */
-  ptr = or_pack_log_lsa (area, &start_lsa);
-  ptr = or_pack_log_lsa (ptr, &end_lsa);
-  ptr = or_pack_int (ptr, num_item);
+  ptr = or_pack_log_lsa (area, &context.start_lsa);
+  ptr = or_pack_log_lsa (ptr, &context.end_lsa);
+  ptr = or_pack_int (ptr, context.num_loginfo);
+
+  ptr = flashback_pack_loginfo (thread_p, ptr, context);
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
-  db_private_free_and_init (thread_p, oid);
   db_private_free_and_init (thread_p, area);
 
   return;
@@ -10980,11 +11015,6 @@ error:
   or_pack_int (ptr, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-
-  if (oid != NULL)
-    {
-      db_private_free_and_init (thread_p, oid);
-    }
 
   return;
 }
