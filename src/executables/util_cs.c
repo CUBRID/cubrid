@@ -5068,7 +5068,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	  /* get password interactively if interactive mode */
 	  /* TODO : MSGCAT setting will be dealt in other issue, it temporarily uses TDE MSGCAT value */
 	  passbuf =
-	    getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_SET_UTIL_FLASHBACKSET, FLASHBACK_MSG_DBA_PASSWORD));
+	    getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_DBA_PASSWORD));
 	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
 	    {
 	      passbuf = (char *) NULL;
