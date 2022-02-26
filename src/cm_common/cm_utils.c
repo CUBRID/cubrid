@@ -30,6 +30,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <time.h>
 
 #if defined(WINDOWS)
 #include <process.h>
@@ -40,6 +41,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <stdarg.h>
+#include <sys/time.h>
 #endif
 
 static T_CMD_RESULT *new_cmd_result (void);
@@ -395,7 +397,7 @@ cmd_server_status (void)
   char out_file[PATH_MAX];
   char cmd_name[PATH_MAX];
   const char *argv[5];
-  char tmpfile[100];
+  char tmpfile[512];
 
   res = new_servstat_result ();
   if (res == NULL)
@@ -410,7 +412,10 @@ cmd_server_status (void)
     }
 #endif
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_util_001.", getpid ());
+  if (make_temp_filename (tmpfile, "DBMT_util_001.", sizeof (tmpfile)) < 0)
+    {
+      return res;
+    }
   (void) envvar_tmpdir_file (out_file, PATH_MAX, tmpfile);
   (void) envvar_bindir_file (cmd_name, PATH_MAX, UTIL_CUBRID);
 
@@ -753,4 +758,52 @@ int
 cm_util_log_write_command (int argc, char *argv[])
 {
   return util_log_write_command (argc, argv);
+}
+
+/*
+ * Generate unique temp file name.
+ * {prefix}{second}_{usec}_{random number: 1..997}
+ */
+
+int
+make_temp_filename (char *tempfile, char *prefix, int size)
+{
+  struct timeval current_time;
+
+  if (tempfile == NULL || prefix == NULL || size < 1)
+    {
+      return -1;
+    }
+
+  srand (time (NULL));
+  if (gettimeofday (&current_time, NULL) < 0)
+    {
+      return -1;
+    }
+
+  snprintf (tempfile, size - 1, "%s%ld_%ld_%d", prefix, current_time.tv_sec, current_time.tv_usec, rand () % 997);
+
+  return 0;
+}
+
+int
+make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int id, int size)
+{
+  struct timeval current_time;
+
+  if (tempfile == NULL || tempdir == NULL || size < 1)
+    {
+      return -1;
+    }
+
+  srand (time (NULL));
+  if (gettimeofday (&current_time, NULL) < 0)
+    {
+      return -1;
+    }
+
+  snprintf (tempfile, size - 1, "%s/%s_%d_%ld_%d", tempdir, prefix ? prefix : "", id,
+        current_time.tv_sec, current_time.tv_usec, rand () % 997);
+
+  return 0;
 }
