@@ -705,7 +705,7 @@ typedef enum
   TDE_MSG_USAGE = 60
 } MSGCAT_TDE_MSG;
 
-/* Message id in the set MSGCAT_UTIL_SET_TDE */
+/* Message id in the set MSGCAT_UTIL_SET_FLASHBACK */
 typedef enum
 {
   FLASHBACK_MSG_DBA_PASSWORD = 1,

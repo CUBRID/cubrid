@@ -5037,7 +5037,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
       if (outfp == NULL)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_FORMAT));
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_BAD_OUTPUT));
 	  goto error_exit;
 	}
     }
@@ -5067,7 +5067,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
 	  /* get password interactively if interactive mode */
 	  /* TODO : MSGCAT setting will be dealt in other issue, it temporarily uses TDE MSGCAT value */
-	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_DBA_PASSWORD));
+	  passbuf =
+	    getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_SET_UTIL_FLASHBACKSET, FLASHBACK_MSG_DBA_PASSWORD));
 	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
 	    {
 	      passbuf = (char *) NULL;
@@ -5166,8 +5167,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
   while (!LSA_ISNULL (&start_lsa) && !LSA_ISNULL (&end_lsa));
 
   db_shutdown ();
-
-  need_shutdown = false;
 
   da_destroy (darray);
 

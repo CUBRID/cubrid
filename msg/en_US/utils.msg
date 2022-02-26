@@ -1249,7 +1249,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 8 Log volume has been removed. Please try with the later date\n
 9 Couldn't open output file '%1$s'\n
 60 \
-flashback: Provides statements to flashbacksh a specific transaction.\n\
+flashback: Provides statements to flashback a specific transaction.\n\
 usage: %1$s flashback [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
 valid options:\n\
