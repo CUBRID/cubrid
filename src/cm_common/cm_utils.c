@@ -49,6 +49,7 @@ static void close_all_fds (int init_fd);
 
 #if defined(WINDOWS)
 static int is_master_start ();
+static int gettimeofday (struct timeval *tp, void *tzp);
 #endif
 
 #define CUBRID_SERVER_LOCK_EXT     "_lgat__lock"
@@ -807,3 +808,50 @@ make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int id, int siz
 
   return 0;
 }
+
+#if defined (WINDOWS)
+/* Number of 100 nanosecond units from 1/1/1601 to 1/1/1970 */
+#define EPOCH_BIAS_IN_100NANOSECS 116444736000000000LL
+
+/*
+ * gettimeofday - Windows port of Unix gettimeofday(), from base/porting.c
+ *   return: none
+ *   tp(out): where time is stored
+ *   tzp(in): unused
+ */
+static int
+gettimeofday (struct timeval *tp, void *tzp)
+{
+/*
+ * Rapid calculation divisor for 10,000,000
+ * x/10000000 == x/128/78125 == (x>>7)/78125
+ */
+#define RAPID_CALC_DIVISOR 78125
+
+  union
+  {
+    unsigned __int64 nsec100;	/* in 100 nanosecond units */
+    FILETIME ft;
+  } now;
+
+  GetSystemTimeAsFileTime (&now.ft);
+
+  /*
+   * Optimization for sec = (long) (x / 10000000);
+   * where "x" is number of 100 nanoseconds since 1/1/1970.
+   */
+  tp->tv_sec = (long) (((now.nsec100 - EPOCH_BIAS_IN_100NANOSECS) >> 7) / RAPID_CALC_DIVISOR);
+
+  /*
+   * Optimization for usec = (long) (x % 10000000) / 10;
+   * Let c = x / b,
+   * An alternative for MOD operation (x % b) is: (x - c * b),
+   *   which consumes less time, specially, for a 64 bit "x".
+   */
+  tp->tv_usec =
+    ((long) (now.nsec100 - EPOCH_BIAS_IN_100NANOSECS - (((unsigned __int64) (tp->tv_sec * RAPID_CALC_DIVISOR)) << 7))) /
+    10;
+
+  return 0;
+}
+#endif
