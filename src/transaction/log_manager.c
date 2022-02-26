@@ -12433,12 +12433,17 @@ error:
   return error_code;
 }
 
-#define FLASHBACK_ERROR_HANDLING(is_flashback, e)\
+#define FLASHBACK_ERROR_HANDLING(is_flashback, e, classoid)\
   do \
     { \
       if (is_flashback) \
         { \
-          error_code = e; \
+          error_code = (e); \
+          if (error_code == ER_FLASHBACK_SCHEMA_CHANGED) \
+            { \
+              er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_SCHEMA_CHANGED, 3, OID_AS_ARGS (&classoid)); \
+            } \
+          \
           goto exit; \
         } \
     } \
@@ -12507,7 +12512,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       /* can not get class schema of classoid due to drop */
 
       /* if schema is changed, flashback error handling first then cdc error handling */
-      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED);
+      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid);
 
       error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
       cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
@@ -12519,7 +12524,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   if ((error_code = heap_attrinfo_start (thread_p, &classoid, -1, NULL, &attr_info)) != NO_ERROR)
     {
-      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED);
+      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid);
 
       error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
       cdc_log ("cdc_make_dml_loginfo : failed to find class representation ");
@@ -12552,7 +12557,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  heap_value = &attr_info.values[i];
 	  if (heap_value->read_attrepr == NULL)
 	    {
-	      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED);
+	      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid);
 
 	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
 	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
@@ -12589,7 +12594,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  heap_value = &attr_info.values[i];
 	  if (heap_value->read_attrepr == NULL)
 	    {
-	      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED);
+	      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid);
 
 	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
 	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
@@ -12834,7 +12839,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
 
-  FLASHBACK_ERROR_HANDLING (is_flashback, NO_ERROR);
+  FLASHBACK_ERROR_HANDLING (is_flashback, NO_ERROR, classoid);
 
   error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
 
@@ -14757,7 +14762,8 @@ flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * c
 	      if (logpb_fetch_from_archive (thread_p, process_lsa.pageid, log_page_p, 0, NULL, false) == NULL)
 		{
 		  /* archive log volume has been removed */
-		  /* er_set */
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_LOG_NOT_EXIST, 2,
+			  LSA_AS_ARGS (&process_lsa));
 		  error = ER_FLASHBACK_LOG_NOT_EXIST;;
 		  goto error;
 		}

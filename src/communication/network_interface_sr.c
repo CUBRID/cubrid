@@ -10721,7 +10721,17 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
   /* 1. Check start_time */
   if (start_time < log_Gl.hdr.db_creation)
     {
-      /* TODO : er_set() */
+      char start_date[20];
+      char db_creation_date[20];
+      char cur_date[20];
+      time_t current_time = time (NULL);
+
+      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&start_time));
+      strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
+      strftime (cur_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
+
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date, db_creation_date,
+	      cur_date);
       return ER_FLASHBACK_INVALID_TIME;
     }
   else
@@ -10736,8 +10746,15 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
 
 	  if (ret_time >= end_time)
 	    {
+	      char start_date[20];
+	      char db_creation_date[20];
+
+	      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&start_time));
+	      strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
+
 	      /* out of range : start_time (ret_time) can not be greater than end_time */
-	      /* TODO : er_set() */
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date,
+		      db_creation_date, start_date);
 	      return ER_FLASHBACK_INVALID_TIME;
 	    }
 	}
@@ -10832,7 +10849,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       status = xlocator_find_class_oid (thread_p, classname, &classoid, NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
 	{
-	  /* TODO : er_set() */
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_CLASS, 1, classname);
 	  error_code = ER_FLASHBACK_INVALID_CLASS;
 	  goto error;
 	}
