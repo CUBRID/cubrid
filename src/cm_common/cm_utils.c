@@ -803,7 +803,7 @@ make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int id, int siz
     }
 
   snprintf (tempfile, size - 1, "%s/%s_%d_%ld_%d", tempdir, prefix ? prefix : "", id,
-        current_time.tv_sec, current_time.tv_usec, rand () % 997);
+            current_time.tv_sec, current_time.tv_usec, rand () % 997);
 
   return 0;
 }

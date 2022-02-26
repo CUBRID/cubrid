@@ -1377,9 +1377,11 @@ user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser, cha
   char cmd_name[PATH_MAX];
   char *outmsg = NULL, *errmsg = NULL;
 
-  if (make_temp_filename (tmpfile, "DBMT_ems_sa.", PATH_MAX) < 0) {
-    goto login_err;
-  }
+  if (make_temp_filename (tmpfile, "DBMT_ems_sa.", PATH_MAX) < 0)
+    {
+      goto login_err;
+    }
+
 
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
   if (snprintf (errfile, PATH_MAX - 1, "%s.err", outfile) < 0)
