@@ -25241,8 +25241,8 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  if (bts->force_restart_from_root)
 	    {
 	      /* Couldn't advance (most likely because of page desync on PTS). Restart from root. */
-	      btree_log_if_enabled
-		("Notification: internal key function caused range scan to be interrupted (hint: page desync in PTS).\n");
+	      btree_log_if_enabled ("Notification: internal key function caused range scan to be interrupted"
+				    " (hint: page desync in PTS).\n");
 	      if (bts->C_page != nullptr)
 		{
 		  pgbuf_unfix_and_init (thread_p, bts->C_page);
