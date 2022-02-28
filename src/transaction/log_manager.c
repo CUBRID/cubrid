@@ -1548,6 +1548,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	}
     }
 
+  if (is_tran_server_with_remote_storage () && is_active_transaction_server ())
+    {
+      logpb_checkpoint_trantable (thread_p);
+    }
+
   LOG_CS_EXIT (thread_p);
 
   er_log_debug (ARG_FILE_LINE, "log_initialize_internal: end of log initializaton, append_lsa = (%lld|%d) \n",
