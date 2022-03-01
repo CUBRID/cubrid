@@ -27,6 +27,9 @@
  * details.
  * The error codes must also be added to compat/dbi_compat.h
  * ER_LAST_ERROR must also be updated.
+ * In case of common,  
+ * cci repository source (src/cci/base_error_code.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
  */
 
 #ifndef _ERROR_CODE_H_
@@ -1706,6 +1709,9 @@
  * files are updated with matching error strings. See message_catalog.c for
  * details.
  * ER_LAST_ERROR must also be updated.
+ * In case of common,  
+ * cci repository source (src/cci/base_error_code.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
  */
 
 #endif /* _ERROR_CODE_H_ */

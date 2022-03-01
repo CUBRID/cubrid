@@ -39,7 +39,6 @@
 #include "class_object.h"
 #include "environment_variable.h"
 #include "set_object.h"
-#include "cci_applier.h"
 #include "schema_manager.h"
 #include "dbtype.h"
 
