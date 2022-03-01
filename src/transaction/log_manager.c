@@ -10732,7 +10732,7 @@ log_get_checkpoint_trantable_interval (bool & is_timed_wait, cubthread::delta_ti
   constexpr auto short_delay = std::chrono::milliseconds (100);
   constexpr auto normal_delay = std::chrono::seconds (60);
 
-  // will only be accessed
+  // will only be accessed by one thread at a time
   static bool first_call = true;
   is_timed_wait = true;
   if (!BO_IS_SERVER_RESTARTED)
