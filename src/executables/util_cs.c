@@ -59,7 +59,7 @@
 #include "xasl.h"
 #include "log_volids.hpp"
 #include "tde.h"
-#include "flashback.h"
+#include "flashback_cl.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -4850,25 +4850,6 @@ parse_date_string_to_time (char *date_string)
   return result < 0 ? 0 : result;
 }
 
-/*
- * flashback_cleanup_summary_info () - deallocate the memory in summary info
- *   return       : void
- *   summary_info : summary_info map to deallocate
- */
-static void
-flashback_cleanup_summary_info (FLASHBACK_SUMMARY_INFO_MAP & summary_info)
-{
-/* *INDENT-OFF* */
-  for (auto iter:summary_info)
-    {
-      if (iter.second != NULL)
-        {
-          free_and_init (iter.second);
-        }
-    }
-/* *INDENT-ON* */
-}
-
 int
 flashback (UTIL_FUNCTION_ARG * arg)
 {
@@ -4901,12 +4882,13 @@ flashback (UTIL_FUNCTION_ARG * arg)
   int error = NO_ERROR;
 
   int trid = 0;
-  int num_item = 0;
+  int num_item = 5;
   char *loginfo_list;
 
-  bool need_shutdown = false;
-
   FLASHBACK_SUMMARY_INFO_MAP summary_info;
+  FLASHBACK_SUMMARY_INFO *summary_entry = NULL;
+
+  bool need_shutdown = false;
 
   LOG_LSA start_lsa = LSA_INITIALIZER;
   LOG_LSA end_lsa = LSA_INITIALIZER;
@@ -4958,7 +4940,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
       if (da_add (darray, table_name_buf) != NO_ERROR)
 	{
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-	  perror ("calloc");
 	  goto error_exit;
 	}
     }
@@ -5082,12 +5063,11 @@ flashback (UTIL_FUNCTION_ARG * arg)
   oid_list = (OID *) malloc (sizeof (OID) * num_tables);
   if (oid_list == NULL)
     {
-      db_shutdown ();
-      perror ("malloc");
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
       goto error_exit;
     }
 
-  error = flashback_get_summary (darray, user, start_time, end_time, &summary_info, &oid_list);
+  error = flashback_get_and_show_summary (darray, user, start_time, end_time, &summary_info, &oid_list);
   if (error != NO_ERROR)
     {
       /* print error message */
@@ -5106,9 +5086,16 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  /* temporary setting for test */
-  trid = 10;
-  num_item = 5;
+  printf ("Enter transaction id : ");
+  scanf ("%d", &trid);
+
+
+  FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
+  if (summary_entry == NULL)
+    {
+      /* add message that can not find transaction id */
+      goto error_exit;
+    }
 
   do
     {
@@ -5152,8 +5139,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
       free_and_init (loginfo_list);
     }
 
-  flashback_cleanup_summary_info (summary_info);
-
   return EXIT_SUCCESS;
 
 print_flashback_usage:
@@ -5179,8 +5164,6 @@ error_exit:
     {
       free_and_init (loginfo_list);
     }
-
-  flashback_cleanup_summary_info (summary_info);
 
   return EXIT_FAILURE;
 }
