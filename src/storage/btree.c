@@ -25546,6 +25546,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  // first overflow page might have been fixed
 	  if (!VPID_ISNULL (&overflow_vpid))
 	    {
 	      pgbuf_unfix (thread_p, overflow_page);
