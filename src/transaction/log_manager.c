@@ -10729,12 +10729,12 @@ log_checkpoint_daemon_init ()
 void
 log_get_checkpoint_trantable_interval (bool & is_timed_wait, cubthread::delta_time & period)
 {
+  // will only be accessed
   static bool first_call = true;
   is_timed_wait = true;
   if (!BO_IS_SERVER_RESTARTED)
     {
       period = std::chrono::milliseconds (100);
-      return;
     }
   else
     {
@@ -10742,7 +10742,6 @@ log_get_checkpoint_trantable_interval (bool & is_timed_wait, cubthread::delta_ti
         {
           first_call = false;
           period = std::chrono::milliseconds (100);
-          return;
         }
       else
         {
