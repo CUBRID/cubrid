@@ -10729,24 +10729,24 @@ log_checkpoint_daemon_init ()
 void
 log_get_checkpoint_trantable_interval (bool & is_timed_wait, cubthread::delta_time & period)
 {
+  constexpr auto short_delay = std::chrono::milliseconds (100);
+  constexpr auto normal_delay = std::chrono::seconds (60);
+
   // will only be accessed
   static bool first_call = true;
   is_timed_wait = true;
   if (!BO_IS_SERVER_RESTARTED)
     {
-      period = std::chrono::milliseconds (100);
+      period = short_delay;
+    }
+  else if (first_call)
+    {
+      first_call = false;
+      period = short_delay;
     }
   else
     {
-      if (first_call)
-        {
-          first_call = false;
-          period = std::chrono::milliseconds (100);
-        }
-      else
-        {
-          period = std::chrono::seconds (60);
-        }
+      period = normal_delay;
     }
 }
 #endif
