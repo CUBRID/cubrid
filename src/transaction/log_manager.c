@@ -1548,11 +1548,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	}
     }
 
-//  if (is_tran_server_with_remote_storage () && is_active_transaction_server ())
-//    {
-//      logpb_checkpoint_trantable (thread_p);
-//    }
-
   LOG_CS_EXIT (thread_p);
 
   er_log_debug (ARG_FILE_LINE, "log_initialize_internal: end of log initializaton, append_lsa = (%lld|%d) \n",
@@ -10738,7 +10733,7 @@ log_get_checkpoint_trantable_interval (bool & is_timed_wait, cubthread::delta_ti
   is_timed_wait = true;
   if (!BO_IS_SERVER_RESTARTED)
     {
-      period = std::chrono::seconds (1);
+      period = std::chrono::milliseconds (100);
       return;
     }
   else
