@@ -25546,13 +25546,19 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  // TODO: what about the possibly-fixed first overflow page?
+	  if (!VPID_ISNULL (&overflow_vpid))
+	    {
+	      pgbuf_unfix (thread_p, overflow_page);
+	    }
 	  return error_code;
 	}
       if (stop || bts->end_one_iteration || bts->end_scan || bts->is_interrupted)
 	{
 	  /* Early out. */
-	  // TODO: what about the possibly-fixed first overflow page?
+	  if (!VPID_ISNULL (&overflow_vpid))
+	    {
+	      pgbuf_unfix (thread_p, overflow_page);
+	    }
 	  return NO_ERROR;
 	}
       /* Fall through to overflow objects processing if present. */
@@ -25587,14 +25593,6 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (overflow_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
-	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
-	    {
-	      // save state; upon next entry/retry will directly fix the overflow page and reach here
-	      bts->O_vpid = overflow_vpid;
-	      bts->is_key_partially_processed = true;
-	      // TODO: these are useless as - due to handling in btree_range_scan_handle_error and
-	      // btree_range_scan_handle_page_ahead_repl_error - the scan will be restarted
-	    }
 	  if (prev_overflow_page != NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, prev_overflow_page);

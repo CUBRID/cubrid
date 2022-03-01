@@ -2379,26 +2379,11 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  assert (er_errid () != NO_ERROR);
 	  goto exit_on_error;
 	}
-      bool retry = true;
-
-      //Handling example
-      while (retry)
+      ret = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids);
+      if (ret != NO_ERROR)
 	{
-	  ret = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids);
-	  if (ret != NO_ERROR)
-	    {
-	      assert (er_errid () != NO_ERROR);
-
-	      if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
-		{
-		  btree_range_scan_handle_page_ahead_repl_error (thread_p, bts);
-		  btree_range_scan_wait_for_replication (bts);
-		  continue;
-		}
-
-	      goto exit_on_error;
-	    }
-	  retry = false;
+	  assert (er_errid () != NO_ERROR);
+	  goto exit_on_error;
 	}
       iscan_id->oids_count = bts->n_oids_read_last_iteration;
       assert (iscan_id->oids_count >= 0);
