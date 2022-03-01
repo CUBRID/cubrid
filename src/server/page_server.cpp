@@ -44,7 +44,9 @@ page_server::~page_server ()
   assert (m_active_tran_server_conn == nullptr);
 }
 
-page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps) : m_ps (ps)
+page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps)
+  : m_ps (ps)
+  , m_abnormal_tran_server_disconnect { false }
 {
   m_conn.reset (
 	  new tran_server_conn_t (std::move (chn),
@@ -85,7 +87,7 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, page
   page_to_tran_request::RESPOND,
   tran_to_page_request::RESPOND, 1,
   std::bind (&page_server::connection_handler::abnormal_tran_server_disconnect,
-	     std::ref (*this), std::placeholders::_1)));
+	     std::ref (*this), std::placeholders::_1, std::placeholders::_2)));
 
   assert (m_conn != nullptr);
   m_conn->start ();
@@ -176,26 +178,41 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
 }
 
 void
-page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code /*error_code*/)
+page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code error_code,
+    bool &abort_further_processing)
 {
-  if (m_prior_sender_sink_hook_func)
-    {
-      // passive transaction server connection
-      {
-	std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
+  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect; request abort futher processing\n");
+  abort_further_processing = true;
 
-	log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
-	m_prior_sender_sink_hook_func = nullptr;
-      }
-
-      std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
-      disconnect_thread.detach ();
-    }
-  else
+  std::lock_guard<std::mutex> lockg { m_abnormal_tran_server_disconnect_mtx };
+  if (!m_abnormal_tran_server_disconnect)
     {
-      // active transaction server connection
-      std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
-      disconnect_thread.detach ();
+      if (m_prior_sender_sink_hook_func)
+	{
+	  // passive transaction server connection
+	  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect: PTS disconnected from PS. Error code: %d\n",
+			(int)error_code);
+
+	  {
+	    std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
+
+	    log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+	    m_prior_sender_sink_hook_func = nullptr;
+	  }
+
+	  std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
+	  disconnect_thread.detach ();
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect: ATS disconnected from PS. Error code: %d\n",
+			(int)error_code);
+
+	  // active transaction server connection
+	  std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
+	  disconnect_thread.detach ();
+	}
+      m_abnormal_tran_server_disconnect = true;
     }
 }
 

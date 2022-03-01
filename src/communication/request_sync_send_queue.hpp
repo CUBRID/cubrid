@@ -29,7 +29,8 @@
 
 namespace cubcomm
 {
-  using send_queue_error_handler = std::function<void (css_error_code)>;
+  // Prototype for send queue error handler.
+  using send_queue_error_handler = std::function<void (css_error_code, bool &)>;
 
   // Synchronize sending requests. Allow multiple threads to push requests and to send requests to the server.
   //
@@ -100,6 +101,7 @@ namespace cubcomm
       std::condition_variable m_queue_condvar;    // Notify request consumers
 
       send_queue_error_handler m_error_handler;
+      bool m_abort_further_processing;
   };
 
   // The request_queue_autosend automatically sends requests pushed into request_sync_send_queue
@@ -151,8 +153,8 @@ namespace cubcomm
       const send_queue_error_handler &error_handler)
     : m_client (client)
     , m_error_handler { error_handler }
+    , m_abort_further_processing { false }
   {
-    //assert (m_error_handler != nullptr);
   }
 
   template <typename ReqClient, typename ReqPayload>
@@ -178,7 +180,7 @@ namespace cubcomm
     // send all requests in q
 
     std::unique_lock<std::mutex> ulock (m_send_mutex);
-    while (!q.empty ())
+    while (!q.empty () && !m_abort_further_processing)
       {
 	typename queue_type::const_reference queue_front = q.front ();
 	const typename client_type::client_request_id &temp_id = queue_front.m_id;
@@ -187,17 +189,26 @@ namespace cubcomm
 	const css_error_code err_code = m_client.send (queue_front.m_id, queue_front.m_payload);
 	if (err_code != NO_ERRORS)
 	  {
-	    // TODO: there should always be an error handler here; see assert in ctor
 	    if (m_error_handler != nullptr)
 	      {
-		m_error_handler (err_code);
+		m_error_handler (err_code, m_abort_further_processing);
 	      }
 	    else
 	      {
+		// crash early if no error handler is present
 		assert (false);
 	      }
 	  }
 	q.pop ();
+      }
+
+    if (m_abort_further_processing)
+      {
+	// discard all remaining items as there is nothing else can be done
+	while (!q.empty ())
+	  {
+	    q.pop ();
+	  }
       }
   }
 
@@ -238,11 +249,13 @@ namespace cubcomm
       {
 	return;
       }
+
     assert (!m_request_queue.empty ());
     m_request_queue.swap (backbuffer);
     ulock.unlock ();
 
     send_queue (backbuffer);
+    assert (backbuffer.empty ());
   }
 
   //
