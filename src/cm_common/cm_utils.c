@@ -788,7 +788,7 @@ make_temp_filename (char *tempfile, char *prefix, int size)
 }
 
 int
-make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int id, int size)
+make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, int size)
 {
   struct timeval current_time;
 
@@ -803,7 +803,7 @@ make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int id, int siz
       return -1;
     }
 
-  snprintf (tempfile, size - 1, "%s/%s_%d_%ld_%d", tempdir, prefix ? prefix : "", id,
+  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%d", tempdir, prefix ? prefix : "", task_code,
 	    current_time.tv_sec, current_time.tv_usec, rand () % 997);
 
   return 0;
