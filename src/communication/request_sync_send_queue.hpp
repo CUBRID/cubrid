@@ -30,6 +30,9 @@
 namespace cubcomm
 {
   // Prototype for send queue error handler.
+  //
+  // NOTE: if needed, functionality can be refactored into an interface and extended with
+  // additional features (ie: retry policy, timeouts ..)
   using send_queue_error_handler = std::function<void (css_error_code, bool &)>;
 
   // Synchronize sending requests. Allow multiple threads to push requests and to send requests to the server.

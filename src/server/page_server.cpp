@@ -181,6 +181,13 @@ void
 page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code error_code,
     bool &abort_further_processing)
 {
+  /* when a transaction server suddenly disconnects, if the page server happens to be be either
+   * proactively sending data or responding to a request, an error is reported from the network layer;
+   * this function is a handler for such an error - see cubcomm::send_queue_error_handler.
+   *
+   * NOTE: if needed, functionality can be extended with more advanced features (ie: retry policy, timeouts ..)
+   * */
+
   er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect; request abort futher processing\n");
   abort_further_processing = true;
 
