@@ -398,7 +398,7 @@ cmd_server_status (void)
   char out_file[PATH_MAX];
   char cmd_name[PATH_MAX];
   const char *argv[5];
-  char tmpfile[512];
+  char tmpfile[PATH_MAX];
 
   res = new_servstat_result ();
   if (res == NULL)
@@ -415,7 +415,8 @@ cmd_server_status (void)
 
   if (make_temp_filename (tmpfile, "DBMT_util_001.", sizeof (tmpfile)) < 0)
     {
-      return res;
+      cmd_result_free (res);
+      return NULL;
     }
   (void) envvar_tmpdir_file (out_file, PATH_MAX, tmpfile);
   (void) envvar_bindir_file (cmd_name, PATH_MAX, UTIL_CUBRID);

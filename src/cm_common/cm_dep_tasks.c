@@ -1379,6 +1379,7 @@ user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser, cha
 
   if (make_temp_filename (tmpfile, "DBMT_ems_sa.", PATH_MAX) < 0)
     {
+      strcpy (_dbmt_error, "make_temp_filename: filename creation error");
       goto login_err;
     }
 
