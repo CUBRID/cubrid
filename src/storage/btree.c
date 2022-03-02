@@ -42,6 +42,7 @@
 #include "transform.h"
 #include "partition_sr.h"
 #include "passive_tran_server.hpp"
+#include "page_buffer.h"
 #include "porting_inline.hpp"
 #include "query_executor.h"
 #include "query_opfunc.h"
