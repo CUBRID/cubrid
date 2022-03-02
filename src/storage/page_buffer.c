@@ -8211,9 +8211,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	    }
 	  else
 	    {
-	      const bool fileio_pages_equal = (io_page->prv == second_io_page->prv)
-		//|| (io_page->prv.ptype == second_io_page->prv.ptype && io_page->prv.ptype == PAGE_OVERFLOW)
-		;
+	      const bool fileio_pages_equal = (io_page->prv == second_io_page->prv);
 	      if (!fileio_pages_equal)
 		{
 		  /* on a transaction server, btree statistics is not written immediately
@@ -8237,18 +8235,6 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 			      && io_page->prv.pflag == second_io_page->prv.pflag
 			      && io_page->prv.tde_nonce == second_io_page->prv.tde_nonce);
 		    }
-//                else if (!fileio_pages_equal
-//                         && (io_page->prv.ptype == second_io_page->prv.ptype && io_page->prv.ptype == PAGE_OVERFLOW)
-//                         && (io_page->prv.volid == second_io_page->prv.volid)
-//                         && (io_page->prv.pageid == second_io_page->prv.pageid)
-//                         && (io_page->prv.pflag == second_io_page->prv.pflag)
-//                         && (io_page->prv.lsa > second_io_page->prv.lsa))
-//                  {
-//                    // overflow pages which have been touched by adding log records that only have the 'undo' component;
-//                    // as page server only replicates redo's these undo log records which advance local storage page lsa
-//                    // are not handled
-//                    // search log back starting from the more advanced
-//                  }
 		  else
 		    {
 #if !defined(NDEBUG)
