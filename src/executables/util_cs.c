@@ -4924,7 +4924,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
     {
-      fprintf (stderr, "please set \"supplemental_log=1\" in conf/cubrid.conf\n");
+      fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
       goto error_exit;
     }
 

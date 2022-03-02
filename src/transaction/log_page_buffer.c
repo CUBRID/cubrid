@@ -6098,32 +6098,29 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	    }
 
 	  /* check flashback */
-	  if (flashback_check_time_exceed_threshold () && !flashback_is_active ())
+	  if (flashback_is_needed_to_keep_archive ())
 	    {
-	      /* unset flashback minimum log page id to keep,
-	       * so that archive log volumes are able to be removed */
-	      flashback_unset_min_log_pageid_to_keep ();
-	    }
+	      flashback_first_pageid = flashback_min_log_pageid_to_keep ();
 
-	  flashback_first_pageid = flashback_min_log_pageid_to_keep ();
+	      _er_log_debug (ARG_FILE_LINE, "First log pageid for flashback is %lld", flashback_first_pageid);
 
-	  _er_log_debug (ARG_FILE_LINE, "First log pageid for flashback is %lld", flashback_first_pageid);
-
-	  if (flashback_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
-	    {
-	      min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
-
-	      _er_log_debug (ARG_FILE_LINE, "First archive number used for flashback is %d",
-			     min_arv_required_for_flashback);
-
-	      if (min_arv_required_for_flashback >= 0)
+	      /* NULL check for flashback_first_pageid is done in flashback_is_needed_to_keep_archive () */
+	      if (logpb_is_page_in_archive (flashback_first_pageid))
 		{
-		  last_arv_num_to_delete = MIN (last_arv_num_to_delete, min_arv_required_for_flashback);
-		}
-	      else
-		{
-		  /* Page should be in archive. */
-		  assert (false);
+		  min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
+
+		  _er_log_debug (ARG_FILE_LINE, "First archive number used for flashback is %d",
+				 min_arv_required_for_flashback);
+
+		  if (min_arv_required_for_flashback >= 0)
+		    {
+		      last_arv_num_to_delete = MIN (last_arv_num_to_delete, min_arv_required_for_flashback);
+		    }
+		  else
+		    {
+		      /* Page should be in archive. */
+		      assert (false);
+		    }
 		}
 	    }
 	}
@@ -6279,20 +6276,18 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 	}
 
       /* flashback */
-      if (flashback_check_time_exceed_threshold () && !flashback_is_active ())
+      if (flashback_is_needed_to_keep_archive ())
 	{
-	  /* unset flashback minimum log page id to keep,
-	   * so that archive log volumes are able to be removed */
-	  flashback_unset_min_log_pageid_to_keep ();
-	}
 
-      flashback_first_pageid = flashback_min_log_pageid_to_keep ();
+	  flashback_first_pageid = flashback_min_log_pageid_to_keep ();
 
-      if (flashback_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
-	{
-	  min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
-	  min_arv_required_for_flashback--;
-	  last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_flashback);
+	  /* NULL check for flashback_first_pageid is done in flashback_is_needed_to_keep_archive () */
+	  if (logpb_is_page_in_archive (flashback_first_pageid))
+	    {
+	      min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
+	      min_arv_required_for_flashback--;
+	      last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_flashback);
+	    }
 	}
     }
 

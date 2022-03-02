@@ -58,7 +58,7 @@
 #include "system_parameter.h"
 
 static LOG_PAGEID flashback_Min_log_pageid = NULL_LOG_PAGEID;	// Minumun log pageid to keep archive log volume from being removed
-static time_t flashback_Last_request_time = -1;	// The time most recently requested by flashback
+static time_t flashback_Last_request_done_time = -1;	// The time most recently requested by flashback
 static int flashback_Threshold_to_remove_archive = 0;	/* If the difference between the time at which the archive log is deleted
 							 * and the time the flashback last requested exceeds this threshold,
 							 * the archive log volume can be deleted.
@@ -102,13 +102,13 @@ flashback_min_log_pageid_to_keep ()
 }
 
 /*
- * flashback_set_request_time - set flashback_Last_request_time to current
+ * flashback_set_request_done_time - set flashback_Last_request_done_time to current
  */
 
 void
-flashback_set_request_time ()
+flashback_set_request_done_time ()
 {
-  flashback_Last_request_time = time (NULL);
+  flashback_Last_request_done_time = time (NULL);
 }
 
 /*
@@ -116,11 +116,11 @@ flashback_set_request_time ()
  *                           it follows PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL
  */
 
-void
+static void
 flashback_set_threshold ()
 {
   flashback_Threshold_to_remove_archive = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
-  if (flashback_Threshold_to_remove_archive == 0)
+  if (flashback_Threshold_to_remove_archive < 60)
     {
       /* set threshold to 60 which is recommended intervals for removing archive logs */
       flashback_Threshold_to_remove_archive = 60;
@@ -141,31 +141,56 @@ flashback_check_time_exceed_threshold ()
       flashback_set_threshold ();
     }
 
-  return (time (NULL) - flashback_Last_request_time) >= flashback_Threshold_to_remove_archive;
+  return (time (NULL) - flashback_Last_request_done_time) >= flashback_Threshold_to_remove_archive;
 }
 
 /*
- * flashback_set_state - set flashback_Is_active to true or false
+ * flashback_is_needed_to_keep_archive - check if archive log volume is required to be kept
  *
  * return   : true or false
  */
 
-void
-flashback_set_state (bool is_active)
+bool
+flashback_is_needed_to_keep_archive ()
 {
-  flashback_Is_active = is_active;
+  if (flashback_Min_log_pageid == NULL_LOG_PAGEID)
+    {
+      /* if nothing is set on flashback_Min_log_pageid, then there is no need to keep archive */
+
+      return false;
+    }
+
+  if (!flashback_Is_active && flashback_check_time_exceed_threshold ())
+    {
+      /* if flashback request is not in active and interval between flashback
+       * requests exceeds threshold, then there is no need to keep archive log for flashback */
+
+      return false;
+    }
+
+  return true;
 }
 
 /*
- * flashback_is_active - get the state of flashback
+ * flashback_set_status_active - set flashback_Is_active to true
  *
- * return   : flashback_Is_active (true or false)
  */
 
-bool
-flashback_is_active ()
+void
+flashback_set_status_active ()
 {
-  return flashback_Is_active;
+  flashback_Is_active = true;
+}
+
+/*
+ * flashback_set_status_inactive - set flashback_Is_active to false
+ *
+ */
+
+void
+flashback_set_status_inactive ()
+{
+  flashback_Is_active = false;
 }
 
 /*
@@ -177,7 +202,14 @@ flashback_is_active ()
 bool
 flashback_is_loginfo_generation_finished (LOG_LSA * start_lsa, LOG_LSA * end_lsa)
 {
-  return LSA_ISNULL (start_lsa) || LSA_GE (start_lsa, end_lsa);
+  /* The way to know whether log info generation is done depends on the direction of traversing the log record
+   * forward : start_lsa increases as much as log infos are generated for every request.
+   *           So, when start_lsa becomes the same as end_lsa, it is judged to be done.
+   * backward : end_lsa decreases as much as log infos are generated for every request.
+   *            So, when end_lsa meets the prev_tranlsa == NULL, then it is judged to be done.
+   */
+
+  return LSA_ISNULL (end_lsa) || LSA_GE (start_lsa, end_lsa);
 }
 
 /*

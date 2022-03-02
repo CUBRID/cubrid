@@ -109,14 +109,14 @@ extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMA
 extern void flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
 
 extern LOG_PAGEID flashback_min_log_pageid_to_keep ();
+extern bool flashback_is_needed_to_keep_archive ();
 extern bool flashback_check_time_exceed_threshold ();
 extern bool flashback_is_loginfo_generation_finished (LOG_LSA * start_lsa, LOG_LSA * end_lsa);
 
 extern void flashback_set_min_log_pageid_to_keep (LOG_LSA * lsa);
 extern void flashback_unset_min_log_pageid_to_keep ();
-extern void flashback_set_request_time ();
-extern void flashback_set_threshold ();
-extern void flashback_set_state (bool is_active);
-extern bool flashback_is_active ();
+extern void flashback_set_request_done_time ();
+extern void flashback_set_status_active ();
+extern void flashback_set_status_inactive ();
 
 #endif /* _FLASHBACK_H_ */

@@ -10852,7 +10852,13 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   assert (!LSA_ISNULL (&context.start_lsa));
 
   flashback_set_min_log_pageid_to_keep (&context.start_lsa);
-  flashback_set_state (true);
+
+  /* flashback status should be set active at the beginning of the function.
+   * however, the flashback status is used when determining whether an archive log volume can be deleted.
+   * Even if the flashback status is active, the archive volume used by flashback can be deleted
+   * if the minimum LSA value used by flashback is NULL.*/
+
+  flashback_set_status_active ();
 
   /* get summary list */
   error_code = flashback_make_summary_list (thread_p, &context);
@@ -10897,8 +10903,8 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   db_private_free_and_init (thread_p, area);
 
-  flashback_set_state (false);
-  flashback_set_request_time ();
+  flashback_set_status_inactive ();
+  flashback_set_request_done_time ();
 
   return;
 error:
@@ -10907,7 +10913,7 @@ error:
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
-  flashback_set_state (false);
+  flashback_set_status_inactive ();
   flashback_unset_min_log_pageid_to_keep ();
 
   return;
@@ -10965,6 +10971,8 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0 };
 
+  flashback_set_status_active ();
+
   if (flashback_check_time_exceed_threshold ())
     {
       /* er_set */
@@ -10990,12 +10998,14 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_unpack_int (ptr, &context.num_loginfo);
   ptr = or_unpack_int (ptr, &context.forward);
 
-  if (LSA_ISNULL (&context.start_lsa))
+  if (!LSA_ISNULL (&context.start_lsa))
     {
+      /* start_lsa can be NULL if specified transaction was started before the time entered by the user.
+       * when start_lsa is NULL, then it is set later in flashback_make_loginfo ()
+       * after finding a star_lsa by flashback_find_start_lsa () */
+
       flashback_set_min_log_pageid_to_keep (&context.start_lsa);
     }
-
-  flashback_set_state (true);
 
   error_code = flashback_make_loginfo (thread_p, &context);
   if (error_code != NO_ERROR)
@@ -11041,10 +11051,10 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   else
     {
       flashback_set_min_log_pageid_to_keep (&context.start_lsa);
-      flashback_set_request_time ();
+      flashback_set_request_done_time ();
     }
 
-  flashback_set_state (false);
+  flashback_set_status_inactive ();
 
   return;
 error:
@@ -11053,7 +11063,7 @@ error:
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
-  flashback_set_state (false);
+  flashback_set_status_inactive ();
   flashback_unset_min_log_pageid_to_keep ();
 
   return;
