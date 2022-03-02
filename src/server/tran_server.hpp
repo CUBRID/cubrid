@@ -75,7 +75,7 @@ class tran_server
     void disconnect_page_server ();
     bool is_page_server_connected () const;
     void push_request (tran_to_page_request reqid, std::string &&payload);
-    void send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
+    int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
 
     virtual bool uses_remote_storage () const;
 
@@ -94,7 +94,7 @@ class tran_server
   private:
 
     int init_page_server_hosts (const char *db_name);
-    void get_boot_info_from_page_server ();
+    int get_boot_info_from_page_server ();
     int connect_to_page_server (const cubcomm::node &node, const char *db_name);
 
     int parse_server_host (const std::string &host);

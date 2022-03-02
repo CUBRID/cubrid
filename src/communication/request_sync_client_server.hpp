@@ -76,7 +76,8 @@ namespace cubcomm
       std::string get_underlying_channel_id () const;
 
       void push (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload);
-      void send_recv (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_request_payload, T_PAYLOAD &a_response_payload);
+      css_error_code send_recv (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_request_payload,
+				T_PAYLOAD &a_response_payload);
       void respond (sequenced_payload &&seq_payload);
 
     private:
@@ -193,11 +194,12 @@ namespace cubcomm
 
     sequenced_payload ip (NO_RESPONSE_SEQUENCE_NUMBER, std::move (a_payload));
 
-    m_queue->push (a_outgoing_message_id, std::move (ip));
+    // NOTE: if needed, errors can be handled
+    m_queue->push (a_outgoing_message_id, std::move (ip), nullptr);
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
-  void
+  css_error_code
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::send_recv (
 	  T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_request_payload, T_PAYLOAD &a_response_payload)
   {
@@ -205,11 +207,27 @@ namespace cubcomm
     response_sequence_number rsn = m_rsn_generator.get_unique_number ();
     sequenced_payload seq_payload (rsn, std::move (a_request_payload));
 
+    css_error_code received_css_err_code = NO_ERRORS;
+    send_queue_error_handler error_handler_ftor = [&received_css_err_code] (
+		css_error_code error_code, bool &abort_further_processing)
+    {
+      abort_further_processing = false;
+      received_css_err_code = error_code;
+    };
+
     // Send the request
-    m_queue->push (a_outgoing_message_id, std::move (seq_payload));
+    m_queue->push (a_outgoing_message_id, std::move (seq_payload), std::cref (error_handler_ftor));
+
+    if (received_css_err_code != NO_ERRORS)
+      {
+	// error sending info, useless to wait for the answer
+	return received_css_err_code;
+      }
 
     // Get the answer
     a_response_payload = m_response_broker.get_response (rsn);
+
+    return NO_ERRORS;
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -217,7 +235,8 @@ namespace cubcomm
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::respond (
 	  sequenced_payload &&seq_payload)
   {
-    m_queue->push (m_outgoing_response_msgid, std::move (seq_payload));
+    // NOTE: if needed, errors can be handled for respond as well
+    m_queue->push (m_outgoing_response_msgid, std::move (seq_payload), nullptr);
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>

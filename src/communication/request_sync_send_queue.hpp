@@ -30,6 +30,8 @@
 namespace cubcomm
 {
   // Prototype for send queue error handler.
+  // Can be specified both as a generic handler for the entire lifetime of the queue.
+  // But also as a specific handler for more particular contexts.
   //
   // NOTE: if needed, functionality can be refactored into an interface and extended with
   // additional features (ie: retry policy, timeouts ..)
@@ -60,6 +62,7 @@ namespace cubcomm
       {
 	typename client_type::client_request_id m_id;
 	payload_type m_payload;
+	send_queue_error_handler m_error_handler;
       };
       using queue_type = std::queue<queue_item_type>;
 
@@ -77,7 +80,8 @@ namespace cubcomm
       // functions:
 
       // Push a request to the end of queue
-      void push (typename client_type::client_request_id reqid, payload_type &&payload);
+      void push (typename client_type::client_request_id reqid, payload_type &&payload,
+		 const send_queue_error_handler &error_handler);
 
       // Send all requests to the server. If queue is empty, nothing happens.
       //
@@ -163,7 +167,7 @@ namespace cubcomm
   template <typename ReqClient, typename ReqPayload>
   void
   request_sync_send_queue<ReqClient, ReqPayload>::push (typename client_type::client_request_id reqid,
-      payload_type &&payload)
+      payload_type &&payload, const send_queue_error_handler &error_handler)
   {
     // synchronize push request into the queue and notify consumers
 
@@ -171,6 +175,7 @@ namespace cubcomm
     m_request_queue.emplace ();
     m_request_queue.back ().m_id = reqid;
     m_request_queue.back ().m_payload = std::move (payload);
+    m_request_queue.back ().m_error_handler = error_handler;
 
     ulock.unlock ();
     m_queue_condvar.notify_all ();
@@ -186,20 +191,24 @@ namespace cubcomm
     while (!q.empty () && !m_abort_further_processing)
       {
 	typename queue_type::const_reference queue_front = q.front ();
-	const typename client_type::client_request_id &temp_id = queue_front.m_id;
-	const payload_type &temp_payload = queue_front.m_payload;
 
 	const css_error_code err_code = m_client.send (queue_front.m_id, queue_front.m_payload);
 	if (err_code != NO_ERRORS)
 	  {
-	    if (m_error_handler != nullptr)
+	    if (queue_front.m_error_handler != nullptr)
 	      {
+		// if present, invoke custom/specific handler first
+		queue_front.m_error_handler (err_code, m_abort_further_processing);
+	      }
+	    else if (m_error_handler != nullptr)
+	      {
+		// if present, invoke generic (fail-back) handler
 		m_error_handler (err_code, m_abort_further_processing);
 	      }
 	    else
 	      {
 		// crash early if no error handler is present
-		assert (false);
+		assert_release (false);
 	      }
 	  }
 	q.pop ();
