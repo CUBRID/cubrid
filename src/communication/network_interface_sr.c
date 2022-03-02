@@ -10773,7 +10773,6 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
   if (!(error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA))
     {
       /* failed to find a log record */
-      /* TODO : er_set() */
       return error_code;
     }
 
