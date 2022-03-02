@@ -53,6 +53,7 @@ static int rc;
 /* attribute of db_serial class */
 typedef enum
 {
+  SERIAL_ATTR_UNIQUE_NAME_INDEX,
   SERIAL_ATTR_NAME_INDEX,
   SERIAL_ATTR_OWNER_INDEX,
   SERIAL_ATTR_CURRENT_VAL_INDEX,
@@ -556,7 +557,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
 
   attr_info_p = &attr_info;
 
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX, attrid) != NO_ERROR)
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_UNIQUE_NAME_INDEX, attrid) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -699,7 +700,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       cached_num = db_get_int (val);
     }
 
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX, attrid) != NO_ERROR)
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_UNIQUE_NAME_INDEX, attrid) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -1260,7 +1261,11 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
 	  goto exit_on_error;
 	}
 
-      if (strcmp (attr_name_p, SERIAL_ATTR_NAME) == 0)
+      if (strcmp (attr_name_p, SERIAL_ATTR_UNIQUE_NAME) == 0)
+	{
+	  serial_Attrs_id[SERIAL_ATTR_UNIQUE_NAME_INDEX] = i;
+	}
+      else if (strcmp (attr_name_p, SERIAL_ATTR_NAME) == 0)
 	{
 	  serial_Attrs_id[SERIAL_ATTR_NAME_INDEX] = i;
 	}
@@ -1486,8 +1491,8 @@ serial_cache_index_btid (THREAD_ENTRY * thread_p)
   oid_get_serial_oid (&serial_oid);
   assert (!OID_ISNULL (&serial_oid));
 
-  /* Now try to get index BTID. Serial index name is "pk_db_serial_name". */
-  error_code = heap_get_btid_from_index_name (thread_p, &serial_oid, "pk_db_serial_name", &serial_Cached_btid);
+  /* Now try to get index BTID. */
+  error_code = heap_get_btid_from_index_name (thread_p, &serial_oid, "u_db_serial_unique_name", &serial_Cached_btid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

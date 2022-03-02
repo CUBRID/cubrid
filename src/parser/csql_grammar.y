@@ -3913,9 +3913,9 @@ prepare_alter_node
 	;
 
 only_class_name
-	: ONLY class_name
+	: ONLY user_specified_name
 		{ $$ = $2; }
-	| class_name
+	| user_specified_name
 		{ $$ = $1; }
 	;
 
@@ -3935,7 +3935,7 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME TRIGGER trigger_name as_or_to identifier_without_dot
+	| RENAME TRIGGER trigger_name as_or_to trigger_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_TRIGGER);
@@ -3984,7 +3984,7 @@ rename_class_list
 	;
 
 rename_class_pair
-	: only_class_name as_or_to identifier_without_dot
+	: only_class_name as_or_to only_class_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME);
@@ -5245,10 +5245,9 @@ user_specified_name_without_dot
 			if (user && name)
 			  {
 			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
-
 			    parser_free_tree (this_parser, user);
 
-				// PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
 
 			$$ = name;
@@ -5262,7 +5261,7 @@ user_specified_name_without_dot
 
 			if (name)
 			  {
-				// PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
 
 			$$ = name;
@@ -5275,14 +5274,14 @@ user_specified_name
 	: object_name
 		{{
 
-			PT_NODE *node = $1;
+			PT_NODE *name = $1;
 
-			if (node)
+			if (name)
 			  {
-				// PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
 			  }
 
-			$$ = node;
+			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -7998,7 +7997,7 @@ path_expression_list
 	;
 
 delete_name
-	: class_name
+	: identifier
 		{{
 
 			PT_NODE *node = $1;
@@ -8007,7 +8006,7 @@ delete_name
 			$$ = node;
 
 		DBG_PRINT}}
-	| class_name DOT '*'
+	| identifier DOT '*'
 		{{
 
 			PT_NODE *node = $1;
@@ -9339,7 +9338,7 @@ foreign_key_constraint
 	  opt_identifier				/* 3 */
 	  '(' index_column_identifier_list ')'		/* 4, 5, 6 */
 	  REFERENCES					/* 7 */
-	  class_name					/* 8 */
+	  user_specified_name				/* 8 */
 	  opt_paren_attr_list				/* 9 */
 	  opt_ref_rule_list				/* 10 */
 		{{
@@ -11707,7 +11706,7 @@ trigger_action
 	;
 
 trigger_spec_list
-	: class_name_list
+	: trigger_name_list
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_TRIGGER_SPEC_LIST);
@@ -14123,7 +14122,13 @@ from_param
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CLASS class_name
+	/*
+	 * It must be changed to "CLASS class_name" by User Schema support.
+	 * However, it is difficult to change to "CLASS class_name"
+	 * because it is a syntax not supported by AS-IS.
+	 * Even on AS-IS, PT_INTERNAL_ERROR (parser, "resolution") occurs on pt_resolve_object.
+	 */
+	| CLASS identifier
 		{{
 
 			PT_NODE *val = $2;
@@ -14945,6 +14950,7 @@ opt_orderby_clause
 			int index_of_col;
 			char *n_str, *c_str;
 			bool is_col, is_alias;
+			unsigned int save_custom;
 
 			parser_restore_oc ();
 			if (stmt)
@@ -15030,7 +15036,10 @@ opt_orderby_clause
 					    continue;
 					  }
 
+					save_custom = this_parser->custom_print;
+					this_parser->custom_print |= PT_SUPPRESS_QUOTES;
 					n_str = parser_print_tree (this_parser, n);
+					this_parser->custom_print = save_custom;
 					if (n_str == NULL)
 					  {
 					    continue;
@@ -15039,16 +15048,19 @@ opt_orderby_clause
 					for (col = list, index_of_col = 1; col;
 					     col = col->next, index_of_col++)
 					  {
+					    save_custom = this_parser->custom_print;
+					    this_parser->custom_print |= PT_SUPPRESS_QUOTES;
 					    c_str = parser_print_tree (this_parser, col);
+					    this_parser->custom_print = save_custom;
 					    if (c_str == NULL)
 					      {
 					        continue;
 					      }
 
 					    if ((col->alias_print
-						 && intl_identifier_namecmp (n_str, col->alias_print) == 0
+						 && intl_identifier_casecmp (n_str, col->alias_print) == 0
 						 && (is_alias = true))
-						|| (intl_identifier_namecmp (n_str, c_str) == 0
+						|| (intl_identifier_casecmp (n_str, c_str) == 0
 						    && (is_col = true)))
 					      {
 						if (found_star)
@@ -21773,7 +21785,7 @@ identifier_without_dot
 			    if (name && strchr (name, '.'))
 			      {
 				PT_ERRORf (this_parser, p,
-					   "Identifier name %s not allowed. It cannot contain dot(.).",
+					   "Identifier name [%s] not allowed. It cannot contain dot(.).",
 					   name);
 
 				p = NULL;

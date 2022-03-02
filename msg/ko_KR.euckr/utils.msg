@@ -490,7 +490,9 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
   -d, --data-file=FILE           적재할 데이터 파일\n\
   -t, --table=TABLE              데이터를 적재할 테이블 이름; 데이터 파일에 테이블 정보가 없는 경우 사용\n\
       --error-control-file=FILE  적재 시 발생하는 에러에 대한 제어 파일\n\
-      --ignore-class-file=FILE   적재하지 않을 클래스 이름이 있는 파일\n
+      --ignore-class-file=FILE   적재하지 않을 클래스 이름이 있는 파일\n\
+      --no-user-specified-name   소유자 이름 없이 객체 이름으로 CLASS, SERIAL 및 TRIGGER를 찾음.\n\
+                                 CUBRID 11.2 전 버전에서 생성된 파일을 불러오기 위함.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

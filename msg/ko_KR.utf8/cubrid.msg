@@ -1407,8 +1407,13 @@ $ LOADDB
 1331 Error reserved for dblink development.
 
 1332 액티브 로그 볼륨 (%1$s)에서 문제를 발견할 수 없어 재생성할 수 없습니다. 액티브 로그 볼륨을 제거할 경우에 예측할 수 없는 문제가 발생할 수 있으며, 되돌릴 수 없습니다.
+1333 권한 부여 내부 함수에 잘못된 인자 발생.
+1334 AUTO_INCREMENT는 소유자 변경을 허용하지 않습니다.
+1335 RENAME은 소유자 변경을 허용하지 않습니다.
+1336 DBA, DBA 그룹의 구성원 및 소유자가 CREATE SERIAL을 수행할 수 있습니다.
+1337 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TRIGGER를 수행할 수 있습니다.
 
-1333 마지막 에러
+1338 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1874,6 +1879,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 함수 %1$s()에 대해 호환되는 함수 정의를 찾을 수 없습니다.
 305 함수 인자와 함수 정의 %1$s 은 호환되지 않습니다.
 306 dblink - 필수 정보가 누락되었습니다.
+307 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TABLE/VIEW를 수행할 수 있습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

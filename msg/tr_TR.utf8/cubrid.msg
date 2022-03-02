@@ -1407,8 +1407,13 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1331 Error reserved for dblink development.
 
 1332 Etkin günlük hacmi (%1$s) yeniden oluşturulamayacak kadar makul. Etkin günlüğü kaldırırsanız, beklenmeyen ve geri dönüşü olmayan bir soruna neden olabilir.
+1333 Invalid arguments to authorization internal function.
+1334 AUTO_INCREMENT does not allow change of owner.
+1335 RENAME does not allow change of owner.
+1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1333 Son Hata
+1338 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1874,6 +1879,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 %1$s() fonksiyonu için uyumlu bir imza bulunamadı
 305 İmza %1$s, argümanları ile uyumlu değildir.
 306 dblink - Gerekli bilgiler eksik.
+307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

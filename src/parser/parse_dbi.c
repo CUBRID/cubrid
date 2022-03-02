@@ -274,7 +274,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs, PT_NODE ** se
 			   * the type we're looking for may still be the generic object. */
 			  if (cls != NULL)
 			    {
-			      found = !intl_identifier_casecmp (cls_nam, e_nam);
+			      found = !pt_user_specified_name_compare (cls_nam, e_nam);
 			    }
 			}
 		      else
@@ -1879,7 +1879,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
 	  name = dt->info.data_type.entity->info.name.original;
 	  assert (name != NULL);
 
-	  if (class_name != NULL && intl_identifier_casecmp (name, class_name) == 0)
+	  if (class_name != NULL && pt_user_specified_name_compare (name, class_name) == 0)
 	    {
 	      /* If the attribute domain is the name of the class being created, indicate with a -1. */
 	      class_obj = (DB_OBJECT *) TP_DOMAIN_SELF_REF;

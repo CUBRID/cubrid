@@ -132,6 +132,7 @@ extern void sm_mark_system_class_for_catalog (void);
 #endif /* SA_MODE */
 extern int sm_mark_system_class (MOP classop, int on_or_off);
 extern int sm_is_system_class (MOP op);
+extern bool sm_check_system_class_by_name (const char *name);
 extern bool sm_is_reuse_oid_class (MOP op);
 extern int sm_check_reuse_oid_class (MOP op);
 extern int sm_is_partitioned_class (MOP op);
@@ -220,7 +221,10 @@ extern OID *sm_ch_rep_dir (MOBJ clobj);
 extern bool sm_has_indexes (MOBJ class_);
 
 /* Interpreter support functions */
-extern void sm_downcase_name (const char *name, char *buf, int maxlen);
+extern char *sm_downcase_name (const char *name, char *buf, int buf_size);
+extern char *sm_user_specified_name (const char *name, char *buf, int buf_size);
+extern char *sm_qualifier_name (const char *name, char *buf, int buf_size);
+extern const char *sm_remove_qualifier_name (const char *name);
 extern MOP sm_find_class (const char *name);
 extern MOP sm_find_class_with_purpose (const char *name, bool for_update);
 

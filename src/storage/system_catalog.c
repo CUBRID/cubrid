@@ -4713,7 +4713,7 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
 #if !defined(NDEBUG)
       classname = or_class_name (&peek);
       assert (classname != NULL);
-      assert (strlen (classname) < 255);
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
 #endif
       if (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, LK_COND_LOCK) != LK_GRANTED)
 	{
@@ -5023,7 +5023,7 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 #if !defined(NDEBUG)
       classname = or_class_name (&peek);
       assert (classname != NULL);
-      assert (strlen (classname) < 255);
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
 #endif
 
       fprintf (fp, " -------------------------------------------------\n");

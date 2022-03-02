@@ -1407,8 +1407,13 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1331 Error reserved for dblink development.
 
 1332 Il volume del registro attivo (%1$s) è troppo sano per essere ricreato. Se rimuovi il registro attivo, potrebbe causare un problema imprevisto e irreversibile.
+1333 Invalid arguments to authorization internal function.
+1334 AUTO_INCREMENT does not allow change of owner.
+1335 RENAME does not allow change of owner.
+1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1333 Ultimo errore
+1338 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
@@ -1874,6 +1879,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Impossibile trovare una firma compatibile per la funzione %1$s()
 305 Firma %1$s non è compatibile con gli argomenti delle funzioni.
 306 dblink - Mancano le informazioni richieste.
+307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.

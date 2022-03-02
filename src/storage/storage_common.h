@@ -1146,20 +1146,22 @@ typedef enum
  *    This constant defines the maximum size in bytes of a class name,
  *    attribute name, method name, or any other named entity in the schema.
  */
-#define SM_MAX_IDENTIFIER_LENGTH 255
+#define SM_MAX_IDENTIFIER_LENGTH    DB_MAX_IDENTIFIER_LENGTH
+#define SM_MAX_USER_LENGTH          DB_MAX_USER_LENGTH
 
-#define SERIAL_ATTR_NAME          "name"
-#define SERIAL_ATTR_OWNER         "owner"
-#define SERIAL_ATTR_CURRENT_VAL   "current_val"
-#define SERIAL_ATTR_INCREMENT_VAL "increment_val"
-#define SERIAL_ATTR_MAX_VAL       "max_val"
-#define SERIAL_ATTR_MIN_VAL       "min_val"
-#define SERIAL_ATTR_CYCLIC        "cyclic"
-#define SERIAL_ATTR_STARTED       "started"
-#define SERIAL_ATTR_CLASS_NAME    "class_name"
-#define SERIAL_ATTR_ATT_NAME      "att_name"
-#define SERIAL_ATTR_CACHED_NUM    "cached_num"
-#define SERIAL_ATTR_COMMENT       "comment"
+#define SERIAL_ATTR_UNIQUE_NAME     "unique_name"
+#define SERIAL_ATTR_NAME            "name"
+#define SERIAL_ATTR_OWNER           "owner"
+#define SERIAL_ATTR_CURRENT_VAL     "current_val"
+#define SERIAL_ATTR_INCREMENT_VAL   "increment_val"
+#define SERIAL_ATTR_MAX_VAL         "max_val"
+#define SERIAL_ATTR_MIN_VAL         "min_val"
+#define SERIAL_ATTR_CYCLIC          "cyclic"
+#define SERIAL_ATTR_STARTED         "started"
+#define SERIAL_ATTR_CLASS_NAME      "class_name"
+#define SERIAL_ATTR_ATT_NAME        "att_name"
+#define SERIAL_ATTR_CACHED_NUM      "cached_num"
+#define SERIAL_ATTR_COMMENT         "comment"
 
 static const bool PEEK = true;	/* Peek for a slotted record */
 static const bool COPY = false;	/* Don't peek, but copy a slotted record */

@@ -138,7 +138,7 @@ int trigger_description::init (struct db_object *trobj)
 
       /* format the full event specification so csql can display it without being dependent on syntax */
 
-      char buffer[ (SM_MAX_IDENTIFIER_LENGTH * 2) + 32];
+      char buffer[SM_MAX_IDENTIFIER_LENGTH * 2 + 32];
 
       if (this->attribute != NULL)
 	{
@@ -242,6 +242,8 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
   DB_TRIGGER_TIME time;
   int save;
   const char *name;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *trigger_name = NULL;
 
   AU_DISABLE (save);
 
@@ -255,8 +257,15 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
     {
       /* automatically filter out invalid triggers */
 
+      if (sm_qualifier_name (trigger->name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      trigger_name = sm_remove_qualifier_name (trigger->name);
+
       output_ctx ("CREATE TRIGGER ");
-      output_ctx ("[%s]\n", trigger->name);
+      output_ctx ("[%s].[%s]\n", owner_name, trigger_name);
       output_ctx ("  STATUS %s\n", tr_status_as_string (trigger->status));
       output_ctx ("  PRIORITY %f\n", trigger->priority);
 

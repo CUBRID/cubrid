@@ -59,6 +59,21 @@ extern int lo_count;
 #define PRINT_IDENTIFIER(s) "[", (s), "]"
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
+/* 
+ * name is user_specified_name.
+ * owner_name must be a char array of size DB_MAX_IDENTIFIER_LENGTH to copy user_specified_name.
+ * class_name refers to class_name after dot(.).
+ */
+#define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) \
+	do \
+	  { \
+	    assert (strlen ((name)) < sizeof ((owner_name))); \
+	    strcpy ((owner_name), (name)); \
+	    (class_name) = strchr ((owner_name), '.'); \
+	    *(class_name)++ = '\0'; \
+	  } \
+	while (0)
+
 extern int extract_classes_to_file (extract_context & ctxt, const char *output_filename);
 extern int extract_triggers (extract_context & ctxt, print_output & output_ctx);
 extern int extract_triggers_to_file (extract_context & ctxt, const char *output_filename);
