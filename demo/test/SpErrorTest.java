@@ -1,3 +1,10 @@
+package test;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
 /*
  *
  * Copyright (c) 2016 CUBRID Corporation.
@@ -29,16 +36,44 @@
  *
  */
 
-package com.cubrid.jsp.data;
+public class SpErrorTest {
 
-public class DBParameterInfo {
-    public int tran_isolation;
-    public int wait_msec;
-    public ClientInfo clientInfo = null;
-
-    public DBParameterInfo(CUBRIDUnpacker unpacker) {
-        clientInfo = new ClientInfo(unpacker);
-        tran_isolation = unpacker.unpackInt();
-        wait_msec = unpacker.unpackInt();
+    public static String testSQLExceptionThrownTest(String a) throws SQLException {
+        throw new SQLException (a);
     }
+
+    public static String testSQLExceptionTest (String a) {
+        try {
+          throw new SQLException (a);
+        } catch (Exception e) {
+            return "ok";
+        }
+    }
+
+    public static int testDivideByZeroTest(int a) {
+        int c = a / 0;
+        return c;
+    }
+
+    public static int testFiboError(int n) throws ClassNotFoundException, SQLException {
+        if (n == 0) {
+            return 0;
+        } else if (n == 1) {
+            return 1;
+        } else {
+            int result = 0;
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            Connection conn = DriverManager.getConnection("jdbc:default:connection:", "", "");
+            String fiboStmt = "SELECT testFiboError (?) + testFiboError (?);";
+            PreparedStatement stmt = conn.prepareStatement(fiboStmt);
+            stmt.setInt(1, n - 1);
+            stmt.setInt(2, n - 2);
+
+            ResultSet rs = stmt.executeQuery();
+            rs.next();
+            result += rs.getInt(1);
+            return result;
+        }
+    }
+
 }

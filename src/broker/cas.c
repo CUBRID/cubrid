@@ -86,6 +86,8 @@
 #include "cas_cgw.h"
 #endif
 
+#include "method_struct_client_info.hpp"
+
 static const int DEFAULT_CHECK_INTERVAL = 1;
 
 #define FUNC_NEEDS_RESTORING_CON_STATUS(func_code) \
@@ -99,6 +101,12 @@ static const int DEFAULT_CHECK_INTERVAL = 1;
    ||((func_code) == CAS_FC_CAS_CHANGE_MODE))
 
 static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+
+static METHOD_CLIENT_INFO method_client_info;
+METHOD_CLIENT_INFO* get_client_info ()
+{
+  return &method_client_info;
+}
 
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
@@ -1343,6 +1351,13 @@ cas_main (void)
 	    logddl_set_user_name (db_user);
 	    logddl_set_ip (client_ip_str);
 	    logddl_set_pid (getpid ());
+
+      METHOD_CLIENT_INFO* client_info = get_client_info ();
+	    client_info->broker_name.assign (shm_appl->broker_name);
+	    client_info->cas_name.assign (shm_appl->appl_server_name);
+	    client_info->db_name.assign (db_name);
+	    client_info->db_user.assign (db_user);
+	    client_info->client_ip.assign (client_ip_str);
 
 	    set_hang_check_time ();
 

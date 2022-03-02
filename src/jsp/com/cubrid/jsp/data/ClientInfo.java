@@ -31,14 +31,18 @@
 
 package com.cubrid.jsp.data;
 
-public class DBParameterInfo {
-    public int tran_isolation;
-    public int wait_msec;
-    public ClientInfo clientInfo = null;
+public class ClientInfo {
+    public String brokerName;
+    public String casName;
+    public String dbName;
+    public String dbUser;
+    public String clientIp;
 
-    public DBParameterInfo(CUBRIDUnpacker unpacker) {
-        clientInfo = new ClientInfo(unpacker);
-        tran_isolation = unpacker.unpackInt();
-        wait_msec = unpacker.unpackInt();
+    public ClientInfo(CUBRIDUnpacker unpacker) {
+        brokerName = unpacker.unpackCString();
+        casName = unpacker.unpackCString();
+        dbName = unpacker.unpackCString();
+        dbUser = unpacker.unpackCString();
+        clientIp = unpacker.unpackCString();
     }
 }

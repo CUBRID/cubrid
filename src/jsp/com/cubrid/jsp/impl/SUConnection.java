@@ -36,6 +36,7 @@ import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.DBParameterInfo;
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.data.ExecuteInfo;
 import com.cubrid.jsp.data.FetchInfo;
 import com.cubrid.jsp.data.GetByOIDInfo;

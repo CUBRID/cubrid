@@ -22,11 +22,16 @@
 #include "method_def.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
+#include "method_struct_client_info.hpp"
 
 #include "object_primitive.h"
 #include "oid.h"
 
 #include "transaction_cl.h"
+
+extern METHOD_CLIENT_INFO *get_client_info ();
+extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
+    DB_QUERY_TYPE *column_info, bool is_holdable);
 
 namespace cubmethod
 {
@@ -79,6 +84,9 @@ namespace cubmethod
 	break;
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
 	error = generated_keys (unpacker);
+	break;
+      case METHOD_CALLBACK_GET_DB_PARAMETER:
+	error = get_db_parameter (unpacker);
 	break;
       default:
 	assert (false);
@@ -329,6 +337,17 @@ namespace cubmethod
   }
 
 //////////////////////////////////////////////////////////////////////////
+// Others
+//////////////////////////////////////////////////////////////////////////
+
+  int
+  callback_handler::get_db_parameter (packing_unpacker &unpacker)
+  {
+    METHOD_CLIENT_INFO *client_info = get_client_info ();
+    return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, *client_info);
+  }
+
+//////////////////////////////////////////////////////////////////////////
 // Managing Query Handler Table
 //////////////////////////////////////////////////////////////////////////
 
@@ -446,9 +465,6 @@ namespace cubmethod
     return &handler;
   }
 }
-
-extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
-    DB_QUERY_TYPE *column_info, bool is_holdable);
 
 int
 method_make_out_rs (DB_BIGINT query_id)

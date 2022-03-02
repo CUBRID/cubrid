@@ -69,6 +69,7 @@
 #include "api_compat.h"
 #include "cas_log.h"
 #include "ddl_log.h"
+#include "method_struct_client_info.hpp"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -223,6 +224,8 @@ static void csql_set_trace (const char *arg_str);
 static void csql_display_trace (void);
 static bool csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg);
 static int get_host_ip (unsigned char *ip_addr);
+
+extern METHOD_CLIENT_INFO * get_client_info ();
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -2873,6 +2876,15 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       logddl_set_ip ((char *) ip_addr);
     }
   logddl_set_pid (getpid ());
+
+  {
+      METHOD_CLIENT_INFO* client_info = get_client_info ();
+	    client_info->broker_name.assign ("none");
+	    client_info->cas_name.assign ("csql");
+	    client_info->db_name.assign (csql_arg->db_name);
+	    client_info->db_user.assign (csql_arg->user_name);
+	    client_info->client_ip.assign ((char *) ip_addr);
+  }
 
   if (csql_arg->trigger_action_flag == false)
     {

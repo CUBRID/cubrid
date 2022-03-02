@@ -32,6 +32,7 @@
 package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.ExecuteThread;
+import com.cubrid.jsp.data.ClientInfo;
 import com.cubrid.jsp.data.DBParameterInfo;
 import com.cubrid.jsp.impl.SUConnection;
 import cubrid.jdbc.jci.CUBRIDIsolationLevel;
@@ -72,6 +73,7 @@ public class CUBRIDServerSideConnection implements Connection {
 
     private int transactionIsolation;
     private int holdability;
+    private Properties clientInfo = null;
 
     public CUBRIDServerSideConnection(ExecuteThread thread) {
         this.thread = thread;
@@ -92,26 +94,38 @@ public class CUBRIDServerSideConnection implements Connection {
     }
 
     protected void requestDBParameter() throws IOException, SQLException {
-        DBParameterInfo info = suConn.getDBParameter();
-        switch (info.tran_isolation) {
-            case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
-                transactionIsolation = TRANSACTION_READ_COMMITTED;
-                break;
+        DBParameterInfo info = getSUConnection().getDBParameter();
+        if (transactionIsolation == TRANSACTION_NONE)
+        {
+            switch (info.tran_isolation) {
+                case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
+                    transactionIsolation = TRANSACTION_READ_COMMITTED;
+                    break;
 
-            case CUBRIDIsolationLevel.TRAN_REPEATABLE_READ:
-                transactionIsolation = TRANSACTION_REPEATABLE_READ;
-                break;
+                case CUBRIDIsolationLevel.TRAN_REPEATABLE_READ:
+                    transactionIsolation = TRANSACTION_REPEATABLE_READ;
+                    break;
 
-            case CUBRIDIsolationLevel.TRAN_SERIALIZABLE:
-                transactionIsolation = TRANSACTION_SERIALIZABLE;
-                break;
+                case CUBRIDIsolationLevel.TRAN_SERIALIZABLE:
+                    transactionIsolation = TRANSACTION_SERIALIZABLE;
+                    break;
 
-            default:
-                transactionIsolation = TRANSACTION_NONE;
-                break;
+                default:
+                    transactionIsolation = TRANSACTION_NONE;
+                    break;
+            }
         }
-
+        
         // TODO: lock timeout?
+
+        if (clientInfo == null) {
+            clientInfo = new Properties();
+            clientInfo.put("broker", info.clientInfo.brokerName);
+            clientInfo.put("client", info.clientInfo.casName);
+            clientInfo.put("db", info.clientInfo.dbName);
+            clientInfo.put("user", info.clientInfo.dbUser);
+            clientInfo.put("ip", info.clientInfo.clientIp);
+        }
     }
 
     /* To manage List<Statement> statements */
@@ -394,7 +408,17 @@ public class CUBRIDServerSideConnection implements Connection {
 
     /* JDK 1.6 */
     public Properties getClientInfo() throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        if (clientInfo == null)
+        {
+            try {
+                requestDBParameter();
+            } catch (IOException e) {
+                throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                        CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+            }
+        }
+
+        return clientInfo;
     }
 
     /* JDK 1.6 */

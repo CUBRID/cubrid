@@ -345,7 +345,7 @@ public class CUBRIDUnpacker {
         return args;
     }
 
-    private void align(int size) {
+    public void align(int size) {
         DataUtilities.align(buffer, size);
     }
 }
