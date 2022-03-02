@@ -40,7 +40,7 @@ namespace cubmethod
 // Method Group to invoke together
 //////////////////////////////////////////////////////////////////////////
   method_invoke_group::method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list)
-    : m_id ((int64_t) this), m_thread_p (thread_p)
+    : m_id ((int64_t) this), m_thread_p (thread_p), m_connection (nullptr)
   {
     assert (sig_list.num_methods > 0);
 
@@ -73,7 +73,6 @@ namespace cubmethod
     DB_VALUE v;
     db_make_null (&v);
     m_result_vector.resize (sig_list.num_methods, v);
-    m_socket = INVALID_SOCKET;
   }
 
   method_invoke_group::~method_invoke_group ()
@@ -108,7 +107,7 @@ namespace cubmethod
   SOCKET
   method_invoke_group::get_socket () const
   {
-    return m_socket;
+    return m_connection ? m_connection->get_socket () : INVALID_SOCKET;
   }
 
   cubthread::entry *
@@ -121,39 +120,6 @@ namespace cubmethod
   method_invoke_group::get_data_queue ()
   {
     return m_data_queue;
-  }
-
-  int
-  method_invoke_group::connect ()
-  {
-    for (const auto &elem : m_kind_type)
-      {
-	switch (elem)
-	  {
-	  case METHOD_TYPE_INSTANCE_METHOD:
-	  case METHOD_TYPE_CLASS_METHOD:
-	  {
-	    // connecting is not needed
-	    break;
-	  }
-	  case METHOD_TYPE_JAVA_SP:
-	  {
-	    if (m_socket == INVALID_SOCKET)
-	      {
-		int server_port = jsp_server_port ();
-		m_socket = jsp_connect_server (boot_db_name (), server_port);
-	      }
-	    break;
-	  }
-	  default:
-	  {
-	    assert (false);
-	    break;
-	  }
-	  }
-      }
-
-    return NO_ERROR;
   }
 
   int
@@ -218,7 +184,14 @@ namespace cubmethod
     int error = NO_ERROR;
 
     // connect socket for java sp
-    connect ();
+    bool is_in = m_kind_type.find (METHOD_TYPE_JAVA_SP) != m_kind_type.end ();
+    if (is_in)
+      {
+	if (m_connection == nullptr)
+	  {
+	    m_connection = get_connection_pool ()->claim();
+	  }
+      }
 
     return error;
   }
@@ -247,7 +220,10 @@ namespace cubmethod
   {
     int error = NO_ERROR;
     reset (true);
-    jsp_disconnect_server (m_socket);
+
+    get_connection_pool ()->retire (m_connection);
+    m_connection = nullptr;
+
     return error;
   }
 }	// namespace cubmethod
