@@ -332,7 +332,7 @@ namespace cubcomm
   {
     unsigned short events = POLLIN;
     unsigned short revents = 0;
-    m_channel.wait_for (events, revents);
+    (void) m_channel.wait_for (events, revents);
     bool received_message = (revents & POLLIN) != 0;
     return received_message;
   }

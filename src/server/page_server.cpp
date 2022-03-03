@@ -42,6 +42,7 @@ page_server::~page_server ()
 {
   assert (m_replicator == nullptr);
   assert (m_active_tran_server_conn == nullptr);
+  assert (m_passive_tran_server_conn.size () == 0);
 }
 
 page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps)
