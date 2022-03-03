@@ -89,7 +89,7 @@ cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool is_connected)
       return ER_FAILED;
     }
 
-  if (local_odbc_handle->henv == NULL || local_odbc_handle->hdbc == NULL || local_odbc_handle->hstmt == NULL)
+  if (local_odbc_handle->henv == NULL || local_odbc_handle->hdbc == NULL)
     {
       if (is_connected)
 	{
@@ -365,7 +365,7 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 	      net_buf_cp_short (net_buf, *((short *) this_col_binding->data_buffer));
 	      break;
 	    case SQL_TINYINT:
-	      net_buf_cp_int (net_buf, NET_SIZE_BYTE, NULL);
+	      net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
 	      net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
 	      break;
 	    case SQL_FLOAT:
