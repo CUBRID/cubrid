@@ -2030,7 +2030,6 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 	{
 	  LOG_CS_EXIT (thread_p);
 	}
-      return ER_LOG_PAGE_CORRUPTED;
     }
 
   if (log_bufptr->pageid == pageid)

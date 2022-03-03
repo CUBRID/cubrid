@@ -700,7 +700,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   /* increase reference count of new session_p */
   session_state_increase_ref_count (thread_p, session_p);
 
-  session_p->private_lru_index = pgbuf_assign_private_lru (thread_p, false, (int) session_p->id);
+  session_p->private_lru_index = pgbuf_assign_private_lru (thread_p);
   /* set as thread session */
   session_set_conn_entry_data (thread_p, session_p);
 

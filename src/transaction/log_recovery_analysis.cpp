@@ -45,7 +45,6 @@ static int log_rv_analysis_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LS
 static int log_rv_analysis_run_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
     LOG_PAGE *log_page_p);
 static int log_rv_analysis_compensate (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p);
-static int log_rv_analysis_will_commit (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
     LOG_PAGE *log_page_p);
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
@@ -762,42 +761,6 @@ log_rv_analysis_compensate (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_ls
 
   compensate = (LOG_REC_COMPENSATE *) ((char *) log_page_p->area + log_lsa->offset);
   LSA_COPY (&tdes->undo_nxlsa, &compensate->undo_nxlsa);
-
-  return NO_ERROR;
-}
-
-/*
- * log_rv_analysis_will_commit -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_will_commit (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa)
-{
-  LOG_TDES *tdes;
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it. The transaction was in the process of
-   * getting committed at this point.
-   */
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_will_commit");
-      return ER_FAILED;
-    }
-
-  tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
-
-  /* Nothing to undo */
-  LSA_SET_NULL (&tdes->undo_nxlsa);
-  LSA_COPY (&tdes->tail_lsa, log_lsa);
 
   return NO_ERROR;
 }
@@ -1686,10 +1649,6 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY *thread_p, LOG_RECTYPE log_t
 
     case LOG_COMPENSATE:
       (void) log_rv_analysis_compensate (thread_p, tran_id, log_lsa, log_page_p);
-      break;
-
-    case LOG_WILL_COMMIT:
-      (void) log_rv_analysis_will_commit (thread_p, tran_id, log_lsa);
       break;
 
     case LOG_COMMIT_WITH_POSTPONE:
