@@ -1372,12 +1372,18 @@ user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser, cha
 {
   char opcode[10];
   char outfile[PATH_MAX], errfile[PATH_MAX];
-  char tmpfile[100];
+  char tmpfile[PATH_MAX];
   const char *argv[10];
   char cmd_name[PATH_MAX];
   char *outmsg = NULL, *errmsg = NULL;
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_ems_sa.", getpid ());
+  if (make_temp_filename (tmpfile, "DBMT_ems_sa.", PATH_MAX) < 0)
+    {
+      strcpy (_dbmt_error, "make_temp_filename: filename creation error");
+      goto login_err;
+    }
+
+
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
   if (snprintf (errfile, PATH_MAX - 1, "%s.err", outfile) < 0)
     {
@@ -1528,9 +1534,13 @@ class_info_sa (const char *dbname, const char *uid, const char *passwd, char *cl
   const char *argv[10];
   char cli_ver[10];
   char opcode[10];
-  char tmpfile[100];
+  char tmpfile[PATH_MAX];
 
-  int ret = snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_class_info.", getpid ());
+  if (make_temp_filename (tmpfile, "DBMT_class_info.", PATH_MAX) < 0)
+    {
+      return ERR_GENERAL_ERROR;
+    }
+
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
   if (snprintf (errfile, PATH_MAX - 1, "%s.err", outfile) < 0)
     {
@@ -2537,9 +2547,13 @@ trigger_info_sa (const char *dbname, const char *uid, const char *passwd, nvplis
   int ret_val = ERR_NO_ERROR;
   char cmd_name[PATH_MAX];
   const char *argv[10];
-  char tmpfile[100];
+  char tmpfile[PATH_MAX];
 
-  int ret = snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_trigger_info.", getpid ());
+  if (make_temp_filename (tmpfile, "DBMT_trigger_info.", PATH_MAX) < 0)
+    {
+      return ERR_GENERAL_ERROR;
+    }
+
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
   if (snprintf (errfile, PATH_MAX - 1, "%s.err", outfile) < 0)
     {
