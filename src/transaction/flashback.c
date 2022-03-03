@@ -57,15 +57,15 @@
 #include "storage_common.h"
 #include "system_parameter.h"
 
-static LOG_PAGEID flashback_Min_log_pageid = NULL_LOG_PAGEID;	// Minumun log pageid to keep archive log volume from being removed
-static time_t flashback_Last_request_done_time = -1;	// The time most recently requested by flashback
-static int flashback_Threshold_to_remove_archive = 0;	/* If the difference between the time at which the archive log is deleted
-							 * and the time the flashback last requested exceeds this threshold,
-							 * the archive log volume can be deleted.
-							 */
-
-static bool flashback_Is_active = false;	// the status value that the flashback is processing the request
-
+static volatile LOG_PAGEID flashback_Min_log_pageid = NULL_LOG_PAGEID;	// Minumun log pageid to keep archive log volume from being removed
+static volatile time_t flashback_Last_request_done_time = -1;	// The time most recently requested by flashback
+static volatile int flashback_Threshold_to_remove_archive = 0;	/* If the difference between the time at which the archive log is deleted
+								 * and the time the flashback last requested exceeds this threshold,
+								 * the archive log volume can be deleted.
+								 */
+// *INDENT-OFF*
+static std::atomic_bool flashback_Is_active = false;	// the status value that the flashback is processing the request
+// *INDENT-ON*
 
 /*
  * flashback_set_min_log_pageid_to_keep - set flashback_Min_log_pageid
@@ -169,6 +169,21 @@ flashback_is_needed_to_keep_archive ()
     }
 
   return true;
+}
+
+
+/*
+ * flashback_reset_variables - reset flashback global variables
+ *
+ */
+
+void
+flashback_reset_variables ()
+{
+  flashback_Min_log_pageid = NULL_LOG_PAGEID;
+  flashback_Threshold_to_remove_archive = 0;
+  flashback_Last_request_done_time = -1;
+  flashback_Is_active = false;
 }
 
 /*

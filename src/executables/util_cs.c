@@ -5116,7 +5116,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	      break;
 	    case ER_FLASHBACK_LOG_NOT_EXIST:
 	      break;
-	    case ER_FLASHBACK_EXCEED_THRESHOLD:
+	    case ER_FLASHBACK_TIMEOUT:
 	      break;
 	    default:
 	      break;

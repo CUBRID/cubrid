@@ -118,5 +118,6 @@ extern void flashback_unset_min_log_pageid_to_keep ();
 extern void flashback_set_request_done_time ();
 extern void flashback_set_status_active ();
 extern void flashback_set_status_inactive ();
+extern void flashback_reset_variables ();
 
 #endif /* _FLASHBACK_H_ */

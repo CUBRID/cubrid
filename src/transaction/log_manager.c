@@ -14823,7 +14823,7 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 	  goto error;
 	}
 
-      /* if start_lsa was NULL at the caller, min_log_pageid_to_keep was not set at the caller */
+      /* if start_lsa was NULL at the caller, flashback_min_log_pageid was not set at the caller */
       flashback_set_min_log_pageid_to_keep (&context->start_lsa);
     }
 
