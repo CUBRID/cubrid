@@ -1652,6 +1652,8 @@ stmt_list
 			  }
 
 		DBG_PRINT}}
+        | ';'
+                {{ /* empty line*/ }}
 	;
 
 

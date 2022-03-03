@@ -6738,16 +6738,12 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *next;
   int err = NO_ERROR;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   bool strict = true;
 
   if (!node)
     {
       return NULL;
     }
-
-  sc_info.top_node = node;
-  sc_info.donot_fold = false;
 
   /* save and zero link */
   next = node->next;
@@ -6804,7 +6800,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  /* repeat for constant folding */
 	  if (node)
 	    {
-	      node = pt_semantic_type (parser, node, &sc_info);
+	      node = pt_semantic_type (parser, node, NULL);
 	    }
 	}
       break;
@@ -6841,7 +6837,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  /* repeat for constant folding */
 	  if (node)
 	    {
-	      node = pt_semantic_type (parser, node, &sc_info);
+	      node = pt_semantic_type (parser, node, NULL);
 	    }
 	}
       break;
