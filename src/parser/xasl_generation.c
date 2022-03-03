@@ -17349,11 +17349,6 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
       fputs ("\nQuery plan:\n", query_Plan_dump_fp);
       qo_plan_dump (plan, query_Plan_dump_fp);
-
-      {
-	extern void print_hint_dump (FILE * fp);
-	print_hint_dump (query_Plan_dump_fp);
-      }
     }
 
   if (dump_plan == true)
@@ -17509,6 +17504,12 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 exit:
   if (plan != NULL)
     {
+      if (dump_plan == true)
+	{
+	  extern void print_hint_dump (FILE * hint_dump_fp, PARSER_CONTEXT * parser, PT_NODE * select_node);
+	  print_hint_dump (query_Plan_dump_fp, parser, select_node);
+	}
+
       qo_plan_discard (plan);
     }
 
@@ -21797,6 +21798,11 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   next = node->next;
   node->next = NULL;
   parser->dbval_cnt = 0;
+
+  {
+    extern void calc_hint_statement_count (PT_NODE * statement);
+    calc_hint_statement_count (node);
+  }
 
   is_system_generated_stmt = node->flag.is_system_generated_stmt;
 

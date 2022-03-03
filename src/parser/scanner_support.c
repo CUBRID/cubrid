@@ -59,6 +59,13 @@ extern int yycolumn_end;
 
 
 /* matching hint information to output*/
+typedef struct _stmt_hint STMT_HINT;
+struct _stmt_hint
+{
+  int stmt_no;
+  int offset;
+  STMT_HINT *next;
+};
 struct st_hint_msg
 {
   bool is_print;
@@ -66,6 +73,11 @@ struct st_hint_msg
   int m_used;
   char *msg_ptr;
   char msg_buf[1024];
+
+  STMT_HINT m_hint_head;
+  STMT_HINT *m_hint_ptr;
+  int m_stmt_no;
+  int m_select_cnt;
 
 public:
     st_hint_msg ()
@@ -75,6 +87,13 @@ public:
     m_used = 0;
     msg_ptr = msg_buf;
     msg_buf[0] = 0x00;
+
+    m_hint_ptr = NULL;
+    memset (&m_hint_head, 0x00, sizeof (STMT_HINT));
+    m_hint_head.stmt_no = -1;
+
+    m_stmt_no = -1;
+    m_select_cnt = -1;
   }
 
   void reset ()
@@ -88,6 +107,52 @@ public:
       }
     msg_buf[0] = 0x00;
     is_print = false;
+
+    m_hint_ptr = m_hint_head.next;
+    while (m_hint_ptr)
+      {
+	STMT_HINT *t = m_hint_ptr;
+	m_hint_ptr = t->next;
+	free (t);
+      }
+    memset (&m_hint_head, 0x00, sizeof (STMT_HINT));
+    m_hint_head.stmt_no = -1;
+
+    m_stmt_no = -1;
+    m_select_cnt = -1;
+  }
+
+  void set_stmt (int no)
+  {
+    m_stmt_no = no;
+
+    if (m_hint_head.stmt_no < 0)
+      {
+	m_hint_head.stmt_no = no;
+	m_hint_head.offset = m_used;
+	m_hint_head.next = NULL;
+	m_hint_ptr = &m_hint_head;
+	return;
+      }
+
+    STMT_HINT *prev = &m_hint_head;
+    for (m_hint_ptr = &m_hint_head; m_hint_ptr; m_hint_ptr = m_hint_ptr->next)
+      {
+	if (m_hint_ptr->stmt_no == no)
+	  {
+	    return;
+	  }
+
+	prev = m_hint_ptr;
+      }
+
+    m_hint_ptr = (STMT_HINT *) malloc (sizeof (STMT_HINT));
+    assert (m_hint_ptr != NULL);
+
+    m_hint_ptr->stmt_no = no;
+    m_hint_ptr->offset = m_used;
+    m_hint_ptr->next = prev->next;
+    prev->next = m_hint_ptr;
   }
 
   void check_buffer (int size)
@@ -133,6 +198,11 @@ public:
     check_buffer (snprintf (NULL, 0, fmt, str1, str2));
     m_used += sprintf (msg_ptr + m_used, fmt, str1, str2);
   }
+  void addendstring ()
+  {
+    check_buffer (2);
+    msg_ptr[m_used++] = '\0';
+  }
 };
 
 static struct st_hint_msg s_hint_msg;
@@ -145,22 +215,110 @@ set_plan_include_hint (bool is_include)
   plan_include_hint = is_include;
 }
 
-void
-print_hint_dump (FILE * output)
+static void
+print_hint_stmt (FILE * output, int stmt_idx)
 {
   if (s_hint_msg.msg_ptr && *s_hint_msg.msg_ptr)
     {
-      fputs ("\nQuery hints:\n", output);
+      STMT_HINT *hint_ptr;
 
-      s_hint_msg.msg_ptr[s_hint_msg.m_used] = '\0';
-      fprintf (output, "%s", s_hint_msg.msg_ptr);
+      for (hint_ptr = &s_hint_msg.m_hint_head; hint_ptr; hint_ptr = hint_ptr->next)
+	{
+	  if (hint_ptr->stmt_no == stmt_idx)
+	    {
+	      break;
+	    }
+	}
+
+      if (hint_ptr)
+	{
+	  fputs ("\nQuery hints:\n", output);
+
+	  s_hint_msg.msg_ptr[s_hint_msg.m_used] = '\0';
+	  fprintf (output, "%s", s_hint_msg.msg_ptr + hint_ptr->offset);
+	  hint_ptr->stmt_no = -2;	/* change to no more use */
+	}
     }
+}
 
-  s_hint_msg.reset ();
+void
+print_hint_dump (FILE * hint_dump_fp, PARSER_CONTEXT * parser, PT_NODE * select_node)
+{
+  int stmt_idx = 0;
+
+  while (stmt_idx < parser->statement_number)
+    {
+      if (parser->statements[stmt_idx] == NULL)
+	{
+	  stmt_idx++;
+	}
+      else
+	{
+	  if (--s_hint_msg.m_select_cnt == 0)
+	    {
+	      print_hint_stmt (hint_dump_fp, stmt_idx);
+	    }
+	  break;
+	}
+    }
+}
+
+static void
+calc_hint_select_count (PT_NODE * stmt, int &select_cnt)
+{
+  switch (stmt->node_type)
+    {
+    case PT_SELECT:
+      select_cnt++;
+      break;
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_UNION:
+      calc_hint_select_count (stmt->info.query.q.union_.arg1, select_cnt);
+      calc_hint_select_count (stmt->info.query.q.union_.arg2, select_cnt);
+      break;
+    default:
+      break;
+    }
+}
+
+void
+calc_hint_statement_count (PT_NODE * statement)
+{
+  s_hint_msg.m_select_cnt = 0;
+  calc_hint_select_count (statement, s_hint_msg.m_select_cnt);
 }
 
 #define HINT_LEAD_CHAR_SIZE (129)
 static u_char hint_table_lead_offset[HINT_LEAD_CHAR_SIZE] = { 0, };
+
+struct s_string
+{
+  int size;
+  char *ptr;
+  char buf[256];
+
+    s_string ()
+  {
+    size = sizeof (buf);
+    ptr = buf;
+    buf[0] = 0x00;
+  }
+
+  void reset ()
+  {
+    if (ptr != buf)
+      {
+	free (ptr);
+      }
+
+    ptr = buf;
+    size = sizeof (buf);
+    buf[0] = 0x00;
+  }
+};
+
+static struct s_string tempory_hint_string;
 
 /*
  * pt_makename () -
@@ -248,6 +406,8 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
   static int was_initialized = 0;
 
   s_hint_msg.reset ();
+  tempory_hint_string.reset ();
+
   if (was_initialized)
     {
       return;
@@ -309,6 +469,8 @@ pt_cleanup_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 	  hint_table[i].arg_list = NULL;
 	}
     }
+
+  tempory_hint_string.reset ();
 }
 
 /*
@@ -322,8 +484,27 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 {
   int i;
 
-  if (s_hint_msg.is_print)
+  if (node->node_type != PT_SELECT)
     {
+      s_hint_msg.is_print = false;      
+    }
+
+  if (s_hint_msg.is_print && tempory_hint_string.ptr[0])
+    {
+      if (s_hint_msg.m_stmt_no < 0)
+	{
+	  s_hint_msg.set_stmt (this_parser->statement_number);
+	}
+      else
+	{
+	  if (s_hint_msg.m_stmt_no != this_parser->statement_number)
+	    {
+	      s_hint_msg.addendstring ();
+	      s_hint_msg.set_stmt (this_parser->statement_number);
+	    }
+	}
+
+      s_hint_msg.addstring ((const char *) "    Input) %s\n", (char *) tempory_hint_string.ptr);
       s_hint_msg.addstring ((char *) "    Hit) ");
     }
 
@@ -1033,8 +1214,30 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
       h_str++;
       if (plan_include_hint)
 	{
+	  int hint_size = (int) strlen ((char *) h_str) + 1 /*for '\0' */ ;
+	  if (tempory_hint_string.size < hint_size)
+	    {
+	      if (tempory_hint_string.ptr != tempory_hint_string.buf)
+		{
+		  free (tempory_hint_string.ptr);
+		}
+
+	      tempory_hint_string.ptr = (char *) malloc (hint_size);
+	      assert (tempory_hint_string.ptr != NULL);
+
+	      tempory_hint_string.size = hint_size;
+	    }
+
+	  if (h_str[0])
+	    {
+	      memcpy (tempory_hint_string.ptr, h_str, hint_size);
+	    }
+	  else
+	    {
+	      tempory_hint_string.ptr[0] = '\0';
+	    }
+
 	  s_hint_msg.is_print = true;
-	  s_hint_msg.addstring ((const char *) "    Input) %s\n", (char *) h_str);
 	}
     }
 
