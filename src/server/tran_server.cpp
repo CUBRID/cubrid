@@ -269,7 +269,7 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
       return ps_conn_error_lambda ();
     }
 
-  if (!srv_chn.send_int (static_cast<int> (m_conn_type)))
+  if (srv_chn.send_int (static_cast<int> (m_conn_type)) != NO_ERRORS)
     {
       return ps_conn_error_lambda ();
     }

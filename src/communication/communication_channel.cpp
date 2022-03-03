@@ -112,13 +112,20 @@ namespace cubcomm
     return (css_error_code) rc;
   }
 
-  bool channel::send_int (int val)
+  css_error_code channel::send_int (int val)
   {
     int v = htonl (val);
-    bool ret = (::send (m_socket, reinterpret_cast<const char *> (&v), sizeof (v), 0) == sizeof (v));
-    er_log_chn_debug ("[%s] Send int value = %d %s.\n", get_channel_id ().c_str (), val,
-		      ret ? "successfully" : "failed");
-    return ret;
+    const int sent_byte_count = ::send (m_socket, reinterpret_cast<const char *> (&v), sizeof (v), 0);
+    if (sent_byte_count == sizeof (v))
+      {
+	er_log_chn_debug ("[%s] Success send int value %d\n", get_channel_id ().c_str (), val);
+	return NO_ERRORS;
+      }
+    else
+      {
+	er_log_chn_debug ("[%s] Failed send int value %d\n", get_channel_id ().c_str (), val);
+	return ERROR_ON_WRITE;
+      }
   }
 
   css_error_code channel::recv_int (int &received)

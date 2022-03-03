@@ -65,7 +65,7 @@ namespace cubcomm
       css_error_code recv (char *buffer, std::size_t &maxlen_in_recvlen_out);
       css_error_code send (const std::string &message);
       css_error_code send (const char *buffer, std::size_t length);
-      bool send_int (int val);
+      css_error_code send_int (int val);
       css_error_code recv_int (int &received);
 
       /* simple connect */
