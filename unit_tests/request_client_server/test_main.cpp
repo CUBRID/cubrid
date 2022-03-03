@@ -708,7 +708,8 @@ template <typename ReqCl, typename ReqId>
 static void
 send_request_id_as_message (ReqCl &reqcl, ReqId rid)
 {
-  reqcl.send (rid, static_cast<int> (rid));
+  const css_error_code err_code = reqcl.send (rid, static_cast<int> (rid));
+  REQUIRE (err_code == NO_ERRORS);
   ++global_sent_request_count;
 }
 
