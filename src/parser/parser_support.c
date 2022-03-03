@@ -710,6 +710,56 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 }
 
 /*
+ * pt_is_json_function () -
+ *   return: true if node is a json function
+ *   parser(in): parser context
+ *   node(in): PT_FUNTION node
+ */
+bool
+pt_is_json_function (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  FUNC_TYPE function_type;
+
+  if (node->node_type == PT_FUNCTION)
+    {
+      function_type = node->info.function.function_type;
+      switch (function_type)
+	{
+	case F_JSON_ARRAY:
+	case F_JSON_ARRAY_APPEND:
+	case F_JSON_ARRAY_INSERT:
+	case F_JSON_CONTAINS:
+	case F_JSON_CONTAINS_PATH:
+	case F_JSON_DEPTH:
+	case F_JSON_EXTRACT:
+	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_INSERT:
+	case F_JSON_KEYS:
+	case F_JSON_LENGTH:
+	case F_JSON_MERGE:
+	case F_JSON_MERGE_PATCH:
+	case F_JSON_OBJECT:
+	case F_JSON_PRETTY:
+	case F_JSON_QUOTE:
+	case F_JSON_REMOVE:
+	case F_JSON_REPLACE:
+	case F_JSON_SEARCH:
+	case F_JSON_SET:
+	case F_JSON_TYPE:
+	case F_JSON_UNQUOTE:
+	case F_JSON_VALID:
+	case PT_JSON_ARRAYAGG:
+	case PT_JSON_OBJECTAGG:
+	  return true;
+	default:
+	  return false;
+	}
+    }
+
+  return false;
+}
+
+/*
  * pt_find_spec_in_statement () - find the node spec in given statement
  *   return: the spec with same id as the name, or NULL
  *   parser(in):
@@ -1050,6 +1100,105 @@ pt_find_aggregate_functions_post (PARSER_CONTEXT * parser, PT_NODE * tree, void 
 }
 
 /*
+ * pt_is_order_sensitive_agg_post () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_order_sensitive_agg_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *order_sensitive_agg = (bool *) arg;
+
+  if (*order_sensitive_agg)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_group_concat () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an analytic function node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_group_concat (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_group_concat = (bool *) arg;
+
+  if (tree && tree->node_type == PT_FUNCTION && tree->info.function.function_type == PT_GROUP_CONCAT)
+    {
+      *has_group_concat = true;
+    }
+
+  if (*has_group_concat)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_order_sensitive_agg () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an order-sensitive aggrigation function node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_group_concat = (bool *) arg;
+
+  if (tree && tree->node_type == PT_FUNCTION &&
+      (tree->info.function.function_type == PT_GROUP_CONCAT
+       || tree->info.function.function_type == PT_CUME_DIST
+       || tree->info.function.function_type == PT_PERCENT_RANK
+       || tree->info.function.function_type == PT_PERCENTILE_CONT
+       || tree->info.function.function_type == PT_PERCENTILE_DISC
+       || tree->info.function.function_type == F_SEQUENCE || pt_is_json_function (parser, tree)))
+    {
+      *has_group_concat = true;
+    }
+
+  if (*has_group_concat)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
  * pt_is_analytic_node_post () -
  *   return:
  *   parser(in):
@@ -1158,6 +1307,65 @@ pt_is_inst_or_orderby_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, vo
   if (*has_inst_orderby_num)
     {
       *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_inst_num_node_post () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_inst_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_inst_num = (bool *) arg;
+
+  if (*has_inst_num)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_inst_num_node () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an INST_NUM expression node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_inst_num = (bool *) arg;
+
+  if (PT_IS_INSTNUM (tree))
+    {
+      *has_inst_num = true;
+    }
+
+  if (*has_inst_num)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
     }
   else
     {
@@ -3058,6 +3266,52 @@ pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_has_order_sensitive_agg () -
+ *   return: true if statement has an group_concat function in its parse tree
+ *   parser(in):
+ *   node(in/out):
+ *
+ */
+bool
+pt_has_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_order_sensitive_agg = false;
+  bool has_order_sensitive_agg_arg1 = false;
+  bool has_order_sensitive_agg_arg2 = false;
+
+  if (!node)
+    {
+      return false;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      (void) parser_walk_tree (parser, node->info.query.q.select.list, pt_is_order_sensitive_agg,
+			       &has_order_sensitive_agg, pt_is_order_sensitive_agg_post, &has_order_sensitive_agg);
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      has_order_sensitive_agg_arg1 = pt_has_order_sensitive_agg (parser, node->info.query.q.union_.arg1);
+      has_order_sensitive_agg_arg2 = pt_has_order_sensitive_agg (parser, node->info.query.q.union_.arg2);
+      if (has_order_sensitive_agg_arg1 || has_order_sensitive_agg_arg2)
+	{
+	  has_order_sensitive_agg = true;
+	}
+      break;
+
+    default:
+      (void) parser_walk_tree (parser, node, pt_is_order_sensitive_agg, &has_order_sensitive_agg,
+			       pt_is_order_sensitive_agg_post, &has_order_sensitive_agg);
+      break;
+    }
+
+  return has_order_sensitive_agg;
+}
+
+/*
  * pt_has_inst_or_orderby_num () - check if tree has an INST_NUM or ORDERBY_NUM
  *				   node somewhere
  *   return: true if tree has INST_NUM/ORDERBY_NUM
@@ -3076,6 +3330,22 @@ pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_has_inst_num () - check if tree has an INST_NUM node somewhere
+ *   return: true if tree has INST_NUM
+ *   parser(in):
+ *   node(in):
+ */
+bool
+pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_inst_num = false;
+
+  (void) parser_walk_tree (parser, node, pt_is_inst_num_node, &has_inst_num, pt_is_inst_num_node_post, &has_inst_num);
+
+  return has_inst_num;
+}
+
+/*
  * pt_has_inst_in_where_and_select_list ()
  *          - check if tree has an INST_NUM or ORDERBY_NUM or GROUPBY_NUM node in where and select_list
  *   return: true if tree has INST_NUM/ORDERBY_NUM
@@ -3087,11 +3357,16 @@ bool
 pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   bool has_inst_orderby_num = false;
-  PT_NODE *where, *select_list, *orderby_for, *having;
+  PT_NODE *where, *select_list, *orderby_for, *having, *using_index;
 
   switch (node->node_type)
     {
     case PT_SELECT:
+      using_index = node->info.query.q.select.using_index;
+      if (using_index != NULL && using_index->info.name.indx_key_limit != NULL)
+	{
+	  return true;
+	}
       where = node->info.query.q.select.where;
       (void) parser_walk_tree (parser, where, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
 			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);

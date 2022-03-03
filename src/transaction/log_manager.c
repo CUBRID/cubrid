@@ -439,9 +439,6 @@ log_to_string (LOG_RECTYPE type)
     case LOG_COMPENSATE:
       return "LOG_COMPENSATE";
 
-    case LOG_WILL_COMMIT:
-      return "LOG_WILL_COMMIT";
-
     case LOG_COMMIT_WITH_POSTPONE:
       return "LOG_COMMIT_WITH_POSTPONE";
 
@@ -7215,10 +7212,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_commit_postpone (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
-    case LOG_WILL_COMMIT:
-      fprintf (out_fp, "\n");
-      break;
-
     case LOG_COMMIT:
     case LOG_ABORT:
       log_page_p = log_dump_record_transaction_finish (thread_p, out_fp, log_lsa, log_page_p);
@@ -8206,7 +8199,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      LSA_SET_NULL (&prev_tranlsa);
 	      break;
 
-	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
 	    case LOG_2PC_COMMIT_DECISION:
@@ -8649,7 +8641,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		      /* TODO: consider to add FI here */
 		      break;
 
-		    case LOG_WILL_COMMIT:
 		    case LOG_COMMIT_WITH_POSTPONE:
 		    case LOG_SYSOP_START_POSTPONE:
 		    case LOG_2PC_PREPARE:
@@ -10732,6 +10723,32 @@ log_checkpoint_daemon_init ()
 }
 #endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE)
+void
+log_get_checkpoint_trantable_interval (bool & is_timed_wait, cubthread::delta_time & period)
+{
+  constexpr auto short_delay = std::chrono::milliseconds (100);
+  constexpr auto normal_delay = std::chrono::seconds (60);
+
+  // will only be accessed by one thread at a time
+  static bool first_call = true;
+  is_timed_wait = true;
+  if (!BO_IS_SERVER_RESTARTED)
+    {
+      period = short_delay;
+    }
+  else if (first_call)
+    {
+      first_call = false;
+      period = short_delay;
+    }
+  else
+    {
+      period = normal_delay;
+    }
+}
+#endif
+
 #if defined(SERVER_MODE)
 void
 log_checkpoint_trantable_daemon_init ()
@@ -10740,7 +10757,7 @@ log_checkpoint_trantable_daemon_init ()
 
   if (is_tran_server_with_remote_storage ())
     {
-      cubthread::looper looper { std::chrono::seconds (60) };
+      cubthread::looper looper (log_get_checkpoint_trantable_interval);
       cubthread::entry_callable_task * daemon_task =
           new cubthread::entry_callable_task (log_checkpoint_trantable_execute);
       log_Checkpoint_trantable_daemon =

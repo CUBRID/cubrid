@@ -88,10 +88,6 @@ extern int disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE pur
 				      int max_write_size_in_sec, bool overwrite, VOLID * volid_out);
 extern void disk_lock_extend (void);
 extern void disk_unlock_extend (void);
-#if defined (SERVER_MODE)
-/* todo: auto-volume extension thread needs transaction descriptor */
-extern int disk_auto_expand (THREAD_ENTRY * thread_p);
-#endif /* SERVER_MODE */
 extern int disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname);
 extern int disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_fullname,
 			      const INT64 * new_dbcreation, const LOG_LSA * new_chkptlsa, bool logchange,

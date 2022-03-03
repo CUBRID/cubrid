@@ -259,6 +259,7 @@ static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_
 static bool css_get_connection_thread_pooling_configuration (void);
 static cubthread::wait_seconds css_get_connection_thread_timeout_configuration (void);
 static bool css_get_server_request_thread_pooling_configuration (void);
+static int css_get_server_request_thread_core_count_configruation (void);
 static cubthread::wait_seconds css_get_server_request_thread_timeout_configuration (void);
 static void css_start_all_threads (void);
 static std::string css_pack_message_to_master (const char *server_name);
@@ -1323,14 +1324,14 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 #endif /* WINDOWS */
 
   // initialize worker pool for server requests
-  const std::size_t MAX_WORKERS = css_get_max_conn () + 1;	// = css_Num_max_conn in connection_sr.c
-  const std::size_t MAX_TASK_COUNT = 2 * MAX_WORKERS;	// not that it matters...
-  const std::size_t MAX_CONNECTIONS = css_get_max_conn () + 1;
+  const std::size_t MAX_WORKERS = css_get_max_workers ();
+  const std::size_t MAX_TASK_COUNT = css_get_max_task_count ();
+  const std::size_t MAX_CONNECTIONS = css_get_max_connections ();
 
   // create request worker pool
   css_Server_request_worker_pool =
     cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, "transaction workers", NULL,
-						   cubthread::system_core_count (),
+						   css_get_server_request_thread_core_count_configruation (),
 						   cubthread::is_logging_configured
 						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
 						   css_get_server_request_thread_pooling_configuration (),
@@ -3262,6 +3263,19 @@ css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, i
   return count;
 }
 
+size_t css_get_max_workers ()
+{
+  return css_get_max_conn () + 1; // = css_Num_max_conn in connection_sr.c
+}
+size_t css_get_max_task_count ()
+{
+  return 2 * css_get_max_workers ();	// not that it matters...
+}
+size_t css_get_max_connections ()
+{
+  return css_get_max_conn () + 1;
+}
+
 static bool
 css_get_connection_thread_pooling_configuration (void)
 {
@@ -3280,6 +3294,12 @@ static bool
 css_get_server_request_thread_pooling_configuration (void)
 {
   return prm_get_bool_value (PRM_ID_THREAD_WORKER_POOLING);
+}
+
+static int
+css_get_server_request_thread_core_count_configruation (void)
+{
+  return prm_get_integer_value (PRM_ID_THREAD_CORE_COUNT);
 }
 
 static cubthread::wait_seconds
