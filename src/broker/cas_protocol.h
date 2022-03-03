@@ -19,6 +19,12 @@
 
 /*
  * cas_protocol.h -
+ *
+ * CAUTION!
+ *
+ * In case of common,  
+ * cci repository source (src/cci/broker_cas_protocol.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
  */
 
 #ifndef _CAS_PROTOCOL_H_
@@ -359,5 +365,13 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+ /*
+  * CAUTION!
+  *
+  * In case of common,  
+  * cci repository source (src/cci/broker_cas_protocol.h) must be updated,
+  * becuase CCI source and Engine source have been separated.
+  */
 
 #endif				/* _CAS_PROTOCOL_H_ */

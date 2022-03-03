@@ -1,5 +1,6 @@
+#!/bin/sh
 #
-#  Copyright 2008 Search Solution Corporation
+#
 #  Copyright 2016 CUBRID Corporation
 # 
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,20 +15,3 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 # 
-#
-
-if(UNIX)
-  set(CCI_APPLIER_SOURCES
-    ${TOOLS_DIR}/cci_applier.c
-    ${BASE_DIR}/cubrid_getopt_long.c
-    )
-  SET_SOURCE_FILES_PROPERTIES(
-    ${CCI_APPLIER_SOURCES}
-    PROPERTIES LANGUAGE CXX
-    )
-  add_executable(cci_applier ${CCI_APPLIER_SOURCES})
-  target_link_libraries(cci_applier cascci)
-
-  install(TARGETS cci_applier
-    RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application)
-endif(UNIX)

@@ -5875,6 +5875,7 @@ qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, PT_NO
 			  PT_NODE_MOVE_NUMBER_OUTERLINK (derived, node);
 			  derived->info.query.q.select.flavor = node->info.query.q.select.flavor;
 			  derived->info.query.is_subquery = node->info.query.is_subquery;
+			  derived->type_enum = node->type_enum;
 
 			  /* free old composite query */
 			  parser_free_tree (parser, node);
