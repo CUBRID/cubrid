@@ -486,7 +486,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 
   if (node->node_type != PT_SELECT)
     {
-      s_hint_msg.is_print = false;      
+      s_hint_msg.is_print = false;
     }
 
   if (s_hint_msg.is_print && tempory_hint_string.ptr[0])
