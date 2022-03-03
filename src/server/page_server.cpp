@@ -42,11 +42,15 @@ page_server::~page_server ()
 {
   assert (m_replicator == nullptr);
   assert (m_active_tran_server_conn == nullptr);
+  assert (m_passive_tran_server_conn.size () == 0);
 }
 
-page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps) : m_ps (ps)
+page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps)
+  : m_ps (ps)
+  , m_abnormal_tran_server_disconnect { false }
 {
-  m_conn.reset (new tran_server_conn_t (std::move (chn),
+  m_conn.reset (
+	  new tran_server_conn_t (std::move (chn),
   {
     // common
     {
@@ -80,7 +84,11 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, page
       std::bind (&page_server::connection_handler::receive_stop_log_prior_dispatch, std::ref (*this),
 		 std::placeholders::_1)
     }
-  }, page_to_tran_request::RESPOND, tran_to_page_request::RESPOND, 1));
+  },
+  page_to_tran_request::RESPOND,
+  tran_to_page_request::RESPOND, 1,
+  std::bind (&page_server::connection_handler::abnormal_tran_server_disconnect,
+	     std::ref (*this), std::placeholders::_1, std::placeholders::_2)));
 
   assert (m_conn != nullptr);
   m_conn->start ();
@@ -168,6 +176,51 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
   //start a thread to destroy the ATS/PTS to PS connection object
   std::thread disconnect_thread (&page_server::disconnect_tran_server, std::ref (m_ps), this);
   disconnect_thread.detach ();
+}
+
+void
+page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code error_code,
+    bool &abort_further_processing)
+{
+  /* when a transaction server suddenly disconnects, if the page server happens to be be either
+   * proactively sending data or responding to a request, an error is reported from the network layer;
+   * this function is a handler for such an error - see cubcomm::send_queue_error_handler.
+   *
+   * NOTE: if needed, functionality can be extended with more advanced features (ie: retry policy, timeouts ..)
+   * */
+
+  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect; request abort futher processing\n");
+  abort_further_processing = true;
+
+  if (!m_abnormal_tran_server_disconnect)
+    {
+      if (m_prior_sender_sink_hook_func)
+	{
+	  // passive transaction server connection
+	  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect: PTS disconnected from PS. Error code: %d\n",
+			(int)error_code);
+
+	  {
+	    std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
+
+	    log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+	    m_prior_sender_sink_hook_func = nullptr;
+	  }
+
+	  std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
+	  disconnect_thread.detach ();
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect: ATS disconnected from PS. Error code: %d\n",
+			(int)error_code);
+
+	  // active transaction server connection
+	  std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
+	  disconnect_thread.detach ();
+	}
+      m_abnormal_tran_server_disconnect = true;
+    }
 }
 
 void

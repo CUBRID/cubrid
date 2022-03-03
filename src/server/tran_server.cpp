@@ -290,7 +290,7 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
   m_page_server_conn_vec.emplace_back (
 	  new page_server_conn_t (std::move (srv_chn), get_request_handlers (), tran_to_page_request::RESPOND,
-				  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE));
+				  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, nullptr));
   m_page_server_conn_vec.back ()->start ();
 
   return NO_ERROR;
