@@ -104,7 +104,6 @@ class page_server
 	// function that will, at some moment, remove that hook
 	mutable std::mutex m_prior_sender_sink_removal_mtx;
 
-	std::mutex m_abnormal_tran_server_disconnect_mtx;
 	bool m_abnormal_tran_server_disconnect;
     };
 

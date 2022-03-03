@@ -69,7 +69,7 @@ namespace cubcomm
     public:
       // ctor/dtor:
       request_sync_send_queue () = delete;
-      request_sync_send_queue (client_type &client, const send_queue_error_handler &error_handler);
+      request_sync_send_queue (client_type &client, send_queue_error_handler &&error_handler);
 
       request_sync_send_queue (const request_sync_send_queue &) = delete;
       request_sync_send_queue (request_sync_send_queue &&) = delete;
@@ -81,7 +81,7 @@ namespace cubcomm
 
       // Push a request to the end of queue
       void push (typename client_type::client_request_id reqid, payload_type &&payload,
-		 const send_queue_error_handler &error_handler);
+		 send_queue_error_handler &&error_handler);
 
       // Send all requests to the server. If queue is empty, nothing happens.
       //
@@ -157,9 +157,9 @@ namespace cubcomm
 
   template <typename ReqClient, typename ReqPayload>
   request_sync_send_queue<ReqClient, ReqPayload>::request_sync_send_queue (client_type &client,
-      const send_queue_error_handler &error_handler)
+      send_queue_error_handler &&error_handler)
     : m_client (client)
-    , m_error_handler { error_handler }
+    , m_error_handler { std::move (error_handler) }
     , m_abort_further_processing { false }
   {
   }
@@ -167,7 +167,7 @@ namespace cubcomm
   template <typename ReqClient, typename ReqPayload>
   void
   request_sync_send_queue<ReqClient, ReqPayload>::push (typename client_type::client_request_id reqid,
-      payload_type &&payload, const send_queue_error_handler &error_handler)
+      payload_type &&payload, send_queue_error_handler &&error_handler)
   {
     // synchronize push request into the queue and notify consumers
 
@@ -175,7 +175,7 @@ namespace cubcomm
     m_request_queue.emplace ();
     m_request_queue.back ().m_id = reqid;
     m_request_queue.back ().m_payload = std::move (payload);
-    m_request_queue.back ().m_error_handler = error_handler;
+    m_request_queue.back ().m_error_handler = std::move (error_handler);
 
     ulock.unlock ();
     m_queue_condvar.notify_all ();

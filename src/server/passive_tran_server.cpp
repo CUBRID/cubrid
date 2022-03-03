@@ -76,6 +76,7 @@ passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
 				       log_boot_info);
   if (error_code != NO_ERROR);
   {
+    ASSERT_ERROR ();
     return error_code;
   }
 

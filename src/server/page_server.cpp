@@ -191,7 +191,6 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
   er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect; request abort futher processing\n");
   abort_further_processing = true;
 
-  std::lock_guard<std::mutex> lockg { m_abnormal_tran_server_disconnect_mtx };
   if (!m_abnormal_tran_server_disconnect)
     {
       if (m_prior_sender_sink_hook_func)

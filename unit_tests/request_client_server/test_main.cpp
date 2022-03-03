@@ -1184,9 +1184,15 @@ test_two_request_sync_client_server_env::mock_socket_between_two_sync_client_ser
 #include "object_representation.h"
 
 void
-_er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
+_er_log_debug (const char *, const int, const char *, ...)
 {
   // do nothing
+}
+
+void
+er_set (int, const char *, const int, int, int, ...)
+{
+  // nop
 }
 
 bool
@@ -1196,19 +1202,19 @@ prm_get_bool_value (PARAM_ID prmid)
 }
 
 int
-or_packed_value_size (const DB_VALUE *value, int collapse_null, int include_domain, int include_domain_classoids)
+or_packed_value_size (const DB_VALUE *, int, int, int )
 {
   return 0;
 }
 
 char *
-or_pack_value (char *buf, DB_VALUE *value)
+or_pack_value (char *, DB_VALUE *)
 {
   return nullptr;
 }
 
 char *
-or_unpack_value (const char *buf, DB_VALUE *value)
+or_unpack_value (const char *, DB_VALUE *)
 {
   return nullptr;
 }
