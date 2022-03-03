@@ -5855,7 +5855,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
     {
       srv_handle->tuple_count = (int) total_row_count;
     }
-  srv_handle->tuple_count = (int) total_row_count;
+  net_buf_overwrite_int (net_buf, srv_handle->tuple_count_msg_offset, num_tuple);
   net_buf_overwrite_int (net_buf, srv_handle->total_row_count_msg_offset, srv_handle->tuple_count);
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
 
