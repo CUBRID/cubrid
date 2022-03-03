@@ -550,9 +550,9 @@ cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_I
 	       SQL_HANDLE_STMT,
 	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_PRECISION, NULL, 0, NULL, &col_info->precision));
 
-  SQL_CHK_ERR (hstmt, 
-               SQL_HANDLE_STMT, 
-               err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_UNSIGNED, NULL, 0, NULL, &col_unsigned_type));
+  SQL_CHK_ERR (hstmt,
+	       SQL_HANDLE_STMT,
+	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_UNSIGNED, NULL, 0, NULL, &col_unsigned_type));
 
   if (col_data_type == SQL_REAL || col_data_type == SQL_FLOAT || col_data_type == SQL_DOUBLE)
     {
@@ -614,22 +614,22 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLSMALLINT is_unsigned_type)
     case SQL_INTEGER:
       if (is_unsigned_type)
 	{
-	data_type = CCI_U_TYPE_UINT;
+	  data_type = CCI_U_TYPE_UINT;
 	}
       else
 	{
-	data_type = CCI_U_TYPE_INT;
+	  data_type = CCI_U_TYPE_INT;
 	}
       break;
     case SQL_TINYINT:
     case SQL_SMALLINT:
       if (is_unsigned_type)
 	{
-	data_type = CCI_U_TYPE_USHORT;
+	  data_type = CCI_U_TYPE_USHORT;
 	}
       else
 	{
-	data_type = CCI_U_TYPE_SHORT;
+	  data_type = CCI_U_TYPE_SHORT;
 	}
       break;
     case SQL_FLOAT:
@@ -681,11 +681,11 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLSMALLINT is_unsigned_type)
     case SQL_BIGINT:
       if (is_unsigned_type)
 	{
-	data_type = CCI_U_TYPE_UBIGINT;
+	  data_type = CCI_U_TYPE_UBIGINT;
 	}
       else
 	{
-	data_type = CCI_U_TYPE_BIGINT;
+	  data_type = CCI_U_TYPE_BIGINT;
 	}
       break;
 #if (ODBCVER >= 0x0350)
