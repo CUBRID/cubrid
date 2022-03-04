@@ -2625,7 +2625,7 @@ css_process_server_server_connect (SOCKET master_fd)
     {
     case cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER:
       // *INDENT-OFF*
-      if (!chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)))
+      if (chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)) != NO_ERRORS)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_TRANSACTION_SERVER_CONNECTION, 0);
 	  break;
@@ -2635,7 +2635,7 @@ css_process_server_server_connect (SOCKET master_fd)
       break;
     case cubcomm::server_server::CONNECT_PASSIVE_TRAN_TO_PAGE_SERVER:
       // *INDENT-OFF*
-      if (!chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_PASSIVE_TRAN_TO_PAGE_SERVER)))
+      if (chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_PASSIVE_TRAN_TO_PAGE_SERVER)) != NO_ERRORS)
         {
           er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_TRANSACTION_SERVER_CONNECTION, 0);
           break;
