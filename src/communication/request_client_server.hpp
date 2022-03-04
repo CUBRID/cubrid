@@ -423,7 +423,7 @@ namespace cubcomm
     const css_error_code css_size_err = chn.send_int (static_cast<int> (packer.get_current_size ()));
     if (css_size_err != NO_ERRORS)
       {
-	er_log_send_fail (chn, (css_error_code)-1);
+	er_log_send_fail (chn, css_size_err);
 	return css_size_err;
       }
 

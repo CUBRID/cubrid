@@ -34,7 +34,13 @@ class page_server
 
   public:
     page_server () = default;
+    page_server (const page_server &) = delete;
+    page_server (page_server &&) = delete;
+
     ~page_server ();
+
+    page_server &operator = (const page_server &) = delete;
+    page_server &operator = (page_server &&) = delete;
 
     void set_active_tran_server_connection (cubcomm::channel &&chn);
     void set_passive_tran_server_connection (cubcomm::channel &&chn);
@@ -65,10 +71,10 @@ class page_server
 	connection_handler (const connection_handler &) = delete;
 	connection_handler (connection_handler &&) = delete;
 
+	~connection_handler ();
+
 	connection_handler &operator= (const connection_handler &) = delete;
 	connection_handler &operator= (connection_handler &&) = delete;
-
-	~connection_handler ();
 
 	void push_request (page_to_tran_request id, std::string msg);
 	std::string get_channel_id ();
