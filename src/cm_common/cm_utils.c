@@ -804,7 +804,7 @@ make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, 
       return -1;
     }
 
-  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%d", tempdir, prefix ? prefix : "", task_code,
+  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%d_%d", tempdir, prefix ? prefix : "", task_code,
 	    current_time.tv_sec, current_time.tv_usec, rand () % 997);
 
   return 0;
