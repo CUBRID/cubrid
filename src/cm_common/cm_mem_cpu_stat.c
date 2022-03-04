@@ -1304,10 +1304,16 @@ cm_get_command_result (const char *argv[], EXTRACT_FUNC func, const char *func_a
   char errfile[PATH_MAX];
   char tmpfile[100];
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "cmd_res_", getpid ());
+  if (make_temp_filename (tmpfile, "cmd_res_", PATH_MAX) < 0)
+    {
+      return NULL;
+    }
   (void) envvar_tmpdir_file (outputfile, PATH_MAX, tmpfile);
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "cmd_err_", getpid ());
+  if (make_temp_filename (tmpfile, "cmd_err_", PATH_MAX) < 0)
+    {
+      return NULL;
+    }
   (void) envvar_tmpdir_file (errfile, PATH_MAX, tmpfile);
 
   if (run_child (argv, 1, NULL, outputfile, errfile, NULL) < 0)
