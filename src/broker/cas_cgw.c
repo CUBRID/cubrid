@@ -50,7 +50,7 @@ struct t_supported_dbms
 static T_SUPPORTED_DBMS supported_dbms_list[] = { {"oracle", SUPPORTED_DBMS_ORACLE}, {"mysql", SUPPORTED_DBMS_MYSQL} };
 
 static int supported_dbms_max_num = sizeof (supported_dbms_list) / sizeof (T_SUPPORTED_DBMS);
-
+static SUPPORTED_DBMS_TYPE curr_dbms_type = NOT_SUPPORTED_DBMS;
 
 T_CGW_HANDLE *local_odbc_handle = NULL;
 int is_database_connected = -1;
@@ -1389,22 +1389,55 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	    break;
 	  }
 
-	c_data_type = SQL_C_CHAR;
-	sql_bind_type = SQL_TYPE_TIMESTAMP;
+	if (curr_dbms_type == SUPPORTED_DBMS_MYSQL)
+	  {
+	    c_data_type = SQL_C_CHAR;
+	    sql_bind_type = SQL_TYPE_TIMESTAMP;
 
-	sprintf (value_list->time_stemp_str_val, "%d-%d-%d %d:%d:%d.%d", yr, mon, day, hh, mm, ss, ms);
+	    sprintf (value_list->time_stemp_str_val, "%d-%d-%d %d:%d:%d.%d", yr, mon, day, hh, mm, ss, ms);
 
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type,
-						  0,
-						  0,
-						  (SQLPOINTER) (&value_list->time_stemp_str_val),
-						  sizeof (value_list->time_stemp_str_val), NULL));
+	    SQL_CHK_ERR (handle->hstmt,
+			 SQL_HANDLE_STMT,
+			 err_code = SQLBindParameter (handle->hstmt,
+						      bind_num,
+						      SQL_PARAM_INPUT,
+						      c_data_type,
+						      sql_bind_type,
+						      0,
+						      0,
+						      (SQLPOINTER) (&value_list->time_stemp_str_val),
+						      sizeof (value_list->time_stemp_str_val), NULL));
+	  }
+	else if (curr_dbms_type == SUPPORTED_DBMS_ORACLE)
+	  {
+	    c_data_type = SQL_C_TYPE_TIMESTAMP;
+	    sql_bind_type = SQL_TYPE_TIMESTAMP;
+
+	    value_list->tss_val.year = yr;
+	    value_list->tss_val.month = mon;
+	    value_list->tss_val.day = day;
+	    value_list->tss_val.hour = hh;
+	    value_list->tss_val.minute = mm;
+	    value_list->tss_val.second = ss;
+	    value_list->tss_val.fraction = ms;
+
+	    SQL_CHK_ERR (handle->hstmt,
+			 SQL_HANDLE_STMT,
+			 err_code = SQLBindParameter (handle->hstmt,
+						      bind_num,
+						      SQL_PARAM_INPUT,
+						      c_data_type,
+						      sql_bind_type,
+						      0,
+						      0,
+						      (SQLPOINTER) (&value_list->tss_val),
+						      sizeof (value_list->tss_val), NULL));
+	  }
+	else
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_DBMS, 0);
+	    return ER_CGW_NOT_SUPPORTED_DBMS;
+	  }
       }
       break;
       /* Not Support Type  */
@@ -2146,4 +2179,10 @@ cgw_get_stmt_handle (SQLHDBC hdbc, SQLHSTMT * stmt)
 
 ODBC_ERROR:
   return ER_FAILED;
+}
+
+void
+cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type)
+{
+  curr_dbms_type = dbms_type;
 }

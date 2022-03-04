@@ -1402,7 +1402,7 @@ $ LOADDB
 1327 "%1$s" 열의 정밀도 값이 잘못되었습니다.
 
 1328 잘못된 Descriptor Handle 입니다.
-1329 Error reserved for dblink development.
+1329 지원하지 않는 DBMS 입니다.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
