@@ -206,19 +206,17 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
 	    log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
 	    m_prior_sender_sink_hook_func = nullptr;
 	  }
-
-	  std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
-	  disconnect_thread.detach ();
 	}
       else
 	{
+	  // active transaction server connection
 	  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect: ATS disconnected from PS. Error code: %d\n",
 			(int)error_code);
-
-	  // active transaction server connection
-	  std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
-	  disconnect_thread.detach ();
 	}
+
+      std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
+      disconnect_thread.detach ();
+
       m_abnormal_tran_server_disconnect = true;
     }
 }
