@@ -5849,14 +5849,14 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 
   if (total_row_count > INT_MAX)
     {
-      srv_handle->tuple_count = INT_MAX;
+      srv_handle->total_tuple_count = INT_MAX;
     }
   else
     {
-      srv_handle->tuple_count = (int) total_row_count;
+      srv_handle->total_tuple_count = (int) total_row_count;
     }
-  net_buf_overwrite_int (net_buf, srv_handle->tuple_count_msg_offset, num_tuple);
-  net_buf_overwrite_int (net_buf, srv_handle->total_row_count_msg_offset, srv_handle->tuple_count);
+  net_buf_overwrite_int (net_buf, srv_handle->total_row_count_msg_offset, srv_handle->total_tuple_count);	// 0
+  net_buf_overwrite_int (net_buf, srv_handle->res_tuple_count_msg_offset, srv_handle->total_tuple_count);	// 10
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
 
   srv_handle->cursor_pos = cursor_pos;
@@ -10460,7 +10460,7 @@ int
 get_tuple_count (T_SRV_HANDLE * srv_handle)
 {
 #if defined(CAS_FOR_CGW)
-  return srv_handle->tuple_count;
+  return srv_handle->total_tuple_count;
 #else
   return srv_handle->q_result->tuple_count;
 #endif /* CAS_FOR_CGW */

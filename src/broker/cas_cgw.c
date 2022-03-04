@@ -788,7 +788,7 @@ cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_t
   char cache_reusable = 0;
   SQLLEN tuple_count = 0;
 
-  net_buf_cp_int (net_buf, (int) tuple_count, &srv_handle->tuple_count_msg_offset);
+  net_buf_cp_int (net_buf, (int) tuple_count, &srv_handle->total_row_count_msg_offset);
   net_buf_cp_byte (net_buf, cache_reusable);
   net_buf_cp_int (net_buf, (int) srv_handle->num_q_result, NULL);
 
@@ -855,7 +855,7 @@ cgw_get_stmt_Info (T_SRV_HANDLE * srv_handle, SQLHSTMT hstmt, T_NET_BUF * net_bu
   SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, SQLRowCount (hstmt, &total_row_count));
   if (total_row_count < 0)
     {
-      net_buf_cp_int (net_buf, -1, &srv_handle->total_row_count_msg_offset);
+      net_buf_cp_int (net_buf, -1, &srv_handle->res_tuple_count_msg_offset);
     }
   else
     {
