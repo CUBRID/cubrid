@@ -214,10 +214,10 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
 			(int)error_code);
 	}
 
+      m_abnormal_tran_server_disconnect = true;
+
       std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
       disconnect_thread.detach ();
-
-      m_abnormal_tran_server_disconnect = true;
     }
 }
 

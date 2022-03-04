@@ -160,6 +160,10 @@ namespace cubcomm
     , m_error_handler { std::move (error_handler) }
     , m_abort_further_processing { false }
   {
+    // as per the specification of the 'poll' system function, the error handling in this class
+    // relies on the connection channel's timeout to be positive
+    assert (m_client.get_channel ().get_max_timeout_in_ms () >= 0);
+    //m_client.get_channel ().get_max_timeout_in_ms ();
   }
 
   template <typename ReqClient, typename ReqPayload>
@@ -192,6 +196,16 @@ namespace cubcomm
 	const css_error_code err_code = m_client.send (queue_front.m_id, queue_front.m_payload);
 	if (err_code != NO_ERRORS)
 	  {
+	    /* The send over socket is not - in and by itself - capable of detecting when the peer has
+	     * actully dropped the connection. It errors-out as an after effect (eg: when, maybe, the buffer
+	     * is full and there's no more space left to write new data).
+	     * As such, the error reported here might appear very late from the moment the actual, possible,
+	     * disconnect occured.
+	     * This is fine, because application logic does not care with, or can cope with, this.
+	     * Alternatives to this are:
+	     *  - change the application protocol for each message to have an associated ACK response.
+	     *  - implement a polling mechanism that, also based on ACK, detects the disconnect earlier.
+	     * */
 	    if (m_error_handler != nullptr)
 	      {
 		// if present, invoke generic (fail-back) handler

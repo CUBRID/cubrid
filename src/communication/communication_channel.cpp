@@ -204,12 +204,12 @@ namespace cubcomm
     m_port = -1;
   }
 
-  int channel::get_max_timeout_in_ms ()
+  int channel::get_max_timeout_in_ms () const
   {
     return m_max_timeout_in_ms;
   }
 
-  int channel::wait_for (unsigned short int events, unsigned short int &revents)
+  int channel::wait_for (unsigned short int events, unsigned short int &revents) const
   {
     POLL_FD poll_fd = {0, 0, 0};
     int rc = 0;
@@ -238,12 +238,12 @@ namespace cubcomm
     return !IS_INVALID_SOCKET (m_socket);
   }
 
-  SOCKET channel::get_socket ()
+  SOCKET channel::get_socket () const
   {
     return m_socket;
   }
 
-  int channel::get_port ()
+  int channel::get_port () const
   {
     return m_port;
   }
