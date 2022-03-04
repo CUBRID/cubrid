@@ -31,6 +31,7 @@ class page_server
 {
   private:
     class connection_handler;
+    using connection_handler_uptr_t = std::unique_ptr<connection_handler>;
 
   public:
     page_server () = default;
@@ -57,6 +58,7 @@ class page_server
 
     void disconnect_active_tran_server ();
     void disconnect_tran_server (connection_handler *conn);
+    void disconnect_tran_server_async (connection_handler *conn);
     bool is_active_tran_server_connected () const;
 
     class connection_handler
@@ -113,15 +115,47 @@ class page_server
 	bool m_abnormal_tran_server_disconnect;
     };
 
+    class disconnect_handler
+    {
+      public:
+	disconnect_handler ();
+
+	disconnect_handler (const disconnect_handler &) = delete;
+	disconnect_handler (disconnect_handler &&) = delete;
+
+	~disconnect_handler ();
+
+	disconnect_handler &operator = (const disconnect_handler &) = delete;
+	disconnect_handler &operator = (disconnect_handler &&) = delete;
+
+	void disconnect (connection_handler_uptr_t &&handler);
+	//template <typename TDuration>
+	void wait_and_disconnect (std::queue<connection_handler_uptr_t> &disconnect_work_buffer/*,
+				  const TDuration &duration*/);
+	void terminate ();
+
+      private:
+	void disconnect_loop ();
+
+      private:
+	bool m_terminate = false;
+	std::queue<connection_handler_uptr_t> m_disconnect_queue;
+	std::mutex m_queue_mtx;
+	std::condition_variable m_queue_cv;
+	std::thread m_thread;
+    };
+
     using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;
     responder_t &get_responder ();
 
-    std::unique_ptr<connection_handler> m_active_tran_server_conn;
-    std::vector<std::unique_ptr<connection_handler>> m_passive_tran_server_conn;
+    connection_handler_uptr_t m_active_tran_server_conn;
+    std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
 
     std::unique_ptr<cublog::replicator> m_replicator;
 
     std::unique_ptr<responder_t> m_responder;
+
+    disconnect_handler m_disconnect_handler;
 };
 
 extern page_server ps_Gl;

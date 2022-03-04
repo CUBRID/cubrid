@@ -41,8 +41,14 @@ page_server ps_Gl;
 page_server::~page_server ()
 {
   assert (m_replicator == nullptr);
+
+  // for now, application logic dictates that all transaction server must disconnect from their end
+  // (either proactively or not)
+  // when/if needed connections can be moved here to the disconnect handler and that one waited for
   assert (m_active_tran_server_conn == nullptr);
   assert (m_passive_tran_server_conn.size () == 0);
+
+  m_disconnect_handler.terminate ();
 }
 
 page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps)
@@ -216,8 +222,9 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
 
       m_abnormal_tran_server_disconnect = true;
 
-      std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
-      disconnect_thread.detach ();
+      //std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
+      //disconnect_thread.detach ();
+      m_ps.disconnect_tran_server_async (this);
     }
 }
 
@@ -242,6 +249,87 @@ page_server::connection_handler::prior_sender_sink_hook (std::string &&message) 
 
   std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
   m_conn->push (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST, std::move (message));
+}
+
+page_server::disconnect_handler::disconnect_handler ()
+  : m_terminate { false }
+{
+  m_thread = std::thread (&page_server::disconnect_handler::disconnect_loop, std::ref (*this));
+}
+
+page_server::disconnect_handler::~disconnect_handler ()
+{
+  assert (m_terminate);
+  if (m_terminate && m_thread.joinable ())
+    {
+      m_queue_cv.notify_one ();
+      m_thread.join ();
+    }
+
+  assert (m_disconnect_queue.empty ());
+}
+
+void
+page_server::disconnect_handler::disconnect (connection_handler_uptr_t &&handler)
+{
+  if (!m_terminate)
+    {
+      std::lock_guard<std::mutex> lockg { m_queue_mtx };
+      m_disconnect_queue.emplace (std::move (handler));
+      m_queue_cv.notify_one ();
+    }
+  else
+    {
+      // cannot ask for disconnect after termination
+      assert (false);
+    }
+}
+
+//template <typename TDuration>
+void
+page_server::disconnect_handler::wait_and_disconnect (
+	std::queue<connection_handler_uptr_t> &disconnect_work_buffer/*, const TDuration &duration*/)
+{
+  assert (disconnect_work_buffer.empty ());
+
+  {
+    std::unique_lock<std::mutex> ulock { m_queue_mtx };
+    //const bool not_empty =
+    m_queue_cv.wait/*_for*/ (ulock/*, duration*/, [this]
+    {
+      return !m_disconnect_queue.empty () || m_terminate;
+    });
+//    if (!not_empty)
+//      {
+//	return;
+//      }
+
+    m_disconnect_queue.swap (disconnect_work_buffer);
+  }
+
+  while (!disconnect_work_buffer.empty ())
+    {
+      connection_handler_uptr_t &front = disconnect_work_buffer.front ();
+      front.reset (nullptr);
+      disconnect_work_buffer.pop ();
+    }
+}
+
+void
+page_server::disconnect_handler::terminate ()
+{
+  m_terminate = true;
+}
+
+void
+page_server::disconnect_handler::disconnect_loop ()
+{
+  std::queue<connection_handler_uptr_t> disconnect_work_buffer;
+  while (!m_terminate)
+    {
+      wait_and_disconnect (disconnect_work_buffer);
+      assert (disconnect_work_buffer.empty ());
+    }
 }
 
 void
@@ -298,6 +386,32 @@ page_server::disconnect_tran_server (connection_handler *conn)
 	    {
 	      er_log_debug (ARG_FILE_LINE, "Page server disconnected from passive transaction server with channel id: %s.\n",
 			    (*it)->get_channel_id ().c_str ());
+	      m_passive_tran_server_conn.erase (it);
+	      break;
+	    }
+	}
+    }
+}
+
+void
+page_server::disconnect_tran_server_async (connection_handler *conn)
+{
+  assert (conn != nullptr);
+  if (conn == m_active_tran_server_conn.get ())
+    {
+      m_disconnect_handler.disconnect (std::move (m_active_tran_server_conn));
+      assert (m_active_tran_server_conn == nullptr);
+    }
+  else
+    {
+      for (auto it = m_passive_tran_server_conn.begin (); it != m_passive_tran_server_conn.end (); ++it)
+	{
+	  if (conn == it->get ())
+	    {
+	      er_log_debug (ARG_FILE_LINE, "Page server disconnected from passive transaction server with channel id: %s.\n",
+			    (*it)->get_channel_id ().c_str ());
+	      m_disconnect_handler.disconnect (std::move (*it));
+	      assert (*it == nullptr);
 	      m_passive_tran_server_conn.erase (it);
 	      break;
 	    }
