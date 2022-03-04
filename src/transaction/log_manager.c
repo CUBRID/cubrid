@@ -1636,7 +1636,14 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       std::lock_guard<std::mutex> prior_lsa_lockg { log_Gl.prior_info.prior_lsa_mutex };
       // *INDENT-ON*
 
-      pts_ptr->send_and_receive_log_boot_info (thread_p, most_recent_trantable_snapshot_lsa);
+      err_code = pts_ptr->send_and_receive_log_boot_info (thread_p, most_recent_trantable_snapshot_lsa);
+      if (err_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_initialize_passive_tran_server:"
+			     " error retrieving log boot info from page server; server cannot be reached");
+	  return;
+	}
 
       LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
       LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);

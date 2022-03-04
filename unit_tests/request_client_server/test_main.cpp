@@ -189,7 +189,9 @@ struct payload_with_op_count : public cubpacking::packable_object
 
 // Send both reqids and op_count into the request payload
 template <typename RSSQ, typename ReqId>
-static void push_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count);
+static void push_rssq_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count);
+template <typename SCS, typename ReqId>
+static void push_scs_message_id_and_op (SCS &rssq, ReqId reqid, int op_count);
 // Server handler checks both request id and request order
 template <typename ReqId, ReqId ExpectedVal>
 static void mock_check_expected_id_and_op_count (cubpacking::unpacker &upk);
@@ -480,14 +482,14 @@ TEST_CASE ("Test request_queue_autosend", "")
   {
     for (int op_count = 0; op_count < 1000; ++op_count)
       {
-	push_message_id_and_op (rssq, reqids::_0, op_count);
+	push_rssq_message_id_and_op (rssq, reqids::_0, op_count);
       }
   });
   std::thread t2 ([&rssq]
   {
     for (int op_count = 0; op_count < 1000; ++op_count)
       {
-	push_message_id_and_op (rssq, reqids::_1, op_count);
+	push_rssq_message_id_and_op (rssq, reqids::_1, op_count);
       }
   });
 
@@ -715,7 +717,7 @@ template <typename RSSQ, typename ReqId>
 static void
 push_request_id_as_message (RSSQ &rssq, ReqId rid)
 {
-  rssq.push (rid, static_cast<int> (rid));
+  rssq.push (rid, static_cast<int> (rid), nullptr);
   ++global_sent_request_count;
 }
 
@@ -734,13 +736,26 @@ mock_check_expected_id_and_op_count (cubpacking::unpacker &upk)
 
 template <typename RSSQ, typename ReqId>
 static void
-push_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count)
+push_rssq_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count)
 {
   payload_with_op_count payload;
   payload.val = static_cast<int> (reqid);
   payload.op_count = op_count;
 
-  rssq.push (reqid, std::move (payload));
+  rssq.push (reqid, std::move (payload), nullptr);
+
+  ++global_sent_request_count;
+}
+
+template <typename SCS, typename ReqId>
+static void
+push_scs_message_id_and_op (SCS &scs, ReqId reqid, int op_count)
+{
+  payload_with_op_count payload;
+  payload.val = static_cast<int> (reqid);
+  payload.op_count = op_count;
+
+  scs.push (reqid, std::move (payload));
 
   ++global_sent_request_count;
 }
@@ -1005,7 +1020,7 @@ test_two_request_sync_client_server_env::push_request_and_increment_msg_count (
 {
   ++msg_count_inout;
 
-  push_message_id_and_op (scs, msgid, i);
+  push_scs_message_id_and_op (scs, msgid, i);
 }
 
 template<typename T_SCS, typename T_MSGID>
@@ -1021,7 +1036,8 @@ test_two_request_sync_client_server_env::send_recv_and_increment_msg_count (
 
   payload_with_op_count response_payload;
 
-  scs.send_recv (msgid, std::move (request_payload), response_payload);
+  const css_error_code error_code = scs.send_recv (msgid, std::move (request_payload), response_payload);
+  REQUIRE (error_code == NO_ERRORS);
   REQUIRE (response_payload.val == static_cast<int> (msgid));
   REQUIRE (response_payload.op_count == i + 1);	  // it is incremented by response handler
 
