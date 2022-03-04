@@ -347,7 +347,7 @@ TEST_CASE ("Verify request_sync_send_queue with request_client", "")
 
   using test_rssq = cubcomm::request_sync_send_queue<test_request_client, int>;
 
-  test_rssq rssq (env.get_client ());
+  test_rssq rssq (env.get_client (), nullptr);
   test_rssq::queue_type backbuffer;
 
   env.get_server ().start_thread ();
@@ -471,7 +471,7 @@ TEST_CASE ("Test request_queue_autosend", "")
 
   using test_rssq = cubcomm::request_sync_send_queue<test_request_client, payload_with_op_count>;
 
-  test_rssq rssq (env.get_client ());
+  test_rssq rssq (env.get_client (), nullptr);
   test_rssq::queue_type backbuffer;
 
   env.get_server ().start_thread ();
@@ -1113,7 +1113,7 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
       { reqids_2_to_1::_0, req_handler_0 },
       { reqids_2_to_1::_1, req_handler_1 },
       { reqids_2_to_1::_2, req_handler_2 }
-    }, reqids_1_to_2::RESPOND, reqids_2_to_1::RESPOND, 10)
+    }, reqids_1_to_2::RESPOND, reqids_2_to_1::RESPOND, 10, nullptr)
   };
   scs_one->start ();
 
@@ -1144,7 +1144,7 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_two (
     {
       { reqids_1_to_2::_0, req_handler_0 },
       { reqids_1_to_2::_1, req_handler_1 }
-    }, reqids_2_to_1::RESPOND, reqids_1_to_2::RESPOND, 10)
+    }, reqids_2_to_1::RESPOND, reqids_1_to_2::RESPOND, 10, nullptr)
   };
   scs_two->start ();
 

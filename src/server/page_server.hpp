@@ -34,7 +34,13 @@ class page_server
 
   public:
     page_server () = default;
+    page_server (const page_server &) = delete;
+    page_server (page_server &&) = delete;
+
     ~page_server ();
+
+    page_server &operator = (const page_server &) = delete;
+    page_server &operator = (page_server &&) = delete;
 
     void set_active_tran_server_connection (cubcomm::channel &&chn);
     void set_passive_tran_server_connection (cubcomm::channel &&chn);
@@ -60,8 +66,16 @@ class page_server
 		cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
 	connection_handler () = delete;
-	~connection_handler ();
 	connection_handler (cubcomm::channel &chn, page_server &ps);
+
+	connection_handler (const connection_handler &) = delete;
+	connection_handler (connection_handler &&) = delete;
+
+	~connection_handler ();
+
+	connection_handler &operator= (const connection_handler &) = delete;
+	connection_handler &operator= (connection_handler &&) = delete;
+
 	void push_request (page_to_tran_request id, std::string msg);
 	std::string get_channel_id ();
 
@@ -75,6 +89,8 @@ class page_server
 	void receive_disconnect_request (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp);
+
+	void abnormal_tran_server_disconnect (css_error_code error_code, bool &abort_further_processing);
 
 	// Helper function to convert above functions into responder specific tasks.
 	template<class F, class ... Args>
@@ -93,6 +109,8 @@ class page_server
 	// exclusive lock between the hook function that executes the dispatch and the
 	// function that will, at some moment, remove that hook
 	mutable std::mutex m_prior_sender_sink_removal_mtx;
+
+	bool m_abnormal_tran_server_disconnect;
     };
 
     using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;

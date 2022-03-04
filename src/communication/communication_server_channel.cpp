@@ -125,7 +125,7 @@ namespace cubcomm
     return rc;
   }
 
-  cubcomm::server_server server_channel::get_conn_type ()
+  cubcomm::server_server server_channel::get_conn_type () const
   {
     return m_conn_type;
   }

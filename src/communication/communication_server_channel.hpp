@@ -51,7 +51,7 @@ namespace cubcomm
 
       css_error_code connect (const char *hostname, int port, css_command_type cmd_type);
       css_error_code accept (SOCKET socket);
-      cubcomm::server_server get_conn_type ();
+      cubcomm::server_server get_conn_type () const;
 
     private:
       std::string m_server_name;

@@ -50,10 +50,19 @@ class server_request_responder
     class task;
 
     server_request_responder ();
+
+    server_request_responder (const server_request_responder &) = delete;
+    server_request_responder (server_request_responder &&) = delete;
+
     ~server_request_responder ();
+
+    server_request_responder &operator = (const server_request_responder &) = delete;
+    server_request_responder &operator = (server_request_responder &&) = delete;
 
     // Create a task that executes handler function asynchronously and pushes the response on the given connection
     void async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp, handler_func_t &&a_func);
+
+  private:
     void async_execute (task *a_task);
 
   private:

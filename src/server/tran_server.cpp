@@ -288,9 +288,15 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
 		srv_chn.get_channel_id ().c_str ());
 
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
+
+  cubcomm::send_queue_error_handler no_transaction_handler { nullptr };
+  // Transaction server will use message specific error handlers.
+  // Implementation will assert that an error handler is present if needed.
+
   m_page_server_conn_vec.emplace_back (
 	  new page_server_conn_t (std::move (srv_chn), get_request_handlers (), tran_to_page_request::RESPOND,
-				  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE));
+				  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE,
+				  std::move (no_transaction_handler)));
   m_page_server_conn_vec.back ()->start ();
 
   return NO_ERROR;
@@ -351,8 +357,7 @@ tran_server::request_handlers_map_t
 tran_server::get_request_handlers ()
 {
   // Insert handlers specific to all transaction servers here.
-  // For now, there are no such handlers; return an empthy map
-
+  // For now, there are no such handlers; return an empty map.
   std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
   return handlers_map;
 }
