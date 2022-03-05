@@ -1302,7 +1302,7 @@ cm_get_command_result (const char *argv[], EXTRACT_FUNC func, const char *func_a
   FILE *fp = NULL;
   char outputfile[PATH_MAX];
   char errfile[PATH_MAX];
-  char tmpfile[100];
+  char tmpfile[PATH_MAX];
 
   if (make_temp_filename (tmpfile, "cmd_res_", PATH_MAX) < 0)
     {
