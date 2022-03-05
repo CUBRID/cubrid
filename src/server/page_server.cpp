@@ -356,6 +356,8 @@ page_server::disconnect_active_tran_server ()
 		    " Disconnect active transaction server connection with channel id: %s.\n",
 		    m_active_tran_server_conn->get_channel_id ().c_str ());
       m_active_tran_server_conn.reset (nullptr);
+      // TODO: temporary
+      m_active_tran_sever_previously_connected = true;
     }
   else
     {
@@ -371,6 +373,8 @@ page_server::disconnect_tran_server_async (connection_handler *conn)
     {
       m_disconnect_handler.disconnect (std::move (m_active_tran_server_conn));
       assert (m_active_tran_server_conn == nullptr);
+      // TODO: temporary
+      m_active_tran_sever_previously_connected = true;
     }
   else
     {
@@ -430,9 +434,16 @@ void
 page_server::push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload)
 {
   assert (is_page_server ());
-  assert (is_active_tran_server_connected ());
 
-  m_active_tran_server_conn->push_request (reqid, std::move (payload));
+  if (is_active_tran_server_connected ())
+    {
+      m_active_tran_server_conn->push_request (reqid, std::move (payload));
+    }
+  else
+    {
+      // TODO: temporary
+      assert (m_active_tran_sever_previously_connected || is_active_tran_server_connected ());
+    }
 }
 
 cublog::replicator &

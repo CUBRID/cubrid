@@ -148,6 +148,8 @@ class page_server
     responder_t &get_responder ();
 
     connection_handler_uptr_t m_active_tran_server_conn;
+    // TODO: temporary
+    bool m_active_tran_sever_previously_connected = false;
     std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
 
     std::unique_ptr<cublog::replicator> m_replicator;
