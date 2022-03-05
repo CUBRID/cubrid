@@ -179,9 +179,7 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
   // passive transaction server - it should have been disconnected beforehand
   assert (! (bool) m_prior_sender_sink_hook_func);
 
-  //start a thread to destroy the ATS/PTS to PS connection object
-  std::thread disconnect_thread (&page_server::disconnect_tran_server, std::ref (m_ps), this);
-  disconnect_thread.detach ();
+  m_ps.disconnect_tran_server_async (this);
 }
 
 void
@@ -220,11 +218,9 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
 			(int)error_code);
 	}
 
-      m_abnormal_tran_server_disconnect = true;
-
-      //std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
-      //disconnect_thread.detach ();
       m_ps.disconnect_tran_server_async (this);
+
+      m_abnormal_tran_server_disconnect = true;
     }
 }
 
@@ -285,40 +281,11 @@ page_server::disconnect_handler::disconnect (connection_handler_uptr_t &&handler
     }
 }
 
-//template <typename TDuration>
-void
-page_server::disconnect_handler::wait_and_disconnect (
-	std::queue<connection_handler_uptr_t> &disconnect_work_buffer/*, const TDuration &duration*/)
-{
-  assert (disconnect_work_buffer.empty ());
-
-  {
-    std::unique_lock<std::mutex> ulock { m_queue_mtx };
-    //const bool not_empty =
-    m_queue_cv.wait/*_for*/ (ulock/*, duration*/, [this]
-    {
-      return !m_disconnect_queue.empty () || m_terminate;
-    });
-//    if (!not_empty)
-//      {
-//	return;
-//      }
-
-    m_disconnect_queue.swap (disconnect_work_buffer);
-  }
-
-  while (!disconnect_work_buffer.empty ())
-    {
-      connection_handler_uptr_t &front = disconnect_work_buffer.front ();
-      front.reset (nullptr);
-      disconnect_work_buffer.pop ();
-    }
-}
-
 void
 page_server::disconnect_handler::terminate ()
 {
   m_terminate = true;
+  m_queue_cv.notify_one ();
 }
 
 void
@@ -327,8 +294,22 @@ page_server::disconnect_handler::disconnect_loop ()
   std::queue<connection_handler_uptr_t> disconnect_work_buffer;
   while (!m_terminate)
     {
-      wait_and_disconnect (disconnect_work_buffer);
-      assert (disconnect_work_buffer.empty ());
+      {
+	std::unique_lock<std::mutex> ulock { m_queue_mtx };
+	m_queue_cv.wait (ulock, [this]
+	{
+	  return !m_disconnect_queue.empty () || m_terminate;
+	});
+
+	m_disconnect_queue.swap (disconnect_work_buffer);
+      }
+
+      while (!disconnect_work_buffer.empty ())
+	{
+	  connection_handler_uptr_t &front = disconnect_work_buffer.front ();
+	  front.reset (nullptr);
+	  disconnect_work_buffer.pop ();
+	}
     }
 }
 
@@ -343,10 +324,14 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 
   if (m_active_tran_server_conn != nullptr)
     {
-      // ATS must have crashed without disconnecting from us. Destroy old connection to create a new one.
+      // When [A]TS crashes there are two possibilities:
+      //  - either the crash is detected an the connection is dropped - see abnormal_tran_server_disconnect
+      //    (this happens because page server is still supposed to send data to the transaction server and
+      //    is no longer able to do this as data is not consumed anymore)
+      //  - or the crahs is not detected and the connection remains hanging
       disconnect_active_tran_server ();
     }
-  assert (m_active_tran_server_conn == nullptr);
+
   m_active_tran_server_conn.reset (new connection_handler (chn, *this));
 }
 
@@ -365,31 +350,16 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
 void
 page_server::disconnect_active_tran_server ()
 {
-  er_log_debug (ARG_FILE_LINE, "Page server disconnected from active transaction server with channel id: %s.\n",
-		m_active_tran_server_conn->get_channel_id ().c_str ());
-  m_active_tran_server_conn.reset (nullptr);
-}
-
-void
-page_server::disconnect_tran_server (connection_handler *conn)
-{
-  assert (conn != nullptr);
-  if (conn == m_active_tran_server_conn.get ())
+  if (m_active_tran_server_conn != nullptr)
     {
-      disconnect_active_tran_server ();
+      er_log_debug (ARG_FILE_LINE, "disconnect_active_tran_server:"
+		    " Disconnect active transaction server connection with channel id: %s.\n",
+		    m_active_tran_server_conn->get_channel_id ().c_str ());
+      m_active_tran_server_conn.reset (nullptr);
     }
   else
     {
-      for (auto it = m_passive_tran_server_conn.begin (); it != m_passive_tran_server_conn.end (); ++it)
-	{
-	  if (conn == it->get ())
-	    {
-	      er_log_debug (ARG_FILE_LINE, "Page server disconnected from passive transaction server with channel id: %s.\n",
-			    (*it)->get_channel_id ().c_str ());
-	      m_passive_tran_server_conn.erase (it);
-	      break;
-	    }
-	}
+      er_log_debug (ARG_FILE_LINE, "disconnect_active_tran_server: Active transaction server is not connected.\n");
     }
 }
 
@@ -422,23 +392,18 @@ page_server::disconnect_tran_server_async (connection_handler *conn)
 void
 page_server::disconnect_all_tran_server ()
 {
-  if (m_active_tran_server_conn == nullptr)
-    {
-      er_log_debug (ARG_FILE_LINE, "Page server was never connected with an active transaction server.\n");
-    }
-  else
-    {
-      disconnect_active_tran_server ();
-    }
+  disconnect_active_tran_server ();
+
   if (m_passive_tran_server_conn.empty ())
     {
-      er_log_debug (ARG_FILE_LINE, "Page server was never connected with an passive transaction server.\n");
+      er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: No passive transaction server connected.\n");
     }
   else
     {
       for (size_t i = 0; i < m_passive_tran_server_conn.size (); i++)
 	{
-	  er_log_debug (ARG_FILE_LINE, "Page server disconnected from passive transaction server with channel id: %s.\n",
+	  er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server:"
+			" Disconnected passive transaction server with channel id: %s.\n",
 			m_passive_tran_server_conn[i]->get_channel_id ().c_str ());
 	  m_passive_tran_server_conn[i].reset (nullptr);
 	}

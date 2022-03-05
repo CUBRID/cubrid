@@ -57,7 +57,6 @@ class page_server
   private:
 
     void disconnect_active_tran_server ();
-    void disconnect_tran_server (connection_handler *conn);
     void disconnect_tran_server_async (connection_handler *conn);
     bool is_active_tran_server_connected () const;
 
@@ -115,6 +114,9 @@ class page_server
 	bool m_abnormal_tran_server_disconnect;
     };
 
+    /* helper class with the task of destroying connnection handlers and, by this,
+     * also waiting for the receive and transmit threads inside the handlers to terminate
+     */
     class disconnect_handler
     {
       public:
@@ -129,9 +131,6 @@ class page_server
 	disconnect_handler &operator = (disconnect_handler &&) = delete;
 
 	void disconnect (connection_handler_uptr_t &&handler);
-	//template <typename TDuration>
-	void wait_and_disconnect (std::queue<connection_handler_uptr_t> &disconnect_work_buffer/*,
-				  const TDuration &duration*/);
 	void terminate ();
 
       private:
