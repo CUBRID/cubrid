@@ -30,6 +30,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <time.h>
 
 #if defined(WINDOWS)
 #include <process.h>
@@ -40,6 +41,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <stdarg.h>
+#include <sys/time.h>
 #endif
 
 static T_CMD_RESULT *new_cmd_result (void);
@@ -47,6 +49,7 @@ static void close_all_fds (int init_fd);
 
 #if defined(WINDOWS)
 static int is_master_start ();
+static int gettimeofday (struct timeval *tp, void *tzp);
 #endif
 
 #define CUBRID_SERVER_LOCK_EXT     "_lgat__lock"
@@ -395,7 +398,7 @@ cmd_server_status (void)
   char out_file[PATH_MAX];
   char cmd_name[PATH_MAX];
   const char *argv[5];
-  char tmpfile[100];
+  char tmpfile[PATH_MAX];
 
   res = new_servstat_result ();
   if (res == NULL)
@@ -410,7 +413,11 @@ cmd_server_status (void)
     }
 #endif
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_util_001.", getpid ());
+  if (make_temp_filename (tmpfile, "DBMT_util_001.", sizeof (tmpfile)) < 0)
+    {
+      cmd_result_free (res);
+      return NULL;
+    }
   (void) envvar_tmpdir_file (out_file, PATH_MAX, tmpfile);
   (void) envvar_bindir_file (cmd_name, PATH_MAX, UTIL_CUBRID);
 
@@ -754,3 +761,98 @@ cm_util_log_write_command (int argc, char *argv[])
 {
   return util_log_write_command (argc, argv);
 }
+
+/*
+ * Generate unique temp file name.
+ * {prefix}{second}_{usec}_{random number: 1..997}
+ */
+
+int
+make_temp_filename (char *tempfile, char *prefix, int size)
+{
+  struct timeval current_time;
+
+  if (tempfile == NULL || prefix == NULL || size < 1)
+    {
+      return -1;
+    }
+
+  srand (time (NULL));
+  if (gettimeofday (&current_time, NULL) < 0)
+    {
+      return -1;
+    }
+
+  snprintf (tempfile, size - 1, "%s%ld_%ld_%d", prefix, current_time.tv_sec, current_time.tv_usec, rand () % 997);
+
+  return 0;
+}
+
+int
+make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, int size)
+{
+  struct timeval current_time;
+
+  if (tempfile == NULL || tempdir == NULL || size < 1)
+    {
+      return -1;
+    }
+
+  srand (time (NULL));
+  if (gettimeofday (&current_time, NULL) < 0)
+    {
+      return -1;
+    }
+
+  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%d_%d", tempdir, prefix ? prefix : "", task_code,
+	    current_time.tv_sec, current_time.tv_usec, rand () % 997);
+
+  return 0;
+}
+
+#if defined (WINDOWS)
+/* Number of 100 nanosecond units from 1/1/1601 to 1/1/1970 */
+#define EPOCH_BIAS_IN_100NANOSECS 116444736000000000LL
+
+/*
+ * gettimeofday - Windows port of Unix gettimeofday(), from base/porting.c
+ *   return: none
+ *   tp(out): where time is stored
+ *   tzp(in): unused
+ */
+static int
+gettimeofday (struct timeval *tp, void *tzp)
+{
+/*
+ * Rapid calculation divisor for 10,000,000
+ * x/10000000 == x/128/78125 == (x>>7)/78125
+ */
+#define RAPID_CALC_DIVISOR 78125
+
+  union
+  {
+    unsigned __int64 nsec100;	/* in 100 nanosecond units */
+    FILETIME ft;
+  } now;
+
+  GetSystemTimeAsFileTime (&now.ft);
+
+  /*
+   * Optimization for sec = (long) (x / 10000000);
+   * where "x" is number of 100 nanoseconds since 1/1/1970.
+   */
+  tp->tv_sec = (long) (((now.nsec100 - EPOCH_BIAS_IN_100NANOSECS) >> 7) / RAPID_CALC_DIVISOR);
+
+  /*
+   * Optimization for usec = (long) (x % 10000000) / 10;
+   * Let c = x / b,
+   * An alternative for MOD operation (x % b) is: (x - c * b),
+   *   which consumes less time, specially, for a 64 bit "x".
+   */
+  tp->tv_usec =
+    ((long) (now.nsec100 - EPOCH_BIAS_IN_100NANOSECS - (((unsigned __int64) (tp->tv_sec * RAPID_CALC_DIVISOR)) << 7))) /
+    10;
+
+  return 0;
+}
+#endif
