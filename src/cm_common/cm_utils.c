@@ -524,6 +524,7 @@ read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
 	    = (T_SERVER_STATUS_INFO *) realloc (info, sizeof (T_SERVER_STATUS_INFO) * num_alloc);
 	  if (new_info == NULL)
 	    {
+	      free (info);
 	      fclose (fp);
 	      return;
 	    }
