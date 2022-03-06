@@ -43,7 +43,14 @@ namespace cublog
     public:
       // ctor/dtor:
       prior_recver (log_prior_lsa_info &prior_lsa_info);
+
+      prior_recver (const prior_recver &) = delete;
+      prior_recver (prior_recver &&) = delete;
+
       ~prior_recver ();
+
+      prior_recver &operator = (const prior_recver &) = delete;
+      prior_recver &operator = (prior_recver &&) = delete;
 
       void push_message (std::string &&str);                  // push message from prior_sender into message queue
 

@@ -38,6 +38,14 @@ namespace cublog
       using sink_hook_t = std::function<void (std::string &&)>;   // messages are passed to sink hooks.
 
     public:
+      prior_sender () = default;
+      prior_sender (const prior_sender &) = delete;
+      prior_sender (prior_sender &&) = default;
+
+      prior_sender &operator = (const prior_sender &) = delete;
+      prior_sender &operator = (prior_sender &&) = delete;
+
+    public:
       void send_list (const log_prior_node *head);                // send prior node list to all sinks
 
       void add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
