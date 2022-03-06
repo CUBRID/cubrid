@@ -273,6 +273,7 @@ namespace cubcomm
     ulock.unlock ();
 
     send_queue (backbuffer);
+    assert (backbuffer.empty ());
   }
 
   //
@@ -301,7 +302,6 @@ namespace cubcomm
       {
 	// Check shutdown flag every 10 milliseconds
 	m_req_queue.wait_not_empty_and_send_all (requests, ten_millis);
-	assert (requests.empty ());
       }
   }
 
