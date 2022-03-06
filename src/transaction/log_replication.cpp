@@ -264,7 +264,7 @@ namespace cublog
 	  std::unique_lock<std::mutex> lock (m_redo_lsa_mutex);
 
 	  // better to be checked as soon as possible during the processing loop
-	  // however, this would need one more mutex lock
+	  // however, this would need one more mutex lock; therefore, suffice to do it here
 	  assert (m_replication_active);
 
 	  m_redo_lsa = header.forw_lsa;
