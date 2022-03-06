@@ -96,6 +96,7 @@ namespace cublog
       cubthread::daemon *m_daemon = nullptr;
 
       log_lsa m_redo_lsa = NULL_LSA;
+      mutable bool m_replication_active;
       mutable std::mutex m_redo_lsa_mutex;
       mutable std::condition_variable m_redo_lsa_condvar;
       log_rv_redo_context m_redo_context;
