@@ -69,7 +69,6 @@
 #include "api_compat.h"
 #include "cas_log.h"
 #include "ddl_log.h"
-#include "method_struct_client_info.hpp"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -224,8 +223,6 @@ static void csql_set_trace (const char *arg_str);
 static void csql_display_trace (void);
 static bool csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg);
 static int get_host_ip (unsigned char *ip_addr);
-
-extern METHOD_CLIENT_INFO * get_client_info ();
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -2724,7 +2721,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   int client_type;
   int avail_size;
   char *p = NULL;
-  unsigned char ip_addr[16] = { "0" };
+  unsigned char ip_addr[16] = { 0 };
 
   /* Establish a globaly accessible longjmp environment so we can terminate on severe errors without calling exit(). */
   csql_exit_init ();
@@ -2874,17 +2871,9 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   if (get_host_ip (ip_addr) == 0)
     {
       logddl_set_ip ((char *) ip_addr);
+      db_set_client_ip_addr ((char *) ip_addr);
     }
   logddl_set_pid (getpid ());
-
-  {
-      METHOD_CLIENT_INFO* client_info = get_client_info ();
-	    client_info->broker_name.assign ("none");
-	    client_info->cas_name.assign ("csql");
-	    client_info->db_name.assign (csql_arg->db_name);
-	    client_info->db_user.assign (csql_arg->user_name);
-	    client_info->client_ip.assign ((char *) ip_addr);
-  }
 
   if (csql_arg->trigger_action_flag == false)
     {
