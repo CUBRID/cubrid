@@ -52,11 +52,6 @@ CREATE OR REPLACE FUNCTION sp_rset_q(q STRING) RETURN STRING as language java na
 CREATE OR REPLACE FUNCTION sp_rset_qm(q STRING) RETURN STRING as language java name 'test.SpCursorTest.testOutResultWithQueryMeta(java.lang.String) return java.lang.String';
 CREATE OR REPLACE PROCEDURE sp_rset_qu(q STRING) as language java name 'test.SpCursorTest.testOutResultWithUpdateQuery(java.lang.String)';
 
-/* Error Test */
-CREATE OR REPLACE FUNCTION sp_exception(a STRING) RETURN STRING as language java name 'test.SpErrorTest.testSQLExceptionTest(java.lang.String) return java.lang.String';
-CREATE OR REPLACE FUNCTION sp_exception_thrown(a STRING) RETURN STRING as language java name 'test.SpErrorTest.testSQLExceptionThrownTest(java.lang.String) return java.lang.String';
-CREATE OR REPLACE FUNCTION sp_div_zero(a INT) RETURN INT as language java name 'test.SpErrorTest.testDivideByZeroTest(int) return int';
-
 /* ////////////////////////////////////////////////////////////////////////// */
 /* Unit Test for Server-Side JDBC */
 /* ////////////////////////////////////////////////////////////////////////// */
