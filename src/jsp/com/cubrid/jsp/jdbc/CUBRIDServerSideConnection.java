@@ -32,7 +32,6 @@
 package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.ExecuteThread;
-import com.cubrid.jsp.data.ClientInfo;
 import com.cubrid.jsp.data.DBParameterInfo;
 import com.cubrid.jsp.impl.SUConnection;
 import cubrid.jdbc.jci.CUBRIDIsolationLevel;
@@ -95,8 +94,7 @@ public class CUBRIDServerSideConnection implements Connection {
 
     protected void requestDBParameter() throws IOException, SQLException {
         DBParameterInfo info = getSUConnection().getDBParameter();
-        if (transactionIsolation == TRANSACTION_NONE)
-        {
+        if (transactionIsolation == TRANSACTION_NONE) {
             switch (info.tran_isolation) {
                 case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
                     transactionIsolation = TRANSACTION_READ_COMMITTED;
@@ -115,16 +113,18 @@ public class CUBRIDServerSideConnection implements Connection {
                     break;
             }
         }
-        
+
         // TODO: lock timeout?
 
         if (clientInfo == null) {
             clientInfo = new Properties();
-            clientInfo.put("broker", info.clientInfo.brokerName);
-            clientInfo.put("client", info.clientInfo.casName);
-            clientInfo.put("db", info.clientInfo.dbName);
-            clientInfo.put("user", info.clientInfo.dbUser);
-            clientInfo.put("ip", info.clientInfo.clientIp);
+            clientInfo.put("type", String.valueOf(info.clientIds.clientType));
+            clientInfo.put("program", info.clientIds.programName);
+            clientInfo.put("host", info.clientIds.hostName);
+            clientInfo.put("login", info.clientIds.loginName);
+            clientInfo.put("user", info.clientIds.dbUser);
+            clientInfo.put("ip", info.clientIds.clientIp);
+            clientInfo.put("pid", String.valueOf(info.clientIds.processId));
         }
     }
 
@@ -408,8 +408,7 @@ public class CUBRIDServerSideConnection implements Connection {
 
     /* JDK 1.6 */
     public Properties getClientInfo() throws SQLException {
-        if (clientInfo == null)
-        {
+        if (clientInfo == null) {
             try {
                 requestDBParameter();
             } catch (IOException e) {

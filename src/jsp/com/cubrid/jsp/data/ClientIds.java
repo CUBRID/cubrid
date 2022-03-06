@@ -31,18 +31,24 @@
 
 package com.cubrid.jsp.data;
 
-public class ClientInfo {
-    public String brokerName;
-    public String casName;
-    public String dbName;
+public class ClientIds {
+    public int clientType;
+    public String clientInfo;
     public String dbUser;
+    public String programName;
+    public String loginName;
+    public String hostName;
     public String clientIp;
+    public int processId;
 
-    public ClientInfo(CUBRIDUnpacker unpacker) {
-        brokerName = unpacker.unpackCString();
-        casName = unpacker.unpackCString();
-        dbName = unpacker.unpackCString();
+    public ClientIds(CUBRIDUnpacker unpacker) {
+        clientType = unpacker.unpackInt();
+        clientInfo = unpacker.unpackCString();
         dbUser = unpacker.unpackCString();
+        programName = unpacker.unpackCString();
+        loginName = unpacker.unpackCString();
+        hostName = unpacker.unpackCString();
         clientIp = unpacker.unpackCString();
+        processId = unpacker.unpackInt();
     }
 }

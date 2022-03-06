@@ -103,6 +103,7 @@ public class CUBRIDUnpacker {
             align(DataUtilities.INT_ALIGNMENT);
             return new String(str);
         } else {
+            align(DataUtilities.INT_ALIGNMENT);
             return "";
         }
     }
