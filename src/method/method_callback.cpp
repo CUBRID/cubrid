@@ -29,7 +29,6 @@
 
 #include "transaction_cl.h"
 
-extern METHOD_CLIENT_INFO *get_client_info ();
 extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
     DB_QUERY_TYPE *column_info, bool is_holdable);
 
@@ -84,9 +83,6 @@ namespace cubmethod
 	break;
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
 	error = generated_keys (unpacker);
-	break;
-      case METHOD_CALLBACK_GET_DB_PARAMETER:
-	error = get_db_parameter (unpacker);
 	break;
       default:
 	assert (false);
@@ -334,17 +330,6 @@ namespace cubmethod
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
       }
-  }
-
-//////////////////////////////////////////////////////////////////////////
-// Others
-//////////////////////////////////////////////////////////////////////////
-
-  int
-  callback_handler::get_db_parameter (packing_unpacker &unpacker)
-  {
-    METHOD_CLIENT_INFO *client_info = get_client_info ();
-    return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, *client_info);
   }
 
 //////////////////////////////////////////////////////////////////////////

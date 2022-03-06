@@ -91,9 +91,6 @@ namespace cubmethod
       int oid_cmd (packing_unpacker &unpacker);
       int collection_cmd (packing_unpacker &unpacker);
 
-      /* others */
-      int get_db_parameter (packing_unpacker &unpacker);
-
       /* ported from cas_handle */
       query_handler *new_query_handler ();
       void free_query_handle (int id, bool is_free);
