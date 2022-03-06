@@ -186,18 +186,25 @@ void
 page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code error_code,
     bool &abort_further_processing)
 {
-  /* when a transaction server suddenly disconnects, if the page server happens to be be either
+  /* Explanation for the mutex lock.
+   * A connection handler has 2 threads underneath:
+   *  - a thread that handles incoming requests and matches them to handling functions - cubcomm:request_server
+   *  - a thread that handles continuous send of messages (either responses or not) - cubcomm::request_queue_autosend
+   * For now, only the second one - the send part - implements the handler but, technically, any of these can,
+   * at some point trigger this disconnect function.
+   * */
+  std::lock_guard<std::mutex> lockg { m_abnormal_tran_server_disconnect_mtx };
+
+  /* when a transaction server suddenly disconnects, if the page server happens to be either
    * proactively sending data or responding to a request, an error is reported from the network layer;
    * this function is a handler for such an error - see cubcomm::send_queue_error_handler.
    *
    * NOTE: if needed, functionality can be extended with more advanced features (ie: retry policy, timeouts ..)
    * */
-
-  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect; request abort futher processing\n");
-  abort_further_processing = true;
-
   if (!m_abnormal_tran_server_disconnect)
     {
+      abort_further_processing = true;
+
       if (m_prior_sender_sink_hook_func)
 	{
 	  // passive transaction server connection
@@ -221,6 +228,10 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
       m_ps.disconnect_tran_server_async (this);
 
       m_abnormal_tran_server_disconnect = true;
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect: already requested to disconnect\n");
     }
 }
 
