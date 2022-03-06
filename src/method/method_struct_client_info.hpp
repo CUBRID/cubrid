@@ -16,36 +16,26 @@
  *
  */
 
-#ifndef _METHOD_STRUCT_CLIENT_INFO_HPP_
-#define _METHOD_STRUCT_CLIENT_INFO_HPP_
+#ifndef _METHOD_STRUCT_PARAMETER_INFO_HPP_
+#define _METHOD_STRUCT_PARAMETER_INFO_HPP_
 
 #ident "$Id$"
 
 #include <string>
 
+#include "client_credentials.hpp"
 #include "packer.hpp"
 #include "packable_object.hpp"
 
 namespace cubmethod
 {
-  struct db_client_info : public cubpacking::packable_object
-  {
-    std::string broker_name;
-    std::string cas_name;
-    std::string db_name;
-    std::string db_user;
-    std::string client_ip;
-
-    void pack (cubpacking::packer &serializator) const override;
-    void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
-  };
-
   struct db_parameter_info : public cubpacking::packable_object
   {
-    db_client_info client_info;
+    CLIENTIDS client_ids;
     int tran_isolation; // DB_TRAN_ISOLATION in dbtran_def.h
     int wait_msec;
+
+    db_parameter_info ();
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -53,6 +43,4 @@ namespace cubmethod
   };
 }
 
-using METHOD_CLIENT_INFO = cubmethod::db_client_info;
-
-#endif // _METHOD_STRUCT_CLIENT_INFO_HPP_
+#endif // _METHOD_STRUCT_PARAMETER_INFO_HPP_

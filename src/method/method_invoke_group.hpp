@@ -38,7 +38,7 @@
 #include <queue>
 
 #include "method_def.hpp"	/* method_sig_node */
-#include "method_struct_client_info.hpp" /* db_parameter_info */
+#include "method_struct_parameter_info.hpp" /* db_parameter_info */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */
 #include "porting.h" /* SOCKET */
 

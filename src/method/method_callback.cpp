@@ -22,7 +22,6 @@
 #include "method_def.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
-#include "method_struct_client_info.hpp"
 
 #include "object_primitive.h"
 #include "oid.h"

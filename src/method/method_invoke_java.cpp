@@ -27,7 +27,7 @@
 #include "dbtype_def.h"
 
 #include "method_connection_sr.hpp"
-#include "method_struct_client_info.hpp"
+#include "method_struct_parameter_info.hpp"
 #include "method_struct_invoke.hpp"
 #include "method_struct_value.hpp"
 #include "method_struct_oid_info.hpp"
@@ -317,35 +317,25 @@ namespace cubmethod
 
     if (m_group->get_db_parameter_info () == nullptr)
       {
-	error = method_send_data_to_client (&thread_ref, *m_header, code);
+	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_group->get_thread_entry());
+	db_parameter_info *parameter_info = new db_parameter_info ();
 
-	auto get_db_parameter_info = [&] (cubmem::block & b)
-	{
-	  packing_unpacker unpacker (b.ptr, (size_t) b.dim);
+	parameter_info->tran_isolation = logtb_find_isolation (tran_index);
+	parameter_info->wait_msec = logtb_find_wait_msecs (tran_index);
+	logtb_get_client_ids (tran_index, &parameter_info->client_ids);
 
-	  db_client_info ci;
-	  ci.unpack (unpacker);
-
-	  db_parameter_info *parameter_info = new db_parameter_info ();
-
-	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_group->get_thread_entry());
-	  TRAN_ISOLATION tran_isolation = logtb_find_isolation (tran_index);
-	  int wait_msec = logtb_find_wait_msecs (tran_index);
-
-
-	  parameter_info->tran_isolation = tran_isolation;
-	  parameter_info->wait_msec = wait_msec;
-	  parameter_info->client_info = std::move (ci);
-
-	  m_group->set_db_parameter_info (parameter_info);
-	  return error;
-	};
-
-	error = xs_receive (&thread_ref, get_db_parameter_info);
+	m_group->set_db_parameter_info (parameter_info);
       }
 
     db_parameter_info *parameter_info = m_group->get_db_parameter_info ();
-    error = mcon_send_data_to_java (m_group->get_socket(), METHOD_RESPONSE_SUCCESS, *parameter_info);
+    if (parameter_info)
+      {
+	error = mcon_send_data_to_java (m_group->get_socket(), METHOD_RESPONSE_SUCCESS, *parameter_info);
+      }
+    else
+      {
+	error = mcon_send_data_to_java (m_group->get_socket(), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error");
+      }
     return error;
   }
 

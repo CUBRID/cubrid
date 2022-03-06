@@ -16,65 +16,37 @@
  *
  */
 
-#include "method_struct_client_info.hpp"
+#include "method_struct_parameter_info.hpp"
 
+#include "dbtran_def.h"
 #include "language_support.h"
 
 namespace cubmethod
 {
+  db_parameter_info::db_parameter_info ()
+    : client_ids (), tran_isolation (TRAN_UNKNOWN_ISOLATION), wait_msec (0)
+  {
+    //
+  }
+
+#define DB_PARAMETER_PACKER_ARGS() \
+  tran_isolation, wait_msec, client_ids
+
   void
   db_parameter_info::pack (cubpacking::packer &serializator) const
   {
-    client_info.pack (serializator);
-    serializator.pack_int (tran_isolation);
-    serializator.pack_int (wait_msec);
+    serializator.pack_all (DB_PARAMETER_PACKER_ARGS());
   }
 
   void
   db_parameter_info::unpack (cubpacking::unpacker &deserializator)
   {
-    client_info.unpack (deserializator);
-    deserializator.unpack_int (tran_isolation);
-    deserializator.unpack_int (wait_msec);
+    deserializator.unpack_all (DB_PARAMETER_PACKER_ARGS ());
   }
 
   size_t
   db_parameter_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = client_info.get_packed_size (serializator, start_offset);
-    size += serializator.get_packed_int_size (size); // tran_isolation
-    size += serializator.get_packed_int_size (size); // wait_msec
-    return size;
-  }
-
-  void
-  db_client_info::pack (cubpacking::packer &serializator) const
-  {
-    serializator.pack_string (broker_name);
-    serializator.pack_string (cas_name);
-    serializator.pack_string (db_name);
-    serializator.pack_string (db_user);
-    serializator.pack_string (client_ip);
-  }
-
-  void
-  db_client_info::unpack (cubpacking::unpacker &deserializator)
-  {
-    deserializator.unpack_string (broker_name);
-    deserializator.unpack_string (cas_name);
-    deserializator.unpack_string (db_name);
-    deserializator.unpack_string (db_user);
-    deserializator.unpack_string (client_ip);
-  }
-
-  size_t
-  db_client_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
-  {
-    size_t size = serializator.get_packed_string_size (broker_name, start_offset);
-    size += serializator.get_packed_string_size (cas_name, size);
-    size += serializator.get_packed_string_size (db_name, size);
-    size += serializator.get_packed_string_size (db_user, size);
-    size += serializator.get_packed_string_size (client_ip, size);
-    return size;
+    return serializator.get_all_packed_size_starting_offset (start_offset, DB_PARAMETER_PACKER_ARGS ());
   }
 }
