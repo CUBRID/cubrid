@@ -469,6 +469,11 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 {
   assert (m_replicator != nullptr);
 
+  // at this point, no connection to transaction server should be active
+  // after the replicator is destroyed, no further requests should be processed
+  assert (m_active_tran_server_conn == nullptr);
+  assert (m_passive_tran_server_conn.empty ());
+
   logpb_force_flush_pages (&thread_entry);
   m_replicator->wait_replication_finish_during_shutdown ();
   m_replicator.reset (nullptr);
