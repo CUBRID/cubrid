@@ -138,7 +138,7 @@ class page_server
 	void disconnect_loop ();
 
       private:
-	bool m_terminate = false;
+	std::atomic_bool m_terminate;
 	std::queue<connection_handler_uptr_t> m_disconnect_queue;
 	std::mutex m_queue_mtx;
 	std::condition_variable m_queue_cv;

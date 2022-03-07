@@ -266,11 +266,14 @@ page_server::disconnect_handler::disconnect_handler ()
 
 page_server::disconnect_handler::~disconnect_handler ()
 {
-  assert (m_terminate);
-  if (m_terminate && m_thread.joinable ())
+  if (m_terminate.load () && m_thread.joinable ())
     {
       m_queue_cv.notify_one ();
       m_thread.join ();
+    }
+  else
+    {
+      assert (m_terminate.load ());
     }
 
   assert (m_disconnect_queue.empty ());
@@ -279,7 +282,7 @@ page_server::disconnect_handler::~disconnect_handler ()
 void
 page_server::disconnect_handler::disconnect (connection_handler_uptr_t &&handler)
 {
-  if (!m_terminate)
+  if (!m_terminate.load ())
     {
       std::lock_guard<std::mutex> lockg { m_queue_mtx };
       m_disconnect_queue.emplace (std::move (handler));
@@ -295,7 +298,7 @@ page_server::disconnect_handler::disconnect (connection_handler_uptr_t &&handler
 void
 page_server::disconnect_handler::terminate ()
 {
-  m_terminate = true;
+  m_terminate.store (true);
   m_queue_cv.notify_one ();
 }
 
@@ -303,13 +306,13 @@ void
 page_server::disconnect_handler::disconnect_loop ()
 {
   std::queue<connection_handler_uptr_t> disconnect_work_buffer;
-  while (!m_terminate)
+  while (!m_terminate.load ())
     {
       {
 	std::unique_lock<std::mutex> ulock { m_queue_mtx };
 	m_queue_cv.wait (ulock, [this]
 	{
-	  return !m_disconnect_queue.empty () || m_terminate;
+	  return !m_disconnect_queue.empty () || m_terminate.load ();
 	});
 
 	m_disconnect_queue.swap (disconnect_work_buffer);
