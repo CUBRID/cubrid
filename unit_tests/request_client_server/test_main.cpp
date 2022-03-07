@@ -778,7 +778,8 @@ handler_register_mock_check_expected_id_and_op_count (test_request_server &req_s
 test_request_client
 create_request_client ()
 {
-  cubcomm::channel chncl;
+  const int max_timeout_in_ms = 10;
+  cubcomm::channel chncl{ max_timeout_in_ms };
   chncl.set_channel_name ("client");
 
   test_request_client req_cl (std::move (chncl));
@@ -1102,7 +1103,8 @@ test_two_request_sync_client_server_env::handle_req_and_respond_on_scs_two (
 uq_test_request_sync_client_server_one_t
 test_two_request_sync_client_server_env::create_request_sync_client_server_one ()
 {
-  cubcomm::channel chn;
+  const int max_timeout_in_ms = 10;
+  cubcomm::channel chn{ max_timeout_in_ms };
   chn.set_channel_name ("sync_client_server_one");
 
   // handle requests 2 to 1
@@ -1139,7 +1141,8 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
 uq_test_request_sync_client_server_two_t
 test_two_request_sync_client_server_env::create_request_sync_client_server_two ()
 {
-  cubcomm::channel chn;
+  const int max_timeout_in_ms = 10;
+  cubcomm::channel chn{ max_timeout_in_ms };
   chn.set_channel_name ("sync_client_server_two");
 
   // handle requests 1 to 2

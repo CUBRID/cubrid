@@ -2099,7 +2099,8 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
   std::string request_message;
   request_message.append (reinterpret_cast<const char *> (&log_pageid), sizeof (log_pageid));
 
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+  const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
+  if (perform_logging)
     {
       _er_log_debug (ARG_FILE_LINE, "[READ LOG] Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
     }
@@ -2114,6 +2115,10 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      if (perform_logging)
+        {
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n", error_code);
+        }
       return error_code;
     }
 
@@ -2127,7 +2132,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
       std::memcpy (log_pgptr, message_ptr, db_log_page_size ());
       message_ptr += db_log_page_size ();
 
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+      if (perform_logging)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received log page message from Page Server. Page ID: %lld\n",
 			 log_pgptr->hdr.logical_pageid);
@@ -2143,7 +2148,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+      if (perform_logging)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n", error_code);
 	}
