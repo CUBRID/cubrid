@@ -76,6 +76,8 @@ extern "C"
   int jsp_writen (SOCKET fd, const void *vptr, int n);
   int jsp_readn (SOCKET fd, void *vptr, int n);
 
+  int jsp_ping (SOCKET fd);
+
 #if defined(WINDOWS)
   extern int windows_socket_startup (FARPROC hook);
   extern void windows_socket_shutdown (FARPROC hook);
