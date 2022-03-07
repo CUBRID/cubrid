@@ -93,10 +93,10 @@ namespace cubcomm
       std::unique_ptr<request_sync_send_queue_t> m_queue;
       std::unique_ptr<request_queue_autosend_t> m_queue_autosend;
 
-      T_OUTGOING_MSG_ID m_outgoing_response_msgid;
-      T_INCOMING_MSG_ID m_incoming_response_msgid;
+      const T_OUTGOING_MSG_ID m_outgoing_response_msgid;
+      const T_INCOMING_MSG_ID m_incoming_response_msgid;
       response_sequence_number_generator m_rsn_generator;
-      response_broker<T_PAYLOAD> m_response_broker;
+      response_broker<T_PAYLOAD, css_error_code> m_response_broker;
   };
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -204,31 +204,34 @@ namespace cubcomm
 	  T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_request_payload, T_PAYLOAD &a_response_payload)
   {
     // Get a unique sequence number of response and group with the payload
-    response_sequence_number rsn = m_rsn_generator.get_unique_number ();
+    const response_sequence_number rsn = m_rsn_generator.get_unique_number ();
     sequenced_payload seq_payload (rsn, std::move (a_request_payload));
 
-//    css_error_code received_css_err_code = NO_ERRORS;
-//    send_queue_error_handler error_handler_ftor = [&received_css_err_code] (
-//		css_error_code error_code, bool &abort_further_processing)
-//    {
-//      abort_further_processing = false;
-//      received_css_err_code = error_code;
-//    };
+    send_queue_error_handler error_handler_ftor = [&rsn, this] (
+		css_error_code error_code, bool &abort_further_processing)
+    {
+      abort_further_processing = false;
+      this->m_response_broker.register_error (rsn, std::move (error_code));
+    };
 
     // Send the request
     m_queue->push (a_outgoing_message_id, std::move (seq_payload), nullptr /*std::move (error_handler_ftor)*/);
     // function is non-blocking, it will just push the message to be sent.
     // The following broker response getter is the blocking part.
 
-//    if (received_css_err_code != NO_ERRORS)
-//      {
-//	// error sending info, useless to wait for the answer
-//	return received_css_err_code;
-//      }
+    // check whether actual answer or error
+    //a_response_payload = m_response_broker.get_response (rsn);
+    css_error_code error_code { NO_ERRORS };
+    bool is_error { false };
+    std::tie (a_response_payload, error_code, is_error) = m_response_broker.get_outcome (rsn);
+    if (is_error)
+      {
+	a_response_payload = T_PAYLOAD ();
+	return error_code;
+      }
 
-    // Get the answer
-    a_response_payload = m_response_broker.get_response (rsn);
-
+    // do not return error code here since, even if initialized, will be filled with
+    // garbage unless the error handler is actually called
     return NO_ERRORS;
   }
 
