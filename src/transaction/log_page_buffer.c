@@ -6105,7 +6105,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	      _er_log_debug (ARG_FILE_LINE, "First log pageid for flashback is %lld", flashback_first_pageid);
 
 	      /* NULL check for flashback_first_pageid is done in flashback_is_needed_to_keep_archive () */
-	      if (logpb_is_page_in_archive (flashback_first_pageid))
+	      if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
 		{
 		  min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
 
@@ -6281,8 +6281,7 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 
 	  flashback_first_pageid = flashback_min_log_pageid_to_keep ();
 
-	  /* NULL check for flashback_first_pageid is done in flashback_is_needed_to_keep_archive () */
-	  if (logpb_is_page_in_archive (flashback_first_pageid))
+	  if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
 	    {
 	      min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
 	      min_arv_required_for_flashback--;

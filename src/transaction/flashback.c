@@ -80,16 +80,6 @@ flashback_set_min_log_pageid_to_keep (LOG_LSA * lsa)
 }
 
 /*
- * flashback_unset_min_log_pageid_to_keep - unset flashback_Min_log_pageid to NULL_LOG_PAGEID
- */
-
-void
-flashback_unset_min_log_pageid_to_keep ()
-{
-  flashback_Min_log_pageid = NULL_LOG_PAGEID;
-}
-
-/*
  * flashback_min_log_pageid_to_keep - returns minimum log pageid to keep
  *
  * return   : minimum pageid that flashback have to keep
@@ -112,22 +102,6 @@ flashback_set_request_done_time ()
 }
 
 /*
- * flashback_set_threshold - set flashback_Threshold_to_remove_archive
- *                           it follows PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL
- */
-
-static void
-flashback_set_threshold ()
-{
-  flashback_Threshold_to_remove_archive = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
-  if (flashback_Threshold_to_remove_archive < 60)
-    {
-      /* set threshold to 60 which is recommended intervals for removing archive logs */
-      flashback_Threshold_to_remove_archive = 60;
-    }
-}
-
-/*
  * flashback_check_time_to_remove_archive - check the time if the archive can be removed
  *
  * return   : true or false
@@ -136,12 +110,14 @@ flashback_set_threshold ()
 bool
 flashback_check_time_exceed_threshold ()
 {
-  if (flashback_Threshold_to_remove_archive == 0)
-    {
-      flashback_set_threshold ();
-    }
+  const int minimum_threshold = 60;	// set minimum to 60 which is recommended intervals for removing archive logs
 
-  return (time (NULL) - flashback_Last_request_done_time) >= flashback_Threshold_to_remove_archive;
+  int threshold_to_remove_archive = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
+
+  threshold_to_remove_archive =
+    threshold_to_remove_archive < minimum_threshold ? minimum_threshold : threshold_to_remove_archive;
+
+  return (time (NULL) - flashback_Last_request_done_time) >= threshold_to_remove_archive;
 }
 
 /*
@@ -160,7 +136,7 @@ flashback_is_needed_to_keep_archive ()
       return false;
     }
 
-  if (!flashback_Is_active && flashback_check_time_exceed_threshold ())
+  if (!flashback_Is_active.load () && flashback_check_time_exceed_threshold ())
     {
       /* if flashback request is not in active and interval between flashback
        * requests exceeds threshold, then there is no need to keep archive log for flashback */
