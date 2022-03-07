@@ -3167,7 +3167,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   char *ha_node_list_p = NULL;
   char **ha_node_list_pp = NULL;
   char *start_node;
-  int ha_node_cnt = 0;
+  int ha_node_idx = 0;
   time_t start_time, cur_time;
 
   start_time = time (NULL);
@@ -3227,9 +3227,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, active_log_path);
 	  error = ER_LOG_MOUNT_FAIL;
-	}
-      if (error != NO_ERROR)
-	{
 	  printf ("\n%s\n\n", db_error_string (3));
 	  goto print_applyinfo_usage;
 	}
@@ -3351,19 +3348,18 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (check_master_info)
 	{
 	  check_master_info = false;
-	  for (; ha_node_list_pp[ha_node_cnt] != NULL;)
+	  for (; ha_node_list_pp[ha_node_idx] != NULL;)
 	    {
-	      if (!strcmp (master_node_name, ha_node_list_pp[ha_node_cnt]))
+	      if (!strcmp (master_node_name, ha_node_list_pp[ha_node_idx]))
 		{
 		  check_master_info = true;
 		  break;
 		}
-	      ha_node_cnt++;
+	      ha_node_idx++;
 	    }
 	  if (!check_master_info)
 	    {
 	      er_init (er_msg_file, ER_NEVER_EXIT);
-	      error = INVALID_SOCKET;
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, master_node_name);
 	      PRINT_AND_LOG_ERR_MSG ("\n%s\n\n", db_error_string (3));
 	      goto print_applyinfo_usage;
