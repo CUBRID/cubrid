@@ -904,7 +904,7 @@ $ LOADDB
 834 Ci sono delle discrepanze tra stringa di origine "%1$s" e la stringa di formato "%2$s" dato nel to_number().
 835 Artocolo non definito di statistiche.
 836 Blocco sulla pagina (%1$d|%2$d) è scaduto.
-837 Impossibile eliminare l'utente che possiede oggetti di database (classe/trigger/seriale etc.)
+837 Impossibile eliminare l'utente che possiede oggetti di database (classe/trigger/seriale/server etc.)
 838 Non è possibile aprire più di %1$d scansioni di index contemporaneamente.
 839 "%1$s": parametro di sistema sconosciuto o valore non valido.
 840 Non è possibile modificare il parametro di sistema "%1$s".
@@ -1402,7 +1402,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 

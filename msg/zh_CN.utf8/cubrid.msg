@@ -904,7 +904,7 @@ $ LOADDB
 834 在给to_number()的源字符串 "%1$s" 和格式字符串之间 "%2$s" 存在一些匹配不一致.
 835 未定义的统计项目.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 无法删除拥有数据库对象(类/触发器/序列 等等)的用户. 
+837 无法删除拥有数据库对象(类/触发器/序列/服务器 等等)的用户.
 838 无法同时打开多于 %1$d index scans.
 839 "%1$s": 未知的系统参数或错误的值.
 840 无法改变系统参数 "%1$s".
@@ -1403,7 +1403,7 @@ $ LOADDB
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 

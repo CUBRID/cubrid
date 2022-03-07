@@ -118,6 +118,7 @@ option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
+option(WITH_CCI "Build with CCI driver" OFF)
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 # expat library sources URL
@@ -498,7 +499,7 @@ endif(CMAKE_BUILD_TYPE MATCHES "Profile")
 set(API_DIR                  ${CMAKE_SOURCE_DIR}/src/api)
 set(BASE_DIR                 ${CMAKE_SOURCE_DIR}/src/base)
 set(BROKER_DIR               ${CMAKE_SOURCE_DIR}/src/broker)
-set(CCI_DIR                  ${CMAKE_SOURCE_DIR}/src/cci)
+set(CCI_DIR                  ${CMAKE_SOURCE_DIR}/cubrid-cci/src/cci)
 set(CM_COMMON_DIR            ${CMAKE_SOURCE_DIR}/src/cm_common)
 set(COMMUNICATION_DIR        ${CMAKE_SOURCE_DIR}/src/communication)
 set(COMPAT_DIR               ${CMAKE_SOURCE_DIR}/src/compat)
@@ -518,7 +519,7 @@ set(REPLICATION_DIR          ${CMAKE_SOURCE_DIR}/src/replication)
 set(SESSION_DIR              ${CMAKE_SOURCE_DIR}/src/session)
 set(STORAGE_DIR              ${CMAKE_SOURCE_DIR}/src/storage)
 set(THREAD_DIR               ${CMAKE_SOURCE_DIR}/src/thread)
-set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/src/tools)
+set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/cubrid-cci/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
@@ -529,7 +530,6 @@ include_directories(
   src/api
   src/base
   src/broker
-  src/cci
   src/communication
   src/compat
   src/connection
@@ -546,10 +546,15 @@ include_directories(
   src/session
   src/storage
   src/thread
-  src/tools
   src/transaction
   src/xasl
   )
+if(WITH_CCI)
+  include_directories(
+    cubrid-cci/src/cci
+    cubrid-cci/src/tools
+  )
+endif(WITH_CCI)
 
 include(CheckFunctionExists)
 check_function_exists(asprintf HAVE_ASPRINTF)
@@ -803,6 +808,7 @@ if(USE_CUBRID_ENV)
   set(CUBRID_TZDIR timezones)
   set(CUBRID_DEMODIR demo)
   set(CUBRID_COMPATDIR compat)
+  set(CUBRID_CCIDIR cci)
 else(USE_CUBRID_ENV)
   message(WARNING "This build does not use CUBRID environment variables")
   list(APPEND COMMON_DEFS DO_NOT_USE_CUBRIDENV)
@@ -868,6 +874,11 @@ else(USE_CUBRID_ENV)
     list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_TMPDIR}")
   else()
     list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_PREFIXDIR}/${CUBRID_TMPDIR}")
+  endif()
+  if(IS_ABSOLUTE ${CUBRID_CCIDIR})
+    list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_CCIDIR}")
+  else()
+    list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_PREFIXDIR}/${CUBRID_CCIDIR}")
   endif()
   # directories for install
   set(CUBRID_INCLUDEDIR include CACHE STRING "The directory for header files")
@@ -1211,14 +1222,15 @@ add_subdirectory(sa)
 add_subdirectory(cs)
 add_subdirectory(cubrid)
 add_subdirectory(util)
-add_subdirectory(cci)
+if(WITH_CCI)
+  add_subdirectory(cubrid-cci)
+endif(WITH_CCI)
 add_subdirectory(broker)
 add_subdirectory(cm_common)
 add_subdirectory(conf)
 add_subdirectory(msg)
 add_subdirectory(demo)
 add_subdirectory(contrib)
-add_subdirectory(tools)
 add_subdirectory(locales)
 add_subdirectory(timezones)
 add_subdirectory(jsp)
@@ -1230,7 +1242,7 @@ if(WIN32)
   add_subdirectory(win)
 endif(WIN32)
 
-if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
+if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
   get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
   get_target_property(CMSTAT_PUBLIC_HEADERS cmstat PUBLIC_HEADER)
@@ -1275,7 +1287,7 @@ if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
   install(DIRECTORY ${INSTALL_DIR}/
     DESTINATION ${CUBRID_PREFIXDIR} COMPONENT Manager
     USE_SOURCE_PERMISSIONS)
-endif(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
+endif(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
 
 
 # create empty directories
@@ -1292,6 +1304,9 @@ endif(USE_CUBRID_ENV)
 
 if(WITH_SOURCES)
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/ DESTINATION ${CUBRID_SRCDIR})
+  if(WITH_CCI)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/cubrid-cci/src/ DESTINATION ${CUBRID_SRCDIR})
+  endif(WITH_CCI)
 endif(WITH_SOURCES)
 
 # for packaging
@@ -1301,6 +1316,17 @@ if(UNIX)
 else(UNIX)
   set(CPACK_GENERATOR "ZIP")
 endif(UNIX)
+
+if(WITH_CCI)
+  if(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-cci/CCI-VERSION-DIST)
+    set(VERSION_FILE ${CMAKE_SOURCE_DIR}/cubrid-cci/CCI-VERSION-DIST)
+    file(STRINGS ${VERSION_FILE} CCI_VERSION)
+  else(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-cci/CCI-VERSION-DIST)
+    message(WARRING "Could not find a CCI VERSION file")
+    set(CCI_VERSION "0.0.0.0000")
+  endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-cci/CCI-VERSION-DIST)
+message(STATUS "Get version information CCI_VERSION: ${CCI_VERSION}")
+endif(WITH_CCI)
 
 set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "CUBRID Open Source RDBMS")
@@ -1325,14 +1351,14 @@ endif(CMAKE_BUILD_TYPE MATCHES "Debug")
 if(WIN32)
   if(TARGET_PLATFORM_BITS EQUAL 32)
     set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CMAKE_SYSTEM_NAME}-x86-${CUBRID_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
-    set(CCI_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CMAKE_SYSTEM_NAME}-x86-${CUBRID_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
+    set(CCI_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CMAKE_SYSTEM_NAME}-x86-${CCI_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
   else(TARGET_PLATFORM_BITS EQUAL 32)
     set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CMAKE_SYSTEM_NAME}-x64-${CUBRID_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
-    set(CCI_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CMAKE_SYSTEM_NAME}-x64-${CUBRID_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
+    set(CCI_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CMAKE_SYSTEM_NAME}-x64-${CCI_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
   endif(TARGET_PLATFORM_BITS EQUAL 32)
 else(WIN32)
   set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CUBRID_VERSION}-${CMAKE_SYSTEM_NAME}.${CMAKE_HOST_SYSTEM_PROCESSOR}${CUBRID_PACKAGE_FILE_SUFFIX}")
-  set(CCI_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CUBRID_VERSION}-${CMAKE_SYSTEM_NAME}.${CMAKE_HOST_SYSTEM_PROCESSOR}${CUBRID_PACKAGE_FILE_SUFFIX}")
+  set(CCI_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CCI_VERSION}-${CMAKE_SYSTEM_NAME}.${CMAKE_HOST_SYSTEM_PROCESSOR}${CUBRID_PACKAGE_FILE_SUFFIX}")
 endif(WIN32)
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CUBRID_VERSION}-src")
 

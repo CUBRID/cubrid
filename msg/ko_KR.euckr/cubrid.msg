@@ -904,7 +904,7 @@ $ LOADDB
 834 to_number() 함수에 주어진 source 문자열 "%1$s"과 format 문자열 "%2$s"이 매칭되지 않습니다.
 835 정의되지 않은 통계 아이템입니다.
 836 페이지(%1$d|%2$d)에 대한 래치 획득 요청이 시간을 초과하였습니다.
-837 데이터베이스 객체(클래스/뷰/트리거/serial 등)을 소유한 사용자는 삭제할 수 없습니다.
+837 데이터베이스 객체(클래스/뷰/트리거/serial/server 등)을 소유한 사용자는 삭제할 수 없습니다.
 838 동시에 %1$d개를 초과하는 인덱스 스캔을 열 수 없습니다.
 839 "%1$s": 알 수 없는 시스템 파라미터 이거나 값이 잘못되었습니다.
 840 시스템 파라미터 "%1$s"를 바꿀 수 없습니다.
@@ -1402,7 +1402,7 @@ $ LOADDB
 1327 "%1$s" 열의 정밀도 값이 잘못되었습니다.
 
 1328 잘못된 Descriptor Handle 입니다.
-1329 Error reserved for dblink development.
+1329 지원하지 않는 DBMS 입니다.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 

@@ -52,4 +52,6 @@ EXPORTS
 	cm_util_log_write_errid
 	cm_util_log_write_errstr
 	cm_util_log_write_command
+	make_temp_filename
+	make_temp_filepath
 	

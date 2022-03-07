@@ -1617,10 +1617,12 @@ stmt_done
 	;
 
 stmt_list
-	: stmt_list stmt %dprec 1
+	: stmt_list ';' %dprec 1
+                {{ /* empty line*/ }}
+        | stmt_list ';' stmt %dprec 2
 		{{
 
-			if ($2 != NULL)
+			if ($3 != NULL)
 			  {
 			    if (parser_statement_OK)
 			      {
@@ -1631,15 +1633,15 @@ stmt_list
 			        parser_statement_OK = 1;
 			      }
 
-			    pt_push (this_parser, $2);
+			    pt_push (this_parser, $3);
 
 			#ifdef PARSER_DEBUG
-			    printf ("node: %s\n", parser_print_tree (this_parser, $2));
+			    printf ("node: %s\n", parser_print_tree (this_parser, $3));
 			#endif
 			  }
 
 		DBG_PRINT}}
-	| stmt %dprec 2
+	| stmt %dprec 3
 		{{
 
 			if ($1 != NULL)
@@ -1661,6 +1663,8 @@ stmt_list
 			  }
 
 		DBG_PRINT}}
+        | ';'
+                {{ /* empty line*/ }}
 	;
 
 
@@ -1793,12 +1797,6 @@ stmt
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ';'
-		{{
-
-			$$ = NULL;
 
 		DBG_PRINT}}
 	;
@@ -25221,6 +25219,8 @@ PT_HINT parser_hint_table[] = {
   {"NO_HASH_LIST_SCAN", NULL, PT_HINT_NO_HASH_LIST_SCAN}
   ,
   {"NO_PUSH_PRED", NULL, PT_HINT_NO_PUSH_PRED}
+  ,
+  {"NO_MERGE", NULL, PT_HINT_NO_MERGE}
   ,
   {"SKIP_UPDATE_NULL", NULL, PT_HINT_SKIP_UPDATE_NULL}
   ,

@@ -158,9 +158,9 @@ ____cubrid__here_doc____
 cat << '____cubrid__here_doc____' >> ${cubrid_csh_envfile}-@CPACK_PACKAGE_VERSION@
 setenv CUBRID_DATABASES $CUBRID/databases
 if (${?LD_LIBRARY_PATH}) then
-  setenv LD_LIBRARY_PATH $CUBRID/lib:${LD_LIBRARY_PATH}
+  setenv LD_LIBRARY_PATH $CUBRID/lib:$CUBRID/cci/lib:${LD_LIBRARY_PATH}
 else
-  setenv LD_LIBRARY_PATH $CUBRID/lib
+  setenv LD_LIBRARY_PATH $CUBRID/lib:$CUBRID/cci/lib
 endif
 setenv SHLIB_PATH $LD_LIBRARY_PATH
 setenv LIBPATH $LD_LIBRARY_PATH
@@ -174,9 +174,9 @@ ____cubrid__here_doc____
 cat << '____cubrid__here_doc____' >> ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
 CUBRID_DATABASES=$CUBRID/databases
 if [ "x${LD_LIBRARY_PATH}x" = xx ]; then
-  LD_LIBRARY_PATH=$CUBRID/lib
+  LD_LIBRARY_PATH=$CUBRID/lib:$CUBRID/cci/lib
 else
-  LD_LIBRARY_PATH=$CUBRID/lib:$LD_LIBRARY_PATH
+  LD_LIBRARY_PATH=$CUBRID/lib:$CUBRID/cci/lib:$LD_LIBRARY_PATH
 fi
 SHLIB_PATH=$LD_LIBRARY_PATH
 LIBPATH=$LD_LIBRARY_PATH
