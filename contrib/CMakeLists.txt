@@ -93,7 +93,7 @@ if(WIN32)
   install(FILES
     ${CMAKE_SOURCE_DIR}/contrib/windows_scripts/cubrid_env.bat
     DESTINATION ${CUBRID_DATADIR}/windows_scripts/)
-endif(Win32)
+endif(WIN32)
 
 # scripts for installation
 if(UNIX)

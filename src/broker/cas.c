@@ -1244,6 +1244,7 @@ cas_main (void)
 #else
 
 	    dbms_type = cgw_is_supported_dbms (shm_appl->cgw_link_server);
+	    cgw_set_dbms_type (dbms_type);
 
 	    if (dbms_type == SUPPORTED_DBMS_ORACLE)
 	      {
