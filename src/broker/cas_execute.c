@@ -1118,6 +1118,15 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto prepare_error;
 	}
+
+      err_code =
+	cgw_set_stmt_attr (srv_handle->cgw_handle->hstmt, SQL_ATTR_CURSOR_TYPE, (SQLPOINTER) SQL_CURSOR_STATIC,
+			   SQL_IS_INTEGER);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto prepare_error;
+	}
     }
 
   err_code = cgw_sql_prepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) sql_stmt);
@@ -3227,7 +3236,10 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle)
       return;
     }
 #if defined(CAS_FOR_CGW)
-  cgw_cursor_close (srv_handle->cgw_handle->hstmt);
+  if (cgw_cursor_close (srv_handle->cgw_handle->hstmt) > -1)
+    {
+      srv_handle->cgw_handle->hstmt = NULL;
+    }
 #else
   ux_free_result (srv_handle->q_result[idx].result);
   srv_handle->q_result[idx].result = NULL;
