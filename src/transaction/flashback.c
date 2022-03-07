@@ -136,7 +136,7 @@ flashback_is_needed_to_keep_archive ()
       return false;
     }
 
-  if (!flashback_Is_active.load () && flashback_check_time_exceed_threshold ())
+  if (!flashback_Is_active && flashback_check_time_exceed_threshold ())
     {
       /* if flashback request is not in active and interval between flashback
        * requests exceeds threshold, then there is no need to keep archive log for flashback */
@@ -154,7 +154,7 @@ flashback_is_needed_to_keep_archive ()
  */
 
 void
-flashback_reset_variables ()
+flashback_reset ()
 {
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
   flashback_Threshold_to_remove_archive = 0;

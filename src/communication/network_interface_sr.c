@@ -10828,7 +10828,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
        * Therefore, after all variables related to flashback are initialized, subsequent operations should be performed
        */
 
-      flashback_reset_variables ();
+      flashback_reset ();
     }
 
   flashback_set_status_active ();
@@ -10913,7 +10913,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   if (error_code != NO_ERROR)
     {
-      flashback_reset_variables ();
+      flashback_reset ();
     }
   else
     {
@@ -10932,7 +10932,7 @@ error:
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
-  flashback_reset_variables ();
+  flashback_reset ();
 
   return;
 }
@@ -11057,7 +11057,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa) || error_code != NO_ERROR)
     {
-      flashback_reset_variables ();
+      flashback_reset ();
     }
   else
     {
@@ -11079,7 +11079,7 @@ error:
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
-  flashback_reset_variables ();
+  flashback_reset ();
 
   return;
 }
