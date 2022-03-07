@@ -304,11 +304,12 @@ namespace cubcomm
   void
   request_queue_autosend<ReqQueue>::loop_send_requests ()
   {
+    constexpr auto ten_millis = std::chrono::milliseconds (10);
     typename ReqQueue::queue_type requests;
     while (!m_shutdown)
       {
 	// Check shutdown flag every 10 milliseconds
-	m_req_queue.wait_not_empty_and_send_all (requests, std::chrono::milliseconds (10));
+	m_req_queue.wait_not_empty_and_send_all (requests, ten_millis);
       }
   }
 

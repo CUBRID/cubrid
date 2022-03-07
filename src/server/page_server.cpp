@@ -41,8 +41,14 @@ page_server ps_Gl;
 page_server::~page_server ()
 {
   assert (m_replicator == nullptr);
+
+  // for now, application logic dictates that all transaction server must disconnect from their end
+  // (either proactively or not)
+  // when/if needed connections can be moved here to the disconnect handler and that one waited for
   assert (m_active_tran_server_conn == nullptr);
   assert (m_passive_tran_server_conn.size () == 0);
+
+  m_disconnect_handler.terminate ();
 }
 
 page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps)
@@ -173,27 +179,32 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
   // passive transaction server - it should have been disconnected beforehand
   assert (! (bool) m_prior_sender_sink_hook_func);
 
-  //start a thread to destroy the ATS/PTS to PS connection object
-  std::thread disconnect_thread (&page_server::disconnect_tran_server, std::ref (m_ps), this);
-  disconnect_thread.detach ();
+  m_ps.disconnect_tran_server_async (this);
 }
 
 void
 page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code error_code,
     bool &abort_further_processing)
 {
-  /* when a transaction server suddenly disconnects, if the page server happens to be be either
+  /* Explanation for the mutex lock.
+   * A connection handler has 2 threads underneath:
+   *  - a thread that handles incoming requests and matches them to handling functions - cubcomm:request_server
+   *  - a thread that handles continuous send of messages (either responses or not) - cubcomm::request_queue_autosend
+   * For now, only the second one - the send part - implements the handler but, technically, any of these can,
+   * at some point trigger this disconnect function.
+   * */
+  std::lock_guard<std::mutex> lockg { m_abnormal_tran_server_disconnect_mtx };
+
+  /* when a transaction server suddenly disconnects, if the page server happens to be either
    * proactively sending data or responding to a request, an error is reported from the network layer;
    * this function is a handler for such an error - see cubcomm::send_queue_error_handler.
    *
    * NOTE: if needed, functionality can be extended with more advanced features (ie: retry policy, timeouts ..)
    * */
-
-  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect; request abort futher processing\n");
-  abort_further_processing = true;
-
   if (!m_abnormal_tran_server_disconnect)
     {
+      abort_further_processing = true;
+
       if (m_prior_sender_sink_hook_func)
 	{
 	  // passive transaction server connection
@@ -214,10 +225,13 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
 			(int)error_code);
 	}
 
-      m_abnormal_tran_server_disconnect = true;
+      m_ps.disconnect_tran_server_async (this);
 
-      std::thread disconnect_thread { &page_server::disconnect_tran_server, std::ref (m_ps), this };
-      disconnect_thread.detach ();
+      m_abnormal_tran_server_disconnect = true;
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect: already requested to disconnect\n");
     }
 }
 
@@ -244,6 +258,72 @@ page_server::connection_handler::prior_sender_sink_hook (std::string &&message) 
   m_conn->push (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST, std::move (message));
 }
 
+page_server::disconnect_handler::disconnect_handler ()
+  : m_terminate { false }
+{
+  m_thread = std::thread (&page_server::disconnect_handler::disconnect_loop, std::ref (*this));
+}
+
+page_server::disconnect_handler::~disconnect_handler ()
+{
+  assert (m_terminate);
+  if (m_terminate && m_thread.joinable ())
+    {
+      m_queue_cv.notify_one ();
+      m_thread.join ();
+    }
+
+  assert (m_disconnect_queue.empty ());
+}
+
+void
+page_server::disconnect_handler::disconnect (connection_handler_uptr_t &&handler)
+{
+  if (!m_terminate)
+    {
+      std::lock_guard<std::mutex> lockg { m_queue_mtx };
+      m_disconnect_queue.emplace (std::move (handler));
+      m_queue_cv.notify_one ();
+    }
+  else
+    {
+      // cannot ask for disconnect after termination
+      assert (false);
+    }
+}
+
+void
+page_server::disconnect_handler::terminate ()
+{
+  m_terminate = true;
+  m_queue_cv.notify_one ();
+}
+
+void
+page_server::disconnect_handler::disconnect_loop ()
+{
+  std::queue<connection_handler_uptr_t> disconnect_work_buffer;
+  while (!m_terminate)
+    {
+      {
+	std::unique_lock<std::mutex> ulock { m_queue_mtx };
+	m_queue_cv.wait (ulock, [this]
+	{
+	  return !m_disconnect_queue.empty () || m_terminate;
+	});
+
+	m_disconnect_queue.swap (disconnect_work_buffer);
+      }
+
+      while (!disconnect_work_buffer.empty ())
+	{
+	  connection_handler_uptr_t &front = disconnect_work_buffer.front ();
+	  front.reset (nullptr);
+	  disconnect_work_buffer.pop ();
+	}
+    }
+}
+
 void
 page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 {
@@ -255,10 +335,14 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 
   if (m_active_tran_server_conn != nullptr)
     {
-      // ATS must have crashed without disconnecting from us. Destroy old connection to create a new one.
+      // When [A]TS crashes there are two possibilities:
+      //  - either the crash is detected an the connection is dropped - see abnormal_tran_server_disconnect
+      //    (this happens because page server is still supposed to send data to the transaction server and
+      //    is no longer able to do this as data is not consumed anymore)
+      //  - or the crahs is not detected and the connection remains hanging
       disconnect_active_tran_server ();
     }
-  assert (m_active_tran_server_conn == nullptr);
+
   m_active_tran_server_conn.reset (new connection_handler (chn, *this));
 }
 
@@ -277,18 +361,27 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
 void
 page_server::disconnect_active_tran_server ()
 {
-  er_log_debug (ARG_FILE_LINE, "Page server disconnected from active transaction server with channel id: %s.\n",
-		m_active_tran_server_conn->get_channel_id ().c_str ());
-  m_active_tran_server_conn.reset (nullptr);
+  if (m_active_tran_server_conn != nullptr)
+    {
+      er_log_debug (ARG_FILE_LINE, "disconnect_active_tran_server:"
+		    " Disconnect active transaction server connection with channel id: %s.\n",
+		    m_active_tran_server_conn->get_channel_id ().c_str ());
+      m_active_tran_server_conn.reset (nullptr);
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "disconnect_active_tran_server: Active transaction server is not connected.\n");
+    }
 }
 
 void
-page_server::disconnect_tran_server (connection_handler *conn)
+page_server::disconnect_tran_server_async (connection_handler *conn)
 {
   assert (conn != nullptr);
   if (conn == m_active_tran_server_conn.get ())
     {
-      disconnect_active_tran_server ();
+      m_disconnect_handler.disconnect (std::move (m_active_tran_server_conn));
+      assert (m_active_tran_server_conn == nullptr);
     }
   else
     {
@@ -298,6 +391,8 @@ page_server::disconnect_tran_server (connection_handler *conn)
 	    {
 	      er_log_debug (ARG_FILE_LINE, "Page server disconnected from passive transaction server with channel id: %s.\n",
 			    (*it)->get_channel_id ().c_str ());
+	      m_disconnect_handler.disconnect (std::move (*it));
+	      assert (*it == nullptr);
 	      m_passive_tran_server_conn.erase (it);
 	      break;
 	    }
@@ -308,23 +403,18 @@ page_server::disconnect_tran_server (connection_handler *conn)
 void
 page_server::disconnect_all_tran_server ()
 {
-  if (m_active_tran_server_conn == nullptr)
-    {
-      er_log_debug (ARG_FILE_LINE, "Page server was never connected with an active transaction server.\n");
-    }
-  else
-    {
-      disconnect_active_tran_server ();
-    }
+  disconnect_active_tran_server ();
+
   if (m_passive_tran_server_conn.empty ())
     {
-      er_log_debug (ARG_FILE_LINE, "Page server was never connected with an passive transaction server.\n");
+      er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: No passive transaction server connected.\n");
     }
   else
     {
       for (size_t i = 0; i < m_passive_tran_server_conn.size (); i++)
 	{
-	  er_log_debug (ARG_FILE_LINE, "Page server disconnected from passive transaction server with channel id: %s.\n",
+	  er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server:"
+			" Disconnected passive transaction server with channel id: %s.\n",
 			m_passive_tran_server_conn[i]->get_channel_id ().c_str ());
 	  m_passive_tran_server_conn[i].reset (nullptr);
 	}
@@ -351,9 +441,11 @@ void
 page_server::push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload)
 {
   assert (is_page_server ());
-  assert (is_active_tran_server_connected ());
 
-  m_active_tran_server_conn->push_request (reqid, std::move (payload));
+  if (is_active_tran_server_connected ())
+    {
+      m_active_tran_server_conn->push_request (reqid, std::move (payload));
+    }
 }
 
 cublog::replicator &
@@ -378,6 +470,11 @@ void
 page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 {
   assert (m_replicator != nullptr);
+
+  // at this point, no connection to transaction server should be active
+  // after the replicator is destroyed, no further requests should be processed
+  assert (m_active_tran_server_conn == nullptr);
+  assert (m_passive_tran_server_conn.empty ());
 
   logpb_force_flush_pages (&thread_entry);
   m_replicator->wait_replication_finish_during_shutdown ();
