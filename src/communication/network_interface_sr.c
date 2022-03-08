@@ -10820,6 +10820,19 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   time_t start_time = 0;
   time_t end_time = 0;
 
+  if (flashback_min_log_pageid_to_keep () != NULL_LOG_PAGEID)
+    {
+      /* if flashback was shutdown abnormally, flashback_min_log_pageid can not be cleared
+       * If the previous flashback was abnormally terminated,
+       * this flashback_min_log_pageid  would not have been initialized.
+       * Therefore, after all variables related to flashback are initialized, subsequent operations should be performed
+       */
+
+      flashback_reset ();
+    }
+
+  flashback_set_status_active ();
+
   ptr = or_unpack_int (request, &context.num_class);
 
   for (int i = 0; i < context.num_class; i++)
@@ -10848,6 +10861,10 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     {
       goto error;
     }
+
+  assert (!LSA_ISNULL (&context.start_lsa));
+
+  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
 
   /* get summary list */
   error_code = flashback_make_summary_list (thread_p, &context);
@@ -10888,9 +10905,23 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_pack_int (ptr, context.num_summary);
   ptr = flashback_pack_summary_entry (ptr, context);
 
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+  error_code =
+    css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+				       area_size);
 
   db_private_free_and_init (thread_p, area);
+
+  if (error_code != NO_ERROR)
+    {
+      goto css_send_error;
+    }
+
+  /* It must ensure that the request_done_time and status are set in the order as below.
+   * If this order is not guaranteed in any case, the archive log used by flashback can be deleted.
+   * Refer to flashback_is_needed_to_keep_archive(). */
+  flashback_set_request_done_time ();
+
+  flashback_set_status_inactive ();
 
   return;
 error:
@@ -10898,6 +10929,13 @@ error:
   or_pack_int (ptr, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  flashback_reset ();
+
+  return;
+
+css_send_error:
+  flashback_reset ();
 
   return;
 }
@@ -10954,6 +10992,15 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0 };
 
+  flashback_set_status_active ();
+
+  if (flashback_check_time_exceed_threshold ())
+    {
+      /* er_set */
+      error_code = ER_FLASHBACK_TIMEOUT;
+      goto error;
+    }
+
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
   ptr = or_unpack_int (request, &context.trid);
@@ -11005,9 +11052,33 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   ptr = flashback_pack_loginfo (thread_p, ptr, context);
 
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+  error_code =
+    css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+				       area_size);
 
   db_private_free_and_init (thread_p, area);
+
+  if (error_code != NO_ERROR)
+    {
+      goto css_send_error;
+    }
+
+  if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa))
+    {
+      flashback_reset ();
+    }
+  else
+    {
+      if (context.forward)
+	{
+	  /* start_lsa is increased only if direction is forward */
+	  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
+	}
+
+      flashback_set_request_done_time ();
+
+      flashback_set_status_inactive ();
+    }
 
   return;
 error:
@@ -11015,6 +11086,14 @@ error:
   or_pack_int (ptr, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  flashback_reset ();
+
+  return;
+
+css_send_error:
+
+  flashback_reset ();
 
   return;
 }

@@ -1706,8 +1706,9 @@
 #define ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY -1335
 #define ER_FLASHBACK_SCHEMA_CHANGED                 -1336
 #define ER_FLASHBACK_LOG_NOT_EXIST                  -1337
+#define ER_FLASHBACK_TIMEOUT                        -1338
 
-#define ER_LAST_ERROR                               -1338
+#define ER_LAST_ERROR                               -1339
 /*
  * CAUTION!
  *
