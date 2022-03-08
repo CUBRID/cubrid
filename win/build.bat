@@ -45,6 +45,8 @@ set BUILD_TYPE=RelWithDebInfo
 set CMAKE_PATH=C:\Program Files\CMake\bin\cmake.exe
 set CPACK_PATH=C:\Program Files\CMake\bin\cpack.exe
 set GIT_PATH=C:\Program Files\Git\bin\git.exe
+set WITH_CCI=true
+
 rem default list is all
 set BUILD_LIST=ALL
 rem unset BUILD_ARGS
@@ -127,6 +129,16 @@ echo Checking for root source path [%SOURCE_DIR%]...
 if NOT EXIST "%SOURCE_DIR%\src" echo Root path for source is not valid. & GOTO :EOF
 if NOT EXIST "%SOURCE_DIR%\VERSION" set VERSION_FILE=VERSION-DIST
 
+echo Checking CCI directory [%SOURCE_DIR%\cubrid-cci]...
+if NOT EXIST "%SOURCE_DIR%\cubrid-cci\src" (
+  echo CCI source path is not exist. It must be built for dblink
+  if EXIST "%SOURCE_DIR%\.git\module\cubrid-cci" (
+    "%GIT_PATH%" submodule deinit -f "%SOURCE_DIR%\cubrid-cci"
+  )
+  "%GIT_PATH%" submodule init "%SOURCE_DIR%\cubrid-cci"
+  "%GIT_PATH%" submodule update "%SOURCE_DIR%\cubrid-cci"
+)
+
 echo Checking build number with [%SOURCE_DIR%\%VERSION_FILE%]...
 for /f %%i IN (%SOURCE_DIR%\%VERSION_FILE%) DO set VERSION=%%i
 if ERRORLEVEL 1 echo Cannot check build number. & GOTO :EOF
@@ -136,17 +148,22 @@ for /f "tokens=1,2,3,4 delims=." %%a IN (%SOURCE_DIR%\%VERSION_FILE%) DO (
   set PATCH_VERSION=%%c
   set EXTRA_VERSION=%%d
 )
+
+set CUBRID_MAJOR_START_DATE=2019-12-12
 if NOT "%EXTRA_VERSION%." == "." (
   for /f "tokens=1,* delims=-" %%a IN ("%EXTRA_VERSION%") DO set SERIAL_NUMBER=%%a
 ) else (
   if EXIST "%SOURCE_DIR%\.git" (
-    for /f "delims=" %%i in ('"%GIT_PATH%" rev-list --count HEAD') do set SERIAL_NUMBER=%%i
-    for /f "delims=" %%i in ('"%GIT_PATH%" rev-parse --short=7 HEAD') do set HASH_TAG=%%i
+    for /f "delims=" %%i in ('"%GIT_PATH%" rev-list --count --after %CUBRID_MAJOR_START_DATE% HEAD') do set SERIAL_NUMBER=0000%%i
+    for /f "delims=" %%i in ('"%GIT_PATH%" rev-parse HEAD') do set HASH_TAG=%%i
   ) else (
     set EXTRA_VERSION=0000-unknown
     set SERIAL_NUMBER=0000
   )
 )
+set SERIAL_NUMBER=%SERIAL_NUMBER:~-4%
+if NOT "%HASH_TAG%." == "." set HASH_TAG=%HASH_TAG:~0,7%
+
 if NOT "%HASH_TAG%." == "." set EXTRA_VERSION=%SERIAL_NUMBER%-%HASH_TAG%
 echo Build Version is [%VERSION% (%MAJOR_VERSION%.%MINOR_VERSION%.%PATCH_VERSION%.%EXTRA_VERSION%)]
 set VERSION=%MAJOR_VERSION%.%MINOR_VERSION%.%PATCH_VERSION%.%EXTRA_VERSION%
@@ -176,7 +193,7 @@ if "%BUILD_TARGET%" == "Win32" (
 ) ELSE (
   set CMAKE_GENERATOR="%BUILD_GENERATOR:"=% Win64"
 )
-"%CMAKE_PATH%" -G %CMAKE_GENERATOR% -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DCMAKE_INSTALL_PREFIX=%BUILD_PREFIX% -DPARALLEL_JOBS=10 %SOURCE_DIR%
+"%CMAKE_PATH%" -G %CMAKE_GENERATOR% -DWITH_CCI=%WITH_CCI% -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DCMAKE_INSTALL_PREFIX=%BUILD_PREFIX% -DPARALLEL_JOBS=10 %SOURCE_DIR%
 if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
 
 "%CMAKE_PATH%" --build . --config %BUILD_TYPE% --target install
@@ -219,11 +236,20 @@ GOTO :EOF
 
 
 :BUILD_CCI_PACKAGE
+if "%WITH_CCI%" == false GOTO :EOF
+set CCI_VERSION=0
+set CCI_VERSION_FILE=CCI-VERSION-DIST
 echo Buiding CCI package in %BUILD_DIR% ...
 if NOT EXIST %BUILD_DIR% echo Cannot found built directory. & GOTO :EOF
 cd /d %BUILD_DIR%
 
-if "%BUILD_TARGET%" == "Win32" (set CUBRID_CCI_PACKAGE_NAME=CUBRID-CCI-Windows-x86-%VERSION%) ELSE set CUBRID_CCI_PACKAGE_NAME=CUBRID-CCI-Windows-x64-%VERSION%
+if NOT EXIST "%SOURCE_DIR%\cubrid-cci\%CCI_VERSION_FILE%" echo Cannot check %CCI_VERSION_FILE% ... & GOTO :EOF
+
+echo Checking CCI build number with [%SOURCE_DIR%\cubrid-cci\%CCI_VERSION_FILE%]...
+for /f %%i IN (%SOURCE_DIR%\cubrid-cci\%CCI_VERSION_FILE%) DO set CCI_VERSION=%%i
+if ERRORLEVEL 1 echo Cannot check CCI build number. & GOTO :EOF
+
+if "%BUILD_TARGET%" == "Win32" (set CUBRID_CCI_PACKAGE_NAME=CUBRID-CCI-Windows-x86-%CCI_VERSION%) ELSE set CUBRID_CCI_PACKAGE_NAME=CUBRID-CCI-Windows-x64-%CCI_VERSION%
 echo drop %CUBRID_CCI_PACKAGE_NAME%.zip into %DIST_DIR%
 "%CPACK_PATH%" -C %BUILD_TYPE% -G ZIP -D CPACK_COMPONENTS_ALL="CCI" -B "%DIST_DIR%"
 if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
