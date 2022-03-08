@@ -118,18 +118,18 @@ class page_server
     /* helper class with the task of destroying connnection handlers and, by this,
      * also waiting for the receive and transmit threads inside the handlers to terminate
      */
-    class disconnect_handler
+    class async_disconnect_handler
     {
       public:
-	disconnect_handler ();
+	async_disconnect_handler ();
 
-	disconnect_handler (const disconnect_handler &) = delete;
-	disconnect_handler (disconnect_handler &&) = delete;
+	async_disconnect_handler (const async_disconnect_handler &) = delete;
+	async_disconnect_handler (async_disconnect_handler &&) = delete;
 
-	~disconnect_handler ();
+	~async_disconnect_handler ();
 
-	disconnect_handler &operator = (const disconnect_handler &) = delete;
-	disconnect_handler &operator = (disconnect_handler &&) = delete;
+	async_disconnect_handler &operator = (const async_disconnect_handler &) = delete;
+	async_disconnect_handler &operator = (async_disconnect_handler &&) = delete;
 
 	void disconnect (connection_handler_uptr_t &&handler);
 	void terminate ();
@@ -155,7 +155,7 @@ class page_server
 
     std::unique_ptr<responder_t> m_responder;
 
-    disconnect_handler m_disconnect_handler;
+    async_disconnect_handler m_async_disconnect_handler;
 };
 
 extern page_server ps_Gl;
