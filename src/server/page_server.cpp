@@ -48,7 +48,7 @@ page_server::~page_server ()
   assert (m_active_tran_server_conn == nullptr);
   assert (m_passive_tran_server_conn.size () == 0);
 
-  m_disconnect_handler.terminate ();
+  m_async_disconnect_handler.terminate ();
 }
 
 page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps)
@@ -258,17 +258,16 @@ page_server::connection_handler::prior_sender_sink_hook (std::string &&message) 
   m_conn->push (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST, std::move (message));
 }
 
-page_server::disconnect_handler::disconnect_handler ()
+page_server::async_disconnect_handler::async_disconnect_handler ()
   : m_terminate { false }
 {
-  m_thread = std::thread (&page_server::disconnect_handler::disconnect_loop, std::ref (*this));
+  m_thread = std::thread (&page_server::async_disconnect_handler::disconnect_loop, std::ref (*this));
 }
 
-page_server::disconnect_handler::~disconnect_handler ()
+page_server::async_disconnect_handler::~async_disconnect_handler ()
 {
   if (m_terminate.load () && m_thread.joinable ())
     {
-      m_queue_cv.notify_one ();
       m_thread.join ();
     }
   else
@@ -280,12 +279,13 @@ page_server::disconnect_handler::~disconnect_handler ()
 }
 
 void
-page_server::disconnect_handler::disconnect (connection_handler_uptr_t &&handler)
+page_server::async_disconnect_handler::disconnect (connection_handler_uptr_t &&handler)
 {
   if (!m_terminate.load ())
     {
-      std::lock_guard<std::mutex> lockg { m_queue_mtx };
+      std::unique_lock<std::mutex> ulock { m_queue_mtx };
       m_disconnect_queue.emplace (std::move (handler));
+      ulock.unlock ();
       m_queue_cv.notify_one ();
     }
   else
@@ -296,14 +296,14 @@ page_server::disconnect_handler::disconnect (connection_handler_uptr_t &&handler
 }
 
 void
-page_server::disconnect_handler::terminate ()
+page_server::async_disconnect_handler::terminate ()
 {
   m_terminate.store (true);
   m_queue_cv.notify_one ();
 }
 
 void
-page_server::disconnect_handler::disconnect_loop ()
+page_server::async_disconnect_handler::disconnect_loop ()
 {
   std::queue<connection_handler_uptr_t> disconnect_work_buffer;
   while (!m_terminate.load ())
@@ -383,7 +383,7 @@ page_server::disconnect_tran_server_async (connection_handler *conn)
   assert (conn != nullptr);
   if (conn == m_active_tran_server_conn.get ())
     {
-      m_disconnect_handler.disconnect (std::move (m_active_tran_server_conn));
+      m_async_disconnect_handler.disconnect (std::move (m_active_tran_server_conn));
       assert (m_active_tran_server_conn == nullptr);
     }
   else
@@ -394,7 +394,7 @@ page_server::disconnect_tran_server_async (connection_handler *conn)
 	    {
 	      er_log_debug (ARG_FILE_LINE, "Page server disconnected from passive transaction server with channel id: %s.\n",
 			    (*it)->get_channel_id ().c_str ());
-	      m_disconnect_handler.disconnect (std::move (*it));
+	      m_async_disconnect_handler.disconnect (std::move (*it));
 	      assert (*it == nullptr);
 	      m_passive_tran_server_conn.erase (it);
 	      break;
