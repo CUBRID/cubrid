@@ -6286,6 +6286,10 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 	      min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
 	      min_arv_required_for_flashback--;
 	      last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_flashback);
+
+	      _er_log_debug (ARG_FILE_LINE,
+			     "FLASHBACK : first log pageid is %d, first archive log number is %d, last_deleted_arv_num is %d",
+			     flashback_first_pageid, min_arv_required_for_flashback, last_deleted_arv_num);
 	    }
 	}
     }

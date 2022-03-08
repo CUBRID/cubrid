@@ -10913,17 +10913,15 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   if (error_code != NO_ERROR)
     {
-      flashback_reset ();
+      goto css_send_error;
     }
-  else
-    {
-      /* It must ensure that the request_done_time and status are set in the order as below.
-       * If this order is not guaranteed in any case, the archive log used by flashback can be deleted.
-       * Refer to flashback_is_needed_to_keep_archive(). */
-      flashback_set_request_done_time ();
 
-      flashback_set_status_inactive ();
-    }
+  /* It must ensure that the request_done_time and status are set in the order as below.
+   * If this order is not guaranteed in any case, the archive log used by flashback can be deleted.
+   * Refer to flashback_is_needed_to_keep_archive(). */
+  flashback_set_request_done_time ();
+
+  flashback_set_status_inactive ();
 
   return;
 error:
@@ -10932,6 +10930,11 @@ error:
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
+  flashback_reset ();
+
+  return;
+
+css_send_error:
   flashback_reset ();
 
   return;
@@ -11055,7 +11058,12 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   db_private_free_and_init (thread_p, area);
 
-  if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa) || error_code != NO_ERROR)
+  if (error_code != NO_ERROR)
+    {
+      goto css_send_error;
+    }
+
+  if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa))
     {
       flashback_reset ();
     }
@@ -11078,6 +11086,12 @@ error:
   or_pack_int (ptr, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  flashback_reset ();
+
+  return;
+
+css_send_error:
 
   flashback_reset ();
 
