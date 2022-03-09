@@ -31,6 +31,7 @@ class page_server
 {
   private:
     class connection_handler;
+    using connection_handler_uptr_t = std::unique_ptr<connection_handler>;
 
   public:
     page_server () = default;
@@ -56,7 +57,7 @@ class page_server
   private:
 
     void disconnect_active_tran_server ();
-    void disconnect_tran_server (connection_handler *conn);
+    void disconnect_tran_server_async (connection_handler *conn);
     bool is_active_tran_server_connected () const;
 
     class connection_handler
@@ -110,18 +111,51 @@ class page_server
 	// function that will, at some moment, remove that hook
 	mutable std::mutex m_prior_sender_sink_removal_mtx;
 
+	std::mutex m_abnormal_tran_server_disconnect_mtx;
 	bool m_abnormal_tran_server_disconnect;
+    };
+
+    /* helper class with the task of destroying connnection handlers and, by this,
+     * also waiting for the receive and transmit threads inside the handlers to terminate
+     */
+    class async_disconnect_handler
+    {
+      public:
+	async_disconnect_handler ();
+
+	async_disconnect_handler (const async_disconnect_handler &) = delete;
+	async_disconnect_handler (async_disconnect_handler &&) = delete;
+
+	~async_disconnect_handler ();
+
+	async_disconnect_handler &operator = (const async_disconnect_handler &) = delete;
+	async_disconnect_handler &operator = (async_disconnect_handler &&) = delete;
+
+	void disconnect (connection_handler_uptr_t &&handler);
+	void terminate ();
+
+      private:
+	void disconnect_loop ();
+
+      private:
+	std::atomic_bool m_terminate;
+	std::queue<connection_handler_uptr_t> m_disconnect_queue;
+	std::mutex m_queue_mtx;
+	std::condition_variable m_queue_cv;
+	std::thread m_thread;
     };
 
     using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;
     responder_t &get_responder ();
 
-    std::unique_ptr<connection_handler> m_active_tran_server_conn;
-    std::vector<std::unique_ptr<connection_handler>> m_passive_tran_server_conn;
+    connection_handler_uptr_t m_active_tran_server_conn;
+    std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
 
     std::unique_ptr<cublog::replicator> m_replicator;
 
     std::unique_ptr<responder_t> m_responder;
+
+    async_disconnect_handler m_async_disconnect_handler;
 };
 
 extern page_server ps_Gl;
