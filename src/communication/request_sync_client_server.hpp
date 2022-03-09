@@ -148,7 +148,7 @@ namespace cubcomm
   , m_queue_autosend { new request_queue_autosend_t (*m_queue) }
   , m_outgoing_response_msgid { a_outgoing_response_msgid }
   , m_incoming_response_msgid { a_incoming_response_msgid }
-  , m_response_broker { response_partition_count }
+  , m_response_broker { response_partition_count, NO_ERRORS }
   {
     assert (a_incoming_request_handlers.size () > 0);
     for (const auto &pair: a_incoming_request_handlers)
@@ -221,17 +221,14 @@ namespace cubcomm
 
     // check whether actual answer or error
     css_error_code error_code { NO_ERRORS };
-    bool is_error { false };
-    std::tie (a_response_payload, error_code, is_error) = m_response_broker.get_response (rsn);
-    if (is_error)
+    std::tie (a_response_payload, error_code/*, is_error*/) = m_response_broker.get_response (rsn);
+    if (error_code != NO_ERRORS)
       {
+	// clear payload
 	a_response_payload = T_PAYLOAD ();
-	return error_code;
       }
 
-    // do not return error code here since, even if initialized, will be filled with
-    // garbage unless the error handler is actually called
-    return NO_ERRORS;
+    return error_code;
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>

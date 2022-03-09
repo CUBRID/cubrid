@@ -650,9 +650,9 @@ TEST_CASE ("Test response broker", "")
 	    }
 	    request_condvar.notify_all ();
 
-	    const auto [response, dummy_error_code, is_error ] = broker.get_response (rsn);
+	    const auto [ response, error_code ] = broker.get_response (rsn);
 
-	    REQUIRE (!is_error);
+	    REQUIRE (error_code == NO_ERRORS);
 	    REQUIRE (response == rsn);
 	  }
       }

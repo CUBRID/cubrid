@@ -49,7 +49,7 @@ namespace cubcomm
   {
     public:
       response_broker () = delete;
-      response_broker (size_t a_bucket_count);
+      response_broker (size_t a_bucket_count, T_ERROR a_no_error);
 
       response_broker (const response_broker &) = delete;
       response_broker (response_broker &&) = delete;
@@ -60,15 +60,15 @@ namespace cubcomm
       void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
       void register_error (response_sequence_number a_rsn, T_ERROR &&a_error);
 
-      std::tuple<T_PAYLOAD, T_ERROR, bool> get_response (response_sequence_number a_rsn);
+      std::tuple<T_PAYLOAD, T_ERROR> get_response (response_sequence_number a_rsn);
 
     private:
       struct bucket
       {
-	  bucket () = default;
+	  bucket (T_ERROR a_no_error);
 	  ~bucket ();
 
-	  bucket (const bucket &) = delete;
+	  bucket (const bucket &);
 	  bucket (bucket &&) = delete;
 
 	  bucket &operator = (const bucket &) = delete;
@@ -77,15 +77,16 @@ namespace cubcomm
 	  void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
 	  void register_error (response_sequence_number a_rsn, T_ERROR &&a_error);
 
-	  std::tuple<T_PAYLOAD, T_ERROR, bool> get_response (response_sequence_number a_rsn);
+	  std::tuple<T_PAYLOAD, T_ERROR> get_response (response_sequence_number a_rsn);
 
 	private:
 	  struct payload_or_error_type
 	  {
 	    T_PAYLOAD m_payload;
 	    T_ERROR m_error;
-	    bool m_is_error;
 	  };
+
+	  const T_ERROR m_no_error;
 
 	  std::mutex m_mutex;
 	  std::condition_variable m_condvar;
@@ -105,13 +106,10 @@ namespace cubcomm
 namespace cubcomm
 {
   template <typename T_PAYLOAD, typename T_ERROR>
-  response_broker<T_PAYLOAD, T_ERROR>::response_broker (size_t a_bucket_count)
-    : m_buckets { a_bucket_count }
+  response_broker<T_PAYLOAD, T_ERROR>::response_broker (size_t a_bucket_count, T_ERROR a_no_error)
+    : m_buckets { a_bucket_count, { a_no_error } }
   {
     assert (a_bucket_count > 0);
-    // TODO: temp
-    assert (m_buckets.size () == a_bucket_count);
-    //m_buckets.resize (a_bucket_count);
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
@@ -136,6 +134,12 @@ namespace cubcomm
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::bucket (T_ERROR a_no_error)
+    : m_no_error { a_no_error }
+  {
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::bucket::~bucket ()
   {
     // NOTE: might not hold in the event that a peer server crashes before consuming a response;
@@ -152,7 +156,7 @@ namespace cubcomm
 
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       ent.m_payload = std::move (a_payload);
-      ent.m_is_error = false;
+      ent.m_error = m_no_error;
     }
     m_condvar.notify_all (); // all because there is more than one thread waiting for data
   }
@@ -166,24 +170,23 @@ namespace cubcomm
 
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       ent.m_error = std::move (a_error);
-      ent.m_is_error = true;
     }
     m_condvar.notify_all (); // all because there is more than one thread waiting for data
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
-  std::tuple<T_PAYLOAD, T_ERROR, bool>
+  std::tuple<T_PAYLOAD, T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::get_response (response_sequence_number a_rsn)
   {
     return get_bucket (a_rsn).get_response (a_rsn);
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
-  std::tuple<T_PAYLOAD, T_ERROR, bool>
+  std::tuple<T_PAYLOAD, T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::bucket::get_response (response_sequence_number a_rsn)
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
-    std::tuple<T_PAYLOAD, T_ERROR, bool> payload_or_error;
+    std::tuple<T_PAYLOAD, T_ERROR> payload_or_error;
 
     auto condvar_pred = [this, &payload_or_error, a_rsn] ()
     {
@@ -192,10 +195,7 @@ namespace cubcomm
 	{
 	  return false;
 	}
-      payload_or_error = { std::move ((*it).second.m_payload),
-			   std::move ((*it).second.m_error),
-			   (*it).second.m_is_error
-			 };
+      payload_or_error = { std::move ((*it).second.m_payload), std::move ((*it).second.m_error) };
       m_response_payloads.erase (it);
       return true;
     };
@@ -204,13 +204,14 @@ namespace cubcomm
     return payload_or_error;
   }
 
-//  template <typename T_PAYLOAD>
-//  response_broker<T_PAYLOAD>::bucket::bucket (const bucket &o)
-//  {
-//    // Bucket copy constructor may be required only during the response_broker initialization.
-//    // The copied bucket is empty and no synchronization is required.
-//    assert (o.m_response_payloads.empty ());
-//  }
+  template <typename T_PAYLOAD, typename T_ERROR>
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::bucket (const bucket &that)
+    : m_no_error { that.m_no_error }
+  {
+    // Bucket copy constructor may be required only during the response_broker initialization.
+    // The copied bucket is empty and no synchronization is required.
+    assert (that.m_response_payloads.empty ());
+  }
 }
 
 #endif // !_RESPONSE_BROKER_HPP_
