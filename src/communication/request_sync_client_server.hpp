@@ -221,7 +221,7 @@ namespace cubcomm
 
     // check whether actual answer or error
     css_error_code error_code { NO_ERRORS };
-    std::tie (a_response_payload, error_code/*, is_error*/) = m_response_broker.get_response (rsn);
+    std::tie (a_response_payload, error_code) = m_response_broker.get_response (rsn);
     if (error_code != NO_ERRORS)
       {
 	// clear payload
