@@ -312,10 +312,11 @@ page_server::async_disconnect_handler::disconnect_loop ()
     {
       {
 	std::unique_lock<std::mutex> ulock { m_queue_mtx };
-	while (!m_queue_cv.wait_for (ulock, one_second, [this]
-	{
-	  return !m_disconnect_queue.empty () || m_terminate.load ();
-	  }));
+	if (!m_queue_cv.wait_for (ulock, one_second,
+				  [this] { return !m_disconnect_queue.empty () || m_terminate.load (); }))
+	  {
+	    continue;
+	  }
 
 	m_disconnect_queue.swap (disconnect_work_buffer);
       }
