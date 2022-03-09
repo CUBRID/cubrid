@@ -220,10 +220,9 @@ namespace cubcomm
     // The following broker response getter is the blocking part.
 
     // check whether actual answer or error
-    //a_response_payload = m_response_broker.get_response (rsn);
     css_error_code error_code { NO_ERRORS };
     bool is_error { false };
-    std::tie (a_response_payload, error_code, is_error) = m_response_broker.get_outcome (rsn);
+    std::tie (a_response_payload, error_code, is_error) = m_response_broker.get_response (rsn);
     if (is_error)
       {
 	a_response_payload = T_PAYLOAD ();

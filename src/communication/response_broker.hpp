@@ -60,8 +60,7 @@ namespace cubcomm
       void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
       void register_error (response_sequence_number a_rsn, T_ERROR &&a_error);
 
-//      T_PAYLOAD get_response (response_sequence_number a_rsn);
-      std::tuple<T_PAYLOAD, T_ERROR, bool> get_outcome (response_sequence_number a_rsn);
+      std::tuple<T_PAYLOAD, T_ERROR, bool> get_response (response_sequence_number a_rsn);
 
     private:
       struct bucket
@@ -78,12 +77,9 @@ namespace cubcomm
 	  void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
 	  void register_error (response_sequence_number a_rsn, T_ERROR &&a_error);
 
-//	  T_PAYLOAD get_response (response_sequence_number a_rsn);
-	  std::tuple<T_PAYLOAD, T_ERROR, bool> get_outcome (response_sequence_number a_rsn);
+	  std::tuple<T_PAYLOAD, T_ERROR, bool> get_response (response_sequence_number a_rsn);
 
 	private:
-	  //enum class error_or_ {}
-
 	  struct payload_or_error_type
 	  {
 	    T_PAYLOAD m_payload;
@@ -175,46 +171,16 @@ namespace cubcomm
     m_condvar.notify_all (); // all because there is more than one thread waiting for data
   }
 
-//  template <typename T_PAYLOAD, typename T_ERROR>
-//  T_PAYLOAD
-//  response_broker<T_PAYLOAD, T_ERROR>::get_response (response_sequence_number a_rsn)
-//  {
-//    return get_bucket (a_rsn).get_response (a_rsn);
-//  }
-
   template <typename T_PAYLOAD, typename T_ERROR>
   std::tuple<T_PAYLOAD, T_ERROR, bool>
-  response_broker<T_PAYLOAD, T_ERROR>::get_outcome (response_sequence_number a_rsn)
+  response_broker<T_PAYLOAD, T_ERROR>::get_response (response_sequence_number a_rsn)
   {
-    return get_bucket (a_rsn).get_outcome (a_rsn);
+    return get_bucket (a_rsn).get_response (a_rsn);
   }
 
-//  template <typename T_PAYLOAD, typename T_ERROR>
-//  T_PAYLOAD
-//  response_broker<T_PAYLOAD, T_ERROR>::bucket::get_response (response_sequence_number a_rsn)
-//  {
-//    std::unique_lock<std::mutex> ulock (m_mutex);
-//    T_PAYLOAD payload;
-
-//    auto condvar_pred = [this, &payload, a_rsn] ()
-//    {
-//      auto it = m_response_payloads.find (a_rsn);
-//      if (it == m_response_payloads.end ())
-//	{
-//	  return false;
-//	}
-//      payload = std::move ((*it).second.m_payload);
-//      m_response_payloads.erase (it);
-//      return true;
-//    };
-//    m_condvar.wait (ulock, condvar_pred);
-
-//    return payload;
-//  }
-
   template <typename T_PAYLOAD, typename T_ERROR>
   std::tuple<T_PAYLOAD, T_ERROR, bool>
-  response_broker<T_PAYLOAD, T_ERROR>::bucket::get_outcome (response_sequence_number a_rsn)
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::get_response (response_sequence_number a_rsn)
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
     std::tuple<T_PAYLOAD, T_ERROR, bool> payload_or_error;
