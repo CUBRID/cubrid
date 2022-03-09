@@ -305,15 +305,17 @@ page_server::async_disconnect_handler::terminate ()
 void
 page_server::async_disconnect_handler::disconnect_loop ()
 {
+  constexpr std::chrono::seconds one_second { 1 };
+
   std::queue<connection_handler_uptr_t> disconnect_work_buffer;
   while (!m_terminate.load ())
     {
       {
 	std::unique_lock<std::mutex> ulock { m_queue_mtx };
-	m_queue_cv.wait (ulock, [this]
+	while (!m_queue_cv.wait_for (ulock, one_second, [this]
 	{
 	  return !m_disconnect_queue.empty () || m_terminate.load ();
-	});
+	  }));
 
 	m_disconnect_queue.swap (disconnect_work_buffer);
       }
