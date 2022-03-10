@@ -838,6 +838,7 @@ cas_main (void)
   T_NET_BUF net_buf;
   SOCKET br_sock_fd, client_sock_fd;
   char read_buf[1024];
+  char err_msg[1024] = { 0, };
   int err_code;
   char *db_name, *db_user, *db_passwd, *db_sessionid;
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
@@ -867,6 +868,7 @@ cas_main (void)
 #if defined(CAS_FOR_CGW)
   char odbc_resolved_url[CGW_LINK_URL_MAX_LEN] = { 0, };
   char odbc_connect_url[CGW_LINK_URL_MAX_LEN] = { 0, };
+  SUPPORTED_DBMS_TYPE dbms_type = NOT_SUPPORTED_DBMS;;
 #endif
 
 #if defined(CAS_FOR_ORACLE)
@@ -1211,8 +1213,6 @@ cas_main (void)
 	      {
 		if (access_control_check_right (shm_appl, db_name, db_user, ip_addr) < 0)
 		  {
-		    char err_msg[1024];
-
 		    as_info->num_connect_rejected++;
 
 		    sprintf (err_msg, "Authorization error.(Address is rejected)");
@@ -1240,19 +1240,51 @@ cas_main (void)
 #if !defined (CAS_FOR_CGW)
 	    err_code = ux_database_connect (db_name, db_user, db_passwd, &db_err_msg);
 #else
-	    snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, ODBC_CONNECT_URL_FORMAT,
-		      shm_appl->cgw_link_odbc_driver_name,
-		      shm_appl->cgw_link_server_ip,
-		      shm_appl->cgw_link_server_port,
-		      db_name, db_user, db_passwd, shm_appl->cgw_link_connect_url_property);
 
-	    snprintf (odbc_resolved_url, CGW_LINK_URL_MAX_LEN, ODBC_CONNECT_URL_FORMAT,
-		      shm_appl->cgw_link_odbc_driver_name,
-		      shm_appl->cgw_link_server_ip,
-		      shm_appl->cgw_link_server_port,
-		      db_name, db_user, "********", shm_appl->cgw_link_connect_url_property);
+	    dbms_type = cgw_is_supported_dbms (shm_appl->cgw_link_server);
+	    cgw_set_dbms_type (dbms_type);
 
-	    err_code = cgw_database_connect (odbc_connect_url);
+	    if (dbms_type == SUPPORTED_DBMS_ORACLE)
+	      {
+		snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, ORACLE_CONNECT_URL_FORMAT,
+			  shm_appl->cgw_link_odbc_driver_name,
+			  db_name,
+			  shm_appl->cgw_link_server_port,
+			  db_name, db_user, db_passwd, shm_appl->cgw_link_connect_url_property);
+
+		snprintf (odbc_resolved_url, CGW_LINK_URL_MAX_LEN, ORACLE_CONNECT_URL_FORMAT,
+			  shm_appl->cgw_link_odbc_driver_name,
+			  db_name,
+			  shm_appl->cgw_link_server_port,
+			  db_name, db_user, "********", shm_appl->cgw_link_connect_url_property);
+
+	      }
+	    else if (dbms_type == SUPPORTED_DBMS_MYSQL)
+	      {
+		snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, MYSQL_CONNECT_URL_FORMAT,
+			  shm_appl->cgw_link_odbc_driver_name,
+			  shm_appl->cgw_link_server_ip,
+			  shm_appl->cgw_link_server_port,
+			  db_name, db_user, db_passwd, shm_appl->cgw_link_connect_url_property);
+
+		snprintf (odbc_resolved_url, CGW_LINK_URL_MAX_LEN, MYSQL_CONNECT_URL_FORMAT,
+			  shm_appl->cgw_link_odbc_driver_name,
+			  shm_appl->cgw_link_server_ip,
+			  shm_appl->cgw_link_server_port,
+			  db_name, db_user, "********", shm_appl->cgw_link_connect_url_property);
+	      }
+	    else
+	      {
+		sprintf (err_msg, "%s is not supported DBMS.", shm_appl->cgw_link_server);
+
+		cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
+		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info,
+				 cas_info_size, DBMS_ERROR_INDICATOR, CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg);
+
+		goto finish_cas;
+	      }
+
+	    err_code = cgw_database_connect (dbms_type, odbc_connect_url);
 #endif /* !CAS_FOR_CGW */
 
 	    if (err_code < 0)
@@ -1686,9 +1718,7 @@ cas_free (bool from_sighandler)
     }
   else
     {
-#if !defined(CAS_FOR_CGW)
       ux_database_shutdown ();
-#endif /* CAS_FOR_CGW */
     }
 
   if (as_info->cur_statement_pooling && !from_sighandler)

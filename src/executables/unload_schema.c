@@ -1219,10 +1219,6 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  found = true;
 	}
 
-      if (found)
-	{
-	  (void) output_ctx ("\n");
-	}
       if (is_partitioned)
 	{
 	  emit_partition_info (output_ctx, cl->op);
@@ -1834,7 +1830,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	      old_attribute_name = "";
 	    }
 
-	  output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (name));
+	  output_ctx ("\nALTER %s %s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (name));
 	  if (db_attribute_is_shared (a))
 	    {
 	      emit_attribute_def (output_ctx, a, SHARED_ATTRIBUTE);
@@ -1858,7 +1854,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
     }
   else
     {
-      output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (name));
+      output_ctx ("\n\nALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (name));
       for (a = first_attribute; a != NULL; a = db_attribute_next (a))
 	{
 	  if (db_attribute_class (a) == class_)
@@ -1994,7 +1990,6 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	}
     }
 
-  output_ctx ("\n");
   if (unique_flag)
     {
       emit_unique_def (output_ctx, class_, class_type);
@@ -2483,7 +2478,7 @@ emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *clas
       return;
     }
 
-  output_ctx ("\nALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (class_name));
+  output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (class_name));
 
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {

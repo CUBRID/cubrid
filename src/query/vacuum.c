@@ -1241,7 +1241,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].log_zip_p = NULL;
       vacuum_Workers[i].undo_data_buffer = NULL;
       vacuum_Workers[i].undo_data_buffer_capacity = 0;
-      vacuum_Workers[i].private_lru_index = pgbuf_assign_private_lru (thread_p, true, i);
+      vacuum_Workers[i].private_lru_index = pgbuf_assign_private_lru (thread_p);
       vacuum_Workers[i].heap_objects = NULL;
       vacuum_Workers[i].heap_objects_capacity = 0;
       vacuum_Workers[i].prefetch_log_buffer = NULL;
@@ -8086,7 +8086,7 @@ vacuum_data_page::is_empty () const
 bool
 vacuum_data_page::is_index_valid (INT16 index) const
 {
-  return index >= index_unvacuumed || index < index_free;
+  return index >= index_unvacuumed && index < index_free;
 }
 
 INT16

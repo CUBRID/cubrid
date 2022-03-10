@@ -533,19 +533,11 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
   precision = DB_VALUE_PRECISION (db_string1);
   /* Determine the result type */
   result_type = DB_VALUE_DOMAIN_TYPE (db_string1);
-  if (QSTR_IS_CHAR (result_type))
-    {
-      result_type = DB_TYPE_VARCHAR;
-    }
-  else if (QSTR_IS_NATIONAL_CHAR (result_type))
-    {
-      result_type = DB_TYPE_VARNCHAR;
-    }
-  else if (QSTR_IS_BIT (result_type))
+  if (QSTR_IS_BIT (result_type))
     {
       result_type = DB_TYPE_VARBIT;
     }
-  else
+  else if (!QSTR_IS_CHAR (result_type) && !QSTR_IS_NATIONAL_CHAR (result_type))
     {
       db_make_null (db_result);
 #if defined(CUBRID_DEBUG)
@@ -703,7 +695,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
       else
 	{
 	  error_status = QSTR_SPLIT_KEY (collation_id, key_domain->is_desc, string1, size1, string2, size2, &key,
-					 &result_size, true);
+					 &result_size, ti);
 	}
       assert (error_status == NO_ERROR);
 
@@ -3785,7 +3777,7 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
 
 	  if (!ignore_trailing_space)
 	    {
-	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) || QSTR_IS_FIXED_LENGTH (str2_type));
+	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) && QSTR_IS_FIXED_LENGTH (str2_type));
 	    }
 	  cmp_result = QSTR_COMPARE (coll_id, DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
 				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2), ti);

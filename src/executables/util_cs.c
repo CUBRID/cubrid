@@ -3747,7 +3747,7 @@ tde (UTIL_FUNCTION_ARG * arg)
   delete_op_idx = utility_get_option_int_value (arg_map, TDE_DELETE_KEY_S);
 
   print_val = utility_get_option_bool_value (arg_map, TDE_PRINT_KEY_VALUE_S);
-  dba_password = utility_get_option_string_value (arg_map, KILLTRAN_DBA_PASSWORD_S, 0);
+  dba_password = utility_get_option_string_value (arg_map, TDE_DBA_PASSWORD_S, 0);
 
   if (gen_op)
     {

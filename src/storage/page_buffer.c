@@ -3616,7 +3616,8 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
       /* flush condition check */
       if (!pgbuf_bcb_is_dirty (bufptr)
-	  || (!LSA_ISNULL (&bufptr->oldest_unflush_lsa) && LSA_GT (&bufptr->oldest_unflush_lsa, flush_upto_lsa)))
+	  || (!LSA_ISNULL (&bufptr->oldest_unflush_lsa) && LSA_GT (&bufptr->oldest_unflush_lsa, flush_upto_lsa))
+	  || pgbuf_is_temporary_volume (bufptr->vpid.volid))
 	{
 	  PGBUF_BCB_UNLOCK (bufptr);
 	  continue;
@@ -13305,13 +13306,12 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_assign_private_lru_id () -
+ * pgbuf_assign_private_lru () -
+ *
  *   return: NO_ERROR
- *   is_vacuum(in): true if client is a vacuum thread
- *   id(in): id of client (vacuum index or session id)
  */
 int
-pgbuf_assign_private_lru (THREAD_ENTRY * thread_p, bool is_vacuum, const int id)
+pgbuf_assign_private_lru (THREAD_ENTRY * thread_p)
 {
   int i;
   int min_activitity;

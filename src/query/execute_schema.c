@@ -8500,6 +8500,7 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       error = ER_FAILED;
       goto error_exit;
     }
+
   insert_into =
     create_select_to_insert_into (parser, class_name, create_select_copy, create_select_action, query_columns);
   if (insert_into == NULL)

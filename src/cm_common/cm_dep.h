@@ -266,6 +266,9 @@ extern "C"
   int cm_util_log_write_errstr (const char *format, ...);
   int cm_util_log_write_command (int argc, char *argv[]);
 
+  int make_temp_filename (char *tempfile, char *prefix, int size);
+  int make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, int size);
+
 #ifdef __cplusplus
 }
 #endif

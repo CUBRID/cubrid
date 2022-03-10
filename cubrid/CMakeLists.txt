@@ -553,6 +553,8 @@ if(AT_LEAST_ONE_UNIT_TEST)
 
   target_link_libraries(cubrid-win-lib PRIVATE
     ws2_32
+    cascci
+    cubridcs
     ${JVM_LIBS}
     ${EP_LIBS}
     )

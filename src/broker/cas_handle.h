@@ -35,6 +35,15 @@
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if defined(CAS_FOR_CGW)
+/* 
+* If SIZEOF_LONG_INT is not defined in sqltypes.h, build including unixodbc_conf.h.
+* When building including unixodbc_conf.h, "warning: "PACKAGE_STRING" is displayed.
+* So I added the following code before including sqltypes.h to remove of the build warning.
+*/
+#if !defined (SIZEOF_LONG_INT)
+#define SIZEOF_LONG_INT 8
+#endif
+
 #include <sqltypes.h>
 #include <sql.h>
 #include <sqlext.h>
@@ -218,7 +227,9 @@ struct t_srv_handle
 #endif				/* CAS_FOR_MYSQL */
 #if defined (CAS_FOR_CGW)
   T_CGW_HANDLE *cgw_handle;
-  int tuple_count;
+  int res_tuple_count_msg_offset;
+  int total_row_count_msg_offset;
+  int total_tuple_count;
   int stmt_type;
 #endif				/* CAS_FOR_CGW */
 };
