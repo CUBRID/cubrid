@@ -83,6 +83,11 @@ namespace cubpacking
     set_buffer (storage, amount);
   }
 
+  unpacker::unpacker (const cubmem::block &blk)
+  {
+    set_buffer (blk.ptr, blk.dim);
+  }
+
   void
   unpacker::set_buffer (const char *storage, const size_t amount)
   {

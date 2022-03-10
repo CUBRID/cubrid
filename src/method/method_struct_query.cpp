@@ -728,36 +728,6 @@ namespace cubmethod
       }
   }
 
-  void
-  next_result_info::pack (cubpacking::packer &serializator) const
-  {
-    // TODO: not implemented yet
-    assert (false);
-  }
-
-  void
-  next_result_info::unpack (cubpacking::unpacker &deserializator)
-  {
-    // TODO: not implemented yet
-    assert (false);
-  }
-
-  size_t
-  next_result_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
-  {
-    size_t size = 0;
-    // TODO: not implemented yet
-    assert (false);
-    return size;
-  }
-
-  void
-  next_result_info::dump ()
-  {
-    // TODO: not implemented yet
-    assert (false);
-  }
-
   result_tuple_info::result_tuple_info ()
   {
     index = 0;

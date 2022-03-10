@@ -24,12 +24,14 @@
 #include "mem_block.hpp" /* cubmem::extensible_block */
 #include "method_invoke.hpp"
 #include "method_struct_invoke.hpp"
+#include "object_primitive.h"
 #include "object_representation.h"	/* OR_ */
 #include "packer.hpp"
-
-#if defined (SERVER_MODE)
 #include "jsp_sr.h" /* jsp_server_port(), jsp_connect_server() */
-#include "method_connection.hpp"
+#include "method_connection_sr.hpp"
+
+#if defined (SA_MODE)
+#include "query_method.hpp"
 #endif
 
 namespace cubmethod
@@ -37,12 +39,12 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Method Group to invoke together
 //////////////////////////////////////////////////////////////////////////
-  method_invoke_group::method_invoke_group (cubthread::entry *thread_p, method_sig_list *sig_list)
-    : m_id ((int64_t) this), m_thread_p (thread_p)
+  method_invoke_group::method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list)
+    : m_id ((int64_t) this), m_thread_p (thread_p), m_connection (nullptr)
   {
-    assert (sig_list && sig_list->num_methods > 0);
+    assert (sig_list.num_methods > 0);
 
-    method_sig_node *sig = sig_list->method_sig;
+    method_sig_node *sig = sig_list.method_sig;
     while (sig)
       {
 	method_invoke *mi = nullptr;
@@ -62,28 +64,20 @@ namespace cubmethod
 	    break;
 	  }
 
-	m_kind_type.push_back (type);
+	m_kind_type.insert (type);
 	m_method_vector.push_back (mi);
 
 	sig = sig->next;
       }
 
-    /* to remove duplicated values */
-    std::sort (m_kind_type.begin(), m_kind_type.end ());
-    m_kind_type.erase (std::unique (m_kind_type.begin(), m_kind_type.end()), m_kind_type.end());
-
     DB_VALUE v;
     db_make_null (&v);
-    for (int i = 0; i < sig_list->num_methods; i++)
-      {
-	m_result_vector.push_back (v);
-      }
-
-    m_socket = INVALID_SOCKET;
+    m_result_vector.resize (sig_list.num_methods, v);
   }
 
   method_invoke_group::~method_invoke_group ()
   {
+    end ();
     for (method_invoke *method: m_method_vector)
       {
 	delete method;
@@ -91,11 +85,11 @@ namespace cubmethod
     m_method_vector.clear ();
   }
 
-  DB_VALUE *
+  DB_VALUE &
   method_invoke_group::get_return_value (int index)
   {
     assert (index >= 0 && index < (int) get_num_methods ());
-    return &m_result_vector.at (index);
+    return m_result_vector[index];
   }
 
   int
@@ -113,7 +107,7 @@ namespace cubmethod
   SOCKET
   method_invoke_group::get_socket () const
   {
-    return m_socket;
+    return m_connection ? m_connection->get_socket () : INVALID_SOCKET;
   }
 
   cubthread::entry *
@@ -122,47 +116,17 @@ namespace cubmethod
     return m_thread_p;
   }
 
-  int
-  method_invoke_group::connect ()
+  std::queue<cubmem::extensible_block> &
+  method_invoke_group::get_data_queue ()
   {
-    for (const auto &elem : m_kind_type)
-      {
-	switch (elem)
-	  {
-	  case METHOD_TYPE_INSTANCE_METHOD:
-	  case METHOD_TYPE_CLASS_METHOD:
-	  {
-	    // connecting is not needed
-	    break;
-	  }
-	  case METHOD_TYPE_JAVA_SP:
-	  {
-#if defined (SERVER_MODE)
-	    if (m_socket == INVALID_SOCKET)
-	      {
-		int server_port = jsp_server_port ();
-		m_socket = jsp_connect_server (boot_db_name (), server_port);
-	      }
-#endif
-	    break;
-	  }
-	  default:
-	  {
-	    assert (false);
-	    break;
-	  }
-	  }
-      }
-
-    return NO_ERROR;
+    return m_data_queue;
   }
 
   int
-  method_invoke_group::prepare (std::vector <DB_VALUE> &arg_base)
+  method_invoke_group::prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
     int error = NO_ERROR;
 
-#if defined (SERVER_MODE)
     /* send base arguments */
     for (const auto &elem : m_kind_type)
       {
@@ -181,7 +145,7 @@ namespace cubmethod
 	    // send to Java SP Server
 	    cubmethod::header header (SP_CODE_PREPARE_ARGS, m_id);
 	    cubmethod::prepare_args arg (elem, arg_base);
-	    error = method_send_data_to_java (get_socket (), header, arg);
+	    error = mcon_send_data_to_java (get_socket (), header, arg);
 	    break;
 	  }
 	  default:
@@ -189,12 +153,11 @@ namespace cubmethod
 	    break;
 	  }
       }
-#endif
 
     return error;
   }
 
-  int method_invoke_group::execute (std::vector <DB_VALUE> &arg_base)
+  int method_invoke_group::execute (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
     int error = NO_ERROR;
 
@@ -221,7 +184,14 @@ namespace cubmethod
     int error = NO_ERROR;
 
     // connect socket for java sp
-    connect ();
+    bool is_in = m_kind_type.find (METHOD_TYPE_JAVA_SP) != m_kind_type.end ();
+    if (is_in)
+      {
+	if (m_connection == nullptr)
+	  {
+	    m_connection = get_connection_pool ()->claim();
+	  }
+      }
 
     return error;
   }
@@ -230,10 +200,7 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    for (DB_VALUE &val : m_result_vector)
-      {
-	db_value_clear (&val);
-      }
+    pr_clear_value_vector (m_result_vector);
 
     for (method_invoke *method: m_method_vector)
       {
@@ -242,10 +209,8 @@ namespace cubmethod
 
     if (!is_end_query)
       {
-#if defined (SERVER_MODE)
 	cubmethod::header header (METHOD_REQUEST_END, get_id());
 	error = method_send_data_to_client (m_thread_p, header);
-#endif
       }
 
     return error;
@@ -256,13 +221,8 @@ namespace cubmethod
     int error = NO_ERROR;
     reset (true);
 
-#if defined (SERVER_MODE)
-    if (m_socket != INVALID_SOCKET)
-      {
-	jsp_disconnect_server (m_socket);
-	m_socket = INVALID_SOCKET;
-      }
-#endif
+    get_connection_pool ()->retire (m_connection);
+    m_connection = nullptr;
 
     return error;
   }

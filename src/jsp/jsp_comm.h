@@ -71,11 +71,12 @@ struct javasp_status_info
 extern "C"
 {
 #endif
-
   SOCKET jsp_connect_server (const char *db_name, int server_port);
-  void jsp_disconnect_server (const SOCKET sockfd);
+  void jsp_disconnect_server (SOCKET & sockfd);
   int jsp_writen (SOCKET fd, const void *vptr, int n);
   int jsp_readn (SOCKET fd, void *vptr, int n);
+
+  int jsp_ping (SOCKET fd);
 
 #if defined(WINDOWS)
   extern int windows_socket_startup (FARPROC hook);

@@ -26,6 +26,7 @@
 #include <string>
 
 #include "packer.hpp"
+#include "packable_object.hpp"
 
 #define METHOD_MAX_RECURSION_DEPTH 15
 
@@ -92,6 +93,13 @@ enum METHOD_CALLBACK_RESPONSE
   METHOD_CALLBACK_CURSOR_CLOSE = 42
 };
 
+enum METHOD_ARG_MODE
+{
+  METHOD_ARG_MODE_IN = 1,
+  METHOD_ARG_MODE_OUT,
+  METHOD_ARG_MODE_INOUT
+};
+
 typedef struct method_arg_info METHOD_ARG_INFO;
 struct method_arg_info
 {
@@ -100,13 +108,6 @@ struct method_arg_info
   int result_type; /* DB_TYPE */
 
   method_arg_info () = default;
-};
-
-struct method_server_conn_info
-{
-  unsigned int rc;
-  char *host;
-  char *server_name;
 };
 
 typedef struct method_sig_node METHOD_SIG;
@@ -134,7 +135,7 @@ struct method_sig_node
   method_sig_node ();
 };
 
-struct method_sig_list
+struct method_sig_list : public cubpacking::packable_object
 {
   /* signature for methods */
   METHOD_SIG *method_sig;	/* one method signature */

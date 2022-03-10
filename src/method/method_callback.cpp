@@ -22,7 +22,6 @@
 #include "method_def.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
-#include "network_interface_cl.h"
 
 #include "object_primitive.h"
 #include "oid.h"
@@ -45,48 +44,10 @@ namespace cubmethod
       }
   }
 
-  void
-  callback_handler::set_server_info (int idx, int rc, char *host)
-  {
-    method_server_conn_info &info = m_conn_info [idx];
-    info.rc = rc;
-    info.host = host;
-  }
-
-#if defined (CS_MODE)
-  template<typename ... Args>
-  int
-  callback_handler::send_packable_object_to_server (Args &&... args)
-  {
-    packing_packer packer;
-    cubmem::extensible_block eb;
-
-    packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
-
-    int depth = tran_get_libcas_depth () - 1;
-    method_server_conn_info &info = m_conn_info [depth];
-    int error = net_client_send_data (info.host, info.rc, eb.get_ptr (), packer.get_current_size ());
-    if (error != NO_ERROR)
-      {
-	return ER_FAILED;
-      }
-
-    return NO_ERROR;
-  }
-#else
-  template<typename ... Args>
-  int
-  callback_handler::send_packable_object_to_server (Args &&... args)
-  {
-    // TODO: not implemented yet
-    return NO_ERROR;
-  }
-#endif
-
   int
   callback_handler::callback_dispatch (packing_unpacker &unpacker)
   {
-    UINT64 id;
+    int64_t id;
     int code;
     unpacker.unpack_all (id, code);
 
@@ -125,6 +86,12 @@ namespace cubmethod
 	break;
       }
 
+#if defined (CS_MODE)
+    mcon_send_queue_data_to_server ();
+#else
+    /* do nothing for SA_MODE */
+#endif
+
     return error;
   }
 
@@ -137,20 +104,7 @@ namespace cubmethod
 
     /* find in m_sql_handler_map */
     prepare_info info;
-    query_handler *handler = nullptr;
-    for (auto it = m_sql_handler_map.lower_bound (sql); it != m_sql_handler_map.upper_bound (sql); it++)
-      {
-	handler = find_query_handler (it->second);
-	if (handler != nullptr && handler->get_is_occupied() == false)
-	  {
-	    info.handle_id = it->second;
-	    break;
-	  }
-	else
-	  {
-	    handler = nullptr;
-	  }
-      }
+    query_handler *handler = get_query_handler_by_sql (sql);
 
     bool is_cache_used = false;
     if (handler != nullptr)
@@ -162,26 +116,21 @@ namespace cubmethod
     else
       {
 	/* not found in statement handler */
-	int handle_id = new_query_handler (); /* new handler */
-	if (handle_id < 0)
-	  {
-	    // TODO: proper error code
-	    m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
-	    return ER_FAILED;
-	  }
-
-	handler = find_query_handler (handle_id);
+	handler = new_query_handler ();
 	if (handler == nullptr)
 	  {
 	    // TODO: proper error code
-	    m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
 	  }
-	info = handler->prepare (sql, flag);
+	else
+	  {
+	    info = handler->prepare (sql, flag);
+	  }
       }
 
     if (m_error_ctx.has_error())
       {
-	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
@@ -190,7 +139,9 @@ namespace cubmethod
 	  {
 	    m_sql_handler_map.emplace (sql, info.handle_id);
 	  }
-	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
+	info.handle_id = handler->get_id ();
+
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
   }
 
@@ -200,7 +151,7 @@ namespace cubmethod
     execute_request request;
     request.unpack (unpacker);
 
-    query_handler *handler = find_query_handler (request.handler_id);
+    query_handler *handler = get_query_handler_by_id (request.handler_id);
     if (handler == nullptr)
       {
 	// TODO: proper error code
@@ -220,20 +171,12 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
-  }
-
-  int
-  callback_handler::schema_info (packing_unpacker &unpacker)
-  {
-    // TODO
-    int error = NO_ERROR;
-    return error;
   }
 
   int
@@ -242,7 +185,7 @@ namespace cubmethod
     uint64_t query_id;
     unpacker.unpack_all (query_id);
 
-    cubmethod::query_handler *query_handler = get_query_handler_by_qid (query_id);
+    cubmethod::query_handler *query_handler = get_query_handler_by_query_id (query_id);
     if (query_handler)
       {
 	const cubmethod::query_result &qresult = query_handler->get_result();
@@ -250,12 +193,12 @@ namespace cubmethod
 	make_outresult_info info;
 	query_handler->set_prepare_column_list_info (info.column_infos);
 	query_handler->set_qresult_info (info.qresult_info);
-	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
 
     /* unexpected error, should not be here */
     m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
-    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+    return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
   int
@@ -264,7 +207,7 @@ namespace cubmethod
     int handler_id = -1;
     unpacker.unpack_all (handler_id);
 
-    query_handler *handler = find_query_handler (handler_id);
+    query_handler *handler = get_query_handler_by_id (handler_id);
     if (handler == nullptr)
       {
 	// TODO: proper error code
@@ -275,11 +218,11 @@ namespace cubmethod
     get_generated_keys_info info = handler->generated_keys ();
     if (m_error_ctx.has_error())
       {
-	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
   }
 
@@ -287,18 +230,20 @@ namespace cubmethod
 // OID
 //////////////////////////////////////////////////////////////////////////
 
-  int
-  callback_handler::new_oid_handler ()
+  oid_handler *
+  callback_handler::get_oid_handler ()
   {
     if (m_oid_handler == nullptr)
       {
 	m_oid_handler = new (std::nothrow) oid_handler (m_error_ctx);
 	if (m_oid_handler == nullptr)
 	  {
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    assert (false);
+	    m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
 	  }
       }
-    return NO_ERROR;
+
+    return m_oid_handler;
   }
 
   int
@@ -309,24 +254,15 @@ namespace cubmethod
     oid_get_request request;
     request.unpack (unpacker);
 
-    error = new_oid_handler ();
-    if (error != NO_ERROR)
+    oid_get_info info = get_oid_handler()->oid_get (request.oid, request.attr_names);
+    if (m_error_ctx.has_error())
       {
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	oid_get_info info = m_oid_handler->oid_get (request.oid, request.attr_names);
-	if (m_error_ctx.has_error())
-	  {
-	    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
-	  }
-	else
-	  {
-	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, info);
-	  }
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
-    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
   int
@@ -335,20 +271,15 @@ namespace cubmethod
     oid_put_request request;
     request.unpack (unpacker);
 
-    int error = new_oid_handler ();
-    if (error != NO_ERROR)
+    int result = get_oid_handler()->oid_put (request.oid, request.attr_names, request.db_values);
+    if (m_error_ctx.has_error())
       {
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	int result = m_oid_handler->oid_put (request.oid, request.attr_names, request.db_values);
-	if (!m_error_ctx.has_error())
-	  {
-	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, result);
-	  }
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
       }
-    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
   int
@@ -362,20 +293,15 @@ namespace cubmethod
 
     std::string res; // result for OID_CLASS_NAME
 
-    int error = new_oid_handler ();
-    if (error != NO_ERROR)
+    int res_code = get_oid_handler()->oid_cmd (oid, cmd, res);
+    if (m_error_ctx.has_error())
       {
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	int res_code = m_oid_handler->oid_cmd (oid, cmd, res);
-	if (!m_error_ctx.has_error())
-	  {
-	    return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, res_code, res);
-	  }
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, res_code, res);
       }
-    return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
   }
 
 //////////////////////////////////////////////////////////////////////////
@@ -394,11 +320,11 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return send_packable_object_to_server (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
       }
     else
       {
-	return send_packable_object_to_server (METHOD_RESPONSE_SUCCESS, result);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
       }
   }
 
@@ -406,7 +332,7 @@ namespace cubmethod
 // Managing Query Handler Table
 //////////////////////////////////////////////////////////////////////////
 
-  int
+  query_handler *
   callback_handler::new_query_handler ()
   {
     int idx = 0;
@@ -423,7 +349,7 @@ namespace cubmethod
     query_handler *handler = new query_handler (m_error_ctx, idx);
     if (handler == nullptr)
       {
-	return ER_FAILED;
+	assert (false);
       }
 
     if (idx < handler_size)
@@ -434,11 +360,12 @@ namespace cubmethod
       {
 	m_query_handlers.push_back (handler);
       }
-    return idx;
+
+    return handler;
   }
 
   query_handler *
-  callback_handler::find_query_handler (int id)
+  callback_handler::get_query_handler_by_id (const int id)
   {
     if (id < 0 || id >= (int) m_query_handlers.size())
       {
@@ -480,7 +407,7 @@ namespace cubmethod
   }
 
   query_handler *
-  callback_handler::get_query_handler_by_qid (uint64_t qid)
+  callback_handler::get_query_handler_by_query_id (const uint64_t qid)
   {
     const auto &iter = m_qid_handler_map.find (qid);
     if (iter == m_qid_handler_map.end() )
@@ -489,12 +416,28 @@ namespace cubmethod
       }
     else
       {
-	return find_query_handler (iter->second);
+	return get_query_handler_by_id (iter->second);
       }
   }
 
+  query_handler *
+  callback_handler::get_query_handler_by_sql (const std::string &sql)
+  {
+    for (auto it = m_sql_handler_map.lower_bound (sql); it != m_sql_handler_map.upper_bound (sql); it++)
+      {
+	query_handler *handler = get_query_handler_by_id (it->second);
+	if (handler != nullptr && handler->get_is_occupied() == false)
+	  {
+	    /* found */
+	    return handler;
+	  }
+      }
+
+    return nullptr;
+  }
+
   //////////////////////////////////////////////////////////////////////////
-  // Global thread interface
+  // Global method callback handler interface
   //////////////////////////////////////////////////////////////////////////
   static callback_handler handler (100);
 
@@ -511,16 +454,23 @@ int
 method_make_out_rs (DB_BIGINT query_id)
 {
   cubmethod::callback_handler *callback_handler = cubmethod::get_callback_handler ();
-  cubmethod::query_handler *query_handler = callback_handler->get_query_handler_by_qid ((uint64_t) query_id);
+  cubmethod::query_handler *query_handler = callback_handler->get_query_handler_by_query_id (query_id);
 
-  const cubmethod::query_result &qresult = query_handler->get_result();
+  if (query_handler != nullptr)
+    {
+      const cubmethod::query_result &qresult = query_handler->get_result();
 
-  DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session(), qresult.stmt_id);
-  return ux_create_srv_handle_with_method_query_result (
-		 qresult.result,
-		 qresult.stmt_type,
-		 qresult.num_column,
-		 column_info,
-		 true
-	 );
+      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session(), qresult.stmt_id);
+      return ux_create_srv_handle_with_method_query_result (
+		     qresult.result,
+		     qresult.stmt_type,
+		     qresult.num_column,
+		     column_info,
+		     true
+	     );
+    }
+  else
+    {
+      return -1;
+    }
 }

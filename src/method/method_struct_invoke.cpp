@@ -69,7 +69,7 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Common structure implementation
 //////////////////////////////////////////////////////////////////////////
-  prepare_args::prepare_args (METHOD_TYPE type, std::vector<DB_VALUE> &vec)
+  prepare_args::prepare_args (METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &vec)
     : type (type), args (vec)
   {
     //
@@ -78,20 +78,17 @@ namespace cubmethod
   void
   prepare_args::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_int (args.size ());
     switch (type)
       {
       case METHOD_TYPE_INSTANCE_METHOD:
       case METHOD_TYPE_CLASS_METHOD:
       {
-	std::for_each (args.begin (), args.end (),[&serializator] (DB_VALUE & value)
-	{
-	  serializator.pack_db_value (value);
-	});
+	serializator.pack_all (args);
 	break;
       }
       case METHOD_TYPE_JAVA_SP:
       {
+	serializator.pack_int (args.size ());
 	dbvalue_java dbvalue_wrapper;
 	std::for_each (args.begin (), args.end (),[&serializator, &dbvalue_wrapper] (DB_VALUE & value)
 	{

@@ -179,7 +179,6 @@ extern TRAN_STATE tran_server_end_topop (LOG_RESULT_TOPOP result, LOG_LSA * topo
 extern int tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa);
 extern TRAN_STATE tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa);
 extern const char *tran_get_tranlist_state_name (TRAN_STATE state);
-extern bool tran_is_in_libcas (void);
 #ifdef __cplusplus
 extern "C"
 {
@@ -450,7 +449,7 @@ extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
 extern int loaddb_update_stats ();
 
-extern int method_invoke_fold_constants (method_sig_list & sig_list, std::vector < DB_VALUE * >&args,
-					 DB_VALUE & result);
+extern int method_invoke_fold_constants (const method_sig_list & sig_list,
+					 std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result);
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */

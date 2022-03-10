@@ -25,127 +25,77 @@
 #include "query_method.hpp"
 
 #include <unordered_map>
-#include <deque>
 #include <vector>
 
+#include "dbtype.h"
+
+#if !defined (SERVER_MODE)
 #include "authenticate.h"	/* AU_ENABLE, AU_DISABLE */
 #include "dbi.h"		/* db_enable_modification(), db_disable_modification() */
-#include "dbtype.h"
-#include "jsp_cl.h"		/* jsp_call_from_server() */
-#include "method_def.hpp"	/* method_sig_list, method_sig_node */
 #include "object_accessor.h"	/* obj_ */
 #include "object_primitive.h"	/* pr_is_set_type() */
 #include "set_object.h"		/* set_convert_oids_to_objects() */
 #include "virtual_object.h"	/* vid_oid_to_object() */
-
-#include "transaction_cl.h"
-
 #include "network.h"
 #include "network_interface_cl.h"
-#include "mem_block.hpp"	/* cubmem::extensible_block */
-#include "packer.hpp"		/* packing_packer */
 
+#include "mem_block.hpp"	/* cubmem::extensible_block */
 #include "method_callback.hpp"
+#include "method_def.hpp"	/* method_sig_list, method_sig_node */
 #include "method_query_handler.hpp"
 
-// *INDENT-OFF*
+#include "transaction_cl.h"
+#include "packer.hpp"		/* packing_packer */
+#endif
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "method_invoke_group.hpp"
+#include "method_struct_invoke.hpp"
+#include "thread_compat.hpp"
+#endif
+
+#if defined (SA_MODE)
+int method_Num_method_jsp_calls = 0;
+
+extern unsigned int db_on_server;
+
+#define ENTER_SERVER_IN_METHOD_CALL(save_pri_heap_id_) \
+  do { \
+    db_on_server = 1; \
+    private_heap_id = save_pri_heap_id_; \
+  } while (0)
+
+#define EXIT_SERVER_IN_METHOD_CALL(save_pri_heap_id_) \
+  do { \
+     save_pri_heap_id_ = private_heap_id; \
+     private_heap_id = 0; \
+     db_on_server = 0; \
+  } while (0)
+#endif
+
+#if !defined (SERVER_MODE)
 /* For builtin C Method */
 static std::unordered_map <UINT64, std::vector<DB_VALUE>> runtime_args;
-/* For Java SP Method */
-// *INDENT-ON*
+
+/* data queue */
+static std::queue <cubmem::extensible_block> data_queue;
+
+static void method_erase_runtime_arguments (UINT64 id);
+static void method_set_runtime_arguments (UINT64 id, std::vector<DB_VALUE> &args);
+
+static int method_prepare_arguments (packing_unpacker &unpacker);
+static int method_invoke_builtin (packing_unpacker &unpacker, DB_VALUE &result);
+static int method_invoke_builtin_internal (DB_VALUE &result, std::vector<DB_VALUE> &args, method_sig_node *meth_sig_p);
+
+static int method_dispatch_internal (packing_unpacker &unpacker);
 
 /* FIXME: duplicated function implementation; The following three functions are ported from the client cursor (cursor.c) */
 static bool method_has_set_vobjs (DB_SET *set);
 static int method_fixup_set_vobjs (DB_VALUE *value_p);
 static int method_fixup_vobjs (DB_VALUE *value_p);
-
-#if defined (CS_MODE)
-static int method_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &conn_info);
-static int method_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn_info);
-static int method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_inf);
-static int method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info);
 #endif
 
-void method_reset ()
-{
-  cubmethod::get_callback_handler()->free_query_handle_all (false);
-}
-
 #if defined (CS_MODE)
-/*
- * method_send_value_to_server () - Send an error indication to the server
- *   return:
- *   rc(in)     : enquiry return code
- *   host(in)   : host name
- *   server_name(in)    : server name
- */
-int
-method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p, DB_VALUE &value)
-{
-  packing_packer packer;
-  cubmem::extensible_block ext_blk;
-  int code = METHOD_SUCCESS;
-  packer.set_buffer_and_pack_all (ext_blk, code, value);
-
-  pr_clear_value (&value);
-
-  int error = net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
-  if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * method_send_value_to_server () - Send an error indication to the server
- *   return:
- *   rc(in)     : enquiry return code
- *   host(in)   : host name
- *   server_name(in)    : server name
- */
-template<typename ... Args>
-int
-method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p, Args &&... args)
-{
-  packing_packer packer;
-  cubmem::extensible_block ext_blk;
-  int code = METHOD_SUCCESS;
-  packer.set_buffer_and_pack_all (ext_blk, std::forward<Args> (args)...);
-  int error = net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
-  if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * method_send_error_to_server () - Send an error indication to the server
- *   return:
- *   rc (in)     : enquiry return code
- *   host_p (in)   : host name
- *   error_id (in)    : error_id to send
- */
-int
-method_send_error_to_server (unsigned int rc, char *host_p, char *server_name, int error_id)
-{
-  packing_packer packer;
-  cubmem::extensible_block ext_blk;
-  int code = METHOD_ERROR;
-  packer.set_buffer_and_pack_all (ext_blk, code, error_id);
-
-  int error = net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
-  if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
 /*
  * method_dispatch () - Dispatch method protocol from the server
  *   return:
@@ -156,80 +106,158 @@ method_send_error_to_server (unsigned int rc, char *host_p, char *server_name, i
  *   methoddata_size (in) : data buffer size
  */
 int
-method_dispatch (unsigned int rc, char *host, char *server_name, char *methoddata, int methoddata_size)
+method_dispatch (unsigned int rc, char *methoddata, int methoddata_size)
 {
-  using dispatch_function_type = std::function<int (packing_unpacker &, method_server_conn_info &)>;
-
   int error = NO_ERROR;
-
   packing_unpacker unpacker (methoddata, (size_t) methoddata_size);
-  method_server_conn_info conn_info {rc, host, server_name};
 
+  tran_begin_libcas_function ();
+  int depth = tran_get_libcas_depth ();
+  if (depth > METHOD_MAX_RECURSION_DEPTH)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
+      error = ER_SP_TOO_MANY_NESTED_CALL;
+    }
+
+  if (error == NO_ERROR)
+    {
+      cubmethod::mcon_set_connection_info (depth - 1, rc);
+      error = method_dispatch_internal (unpacker);
+    }
+
+  tran_end_libcas_function ();
+  return error;
+}
+
+/*
+ * method_error () - Send error code to the server
+ *   return:
+ *   rc(in)     : enquiry return code
+ *   host(in)   : host name
+ *   server_name(in)    : server name
+ *   error_id (in)    : error code
+ */
+int
+method_error (unsigned int rc, int error_id)
+{
+  int error = NO_ERROR;
+  tran_begin_libcas_function();
+  int depth = tran_get_libcas_depth ();
+  cubmethod::mcon_set_connection_info (depth - 1, rc);
+  error = cubmethod::mcon_send_data_to_server (METHOD_ERROR, error_id);
+  tran_end_libcas_function();
+  return error;
+}
+#elif defined (SA_MODE)
+/*
+ * method_dispatch () - Dispatch method protocol for SA Mode
+ *   return:
+ *   unpacker(in)     : unpacker for request
+ */
+int
+method_dispatch (packing_unpacker &unpacker)
+{
+  int error = NO_ERROR;
+  HL_HEAPID save_pri_heap_id;
+  EXIT_SERVER_IN_METHOD_CALL (save_pri_heap_id);
+  ++method_Num_method_jsp_calls;
+
+  tran_begin_libcas_function ();
+  int depth = tran_get_libcas_depth ();
+  if (depth > METHOD_MAX_RECURSION_DEPTH)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
+      error = ER_SP_TOO_MANY_NESTED_CALL;
+    }
+
+  if (error == NO_ERROR)
+    {
+      error = method_dispatch_internal (unpacker);
+    }
+
+  tran_end_libcas_function ();
+
+  --method_Num_method_jsp_calls;
+  ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
+  return error;
+}
+#endif
+
+#if !defined (SERVER_MODE)
+/*
+ * method_dispatch_internal () - Dispatch method protocol from the server
+ *   return:
+ *   rc(in)     : enquiry return code
+ *   host(in)   : host name
+ *   server_name(in)    : server name
+ *   methoddata (in)    : data buffer
+ *   methoddata_size (in) : data buffer size
+ */
+int
+method_dispatch_internal (packing_unpacker &unpacker)
+{
+  int error = NO_ERROR;
   int method_dispatch_code;
   unpacker.unpack_int (method_dispatch_code);
 
-  dispatch_function_type dispatch_function;
-
-  int save_auth = 0;
-  switch (method_dispatch_code)
+  if (error == NO_ERROR)
     {
-    case METHOD_REQUEST_ARG_PREPARE:
-      error = method_prepare_arguments (unpacker, conn_info);
-      break;
-    case METHOD_REQUEST_INVOKE:
-      AU_SAVE_AND_ENABLE (save_auth);
-      error = method_invoke_builtin (unpacker, conn_info);
-      AU_RESTORE (save_auth);
-      break;
-    case METHOD_REQUEST_CALLBACK:
-      AU_SAVE_AND_ENABLE (save_auth);
-      error = method_callback (unpacker, conn_info);
-      AU_RESTORE (save_auth);
-      break;
-    case METHOD_REQUEST_END:
-      error = method_end (unpacker, conn_info);
-      break;
-    default:
-      assert (false); // the other callbacks are disabled now
-      return ER_FAILED;
-      break;
+      int save_auth = 0;
+      switch (method_dispatch_code)
+	{
+	case METHOD_REQUEST_ARG_PREPARE:
+	  error = method_prepare_arguments (unpacker);
+	  break;
+	case METHOD_REQUEST_INVOKE:
+	  AU_SAVE_AND_ENABLE (save_auth);
+	  DB_VALUE value;
+	  error = method_invoke_builtin (unpacker, value);
+	  AU_RESTORE (save_auth);
+	  break;
+	case METHOD_REQUEST_CALLBACK:
+	  AU_SAVE_AND_ENABLE (save_auth);
+	  error = cubmethod::get_callback_handler()->callback_dispatch (unpacker);
+	  AU_RESTORE (save_auth);
+	  break;
+	case METHOD_REQUEST_END:
+	  cubmethod::get_callback_handler()->free_query_handle_all (false);
+	  break;
+	default:
+	  assert (false); // the other callbacks are disabled now
+	  return ER_FAILED;
+	  break;
+	}
     }
 
   return error;
 }
 
-
 /*
  * method_invoke_builtin () - Invoke C Method with runtime arguments
  *   return:
  *   unpacker (in)     : unpacker
- *   conn_info (in)   : enquiry return code, host name, server name
+ *   result (out)   : result
  */
 static int
-method_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn_info)
+method_invoke_builtin (packing_unpacker &unpacker, DB_VALUE &result)
 {
   int error = NO_ERROR;
   UINT64 id;
-  unpacker.unpack_bigint (id);
-
   METHOD_SIG sig;
+
+  unpacker.unpack_bigint (id);
   sig.unpack (unpacker);
 
-  DB_VALUE result;
-  db_make_null (&result);
-
-  // reset previous arguments
   auto search = runtime_args.find (id);
   if (search != runtime_args.end())
     {
       std::vector<DB_VALUE> &args = search->second;
-      error = method_invoke (result, args, &sig);
+      error = method_invoke_builtin_internal (result, args, &sig);
       if (error == NO_ERROR)
 	{
 	  /* send a result value to server */
-	  method_send_value_to_server (conn_info.rc, conn_info.host, conn_info.server_name, result);
+	  error = cubmethod::mcon_send_data_to_server (METHOD_SUCCESS, result);
 	}
-      db_value_clear (&result);
     }
   else
     {
@@ -240,33 +268,6 @@ method_invoke_builtin (packing_unpacker &unpacker, method_server_conn_info &conn
   return error;
 }
 
-static int
-method_callback (packing_unpacker &unpacker, method_server_conn_info &conn_info)
-{
-  int error = NO_ERROR;
-  tran_begin_libcas_function ();
-  int depth = tran_get_libcas_depth ();
-  if (depth > METHOD_MAX_RECURSION_DEPTH)
-    {
-      error = ER_SP_TOO_MANY_NESTED_CALL;
-    }
-  else
-    {
-      cubmethod::get_callback_handler()->set_server_info (depth - 1, conn_info.rc, conn_info.host);
-      error = cubmethod::get_callback_handler()->callback_dispatch (unpacker);
-    }
-  tran_end_libcas_function ();
-  return error;
-}
-
-static int
-method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info)
-{
-  cubmethod::get_callback_handler()->free_query_handle_all (false);
-  return NO_ERROR;
-}
-
-#endif
 /*
  * method_prepare_arguments () - Stores at DB_VALUE arguments (runtime_args) for C Method
  *   return:
@@ -274,41 +275,54 @@ method_end (packing_unpacker &unpacker, method_server_conn_info &conn_info)
  *   conn_info (in)   : enquiry return code, host name, server name
  */
 static int
-method_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &conn_info)
+method_prepare_arguments (packing_unpacker &unpacker)
 {
   UINT64 id;
-  unpacker.unpack_bigint (id);
-
-  int arg_count;
-  unpacker.unpack_int (arg_count);
-
-  // reset previous arguments
-  auto search = runtime_args.find (id);
-  if (search != runtime_args.end())
-    {
-      std::vector<DB_VALUE> &prev_args = search->second;
-      int prev_args_count = prev_args.size();
-      for (int i = 0; i < prev_args_count; i++)
-	{
-	  db_value_clear (&prev_args[i]);
-	}
-      runtime_args.erase (search);
-    }
-
-  // new arguments
   std::vector<DB_VALUE> arguments;
-  arguments.resize (arg_count);
-  for (int i = 0; i < arg_count; i++)
-    {
-      unpacker.unpack_db_value (arguments[i]);
-      method_fixup_vobjs (&arguments[i]);
-    }
-  runtime_args.insert ({id, arguments});
+
+  unpacker.unpack_all (id, arguments);
+
+  method_erase_runtime_arguments (id);
+  method_set_runtime_arguments (id, arguments);
+
   return NO_ERROR;
 }
 
 /*
- * method_invoke () -
+ * method_erase_runtime_arguments () -
+ *   return: void
+ *   id (in)     : method_invoke_group's id
+ */
+void
+method_erase_runtime_arguments (UINT64 id)
+{
+  auto search = runtime_args.find (id);
+  if (search != runtime_args.end())
+    {
+      std::vector<DB_VALUE> &prev_args = search->second;
+      pr_clear_value_vector (prev_args);
+      runtime_args.erase (search);
+    }
+}
+
+/*
+ * method_set_runtime_arguments () -
+ *   return: void
+ *   id (in)     : method_invoke_group's id
+*    args (in)      : DB_VALUE arguments
+ */
+void
+method_set_runtime_arguments (UINT64 id, std::vector<DB_VALUE> &args)
+{
+  for (DB_VALUE &v : args)
+    {
+      method_fixup_vobjs (&v);
+    }
+  runtime_args.insert ({id, args});
+}
+
+/*
+ * method_invoke_builtin_internal () -
  *   return: int
  *   result (out)     :
  *   args (in)   : objects & arguments DB_VALUEs
@@ -316,7 +330,7 @@ method_prepare_arguments (packing_unpacker &unpacker, method_server_conn_info &c
  */
 // *INDENT-OFF*
 int
-method_invoke (DB_VALUE & result, std::vector <DB_VALUE> &args, method_sig_node * meth_sig_p)
+method_invoke_builtin_internal (DB_VALUE & result, std::vector<DB_VALUE> &args, method_sig_node * meth_sig_p)
 // *INDENT-ON*
 {
   int error = NO_ERROR;
@@ -569,3 +583,40 @@ method_fixup_vobjs (DB_VALUE *value_p)
 
   return rc;
 }
+#endif
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/*
+ *  xmethod_invoke_fold_constants () - perform constant folding for method
+ *  return	  : error code
+ *  thread_p (in) : worker thread
+ *  sig_list(in) : method signature
+ *  args(in) : method argument
+ */
+int xmethod_invoke_fold_constants (THREAD_ENTRY *thread_p, const method_sig_list &sig_list,
+				   std::vector<std::reference_wrapper<DB_VALUE>> &args,
+				   DB_VALUE &result)
+{
+  int error_code = NO_ERROR;
+  cubmethod::method_invoke_group method_group (thread_p, sig_list);
+  method_group.begin ();
+  error_code = method_group.prepare (args);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = method_group.execute (args);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  DB_VALUE &res = method_group.get_return_value (0);
+  db_value_clone (&res, &result);
+
+  /* end() will be called at ~method_invoke_group */
+  // method_group.end ();
+  return error_code;
+}
+#endif

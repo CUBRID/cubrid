@@ -85,6 +85,10 @@
 #include "db_date.h"
 #include "show_scan.h"
 
+#if defined(CS_MODE)
+extern bool tran_is_in_libcas (void);
+#endif
+
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)

@@ -50,6 +50,7 @@
 #include "environment_variable.h"
 
 #include "system_parameter.h"
+#include "object_representation.h"
 
 #if defined (CS_MODE)
 #include "network_interface_cl.h"
@@ -99,18 +100,22 @@ jsp_connect_server (const char *db_name, int server_port)
  */
 
 void
-jsp_disconnect_server (const SOCKET sockfd)
+jsp_disconnect_server (SOCKET & sockfd)
 {
-  struct linger linger_buffer;
+  if (!IS_INVALID_SOCKET (sockfd))
+    {
+      struct linger linger_buffer;
 
-  linger_buffer.l_onoff = 1;
-  linger_buffer.l_linger = 0;
-  setsockopt (sockfd, SOL_SOCKET, SO_LINGER, (char *) &linger_buffer, sizeof (linger_buffer));
+      linger_buffer.l_onoff = 1;
+      linger_buffer.l_linger = 0;
+      setsockopt (sockfd, SOL_SOCKET, SO_LINGER, (char *) &linger_buffer, sizeof (linger_buffer));
 #if defined(WINDOWS)
-  closesocket (sockfd);
+      closesocket (sockfd);
 #else /* not WINDOWS */
-  close (sockfd);
+      close (sockfd);
 #endif /* not WINDOWS */
+      sockfd = INVALID_SOCKET;
+    }
 }
 
 /*
@@ -221,6 +226,38 @@ jsp_readn (SOCKET fd, void *vptr, int n)
   return (n - nleft);		/* return >= 0 */
 }
 
+int
+jsp_ping (SOCKET fd)
+{
+  char buffer[DB_MAX_IDENTIFIER_LENGTH];
+
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *ptr = or_pack_int (request, OR_INT_SIZE);
+  ptr = or_pack_int (ptr, SP_CODE_UTIL_PING);
+
+  int nbytes = jsp_writen (fd, request, OR_INT_SIZE * 2);
+  if (nbytes != OR_INT_SIZE * 2)
+    {
+      return ER_SP_NETWORK_ERROR;
+    }
+
+  int res_size = 0;
+  nbytes = jsp_readn (fd, (char *) &res_size, OR_INT_SIZE);
+  if (nbytes != OR_INT_SIZE)
+    {
+      return ER_SP_NETWORK_ERROR;
+    }
+  res_size = ntohl (res_size);
+
+  nbytes = jsp_readn (fd, buffer, res_size);
+  if (nbytes != res_size)
+    {
+      return ER_SP_NETWORK_ERROR;
+    }
+
+  return NO_ERROR;
+}
 
 static char *
 jsp_get_socket_file_path (const char *db_name)

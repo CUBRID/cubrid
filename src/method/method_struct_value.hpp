@@ -25,8 +25,28 @@
 namespace cubmethod
 {
   /*
-  * javasp specialized packing for DB_VALUE
-  */
+   * cubmethod::dbvalue_java
+   *
+   * description
+   *    javasp specialized packing for DB_VALUE
+   *
+   * how to use
+   *    - packing
+   *        DB_VALUE db_val;
+   *        dbvalue_java sp_wrapper;
+   *        sp_val.value = (DB_VALUE *) &db_val;
+   *        sp_val.pack (serializator); // serializator is cubpacking::packer
+   *
+   *    - unpacking
+   *        DB_VALUE db_val;
+   *        dbvalue_java sp_wrapper;
+   *        sp_val.value = &db_val[i];
+   *        sp_val.unpack (deserializator); // deserializator is cubpacking::unpacker
+   *
+   * note
+   *    - packing/unpacking shoudld should sync with CUBRIDPacker.java and CUBRIDUnpacker.java
+   *
+   */
   struct dbvalue_java : public cubpacking::packable_object
   {
     dbvalue_java ();

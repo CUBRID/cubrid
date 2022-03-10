@@ -22,8 +22,6 @@
 #include "list_file.h" /* qfile_ */
 #include "object_representation.h" /* OR_ */
 
-int method_Num_method_jsp_calls = 0;
-
 namespace cubscan
 {
   namespace method
@@ -48,7 +46,7 @@ namespace cubscan
 
       if (m_method_group == nullptr) // signature is not initialized
 	{
-	  m_method_group = new cubmethod::method_invoke_group (m_thread_p, sig_list);
+	  m_method_group = new cubmethod::method_invoke_group (m_thread_p, *sig_list);
 	}
 
       if (m_list_id == nullptr)
@@ -87,10 +85,7 @@ namespace cubscan
     scanner::clear (bool is_final)
     {
       close_value_array ();
-      for (DB_VALUE &value : m_arg_vector)
-	{
-	  db_value_clear (&value);
-	}
+      pr_clear_value_vector (m_arg_vector);
 
       if (is_final)
 	{
@@ -133,12 +128,14 @@ namespace cubscan
       next_value_array (vl);
 
       scan_code = get_single_tuple ();
-      if (scan_code == S_SUCCESS && m_method_group->prepare (m_arg_vector) != NO_ERROR)
+
+      std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector.begin(), m_arg_vector.end());
+      if (scan_code == S_SUCCESS && m_method_group->prepare (arg_wrapper) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
 	}
 
-      if (scan_code == S_SUCCESS && m_method_group->execute (m_arg_vector) != NO_ERROR)
+      if (scan_code == S_SUCCESS && m_method_group->execute (arg_wrapper) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
 	}
@@ -157,21 +154,18 @@ namespace cubscan
 
 	      db_make_null (dbval_p);
 
-	      DB_VALUE *result = m_method_group->get_return_value (i);
-	      db_value_clone (result, dbval_p);
+	      DB_VALUE &result = m_method_group->get_return_value (i);
+	      db_value_clone (&result, dbval_p);
 
 	      m_dbval_list[i].val = dbval_p;
-	      db_value_clear (result);
+	      db_value_clear (&result);
 	    }
 
 	  m_method_group->reset (false);
 	}
 
       // clear
-      for (DB_VALUE &value : m_arg_vector)
-	{
-	  db_value_clear (&value);
-	}
+      pr_clear_value_vector (m_arg_vector);
 
       return scan_code;
     }

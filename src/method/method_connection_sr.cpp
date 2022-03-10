@@ -16,12 +16,15 @@
  *
  */
 
-#include "method_connection.hpp"
+#include "method_connection_sr.hpp"
 
 #if defined (SERVER_MODE)
 #include "network.h" /* METHOD_CALL */
 #include "network_interface_sr.h" /* xs_receive_data_from_client() */
 #include "server_support.h"	/* css_send_reply_and_data_to_client(), css_get_comm_request_id() */
+#else
+#include "query_method.hpp"
+#include "method_callback.hpp"
 #endif
 
 #include "object_representation.h" /* OR_ */
@@ -33,14 +36,14 @@ namespace cubmethod
 // General interface to communicate with CAS
 //////////////////////////////////////////////////////////////////////////
 #if defined (SERVER_MODE)
-  int xs_send (cubthread::entry *thread_p, cubmem::block &mem)
+  int xs_send (cubthread::entry *thread_p, cubmem::extensible_block &mem)
   {
     OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
     char *reply = OR_ALIGNED_BUF_START (a_reply);
 
     /* pack headers */
     char *ptr = or_pack_int (reply, (int) METHOD_CALL);
-    ptr = or_pack_int (ptr, (int) mem.dim);
+    ptr = or_pack_int (ptr, (int) mem.get_size ());
 
 #if !defined(NDEBUG)
     /* suppress valgrind UMW error */
@@ -50,7 +53,7 @@ namespace cubmethod
     /* send */
     unsigned int rid = css_get_comm_request_id (thread_p);
     return css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-	   mem.ptr, (int) mem.dim);
+	   mem.get_ptr(), (int) mem.get_size ());
   }
 
   int xs_receive (cubthread::entry *thread_p, const xs_callback_func &func)
@@ -80,13 +83,48 @@ namespace cubmethod
     free_and_init (buffer.ptr);
     return error;
   }
+#else // SA_MODE
+  int xs_send (cubthread::entry *thread_p, cubmem::extensible_block &ext_blk)
+  {
+    packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
+    return method_dispatch (unpacker);
+  }
+
+  int xs_receive (cubthread::entry *thread_p, const xs_callback_func &func)
+  {
+    std::queue <cubmem::extensible_block> &queue = mcon_get_data_queue ();
+
+    assert (!queue.empty());
+
+    cubmem::extensible_block &blk = queue.front ();
+    cubmem::block buffer (blk.get_size(), blk.get_ptr());
+    int error = func (buffer);
+
+    queue.pop ();
+    return error;
+  }
+
+  int xs_receive (cubthread::entry *thread_p, SOCKET socket, const xs_callback_func_with_sock &func)
+  {
+    std::queue <cubmem::extensible_block> &queue = mcon_get_data_queue ();
+
+    assert (!queue.empty());
+
+    cubmem::extensible_block &blk = queue.front ();
+    cubmem::block buffer (blk.get_size(), blk.get_ptr());
+
+    int error = func (socket, buffer);
+
+    queue.pop ();
+    return error;
+  }
 #endif
 
   //////////////////////////////////////////////////////////////////////////
   // Interface to communicate with Java SP Server
   //////////////////////////////////////////////////////////////////////////
 
-  int method_send_buffer_to_java (SOCKET socket, cubmem::block &blk)
+  int mcon_send_buffer_to_java (SOCKET socket, cubmem::block &blk)
   {
     int error = NO_ERROR;
     OR_ALIGNED_BUF (OR_INT_SIZE) a_request;

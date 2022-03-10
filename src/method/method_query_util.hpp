@@ -44,7 +44,7 @@ namespace cubmethod
   } STATEMENT_STATUS;
 
   char get_stmt_type (std::string sql);
-  int get_num_markers (std::string sql);
+  int calculate_num_markers (const std::string sql);
   int consume_tokens (std::string sql, int index, STATEMENT_STATUS stmt_status);
 
   std::string get_column_default_as_string (DB_ATTRIBUTE *attr);

@@ -10355,89 +10355,41 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 {
   packing_unpacker unpacker (request, (size_t) reqlen);
 
+  /* 1) unpack arguments */
   method_sig_list sig_list;
-  sig_list.unpack (unpacker);
+  std::vector < DB_VALUE > args;
+  unpacker.unpack_all (sig_list, args);
 
-  int arg_cnt = 0;
-  unpacker.unpack_int (arg_cnt);
+  std::vector < std::reference_wrapper < DB_VALUE >> ref_args (args.begin (), args.end ());
 
-  /* *INDENT-OFF* */
-  std::vector<DB_VALUE> args (arg_cnt);
-  /* *INDENT-ON* */
-  for (int i = 0; i < arg_cnt; i++)
-    {
-      unpacker.unpack_db_value (args[i]);
-    }
+  /* 2) invoke method */
+  DB_VALUE ret_value;
+  db_make_null (&ret_value);
+  int error_code = xmethod_invoke_fold_constants (thread_p, sig_list, ref_args, ret_value);
 
-  /* *INDENT-OFF* */
-  cubmethod::method_invoke_group method_group (thread_p, &sig_list);
-  /* *INDENT-ON* */
-
-  method_group.begin ();
-
-  int error_code = method_group.prepare (args);
-  if (error_code != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  /* *INDENT-OFF* */
   packing_packer packer;
   cubmem::extensible_block eb;
-  /* *INDENT-ON* */
-
-  char *reply_data = NULL;
-  int reply_data_size = 0;
-
-  error_code = method_group.execute (args);
   if (error_code == NO_ERROR)
     {
-      DB_VALUE *ret_value = method_group.get_return_value (0);
+      /* 3) make out arguments */
 
+      // *INDENT-OFF*
+      std::vector<std::reference_wrapper<DB_VALUE>> out_args;
+      // *INDENT-ON*
       method_sig_node *sig = sig_list.method_sig;
-
-      /* *INDENT-OFF* */
-      std::vector <DB_VALUE *> out_args;
-      /* *INDENT-ON* */
       for (int i = 0; i < sig->num_method_args; i++)
 	{
-	  if (sig->arg_info.arg_mode[i] == 1)	// FIXME: SP_MODE_IN in jsp_cl.h
+	  if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
 	    {
 	      continue;
 	    }
 
 	  int pos = sig->method_arg_pos[i];
-	  DB_VALUE & val = args[pos];
-	  out_args.push_back (&val);
+	  out_args.push_back (std::ref (args[pos]));
 	}
 
-      //int total_size = packer.get_packed_int_size (0);
-      int total_size = packer.get_packed_db_value_size (*ret_value, 0);
-      total_size += packer.get_packed_int_size (total_size);
-    /* *INDENT-OFF* */
-    for (DB_VALUE *value : out_args)
-	{
-	  total_size += packer.get_packed_db_value_size (*value, total_size);
-	}
-    /* *INDENT-ON* */
-
-      eb.extend_to (total_size);
-      packer.set_buffer (eb.get_ptr (), total_size);
-
-      /* result */
-      //packer.pack_int (error_code);
-      packer.pack_db_value (*ret_value);
-
-      /* output parameters */
-      packer.pack_int (out_args.size ());
-
-    /* *INDENT-OFF* */
-    for (DB_VALUE *value : out_args)
-	{
-	  packer.pack_db_value (*value);	// DB_VALUEs
-    db_value_clear (value);
-	}
-    /* *INDENT-ON* */
+      /* 4) pack */
+      packer.set_buffer_and_pack_all (eb, ret_value, out_args);
     }
   else
     {
@@ -10445,15 +10397,11 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
       (void) return_error_to_client (thread_p, rid);
 
       std::string err_msg (er_msg ());
-      int total_size = packer.get_packed_string_size (err_msg, 0);
-      eb.extend_to (total_size);
-      packer.set_buffer (eb.get_ptr (), total_size);
-
-      packer.pack_string (err_msg);
+      packer.set_buffer_and_pack_all (eb, err_msg);
     }
 
-  reply_data = eb.get_ptr ();
-  reply_data_size = (int) packer.get_current_size ();
+  char *reply_data = eb.get_ptr ();
+  int reply_data_size = (int) packer.get_current_size ();
 
   OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -10465,13 +10413,10 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 				     reply_data_size);
 
   // clear
-  for (int i = 0; i < arg_cnt; i++)
-    {
-      db_value_clear (&args[i]);
-    }
+  pr_clear_value_vector (args);
+  db_value_clear (&ret_value);
 
   sig_list.freemem ();
-  method_group.end ();
 }
 
 void

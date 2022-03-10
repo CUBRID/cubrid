@@ -2805,6 +2805,8 @@ css_server_external_task::execute (context_type &thread_ref)
       assert (thread_ref.private_lru_index == -1);
     }
 
+  thread_ref.m_status = cubthread::entry::status::TS_RUN;
+
   // TODO: We lock tran_index_lock because external task expects it to be locked.
   //       However, I am not convinced we really need this
   pthread_mutex_lock (&thread_ref.tran_index_lock);
@@ -2812,6 +2814,7 @@ css_server_external_task::execute (context_type &thread_ref)
   m_task->execute (thread_ref);
 
   thread_ref.conn_entry = NULL;
+  thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
 
 void

@@ -130,9 +130,6 @@ static bool need_database_reconnect (void);
 extern bool ssl_client;
 extern int cas_init_ssl (int);
 extern void cas_ssl_close (int client_sock_fd);
-
-#else /* !LIBCAS_FOR_JSP */
-extern int libcas_main (SOCKET jsp_sock_fd);
 #endif /* !LIBCAS_FOR_JSP */
 
 static void set_cas_info_size (void);
@@ -1540,49 +1537,6 @@ cas_main (void)
 #endif /* WINDOWS */
 
   return 0;
-}
-
-#else /* LIBCAS_FOR_JSP */
-int
-libcas_main (SOCKET jsp_sock_fd)
-{
-  T_NET_BUF net_buf;
-  SOCKET client_sock_fd;
-  int status = FN_KEEP_CONN;
-
-  memset (&req_info, 0, sizeof (req_info));
-
-  req_info.client_version = CAS_PROTO_CURRENT_VER;
-  req_info.driver_info[DRIVER_INFO_CLIENT_TYPE] = (char) CAS_CLIENT_SERVER_SIDE_JDBC;
-  req_info.driver_info[DRIVER_INFO_FUNCTION_FLAG] = (char) (BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT);
-  client_sock_fd = jsp_sock_fd;
-
-  net_buf_init (&net_buf, cas_get_client_version ());
-  net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE);
-  if (net_buf.data == NULL)
-    {
-      return -1;
-    }
-  net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
-
-  logddl_set_jsp_mode (true);
-
-  while (status == FN_KEEP_CONN)
-    {
-      status = process_request (client_sock_fd, &net_buf, &req_info);
-    }
-
-  net_buf_clear (&net_buf);
-  net_buf_destroy (&net_buf);
-
-  if (status == FN_CLOSE_CONN)
-    {
-      return 0;
-    }
-  else
-    {
-      return -1;
-    }
 }
 #endif /* !LIBCAS_FOR_JSP */
 

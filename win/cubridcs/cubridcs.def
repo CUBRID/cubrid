@@ -407,7 +407,6 @@ EXPORTS
     ini_getuint_max
     ini_parser_free
     ini_parser_load
-    jsp_send_destroy_request_all
     jsp_set_prepare_call
     jsp_unset_prepare_call
     msgcat_final

@@ -259,15 +259,11 @@ set(JSP_SOURCES
   ${JSP_DIR}/jsp_comm.c
   ${JSP_DIR}/jsp_file.c
   ${JSP_DIR}/jsp_sr.c
-  ${JSP_DIR}/jsp_struct.cpp
-  ${JSP_DIR}/jsp_struct_value.cpp
-  )
-set(JSP_HEADERS
-  ${JSP_DIR}/jsp_struct.hpp
   )
 
 set(METHOD_SOURCES
-  ${METHOD_DIR}/method_connection.cpp
+  ${METHOD_DIR}/method_connection_sr.cpp
+  ${METHOD_DIR}/method_connection_pool.cpp
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_invoke_builtin.cpp
   ${METHOD_DIR}/method_invoke_group.cpp
@@ -280,6 +276,7 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_struct_query.cpp
   ${METHOD_DIR}/method_struct_schema_info.cpp
   ${METHOD_DIR}/method_scan.cpp
+  ${METHOD_DIR}/query_method.cpp
   )
 
 set(TRANSACTION_SOURCES

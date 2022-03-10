@@ -317,16 +317,13 @@ set(JSP_SOURCES
   ${JSP_DIR}/jsp_comm.c
   ${JSP_DIR}/jsp_file.c
   ${JSP_DIR}/jsp_sr.c
-  ${JSP_DIR}/jsp_struct.cpp
-  ${JSP_DIR}/jsp_struct_value.cpp
-  )
-set(JSP_HEADERS
-  ${JSP_DIR}/jsp_struct.hpp
   )
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
-  ${METHOD_DIR}/method_connection.cpp
+  ${METHOD_DIR}/method_connection_cl.cpp
+  ${METHOD_DIR}/method_connection_sr.cpp
+  ${METHOD_DIR}/method_connection_pool.cpp
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_scan.cpp
