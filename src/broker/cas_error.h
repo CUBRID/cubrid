@@ -31,6 +31,12 @@
 
 /*
  * cas_error.h -
+ *
+ * CAUTION!
+ *
+ * In case of common,  
+ * cci repository source (src/cci/broker_cas_error.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
  */
 
 #ifndef	_CAS_ERROR_H_
@@ -85,5 +91,13 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+/*
+ * CAUTION!
+ *
+ * In case of common,  
+ * cci repository source (src/cci/broker_cas_error.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
+ */
 
 #endif				/* _CAS_ERROR_H_ */

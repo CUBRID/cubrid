@@ -108,4 +108,15 @@ typedef struct flashback_summary_context
 extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
 extern void flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
 
+extern LOG_PAGEID flashback_min_log_pageid_to_keep ();
+extern bool flashback_is_needed_to_keep_archive ();
+extern bool flashback_check_time_exceed_threshold ();
+extern bool flashback_is_loginfo_generation_finished (LOG_LSA * start_lsa, LOG_LSA * end_lsa);
+
+extern void flashback_set_min_log_pageid_to_keep (LOG_LSA * lsa);
+extern void flashback_set_request_done_time ();
+extern void flashback_set_status_active ();
+extern void flashback_set_status_inactive ();
+extern void flashback_reset ();
+
 #endif /* _FLASHBACK_H_ */
