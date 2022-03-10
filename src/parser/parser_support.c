@@ -10015,8 +10015,11 @@ pt_make_query_show_trace (PARSER_CONTEXT * parser)
   trace_func->alias_print = pt_append_string (parser, NULL, "trace");
   select->info.query.q.select.list = parser_append_node (trace_func, select->info.query.q.select.list);
 
-  parser->flag.dont_collect_exec_stats = 1;
-  parser->query_trace = false;
+  if (parser->statement_number == 0) // This is when only the show trace statement is used.
+    {
+      parser->flag.dont_collect_exec_stats = 1;
+      parser->query_trace = false;
+    }
 
   return select;
 }
