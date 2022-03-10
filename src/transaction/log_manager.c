@@ -12444,7 +12444,7 @@ error:
               error_code = heap_get_class_name (thread_p, &(classoid), &(classname)); \
               if (error_code != NO_ERROR) \
                 { \
-                  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_SCHEMA_CHANGED, 4, (classname), OID_AS_ARGS (&(classoid))); \
+                  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_SCHEMA_CHANGED, 4, (classname), OID_AS_ARGS (&(classoid))); \
                   free_and_init ((classname)); \
                 } \
             } \
@@ -14769,8 +14769,7 @@ flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * c
 	      if (logpb_fetch_from_archive (thread_p, process_lsa.pageid, log_page_p, 0, NULL, false) == NULL)
 		{
 		  /* archive log volume has been removed */
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_LOG_NOT_EXIST, 2,
-			  LSA_AS_ARGS (&process_lsa));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_LOG_NOT_EXIST, 2, LSA_AS_ARGS (&process_lsa));
 		  error = ER_FLASHBACK_LOG_NOT_EXIST;;
 		  goto error;
 		}

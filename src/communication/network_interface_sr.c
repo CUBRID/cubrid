@@ -10848,7 +10848,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       status = xlocator_find_class_oid (thread_p, classname, &classoid, NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_CLASS, 1, classname);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_CLASS, 1, classname);
 	  error_code = ER_FLASHBACK_INVALID_CLASS;
 	  goto error;
 	}

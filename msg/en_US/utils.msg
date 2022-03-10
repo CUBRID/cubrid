@@ -1254,16 +1254,17 @@ usage: %1$s flashback [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
 valid options:\n\
     -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
-    -u, --user=ID                 specify the user who executed the SQL statement to flashback; default : ALL.\n\
+    -u, --user=ID                 specify the user who executed the SQL statement to flashback; default: ALL.\n\
     -p, --dba-password            password of the DBA user; will prompt if don't specify\n\
     -s, --start-date=DATE         specify starting DATE for flashback. SQL logs are extracted from the DATE.\n\
                                   DATE is given as follows: dd-mm-yyyy:hh:mm:ss.\n\
-    -e, --end-date=DATE           specify end DATE of the flashback. SQL logs are extracted up to the DATE.\n\
+    -e, --end-date=DATE           specify end DATE for the flashback. SQL logs are extracted up to the DATE.\n\
                                   if start-date is not specified, then ((END - 10min) ~ END) is set to range,\n\
                                   and else if END is not specified, then (start ~ (start + 10min)) is set.\n\
                                   And neither a start date nor an end date is specified,\n\
-                                  the SQL log is extracted for 10 minutes from the current.\n\
+                                  the SQL logs, executed between the (current time - 10min) and current time, are extracted.\n\
     --detail                      output a detailed information for each SQL statement.\n\
                                   Transaction ID, User name, and original SQL statement will be returned with SQL statement\n\
-                                  for flashback; default : outputs only SQL statements\n\
-    --oldest                      output SQL statements from the most recently executed; default : latest\n
+                                  for flashback; default: outputs only SQL statements for flashback\n\
+    --oldest                      output SQL statements for flashback in reverse time order starting with the most recently\n
+                                  executed SQL statement; default: latest\n
