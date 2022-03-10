@@ -1878,6 +1878,12 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "supplemental_log", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   sprintf (domain_string, "sequence of %s", CT_CLASS_NAME);
 
   error_code = smt_add_attribute (def, "sub_classes", domain_string, NULL);

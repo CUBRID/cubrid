@@ -766,6 +766,8 @@ struct sm_class
 
   int tde_algorithm;
 
+  int supplemental_log;
+
   unsigned methods_loaded:1;	/* set when dynamic linking was performed */
   unsigned post_load_cleanup:1;	/* set if post load cleanup has occurred */
 
