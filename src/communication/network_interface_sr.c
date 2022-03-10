@@ -10836,6 +10836,8 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   time_t start_time = 0;
   time_t end_time = 0;
 
+  char *classname = NULL;
+
   if (flashback_min_log_pageid_to_keep () != NULL_LOG_PAGEID)
     {
       /* if flashback was shutdown abnormally, flashback_min_log_pageid can not be cleared
@@ -10853,7 +10855,6 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   for (int i = 0; i < context.num_class; i++)
     {
-      char *classname = NULL;
       OID classoid = OID_INITIALIZER;
 
       ptr = or_unpack_string_nocopy (ptr, &classname);
@@ -10941,10 +10942,22 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   return;
 error:
-  ptr = or_pack_int (reply, 0);
-  or_pack_int (ptr, error_code);
 
-  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  if (error_code == ER_FLASHBACK_INVALID_CLASS)
+    {
+      ptr = or_pack_int (reply, strlen (classname));
+      or_pack_int (ptr, error_code);
+
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), classname,
+					 strlen (classname));
+    }
+  else
+    {
+      ptr = or_pack_int (reply, 0);
+      or_pack_int (ptr, error_code);
+
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    }
 
   flashback_reset ();
 

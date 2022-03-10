@@ -4861,7 +4861,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
   dynamic_array *darray = NULL;
   int i = 0;
   char table_name_buf[SM_MAX_IDENTIFIER_LENGTH];
-  char *table_name;
+  char *table_name = NULL;
+
+  char *invalid_class = NULL;
 
   OID *oid_list = NULL;
 
@@ -4918,12 +4920,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
   end_date = utility_get_option_string_value (arg_map, FLASHBACK_END_DATE_S, 0);
   is_detail = utility_get_option_bool_value (arg_map, FLASHBACK_DETAIL_S);
   is_oldest = utility_get_option_bool_value (arg_map, FLASHBACK_OLDEST_S);
-
-  if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
-    {
-      fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
-      goto error_exit;
-    }
 
   /* create table list */
   /* class existence and classoid will be found at server side. if is checked at utility side, it needs addtional access to the server through locator */
@@ -5082,6 +5078,12 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   need_shutdown = true;
 
+  if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
+      goto error_exit;
+    }
+
   oid_list = (OID *) malloc (sizeof (OID) * num_tables);
   if (oid_list == NULL)
     {
@@ -5089,7 +5091,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  error = flashback_get_and_show_summary (darray, user, start_time, end_time, &summary_info, &oid_list);
+  error = flashback_get_and_show_summary (darray, user, start_time, end_time, &summary_info, &oid_list, &invalid_class);
   if (error != NO_ERROR)
     {
       /* print error message */
@@ -5101,7 +5103,10 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	  break;
 	case ER_FLASHBACK_INVALID_CLASS:
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TABLE_NOT_EXIST));
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TABLE_NOT_EXIST),
+				 invalid_class);
+	  free_and_init (invalid_class);
+
 	  break;
 	case ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY:
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
@@ -5116,7 +5121,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   printf ("Enter transaction id : ");
   scanf ("%d", &trid);
-
 
   FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
   if (summary_entry == NULL)

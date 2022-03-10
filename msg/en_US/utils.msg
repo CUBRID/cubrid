@@ -1243,7 +1243,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 2 Invalid date format, valid format is dd-mm-yyyy:hh:mm:ss\n
 3 Start date (%1$s) is required to be smaller than end date (%2$s)\n
 4 Please try with a date before the current or after the database was created\n
-5 Table does not exist in database\n
+5 Table (%1$s) does not exist in database\n
 6 Too many transactions to flashback. Please shorten the interval between start date and end date\n
 7 Unable to get flashback because schema has been changed.\n
 8 Log volume has been removed. Please try with the later date\n

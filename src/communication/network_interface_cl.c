@@ -10575,7 +10575,7 @@ loaddb_update_stats ()
 
 int
 flashback_get_and_show_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
-				FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list)
+				FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list, char **invalid_class)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
@@ -10642,7 +10642,19 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
     {
       ptr = or_unpack_int (reply, &area_size);
       ptr = or_unpack_int (ptr, &error_code);
-      if (area_size > 0)
+
+      if (error_code == ER_FLASHBACK_INVALID_CLASS)
+	{
+	  *invalid_class = strndup (area, area_size);
+
+	  if (*invalid_class == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, area_size);
+	    }
+
+	}
+      else if (error_code == NO_ERROR)
 	{
 	  ptr = area;
 	  /* area : OID list | summary info list  */
