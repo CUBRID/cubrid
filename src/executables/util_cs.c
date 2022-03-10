@@ -5081,6 +5081,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
     {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NO_SUPPLEMENTAL_LOG));
       fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
       goto error_exit;
     }
@@ -5126,6 +5128,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
   FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
   if (summary_entry == NULL)
     {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TRANSACTION),
+			     trid);
       /* add message that can not find transaction id */
       goto error_exit;
     }

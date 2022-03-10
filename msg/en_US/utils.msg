@@ -1248,6 +1248,8 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 7 Unable to get flashback because schema (%1$s) has been changed.\n
 8 Log volume has been removed. Please try with the later date\n
 9 Couldn't open output file '%1$s'\n
+10 Trasaction ID (%1$d) does not exist\n
+11 Please set 'supplemental_log' in 'conf/cubrid.conf'\n
 60 \
 flashback: Provides statements to flashback a specific transaction.\n\
 usage: %1$s flashback [OPTION] database-name [class_name1 class_name2 ...]\n\
