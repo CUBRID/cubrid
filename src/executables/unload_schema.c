@@ -1641,12 +1641,16 @@ emit_resolutions (print_output & output_ctx, DB_OBJECT * class_, const char *cla
   DB_RESOLUTION *resolution_list;
   bool return_value = false;
   const char *name;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *class_name = NULL;
 
   resolution_list = db_get_resolutions (class_);
   if (resolution_list != NULL)
     {
       name = db_get_class_name (class_);
-      output_ctx ("ALTER %s %s%s%s INHERIT", class_type, PRINT_IDENTIFIER (name));
+      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
+      output_ctx ("ALTER %s %s%s%s.%s%s%s INHERIT", class_type, PRINT_IDENTIFIER (owner_name),
+		  PRINT_IDENTIFIER (class_name));
 
       for (; resolution_list != NULL; resolution_list = db_resolution_next (resolution_list))
 	{
@@ -1680,6 +1684,8 @@ static void
 emit_resolution_def (print_output & output_ctx, DB_RESOLUTION * resolution, RESOLUTION_QUALIFIER qualifier)
 {
   const char *name, *alias, *class_name;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *class_name_p = NULL;
   DB_OBJECT *class_;
 
   class_ = db_resolution_class (resolution);
@@ -1699,6 +1705,7 @@ emit_resolution_def (print_output & output_ctx, DB_RESOLUTION * resolution, RESO
     {
       return;
     }
+  SPLIT_USER_SPECIFIED_NAME (class_name, owner_name, class_name_p);
 
   alias = db_resolution_alias (resolution);
 
@@ -1706,12 +1713,14 @@ emit_resolution_def (print_output & output_ctx, DB_RESOLUTION * resolution, RESO
     {
     case INSTANCE_RESOLUTION:
       {
-	output_ctx ("       %s%s%s OF %s%s%s", PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (class_name));
+	output_ctx ("       %s%s%s OF %s%s%s.%s%s%s", PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (owner_name),
+		    PRINT_IDENTIFIER (class_name_p));
 	break;
       }
     case CLASS_RESOLUTION:
       {
-	output_ctx ("CLASS  %s%s%s OF %s%s%s", PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (class_name));
+	output_ctx ("CLASS  %s%s%s OF %s%s%s.%s%s%s", PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (owner_name),
+		    PRINT_IDENTIFIER (class_name_p));
 	break;
       }
     }
