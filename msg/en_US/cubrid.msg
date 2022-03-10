@@ -1414,8 +1414,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1335 Too many transactions to flashback. Less than %1$d transactions can be flashback.
 1336 Cannot support flashback for this class (name : %1$s , OID : %2$d|%3$d|%4$d). Class schema has been changed.
 1337 Log record does not exist (lsa : %1$lld|%2$d). The archive log volume has been deleted.
+1338 Interval between flashback requests exceeds time threshold (%1$d sec).
 
-1338 Last Error
+1339 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

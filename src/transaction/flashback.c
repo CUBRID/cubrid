@@ -104,20 +104,25 @@ flashback_set_request_done_time ()
 /*
  * flashback_check_time_to_remove_archive - check the time if the archive can be removed
  *
+ * threshold_to_remove_archive (out) : return threshold value for error message
  * return   : true or false
  */
 
 bool
-flashback_check_time_exceed_threshold ()
+flashback_check_time_exceed_threshold (int *threshold_to_remove_archive)
 {
   const int minimum_threshold = 60;	// set minimum to 60 which is recommended intervals for removing archive logs
+  int threshold = 0;
+  threshold = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
 
-  int threshold_to_remove_archive = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
+  threshold = threshold < minimum_threshold ? minimum_threshold : threshold;
 
-  threshold_to_remove_archive =
-    threshold_to_remove_archive < minimum_threshold ? minimum_threshold : threshold_to_remove_archive;
+  if (threshold_to_remove_archive != NULL)
+    {
+      *threshold_to_remove_archive = threshold;
+    }
 
-  return (time (NULL) - flashback_Last_request_done_time) >= threshold_to_remove_archive;
+  return (time (NULL) - flashback_Last_request_done_time) >= *threshold_to_remove_archive;
 }
 
 /*
@@ -136,7 +141,7 @@ flashback_is_needed_to_keep_archive ()
       return false;
     }
 
-  if (!flashback_Is_active && flashback_check_time_exceed_threshold ())
+  if (!flashback_Is_active && flashback_check_time_exceed_threshold (NULL))
     {
       /* if flashback request is not in active and interval between flashback
        * requests exceeds threshold, then there is no need to keep archive log for flashback */

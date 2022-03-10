@@ -5160,7 +5160,19 @@ flashback (UTIL_FUNCTION_ARG * arg)
 				      FLASHBACK_MSG_LOG_VOLUME_NOT_EXIST));
 	      break;
 	    case ER_FLASHBACK_TIMEOUT:
-	      break;
+	      {
+		/* if interval between flashback requests exceeds threshold, then archive volume can be removed
+		 * and minimum interval is the value recommended for remove log archives interval */
+		const int minimum_interval = 60;
+		int interval_threshold = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
+
+		interval_threshold = interval_threshold < 60 ? 60 : interval_threshold;
+
+		PRINT_AND_LOG_ERR_MSG (msgcat_message
+				       (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TIMEOUT),
+				       interval_threshold);
+		break;
+	      }
 	    default:
 	      break;
 	    }

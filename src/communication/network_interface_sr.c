@@ -11019,14 +11019,17 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *ptr;
   char *start_ptr;
 
+  int threshold_to_remove_archive = 0;
+
   FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
 
   flashback_set_status_active ();
 
-  if (flashback_check_time_exceed_threshold ())
+  if (flashback_check_time_exceed_threshold (&threshold_to_remove_archive))
     {
-      /* er_set */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_TIMEOUT, 1, threshold_to_remove_archive);
       error_code = ER_FLASHBACK_TIMEOUT;
+
       goto error;
     }
 
