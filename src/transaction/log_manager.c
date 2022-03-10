@@ -12442,8 +12442,7 @@ error:
           error_code = (e); \
           if (error_code == ER_FLASHBACK_SCHEMA_CHANGED) \
             { \
-              error_code = heap_get_class_name (thread_p, &(classoid), &(classname)); \
-              if (error_code != NO_ERROR) \
+              if (heap_get_class_name (thread_p, &(classoid), &(classname)) == NO_ERROR); \
                 { \
                   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_SCHEMA_CHANGED, 4, (classname), OID_AS_ARGS (&(classoid))); \
                   free_and_init ((classname)); \
@@ -15164,6 +15163,11 @@ error:
   if (redo_recdes.data != NULL)
     {
       free_and_init (redo_recdes.data);
+    }
+
+  if (log_info_entry != NULL)
+    {
+      db_private_free_and_init (log_info_entry);
     }
 
   return error;
