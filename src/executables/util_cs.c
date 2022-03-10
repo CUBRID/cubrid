@@ -3205,9 +3205,9 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   if (log_path != NULL)
     {
       if (realpath (log_path, log_path_buf) != NULL)
-        {
-          log_path = log_path_buf;
-        }
+	{
+	  log_path = log_path_buf;
+	}
     }
   if (log_path != NULL)
     {
