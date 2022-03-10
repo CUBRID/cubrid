@@ -15167,7 +15167,7 @@ error:
 
   if (log_info_entry != NULL)
     {
-      db_private_free_and_init (log_info_entry);
+      db_private_free_and_init (thread_p, log_info_entry);
     }
 
   return error;
