@@ -5861,7 +5861,8 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
       goto end;
     }
 
-  /* TO BE: It is necessary to check the permission of the target class of the owner to be changed. *
+  /* TO BE: It is necessary to check the permission of the target class of the owner to be changed. */
+#if 0
   error = obj_get (target_class_obj, TR_ATT_CLASS, &value);
   if (error != NO_ERROR)
     {
@@ -5875,7 +5876,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
       ASSERT_ERROR ();
       goto end;
     }
-  /**/
+#endif
 
   owner_name = au_get_user_name (owner_mop);
   if (!owner_name)
