@@ -34,7 +34,6 @@
 #include <assert.h>
 
 #include "utility.h"
-#include "util_func.h"
 #include "error_manager.h"
 #include "message_catalog.h"
 #include "system_parameter.h"
@@ -3154,7 +3153,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   bool verbose;
   const char *log_path;
   char log_path_buf[PATH_MAX];
-  char active_log_path[PATH_MAX];
   int error = NO_ERROR;
   INT64 pageid = 0;
   int interval;
@@ -3164,10 +3162,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   LOG_LSA master_eof_lsa, applied_final_lsa;
   LOG_LSA copied_append_lsa, copied_eof_lsa;
   LOG_LSA initial_copied_append_lsa, initial_applied_final_lsa;
-  char *ha_node_list_p = NULL;
-  char **ha_node_list_pp = NULL;
-  char *start_node;
-  int ha_node_idx = 0;
   time_t start_time, cur_time;
 
   start_time = time (NULL);
@@ -3204,13 +3198,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   if (master_node_name != NULL)
     {
       check_master_info = true;
-      ha_node_list_p = prm_get_string_value (PRM_ID_HA_NODE_LIST);
-      start_node = (char *) strchr (ha_node_list_p, '@');
-      if (start_node == NULL || ha_node_list_p == start_node)
-	{
-	  return NULL;
-	}
-      ha_node_list_pp = util_split_string (start_node + 1, " ,:");
     }
 
   check_applied_info = utility_get_option_bool_value (arg_map, APPLYINFO_APPLIED_INFO_S);
@@ -3218,18 +3205,9 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   if (log_path != NULL)
     {
       if (realpath (log_path, log_path_buf) != NULL)
-	{
-	  log_path = log_path_buf;
-	}
-      memset (active_log_path, 0, PATH_MAX);
-      fileio_make_log_active_name ((char *) active_log_path, log_path, database_name);
-      if (!fileio_is_volume_exist ((const char *) active_log_path))
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, active_log_path);
-	  error = ER_LOG_MOUNT_FAIL;
-	  printf ("\n%s\n\n", db_error_string (3));
-	  goto print_applyinfo_usage;
-	}
+       {
+         log_path = log_path_buf;
+       }
     }
   if (log_path != NULL)
     {
@@ -3317,10 +3295,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 				     check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
 				     &applied_final_lsa);
 	  (void) db_shutdown ();
-	  if (error != NO_ERROR)
-	    {
-	      goto print_applyinfo_usage;
-	    }
 	}
       else if (check_copied_info)
 	{
@@ -3331,40 +3305,17 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  error = la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
 				     check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
 				     &applied_final_lsa);
-	  if (error != NO_ERROR)
-	    {
-	      goto print_applyinfo_usage;
-	    }
 	}
 
     check_applied_info_end:
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  goto print_applyinfo_usage;
 	}
       error = NO_ERROR;
 
       if (check_master_info)
 	{
-	  check_master_info = false;
-	  for (; ha_node_list_pp[ha_node_idx] != NULL;)
-	    {
-	      if (!strcmp (master_node_name, ha_node_list_pp[ha_node_idx]))
-		{
-		  check_master_info = true;
-		  break;
-		}
-	      ha_node_idx++;
-	    }
-	  if (!check_master_info)
-	    {
-	      er_init (er_msg_file, ER_NEVER_EXIT);
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, master_node_name);
-	      PRINT_AND_LOG_ERR_MSG ("\n%s\n\n", db_error_string (3));
-	      goto print_applyinfo_usage;
-	    }
-
 	  memset (master_database_name, 0x00, CUB_MAXHOSTNAMELEN);
 	  strcpy (master_database_name, database_name);
 	  strcat (master_database_name, "@");
@@ -3400,8 +3351,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
     check_master_info_end:
       if (error != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  goto print_applyinfo_usage;
+	  PRINT_AND_LOG_ERR_MSG ("\n%s\n", db_error_string (3));
 	}
       error = NO_ERROR;
 

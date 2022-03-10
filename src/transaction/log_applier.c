@@ -7222,7 +7222,7 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
 check_applied_info_end:
   if (error != NO_ERROR)
     {
-      printf ("%s\n", db_error_string (3));
+      printf ("\n%s\n\n", db_error_string (3));
     }
   error = NO_ERROR;
 
@@ -7343,7 +7343,7 @@ check_copied_info_end:
       printf ("\n%s\n\n", db_error_string (3));
     }
 
-  return error;
+  return NO_ERROR;
 }
 
 void
