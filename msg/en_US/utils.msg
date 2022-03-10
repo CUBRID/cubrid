@@ -1245,7 +1245,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 4 Please try with a date before the current or after the database was created\n
 5 Table (%1$s) does not exist in database\n
 6 Too many transactions to flashback. Please shorten the interval between start date and end date\n
-7 Unable to get flashback because schema has been changed.\n
+7 Unable to get flashback because schema (%1$s) has been changed.\n
 8 Log volume has been removed. Please try with the later date\n
 9 Couldn't open output file '%1$s'\n
 60 \

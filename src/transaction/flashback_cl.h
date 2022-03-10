@@ -57,6 +57,7 @@ typedef struct flashback_summary_info
 typedef std::unordered_map<TRANID, FLASHBACK_SUMMARY_INFO> FLASHBACK_SUMMARY_INFO_MAP;
 // *INDENT-ON*
 
+extern int flashback_find_class_index (OID * oidlist, int list_size, OID classoid);
 extern int flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INFO_MAP * summary,
 					       int num_summary, dynamic_array * classname_list, OID * oidlist);
 

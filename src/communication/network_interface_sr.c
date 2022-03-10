@@ -11019,7 +11019,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *ptr;
   char *start_ptr;
 
-  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0 };
+  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
 
   flashback_set_status_active ();
 
@@ -11111,18 +11111,29 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   return;
 error:
-  ptr = or_pack_int (reply, 0);
-  or_pack_int (ptr, error_code);
 
-  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  if (error_code == ER_FLASHBACK_SCHEMA_CHANGED)
+    {
+      OR_ALIGNED_BUF (OR_OID_SIZE) area_buf;
+      area = OR_ALIGNED_BUF_START (area_buf);
+
+      ptr = or_pack_int (reply, OR_ALIGNED_BUF_SIZE (area_buf));
+      or_pack_int (ptr, error_code);
+      or_pack_oid (area, &context.invalid_class);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+					 OR_ALIGNED_BUF_SIZE (area_buf));
+    }
+  else
+    {
+      ptr = or_pack_int (reply, 0);
+      or_pack_int (ptr, error_code);
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    }
 
   flashback_reset ();
-
   return;
-
 css_send_error:
 
   flashback_reset ();
-
   return;
 }

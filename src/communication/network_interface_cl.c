@@ -10696,7 +10696,7 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
 
 int
 flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa, LOG_LSA * end_lsa,
-		       int *num_item, bool forward, char **info_list)
+		       int *num_item, bool forward, char **info_list, int *invalid_class_idx)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
@@ -10746,7 +10746,16 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
     {
       ptr = or_unpack_int (reply, &area_size);
       ptr = or_unpack_int (ptr, &error_code);
-      if (area_size > 0)
+
+      if (error_code == ER_FLASHBACK_SCHEMA_CHANGED)
+	{
+	  OID invalid_classoid;
+
+	  or_unpack_oid (area, &invalid_classoid);
+
+	  *invalid_class_idx = flashback_find_class_index (classlist, num_class, invalid_classoid);
+	}
+      else if (error_code == NO_ERROR)
 	{
 	  /* area : start lsa | end lsa | num item | item list */
 	  ptr = or_unpack_log_lsa (area, start_lsa);

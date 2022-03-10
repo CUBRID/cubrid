@@ -14912,9 +14912,9 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 	  int supplement_length;
 	  SUPPLEMENT_REC_TYPE rec_type;
 
-	  OID classoid;
-
 	  LOG_LSA undo_lsa, redo_lsa;
+
+	  OID classoid;
 
 	  /* TODO: 
 	   * modulize the process of getting supplement data 
@@ -15100,6 +15100,7 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 
 	      if (error != NO_ERROR)
 		{
+		  COPY_OID (&context->invalid_class, &classoid);
 		  goto error;
 		}
 

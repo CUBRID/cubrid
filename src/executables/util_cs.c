@@ -4864,6 +4864,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
   char *table_name = NULL;
 
   char *invalid_class = NULL;
+  int invalid_class_idx = 0;
 
   OID *oid_list = NULL;
 
@@ -5133,16 +5134,21 @@ flashback (UTIL_FUNCTION_ARG * arg)
     {
       error =
 	flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest,
-			       &loginfo_list);
+			       &loginfo_list, &invalid_class_idx);
       if (error != NO_ERROR)
 	{
 	  switch (error)
 	    {
 	    case ER_FLASHBACK_SCHEMA_CHANGED:
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
-				      FLASHBACK_MSG_TABLE_SCHEMA_CHANGED));
-	      break;
+	      {
+		char classname[SM_MAX_IDENTIFIER_LENGTH];
+		da_get (darray, invalid_class_idx, classname);
+
+		PRINT_AND_LOG_ERR_MSG (msgcat_message
+				       (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+					FLASHBACK_MSG_TABLE_SCHEMA_CHANGED), classname);
+		break;
+	      }
 	    case ER_FLASHBACK_LOG_NOT_EXIST:
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message
 				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
