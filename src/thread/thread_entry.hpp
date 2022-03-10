@@ -115,8 +115,8 @@ struct event_stat
 };
 
 typedef
-  std::thread::id
-  thread_id_t;
+std::thread::id
+thread_id_t;
 
 // FIXME - move these enum to cubthread::entry
 enum thread_type
@@ -161,7 +161,7 @@ enum thread_resume_suspend_status
 };
 
 namespace
-  cubthread
+cubthread
 {
 
   // cubthread::entry
@@ -191,258 +191,258 @@ namespace
   class
     entry
   {
-  public:
-    entry ();
-    ~
-    entry ();
+    public:
+      entry ();
+      ~
+      entry ();
 
-    // enumerations
-    enum class
+      // enumerations
+      enum class
       status
-    {
-      TS_DEAD,
-      TS_FREE,
-      TS_RUN,
-      TS_WAIT,
-      TS_CHECK
-    };
+      {
+	TS_DEAD,
+	TS_FREE,
+	TS_RUN,
+	TS_WAIT,
+	TS_CHECK
+      };
 
-    // public functions
-    void
-    request_lock_free_transactions (void);	// todo: lock-free refactoring
+      // public functions
+      void
+      request_lock_free_transactions (void);	// todo: lock-free refactoring
 
-    // The rules of thumbs is to always use private members. Until a complete refactoring, these members will remain
-    // public
-    int
+      // The rules of thumbs is to always use private members. Until a complete refactoring, these members will remain
+      // public
+      int
       index;			/* thread entry index */
-    thread_type
+      thread_type
       type;			/* thread type */
-    thread_id_t
+      thread_id_t
       emulate_tid;		/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
 				 * thread */
-    int
+      int
       client_id;		/* client id whom this thread is responding */
-    int
+      int
       tran_index;		/* tran index to which this thread belongs */
-    int
+      int
       private_lru_index;	/* private lru index when transaction quota is used */
-    pthread_mutex_t
+      pthread_mutex_t
       tran_index_lock;
-    unsigned int
+      unsigned int
       rid;			/* request id which this thread is processing */
-    status
+      status
       m_status;			/* thread status */
 
-    pthread_mutex_t
+      pthread_mutex_t
       th_entry_lock;		/* latch for this thread entry */
-    pthread_cond_t
+      pthread_cond_t
       wakeup_cond;		/* wakeup condition */
 
-    HL_HEAPID
+      HL_HEAPID
       private_heap_id;		/* id of thread private memory allocator */
-    adj_array *
+      adj_array *
       cnv_adj_buffer[3];	/* conversion buffer */
 
-    css_conn_entry *
+      css_conn_entry *
       conn_entry;		/* conn entry ptr */
 
-    xasl_unpack_info *
+      xasl_unpack_info *
       xasl_unpack_info_ptr;	/* XASL_UNPACK_INFO * */
-    int
+      int
       xasl_errcode;		/* xasl errorcode */
-    int
+      int
       xasl_recursion_depth;
 
-    unsigned int
+      unsigned int
       rand_seed;		/* seed for rand_r() */
-    struct drand48_data
-      rand_buf;			/* seed for lrand48_r(), drand48_r() */
+      struct drand48_data
+	rand_buf;			/* seed for lrand48_r(), drand48_r() */
 
-    thread_resume_suspend_status
+      thread_resume_suspend_status
       resume_status;		/* resume status */
-    int
+      int
       request_latch_mode;	/* for page latch support */
-    int
+      int
       request_fix_count;
-    bool
+      bool
       victim_request_fail;
-    bool
+      bool
       interrupted;		/* is this request/transaction interrupted ? */
-    std::atomic_bool
+      std::atomic_bool
       shutdown;			/* is server going down? */
-    bool
+      bool
       check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
-    bool
+      bool
       wait_for_latch_promote;	/* this thread is waiting for latch promotion */
-    entry *
+      entry *
       next_wait_thrd;
 
-    void *
+      void *
       lockwait;
-    INT64
+      INT64
       lockwait_stime;		/* time in milliseconds */
-    int
+      int
       lockwait_msecs;		/* time in milliseconds */
-    int
+      int
       lockwait_state;
-    void *
+      void *
       query_entry;
-    entry *
+      entry *
       tran_next_wait;
-    entry *
+      entry *
       worker_thrd_list;		/* worker thread on job queue */
 
-    struct log_zip *
-      log_zip_undo;
-    struct log_zip *
-      log_zip_redo;
-    char *
+      struct log_zip *
+	log_zip_undo;
+      struct log_zip *
+	log_zip_redo;
+      char *
       log_data_ptr;
-    int
+      int
       log_data_length;
 
-    bool
+      bool
       no_logging;
 
-    int
+      int
       net_request_index;	/* request index of net server functions */
 
-    struct vacuum_worker *
-      vacuum_worker;		/* Vacuum worker info */
+      struct vacuum_worker *
+	vacuum_worker;		/* Vacuum worker info */
 
-    bool
+      bool
       sort_stats_active;
 
-    EVENT_STAT
+      EVENT_STAT
       event_stats;
 
-    /* for query profile */
-    int
+      /* for query profile */
+      int
       trace_format;
-    bool
+      bool
       on_trace;
-    bool
+      bool
       clear_trace;
 
-    /* for lock free structures */
-    lf_tran_entry *
+      /* for lock free structures */
+      lf_tran_entry *
       tran_entries[THREAD_TS_COUNT];
 
-    /* for supplemental log */
-    bool
+      /* for supplemental log */
+      bool
       no_supplemental_log;
-    bool
+      bool
       trigger_involved;
-    bool
+      bool
       is_cdc_daemon;
 
 #if !defined(NDEBUG)
-    fi_test_item *
+      fi_test_item *
       fi_test_array;
 
-    int
+      int
       count_private_allocators;
 #endif
-    int
+      int
       m_qlist_count;
 
-    cubload::driver *
+      cubload::driver *
       m_loaddb_driver;
 
-    thread_id_t
-    get_id ();
-    pthread_t
-    get_posix_id ();
-    void
-    register_id ();
-    void
-    unregister_id ();
-    bool
-    is_on_current_thread () const;
+      thread_id_t
+      get_id ();
+      pthread_t
+      get_posix_id ();
+      void
+      register_id ();
+      void
+      unregister_id ();
+      bool
+      is_on_current_thread () const;
 
-    void
-    return_lock_free_transaction_entries (void);
+      void
+      return_lock_free_transaction_entries (void);
 
-    void
-    lock (void);
-    void
-    unlock (void);
+      void
+      lock (void);
+      void
+      unlock (void);
 
-    cuberr::context &
-    get_error_context (void)
-    {
-      return m_error;
-    }
+      cuberr::context &
+      get_error_context (void)
+      {
+	return m_error;
+      }
 
-    cubbase::alloc_tracker &
-    get_alloc_tracker (void)
-    {
-      return m_alloc_tracker;
-    }
-    cubbase::pgbuf_tracker &
-    get_pgbuf_tracker (void)
-    {
-      return m_pgbuf_tracker;
-    }
-    cubsync::critical_section_tracker & get_csect_tracker (void)
-    {
-      return m_csect_tracker;
-    }
+      cubbase::alloc_tracker &
+      get_alloc_tracker (void)
+      {
+	return m_alloc_tracker;
+      }
+      cubbase::pgbuf_tracker &
+      get_pgbuf_tracker (void)
+      {
+	return m_pgbuf_tracker;
+      }
+      cubsync::critical_section_tracker &get_csect_tracker (void)
+      {
+	return m_csect_tracker;
+      }
 
-    log_system_tdes *
-    get_system_tdes (void)
-    {
-      return m_systdes;
-    }
-    void
-    set_system_tdes (log_system_tdes * sys_tdes)
-    {
-      m_systdes = sys_tdes;
-    }
-    void
-    reset_system_tdes (void)
-    {
-      m_systdes = NULL;
-    }
-    void
-    claim_system_worker ();
-    void
-    retire_system_worker ();
+      log_system_tdes *
+      get_system_tdes (void)
+      {
+	return m_systdes;
+      }
+      void
+      set_system_tdes (log_system_tdes *sys_tdes)
+      {
+	m_systdes = sys_tdes;
+      }
+      void
+      reset_system_tdes (void)
+      {
+	m_systdes = NULL;
+      }
+      void
+      claim_system_worker ();
+      void
+      retire_system_worker ();
 
-    void
-    end_resource_tracks (void);
-    void
-    push_resource_tracks (void);
-    void
-    pop_resource_tracks (void);
+      void
+      end_resource_tracks (void);
+      void
+      push_resource_tracks (void);
+      void
+      pop_resource_tracks (void);
 
-    void
-    assign_lf_tran_index (lockfree::tran::index idx);
-    lockfree::tran::index pull_lf_tran_index ();
-    lockfree::tran::index get_lf_tran_index ();
+      void
+      assign_lf_tran_index (lockfree::tran::index idx);
+      lockfree::tran::index pull_lf_tran_index ();
+      lockfree::tran::index get_lf_tran_index ();
 
-  private:
-    void
-    clear_resources (void);
+    private:
+      void
+      clear_resources (void);
 
-    thread_id_t
+      thread_id_t
       m_id;
 
-    // error manager context
-    cuberr::context m_error;
+      // error manager context
+      cuberr::context m_error;
 
-    // TODO: move all members her
-    bool
+      // TODO: move all members her
+      bool
       m_cleared;
 
-    // trackers
-    cubbase::alloc_tracker & m_alloc_tracker;
-    cubbase::pgbuf_tracker & m_pgbuf_tracker;
-    cubsync::critical_section_tracker & m_csect_tracker;
-    log_system_tdes *
+      // trackers
+      cubbase::alloc_tracker &m_alloc_tracker;
+      cubbase::pgbuf_tracker &m_pgbuf_tracker;
+      cubsync::critical_section_tracker &m_csect_tracker;
+      log_system_tdes *
       m_systdes;
 
-    lockfree::tran::index m_lf_tran_index;
+      lockfree::tran::index m_lf_tran_index;
   };
 
 }				// namespace cubthread
@@ -450,11 +450,11 @@ namespace
 #ifndef _THREAD_COMPAT_HPP_
 // The whole code uses THREAD_ENTRY... It is ridiculous to change entire code to rename.
 typedef
-  cubthread::entry
-  THREAD_ENTRY;
+cubthread::entry
+THREAD_ENTRY;
 typedef
-  std::thread::id
-  thread_id_t;
+std::thread::id
+thread_id_t;
 #endif // _THREAD_COMPAT_HPP_
 
 //////////////////////////////////////////////////////////////////////////
@@ -464,110 +464,110 @@ typedef
 //////////////////////////////////////////////////////////////////////////
 
 inline int
-thread_get_recursion_depth (cubthread::entry * thread_p)
+thread_get_recursion_depth (cubthread::entry *thread_p)
 {
   return thread_p->xasl_recursion_depth;
 }
 
 inline void
-thread_inc_recursion_depth (cubthread::entry * thread_p)
+thread_inc_recursion_depth (cubthread::entry *thread_p)
 {
   thread_p->xasl_recursion_depth++;
 }
 
 inline void
-thread_dec_recursion_depth (cubthread::entry * thread_p)
+thread_dec_recursion_depth (cubthread::entry *thread_p)
 {
   thread_p->xasl_recursion_depth--;
 }
 
 inline void
-thread_clear_recursion_depth (cubthread::entry * thread_p)
+thread_clear_recursion_depth (cubthread::entry *thread_p)
 {
   thread_p->xasl_recursion_depth = 0;
 }
 
 inline void
-thread_trace_on (cubthread::entry * thread_p)
+thread_trace_on (cubthread::entry *thread_p)
 {
   thread_p->on_trace = true;
 }
 
 inline void
-thread_trace_off (cubthread::entry * thread_p)
+thread_trace_off (cubthread::entry *thread_p)
 {
   thread_p->on_trace = true;
 }
 
 inline void
-thread_set_trace_format (cubthread::entry * thread_p, int format)
+thread_set_trace_format (cubthread::entry *thread_p, int format)
 {
   thread_p->trace_format = format;
 }
 
 inline
-  bool
-thread_is_on_trace (cubthread::entry * thread_p)
+bool
+thread_is_on_trace (cubthread::entry *thread_p)
 {
   return thread_p->on_trace;
 }
 
 inline void
-thread_set_clear_trace (cubthread::entry * thread_p, bool clear)
+thread_set_clear_trace (cubthread::entry *thread_p, bool clear)
 {
   thread_p->clear_trace = clear;
 }
 
 inline
-  bool
-thread_need_clear_trace (cubthread::entry * thread_p)
+bool
+thread_need_clear_trace (cubthread::entry *thread_p)
 {
   return thread_p->clear_trace;
 }
 
 inline
-  bool
-thread_get_sort_stats_active (cubthread::entry * thread_p)
+bool
+thread_get_sort_stats_active (cubthread::entry *thread_p)
 {
   return thread_p->sort_stats_active;
 }
 
 inline
-  bool
-thread_set_sort_stats_active (cubthread::entry * thread_p, bool new_flag)
+bool
+thread_set_sort_stats_active (cubthread::entry *thread_p, bool new_flag)
 {
   bool
-    old_flag = thread_p->sort_stats_active;
+  old_flag = thread_p->sort_stats_active;
   thread_p->sort_stats_active = new_flag;
   return old_flag;
 }
 
 inline void
-thread_lock_entry (cubthread::entry * thread_p)
+thread_lock_entry (cubthread::entry *thread_p)
 {
   thread_p->lock ();
 }
 
 inline void
-thread_unlock_entry (cubthread::entry * thread_p)
+thread_unlock_entry (cubthread::entry *thread_p)
 {
   thread_p->unlock ();
 }
 
 void
-thread_suspend_wakeup_and_unlock_entry (cubthread::entry * p, thread_resume_suspend_status suspended_reason);
+thread_suspend_wakeup_and_unlock_entry (cubthread::entry *p, thread_resume_suspend_status suspended_reason);
 int
-thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry * p, struct timespec *t,
-						thread_resume_suspend_status suspended_reason);
+thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *p, struct timespec *t,
+    thread_resume_suspend_status suspended_reason);
 void
-thread_wakeup (cubthread::entry * p, thread_resume_suspend_status resume_reason);
+thread_wakeup (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 void
-thread_check_suspend_reason_and_wakeup (cubthread::entry * thread_p, thread_resume_suspend_status resume_reason,
+thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
 					thread_resume_suspend_status suspend_reason);
 void
-thread_wakeup_already_had_mutex (cubthread::entry * p, thread_resume_suspend_status resume_reason);
+thread_wakeup_already_had_mutex (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 int
-thread_suspend_with_other_mutex (cubthread::entry * p, pthread_mutex_t * mutexp, int timeout, struct timespec *to,
+thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutexp, int timeout, struct timespec *to,
 				 thread_resume_suspend_status suspended_reason);
 
 const char *
