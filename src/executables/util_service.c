@@ -1461,7 +1461,7 @@ get_server_names (char **name_buffer)
       if (*name_buffer)
 	{
 	  strncpy (*name_buffer, result.c_str (), name_length);
-	  *name_buffer[name_length] = '\0';
+	  (*name_buffer)[name_length] = '\0';
 	}
     }
 
