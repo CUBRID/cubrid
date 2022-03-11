@@ -1671,7 +1671,8 @@ csql_yyerror (const char *s)
 
 	  if (after_token)
 	    {
-	      msg_size += strlen (after_token);
+              msg_size += strlen (after_token);
+              // There is no need to reset the length as we will replace "$end" with "';'".              
 	    }
 
 	  msg = (char *) csql_yyalloc (msg_size);
@@ -1705,7 +1706,20 @@ csql_yyerror (const char *s)
 
 	  if (after_token)
 	    {
-	      strcat (msg, after_token);
+              char* end_ptr = strstr (after_token, "$end");
+
+              if (!end_ptr)
+                strcat (msg, after_token);
+              else
+               {
+                 *end_ptr = '\0';
+                 strcat (msg, after_token);
+                 *end_ptr = '$';
+                 end_ptr += 4; /* strlen("$end") */
+                 strcat (msg, "';'");
+                 if(*end_ptr)
+                    strcat (msg, end_ptr);
+               } 
 	    }
 	}
       else
