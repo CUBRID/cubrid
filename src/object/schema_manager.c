@@ -2256,11 +2256,11 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
-  len = static_cast<int>(dot - name);
+  len = STATIC_CAST (int, dot - name);
 
   assert (buf != NULL);
   assert (len > 0 && len < buf_size);
-  memcpy(buf, name, len);
+  memcpy (buf, name, len);
   buf[len] = '\0';
 
   return buf;
