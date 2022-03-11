@@ -205,9 +205,16 @@ public:
   }
 };
 
-static struct st_hint_msg s_hint_msg;
-static void print_hit_hint_string (PT_HINT * hint_table);
-static bool plan_include_hint = false;
+static
+  std::string
+  tempory_hint_string;
+static struct st_hint_msg
+  s_hint_msg;
+static void
+print_hit_hint_string (PT_HINT * hint_table);
+static
+  bool
+  plan_include_hint = false;
 
 void
 set_plan_include_hint (bool is_include)
@@ -220,7 +227,8 @@ print_hint_stmt (FILE * output, int stmt_idx)
 {
   if (s_hint_msg.msg_ptr && *s_hint_msg.msg_ptr)
     {
-      STMT_HINT *hint_ptr;
+      STMT_HINT *
+	hint_ptr;
 
       for (hint_ptr = &s_hint_msg.m_hint_head; hint_ptr; hint_ptr = hint_ptr->next)
 	{
@@ -244,7 +252,8 @@ print_hint_stmt (FILE * output, int stmt_idx)
 void
 print_hint_dump (FILE * hint_dump_fp, PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
-  int stmt_idx = 0;
+  int
+    stmt_idx = 0;
 
   while (stmt_idx < parser->statement_number)
     {
@@ -290,35 +299,10 @@ calc_hint_statement_count (PT_NODE * statement)
 }
 
 #define HINT_LEAD_CHAR_SIZE (129)
-static u_char hint_table_lead_offset[HINT_LEAD_CHAR_SIZE] = { 0, };
+static
+  u_char
+hint_table_lead_offset[HINT_LEAD_CHAR_SIZE] = { 0, };
 
-struct s_string
-{
-  int size;
-  char *ptr;
-  char buf[256];
-
-    s_string ()
-  {
-    size = sizeof (buf);
-    ptr = buf;
-    buf[0] = 0x00;
-  }
-
-  void reset ()
-  {
-    if (ptr != buf)
-      {
-	free (ptr);
-      }
-
-    ptr = buf;
-    size = sizeof (buf);
-    buf[0] = 0x00;
-  }
-};
-
-static struct s_string tempory_hint_string;
 
 /*
  * pt_makename () -
@@ -341,7 +325,10 @@ pt_makename (const char *name)
 static char *
 pt_makename_trim_as_identifier (char *name)
 {
-  char *tmp_name, *pnew, chBk;
+  char *
+  tmp_name, *
+    pnew,
+    chBk;
   size_t len;
 
   len = strlen (name);
@@ -385,7 +372,8 @@ pt_parser_line_col (PT_NODE * node)
 int
 pt_nextchar (void)
 {
-  int c = (this_parser->next_char) (this_parser);
+  int
+    c = (this_parser->next_char) (this_parser);
   return c;
 }
 
@@ -403,23 +391,26 @@ hint_token_cmp (const void *a, const void *b)
 void
 pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 {
-  static int was_initialized = 0;
+  static int
+    was_initialized = 0;
 
   s_hint_msg.reset ();
-  tempory_hint_string.reset ();
+  tempory_hint_string.clear ();
 
   if (was_initialized)
     {
       return;
     }
 
-  int i;
+  int
+    i;
 
   memset (hint_table_lead_offset, 0x00, sizeof (hint_table_lead_offset));
   for (i = 0; hint_table[i].tokens; i++)
     {
 #ifndef NDEBUG
-      char *p;
+      char *
+	p;
       for (p = (char *) hint_table[i].tokens; *p; p++)
 	{
 	  assert (toupper (*p) == *p);
@@ -434,8 +425,10 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
   qsort (hint_table, i, sizeof (hint_table[0]), &hint_token_cmp);
 
   // Cumulative Distribution Counting
-  int sum = 0;
-  int tCnt = hint_table_lead_offset[0];
+  int
+    sum = 0;
+  int
+    tCnt = hint_table_lead_offset[0];
   for (i = 0; i < HINT_LEAD_CHAR_SIZE; i++)
     {
       tCnt = hint_table_lead_offset[i];
@@ -460,7 +453,8 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 void
 pt_cleanup_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 {
-  int i;
+  int
+    i;
   for (i = 0; hint_table[i].tokens; i++)
     {
       if (hint_table[i].arg_list != NULL)
@@ -470,7 +464,7 @@ pt_cleanup_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 	}
     }
 
-  tempory_hint_string.reset ();
+  tempory_hint_string.clear ();
 }
 
 /*
@@ -482,14 +476,15 @@ pt_cleanup_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 void
 pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 {
-  int i;
+  int
+    i;
 
   if (node->node_type != PT_SELECT)
     {
       s_hint_msg.is_print = false;
     }
 
-  if (s_hint_msg.is_print && tempory_hint_string.ptr[0])
+  if (s_hint_msg.is_print && !tempory_hint_string.empty ())
     {
       if (s_hint_msg.m_stmt_no < 0)
 	{
@@ -504,7 +499,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	    }
 	}
 
-      s_hint_msg.addstring ((const char *) "    Input) %s\n", (char *) tempory_hint_string.ptr);
+      s_hint_msg.addstring ((const char *) "    Input) %s\n", (char *) tempory_hint_string.c_str ());
       s_hint_msg.addstring ((char *) "    Hit) ");
     }
 
@@ -913,9 +908,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 static void
 get_hint_args_func (unsigned char *arg_start, unsigned char *arg_end, unsigned char *arg_dot, PT_HINT * hint_table)
 {
-  unsigned char ch_backup = '\0';
-  unsigned char *temp;
-  PT_NODE *arg;
+  unsigned char
+    ch_backup = '\0';
+  unsigned char *
+    temp;
+  PT_NODE *
+    arg;
 
   /* trim space around found spec name */
   while ((arg_start < arg_end) && IS_WHITE_SPACE (*arg_start))
@@ -981,7 +979,8 @@ get_hint_args_func (unsigned char *arg_start, unsigned char *arg_end, unsigned c
 static inline int
 hint_case_cmp (const char *input_string, const char *hint_token, int length, int &matched_idx)
 {
-  int cmp;
+  int
+    cmp;
 
   // hint_token is always uppercase.  
   while (matched_idx < length)
@@ -1006,9 +1005,14 @@ hint_case_cmp (const char *input_string, const char *hint_token, int length, int
 static int
 find_hint_token (PT_HINT hint_table[], unsigned char *string)
 {
-  int i, len, matched_idx;
-  char cBk;
-  int cmp;
+  int
+    i,
+    len,
+    matched_idx;
+  char
+    cBk;
+  int
+    cmp;
 
   if (!string || string[0] == '\0')
     {
@@ -1048,9 +1052,13 @@ find_hint_token (PT_HINT hint_table[], unsigned char *string)
 static unsigned char *
 read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HINT_ENUM * result_hint)
 {
-  unsigned char *sp, delimeter;
-  unsigned char *in = instr;
-  unsigned char *dot_ptr = 0x00;
+  unsigned char *
+    sp,
+    delimeter;
+  unsigned char *
+    in = instr;
+  unsigned char *
+    dot_ptr = 0x00;
 
   if (*in != '(')
     {
@@ -1090,7 +1098,8 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 	       * INDEX_SS() or INDEX_LS() means do not apply
 	       * hint, use special node to mark this.
 	       */
-	      PT_NODE *arg = parser_new_node (this_parser, PT_VALUE);
+	      PT_NODE *
+		arg = parser_new_node (this_parser, PT_VALUE);
 	      if (arg)
 		{
 		  arg->type_enum = PT_TYPE_NULL;
@@ -1178,7 +1187,8 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 	   * INDEX_SS() or INDEX_LS() means do not apply
 	   * hint, use special node to mark this.
 	   */
-	  PT_NODE *arg = parser_new_node (this_parser, PT_VALUE);
+	  PT_NODE *
+	    arg = parser_new_node (this_parser, PT_VALUE);
 	  if (arg)
 	    {
 	      arg->type_enum = PT_TYPE_NULL;
@@ -1203,10 +1213,13 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 void
 pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hint)
 {
-  unsigned char *hint_p;
-  int hint_idx;
+  unsigned char *
+    hint_p;
+  int
+    hint_idx;
   bool start_flag = true;
-  unsigned char *h_str = (unsigned char *) text + 1;	// skip '+'
+  unsigned char *
+    h_str = (unsigned char *) text + 1;	// skip '+'
 
   s_hint_msg.is_print = false;
   if (*h_str == '+')
@@ -1214,29 +1227,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
       h_str++;
       if (plan_include_hint)
 	{
-	  int hint_size = (int) strlen ((char *) h_str) + 1 /*for '\0' */ ;
-	  if (tempory_hint_string.size < hint_size)
-	    {
-	      if (tempory_hint_string.ptr != tempory_hint_string.buf)
-		{
-		  free (tempory_hint_string.ptr);
-		}
-
-	      tempory_hint_string.ptr = (char *) malloc (hint_size);
-	      assert (tempory_hint_string.ptr != NULL);
-
-	      tempory_hint_string.size = hint_size;
-	    }
-
-	  if (h_str[0])
-	    {
-	      memcpy (tempory_hint_string.ptr, h_str, hint_size);
-	    }
-	  else
-	    {
-	      tempory_hint_string.ptr[0] = '\0';
-	    }
-
+	  tempory_hint_string = (char *) h_str;
 	  s_hint_msg.is_print = true;
 	}
     }
@@ -1299,7 +1290,8 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 static void
 print_hit_hint_string (PT_HINT * hint_table)
 {
-  PT_NODE *px;
+  PT_NODE *
+    px;
 
   if (hint_table->arg_list == NULL)
     {
@@ -1356,8 +1348,10 @@ pt_check_ipv4 (char *p)
 {
   // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
   // 127.0.0.1    
-  char *num;
-  int dot_cnt = 0;
+  char *
+    num;
+  int
+    dot_cnt = 0;
 
   num = p;
   if (*num < '0' || *num > '9')
@@ -1443,8 +1437,10 @@ pt_check_hostname (char *p)
   // The length of the part separated by '.' is from 1 to 63 characters.
   // The total length of the hostname must not exceed 255 characters.
   bool isdot = false;
-  char *s = p;
-  char *t = p;
+  char *
+    s = p;
+  char *
+    t = p;
 
   if (char_isalnum (*p) == 0)
     {
