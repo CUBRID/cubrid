@@ -74,11 +74,11 @@ passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
 
   const int error_code = send_receive (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string (),
 				       log_boot_info);
-  if (error_code != NO_ERROR);
-  {
-    ASSERT_ERROR ();
-    return error_code;
-  }
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   assert (!log_boot_info.empty ());
 
