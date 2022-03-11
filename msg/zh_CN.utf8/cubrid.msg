@@ -1403,7 +1403,7 @@ $ LOADDB
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 

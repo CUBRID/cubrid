@@ -1695,7 +1695,7 @@
 #define ER_CGW_INVALID_PRECISION_VALUE              -1327
 
 #define ER_CGW_INVALID_DESC_HANDLE                  -1328
-#define ER_DBLINK_DEV_RESERVED_ERROR29              -1329
+#define ER_CGW_NOT_SUPPORTED_DBMS                   -1329
 #define ER_DBLINK_DEV_RESERVED_ERROR30              -1330
 #define ER_DBLINK_DEV_RESERVED_ERROR31              -1331
 
