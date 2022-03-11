@@ -94,38 +94,35 @@ public class CUBRIDServerSideConnection implements Connection {
 
     protected void requestDBParameter() throws IOException, SQLException {
         DBParameterInfo info = getSUConnection().getDBParameter();
-        if (transactionIsolation == TRANSACTION_NONE) {
-            switch (info.tran_isolation) {
-                case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
-                    transactionIsolation = TRANSACTION_READ_COMMITTED;
-                    break;
+        
+        switch (info.tran_isolation) {
+            case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
+                transactionIsolation = TRANSACTION_READ_COMMITTED;
+                break;
 
-                case CUBRIDIsolationLevel.TRAN_REPEATABLE_READ:
-                    transactionIsolation = TRANSACTION_REPEATABLE_READ;
-                    break;
+            case CUBRIDIsolationLevel.TRAN_REPEATABLE_READ:
+                transactionIsolation = TRANSACTION_REPEATABLE_READ;
+                break;
 
-                case CUBRIDIsolationLevel.TRAN_SERIALIZABLE:
-                    transactionIsolation = TRANSACTION_SERIALIZABLE;
-                    break;
+            case CUBRIDIsolationLevel.TRAN_SERIALIZABLE:
+                transactionIsolation = TRANSACTION_SERIALIZABLE;
+                break;
 
-                default:
-                    transactionIsolation = TRANSACTION_NONE;
-                    break;
-            }
+            default:
+                transactionIsolation = TRANSACTION_NONE;
+                break;
         }
 
         // TODO: lock timeout?
 
-        if (clientInfo == null) {
-            clientInfo = new Properties();
-            clientInfo.put("type", String.valueOf(info.clientIds.clientType));
-            clientInfo.put("program", info.clientIds.programName);
-            clientInfo.put("host", info.clientIds.hostName);
-            clientInfo.put("login", info.clientIds.loginName);
-            clientInfo.put("user", info.clientIds.dbUser);
-            clientInfo.put("ip", info.clientIds.clientIp);
-            clientInfo.put("pid", String.valueOf(info.clientIds.processId));
-        }
+        clientInfo = new Properties();
+        clientInfo.put("type", String.valueOf(info.clientIds.clientType));
+        clientInfo.put("program", info.clientIds.programName);
+        clientInfo.put("host", info.clientIds.hostName);
+        clientInfo.put("login", info.clientIds.loginName);
+        clientInfo.put("user", info.clientIds.dbUser);
+        clientInfo.put("ip", info.clientIds.clientIp);
+        clientInfo.put("pid", String.valueOf(info.clientIds.processId));
     }
 
     /* To manage List<Statement> statements */
