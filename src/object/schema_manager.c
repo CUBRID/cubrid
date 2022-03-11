@@ -2160,15 +2160,15 @@ sm_downcase_name (const char *name, char *buf, int buf_size)
 {
   int error = NO_ERROR;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL)
+  if (name == NULL || name[0] == '\0')
     {
       ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
       return NULL;
     }
 
+  assert (buf != NULL);
   assert (intl_identifier_lower_string_size (name) < buf_size);
   intl_identifier_lower (name, buf);
-  assert (buf[0] != '\0');
 
   return buf;
 }
@@ -2187,7 +2187,7 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   char current_user_name[SM_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL)
+  if (name == NULL || name[0] == '\0')
     {
       ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
       return NULL;
@@ -2239,32 +2239,29 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
 char *
 sm_qualifier_name (const char *name, char *buf, int buf_size)
 {
-  char *dot = NULL;
-  char name_copy[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *dot = NULL;
+  int len = 0;
   int error = NO_ERROR;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL)
+  if (name == NULL || name[0] == '\0')
     {
       ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
       return NULL;
     }
 
-  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
-  strncpy (name_copy, name, SM_MAX_IDENTIFIER_LENGTH);
-  assert (name_copy[0] != '\0');
-
-  dot = strchr (name_copy, '.');
-
   /* If the name is not a user-specified name, NULL is returned. */
+  dot = strchr (name, '.');
   if (dot == NULL)
     {
       return NULL;
     }
 
-  dot[0] = '\0';
-  assert (strlen (name_copy) < buf_size);
-  strncpy (buf, name_copy, buf_size);
-  assert (buf[0] != '\0');
+  len = static_cast<int>(dot - name);
+
+  assert (buf != NULL);
+  assert (len > 0 && len < buf_size);
+  memcpy(buf, name, len);
+  buf[len] = '\0';
 
   return buf;
 }
@@ -2286,6 +2283,8 @@ sm_remove_qualifier_name (const char *name)
 
   dot = strchr (name, '.');
 
+  /* There must be only one dot(.) because dot(.) cannot be used in identifier names
+   * even if the exception rule is used. */
   assert (dot == NULL || strchr (dot + 1, '.') == NULL);
 
   return dot ? (dot + 1) : name;
