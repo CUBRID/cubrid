@@ -10655,7 +10655,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
   if (is_att_prop_set (attr_chg_prop->p[P_COMMENT], ATT_CHG_PROPERTY_DIFF))
     {
-      /* free before assign new */
+      /* free old before assign new */
       if (found_att->comment)
 	{
 	  ws_free_string (found_att->comment);
