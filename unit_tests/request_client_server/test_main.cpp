@@ -189,7 +189,9 @@ struct payload_with_op_count : public cubpacking::packable_object
 
 // Send both reqids and op_count into the request payload
 template <typename RSSQ, typename ReqId>
-static void push_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count);
+static void push_rssq_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count);
+template <typename SCS, typename ReqId>
+static void push_scs_message_id_and_op (SCS &rssq, ReqId reqid, int op_count);
 // Server handler checks both request id and request order
 template <typename ReqId, ReqId ExpectedVal>
 static void mock_check_expected_id_and_op_count (cubpacking::unpacker &upk);
@@ -480,14 +482,14 @@ TEST_CASE ("Test request_queue_autosend", "")
   {
     for (int op_count = 0; op_count < 1000; ++op_count)
       {
-	push_message_id_and_op (rssq, reqids::_0, op_count);
+	push_rssq_message_id_and_op (rssq, reqids::_0, op_count);
       }
   });
   std::thread t2 ([&rssq]
   {
     for (int op_count = 0; op_count < 1000; ++op_count)
       {
-	push_message_id_and_op (rssq, reqids::_1, op_count);
+	push_rssq_message_id_and_op (rssq, reqids::_1, op_count);
       }
   });
 
@@ -603,7 +605,7 @@ TEST_CASE ("Test response broker", "")
   constexpr size_t BUCKET_COUNT = 30;
 
   cubcomm::response_sequence_number_generator rsn_gen;
-  cubcomm::response_broker<cubcomm::response_sequence_number> broker (BUCKET_COUNT);
+  cubcomm::response_broker<cubcomm::response_sequence_number, css_error_code> broker (BUCKET_COUNT, NO_ERRORS);
 
   std::vector<cubcomm::response_sequence_number> requested_rsn;
   std::mutex request_mutex;
@@ -648,7 +650,9 @@ TEST_CASE ("Test response broker", "")
 	    }
 	    request_condvar.notify_all ();
 
-	    cubcomm::response_sequence_number response = broker.get_response (rsn);
+	    const auto [ response, error_code ] = broker.get_response (rsn);
+
+	    REQUIRE (error_code == NO_ERRORS);
 	    REQUIRE (response == rsn);
 	  }
       }
@@ -715,7 +719,7 @@ template <typename RSSQ, typename ReqId>
 static void
 push_request_id_as_message (RSSQ &rssq, ReqId rid)
 {
-  rssq.push (rid, static_cast<int> (rid));
+  rssq.push (rid, static_cast<int> (rid), nullptr);
   ++global_sent_request_count;
 }
 
@@ -734,13 +738,26 @@ mock_check_expected_id_and_op_count (cubpacking::unpacker &upk)
 
 template <typename RSSQ, typename ReqId>
 static void
-push_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count)
+push_rssq_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count)
 {
   payload_with_op_count payload;
   payload.val = static_cast<int> (reqid);
   payload.op_count = op_count;
 
-  rssq.push (reqid, std::move (payload));
+  rssq.push (reqid, std::move (payload), nullptr);
+
+  ++global_sent_request_count;
+}
+
+template <typename SCS, typename ReqId>
+static void
+push_scs_message_id_and_op (SCS &scs, ReqId reqid, int op_count)
+{
+  payload_with_op_count payload;
+  payload.val = static_cast<int> (reqid);
+  payload.op_count = op_count;
+
+  scs.push (reqid, std::move (payload));
 
   ++global_sent_request_count;
 }
@@ -763,7 +780,8 @@ handler_register_mock_check_expected_id_and_op_count (test_request_server &req_s
 test_request_client
 create_request_client ()
 {
-  cubcomm::channel chncl;
+  const int max_timeout_in_ms = 10;
+  cubcomm::channel chncl{ max_timeout_in_ms };
   chncl.set_channel_name ("client");
 
   test_request_client req_cl (std::move (chncl));
@@ -1005,7 +1023,7 @@ test_two_request_sync_client_server_env::push_request_and_increment_msg_count (
 {
   ++msg_count_inout;
 
-  push_message_id_and_op (scs, msgid, i);
+  push_scs_message_id_and_op (scs, msgid, i);
 }
 
 template<typename T_SCS, typename T_MSGID>
@@ -1021,7 +1039,8 @@ test_two_request_sync_client_server_env::send_recv_and_increment_msg_count (
 
   payload_with_op_count response_payload;
 
-  scs.send_recv (msgid, std::move (request_payload), response_payload);
+  const css_error_code error_code = scs.send_recv (msgid, std::move (request_payload), response_payload);
+  REQUIRE (error_code == NO_ERRORS);
   REQUIRE (response_payload.val == static_cast<int> (msgid));
   REQUIRE (response_payload.op_count == i + 1);	  // it is incremented by response handler
 
@@ -1086,7 +1105,8 @@ test_two_request_sync_client_server_env::handle_req_and_respond_on_scs_two (
 uq_test_request_sync_client_server_one_t
 test_two_request_sync_client_server_env::create_request_sync_client_server_one ()
 {
-  cubcomm::channel chn;
+  const int max_timeout_in_ms = 10;
+  cubcomm::channel chn{ max_timeout_in_ms };
   chn.set_channel_name ("sync_client_server_one");
 
   // handle requests 2 to 1
@@ -1123,7 +1143,8 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
 uq_test_request_sync_client_server_two_t
 test_two_request_sync_client_server_env::create_request_sync_client_server_two ()
 {
-  cubcomm::channel chn;
+  const int max_timeout_in_ms = 10;
+  cubcomm::channel chn{ max_timeout_in_ms };
   chn.set_channel_name ("sync_client_server_two");
 
   // handle requests 1 to 2

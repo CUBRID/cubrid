@@ -62,6 +62,7 @@ namespace cubcomm
       {
 	typename client_type::client_request_id m_id;
 	payload_type m_payload;
+	send_queue_error_handler m_error_handler;
       };
       using queue_type = std::queue<queue_item_type>;
 
@@ -79,7 +80,8 @@ namespace cubcomm
       // functions:
 
       // Push a request to the end of queue
-      void push (typename client_type::client_request_id reqid, payload_type &&payload);
+      void push (typename client_type::client_request_id reqid, payload_type &&payload,
+		 send_queue_error_handler &&error_handler);
 
       // Send all requests to the server. If queue is empty, nothing happens.
       //
@@ -169,7 +171,7 @@ namespace cubcomm
   template <typename ReqClient, typename ReqPayload>
   void
   request_sync_send_queue<ReqClient, ReqPayload>::push (typename client_type::client_request_id reqid,
-      payload_type &&payload)
+      payload_type &&payload, send_queue_error_handler &&error_handler)
   {
     // synchronize push request into the queue and notify consumers
 
@@ -177,6 +179,7 @@ namespace cubcomm
     m_request_queue.emplace ();
     m_request_queue.back ().m_id = reqid;
     m_request_queue.back ().m_payload = std::move (payload);
+    m_request_queue.back ().m_error_handler = std::move (error_handler);
 
     ulock.unlock ();
     m_queue_condvar.notify_all ();
@@ -206,7 +209,12 @@ namespace cubcomm
 	     *  - change the application protocol for each message to have an associated ACK response.
 	     *  - implement a polling mechanism that, also based on ACK, detects the disconnect earlier.
 	     * */
-	    if (m_error_handler != nullptr)
+	    if (queue_front.m_error_handler != nullptr)
+	      {
+		// if present, invoke custom/specific handler first
+		queue_front.m_error_handler (err_code, m_abort_further_processing);
+	      }
+	    else if (m_error_handler != nullptr)
 	      {
 		// if present, invoke generic (fail-back) handler
 		m_error_handler (err_code, m_abort_further_processing);

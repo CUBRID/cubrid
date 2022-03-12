@@ -345,12 +345,24 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
   m_page_server_conn_vec[0]->push (reqid, std::move (payload));
 }
 
-void
+int
 tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
 {
   assert (is_page_server_connected ());
 
-  m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
+  const css_error_code error_code = m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
+  // NOTE: enhance error handling when:
+  //  - more than one page server will be handled
+  //  - fail-over will be implemented
+
+  if (error_code != NO_ERRORS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+      er_log_debug (ARG_FILE_LINE, "Error during send_recv message to page server. Server cannot be reached.");
+      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+    }
+
+  return NO_ERROR;
 }
 
 tran_server::request_handlers_map_t
