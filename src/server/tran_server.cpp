@@ -237,7 +237,7 @@ void
 tran_server::get_boot_info_from_page_server ()
 {
   std::string response_message;
-  send_receive (tran_to_page_request::GET_BOOT_INFO, std::string (), response_message);
+  (void) send_receive (tran_to_page_request::GET_BOOT_INFO, std::string (), response_message);
 
   DKNVOLS nvols_perm;
   std::memcpy (&nvols_perm, response_message.c_str (), sizeof (nvols_perm));

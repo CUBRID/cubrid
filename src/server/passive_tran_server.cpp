@@ -71,7 +71,7 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
 {
   std::string log_boot_info;
 
-  send_receive (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string (), log_boot_info);
+  (void) send_receive (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string (), log_boot_info);
 
   assert (!log_boot_info.empty ());
 
@@ -129,7 +129,7 @@ void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
 
   std::string expected_empty_answer;
   // blocking call
-  send_receive (tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string (), expected_empty_answer);
+  (void) send_receive (tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string (), expected_empty_answer);
 
   // at this point, no log prior is flowing from the connected page server(s)
   // outside this context, all log prior currently present on the passive transaction server
