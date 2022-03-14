@@ -1709,7 +1709,9 @@ csql_yyerror (const char *s)
               char* end_ptr = strstr (after_token, "$end");
 
               if (!end_ptr)
-                strcat (msg, after_token);
+               {
+                 strcat (msg, after_token);
+               }
               else
                {
                  *end_ptr = '\0';
@@ -1718,7 +1720,9 @@ csql_yyerror (const char *s)
                  end_ptr += 4; /* strlen("$end") */
                  strcat (msg, "';'");
                  if(*end_ptr)
-                    strcat (msg, end_ptr);
+                   {
+                     strcat (msg, end_ptr);
+                   }
                } 
 	    }
 	}
