@@ -199,7 +199,6 @@ static META_ATTRIBUTE class_atts[] = {
   {"owner", DB_TYPE_OBJECT, 1, "object", 0, 0, NULL},
   {"collation_id", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
   {"tde_encryption_algorithm", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
-  {"unique_name", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"name", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"loader_commands", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"representations", DB_TYPE_SET, 0, META_REPRESENTATION_NAME, 1, 0, NULL},
@@ -217,6 +216,7 @@ static META_ATTRIBUTE class_atts[] = {
   {"properties", DB_TYPE_SET, 0, NULL, 0, 0, NULL},
   {"comment", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"partition", DB_TYPE_SET, 1, META_PARTITION_NAME, 1, 0, NULL},
+  {"unique_name", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
 META_CLASS tf_Metaclass_class = { META_CLASS_NAME, {META_PAGE_CLASS, 0, META_VOLUME}, 0, 0, 0,
@@ -292,7 +292,6 @@ static CT_ATTR ct_class_atts[] = {
   {"owner", NULL_ATTRID, DB_TYPE_OBJECT},
   {"collation_id", NULL_ATTRID, DB_TYPE_INTEGER},
   {"tde_algorithm", NULL_ATTRID, DB_TYPE_INTEGER},
-  {"unique_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"class_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"sub_classes", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"super_classes", NULL_ATTRID, DB_TYPE_SEQUENCE},
@@ -305,7 +304,8 @@ static CT_ATTR ct_class_atts[] = {
   {"query_specs", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"indexes", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"comment", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"partition", NULL_ATTRID, DB_TYPE_SEQUENCE}
+  {"partition", NULL_ATTRID, DB_TYPE_SEQUENCE},
+  {"unique_name", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
 static CT_ATTR ct_attribute_atts[] = {

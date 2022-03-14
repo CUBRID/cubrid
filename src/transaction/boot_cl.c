@@ -1813,13 +1813,6 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
-  /* unique name */
-  error_code = smt_add_attribute (def, "unique_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
   /* class name */
   error_code = smt_add_attribute (def, "class_name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
@@ -1968,6 +1961,13 @@ boot_define_class (MOP class_mop)
   sprintf (domain_string, "sequence of %s", CT_PARTITION_NAME);
 
   error_code = smt_add_attribute (def, "partition", domain_string, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* unique name */
+  error_code = smt_add_attribute (def, "unique_name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
