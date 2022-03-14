@@ -205,10 +205,6 @@ public:
   }
 };
 
-// *INDENT-OFF*
-static std::string tempory_hint_string;
-// *INDENT-ON*
-
 static struct st_hint_msg s_hint_msg;
 static void print_hit_hint_string (PT_HINT * hint_table);
 static bool plan_include_hint = false;
@@ -384,7 +380,6 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
   static int was_initialized = 0;
 
   s_hint_msg.reset ();
-  tempory_hint_string.clear ();
 
   if (was_initialized)
     {
@@ -447,8 +442,6 @@ pt_cleanup_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 	  hint_table[i].arg_list = NULL;
 	}
     }
-
-  tempory_hint_string.clear ();
 }
 
 /*
@@ -465,25 +458,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
   if (node->node_type != PT_SELECT)
     {
       s_hint_msg.is_print = false;
-    }
-
-  if (s_hint_msg.is_print && !tempory_hint_string.empty ())
-    {
-      if (s_hint_msg.m_stmt_no < 0)
-	{
-	  s_hint_msg.set_stmt (this_parser->statement_number);
-	}
-      else
-	{
-	  if (s_hint_msg.m_stmt_no != this_parser->statement_number)
-	    {
-	      s_hint_msg.add_end_string ();
-	      s_hint_msg.set_stmt (this_parser->statement_number);
-	    }
-	}
-
-      s_hint_msg.add_string ((const char *) "    Input) %s\n", (char *) tempory_hint_string.c_str ());
-      s_hint_msg.add_string ((char *) "    Hit) ");
     }
 
   /* read hint info */
@@ -1192,8 +1166,22 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
       h_str++;
       if (plan_include_hint)
 	{
-	  tempory_hint_string = (char *) h_str;
 	  s_hint_msg.is_print = true;
+
+	  if (s_hint_msg.m_stmt_no < 0)
+	    {
+	      s_hint_msg.set_stmt (this_parser->statement_number);
+	    }
+	  else
+	    {
+	      if (s_hint_msg.m_stmt_no != this_parser->statement_number)
+		{
+		  s_hint_msg.add_end_string ();
+		  s_hint_msg.set_stmt (this_parser->statement_number);
+		}
+	    }
+
+	  s_hint_msg.add_string ((const char *) "    Input) %s\n", (char *) h_str);
 	}
     }
 
@@ -1250,6 +1238,12 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 	    }
 	}
     }
+
+  if (s_hint_msg.is_print)
+    {
+      s_hint_msg.add_string ((char *) "    Hit) %s", (char *) (*result_hint == PT_HINT_NONE ? " \n" : ""));
+    }
+
 }
 
 static void
