@@ -62,6 +62,8 @@ namespace cubcomm
 
       std::tuple<T_PAYLOAD, T_ERROR> get_response (response_sequence_number a_rsn);
 
+      void terminate ();
+
     private:
       struct bucket
       {
@@ -79,6 +81,8 @@ namespace cubcomm
 
 	  std::tuple<T_PAYLOAD, T_ERROR> get_response (response_sequence_number a_rsn);
 
+	  void terminate ();
+
 	private:
 	  struct payload_or_error_type
 	  {
@@ -91,6 +95,8 @@ namespace cubcomm
 	  std::mutex m_mutex;
 	  std::condition_variable m_condvar;
 	  std::unordered_map<response_sequence_number, payload_or_error_type> m_response_payloads;
+
+	  bool m_terminate;
       };
 
       bucket &get_bucket (response_sequence_number rsn);
@@ -134,8 +140,19 @@ namespace cubcomm
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
+  void
+  response_broker<T_PAYLOAD, T_ERROR>::terminate ()
+  {
+    for (auto &bucket : m_buckets)
+      {
+	bucket.terminate ();
+      }
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::bucket::bucket (T_ERROR a_no_error)
     : m_no_error { a_no_error }
+    , m_terminate { false }
   {
   }
 
@@ -158,7 +175,8 @@ namespace cubcomm
       ent.m_payload = std::move (a_payload);
       ent.m_error = m_no_error;
     }
-    m_condvar.notify_all (); // all because there is more than one thread waiting for data
+    // all because there is more than one thread waiting for data on the same bucket
+    m_condvar.notify_all ();
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
@@ -171,7 +189,8 @@ namespace cubcomm
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       ent.m_error = std::move (a_error);
     }
-    m_condvar.notify_all (); // all because there is more than one thread waiting for data
+    // all because there is more than one thread waiting for data on the same bucket
+    m_condvar.notify_all ();
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
@@ -185,11 +204,17 @@ namespace cubcomm
   std::tuple<T_PAYLOAD, T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::bucket::get_response (response_sequence_number a_rsn)
   {
-    std::unique_lock<std::mutex> ulock (m_mutex);
     std::tuple<T_PAYLOAD, T_ERROR> payload_or_error;
 
     auto condvar_pred = [this, &payload_or_error, a_rsn] ()
     {
+      // a way out in case neither value nor error is registered as a response
+      // which can happen in case - eg - that the connection is dropped
+      if (m_terminate)
+	{
+	  return true;
+	}
+
       auto it = m_response_payloads.find (a_rsn);
       if (it == m_response_payloads.end ())
 	{
@@ -197,19 +222,33 @@ namespace cubcomm
 	}
       payload_or_error = { std::move ((*it).second.m_payload), std::move ((*it).second.m_error) };
       m_response_payloads.erase (it);
+
       return true;
     };
-    m_condvar.wait (ulock, condvar_pred);
 
+    constexpr std::chrono::milliseconds millis_100 { 100 };
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    while (!m_condvar.wait_for (ulock, millis_100, condvar_pred));
+
+    // upon terminate, empty (invalid) response will be returned, and there should ne no consumer for it
     return payload_or_error;
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
+  void
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::terminate ()
+  {
+    std::lock_guard<std::mutex> lockg (m_mutex);
+    m_terminate = true;
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::bucket::bucket (const bucket &that)
-    : m_no_error { that.m_no_error }
+    : m_no_error { that.m_no_error }, m_terminate { that.m_terminate }
   {
     // Bucket copy constructor may be required only during the response_broker initialization.
     // The copied bucket is empty and no synchronization is required.
+    assert (!m_terminate);
     assert (that.m_response_payloads.empty ());
   }
 }
