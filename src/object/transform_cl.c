@@ -4000,7 +4000,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   class_ = NULL;
   /* get the variable length and offsets. The offsets are relative to the end of the header (beginning of variable
    * table). */
-  vars = read_var_table (buf, tf_Metaclass_class.mc_n_variable);
+  vars = read_var_table (buf, tf_Metaclass_class.mc_n_variable - 1);
   if (vars == NULL)
     {
       goto on_error;
