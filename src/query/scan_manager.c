@@ -7921,7 +7921,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 
       if (scan_id->s.isid.need_count_only == true)
 	{
-	 fprintf (fp, ", count_only: true");
+	  fprintf (fp, ", count_only: true");
 	}
 
       if (scan_id->scan_stats.multi_range_opt == true)
