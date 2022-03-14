@@ -59,8 +59,8 @@ extern int yycolumn_end;
 
 
 /* matching hint information to output*/
-typedef struct _stmt_hint STMT_HINT;
-struct _stmt_hint
+typedef struct st_stmt_hint STMT_HINT;
+struct st_stmt_hint
 {
   int stmt_no;
   int offset;
@@ -183,22 +183,22 @@ public:
       }
   }
 
-  void addstring (char *str)
+  void add_string (char *str)
   {
     check_buffer (snprintf (NULL, 0, "%s", str));
     m_used += sprintf (msg_ptr + m_used, "%s", str);
   }
-  void addstring (const char *fmt, char *str)
+  void add_string (const char *fmt, char *str)
   {
     check_buffer (snprintf (NULL, 0, fmt, str));
     m_used += sprintf (msg_ptr + m_used, fmt, str);
   }
-  void addstring (const char *fmt, char *str1, char *str2)
+  void add_string (const char *fmt, char *str1, char *str2)
   {
     check_buffer (snprintf (NULL, 0, fmt, str1, str2));
     m_used += sprintf (msg_ptr + m_used, fmt, str1, str2);
   }
-  void addendstring ()
+  void add_end_string ()
   {
     check_buffer (2);
     msg_ptr[m_used++] = '\0';
@@ -477,13 +477,13 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	{
 	  if (s_hint_msg.m_stmt_no != this_parser->statement_number)
 	    {
-	      s_hint_msg.addendstring ();
+	      s_hint_msg.add_end_string ();
 	      s_hint_msg.set_stmt (this_parser->statement_number);
 	    }
 	}
 
-      s_hint_msg.addstring ((const char *) "    Input) %s\n", (char *) tempory_hint_string.c_str ());
-      s_hint_msg.addstring ((char *) "    Hit) ");
+      s_hint_msg.add_string ((const char *) "    Input) %s\n", (char *) tempory_hint_string.c_str ());
+      s_hint_msg.add_string ((char *) "    Hit) ");
     }
 
   /* read hint info */
@@ -882,7 +882,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 
   if (s_hint_msg.is_print)
     {
-      s_hint_msg.addstring ((char *) "\n");
+      s_hint_msg.add_string ((char *) "\n");
     }
 }
 
@@ -1259,11 +1259,11 @@ print_hit_hint_string (PT_HINT * hint_table)
 
   if (hint_table->arg_list == NULL)
     {
-      s_hint_msg.addstring ((const char *) " %s ", (char *) hint_table->tokens);
+      s_hint_msg.add_string ((const char *) " %s ", (char *) hint_table->tokens);
       return;
     }
 
-  s_hint_msg.addstring ((const char *) " %s(", (char *) hint_table->tokens);
+  s_hint_msg.add_string ((const char *) " %s(", (char *) hint_table->tokens);
 
   px = hint_table->arg_list;
   do
@@ -1272,18 +1272,18 @@ print_hit_hint_string (PT_HINT * hint_table)
 	{
 	  if (px->info.name.resolved)
 	    {
-	      s_hint_msg.addstring ((const char *) "[%s].[%s]", (char *) px->info.name.resolved,
-				    (char *) px->info.name.original);
+	      s_hint_msg.add_string ((const char *) "[%s].[%s]", (char *) px->info.name.resolved,
+				     (char *) px->info.name.original);
 	    }
 	  else
 	    {
-	      s_hint_msg.addstring ((const char *) "[%s]", (char *) px->info.name.original);
+	      s_hint_msg.add_string ((const char *) "[%s]", (char *) px->info.name.original);
 	    }
 	}
       else if (px->node_type == PT_VALUE)
 	{
 	  assert (px->type_enum == PT_TYPE_NULL);
-	  s_hint_msg.addstring (" ");
+	  s_hint_msg.add_string (" ");
 	}
       else
 	{
@@ -1293,12 +1293,12 @@ print_hit_hint_string (PT_HINT * hint_table)
       px = px->next;
       if (px)
 	{
-	  s_hint_msg.addstring (", ");
+	  s_hint_msg.add_string (", ");
 	}
 
     }
   while (px);
-  s_hint_msg.addstring (")");
+  s_hint_msg.add_string (")");
 }
 
 
