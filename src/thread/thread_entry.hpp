@@ -405,6 +405,12 @@ thread_trace_on (cubthread::entry *thread_p)
 }
 
 inline void
+thread_trace_off (cubthread::entry *thread_p)
+{
+  thread_p->on_trace = false;
+}
+
+inline void
 thread_set_trace_format (cubthread::entry *thread_p, int format)
 {
   thread_p->trace_format = format;
