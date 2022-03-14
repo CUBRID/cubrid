@@ -173,9 +173,17 @@ namespace cubcomm
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::~request_sync_client_server ()
   {
+    // terminate sending messages
     m_queue_autosend.reset (nullptr);
+
     m_queue.reset (nullptr);
+
+    // terminate receiving messages
     m_conn.reset (nullptr);
+
+    // after autosender and received threads are terminated, there can be no more responses/errors
+    // registered on the broker
+    m_response_broker.terminate ();
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -215,7 +223,7 @@ namespace cubcomm
     };
 
     // Send the request
-    m_queue->push (a_outgoing_message_id, std::move (seq_payload), nullptr /*std::move (error_handler_ftor)*/);
+    m_queue->push (a_outgoing_message_id, std::move (seq_payload), std::move (error_handler_ftor));
     // function is non-blocking, it will just push the message to be sent.
     // The following broker response getter is the blocking part.
 
