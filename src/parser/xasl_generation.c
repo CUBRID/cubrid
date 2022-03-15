@@ -21800,8 +21800,12 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   parser->dbval_cnt = 0;
 
   {
+    extern bool plan_include_hint;
     extern void calc_hint_statement_count (PT_NODE * statement);
-    calc_hint_statement_count (node);
+    if (plan_include_hint)
+      {
+	calc_hint_statement_count (node);
+      }
   }
 
   is_system_generated_stmt = node->flag.is_system_generated_stmt;

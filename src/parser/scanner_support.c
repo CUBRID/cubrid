@@ -207,7 +207,7 @@ public:
 
 static struct st_hint_msg s_hint_msg;
 static void print_hit_hint_string (PT_HINT * hint_table);
-static bool plan_include_hint = false;
+bool plan_include_hint = false;
 
 void
 set_plan_include_hint (bool is_include)
@@ -287,7 +287,10 @@ void
 calc_hint_statement_count (PT_NODE * statement)
 {
   s_hint_msg.m_select_cnt = 0;
-  calc_hint_select_count (statement, s_hint_msg.m_select_cnt);
+  if (plan_include_hint)
+    {
+      calc_hint_select_count (statement, s_hint_msg.m_select_cnt);
+    }
 }
 
 #define HINT_LEAD_CHAR_SIZE (129)
