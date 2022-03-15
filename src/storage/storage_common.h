@@ -1090,19 +1090,6 @@ extern const int SM_MAX_STRING_LENGTH;
 #define SM_PREFIX_INDEX_ID "*PLID*"
 
 /*
- *    Flags for misc information about a class.  These must be defined
- *    as powers of two because they are stored packed in a single integer.
- */
-typedef enum
-{
-  SM_CLASSFLAG_SYSTEM = 1,	/* a system defined class */
-  SM_CLASSFLAG_WITHCHECKOPTION = 2,	/* a view with check option */
-  SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
-  SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
-  SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16	/* the supplemental log is appended for this class */
-} SM_CLASS_FLAG;
-
-/*
  *    Bit field identifiers for attribute flags.  These could be defined
  *    with individual unsigned bit fields but this makes it easier
  *    to save them as a single integer.

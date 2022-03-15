@@ -294,6 +294,19 @@ typedef enum
 } SM_CLASS_TYPE;
 
 /*
+ *    Flags for misc information about a class.  These must be defined
+ *    as powers of two because they are stored packed in a single integer.
+ */
+typedef enum
+{
+  SM_CLASSFLAG_SYSTEM = 1,	/* a system defined class */
+  SM_CLASSFLAG_WITHCHECKOPTION = 2,	/* a view with check option */
+  SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
+  SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
+  SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16	/* reserved flag for supplemental log. */
+} SM_CLASS_FLAG;
+
+/*
  *    These are used to tag the "meta" objects
  *    This type is used in the definition of SM_CLASS_HEADER
  */
