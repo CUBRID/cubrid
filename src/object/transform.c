@@ -199,7 +199,6 @@ static META_ATTRIBUTE class_atts[] = {
   {"owner", DB_TYPE_OBJECT, 1, "object", 0, 0, NULL},
   {"collation_id", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
   {"tde_encryption_algorithm", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
-  {"supplemental_log", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
   {"name", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"loader_commands", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"representations", DB_TYPE_SET, 0, META_REPRESENTATION_NAME, 1, 0, NULL},

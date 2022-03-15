@@ -303,6 +303,7 @@ typedef enum
   SM_CLASSFLAG_WITHCHECKOPTION = 2,	/* a view with check option */
   SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
   SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
+  SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16	/* the supplemental log is appended for this class */
 } SM_CLASS_FLAG;
 
 /*
@@ -765,8 +766,6 @@ struct sm_class
   unsigned int virtual_cache_snapshot_version;
 
   int tde_algorithm;
-
-  int supplemental_log;
 
   unsigned methods_loaded:1;	/* set when dynamic linking was performed */
   unsigned post_load_cleanup:1;	/* set if post load cleanup has occurred */

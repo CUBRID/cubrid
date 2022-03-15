@@ -1042,7 +1042,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   tp_Integer.data_readval (buf_p, &attrs[10].value, NULL, -1, true, NULL, 0);
 
   /* supplemental_log */
-  tp_Integer.data_readval (buf_p, &attrs[11].value, NULL, -1, true, NULL, 0);
+  db_make_int (&attrs[11].value, 0);
 
   /* variable */
 
