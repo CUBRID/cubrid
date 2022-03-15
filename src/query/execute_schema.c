@@ -4584,7 +4584,7 @@ do_rename_partition (MOP old_class, const char *newname)
     }
 
   strncpy (expr_copy, smclass->partition->expr, DB_MAX_PARTITION_EXPR_LENGTH);
-  keycol = expr_copy + 7; /* strlen ("SELECT") + empty_string = 7 */
+  keycol = expr_copy + 7;	/* strlen ("SELECT") + empty_string = 7 */
   keycol_end = strstr (keycol, " ");
   keycol_end[0] = '\0';
 
