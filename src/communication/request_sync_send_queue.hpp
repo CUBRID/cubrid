@@ -191,12 +191,15 @@ namespace cubcomm
   {
     // send all requests in q
 
-    std::unique_lock<std::mutex> ulock (m_send_mutex);
     while (!q.empty () && !m_abort_further_processing)
       {
 	typename queue_type::const_reference queue_front = q.front ();
 
-	const css_error_code err_code = m_client.send (queue_front.m_id, queue_front.m_payload);
+	css_error_code err_code = NO_ERRORS;
+	{
+	  std::lock_guard<std::mutex> lockg (m_send_mutex);
+	  err_code = m_client.send (queue_front.m_id, queue_front.m_payload);
+	}
 	if (err_code != NO_ERRORS)
 	  {
 	    /* The send over socket is not - in and by itself - capable of detecting when the peer has
@@ -252,6 +255,7 @@ namespace cubcomm
     if (!backbuffer.empty ())
       {
 	send_queue (backbuffer);
+	assert (backbuffer.empty ());
       }
   }
 
@@ -267,7 +271,7 @@ namespace cubcomm
     assert (backbuffer.empty ());
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
-    auto condvar_ret = m_queue_condvar.wait_for (ulock, timeout, [this]
+    const auto condvar_ret = m_queue_condvar.wait_for (ulock, timeout, [this]
     {
       return !m_request_queue.empty ();
     });
