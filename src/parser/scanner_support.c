@@ -50,6 +50,7 @@ int parser_input_host_index = 0;
 int parser_statement_OK = 0;
 PARSER_CONTEXT *this_parser;
 int parser_output_host_index = 0;
+bool is_parser_hint_node_select = false;
 extern "C"
 {
   extern int yycolumn;
@@ -287,7 +288,7 @@ void
 calc_hint_statement_count (PT_NODE * statement)
 {
   s_hint_msg.m_select_cnt = 0;
-  if (plan_include_hint)
+  if (s_hint_msg.msg_ptr && *s_hint_msg.msg_ptr)
     {
       calc_hint_select_count (statement, s_hint_msg.m_select_cnt);
     }
@@ -457,11 +458,6 @@ void
 pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 {
   int i;
-
-  if (node->node_type != PT_SELECT)
-    {
-      s_hint_msg.is_print = false;
-    }
 
   /* read hint info */
   for (i = 0; hint_table[i].tokens; i++)
@@ -1167,7 +1163,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
   if (*h_str == '+')
     {
       h_str++;
-      if (plan_include_hint)
+      if (plan_include_hint && is_parser_hint_node_select)
 	{
 	  s_hint_msg.is_print = true;
 
@@ -1244,7 +1240,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 
   if (s_hint_msg.is_print)
     {
-      s_hint_msg.add_string ((char *) "    Hit) %s", (char *) (*result_hint == PT_HINT_NONE ? " \n" : ""));
+      s_hint_msg.add_string ((char *) "    Hit) %s", (char *) (*result_hint == PT_HINT_NONE ? "\n" : ""));
     }
 
 }

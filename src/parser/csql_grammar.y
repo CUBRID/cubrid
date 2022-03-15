@@ -24570,6 +24570,7 @@ parser_push_hint_node (PT_NODE * node)
     }
 
   assert (parser_hint_node_sp >= 0);
+  is_parser_hint_node_select = (PT_SELECT == node->node_type);
   parser_hint_node_stack[parser_hint_node_sp++] = node;
 }
 
@@ -24584,7 +24585,9 @@ static PT_NODE *
 parser_pop_hint_node ()
 {
   assert (parser_hint_node_sp >= 1);
-  return parser_hint_node_stack[--parser_hint_node_sp];
+  PT_NODE * node = parser_hint_node_stack[--parser_hint_node_sp];
+  is_parser_hint_node_select = (PT_SELECT == node->node_type);
+  return node;
 }
 
 static bool

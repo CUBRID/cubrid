@@ -61,6 +61,7 @@ extern "C"
   extern int parser_statement_OK;
   extern PARSER_CONTEXT *this_parser;
   extern PT_HINT parser_hint_table[];
+  extern bool is_parser_hint_node_select;
 
   extern int pt_nextchar (void);
   extern char *pt_makename (const char *name);
