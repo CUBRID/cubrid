@@ -10727,7 +10727,8 @@ log_checkpoint_trantable_daemon_init ()
 
   if (is_tran_server_with_remote_storage ())
     {
-      cubthread::looper looper (std::chrono::seconds (60));
+      constexpr auto loop_time = std::chrono::seconds (60);
+      cubthread::looper looper (loop_time);
       cubthread::entry_callable_task * daemon_task =
           new cubthread::entry_callable_task (log_checkpoint_trantable_execute);
       log_Checkpoint_trantable_daemon =
