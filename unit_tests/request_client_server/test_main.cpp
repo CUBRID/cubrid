@@ -687,7 +687,8 @@ TEST_CASE ("Test response broker", "")
   constexpr size_t BUCKET_COUNT = 30;
 
   cubcomm::response_sequence_number_generator rsn_gen;
-  cubcomm::response_broker<cubcomm::response_sequence_number, css_error_code> broker (BUCKET_COUNT, NO_ERRORS);
+  cubcomm::response_broker<cubcomm::response_sequence_number, css_error_code> broker (BUCKET_COUNT, NO_ERRORS,
+      ERROR_ON_WRITE);
 
   std::vector<cubcomm::response_sequence_number> requested_rsn;
   std::mutex request_mutex;
