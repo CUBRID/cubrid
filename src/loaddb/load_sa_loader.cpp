@@ -1492,11 +1492,13 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  if (name == NULL || name[0] == '\0' || buf == NULL)
+  if (name == NULL || name[0] == '\0')
     {
       ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
       return error;
     }
+
+  assert (buf != NULL);
 
   if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
     {
@@ -1541,9 +1543,8 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
 
   if (!DB_IS_NULL (&value))
     {
-      assert (strlen (db_get_string (&value)) < static_cast<size_t> (buf_size));
+      assert (strlen (db_get_string (&value)) < buf_size);
       strncpy (buf, db_get_string (&value), buf_size);
-      assert (buf[0] != '\0');
     }
   else
     {
