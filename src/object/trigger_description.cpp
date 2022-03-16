@@ -244,6 +244,7 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
   const char *name;
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *trigger_name = NULL;
+  const char *class_name = NULL;
 
   AU_DISABLE (save);
 
@@ -256,16 +257,8 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
   else if (trigger->status != TR_STATUS_INVALID)
     {
       /* automatically filter out invalid triggers */
-
-      if (sm_qualifier_name (trigger->name, owner_name, DB_MAX_USER_LENGTH) == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  return error;
-	}
-      trigger_name = sm_remove_qualifier_name (trigger->name);
-
       output_ctx ("CREATE TRIGGER ");
-      output_ctx ("[%s].[%s]\n", owner_name, trigger_name);
+      output_ctx ("[%s]\n", sm_remove_qualifier_name (trigger->name));
       output_ctx ("  STATUS %s\n", tr_status_as_string (trigger->status));
       output_ctx ("  PRIORITY %f\n", trigger->priority);
 
@@ -285,8 +278,14 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
       if (trigger->class_mop != NULL)
 	{
 	  name = db_get_class_name (trigger->class_mop);
+	  if (sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+	  class_name = sm_remove_qualifier_name (name);
 	  output_ctx (" ON ");
-	  output_ctx ("[%s]", name);
+	  output_ctx ("[%s].[%s]", owner_name, class_name);
 
 	  if (trigger->attribute != NULL)
 	    {
@@ -418,7 +417,7 @@ tr_dump_selective_triggers (print_output &output_ctx, DB_OBJLIST *classes)
 			{
 			  tr_dump_trigger (output_ctx, trigger_object);
 			  output_ctx ("call [change_trigger_owner]('%s'," " '%s') on class [db_root];\n\n",
-				      trigger->name, get_user_name (trigger->owner));
+				      sm_remove_qualifier_name (trigger->name), get_user_name (trigger->owner));
 			}
 		    }
 		  else if (is_system_class < 0)
