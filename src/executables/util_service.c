@@ -1456,10 +1456,12 @@ get_server_names (char **name_buffer)
   /* allocate buffer, it should be freed */
   if (!result.empty ())
     {
-      *name_buffer = (char *) malloc (result.size ());
+      int name_length = result.size ();
+      *name_buffer = (char *) malloc (name_length + 1);
       if (*name_buffer)
 	{
-	  strcpy (*name_buffer, result.c_str ());
+	  strncpy (*name_buffer, result.c_str (), name_length);
+	  (*name_buffer)[name_length] = '\0';
 	}
     }
 
@@ -2400,7 +2402,7 @@ is_javasp_running (const char *server_name)
 
   FILE *input = NULL;
   char buf[PATH_MAX] = { 0 };
-  char cmd[PATH_MAX + PING_CMD_LEN] = { 0 };
+  char cmd[PATH_MAX] = { 0 };
 
   (void) envvar_bindir_file (cmd, PATH_MAX, UTIL_JAVASP_NAME);
 
