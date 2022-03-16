@@ -1312,6 +1312,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  thread_set_trace_format (thread_p, QUERY_TRACE_JSON);
 	}
     }
+  else
+    {
+      thread_trace_off (thread_p);
+    }
 
   xasl_cache_entry_p = NULL;
   if (xcache_find_xasl_id_for_execute (thread_p, xasl_id_p, &xasl_cache_entry_p, &xclone) != NO_ERROR)
@@ -1790,6 +1794,10 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 	{
 	  thread_set_trace_format (thread_p, QUERY_TRACE_JSON);
 	}
+    }
+  else
+    {
+      thread_trace_off (thread_p);
     }
 
   if (IS_TRIGGER_INVOLVED (*flag_p))

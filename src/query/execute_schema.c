@@ -8519,6 +8519,7 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       error = ER_FAILED;
       goto error_exit;
     }
+
   insert_into =
     create_select_to_insert_into (parser, class_name, create_select_copy, create_select_action, query_columns);
   if (insert_into == NULL)
@@ -10674,6 +10675,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
   if (is_att_prop_set (attr_chg_prop->p[P_COMMENT], ATT_CHG_PROPERTY_DIFF))
     {
+      /* free old before assign new */
+      if (found_att->comment)
+	{
+	  ws_free_string (found_att->comment);
+	}
+
       comment = attribute->info.attr_def.comment;
       assert (comment != NULL && comment->node_type == PT_VALUE);
       comment_str = comment->info.value.data_value.str;
@@ -10682,6 +10689,11 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	{
 	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 	  goto exit;
+	}
+      else if (!found_att->comment[0])	/* empty string */
+	{
+	  ws_free_string (found_att->comment);
+	  found_att->comment = NULL;
 	}
     }
   else if (is_att_prop_set (attr_chg_prop->p[P_COMMENT], ATT_CHG_PROPERTY_LOST))

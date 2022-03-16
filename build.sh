@@ -178,8 +178,10 @@ function build_clean ()
     fi
   fi
 
-  if [ -f $source_dir/cubrid-cci/CCI-VERSION-DIST ]; then
-    rm $source_dir/cubrid-cci/CCI-VERSION-DIST
+  if [ -f $source_dir/cubrid-cci/BUILD_NUMBER ]; then
+    if [ -f $source_dir/cubrid-cci/CCI-VERSION-DIST ]; then
+      rm $source_dir/cubrid-cci/CCI-VERSION-DIST
+    fi
   fi
 
   print_result "OK"
@@ -341,13 +343,25 @@ function build_package ()
 	  archive_cmd="zip -q $build_dir/$package_name -@"
 	fi
 	# add VERSION-DIST instead of VERSION file for full version string
-	(cd $source_dir && echo "$version" > VERSION-DIST && ln -sfT . cubrid-$version &&
-	  (git ls-files -o VERSION-DIST ; git ls-files &&
-	    (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|" && 
-	    ([ "$without_jdbc" = "true" ] || (cd $source_dir/cubrid-jdbc  && git ls-files -o output/VERSION-DIST; git ls-files) | sed -e "/^VERSION$/d" | sed -e "s|^|cubrid-jdbc/|") &&
-	    ([ "$with_cci" = "false" ] || (cd $source_dir/cubrid-cci  && git ls-files -o CCI-VERSION-DIST; git ls-files) | sed -e "/^BUILD_NUMBER$/d" | sed -e "s|^|cubrid-cci/|")) | 
-            sed -e "/^VERSION$/d" -e "/^cubrid-jdbc$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
-	    rm cubrid-$version VERSION-DIST)
+  if [ -d $source_dir/.git -a -f $source_dir/VERSION ]; then
+	  (cd $source_dir && echo "$version" > VERSION-DIST && ln -sfT . cubrid-$version &&
+	    (git ls-files -o VERSION-DIST ; git ls-files &&
+	      (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|" &&
+	      ([ "$without_jdbc" = "true" ] || (cd $source_dir/cubrid-jdbc  && git ls-files -o output/VERSION-DIST; git ls-files) | sed -e "/^VERSION$/d" | sed -e "s|^|cubrid-jdbc/|") &&
+	      ([ "$with_cci" = "false" ] || (cd $source_dir/cubrid-cci  && git ls-files -o CCI-VERSION-DIST; git ls-files) | sed -e "/^BUILD_NUMBER$/d" | sed -e "s|^|cubrid-cci/|")) |
+              sed -e "/^VERSION$/d" -e "/^cubrid-jdbc$/d" -e "/^cubrid-cci$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
+	      rm cubrid-$version VERSION-DIST)
+  else
+    #Only handles packaging process when build to packaging file.
+    if [ "$package" = "src" ]; then
+      echo "-- Packaging Source to tar.gz"
+      (cd $source_dir && tar czf $build_dir/$package_name --exclude build_${build_target}_${build_mode} -C ${source_dir%/*} ${source_dir##*/})
+    else
+      echo "-- Packaging Source to ZIP"
+      (cd ${source_dir%/*} && zip --symlinks -rq $build_dir/$package_name ${source_dir##*/} -x \*build_${build_target}_${build_mode}\* && cd $source_dir)
+    fi
+  fi
+
 	if [ $? -eq 0 ]; then
 	  output_packages="$output_packages $package_name"
 	  [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
