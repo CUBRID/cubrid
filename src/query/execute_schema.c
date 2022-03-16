@@ -4565,10 +4565,8 @@ do_rename_partition (MOP old_class, const char *newname)
   int newlen;
   int error;
   char new_subname[PARTITION_VARCHAR_LEN + 1], *ptr;
-  char expr_copy[DB_MAX_PARTITION_EXPR_LENGTH] = { '\0' };
-  char expr_new[DB_MAX_PARTITION_EXPR_LENGTH] = { '\0' };
-  char *keycol = NULL;
-  char *keycol_end = NULL;
+  char expr[DB_MAX_PARTITION_EXPR_LENGTH] = { '\0' };
+  char *expr_ptr = NULL;
 
   if (!old_class || !newname)
     {
@@ -4583,16 +4581,13 @@ do_rename_partition (MOP old_class, const char *newname)
       goto end_rename;
     }
 
-  strncpy (expr_copy, smclass->partition->expr, DB_MAX_PARTITION_EXPR_LENGTH);
-  keycol = expr_copy + 7;	/* strlen ("SELECT") + empty_string = 7 */
-  keycol_end = strstr (keycol, " ");
-  keycol_end[0] = '\0';
-
-  assert (snprintf (NULL, 0, "SELECT %s FROM [%s]", keycol, newname) < DB_MAX_PARTITION_EXPR_LENGTH);
-  sprintf (expr_new, "SELECT %s FROM [%s]", keycol, newname);
+  /* The pexpr format is defined in the function pt_node_to_partition_info. */
+  strncpy (expr, smclass->partition->expr, DB_MAX_PARTITION_EXPR_LENGTH);
+  expr_ptr = strstr (expr, "FROM") + 5;	/* strlen ("FROM") + 1 = 5 */
+  sprintf (expr_ptr, "[%s]", newname);
 
   ws_free_string (smclass->partition->expr);
-  smclass->partition->expr = ws_copy_string (expr_new);
+  smclass->partition->expr = ws_copy_string (expr);
   sm_flush_objects (old_class);
 
   for (objs = smclass->users; objs; objs = objs->next)
