@@ -102,6 +102,7 @@ namespace cubcomm
 
       bucket &get_bucket (response_sequence_number rsn);
 
+      const size_t m_bucket_count;
       std::vector<bucket> m_buckets;
   };
 }
@@ -114,7 +115,8 @@ namespace cubcomm
 {
   template <typename T_PAYLOAD, typename T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::response_broker (size_t a_bucket_count, T_ERROR a_no_error, T_ERROR a_error)
-    : m_buckets { a_bucket_count, { a_no_error, a_error } }
+    : m_bucket_count { a_bucket_count }
+    , m_buckets { a_bucket_count, { a_no_error, a_error } }
   {
     assert (a_bucket_count > 0);
   }
@@ -123,7 +125,7 @@ namespace cubcomm
   typename response_broker<T_PAYLOAD, T_ERROR>::bucket &
   response_broker<T_PAYLOAD, T_ERROR>::get_bucket (response_sequence_number rsn)
   {
-    return m_buckets[rsn % m_buckets.size ()];
+    return m_buckets[rsn % m_bucket_count];
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
@@ -177,7 +179,8 @@ namespace cubcomm
       ent.m_payload = std::move (a_payload);
       ent.m_error = m_no_error;
     }
-    // all because there is more than one thread waiting for data on the same bucket
+    // notify all because there is more than one thread waiting for data on the same bucket
+    // ideally, with an adequately sized bucket pool, the contention should be minimal
     m_condvar.notify_all ();
   }
 
@@ -191,7 +194,8 @@ namespace cubcomm
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       ent.m_error = std::move (a_error);
     }
-    // all because there is more than one thread waiting for data on the same bucket
+    // notify all because there is more than one thread waiting for data on the same bucket
+    // ideally, with an adequately sized bucket pool, the contention should be minimal
     m_condvar.notify_all ();
   }
 
@@ -247,7 +251,8 @@ namespace cubcomm
       std::lock_guard<std::mutex> lockg (m_mutex);
       m_terminate = true;
     }
-    // all because there is more than one thread waiting for data on the same bucket
+    // notify all because there is more than one thread waiting for data on the same bucket
+    // ideally, with an adequately sized bucket pool, the contention should be minimal
     m_condvar.notify_all ();
   }
 

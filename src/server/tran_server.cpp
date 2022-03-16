@@ -288,6 +288,8 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
 		srv_chn.get_channel_id ().c_str ());
 
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
+  // TODO: to reduce contention as much as possible, should be equal to the maximum number
+  // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
 
   cubcomm::send_queue_error_handler no_transaction_handler { nullptr };
   // Transaction server will use message specific error handlers.

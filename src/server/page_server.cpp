@@ -55,11 +55,14 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, page
   : m_ps (ps)
   , m_abnormal_tran_server_disconnect { false }
 {
+  constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
+
   m_conn.reset (
 	  new tran_server_conn_t (std::move (chn),
   {
     // common
     {
+      // TODO: rename handler with _async / _sync
       tran_to_page_request::GET_BOOT_INFO,
       std::bind (&page_server::connection_handler::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
     },
@@ -92,7 +95,8 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, page
     }
   },
   page_to_tran_request::RESPOND,
-  tran_to_page_request::RESPOND, 1,
+  tran_to_page_request::RESPOND,
+  RESPONSE_PARTITIONING_SIZE,
   std::bind (&page_server::connection_handler::abnormal_tran_server_disconnect,
 	     std::ref (*this), std::placeholders::_1, std::placeholders::_2)));
 
