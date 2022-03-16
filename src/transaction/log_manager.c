@@ -10431,8 +10431,11 @@ log_checkpoint_trantable_execute (cubthread::entry &thread_ref)
 {
   if (!BO_IS_SERVER_RESTARTED ())
     {
-      // wait for boot to finish
-      return;
+      constexpr auto short_delay = std::chrono::milliseconds (100);
+      while (!BO_IS_SERVER_RESTARTED())
+        {
+          std::this_thread::sleep_for(short_delay);
+        }
     }
 
   logpb_checkpoint_trantable(&thread_ref);
@@ -10716,32 +10719,6 @@ log_checkpoint_daemon_init ()
 }
 #endif /* SERVER_MODE */
 
-#if defined (SERVER_MODE)
-void
-log_get_checkpoint_trantable_interval (bool & is_timed_wait, cubthread::delta_time & period)
-{
-  constexpr auto short_delay = std::chrono::milliseconds (100);
-  constexpr auto normal_delay = std::chrono::seconds (60);
-
-  // will only be accessed by one thread at a time
-  static bool first_call = true;
-  is_timed_wait = true;
-  if (!BO_IS_SERVER_RESTARTED)
-    {
-      period = short_delay;
-    }
-  else if (first_call)
-    {
-      first_call = false;
-      period = short_delay;
-    }
-  else
-    {
-      period = normal_delay;
-    }
-}
-#endif
-
 #if defined(SERVER_MODE)
 void
 log_checkpoint_trantable_daemon_init ()
@@ -10750,7 +10727,8 @@ log_checkpoint_trantable_daemon_init ()
 
   if (is_tran_server_with_remote_storage ())
     {
-      cubthread::looper looper (log_get_checkpoint_trantable_interval);
+      constexpr auto loop_time = std::chrono::seconds (60);
+      cubthread::looper looper (loop_time);
       cubthread::entry_callable_task * daemon_task =
           new cubthread::entry_callable_task (log_checkpoint_trantable_execute);
       log_Checkpoint_trantable_daemon =
