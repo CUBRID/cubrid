@@ -163,7 +163,6 @@ extern int cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, v
 
 // Resultset funtions
 extern int cgw_cursor_close (SQLHSTMT hstmt);
-extern int cgw_get_row_count (SQLHSTMT hstmt, SQLLEN * row_count);
 extern int cgw_row_data (SQLHSTMT hstmt, int cursor_pos);
 extern int cgw_set_stmt_attr (SQLHSTMT hstmt, SQLINTEGER attr, SQLPOINTER val, SQLINTEGER len);
 extern int cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor_pos);

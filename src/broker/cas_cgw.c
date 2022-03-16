@@ -812,9 +812,8 @@ cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_t
 {
   SQLRETURN err_code;
   char cache_reusable = 0;
-  SQLLEN tuple_count = 0;
 
-  net_buf_cp_int (net_buf, (int) tuple_count, &srv_handle->total_row_count_msg_offset);
+  net_buf_cp_int (net_buf, srv_handle->total_tuple_count, NULL);
   net_buf_cp_byte (net_buf, cache_reusable);
   net_buf_cp_int (net_buf, (int) srv_handle->num_q_result, NULL);
 
@@ -865,7 +864,6 @@ ODBC_ERROR:
 static int
 cgw_get_stmt_Info (T_SRV_HANDLE * srv_handle, SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type)
 {
-  SQLLEN total_row_count = 0;
   T_OBJECT ins_oid;
   CACHE_TIME srv_cache_time;
   char statement_type = (char) stmt_type;
@@ -877,17 +875,7 @@ cgw_get_stmt_Info (T_SRV_HANDLE * srv_handle, SQLHSTMT hstmt, T_NET_BUF * net_bu
     }
 
   net_buf_cp_byte (net_buf, statement_type);
-
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, SQLRowCount (hstmt, &total_row_count));
-  if (total_row_count < 0)
-    {
-      net_buf_cp_int (net_buf, -1, &srv_handle->res_tuple_count_msg_offset);
-    }
-  else
-    {
-      net_buf_cp_int (net_buf, (int) total_row_count, NULL);
-    }
-
+  net_buf_cp_int (net_buf, srv_handle->total_tuple_count, NULL);
 
   memset (&ins_oid, 0, sizeof (T_OBJECT));
   net_buf_cp_object (net_buf, &ins_oid);
@@ -1597,25 +1585,6 @@ int
 cgw_is_database_connected ()
 {
   return is_database_connected;
-}
-
-int
-cgw_get_row_count (SQLHSTMT hstmt, SQLLEN * row_count)
-{
-  SQLRETURN err_code = 0;
-
-  if (hstmt == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLRowCount (hstmt, row_count));
-
-  return NO_ERROR;
-
-ODBC_ERROR:
-  return ER_FAILED;
 }
 
 static int
