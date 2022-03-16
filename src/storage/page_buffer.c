@@ -8336,7 +8336,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
     }
 
   std::string response_message;
-  ts_Gl->send_receive (tran_to_page_request::SEND_DATA_PAGE_FETCH, std::move (request_message), response_message);
+  (void) ts_Gl->send_receive (tran_to_page_request::SEND_DATA_PAGE_FETCH, std::move (request_message), response_message);
 
   const char *message_buf = response_message.c_str ();
   int error_code = NO_ERROR;

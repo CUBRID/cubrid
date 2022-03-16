@@ -2104,7 +2104,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
       _er_log_debug (ARG_FILE_LINE, "[READ LOG] Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
     }
   std::string response_message;
-  ts_Gl->send_receive (tran_to_page_request::SEND_LOG_PAGE_FETCH, std::move (request_message), response_message);
+  (void) ts_Gl->send_receive (tran_to_page_request::SEND_LOG_PAGE_FETCH, std::move (request_message), response_message);
 
   assert (response_message.size () > 0);
   const char *message_ptr = response_message.c_str ();

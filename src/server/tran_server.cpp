@@ -237,7 +237,7 @@ void
 tran_server::get_boot_info_from_page_server ()
 {
   std::string response_message;
-  send_receive (tran_to_page_request::GET_BOOT_INFO, std::string (), response_message);
+  (void) send_receive (tran_to_page_request::GET_BOOT_INFO, std::string (), response_message);
 
   DKNVOLS nvols_perm;
   std::memcpy (&nvols_perm, response_message.c_str (), sizeof (nvols_perm));
@@ -288,6 +288,8 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
 		srv_chn.get_channel_id ().c_str ());
 
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
+  // TODO: to reduce contention as much as possible, should be equal to the maximum number
+  // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
 
   cubcomm::send_queue_error_handler no_transaction_handler { nullptr };
   // Transaction server will use message specific error handlers.
@@ -345,12 +347,24 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
   m_page_server_conn_vec[0]->push (reqid, std::move (payload));
 }
 
-void
+int
 tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
 {
   assert (is_page_server_connected ());
 
-  m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
+  const css_error_code error_code = m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
+  // NOTE: enhance error handling when:
+  //  - more than one page server will be handled
+  //  - fail-over will be implemented
+
+  if (error_code != NO_ERRORS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+      er_log_debug (ARG_FILE_LINE, "Error during send_recv message to page server. Server cannot be reached.");
+      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+    }
+
+  return NO_ERROR;
 }
 
 tran_server::request_handlers_map_t

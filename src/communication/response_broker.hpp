@@ -44,34 +44,68 @@ namespace cubcomm
       std::atomic<response_sequence_number> m_next_number = 0;
   };
 
-  template<typename T_PAYLOAD>
+  template<typename T_PAYLOAD, typename T_ERROR>
   class response_broker
   {
     public:
       response_broker () = delete;
-      response_broker (size_t a_bucket_count);
+      response_broker (size_t a_bucket_count, T_ERROR a_no_error, T_ERROR a_error);
+
+      response_broker (const response_broker &) = delete;
+      response_broker (response_broker &&) = delete;
+
+      response_broker &operator = (const response_broker &) = delete;
+      response_broker &operator = (response_broker &&) = delete;
 
       void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
-      T_PAYLOAD get_response (response_sequence_number a_rsn);
+      void register_error (response_sequence_number a_rsn, T_ERROR &&a_error);
+
+      std::tuple<T_PAYLOAD, T_ERROR> get_response (response_sequence_number a_rsn);
+
+      void terminate ();
 
     private:
-
       struct bucket
       {
-	bucket () = default;
-	bucket (bucket &&) = default;
-	bucket (const bucket &);
+	  bucket (T_ERROR a_no_error, T_ERROR a_error);
+	  ~bucket ();
 
-	std::mutex m_mutex;
-	std::condition_variable m_condvar;
-	std::unordered_map<response_sequence_number, T_PAYLOAD> m_response_payloads;
+	  bucket (const bucket &);
+	  bucket (bucket &&) = delete;
 
-	void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
-	T_PAYLOAD get_response (response_sequence_number a_rsn);
+	  bucket &operator = (const bucket &) = delete;
+	  bucket &operator = (bucket &&) = delete;
+
+	  void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
+	  void register_error (response_sequence_number a_rsn, T_ERROR &&a_error);
+
+	  std::tuple<T_PAYLOAD, T_ERROR> get_response (response_sequence_number a_rsn);
+
+	  void terminate ();
+
+	private:
+	  struct payload_or_error_type
+	  {
+	    T_PAYLOAD m_payload;
+	    T_ERROR m_error;
+	  };
+
+	  using response_payload_container_type = std::unordered_map<response_sequence_number, payload_or_error_type>;
+
+	private:
+	  const T_ERROR m_no_error;
+	  const T_ERROR m_error;
+
+	  std::mutex m_mutex;
+	  std::condition_variable m_condvar;
+	  response_payload_container_type m_response_payloads;
+
+	  bool m_terminate;
       };
 
       bucket &get_bucket (response_sequence_number rsn);
 
+      const size_t m_bucket_count;
       std::vector<bucket> m_buckets;
   };
 }
@@ -82,76 +116,160 @@ namespace cubcomm
 
 namespace cubcomm
 {
-  template <typename T_PAYLOAD>
-  response_broker<T_PAYLOAD>::response_broker (size_t a_bucket_count)
+  template <typename T_PAYLOAD, typename T_ERROR>
+  response_broker<T_PAYLOAD, T_ERROR>::response_broker (size_t a_bucket_count, T_ERROR a_no_error, T_ERROR a_error)
+    : m_bucket_count { a_bucket_count }
+    , m_buckets { a_bucket_count, { a_no_error, a_error } }
   {
     assert (a_bucket_count > 0);
-    m_buckets.resize (a_bucket_count);
   }
 
-  template <typename T_PAYLOAD>
-  typename response_broker<T_PAYLOAD>::bucket &
-  response_broker<T_PAYLOAD>::get_bucket (response_sequence_number rsn)
+  template <typename T_PAYLOAD, typename T_ERROR>
+  typename response_broker<T_PAYLOAD, T_ERROR>::bucket &
+  response_broker<T_PAYLOAD, T_ERROR>::get_bucket (response_sequence_number rsn)
   {
-    return m_buckets[rsn % m_buckets.size ()];
+    return m_buckets[rsn % m_bucket_count];
   }
 
-  template <typename T_PAYLOAD>
+  template <typename T_PAYLOAD, typename T_ERROR>
   void
-  response_broker<T_PAYLOAD>::register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload)
+  response_broker<T_PAYLOAD, T_ERROR>::register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload)
   {
     get_bucket (a_rsn).register_response (a_rsn, std::move (a_payload));
   }
 
-  template <typename T_PAYLOAD>
+  template <typename T_PAYLOAD, typename T_ERROR>
   void
-  response_broker<T_PAYLOAD>::bucket::register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload)
+  response_broker<T_PAYLOAD, T_ERROR>::register_error (response_sequence_number a_rsn, T_ERROR &&a_error)
+  {
+    get_bucket (a_rsn).register_error (a_rsn, std::move (a_error));
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
+  void
+  response_broker<T_PAYLOAD, T_ERROR>::terminate ()
+  {
+    for (auto &bucket : m_buckets)
+      {
+	bucket.terminate ();
+      }
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::bucket (T_ERROR a_no_error, T_ERROR a_error)
+    : m_no_error { a_no_error }
+    , m_error { a_error }
+    , m_terminate { false }
+  {
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::~bucket ()
+  {
+    // NOTE: might not hold in the event that a peer server crashes before consuming a response;
+    // in which case the response will linger on in the queue indefinitely
+    assert (m_response_payloads.empty ());
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
+  void
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload)
   {
     {
       std::lock_guard<std::mutex> lk_guard (m_mutex);
 
-      T_PAYLOAD &ent = m_response_payloads[a_rsn];
-      ent = std::move (a_payload);
+      payload_or_error_type &ent = m_response_payloads[a_rsn];
+      ent.m_payload = std::move (a_payload);
+      ent.m_error = m_no_error;
     }
+    // notify all because there is more than one thread waiting for data on the same bucket
+    // ideally, with an adequately sized bucket pool, the contention should be minimal
     m_condvar.notify_all ();
   }
 
-  template <typename T_PAYLOAD>
-  T_PAYLOAD
-  response_broker<T_PAYLOAD>::get_response (response_sequence_number a_rsn)
+  template <typename T_PAYLOAD, typename T_ERROR>
+  void
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::register_error (response_sequence_number a_rsn, T_ERROR &&a_error)
+  {
+    {
+      std::lock_guard<std::mutex> lockg (m_mutex);
+
+      payload_or_error_type &ent = m_response_payloads[a_rsn];
+      ent.m_error = std::move (a_error);
+    }
+    // notify all because there is more than one thread waiting for data on the same bucket
+    // ideally, with an adequately sized bucket pool, the contention should be minimal
+    m_condvar.notify_all ();
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
+  std::tuple<T_PAYLOAD, T_ERROR>
+  response_broker<T_PAYLOAD, T_ERROR>::get_response (response_sequence_number a_rsn)
   {
     return get_bucket (a_rsn).get_response (a_rsn);
   }
 
-  template <typename T_PAYLOAD>
-  T_PAYLOAD
-  response_broker<T_PAYLOAD>::bucket::get_response (response_sequence_number a_rsn)
+  template <typename T_PAYLOAD, typename T_ERROR>
+  std::tuple<T_PAYLOAD, T_ERROR>
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::get_response (response_sequence_number a_rsn)
   {
-    std::unique_lock<std::mutex> ulock (m_mutex);
-    T_PAYLOAD payload;
+    constexpr std::chrono::milliseconds millis_100 { 100 };
 
-    auto condvar_pred = [this, &payload, a_rsn] ()
     {
-      auto it = m_response_payloads.find (a_rsn);
-      if (it == m_response_payloads.end ())
-	{
-	  return false;
-	}
-      payload = std::move ((*it).second);
-      m_response_payloads.erase (it);
-      return true;
-    };
-    m_condvar.wait (ulock, condvar_pred);
+      typename response_payload_container_type::iterator found_it { m_response_payloads.end () };
 
-    return payload;
+      auto condvar_pred = [this, &found_it, a_rsn] ()
+      {
+	found_it = m_response_payloads.find (a_rsn);
+	return (found_it != m_response_payloads.end ());
+      };
+
+      std::unique_lock<std::mutex> ulock (m_mutex);
+      // a way out in case neither value nor error is registered as a response
+      // which can happen in case - eg - that the connection is dropped
+      while (!m_terminate)
+	{
+	  if (m_condvar.wait_for (ulock, millis_100, condvar_pred))
+	    {
+	      assert (found_it != m_response_payloads.end ());
+	      std::tuple<T_PAYLOAD, T_ERROR> payload_or_error
+	      {
+		std::move ((*found_it).second.m_payload ),
+		std::move ((*found_it).second.m_error)
+	      };
+	      m_response_payloads.erase (found_it);
+	      return payload_or_error;
+	    }
+	}
+    }
+
+    // upon terminate, error response will be returned
+    return std::make_tuple (T_PAYLOAD (), m_error);
   }
 
-  template <typename T_PAYLOAD>
-  response_broker<T_PAYLOAD>::bucket::bucket (const bucket &o)
+  template <typename T_PAYLOAD, typename T_ERROR>
+  void
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::terminate ()
+  {
+    {
+      std::lock_guard<std::mutex> lockg (m_mutex);
+      m_terminate = true;
+    }
+    // notify all because there is more than one thread waiting for data on the same bucket
+    // ideally, with an adequately sized bucket pool, the contention should be minimal
+    m_condvar.notify_all ();
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::bucket (const bucket &that)
+    : m_no_error { that.m_no_error }
+    , m_error { that.m_error }
+    , m_terminate { that.m_terminate }
   {
     // Bucket copy constructor may be required only during the response_broker initialization.
     // The copied bucket is empty and no synchronization is required.
-    assert (o.m_response_payloads.empty ());
+    assert (!m_terminate);
+    assert (that.m_response_payloads.empty ());
   }
 }
 
