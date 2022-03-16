@@ -90,18 +90,22 @@ namespace cubcomm
 	    T_ERROR m_error;
 	  };
 
+	  using response_payload_container_type = std::unordered_map<response_sequence_number, payload_or_error_type>;
+
+	private:
 	  const T_ERROR m_no_error;
 	  const T_ERROR m_error;
 
 	  std::mutex m_mutex;
 	  std::condition_variable m_condvar;
-	  std::unordered_map<response_sequence_number, payload_or_error_type> m_response_payloads;
+	  response_payload_container_type m_response_payloads;
 
 	  bool m_terminate;
       };
 
       bucket &get_bucket (response_sequence_number rsn);
 
+      const size_t m_bucket_count;
       std::vector<bucket> m_buckets;
   };
 }
@@ -114,7 +118,8 @@ namespace cubcomm
 {
   template <typename T_PAYLOAD, typename T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::response_broker (size_t a_bucket_count, T_ERROR a_no_error, T_ERROR a_error)
-    : m_buckets { a_bucket_count, { a_no_error, a_error } }
+    : m_bucket_count { a_bucket_count }
+    , m_buckets { a_bucket_count, { a_no_error, a_error } }
   {
     assert (a_bucket_count > 0);
   }
@@ -123,7 +128,7 @@ namespace cubcomm
   typename response_broker<T_PAYLOAD, T_ERROR>::bucket &
   response_broker<T_PAYLOAD, T_ERROR>::get_bucket (response_sequence_number rsn)
   {
-    return m_buckets[rsn % m_buckets.size ()];
+    return m_buckets[rsn % m_bucket_count];
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
@@ -177,7 +182,8 @@ namespace cubcomm
       ent.m_payload = std::move (a_payload);
       ent.m_error = m_no_error;
     }
-    // all because there is more than one thread waiting for data on the same bucket
+    // notify all because there is more than one thread waiting for data on the same bucket
+    // ideally, with an adequately sized bucket pool, the contention should be minimal
     m_condvar.notify_all ();
   }
 
@@ -191,7 +197,8 @@ namespace cubcomm
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       ent.m_error = std::move (a_error);
     }
-    // all because there is more than one thread waiting for data on the same bucket
+    // notify all because there is more than one thread waiting for data on the same bucket
+    // ideally, with an adequately sized bucket pool, the contention should be minimal
     m_condvar.notify_all ();
   }
 
@@ -206,23 +213,17 @@ namespace cubcomm
   std::tuple<T_PAYLOAD, T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::bucket::get_response (response_sequence_number a_rsn)
   {
-    std::tuple<T_PAYLOAD, T_ERROR> payload_or_error { T_PAYLOAD (), m_error };
-
-    auto condvar_pred = [this, &payload_or_error, a_rsn] ()
-    {
-      auto it = m_response_payloads.find (a_rsn);
-      if (it == m_response_payloads.end ())
-	{
-	  return false;
-	}
-      payload_or_error = { std::move ((*it).second.m_payload), std::move ((*it).second.m_error) };
-      m_response_payloads.erase (it);
-
-      return true;
-    };
-
     constexpr std::chrono::milliseconds millis_100 { 100 };
+
     {
+      typename response_payload_container_type::iterator found_it { m_response_payloads.end () };
+
+      auto condvar_pred = [this, &found_it, a_rsn] ()
+      {
+	found_it = m_response_payloads.find (a_rsn);
+	return (found_it != m_response_payloads.end ());
+      };
+
       std::unique_lock<std::mutex> ulock (m_mutex);
       // a way out in case neither value nor error is registered as a response
       // which can happen in case - eg - that the connection is dropped
@@ -230,13 +231,20 @@ namespace cubcomm
 	{
 	  if (m_condvar.wait_for (ulock, millis_100, condvar_pred))
 	    {
+	      assert (found_it != m_response_payloads.end ());
+	      std::tuple<T_PAYLOAD, T_ERROR> payload_or_error
+	      {
+		std::move ((*found_it).second.m_payload ),
+		std::move ((*found_it).second.m_error)
+	      };
+	      m_response_payloads.erase (found_it);
 	      return payload_or_error;
 	    }
 	}
     }
 
     // upon terminate, error response will be returned
-    return payload_or_error;
+    return std::make_tuple (T_PAYLOAD (), m_error);
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
@@ -247,7 +255,8 @@ namespace cubcomm
       std::lock_guard<std::mutex> lockg (m_mutex);
       m_terminate = true;
     }
-    // all because there is more than one thread waiting for data on the same bucket
+    // notify all because there is more than one thread waiting for data on the same bucket
+    // ideally, with an adequately sized bucket pool, the contention should be minimal
     m_condvar.notify_all ();
   }
 

@@ -14387,6 +14387,8 @@ btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, const 
   int root_level = 0, depth = 0;
 
   desync_occured = false;
+  // TODO: temporary change to identify problem
+  const int temp_error_code = er_errid ();
   ASSERT_NO_ERROR ();
 
   VPID_SET_NULL (pg_vpid);

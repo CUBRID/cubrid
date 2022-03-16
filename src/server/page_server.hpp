@@ -27,6 +27,56 @@
 
 #include <memory>
 
+/* Sequence diagram of server-server communication:
+ *
+ *                                                 #
+ *                                     TRAN SERVER # PAGE SERVER
+ *                                                 #
+ *                 ┌───────────────────────────┐   #   ┌────────────────────────────────────────────┐
+ *                 │request_sync_client_server │   #   │connection_handler                          │
+ *    ┌────┐  (1)  │                           │   #   │                                            │
+ * ┌──► Ti ├───────┼─────┐                     │   #   │ ┌───────────────────────────┐              │
+ * │  └────┘       │     │                     │   #   │ │request_sync_client_server │              │
+ * │               │     │   ┌────────────┐    │   #   │ │(per tran server)          │  ┌─────────┐ │
+ * │               │     ├───►  send      │    │(2)#   │ │   ┌─────────────┐  (3)    │  │server   │ │
+ * │  ┌────┐ (1)   │     │   │  thread    ├────┼───────┼─┼───►  receive    ├─────────┼──►request  │ │
+ * ├──► Tx ├───────┼─────┤   └────────────┘    │   #   │ │   │   thread    │         │  │responder│ │
+ * │  └────┘       │     │                     │   #   │ │   └─────────────┘         │  │thread   │ │
+ * │               │     │                     │   #   │ │                       (4) │  │pool     │ │
+ * │               │     │     ┌──────────┐    │   #   │ │                      ┌────┼──┤         │ │
+ * │  ┌────┐  (1)  │     │     │ receive  │    │   #(5)│ │   ┌─────────────┐    │    │  └─────────┘ │
+ * ├──► Td ├───────┼─────┘     │  thread  ◄────┼───────┼─┼───┤   send      │    │    │              │
+ * │  └────┘       │           └─┬────────┘    │   #   │ │   │   thread    ◄────┘    │              │
+ * │               │             │             │   #   │ │   └─────────────┘         │              │
+ * │               └─────────────┼─────────────┘   #   │ │                           │              │
+ * │       (6)                   │                 #   │ └───────────────────────────┘              │
+ * └─────────────────────────────┘                 #   │                                            │
+ *                                                 #   └────────────────────────────────────────────┘
+ *                                                 #
+ *
+ * (1)  transactions or system threads in a transaction server produce requests which require resources from
+ *      page server (eg: heap pages, log pages)
+ * (2)  these requests are serialized into requests for a send thread (request_sync_client_server,
+ *      request_sync_send_queue, request_queue_autosend) - the actual send thread is instantiated in
+ *      request_queue_autosend - which then sends requests over the network;
+ *      there are two two types of requests
+ *      - that wait for a response from the other side
+ *      - fire&forget messages (eg: log prior messages being sent from active transaction server to page server)
+ * (3)  on the page server messages are processed by a receive thread (request_sync_client_server -
+ *      request_client_server) with the receive thread actually being instantiated in request_client_server;
+ *      the receiving thread has a handler map which, together with the message's request id results in a
+ *      certain handler function to be called
+ *      received messages are being processed in two modes:
+ *      - synchronously: some messages make no sense to be processed asynchronously so they are processed
+ *        directly within the connection handler instance
+ *      - asynchronously: connection handler dispatches the message for processing and response retrieval
+ *        to a thread pool via task (server_request_responder)
+ * (4)  the async server request responder then redirects the response to the sending thread of page server
+ * (5)  which sends it over the network to the transaction server side
+ * (6)  the receive thread on the transaction server side use also the message's request id and a handler map
+ *      to know which waiting thread to actually wake to consume the response
+ */
+
 class page_server
 {
   private:
