@@ -4583,7 +4583,8 @@ do_rename_partition (MOP old_class, const char *newname)
 
   /* The pexpr format is defined in the function pt_node_to_partition_info. */
   strncpy (expr, smclass->partition->expr, DB_MAX_PARTITION_EXPR_LENGTH);
-  expr_ptr = strstr (expr, "FROM") + 5;	/* strlen ("FROM") + 1 = 5 */
+  expr_ptr = strstr (expr, "FROM");
+  expr_ptr = strstr (expr_ptr, "[");
   sprintf (expr_ptr, "[%s]", newname);
 
   ws_free_string (smclass->partition->expr);
