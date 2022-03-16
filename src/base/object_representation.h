@@ -773,7 +773,6 @@ enum
   ORC_PROPERTIES_INDEX = 14,
   ORC_COMMENT_INDEX = 15,
   ORC_PARTITION_INDEX = 16,
-  ORC_UNIQUE_NAME_INDEX = 17,
 
   /* add a new one above */
 

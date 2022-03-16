@@ -5423,7 +5423,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      assert (false);	/* should avoid */
 
 		      rep_dir_offset =
-			(char *) recdes->data + OR_FIXED_ATTRIBUTES_OFFSET (recdes->data, ORC_CLASS_VAR_ATT_COUNT - 1)
+			(char *) recdes->data + OR_FIXED_ATTRIBUTES_OFFSET (recdes->data, ORC_CLASS_VAR_ATT_COUNT)
 			+ ORC_REP_DIR_OFFSET;
 
 		      OR_PUT_OID (rep_dir_offset, &old_rep_dir);
@@ -5532,7 +5532,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      /* save oid of the representation directory */
 	      rep_dir_offset =
-		(char *) recdes->data + OR_FIXED_ATTRIBUTES_OFFSET (recdes->data, ORC_CLASS_VAR_ATT_COUNT - 1)
+		(char *) recdes->data + OR_FIXED_ATTRIBUTES_OFFSET (recdes->data, ORC_CLASS_VAR_ATT_COUNT)
 		+ ORC_REP_DIR_OFFSET;
 
 	      OR_PUT_OID (rep_dir_offset, &rep_dir);

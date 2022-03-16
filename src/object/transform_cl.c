@@ -3574,11 +3574,10 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
   /* compute the variable offsets relative to the end of the header (beginning of variable table) */
   offset = tf_Metaclass_class.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
 
-  /* class_name */
+  /* name */
   or_put_offset (buf, offset);
 
-  offset += string_disk_size (sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)));
-
+  offset += string_disk_size (sm_ch_name ((MOBJ) class_));
   or_put_offset (buf, offset);
 
   offset += string_disk_size (class_->loader_commands);
@@ -3641,11 +3640,6 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
 
   offset += substructure_set_size ((DB_LIST *) class_->partition, (LSIZER) partition_info_size);
 
-  /* unique_name */
-  or_put_offset (buf, offset);
-
-  offset += string_disk_size (sm_ch_name ((MOBJ) class_));
-
   /* end of object */
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -3704,7 +3698,8 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
 
   /* 0: NAME */
-  put_string (buf, sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)));
+  put_string (buf, sm_ch_name ((MOBJ) class_));
+
   put_string (buf, class_->loader_commands);
 
   put_substructure_set (buf, (DB_LIST *) class_->representations, representation_to_disk_lwriter,
@@ -3751,8 +3746,6 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
   put_substructure_set (buf, (DB_LIST *) class_->partition, partition_info_to_disk_lwriter,
 			&tf_Metaclass_partition.mc_classoid, tf_Metaclass_partition.mc_repid);
-
-  put_string (buf, sm_ch_name ((MOBJ) class_));
 }
 
 /*
@@ -3850,8 +3843,6 @@ tf_class_size (MOBJ classobj)
   size += string_disk_size (class_->comment);
 
   size += substructure_set_size ((DB_LIST *) class_->partition, (LSIZER) partition_info_size);
-
-  size += string_disk_size (sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)));
 
   return (size);
 }
@@ -3995,12 +3986,11 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
   MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
-  char *unique_name = NULL;
 
   class_ = NULL;
   /* get the variable length and offsets. The offsets are relative to the end of the header (beginning of variable
    * table). */
-  vars = read_var_table (buf, tf_Metaclass_class.mc_n_variable - 1);
+  vars = read_var_table (buf, tf_Metaclass_class.mc_n_variable);
   if (vars == NULL)
     {
       goto on_error;
@@ -4049,8 +4039,6 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   class_->tde_algorithm = or_get_int (buf, &rc);
 
   /* variable 0 */
-  /* Since unique_name includes class_name, only unique_name is stored in SM_CLASS.
-   * The code below is needed to move the buf location. */
   class_->header.ch_name = get_string (buf, vars[ORC_NAME_INDEX].length);
 
   /* variable 1 */
@@ -4157,13 +4145,6 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   /* variable 16 */
   class_->partition =
     (SM_PARTITION *) get_substructure_set (buf, (LREADER) disk_to_partition_info, vars[ORC_PARTITION_INDEX].length);
-
-  /* variable 17 */
-  unique_name = get_string (buf, vars[ORC_UNIQUE_NAME_INDEX].length);
-  if (unique_name)
-    {
-      class_->header.ch_name = unique_name;
-    }
 
   /* build the ordered instance/shared instance list */
   classobj_fixup_loaded_class (class_);

@@ -134,7 +134,7 @@ orc_class_rep_dir (RECDES * record, OID * rep_dir_p)
 {
   char *ptr;
 
-  ptr = (char *) record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT - 1) + ORC_REP_DIR_OFFSET;
+  ptr = (char *) record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) + ORC_REP_DIR_OFFSET;
 
   OR_GET_OID (ptr, rep_dir_p);
 }
@@ -156,7 +156,7 @@ orc_class_hfid_from_record (RECDES * record, HFID * hfid)
 {
   char *ptr;
 
-  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT - 1);
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
   hfid->vfid.fileid = OR_GET_INT (ptr + ORC_HFID_FILEID_OFFSET);
   hfid->vfid.volid = OR_GET_INT (ptr + ORC_HFID_VOLID_OFFSET);
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
@@ -711,7 +711,7 @@ or_class_rep_dir (RECDES * record, OID * rep_dir_p)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = (char *) record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT - 1) + ORC_REP_DIR_OFFSET;
+  ptr = (char *) record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) + ORC_REP_DIR_OFFSET;
 
   OR_GET_OID (ptr, rep_dir_p);
 }
@@ -735,7 +735,7 @@ or_class_hfid (RECDES * record, HFID * hfid)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT - 1);
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
   hfid->vfid.fileid = OR_GET_INT (ptr + ORC_HFID_FILEID_OFFSET);
   hfid->vfid.volid = OR_GET_INT (ptr + ORC_HFID_VOLID_OFFSET);
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
@@ -755,7 +755,7 @@ or_class_tde_algorithm (RECDES * record, TDE_ALGORITHM * tde_algo)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT - 1);
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
   *(int *) tde_algo = OR_GET_INT (ptr + ORC_CLASS_TDE_ALGORITHM);
 }
 
@@ -774,7 +774,7 @@ or_class_statistics (RECDES * record, OID * oid)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT - 1);
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
 
   /* this doesn't exist yet, return NULL */
   OID_SET_NULL (oid);
@@ -1122,7 +1122,7 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid, B
 
   assert (OR_GET_OFFSET_SIZE (start) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT - 1);
+  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
 
   n_fixed = OR_GET_INT (ptr + ORC_FIXED_COUNT_OFFSET);
   n_variable = OR_GET_INT (ptr + ORC_VARIABLE_COUNT_OFFSET);
@@ -2378,7 +2378,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
   assert (OR_GET_OFFSET_SIZE (start) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT - 1);
+  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
 
   rep->id = or_rep_id (record);
   rep->fixed_length = OR_GET_INT (ptr + ORC_FIXED_LENGTH_OFFSET);
@@ -2436,7 +2436,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
 
   /* find the beginning of the "set_of(attribute)" attribute inside the class */
-  attset = start + OR_VAR_OFFSET (start, ORC_ATTRIBUTES_INDEX - 1);
+  attset = start + OR_VAR_OFFSET (start, ORC_ATTRIBUTES_INDEX);
 
   /* calculate the offset to the first fixed width attribute in instances of this class. */
   start_offset = offset = 0;
@@ -3791,7 +3791,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT - 1);
+  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
 
   n_fixed = OR_GET_INT (ptr + ORC_FIXED_COUNT_OFFSET);
   n_variable = OR_GET_INT (ptr + ORC_VARIABLE_COUNT_OFFSET);
@@ -3808,7 +3808,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 	   * find the start of the "set_of(attribute)" fix/variable attribute
 	   * list inside the class
 	   */
-	  attset = start + OR_VAR_OFFSET (start, ORC_ATTRIBUTES_INDEX - 1);
+	  attset = start + OR_VAR_OFFSET (start, ORC_ATTRIBUTES_INDEX);
 	  n_attrs = n_fixed + n_variable;
 	}
       else if (type_attr == 1)
@@ -3819,7 +3819,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 	   * find the start of the "set_of(shared attributes)" attribute
 	   * list inside the class
 	   */
-	  attset = start + OR_VAR_OFFSET (start, ORC_SHARED_ATTRS_INDEX - 1);
+	  attset = start + OR_VAR_OFFSET (start, ORC_SHARED_ATTRS_INDEX);
 	  n_attrs = n_shared;
 	}
       else
@@ -3830,7 +3830,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 	   * find the start of the "set_of(class attributes)" attribute
 	   * list inside the class
 	   */
-	  attset = start + OR_VAR_OFFSET (start, ORC_CLASS_ATTRS_INDEX - 1);
+	  attset = start + OR_VAR_OFFSET (start, ORC_CLASS_ATTRS_INDEX);
 	  n_attrs = n_class;
 	}
 
