@@ -148,7 +148,7 @@ namespace cubcomm
   , m_queue_autosend { new request_queue_autosend_t (*m_queue) }
   , m_outgoing_response_msgid { a_outgoing_response_msgid }
   , m_incoming_response_msgid { a_incoming_response_msgid }
-  , m_response_broker { response_partition_count, NO_ERRORS }
+  , m_response_broker { response_partition_count, NO_ERRORS, ERROR_ON_WRITE }
   {
     assert (a_incoming_request_handlers.size () > 0);
     for (const auto &pair: a_incoming_request_handlers)

@@ -49,7 +49,7 @@ namespace cubcomm
   {
     public:
       response_broker () = delete;
-      response_broker (size_t a_bucket_count, T_ERROR a_no_error);
+      response_broker (size_t a_bucket_count, T_ERROR a_no_error, T_ERROR a_error);
 
       response_broker (const response_broker &) = delete;
       response_broker (response_broker &&) = delete;
@@ -67,7 +67,7 @@ namespace cubcomm
     private:
       struct bucket
       {
-	  bucket (T_ERROR a_no_error);
+	  bucket (T_ERROR a_no_error, T_ERROR a_error);
 	  ~bucket ();
 
 	  bucket (const bucket &);
@@ -91,6 +91,7 @@ namespace cubcomm
 	  };
 
 	  const T_ERROR m_no_error;
+	  const T_ERROR m_error;
 
 	  std::mutex m_mutex;
 	  std::condition_variable m_condvar;
@@ -112,8 +113,8 @@ namespace cubcomm
 namespace cubcomm
 {
   template <typename T_PAYLOAD, typename T_ERROR>
-  response_broker<T_PAYLOAD, T_ERROR>::response_broker (size_t a_bucket_count, T_ERROR a_no_error)
-    : m_buckets { a_bucket_count, { a_no_error } }
+  response_broker<T_PAYLOAD, T_ERROR>::response_broker (size_t a_bucket_count, T_ERROR a_no_error, T_ERROR a_error)
+    : m_buckets { a_bucket_count, { a_no_error, a_error } }
   {
     assert (a_bucket_count > 0);
   }
@@ -150,8 +151,9 @@ namespace cubcomm
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
-  response_broker<T_PAYLOAD, T_ERROR>::bucket::bucket (T_ERROR a_no_error)
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::bucket (T_ERROR a_no_error, T_ERROR a_error)
     : m_no_error { a_no_error }
+    , m_error { a_error }
     , m_terminate { false }
   {
   }
@@ -204,17 +206,10 @@ namespace cubcomm
   std::tuple<T_PAYLOAD, T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::bucket::get_response (response_sequence_number a_rsn)
   {
-    std::tuple<T_PAYLOAD, T_ERROR> payload_or_error;
+    std::tuple<T_PAYLOAD, T_ERROR> payload_or_error { T_PAYLOAD (), m_error };
 
     auto condvar_pred = [this, &payload_or_error, a_rsn] ()
     {
-      // a way out in case neither value nor error is registered as a response
-      // which can happen in case - eg - that the connection is dropped
-      if (m_terminate)
-	{
-	  return true;
-	}
-
       auto it = m_response_payloads.find (a_rsn);
       if (it == m_response_payloads.end ())
 	{
@@ -227,10 +222,20 @@ namespace cubcomm
     };
 
     constexpr std::chrono::milliseconds millis_100 { 100 };
-    std::unique_lock<std::mutex> ulock (m_mutex);
-    while (!m_condvar.wait_for (ulock, millis_100, condvar_pred));
+    {
+      std::unique_lock<std::mutex> ulock (m_mutex);
+      // a way out in case neither value nor error is registered as a response
+      // which can happen in case - eg - that the connection is dropped
+      while (!m_terminate)
+	{
+	  if (m_condvar.wait_for (ulock, millis_100, condvar_pred))
+	    {
+	      return payload_or_error;
+	    }
+	}
+    }
 
-    // upon terminate, empty (invalid) response will be returned, and there should ne no consumer for it
+    // upon terminate, error response will be returned
     return payload_or_error;
   }
 
@@ -238,13 +243,19 @@ namespace cubcomm
   void
   response_broker<T_PAYLOAD, T_ERROR>::bucket::terminate ()
   {
-    std::lock_guard<std::mutex> lockg (m_mutex);
-    m_terminate = true;
+    {
+      std::lock_guard<std::mutex> lockg (m_mutex);
+      m_terminate = true;
+    }
+    // all because there is more than one thread waiting for data on the same bucket
+    m_condvar.notify_all ();
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::bucket::bucket (const bucket &that)
-    : m_no_error { that.m_no_error }, m_terminate { that.m_terminate }
+    : m_no_error { that.m_no_error }
+    , m_error { that.m_error }
+    , m_terminate { that.m_terminate }
   {
     // Bucket copy constructor may be required only during the response_broker initialization.
     // The copied bucket is empty and no synchronization is required.
