@@ -73,15 +73,15 @@ ____cubrid__here_doc____
 cat << '____cubrid__here_doc____' >> ${cubrid_csh_envfile}_temp
 setenv CUBRID_DATABASES $CUBRID/databases
 if (${?LD_LIBRARY_PATH}) then
-  setenv LD_LIBRARY_PATH $CUBRID/lib:${LD_LIBRARY_PATH}
+  setenv LD_LIBRARY_PATH $CUBRID/lib:$CUBRID/cci/lib${LD_LIBRARY_PATH}
 else
-  setenv LD_LIBRARY_PATH $CUBRID/lib
+  setenv LD_LIBRARY_PATH $CUBRID/lib:$CUBRID/cci/lib
 endif
 setenv SHLIB_PATH $LD_LIBRARY_PATH
 setenv LIBPATH $LD_LIBRARY_PATH
 set path=($CUBRID/bin $path)
 
-set LIB=$CUBRID/lib
+set LIB=$CUBRID/lib:$CUBRID/cci/lib
 
 if (-f "/etc/redhat-release" ) then
   set OS=(`cat /etc/system-release-cpe | cut -d':' -f'3-3'`)
@@ -128,9 +128,9 @@ ____cubrid__here_doc____
 cat << '____cubrid__here_doc____' >> ${cubrid_sh_envfile}_temp
 CUBRID_DATABASES=$CUBRID/databases
 if [ "x${LD_LIBRARY_PATH}x" = xx ]; then
-  LD_LIBRARY_PATH=$CUBRID/lib
+  LD_LIBRARY_PATH=$CUBRID/lib:$CUBRID/cci/lib
 else
-  LD_LIBRARY_PATH=$CUBRID/lib:$LD_LIBRARY_PATH
+  LD_LIBRARY_PATH=$CUBRID/lib:$CUBRID/cci/lib:$LD_LIBRARY_PATH
 fi
 SHLIB_PATH=$LD_LIBRARY_PATH
 LIBPATH=$LD_LIBRARY_PATH
@@ -142,7 +142,7 @@ export SHLIB_PATH
 export LIBPATH
 export PATH
 
-LIB=$CUBRID/lib
+LIB=$CUBRID/lib:$CUBRID/cci/lib
 
 if [ -f /etc/redhat-release ];then
         OS=$(cat /etc/system-release-cpe | cut -d':' -f'3-3')

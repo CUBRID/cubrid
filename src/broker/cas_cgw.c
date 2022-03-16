@@ -59,7 +59,7 @@ static void cgw_error_msg (SQLHANDLE hHandle, SQLSMALLINT hType, RETCODE retcode
 static int numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string);
 static int hex_to_numeric_val (SQL_NUMERIC_STRUCT * numeric, char *hexstr);
 static int hex_to_char (char c, unsigned char *result);
-static int cgw_get_stmt_Info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type);
+static int cgw_get_stmt_Info (T_SRV_HANDLE * srv_handle, SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type);
 static int cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *net_value,
 			      ODBC_BIND_INFO * value_list, T_NET_BUF * net_buf);
 static char cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLSMALLINT is_unsigned_type);
@@ -89,7 +89,7 @@ cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool is_connected)
       return ER_FAILED;
     }
 
-  if (local_odbc_handle->henv == NULL || local_odbc_handle->hdbc == NULL || local_odbc_handle->hstmt == NULL)
+  if (local_odbc_handle->henv == NULL || local_odbc_handle->hdbc == NULL)
     {
       if (is_connected)
 	{
@@ -365,7 +365,7 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 	      net_buf_cp_short (net_buf, *((short *) this_col_binding->data_buffer));
 	      break;
 	    case SQL_TINYINT:
-	      net_buf_cp_int (net_buf, NET_SIZE_BYTE, NULL);
+	      net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
 	      net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
 	      break;
 	    case SQL_FLOAT:
@@ -812,15 +812,15 @@ cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_t
 {
   SQLRETURN err_code;
   char cache_reusable = 0;
-  SQLLEN total_row_count = 0;
+  SQLLEN tuple_count = 0;
 
-  net_buf_cp_int (net_buf, (int) total_row_count, &srv_handle->total_row_count_msg_offset);
+  net_buf_cp_int (net_buf, (int) tuple_count, &srv_handle->total_row_count_msg_offset);
   net_buf_cp_byte (net_buf, cache_reusable);
   net_buf_cp_int (net_buf, (int) srv_handle->num_q_result, NULL);
 
   for (int i = 0; i < srv_handle->num_q_result; i++)
     {
-      err_code = cgw_get_stmt_Info (srv_handle->cgw_handle->hstmt, net_buf, stmt_type);
+      err_code = cgw_get_stmt_Info (srv_handle, srv_handle->cgw_handle->hstmt, net_buf, stmt_type);
       if (err_code < 0)
 	{
 	  goto ODBC_ERROR;
@@ -863,9 +863,9 @@ ODBC_ERROR:
 }
 
 static int
-cgw_get_stmt_Info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type)
+cgw_get_stmt_Info (T_SRV_HANDLE * srv_handle, SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type)
 {
-  SQLLEN tuple_count = 0;
+  SQLLEN total_row_count = 0;
   T_OBJECT ins_oid;
   CACHE_TIME srv_cache_time;
   char statement_type = (char) stmt_type;
@@ -878,8 +878,16 @@ cgw_get_stmt_Info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type)
 
   net_buf_cp_byte (net_buf, statement_type);
 
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, SQLRowCount (hstmt, &tuple_count));
-  net_buf_cp_int (net_buf, (int) tuple_count, NULL);
+  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, SQLRowCount (hstmt, &total_row_count));
+  if (total_row_count < 0)
+    {
+      net_buf_cp_int (net_buf, -1, &srv_handle->res_tuple_count_msg_offset);
+    }
+  else
+    {
+      net_buf_cp_int (net_buf, (int) total_row_count, NULL);
+    }
+
 
   memset (&ins_oid, 0, sizeof (T_OBJECT));
   net_buf_cp_object (net_buf, &ins_oid);
