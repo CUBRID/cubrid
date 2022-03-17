@@ -51,8 +51,10 @@ page_server::~page_server ()
   m_async_disconnect_handler.terminate ();
 }
 
-page_server::connection_handler::connection_handler (cubcomm::channel &chn, page_server &ps)
-  : m_ps (ps)
+page_server::connection_handler::connection_handler (cubcomm::channel &chn, transaction_server_type server_type,
+    page_server &ps)
+  : m_server_type { server_type }
+  , m_ps (ps)
   , m_abnormal_tran_server_disconnect { false }
 {
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
@@ -162,14 +164,9 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
 {
   // empty request message
 
-  assert ((bool) m_prior_sender_sink_hook_func);
+  assert (m_prior_sender_sink_hook_func != nullptr);
 
-  {
-    std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
-
-    log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
-    m_prior_sender_sink_hook_func = nullptr;
-  }
+  remove_prior_sender_sink ();
 
   // empty response message, the round trip is synchronous
   a_sp.push_payload (std::string ());
@@ -181,7 +178,7 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
 {
   // if this instance acted as a prior sender sink - in other words, if this connection handler was for a
   // passive transaction server - it should have been disconnected beforehand
-  assert (! (bool) m_prior_sender_sink_hook_func);
+  assert (m_prior_sender_sink_hook_func == nullptr);
 
   m_ps.disconnect_tran_server_async (this);
 }
@@ -209,22 +206,15 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
     {
       abort_further_processing = true;
 
-      if (m_prior_sender_sink_hook_func)
+      if (m_server_type == transaction_server_type::PASSIVE)
 	{
-	  // passive transaction server connection
 	  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect: PTS disconnected from PS. Error code: %d\n",
 			(int)error_code);
 
-	  {
-	    std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
-
-	    log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
-	    m_prior_sender_sink_hook_func = nullptr;
-	  }
+	  remove_prior_sender_sink ();
 	}
       else
 	{
-	  // active transaction server connection
 	  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect: ATS disconnected from PS. Error code: %d\n",
 			(int)error_code);
 	}
@@ -260,6 +250,29 @@ page_server::connection_handler::prior_sender_sink_hook (std::string &&message) 
 
   std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
   m_conn->push (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST, std::move (message));
+}
+
+/* Page Server to Passive Transaction Server log prior sender sink can be de-activated via the following routes:
+ *  - as a direct request from PTS as part of PTS shutting down:
+ *      - via receive_stop_log_prior_dispatch followed by receive_disconnect_request
+ *  - abnormal disconnect request following error to send data to PTS
+ *      - via abnormal_tran_server_disconnect
+ *  - as a request from PS itself shuttind down
+ *      - via disconnect_all_tran_server from
+ *        - xboot_shutdown_server first and then
+ *        - via boot_server_all_finalize - finalize_server_type
+ * In all these scenarios, log prior dispatch sink must be disconnected explicitly.
+ * */
+void
+page_server::connection_handler::remove_prior_sender_sink ()
+{
+  std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
+
+  if (m_prior_sender_sink_hook_func != nullptr)
+    {
+      log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+      m_prior_sender_sink_hook_func = nullptr;
+    }
 }
 
 page_server::async_disconnect_handler::async_disconnect_handler ()
@@ -353,7 +366,7 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       disconnect_active_tran_server ();
     }
 
-  m_active_tran_server_conn.reset (new connection_handler (chn, *this));
+  m_active_tran_server_conn.reset (new connection_handler (chn, transaction_server_type::ACTIVE, *this));
 }
 
 void
@@ -365,7 +378,7 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
 		chn.get_channel_id ().c_str ());
 
-  m_passive_tran_server_conn.emplace_back (new connection_handler (chn, *this));
+  m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
 }
 
 void
@@ -395,6 +408,7 @@ page_server::disconnect_tran_server_async (connection_handler *conn)
     }
   else
     {
+      bool passive_tran_server_found { false };
       for (auto it = m_passive_tran_server_conn.begin (); it != m_passive_tran_server_conn.end (); ++it)
 	{
 	  if (conn == it->get ())
@@ -404,9 +418,11 @@ page_server::disconnect_tran_server_async (connection_handler *conn)
 	      m_async_disconnect_handler.disconnect (std::move (*it));
 	      assert (*it == nullptr);
 	      m_passive_tran_server_conn.erase (it);
+	      passive_tran_server_found = true;
 	      break;
 	    }
 	}
+      assert (passive_tran_server_found);
     }
 }
 
@@ -426,6 +442,7 @@ page_server::disconnect_all_tran_server ()
 	  er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server:"
 			" Disconnected passive transaction server with channel id: %s.\n",
 			m_passive_tran_server_conn[i]->get_channel_id ().c_str ());
+	  m_passive_tran_server_conn[i]->remove_prior_sender_sink ();
 	  m_passive_tran_server_conn[i].reset (nullptr);
 	}
       m_passive_tran_server_conn.clear ();
