@@ -62,12 +62,21 @@ class server_request_responder
     // Create a task that executes handler function asynchronously and pushes the response on the given connection
     void async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp, handler_func_t &&a_func);
 
+    // tests if there are in-flight requests being processed for the connection
+    bool is_idle_for_connection (const connection_t *connection);
+
   private:
     void async_execute (task *a_task);
+
+    void new_task (const connection_t *connection_ptr);
+    void retire_task (const connection_t *connection_ptr);
 
   private:
     std::unique_ptr<cubthread::system_worker_entry_manager> m_threads_context_manager;
     cubthread::entry_workpool *m_threads = nullptr;
+
+    std::mutex m_executing_tasks_mtx;
+    std::map<const connection_t *, int> m_executing_tasks;
 };
 
 template<typename T_CONN>
@@ -77,11 +86,22 @@ class server_request_responder<T_CONN>::task : public cubthread::entry_task
     // send the response on m_conn_reference.
 
   public:
-    task (connection_t &a_conn_ref, sequenced_payload_t &&a_sp, handler_func_t &&a_func);
+    task () = delete;
+    task (server_request_responder &request_responder, connection_t &a_conn_ref,
+	  sequenced_payload_t &&a_sp, handler_func_t &&a_func);
+
+    task (const task &) = delete;
+    task (task &&) = delete;
+
+    task &operator = (const task &) = delete;
+    task &operator = (task &&) = delete;
 
     void execute (cubthread::entry &thread_entry) final override;
+    void retire (void) final override;
 
   private:
+    server_request_responder &m_request_responder;
+
     connection_t &m_conn_reference;		// a reference to the connection (request_sync_client_server instance)
     sequenced_payload_t m_sequenced_payload;	// the request input payload
     handler_func_t m_function;			// the request handler
@@ -105,6 +125,13 @@ server_request_responder<T_CONN>::server_request_responder ()
 template<typename T_CONN>
 server_request_responder<T_CONN>::~server_request_responder ()
 {
+  {
+    std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
+    for (const auto &executing_task_pair: m_executing_tasks)
+      {
+	assert (executing_task_pair.second == 0);
+      }
+  }
   cubthread::get_manager ()->destroy_worker_pool (m_threads);
 }
 
@@ -120,7 +147,43 @@ void
 server_request_responder<T_CONN>::async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp,
     handler_func_t &&a_func)
 {
-  async_execute (new task (a_conn, std::move (a_sp), std::move (a_func)));
+  new_task (&a_conn);
+  async_execute (new task (*this, a_conn, std::move (a_sp), std::move (a_func)));
+}
+
+template<typename T_CONN>
+void
+server_request_responder<T_CONN>::new_task (const connection_t *connection_ptr)
+{
+  std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
+  int &executing_task_for_connection = m_executing_tasks[connection_ptr];
+  ++executing_task_for_connection;
+}
+
+template<typename T_CONN>
+void
+server_request_responder<T_CONN>::retire_task (const connection_t *connection_ptr)
+{
+  std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
+  int &executing_task_for_connection = m_executing_tasks[connection_ptr];
+  --executing_task_for_connection;
+  assert (executing_task_for_connection >= 0);
+}
+
+template<typename T_CONN>
+bool
+server_request_responder<T_CONN>::is_idle_for_connection (const connection_t *connection)
+{
+  std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
+  const auto find_it = m_executing_tasks.find (connection);
+  if (find_it == m_executing_tasks.cend ())
+    {
+      return true;
+    }
+  else
+    {
+      return find_it->second == 0;
+    }
 }
 
 //
@@ -128,9 +191,11 @@ server_request_responder<T_CONN>::async_execute (connection_t &a_conn, sequenced
 //
 
 template<typename T_CONN>
-server_request_responder<T_CONN>::task::task (connection_t &a_conn_ref, sequenced_payload_t &&a_sp,
+server_request_responder<T_CONN>::task::task (server_request_responder &request_responder,
+    connection_t &a_conn_ref, sequenced_payload_t &&a_sp,
     handler_func_t &&a_func)
-  : m_conn_reference (a_conn_ref)
+  : m_request_responder { request_responder }
+  , m_conn_reference (a_conn_ref)
   , m_sequenced_payload (std::move (a_sp))
   , m_function (std::move (a_func))
 {
@@ -145,6 +210,14 @@ server_request_responder<T_CONN>::task::execute (cubthread::entry &thread_entry)
   m_function (thread_entry, payload);
   m_sequenced_payload.push_payload (std::move (payload));
   m_conn_reference.respond (std::move (m_sequenced_payload));
+}
+
+template<typename T_CONN>
+void
+server_request_responder<T_CONN>::task::retire (void)
+{
+  m_request_responder.retire_task (&m_conn_reference);
+  this->cubthread::entry_task::retire ();
 }
 
 #endif // !_REQUEST_RESPONSE_HANDLER_HPP_

@@ -388,6 +388,8 @@ namespace cubcomm
   template <typename MsgId>
   request_server<MsgId>::~request_server ()
   {
+    // TODO: assert (m_shutdown)
+    // TODO: assert (thread is not joinable)
     m_shutdown = true;
     m_channel.close_connection ();
     if (m_thread.joinable ())
