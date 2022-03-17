@@ -3221,7 +3221,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   check_replica_info = (HA_GET_MODE () == HA_MODE_REPLICA);
   pageid = utility_get_option_bigint_value (arg_map, APPLYINFO_PAGE_S);
-  if ((pageid == -1) && (log_path == NULL))
+  if ((pageid != -1) && (log_path == NULL))
     {
       goto print_applyinfo_usage;
     }
