@@ -3221,6 +3221,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   check_replica_info = (HA_GET_MODE () == HA_MODE_REPLICA);
   pageid = utility_get_option_bigint_value (arg_map, APPLYINFO_PAGE_S);
+  if ((pageid == -1) && (log_path == NULL))
+    {
+      goto print_applyinfo_usage;
+    }
   verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
 
   interval = utility_get_option_int_value (arg_map, APPLYINFO_INTERVAL_S);
