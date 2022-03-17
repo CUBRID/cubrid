@@ -184,27 +184,29 @@ public:
       }
   }
 
-  void add_string (char *str)
+  void add_string (const char *fmt, ...)
   {
-    check_buffer (snprintf (NULL, 0, "%s", str));
-    m_used += sprintf (msg_ptr + m_used, "%s", str);
+    va_list ap;
+
+    va_start (ap, fmt);
+    int count = vsnprintf (NULL, 0, fmt, ap);
+    va_end (ap);
+
+    if (count > 0)
+      {
+	check_buffer (count);
+
+	va_start (ap, fmt);
+	m_used += vsprintf (msg_ptr + m_used, fmt, ap);
+	va_end (ap);
+      }
   }
-  void add_string (const char *fmt, char *str)
-  {
-    check_buffer (snprintf (NULL, 0, fmt, str));
-    m_used += sprintf (msg_ptr + m_used, fmt, str);
-  }
-  void add_string (const char *fmt, char *str1, char *str2)
-  {
-    check_buffer (snprintf (NULL, 0, fmt, str1, str2));
-    m_used += sprintf (msg_ptr + m_used, fmt, str1, str2);
-  }
+
   void add_end_string ()
   {
-    check_buffer (2);
-    msg_ptr[m_used++] = '\0';
+    add_string ("%c", '\0');
   }
-};
+};				// struct st_hint_msg
 
 static struct st_hint_msg s_hint_msg;
 static void print_hit_hint_string (PT_HINT * hint_table);
