@@ -1494,13 +1494,12 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node, QO_ENV * env,
   QO_SEG_HEAD (seg) = head;
   QO_SEG_TAIL (seg) = tail;
   QO_SEG_IDX (seg) = env->nsegs;
-  /* add dummy name to segment example: dummy attr from view transfrom select count(*) from v select count(*) from
-   * (select {v}, 1 from t) v (v, 1) here, '1' is dummy attr set empty string to avoid core crash
-   */
   if (node)
     {
+      /* If it is not PT_NAME, an empty string is used for name. */
       QO_SEG_NAME (seg) =
-	node->info.name.original ? node->info.name.original : pt_append_string (QO_ENV_PARSER (env), NULL, "");
+	(node->node_type == PT_NAME && node->info.name.original) ?
+	node->info.name.original : pt_append_string (QO_ENV_PARSER (env), NULL, "");
       if (PT_IS_OID_NAME (node))
 	{
 	  /* this is an oid segment */
@@ -8198,7 +8197,7 @@ qo_node_fprint (QO_NODE * node, FILE * f)
 {
   if (QO_NODE_NAME (node))
     {
-      fprintf (f, "%s", QO_NODE_NAME (node));
+      fprintf (f, "%s", pt_get_name_without_current_user_name (QO_NODE_NAME (node)));
     }
   fprintf (f, " node[%d]", QO_NODE_IDX (node));
 }

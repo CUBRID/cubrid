@@ -201,6 +201,7 @@ typedef enum
  */
 
 extern const char *TR_CLASS_NAME;
+extern const char *TR_ATT_UNIQUE_NAME;
 extern const char *TR_ATT_NAME;
 extern const char *TR_ATT_OWNER;
 extern const char *TR_ATT_EVENT;
@@ -269,7 +270,7 @@ extern int tr_check_authorization (DB_OBJECT * trigger_object, int alter_flag);
 /* Trigger modification */
 
 extern int tr_drop_trigger (DB_OBJECT * obj, bool call_from_api);
-extern int tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api);
+extern int tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api, bool deferred_flush);
 
 extern int tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_from_api);
 extern int tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api);

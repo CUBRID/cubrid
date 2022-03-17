@@ -1060,7 +1060,17 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_SCHEMA:
-      csql_help_schema ((argument[0] == '\0') ? NULL : argument);
+      if (argument[0] == '\0')
+	{
+	  csql_help_schema (NULL);
+	}
+      else
+	{
+	  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	  sm_user_specified_name (argument, realname, SM_MAX_IDENTIFIER_LENGTH);
+	  assert (realname[0] != '\0');
+	  csql_help_schema (realname);
+	}
       if (csql_is_auto_commit_requested (csql_arg))
 	{
 	  if (db_commit_transaction () < 0)
@@ -1076,7 +1086,17 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_TRIGGER:
-      csql_help_trigger ((argument[0] == '\0') ? NULL : argument);
+      if (argument[0] == '\0')
+	{
+	  csql_help_trigger (NULL);
+	}
+      else
+	{
+	  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	  sm_user_specified_name (argument, realname, SM_MAX_IDENTIFIER_LENGTH);
+	  assert (realname[0] != '\0');
+	  csql_help_trigger (realname);
+	}
       if (csql_is_auto_commit_requested (csql_arg))
 	{
 	  if (db_commit_transaction () < 0)
@@ -1744,6 +1764,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   er_clear ();
   db_set_interrupt (0);
 
+  if (csql_Is_interactive)
+    {
+      csql_yyset_lineno (1);
+    }
+
   if (type == FILE_INPUT)
     {				/* FILE * input */
       if (!(session = db_open_file ((FILE *) stream)))
@@ -1817,11 +1842,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
   logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
   logddl_set_commit_mode (csql_is_auto_commit_requested (csql_arg));
-
-  if (csql_Is_interactive)
-    {
-      csql_yyset_lineno (1);
-    }
 
   /* execute the statements one-by-one */
   for (num_stmts = 0; num_stmts < total; num_stmts++)

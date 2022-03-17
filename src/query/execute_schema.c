@@ -2485,7 +2485,17 @@ acquire_locks_for_multiple_rename (const PT_NODE * statement)
 
       for (i = 0; i < num_names; i++)
 	{
-	  if (strcmp (name_set[i], old_name) == 0)
+	  /*
+	   * Check if old_name to be changed next is in the list of new_name that has been changed before.
+	   *   - e.g. rename table a as b, B as c, C as a;
+	   *     1. dba.b vs dba.B
+	   *     2. dba.b vs dba.C, dba.c vs dba.C
+	   *
+	   *     ERROR: Unknown class "b".
+	   *
+	   * Changed comparison function to pt_str_compare() function to be case insensitive.
+	   */
+	  if (pt_str_compare (name_set[i], old_name, CASE_INSENSITIVE) == 0)
 	    {
 	      found = true;
 	      break;
@@ -2584,7 +2594,7 @@ error_exit:
  *   statement(in): Parse tree of a rename statement
  */
 int
-do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
+do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   const PT_NODE *current_rename = NULL;
@@ -2611,6 +2621,15 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     {
       const char *old_name = current_rename->info.rename.old_name->info.name.original;
       const char *new_name = current_rename->info.rename.new_name->info.name.original;
+
+      const char *old_qualifier_name = pt_get_qualifier_name (parser, current_rename->info.rename.old_name);
+      const char *new_qualifier_name = pt_get_qualifier_name (parser, current_rename->info.rename.new_name);
+
+      if (old_qualifier_name && new_qualifier_name && intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
+	{
+	  ERROR_SET_ERROR (error, ER_SM_RENAME_CANT_ALTER_OWNER);
+	  goto error_exit;
+	}
 
       error = do_rename_internal (old_name, new_name);
       if (error != NO_ERROR)
@@ -8500,6 +8519,7 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       error = ER_FAILED;
       goto error_exit;
     }
+
   insert_into =
     create_select_to_insert_into (parser, class_name, create_select_copy, create_select_action, query_columns);
   if (insert_into == NULL)
@@ -10655,6 +10675,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
   if (is_att_prop_set (attr_chg_prop->p[P_COMMENT], ATT_CHG_PROPERTY_DIFF))
     {
+      /* free old before assign new */
+      if (found_att->comment)
+	{
+	  ws_free_string (found_att->comment);
+	}
+
       comment = attribute->info.attr_def.comment;
       assert (comment != NULL && comment->node_type == PT_VALUE);
       comment_str = comment->info.value.data_value.str;
@@ -10663,6 +10689,11 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	{
 	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 	  goto exit;
+	}
+      else if (!found_att->comment[0])	/* empty string */
+	{
+	  ws_free_string (found_att->comment);
+	  found_att->comment = NULL;
 	}
     }
   else if (is_att_prop_set (attr_chg_prop->p[P_COMMENT], ATT_CHG_PROPERTY_LOST))
@@ -12827,7 +12858,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       for (dt = attribute->data_type; dt != NULL; dt = dt->next)
 	{
 	  if (dt->info.data_type.entity != NULL && dt->info.data_type.entity->node_type == PT_NAME
-	      && intl_identifier_casecmp (dt->info.data_type.entity->info.name.original, classname) == 0)
+	      && pt_user_specified_name_compare (dt->info.data_type.entity->info.name.original, classname) == 0)
 	    {
 	      has_self_ref = true;
 	      break;

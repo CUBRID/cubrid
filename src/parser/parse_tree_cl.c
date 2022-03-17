@@ -8127,6 +8127,7 @@ pt_print_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_create_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.serial.serial_name, arg);
   PT_APPLY_WALK (parser, p->info.serial.start_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.increment_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.min_val, arg);
@@ -8145,6 +8146,7 @@ pt_apply_create_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PT_NODE *
 pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.serial.serial_name, arg);
   PT_APPLY_WALK (parser, p->info.serial.increment_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.min_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.max_val, arg);
@@ -8162,6 +8164,7 @@ pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PT_NODE *
 pt_apply_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.serial.serial_name, arg);
   return p;
 }
 
@@ -8463,10 +8466,10 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  q = pt_append_nulstring (parser, q, "delete ");
+  q = pt_append_nulstring (parser, q, "delete");
   if (p->info.delete_.hint != PT_HINT_NONE)
     {
-      q = pt_append_nulstring (parser, q, "/*+");
+      q = pt_append_nulstring (parser, q, " /*+");
       if (p->info.delete_.hint & PT_HINT_LK_TIMEOUT && p->info.delete_.waitsecs_hint)
 	{
 	  q = pt_append_nulstring (parser, q, " LOCK_TIMEOUT(");
@@ -9615,6 +9618,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
   int print_from = 0;
   PT_NODE *arg3;
   PT_NODE *between, *between_ge_lt;
+  PT_NODE *dot_node_ptr = NULL;
 
   assert_release (p != p->info.expr.arg1);
   assert_release (p != p->info.expr.arg2);
@@ -10031,14 +10035,44 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_CURRENT_VALUE:
       q = pt_append_nulstring (parser, q, "serial_current_value(");
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      /* Only the column name is printed. */
+      if (p->info.expr.arg1->node_type == PT_DOT_)
+	{
+	  dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
+	  while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
+	    {
+	      dot_node_ptr = dot_node_ptr->info.expr.arg2;
+	    }
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	}
+      else
+	{
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	}
+
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_NEXT_VALUE:
       q = pt_append_nulstring (parser, q, "serial_next_value(");
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      /* Only the column name is printed. */
+      if (p->info.expr.arg1->node_type == PT_DOT_)
+	{
+	  dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
+	  while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
+	    {
+	      dot_node_ptr = dot_node_ptr->info.expr.arg2;
+	    }
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	}
+      else
+	{
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	}
+
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ", ");
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
@@ -13032,6 +13066,8 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
   unsigned int save_custom = parser->custom_print;
 
+  char *dot = NULL;
+
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
 
   if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS) && (p->info.name.meta_class == PT_META_CLASS))
@@ -13065,7 +13101,18 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else if (p->info.name.resolved)
 	{
-	  q = pt_append_name (parser, q, p->info.name.resolved);
+	  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+	    {
+	      q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (p->info.name.resolved));
+	    }
+	  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+	    {
+	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.resolved));
+	    }
+	  else
+	    {
+	      q = pt_append_name (parser, q, p->info.name.resolved);
+	    }
 	}
     }
   else
@@ -13085,23 +13132,70 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	  original_spec = (PT_NODE *) p->info.name.spec_id;
 	  if (original_spec->info.spec.entity_name && original_spec->info.spec.entity_name->info.name.original)
 	    {
-	      q = pt_append_name (parser, q, original_spec->info.spec.entity_name->info.name.original);
+	      const char *original_name = original_spec->info.spec.entity_name->info.name.original;
+	      if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+		{
+		  q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (original_name));
+		}
+	      else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+		{
+		  q = pt_append_name (parser, q, pt_get_name_without_current_user_name (original_name));
+		}
+	      else
+		{
+		  q = pt_append_name (parser, q, original_name);
+		}
+	    }
+	  else
+	    {
+	      if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+		{
+		  q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (p->info.name.resolved));
+		}
+	      else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+		{
+		  q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.resolved));
+		}
+	      else
+		{
+		  q = pt_append_name (parser, q, p->info.name.resolved);
+		}
+	    }
+	}
+      else
+	{
+	  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+	    {
+	      q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (p->info.name.resolved));
+	    }
+	  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+	    {
+	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.resolved));
 	    }
 	  else
 	    {
 	      q = pt_append_name (parser, q, p->info.name.resolved);
 	    }
 	}
-      else
-	{
-	  q = pt_append_name (parser, q, p->info.name.resolved);
-	}
       /* this is to catch OID_ATTR's which don't have their meta class set correctly. It should probably not by
        * unconditional. */
       if (p->info.name.meta_class != PT_META_CLASS && p->info.name.original && p->info.name.original[0])
 	{
 	  q = pt_append_nulstring (parser, q, ".");
-	  q = pt_append_name (parser, q, p->info.name.original);
+
+	  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+	    {
+	      q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (p->info.name.original));
+	    }
+	  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+	    {
+	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.original));
+	    }
+	  else
+	    {
+	      q = pt_append_name (parser, q, p->info.name.original);
+	    }
+
 	  if (p->info.name.meta_class == PT_INDEX_NAME)
 	    {
 	      if (p->etc == (void *) PT_IDX_HINT_FORCE)
@@ -13138,7 +13232,19 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
       /* here we print whatever the length */
       if (p->info.name.original)
 	{
-	  q = pt_append_name (parser, q, p->info.name.original);
+	  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+	    {
+	      q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (p->info.name.original));
+	    }
+	  else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+	    {
+	      q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.original));
+	    }
+	  else
+	    {
+	      q = pt_append_name (parser, q, p->info.name.original);
+	    }
+
 	  if (p->info.name.meta_class == PT_INDEX_NAME)
 	    {
 	      if (p->etc == (void *) PT_IDX_HINT_FORCE)
@@ -13170,7 +13276,18 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	      && p->etc == (void *) PT_IDX_HINT_CLASS_NONE)
 	    {
 	      /* always print resolved for "class_name.NONE" index names */
-	      q = pt_append_name (parser, q, p->info.name.resolved);
+	      if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+		{
+		  q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (p->info.name.resolved));
+		}
+	      else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+		{
+		  q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.name.resolved));
+		}
+	      else
+		{
+		  q = pt_append_name (parser, q, p->info.name.resolved);
+		}
 	      q = pt_append_nulstring (parser, q, ".");
 	      q = pt_append_nulstring (parser, q, "none");
 	    }
@@ -13941,6 +14058,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_NO_PUSH_PRED)
 	    {
 	      q = pt_append_nulstring (parser, q, "NO_PUSH_PRED ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_NO_MERGE)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_MERGE ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_NO_INDEX_LS)

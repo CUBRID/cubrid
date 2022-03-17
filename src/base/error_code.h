@@ -27,6 +27,9 @@
  * details.
  * The error codes must also be added to compat/dbi_compat.h
  * ER_LAST_ERROR must also be updated.
+ * In case of common,  
+ * cci repository source (src/cci/base_error_code.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
  */
 
 #ifndef _ERROR_CODE_H_
@@ -1692,13 +1695,19 @@
 #define ER_CGW_INVALID_PRECISION_VALUE              -1327
 
 #define ER_CGW_INVALID_DESC_HANDLE                  -1328
-#define ER_DBLINK_DEV_RESERVED_ERROR29              -1329
+#define ER_CGW_NOT_SUPPORTED_DBMS                   -1329
 #define ER_DBLINK_DEV_RESERVED_ERROR30              -1330
 #define ER_DBLINK_DEV_RESERVED_ERROR31              -1331
 
 #define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
 
-#define ER_LAST_ERROR                               -1333
+#define ER_AU_INVALID_ARGUMENTS                     -1333
+#define ER_AU_CANT_ALTER_OWNER_OF_AUTO_INCREMENT    -1334
+#define ER_SM_RENAME_CANT_ALTER_OWNER               -1335
+#define ER_QPROC_CREATE_SERIAL_NOT_OWNER            -1336
+#define ER_TR_CREATE_NOT_ALLOWED                    -1337
+
+#define ER_LAST_ERROR                               -1338
 /*
  * CAUTION!
  *
@@ -1706,6 +1715,9 @@
  * files are updated with matching error strings. See message_catalog.c for
  * details.
  * ER_LAST_ERROR must also be updated.
+ * In case of common,  
+ * cci repository source (src/cci/base_error_code.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
  */
 
 #endif /* _ERROR_CODE_H_ */

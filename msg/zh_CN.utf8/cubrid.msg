@@ -904,7 +904,7 @@ $ LOADDB
 834 在给to_number()的源字符串 "%1$s" 和格式字符串之间 "%2$s" 存在一些匹配不一致.
 835 未定义的统计项目.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 无法删除拥有数据库对象(类/触发器/序列 等等)的用户. 
+837 无法删除拥有数据库对象(类/触发器/序列/服务器 等等)的用户.
 838 无法同时打开多于 %1$d index scans.
 839 "%1$s": 未知的系统参数或错误的值.
 840 无法改变系统参数 "%1$s".
@@ -1403,13 +1403,18 @@ $ LOADDB
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
 1332 活动日志卷 (%1$s) 过于健全，无法重新创建。 如果删除活动日志，可能会导致意外且不可逆转的问题。
+1333 Invalid arguments to authorization internal function.
+1334 AUTO_INCREMENT does not allow change of owner.
+1335 RENAME does not allow change of owner.
+1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1331 最后一个错误.
+1338 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1880,6 +1885,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 没有找到与 %1$s() 函数兼容的签名.
 305 函数签名 %1$s 与函数参数不匹配.
 306 dblink - 缺少必需的信息.
+307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

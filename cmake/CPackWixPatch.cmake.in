@@ -64,6 +64,7 @@
         <Environment Id="SetEnv_CUBRID" Action="set" Name="CUBRID" Value="[INSTALL_ROOT]" System="yes"/>
         <Environment Id="SetEnv_CUBRID_DATABASES" Action="set" Name="CUBRID_DATABASES" Value="[INSTALL_ROOT]databases" System="yes"/>
         <Environment Id="SetEnv_PATH" Action="set" Part="first" Name="PATH" Value="[CM_DP_Application.bin]" System="yes"/>
+        <Environment Id="SetEnv_PATH_CCI" Action="set" Part="first" Name="PATH" Value="[INSTALL_ROOT]cci\bin" System="yes"/>
       </Component>
     </ComponentGroup>
     <InstallExecuteSequence>

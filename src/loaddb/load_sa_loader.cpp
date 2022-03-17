@@ -39,6 +39,7 @@
 
 #include "authenticate.h"
 #include "db.h"
+#include "db_client_type.hpp"
 #include "db_json.hpp"
 #include "dbi.h"
 #include "dbtype.h"
@@ -70,6 +71,7 @@
 #include "trigger_manager.h"
 #include "utility.h"
 #include "work_space.h"
+#include "transform.h"
 
 using namespace cubload;
 
@@ -527,6 +529,7 @@ static void idmap_final (void);
 static int idmap_grow (int size);
 static int ldr_assign_class_id (DB_OBJECT *class_, int id);
 static DB_OBJECT *ldr_find_class (const char *class_name);
+static int ldr_find_class_by_query (const char *name, char *buf, int buf_size);
 static DB_OBJECT *ldr_get_class_from_id (int id);
 static void ldr_clear_context (LDR_CONTEXT *context);
 static void ldr_clear_and_free_context (LDR_CONTEXT *context);
@@ -1417,33 +1420,155 @@ ldr_assign_class_id (DB_OBJECT *class_, int id)
 static DB_OBJECT *
 ldr_find_class (const char *class_name)
 {
-  LC_FIND_CLASSNAME find;
   DB_OBJECT *class_ = NULL;
-  char realname[SM_MAX_IDENTIFIER_LENGTH];
+  LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   /* Check for internal error */
-  if (class_name == NULL)
+  if (class_name == NULL || class_name[0] == '\0')
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       display_error (0);
       return NULL;
     }
 
-  sm_downcase_name (class_name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+
   ldr_Hint_class_names[0] = realname;
 
-  find =
-	  locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1,
+  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1,
 				    NULL_LOCK);
-
-  if (find == LC_CLASSNAME_EXIST)
+  if (found == LC_CLASSNAME_EXIST)
     {
       class_ = db_find_class (class_name);
+
+      ldr_Hint_class_names[0] = NULL;
+
+      return class_;
+    }
+
+  /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+    {
+      char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+      ldr_find_class_by_query (realname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
+      if (other_class_name[0] != '\0')
+	{
+	  ldr_Hint_class_names[0] = other_class_name;
+
+	  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1,
+					    NULL_LOCK);
+	  if (found == LC_CLASSNAME_EXIST)
+	    {
+	      class_ = db_find_class (other_class_name);
+
+	      ldr_Hint_class_names[0] = NULL;
+
+	      return class_;
+	    }
+	}
     }
 
   ldr_Hint_class_names[0] = NULL;
 
-  return (class_);
+  return class_;
+}
+
+static int
+ldr_find_class_by_query (const char *name, char *buf, int buf_size)
+{
+#define QUERY_BUF_SIZE 2048
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  const char *query = NULL;
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *class_name = NULL;
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  assert (buf != NULL);
+
+  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  class_name = sm_remove_qualifier_name (name);
+  query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, current_user_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, current_user_name);
+  assert (query_buf[0] != '\0');
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      if (error == DB_CURSOR_END)
+	{
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (!DB_IS_NULL (&value))
+    {
+      assert (strlen (db_get_string (&value)) < buf_size);
+      strncpy (buf, db_get_string (&value), buf_size);
+    }
+  else
+    {
+      /* unique_name must not be null. */
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because unique_name is not unique. */
+      buf[0] = '\0';
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+#undef QUERY_BUF_SIZE
 }
 
 /*
@@ -2090,9 +2215,9 @@ ldr_null_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRI
 
   if (att->flags & SM_ATTFLAG_NON_NULL)
     {
-      char class_attr[512];
+      char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
 
-      snprintf (class_attr, 512, "%s.%s", context->class_name, att->header.name);
+      snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", context->class_name, att->header.name);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, class_attr);
       CHECK_ERR (err, ER_OBJ_ATTRIBUTE_CANT_BE_NULL);
     }
@@ -4963,9 +5088,9 @@ ldr_act_check_missing_non_null_attrs (LDR_CONTEXT *context)
 	  /* not found */
 	  if (i >= context->num_attrs)
 	    {
-	      char class_attr[512];
+	      char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
 
-	      snprintf (class_attr, 512, "%s.%s", context->class_name, att->header.name);
+	      snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", context->class_name, att->header.name);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, class_attr);
 	      CHECK_ERR (err, ER_OBJ_ATTRIBUTE_CANT_BE_NULL);
 	    }

@@ -11672,7 +11672,7 @@ pt_fix_first_term_func_index_for_iss (PARSER_CONTEXT * parser, QO_INDEX_ENTRY * 
   seg = QO_ENV_SEG (index_entryp->terms.env, index_entryp->seg_idxs[1]);
   head = QO_SEG_HEAD (seg);
   spec = head->entity_spec;
-  class_name = (char *) spec->info.spec.range_var->info.name.original;
+  class_name = (char *) spec->info.spec.entity_name->info.name.original;
 
   query_str_len = (int) strlen (func_index->expr_str) + (int) strlen (class_name) + 7 /* strlen("SELECT ") */  +
     6 /* strlen(" FROM ") */  +
@@ -11840,7 +11840,12 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
     {
       assert (index_entryp->is_iss_candidate);
 
-      pt_fix_first_term_expr_for_iss (parser, index_entryp, term_exprs);
+      rc = pt_fix_first_term_expr_for_iss (parser, index_entryp, term_exprs);
+      if (rc != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "index plan generation - invalid expr for iss");
+	  return NULL;
+	}
     }
 
   if (nterms > 0)
@@ -17364,6 +17369,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_CONVERT_RANGE;
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
 	  fprintf (query_Plan_dump_fp, "\nQuery stmt:%s\n\n%s\n\n", ((hint_ignored) ? " [Warning: HINT ignored]" : ""),
 		   parser_print_tree (parser, select_node));
 	  parser->custom_print = save_custom;
@@ -19782,6 +19788,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 {
   PT_NODE *statement = NULL, *from_temp = NULL, *node = NULL;
   PT_NODE *save_next = NULL, *spec = NULL;
+  unsigned int save_custom;
 
   assert (parser != NULL);
 
@@ -19809,11 +19816,14 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 
 	  PT_NODE *lhs, *rhs;
 
+	  save_custom = parser->custom_print;
+	  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
 	  for (rhs = statement->info.query.q.select.list, lhs = select_names;
 	       rhs != NULL && lhs != NULL; rhs = rhs->next, lhs = lhs->next)
 	    {
 	      rhs->alias_print = parser_print_tree (parser, lhs);
 	    }
+	  parser->custom_print = save_custom;
 	}
 
       statement->info.query.q.select.from = parser_copy_tree_list (parser, from);

@@ -133,6 +133,7 @@ extern "C"
 /* Authorization */
   extern DB_OBJECT *db_get_user (void);
   extern DB_OBJECT *db_get_owner (DB_OBJECT * classobj);
+  extern char *db_get_current_user_name (char *buf, int buf_size);
   extern char *db_get_user_name (void);
   extern char *db_get_user_and_host_name (void);
   extern DB_OBJECT *db_find_user (const char *name);

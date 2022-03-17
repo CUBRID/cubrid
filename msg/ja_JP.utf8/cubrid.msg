@@ -904,7 +904,7 @@ $ LOADDB
 834 to_number()ファンクションに使ったストリング「%1$s」とフォマットストリング「%2$s」マッチングしません。
 835 定義されていない通計アイテムです。
 836 ページ(%1$d|%2$d)に対するラッチ獲得リクエストがタイムアウトされました。
-837 データベースオブジェクト(クラス/ビュー/トリガー/シリアルなど)を持っているユーザーは削除できません。
+837 データベースオブジェクト(クラス/ビュー/トリガー/シリアル/サーバーなど)を持っているユーザーは削除できません。
 838 同時に%1$d個を超えるインデックススキャンが開けません。
 839 「%1$s」: わからないシステムパラメーター、または正しくないバリューです。
 840 システムパラメーター「%1$s」が変えられません。
@@ -1402,13 +1402,18 @@ $ LOADDB
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
 1332 アクティブなログボリューム（%1$s）が正常すぎて、再作成できません。 アクティブなログを削除すると、予期しない不可逆的な問題が発生する可能性があります。
+1333 Invalid arguments to authorization internal function.
+1334 AUTO_INCREMENT does not allow change of owner.
+1335 RENAME does not allow change of owner.
+1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1333 ラストエラー
+1338 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1879,6 +1884,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
 306 dblink - Required information is missing.
+307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

@@ -904,7 +904,7 @@ $ LOADDB
 834 Il ya quelques incohérences entre la chaîne source "%1$s" et la chaîne de format "%2$s" donnée dans to_number().
 835 Objet de statistique pas defini.
 836 LATCH ON PAGE(%1$d|%2$d) a expiré.
-837 Impossible de supprimer l'utilisateur qui possède des objets de base de données(classe/verrou/serial etc). 
+837 Impossible de supprimer l'utilisateur qui possède des objets de base de données(classe/gâchette/serial/serveur etc).
 838  Impossible d'ouvrir plus de %1$d analyses d'index simultanément.
 839 "%1$s": Paramètre de système inconnu ou mauvaise valeur.
 840 Impossible de modifier le paramètres de système "%1$s".
@@ -1402,13 +1402,18 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
 1332 Le volume de journal actif (%1$s) est trop sain pour être recréé. Si vous supprimez le journal actif, cela peut provoquer un problème inattendu et irréversible.
+1333 Invalid arguments to authorization internal function.
+1334 AUTO_INCREMENT does not allow change of owner.
+1335 RENAME does not allow change of owner.
+1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1333 Dernière erreur
+1338 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1879,6 +1884,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Impossible de trouver une signature compatible pour la fonction %1$s()
 305 La signature %1$s n'est pas compatible avec les arguments de la fonction.
 306 dblink - Les informations requises sont manquantes.
+307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.
