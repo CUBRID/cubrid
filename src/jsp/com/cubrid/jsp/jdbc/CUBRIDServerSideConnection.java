@@ -72,6 +72,7 @@ public class CUBRIDServerSideConnection implements Connection {
 
     private int transactionIsolation;
     private int holdability;
+    private Properties clientInfo = null;
 
     public CUBRIDServerSideConnection(ExecuteThread thread) {
         this.thread = thread;
@@ -92,7 +93,8 @@ public class CUBRIDServerSideConnection implements Connection {
     }
 
     protected void requestDBParameter() throws IOException, SQLException {
-        DBParameterInfo info = suConn.getDBParameter();
+        DBParameterInfo info = getSUConnection().getDBParameter();
+        
         switch (info.tran_isolation) {
             case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
                 transactionIsolation = TRANSACTION_READ_COMMITTED;
@@ -112,6 +114,15 @@ public class CUBRIDServerSideConnection implements Connection {
         }
 
         // TODO: lock timeout?
+
+        clientInfo = new Properties();
+        clientInfo.put("type", String.valueOf(info.clientIds.clientType));
+        clientInfo.put("program", info.clientIds.programName);
+        clientInfo.put("host", info.clientIds.hostName);
+        clientInfo.put("login", info.clientIds.loginName);
+        clientInfo.put("user", info.clientIds.dbUser);
+        clientInfo.put("ip", info.clientIds.clientIp);
+        clientInfo.put("pid", String.valueOf(info.clientIds.processId));
     }
 
     /* To manage List<Statement> statements */
@@ -394,7 +405,16 @@ public class CUBRIDServerSideConnection implements Connection {
 
     /* JDK 1.6 */
     public Properties getClientInfo() throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        if (clientInfo == null) {
+            try {
+                requestDBParameter();
+            } catch (IOException e) {
+                throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                        CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+            }
+        }
+
+        return clientInfo;
     }
 
     /* JDK 1.6 */

@@ -1345,6 +1345,8 @@ cas_main (void)
 	    logddl_set_ip (client_ip_str);
 	    logddl_set_pid (getpid ());
 
+	    db_set_client_ip_addr (client_ip_str);
+
 	    set_hang_check_time ();
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)

@@ -32,6 +32,8 @@ package test;
  */
 
 import java.sql.*;
+import java.util.Enumeration;
+import java.util.Properties;
 
 /*
  * [@demodb]
@@ -143,6 +145,29 @@ public class SpJDBCTest {
             pStmt.close();
             conn.close();
             return new String(newBlobData);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return e.getMessage();
+        }
+    }
+
+    public static String testUserInfo() {
+        String result = "";
+        try {
+            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+            Connection conn = DriverManager.getConnection("jdbc:default:connection:");
+
+            Properties props = conn.getClientInfo();
+
+            Enumeration keys = props.keys();
+            while (keys.hasMoreElements()) {
+                String key = (String) keys.nextElement();
+                String value = (String) props.get(key);
+                result += "(" + key + ": " + value + ") \n";
+            }
+
+            conn.close();
+            return result;
         } catch (Exception e) {
             e.printStackTrace();
             return e.getMessage();
