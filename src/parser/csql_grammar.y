@@ -26293,7 +26293,7 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
   if (strchr (str, '[') || strchr (str, ']'))
     {
       PT_ERRORf (this_parser, p,
-		 "Identifier name [%s] not allowed. It cannot contain '[' or ']'.",
+		 "Identifier name \"%s\" not allowed. It cannot contain '[' or ']'.",
 		 str);
     }
 
