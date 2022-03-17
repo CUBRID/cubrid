@@ -245,6 +245,7 @@ tran_server::get_boot_info_from_page_server ()
   const int error_code = send_receive (tran_to_page_request::GET_BOOT_INFO, std::string (), response_message);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return error_code;
     }
 
