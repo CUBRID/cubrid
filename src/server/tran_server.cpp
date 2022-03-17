@@ -116,16 +116,21 @@ tran_server::parse_page_server_hosts_config (std::string &hosts)
 int
 tran_server::boot (const char *db_name)
 {
-  int error = init_page_server_hosts (db_name);
-  if (error != NO_ERROR)
+  int error_code = init_page_server_hosts (db_name);
+  if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return error;
+      return error_code;
     }
 
   if (uses_remote_storage ())
     {
-      get_boot_info_from_page_server ();
+      error_code = get_boot_info_from_page_server ();
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
     }
 
   on_boot ();
@@ -233,16 +238,23 @@ tran_server::init_page_server_hosts (const char *db_name)
   return exit_code;
 }
 
-void
+int
 tran_server::get_boot_info_from_page_server ()
 {
   std::string response_message;
-  (void) send_receive (tran_to_page_request::GET_BOOT_INFO, std::string (), response_message);
+  const int error_code = send_receive (tran_to_page_request::GET_BOOT_INFO, std::string (), response_message);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   DKNVOLS nvols_perm;
   std::memcpy (&nvols_perm, response_message.c_str (), sizeof (nvols_perm));
 
   disk_set_page_server_perm_volume_count (nvols_perm);
+
+  return NO_ERROR;
 }
 
 int
