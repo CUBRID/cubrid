@@ -94,7 +94,7 @@ class tran_server
   private:
 
     int init_page_server_hosts (const char *db_name);
-    void get_boot_info_from_page_server ();
+    int get_boot_info_from_page_server ();
     int connect_to_page_server (const cubcomm::node &node, const char *db_name);
 
     int parse_server_host (const std::string &host);

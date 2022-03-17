@@ -8328,7 +8328,8 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
   pac.pack_int (fetch_mode);
   std::string request_message (buffer.get (), size);
 
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+  const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE);
+  if (perform_logging)
     {
       _er_log_debug (ARG_FILE_LINE, "[READ DATA] Send request for Page to Page Server."
                                     " VPID: %d|%d, target repl LSA: %lld|%d\n",
@@ -8336,17 +8337,32 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
     }
 
   std::string response_message;
-  (void) ts_Gl->send_receive (tran_to_page_request::SEND_DATA_PAGE_FETCH, std::move (request_message), response_message);
+  int error_code = ts_Gl->send_receive (tran_to_page_request::SEND_DATA_PAGE_FETCH,
+                                           std::move (request_message), response_message);
+  // there are two layers of errors to he handled here:
+  //  - client side communication to page server error
+  //  - page server side errors
+
+  // client side communication to page server error
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d \n", error_code);
+	}
+      return error_code;
+    }
 
   const char *message_buf = response_message.c_str ();
-  int error_code = NO_ERROR;
   std::memcpy (&error_code, message_buf, sizeof (error_code));
   message_buf += sizeof (error_code);
 
+  // page server side errors
   // The message is either an error code or the content of the data page
   if (error_code != NO_ERROR)
     {
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+      if (perform_logging)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d \n", error_code);
 	}
@@ -8366,7 +8382,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
       std::memcpy (io_page, message_buf, db_io_page_size ());
       message_buf += db_io_page_size ();
 
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+      if (perform_logging)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, page LSA: %lld|%d \n",
 			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
