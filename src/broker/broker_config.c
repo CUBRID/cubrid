@@ -831,7 +831,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       /* parameters related to checking hanging cas */
       br_info[num_brs].reject_client_flag = false;
-      tmp_int = conf_get_value_table_on_off (ini_getstr (ini, sec_name, "ENABLE_MONITOR_HANG", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "ENABLE_MONITOR_HANG", "OFF", &lineno);
+      tmp_int = conf_get_value_table_on_off (s);
       if (tmp_int < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
