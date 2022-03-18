@@ -21,8 +21,9 @@
 
 #include "log_replication.hpp"
 #include "log_storage.hpp"
-#include "server_request_responder.hpp"
 #include "request_sync_client_server.hpp"
+#include "server_request_responder.hpp"
+#include "server_type_enum.hpp"
 #include "tran_page_requests.hpp"
 
 #include <memory>
@@ -105,7 +106,6 @@ class page_server
     void finalize_request_responder ();
 
   private:
-
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (connection_handler *conn);
     bool is_active_tran_server_connected () const;
@@ -117,7 +117,7 @@ class page_server
 		cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
 	connection_handler () = delete;
-	connection_handler (cubcomm::channel &chn, page_server &ps);
+	connection_handler (cubcomm::channel &chn, transaction_server_type server_type, page_server &ps);
 
 	connection_handler (const connection_handler &) = delete;
 	connection_handler (connection_handler &&) = delete;
@@ -130,8 +130,9 @@ class page_server
 	void push_request (page_to_tran_request id, std::string msg);
 	std::string get_channel_id ();
 
-      private:
+	void remove_prior_sender_sink ();
 
+      private:
 	// Request handlers for the request server:
 	void receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip);
@@ -151,6 +152,14 @@ class page_server
 	void prior_sender_sink_hook (std::string &&message) const;
 
       private:
+	/* there is another mode in which the connection handler for active transaction server
+	 * can be differentiated from the connection handler for passive transaction server: the
+	 * presence of prior sender sink hook function pointer below;
+	 * however, at some point, the hook function will be removed - following a request from
+	 * the peer transaction server and the check will no longer be valid
+	 */
+	const transaction_server_type m_server_type;
+
 	std::unique_ptr<tran_server_conn_t> m_conn;
 	page_server &m_ps;
 

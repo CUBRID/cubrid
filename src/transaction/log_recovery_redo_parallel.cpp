@@ -515,11 +515,13 @@ namespace cublog
     // since it is needed to wake the calculating loop, wake all
     m_calculate_cv.notify_all ();
 
+    constexpr std::chrono::milliseconds millis_100 { 100 };
+
     std::unique_lock<std::mutex> ulock { m_calculate_mtx };
-    m_calculate_cv.wait (ulock, [this, &a_target_lsa] ()
+    while (!m_calculate_cv.wait_for (ulock, millis_100, [this, &a_target_lsa] ()
     {
       return m_calculated_log_lsa > a_target_lsa;
-    });
+    }));
   }
 
   log_lsa

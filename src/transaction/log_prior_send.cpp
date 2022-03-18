@@ -53,6 +53,8 @@ namespace cublog
   void
   prior_sender::add_sink (const sink_hook_t &fun)
   {
+    assert (fun != nullptr);
+
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
     m_sink_hooks.push_back (&fun);
   }
@@ -60,6 +62,8 @@ namespace cublog
   void
   prior_sender::remove_sink (const sink_hook_t &fun)
   {
+    assert (fun != nullptr);
+
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
 
     const auto find_it = std::find (m_sink_hooks.begin (), m_sink_hooks.end (), &fun);
