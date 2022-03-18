@@ -152,6 +152,12 @@ class page_server
 	void prior_sender_sink_hook (std::string &&message) const;
 
       private:
+	/* there is another mode in which the connection handler for active transaction server
+	 * can be differentiated from the connection handler for passive transaction server: the
+	 * presence of prior sender sink hook function pointer below;
+	 * however, at some point, the hook function will be removed - following a request from
+	 * the peer transaction server and the check will no longer be valid
+	 */
 	const transaction_server_type m_server_type;
 
 	std::unique_ptr<tran_server_conn_t> m_conn;
