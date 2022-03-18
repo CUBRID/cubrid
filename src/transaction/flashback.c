@@ -64,8 +64,87 @@ static volatile int flashback_Threshold_to_remove_archive = 0;	/* If the differe
 								 * the archive log volume can be deleted.
 								 */
 // *INDENT-OFF*
-static std::atomic_bool flashback_Is_active = false;	// the status value that the flashback is processing the request
+static std::atomic_bool flashback_Is_active = false;	// the status value that the flashback is processing the a request
+static std::atomic_bool flashback_In_progress = false;  // the status value that the flashback is in progress
 // *INDENT-ON*
+
+static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry for a flashback requests
+
+/*
+ * flashback_is_duplicated_request - check if the caller is duplicated request for flashback
+ *
+ * return   : duplicated or not
+ */
+
+bool
+flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
+{
+  CSS_CONN_ENTRY *previous_conn = NULL;
+
+  /* When flashback is first called or exited properly,
+   * flashback_Current_conn is set to NULL */
+  if (flashback_Current_conn == NULL)
+    {
+      return false;
+    }
+
+  /* flashback_Current_conn indicates conn_entry in thread_p, and conn_entry can be reused by request handler.
+   * So, status in flashback_Current_conn can be overwritten. */
+
+  previous_conn = flashback_Current_conn;
+
+  if (previous_conn->status == CONN_OPEN)
+    {
+      if (flashback_In_progress == false)
+	{
+	  /* conn_entry->status is overwritten with CONN_OPEN
+	   * and previous flashback set flashback_In_progress to false prolperly. (exited well) */
+	  return false;
+	}
+      else
+	{
+	  /* flashback_In_progress == true */
+
+	  if (previous_conn->in_flashback == false)
+	    {
+	      /* 1. previous_conn is overwritten with new connection, so status and in_flashback value are initialized.
+	       * 2. previous flashback connection has been exited abnormally,
+	       *    so existing flashback_In_progress value has not been initialized */
+	      return false;
+	    }
+	  else
+	    {
+	      /* previous flashback is still in progress */
+	      return true;
+	    }
+	}
+    }
+  else
+    {
+      /* status == CONN_CLOSED || CONN_CLOSING
+       * previous flashback has been exited properly and conn_entry is not overwritten */
+      return false;
+    }
+}
+
+/*
+ * flashback_initialize - initialize variables and connection when flashback request is started
+ */
+
+void
+flashback_initialize (THREAD_ENTRY * thread_p)
+{
+  flashback_Current_conn = thread_p->conn_entry;
+  flashback_Current_conn->in_flashback = true;
+  flashback_In_progress = true;
+
+  flashback_Min_log_pageid = NULL_LOG_PAGEID;
+
+  /* variables below may be deprecated */
+  flashback_Threshold_to_remove_archive = 0;
+  flashback_Last_request_done_time = -1;
+  flashback_Is_active = false;
+}
 
 /*
  * flashback_set_min_log_pageid_to_keep - set flashback_Min_log_pageid
@@ -160,6 +239,9 @@ flashback_reset ()
   flashback_Threshold_to_remove_archive = 0;
   flashback_Last_request_done_time = -1;
   flashback_Is_active = false;
+  flashback_In_progress = false;
+  flashback_Current_conn->in_flashback = false;
+  flashback_Current_conn = NULL;
 }
 
 /*

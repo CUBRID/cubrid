@@ -10820,15 +10820,14 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   time_t start_time = 0;
   time_t end_time = 0;
 
-  if (flashback_min_log_pageid_to_keep () != NULL_LOG_PAGEID)
+  if (flashback_is_duplicated_request (thread_p))
     {
-      /* if flashback was shutdown abnormally, flashback_min_log_pageid can not be cleared
-       * If the previous flashback was abnormally terminated,
-       * this flashback_min_log_pageid  would not have been initialized.
-       * Therefore, after all variables related to flashback are initialized, subsequent operations should be performed
-       */
-
-      flashback_reset ();
+      error_code = ER_FLASHBACK_DUPLICATED_REQUEST;
+      goto error;
+    }
+  else
+    {
+      flashback_initialize (thread_p);
     }
 
   flashback_set_status_active ();
