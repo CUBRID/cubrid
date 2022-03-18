@@ -333,7 +333,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
     str = ini_getstr(ini, sec, key, def, lineno);\
     if (str == NULL) \
     { \
-      PRINT_AND_LOG_ERR_MSG("%s:%d NLUL string returned with key '%s'\n", __FILE__, __LINE__, key); \
+      PRINT_AND_LOG_ERR_MSG("%s:%d NULL string returned with key '%s'\n", __FILE__, __LINE__, key); \
       goto conf_error; \
     } \
   } \
