@@ -904,7 +904,7 @@ $ LOADDB
 834 to_number() 함수에 주어진 source 문자열 "%1$s"과 format 문자열 "%2$s"이 매칭되지 않습니다.
 835 정의되지 않은 통계 아이템입니다.
 836 페이지(%1$d|%2$d)에 대한 래치 획득 요청이 시간을 초과하였습니다.
-837 데이터베이스 객체(클래스/뷰/트리거/serial 등)을 소유한 사용자는 삭제할 수 없습니다.
+837 데이터베이스 객체(클래스/뷰/트리거/serial/server/synonym 등)을 소유한 사용자는 삭제할 수 없습니다.
 838 동시에 %1$d개를 초과하는 인덱스 스캔을 열 수 없습니다.
 839 "%1$s": 알 수 없는 시스템 파라미터 이거나 값이 잘못되었습니다.
 840 시스템 파라미터 "%1$s"를 바꿀 수 없습니다.
@@ -1402,16 +1402,17 @@ $ LOADDB
 1327 "%1$s" 열의 정밀도 값이 잘못되었습니다.
 
 1328 잘못된 Descriptor Handle 입니다.
-1329 Error reserved for dblink development.
+1329 지원하지 않는 DBMS 입니다.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
 1332 액티브 로그 볼륨 (%1$s)에서 문제를 발견할 수 없어 재생성할 수 없습니다. 액티브 로그 볼륨을 제거할 경우에 예측할 수 없는 문제가 발생할 수 있으며, 되돌릴 수 없습니다.
+1333 권한 부여 내부 함수에 잘못된 인자 발생.
+1334 AUTO_INCREMENT는 소유자 변경을 허용하지 않습니다.
+1335 RENAME은 소유자 변경을 허용하지 않습니다.
+1336 DBA, DBA 그룹의 구성원 및 소유자가 CREATE SERIAL을 수행할 수 있습니다.
+1337 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TRIGGER를 수행할 수 있습니다.
 
-$
-$ I have spaced them out to avoid error number conflicts with other PR.
-$ I will correct it after merging it into feature branch.
-$
 1400 Synonym 이름으로 System 테이블/뷰의 이름을 사용할 수 없습니다.
 1401 PUBLIC SYNONYM은 %1$s가 소유할 수 없습니다.
 1402 DBA 또는 DBA 그룹의 멤버 사용자만 다른 사용자의 Private Synonym을 생성할 수 있습니다.
@@ -1895,6 +1896,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 함수 %1$s()에 대해 호환되는 함수 정의를 찾을 수 없습니다.
 305 함수 인자와 함수 정의 %1$s 은 호환되지 않습니다.
 306 dblink - 필수 정보가 누락되었습니다.
+307 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TABLE/VIEW를 수행할 수 있습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

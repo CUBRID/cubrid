@@ -904,7 +904,7 @@ $ LOADDB
 834 Ci sono delle discrepanze tra stringa di origine "%1$s" e la stringa di formato "%2$s" dato nel to_number().
 835 Artocolo non definito di statistiche.
 836 Blocco sulla pagina (%1$d|%2$d) è scaduto.
-837 Impossibile eliminare l'utente che possiede oggetti di database (classe/trigger/seriale/synonym etc.)
+837 Impossibile eliminare l'utente che possiede oggetti di database (classe/trigger/seriale/server/synonym etc.)
 838 Non è possibile aprire più di %1$d scansioni di index contemporaneamente.
 839 "%1$s": parametro di sistema sconosciuto o valore non valido.
 840 Non è possibile modificare il parametro di sistema "%1$s".
@@ -1402,16 +1402,17 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
 1332 Il volume del registro attivo (%1$s) è troppo sano per essere ricreato. Se rimuovi il registro attivo, potrebbe causare un problema imprevisto e irreversibile.
+1333 Invalid arguments to authorization internal function.
+1334 AUTO_INCREMENT does not allow change of owner.
+1335 RENAME does not allow change of owner.
+1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-$
-$ I have spaced them out to avoid error number conflicts with other PR.
-$ I will correct it after merging it into feature branch.
-$
 1400 Cannot use system class/vclass name as synonym name.
 1401 PUBLIC SYNONYM cannot be owned by %1$s.
 1402 Creating private synonym for other user can only be performed by DBA or a DBA group member.
@@ -1895,6 +1896,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Impossibile trovare una firma compatibile per la funzione %1$s()
 305 Firma %1$s non è compatibile con gli argomenti delle funzioni.
 306 dblink - Mancano le informazioni richieste.
+307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.

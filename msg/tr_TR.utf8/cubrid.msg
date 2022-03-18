@@ -904,7 +904,7 @@ $ LOADDB
 834 Kaynak dizesi arasında bazı uyumsuzluklar "%1$s" ve verilen "%2$s" biçim dizesi vardır to_number() .
 835 Tanımlanmamış istatistikler öğesi.
 836 SAYFASINDA LATCH (%1$d|%2$d) ZAMAN AŞIMI.
-837 Veritabanı nesneleri (sınıf/tetikleyici/seri/eş anlamlı gibi) onlara sahip olan kullanıcıya aittir ve iptal edilemez.
+837 Veritabanı nesneleri (sınıf / tetik / seri / sunucu / synonym vb) sahibi olan kullanıcılara aittir iptal edemezsiniz..
 838 Eşzamanlı olarak taranan indeksi %1$d den daha fazla açılamaz .
 839 "%1$s": Bilinmeyen sistem parametresi veya bozuk bir değer.
 840 Sistem parametresi değiştiremezsiniz "%1$s".
@@ -1402,16 +1402,17 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
 1332 Etkin günlük hacmi (%1$s) yeniden oluşturulamayacak kadar makul. Etkin günlüğü kaldırırsanız, beklenmeyen ve geri dönüşü olmayan bir soruna neden olabilir.
+1333 Invalid arguments to authorization internal function.
+1334 AUTO_INCREMENT does not allow change of owner.
+1335 RENAME does not allow change of owner.
+1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-$
-$ I have spaced them out to avoid error number conflicts with other PR.
-$ I will correct it after merging it into feature branch.
-$
 1400 Cannot use system class/vclass name as synonym name.
 1401 PUBLIC SYNONYM cannot be owned by %1$s.
 1402 Creating private synonym for other user can only be performed by DBA or a DBA group member.
@@ -1558,10 +1559,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 103 Dizin ipuçlarının geçersiz kullanımı
 104 Bit dizgesinin uzunluğu en fazla %1$d bittir.
 105 Sözdizim hatası: unexpected
-106 , bekliyor '{'
-107 , bekliyor SELECT veya '('
-108 , bekliyor
-109 beklenmedik
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
 110 IFADESININ SONUNA
 111 Çizgide %1$d, sütununda %2$d önce '%3$c%4$s'\n
 112 Çizgide %1$d, sütununda %2$d önce %3$s\n
@@ -1895,6 +1896,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 %1$s() fonksiyonu için uyumlu bir imza bulunamadı
 305 İmza %1$s, argümanları ile uyumlu değildir.
 306 dblink - Gerekli bilgiler eksik.
+307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

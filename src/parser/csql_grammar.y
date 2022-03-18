@@ -610,8 +610,17 @@ int g_original_buffer_len;
 %type <node> only_all_class_spec_list
 %type <node> meta_class_spec
 %type <node> only_all_class_spec
+%type <node> object_name
+%type <node> user_specified_name_without_dot
+%type <node> user_specified_name
+%type <node> class_name_without_dot
 %type <node> class_name
 %type <node> class_name_list
+%type <node> trigger_name_without_dot
+%type <node> trigger_name
+%type <node> trigger_name_list
+%type <node> serial_name_without_dot
+%type <node> serial_name
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
@@ -751,10 +760,11 @@ int g_original_buffer_len;
 %type <node> group_spec
 %type <node> opt_having_clause
 %type <node> index_name
-%type <node> index_name_keylimit
+%type <node> index_hint_name
+%type <node> index_hint_name_keylimit
 %type <node> opt_using_index_clause
-%type <node> index_name_list
-%type <node> index_name_keylimit_list
+%type <node> index_hint_name_list
+%type <node> index_hint_name_keylimit_list
 %type <node> opt_with_increment_clause
 %type <node> opt_update_orderby_clause
 %type <node> opt_orderby_clause
@@ -804,6 +814,7 @@ int g_original_buffer_len;
 %type <node> identifier_list
 %type <node> opt_bracketed_identifier_list
 %type <node> index_column_identifier_list
+%type <node> identifier_without_dot
 %type <node> identifier
 %type <node> index_column_identifier
 %type <node> string_literal_or_input_hv
@@ -1610,10 +1621,12 @@ stmt_done
 	;
 
 stmt_list
-	: stmt_list stmt %dprec 1
+	: stmt_list ';' %dprec 1
+                {{ /* empty line*/ }}
+        | stmt_list ';' stmt %dprec 2
 		{{
 
-			if ($2 != NULL)
+			if ($3 != NULL)
 			  {
 			    if (parser_statement_OK)
 			      {
@@ -1624,15 +1637,15 @@ stmt_list
 			        parser_statement_OK = 1;
 			      }
 
-			    pt_push (this_parser, $2);
+			    pt_push (this_parser, $3);
 
 			#ifdef PARSER_DEBUG
-			    printf ("node: %s\n", parser_print_tree (this_parser, $2));
+			    printf ("node: %s\n", parser_print_tree (this_parser, $3));
 			#endif
 			  }
 
 		DBG_PRINT}}
-	| stmt %dprec 2
+	| stmt %dprec 3
 		{{
 
 			if ($1 != NULL)
@@ -1654,6 +1667,8 @@ stmt_list
 			  }
 
 		DBG_PRINT}}
+        | ';'
+                {{ /* empty line*/ }}
 	;
 
 
@@ -1786,12 +1801,6 @@ stmt
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ';'
-		{{
-
-			$$ = NULL;
 
 		DBG_PRINT}}
 	;
@@ -2493,24 +2502,24 @@ get_stmt
 
 
 create_stmt
-	: CREATE					/* 1 */
-		{					/* 2 */
+	: CREATE				/* 1 */
+		{				/* 2 */
 			PT_NODE* qc = parser_new_node(this_parser, PT_CREATE_ENTITY);
 			parser_push_hint_node(qc);
 		}
-	  opt_hint_list					/* 3 */
-	  of_class_table_type				/* 4 */
-	  opt_if_not_exists				/* 5 */
-	  class_name					/* 6 */
-	  opt_subtable_clause 				/* 7 */
-	  opt_class_attr_def_list			/* 8 */
-	  opt_class_or_normal_attr_def_list		/* 9 */
-	  opt_table_option_list				/* 10 */
-	  opt_method_def_list 				/* 11 */
-	  opt_method_files 				/* 12 */
-	  opt_inherit_resolution_list			/* 13 */
-	  opt_partition_clause 				/* 14 */
-          opt_create_as_clause				/* 15 */
+	  opt_hint_list				/* 3 */
+	  of_class_table_type			/* 4 */
+	  opt_if_not_exists			/* 5 */
+	  class_name_without_dot		/* 6 */
+	  opt_subtable_clause			/* 7 */
+	  opt_class_attr_def_list		/* 8 */
+	  opt_class_or_normal_attr_def_list	/* 9 */
+	  opt_table_option_list			/* 10 */
+	  opt_method_def_list			/* 11 */
+	  opt_method_files			/* 12 */
+	  opt_inherit_resolution_list		/* 13 */
+	  opt_partition_clause			/* 14 */
+	  opt_create_as_clause			/* 15 */
 		{{
 
 			PT_NODE *qc = parser_pop_hint_node ();
@@ -2518,19 +2527,23 @@ create_stmt
 
 			if (CONTAINER_AT_1 ($15) != NULL)
 			  {
-			    if ($7 != NULL || $8 != NULL || $11 != NULL
-				|| $12 != NULL || $13 != NULL)
+			    if ($7 != NULL		/* opt_subtable_clause */
+				|| $8 != NULL		/* opt_class_attr_def_list */
+				|| $11 != NULL		/* opt_method_def_list */
+				|| $12 != NULL		/* opt_method_files */
+				|| $13 != NULL)		/* opt_inherit_resolution_list */
 			      {
-				PT_ERRORf (this_parser, qc, "check syntax at %s",
-                                          parser_print_tree (this_parser, qc));
+				PT_ERRORf (this_parser, qc,
+					   "check syntax at %s",
+					   parser_print_tree (this_parser, qc));
 			      }
 			  }
 
 			if (qc)
 			  {
+			    qc->info.create_entity.entity_type = (PT_MISC_TYPE) $4;
 			    qc->info.create_entity.if_not_exists = $5;
 			    qc->info.create_entity.entity_name = $6;
-			    qc->info.create_entity.entity_type = (PT_MISC_TYPE) $4;
 			    qc->info.create_entity.supclass_list = $7;
 			    qc->info.create_entity.class_attr_def_list = $8;
 			    qc->info.create_entity.attr_def_list = $9;
@@ -2541,8 +2554,8 @@ create_stmt
 			    qc->info.create_entity.partition_info = $14;
                             if (CONTAINER_AT_1 ($15) != NULL)
 			      {
-			        qc->info.create_entity.create_select_action = TO_NUMBER(CONTAINER_AT_0 ($15));
-			        qc->info.create_entity.create_select = CONTAINER_AT_1 ($15);
+				qc->info.create_entity.create_select_action = TO_NUMBER(CONTAINER_AT_0 ($15));
+				qc->info.create_entity.create_select = CONTAINER_AT_1 ($15);
 			      }
 
 			    pt_gather_constraints (this_parser, qc);
@@ -2551,19 +2564,19 @@ create_stmt
 			$$ = qc;
 
 		DBG_PRINT}}
-	| CREATE 					/* 1 */
-	  opt_or_replace				/* 2 */
-	  of_view_vclass 				/* 3 */
-	  class_name 					/* 4 */
-	  opt_subtable_clause 				/* 5 */
-	  opt_class_attr_def_list 			/* 6 */
-	  opt_paren_view_attr_def_list 			/* 7 */
-	  opt_method_def_list 				/* 8 */
-	  opt_method_files				/* 9 */
-	  opt_inherit_resolution_list			/* 10 */
-	  opt_as_query_list				/* 11 */
-	  opt_with_levels_clause			/* 12 */
-	  opt_vclass_comment_spec           /* 13 */
+	| CREATE				/* 1 */
+	  opt_or_replace			/* 2 */
+	  of_view_vclass			/* 3 */
+	  class_name_without_dot		/* 4 */
+	  opt_subtable_clause			/* 5 */
+	  opt_class_attr_def_list		/* 6 */
+	  opt_paren_view_attr_def_list		/* 7 */
+	  opt_method_def_list			/* 8 */
+	  opt_method_files			/* 9 */
+	  opt_inherit_resolution_list		/* 10 */
+	  opt_as_query_list			/* 11 */
+	  opt_with_levels_clause		/* 12 */
+	  opt_vclass_comment_spec		/* 13 */
 		{{
 
 			PT_NODE *qc = parser_new_node (this_parser, PT_CREATE_ENTITY);
@@ -2604,7 +2617,7 @@ create_stmt
 	  opt_unique					/* 5 */
 	  INDEX						/* 6 */
 		{ pop_msg(); }  			/* 7 */
-	  identifier				        /* 8 */
+	  identifier					/* 8 */
 	  ON_						/* 9 */
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
@@ -2612,7 +2625,7 @@ create_stmt
 	  opt_comment_spec				/* 13 */
 	  opt_with_online				/* 14 */
 	  opt_invisible					/* 15 */
-	{{
+		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
 			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
@@ -2758,14 +2771,14 @@ create_stmt
 		      $$ = node;
 
 		DBG_PRINT}}
-	| CREATE
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_USER); }
-	  USER
-	  identifier
-	  opt_password
-	  opt_groups
-	  opt_members
-	  opt_comment_spec
+	| CREATE			/* 1 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_USER); }	/* 2 */
+	  USER				/* 3 */
+	  identifier_without_dot	/* 4 */
+	  opt_password			/* 5 */
+	  opt_groups			/* 6 */
+	  opt_members			/* 7 */
+	  opt_comment_spec		/* 8 */
 		{ pop_msg(); }
 		{{
 
@@ -2784,20 +2797,20 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CREATE 					/* 1 */
+	| CREATE				/* 1 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_TRIGGER); }	/* 2 */
-	  TRIGGER 					/* 3 */
-	  identifier 					/* 4 */
-	  opt_status					/* 5 */
-	  opt_priority					/* 6 */
-	  trigger_time 					/* 7 */
-		{ pop_msg(); }				/* 8 */
-	  event_spec 					/* 9 */
-	  opt_if_trigger_condition			/* 10 */
-	  EXECUTE					/* 11 */
-	  opt_trigger_action_time 			/* 12 */
-	  trigger_action				/* 13 */
-	  opt_comment_spec				/* 14 */
+	  TRIGGER				/* 3 */
+	  trigger_name_without_dot		/* 4 */
+	  opt_status				/* 5 */
+	  opt_priority				/* 6 */
+	  trigger_time				/* 7 */
+		{ pop_msg(); }			/* 8 */
+	  event_spec				/* 9 */
+	  opt_if_trigger_condition		/* 10 */
+	  EXECUTE				/* 11 */
+	  opt_trigger_action_time		/* 12 */
+	  trigger_action			/* 13 */
+	  opt_comment_spec			/* 14 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_TRIGGER);
@@ -2820,13 +2833,13 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CREATE					/* 1 */
+	| CREATE				/* 1 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); }	/* 2 */
-	  SERIAL 					/* 3 */
-		{ pop_msg(); }				/* 4 */
-	  identifier 					/* 5 */
-	  opt_serial_option_list			/* 6 */
-	  opt_comment_spec				/* 7 */
+	  SERIAL				/* 3 */
+		{ pop_msg(); }			/* 4 */
+	  serial_name_without_dot		/* 5 */
+	  opt_serial_option_list		/* 6 */
+	  opt_comment_spec			/* 7 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SERIAL);
@@ -2865,14 +2878,14 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CREATE						/* 1 */
-	  opt_or_replace                /* 2 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }		/* 3 */
-	  PROCEDURE						/* 4 */
-	  identifier '(' opt_sp_param_list  ')'			/* 5, 6, 7, 8 */
-	  opt_of_is_as LANGUAGE JAVA				/* 9, 10, 11 */
-	  NAME char_string_literal				/* 12, 13 */
-	  opt_comment_spec						/* 14 */
+	| CREATE					/* 1 */
+	  opt_or_replace                		/* 2 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }	/* 3 */
+	  PROCEDURE					/* 4 */
+	  identifier '(' opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
+	  opt_of_is_as LANGUAGE JAVA			/* 9, 10, 11 */
+	  NAME char_string_literal			/* 12, 13 */
+	  opt_comment_spec				/* 14 */
 		{ pop_msg(); }
 		{{
 
@@ -2892,15 +2905,15 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CREATE                        /* 1 */
-	  opt_or_replace                /* 2 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }		/* 3 */
-	  FUNCTION						/* 4 */
-	  identifier '('  opt_sp_param_list  ')'			/* 5, 6, 7, 8 */
-	  RETURN opt_of_data_type_cursor				/* 9, 10 */
-	  opt_of_is_as LANGUAGE JAVA					/* 11, 12, 13 */
-	  NAME char_string_literal						/* 14, 15 */
-	  opt_comment_spec								/* 16 */
+	| CREATE                        		/* 1 */
+	  opt_or_replace                		/* 2 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }	/* 3 */
+	  FUNCTION					/* 4 */
+	  identifier '('  opt_sp_param_list  ')'	/* 5, 6, 7, 8 */
+	  RETURN opt_of_data_type_cursor		/* 9, 10 */
+	  opt_of_is_as LANGUAGE JAVA			/* 11, 12, 13 */
+	  NAME char_string_literal			/* 14, 15 */
+	  opt_comment_spec				/* 16 */
 		{ pop_msg(); }
 		{{
 
@@ -2927,17 +2940,17 @@ create_stmt
 			csql_yyerror_explicit (@2.first_line, @2.first_column);
 
 		DBG_PRINT}}
-	| CREATE					/* 1 */
-		{					/* 2 */
+	| CREATE				/* 1 */
+		{				/* 2 */
 			PT_NODE* qc = parser_new_node(this_parser, PT_CREATE_ENTITY);
 			parser_push_hint_node(qc);
 		}
-	  opt_hint_list					/* 3 */
-	  of_class_table_type				/* 4 */
-	  opt_if_not_exists				/* 5 */
-	  class_name					/* 6 */
-	  LIKE						/* 7 */
-	  class_name					/* 8 */
+	  opt_hint_list				/* 3 */
+	  of_class_table_type			/* 4 */
+	  opt_if_not_exists			/* 5 */
+	  class_name_without_dot		/* 6 */
+	  LIKE					/* 7 */
+	  class_name				/* 8 */
 		{{
 
 			PT_NODE *qc = parser_pop_hint_node ();
@@ -2954,19 +2967,19 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CREATE					/* 1 */
-		{					/* 2 */
+	| CREATE				/* 1 */
+		{				/* 2 */
 			PT_NODE* qc = parser_new_node(this_parser, PT_CREATE_ENTITY);
 			parser_push_hint_node(qc);
 		}
-	  opt_hint_list					/* 3 */
-	  of_class_table_type				/* 4 */
-	  opt_if_not_exists				/* 5 */
-	  class_name					/* 6 */
-	  '('						/* 7 */
-	  LIKE						/* 8 */
-	  class_name					/* 9 */
-	  ')'						/* 10 */
+	  opt_hint_list				/* 3 */
+	  of_class_table_type			/* 4 */
+	  opt_if_not_exists			/* 5 */
+	  class_name_without_dot		/* 6 */
+	  '('					/* 7 */
+	  LIKE					/* 8 */
+	  class_name				/* 9 */
+	  ')'					/* 10 */
 		{{
 
 			PT_NODE *qc = parser_pop_hint_node ();
@@ -3481,11 +3494,11 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER
-	  TRIGGER
-	  identifier_list
-	  trigger_status_or_priority_or_change_owner
-	  opt_comment_spec					/* 5 */
+	| ALTER						/* 1 */
+	  TRIGGER					/* 2 */
+	  trigger_name_list				/* 3 */
+	  trigger_status_or_priority_or_change_owner	/* 4 */
+	  opt_comment_spec				/* 5 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_TRIGGER);
@@ -3509,9 +3522,9 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER						/* 1 */
-	  TRIGGER					/* 2 */
-	  identifier				/* 3 */
+	| ALTER				/* 1 */
+	  TRIGGER			/* 2 */
+	  trigger_name			/* 3 */
 	  COMMENT comment_value		/* 4, 5 */
 		{{
 
@@ -3533,11 +3546,11 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER                                /* 1 */
-	  SERIAL                               /* 2 */
-	  identifier                           /* 3 */
-	  opt_serial_option_list	       	   /* 4 */
-	  opt_comment_spec				       /* 5 */
+	| ALTER				/* 1 */
+	  SERIAL			/* 2 */
+	  serial_name			/* 3 */
+	  opt_serial_option_list	/* 4 */
+	  opt_comment_spec		/* 5 */
 		{{
 			/* container order
 			 * 0: start_val
@@ -3595,22 +3608,22 @@ alter_stmt
 			  }
 
 		DBG_PRINT}}
-	| ALTER						/* 1 */
-		{					/* 2 */
+	| ALTER					/* 1 */
+		{				/* 2 */
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
 			parser_push_hint_node(node);
 		}
-	  opt_hint_list					/* 3 */
-	  opt_reverse					/* 4 */
-	  opt_unique					/* 5 */
-	  INDEX						/* 6 */
-	  identifier					/* 7 */
-	  ON_						/* 8 */
-	  only_class_name				/* 9 */
-	  opt_index_column_name_list			/* 10 */
-	  opt_where_clause				/* 11 */
+	  opt_hint_list				/* 3 */
+	  opt_reverse				/* 4 */
+	  opt_unique				/* 5 */
+	  INDEX					/* 6 */
+	  identifier				/* 7 */
+	  ON_					/* 8 */
+	  only_class_name			/* 9 */
+	  opt_index_column_name_list		/* 10 */
+	  opt_where_clause			/* 11 */
 	  opt_comment_spec			/* 12 */
-	  REBUILD					/* 13 */
+	  REBUILD				/* 13 */
 		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3681,9 +3694,9 @@ alter_stmt
 	| ALTER				/* 1 */
 	  INDEX				/* 2 */
 	  identifier			/* 3 */
-	  ON_					/* 4 */
+	  ON_				/* 4 */
 	  class_name			/* 5 */
-	  COMMENT comment_value /* 6, 7 */
+	  COMMENT comment_value 	/* 6, 7 */
 		{{
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
 
@@ -3783,12 +3796,12 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER
-	  view_or_vclass
-	  class_name
-	  AS
-	  csql_query
-	  opt_vclass_comment_spec
+	| ALTER				/* 1 */
+	  view_or_vclass		/* 2 */
+	  class_name			/* 3 */
+	  AS				/* 4 */
+	  csql_query			/* 5 */
+	  opt_vclass_comment_spec	/* 6 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER);
@@ -3808,10 +3821,10 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER
-	  view_or_vclass
-	  class_name
-	  class_comment_spec		%dprec 1
+	| ALTER				/* 1 */
+	  view_or_vclass		/* 2 */
+	  class_name			/* 3 */
+	  class_comment_spec		/* 4 */ %dprec 1
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER);
@@ -3828,11 +3841,11 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER						/* 1 */
+	| ALTER				/* 1 */
 	  procedure_or_function		/* 2 */
-	  identifier				/* 3 */
-	  opt_owner_clause			/* 4 */
-	  opt_comment_spec			/* 5 */
+	  identifier			/* 3 */
+	  opt_owner_clause		/* 4 */
+	  opt_comment_spec		/* 5 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_STORED_PROCEDURE);
@@ -4067,9 +4080,9 @@ prepare_alter_node
 	;
 
 only_class_name
-	: ONLY class_name
+	: ONLY user_specified_name
 		{ $$ = $2; }
-	| class_name
+	| user_specified_name
 		{ $$ = $1; }
 	;
 
@@ -4089,22 +4102,22 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME TRIGGER class_name AS class_name
+	| RENAME TRIGGER trigger_name as_or_to trigger_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_TRIGGER);
 
 			if (node)
 			  {
-			    node->info.rename_trigger.new_name = $5;
 			    node->info.rename_trigger.old_name = $3;
+			    node->info.rename_trigger.new_name = $5;
 			  }
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| RENAME SERVER dblink_server_name AS identifier
+	| RENAME SERVER dblink_server_name as_or_to identifier_without_dot
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SERVER);
 			if (node)
@@ -4224,7 +4237,7 @@ rename_class_list
 	;
 
 rename_class_pair
-	:  only_class_name as_or_to only_class_name
+	: only_class_name as_or_to only_class_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME);
@@ -4336,19 +4349,19 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP						/* 1 */
-		{					/* 2 */
+	| DROP					/* 1 */
+		{				/* 2 */
 			PT_NODE* node = parser_new_node(this_parser, PT_DROP_INDEX);
 			parser_push_hint_node(node);
 		}
-	  opt_hint_list					/* 3 */
-	  opt_reverse					/* 4 */
-	  opt_unique					/* 5 */
-	  INDEX						/* 6 */
-	  identifier					/* 7 */
-	  ON_						/* 8 */
-	  only_class_name				/* 9 */
-	  opt_index_column_name_list			/* 10 */
+	  opt_hint_list				/* 3 */
+	  opt_reverse				/* 4 */
+	  opt_unique				/* 5 */
+	  INDEX					/* 6 */
+	  identifier				/* 7 */
+	  ON_					/* 8 */
+	  only_class_name			/* 9 */
+	  opt_index_column_name_list		/* 10 */
 		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -4415,7 +4428,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP TRIGGER identifier_list
+	| DROP TRIGGER trigger_name_list
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_TRIGGER);
@@ -4459,7 +4472,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP SERIAL opt_if_exists identifier
+	| DROP SERIAL opt_if_exists serial_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERIAL);
@@ -5471,24 +5484,20 @@ only_all_class_spec
 		DBG_PRINT}}
 	;
 
-class_name
+object_name
 	: identifier DOT identifier
 		{{
 
-			PT_NODE *user_node = $1;
-			PT_NODE *name_node = $3;
+			PT_NODE *qualifier = $1;
+			PT_NODE *node = $3;
 
-			if (name_node != NULL && user_node != NULL)
+			if (qualifier && node)
 			  {
-			    name_node->info.name.resolved = pt_append_string (this_parser, NULL,
-			                                                      user_node->info.name.original);
-			  }
-			if (user_node != NULL)
-			  {
-			    parser_free_tree (this_parser, user_node);
+			    node->info.name.resolved = pt_append_string (this_parser, NULL, qualifier->info.name.original);
+			    parser_free_tree (this_parser, qualifier);
 			  }
 
-			$$ = name_node;
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -5499,6 +5508,68 @@ class_name
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	;
+
+user_specified_name_without_dot
+	: identifier_without_dot DOT identifier_without_dot
+		{{
+
+			PT_NODE *user = $1;
+			PT_NODE *name = $3;
+
+			if (user && name)
+			  {
+			    name->info.name.resolved = pt_append_string (this_parser, NULL, user->info.name.original);
+			    parser_free_tree (this_parser, user);
+
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
+			  }
+
+			$$ = name;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| identifier_without_dot
+		{{
+
+			PT_NODE *name = $1;
+
+			if (name)
+			  {
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
+			  }
+
+			$$ = name;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+user_specified_name
+	: object_name
+		{{
+
+			PT_NODE *name = $1;
+
+			if (name)
+			  {
+			    PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
+			  }
+
+			$$ = name;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+class_name_without_dot
+	: user_specified_name_without_dot
+		{ $$ = $1; }
+	;
+
+class_name
+	: user_specified_name
+		{ $$ = $1; }
 	;
 
 class_name_list
@@ -5516,6 +5587,60 @@ class_name_list
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	;
+
+index_name
+	: object_name
+		{{
+
+			PT_NODE *node = $1;
+
+			if (node)
+			  {
+				node->info.name.meta_class = PT_INDEX_NAME;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+trigger_name_without_dot
+	: user_specified_name_without_dot
+		{ $$ = $1; }
+	;
+
+trigger_name
+	: user_specified_name
+		{ $$ = $1; }
+	;
+
+trigger_name_list
+	: trigger_name_list ',' trigger_name
+		{{
+
+			$$ = parser_make_link($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| trigger_name
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+serial_name_without_dot
+	: user_specified_name_without_dot
+		{ $$ = $1; }
+	;
+
+serial_name
+	: user_specified_name
+		{ $$ = $1; }
 	;
 
 opt_partition_spec
@@ -5769,9 +5894,9 @@ alter_auto_increment_mysql_specific
 				val->info.value.data_value.str =
 				  pt_append_bytes (this_parser, NULL, $3,
 						   strlen ($3));
-			        val->type_enum = PT_TYPE_NUMERIC;
-			        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
-			       }
+				val->type_enum = PT_TYPE_NUMERIC;
+				PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+			      }
 
 			    node->info.alter.code = PT_CHANGE_AUTO_INCREMENT;
 			    node->info.alter.alter_clause.auto_increment.start_value = val;
@@ -7102,7 +7227,7 @@ show_stmt
 	  opt_full
 	  COLUMNS
 	  of_from_in
-	  identifier
+	  class_name
 		{{
 
 			const bool is_full_syntax = ($2 == 1);
@@ -7121,7 +7246,7 @@ show_stmt
 	  opt_full
 	  COLUMNS
 	  of_from_in
-	  identifier
+	  class_name
 	  LIKE
 	  expression_
 		{{
@@ -7143,7 +7268,7 @@ show_stmt
 	  opt_full
 	  COLUMNS
 	  of_from_in
-	  identifier
+	  class_name
 	  WHERE
 	  search_condition
 		{{
@@ -7162,7 +7287,7 @@ show_stmt
 
 		DBG_PRINT}}
 	| of_describe_desc_explain
-	  identifier
+	  class_name
 		{{
 
 			PT_NODE *node = NULL;
@@ -7176,7 +7301,7 @@ show_stmt
 
 		DBG_PRINT}}
 	| of_describe_desc_explain
-	  identifier
+	  class_name
 	  identifier
 		{{
 
@@ -7191,7 +7316,7 @@ show_stmt
 
 		DBG_PRINT}}
 	| of_describe_desc_explain
-	  identifier
+	  class_name
 	  char_string_literal
 		{{
 
@@ -7261,7 +7386,7 @@ show_stmt
 	| SHOW
 	  CREATE
 	  TABLE
-	  identifier
+	  class_name
 		{{
 
 			PT_NODE *node = NULL;
@@ -7274,7 +7399,7 @@ show_stmt
 	| SHOW
 	  CREATE
 	  VIEW
-	  identifier
+	  class_name
 		{{
 
 			PT_NODE *node = NULL;
@@ -7320,7 +7445,7 @@ show_stmt
 	| SHOW
 	  of_index_indexes_keys
 	  of_from_in
-	  identifier
+	  class_name
 		{{
 
 			PT_NODE *node = NULL;
@@ -7428,7 +7553,7 @@ show_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| SHOW show_type_id_dot_id OF identifier DOT identifier
+	| SHOW show_type_id_dot_id OF class_name DOT identifier
 		{{
 			int type = $2;
 			PT_NODE *node, *args = $4;
@@ -9137,7 +9262,7 @@ inherit_resolution_list
 	;
 
 inherit_resolution
-	: opt_class identifier OF identifier AS identifier
+	: opt_class identifier OF class_name AS identifier
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RESOLUTION);
@@ -9158,7 +9283,7 @@ inherit_resolution
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| opt_class identifier OF identifier
+	| opt_class identifier OF class_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RESOLUTION);
@@ -9486,9 +9611,9 @@ foreign_key_constraint
 	: FOREIGN 					/* 1 */
 	  KEY 						/* 2 */
 	  opt_identifier				/* 3 */
-	  '(' index_column_identifier_list ')'	  	/* 4, 5, 6 */
+	  '(' index_column_identifier_list ')'		/* 4, 5, 6 */
 	  REFERENCES					/* 7 */
-	  class_name					/* 8 */
+	  user_specified_name				/* 8 */
 	  opt_paren_attr_list				/* 9 */
 	  opt_ref_rule_list				/* 10 */
 		{{
@@ -10216,12 +10341,12 @@ attr_constraint_def
 	;
 
 attr_index_def
-	: index_or_key              /* 1 */
-	  identifier                /* 2 */
-	  index_column_name_list    /* 3 */
-	  opt_where_clause          /* 4 */
-	  opt_comment_spec          /* 5 */
-	  opt_invisible             /* 6 */
+	: index_or_key			/* 1 */
+	  identifier    		/* 2 */
+	  index_column_name_list	/* 3 */
+	  opt_where_clause		/* 4 */
+	  opt_comment_spec		/* 5 */
+	  opt_invisible			/* 6 */
 		{{
 			int arg_count = 0, prefix_col_count = 0;
 			PT_NODE* node = parser_new_node(this_parser,
@@ -10645,13 +10770,13 @@ column_other_constraint_def
 			parser_make_link (node, constraint);
 
 		DBG_PRINT}}
-	| opt_constraint_id			/* 1 */
-	  opt_foreign_key			/* 2 */
-	  REFERENCES				/* 3 */
-	  class_name				/* 4 */
-	  opt_paren_attr_list			/* 5 */
-	  opt_ref_rule_list			/* 6 */
-	  opt_constraint_attr_list		/* 7 */
+	| opt_constraint_id		/* 1 */
+	  opt_foreign_key		/* 2 */
+	  REFERENCES			/* 3 */
+	  class_name			/* 4 */
+	  opt_paren_attr_list		/* 5 */
+	  opt_ref_rule_list		/* 6 */
+	  opt_constraint_attr_list	/* 7 */
 		{{
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -11671,7 +11796,7 @@ event_type
 	;
 
 event_target
-	: ON_ identifier '(' identifier ')'
+	: ON_ class_name '(' identifier ')'
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_EVENT_TARGET);
@@ -11686,7 +11811,7 @@ event_target
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ON_ identifier
+	| ON_ class_name
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_EVENT_TARGET);
@@ -11856,7 +11981,7 @@ trigger_action
 	;
 
 trigger_spec_list
-	: identifier_list
+	: trigger_name_list
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_TRIGGER_SPEC_LIST);
@@ -14272,6 +14397,12 @@ from_param
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	/*
+	 * It must be changed to "CLASS class_name" by User Schema support.
+	 * However, it is difficult to change to "CLASS class_name"
+	 * because it is a syntax not supported by AS-IS.
+	 * Even on AS-IS, PT_INTERNAL_ERROR (parser, "resolution") occurs on pt_resolve_object.
+	 */
 	| CLASS identifier
 		{{
 
@@ -14652,7 +14783,7 @@ opt_using_index_clause
 			$$ = NULL;
 
 		DBG_PRINT}}
-	| USING INDEX index_name_keylimit_list
+	| USING INDEX index_hint_name_keylimit_list
 		{{
 
 			$$ = $3;
@@ -14676,7 +14807,7 @@ opt_using_index_clause
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| USING INDEX ALL EXCEPT index_name_list
+	| USING INDEX ALL EXCEPT index_hint_name_list
 		{{
 			PT_NODE *curr;
 			PT_NODE *node = parser_new_node (this_parser, PT_NAME);
@@ -14714,15 +14845,15 @@ opt_using_index_clause
 		DBG_PRINT}}
 	;
 
-index_name_keylimit_list
-	: index_name_keylimit_list ',' index_name_keylimit
+index_hint_name_keylimit_list
+	: index_hint_name_keylimit_list ',' index_hint_name_keylimit
 		{{
 
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| index_name_keylimit
+	| index_hint_name_keylimit
 		{{
 
 			$$ = $1;
@@ -14731,15 +14862,15 @@ index_name_keylimit_list
 		DBG_PRINT}}
 	;
 
-index_name_list
-	: index_name_list ',' index_name
+index_hint_name_list
+	: index_hint_name_list ',' index_hint_name
 		{{
 
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| index_name
+	| index_hint_name
 		{{
 
 			$$ = $1;
@@ -14748,8 +14879,8 @@ index_name_list
 		DBG_PRINT}}
 	;
 
-index_name_keylimit
-	: index_name KEYLIMIT limit_expr
+index_hint_name_keylimit
+	: index_hint_name KEYLIMIT limit_expr
 		{{
 
 			PT_NODE *node = $1;
@@ -14775,7 +14906,7 @@ index_name_keylimit
 			$$ = node;
 
 		DBG_PRINT}}
-	| index_name KEYLIMIT limit_expr ',' limit_expr
+	| index_hint_name KEYLIMIT limit_expr ',' limit_expr
 		{{
 
 			PT_NODE *node = $1;
@@ -14800,7 +14931,7 @@ index_name_keylimit
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| index_name
+	| index_hint_name
 		{{
 
 			$$ = $1;
@@ -14809,32 +14940,29 @@ index_name_keylimit
 		DBG_PRINT}}
 	;
 
-index_name
-	: class_name paren_plus
+index_hint_name
+	: index_name paren_plus
 		{{
 
 			PT_NODE *node = $1;
-			node->info.name.meta_class = PT_INDEX_NAME;
 			node->etc = (void *) PT_IDX_HINT_FORCE;
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| class_name paren_minus
+	| index_name paren_minus
 		{{
 
 			PT_NODE *node = $1;
-			node->info.name.meta_class = PT_INDEX_NAME;
 			node->etc = (void *) PT_IDX_HINT_IGNORE;
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| class_name
+	| index_name
 		{{
 
 			PT_NODE *node = $1;
-			node->info.name.meta_class = PT_INDEX_NAME;
 			node->etc = (void *) PT_IDX_HINT_USE;
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -15097,6 +15225,7 @@ opt_orderby_clause
 			int index_of_col;
 			char *n_str, *c_str;
 			bool is_col, is_alias;
+			unsigned int save_custom;
 
 			parser_restore_oc ();
 			if (stmt)
@@ -15182,7 +15311,10 @@ opt_orderby_clause
 					    continue;
 					  }
 
+					save_custom = this_parser->custom_print;
+					this_parser->custom_print |= PT_SUPPRESS_QUOTES;
 					n_str = parser_print_tree (this_parser, n);
+					this_parser->custom_print = save_custom;
 					if (n_str == NULL)
 					  {
 					    continue;
@@ -15191,16 +15323,19 @@ opt_orderby_clause
 					for (col = list, index_of_col = 1; col;
 					     col = col->next, index_of_col++)
 					  {
+					    save_custom = this_parser->custom_print;
+					    this_parser->custom_print |= PT_SUPPRESS_QUOTES;
 					    c_str = parser_print_tree (this_parser, col);
+					    this_parser->custom_print = save_custom;
 					    if (c_str == NULL)
 					      {
 					        continue;
 					      }
 
 					    if ((col->alias_print
-						 && intl_identifier_namecmp (n_str, col->alias_print) == 0
+						 && intl_identifier_casecmp (n_str, col->alias_print) == 0
 						 && (is_alias = true))
-						|| (intl_identifier_namecmp (n_str, c_str) == 0
+						|| (intl_identifier_casecmp (n_str, c_str) == 0
 						    && (is_col = true)))
 					      {
 						if (found_star)
@@ -21912,6 +22047,32 @@ simple_path_id_list
 		DBG_PRINT}}
 	;
 
+identifier_without_dot
+	: identifier
+		{{
+
+			PT_NODE *p = $1;
+
+			if (p)
+			  {
+			    const char *name = p->info.name.original;
+
+			    if (name && strchr (name, '.'))
+			      {
+				PT_ERRORf (this_parser, p,
+					   "Identifier name [%s] not allowed. It cannot contain dot(.).",
+					   name);
+
+				p = NULL;
+			      }
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
 identifier
 	: IdName
 		{{//identifier : IdName
@@ -25359,6 +25520,8 @@ PT_HINT parser_hint_table[] = {
   {"NO_HASH_LIST_SCAN", NULL, PT_HINT_NO_HASH_LIST_SCAN}
   ,
   {"NO_PUSH_PRED", NULL, PT_HINT_NO_PUSH_PRED}
+  ,
+  {"NO_MERGE", NULL, PT_HINT_NO_MERGE}
   ,
   {"SKIP_UPDATE_NULL", NULL, PT_HINT_SKIP_UPDATE_NULL}
   ,

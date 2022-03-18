@@ -670,6 +670,8 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE value;
   DB_OBJECT *serial_class = NULL;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  MOP owner = NULL;
   int au_save, error = NO_ERROR;
 
   db_make_null (&value);
@@ -693,8 +695,17 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
       goto end;
     }
 
-  /* name */
+  /* unique_name */
   db_make_string (&value, serial_name);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* name */
+  db_make_string (&value, sm_remove_qualifier_name (serial_name));
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -703,7 +714,16 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* owner */
-  db_make_object (&value, Au_user);
+  sm_qualifier_name (serial_name, owner_name, DB_MAX_USER_LENGTH);
+  owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+
+  if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
+    {
+      ERROR_SET_ERROR (error, ER_QPROC_CREATE_SERIAL_NOT_OWNER);
+      goto end;
+    }
+
+  db_make_object (&value, owner);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_OWNER, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -769,7 +789,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   /* class name */
   if (class_name)
     {
-      db_make_string (&value, class_name);
+      db_make_string (&value, sm_remove_qualifier_name (class_name));
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -894,8 +914,17 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
       goto update_auto_increment_error;
     }
 
-  /* name */
+  /* unique_name */
   db_make_string (&value, serial_name);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto update_auto_increment_error;
+    }
+
+  /* name */
+  db_make_string (&value, sm_remove_qualifier_name (serial_name));
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   if (error != NO_ERROR)
     {
@@ -904,7 +933,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
 
   /* class name */
   pr_clear_value (&value);
-  db_make_string (&value, class_name);
+  db_make_string (&value, sm_remove_qualifier_name (class_name));
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -1268,7 +1297,31 @@ do_get_obj_id (DB_IDENTIFIER * obj_id, DB_OBJECT * class_mop, const char *name, 
 MOP
 do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *serial_name)
 {
-  return do_get_obj_id (serial_obj_id, serial_class_mop, serial_name, SERIAL_ATTR_NAME);
+  MOP serial_mop = NULL;
+
+  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, serial_name, SERIAL_ATTR_UNIQUE_NAME);
+  if (serial_mop)
+    {
+      return serial_mop;
+    }
+
+  /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+    {
+      char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+
+      do_find_serial_by_query (serial_name, other_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
+      if (other_serial_name[0] != '\0')
+	{
+	  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, other_serial_name, SERIAL_ATTR_UNIQUE_NAME);
+	  if (serial_mop)
+	    {
+	      return serial_mop;
+	    }
+	}
+    }
+
+  return NULL;
 }
 
 /*
@@ -1314,7 +1367,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_IDENTIFIER serial_obj_id;
   DB_VALUE value, *pval = NULL;
 
-  char *name = NULL;
+  const char *serial_name = NULL;
+  char downcase_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *start_val_node;
   PT_NODE *inc_val_node;
   PT_NODE *max_val_node;
@@ -1340,7 +1394,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   int save;
   bool au_disable_flag = false;
-  char *p = NULL;
   size_t name_size;
   const char *comment = NULL;
 
@@ -1371,24 +1424,14 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /*
    * lookup if serial object name already exists?
    */
-
-  name = (char *) PT_NODE_SR_NAME (statement);
-  name_size = intl_identifier_lower_string_size (name);
-  p = (char *) malloc (name_size + 1);
-  if (p == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (name_size + 1));
-      goto end;
-    }
-  intl_identifier_lower (name, p);
-
-  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, p);
+  serial_name = PT_NODE_SR_NAME (statement);
+  sm_downcase_name (serial_name, downcase_serial_name, DB_MAX_IDENTIFIER_LENGTH);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, downcase_serial_name);
   if (serial_mop != NULL)
     {
       error = ER_QPROC_SERIAL_ALREADY_EXIST;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALREADY_EXIST, name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, serial_name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALREADY_EXIST, serial_name);
       goto end;
     }
 
@@ -1750,8 +1793,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_DISABLE (save);
   au_disable_flag = true;
 
-  error = do_create_serial_internal (&serial_object, p, &start_val, &inc_val, &min_val, &max_val, cyclic, cached_num,
-				     0, comment, NULL, NULL);
+  error = do_create_serial_internal (&serial_object, downcase_serial_name, &start_val, &inc_val, &min_val,
+				     &max_val, cyclic, cached_num, 0, comment, NULL, NULL);
 
   AU_ENABLE (save);
   au_disable_flag = false;
@@ -1761,22 +1804,12 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  if (p != NULL)
-    {
-      free_and_init (p);
-    }
-
   return NO_ERROR;
 
 end:
   if (au_disable_flag == true)
     {
       AU_ENABLE (save);
-    }
-
-  if (p != NULL)
-    {
-      free_and_init (p);
     }
 
   return error;
@@ -5907,7 +5940,9 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
 	  error = ER_GENERIC_ERROR;
 	  goto cleanup;
 	}
-      classes_names[idx] = (char *) node->info.delete_.spec->info.spec.entity_name->info.name.original;
+      classes_names[idx] = (char *) db_private_alloc (NULL, SM_MAX_IDENTIFIER_LENGTH * sizeof (char));
+      sm_downcase_name (node->info.delete_.spec->info.spec.entity_name->info.name.original, classes_names[idx],
+			SM_MAX_IDENTIFIER_LENGTH);
       locks[idx] = X_LOCK;
       if (node->info.delete_.spec->info.spec.only_all == PT_ALL)
 	{
@@ -6018,7 +6053,11 @@ cleanup:
   /* free allocated resources */
   if (classes_names != NULL)
     {
-      db_private_free (NULL, classes_names);
+      for (idx = 0; idx < num_classes; idx++)
+	{
+	  db_private_free_and_init (NULL, classes_names[idx]);
+	}
+      db_private_free_and_init (NULL, classes_names);
     }
 
   if (locks != NULL)
@@ -6266,6 +6305,7 @@ static void
 get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char **source, PT_NODE * statement)
 {
   PT_NODE *str;
+  unsigned int save_custom;
 
   *type = TR_ACT_NULL;
   *source = NULL;
@@ -6296,7 +6336,9 @@ get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char
 	{
 	  /* complex expression */
 	  *type = TR_ACT_EXPRESSION;
+	  save_custom = parser->custom_print;
 	  *source = parser_print_tree_with_quotes (parser, statement);
+	  parser->custom_print = save_custom;
 	}
     }
 }
@@ -6771,15 +6813,11 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   trigger = tr_find_trigger (old_name);
   if (trigger == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-    }
-  else
-    {
-      error = tr_rename_trigger (trigger, new_name, false);
+      ASSERT_ERROR_AND_SET (error);
+      return error;
     }
 
-  return error;
+  return tr_rename_trigger (trigger, new_name, false, false);
 }
 
 /*
@@ -19068,6 +19106,301 @@ do_kill (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   return error;
 #endif
+}
+
+int
+do_find_class_by_query (const char *name, char *buf, int buf_size)
+{
+#define QUERY_BUF_SIZE 2048
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  const char *query = NULL;
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *class_name = NULL;
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  assert (buf != NULL);
+
+  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  class_name = sm_remove_qualifier_name (name);
+  query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, current_user_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, current_user_name);
+  assert (query_buf[0] != '\0');
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      if (error == DB_CURSOR_END)
+	{
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (!DB_IS_NULL (&value))
+    {
+      assert (strlen (db_get_string (&value)) < buf_size);
+      strncpy (buf, db_get_string (&value), buf_size);
+    }
+  else
+    {
+      /* unique_name must not be null. */
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because unique_name is not unique. */
+      buf[0] = '\0';
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+#undef QUERY_BUF_SIZE
+}
+
+int
+do_find_serial_by_query (const char *name, char *buf, int buf_size)
+{
+#define QUERY_BUF_SIZE 2048
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  const char *query = NULL;
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *serial_name = NULL;
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  assert (buf != NULL);
+
+  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  serial_name = sm_remove_qualifier_name (name);
+  query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, current_user_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SERIAL_NAME, serial_name, current_user_name);
+  assert (query_buf[0] != '\0');
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      if (error == DB_CURSOR_END)
+	{
+	  /*
+	   * In the do_get_obj_id () function, if the MOP is NULL and the error is ER_OBJ_OBJECT_NOT_FOUND,
+	   * the error is cleared. So NO_ERROR is returned.
+	   *
+	   * In the do_create_auto_increment_serial() function, there should be no error even if the serial
+	   * cannot be found when the do_get_serial_obj_id() function is called. So it should return NO_ERROR.
+	   */
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (!DB_IS_NULL (&value))
+    {
+      assert (strlen (db_get_string (&value)) < buf_size);
+      strncpy (buf, db_get_string (&value), buf_size);
+    }
+  else
+    {
+      /* unique_name must not be null. */
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because unique_name is not unique. */
+      buf[0] = '\0';
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+#undef QUERY_BUF_SIZE
+}
+
+int
+do_find_trigger_by_query (const char *name, char *buf, int buf_size)
+{
+#define QUERY_BUF_SIZE 2048
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  const char *query = NULL;
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *trigger_name = NULL;
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  assert (buf != NULL);
+
+  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  trigger_name = sm_remove_qualifier_name (name);
+  query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, current_user_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_TRIGGER_NAME, trigger_name, current_user_name);
+  assert (query_buf[0] != '\0');
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      if (error == DB_CURSOR_END)
+	{
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (!DB_IS_NULL (&value))
+    {
+      assert (strlen (db_get_string (&value)) < buf_size);
+      strncpy (buf, db_get_string (&value), buf_size);
+    }
+  else
+    {
+      /* unique_name must not be null. */
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because unique_name is not unique. */
+      buf[0] = '\0';
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+#undef QUERY_BUF_SIZE
 }
 
 /*

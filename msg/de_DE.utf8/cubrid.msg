@@ -904,7 +904,7 @@ $ LOADDB
 834 Es gibt einige Diskrepanzen zwischen Quell-String "%1$s" und Format-String "%2$s" in to_number() angegeben.
 835 Undefiniertes Statistikelement.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 Der Benutzer, der Datenbankobjekte besitzt, kann nicht gelöscht werden (Klasse/Trigger/Serial/Synonym usw.). 
+837 Der Benutzer, der Datenbankobjekte besitzt, kann nicht gelöscht werden (Klasse/Trigger/Serial/Server/Synonym usw.).
 838 Es können nicht mehr als %1$d Index Scans gleichzeitig geöffnet werden.
 839 "%1$s": Unbekannter System-Parameter oder falscher Wert.
 840 System-Parameter "%1$s" kann nicht geändert werden.
@@ -1402,16 +1402,17 @@ $ LOADDB
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
 1332 Das aktive Protokollvolumen (%1$s) ist zu normal, um es neu zu erstellen. Wenn Sie das aktive Protokoll entfernen, kann dies zu einem unerwarteten und irreversiblen Problem führen.
+1333 Invalid arguments to authorization internal function.
+1334 AUTO_INCREMENT does not allow change of owner.
+1335 RENAME does not allow change of owner.
+1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-$
-$ I have spaced them out to avoid error number conflicts with other PR.
-$ I will correct it after merging it into feature branch.
-$
 1400 Cannot use system class/vclass name as synonym name.
 1401 PUBLIC SYNONYM cannot be owned by %1$s.
 1402 Creating private synonym for other user can only be performed by DBA or a DBA group member.
@@ -1895,6 +1896,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Konnte keine kompatible Signatur für die Funktion finden %1$s().
 305 Die Signatur %1$s ist nicht mit Funktionsargumenten kompatibel.
 306 dblink - Erforderliche Informationen fehlen.
+307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.
