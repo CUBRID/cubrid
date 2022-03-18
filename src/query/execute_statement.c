@@ -20592,3 +20592,114 @@ end:
   return error;
 #undef QUERY_BUF_SIZE
 }
+
+int
+do_synonym_midxkey_key_generate (DB_VALUE * value, const char *name)
+{
+  DB_VALUE name_val;
+  DB_VALUE owner_val;
+  DB_VALUE is_public_val;
+  TP_DOMAIN *name_domain = NULL;
+  TP_DOMAIN *owner_domain = NULL;
+  TP_DOMAIN *is_public_domain = NULL;
+  DB_OBJECT *owner_obj = NULL;
+  OID *owner_obj_id = NULL;
+  DB_MIDXKEY midxkey;
+  OR_BUF buf;
+  char *key_ptr;
+  char *nullmap_ptr;
+  TP_DOMAIN *set_domain = NULL;
+  char *dot = NULL;
+  int error = NO_ERROR;
+
+  db_make_null (&name_val);
+  db_make_null (&owner_val);
+  db_make_null (&is_public_val);
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  /* name */
+  error = db_make_varchar (&name_val, DB_MAX_IDENTIFIER_LENGTH, name, strlen (name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  /* name domain */
+  name_domain = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (&name_val));
+
+  /* owner */
+  owner_obj = db_get_user ();
+  if (!owner_obj)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = db_make_object (&owner_val, owner_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  /* owner domain */
+  owner_domain = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (&owner_val));
+
+  /* is_public */
+  error = db_make_int (&is_public_val, 0);	// PRIVATE
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  /* is_public domain */
+  is_public_domain = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (&is_public_val));
+
+  /* midxkey */
+  midxkey.ncolumns = 3;
+  midxkey.buf = (char *) db_private_alloc (NULL, DB_MAX_IDENTIFIER_LENGTH + OR_OID_SIZE + OR_INT_SIZE + MAX_ALIGNMENT);
+  memset (midxkey.buf, 0, DB_MAX_IDENTIFIER_LENGTH + OR_OID_SIZE + OR_INT_SIZE + MAX_ALIGNMENT);
+  or_init (&buf, midxkey.buf, -1);
+  nullmap_ptr = midxkey.buf;
+  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, midxkey.ncolumns));
+
+  name_domain->type->index_writeval (&buf, &name_val);
+  OR_ENABLE_BOUND_BIT (nullmap_ptr, 0);
+
+  owner_domain->type->index_writeval (&buf, &owner_val);
+  OR_ENABLE_BOUND_BIT (nullmap_ptr, 1);
+
+  is_public_domain->type->index_writeval (&buf, &is_public_val);
+  OR_ENABLE_BOUND_BIT (nullmap_ptr, 2);
+
+  midxkey.size = CAST_BUFLEN (buf.ptr - buf.buffer);
+
+  set_domain = tp_domain_copy (name_domain, false);
+  set_domain->next = tp_domain_copy (owner_domain, false);
+  set_domain->next->next = tp_domain_copy (is_public_domain, false);
+  midxkey.domain =  tp_domain_construct (DB_TYPE_MIDXKEY, NULL, midxkey.ncolumns, 0, set_domain);
+
+  error = db_make_midxkey (value, &midxkey);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+
+      if (midxkey.buf)
+	{
+	  db_private_free_and_init (NULL, midxkey.buf);
+	}
+
+      return error;
+    }
+
+  (*value).need_clear = true;
+
+  return error;
+}

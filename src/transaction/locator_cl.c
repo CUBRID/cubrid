@@ -3150,21 +3150,6 @@ locator_find_class (const char *classname)
       class_mop = NULL;
     }
 
-  if (!class_mop)
-    {
-      char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-
-      do_find_synonym_by_query (classname, target_name, DB_MAX_IDENTIFIER_LENGTH);
-      
-      if (target_name[0] != '\0')
-	{
-	  if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
-	    {
-	      class_mop = NULL;
-	    }
-	}
-    }
-
   return class_mop;
 }
 
@@ -3196,21 +3181,6 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
   if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
     {
       class_mop = NULL;
-    }
-
-  if (!class_mop)
-    {
-      char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-
-      do_find_synonym_by_query (classname, target_name, DB_MAX_IDENTIFIER_LENGTH);
-      
-      if (target_name[0] != '\0')
-	{
-	  if (locator_find_class_by_name (classname, lock, &class_mop) != LC_CLASSNAME_EXIST)
-	    {
-	      class_mop = NULL;
-	    }
-	}
     }
 
   return class_mop;

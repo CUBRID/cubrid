@@ -4021,9 +4021,16 @@ boot_define_synonym (MOP class_mop)
 {
   SM_TEMPLATE *def;
   int error_code = NO_ERROR;
-  const char *primary_key_col_names[] = { "name", "owner", "is_public", NULL };
+  const char *primary_key_col_names[] = { "unique_name", NULL };
+  const char *index_col_names[] = { "name", "owner", "is_public", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
+
+  error_code = smt_add_attribute (def, "unique_name", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   error_code = smt_add_attribute (def, "name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)

@@ -414,6 +414,7 @@ static CT_ATTR ct_partition_atts[] = {
 };
 
 static CT_ATTR ct_synonym_atts[] = {
+  {"unique_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"owner", NULL_ATTRID, DB_TYPE_OBJECT},
   {"is_public", NULL_ATTRID, DB_TYPE_INTEGER},

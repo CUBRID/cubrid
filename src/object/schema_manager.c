@@ -5196,11 +5196,79 @@ sm_class_constraints (MOP classop)
 MOP
 sm_find_class (const char *name)
 {
+  MOP class_mop = NULL;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
 
   sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
-  return (locator_find_class (realname));
+  class_mop = locator_find_class (realname);
+  if (!class_mop)
+    {
+      MOP synonym_class_mop = NULL;
+      MOP synonym_mop = NULL;
+      DB_VALUE synonym_midxkey_val;
+      DB_VALUE target_name_val;
+      const char *target_name = NULL;
+      int error = NO_ERROR;
+      int save = 0;
+
+      db_make_null (&synonym_midxkey_val);
+      db_make_null (&target_name_val);
+
+      synonym_class_mop = sm_find_class ("_db_synonym");
+      if (!synonym_class_mop)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return NULL;
+	}
+
+      error = do_synonym_midxkey_key_generate (&synonym_midxkey_val, name);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return NULL;
+	}
+
+      AU_DISABLE (save);
+
+      synonym_mop = db_find_unique (synonym_class_mop, "name", &synonym_midxkey_val);
+      if (!synonym_mop)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  AU_ENABLE (save);
+	  return NULL;
+	}
+
+      error = db_get (synonym_mop, "target_name", &target_name_val);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  AU_ENABLE (save);
+	  return NULL;
+	}
+
+      AU_ENABLE (save);
+
+      target_name = db_get_string (&target_name_val);
+      if (!target_name)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return NULL;
+	}
+
+      class_mop = locator_find_class (target_name);
+      if (!class_mop)
+	{
+	  class_mop = NULL;
+	}
+
+      if (class_mop)
+	{
+	  er_clear ();
+	}
+    }
+
+  return class_mop;
 }
 
 /*
@@ -5215,11 +5283,80 @@ sm_find_class (const char *name)
 MOP
 sm_find_class_with_purpose (const char *name, bool for_update)
 {
+  MOP class_mop = NULL;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
 
   sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
-  return (locator_find_class_with_purpose (realname, for_update));
+  class_mop = locator_find_class_with_purpose (realname, for_update);
+  if (!class_mop)
+    {
+      MOP synonym_class_mop = NULL;
+      MOP synonym_mop = NULL;
+      DB_VALUE synonym_midxkey_val;
+      DB_VALUE target_name_val;
+      const char *target_name = NULL;
+      const char *target_onwer_name = NULL;
+      int error = NO_ERROR;
+      int save = 0;
+
+      db_make_null (&synonym_midxkey_val);
+      db_make_null (&target_name_val);
+
+      synonym_class_mop = sm_find_class ("_db_synonym");
+      if (!synonym_class_mop)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return NULL;
+	}
+
+      error = do_synonym_midxkey_key_generate (&synonym_midxkey_val, name);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return NULL;
+	}
+
+      AU_DISABLE (save);
+
+      synonym_mop = db_find_unique (synonym_class_mop, "name", &synonym_midxkey_val);
+      if (!synonym_mop)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  AU_ENABLE (save);
+	  return NULL;
+	}
+
+      error = db_get (synonym_mop, "target_name", &target_name_val);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  AU_ENABLE (save);
+	  return NULL;
+	}
+
+      AU_ENABLE (save);
+
+      target_name = db_get_string (&target_name_val);
+      if (!target_name)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return NULL;
+	}
+
+      class_mop = locator_find_class_with_purpose (target_name, for_update);
+      if (!class_mop)
+	{
+	  class_mop = NULL;
+	}
+
+      if (class_mop)
+	{
+	  er_clear ();
+	}
+    }
+
+  return class_mop;
 }
 
 /*
