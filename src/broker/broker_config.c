@@ -675,7 +675,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       br_info[num_brs].max_string_length = ini_getint (ini, sec_name, "MAX_STRING_LENGTH", -1, &lineno);
 
       INI_GETSTR_CHK (s, ini, sec_name, "STRIPPED_COLUMN_NAME", "ON", &lineno);
-	conf_get_value_table_on_off (s);
+      br_info[num_brs].stripped_column_name = conf_get_value_table_on_off (s);
       if (br_info[num_brs].stripped_column_name < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
