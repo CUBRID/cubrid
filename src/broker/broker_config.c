@@ -93,7 +93,7 @@ struct t_conf_table
 enum
 { PARAM_NO_ERROR = 0, PARAM_INVAL_SEC = 1,
   PARAM_BAD_VALUE = 2, PARAM_BAD_RANGE = 3,
-  SECTION_NAME_TOO_LONG = 4
+  SECTION_NAME_TOO_LONG = 4, PARAM_RUN_TIME_ERROR = 5
 };
 
 static void conf_file_has_been_loaded (const char *conf_path);
@@ -165,7 +165,8 @@ static const char *tbl_conf_err_msg[] = {
   "Cannot find any section in conf file.",
   "Value type does not match parameter type.",
   "Value is out of range.",
-  "Section name is too long. Section name must be less than 64."
+  "Section name is too long. Section name must be less than 64.",
+  "Temporary runtime error."
 };
 
 /* conf files that have been loaded */
@@ -333,7 +334,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
     str = ini_getstr(ini, sec, key, def, lineno);\
     if (str == NULL) \
     { \
-      PRINT_AND_LOG_ERR_MSG("%s:%d NULL string returned with key '%s'\n", __FILE__, __LINE__, key); \
+      errcode = PARAM_RUN_TIME_ERROR; \
+      PRINT_AND_LOG_ERR_MSG("%s:%d ini_getstr () returned NULL: key = '%s'\n", __FILE__, __LINE__, key); \
       goto conf_error; \
     } \
   } \
@@ -1163,7 +1165,6 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
 		    char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file, char *admin_err_msg)
 {
   int err = 0;
-  bool is_conf_found = false;
   char default_conf_file_path[BROKER_PATH_MAX], file_name[BROKER_PATH_MAX], file_being_dealt_with[BROKER_PATH_MAX];
   struct stat stat_buf;
 
@@ -1189,24 +1190,15 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
 	}
     }
 
-  if (conf_file != NULL)
-    {
-      strcpy (file_being_dealt_with, conf_file);
-    }
-  else
-    {
-      /* $CUBRID/conf/cubrid_broker.conf */
-      strcpy (file_being_dealt_with, default_conf_file_path);
-    }
+  snprintf (file_being_dealt_with, BROKER_PATH_MAX, "%s", conf_file ? conf_file : default_conf_file_path);
+
   if (stat (file_being_dealt_with, &stat_buf) == 0)
     {
-      is_conf_found = true;
       err =
 	broker_config_read_internal (file_being_dealt_with, br_info, num_broker, br_shm_id, admin_log_file, admin_flag,
 				     acl_flag, acl_file, admin_err_msg);
     }
-
-  if (!is_conf_found)
+  else
     {
       err = -1;
       PRINT_AND_LOG_ERR_MSG ("Error: can't find %s\n", (conf_file == NULL) ? default_conf_file_path : conf_file);
