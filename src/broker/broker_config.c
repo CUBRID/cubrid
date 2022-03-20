@@ -83,11 +83,25 @@
 #define	TRUE	1
 #define	FALSE	0
 
+#define MAX_NUM_BROKER_FILES	4
+#define IS_FILE_MATCH_CONF_CACHE(cid, file)	(strcmp (br_conf_info[cid].conf_file, file) == 0)
+
 typedef struct t_conf_table T_CONF_TABLE;
 struct t_conf_table
 {
   const char *conf_str;
   int conf_value;
+};
+
+typedef struct br_conf_info T_CONF_INFO;
+struct br_conf_info {
+  int num_broker;
+  int acl_flag;
+  int br_shm_id;
+  char *conf_file;
+  char *admin_log_file;
+  time_t last_modified;
+  T_BROKER_INFO br_info [MAX_BROKER_NUM];
 };
 
 enum
@@ -100,6 +114,11 @@ static void conf_file_has_been_loaded (const char *conf_path);
 static int check_port_number (T_BROKER_INFO * br_info, int num_brs);
 static int get_conf_value (const char *string, T_CONF_TABLE * conf_table);
 static const char *get_conf_string (int value, T_CONF_TABLE * conf_table);
+static void read_conf_cache (int cid, bool *acl, int *num_br, int *shm_id, char *log_file, T_BROKER_INFO *br_info);
+static void write_conf_cache (char *file, bool * acl_flag, int *num_broker, int *shm_id, char *alog,
+			      T_BROKER_INFO * br_info, time_t bf_mtime);
+static void clear_conf_cache_entry (int cid);
+
 
 static T_CONF_TABLE tbl_appl_server[] = {
   {APPL_SERVER_CAS_TYPE_NAME, APPL_SERVER_CAS},
@@ -168,6 +187,10 @@ static const char *tbl_conf_err_msg[] = {
   "Section name is too long. Section name must be less than 64.",
   "Temporary runtime error."
 };
+
+static bool is_first_br_conf_read = true;
+static char default_conf_file_path [BROKER_PATH_MAX];
+static T_CONF_INFO br_conf_info[MAX_NUM_BROKER_FILES];
 
 /* conf files that have been loaded */
 #define MAX_NUM_OF_CONF_FILE_LOADED     5
@@ -1150,6 +1173,87 @@ conf_error:
   return -1;
 }
 
+static void
+write_conf_cache (char *broker_conf_file, bool * acl_flag, int *num_broker, int *br_shm_id, char *admin_logfile,
+		  T_BROKER_INFO * br_info, time_t br_conf_mtime)
+{
+  if (broker_conf_file == NULL || num_broker == NULL || br_info == NULL || br_shm_id == NULL)
+    {
+      return;
+    }
+
+  for (int i = 0; i < MAX_NUM_BROKER_FILES; i++)
+    {
+      if (br_conf_info[i].conf_file == NULL)
+	{
+	  br_conf_info[i].conf_file = strdup(broker_conf_file);
+	  br_conf_info[i].num_broker = *num_broker;
+	  br_conf_info[i].br_shm_id = *br_shm_id;
+	  br_conf_info[i].last_modified = br_conf_mtime;
+
+	  if (acl_flag)
+	    {
+	      br_conf_info[i].acl_flag = *acl_flag;
+	    }
+
+	  if (admin_logfile)
+	    {
+	      br_conf_info[i].admin_log_file = strdup (admin_logfile);
+	    }
+
+	  memcpy (br_conf_info[i].br_info, br_info, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
+	}
+    }
+}
+
+static void
+read_conf_cache (int cid, bool *acl_flag, int *num_broker, int *br_shm_id, char *logfile, T_BROKER_INFO *br_info)
+{
+  if (cid < 0 || cid > MAX_NUM_BROKER_FILES || br_shm_id == NULL || br_info == NULL)
+    {
+      return;
+    }
+
+  if (acl_flag)
+    {
+      *acl_flag = br_conf_info[cid].acl_flag;
+    }
+
+  if (logfile && br_conf_info[cid].admin_log_file)
+    {
+      strcpy (logfile, br_conf_info[cid].admin_log_file);
+    }
+
+  *num_broker = br_conf_info[cid].num_broker;
+  *br_shm_id = br_conf_info[cid].br_shm_id;
+  memcpy (br_info, br_conf_info[cid].br_info, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
+
+  return;
+}
+
+static void
+clear_conf_cache_entry (int cid)
+{
+  if (cid < 0 || cid > MAX_NUM_BROKER_FILES)
+    {
+      return;
+    }
+
+  if (br_conf_info[cid].conf_file)
+    {
+      free (br_conf_info[cid].conf_file);
+    }
+
+  if (br_conf_info[cid].admin_log_file)
+    {
+      free (br_conf_info[cid].admin_log_file);
+    }
+
+  memset (&br_conf_info[cid], 0, sizeof (T_CONF_INFO));
+
+  return;
+}
+
 /*
  * broker_config_read - read and parse broker configurations
  *   return: 0 or -1 if fail
@@ -1160,24 +1264,31 @@ conf_error:
  *   admin_flag(in):
  *   admin_err_msg(in):
  */
+
 int
 broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 		    char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file, char *admin_err_msg)
 {
   int err = 0;
-  char default_conf_file_path[BROKER_PATH_MAX], file_name[BROKER_PATH_MAX], file_being_dealt_with[BROKER_PATH_MAX];
+  char file_name[BROKER_PATH_MAX], file_being_dealt_with[BROKER_PATH_MAX];
   struct stat stat_buf;
+  int rc = 0;
 
 #if !defined (_UC_ADMIN_SO_)
   admin_flag = 1;
   admin_err_msg = NULL;
 #endif /* !_UC_ADMIN_SO_ */
 
-  memset (br_info, 0, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
 
-  get_cubrid_file (FID_CUBRID_BROKER_CONF, default_conf_file_path, BROKER_PATH_MAX);
-
-  basename_r (default_conf_file_path, file_name, BROKER_PATH_MAX);
+  if (is_first_br_conf_read)
+    {
+      memset (&br_conf_info, 0, sizeof (br_conf_info));
+      if (get_cubrid_file (FID_CUBRID_BROKER_CONF, default_conf_file_path, BROKER_PATH_MAX) != NULL)
+        {
+	  basename_r (default_conf_file_path, file_name, BROKER_PATH_MAX);
+        }
+      is_first_br_conf_read = false;
+    }
 
   if (conf_file == NULL)
     {
@@ -1192,16 +1303,38 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
 
   snprintf (file_being_dealt_with, BROKER_PATH_MAX, "%s", conf_file ? conf_file : default_conf_file_path);
 
-  if (stat (file_being_dealt_with, &stat_buf) == 0)
+  if (stat (file_being_dealt_with, &stat_buf) != 0)
     {
-      err =
-	broker_config_read_internal (file_being_dealt_with, br_info, num_broker, br_shm_id, admin_log_file, admin_flag,
-				     acl_flag, acl_file, admin_err_msg);
-    }
-  else
-    {
-      err = -1;
       PRINT_AND_LOG_ERR_MSG ("Error: can't find %s\n", (conf_file == NULL) ? default_conf_file_path : conf_file);
+      return -1;
+    }
+
+  for (int cid = 0; cid < MAX_NUM_BROKER_FILES; cid++)
+    {
+      if (br_conf_info[cid].conf_file && IS_FILE_MATCH_CONF_CACHE(cid, file_being_dealt_with))
+	{
+	  if (br_conf_info[cid].last_modified == stat_buf.st_mtime)
+	    {
+	      read_conf_cache (cid, acl_flag, num_broker, br_shm_id, admin_log_file, br_info);
+
+	      return 0;
+	    }
+	  else
+	    {
+	      clear_conf_cache_entry (cid);
+	      PRINT_AND_LOG_ERR_MSG ("broker conf: %s changed. Parsing from file.\n", file_being_dealt_with);
+	    }
+	}
+    }
+
+  memset (br_info, 0, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
+  err =
+    broker_config_read_internal (file_being_dealt_with, br_info, num_broker, br_shm_id, admin_log_file, admin_flag,
+				 acl_flag, acl_file, admin_err_msg);
+  if (err == 0)
+    {
+      write_conf_cache (file_being_dealt_with, acl_flag, num_broker, br_shm_id, admin_log_file, br_info,
+			stat_buf.st_mtime);
     }
 
   return err;
