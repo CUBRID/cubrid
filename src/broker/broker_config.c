@@ -1322,7 +1322,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
 	  else
 	    {
 	      clear_conf_cache_entry (cid);
-	      PRINT_AND_LOG_ERR_MSG ("broker conf: %s changed. Parsing from file.\n", file_being_dealt_with);
+	      PRINT_AND_LOG_ERR_MSG ("broker conf: %s changed (reload).\n", file_being_dealt_with);
 	    }
 	}
     }
