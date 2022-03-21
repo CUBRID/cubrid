@@ -10820,14 +10820,27 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   time_t start_time = 0;
   time_t end_time = 0;
 
-  if (flashback_is_duplicated_request (thread_p))
+  bool is_duplicated_request = false;
+
+  /* If multiple requests come at the same time,
+   * they can all be treated as non-duplicate requests.
+   * So, latch for check and set flashback connection is required */
+
+  flashback_lock_request ();
+
+  is_duplicated_request = flashback_is_duplicated_request (thread_p);
+  if (is_duplicated_request)
     {
       error_code = ER_FLASHBACK_DUPLICATED_REQUEST;
+
+      flashback_unlock_request ();
       goto error;
     }
   else
     {
       flashback_initialize (thread_p);
+
+      flashback_unlock_request ();
     }
 
   flashback_set_status_active ();
@@ -10929,7 +10942,12 @@ error:
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
-  flashback_reset ();
+  if (!is_duplicated_request)
+    {
+      /* if flashback variables are reset by duplicated request error,
+       * variables for existing connection (valid connection) can be reset */
+      flashback_reset ();
+    }
 
   return;
 

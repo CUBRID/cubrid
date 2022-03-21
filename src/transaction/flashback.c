@@ -70,11 +70,25 @@ static std::atomic_bool flashback_In_progress = false;  // the status value that
 
 static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry for a flashback requests
 
+static pthread_mutex_t flashback_Request_lock = PTHREAD_MUTEX_INITIALIZER;
+
 /*
  * flashback_is_duplicated_request - check if the caller is duplicated request for flashback
  *
  * return   : duplicated or not
  */
+
+void
+flashback_lock_request ()
+{
+  pthread_mutex_lock (&flashback_Request_lock);
+}
+
+void
+flashback_unlock_request ()
+{
+  pthread_mutex_unlock (&flashback_Request_lock);
+}
 
 bool
 flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
@@ -93,37 +107,27 @@ flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
 
   previous_conn = flashback_Current_conn;
 
-  if (previous_conn->status == CONN_OPEN)
+  if (flashback_In_progress == false)
     {
-      if (flashback_In_progress == false)
-	{
-	  /* conn_entry->status is overwritten with CONN_OPEN
-	   * and previous flashback set flashback_In_progress to false prolperly. (exited well) */
-	  return false;
-	}
-      else
-	{
-	  /* flashback_In_progress == true */
-
-	  if (previous_conn->in_flashback == false)
-	    {
-	      /* 1. previous_conn is overwritten with new connection, so status and in_flashback value are initialized.
-	       * 2. previous flashback connection has been exited abnormally,
-	       *    so existing flashback_In_progress value has not been initialized */
-	      return false;
-	    }
-	  else
-	    {
-	      /* previous flashback is still in progress */
-	      return true;
-	    }
-	}
+      /* previous flashback set flashback_In_progress to false prolperly. (exited well) */
+      return false;
     }
   else
     {
-      /* status == CONN_CLOSED || CONN_CLOSING
-       * previous flashback has been exited properly and conn_entry is not overwritten */
-      return false;
+      /* flashback_In_progress == true */
+
+      if (previous_conn->in_flashback == true)
+	{
+	  /* previous flashback is still in progress */
+	  return true;
+	}
+      else
+	{
+	  /* - previous_conn is overwritten with new connection, so in_flashback value is initialized to false.
+	   * - previous flashback connection has been exited abnormally,
+	   *   so existing flashback_In_progress value has not been initialized */
+	  return false;
+	}
     }
 }
 
@@ -228,7 +232,7 @@ flashback_is_needed_to_keep_archive ()
 
 
 /*
- * flashback_reset_variables - reset flashback global variables
+ * flashback_reset - reset flashback global variables
  *
  */
 
