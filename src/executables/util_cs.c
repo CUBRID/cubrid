@@ -69,7 +69,6 @@
 #define SPACEDB_NUM_VOL_PURPOSE 2
 #define MAX_KILLTRAN_INDEX_LIST_NUM  64
 #define MAX_DELVOL_ID_LIST_NUM       64
-#define NULL_LOG_PAGEID -1
 
 #define VOL_PURPOSE_STRING(VOL_PURPOSE)		\
 	    ((VOL_PURPOSE == DB_PERMANENT_DATA_PURPOSE) ? "PERMANENT DATA"	\
@@ -3222,7 +3221,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   check_replica_info = (HA_GET_MODE () == HA_MODE_REPLICA);
   pageid = utility_get_option_bigint_value (arg_map, APPLYINFO_PAGE_S);
-  if ((pageid != NULL_LOG_PAGEID) && (log_path == NULL))
+  if ((pageid != APPLYINFO_NULL_LOG_PAGEID) && (log_path == NULL))
     {
       goto print_applyinfo_usage;
     }
