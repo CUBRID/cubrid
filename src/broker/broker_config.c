@@ -1202,6 +1202,7 @@ write_conf_cache (char *broker_conf_file, bool * acl_flag, int *num_broker, int 
 	    }
 
 	  memcpy (br_conf_info[i].br_info, br_info, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
+	  break;
 	}
     }
 }
