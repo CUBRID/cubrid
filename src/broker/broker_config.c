@@ -83,7 +83,7 @@
 #define	TRUE	1
 #define	FALSE	0
 
-#define MAX_NUM_BROKER_FILES	4
+#define MAX_NUM_CACHED_BROKER_FILES	4
 #define IS_FILE_MATCH_CONF_CACHE(cid, file)	(strcmp (br_conf_info[cid].conf_file, file) == 0)
 
 typedef struct t_conf_table T_CONF_TABLE;
@@ -190,7 +190,7 @@ static const char *tbl_conf_err_msg[] = {
 
 static bool is_first_br_conf_read = true;
 static char default_conf_file_path [BROKER_PATH_MAX];
-static T_CONF_INFO br_conf_info[MAX_NUM_BROKER_FILES];
+static T_CONF_INFO br_conf_info[MAX_NUM_CACHED_BROKER_FILES];
 
 /* conf files that have been loaded */
 #define MAX_NUM_OF_CONF_FILE_LOADED     5
@@ -1182,7 +1182,7 @@ write_conf_cache (char *broker_conf_file, bool * acl_flag, int *num_broker, int 
       return;
     }
 
-  for (int i = 0; i < MAX_NUM_BROKER_FILES; i++)
+  for (int i = 0; i < MAX_NUM_CACHED_BROKER_FILES; i++)
     {
       if (br_conf_info[i].conf_file == NULL)
 	{
@@ -1209,7 +1209,7 @@ write_conf_cache (char *broker_conf_file, bool * acl_flag, int *num_broker, int 
 static void
 read_conf_cache (int cid, bool *acl_flag, int *num_broker, int *br_shm_id, char *logfile, T_BROKER_INFO *br_info)
 {
-  if (cid < 0 || cid > MAX_NUM_BROKER_FILES || br_shm_id == NULL || br_info == NULL)
+  if (cid < 0 || cid >= MAX_NUM_CACHED_BROKER_FILES || br_shm_id == NULL || br_info == NULL)
     {
       return;
     }
@@ -1234,7 +1234,7 @@ read_conf_cache (int cid, bool *acl_flag, int *num_broker, int *br_shm_id, char 
 static void
 clear_conf_cache_entry (int cid)
 {
-  if (cid < 0 || cid > MAX_NUM_BROKER_FILES)
+  if (cid < 0 || cid >= MAX_NUM_CACHED_BROKER_FILES)
     {
       return;
     }
@@ -1309,7 +1309,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
       return -1;
     }
 
-  for (int cid = 0; cid < MAX_NUM_BROKER_FILES; cid++)
+  for (int cid = 0; cid < MAX_NUM_CACHED_BROKER_FILES; cid++)
     {
       if (br_conf_info[cid].conf_file && IS_FILE_MATCH_CONF_CACHE(cid, file_being_dealt_with))
 	{
