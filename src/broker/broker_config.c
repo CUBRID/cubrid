@@ -1314,7 +1314,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
     {
       if (br_conf_info[cid].conf_file && IS_FILE_MATCH_CONF_CACHE(cid, file_being_dealt_with))
 	{
-	  if (br_conf_info[cid].last_modified == stat_buf.st_mtime)
+	  if (br_conf_info[cid].last_modified == stat_buf.st_mtime)	/* conf modified */
 	    {
 	      read_conf_cache (cid, acl_flag, num_broker, br_shm_id, admin_log_file, br_info);
 
