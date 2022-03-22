@@ -70,27 +70,13 @@ static std::atomic_bool flashback_In_progress = false;  // the status value that
 
 static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry for a flashback requests
 
-static pthread_mutex_t flashback_Request_lock = PTHREAD_MUTEX_INITIALIZER;
-
 /*
  * flashback_is_duplicated_request - check if the caller is duplicated request for flashback
  *
  * return   : duplicated or not
  */
 
-void
-flashback_lock_request ()
-{
-  pthread_mutex_lock (&flashback_Request_lock);
-}
-
-void
-flashback_unlock_request ()
-{
-  pthread_mutex_unlock (&flashback_Request_lock);
-}
-
-bool
+static bool
 flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
 {
   CSS_CONN_ENTRY *previous_conn = NULL;
@@ -132,15 +118,32 @@ flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
 }
 
 /*
- * flashback_initialize - initialize variables and connection when flashback request is started
+ * flashback_initialize - check request if is duplicated, 
+ *                        then initialize variables and connection when flashback request is started
  */
 
-void
+int
 flashback_initialize (THREAD_ENTRY * thread_p)
 {
+  static pthread_mutex_t conn_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+  /* If multiple requests come at the same time,
+   * they all can be treated as non-duplicate requests.
+   * So, latch for check and set flashback connection is required */
+
+  pthread_mutex_lock (&conn_mutex);
+
+  if (flashback_is_duplicated_request)
+    {
+      /* er_set() */
+      return ER_FLASHBACK_DUPLICATED_REQUEST;
+    }
+
   flashback_Current_conn = thread_p->conn_entry;
   flashback_Current_conn->in_flashback = true;
   flashback_In_progress = true;
+
+  pthread_mutex_unlock (&conn_mutex);
 
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
 
@@ -148,6 +151,8 @@ flashback_initialize (THREAD_ENTRY * thread_p)
   flashback_Threshold_to_remove_archive = 0;
   flashback_Last_request_done_time = -1;
   flashback_Is_active = false;
+
+  return NO_ERROR;
 }
 
 /*

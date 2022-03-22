@@ -109,8 +109,7 @@ typedef struct flashback_summary_context
 extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
 extern void flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
 
-extern bool flashback_is_duplicated_request (THREAD_ENTRY * thread_p);
-extern void flashback_initialize (THREAD_ENTRY * thread_p);
+extern int flashback_initialize (THREAD_ENTRY * thread_p);
 
 extern void flashback_lock_request ();
 extern void flashback_unlock_request ();
