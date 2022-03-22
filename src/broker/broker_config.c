@@ -1160,7 +1160,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_CONN_WAIT_TIMEOUT",
-			DEFAULT_SHARD_PROXY_CONN_WAIT_TIMEOUT, &lineno);
+		      DEFAULT_SHARD_PROXY_CONN_WAIT_TIMEOUT, &lineno);
       strncpy_bufsize (time_str, s);
       br_info[num_brs].proxy_conn_wait_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].proxy_conn_wait_timeout < 0)
@@ -1408,7 +1408,6 @@ clear_conf_cache_entry (int cid)
 int
 broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 		    char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file, char *admin_err_msg)
-
 {
   int err = 0;
   char file_name[BROKER_PATH_MAX], file_being_dealt_with[BROKER_PATH_MAX];
@@ -1480,6 +1479,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
 
   return err;
 }
+
 /*
  * broker_config_dump - print out current broker configurations
  *   return: none
