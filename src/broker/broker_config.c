@@ -1425,9 +1425,9 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
     {
       memset (&br_conf_info, 0, sizeof (br_conf_info));
       if (get_cubrid_file (FID_CUBRID_BROKER_CONF, default_conf_file_path, BROKER_PATH_MAX) != NULL)
-        {
+	{
 	  basename_r (default_conf_file_path, file_name, BROKER_PATH_MAX);
-        }
+	}
       is_first_br_conf_read = false;
     }
 
