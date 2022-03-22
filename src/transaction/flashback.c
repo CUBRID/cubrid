@@ -70,6 +70,8 @@ static std::atomic_bool flashback_In_progress = false;  // the status value that
 
 static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry for a flashback requests
 
+static pthread_mutex_t flashback_Conn_lock = PTHREAD_MUTEX_INITIALIZER;
+
 /*
  * flashback_is_duplicated_request - check if the caller is duplicated request for flashback
  *
@@ -125,16 +127,16 @@ flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
 int
 flashback_initialize (THREAD_ENTRY * thread_p)
 {
-  static pthread_mutex_t conn_mutex = PTHREAD_MUTEX_INITIALIZER;
-
   /* If multiple requests come at the same time,
    * they all can be treated as non-duplicate requests.
    * So, latch for check and set flashback connection is required */
 
-  pthread_mutex_lock (&conn_mutex);
+  pthread_mutex_lock (&flashback_Conn_lock);
 
   if (flashback_is_duplicated_request (thread_p))
     {
+      pthread_mutex_unlock (&flashback_Conn_lock);
+
       /* er_set() */
       return ER_FLASHBACK_DUPLICATED_REQUEST;
     }
@@ -143,7 +145,7 @@ flashback_initialize (THREAD_ENTRY * thread_p)
   flashback_Current_conn->in_flashback = true;
   flashback_In_progress = true;
 
-  pthread_mutex_unlock (&conn_mutex);
+  pthread_mutex_unlock (&flashback_Conn_lock);
 
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
 
