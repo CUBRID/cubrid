@@ -133,7 +133,7 @@ flashback_initialize (THREAD_ENTRY * thread_p)
 
   pthread_mutex_lock (&conn_mutex);
 
-  if (flashback_is_duplicated_request)
+  if (flashback_is_duplicated_request (thread_p))
     {
       /* er_set() */
       return ER_FLASHBACK_DUPLICATED_REQUEST;
