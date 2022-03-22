@@ -78,6 +78,9 @@ class test_conn
 
     ~test_conn ()
     {
+//      std::cout << "m_request_count = " << m_request_count << std::endl;
+//      std::cout << "m_response_count = " << m_response_count << std::endl;
+//      std::cout << "m_handle_count = " << m_handle_count << std::endl;
       REQUIRE (m_request_count == m_response_count);
       REQUIRE (m_request_count == m_handle_count);
     }
@@ -98,9 +101,11 @@ class test_conn
 template <size_t T_CONN_COUNT>
 struct test_env
 {
+  std::atomic<unsigned int> m_rsn_gen = 0;
   test_thread_init_final m_thread_init_final;   // only to initialize/finalize cubthread
   std::array<test_conn, T_CONN_COUNT> m_conns;
-  std::atomic<unsigned int> m_rsn_gen = 0;
+  // responder must be destroyed before connections
+  // because responder handles connections upon its dtor
   server_request_responder<test_conn> m_rrh;
 
   void simulate_request (size_t conn_index)

@@ -63,20 +63,54 @@ class server_request_responder
     void async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp, handler_func_t &&a_func);
 
     // tests if there are in-flight requests being processed for the connection
-    bool is_idle_for_connection (const connection_t *connection);
+    //bool is_idle_for_connection (const connection_t *connection);
+    void wait_connection_to_become_idle (const connection_t *connection);
 
   private:
-    void async_execute (task *a_task);
+    inline void async_execute (task *a_task);
 
-    void new_task (const connection_t *connection_ptr);
-    void retire_task (const connection_t *connection_ptr);
+    inline void new_task (const connection_t *connection_ptr);
+    inline void retire_task (const connection_t *connection_ptr);
 
   private:
     std::unique_ptr<cubthread::system_worker_entry_manager> m_threads_context_manager;
     cubthread::entry_workpool *m_threads = nullptr;
 
+    /* monitor executing tasks
+     * because the behavior of the thread pool - when it itself is requested to terminate - like, upon
+     * destruction - is to discard tasks still to be executed but not yet started;
+     * this mechanism allows to ensure that all dispatched tasks are waited upon for execution and termination
+     *
+     * it is needed to have this bookkeeping on a per-connection basis because connection can be created and
+     * dropped on-the-fly - like, when a passive transaction server come/goes online/offline
+     *
+     * the map is an ok'ish container given that the number of keys (connections) is relatively stable - ie
+     * it changes but with a low frequency
+     * */
+    struct connection_executing_task_type
+    {
+      int n_count;
+      std::condition_variable m_cv;
+
+      connection_executing_task_type ()
+	: n_count { 0 }
+      {
+      }
+
+      connection_executing_task_type (const connection_executing_task_type &) = delete;
+      connection_executing_task_type (connection_executing_task_type &&) = delete;
+
+      connection_executing_task_type &operator = (const connection_executing_task_type &) = delete;
+      connection_executing_task_type &operator = (connection_executing_task_type &&) = delete;
+
+      ~connection_executing_task_type ()
+      {
+	assert (n_count == 0);
+      }
+    };
+
     std::mutex m_executing_tasks_mtx;
-    std::map<const connection_t *, int> m_executing_tasks;
+    std::map<const connection_t *, connection_executing_task_type> m_executing_tasks;
 };
 
 template<typename T_CONN>
@@ -125,14 +159,13 @@ server_request_responder<T_CONN>::server_request_responder ()
 template<typename T_CONN>
 server_request_responder<T_CONN>::~server_request_responder ()
 {
-  {
-    std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
-    for (const auto &executing_task_pair: m_executing_tasks)
-      {
-	assert (executing_task_pair.second == 0);
-      }
-  }
+  while (!m_executing_tasks.empty ())
+    {
+      const auto first_connection_it = m_executing_tasks.begin ();
+      wait_connection_to_become_idle (first_connection_it->first);
+    }
   cubthread::get_manager ()->destroy_worker_pool (m_threads);
+  assert (m_threads == nullptr);
 }
 
 template<typename T_CONN>
@@ -156,35 +189,72 @@ void
 server_request_responder<T_CONN>::new_task (const connection_t *connection_ptr)
 {
   std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
-  int &executing_task_for_connection = m_executing_tasks[connection_ptr];
-  ++executing_task_for_connection;
+  connection_executing_task_type &executing_task_for_connection = m_executing_tasks[connection_ptr];
+  ++executing_task_for_connection.n_count;
 }
 
 template<typename T_CONN>
 void
 server_request_responder<T_CONN>::retire_task (const connection_t *connection_ptr)
 {
-  std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
-  int &executing_task_for_connection = m_executing_tasks[connection_ptr];
-  --executing_task_for_connection;
-  assert (executing_task_for_connection >= 0);
+  std::condition_variable *cv = nullptr;
+  {
+    std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
+    connection_executing_task_type &executing_task_for_connection = m_executing_tasks[connection_ptr];
+    --executing_task_for_connection.n_count;
+    assert (executing_task_for_connection.n_count >= 0);
+    if (executing_task_for_connection.n_count == 0)
+      {
+	cv = &executing_task_for_connection.m_cv;
+      }
+  }
+
+  // very slight posssbility for a race condition/dangling pointer here
+  if (cv != nullptr)
+    {
+      cv->notify_one ();
+    }
 }
 
 template<typename T_CONN>
-bool
-server_request_responder<T_CONN>::is_idle_for_connection (const connection_t *connection)
+void
+server_request_responder<T_CONN>::wait_connection_to_become_idle (const connection_t *connection_ptr)
 {
-  std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
-  const auto find_it = m_executing_tasks.find (connection);
-  if (find_it == m_executing_tasks.cend ())
+  constexpr std::chrono::milliseconds millis_50 { 50 };
+
+  std::unique_lock<std::mutex> ulock { m_executing_tasks_mtx };
+  auto found_it = m_executing_tasks.find (connection_ptr);
+  if (found_it != m_executing_tasks.end ())
     {
-      return true;
-    }
-  else
-    {
-      return find_it->second == 0;
+      //connection_executing_task_type &executing_task_for_connection = m_executing_tasks[connection_ptr];
+      connection_executing_task_type &executing_task_for_connection = (*found_it).second;
+      while (true)
+	{
+	  if (executing_task_for_connection.m_cv.wait_for (ulock, millis_50,
+	      [&executing_task_for_connection] { return (executing_task_for_connection.n_count == 0); }))
+	    {
+	      m_executing_tasks.erase (found_it);
+	      break;
+	    }
+	}
     }
 }
+
+//template<typename T_CONN>
+//bool
+//server_request_responder<T_CONN>::is_idle_for_connection (const connection_t *connection)
+//{
+//  std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
+//  const auto find_it = m_executing_tasks.find (connection);
+//  if (find_it == m_executing_tasks.cend ())
+//    {
+//      return true;
+//    }
+//  else
+//    {
+//      return find_it->second == 0;
+//    }
+//}
 
 //
 // server_request_responder::task implementation
@@ -217,6 +287,7 @@ void
 server_request_responder<T_CONN>::task::retire (void)
 {
   m_request_responder.retire_task (&m_conn_reference);
+  // will self delete
   this->cubthread::entry_task::retire ();
 }
 

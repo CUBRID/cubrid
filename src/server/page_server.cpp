@@ -113,17 +113,18 @@ page_server::connection_handler::~connection_handler ()
   m_conn->stop_incoming_communication_thread ();
 
   // wait async responder to finish processing in-flight requests
-  int wait_count = 0;
-  while (!m_ps.get_responder ().is_idle_for_connection (m_conn.get ()))
-    {
-      ++wait_count;
-      if (wait_count > 100)
-	{
-	  assert (false);
-	  break;
-	}
-      std::this_thread::sleep_for (std::chrono::milliseconds (10));
-    }
+  m_ps.get_responder ().wait_connection_to_become_idle (m_conn.get ());
+//  int wait_count = 0;
+//  while (!m_ps.get_responder ().is_idle_for_connection (m_conn.get ()))
+//    {
+//      ++wait_count;
+//      if (wait_count > 100)
+//	{
+//	  assert (false);
+//	  break;
+//	}
+//      std::this_thread::sleep_for (std::chrono::milliseconds (10));
+//    }
 
   m_conn->stop_outgoing_communication_thread ();
 }
