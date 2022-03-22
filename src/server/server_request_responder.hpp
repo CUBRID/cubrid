@@ -63,7 +63,6 @@ class server_request_responder
     void async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp, handler_func_t &&a_func);
 
     // tests if there are in-flight requests being processed for the connection
-    //bool is_idle_for_connection (const connection_t *connection);
     void wait_connection_to_become_idle (const connection_t *connection);
 
   private:
@@ -89,9 +88,6 @@ class server_request_responder
      * */
     struct connection_executing_task_type
     {
-      int n_count;
-      std::condition_variable m_cv;
-
       connection_executing_task_type ()
 	: n_count { 0 }
       {
@@ -107,6 +103,9 @@ class server_request_responder
       {
 	assert (n_count == 0);
       }
+
+      int n_count;
+      std::condition_variable m_cv;
     };
 
     std::mutex m_executing_tasks_mtx;
@@ -197,7 +196,6 @@ template<typename T_CONN>
 void
 server_request_responder<T_CONN>::retire_task (const connection_t *connection_ptr)
 {
-  std::condition_variable *cv = nullptr;
   {
     std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
     connection_executing_task_type &executing_task_for_connection = m_executing_tasks[connection_ptr];
@@ -205,32 +203,28 @@ server_request_responder<T_CONN>::retire_task (const connection_t *connection_pt
     assert (executing_task_for_connection.n_count >= 0);
     if (executing_task_for_connection.n_count == 0)
       {
-	cv = &executing_task_for_connection.m_cv;
+	// notify from under the lock to avoid possibility of a race condition with the
+	// connection being waited to become idle (see corresponding function) which also - if
+	// successful - removes the entry from the container
+	executing_task_for_connection.m_cv.notify_one ();
       }
   }
-
-  // very slight posssbility for a race condition/dangling pointer here
-  if (cv != nullptr)
-    {
-      cv->notify_one ();
-    }
 }
 
 template<typename T_CONN>
 void
 server_request_responder<T_CONN>::wait_connection_to_become_idle (const connection_t *connection_ptr)
 {
-  constexpr std::chrono::milliseconds millis_50 { 50 };
+  constexpr std::chrono::milliseconds millis_20 { 20 };
 
   std::unique_lock<std::mutex> ulock { m_executing_tasks_mtx };
   auto found_it = m_executing_tasks.find (connection_ptr);
   if (found_it != m_executing_tasks.end ())
     {
-      //connection_executing_task_type &executing_task_for_connection = m_executing_tasks[connection_ptr];
       connection_executing_task_type &executing_task_for_connection = (*found_it).second;
       while (true)
 	{
-	  if (executing_task_for_connection.m_cv.wait_for (ulock, millis_50,
+	  if (executing_task_for_connection.m_cv.wait_for (ulock, millis_20,
 	      [&executing_task_for_connection] { return (executing_task_for_connection.n_count == 0); }))
 	    {
 	      m_executing_tasks.erase (found_it);
@@ -240,30 +234,13 @@ server_request_responder<T_CONN>::wait_connection_to_become_idle (const connecti
     }
 }
 
-//template<typename T_CONN>
-//bool
-//server_request_responder<T_CONN>::is_idle_for_connection (const connection_t *connection)
-//{
-//  std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
-//  const auto find_it = m_executing_tasks.find (connection);
-//  if (find_it == m_executing_tasks.cend ())
-//    {
-//      return true;
-//    }
-//  else
-//    {
-//      return find_it->second == 0;
-//    }
-//}
-
 //
 // server_request_responder::task implementation
 //
 
 template<typename T_CONN>
 server_request_responder<T_CONN>::task::task (server_request_responder &request_responder,
-    connection_t &a_conn_ref, sequenced_payload_t &&a_sp,
-    handler_func_t &&a_func)
+    connection_t &a_conn_ref, sequenced_payload_t &&a_sp, handler_func_t &&a_func)
   : m_request_responder { request_responder }
   , m_conn_reference (a_conn_ref)
   , m_sequenced_payload (std::move (a_sp))

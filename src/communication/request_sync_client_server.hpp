@@ -98,9 +98,6 @@ namespace cubcomm
       const T_INCOMING_MSG_ID m_incoming_response_msgid;
 
       // TODO: sequence number generator and response broker are not needed on transaction server
-      // could be injected;
-      // TODO: at the very least, a ctor param to "initialize responses" can be supplied which dictates
-      // if these are constructed/used
       response_sequence_number_generator m_rsn_generator;
       response_broker<T_PAYLOAD, css_error_code> m_response_broker;
   };
@@ -206,11 +203,11 @@ namespace cubcomm
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::~request_sync_client_server ()
   {
-    // the stop-thread & dtor sequence must work from both points of view:
+    // the stop-thread & dtor sequence must work for both usage scenarios:
     //  - active/passive transaction server
     //  - page server
 
-    // by now, all threads should have been stopped
+    // by now, all processing and threads should have been stopped
 
     // terminate sending messages
     m_queue_autosend.reset (nullptr);
