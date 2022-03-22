@@ -114,7 +114,7 @@ static int check_port_number (T_BROKER_INFO * br_info, int num_brs);
 static int get_conf_value (const char *string, T_CONF_TABLE * conf_table);
 static const char *get_conf_string (int value, T_CONF_TABLE * conf_table);
 static void read_conf_cache (int cid, bool * acl, int *num_br, int *shm_id, char *log_file, T_BROKER_INFO * br_info);
-static void write_conf_cache (char *file, bool *acl_flag, int *num_broker, int *shm_id, char *alog,
+static void write_conf_cache (char *file, bool * acl_flag, int *num_broker, int *shm_id, char *alog,
 			      T_BROKER_INFO * br_info, time_t bf_mtime);
 static void clear_conf_cache_entry (int cid);
 
