@@ -45,20 +45,6 @@ namespace cubcomm
   {
   }
 
-  server_channel::server_channel (server_channel &&comm)
-    : channel (std::move (comm))
-  {
-  }
-
-  server_channel &server_channel::operator= (server_channel &&comm)
-  {
-    assert (!is_connection_alive ());
-    this->~server_channel ();
-
-    new (this) server_channel (std::forward <server_channel> (comm));
-    return *this;
-  }
-
   css_error_code server_channel::connect (const char *hostname, int port, css_command_type cmd_type)
   {
     unsigned short m_request_id;

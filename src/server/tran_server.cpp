@@ -307,6 +307,8 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
   // Transaction server will use message specific error handlers.
   // Implementation will assert that an error handler is present if needed.
 
+  // NOTE: only the base class part (cubcomm::server) of a cubcomm::server_server instance is
+  // moved as argument below
   m_page_server_conn_vec.emplace_back (
 	  new page_server_conn_t (std::move (srv_chn), get_request_handlers (), tran_to_page_request::RESPOND,
 				  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE,
