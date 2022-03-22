@@ -1452,7 +1452,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
 
   for (int cid = 0; cid < MAX_NUM_CACHED_BROKER_FILES; cid++)
     {
-      if (br_conf_info[cid].conf_file && IS_FILE_MATCH_CONF_CACHE(cid, file_being_dealt_with))
+      if (br_conf_info[cid].conf_file && IS_FILE_MATCH_CONF_CACHE (cid, file_being_dealt_with))
 	{
 	  if (br_conf_info[cid].last_modified == stat_buf.st_mtime)
 	    {
