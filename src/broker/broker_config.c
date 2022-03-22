@@ -92,14 +92,15 @@ struct t_conf_table
 };
 
 typedef struct br_conf_info T_CONF_INFO;
-struct br_conf_info {
+struct br_conf_info
+{
   int num_broker;
   int acl_flag;
   int br_shm_id;
   char *conf_file;
   char *admin_log_file;
   time_t last_modified;
-  T_BROKER_INFO br_info [MAX_BROKER_NUM];
+  T_BROKER_INFO br_info[MAX_BROKER_NUM];
 };
 
 enum
@@ -112,8 +113,8 @@ static void conf_file_has_been_loaded (const char *conf_path);
 static int check_port_number (T_BROKER_INFO * br_info, int num_brs);
 static int get_conf_value (const char *string, T_CONF_TABLE * conf_table);
 static const char *get_conf_string (int value, T_CONF_TABLE * conf_table);
-static void read_conf_cache (int cid, bool *acl, int *num_br, int *shm_id, char *log_file, T_BROKER_INFO *br_info);
-static void write_conf_cache (char *file, bool * acl_flag, int *num_broker, int *shm_id, char *alog,
+static void read_conf_cache (int cid, bool * acl, int *num_br, int *shm_id, char *log_file, T_BROKER_INFO * br_info);
+static void write_conf_cache (char *file, bool *acl_flag, int *num_broker, int *shm_id, char *alog,
 			      T_BROKER_INFO * br_info, time_t bf_mtime);
 static void clear_conf_cache_entry (int cid);
 
@@ -187,7 +188,7 @@ static const char *tbl_conf_err_msg[] = {
 };
 
 static bool is_first_br_conf_read = true;
-static char default_conf_file_path [BROKER_PATH_MAX];
+static char default_conf_file_path[BROKER_PATH_MAX];
 static T_CONF_INFO br_conf_info[MAX_NUM_CACHED_BROKER_FILES];
 
 /* conf files that have been loaded */
@@ -682,8 +683,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      INI_GETSTR_CHK (s, ini, sec_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT",
-                                             DEFAULT_SERVER_HARD_LIMIT, &lineno);
+      INI_GETSTR_CHK (s, ini, sec_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT", DEFAULT_SERVER_HARD_LIMIT, &lineno);
       strncpy_bufsize (size_str, s);
       br_info[num_brs].appl_server_hard_limit = (int) ut_size_string_to_kbyte (size_str, "M");
       if (br_info[num_brs].appl_server_hard_limit <= 0)
@@ -1160,7 +1160,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_CONN_WAIT_TIMEOUT",
-                                             DEFAULT_SHARD_PROXY_CONN_WAIT_TIMEOUT, &lineno);
+			DEFAULT_SHARD_PROXY_CONN_WAIT_TIMEOUT, &lineno);
       strncpy_bufsize (time_str, s);
       br_info[num_brs].proxy_conn_wait_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].proxy_conn_wait_timeout < 0)
@@ -1326,7 +1326,7 @@ write_conf_cache (char *broker_conf_file, bool * acl_flag, int *num_broker, int 
     {
       if (br_conf_info[i].conf_file == NULL)
 	{
-	  br_conf_info[i].conf_file = strdup(broker_conf_file);
+	  br_conf_info[i].conf_file = strdup (broker_conf_file);
 	  br_conf_info[i].num_broker = *num_broker;
 	  br_conf_info[i].br_shm_id = *br_shm_id;
 	  br_conf_info[i].last_modified = br_conf_mtime;
@@ -1348,7 +1348,7 @@ write_conf_cache (char *broker_conf_file, bool * acl_flag, int *num_broker, int 
 }
 
 static void
-read_conf_cache (int cid, bool *acl_flag, int *num_broker, int *br_shm_id, char *logfile, T_BROKER_INFO *br_info)
+read_conf_cache (int cid, bool * acl_flag, int *num_broker, int *br_shm_id, char *logfile, T_BROKER_INFO * br_info)
 {
   if (cid < 0 || cid >= MAX_NUM_CACHED_BROKER_FILES || br_shm_id == NULL || br_info == NULL)
     {
