@@ -980,7 +980,7 @@ valid options:\n\
   -r, --remote-host-name      remote host name; display remote node's active log information \n\
   -a, --applied-info 	      display applied information; the -L option is required \n\
   -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
-  -p, --page=ID               page id; default : 0; the -L option is required \n\
+  -p, --page=ID               page id; the -L option is required; default : 0 \n\
   -v, --verbose               enable verbose status messages; default : disable\n\
   -i, --interval=S            print information every S secs\n
 
