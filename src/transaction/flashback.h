@@ -111,9 +111,6 @@ extern void flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEX
 
 extern int flashback_initialize (THREAD_ENTRY * thread_p);
 
-extern void flashback_lock_request ();
-extern void flashback_unlock_request ();
-
 extern LOG_PAGEID flashback_min_log_pageid_to_keep ();
 extern bool flashback_is_needed_to_keep_archive ();
 extern bool flashback_check_time_exceed_threshold ();
