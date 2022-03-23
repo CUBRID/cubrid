@@ -1415,6 +1415,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   srv_handle->num_q_result = 1;
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
+  srv_handle->total_tuple_count = INT_MAX;	// ODBC does not provide the number of query results, so set to int_max.
 
   if (do_commit_after_execute (*srv_handle))
     {
@@ -3075,11 +3076,7 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
-#if defined(CAS_FOR_CGW)
-  SQLLEN count;
-#else
   int count;
-#endif
   char *err_str = NULL;
 #if !defined(CAS_FOR_CGW)
   T_QUERY_RESULT *cur_result;
@@ -3091,17 +3088,7 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
       goto cursor_error;
     }
 #if defined(CAS_FOR_CGW)
-  err_code = cgw_get_row_count (srv_handle->cgw_handle->hstmt, &count);
-  if (err_code < 0)
-    {
-      err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
-      goto cursor_error;
-    }
-
-  if (count > INT_MAX)
-    {
-      count = INT_MAX;
-    }
+  count = srv_handle->total_tuple_count;
 #else
   cur_result = (T_QUERY_RESULT *) srv_handle->cur_result;
   if (cur_result == NULL)
@@ -5825,13 +5812,6 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	  break;
 	}
 
-      err_code = cgw_get_row_count (srv_handle->cgw_handle->hstmt, &total_row_count);
-      if (err_code < 0)
-	{
-	  err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
-	  goto fetch_error;
-	}
-
       err_code = cgw_cur_tuple (net_buf, first_col_binding, cursor_pos);
       if (err_code < 0)
 	{
@@ -5859,16 +5839,6 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       net_buf_cp_byte (net_buf, fetch_end_flag);
     }
 
-  if (total_row_count > INT_MAX)
-    {
-      srv_handle->total_tuple_count = INT_MAX;
-    }
-  else
-    {
-      srv_handle->total_tuple_count = (int) total_row_count;
-    }
-  net_buf_overwrite_int (net_buf, srv_handle->total_row_count_msg_offset, srv_handle->total_tuple_count);
-  net_buf_overwrite_int (net_buf, srv_handle->res_tuple_count_msg_offset, srv_handle->total_tuple_count);
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
 
   srv_handle->cursor_pos = cursor_pos;
