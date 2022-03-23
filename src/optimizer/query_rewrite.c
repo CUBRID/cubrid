@@ -7851,7 +7851,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 		{
 		  (void) mq_copypush_sargable_terms (parser, node, spec);
 		}
-	      point_list = parser_append_previous_node (pt_point (parser, spec), point_list);
+	      else
+		{
+		  point_list = parser_append_previous_node (pt_point (parser, spec), point_list);
+		}
 	      spec = spec->next;
 	    }
 	  /* reduce unnecessary tables */
