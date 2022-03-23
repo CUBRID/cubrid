@@ -67,6 +67,85 @@ static volatile int flashback_Threshold_to_remove_archive = 0;	/* If the differe
 static std::atomic_bool flashback_Is_active = false;	// the status value that the flashback is processing the request
 // *INDENT-ON*
 
+static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry for a flashback request
+
+static pthread_mutex_t flashback_Conn_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/*
+ * flashback_is_duplicated_request - check if the caller is duplicated request for flashback
+ *
+ * return   : duplicated or not
+ */
+
+static bool
+flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
+{
+  /* flashback_Current_conn indicates conn_entry in thread_p, and conn_entry can be reused by request handler.
+   * So, status in flashback_Current_conn can be overwritten. */
+
+  if (flashback_Current_conn == NULL)
+    {
+      /* previous flashback set flashback_Current_conn to NULL properly. (exited well) */
+      return false;
+    }
+  else
+    {
+      if (flashback_Current_conn->in_flashback == true)
+	{
+	  /* previous flashback is still in progress */
+	  return true;
+	}
+      else
+	{
+	  /* - flashback_Current_conn is overwritten with new connection, so in_flashback value is initialized to false.
+	   * - previous flashback connection has been exited abnormally. */
+
+	  flashback_reset ();
+
+	  return false;
+	}
+    }
+}
+
+/*
+ * flashback_initialize - check request if is duplicated, 
+ *                        then initialize variables and connection when flashback request is started
+ */
+
+int
+flashback_initialize (THREAD_ENTRY * thread_p)
+{
+  /* If multiple requests come at the same time,
+   * they all can be treated as non-duplicate requests.
+   * So, latch for check and set flashback connection is required */
+
+  pthread_mutex_lock (&flashback_Conn_lock);
+
+  if (flashback_is_duplicated_request (thread_p))
+    {
+      pthread_mutex_unlock (&flashback_Conn_lock);
+
+      /* er_set() */
+      return ER_FLASHBACK_DUPLICATED_REQUEST;
+    }
+
+  assert (flashback_Current_conn == NULL);
+
+  flashback_Current_conn = thread_p->conn_entry;
+  flashback_Current_conn->in_flashback = true;
+
+  pthread_mutex_unlock (&flashback_Conn_lock);
+
+  flashback_Min_log_pageid = NULL_LOG_PAGEID;
+
+  /* variables below may be deprecated */
+  flashback_Threshold_to_remove_archive = 0;
+  flashback_Last_request_done_time = -1;
+  flashback_Is_active = false;
+
+  return NO_ERROR;
+}
+
 /*
  * flashback_set_min_log_pageid_to_keep - set flashback_Min_log_pageid
  */
@@ -149,7 +228,7 @@ flashback_is_needed_to_keep_archive ()
 
 
 /*
- * flashback_reset_variables - reset flashback global variables
+ * flashback_reset - reset flashback global variables
  *
  */
 
@@ -160,6 +239,9 @@ flashback_reset ()
   flashback_Threshold_to_remove_archive = 0;
   flashback_Last_request_done_time = -1;
   flashback_Is_active = false;
+
+  flashback_Current_conn->in_flashback = false;
+  flashback_Current_conn = NULL;
 }
 
 /*

@@ -1707,8 +1707,9 @@
 #define ER_FLASHBACK_SCHEMA_CHANGED                 -1336
 #define ER_FLASHBACK_LOG_NOT_EXIST                  -1337
 #define ER_FLASHBACK_TIMEOUT                        -1338
+#define ER_FLASHBACK_DUPLICATED_REQUEST             -1339
 
-#define ER_LAST_ERROR                               -1339
+#define ER_LAST_ERROR                               -1340
 /*
  * CAUTION!
  *

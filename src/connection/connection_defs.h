@@ -431,6 +431,7 @@ struct css_conn_entry
   bool in_transaction;		/* this client is in-transaction or out-of- */
   bool reset_on_commit;		/* set reset_on_commit when commit/abort */
 
+  bool in_flashback;		/* this client is in progress of flashback */
 #if defined(SERVER_MODE)
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;
