@@ -3104,6 +3104,27 @@ parser_append_node (PT_NODE * node, PT_NODE * list)
 }
 
 /*
+ * parser_append_previous_node() -
+ *   return:
+ *   node(in/out):
+ *   list(in):
+ */
+PT_NODE *
+parser_append_previous_node (PT_NODE * node, PT_NODE * list)
+{
+  if (list)
+    {
+      node->next = list;
+      list = node;
+    }
+  else
+    {
+      list = node;
+    }
+  return list;
+}
+
+/*
  * parser_append_node_or() -
  *   return:
  *   node(in/out):
