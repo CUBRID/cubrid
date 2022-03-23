@@ -163,6 +163,44 @@ db_find_class_with_purpose (const char *name, bool for_update)
 }
 
 /*
+ * db_find_synonym()- This function search for a synonym in the database
+ *     with a given name
+ * return : synonym object
+ * name(in): synonym name
+ */
+DB_OBJECT *
+db_find_synonym (const char *name)
+{
+  DB_OBJECT *retval;
+
+  CHECK_CONNECT_NULL ();
+  CHECK_1ARG_NULL (name);
+
+  retval = sm_find_synonym (name);
+
+  return retval;
+}
+
+/*
+ * db_get_synonym_target_name() - get target_name.
+ *   return: target_name
+ *   synonym(in): synonym object
+ */
+const char *
+db_get_synonym_target_name (MOP synonym)
+{
+  DB_OBJECT *retval;
+  const char *target_name = NULL;
+
+  CHECK_CONNECT_NULL ();
+  CHECK_1ARG_NULL (synonym);
+
+  target_name = sm_get_synonym_target_name (synonym);
+
+  return target_name;
+}
+
+/*
  * db_fetch_all_objects() - This function fetches all objects fo given class
  *    for given purpose.
  * return : list of objects

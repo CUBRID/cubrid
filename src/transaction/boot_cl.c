@@ -4129,6 +4129,12 @@ boot_define_synonym (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "target_unique_name", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = smt_add_attribute (def, "target_name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
     {
@@ -4155,6 +4161,12 @@ boot_define_synonym (MOP class_mop)
 
   /* add constraints */
   error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL, primary_key_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "target_unique_name", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;

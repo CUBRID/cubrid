@@ -209,7 +209,6 @@ extern const OID oid_Null_oid;
 extern OID *oid_Root_class_oid;
 extern OID *oid_Serial_class_oid;
 extern OID *oid_User_class_oid;
-extern OID *oid_Synonym_class_oid;
 extern PAGEID oid_Next_tempid;
 
 extern void oid_set_root (const OID * oid);
@@ -223,6 +222,8 @@ extern void oid_set_partition (const OID * oid);
 extern bool oid_is_partition (const OID * oid);
 extern void oid_get_partition_oid (OID * oid);
 
+extern void oid_get_synonym_oid (OID * oid);
+
 extern bool oid_is_db_class (const OID * oid);
 extern bool oid_is_db_attribute (const OID * oid);
 
@@ -235,5 +236,4 @@ extern const char *oid_get_cached_class_name (const int cache_id);
 extern bool oid_is_cached_class_oid (const OID * class_oid);
 extern OID *oid_get_rep_read_tran_oid (void);
 extern bool oid_is_system_class (const OID * class_oid);
-extern OID *oid_get_synonym_oid (void);
 #endif /* _OID_H_ */

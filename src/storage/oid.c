@@ -63,7 +63,7 @@ static OID oid_Authorization_class = { 0, 0, 0 };
 static OID oid_Authorizations_class = { 0, 0, 0 };
 static OID oid_DB_root_class = { 0, 0, 0 };
 static OID oid_DBServer_class = { 0, 0, 0 };
-static OID oid_Synonym_class = { 0, 0, 0 };
+static OID oid_Synonym_class = OID_INITIALIZER;
 
 static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };
 
@@ -212,6 +212,18 @@ void
 oid_get_partition_oid (OID * oid)
 {
   COPY_OID (oid, oid_Partition_class_oid);
+}
+
+/*
+ * oid_get_serial_oid () - Get synonym class OID
+ *
+ * return    : Void.
+ * oid (out) : Synonym class OID.
+ */
+void
+oid_get_synonym_oid (OID * oid)
+{
+  COPY_OID (oid, oid_Synonym_class_oid);
 }
 
 /*
@@ -384,10 +396,4 @@ oid_is_system_class (const OID * class_oid)
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
   return oid_is_cached_class_oid (class_oid);
-}
-
-OID *
-oid_get_synonym_oid (void)
-{
-  return oid_Cache[OID_CACHE_SYNONYM_CLASS_ID].oid;
 }

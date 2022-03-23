@@ -415,16 +415,6 @@ static CT_ATTR ct_partition_atts[] = {
   {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
-static CT_ATTR ct_synonym_atts[] = {
-  {"unique_name", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"name", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"owner", NULL_ATTRID, DB_TYPE_OBJECT},
-  {"is_public", NULL_ATTRID, DB_TYPE_INTEGER},
-  {"target_name", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"target_owner", NULL_ATTRID, DB_TYPE_OBJECT},
-  {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
-};
-
 CT_CLASS ct_Class = {
   CT_CLASS_NAME,
   OID_INITIALIZER,
@@ -516,13 +506,6 @@ CT_CLASS ct_Indexkey = {
   ct_indexkey_atts
 };
 
-CT_CLASS ct_Synonym = {
-  CT_SYNONYM_NAME,
-  OID_INITIALIZER,
-  (sizeof (ct_synonym_atts) / sizeof (ct_synonym_atts[0])),
-  ct_synonym_atts
-};
-
 CT_CLASS *ct_Classes[] = {
   &ct_Class,
   &ct_Attribute,
@@ -535,7 +518,6 @@ CT_CLASS *ct_Classes[] = {
   &ct_Index,
   &ct_Indexkey,
   &ct_Partition,
-  &ct_Synonym,
   NULL
 };
 

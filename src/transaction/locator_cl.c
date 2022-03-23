@@ -2997,7 +2997,6 @@ static LC_FIND_CLASSNAME
 locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_oid, LOCK lock)
 {
   LC_FIND_CLASSNAME found;
-  char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error_code;
 
   assert (classname != NULL);

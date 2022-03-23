@@ -223,7 +223,6 @@ extern CT_CLASS ct_Queryspec;
 extern CT_CLASS ct_Index;
 extern CT_CLASS ct_Indexkey;
 extern CT_CLASS ct_Partition;
-extern CT_CLASS ct_Synonym;
 extern CT_CLASS *ct_Classes[];
 #endif /* !CS_MODE */
 

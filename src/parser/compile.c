@@ -567,7 +567,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto cleanup;
 	}
 
-      // PT_ERRORc (parser, statement, db_error_string (3));
+      PT_ERRORc (parser, statement, db_error_string (3));
     }
 
   /* free already assigned parser->lcks_classes if exist */
@@ -686,6 +686,8 @@ pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 int
 pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spec, LC_PREFETCH_FLAGS flags)
 {
+  MOP synonym_mop = NULL;
+  const char *class_name = NULL;
   int len = 0;
 
   if (lcks->num_classes >= lcks->allocated_count)
@@ -736,8 +738,19 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
       lcks->allocated_count++;
     }
 
+  class_name = spec->info.spec.entity_name->info.name.original;
+  synonym_mop = db_find_synonym (class_name);
+  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND || er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+    {
+      er_clear ();
+    }
+  if (synonym_mop != NULL)
+    {
+      class_name = db_get_synonym_target_name (synonym_mop);
+    }
+
   /* need to lowercase the class name so that the lock manager can find it. */
-  len = (int) strlen (spec->info.spec.entity_name->info.name.original);
+  len = (int) strlen (class_name);
   /* parser->lcks_classes[n] will be freed at parser_free_parser() */
   lcks->classes[lcks->num_classes] = (char *) calloc (1, len + 1);
   if (lcks->classes[lcks->num_classes] == NULL)
@@ -746,7 +759,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
       return MSGCAT_RUNTIME_OUT_OF_MEMORY;
     }
 
-  sm_downcase_name (spec->info.spec.entity_name->info.name.original, lcks->classes[lcks->num_classes], len + 1);
+  sm_downcase_name (class_name, lcks->classes[lcks->num_classes], len + 1);\
 
   if (spec->info.spec.only_all == PT_ONLY)
     {

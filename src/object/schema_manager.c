@@ -5337,76 +5337,24 @@ sm_class_constraints (MOP classop)
 MOP
 sm_find_class (const char *name)
 {
-  MOP class_mop = NULL;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
+  MOP class_mop = NULL;
+  MOP synonym_mop = NULL;
+  const char *target_name = NULL;
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
   class_mop = locator_find_class (realname);
-  if (!class_mop)
+  if (class_mop)
     {
-      MOP synonym_class_mop = NULL;
-      MOP synonym_mop = NULL;
-      DB_VALUE synonym_midxkey_val;
-      DB_VALUE target_name_val;
-      const char *target_name = NULL;
-      int error = NO_ERROR;
-      int save = 0;
+      return class_mop;
+    }
 
-      db_make_null (&synonym_midxkey_val);
-      db_make_null (&target_name_val);
-
-      synonym_class_mop = sm_find_class ("_db_synonym");
-      if (!synonym_class_mop)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  return NULL;
-	}
-
-      error = do_synonym_midxkey_key_generate (&synonym_midxkey_val, name);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return NULL;
-	}
-
-      AU_DISABLE (save);
-
-      synonym_mop = db_find_unique (synonym_class_mop, "name", &synonym_midxkey_val);
-      if (!synonym_mop)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  AU_ENABLE (save);
-	  return NULL;
-	}
-
-      error = db_get (synonym_mop, "target_name", &target_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  AU_ENABLE (save);
-	  return NULL;
-	}
-
-      AU_ENABLE (save);
-
-      target_name = db_get_string (&target_name_val);
-      if (!target_name)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  return NULL;
-	}
-
+  synonym_mop = sm_find_synonym (realname);
+  if (synonym_mop)
+    {
+      target_name = sm_get_synonym_target_name (synonym_mop);
       class_mop = locator_find_class (target_name);
-      if (!class_mop)
-	{
-	  class_mop = NULL;
-	}
-
-      if (class_mop)
-	{
-	  er_clear ();
-	}
     }
 
   return class_mop;
@@ -5424,80 +5372,104 @@ sm_find_class (const char *name)
 MOP
 sm_find_class_with_purpose (const char *name, bool for_update)
 {
-  MOP class_mop = NULL;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
+  MOP class_mop = NULL;
+  MOP synonym_mop = NULL;
+  const char *target_name = NULL;
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
   class_mop = locator_find_class_with_purpose (realname, for_update);
-  if (!class_mop)
+  if (class_mop)
     {
-      MOP synonym_class_mop = NULL;
-      MOP synonym_mop = NULL;
-      DB_VALUE synonym_midxkey_val;
-      DB_VALUE target_name_val;
-      const char *target_name = NULL;
-      const char *target_onwer_name = NULL;
-      int error = NO_ERROR;
-      int save = 0;
+      return class_mop;
+    }
 
-      db_make_null (&synonym_midxkey_val);
-      db_make_null (&target_name_val);
-
-      synonym_class_mop = sm_find_class ("_db_synonym");
-      if (!synonym_class_mop)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  return NULL;
-	}
-
-      error = do_synonym_midxkey_key_generate (&synonym_midxkey_val, name);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return NULL;
-	}
-
-      AU_DISABLE (save);
-
-      synonym_mop = db_find_unique (synonym_class_mop, "name", &synonym_midxkey_val);
-      if (!synonym_mop)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  AU_ENABLE (save);
-	  return NULL;
-	}
-
-      error = db_get (synonym_mop, "target_name", &target_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  AU_ENABLE (save);
-	  return NULL;
-	}
-
-      AU_ENABLE (save);
-
-      target_name = db_get_string (&target_name_val);
-      if (!target_name)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  return NULL;
-	}
-
+  synonym_mop = sm_find_synonym (realname);
+  if (synonym_mop)
+    {
+      target_name = sm_get_synonym_target_name (synonym_mop);
       class_mop = locator_find_class_with_purpose (target_name, for_update);
-      if (!class_mop)
-	{
-	  class_mop = NULL;
-	}
-
-      if (class_mop)
-	{
-	  er_clear ();
-	}
     }
 
   return class_mop;
+}
+
+/*
+ * sm_find_synonym() - find synonyms.
+ *   return: synonym object
+ *   name(in): synonym name
+ */
+MOP
+sm_find_synonym (const char *name)
+{
+  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  OID synonym_class_oid = OID_INITIALIZER;
+  MOP synonym_class_mop = NULL;
+  MOP synonym_mop = NULL;
+  DB_VALUE key_val;
+  int error = NO_ERROR;
+  int save = 0;
+
+  oid_get_synonym_oid (&synonym_class_oid);
+  if (OID_ISNULL (&synonym_class_oid))
+    {
+      /* May be NULL before the catalog class is created. */
+      return NULL;
+    }
+
+  synonym_class_mop = ws_mop (&synonym_class_oid, NULL);
+  if (synonym_class_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return NULL;
+    }
+
+  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  db_make_string (&key_val, realname);
+
+  AU_DISABLE (save);
+  synonym_mop = obj_find_unique (synonym_class_mop, "unique_name", &key_val, AU_FETCH_READ);
+  AU_ENABLE (save);
+  if (synonym_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	  ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
+	}
+      return NULL;
+    }
+
+  return synonym_mop;
+}
+
+/*
+ * sm_get_synonym_target_name() - get target_name.
+ *   return: target_name
+ *   synonym(in): synonym object
+ */
+const char *
+sm_get_synonym_target_name (MOP synonym)
+{
+  const char *target_name = NULL;
+  DB_VALUE value;
+  int save = 0;
+
+  if (synonym == NULL)
+    {
+      return NULL;
+    }
+
+  AU_DISABLE (save);
+  db_get (synonym, "target_unique_name", &value);
+  AU_ENABLE (save);
+
+  target_name = db_get_string (&value);
+  assert (target_name && target_name[0] != '\0');
+
+  return target_name;
 }
 
 /*

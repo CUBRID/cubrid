@@ -200,8 +200,7 @@ extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_find_class_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_serial_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_trigger_by_query (const char *name, char *buf, int buf_size);
+extern int do_find_synonym_by_query (const char *name, char *buf, int buf_size);
 
-extern int do_find_synonym_by_query (const char *name, char *buf, size_t buf_size);
-extern int do_synonym_midxkey_key_generate (DB_VALUE * value, const char *name);
 
 #endif /* _EXECUTE_STATEMENT_H_ */
