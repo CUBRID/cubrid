@@ -3105,9 +3105,9 @@ qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     {
       if (node->info.name.spec_id == info->spec->info.spec.id)
 	{
-          info->my_spec_cnt++;
-          info->my_spec_node = node;
-        }
+	  info->my_spec_cnt++;
+	  info->my_spec_node = node;
+	}
       else
 	{
 	  info->other_spec_cnt++;
@@ -3148,9 +3148,9 @@ qo_get_name_cnt_by_spec_without_oncond (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       if (node->info.name.spec_id == info->spec->info.spec.id)
 	{
-          info->my_spec_cnt++;
-          info->my_spec_node = node;
-        }
+	  info->my_spec_cnt++;
+	  info->my_spec_node = node;
+	}
       else
 	{
 	  info->other_spec_cnt++;
@@ -3229,7 +3229,7 @@ qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NO
 	    }
 	}
       /* const = col(my spec) */
-      else if(info2.my_spec_cnt == 1 && info2.other_spec_cnt == 0)
+      else if (info2.my_spec_cnt == 1 && info2.other_spec_cnt == 0)
 	{
 	  /* const */
 	  if (info1.my_spec_cnt == 0)
@@ -3290,7 +3290,7 @@ qo_reset_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query
   RESET_LOCATION_INFO locate_info;
 
   while (spec != NULL)
-   {
+    {
       curr_loc = spec->info.spec.location;
       after_loc = curr_loc - 1;
 
