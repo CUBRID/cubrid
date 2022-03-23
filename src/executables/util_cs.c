@@ -4922,6 +4922,12 @@ flashback (UTIL_FUNCTION_ARG * arg)
   is_detail = utility_get_option_bool_value (arg_map, FLASHBACK_DETAIL_S);
   is_oldest = utility_get_option_bool_value (arg_map, FLASHBACK_OLDEST_S);
 
+  if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
+      goto error_exit;
+    }
+
   /* create table list */
   /* class existence and classoid will be found at server side. if is checked at utility side, it needs addtional access to the server through locator */
   darray = da_create (num_tables, SM_MAX_IDENTIFIER_LENGTH);
@@ -5059,12 +5065,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
     }
 
   need_shutdown = true;
-
-  if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
-    {
-      fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
-      goto error_exit;
-    }
 
   oid_list = (OID *) malloc (sizeof (OID) * num_tables);
   if (oid_list == NULL)
