@@ -975,9 +975,9 @@ Anwendung: %1$s applyinfo [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
   -r, --remote-host-name      Remote-Hostnamen; aktiven Log-Information des Remoteknoten anzeigen\n\
-  -a, --applied-info          Übernommene Information anzeigen \n\
   -L, --copied-log-path=PFAD  Pfad der kopierten Logdatenträger; kopierte Loginformation anzeigen \n\
-  -p, --page=ID               Seiten-ID; Standard: 0\n\
+  -a, --applied-info          Übernommene Information anzeigen; Die Option -L ist erforderlich \n\
+  -p, --page=ID               Seiten-ID; Die Option -L ist erforderlich; Standard: 0\n\
   -v, --verbose               ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
   -i, --interval=S            Druckinformationen alle S secs\n
 

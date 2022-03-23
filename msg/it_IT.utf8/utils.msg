@@ -976,9 +976,9 @@ uso: %1$s applyinfo [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
   -r, --remote-host-name      nome dell'host remoto; visualizzare le informazioni di log attivo del nodo remote \n\
-  -a, --applied-info          visualizzare applied infomation \n\
   -L, --copied-log-path=PATH  path di volumi di registrazione copiate; informazioni del log copiate \n\
-  -p, --page=ID               page id; predefinito : 0\n\
+  -a, --applied-info          visualizzare applied infomation; l'opzione -L è richiesta \n\
+  -p, --page=ID               page id; l'opzione -L è richiesta; predefinito : 0\n\
   -v, --verbose               attivare i messaggi dettagliati di stato; predefinito : non attivo\n\
   -i, --interval=S            print information every S secs\n
 
