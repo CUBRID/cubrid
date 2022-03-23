@@ -25346,8 +25346,8 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (bts != NULL);
   assert (!VPID_ISNULL (&bts->C_vpid));
   assert (bts->C_page != NULL);
-  /* MRO and covering index optimization are not compatible with bts->need_count_only. */
-  assert (!BTS_NEED_COUNT_ONLY (bts) || (!BTS_IS_INDEX_MRO (bts) && !BTS_IS_INDEX_COVERED (bts)));
+  /* MRO optimization are not compatible with bts->need_count_only. */
+  assert (!BTS_NEED_COUNT_ONLY (bts) || !BTS_IS_INDEX_MRO (bts));
 
   /* Index skip scan optimization has an early out when a new key is found: */
   if (BTS_IS_INDEX_ISS (bts)

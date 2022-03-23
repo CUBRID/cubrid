@@ -170,4 +170,5 @@ extern int cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding,
 
 extern int cgw_endtran (SQLHDBC hdbc, int tran_type);
 extern SUPPORTED_DBMS_TYPE cgw_is_supported_dbms (char *dbms);
+extern void cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type);
 #endif /* _CAS_CGW_H_ */
