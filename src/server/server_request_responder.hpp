@@ -32,12 +32,17 @@ class server_request_responder
     //
     // T_CONN must be a request_sync_client_server specialization.
     //
-    // Use the async_execute functions to push a task on the server_request_responder.
+    // Usage:
+    //  - register a connection - this is usually done when a new server-server connection is established
+    //    with another peer
+    //  - Use the async_execute functions to push a task on the server_request_responder
+    //  - when the connection to the server-server connection to a peer server is about to be terminated,
+    //    first wait for the currently executing
     //
     // The task requires three components:
-    //	- the connection (request_sync_client_server instance) where to push the response.
-    //	- the request sequenced payload (that is moved into the task)
-    //	- the function that execute the request, consuming input payload and creating an output payload.
+    //  - the connection (request_sync_client_server instance) where to push the response.
+    //  - the request sequenced payload (that is moved into the task)
+    //  - the function that execute the request, consuming input payload and creating an output payload.
     // The response is handled automatically by the task.
     //
 
@@ -59,6 +64,8 @@ class server_request_responder
     server_request_responder &operator = (const server_request_responder &) = delete;
     server_request_responder &operator = (server_request_responder &&) = delete;
 
+    void register_connection (const connection_t *conn);
+
     // Create a task that executes handler function asynchronously and pushes the response on the given connection
     void async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp, handler_func_t &&a_func);
 
@@ -75,13 +82,19 @@ class server_request_responder
     std::unique_ptr<cubthread::system_worker_entry_manager> m_threads_context_manager;
     cubthread::entry_workpool *m_threads = nullptr;
 
-    /* monitor executing tasks
+    /* monitor executing tasks on a per-connection basis
      * because the behavior of the thread pool - when it itself is requested to terminate - like, upon
      * destruction - is to discard tasks still to be executed but not yet started;
      * this mechanism allows to ensure that all dispatched tasks are waited upon for execution and termination
      *
-     * it is needed to have this bookkeeping on a per-connection basis because connection can be created and
+     * it is needed to have this bookkeeping on a per-connection basis because connections can be created and
      * dropped on-the-fly - like, when a passive transaction server come/goes online/offline
+     *
+     * the responder is shared between all connections that a server has to peer servers; this ensures
+     * that requests received for async processing are processed independently and do not block each other
+     * across following axes (dimensions):
+     *  - both between different requests received from the same peer server
+     *  - and also between different request received from different peer servers
      *
      * the map is an ok'ish container given that the number of keys (connections) is relatively stable - ie
      * it changes but with a low frequency
@@ -169,6 +182,20 @@ server_request_responder<T_CONN>::~server_request_responder ()
 
 template<typename T_CONN>
 void
+server_request_responder<T_CONN>::register_connection (const connection_t *conn)
+{
+  // registering entry in bookkeeping container enforces the invariant:
+  //  - jobs cannot be dispatched for processing before registering the source connection
+  //  - jobs cannot be dispatched for processing after the connection has been waited to become idle
+
+  std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
+
+  assert (m_executing_tasks.find (conn) == m_executing_tasks.cend ());
+  (void) m_executing_tasks[conn];
+}
+
+template<typename T_CONN>
+void
 server_request_responder<T_CONN>::async_execute (task *a_task)
 {
   m_threads->execute (a_task);
@@ -188,7 +215,11 @@ void
 server_request_responder<T_CONN>::new_task (const connection_t *connection_ptr)
 {
   std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
-  connection_executing_task_type &executing_task_for_connection = m_executing_tasks[connection_ptr];
+
+  auto executing_task_for_connection_it = m_executing_tasks.find (connection_ptr);
+  assert (executing_task_for_connection_it != m_executing_tasks.end ());
+  connection_executing_task_type &executing_task_for_connection = executing_task_for_connection_it->second;
+
   ++executing_task_for_connection.n_count;
 }
 
@@ -198,8 +229,12 @@ server_request_responder<T_CONN>::retire_task (const connection_t *connection_pt
 {
   {
     std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
-    connection_executing_task_type &executing_task_for_connection = m_executing_tasks[connection_ptr];
+
+    auto executing_task_for_connection_it = m_executing_tasks.find (connection_ptr);
+    connection_executing_task_type &executing_task_for_connection = executing_task_for_connection_it->second;
+
     --executing_task_for_connection.n_count;
+
     assert (executing_task_for_connection.n_count >= 0);
     if (executing_task_for_connection.n_count == 0)
       {

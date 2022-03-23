@@ -105,6 +105,22 @@ struct test_env
   // because responder handles connections in its dtor
   server_request_responder<test_conn> m_rrh;
 
+  test_env ()
+  {
+    for (const auto &conn : m_conns)
+      {
+	m_rrh.register_connection (&conn);
+      }
+  }
+
+  ~test_env ()
+  {
+    for (const auto &conn : m_conns)
+      {
+	m_rrh.wait_connection_to_become_idle (&conn);
+      }
+  }
+
   void simulate_request (size_t conn_index)
   {
     test_conn::response_sequence_number_t rsn = ++m_rsn_gen;
@@ -118,6 +134,7 @@ struct test_env
       REQUIRE (a_p == rsn); // input payload is the same
       ++a_p;  // output incremented payload
       ++conn_ref.m_handle_count;
+      std::this_thread::sleep_for (std::chrono::microseconds (1));
     };
 
     m_rrh.async_execute (conn_ref, std::move (sp), std::move (handler));
