@@ -29,6 +29,14 @@
 
 namespace cubcomm
 {
+  // Prototype for send queue error handler.
+  // Can be specified both as a generic handler for the entire lifetime of the queue.
+  // But also as a specific handler for more particular contexts.
+  //
+  // NOTE: if needed, functionality can be refactored into an interface and extended with
+  // additional features (ie: retry policy, timeouts ..)
+  using send_queue_error_handler = std::function<void (css_error_code, bool &)>;
+
   // Synchronize sending requests. Allow multiple threads to push requests and to send requests to the server.
   //
   // Template types:
@@ -54,17 +62,26 @@ namespace cubcomm
       {
 	typename client_type::client_request_id m_id;
 	payload_type m_payload;
+	send_queue_error_handler m_error_handler;
       };
       using queue_type = std::queue<queue_item_type>;
 
+    public:
       // ctor/dtor:
       request_sync_send_queue () = delete;
-      request_sync_send_queue (client_type &client);
+      request_sync_send_queue (client_type &client, send_queue_error_handler &&error_handler);
+
+      request_sync_send_queue (const request_sync_send_queue &) = delete;
+      request_sync_send_queue (request_sync_send_queue &&) = delete;
+
+      request_sync_send_queue &operator= (const request_sync_send_queue &) = delete;
+      request_sync_send_queue &operator= (request_sync_send_queue &&) = delete;
 
       // functions:
 
       // Push a request to the end of queue
-      void push (typename client_type::client_request_id reqid, payload_type &&payload);
+      void push (typename client_type::client_request_id reqid, payload_type &&payload,
+		 send_queue_error_handler &&error_handler);
 
       // Send all requests to the server. If queue is empty, nothing happens.
       //
@@ -89,6 +106,9 @@ namespace cubcomm
       queue_type m_request_queue;                 // Queue for pushed requests
       std::mutex m_queue_mutex;                   // Synchronize request pushing and consuming
       std::condition_variable m_queue_condvar;    // Notify request consumers
+
+      send_queue_error_handler m_error_handler;
+      bool m_abort_further_processing;
   };
 
   // The request_queue_autosend automatically sends requests pushed into request_sync_send_queue
@@ -136,15 +156,22 @@ namespace cubcomm
   //
 
   template <typename ReqClient, typename ReqPayload>
-  request_sync_send_queue<ReqClient, ReqPayload>::request_sync_send_queue (client_type &client)
+  request_sync_send_queue<ReqClient, ReqPayload>::request_sync_send_queue (client_type &client,
+      send_queue_error_handler &&error_handler)
     : m_client (client)
+    , m_error_handler { std::move (error_handler) }
+    , m_abort_further_processing { false }
   {
+    // as per the specification of the 'poll' system function, the error handling in this class
+    // relies on the connection channel's timeout to be positive
+    assert (m_client.get_channel ().get_max_timeout_in_ms () >= 0);
+    //m_client.get_channel ().get_max_timeout_in_ms ();
   }
 
   template <typename ReqClient, typename ReqPayload>
   void
   request_sync_send_queue<ReqClient, ReqPayload>::push (typename client_type::client_request_id reqid,
-      payload_type &&payload)
+      payload_type &&payload, send_queue_error_handler &&error_handler)
   {
     // synchronize push request into the queue and notify consumers
 
@@ -152,6 +179,7 @@ namespace cubcomm
     m_request_queue.emplace ();
     m_request_queue.back ().m_id = reqid;
     m_request_queue.back ().m_payload = std::move (payload);
+    m_request_queue.back ().m_error_handler = std::move (error_handler);
 
     ulock.unlock ();
     m_queue_condvar.notify_all ();
@@ -163,15 +191,53 @@ namespace cubcomm
   {
     // send all requests in q
 
-    std::unique_lock<std::mutex> ulock (m_send_mutex);
-    while (!q.empty ())
+    while (!q.empty () && !m_abort_further_processing)
       {
-	if (m_client.send (q.front ().m_id, q.front ().m_payload) != NO_ERRORS)
+	typename queue_type::const_reference queue_front = q.front ();
+
+	css_error_code err_code = NO_ERRORS;
+	{
+	  std::lock_guard<std::mutex> lockg (m_send_mutex);
+	  err_code = m_client.send (queue_front.m_id, queue_front.m_payload);
+	}
+	if (err_code != NO_ERRORS)
 	  {
-	    // what to do, what to do? we need proper handling
-	    assert (false);
+	    /* The send over socket is not - in and by itself - capable of detecting when the peer has
+	     * actully dropped the connection. It errors-out as an after effect (eg: when, maybe, the buffer
+	     * is full and there's no more space left to write new data).
+	     * As such, the error reported here might appear very late from the moment the actual, possible,
+	     * disconnect occured.
+	     * This is fine, because application logic does not care with, or can cope with, this.
+	     * Alternatives to this are:
+	     *  - change the application protocol for each message to have an associated ACK response.
+	     *  - implement a polling mechanism that, also based on ACK, detects the disconnect earlier.
+	     * */
+	    if (queue_front.m_error_handler != nullptr)
+	      {
+		// if present, invoke custom/specific handler first
+		queue_front.m_error_handler (err_code, m_abort_further_processing);
+	      }
+	    else if (m_error_handler != nullptr)
+	      {
+		// if present, invoke generic (fail-back) handler
+		m_error_handler (err_code, m_abort_further_processing);
+	      }
+	    else
+	      {
+		// crash early if no error handler is present
+		assert_release (false);
+	      }
 	  }
 	q.pop ();
+      }
+
+    if (m_abort_further_processing)
+      {
+	// discard all remaining items as there is nothing else can be done
+	while (!q.empty ())
+	  {
+	    q.pop ();
+	  }
       }
   }
 
@@ -189,6 +255,7 @@ namespace cubcomm
     if (!backbuffer.empty ())
       {
 	send_queue (backbuffer);
+	assert (backbuffer.empty ());
       }
   }
 
@@ -204,7 +271,7 @@ namespace cubcomm
     assert (backbuffer.empty ());
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
-    auto condvar_ret = m_queue_condvar.wait_for (ulock, timeout, [this]
+    const auto condvar_ret = m_queue_condvar.wait_for (ulock, timeout, [this]
     {
       return !m_request_queue.empty ();
     });
@@ -212,11 +279,13 @@ namespace cubcomm
       {
 	return;
       }
+
     assert (!m_request_queue.empty ());
     m_request_queue.swap (backbuffer);
     ulock.unlock ();
 
     send_queue (backbuffer);
+    assert (backbuffer.empty ());
   }
 
   //
@@ -239,11 +308,12 @@ namespace cubcomm
   void
   request_queue_autosend<ReqQueue>::loop_send_requests ()
   {
+    constexpr auto ten_millis = std::chrono::milliseconds (10);
     typename ReqQueue::queue_type requests;
     while (!m_shutdown)
       {
 	// Check shutdown flag every 10 milliseconds
-	m_req_queue.wait_not_empty_and_send_all (requests, std::chrono::milliseconds (10));
+	m_req_queue.wait_not_empty_and_send_all (requests, ten_millis);
       }
   }
 

@@ -1636,7 +1636,14 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       std::lock_guard<std::mutex> prior_lsa_lockg { log_Gl.prior_info.prior_lsa_mutex };
       // *INDENT-ON*
 
-      pts_ptr->send_and_receive_log_boot_info (thread_p, most_recent_trantable_snapshot_lsa);
+      err_code = pts_ptr->send_and_receive_log_boot_info (thread_p, most_recent_trantable_snapshot_lsa);
+      if (err_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_initialize_passive_tran_server:"
+			     " error retrieving log boot info from page server; server cannot be reached");
+	  return;
+	}
 
       LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
       LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
@@ -10431,8 +10438,11 @@ log_checkpoint_trantable_execute (cubthread::entry &thread_ref)
 {
   if (!BO_IS_SERVER_RESTARTED ())
     {
-      // wait for boot to finish
-      return;
+      constexpr auto short_delay = std::chrono::milliseconds (100);
+      while (!BO_IS_SERVER_RESTARTED())
+        {
+          std::this_thread::sleep_for(short_delay);
+        }
     }
 
   logpb_checkpoint_trantable(&thread_ref);
@@ -10724,7 +10734,8 @@ log_checkpoint_trantable_daemon_init ()
 
   if (is_tran_server_with_remote_storage ())
     {
-      cubthread::looper looper { std::chrono::seconds (60) };
+      constexpr auto loop_time = std::chrono::seconds (60);
+      cubthread::looper looper (loop_time);
       cubthread::entry_callable_task * daemon_task =
           new cubthread::entry_callable_task (log_checkpoint_trantable_execute);
       log_Checkpoint_trantable_daemon =

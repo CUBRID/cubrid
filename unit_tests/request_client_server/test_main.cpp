@@ -163,7 +163,8 @@ class test_two_client_server_env
 
 // Global op count, per each request id, is used by the server to check the requests are processed in the expected
 // order.
-std::array<int, 2> global_op_count;
+std::array<int, 2> global_in_order_processed_op_count;
+std::array<int, 2> global_out_of_order_processed_op_count;
 
 struct payload_with_op_count : public cubpacking::packable_object
 {
@@ -189,12 +190,19 @@ struct payload_with_op_count : public cubpacking::packable_object
 
 // Send both reqids and op_count into the request payload
 template <typename RSSQ, typename ReqId>
-static void push_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count);
+static void push_rssq_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count);
+template <typename SCS, typename ReqId>
+static void push_scs_message_id_and_op (SCS &rssq, ReqId reqid, int op_count);
 // Server handler checks both request id and request order
 template <typename ReqId, ReqId ExpectedVal>
-static void mock_check_expected_id_and_op_count (cubpacking::unpacker &upk);
-// Function for registering mock_check_expected_id_and_op_count handlers
-static void handler_register_mock_check_expected_id_and_op_count (test_request_server &req_sr);
+static void mock_check_expected_in_order_id_and_op_count (cubpacking::unpacker &upk);
+// Function for registering mock_check_expected_in_order_id_and_op_count handlers
+static void handler_register_mock_check_expected_in_order_id_and_op_count (test_request_server &req_sr);
+// Server handler checks out-of-order request id processing
+template <typename ReqId, ReqId ExpectedVal>
+static void mock_check_expected_out_of_order_id_and_op_count (cubpacking::unpacker &upk);
+// Function for registering mock_check_expected_out_of_order_id_and_op_count handlers
+static void handler_register_mock_check_expected_out_of_order_id_and_op_count (test_request_server &req_sr);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Stuff for two request_sync_client_server test case
@@ -347,7 +355,7 @@ TEST_CASE ("Verify request_sync_send_queue with request_client", "")
 
   using test_rssq = cubcomm::request_sync_send_queue<test_request_client, int>;
 
-  test_rssq rssq (env.get_client ());
+  test_rssq rssq (env.get_client (), nullptr);
   test_rssq::queue_type backbuffer;
 
   env.get_server ().start_thread ();
@@ -455,7 +463,7 @@ TEST_CASE ("Verify request_sync_send_queue with request_client", "")
   require_all_sent_requests_are_handled ();
 }
 
-TEST_CASE ("Test request_queue_autosend", "")
+TEST_CASE ("Test in-order request_queue_autosend", "")
 {
   // Test the way requests are handled using a request_queue_autosend. All pushed requests are automatically send by
   // the request_queue_autosend. The requests are sent in the same order that they are pushed.
@@ -466,12 +474,12 @@ TEST_CASE ("Test request_queue_autosend", "")
   //	- the number of requests sent is the same as the number of requests handled
   //
 
-  test_handler_register_function hreg_fun = handler_register_mock_check_expected_id_and_op_count;
+  test_handler_register_function hreg_fun = handler_register_mock_check_expected_in_order_id_and_op_count;
   test_client_and_server_env env (hreg_fun);
 
   using test_rssq = cubcomm::request_sync_send_queue<test_request_client, payload_with_op_count>;
 
-  test_rssq rssq (env.get_client ());
+  test_rssq rssq (env.get_client (), nullptr);
   test_rssq::queue_type backbuffer;
 
   env.get_server ().start_thread ();
@@ -480,14 +488,14 @@ TEST_CASE ("Test request_queue_autosend", "")
   {
     for (int op_count = 0; op_count < 1000; ++op_count)
       {
-	push_message_id_and_op (rssq, reqids::_0, op_count);
+	push_rssq_message_id_and_op (rssq, reqids::_0, op_count);
       }
   });
   std::thread t2 ([&rssq]
   {
     for (int op_count = 0; op_count < 1000; ++op_count)
       {
-	push_message_id_and_op (rssq, reqids::_1, op_count);
+	push_rssq_message_id_and_op (rssq, reqids::_1, op_count);
       }
   });
 
@@ -502,6 +510,82 @@ TEST_CASE ("Test request_queue_autosend", "")
   autosend.stop_thread ();
 
   require_all_sent_requests_are_handled ();
+}
+
+TEST_CASE ("Test out-of-order request_queue_autosend", "")
+{
+  // Test the way requests are handled using a request_queue_autosend intermingled with forced "send all".
+  // All pushed requests are automatically send by either the request_queue_autosend or by explicit sends invoked
+  // from separate threads. The requests are sent deterministically but out of order.
+  //
+  // Verify that:
+  //	- all requests are handled by the expected type of handled
+  //	- the number of requests sent is the same as the number of requests handled
+  //
+  // This scenario does not occur in production but the test stresses the implementation to ensure robustness.
+
+  test_handler_register_function hreg_fun = handler_register_mock_check_expected_out_of_order_id_and_op_count;
+  test_client_and_server_env env (hreg_fun);
+
+  using test_rssq = cubcomm::request_sync_send_queue<test_request_client, payload_with_op_count>;
+
+  test_rssq rssq (env.get_client (), nullptr);
+  test_rssq::queue_type backbuffer;
+
+  env.get_server ().start_thread ();
+
+  constexpr int total_op_count = 1000;
+
+  std::thread t1 ([&rssq]
+  {
+    for (int op_count = 0; op_count < total_op_count; ++op_count)
+      {
+	push_rssq_message_id_and_op (rssq, reqids::_0, op_count);
+      }
+  });
+  std::thread t2 ([&rssq]
+  {
+    for (int op_count = 0; op_count < total_op_count; ++op_count)
+      {
+	push_rssq_message_id_and_op (rssq, reqids::_1, op_count);
+      }
+  });
+  std::thread t3 ([&rssq]
+  {
+    test_rssq::queue_type local_buffer;
+    auto start_time = std::chrono::system_clock::now ();
+    while (std::chrono::system_clock::now () - start_time < std::chrono::seconds (1))
+      {
+	rssq.send_all (local_buffer);
+	std::this_thread::sleep_for (std::chrono::milliseconds (1));
+      }
+  });
+  std::thread t4 ([&rssq]
+  {
+    test_rssq::queue_type local_buffer;
+    auto start_time = std::chrono::system_clock::now ();
+    while (std::chrono::system_clock::now () - start_time < std::chrono::seconds (1))
+      {
+	rssq.wait_not_empty_and_send_all (local_buffer, std::chrono::milliseconds (1));
+      }
+  });
+
+  cubcomm::request_queue_autosend<test_rssq> autosend (rssq);
+  autosend.start_thread ();
+
+  t1.join ();
+  t2.join ();
+  t3.join ();
+  t4.join ();
+
+  env.wait_for_all_messages ();
+  env.get_server ().stop_thread ();
+  autosend.stop_thread ();
+
+  require_all_sent_requests_are_handled ();
+
+  REQUIRE (((total_op_count - 1) * total_op_count / 2) == global_out_of_order_processed_op_count[/*reqids::_*/0]);
+  REQUIRE (((total_op_count - 1) * total_op_count / 2) == global_out_of_order_processed_op_count[/*reqids::_*/1]);
 }
 
 TEST_CASE ("Two request_sync_client_server communicate with each other", "[dbg]")
@@ -603,7 +687,8 @@ TEST_CASE ("Test response broker", "")
   constexpr size_t BUCKET_COUNT = 30;
 
   cubcomm::response_sequence_number_generator rsn_gen;
-  cubcomm::response_broker<cubcomm::response_sequence_number> broker (BUCKET_COUNT);
+  cubcomm::response_broker<cubcomm::response_sequence_number, css_error_code> broker (BUCKET_COUNT, NO_ERRORS,
+      ERROR_ON_WRITE);
 
   std::vector<cubcomm::response_sequence_number> requested_rsn;
   std::mutex request_mutex;
@@ -648,7 +733,9 @@ TEST_CASE ("Test response broker", "")
 	    }
 	    request_condvar.notify_all ();
 
-	    cubcomm::response_sequence_number response = broker.get_response (rsn);
+	    const auto [ response, error_code ] = broker.get_response (rsn);
+
+	    REQUIRE (error_code == NO_ERRORS);
 	    REQUIRE (response == rsn);
 	  }
       }
@@ -673,8 +760,11 @@ init_globals ()
   global_sent_request_count = 0;
   global_handled_request_count = 0;
 
-  global_op_count[0] = 0;
-  global_op_count[1] = 0;
+  global_in_order_processed_op_count[/*reqids::_*/0] = 0;
+  global_in_order_processed_op_count[/*reqids::_*/1] = 0;
+
+  global_out_of_order_processed_op_count[/*reqids::_*/0] = 0;
+  global_out_of_order_processed_op_count[/*reqids::_*/1] = 0;
 }
 
 static void
@@ -706,7 +796,8 @@ template <typename ReqCl, typename ReqId>
 static void
 send_request_id_as_message (ReqCl &reqcl, ReqId rid)
 {
-  reqcl.send (rid, static_cast<int> (rid));
+  const css_error_code err_code = reqcl.send (rid, static_cast<int> (rid));
+  REQUIRE (err_code == NO_ERRORS);
   ++global_sent_request_count;
 }
 
@@ -714,46 +805,86 @@ template <typename RSSQ, typename ReqId>
 static void
 push_request_id_as_message (RSSQ &rssq, ReqId rid)
 {
-  rssq.push (rid, static_cast<int> (rid));
+  rssq.push (rid, static_cast<int> (rid), nullptr);
   ++global_sent_request_count;
 }
 
 template <typename ReqId, ReqId ExpectedVal>
 static void
-mock_check_expected_id_and_op_count (cubpacking::unpacker &upk)
+mock_check_expected_in_order_id_and_op_count (cubpacking::unpacker &upk)
 {
   payload_with_op_count payload;
   payload.unpack (upk);
   REQUIRE (payload.val == static_cast<int> (ExpectedVal));
-  REQUIRE (global_op_count[payload.val] == payload.op_count);
-  ++global_op_count[payload.val];
+  REQUIRE (global_in_order_processed_op_count[/*reqids::_*/payload.val] == payload.op_count);
+  ++global_in_order_processed_op_count[/*reqids::_*/payload.val];
+
+  ++global_handled_request_count;
+}
+
+template <typename ReqId, ReqId ExpectedVal>
+static void
+mock_check_expected_out_of_order_id_and_op_count (cubpacking::unpacker &upk)
+{
+  payload_with_op_count payload;
+  payload.unpack (upk);
+  REQUIRE (payload.val == static_cast<int> (ExpectedVal));
+  global_out_of_order_processed_op_count[/*reqids::_*/payload.val] += payload.op_count;
 
   ++global_handled_request_count;
 }
 
 template <typename RSSQ, typename ReqId>
 static void
-push_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count)
+push_rssq_message_id_and_op (RSSQ &rssq, ReqId reqid, int op_count)
 {
   payload_with_op_count payload;
   payload.val = static_cast<int> (reqid);
   payload.op_count = op_count;
 
-  rssq.push (reqid, std::move (payload));
+  rssq.push (reqid, std::move (payload), nullptr);
+
+  ++global_sent_request_count;
+}
+
+template <typename SCS, typename ReqId>
+static void
+push_scs_message_id_and_op (SCS &scs, ReqId reqid, int op_count)
+{
+  payload_with_op_count payload;
+  payload.val = static_cast<int> (reqid);
+  payload.op_count = op_count;
+
+  scs.push (reqid, std::move (payload));
 
   ++global_sent_request_count;
 }
 
 static void
-handler_register_mock_check_expected_id_and_op_count (test_request_server &req_sr)
+handler_register_mock_check_expected_in_order_id_and_op_count (test_request_server &req_sr)
 {
   cubcomm::request_server<reqids>::server_request_handler reqh0 = [] (cubpacking::unpacker &upk)
   {
-    mock_check_expected_id_and_op_count<reqids, reqids::_0> (upk);
+    mock_check_expected_in_order_id_and_op_count<reqids, reqids::_0> (upk);
   };
   cubcomm::request_server<reqids>::server_request_handler reqh1 = [] (cubpacking::unpacker &upk)
   {
-    mock_check_expected_id_and_op_count<reqids, reqids::_1> (upk);
+    mock_check_expected_in_order_id_and_op_count<reqids, reqids::_1> (upk);
+  };
+  req_sr.register_request_handler (reqids::_0, reqh0);
+  req_sr.register_request_handler (reqids::_1, reqh1);
+}
+
+static void
+handler_register_mock_check_expected_out_of_order_id_and_op_count (test_request_server &req_sr)
+{
+  cubcomm::request_server<reqids>::server_request_handler reqh0 = [] (cubpacking::unpacker &upk)
+  {
+    mock_check_expected_out_of_order_id_and_op_count<reqids, reqids::_0> (upk);
+  };
+  cubcomm::request_server<reqids>::server_request_handler reqh1 = [] (cubpacking::unpacker &upk)
+  {
+    mock_check_expected_out_of_order_id_and_op_count<reqids, reqids::_1> (upk);
   };
   req_sr.register_request_handler (reqids::_0, reqh0);
   req_sr.register_request_handler (reqids::_1, reqh1);
@@ -762,7 +893,8 @@ handler_register_mock_check_expected_id_and_op_count (test_request_server &req_s
 test_request_client
 create_request_client ()
 {
-  cubcomm::channel chncl;
+  const int max_timeout_in_ms = 10;
+  cubcomm::channel chncl{ max_timeout_in_ms };
   chncl.set_channel_name ("client");
 
   test_request_client req_cl (std::move (chncl));
@@ -1004,7 +1136,7 @@ test_two_request_sync_client_server_env::push_request_and_increment_msg_count (
 {
   ++msg_count_inout;
 
-  push_message_id_and_op (scs, msgid, i);
+  push_scs_message_id_and_op (scs, msgid, i);
 }
 
 template<typename T_SCS, typename T_MSGID>
@@ -1020,7 +1152,8 @@ test_two_request_sync_client_server_env::send_recv_and_increment_msg_count (
 
   payload_with_op_count response_payload;
 
-  scs.send_recv (msgid, std::move (request_payload), response_payload);
+  const css_error_code error_code = scs.send_recv (msgid, std::move (request_payload), response_payload);
+  REQUIRE (error_code == NO_ERRORS);
   REQUIRE (response_payload.val == static_cast<int> (msgid));
   REQUIRE (response_payload.op_count == i + 1);	  // it is incremented by response handler
 
@@ -1085,7 +1218,8 @@ test_two_request_sync_client_server_env::handle_req_and_respond_on_scs_two (
 uq_test_request_sync_client_server_one_t
 test_two_request_sync_client_server_env::create_request_sync_client_server_one ()
 {
-  cubcomm::channel chn;
+  const int max_timeout_in_ms = 10;
+  cubcomm::channel chn{ max_timeout_in_ms };
   chn.set_channel_name ("sync_client_server_one");
 
   // handle requests 2 to 1
@@ -1112,7 +1246,7 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
       { reqids_2_to_1::_0, req_handler_0 },
       { reqids_2_to_1::_1, req_handler_1 },
       { reqids_2_to_1::_2, req_handler_2 }
-    }, reqids_1_to_2::RESPOND, reqids_2_to_1::RESPOND, 10)
+    }, reqids_1_to_2::RESPOND, reqids_2_to_1::RESPOND, 10, nullptr)
   };
   scs_one->start ();
 
@@ -1122,7 +1256,8 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
 uq_test_request_sync_client_server_two_t
 test_two_request_sync_client_server_env::create_request_sync_client_server_two ()
 {
-  cubcomm::channel chn;
+  const int max_timeout_in_ms = 10;
+  cubcomm::channel chn{ max_timeout_in_ms };
   chn.set_channel_name ("sync_client_server_two");
 
   // handle requests 1 to 2
@@ -1143,7 +1278,7 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_two (
     {
       { reqids_1_to_2::_0, req_handler_0 },
       { reqids_1_to_2::_1, req_handler_1 }
-    }, reqids_2_to_1::RESPOND, reqids_1_to_2::RESPOND, 10)
+    }, reqids_2_to_1::RESPOND, reqids_1_to_2::RESPOND, 10, nullptr)
   };
   scs_two->start ();
 
@@ -1168,9 +1303,15 @@ test_two_request_sync_client_server_env::mock_socket_between_two_sync_client_ser
 #include "object_representation.h"
 
 void
-_er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
+_er_log_debug (const char *, const int, const char *, ...)
 {
   // do nothing
+}
+
+void
+er_set (int, const char *, const int, int, int, ...)
+{
+  // nop
 }
 
 bool
@@ -1180,19 +1321,19 @@ prm_get_bool_value (PARAM_ID prmid)
 }
 
 int
-or_packed_value_size (const DB_VALUE *value, int collapse_null, int include_domain, int include_domain_classoids)
+or_packed_value_size (const DB_VALUE *, int, int, int )
 {
   return 0;
 }
 
 char *
-or_pack_value (char *buf, DB_VALUE *value)
+or_pack_value (char *, DB_VALUE *)
 {
   return nullptr;
 }
 
 char *
-or_unpack_value (const char *buf, DB_VALUE *value)
+or_unpack_value (const char *, DB_VALUE *)
 {
   return nullptr;
 }

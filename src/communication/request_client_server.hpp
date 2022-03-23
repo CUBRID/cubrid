@@ -143,7 +143,7 @@ namespace cubcomm
       request_client (request_client &&other) = default;
 
       template <typename ... PackableArgs>
-      int send (MsgId msgid, const PackableArgs &... args);	//  pack args and send request of type msgid
+      css_error_code send (MsgId msgid, const PackableArgs &... args);	//  pack args and send request of type msgid
 
       const channel &get_channel () const;			// get underlying channel
 
@@ -204,13 +204,16 @@ namespace cubcomm
       request_client_server (const request_client_server &) = delete;
       request_client_server (request_client_server &&other) = default;
 
+      request_client_server &operator= (const request_client_server &) = delete;
+      request_client_server &operator= (request_client_server &&) = delete;
+
       template <typename ... PackableArgs>
-      int send (ClientMsgId msgid, const PackableArgs &... args);
+      css_error_code send (ClientMsgId msgid, const PackableArgs &... args);
   };
 
   // Helper function that packs MsgId & PackableArgs and sends them on chn
   template <typename MsgId, typename ... PackableArgs>
-  int send_client_request (channel &chn, MsgId msgid, const PackableArgs &... args);
+  css_error_code send_client_request (channel &chn, MsgId msgid, const PackableArgs &... args);
 
   // Err logging functions
   void er_log_send_request (const channel &chn, int msgid, size_t size);
@@ -232,7 +235,7 @@ namespace cubcomm
 
   template <typename MsgId>
   template <typename ... PackableArgs>
-  int request_client<MsgId>::send (MsgId msgid, const PackableArgs &... args)
+  css_error_code request_client<MsgId>::send (MsgId msgid, const PackableArgs &... args)
   {
     return send_client_request (m_channel, msgid, args...);
   }
@@ -329,7 +332,7 @@ namespace cubcomm
   {
     unsigned short events = POLLIN;
     unsigned short revents = 0;
-    m_channel.wait_for (events, revents);
+    (void) m_channel.wait_for (events, revents);
     bool received_message = (revents & POLLIN) != 0;
     return received_message;
   }
@@ -402,13 +405,14 @@ namespace cubcomm
 
   template <typename ClientMsgId, typename ServerMsgId>
   template <typename ... PackableArgs>
-  int request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId msgid, const PackableArgs &... args)
+  css_error_code request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId msgid,
+      const PackableArgs &... args)
   {
     return send_client_request (this->request_server<ServerMsgId>::m_channel, msgid, args...);
   }
 
   template <typename MsgId, typename ... PackableArgs>
-  int send_client_request (channel &chn, MsgId msgid, const PackableArgs &... args)
+  css_error_code send_client_request (channel &chn, MsgId msgid, const PackableArgs &... args)
   {
     packing_packer packer;
     cubmem::extensible_block eb;
@@ -416,18 +420,19 @@ namespace cubcomm
 
     er_log_send_request (chn, static_cast<int> (msgid), packer.get_current_size ());
 
-    int rc = chn.send_int (static_cast<int> (packer.get_current_size ()));
-    if (rc != NO_ERRORS)
+    const css_error_code css_size_err = chn.send_int (static_cast<int> (packer.get_current_size ()));
+    if (css_size_err != NO_ERRORS)
       {
-	return rc;
+	er_log_send_fail (chn, css_size_err);
+	return css_size_err;
       }
 
-    css_error_code csserr = chn.send (eb.get_ptr (), packer.get_current_size ());
-    if (csserr != NO_ERRORS)
+    const css_error_code css_err = chn.send (eb.get_ptr (), packer.get_current_size ());
+    if (css_err != NO_ERRORS)
       {
-	er_log_send_fail (chn, csserr);
+	er_log_send_fail (chn, css_err);
       }
-    return csserr;
+    return css_err;
   }
 }
 

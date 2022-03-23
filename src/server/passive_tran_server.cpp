@@ -66,12 +66,19 @@ passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_paylo
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }
 
-void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
+int
+passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
     log_lsa &most_recent_trantable_snapshot_lsa)
 {
   std::string log_boot_info;
 
-  send_receive (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string (), log_boot_info);
+  const int error_code = send_receive (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string (),
+				       log_boot_info);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   assert (!log_boot_info.empty ());
 
@@ -112,6 +119,8 @@ void passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p
 		     "append_lsa = (%lld|%d)\n",
 		     LSA_AS_ARGS (&log_Gl.append.prev_lsa), LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
     }
+
+  return NO_ERROR;
 }
 
 void passive_tran_server::start_log_replicator (const log_lsa &start_lsa)
@@ -129,7 +138,10 @@ void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
 
   std::string expected_empty_answer;
   // blocking call
-  send_receive (tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string (), expected_empty_answer);
+  (void) send_receive (tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string (), expected_empty_answer);
+  // do not care about possible communication error with server here as long as transaction server is
+  // going down anyway (on the other side of the fence, page server[s] should be resilient to transaction
+  // server[s] crashing anyway)
 
   // at this point, no log prior is flowing from the connected page server(s)
   // outside this context, all log prior currently present on the passive transaction server

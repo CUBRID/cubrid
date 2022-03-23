@@ -618,7 +618,7 @@ struct trantable
 /* state of recovery process */
 enum log_recvphase
 {
-  LOG_RESTARTED,		/* Normal processing.. recovery has been executed. */
+  LOG_RESTARTED,		/* Normal processing. Recovery has been executed. */
   LOG_RECOVERY_ANALYSIS_PHASE,	/* Start recovering. Find the transactions that were active at the time of the crash */
   LOG_RECOVERY_REDO_PHASE,	/* Redoing phase */
   LOG_RECOVERY_UNDO_PHASE,	/* Undoing phase */

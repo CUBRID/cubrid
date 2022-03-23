@@ -32,41 +32,23 @@
 #include "page_buffer.h"
 
 #include "active_tran_server.hpp"
-#include "storage_common.h"
-#include "memory_alloc.h"
 #include "system_parameter.h"
-#include "error_manager.h"
-#include "file_io.h"
-#include "lockfree_circular_queue.hpp"
-#include "log_append.hpp"
 #include "log_lsa_utils.hpp"
-#include "log_manager.h"
-#include "log_impl.h"
 #include "log_volids.hpp"
-#include "transaction_sr.h"
-#include "memory_hash.h"
-#include "critical_section.h"
-#include "perf_monitor.h"
-#include "porting_inline.hpp"
-#include "environment_variable.h"
 #include "thread_daemon.hpp"
-#include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-#include "list_file.h"
-#include "tsc_timer.h"
 #include "query_manager.h"
 #include "xserver_interface.h"
-#include "btree_load.h"
 #include "boot_sr.h"
 #include "double_write_buffer.h"
+#include "tran_page_requests.hpp"
 #include "page_server.hpp"
 #include "passive_tran_server.hpp"
 #include "resource_tracker.hpp"
-#include "tde.h"
 #include "show_scan.h"
-#include "numeric_opfunc.h"
 #include "dbtype.h"
 #include "server_type.hpp"
+#include "vacuum.h"
 #include "vpid_utilities.hpp"
 
 #if defined(SERVER_MODE)
@@ -8187,6 +8169,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	  std::unique_ptr<char []> buffer_uptr = std::make_unique<char []> (io_page_size);
 	  FILEIO_PAGE *second_io_page = reinterpret_cast<FILEIO_PAGE *> (buffer_uptr.get ());
 	  // *INDENT-ON*
+	  // The page returned can be null during recovery in the case that the page was already deallocated on PS
 	  error_code = pgbuf_request_data_page_from_page_server (vpid, target_repl_lsa, second_io_page);
 	  if (error_code != NO_ERROR)
 	    {
@@ -8327,15 +8310,27 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
 
   size += cublog::lsa_utils::get_packed_size (pac, size);
   size += vpid_utils::get_packed_size (pac, size);
+  size += pac.get_packed_int_size (size);
   std::unique_ptr<char[]> buffer (new char[size]);
 
   pac.set_buffer (buffer.get (), size);
   vpid_utils::pack (pac, *vpid);
   cublog::lsa_utils::pack (pac, target_repl_lsa);
 
+  PAGE_FETCH_MODE fetch_mode;
+  if (log_is_in_crash_recovery_and_not_yet_completes_redo ())
+    {
+      fetch_mode = RECOVERY_PAGE;
+    }
+    else
+    {
+      fetch_mode = OLD_PAGE;
+    }
+  pac.pack_int (fetch_mode);
   std::string request_message (buffer.get (), size);
 
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+  const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE);
+  if (perform_logging)
     {
       _er_log_debug (ARG_FILE_LINE, "[READ DATA] Send request for Page to Page Server."
                                     " VPID: %d|%d, target repl LSA: %lld|%d\n",
@@ -8343,17 +8338,32 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
     }
 
   std::string response_message;
-  ts_Gl->send_receive (tran_to_page_request::SEND_DATA_PAGE_FETCH, std::move (request_message), response_message);
+  int error_code = ts_Gl->send_receive (tran_to_page_request::SEND_DATA_PAGE_FETCH,
+                                           std::move (request_message), response_message);
+  // there are two layers of errors to he handled here:
+  //  - client side communication to page server error
+  //  - page server side errors
+
+  // client side communication to page server error
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d \n", error_code);
+	}
+      return error_code;
+    }
 
   const char *message_buf = response_message.c_str ();
-  int error_code = NO_ERROR;
   std::memcpy (&error_code, message_buf, sizeof (error_code));
   message_buf += sizeof (error_code);
 
+  // page server side errors
   // The message is either an error code or the content of the data page
   if (error_code != NO_ERROR)
     {
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+      if (perform_logging)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d \n", error_code);
 	}
@@ -8373,7 +8383,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
       std::memcpy (io_page, message_buf, db_io_page_size ());
       message_buf += db_io_page_size ();
 
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+      if (perform_logging)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, page LSA: %lld|%d \n",
 			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
@@ -8392,12 +8402,14 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
 
   // Unpack the message data
   cubpacking::unpacker message_upk (payload_in_out.c_str (), payload_in_out.size ());
-
   VPID vpid;
   vpid_utils::unpack (message_upk, vpid);
 
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
+  int packed_fetch_mode;
+  message_upk.unpack_int (packed_fetch_mode);
+  const PAGE_FETCH_MODE fetch_mode = static_cast<PAGE_FETCH_MODE> (packed_fetch_mode);
 
   // Fetch data page. But first make sure that replication hits its target LSA
   if (!target_repl_lsa.is_null ())
@@ -8409,8 +8421,21 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
     }
 
   int error = NO_ERROR;
-  PAGE_PTR page_ptr = pgbuf_fix (&thread_r, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
+  PAGE_PTR page_ptr = pgbuf_fix (&thread_r, &vpid, fetch_mode, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == nullptr && fetch_mode == RECOVERY_PAGE)
+    {
+      ASSERT_NO_ERROR ();
+      //The found page was deallocated already
+      error = ER_PB_BAD_PAGEID;
+      payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+        {
+          _er_log_debug (ARG_FILE_LINE,
+                         "[READ DATA] Read on deallocated page with VPID = %d|%d, target repl LSA = %lld|%d\n",
+                         error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+        }
+    }
+  else if (page_ptr == nullptr)
     {
       ASSERT_ERROR_AND_SET (error);
       // respond with the error
