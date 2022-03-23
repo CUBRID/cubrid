@@ -85,16 +85,14 @@ flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
   /* flashback_Current_conn indicates conn_entry in thread_p, and conn_entry can be reused by request handler.
    * So, status in flashback_Current_conn can be overwritten. */
 
-  previous_conn = flashback_Current_conn;
-
-  if (previous_conn == NULL)
+  if (flashback_Current_conn == NULL)
     {
       /* previous flashback set flashback_Current_conn to NULL properly. (exited well) */
       return false;
     }
   else
     {
-      if (previous_conn->in_flashback == true)
+      if (flashback_Current_conn->in_flashback == true)
 	{
 	  /* previous flashback is still in progress */
 	  return true;
@@ -103,6 +101,9 @@ flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
 	{
 	  /* - previous_conn is overwritten with new connection, so in_flashback value is initialized to false.
 	   * - previous flashback connection has been exited abnormally. */
+
+	  flashback_reset ();
+
 	  return false;
 	}
     }
@@ -130,7 +131,7 @@ flashback_initialize (THREAD_ENTRY * thread_p)
       return ER_FLASHBACK_DUPLICATED_REQUEST;
     }
 
-  assert (thread_p->conn_entry != NULL);
+  assert (flashback_Current_conn == NULL);
 
   flashback_Current_conn = thread_p->conn_entry;
   flashback_Current_conn->in_flashback = true;
