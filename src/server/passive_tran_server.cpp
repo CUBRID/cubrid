@@ -148,9 +148,15 @@ void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
   // needs to be consumed (aka: waited to be consumed/serialized to log)
 }
 
-log_lsa passive_tran_server::get_replicator_lsa () const
+log_lsa passive_tran_server::get_highest_processed_lsa () const
 {
-  return m_replicator->get_redo_lsa ();
+  return m_replicator->get_highest_processed_lsa ();
+}
+
+log_lsa passive_tran_server::get_min_unapplied_lsa () const
+{
+  assert (false);
+  return m_replicator->get_min_unapplied_lsa ();
 }
 
 void passive_tran_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)

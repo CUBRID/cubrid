@@ -71,7 +71,8 @@ namespace cublog
       /* wait until replication advances past the target lsa; blocking call */
       void wait_past_target_lsa (const log_lsa &a_target_lsa);
       /* return current progress of the replicator; non-blocking call */
-      log_lsa get_redo_lsa () const;
+      log_lsa get_highest_processed_lsa () const;
+      log_lsa get_min_unapplied_lsa () const;
 
       log_lsa get_most_recent_trantable_snapshot_lsa () const;
 

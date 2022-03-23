@@ -438,10 +438,21 @@ namespace cublog
     return m_most_recent_trantable_snapshot_lsa.load ();
   }
 
-  log_lsa replicator::get_redo_lsa () const
+  log_lsa replicator::get_highest_processed_lsa () const
   {
     std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
     return m_redo_lsa;
+  }
+
+  log_lsa replicator::get_min_unapplied_lsa () const
+  {
+    if (m_parallel_replication_redo == nullptr)
+      {
+	//sync
+	return m_redo_lsa;
+      }
+    //async
+    return m_parallel_replication_redo->get_min_unapplied_log_lsa ();
   }
 
   /*********************************************************************
