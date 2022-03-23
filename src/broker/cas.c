@@ -870,6 +870,9 @@ cas_main (void)
 #if defined(CAS_FOR_CGW)
   char odbc_resolved_url[CGW_LINK_URL_MAX_LEN] = { 0, };
   char odbc_connect_url[CGW_LINK_URL_MAX_LEN] = { 0, };
+  char tmp_name[SRV_CON_DBNAME_SIZE] = { 0, };
+  char tmp_user[SRV_CON_DBUSER_SIZE] = { 0, };
+  char tmp_passwd[SRV_CON_DBPASSWD_SIZE] = { 0, };
   SUPPORTED_DBMS_TYPE dbms_type = NOT_SUPPORTED_DBMS;;
 #endif
 
@@ -1246,20 +1249,23 @@ cas_main (void)
 	    dbms_type = cgw_is_supported_dbms (shm_appl->cgw_link_server);
 	    cgw_set_dbms_type (dbms_type);
 
+	    strncpy (tmp_name, db_name, SRV_CON_DBNAME_SIZE);
+	    strncpy (tmp_user, db_user, SRV_CON_DBUSER_SIZE);
+	    strncpy (tmp_passwd, db_passwd, SRV_CON_DBUSER_SIZE);
+
 	    if (dbms_type == SUPPORTED_DBMS_ORACLE)
 	      {
 		snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, ORACLE_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
-			  db_name,
+			  tmp_name,
 			  shm_appl->cgw_link_server_port,
-			  db_name, db_user, db_passwd, shm_appl->cgw_link_connect_url_property);
+			  tmp_name, tmp_user, tmp_passwd, shm_appl->cgw_link_connect_url_property);
 
 		snprintf (odbc_resolved_url, CGW_LINK_URL_MAX_LEN, ORACLE_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
-			  db_name,
+			  tmp_name,
 			  shm_appl->cgw_link_server_port,
-			  db_name, db_user, "********", shm_appl->cgw_link_connect_url_property);
-
+			  tmp_name, tmp_user, "********", shm_appl->cgw_link_connect_url_property);
 	      }
 	    else if (dbms_type == SUPPORTED_DBMS_MYSQL)
 	      {
@@ -1267,13 +1273,13 @@ cas_main (void)
 			  shm_appl->cgw_link_odbc_driver_name,
 			  shm_appl->cgw_link_server_ip,
 			  shm_appl->cgw_link_server_port,
-			  db_name, db_user, db_passwd, shm_appl->cgw_link_connect_url_property);
+			  tmp_name, tmp_user, tmp_passwd, shm_appl->cgw_link_connect_url_property);
 
 		snprintf (odbc_resolved_url, CGW_LINK_URL_MAX_LEN, MYSQL_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
 			  shm_appl->cgw_link_server_ip,
 			  shm_appl->cgw_link_server_port,
-			  db_name, db_user, "********", shm_appl->cgw_link_connect_url_property);
+			  tmp_name, tmp_user, "********", shm_appl->cgw_link_connect_url_property);
 	      }
 	    else
 	      {
