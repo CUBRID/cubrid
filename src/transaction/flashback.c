@@ -65,7 +65,6 @@ static volatile int flashback_Threshold_to_remove_archive = 0;	/* If the differe
 								 */
 // *INDENT-OFF*
 static std::atomic_bool flashback_Is_active = false;	// the status value that the flashback is processing the a request
-static std::atomic_bool flashback_In_progress = false;  // the status value that the flashback is in progress
 // *INDENT-ON*
 
 static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry for a flashback requests
@@ -83,27 +82,18 @@ flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
 {
   CSS_CONN_ENTRY *previous_conn = NULL;
 
-  /* When flashback is first called or exited properly,
-   * flashback_Current_conn is set to NULL */
-  if (flashback_Current_conn == NULL)
-    {
-      return false;
-    }
-
   /* flashback_Current_conn indicates conn_entry in thread_p, and conn_entry can be reused by request handler.
    * So, status in flashback_Current_conn can be overwritten. */
 
   previous_conn = flashback_Current_conn;
 
-  if (flashback_In_progress == false)
+  if (previous_conn == NULL)
     {
-      /* previous flashback set flashback_In_progress to false prolperly. (exited well) */
+      /* previous flashback set flashback_Current_conn to NULL properly. (exited well) */
       return false;
     }
   else
     {
-      /* flashback_In_progress == true */
-
       if (previous_conn->in_flashback == true)
 	{
 	  /* previous flashback is still in progress */
@@ -112,8 +102,7 @@ flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
       else
 	{
 	  /* - previous_conn is overwritten with new connection, so in_flashback value is initialized to false.
-	   * - previous flashback connection has been exited abnormally,
-	   *   so existing flashback_In_progress value has not been initialized */
+	   * - previous flashback connection has been exited abnormally. */
 	  return false;
 	}
     }
@@ -141,9 +130,10 @@ flashback_initialize (THREAD_ENTRY * thread_p)
       return ER_FLASHBACK_DUPLICATED_REQUEST;
     }
 
+  assert (thread_p->conn_entry != NULL);
+
   flashback_Current_conn = thread_p->conn_entry;
   flashback_Current_conn->in_flashback = true;
-  flashback_In_progress = true;
 
   pthread_mutex_unlock (&flashback_Conn_lock);
 
@@ -250,7 +240,7 @@ flashback_reset ()
   flashback_Threshold_to_remove_archive = 0;
   flashback_Last_request_done_time = -1;
   flashback_Is_active = false;
-  flashback_In_progress = false;
+
   flashback_Current_conn->in_flashback = false;
   flashback_Current_conn = NULL;
 }
