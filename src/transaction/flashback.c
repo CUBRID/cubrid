@@ -64,10 +64,10 @@ static volatile int flashback_Threshold_to_remove_archive = 0;	/* If the differe
 								 * the archive log volume can be deleted.
 								 */
 // *INDENT-OFF*
-static std::atomic_bool flashback_Is_active = false;	// the status value that the flashback is processing the a request
+static std::atomic_bool flashback_Is_active = false;	// the status value that the flashback is processing the request
 // *INDENT-ON*
 
-static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry for a flashback requests
+static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry for a flashback request
 
 static pthread_mutex_t flashback_Conn_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -99,7 +99,7 @@ flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
 	}
       else
 	{
-	  /* - previous_conn is overwritten with new connection, so in_flashback value is initialized to false.
+	  /* - flashback_Current_conn is overwritten with new connection, so in_flashback value is initialized to false.
 	   * - previous flashback connection has been exited abnormally. */
 
 	  flashback_reset ();
