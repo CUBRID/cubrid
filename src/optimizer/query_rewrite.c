@@ -7863,7 +7863,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	    {
 	      tmp_spec = point;
 	      CAST_POINTER_TO_NODE (tmp_spec);
-	      if (mq_is_outer_join_spec (parser, tmp_spec))
+	      if (mq_is_outer_join_spec (parser, tmp_spec) && !PT_SPEC_IS_CTE (tmp_spec))
 		{
 		  node = qo_reduce_outer_joined_tables (parser, tmp_spec, node);
 		}
