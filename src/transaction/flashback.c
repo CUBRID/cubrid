@@ -80,8 +80,6 @@ static pthread_mutex_t flashback_Conn_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool
 flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
 {
-  CSS_CONN_ENTRY *previous_conn = NULL;
-
   /* flashback_Current_conn indicates conn_entry in thread_p, and conn_entry can be reused by request handler.
    * So, status in flashback_Current_conn can be overwritten. */
 
