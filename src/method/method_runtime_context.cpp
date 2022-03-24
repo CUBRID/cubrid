@@ -41,32 +41,20 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 
   runtime_context::runtime_context ()
-    : m_groups {}
+    : m_group_stack {}
+    , m_returning_cursors {}
+    , m_group_map {}
     , m_cursor_map {}
   {
-
+    //
   }
 
   runtime_context::~runtime_context ()
   {
-    for (auto &it : m_cursor_map)
-      {
-	if (it.second)
-	  {
-	    delete it.second;
-	  }
-      }
-    m_cursor_map.clear ();
-
-    for (auto &it : m_groups)
-      {
-	if (it.second)
-	  {
-	    delete it.second;
-	  }
-      }
-    m_groups.clear ();
-
+    destroy_all_cursors ();
+    destroy_all_groups ();
+    m_group_stack.clear ();
+    m_returning_cursors.clear ();
   }
 
   method_invoke_group *
@@ -75,7 +63,7 @@ namespace cubmethod
     method_invoke_group *group = new (std::nothrow) cubmethod::method_invoke_group (thread_p, sig_list);
     if (group)
       {
-	m_groups [group->get_id ()] = group;
+	m_group_map [group->get_id ()] = group;
 	// TODO
       }
     return group;
@@ -105,8 +93,8 @@ namespace cubmethod
 
     METHOD_GROUP_ID top = m_group_stack.back ();
 
-    const auto &it = m_groups.find (top);
-    if (it == m_groups.end ())
+    const auto &it = m_group_map.find (top);
+    if (it == m_group_map.end ())
       {
 	// should not happended
 	assert (false);
@@ -215,4 +203,29 @@ namespace cubmethod
     m_returning_cursors.insert (query_id);
   }
 
+  void
+  runtime_context::destroy_all_groups ()
+  {
+    for (auto &it : m_group_map)
+      {
+	if (it.second)
+	  {
+	    delete it.second;
+	  }
+      }
+    m_group_map.clear ();
+  }
+
+  void
+  runtime_context::destroy_all_cursors ()
+  {
+    for (auto &it : m_cursor_map)
+      {
+	if (it.second)
+	  {
+	    delete it.second;
+	  }
+      }
+    m_cursor_map.clear ();
+  }
 } // cubmethod

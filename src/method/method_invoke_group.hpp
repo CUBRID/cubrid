@@ -71,11 +71,11 @@ namespace cubmethod
 
       ~method_invoke_group ();
 
-      int begin ();
+      void begin ();
       int prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int execute (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int reset (bool is_end_query);
-      int end ();
+      void end ();
 
       DB_VALUE &get_return_value (int index);
 
@@ -84,6 +84,7 @@ namespace cubmethod
       SOCKET get_socket () const;
       cubthread::entry *get_thread_entry () const;
       std::queue<cubmem::extensible_block> &get_data_queue ();
+      bool is_running () const;
 
       // cursor interface for method_invoke
       query_cursor *create_cursor (QUERY_ID query_id, bool oid_included);
@@ -91,7 +92,11 @@ namespace cubmethod
       query_cursor *get_cursor (QUERY_ID query_id);
 
     private:
+      void destory_all_cursors ();
+
       runtime_context *m_rctx;
+      bool m_is_running;
+
       connection *m_connection;
       std::queue<cubmem::extensible_block> m_data_queue;
 

@@ -27,7 +27,6 @@
 #include "object_primitive.h"
 #include "object_representation.h"	/* OR_ */
 #include "packer.hpp"
-#include "jsp_sr.h" /* jsp_server_port(), jsp_connect_server() */
 #include "method_connection_sr.hpp"
 #include "method_connection_pool.hpp"
 #include "session.h"
@@ -127,6 +126,12 @@ namespace cubmethod
     return m_data_queue;
   }
 
+  bool
+  method_invoke_group::is_running () const
+  {
+    return m_is_running;
+  }
+
   int
   method_invoke_group::prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
@@ -184,9 +189,13 @@ namespace cubmethod
     return error;
   }
 
-  int method_invoke_group::begin ()
+  void
+  method_invoke_group::begin ()
   {
-    int error = NO_ERROR;
+    if (m_is_running == true)
+      {
+	return;
+      }
 
     // push to stack
     m_rctx->push_stack (this);
@@ -201,7 +210,7 @@ namespace cubmethod
 	  }
       }
 
-    return error;
+    m_is_running = true;
   }
 
   int method_invoke_group::reset (bool is_end_query)
@@ -211,11 +220,7 @@ namespace cubmethod
     pr_clear_value_vector (m_result_vector);
 
     // destroy cursors used in this group
-    for (auto &cursor_it : m_cursor_set)
-      {
-	m_rctx->destroy_cursor (m_thread_p, cursor_it);
-      }
-    m_cursor_set.clear ();
+    destory_all_cursors ();
 
     if (!is_end_query)
       {
@@ -226,17 +231,21 @@ namespace cubmethod
     return error;
   }
 
-  int method_invoke_group::end ()
+  void
+  method_invoke_group::end ()
   {
-    int error = NO_ERROR;
+    if (m_is_running == false)
+      {
+	return;
+      }
+
     reset (true);
 
     get_connection_pool ()->retire (m_connection);
     m_connection = nullptr;
 
     m_rctx->pop_stack ();
-
-    return error;
+    m_is_running = false;
   }
 
   query_cursor *
@@ -256,6 +265,16 @@ namespace cubmethod
   method_invoke_group::get_cursor (QUERY_ID query_id)
   {
     return m_rctx->get_cursor (m_thread_p, query_id);
+  }
+
+  void
+  method_invoke_group::destory_all_cursors ()
+  {
+    for (auto &cursor_it : m_cursor_set)
+      {
+	m_rctx->destroy_cursor (m_thread_p, cursor_it);
+      }
+    m_cursor_set.clear ();
   }
 
 }	// namespace cubmethod

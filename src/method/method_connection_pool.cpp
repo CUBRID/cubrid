@@ -28,12 +28,14 @@
 
 namespace cubmethod
 {
+
 #if defined (SERVER_MODE)
-  const std::size_t MAX_WORKERS = css_get_max_workers ();
+  const std::size_t MAX_POOLABLE = css_get_max_workers ();
 #else
-  const std::size_t MAX_WORKERS = 15;
+  const std::size_t MAX_POOLABLE = 15;
 #endif
-  static connection_pool g_conn_pool (MAX_WORKERS);
+
+  static connection_pool g_conn_pool (MAX_POOLABLE);
 
   connection_pool *
   get_connection_pool (void)

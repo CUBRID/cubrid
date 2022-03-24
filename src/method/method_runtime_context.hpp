@@ -31,10 +31,6 @@
 #include <unordered_set>
 #include <deque>
 
-#if defined (SERVER_MODE)
-#include "server_support.h"
-#endif
-
 #include "method_connection_pool.hpp"
 #include "method_def.hpp"
 
@@ -73,10 +69,14 @@ namespace cubmethod
       method_invoke_group *top_stack ();
 
     private:
-      std::deque <METHOD_GROUP_ID> m_group_stack;
-      std::unordered_map <METHOD_GROUP_ID, method_invoke_group *> m_groups;
-      std::unordered_map <QUERY_ID, query_cursor *> m_cursor_map; // server-side cursor storage
+      void destroy_all_groups ();
+      void destroy_all_cursors ();
+
+      std::deque <METHOD_GROUP_ID> m_group_stack; // runtime stack
       std::unordered_set <QUERY_ID> m_returning_cursors;
+
+      std::unordered_map <METHOD_GROUP_ID, method_invoke_group *> m_group_map; // method executor storage
+      std::unordered_map <QUERY_ID, query_cursor *> m_cursor_map; // server-side cursor storage
   };
 
   /* global interface */
