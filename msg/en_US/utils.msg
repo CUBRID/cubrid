@@ -1254,7 +1254,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 13 Flashback is already running. Flashback cannot be run by two processes.\n
 60 \
 flashback: Provides statements to flashback a specific transaction.\n\
-usage: %1$s flashback [OPTION] database-name [class_name1 class_name2 ...]\n\
+usage: %1$s flashback [OPTION] database-name class_name1 class_name2 ...\n\
 \n\
 valid options:\n\
     -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
