@@ -33,9 +33,9 @@
 #include "method_invoke_group.hpp"
 #include "method_struct_query.hpp"
 #include "method_query_util.hpp"
+#include "method_runtime_context.hpp"
 
 #include "log_impl.h"
-#include "xserver_interface.h"
 
 #if !defined (SERVER_MODE)
 #include "method_callback.hpp"
@@ -122,13 +122,6 @@ namespace cubmethod
   }
 
   int
-  method_invoke_java::reset (cubthread::entry *thread_p)
-  {
-    int error = close_query_cursor_all (*thread_p);
-    return (error == 0) ? NO_ERROR : ER_FAILED;
-  }
-
-  int
   method_invoke_java::alloc_response ()
   {
     int res_size;
@@ -175,7 +168,7 @@ namespace cubmethod
     if (db_value_type (&returnval) == DB_TYPE_RESULTSET)
       {
 	std::uint64_t query_id = db_get_resultset (&returnval);
-	erase_query_cursor (query_id);
+	m_group->register_returning_cursor (query_id);
       }
 
     /* out arguments */
@@ -193,8 +186,10 @@ namespace cubmethod
 
 	if (db_value_type (&temp) == DB_TYPE_RESULTSET)
 	  {
+	    // out argument CURSOR is not supported yet
+	    // it is implmented for the future
 	    std::uint64_t query_id = db_get_resultset (&temp);
-	    erase_query_cursor (query_id);
+	    m_group->register_returning_cursor (query_id);
 	  }
 
 	int pos = m_method_sig->method_arg_pos[i];
@@ -370,35 +365,15 @@ namespace cubmethod
 	  if (stmt_type == CUBRID_STMT_SELECT)
 	    {
 	      std::uint64_t qid = current_result_info.query_id;
-	      const auto &iter = m_cursor_map.find (qid);
-	      if (iter != m_cursor_map.end ())
-		{
-		  assert (false); // should not happen
-
-		  query_cursor *cursor = iter->second;
-		  cursor->close ();
-		  xqmgr_end_query (&thread_ref, cursor->get_query_id ());
-		  delete cursor;
-		  m_cursor_map.erase (iter);
-		}
-
-	      query_cursor *cursor = nullptr;
-	      // not found, new cursor is created
 	      bool is_oid_included = current_result_info.include_oid;
-	      cursor = m_cursor_map[qid] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), qid, is_oid_included);
-	      if (cursor == nullptr)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
-		  return ER_OUT_OF_VIRTUAL_MEMORY;
-		}
-
-	      cursor->open ();
+	      query_cursor *cursor = m_group->create_cursor (qid, is_oid_included);
 	    }
 	}
 
       error = mcon_send_buffer_to_java (m_group->get_socket(), b);
       return error;
     };
+
     error = xs_receive (&thread_ref, get_execute_info);
     return error;
   }
@@ -415,48 +390,48 @@ namespace cubmethod
 
     unpacker.unpack_all (qid, pos, fetch_count, fetch_flag);
 
+    /* find query cursor */
+    query_cursor *cursor = m_group->get_cursor (qid);
+    if (cursor == nullptr)
+      {
+	error = mcon_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error");
+	return error;
+      }
+
+    if (cursor->get_is_opened () == false)
+      {
+	cursor->open ();
+      }
+
     fetch_info info;
 
-    /* find query cursor */
-    const auto &iter = m_cursor_map.find (qid);
-    if (iter == m_cursor_map.end ())
+    int i = 0;
+    SCAN_CODE s_code = S_SUCCESS;
+    while (s_code == S_SUCCESS)
       {
-	// TODO: proper error handling
-	error = mcon_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error");
-      }
-    else
-      {
-	query_cursor *cursor = iter->second;
-
-	int i = 0;
-	SCAN_CODE s_code = S_SUCCESS;
-	while (s_code == S_SUCCESS)
+	s_code = cursor->next_row ();
+	if (s_code == S_END || i > 1000)
 	  {
-	    s_code = cursor->next_row ();
-	    if (s_code == S_END || i > 1000)
-	      {
-		break;
-	      }
-
-	    int tuple_index = cursor->get_current_index ();
-	    std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
-
-	    if (cursor->get_is_oid_included())
-	      {
-		/* FIXME!!: For more optimized way, refactoring method_query_cursor is needed */
-		OID *oid = cursor->get_current_oid ();
-		std::vector<DB_VALUE> sub_vector = {tuple_values.begin() + 1, tuple_values.end ()};
-		info.tuples.emplace_back (tuple_index, sub_vector, *oid);
-	      }
-	    else
-	      {
-		info.tuples.emplace_back (tuple_index, tuple_values);
-	      }
-	    i++;
+	    break;
 	  }
 
-	error = mcon_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_SUCCESS, info);
+	int tuple_index = cursor->get_current_index ();
+	std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
+
+	if (cursor->get_is_oid_included())
+	  {
+	    /* FIXME!!: For more optimized way, refactoring method_query_cursor is needed */
+	    OID *oid = cursor->get_current_oid ();
+	    std::vector<DB_VALUE> sub_vector = {tuple_values.begin() + 1, tuple_values.end ()};
+	    info.tuples.emplace_back (tuple_index, sub_vector, *oid);
+	  }
+	else
+	  {
+	    info.tuples.emplace_back (tuple_index, tuple_values);
+	  }
+	i++;
       }
+    error = mcon_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_SUCCESS, info);
     return error;
   }
 
@@ -564,22 +539,13 @@ namespace cubmethod
       unpacker.unpack_all (res_code, info);
 
       query_result_info &current_result_info = info.qresult_info;
-      const auto &iter = m_cursor_map.find (current_result_info.query_id);
-      if (iter == m_cursor_map.end ())
+      query_cursor *cursor = m_group->get_cursor (current_result_info.query_id);
+      if (cursor == nullptr)
 	{
-	  query_cursor *cursor = nullptr;
-	  // not found, new cursor is created
-	  bool is_oid_included = current_result_info.include_oid;
-	  cursor = m_cursor_map[query_id] = new (std::nothrow) query_cursor (m_group->get_thread_entry(), query_id,
-	      is_oid_included);
-	  if (cursor == nullptr)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  cursor->open ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+      cursor->change_owner (m_group->get_thread_entry ());
 
       return mcon_send_buffer_to_java (m_group->get_socket(), b);
     };
@@ -603,34 +569,6 @@ namespace cubmethod
       }
 
     error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
-    return error;
-  }
-
-  void
-  method_invoke_java::erase_query_cursor (const std::uint64_t query_id)
-  {
-    query_cursor *cursor = m_cursor_map [query_id];
-    if (cursor)
-      {
-	cursor->close ();
-	delete cursor;
-      }
-    m_cursor_map.erase (query_id);
-  }
-
-  int
-  method_invoke_java::close_query_cursor_all (cubthread::entry &thread_ref)
-  {
-    int error = NO_ERROR;
-    query_cursor *cursor = nullptr;
-    for (const auto &cursor_iter: m_cursor_map)
-      {
-	cursor = cursor_iter.second;
-	cursor->close ();
-	error += xqmgr_end_query (&thread_ref, cursor->get_query_id ());
-	delete cursor;
-      }
-    m_cursor_map.clear ();
     return error;
   }
 

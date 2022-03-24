@@ -29,6 +29,7 @@
 
 #include "dbtype_def.h"
 #include "query_list.h" /* QUERY_ID, QFILE_LIST_ID */
+#include "query_manager.h"
 
 // thread_entry.hpp
 namespace cubthread
@@ -41,12 +42,14 @@ namespace cubmethod
   class query_cursor
   {
     public:
-      query_cursor (cubthread::entry *thread_p, QUERY_ID query_id, bool is_oid_included);
+      query_cursor (cubthread::entry *thread_p, QMGR_QUERY_ENTRY *query_entry_p, bool is_oid_included = false);
 
       int open ();
       void close ();
 
-      int reset (QUERY_ID query_id);
+      int reset (QMGR_QUERY_ENTRY *query_entry_p);
+
+      void change_owner (cubthread::entry *thread_p);
 
       int first ();
       int last ();
@@ -64,9 +67,10 @@ namespace cubmethod
       OID *get_current_oid ();
       int get_tuple_value (int index, DB_VALUE &result);
       bool get_is_oid_included ();
+      bool get_is_opened ();
 
     private:
-      cubthread::entry *m_thread;
+      cubthread::entry *m_thread; /* which thread owns this cursor */
 
       QUERY_ID m_query_id;		/* Query id for this cursor */
       QFILE_LIST_ID *m_list_id;	/* List file identifier */
@@ -77,6 +81,7 @@ namespace cubmethod
 
       // bool is_updatable;		/* Cursor updatable ? */
       bool m_is_oid_included;		/* Cursor has first hidden oid col. */
+      bool m_is_opened;
   };
 }		// namespace cubmethod
 

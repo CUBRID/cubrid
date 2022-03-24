@@ -598,25 +598,22 @@ int xmethod_invoke_fold_constants (THREAD_ENTRY *thread_p, const method_sig_list
 				   DB_VALUE &result)
 {
   int error_code = NO_ERROR;
-  cubmethod::method_invoke_group method_group (thread_p, sig_list);
-  method_group.begin ();
-  error_code = method_group.prepare (args);
+  cubmethod::method_invoke_group *method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, sig_list);
+  method_group->begin ();
+  error_code = method_group->prepare (args);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  error_code = method_group.execute (args);
+  error_code = method_group->execute (args);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  DB_VALUE &res = method_group.get_return_value (0);
+  DB_VALUE &res = method_group->get_return_value (0);
   db_value_clone (&res, &result);
-
-  /* end() will be called at ~method_invoke_group */
-  // method_group.end ();
   return error_code;
 }
 #endif

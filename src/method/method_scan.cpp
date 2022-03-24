@@ -21,6 +21,7 @@
 #include "dbtype.h" /* db_value_* */
 #include "list_file.h" /* qfile_ */
 #include "object_representation.h" /* OR_ */
+#include "method_runtime_context.hpp"
 
 namespace cubscan
 {
@@ -46,7 +47,7 @@ namespace cubscan
 
       if (m_method_group == nullptr) // signature is not initialized
 	{
-	  m_method_group = new cubmethod::method_invoke_group (m_thread_p, *sig_list);
+	  m_method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, *sig_list);
 	}
 
       if (m_list_id == nullptr)
@@ -90,11 +91,7 @@ namespace cubscan
       if (is_final)
 	{
 	  m_method_group->end ();
-	  if (m_method_group != nullptr)
-	    {
-	      delete m_method_group;
-	      m_method_group = nullptr;
-	    }
+	  m_method_group = nullptr; // will be destroyed by cubmethod::runtime_context
 	}
     }
 

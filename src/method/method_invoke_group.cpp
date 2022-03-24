@@ -29,6 +29,8 @@
 #include "packer.hpp"
 #include "jsp_sr.h" /* jsp_server_port(), jsp_connect_server() */
 #include "method_connection_sr.hpp"
+#include "method_connection_pool.hpp"
+#include "session.h"
 
 #if defined (SA_MODE)
 #include "query_method.hpp"
@@ -40,9 +42,12 @@ namespace cubmethod
 // Method Group to invoke together
 //////////////////////////////////////////////////////////////////////////
   method_invoke_group::method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list)
-    : m_id ((int64_t) this), m_thread_p (thread_p), m_connection (nullptr)
+    : m_id ((std::uint64_t) this), m_thread_p (thread_p), m_connection (nullptr)
   {
     assert (sig_list.num_methods > 0);
+
+    // init runtime context
+    session_get_method_runtime_context (thread_p, m_rctx);
 
     method_sig_node *sig = sig_list.method_sig;
     while (sig)
@@ -98,7 +103,7 @@ namespace cubmethod
     return m_method_vector.size ();
   }
 
-  int64_t
+  METHOD_GROUP_ID
   method_invoke_group::get_id () const
   {
     return m_id;
@@ -183,6 +188,9 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
+    // push to stack
+    m_rctx->push_stack (this);
+
     // connect socket for java sp
     bool is_in = m_kind_type.find (METHOD_TYPE_JAVA_SP) != m_kind_type.end ();
     if (is_in)
@@ -202,10 +210,12 @@ namespace cubmethod
 
     pr_clear_value_vector (m_result_vector);
 
-    for (method_invoke *method: m_method_vector)
+    // destroy cursors used in this group
+    for (auto &cursor_it : m_cursor_set)
       {
-	method->reset (m_thread_p);
+	m_rctx->destroy_cursor (m_thread_p, cursor_it);
       }
+    m_cursor_set.clear ();
 
     if (!is_end_query)
       {
@@ -224,6 +234,29 @@ namespace cubmethod
     get_connection_pool ()->retire (m_connection);
     m_connection = nullptr;
 
+    m_rctx->pop_stack ();
+
     return error;
   }
+
+  // cursor
+  query_cursor *
+  method_invoke_group::create_cursor (QUERY_ID query_id, bool oid_included)
+  {
+    m_cursor_set.insert (query_id);
+    return m_rctx->create_cursor (m_thread_p, query_id, oid_included);
+  }
+
+  void
+  method_invoke_group::register_returning_cursor (QUERY_ID query_id)
+  {
+    m_cursor_set.erase (query_id);
+  }
+
+  query_cursor *
+  method_invoke_group::get_cursor (QUERY_ID query_id)
+  {
+    return m_rctx->get_cursor (m_thread_p, query_id);
+  }
+
 }	// namespace cubmethod

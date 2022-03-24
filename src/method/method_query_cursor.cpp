@@ -22,62 +22,51 @@
 #include "dbtype_def.h"
 #include "list_file.h"
 #include "log_impl.h"
-#include "query_manager.h"
 #include "object_representation.h"
 
 namespace cubmethod
 {
-  query_cursor::query_cursor (cubthread::entry *thread_p, QUERY_ID query_id, bool is_oid_included)
+  query_cursor::query_cursor (cubthread::entry *thread_p, QMGR_QUERY_ENTRY *query_entry_p, bool oid_included)
+    : m_thread (thread_p)
+    , m_is_oid_included (oid_included)
   {
-    m_query_id = query_id;
-    m_thread = thread_p;
-    reset (query_id);
-    m_is_oid_included = is_oid_included;
+    reset (query_entry_p);
   }
 
   int
-  query_cursor::reset (QUERY_ID query_id)
+  query_cursor::reset (QMGR_QUERY_ENTRY *query_entry_p)
   {
-    if (query_id == NULL_QUERY_ID)
-      {
-	return ER_QPROC_UNKNOWN_QUERYID;
-      }
-    else if (query_id < SHRT_MAX)
-      {
-	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
-	QMGR_QUERY_ENTRY *query_entry_p = qmgr_get_query_entry (m_thread, query_id, tran_index);
-	if (query_entry_p == NULL)
-	  {
-	    return ER_QPROC_UNKNOWN_QUERYID;
-	  }
-	else
-	  {
-	    m_list_id = query_entry_p->list_id;
-	    m_current_row_index = 0;
-	    m_current_tuple.resize (m_list_id->type_list.type_cnt);
-	    qfile_update_qlist_count (m_thread, m_list_id,
-				      1); // m_list_id is going to be destoryed on server-side, so that qlist_count has to be updated
-	  }
-      }
-    else
-      {
-	// tfile_vfid_p = (QMGR_TEMP_FILE *) query_id;
-	assert (false);
-      }
+    assert (query_entry_p != NULL);
+
+    m_query_id = query_entry_p->query_id;
+    m_list_id = query_entry_p->list_id;
+    m_current_row_index = 0;
+    m_current_tuple.resize (m_list_id->type_list.type_cnt);
+
     return NO_ERROR;
   }
 
   int
   query_cursor::open ()
   {
-    return qfile_open_list_scan (m_list_id, &m_scan_id);
+    if (m_is_opened == false)
+      {
+	qfile_open_list_scan (m_list_id, &m_scan_id);
+
+	m_is_opened = true;
+      }
+    return m_is_opened ? NO_ERROR : ER_FAILED;
   }
 
   void
   query_cursor::close ()
   {
-    clear ();
-    qfile_close_scan (m_thread, &m_scan_id);
+    if (m_is_opened)
+      {
+	clear ();
+	qfile_close_scan (m_thread, &m_scan_id);
+	m_is_opened = false;
+      }
   }
 
   void
@@ -183,6 +172,24 @@ namespace cubmethod
     return scan_code;
   }
 
+  void
+  query_cursor::change_owner (cubthread::entry *thread_p)
+  {
+    if (m_thread->get_id () == thread_p->get_id ())
+      {
+	return;
+      }
+
+    close ();
+
+    // change owner thread
+    m_thread = thread_p;
+
+    // m_list_id is going to be destoryed on server-side, so that qlist_count has to be updated
+    qfile_update_qlist_count (thread_p, m_list_id, 1);
+
+  }
+
   std::vector<DB_VALUE>
   query_cursor::get_current_tuple ()
   {
@@ -223,5 +230,11 @@ namespace cubmethod
   query_cursor::get_query_id ()
   {
     return m_query_id;
+  }
+
+  bool
+  query_cursor::get_is_opened ()
+  {
+    return m_is_opened;
   }
 }

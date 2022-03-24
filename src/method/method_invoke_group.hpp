@@ -39,6 +39,7 @@
 
 #include "method_connection_pool.hpp" /* cubmethod::connection */
 #include "method_def.hpp"	/* method_sig_node */
+#include "method_runtime_context.hpp" /* cubmethod::runtime_context */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */
 #include "porting.h" /* SOCKET */
 
@@ -79,16 +80,25 @@ namespace cubmethod
       DB_VALUE &get_return_value (int index);
 
       int get_num_methods () const;
-      int64_t get_id () const;
+      METHOD_GROUP_ID get_id () const;
       SOCKET get_socket () const;
       cubthread::entry *get_thread_entry () const;
       std::queue<cubmem::extensible_block> &get_data_queue ();
+      std::unordered_set <std::uint64_t> &get_cursor_set ();
+
+      // cursor interface for method_invoke
+      query_cursor *create_cursor (QUERY_ID query_id, bool oid_included);
+      void register_returning_cursor (QUERY_ID query_id);
+      query_cursor *get_cursor (QUERY_ID query_id);
 
     private:
-      cubmethod::connection *m_connection;
+      runtime_context *m_rctx;
+      connection *m_connection;
       std::queue<cubmem::extensible_block> m_data_queue;
 
-      int64_t m_id;
+      std::unordered_set <std::uint64_t> m_cursor_set;
+
+      std::uint64_t m_id;
       cubthread::entry *m_thread_p;
       std::set <METHOD_TYPE> m_kind_type;
       std::vector <method_invoke *> m_method_vector;
