@@ -5092,16 +5092,33 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  printf ("Enter transaction id : ");
-  scanf ("%d", &trid);
-
-
-  FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
-  if (summary_entry == NULL)
+  if (summary_info.empty ())
     {
-      /* add message that can not find transaction id */
       goto error_exit;
     }
+
+  while (summary_entry == NULL)
+    {
+      printf ("Enter transaction id ( press -1 to quit) : ");
+
+      scanf ("%d", &trid);
+      if (trid == -1)
+	{
+	  goto error_exit;
+	}
+
+      FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
+      if (summary_entry == NULL)
+	{
+	  /* add message that can not find transaction id */
+	}
+
+      printf ("\n");
+    }
+
+  start_lsa = summary_entry->start_lsa;
+  end_lsa = summary_entry->end_lsa;
+  user = summary_entry->user;
 
   do
     {
