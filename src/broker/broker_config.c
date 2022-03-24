@@ -614,20 +614,16 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_SERVER", DEFAULT_EMPTY_STRING, &lineno);
-      strcpy (br_info[num_brs].cgw_link_server, s);
-
-      INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_SERVER_IP", DEFAULT_EMPTY_STRING, &lineno);
-      strcpy (br_info[num_brs].cgw_link_server_ip, s);
-
-      INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_SERVER_PORT", DEFAULT_EMPTY_STRING, &lineno);
-      strcpy (br_info[num_brs].cgw_link_server_port, s);
-
-      INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_ODBC_DRIVER_NAME", DEFAULT_EMPTY_STRING, &lineno);
-      strcpy (br_info[num_brs].cgw_link_odbc_driver_name, s);
-
-      INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_CONNECT_URL_PROPERTY", DEFAULT_EMPTY_STRING, &lineno);
-      strcpy (br_info[num_brs].cgw_link_connect_url_property, s);
+      strcpy (br_info[num_brs].cgw_link_server,
+	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_server_ip,
+	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER_IP", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_server_port,
+	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER_PORT", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_odbc_driver_name,
+	      ini_getstr (ini, sec_name, "CGW_LINK_ODBC_DRIVER_NAME", DEFAULT_EMPTY_STRING, &lineno));
+      strcpy (br_info[num_brs].cgw_link_connect_url_property,
+	      ini_getstr (ini, sec_name, "CGW_LINK_CONNECT_URL_PROPERTY", DEFAULT_EMPTY_STRING, &lineno));
 
       INI_GETSTR_CHK (s, ini, sec_name, "APPL_SERVER", DEFAULT_APPL_SERVER, &lineno);
       br_info[num_brs].appl_server = get_conf_value (s, tbl_appl_server);
