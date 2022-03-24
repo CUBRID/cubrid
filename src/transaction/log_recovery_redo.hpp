@@ -672,8 +672,21 @@ void log_rv_redo_record_sync_fix_and_apply (THREAD_ENTRY *thread_p, log_rv_redo_
       return;
     }
   // at this point, pgptr can be null or not
-  // continue the process
 
+  /* will take care of unfixing the page, will be correctly de-allocated as it is the same
+   * storage class as 'rcv' and allocated on the stack after 'rcv' */
+  scope_exit <std::function<void (void)>> unfix_rcv_pgptr (
+      // could have used pgbuf_unfix_and_init if it were a function
+      [&thread_p, &rcv] ()
+  {
+    if (rcv.pgptr != nullptr)
+      {
+	pgbuf_unfix (thread_p, rcv.pgptr);
+	rcv.pgptr = nullptr;
+      }
+  });
+
+  ==== BASE ====
   rcv.length = log_rv_get_log_rec_redo_length<T> (record_info.m_logrec);
   rcv.mvcc_id = log_rv_get_log_rec_mvccid<T> (record_info.m_logrec);
   rcv.offset = log_rv_get_log_rec_offset<T> (record_info.m_logrec);
@@ -731,15 +744,18 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
 #endif
 
   LOG_RCV rcv;
-  log_rv_redo_record_sync_fix_and_apply (thread_p, redo_context, record_info, rcv_vpid, rcv);
-
   /* will take care of unfixing the page, will be correctly de-allocated as it is the same
    * storage class as 'rcv' and allocated on the stack after 'rcv' */
-  if (rcv.pgptr != nullptr)
-    {
-      pgbuf_unfix (thread_p, rcv.pgptr);
-      rcv.pgptr = nullptr;
-    }
+  scope_exit <std::function<void (void)>> unfix_rcv_pgptr ([&thread_p, &rcv] ()
+  {
+    if (rcv.pgptr != nullptr)
+      {
+	pgbuf_unfix_and_init (thread_p, rcv.pgptr);
+      }
+  });
+
+  // process the log record
+  log_rv_redo_record_sync_fix_and_apply (thread_p, redo_context, record_info, rcv_vpid, rcv);
 }
 
 template <typename T>
