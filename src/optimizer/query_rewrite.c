@@ -3157,7 +3157,7 @@ qo_get_name_cnt_by_spec_without_oncond (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
 
-  if (info->my_spec_cnt >= 2 || (info->my_spec_cnt == 1 && info->other_spec_cnt >= 1))
+  if (info->my_spec_cnt >= 1)
     {
       *continue_walk = PT_STOP_WALK;
     }
@@ -7868,6 +7868,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 		  node = qo_reduce_outer_joined_tables (parser, tmp_spec, node);
 		}
 	      point = point->next;
+	    }
+	  if (point_list != NULL)
+	    {
+	      parser_free_tree (parser, point_list);
 	    }
 	}
 
