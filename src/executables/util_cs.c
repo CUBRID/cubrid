@@ -75,6 +75,10 @@
 	    : (VOL_PURPOSE == DB_TEMPORARY_DATA_PURPOSE) ? "TEMPORARY DATA"     \
 	    : "UNKNOWN")
 
+#if defined(WINDOWS)
+#define STDIN_FILENO  _fileno (stdin)
+#endif
+
 typedef enum
 {
   SPACEDB_SIZE_UNIT_PAGE = 0,
