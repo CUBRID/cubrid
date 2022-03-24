@@ -625,8 +625,9 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       strcpy (br_info[num_brs].cgw_link_connect_url_property,
 	      ini_getstr (ini, sec_name, "CGW_LINK_CONNECT_URL_PROPERTY", DEFAULT_EMPTY_STRING, &lineno));
 
-      INI_GETSTR_CHK (s, ini, sec_name, "APPL_SERVER", DEFAULT_APPL_SERVER, &lineno);
-      br_info[num_brs].appl_server = get_conf_value (s, tbl_appl_server);
+
+      br_info[num_brs].appl_server =
+	get_conf_value (ini_getstr (ini, sec_name, "APPL_SERVER", DEFAULT_APPL_SERVER, &lineno), tbl_appl_server);
       if (br_info[num_brs].appl_server < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
