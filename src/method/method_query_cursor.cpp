@@ -29,6 +29,7 @@ namespace cubmethod
   query_cursor::query_cursor (cubthread::entry *thread_p, QMGR_QUERY_ENTRY *query_entry_p, bool oid_included)
     : m_thread (thread_p)
     , m_is_oid_included (oid_included)
+    , m_is_opened (false)
   {
     reset (query_entry_p);
   }

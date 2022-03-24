@@ -53,8 +53,6 @@ namespace cubmethod
   {
     destroy_all_cursors ();
     destroy_all_groups ();
-    m_group_stack.clear ();
-    m_returning_cursors.clear ();
   }
 
   method_invoke_group *
