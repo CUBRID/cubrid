@@ -239,7 +239,6 @@ namespace cubmethod
     return error;
   }
 
-  // cursor
   query_cursor *
   method_invoke_group::create_cursor (QUERY_ID query_id, bool oid_included)
   {

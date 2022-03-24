@@ -84,7 +84,6 @@ namespace cubmethod
       SOCKET get_socket () const;
       cubthread::entry *get_thread_entry () const;
       std::queue<cubmem::extensible_block> &get_data_queue ();
-      std::unordered_set <std::uint64_t> &get_cursor_set ();
 
       // cursor interface for method_invoke
       query_cursor *create_cursor (QUERY_ID query_id, bool oid_included);
@@ -98,7 +97,7 @@ namespace cubmethod
 
       std::unordered_set <std::uint64_t> m_cursor_set;
 
-      std::uint64_t m_id;
+      METHOD_GROUP_ID m_id;
       cubthread::entry *m_thread_p;
       std::set <METHOD_TYPE> m_kind_type;
       std::vector <method_invoke *> m_method_vector;
