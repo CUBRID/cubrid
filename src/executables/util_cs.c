@@ -60,6 +60,7 @@
 #include "log_volids.hpp"
 #include "tde.h"
 #include "flashback_cl.h"
+#include "connection_support.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -4922,12 +4923,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
   is_detail = utility_get_option_bool_value (arg_map, FLASHBACK_DETAIL_S);
   is_oldest = utility_get_option_bool_value (arg_map, FLASHBACK_OLDEST_S);
 
-  if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
-    {
-      fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
-      goto error_exit;
-    }
-
   /* create table list */
   /* class existence and classoid will be found at server side. if is checked at utility side, it needs addtional access to the server through locator */
   darray = da_create (num_tables, SM_MAX_IDENTIFIER_LENGTH);
@@ -5066,6 +5061,12 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   need_shutdown = true;
 
+  if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
+      goto error_exit;
+    }
+
   oid_list = (OID *) malloc (sizeof (OID) * num_tables);
   if (oid_list == NULL)
     {
@@ -5092,9 +5093,23 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  printf ("Enter transaction id : ");
-  scanf ("%d", &trid);
+  {
+    POLL_FD input_fd = { STDIN_FILENO, POLLIN | POLLPRI };
+    int timeout = prm_get_integer_value (PRM_ID_FLASHBACK_TIMEOUT);
 
+    printf ("Enter transaction id : ");
+    fflush (stdout);
+
+    if (poll (&input_fd, 1, timeout * 1000))
+      {
+	scanf ("%d", &trid);
+      }
+    else
+      {
+	// TIMEOUT
+	goto error_exit;
+      }
+  }
 
   FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
   if (summary_entry == NULL)
@@ -5115,8 +5130,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	    case ER_FLASHBACK_SCHEMA_CHANGED:
 	      break;
 	    case ER_FLASHBACK_LOG_NOT_EXIST:
-	      break;
-	    case ER_FLASHBACK_TIMEOUT:
 	      break;
 	    default:
 	      break;
