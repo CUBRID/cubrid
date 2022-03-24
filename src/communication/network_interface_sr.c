@@ -10838,15 +10838,10 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   char *classname = NULL;
 
-  if (flashback_min_log_pageid_to_keep () != NULL_LOG_PAGEID)
+  error_code = flashback_initialize (thread_p);
+  if (error_code != NO_ERROR)
     {
-      /* if flashback was shutdown abnormally, flashback_min_log_pageid can not be cleared
-       * If the previous flashback was abnormally terminated,
-       * this flashback_min_log_pageid  would not have been initialized.
-       * Therefore, after all variables related to flashback are initialized, subsequent operations should be performed
-       */
-
-      flashback_reset ();
+      goto error;
     }
 
   flashback_set_status_active ();
@@ -10959,7 +10954,12 @@ error:
       (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
     }
 
-  flashback_reset ();
+  if (error_code != ER_FLASHBACK_DUPLICATED_REQUEST)
+    {
+      /* if flashback variables are reset by duplicated request error,
+       * variables for existing connection (valid connection) can be reset */
+      flashback_reset ();
+    }
 
   return;
 

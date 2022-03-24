@@ -37,6 +37,7 @@
 #include "log_lsa.hpp"
 #include "thread_compat.hpp"
 #include "oid.h"
+#include "connection_defs.h"
 
 #define FLASHBACK_MAX_NUM_TRAN_TO_SUMMARY   INT_MAX
 
@@ -107,6 +108,8 @@ typedef struct flashback_summary_context
 
 extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
 extern void flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
+
+extern int flashback_initialize (THREAD_ENTRY * thread_p);
 
 extern LOG_PAGEID flashback_min_log_pageid_to_keep ();
 extern bool flashback_is_needed_to_keep_archive ();
