@@ -276,6 +276,7 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_struct_query.cpp
   ${METHOD_DIR}/method_struct_schema_info.cpp
   ${METHOD_DIR}/method_scan.cpp
+  ${METHOD_DIR}/method_runtime_context.cpp
   ${METHOD_DIR}/query_method.cpp
   )
 
