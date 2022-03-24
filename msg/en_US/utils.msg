@@ -1249,8 +1249,9 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 8 Log volume has been removed. Please try with the later date\n
 9 Couldn't open output file '%1$s'\n
 10 Trasaction ID (%1$d) does not exist\n
-11 Please set 'supplemental_log' in 'conf/cubrid.conf'\n
+11 Please set 'supplemental_log' in 'conf/cubrid.conf'. Only the SQL logs executed after setting 'supplemental_log' can be flashbacked.\n
 12 Transaction ID should be entered in %1$d seconds. Or interval between requests exceeds time threshold internally.\n
+13 Flashback is already running. Flashback cannot be run by two processes.\n
 60 \
 flashback: Provides statements to flashback a specific transaction.\n\
 usage: %1$s flashback [OPTION] database-name [class_name1 class_name2 ...]\n\

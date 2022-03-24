@@ -125,7 +125,7 @@ flashback_initialize (THREAD_ENTRY * thread_p)
     {
       pthread_mutex_unlock (&flashback_Conn_lock);
 
-      /* er_set() */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_DUPLICATED_REQUEST, 0);
       return ER_FLASHBACK_DUPLICATED_REQUEST;
     }
 
