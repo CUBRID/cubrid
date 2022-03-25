@@ -904,7 +904,7 @@ $ LOADDB
 834 Există disconcordanţe între şirul de caractere sursă "%1$s" şi şirul de formatare "%2$s" date în to_number().
 835 Element de statistică necunoscut.
 836 Latch-ul pe pagina(%1$d|%2$d) a expirat.
-837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale etc) nu poate fi şters.
+837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale/server etc) nu poate fi şters.
 838 Nu se pot deschide simultan mai mult de %1$d indecşi.
 839 "%1$s": Parametru de sistem necunoscut sau valoare invalidă.
 840 Parametrul de sistem "%1$s" nu poate fi schimbat.
@@ -1402,7 +1402,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 

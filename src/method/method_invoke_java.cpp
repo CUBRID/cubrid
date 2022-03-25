@@ -27,6 +27,7 @@
 #include "dbtype_def.h"
 
 #include "method_connection_sr.hpp"
+#include "method_struct_parameter_info.hpp"
 #include "method_struct_invoke.hpp"
 #include "method_struct_value.hpp"
 #include "method_struct_oid_info.hpp"
@@ -256,7 +257,7 @@ namespace cubmethod
       */
 
       case METHOD_CALLBACK_GET_DB_PARAMETER:
-	error = callback_get_db_parameter (unpacker);
+	error = callback_get_db_parameter (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_QUERY_PREPARE:
@@ -306,15 +307,32 @@ namespace cubmethod
   }
 
   int
-  method_invoke_java::callback_get_db_parameter (packing_unpacker &unpacker)
+  method_invoke_java::callback_get_db_parameter (cubthread::entry &thread_ref, packing_unpacker &unpacker)
   {
     int error = NO_ERROR;
+    int code = METHOD_CALLBACK_GET_DB_PARAMETER;
 
-    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_group->get_thread_entry());
-    TRAN_ISOLATION tran_isolation = logtb_find_isolation (tran_index);
-    int wait_msec = logtb_find_wait_msecs (tran_index);
+    if (m_group->get_db_parameter_info () == nullptr)
+      {
+	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_group->get_thread_entry());
+	db_parameter_info *parameter_info = new db_parameter_info ();
 
-    error = mcon_send_data_to_java (m_group->get_socket (), tran_isolation, wait_msec);
+	parameter_info->tran_isolation = logtb_find_isolation (tran_index);
+	parameter_info->wait_msec = logtb_find_wait_msecs (tran_index);
+	logtb_get_client_ids (tran_index, &parameter_info->client_ids);
+
+	m_group->set_db_parameter_info (parameter_info);
+      }
+
+    db_parameter_info *parameter_info = m_group->get_db_parameter_info ();
+    if (parameter_info)
+      {
+	error = mcon_send_data_to_java (m_group->get_socket(), METHOD_RESPONSE_SUCCESS, *parameter_info);
+      }
+    else
+      {
+	error = mcon_send_data_to_java (m_group->get_socket(), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error");
+      }
     return error;
   }
 

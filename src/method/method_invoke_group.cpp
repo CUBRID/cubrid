@@ -78,6 +78,7 @@ namespace cubmethod
     db_make_null (&v);
     m_result_vector.resize (sig_list.num_methods, v);
     m_is_running = false;
+    m_parameter_info = nullptr;
   }
 
   method_invoke_group::~method_invoke_group ()
@@ -88,6 +89,10 @@ namespace cubmethod
 	delete method;
       }
     m_method_vector.clear ();
+    if (m_parameter_info)
+      {
+	delete m_parameter_info;
+      }
   }
 
   DB_VALUE &
@@ -131,6 +136,18 @@ namespace cubmethod
   method_invoke_group::is_running () const
   {
     return m_is_running;
+  }
+
+  db_parameter_info *
+  method_invoke_group::get_db_parameter_info () const
+  {
+    return m_parameter_info;
+  }
+
+  void
+  method_invoke_group::set_db_parameter_info (db_parameter_info *param_info)
+  {
+    m_parameter_info = param_info;
   }
 
   int

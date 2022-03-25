@@ -341,6 +341,7 @@ EXPORTS
     db_set_system_parameters
     db_set_preferred_hosts
     db_set_connect_order
+    db_set_client_ip_addr
     db_shutdown
     db_string_free
     db_synchronize_cache

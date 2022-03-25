@@ -28,6 +28,9 @@
 
 #include "transaction_cl.h"
 
+extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
+    DB_QUERY_TYPE *column_info, bool is_holdable);
+
 namespace cubmethod
 {
   callback_handler::callback_handler (int max_query_handler)
@@ -446,9 +449,6 @@ namespace cubmethod
     return &handler;
   }
 }
-
-extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
-    DB_QUERY_TYPE *column_info, bool is_holdable);
 
 int
 method_make_out_rs (DB_BIGINT query_id)
