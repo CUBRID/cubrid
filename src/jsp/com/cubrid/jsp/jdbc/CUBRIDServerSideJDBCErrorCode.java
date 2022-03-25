@@ -73,11 +73,25 @@ public class CUBRIDServerSideJDBCErrorCode {
     public static final int ER_NOT_COLLECTION = -21121;
     public static final int ER_ARGUMENT_ZERO = -21128;
 
-    private static HashMap<Integer, String> messageString;
+    private static HashMap<Integer, String> messageString = null;
 
     public static String codeToMessage(int index) {
         if (messageString == null) setMessageHash();
         return messageString.get(index);
+    }
+
+    public static String codeToMessage(int index, String msg) {
+        if (messageString == null) {
+            setMessageHash();
+        }
+
+        if (index == ER_DBMS && msg != null) {
+            // received error message from DB server
+            return msg;
+        } else {
+            // default error message
+            return messageString.get(index);
+        }
     }
 
     private static void setMessageHash() {

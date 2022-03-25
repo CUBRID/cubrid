@@ -225,6 +225,8 @@ namespace cubmethod
     value_unpacker.value = &error_msg;
     value_unpacker.unpack (unpacker);
 
+    m_group->set_error_msg (std::string (db_get_string (&error_msg)));
+
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1,
 	    db_get_string (&error_msg));
     error_code = er_errid ();

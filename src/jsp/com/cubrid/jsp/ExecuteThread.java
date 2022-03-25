@@ -256,7 +256,7 @@ public class ExecuteThread extends Thread {
                     }
                     Server.log(throwable);
                     try {
-                        sendError(throwable.toString(), client);
+                        sendError(throwable.getMessage(), client);
                     } catch (IOException e1) {
                         Server.log(e1);
                     }

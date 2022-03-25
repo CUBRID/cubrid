@@ -60,4 +60,25 @@ namespace cubmethod
     err_file.assign (file ? file : "");
     err_line = line;
   }
+
+#define ERROR_CONTEXT_ARGS() \
+  err_id, err_string, err_file, err_line
+
+  void
+  error_context::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (ERROR_CONTEXT_ARGS ());
+  }
+
+  void
+  error_context::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (ERROR_CONTEXT_ARGS ());
+  }
+
+  size_t
+  error_context::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset, ERROR_CONTEXT_ARGS ());
+  }
 } // namespace cubmethod

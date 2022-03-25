@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,22 +29,18 @@
  *
  */
 
-package com.cubrid.jsp.jdbc;
+package com.cubrid.jsp.data;
 
-import com.cubrid.jsp.Server;
-import com.cubrid.jsp.exception.CUBRIDServerSideException;
+public class ErrorInfo {
+    public int errorCode;
+    public String errorString;
+    public String errorFile;
+    public int errorLine;
 
-public class CUBRIDServerSideJDBCErrorManager {
-    public static CUBRIDServerSideException createCUBRIDException(int errCode, Throwable t) {
-        CUBRIDServerSideException e = new CUBRIDServerSideException(errCode, t);
-        Server.log(e);
-        return e;
-    }
-
-    public static CUBRIDServerSideException createCUBRIDException(
-            int errCode, String msg, Throwable t) {
-        CUBRIDServerSideException e = new CUBRIDServerSideException(errCode, msg, t);
-        Server.log(e);
-        return e;
+    public ErrorInfo(CUBRIDUnpacker unpacker) {
+        errorCode = unpacker.unpackInt();
+        errorString = unpacker.unpackCString();
+        errorFile = unpacker.unpackCString();
+        errorLine = unpacker.unpackInt();
     }
 }

@@ -130,7 +130,7 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
@@ -171,7 +171,7 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
@@ -198,7 +198,7 @@ namespace cubmethod
 
     /* unexpected error, should not be here */
     m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
-    return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+    return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
   }
 
   int
@@ -218,7 +218,7 @@ namespace cubmethod
     get_generated_keys_info info = handler->generated_keys ();
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
@@ -257,7 +257,7 @@ namespace cubmethod
     oid_get_info info = get_oid_handler()->oid_get (request.oid, request.attr_names);
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
@@ -274,7 +274,7 @@ namespace cubmethod
     int result = get_oid_handler()->oid_put (request.oid, request.attr_names, request.db_values);
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
@@ -296,7 +296,7 @@ namespace cubmethod
     int res_code = get_oid_handler()->oid_cmd (oid, cmd, res);
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
@@ -320,7 +320,7 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx.get_error(), m_error_ctx.get_error_msg());
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
