@@ -36,9 +36,10 @@ class passive_tran_server : public tran_server
     void start_log_replicator (const log_lsa &start_lsa);
     void send_and_receive_stop_log_prior_dispatch ();
 
-    /* read replicator's current progress */
+    /* highest processed lsa, to be used for retrieve pages from PS */
     log_lsa get_highest_processed_lsa () const;
-    log_lsa get_min_unapplied_lsa () const;
+    /* lowest unapplied lsa, to be used to wait for page sync */
+    log_lsa get_lowest_unapplied_lsa () const;
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
     void wait_replication_past_target_lsa (LOG_LSA lsa);
 

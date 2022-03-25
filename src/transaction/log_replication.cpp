@@ -416,6 +416,7 @@ namespace cublog
 
   void replicator::wait_past_target_lsa (const log_lsa &a_target_lsa)
   {
+    // TODO: needs to be refactored to work with the new replicators flavors
     if (m_parallel_replication_redo == nullptr)
       {
 	// sync
@@ -444,11 +445,16 @@ namespace cublog
     return m_redo_lsa;
   }
 
-  log_lsa replicator::get_min_unapplied_lsa () const
+  log_lsa replicator::get_lowest_unapplied_lsa () const
   {
+    // TODO: needs to be refactored to work with the new replicators flavors
+    // for now it should not be called
+    assert (false);
+
     if (m_parallel_replication_redo == nullptr)
       {
 	//sync
+	std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
 	return m_redo_lsa;
       }
     //async

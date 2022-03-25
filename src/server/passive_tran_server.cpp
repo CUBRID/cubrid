@@ -153,10 +153,9 @@ log_lsa passive_tran_server::get_highest_processed_lsa () const
   return m_replicator->get_highest_processed_lsa ();
 }
 
-log_lsa passive_tran_server::get_min_unapplied_lsa () const
+log_lsa passive_tran_server::get_lowest_unapplied_lsa () const
 {
-  assert (false);
-  return m_replicator->get_min_unapplied_lsa ();
+  return m_replicator->get_lowest_unapplied_lsa ();
 }
 
 void passive_tran_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
