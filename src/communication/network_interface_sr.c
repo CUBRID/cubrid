@@ -10399,7 +10399,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
       assert (er_errid () != NO_ERROR);
       (void) return_error_to_client (thread_p, rid);
 
-      std::string err_msg (er_msg ());
+      std::string err_msg = top_on_stack->get_error_msg ();
       packer.set_buffer_and_pack_all (eb, err_msg);
     }
 
