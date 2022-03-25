@@ -6,3 +6,7 @@
 	path = cubrid-jdbc
 	url = https://github.com/cubrid/cubrid-jdbc
 	branch = feature/javasp_redesign
+[submodule "cubrid-cci"]
+	path = cubrid-cci
+	url = https://github.com/CUBRID/cubrid-cci.git
+	branch = develop

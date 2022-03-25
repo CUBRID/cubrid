@@ -1116,6 +1116,15 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto prepare_error;
 	}
+
+      err_code =
+	cgw_set_stmt_attr (srv_handle->cgw_handle->hstmt, SQL_ATTR_CURSOR_TYPE, (SQLPOINTER) SQL_CURSOR_STATIC,
+			   SQL_IS_INTEGER);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto prepare_error;
+	}
     }
 
   err_code = cgw_sql_prepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) sql_stmt);
@@ -3225,7 +3234,10 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle)
       return;
     }
 #if defined(CAS_FOR_CGW)
-  cgw_cursor_close (srv_handle->cgw_handle->hstmt);
+  if (cgw_cursor_close (srv_handle->cgw_handle->hstmt) > -1)
+    {
+      srv_handle->cgw_handle->hstmt = NULL;
+    }
 #else
   ux_free_result (srv_handle->q_result[idx].result);
   srv_handle->q_result[idx].result = NULL;
@@ -5847,14 +5859,14 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 
   if (total_row_count > INT_MAX)
     {
-      srv_handle->tuple_count = INT_MAX;
+      srv_handle->total_tuple_count = INT_MAX;
     }
   else
     {
-      srv_handle->tuple_count = (int) total_row_count;
+      srv_handle->total_tuple_count = (int) total_row_count;
     }
-  srv_handle->tuple_count = (int) total_row_count;
-  net_buf_overwrite_int (net_buf, srv_handle->total_row_count_msg_offset, srv_handle->tuple_count);
+  net_buf_overwrite_int (net_buf, srv_handle->total_row_count_msg_offset, srv_handle->total_tuple_count);
+  net_buf_overwrite_int (net_buf, srv_handle->res_tuple_count_msg_offset, srv_handle->total_tuple_count);
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
 
   srv_handle->cursor_pos = cursor_pos;
@@ -10465,7 +10477,7 @@ int
 get_tuple_count (T_SRV_HANDLE * srv_handle)
 {
 #if defined(CAS_FOR_CGW)
-  return srv_handle->tuple_count;
+  return srv_handle->total_tuple_count;
 #else
   return srv_handle->q_result->tuple_count;
 #endif /* CAS_FOR_CGW */

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,37 +29,26 @@
  *
  */
 
-/*
- * cci_ssl.h -
- */
+package com.cubrid.jsp.data;
 
-#ifndef	_CCI_SSL_H_
-#define	_CCI_SSL_H_
+public class ClientIds {
+    public int clientType;
+    public String clientInfo;
+    public String dbUser;
+    public String programName;
+    public String loginName;
+    public String hostName;
+    public String clientIp;
+    public int processId;
 
-#ident "$Id$"
-
-#include <stdio.h>
-#include <stdlib.h>
-
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <openssl/opensslv.h>
-
-#if defined(WINDOWS)
-#include <winsock2.h>
-#else
-#include <sys/socket.h>
-#include "netinet/in.h"
-#include "porting.h"
-#endif
-
-#define NON_USESSL      0
-#define USESSL          1
-
-extern SSL_CTX *create_ssl_ctx ();
-extern SSL *create_ssl (SOCKET srv_sock_fd, SSL_CTX * ctx);
-extern int connect_ssl (SSL * ssl);
-extern void cleanup_ssl (SSL * ssl);
-extern void cleanup_ssl_ctx (SSL_CTX * ctx);
-
-#endif /* _CCI_SSL_H_ */
+    public ClientIds(CUBRIDUnpacker unpacker) {
+        clientType = unpacker.unpackInt();
+        clientInfo = unpacker.unpackCString();
+        dbUser = unpacker.unpackCString();
+        programName = unpacker.unpackCString();
+        loginName = unpacker.unpackCString();
+        hostName = unpacker.unpackCString();
+        clientIp = unpacker.unpackCString();
+        processId = unpacker.unpackInt();
+    }
+}

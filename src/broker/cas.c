@@ -1239,6 +1239,7 @@ cas_main (void)
 #else
 
 	    dbms_type = cgw_is_supported_dbms (shm_appl->cgw_link_server);
+	    cgw_set_dbms_type (dbms_type);
 
 	    if (dbms_type == SUPPORTED_DBMS_ORACLE)
 	      {
@@ -1343,6 +1344,8 @@ cas_main (void)
 	    logddl_set_user_name (db_user);
 	    logddl_set_ip (client_ip_str);
 	    logddl_set_pid (getpid ());
+
+	    db_set_client_ip_addr (client_ip_str);
 
 	    set_hang_check_time ();
 

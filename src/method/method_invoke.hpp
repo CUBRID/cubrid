@@ -108,7 +108,7 @@ namespace cubmethod
 
       int callback_dispatch (cubthread::entry &thread_ref);
 
-      int callback_get_db_parameter (packing_unpacker &unpacker);
+      int callback_get_db_parameter (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_prepare (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_execute (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_fetch (cubthread::entry &thread_ref, packing_unpacker &unpacker);

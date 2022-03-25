@@ -56,6 +56,9 @@ CREATE OR REPLACE PROCEDURE sp_rset_qu(q STRING) as language java name 'test.SpC
 /* Unit Test for Server-Side JDBC */
 /* ////////////////////////////////////////////////////////////////////////// */
 
+/* Connection Test */
+CREATE OR REPLACE FUNCTION testUserInfo () RETURN STRING AS LANGUAGE JAVA NAME 'test.SpJDBCTest.testUserInfo() return java.lang.String';
+
 /* Statement Test */
 CREATE OR REPLACE FUNCTION TC_S0() RETURN STRING as language java name 'test.TestCUBRIDStatement.test0() return java.lang.String';
 CREATE OR REPLACE FUNCTION TC_S1() RETURN STRING as language java name 'test.TestCUBRIDStatement.test1() return java.lang.String';

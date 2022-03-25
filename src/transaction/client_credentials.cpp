@@ -39,6 +39,7 @@ clientids::clientids ()
   , program_name {}
   , login_name {}
   , host_name {}
+  , client_ip_addr {}
   , process_id (0)
 {
 }
@@ -77,9 +78,15 @@ clientids::get_host_name () const
   return host_name.c_str ();
 }
 
+const char *
+clientids::get_client_ip_addr () const
+{
+  return client_ip_addr.c_str ();
+}
+
 void
 clientids::set_ids (db_client_type type_arg, const char *client_info_arg, const char *db_user_arg,
-		    const char *program_name_arg, const char *login_name_arg, const char *host_name_arg,
+		    const char *program_name_arg, const char *login_name_arg, const char *host_name_arg, const char *client_ip_addr,
 		    int process_id_arg)
 {
   set_client_info (client_info_arg);
@@ -87,6 +94,7 @@ clientids::set_ids (db_client_type type_arg, const char *client_info_arg, const 
   set_program_name (program_name_arg);
   set_login_name (login_name_arg);
   set_host_name (host_name_arg);
+  set_client_ip_addr (client_ip_addr);
 
   client_type = type_arg;
   process_id = process_id_arg;
@@ -96,7 +104,7 @@ void
 clientids::set_ids (const clientids &other)
 {
   set_ids (other.client_type, other.client_info.c_str (), other.get_db_user (), other.get_program_name (),
-	   other.get_login_name (), other.get_host_name (), other.process_id);
+	   other.get_login_name (), other.get_host_name (), other.get_client_ip_addr(), other.process_id);
 }
 
 void
@@ -139,6 +147,19 @@ clientids::set_host_name (const char *host_name_arg)
 }
 
 void
+clientids::set_client_ip_addr (const char *client_ip_addr_arg)
+{
+  if (client_ip_addr_arg == NULL)
+    {
+      string_ncopy (client_ip_addr, UNKNOWN_ID, 16);
+    }
+  else
+    {
+      string_ncopy (client_ip_addr, client_ip_addr_arg, 16);
+    }
+}
+
+void
 clientids::set_system_internal ()
 {
   reset ();
@@ -160,6 +181,7 @@ clientids::reset ()
   program_name.clear ();
   login_name.clear ();
   host_name.clear ();
+  client_ip_addr.clear ();
   process_id = 0;
   client_type = DB_CLIENT_TYPE_UNKNOWN;
 }
@@ -169,12 +191,13 @@ clientids::reset ()
 //
 
 #define CLIENTID_PACKER_ARGS(client_type_as_int) \
-  client_type_as_int, client_info, db_user, program_name, login_name, host_name, process_id
+  client_type_as_int, client_info, db_user, program_name, login_name, host_name, client_ip_addr, process_id
 
 size_t
 clientids::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
 {
-  return serializator.get_all_packed_size (CLIENTID_PACKER_ARGS (static_cast<int> (client_type)));
+  return serializator.get_all_packed_size_starting_offset (start_offset,
+	 CLIENTID_PACKER_ARGS (static_cast<int> (client_type)));
 }
 
 void
@@ -230,7 +253,8 @@ boot_client_credential::get_db_password () const
 size_t
 boot_client_credential::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
 {
-  return clientids::get_packed_size (serializator) + serializator.get_all_packed_size (BOOTCLCRED_PACKER_ARGS);
+  std::size_t size = clientids::get_packed_size (serializator, start_offset);
+  return size + serializator.get_all_packed_size_starting_offset (size, BOOTCLCRED_PACKER_ARGS);
 }
 
 void

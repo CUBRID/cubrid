@@ -33,11 +33,11 @@
 #if !defined(WINDOWS)
 #include <stdio.h>
 #include <unistd.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#else
+#include <winsock2.h>
 #endif /* !WINDOWS */
-
-#if defined(SOLARIS)
-#include <netdb.h>		/* for MAXHOSTNAMELEN */
-#endif /* SOLARIS */
 
 #include <assert.h>
 
@@ -156,6 +156,7 @@ VOLID boot_User_volid = 0;	/* todo: boot_User_volid looks deprecated */
 char boot_Host_connected[CUB_MAXHOSTNAMELEN] = "";
 #endif /* CS_MODE */
 char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";
+char boot_Ip_address[16] = { 0 };
 
 static char boot_Volume_label[PATH_MAX] = " ";
 static bool boot_Is_client_all_final = true;
@@ -942,7 +943,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       client_credential->host_name = boot_get_host_name ();
     }
+
   client_credential->process_id = getpid ();
+
+  if (client_credential->client_ip_addr.empty ())
+    {
+      client_credential->client_ip_addr = boot_get_ip ();
+    }
 
   /*
    * Initialize the dynamic loader. Don't care about failures. If dynamic
@@ -2118,7 +2125,8 @@ boot_define_domain (MOP class_mop)
   SM_TEMPLATE *def;
   char domain_string[32];
   int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "object_of", NULL };
+  const char *index_col_names1[2] = { "object_of", NULL };
+  const char *index_col_names2[2] = { "data_type", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -2191,7 +2199,13 @@ boot_define_domain (MOP class_mop)
     }
 
   /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names1, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names2, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5935,6 +5949,24 @@ boot_get_host_name (void)
     }
 
   return boot_Host_name;
+}
+
+char *
+boot_get_ip (void)
+{
+  struct hostent *hp = NULL;
+  if (boot_Host_name[0] == '\0')
+    {
+      boot_get_host_name ();
+    }
+
+  if ((hp = gethostbyname (boot_Host_name)) != NULL)
+    {
+      char *ip = inet_ntoa (*(struct in_addr *) *hp->h_addr_list);
+      memcpy (boot_Ip_address, ip, 15);
+    }
+
+  return boot_Ip_address;
 }
 
 #if defined(CS_MODE)
