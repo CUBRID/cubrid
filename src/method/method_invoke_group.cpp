@@ -77,6 +77,7 @@ namespace cubmethod
     DB_VALUE v;
     db_make_null (&v);
     m_result_vector.resize (sig_list.num_methods, v);
+    m_is_running = false;
   }
 
   method_invoke_group::~method_invoke_group ()
@@ -222,11 +223,8 @@ namespace cubmethod
     // destroy cursors used in this group
     destory_all_cursors ();
 
-    if (!is_end_query)
-      {
-	cubmethod::header header (METHOD_REQUEST_END, get_id());
-	error = method_send_data_to_client (m_thread_p, header);
-      }
+    cubmethod::header header (METHOD_REQUEST_END, get_id());
+    error = method_send_data_to_client (m_thread_p, header);
 
     return error;
   }
