@@ -275,4 +275,15 @@ namespace cubmethod
     m_cursor_set.clear ();
   }
 
+  std::string
+  method_invoke_group::get_error_msg ()
+  {
+    return m_err_msg;
+  }
+
+  void
+  method_invoke_group::set_error_msg (const std::string &msg)
+  {
+    m_err_msg = msg;
+  }
 }	// namespace cubmethod

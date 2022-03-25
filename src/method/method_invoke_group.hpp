@@ -91,6 +91,10 @@ namespace cubmethod
       void register_returning_cursor (QUERY_ID query_id);
       query_cursor *get_cursor (QUERY_ID query_id);
 
+      // error
+      std::string get_error_msg ();
+      void set_error_msg (const std::string &msg);
+
     private:
       void destory_all_cursors ();
 
@@ -101,6 +105,7 @@ namespace cubmethod
       std::queue<cubmem::extensible_block> m_data_queue;
 
       std::unordered_set <std::uint64_t> m_cursor_set;
+      std::string m_err_msg;
 
       METHOD_GROUP_ID m_id;
       cubthread::entry *m_thread_p;
