@@ -168,7 +168,6 @@ struct t_cgw_handle
   SQLHENV henv;
   SQLHDBC hdbc;
   SQLHSTMT hstmt;
-  SQLHDESC hdesc;
 };
 #endif /* CAS_FOR_CGW */
 

@@ -135,6 +135,8 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
 
 #if defined (CAS_FOR_CGW)
   srv_handle->cgw_handle = NULL;
+  srv_handle->total_tuple_count = 0;
+  srv_handle->stmt_type = CUBRID_STMT_NONE;
 #endif /* CAS_FOR_CGW */
 
   *new_handle = srv_handle;
