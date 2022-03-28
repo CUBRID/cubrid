@@ -1413,8 +1413,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1335 RENAME does not allow change of owner.
 1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
 1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+1338 Identifier name [%1$s] not allowed. It cannot exceed %2$d bytes.
+1339 User name [%1$s] not allowed. It cannot exceed %2$d bytes.
+1340 Object name [%1$s] not allowed. It cannot exceed %2$d bytes.
 
-1338 Last Error
+1341 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

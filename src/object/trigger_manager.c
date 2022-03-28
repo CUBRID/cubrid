@@ -4241,12 +4241,15 @@ tr_find_trigger (const char *name)
 {
   DB_OBJECT *object;
   TR_TRIGGER *trigger;
+  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int save;
 
   object = NULL;
   AU_DISABLE (save);
 
-  if (trigger_table_find (name, &object) == NO_ERROR)
+  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+
+  if (trigger_table_find (realname, &object) == NO_ERROR)
     {
       if (object == NULL)
 	{
@@ -4256,7 +4259,7 @@ tr_find_trigger (const char *name)
 	    {
 	      char other_trigger_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-	      do_find_trigger_by_query (name, other_trigger_name, DB_MAX_IDENTIFIER_LENGTH);
+	      do_find_trigger_by_query (realname, other_trigger_name, DB_MAX_IDENTIFIER_LENGTH);
 	      if (other_trigger_name[0] != '\0')
 		{
 		  if (trigger_table_find (other_trigger_name, &object) != NO_ERROR)
@@ -4269,7 +4272,7 @@ tr_find_trigger (const char *name)
 
       if (object == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_NOT_FOUND, 1, name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_NOT_FOUND, 1, realname);
 	}
       else
 	{
@@ -4282,7 +4285,7 @@ tr_find_trigger (const char *name)
 	    {
 	      if (!check_authorization (trigger, 0))
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_SELECT_FAILURE, 1, name);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_SELECT_FAILURE, 1, realname);
 		  object = NULL;
 		}
 	    }

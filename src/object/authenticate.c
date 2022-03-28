@@ -5931,7 +5931,6 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigg
   MOP trigger_mop = NULL;
   MOP owner_mop = NULL;
   const char *trigger_name = NULL;
-  char user_specified_trigger_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
   const char *owner_name = NULL;
   int error = NO_ERROR;
 
@@ -5956,8 +5955,7 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigg
       return;
     }
 
-  sm_user_specified_name (trigger_name, user_specified_trigger_name, DB_MAX_SERIAL_NAME_LENGTH);
-  trigger_mop = tr_find_trigger (user_specified_trigger_name);
+  trigger_mop = tr_find_trigger (trigger_name);
   if (trigger_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (error);

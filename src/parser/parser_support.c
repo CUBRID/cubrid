@@ -60,6 +60,7 @@
 #include "string_buffer.hpp"
 #include "dbtype.h"
 #include "parser_allocator.hpp"
+#include "unicode_support.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -10187,6 +10188,8 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
   char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *user_specified_name = NULL;
+  int name_size = 0;
+  int composed_size = 0;
 
   if (parser == NULL || node == NULL)
     {
@@ -10237,7 +10240,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   if (strlen (original_name) >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH)
     {
       PT_ERRORf2 (parser, node,
-		  "Identifier name [%s] not allowed. It cannot exceed %d bytes.",
+		  "Object name [%s] not allowed. It cannot exceed %d bytes.",
 		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
       *continue_walk = PT_STOP_WALK;
       return node;
@@ -10289,6 +10292,30 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   /* In case 1, 2, 3, 5 */
   user_specified_name = pt_append_string (parser, downcase_resolved_name, ".");
   user_specified_name = pt_append_string (parser, user_specified_name, original_name);
+
+  name_size = (int) strlen (user_specified_name);
+  if (LANG_SYS_CODESET == INTL_CODESET_UTF8
+      && unicode_string_need_compose (user_specified_name, name_size, &composed_size, lang_get_generic_unicode_norm ()))
+    {
+      char *composed = NULL;
+      bool is_composed = false;
+
+      composed = STATIC_CAST (char *, (parser_allocate_string_buffer (parser, composed_size + 1, sizeof (char))));
+      if (composed == NULL)
+	{
+	  PT_ERRORf (parser, node, "cannot alloc %d bytes", composed_size + 1);
+	  return NULL;
+	}
+
+      unicode_compose_string (user_specified_name, name_size, composed, &composed_size, &is_composed, lang_get_generic_unicode_norm ());
+      composed[composed_size] = '\0';
+      assert (composed_size <= name_size);
+
+      if (is_composed)
+	{
+	  user_specified_name = composed;
+	}
+    }
 
   if (PT_IS_NAME_NODE (node))
     {
