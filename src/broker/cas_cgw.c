@@ -180,14 +180,6 @@ cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, ch
       goto ODBC_ERROR;
     }
 
-  if (ODBC_SQLSUCCESS (err_code))
-    {
-      SQL_CHK_ERR (local_odbc_handle->hdbc,
-		   SQL_HANDLE_DBC,
-		   err_code = SQLSetStmtAttr (local_odbc_handle->hstmt,
-					      SQL_ATTR_CURSOR_TYPE, (SQLPOINTER) SQL_CURSOR_STATIC, SQL_IS_INTEGER));
-    }
-
   cgw_link_server_info (local_odbc_handle->hdbc);
 
   SQL_CHK_ERR (local_odbc_handle->hdbc,
@@ -252,8 +244,6 @@ int
 cgw_row_data (SQLHSTMT hstmt, int cursor_pos)
 {
   SQLRETURN err_code;
-  int fetchOperation = SQL_FETCH_FIRST;
-  int fetch_offset = 0;
   int no_data = 0;
 
   if (hstmt == NULL)
@@ -262,18 +252,7 @@ cgw_row_data (SQLHSTMT hstmt, int cursor_pos)
       goto ODBC_ERROR;
     }
 
-  if (cursor_pos == 1)
-    {
-      fetch_offset = 0;
-      fetchOperation = SQL_FETCH_FIRST;
-    }
-  else if (cursor_pos > 1)
-    {
-      fetch_offset = cursor_pos;
-      fetchOperation = SQL_FETCH_ABSOLUTE;
-    }
-
-  err_code = SQLFetchScroll (hstmt, fetchOperation, fetch_offset);
+  err_code = SQLFetchScroll (hstmt, SQL_FETCH_NEXT, 0);
 
   if (err_code < 0)
     {
@@ -303,7 +282,7 @@ cgw_cursor_close (SQLHSTMT hstmt)
       goto ODBC_ERROR;
     }
 
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLCloseCursor (hstmt));
+  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLFreeStmt (hstmt, SQL_CLOSE));
 
   return err_code;
 

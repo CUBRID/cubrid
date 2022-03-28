@@ -228,6 +228,7 @@ struct t_srv_handle
   T_CGW_HANDLE *cgw_handle;
   int total_tuple_count;
   int stmt_type;
+  bool is_fetch_end;
 #endif				/* CAS_FOR_CGW */
 };
 

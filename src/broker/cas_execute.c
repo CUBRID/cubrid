@@ -3201,10 +3201,7 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle)
       return;
     }
 #if defined(CAS_FOR_CGW)
-  if (cgw_cursor_close (srv_handle->cgw_handle->hstmt) > -1)
-    {
-      srv_handle->cgw_handle->hstmt = NULL;
-    }
+  cgw_cursor_close (srv_handle->cgw_handle->hstmt);
 #else
   ux_free_result (srv_handle->q_result[idx].result);
   srv_handle->q_result[idx].result = NULL;
@@ -5738,6 +5735,11 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       return ERROR_INFO_SET (CAS_ER_NO_MORE_RESULT_SET, CAS_ERROR_INDICATOR);
     }
 
+  if (srv_handle->is_fetch_end)
+    {
+      cgw_execute (srv_handle);	// Open ODBC Cursor 
+    }
+
   net_buf_cp_int (net_buf, (int) total_row_count, &num_tuple_msg_offset);
 
   err_code = cgw_get_num_cols (srv_handle->cgw_handle->hstmt, &num_cols);
@@ -5782,9 +5784,11 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	{
 	  fetch_end_flag = 1;
 
+	  srv_handle->is_fetch_end = true;
+	  cgw_cursor_close (srv_handle->cgw_handle->hstmt);
+
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
-	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 	  break;
@@ -5802,7 +5806,8 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	{
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
-	      ux_cursor_close (srv_handle);
+	      srv_handle->is_fetch_end = true;
+	      cgw_cursor_close (srv_handle->cgw_handle->hstmt);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 	  break;
