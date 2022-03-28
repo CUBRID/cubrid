@@ -72,7 +72,7 @@ static pthread_mutex_t flashback_Conn_lock = PTHREAD_MUTEX_INITIALIZER;
  */
 
 static bool
-flashback_is_connection_alive (bool need_reset)
+flashback_is_in_progress ()
 {
   /* flashback_Current_conn indicates conn_entry in thread_p, and conn_entry can be reused by request handler.
    * So, status in flashback_Current_conn can be overwritten. */
@@ -93,11 +93,6 @@ flashback_is_connection_alive (bool need_reset)
 	{
 	  /* - flashback_Current_conn is overwritten with new connection, so in_flashback value is initialized to false.
 	   * - previous flashback connection has been exited abnormally. */
-	  if (need_reset)
-	    {
-	      flashback_reset ();
-	    }
-
 	  return false;
 	}
     }
@@ -125,7 +120,7 @@ flashback_initialize (THREAD_ENTRY * thread_p)
       return ER_FLASHBACK_DUPLICATED_REQUEST;
     }
 
-  assert (flashback_Current_conn == NULL);
+  flashback_reset ();
 
   flashback_Current_conn = thread_p->conn_entry;
   flashback_Current_conn->in_flashback = true;
@@ -172,9 +167,7 @@ flashback_is_needed_to_keep_archive ()
 {
   bool is_needed = false;
 
-  pthread_mutex_lock (&flashback_Conn_lock);
-
-  if (flashback_is_connection_alive (false))
+  if (flashback_is_in_progress ())
     {
       is_needed = true;
     }
@@ -182,8 +175,6 @@ flashback_is_needed_to_keep_archive ()
     {
       is_needed = false;
     }
-
-  pthread_mutex_unlock (&flashback_Conn_lock);
 
   return is_needed;
 }
