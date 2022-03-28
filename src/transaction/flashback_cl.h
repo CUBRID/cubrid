@@ -49,6 +49,7 @@
 typedef struct flashback_summary_info
 {
   TRANID trid;
+  char user[DB_MAX_USER_LENGTH + 1];
   LOG_LSA start_lsa;
   LOG_LSA end_lsa;
 } FLASHBACK_SUMMARY_INFO;
@@ -58,6 +59,6 @@ typedef std::unordered_map<TRANID, FLASHBACK_SUMMARY_INFO> FLASHBACK_SUMMARY_INF
 // *INDENT-ON*
 
 extern int flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INFO_MAP * summary,
-					       int num_summary, dynamic_array * classname_list, OID * oidlist);
+					       dynamic_array * classname_list, OID * oidlist);
 
 #endif
