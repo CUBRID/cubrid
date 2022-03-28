@@ -10575,7 +10575,8 @@ loaddb_update_stats ()
 
 int
 flashback_get_and_show_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
-				FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list, char **invalid_class)
+				FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list, char **invalid_class,
+				time_t * invalid_time)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
@@ -10653,6 +10654,10 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, area_size);
 	    }
 
+	}
+      else if (error_code == ER_FLASHBACK_INVALID_TIME)
+	{
+	  or_unpack_int64 (area, invalid_time);
 	}
       else if (error_code == NO_ERROR)
 	{

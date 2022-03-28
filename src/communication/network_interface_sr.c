@@ -10717,14 +10717,14 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
   int error_code = NO_ERROR;
   time_t ret_time = 0;
 
+  time_t current_time = time (NULL);
 
   /* 1. Check start_time */
-  if (*start_time < log_Gl.hdr.db_creation)
+  if (*start_time < log_Gl.hdr.db_creation || *start_time > current_time)
     {
       char start_date[20];
       char db_creation_date[20];
       char cur_date[20];
-      time_t current_time = time (NULL);
 
       strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
       strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
@@ -10732,6 +10732,7 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date, db_creation_date,
 	      cur_date);
+
       return ER_FLASHBACK_INVALID_TIME;
     }
   else
@@ -10755,6 +10756,7 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 	      /* out of range : start_time (ret_time) can not be greater than end_time */
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date,
 		      db_creation_date, start_date);
+
 	      return ER_FLASHBACK_INVALID_TIME;
 	    }
 	}
@@ -10957,6 +10959,20 @@ error:
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), classname,
 					 strlen (classname));
     }
+  else if (error_code == ER_FLASHBACK_INVALID_TIME)
+    {
+      OR_ALIGNED_BUF (OR_INT64_SIZE) area_buf;
+      time_t db_creation_time = log_Gl.hdr.db_creation;
+
+      area = OR_ALIGNED_BUF_START (area_buf);
+
+      ptr = or_pack_int (reply, OR_ALIGNED_BUF_SIZE (area_buf));
+      or_pack_int (ptr, error_code);
+
+      or_pack_int64 (area, db_creation_time);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+					 OR_ALIGNED_BUF_SIZE (area_buf));
+    }
   else
     {
       ptr = or_pack_int (reply, 0);
@@ -11131,6 +11147,7 @@ error:
     }
 
   flashback_reset ();
+
   return;
 css_send_error:
 

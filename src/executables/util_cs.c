@@ -4871,6 +4871,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
   char *invalid_class = NULL;
   int invalid_class_idx = 0;
 
+  time_t invalid_time = 0;
+
   OID *oid_list = NULL;
 
   const char *output_file = NULL;
@@ -5101,16 +5103,29 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  error = flashback_get_and_show_summary (darray, user, start_time, end_time, &summary_info, &oid_list, &invalid_class);
+  error =
+    flashback_get_and_show_summary (darray, user, start_time, end_time, &summary_info, &oid_list, &invalid_class,
+				    &invalid_time);
   if (error != NO_ERROR)
     {
       /* print error message */
       switch (error)
 	{
 	case ER_FLASHBACK_INVALID_TIME:
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TIME));
-	  break;
+	  {
+	    time_t current_time = time (NULL);
+
+	    char db_creation_time[20];
+	    char current_time_buf[20];
+
+	    strftime (db_creation_time, 20, "%d-%m-%Y:%H:%M:%S", localtime (&invalid_time));
+	    strftime (current_time_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
+
+	    PRINT_AND_LOG_ERR_MSG (msgcat_message
+				   (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TIME),
+				   current_time_buf, db_creation_time);
+	    break;
+	  }
 	case ER_FLASHBACK_INVALID_CLASS:
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TABLE_NOT_EXIST),
