@@ -123,9 +123,10 @@ namespace cubload
       {
 	return found;
       }
-      
+
     /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-    if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+    if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_UTILITY
+	&& prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
       {
 	cubthread::entry &thread_ref = cubthread::get_entry ();
 	LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
@@ -149,7 +150,7 @@ namespace cubload
 	  }
 
 	error = heap_scancache_quick_start_root_hfid (&thread_ref, &scan_cache);
-        if (error != NO_ERROR)
+	if (error != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();
 	    heap_attrinfo_end (&thread_ref, &attr_info);
@@ -165,38 +166,38 @@ namespace cubload
 	    return LC_CLASSNAME_ERROR;
 	  }
 
-	  {
-	    char *string = NULL;
-	    int alloced_string = 0;
+	{
+	  char *string = NULL;
+	  int alloced_string = 0;
 
-	    for (i = 0; i < attr_info.num_values; i++)
-	      {
-		error = or_get_attrname (&recdes, i, &string, &alloced_string);
-		if (error != NO_ERROR)
-		  {
-		    ASSERT_ERROR ();
-		    heap_attrinfo_end (&thread_ref, &attr_info);
-		    break;
-		  }
+	  for (i = 0; i < attr_info.num_values; i++)
+	    {
+	      error = or_get_attrname (&recdes, i, &string, &alloced_string);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  heap_attrinfo_end (&thread_ref, &attr_info);
+		  break;
+		}
 
-		if (string != NULL && strcmp ("name", string) == 0)
-		  {
-		    attr_idx = i;
+	      if (string != NULL && strcmp ("name", string) == 0)
+		{
+		  attr_idx = i;
 
-		    if (string != NULL && alloced_string == 1)
-		      {
-			db_private_free_and_init (&thread_ref, string);
-		      }
+		  if (string != NULL && alloced_string == 1)
+		    {
+		      db_private_free_and_init (&thread_ref, string);
+		    }
 
-		    break;
-		  }
+		  break;
+		}
 
-		if (string != NULL && alloced_string == 1)
-		  {
-		    db_private_free_and_init (&thread_ref, string);
-		  }
-	      }
-	  }
+	      if (string != NULL && alloced_string == 1)
+		{
+		  db_private_free_and_init (&thread_ref, string);
+		}
+	    }
+	}
 
 	error = heap_scancache_end (&thread_ref, &scan_cache);
 	if (error != NO_ERROR)
@@ -213,7 +214,7 @@ namespace cubload
 	    heap_attrinfo_end (&thread_ref, &attr_info);
 	    return LC_CLASSNAME_ERROR;
 	  }
-	
+
 	error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, false, NULL);
 	if (error != NO_ERROR)
 	  {
@@ -255,7 +256,7 @@ namespace cubload
 			    heap_attrinfo_end (&thread_ref, &attr_info);
 			    return found_again;
 			  }
-			
+
 			break;
 		      }
 		  }
