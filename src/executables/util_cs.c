@@ -5099,7 +5099,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   while (summary_entry == NULL)
     {
-      printf ("Enter transaction id ( press -1 to quit) : ");
+      printf ("Enter transaction id (press -1 to quit): ");
 
       scanf ("%d", &trid);
       if (trid == -1)

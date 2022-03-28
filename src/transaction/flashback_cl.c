@@ -164,8 +164,8 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
   strftime (etime_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&summary_end_time));
 
   printf ("Flashback Summary\n");
-  printf ("Number of Transaction : %43d\n", num_summary);
-  printf ("Start date - End date : %20s - %20s\n", stime_buf, etime_buf);
+  printf ("Number of Transaction: %43d\n", num_summary);
+  printf ("Start date - End date: %20s - %20s\n", stime_buf, etime_buf);
 
   line_cnt = line_cnt + 3;
 
