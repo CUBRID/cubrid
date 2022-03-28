@@ -529,10 +529,12 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 		{
 		  memcpy (&classoid, supplement_data, sizeof (OID));
 
-		  if (context->classoid_set.find (classoid) == context->classoid_set.end ())
+                  // *INDENT-OFF*
+		  if (std::find (context->classoids.begin(), context->classoids.end(), classoid) == context->classoids.end())
 		    {
 		      break;
 		    }
+                  // *INDENT-ON*
 
 		  flashback_fill_dml_summary (summary_entry, classoid, rec_type);
 

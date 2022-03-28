@@ -10652,8 +10652,6 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
 	    }
 
 	  /* get summary info */
-	  ptr = or_unpack_int (ptr, &num_summary);
-
 	  error_code = flashback_unpack_and_print_summary (&ptr, summary, class_list, *oid_list);
 	}
 

@@ -235,12 +235,12 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
 	      da_get (classname_list, idx, classname);
 	      if (j == 0)
 		{
-		  printf ("%s\n", classname);
+		  printf ("%-s\n", classname);
 		  line_cnt++;
 		}
 	      else
 		{
-		  printf ("%134s\n", classname);
+		  printf ("%130s%-s\n", "", classname);
 		  line_cnt++;
 		}
 	    }

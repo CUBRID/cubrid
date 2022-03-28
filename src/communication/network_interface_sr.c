@@ -10820,7 +10820,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *start_ptr;
 
   char *num_ptr;		//pointer in which 'number of summary' is located
-  int tmp_num;
+  int tmp_num = 0;
 
   LC_FIND_CLASSNAME status;
 
@@ -10830,10 +10830,6 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   time_t end_time = 0;
 
   char *classname = NULL;
-
-  /* *INDENT-OFF* */
-  std::queue <OID> classoid_queue; //queue to return class OID in the order of the class names received from the user
-  /* *INDENT-ON* */
 
   error_code = flashback_initialize (thread_p);
   if (error_code != NO_ERROR)
@@ -10859,9 +10855,9 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 	  goto error;
 	}
 
-      classoid_queue.push (classoid);
-      context.classoid_set.emplace (classoid);
+      context.classoids.emplace_back (classoid);
     }
+
   ptr = or_unpack_string_nocopy (ptr, &context.user);
   ptr = or_unpack_int64 (ptr, &start_time);
   ptr = or_unpack_int64 (ptr, &end_time);
@@ -10905,12 +10901,12 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   /* area packing : OID list | num summary | summary info list */
   ptr = area;
 
-  for (int i = 0; i < context.num_class; i++)
+  // *INDENT-OFF*
+  for (auto iter : context.classoids)
     {
-      OID tmp_oid = classoid_queue.front ();
-      ptr = or_pack_oid (ptr, &tmp_oid);
-      classoid_queue.pop ();
+      ptr = or_pack_oid (ptr, &iter);
     }
+  // *INDENT-ON*
 
   ptr = or_pack_int64 (ptr, start_time);
   ptr = or_pack_int64 (ptr, end_time);
