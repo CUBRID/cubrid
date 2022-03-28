@@ -448,8 +448,6 @@ namespace cublog
   log_lsa replicator::get_lowest_unapplied_lsa () const
   {
     // TODO: needs to be refactored to work with the new replicators flavors
-    // for now it should not be called
-
     if (m_parallel_replication_redo == nullptr)
       {
 	// sync
