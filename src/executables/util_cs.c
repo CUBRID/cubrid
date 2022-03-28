@@ -5167,7 +5167,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	}
 
     }
-  while (!LSA_ISNULL (&start_lsa) && !LSA_ISNULL (&end_lsa));
+  while (!LSA_ISNULL (&start_lsa) && !LSA_ISNULL (&end_lsa) && LSA_LT (&start_lsa, &end_lsa));
 
   db_shutdown ();
 
