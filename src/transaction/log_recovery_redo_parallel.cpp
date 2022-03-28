@@ -725,12 +725,6 @@ namespace cublog
     m_min_unapplied_log_lsa_calculation.wait_past_target_log_lsa (a_target_lsa);
   }
 
-  log_lsa
-  redo_parallel::get_min_unapplied_log_lsa ()
-  {
-    return m_min_unapplied_log_lsa_calculation.get_calculated_lsa ();
-  }
-
   /*********************************************************************
    * redo_job_impl - definition
    *********************************************************************/

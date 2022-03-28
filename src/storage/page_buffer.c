@@ -2373,7 +2373,7 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
   // Compare page LSA to replication LSA. If page is ahead, there may be a desynchronization issue; its LSA must be
   // saved in transaction descriptor and the appropriate error must be set and returned.
   LOG_LSA page_lsa = *pgbuf_get_lsa (page);
-  LOG_LSA repl_lsa = get_passive_tran_server_ptr ()->get_highest_processed_lsa ();
+  LOG_LSA repl_lsa = get_passive_tran_server_ptr ()->get_lowest_unapplied_lsa ();
   if (page_lsa > repl_lsa)
     {
       LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
