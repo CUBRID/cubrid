@@ -137,7 +137,7 @@ cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, ch
   SQLCHAR out_connect_str[CGW_LINK_URL_MAX_LEN + 1];
   SQLSMALLINT out_connect_str_len;
   char connect_str[CGW_LINK_URL_MAX_LEN + 1] = { 0, };
-  bool is_connet = false;
+  bool is_conneted = false;
 
   if (cgw_is_database_connected () == CONNECTED_STATE)
     {
@@ -172,7 +172,7 @@ cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, ch
 						out_connect_str,
 						(SQLSMALLINT) sizeof (out_connect_str),
 						&out_connect_str_len, SQL_DRIVER_NOPROMPT));
-      is_connet = true;
+      is_conneted = true;
     }
   else
     {
@@ -203,7 +203,7 @@ cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, ch
 ODBC_ERROR:
   if (local_odbc_handle->hdbc)
     {
-      if (is_connet)
+      if (is_conneted)
 	{
 	  SQLDisconnect (local_odbc_handle->hdbc);
 	}
