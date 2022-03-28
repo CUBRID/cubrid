@@ -60,6 +60,7 @@
 #include "log_volids.hpp"
 #include "tde.h"
 #include "flashback_cl.h"
+#include "connection_support.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -73,6 +74,10 @@
 	    ((VOL_PURPOSE == DB_PERMANENT_DATA_PURPOSE) ? "PERMANENT DATA"	\
 	    : (VOL_PURPOSE == DB_TEMPORARY_DATA_PURPOSE) ? "TEMPORARY DATA"     \
 	    : "UNKNOWN")
+
+#if defined(WINDOWS)
+#define STDIN_FILENO  _fileno (stdin)
+#endif
 
 typedef enum
 {
@@ -4893,6 +4898,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
   LOG_LSA start_lsa = LSA_INITIALIZER;
   LOG_LSA end_lsa = LSA_INITIALIZER;
 
+  POLL_FD input_fd = { STDIN_FILENO, POLLIN | POLLPRI };
+  int timeout = 0;
+
   num_tables = utility_get_option_string_table_size (arg_map) - 1;
   if (num_tables < 1)
     {
@@ -4921,12 +4929,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
   end_date = utility_get_option_string_value (arg_map, FLASHBACK_END_DATE_S, 0);
   is_detail = utility_get_option_bool_value (arg_map, FLASHBACK_DETAIL_S);
   is_oldest = utility_get_option_bool_value (arg_map, FLASHBACK_OLDEST_S);
-
-  if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
-    {
-      fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
-      goto error_exit;
-    }
 
   /* create table list */
   /* class existence and classoid will be found at server side. if is checked at utility side, it needs addtional access to the server through locator */
@@ -5066,6 +5068,12 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   need_shutdown = true;
 
+  if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
+      goto error_exit;
+    }
+
   oid_list = (OID *) malloc (sizeof (OID) * num_tables);
   if (oid_list == NULL)
     {
@@ -5097,11 +5105,23 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  timeout = prm_get_integer_value (PRM_ID_FLASHBACK_TIMEOUT);
+
   while (summary_entry == NULL)
     {
       printf ("Enter transaction id (press -1 to quit): ");
+      fflush (stdout);
 
-      scanf ("%d", &trid);
+      if (poll (&input_fd, 1, timeout * 1000))
+	{
+	  scanf ("%d", &trid);
+	}
+      else
+	{
+	  // TIMEOUT
+	  goto error_exit;
+	}
+
       if (trid == -1)
 	{
 	  goto error_exit;
@@ -5133,8 +5153,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	      break;
 	    case ER_FLASHBACK_LOG_NOT_EXIST:
 	      break;
-	    case ER_FLASHBACK_TIMEOUT:
-	      break;
 	    default:
 	      break;
 	    }
@@ -5149,7 +5167,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	}
 
     }
-  while (!LSA_ISNULL (&start_lsa) && !LSA_ISNULL (&end_lsa));
+  while (!LSA_ISNULL (&start_lsa) && !LSA_ISNULL (&end_lsa) && LSA_LT (&start_lsa, &end_lsa));
 
   db_shutdown ();
 

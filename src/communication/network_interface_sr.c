@@ -10837,8 +10837,6 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto error;
     }
 
-  flashback_set_status_active ();
-
   ptr = or_unpack_int (request, &context.num_class);
 
   for (int i = 0; i < context.num_class; i++)
@@ -10932,13 +10930,6 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto css_send_error;
     }
 
-  /* It must ensure that the request_done_time and status are set in the order as below.
-   * If this order is not guaranteed in any case, the archive log used by flashback can be deleted.
-   * Refer to flashback_is_needed_to_keep_archive(). */
-  flashback_set_request_done_time ();
-
-  flashback_set_status_inactive ();
-
   return;
 error:
   ptr = or_pack_int (reply, 0);
@@ -11013,15 +11004,6 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0 };
 
-  flashback_set_status_active ();
-
-  if (flashback_check_time_exceed_threshold ())
-    {
-      /* er_set */
-      error_code = ER_FLASHBACK_TIMEOUT;
-      goto error;
-    }
-
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
   ptr = or_unpack_int (request, &context.trid);
@@ -11095,10 +11077,6 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 	  /* start_lsa is increased only if direction is forward */
 	  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
 	}
-
-      flashback_set_request_done_time ();
-
-      flashback_set_status_inactive ();
     }
 
   return;
