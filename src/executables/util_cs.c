@@ -4173,9 +4173,9 @@ static void
 print_flashback_detail (int trid, char *user, char *flashback, char *original, FILE * outfp)
 {
   fprintf (outfp, "[TRANSACTION ID] %d \n", trid);
-  fprintf (outfp, "[USER]           %s \n", user);
-  fprintf (outfp, "[ORIGINAL]       %s \n", original);
-  fprintf (outfp, "[FLASHBACK]      %s \n", flashback);
+  fprintf (outfp, "[USER]           %-s \n", user);
+  fprintf (outfp, "[ORIGINAL]       %-s \n", original);
+  fprintf (outfp, "[FLASHBACK]      %-s \n", flashback);
 }
 
 static int
@@ -4245,16 +4245,16 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
   for (i = 0; i < num_change_col; i++)
     {
       /* check SQL length
-       * cond_sql + column name + length of " = and/limit 1" */
+       * cond_sql + column name + length of " = and/limit 1;" */
       error =
-	check_and_resize_sql_memory (&cond_sql, strlen (cond_sql) + strlen (attr->header.name) + 12,
+	check_and_resize_sql_memory (&cond_sql, strlen (cond_sql) + strlen (attr->header.name) + 15,
 				     &max_cond_sql_size);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      sprintf (cond_sql + strlen (cond_sql), "%s = ", attr->header.name);
+      sprintf (cond_sql + strlen (cond_sql), "[%s] = ", attr->header.name);
 
       process_column_data (&ptr, &cond_sql, &max_cond_sql_size, attr->type->id);
       if (i != num_change_col - 1)
@@ -4263,7 +4263,7 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
 	}
       else
 	{
-	  strcat (cond_sql, " limit 1");
+	  strcat (cond_sql, " limit 1;");
 	}
 
       attr = attr->order_link;
@@ -4280,13 +4280,13 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
     {
       /* check SQL length
        * sql + column name + length of " = , " */
-      error = check_and_resize_sql_memory (&sql, strlen (sql) + strlen (attr->header.name) + 6, &max_sql_size);
+      error = check_and_resize_sql_memory (&sql, strlen (sql) + strlen (attr->header.name) + 8, &max_sql_size);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      sprintf (sql + strlen (sql), "%s = ", attr->header.name);
+      sprintf (sql + strlen (sql), "[%s] = ", attr->header.name);
 
       process_column_data (&ptr, &sql, &max_sql_size, attr->type->id);
       if (i != num_cond_col - 1)
@@ -4331,14 +4331,14 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
 	  /* check SQL length
 	   * cond_sql + column name + length of " = , " */
 	  error =
-	    check_and_resize_sql_memory (&original_sql, strlen (original_sql) + strlen (attr->header.name) + 6,
+	    check_and_resize_sql_memory (&original_sql, strlen (original_sql) + strlen (attr->header.name) + 8,
 					 &max_original_size);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  sprintf (original_sql + strlen (original_sql), "%s = ", attr->header.name);
+	  sprintf (original_sql + strlen (original_sql), "[%s] = ", attr->header.name);
 
 	  process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
 	  if (i != num_change_col - 1)
@@ -4369,16 +4369,16 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
       for (i = 0; i < num_cond_col; i++)
 	{
 	  /* check SQL length
-	   * cond_sql + column name + length of " = and/limit 1" */
+	   * cond_sql + column name + length of " = and/limit 1;" */
 	  error =
-	    check_and_resize_sql_memory (&original_sql, strlen (original_sql) + strlen (attr->header.name) + 12,
+	    check_and_resize_sql_memory (&original_sql, strlen (original_sql) + strlen (attr->header.name) + 15,
 					 &max_original_size);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  sprintf (original_sql + strlen (original_sql), "%s = ", attr->header.name);
+	  sprintf (original_sql + strlen (original_sql), "[%s] = ", attr->header.name);
 
 	  process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
 	  if (i != num_cond_col - 1)
@@ -4387,7 +4387,7 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
 	    }
 	  else
 	    {
-	      strcat (original_sql, " limit 1");
+	      strcat (original_sql, " limit 1;");
 	    }
 
 	  attr = attr->order_link;
@@ -4536,13 +4536,13 @@ print_flashback_delete (char **loginfo, int trid, char *user, const char *classn
 	  /* check SQL length
 	   * cond_sql + column name + length of " = and/limit 1" */
 	  error =
-	    check_and_resize_sql_memory (&sql, strlen (original_sql) + strlen (attr->header.name) + 12, &max_sql_size);
+	    check_and_resize_sql_memory (&sql, strlen (original_sql) + strlen (attr->header.name) + 15, &max_sql_size);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  sprintf (original_sql + strlen (original_sql), "%s = ", attr->header.name);
+	  sprintf (original_sql + strlen (original_sql), "[%s] = ", attr->header.name);
 
 	  process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
 
@@ -4552,7 +4552,7 @@ print_flashback_delete (char **loginfo, int trid, char *user, const char *classn
 	    }
 	  else
 	    {
-	      strcat (original_sql, " limit 1");
+	      strcat (original_sql, " limit 1;");
 	    }
 
 	  attr = attr->order_link;
@@ -4646,13 +4646,13 @@ print_flashback_insert (char **loginfo, int trid, char *user, const char *classn
     {
       /* check SQL length
        * cond_sql + column name + length of " = and/limit 1" */
-      error = check_and_resize_sql_memory (&sql, strlen (sql) + strlen (attr->header.name) + 12, &max_sql_size);
+      error = check_and_resize_sql_memory (&sql, strlen (sql) + strlen (attr->header.name) + 15, &max_sql_size);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      sprintf (sql + strlen (sql), "%s = ", attr->header.name);
+      sprintf (sql + strlen (sql), "[%s] = ", attr->header.name);
 
       process_column_data (&ptr, &sql, &max_sql_size, attr->type->id);
       if (i != num_change_col - 1)
@@ -4661,7 +4661,7 @@ print_flashback_insert (char **loginfo, int trid, char *user, const char *classn
 	}
       else
 	{
-	  strcat (sql, " limit 1");
+	  strcat (sql, " limit 1;");
 	}
 
       attr = attr->order_link;
