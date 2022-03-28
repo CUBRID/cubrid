@@ -2187,7 +2187,7 @@ sm_downcase_name (const char *name, char *buf, int buf_size)
       else
 	{
 	  memcpy (name_copy, name, (MAX_PRINT_SIZE - 4));
-	  memcpy (name_copy, "...", 4);
+	  memcpy (name_copy + (MAX_PRINT_SIZE - 4), "...", 4);
 	}
 
       ERROR_SET_ERROR_2ARGS (error, ER_SM_MAX_LENGTH_EXCEEDED_IDENTIFIER, name_copy, n_bytes);
