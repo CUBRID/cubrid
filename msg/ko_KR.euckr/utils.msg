@@ -976,9 +976,9 @@ applyinfo: display CUBRID HA 복제 상태 출력\n\
 \n\
 valid options:\n\
   -r, --remote-host-name      원격 호스트 이름; 원격 노드의 활성 로그 정보 출력\n\
-  -a, --applied-info          반영된 정보 출력\n\
   -L, --copied-log-path=PATH  복사된 로그 볼륨의 경로; 복사된 로그 정보 출력\n\
-  -p, --page=ID               페이지 id; 기본값: 0\n\
+  -a, --applied-info          반영된 정보 출력; L옵션이 필요\n\
+  -p, --page=ID               페이지 id; L옵션이 필요; 기본값: 0\n\
   -v, --verbose               상세 상태 정보 출력; 기본값: 사용하지 않음\n\
   -i, --interval=S            매 S 초마다 로그 정보 출력\n
 

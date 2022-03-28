@@ -976,9 +976,9 @@ uso: %1$s applyinfo [OPTION] database-name\n\
 \n\
 opciones validas:\n\
   -r, --remote-host-name      nombre de host remote; mostrar la informacion de registro activa del nodo remote \n\
-  -a, --applied-info          mostrar informacion aplicada \n\
   -L, --copied-log-path=PATH  ruta de los volumenes de registro copiados; mostrar informacion de registro copiado \n\
-  -p, --page=ID               id de pagina; estandar : 0\n\
+  -a, --applied-info          mostrar informacion aplicada; se requiere la opción -L \n\
+  -p, --page=ID               id de pagina; se requiere la opción -L; estandar : 0\n\
   -v, --verbose               habilitar mensajes de estado verbose; estandar : inhabilitar\n\
   -i, --interval=S            imprimir informacion casa S segundos\n
 
