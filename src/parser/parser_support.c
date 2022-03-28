@@ -10307,7 +10307,8 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  return NULL;
 	}
 
-      unicode_compose_string (user_specified_name, name_size, composed, &composed_size, &is_composed, lang_get_generic_unicode_norm ());
+      unicode_compose_string (user_specified_name, name_size, composed, &composed_size, &is_composed,
+			      lang_get_generic_unicode_norm ());
       composed[composed_size] = '\0';
       assert (composed_size <= name_size);
 
