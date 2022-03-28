@@ -60,6 +60,7 @@
 #include "log_volids.hpp"
 #include "tde.h"
 #include "flashback_cl.h"
+#include "connection_support.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -73,6 +74,10 @@
 	    ((VOL_PURPOSE == DB_PERMANENT_DATA_PURPOSE) ? "PERMANENT DATA"	\
 	    : (VOL_PURPOSE == DB_TEMPORARY_DATA_PURPOSE) ? "TEMPORARY DATA"     \
 	    : "UNKNOWN")
+
+#if defined(WINDOWS)
+#define STDIN_FILENO  _fileno (stdin)
+#endif
 
 typedef enum
 {
@@ -4173,9 +4178,9 @@ static void
 print_flashback_detail (int trid, char *user, char *flashback, char *original, FILE * outfp)
 {
   fprintf (outfp, "[TRANSACTION ID] %d \n", trid);
-  fprintf (outfp, "[USER]           %s \n", user);
-  fprintf (outfp, "[ORIGINAL]       %s \n", original);
-  fprintf (outfp, "[FLASHBACK]      %s \n", flashback);
+  fprintf (outfp, "[USER]           %-s \n", user);
+  fprintf (outfp, "[ORIGINAL]       %-s \n", original);
+  fprintf (outfp, "[FLASHBACK]      %-s \n", flashback);
 }
 
 static int
@@ -4245,16 +4250,16 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
   for (i = 0; i < num_change_col; i++)
     {
       /* check SQL length
-       * cond_sql + column name + length of " = and/limit 1" */
+       * cond_sql + column name + length of " = and/limit 1;" */
       error =
-	check_and_resize_sql_memory (&cond_sql, strlen (cond_sql) + strlen (attr->header.name) + 12,
+	check_and_resize_sql_memory (&cond_sql, strlen (cond_sql) + strlen (attr->header.name) + 15,
 				     &max_cond_sql_size);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      sprintf (cond_sql + strlen (cond_sql), "%s = ", attr->header.name);
+      sprintf (cond_sql + strlen (cond_sql), "[%s] = ", attr->header.name);
 
       process_column_data (&ptr, &cond_sql, &max_cond_sql_size, attr->type->id);
       if (i != num_change_col - 1)
@@ -4263,7 +4268,7 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
 	}
       else
 	{
-	  strcat (cond_sql, " limit 1");
+	  strcat (cond_sql, " limit 1;");
 	}
 
       attr = attr->order_link;
@@ -4280,13 +4285,13 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
     {
       /* check SQL length
        * sql + column name + length of " = , " */
-      error = check_and_resize_sql_memory (&sql, strlen (sql) + strlen (attr->header.name) + 6, &max_sql_size);
+      error = check_and_resize_sql_memory (&sql, strlen (sql) + strlen (attr->header.name) + 8, &max_sql_size);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      sprintf (sql + strlen (sql), "%s = ", attr->header.name);
+      sprintf (sql + strlen (sql), "[%s] = ", attr->header.name);
 
       process_column_data (&ptr, &sql, &max_sql_size, attr->type->id);
       if (i != num_cond_col - 1)
@@ -4331,14 +4336,14 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
 	  /* check SQL length
 	   * cond_sql + column name + length of " = , " */
 	  error =
-	    check_and_resize_sql_memory (&original_sql, strlen (original_sql) + strlen (attr->header.name) + 6,
+	    check_and_resize_sql_memory (&original_sql, strlen (original_sql) + strlen (attr->header.name) + 8,
 					 &max_original_size);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  sprintf (original_sql + strlen (original_sql), "%s = ", attr->header.name);
+	  sprintf (original_sql + strlen (original_sql), "[%s] = ", attr->header.name);
 
 	  process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
 	  if (i != num_change_col - 1)
@@ -4369,16 +4374,16 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
       for (i = 0; i < num_cond_col; i++)
 	{
 	  /* check SQL length
-	   * cond_sql + column name + length of " = and/limit 1" */
+	   * cond_sql + column name + length of " = and/limit 1;" */
 	  error =
-	    check_and_resize_sql_memory (&original_sql, strlen (original_sql) + strlen (attr->header.name) + 12,
+	    check_and_resize_sql_memory (&original_sql, strlen (original_sql) + strlen (attr->header.name) + 15,
 					 &max_original_size);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  sprintf (original_sql + strlen (original_sql), "%s = ", attr->header.name);
+	  sprintf (original_sql + strlen (original_sql), "[%s] = ", attr->header.name);
 
 	  process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
 	  if (i != num_cond_col - 1)
@@ -4387,7 +4392,7 @@ print_flashback_update (char **loginfo, int trid, char *user, const char *classn
 	    }
 	  else
 	    {
-	      strcat (original_sql, " limit 1");
+	      strcat (original_sql, " limit 1;");
 	    }
 
 	  attr = attr->order_link;
@@ -4536,13 +4541,13 @@ print_flashback_delete (char **loginfo, int trid, char *user, const char *classn
 	  /* check SQL length
 	   * cond_sql + column name + length of " = and/limit 1" */
 	  error =
-	    check_and_resize_sql_memory (&sql, strlen (original_sql) + strlen (attr->header.name) + 12, &max_sql_size);
+	    check_and_resize_sql_memory (&sql, strlen (original_sql) + strlen (attr->header.name) + 15, &max_sql_size);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  sprintf (original_sql + strlen (original_sql), "%s = ", attr->header.name);
+	  sprintf (original_sql + strlen (original_sql), "[%s] = ", attr->header.name);
 
 	  process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
 
@@ -4552,7 +4557,7 @@ print_flashback_delete (char **loginfo, int trid, char *user, const char *classn
 	    }
 	  else
 	    {
-	      strcat (original_sql, " limit 1");
+	      strcat (original_sql, " limit 1;");
 	    }
 
 	  attr = attr->order_link;
@@ -4646,13 +4651,13 @@ print_flashback_insert (char **loginfo, int trid, char *user, const char *classn
     {
       /* check SQL length
        * cond_sql + column name + length of " = and/limit 1" */
-      error = check_and_resize_sql_memory (&sql, strlen (sql) + strlen (attr->header.name) + 12, &max_sql_size);
+      error = check_and_resize_sql_memory (&sql, strlen (sql) + strlen (attr->header.name) + 15, &max_sql_size);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      sprintf (sql + strlen (sql), "%s = ", attr->header.name);
+      sprintf (sql + strlen (sql), "[%s] = ", attr->header.name);
 
       process_column_data (&ptr, &sql, &max_sql_size, attr->type->id);
       if (i != num_change_col - 1)
@@ -4661,7 +4666,7 @@ print_flashback_insert (char **loginfo, int trid, char *user, const char *classn
 	}
       else
 	{
-	  strcat (sql, " limit 1");
+	  strcat (sql, " limit 1;");
 	}
 
       attr = attr->order_link;
@@ -4897,6 +4902,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
   LOG_LSA start_lsa = LSA_INITIALIZER;
   LOG_LSA end_lsa = LSA_INITIALIZER;
 
+  POLL_FD input_fd = { STDIN_FILENO, POLLIN | POLLPRI };
+  int timeout = 0;
+
   num_tables = utility_get_option_string_table_size (arg_map) - 1;
   if (num_tables < 1)
     {
@@ -5083,7 +5091,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NO_SUPPLEMENTAL_LOG));
-      fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
       goto error_exit;
     }
 
@@ -5126,18 +5133,50 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  printf ("Enter transaction id : ");
-  scanf ("%d", &trid);
-
-  FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
-  if (summary_entry == NULL)
+  if (summary_info.empty ())
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TRANSACTION),
-			     trid);
-      /* add message that can not find transaction id */
       goto error_exit;
     }
+
+  timeout = prm_get_integer_value (PRM_ID_FLASHBACK_TIMEOUT);
+
+  while (summary_entry == NULL)
+    {
+      printf ("Enter transaction id (press -1 to quit): ");
+      fflush (stdout);
+
+      if (poll (&input_fd, 1, timeout * 1000))
+	{
+	  scanf ("%d", &trid);
+	}
+      else
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TIMEOUT), timeout);
+
+	  goto error_exit;
+	}
+
+      if (trid == -1)
+	{
+	  goto error_exit;
+	}
+
+      FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
+      if (summary_entry == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TRANSACTION),
+				 trid);
+	  /* add message that can not find transaction id */
+	}
+
+      printf ("\n");
+    }
+
+  start_lsa = summary_entry->start_lsa;
+  end_lsa = summary_entry->end_lsa;
+  user = summary_entry->user;
 
   do
     {
@@ -5163,20 +5202,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
 				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
 				      FLASHBACK_MSG_LOG_VOLUME_NOT_EXIST));
 	      break;
-	    case ER_FLASHBACK_TIMEOUT:
-	      {
-		/* if interval between flashback requests exceeds threshold, then archive volume can be removed
-		 * and minimum interval is the value recommended for remove log archives interval */
-		const int minimum_interval = 60;
-		int interval_threshold = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
-
-		interval_threshold = interval_threshold < 60 ? 60 : interval_threshold;
-
-		PRINT_AND_LOG_ERR_MSG (msgcat_message
-				       (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TIMEOUT),
-				       interval_threshold);
-		break;
-	      }
 	    default:
 	      break;
 	    }
@@ -5191,7 +5216,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	}
 
     }
-  while (!LSA_ISNULL (&start_lsa) && !LSA_ISNULL (&end_lsa));
+  while (!LSA_ISNULL (&start_lsa) && !LSA_ISNULL (&end_lsa) && LSA_LT (&start_lsa, &end_lsa));
 
   db_shutdown ();
 

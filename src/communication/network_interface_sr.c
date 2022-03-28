@@ -10711,7 +10711,7 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
  * TODO : move to flashback_sr.c
  */
 static int
-flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_time, LOG_LSA * start_lsa,
+flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * end_time, LOG_LSA * start_lsa,
 		       LOG_LSA * end_lsa)
 {
   int error_code = NO_ERROR;
@@ -10719,14 +10719,14 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
 
 
   /* 1. Check start_time */
-  if (start_time < log_Gl.hdr.db_creation)
+  if (*start_time < log_Gl.hdr.db_creation)
     {
       char start_date[20];
       char db_creation_date[20];
       char cur_date[20];
       time_t current_time = time (NULL);
 
-      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&start_time));
+      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
       strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
       strftime (cur_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
 
@@ -10736,7 +10736,7 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
     }
   else
     {
-      ret_time = start_time;
+      ret_time = *start_time;
 
       error_code = cdc_find_lsa (thread_p, &ret_time, start_lsa);
       if (error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA)
@@ -10744,12 +10744,12 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
 	  /* find log record at the time
 	   * ret_time : time of the commit record or dummy record that is found to be greater than or equal to the start_time at first */
 
-	  if (ret_time >= end_time)
+	  if (ret_time >= *end_time)
 	    {
 	      char start_date[20];
 	      char db_creation_date[20];
 
-	      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&start_time));
+	      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
 	      strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
 
 	      /* out of range : start_time (ret_time) can not be greater than end_time */
@@ -10765,10 +10765,11 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
 	}
     }
 
+  *start_time = ret_time;
+
   /* 2. If start_time is valid, then get end_lsa */
 
-  ret_time = end_time;
-  error_code = cdc_find_lsa (thread_p, &ret_time, end_lsa);
+  error_code = cdc_find_lsa (thread_p, end_time, end_lsa);
 
   if (!(error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA))
     {
@@ -10788,7 +10789,7 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t start_time, time_t end_ti
  * TODO : move to flashback_sr.c
  */
 static char *
-flashback_pack_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT context)
+flashback_pack_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT context, int *num_summary)
 {
   FLASHBACK_SUMMARY_ENTRY entry;
 
@@ -10796,6 +10797,8 @@ flashback_pack_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT context)
   for (auto iter : context.summary_list)
     {
       entry = iter.second;
+      if (entry.num_insert + entry.num_update + entry.num_delete > 0)
+      {
       ptr = or_pack_int (ptr, entry.trid);
       ptr = or_pack_string (ptr, entry.user);
       ptr = or_pack_int64 (ptr, entry.start_time);
@@ -10811,6 +10814,9 @@ flashback_pack_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT context)
         {
           ptr = or_pack_oid (ptr, &item);
         }
+
+      (*num_summary)++;
+      }
     }
 // *INDENT-ON*
 
@@ -10829,6 +10835,9 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *ptr;
   char *start_ptr;
 
+  char *num_ptr;		//pointer in which 'number of summary' is located
+  int tmp_num = 0;
+
   LC_FIND_CLASSNAME status;
 
   FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, };
@@ -10843,8 +10852,6 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     {
       goto error;
     }
-
-  flashback_set_status_active ();
 
   ptr = or_unpack_int (request, &context.num_class);
 
@@ -10862,13 +10869,14 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 	  goto error;
 	}
 
-      context.classoid_set.emplace (classoid);
+      context.classoids.emplace_back (classoid);
     }
+
   ptr = or_unpack_string_nocopy (ptr, &context.user);
   ptr = or_unpack_int64 (ptr, &start_time);
   ptr = or_unpack_int64 (ptr, &end_time);
 
-  error_code = flashback_verify_time (thread_p, start_time, end_time, &context.start_lsa, &context.end_lsa);
+  error_code = flashback_verify_time (thread_p, &start_time, &end_time, &context.start_lsa, &context.end_lsa);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -10885,11 +10893,11 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto error;
     }
 
-  /* area : | class oid list | num summary | summary entry list |
+  /* area : | class oid list | summary start time | summary end time | num summary | summary entry list |
    * summary entry : | trid | user | start/end time | num insert/update/delete | num class | class oid list |
    * OR_OID_SIZE * context.num_class means maximum class oid list size per summary entry */
 
-  area_size = OR_OID_SIZE * context.num_class + OR_INT_SIZE
+  area_size = OR_OID_SIZE * context.num_class + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE
     + (OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS + OR_OID_SIZE * context.num_class) * context.num_summary;
 
   area = (char *) db_private_alloc (thread_p, area_size);
@@ -10907,15 +10915,25 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   /* area packing : OID list | num summary | summary info list */
   ptr = area;
 
-// *INDENT-OFF*
-  for (auto iter : context.classoid_set)
+  // *INDENT-OFF*
+  for (auto iter : context.classoids)
     {
       ptr = or_pack_oid (ptr, &iter);
     }
-// *INDENT-ON*
+  // *INDENT-ON*
+
+  ptr = or_pack_int64 (ptr, start_time);
+  ptr = or_pack_int64 (ptr, end_time);
+
+  num_ptr = ptr;
 
   ptr = or_pack_int (ptr, context.num_summary);
-  ptr = flashback_pack_summary_entry (ptr, context);
+  ptr = flashback_pack_summary_entry (ptr, context, &tmp_num);
+
+  if (context.num_summary != tmp_num)
+    {
+      or_pack_int (num_ptr, tmp_num);
+    }
 
   error_code =
     css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
@@ -10927,13 +10945,6 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     {
       goto css_send_error;
     }
-
-  /* It must ensure that the request_done_time and status are set in the order as below.
-   * If this order is not guaranteed in any case, the archive log used by flashback can be deleted.
-   * Refer to flashback_is_needed_to_keep_archive(). */
-  flashback_set_request_done_time ();
-
-  flashback_set_status_inactive ();
 
   return;
 error:
@@ -11023,16 +11034,6 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
 
-  flashback_set_status_active ();
-
-  if (flashback_check_time_exceed_threshold (&threshold_to_remove_archive))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_TIMEOUT, 1, threshold_to_remove_archive);
-      error_code = ER_FLASHBACK_TIMEOUT;
-
-      goto error;
-    }
-
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
   ptr = or_unpack_int (request, &context.trid);
@@ -11106,10 +11107,6 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 	  /* start_lsa is increased only if direction is forward */
 	  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
 	}
-
-      flashback_set_request_done_time ();
-
-      flashback_set_status_inactive ();
     }
 
   return;

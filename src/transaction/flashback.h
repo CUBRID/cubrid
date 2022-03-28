@@ -101,7 +101,7 @@ typedef struct flashback_summary_context
   int num_summary;
   int num_class;
   // *INDENT-OFF*
-  std::unordered_set<OID> classoid_set;
+  std::vector<OID> classoids;
   std::map <TRANID, FLASHBACK_SUMMARY_ENTRY> summary_list;
   // *INDENT-ON*
 } FLASHBACK_SUMMARY_CONTEXT;

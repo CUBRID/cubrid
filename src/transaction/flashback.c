@@ -58,14 +58,6 @@
 #include "system_parameter.h"
 
 static volatile LOG_PAGEID flashback_Min_log_pageid = NULL_LOG_PAGEID;	// Minumun log pageid to keep archive log volume from being removed
-static volatile time_t flashback_Last_request_done_time = -1;	// The time most recently requested by flashback
-static volatile int flashback_Threshold_to_remove_archive = 0;	/* If the difference between the time at which the archive log is deleted
-								 * and the time the flashback last requested exceeds this threshold,
-								 * the archive log volume can be deleted.
-								 */
-// *INDENT-OFF*
-static std::atomic_bool flashback_Is_active = false;	// the status value that the flashback is processing the request
-// *INDENT-ON*
 
 static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry for a flashback request
 
@@ -74,11 +66,13 @@ static pthread_mutex_t flashback_Conn_lock = PTHREAD_MUTEX_INITIALIZER;
 /*
  * flashback_is_duplicated_request - check if the caller is duplicated request for flashback
  *
+ * need_reset (in) : if connection is lost and need_reset is true, then it reset the flashback variables
+ *
  * return   : duplicated or not
  */
 
 static bool
-flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
+flashback_is_in_progress ()
 {
   /* flashback_Current_conn indicates conn_entry in thread_p, and conn_entry can be reused by request handler.
    * So, status in flashback_Current_conn can be overwritten. */
@@ -99,9 +93,6 @@ flashback_is_duplicated_request (THREAD_ENTRY * thread_p)
 	{
 	  /* - flashback_Current_conn is overwritten with new connection, so in_flashback value is initialized to false.
 	   * - previous flashback connection has been exited abnormally. */
-
-	  flashback_reset ();
-
 	  return false;
 	}
     }
@@ -121,7 +112,7 @@ flashback_initialize (THREAD_ENTRY * thread_p)
 
   pthread_mutex_lock (&flashback_Conn_lock);
 
-  if (flashback_is_duplicated_request (thread_p))
+  if (flashback_is_in_progress ())
     {
       pthread_mutex_unlock (&flashback_Conn_lock);
 
@@ -129,7 +120,10 @@ flashback_initialize (THREAD_ENTRY * thread_p)
       return ER_FLASHBACK_DUPLICATED_REQUEST;
     }
 
-  assert (flashback_Current_conn == NULL);
+  if (flashback_Current_conn != NULL)
+    {
+      flashback_reset ();
+    }
 
   flashback_Current_conn = thread_p->conn_entry;
   flashback_Current_conn->in_flashback = true;
@@ -137,11 +131,6 @@ flashback_initialize (THREAD_ENTRY * thread_p)
   pthread_mutex_unlock (&flashback_Conn_lock);
 
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
-
-  /* variables below may be deprecated */
-  flashback_Threshold_to_remove_archive = 0;
-  flashback_Last_request_done_time = -1;
-  flashback_Is_active = false;
 
   return NO_ERROR;
 }
@@ -171,40 +160,6 @@ flashback_min_log_pageid_to_keep ()
 }
 
 /*
- * flashback_set_request_done_time - set flashback_Last_request_done_time to current
- */
-
-void
-flashback_set_request_done_time ()
-{
-  flashback_Last_request_done_time = time (NULL);
-}
-
-/*
- * flashback_check_time_to_remove_archive - check the time if the archive can be removed
- *
- * threshold_to_remove_archive (out) : return threshold value for error message
- * return   : true or false
- */
-
-bool
-flashback_check_time_exceed_threshold (int *threshold_to_remove_archive)
-{
-  const int minimum_threshold = 60;	// set minimum to 60 which is recommended intervals for removing archive logs
-  int threshold = 0;
-  threshold = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
-
-  threshold = threshold < minimum_threshold ? minimum_threshold : threshold;
-
-  if (threshold_to_remove_archive != NULL)
-    {
-      *threshold_to_remove_archive = threshold;
-    }
-
-  return (time (NULL) - flashback_Last_request_done_time) >= *threshold_to_remove_archive;
-}
-
-/*
  * flashback_is_needed_to_keep_archive - check if archive log volume is required to be kept
  *
  * return   : true or false
@@ -213,24 +168,19 @@ flashback_check_time_exceed_threshold (int *threshold_to_remove_archive)
 bool
 flashback_is_needed_to_keep_archive ()
 {
-  if (flashback_Min_log_pageid == NULL_LOG_PAGEID)
-    {
-      /* if nothing is set on flashback_Min_log_pageid, then there is no need to keep archive */
+  bool is_needed = false;
 
-      return false;
+  if (flashback_is_in_progress ())
+    {
+      is_needed = true;
+    }
+  else
+    {
+      is_needed = false;
     }
 
-  if (!flashback_Is_active && flashback_check_time_exceed_threshold (NULL))
-    {
-      /* if flashback request is not in active and interval between flashback
-       * requests exceeds threshold, then there is no need to keep archive log for flashback */
-
-      return false;
-    }
-
-  return true;
+  return is_needed;
 }
-
 
 /*
  * flashback_reset - reset flashback global variables
@@ -241,34 +191,9 @@ void
 flashback_reset ()
 {
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
-  flashback_Threshold_to_remove_archive = 0;
-  flashback_Last_request_done_time = -1;
-  flashback_Is_active = false;
 
   flashback_Current_conn->in_flashback = false;
   flashback_Current_conn = NULL;
-}
-
-/*
- * flashback_set_status_active - set flashback_Is_active to true
- *
- */
-
-void
-flashback_set_status_active ()
-{
-  flashback_Is_active = true;
-}
-
-/*
- * flashback_set_status_inactive - set flashback_Is_active to false
- *
- */
-
-void
-flashback_set_status_inactive ()
-{
-  flashback_Is_active = false;
 }
 
 /*
@@ -535,10 +460,12 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 		{
 		  memcpy (&classoid, supplement_data, sizeof (OID));
 
-		  if (context->classoid_set.find (classoid) == context->classoid_set.end ())
+                  // *INDENT-OFF*
+		  if (std::find (context->classoids.begin(), context->classoids.end(), classoid) == context->classoids.end())
 		    {
 		      break;
 		    }
+                  // *INDENT-ON*
 
 		  flashback_fill_dml_summary (summary_entry, classoid, rec_type);
 
