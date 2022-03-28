@@ -107,13 +107,11 @@ ODBC_ERROR:
   return ER_FAILED;
 }
 
-int
-cgw_destroy ()
+void
+cgw_cleanup ()
 {
   cgw_cleanup_handle (local_odbc_handle);
-  return NO_ERROR;
 }
-
 
 int
 cgw_get_handle (T_CGW_HANDLE ** cgw_handle)

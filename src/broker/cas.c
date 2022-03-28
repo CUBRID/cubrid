@@ -1743,7 +1743,7 @@ cas_free (bool from_sighandler)
   else
     {
 #if defined(CAS_FOR_CGW)
-      cgw_destroy ();
+      cgw_cleanup ();
 #else
       ux_database_shutdown ();
 #endif /* CAS_FOR_CGW */

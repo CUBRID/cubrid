@@ -136,7 +136,7 @@ union odbc_bind_info
 extern void test_log (char *fmt, ...);
 
 extern int cgw_init ();
-extern int cgw_destroy ();
+extern void cgw_cleanup ();
 extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding);
 extern void cgw_cleanup_binder (T_COL_BINDER * first_col_binding);
 
