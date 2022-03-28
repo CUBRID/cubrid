@@ -112,7 +112,7 @@ flashback_initialize (THREAD_ENTRY * thread_p)
 
   pthread_mutex_lock (&flashback_Conn_lock);
 
-  if (flashback_is_connection_alive (true))
+  if (flashback_is_in_progress ())
     {
       pthread_mutex_unlock (&flashback_Conn_lock);
 
