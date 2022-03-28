@@ -27,9 +27,11 @@
 #include <stdio.h>
 #if defined(WINDOWS)
 #include <windows.h>
+#include <conio.h>
 #else /* WINDOWS */
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <termios.h>
 #endif /* LINUX */
 
 #include "flashback_cl.h"
@@ -45,7 +47,36 @@ flashback_util_get_winsize ()
 
   return csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
 }
+
+static char
+flashback_util_get_char ()
+{
+  int c;
+
+  c = getche ();
+
+  return c;
+}
+
 #else
+static char
+flashback_util_get_char ()
+{
+  int c;
+  static struct termios oldt, newt;
+
+  tcgetattr (STDIN_FILENO, &oldt);
+  newt = oldt;
+
+  newt.c_lflag &= ~(ICANON);
+  tcsetattr (STDIN_FILENO, TCSANOW, &newt);
+
+  c = getchar ();
+  tcsetattr (STDIN_FILENO, TCSANOW, &oldt);
+
+  return c;
+}
+
 static int
 flashback_util_get_winsize ()
 {
@@ -94,9 +125,13 @@ flashback_find_class_index (OID * oidlist, int list_size, OID classoid)
  */
 
 int
-flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INFO_MAP * summary, int num_summary,
+flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INFO_MAP * summary,
 				    dynamic_array * classname_list, OID * oidlist)
 {
+  time_t summary_start_time = 0;
+  time_t summary_end_time = 0;
+  int num_summary = 0;
+
   TRANID trid;
   char *user = NULL;
   time_t start_time, end_time;
@@ -110,9 +145,32 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
   const int max_window_size = flashback_util_get_winsize ();
   int line_cnt = 0;
 
-  printf
-    ("Transaction id\t\tUser name\t\tStart time\t\tEnd time\t\tNum_insert\t\tNum_update\t\tNum_delete\t\tTables\n");
+  char stime_buf[20];
+  char etime_buf[20];
 
+  tmp_ptr = or_unpack_int64 (tmp_ptr, &summary_start_time);
+  tmp_ptr = or_unpack_int64 (tmp_ptr, &summary_end_time);
+
+  tmp_ptr = or_unpack_int (tmp_ptr, &num_summary);
+  if (num_summary == 0)
+    {
+      printf ("There is nothing to flashback\n");
+
+      return NO_ERROR;
+    }
+
+
+  strftime (stime_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&summary_start_time));
+  strftime (etime_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&summary_end_time));
+
+  printf ("Flashback Summary\n");
+  printf ("Number of Transaction: %43d\n", num_summary);
+  printf ("Start date - End date: %20s - %20s\n", stime_buf, etime_buf);
+
+  line_cnt = line_cnt + 3;
+
+  printf
+    ("Transaction id  User name                         Start time            End time              Num_insert  Num_update  Num_delete  Table\n");
   line_cnt++;
 
   for (int i = 0; i < num_summary; i++)
@@ -133,19 +191,30 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
       info.trid = trid;
       info.start_lsa = start_lsa;
       info.end_lsa = end_lsa;
+      strcpy (info.user, user);
 
       summary->emplace (trid, info);
 
       if (!stop_print)
 	{
-	  char stime_buf[20];
-	  char etime_buf[20];
+	  if (start_time != 0)
+	    {
+	      strftime (stime_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&start_time));
+	    }
 
-	  strftime (stime_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&start_time));
-	  strftime (etime_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&end_time));
+	  if (end_time != 0)
+	    {
+	      strftime (etime_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&end_time));
+	    }
 
-	  printf ("\t%d\t%s\t%s\t%s\t%d\t%d\t%d\t\t", trid, user, stime_buf, etime_buf, num_insert, num_update,
-		  num_delete);
+	  printf ("%14d  ", trid);
+	  printf ("%-32s  ", user);
+	  printf ("%-20s  ", start_time == 0 ? "-" : stime_buf);
+	  printf ("%-20s  ", end_time == 0 ? "-" : etime_buf);
+
+	  printf ("%10d  ", num_insert);
+	  printf ("%10d  ", num_update);
+	  printf ("%10d  ", num_delete);
 	}
 
       for (int j = 0; j < num_table; j++)
@@ -164,21 +233,25 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
 		}
 
 	      da_get (classname_list, idx, classname);
-	      printf ("%s ", classname);
+	      if (j == 0)
+		{
+		  printf ("%-s\n", classname);
+		  line_cnt++;
+		}
+	      else
+		{
+		  printf ("%130s%-s\n", "", classname);
+		  line_cnt++;
+		}
 	    }
-	}
-
-      if (!stop_print)
-	{
-	  printf ("\n");
-	  line_cnt++;
 	}
 
       if (line_cnt >= max_window_size)
 	{
 	  char c;
 	  printf ("press 'q' to quit or press anything to continue");
-	  c = getchar ();
+
+	  c = flashback_util_get_char ();
 	  if (c == 'q')
 	    {
 	      stop_print = true;
@@ -187,7 +260,7 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
 	  line_cnt = 0;
 
 	  /* Remove the message above, because above message is no more required */
-	  printf ("\033[A\33[2K\r");
+	  printf ("\33[2K\r");
 	}
     }
 
