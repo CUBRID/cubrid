@@ -20,6 +20,7 @@
 #define _ATOMIC_REPLICATION_HELPER_HPP_
 
 #include "log_lsa.hpp"
+#include "log_record.hpp"
 
 namespace cublog
 {
@@ -36,9 +37,12 @@ namespace cublog
 
 	private:
 	  log_lsa record_lsa;
-
+	  log_rectype record_type;
+	  VPID vpid;
+	  LOG_RCVINDEX record_index;
       };
 
+      //Hashmap
   };
 }
 
