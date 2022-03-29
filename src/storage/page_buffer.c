@@ -2381,7 +2381,7 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
       LOG_LSA highest_applied_lsa = get_passive_tran_server_ptr ()->get_highest_processed_lsa ();
       _er_log_debug (ARG_FILE_LINE,
 		     "Current replication progress is situated at: lowest unapplied lsa: %lld|%d, highest processed lsa: %lld|%d.",
-		     LSA_AS_ARGS (lowest_unapplied_lsa), LSA_AS_ARGS (highest_applied_lsa));
+		     LSA_AS_ARGS (&lowest_unapplied_lsa), LSA_AS_ARGS (&highest_applied_lsa));
     }
 
   if (page_lsa > lowest_unapplied_lsa)
