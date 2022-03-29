@@ -329,7 +329,11 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 
   for (this_col_binding = first_col_binding; this_col_binding; this_col_binding = this_col_binding->next)
     {
-      if (this_col_binding->indPtr != SQL_NULL_DATA)
+      if (this_col_binding->indPtr == SQL_NULL_DATA)
+	{
+	  net_buf_cp_int (net_buf, -1, NULL);
+	}
+      else
 	{
 	  str_len = this_col_binding->indPtr;
 
