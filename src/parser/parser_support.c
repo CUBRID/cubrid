@@ -6616,7 +6616,7 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 	{
 	  /* replace identifier node with string value node */
 	  pt_set_user_specified_name (parser, arg, NULL, NULL);
-	  intl_identifier_lower (arg->info.name.original, lower_table_name);
+	  sm_user_specified_name (arg->info.name.original, lower_table_name, DB_MAX_IDENTIFIER_LENGTH);
 	  id_string = pt_make_string_value (parser, lower_table_name);
 	  if (id_string == NULL)
 	    {
