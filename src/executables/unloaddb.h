@@ -57,6 +57,7 @@ extern int get_requested_classes (const char *input_filename, DB_OBJECT * class_
 extern int lo_count;
 
 #define PRINT_IDENTIFIER(s) "[", (s), "]"
+#define PRINT_IDENTIFIER_WITH_QUOTE(s) "\"", (s), "\""
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
 /* 

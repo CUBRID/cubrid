@@ -1203,7 +1203,7 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
        *
        *        class_name            owner.name            name                  owner.name
        *      ========================================================================================
-       *        't1'                  'U1'                  't1emit_query_specs _ai_c1'            'DBA'
+       *        't1'                  'U1'                  't1_ai_c1'            'DBA'
        *
        * After version 11.2, when adding an auto_increment column, there is no problem
        * because it sets the owner in unique_name.
@@ -2399,12 +2399,26 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
     {
     case INSTANCE_ATTRIBUTE:
       {
-	output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
+	if (strchr (name, ']') != NULL)
+	  {
+	    output_ctx ("       %s%s%s ", PRINT_IDENTIFIER_WITH_QUOTE (name));
+	  }
+	else
+	  {
+	    output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
+	  }
 	break;
       }				/* case INSTANCE_ATTRIBUTE */
     case SHARED_ATTRIBUTE:
       {
-	output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
+	if (strchr (name, ']') != NULL)
+	  {
+	    output_ctx ("       %s%s%s ", PRINT_IDENTIFIER_WITH_QUOTE (name));
+	  }
+	else
+	  {
+	    output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
+	  }
 	break;
       }				/* case SHARED_ATTRIBUTE */
     case CLASS_ATTRIBUTE:
@@ -2414,7 +2428,14 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
 	 * attributes, this will have been encoded in the surrounding
 	 * "ADD CLASS ATTRIBUTE" clause
 	 */
-	output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
+	if (strchr (name, ']') != NULL)
+	  {
+	    output_ctx ("       %s%s%s ", PRINT_IDENTIFIER_WITH_QUOTE (name));
+	  }
+	else
+	  {
+	    output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
+	  }
 	break;
       }				/* case CLASS_ATTRIBUTE */
     }
