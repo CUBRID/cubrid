@@ -2360,7 +2360,7 @@ pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * optional_vpid_
       er_log_debug (ARG_FILE_LINE,
 		    "Page %d|%d is ahead of replication. Page LSA is %lld|%d. Current replication progress is situated at: lowest unapplied lsa: %lld|%d, highest processed lsa: %lld|%d.",
 		    VPID_AS_ARGS (optional_vpid_for_logging), LSA_AS_ARGS (&tdes->page_desync_lsa),
-		    LSA_AS_ARGS (lowest_unapplied_lsa), LSA_AS_ARGS (&replication_lsa));
+		    LSA_AS_ARGS (&lowest_unapplied_lsa), LSA_AS_ARGS (&replication_lsa));
     }
   tdes->page_desync_lsa.set_null ();
   // clear the errors for next search
