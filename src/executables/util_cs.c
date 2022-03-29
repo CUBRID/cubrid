@@ -4907,6 +4907,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
   POLL_FD input_fd = { STDIN_FILENO, POLLIN | POLLPRI };
   int timeout = 0;
 
+  time_t current_time = time (NULL);
+
   num_tables = utility_get_option_string_table_size (arg_map) - 1;
   if (num_tables < 1)
     {
@@ -5113,8 +5115,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	{
 	case ER_FLASHBACK_INVALID_TIME:
 	  {
-	    time_t current_time = time (NULL);
-
 	    char db_creation_time[20];
 	    char current_time_buf[20];
 

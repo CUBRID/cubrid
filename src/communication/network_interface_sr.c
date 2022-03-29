@@ -10962,14 +10962,12 @@ error:
   else if (error_code == ER_FLASHBACK_INVALID_TIME)
     {
       OR_ALIGNED_BUF (OR_INT64_SIZE) area_buf;
-      time_t db_creation_time = log_Gl.hdr.db_creation;
-
       area = OR_ALIGNED_BUF_START (area_buf);
 
       ptr = or_pack_int (reply, OR_ALIGNED_BUF_SIZE (area_buf));
       or_pack_int (ptr, error_code);
 
-      or_pack_int64 (area, db_creation_time);
+      or_pack_int64 (area, log_Gl.hdr.db_creation);
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
 					 OR_ALIGNED_BUF_SIZE (area_buf));
     }

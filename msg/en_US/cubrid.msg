@@ -1414,7 +1414,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1335 Too many transactions to flashback. Less than %1$d transactions can be flashback.
 1336 Cannot support flashback for this class (name : %1$s , OID : %2$d|%3$d|%4$d). Class schema has been changed.
 1337 Log record does not exist (lsa : %1$lld|%2$d). The archive log volume has been deleted.
-1338 Flashback is already running. Flashback cannot be run by two processes.
+1338 Flashback is already running. Flashback cannot be run by more than one user at the same time.
 
 1339 Last Error
 
