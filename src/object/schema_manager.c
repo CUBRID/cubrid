@@ -2350,7 +2350,7 @@ sm_check_qualifier_name_size (const char *name)
       int n_bytes = DB_MAX_USER_LENGTH;
 
       memcpy (name_copy, name, (DB_MAX_USER_LENGTH - 4));
-      memcpy (name_copy, "...", 4);
+      memcpy (name_copy + (DB_MAX_USER_LENGTH - 4), "...", 4);
 
       ERROR_SET_ERROR_2ARGS (error, ER_SM_MAX_LENGTH_EXCEEDED_USER, name_copy, n_bytes);
       return false;
