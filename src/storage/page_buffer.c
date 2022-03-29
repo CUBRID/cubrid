@@ -2352,11 +2352,16 @@ pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * optional_vpid_
   assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
   pts_ptr->wait_replication_past_target_lsa (tdes->page_desync_lsa);
 
-  const LOG_LSA replication_lsa = pts_ptr->get_highest_processed_lsa ();
-  er_log_debug (ARG_FILE_LINE,
-		"Page %d|%d is ahead of replication. Page LSA is %lld|%d, replication LSA is %lld|%d.",
-		VPID_AS_ARGS (optional_vpid_for_logging), LSA_AS_ARGS (&tdes->page_desync_lsa),
-		LSA_AS_ARGS (&replication_lsa));
+  // Print the current replication progress to aid in debug scenarios
+  if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    {
+      const LOG_LSA replication_lsa = pts_ptr->get_highest_processed_lsa ();
+      const LOG_LSA lowest_unapplied_lsa = get_passive_tran_server_ptr ()->get_lowest_unapplied_lsa ();
+      er_log_debug (ARG_FILE_LINE,
+		    "Page %d|%d is ahead of replication. Page LSA is %lld|%d. Current replication progress is situated at: lowest unapplied lsa: %lld|%d, highest processed lsa: %lld|%d.",
+		    VPID_AS_ARGS (optional_vpid_for_logging), LSA_AS_ARGS (&tdes->page_desync_lsa),
+		    LSA_AS_ARGS (lowest_unapplied_lsa), LSA_AS_ARGS (&replication_lsa));
+    }
   tdes->page_desync_lsa.set_null ();
   // clear the errors for next search
   er_clear ();
@@ -2374,15 +2379,6 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
   // saved in transaction descriptor and the appropriate error must be set and returned.
   LOG_LSA page_lsa = *pgbuf_get_lsa (page);
   LOG_LSA lowest_unapplied_lsa = get_passive_tran_server_ptr ()->get_lowest_unapplied_lsa ();
-
-  // Print the current replication progress to aid in debug scenarios
-  if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
-    {
-      LOG_LSA highest_applied_lsa = get_passive_tran_server_ptr ()->get_highest_processed_lsa ();
-      _er_log_debug (ARG_FILE_LINE,
-		     "Current replication progress is situated at: lowest unapplied lsa: %lld|%d, highest processed lsa: %lld|%d.",
-		     LSA_AS_ARGS (&lowest_unapplied_lsa), LSA_AS_ARGS (&highest_applied_lsa));
-    }
 
   if (page_lsa > lowest_unapplied_lsa)
     {
