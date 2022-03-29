@@ -228,6 +228,8 @@ cgw_execute (T_SRV_HANDLE * srv_handle)
 
   SQL_CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT, err_code = SQLExecute (srv_handle->cgw_handle->hstmt));
 
+  srv_handle->is_cursor_open = true;
+
   return NO_ERROR;
 
 ODBC_ERROR:
@@ -272,17 +274,20 @@ ODBC_ERROR:
 }
 
 int
-cgw_cursor_close (SQLHSTMT hstmt)
+cgw_cursor_close (T_SRV_HANDLE * srv_handle)
 {
   SQLRETURN err_code = 0;
 
-  if (hstmt == NULL)
+  if (srv_handle->cgw_handle->hstmt == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
       goto ODBC_ERROR;
     }
 
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLFreeStmt (hstmt, SQL_CLOSE));
+  SQL_CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT, err_code =
+	       SQLFreeStmt (srv_handle->cgw_handle->hstmt, SQL_CLOSE));
+
+  srv_handle->is_cursor_open = false;
 
   return err_code;
 
