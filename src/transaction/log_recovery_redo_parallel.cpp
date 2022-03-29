@@ -525,12 +525,6 @@ namespace cublog
   }
 
   log_lsa
-  redo_parallel::min_unapplied_log_lsa_monitoring::get_calculated_lsa ()
-  {
-    return m_calculated_log_lsa;
-  }
-
-  log_lsa
   redo_parallel::min_unapplied_log_lsa_monitoring::calculate ()
   {
     assert (m_do_monitor);

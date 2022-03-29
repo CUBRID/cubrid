@@ -154,7 +154,6 @@ namespace cublog
 	  /* blocking call
 	   */
 	  void wait_past_target_log_lsa (const log_lsa &a_target_lsa);
-	  log_lsa get_calculated_lsa ();
 
 	private:
 	  log_lsa calculate ();

@@ -2373,14 +2373,24 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
   // Compare page LSA to replication LSA. If page is ahead, there may be a desynchronization issue; its LSA must be
   // saved in transaction descriptor and the appropriate error must be set and returned.
   LOG_LSA page_lsa = *pgbuf_get_lsa (page);
-  LOG_LSA repl_lsa = get_passive_tran_server_ptr ()->get_lowest_unapplied_lsa ();
-  if (page_lsa > repl_lsa)
+  LOG_LSA lowest_unapplied_lsa = get_passive_tran_server_ptr ()->get_lowest_unapplied_lsa ();
+
+  // Print the current replication progress to aid in debug scenarios
+  if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    {
+      LOG_LSA highest_applied_lsa = get_passive_tran_server_ptr ()->get_highest_processed_lsa ();
+      _er_log_debug (ARG_FILE_LINE,
+		     "Current replication progress is situated at: lowest unapplied lsa: %lld|%d, highest processed lsa: %lld|%d.",
+		     LSA_AS_ARGS (lowest_unapplied_lsa), LSA_AS_ARGS (highest_applied_lsa));
+    }
+
+  if (page_lsa > lowest_unapplied_lsa)
     {
       LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
       assert (tdes != nullptr && tdes->page_desync_lsa.is_null ());
       tdes->page_desync_lsa = page_lsa;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_AHEAD_OF_REPLICATION, 6, PGBUF_PAGE_VPID_AS_ARGS (page),
-	      LSA_AS_ARGS (&page_lsa), LSA_AS_ARGS (&repl_lsa));
+	      LSA_AS_ARGS (&page_lsa), LSA_AS_ARGS (&lowest_unapplied_lsa));
       return ER_PAGE_AHEAD_OF_REPLICATION;
     }
   else
