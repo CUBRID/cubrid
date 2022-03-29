@@ -7175,6 +7175,73 @@ qo_move_on_clause_of_explicit_join_to_where_clause (PARSER_CONTEXT * parser, PT_
 }
 
 /*
+ * qo_push_limit_to_union () - push limit on union query
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   node(in): possible query
+ *   arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+qo_push_limit_to_union (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * limit)
+{
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      if (!pt_has_inst_in_where_and_select_list (parser, node))
+	{
+	  node->info.query.flag.rewrite_limit = 1;
+	  node->info.query.limit = limit;
+	  return node;
+	}
+      break;
+
+    case PT_UNION:
+      qo_push_limit_to_union (parser, node->info.query.q.union_.arg1, limit);
+      qo_push_limit_to_union (parser, node->info.query.q.union_.arg2, limit);
+      break;
+
+    default:
+      break;
+    }
+  return node;
+}
+
+/*
+ * qo_check_distinct_union () - check having distinct in union clause
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   node(in): possible query
+ *   arg(in):
+ *   continue_walk(in):
+ */
+static bool
+qo_check_distinct_union (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool result;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      break;
+
+    case PT_UNION:
+      if (node->info.query.all_distinct == PT_DISTINCT)
+	{
+	  return true;
+	}
+
+      result |= qo_check_distinct_union (parser, node->info.query.q.union_.arg1);
+      result |= qo_check_distinct_union (parser, node->info.query.q.union_.arg2);
+      break;
+
+    default:
+      break;
+    }
+  return result;
+}
+
+/*
  * qo_optimize_queries () - checks all subqueries for rewrite optimizations
  *   return: PT_NODE *
  *   parser(in): parser environment
@@ -7324,6 +7391,12 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	      single_tuple_bak = node->info.query.flag.single_tuple;
 	      node->info.query.flag.single_tuple = false;
 
+	      /* order by, union check */
+	      if (node->info.query.order_by == NULL && !qo_check_distinct_union (parser, node)
+		  && !node->info.query.q.select.hint & PT_HINT_NO_PUSH_PRED)
+	        {
+	          node = qo_push_limit_to_union (parser, node, limit_node);
+	        }
 	      derived = mq_rewrite_query_as_derived (parser, node);
 	      if (derived != NULL)
 		{
