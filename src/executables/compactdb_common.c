@@ -120,7 +120,7 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
 	  goto error;
 	}
 
-      sm_downcase_name (class_names[i], downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
+      sm_user_specified_name (class_names[i], downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
 
       class_ = locator_find_class (downcase_class_name);
       if (class_ != NULL)
