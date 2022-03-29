@@ -1912,7 +1912,7 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 	{
 	  sscanf ((char *) buffer, scan_format, (char *) class_name);
 
-	  sm_downcase_name (class_name, downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
+	  sm_user_specified_name (class_name, downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
 
 	  class_ = locator_find_class (downcase_class_name);
 	  if (class_ != NULL)
