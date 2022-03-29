@@ -76,6 +76,7 @@ struct t_col_binder
   SQLLEN indPtr;		/* size or null     */
   SQLLEN col_data_type;		/* type of column   */
   SQLULEN col_size;
+  SQLLEN col_unsigned_type;
   struct t_col_binder *next;	/* linked list      */
 };
 
