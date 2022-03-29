@@ -1408,7 +1408,14 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 
 1332 Il volume del registro attivo (%1$s) è troppo sano per essere ricreato. Se rimuovi il registro attivo, potrebbe causare un problema imprevisto e irreversibile.
 
-1333 Ultimo errore
+1333 Tempo non valido (%1$s) per avviare il flashback. È necessario impostare il tempo tra (%2$s) e (%3$s).
+1334 Impossibile trovare la classe per il flashback (%1$s).
+1335 Troppe transazioni per il flashback. Meno di %1$d transazioni possono essere flashback.
+1336 Impossibile supportare il flashback per questa classe (nome : %1$s , OID : %2$d|%3$d|%4$d). Lo schema della classe è stato modificato.
+1337 Il record di registro non esiste (lsa : %1$lld|%2$d). Il volume del registro di archivio è stato eliminato.
+1338 Flashback è già in esecuzione. Flashback non può essere eseguito da più utenti contemporaneamente.
+
+1339 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

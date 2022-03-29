@@ -1270,5 +1270,5 @@ valid options:\n\
     --detail                      output a detailed information for each SQL statement.\n\
                                   Transaction ID, User name, and original SQL statement will be returned with SQL statement\n\
                                   for flashback; default: outputs only SQL statements for flashback\n\
-    --oldest                      output SQL statements for flashback in reverse time order starting with the most recently\n
-                                  executed SQL statement; default: latest\n
+    --oldest                      flashback is performed in chronological order for SQL statements executed from start time to end time;\n\
+                                  default: latest\n

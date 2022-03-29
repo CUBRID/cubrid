@@ -1221,3 +1221,38 @@ operations:\n\
     -n, --generate-new-key        Å° ÆÄÀÏ (_keys)¿¡ »õ·Î¿î Å°¸¦ Ãß°¡; ÃÖ´ë °¹¼ö: 128\n\
     -d, --delete-key=KEY_INDEX    Å° ÆÄÀÏ (_keys)ÀÇ ÇÑ Å°¸¦ Á¦°Å\n\
     -c, --change-key=KEY_INDEX    µ¥ÀÌÅÍº£ÀÌ½º¿¡ µî·ÏµÈ Å°¸¦ Å° ÆÄÀÏ (_keys)¿¡ Á¸ÀçÇÏ´Â ´Ù¸¥ Å°·Î º¯°æ\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 DBA ºñ¹Ð¹øÈ£:
+2 Àß¸øµÈ ³¯Â¥ Çü½ÄÀÔ´Ï´Ù. ¿Ã¹Ù¸¥ Çü½ÄÀº dd-mm-yyyy:hh:mm:ssÀÔ´Ï´Ù.\n
+3 ½ÃÀÛ ³¯Â¥(%1$s)´Â Á¾·á ³¯Â¥(%2$s)º¸´Ù ÀÛ¾Æ¾ß ÇÕ´Ï´Ù.\n
+4 ÇöÀç ³¯Â¥ ÀÌÀü(%1$s) ¶Ç´Â µ¥ÀÌÅÍº£ÀÌ½º »ý¼º ÀÌÈÄ(%2$s) ³¯Â¥·Î ½ÃµµÇÏ½Ê½Ã¿À.\n
+5 Å×ÀÌºí(%1$s)ÀÌ µ¥ÀÌÅÍº£ÀÌ½º¿¡ ¾ø½À´Ï´Ù.\n
+6 ÇÃ·¡½Ã¹éÇÒ Æ®·£Àè¼ÇÀÌ ³Ê¹« ¸¹½À´Ï´Ù. ½ÃÀÛ ³¯Â¥¿Í Á¾·á ³¯Â¥ »çÀÌÀÇ °£°ÝÀ» ÁÙÀÌ½Ê½Ã¿À.\n
+7 ½ºÅ°¸¶(%1$s)°¡ º¯°æµÇ¾ú±â ¶§¹®¿¡ ÇÃ·¡½Ã¹éÀ» ¼öÇàÇÒ ¼ö ¾ø½À´Ï´Ù.\n
+8 ·Î±× º¼·ýÀÌ Á¦°ÅµÇ¾ú½À´Ï´Ù. ³ªÁß ³¯Â¥·Î ½ÃµµÇÏ½Ê½Ã¿À.\n
+9 Ãâ·Â ÆÄÀÏ '%1$s'À» ¿ ¼ö ¾ø½À´Ï´Ù.\nÙ
+10 Æ®·£Àè¼Ç ID(%1$d)°¡ Á¸ÀçÇÏÁö ¾Ê½À´Ï´Ù.\n
+11 'conf/cubrid.conf'¿¡ 'supplemental_log'¸¦ ¼³Á¤ÇØ ÁÖ¼¼¿ä. 'supplemental_log'¸¦ ¼³Á¤ÇÑ ÈÄ ½ÇÇàµÈ SQL ·Î±×¸¸ ÇÃ·¡½Ã¹éÇÒ ¼ö ÀÖ½À´Ï´Ù.\n
+12 Æ®·£Àè¼Ç ID´Â %1$dÃÊ ¾È¿¡ ÀÔ·ÂÇØ¾ß ÇÕ´Ï´Ù.\n
+13 ÇÃ·¡½Ã¹éÀÌ ÀÌ¹Ì ½ÇÇà ÁßÀÔ´Ï´Ù. ÇÃ·¡½Ã¹éÀº µÎ °³ ÀÌ»óÀÇ ÇÁ·Î¼¼½º¿¡¼ ½ÇÇàÇÒ ¼ö ¾ø½À´Ï´Ù.\nÙ
+60 \
+flashback: Æ¯Á¤ Æ®·£Àè¼ÇÀ» ÇÃ·¡½Ã¹éÇÏ´Â ¸í·É¹®À» Á¦°øÇÕ´Ï´Ù.\n\
+»ç¿ë¹ý: %1$s flashback [OPTION] µ¥ÀÌÅÍº£ÀÌ½º ÀÌ¸§ class_name1 [class_name2 ...]\n\
+\N\
+À¯È¿ÇÑ ¿É¼Ç:\n\
+    -o, --output-file=FILE      Ãâ·Â ¸Þ½ÃÁö¸¦ FILE·Î ¸®µð·º¼ÇÇÕ´Ï´Ù. ±âº»°ª: ¾øÀ½.\n\
+    -u, --user=ID               ÇÃ·¡½Ã¹éÇÒ SQL ¹®À» ½ÇÇàÇÑ »ç¿ëÀÚ¸¦ ÁöÁ¤ÇÕ´Ï´Ù. ±âº»°ª: ¸ðµÎ.\n\
+    -p, --dba-password          DBA »ç¿ëÀÚÀÇ ºñ¹Ð¹øÈ£; ÁöÁ¤ÇÏÁö ¾ÊÀ¸¸é ¸Þ½ÃÁö°¡ Ç¥½ÃµË´Ï´Ù.\n\
+    -s, --start-date=DATE       ÇÃ·¡½Ã¹éÀÇ ½ÃÀÛ ³¯Â¥¸¦ ÁöÁ¤ÇÕ´Ï´Ù. DATE ÀÌÈÄ¿¡ ¼öÇàµÈ SQL·Î±×°¡ ÃßÃâµË´Ï´Ù.\n\
+                                DATE´Â ´ÙÀ½°ú °°ÀÌ ÁöÁ¤µË´Ï´Ù. dd-mm-yyyy:hh:mm:ss.\n\
+    -e, --end-date=DATE         ÇÃ·¡½Ã¹éÀÇ Á¾·á ³¯Â¥¸¦ ÁöÁ¤ÇÕ´Ï´Ù. DATE±îÁö ¼öÇàµÈ SQL·Î±×°¡ ÃßÃâµË´Ï´Ù.\n\
+                                ½ÃÀÛ ³¯Â¥¸¦ ÁöÁ¤ÇÏÁö ¾ÊÀ¸¸é ((Á¾·á - 10ºÐ) ~ Á¾·á) ¹üÀ§·Î ¼³Á¤µË´Ï´Ù.\n\
+                                Á¾·á ³¯Â¥¸¦ ÁöÁ¤µÇÁö ¾ÊÀº °æ¿ì (½ÃÀÛ ~ (½ÃÀÛ + 10ºÐ)) ¹üÀ§·Î ¼³Á¤µË´Ï´Ù.\n\
+                                ½ÃÀÛ ³¯Â¥¿Í Á¾·á ³¯Â¥ ¸ðµÎ ÁöÁ¤µÇÁö ¾ÊÀº °æ¿ì,\n\
+                                (ÇöÀç ½Ã°£ - 10ºÐ)°ú ÇöÀç ½Ã°£ »çÀÌ¿¡ ½ÇÇàµÈ SQL ·Î±×¸¦ ÃßÃâÇÕ´Ï´Ù.\n\
+    --detail                    °¢ SQL ¹®¿¡ ´ëÇÑ ÀÚ¼¼ÇÑ Á¤º¸¸¦ Ãâ·ÂÇÕ´Ï´Ù.\n\
+                                Æ®·£Àè¼Ç ID, »ç¿ëÀÚ ÀÌ¸§ ¹× »ç¿ëÀÚ°¡ ¼öÇàÇÑ SQL ¹®, ÇÃ·¡½¬¹éÀ» À§ÇÑ SQL ¹®ÀÌ Ãâ·ÂµË´Ï´Ù;\n\
+                                ±âº»°ª: ÇÃ·¡½Ã¹éÀ» À§ÇÑ SQL ¹®¸¸ Ãâ·Â\n\
+    --oldest                    ½ÃÀÛ ½Ã°£ºÎÅÍ Á¾·á ½Ã°£±îÁö ¼öÇàµÈ SQL¹®¿¡ ´ëÇÏ¿© ½Ã°£ ¼øÀ¸·Î ÇÃ·¡½Ã¹éÀ» ¼öÇàÇÕ´Ï´Ù;\n\
+                                ±âº»°ª: ÃÖ±Ù¿¡ ¼öÇàµÈ SQL¹®ºÎÅÍ ¿ª¼øÀ¸·Î ÇÃ·¡½Ã¹éÀ» ¼öÇàÇÕ´Ï´Ù.\n

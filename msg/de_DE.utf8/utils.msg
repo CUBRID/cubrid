@@ -1232,3 +1232,39 @@ OPERATIONEN: Eine der Operationen muss angegeben werden und sie sind exklusiv\n\
     -n, --generate-new-key              generiert einen neuen Schlüssel in der Schlüsseldatei (_keys); maximale Anzahl: 128\n\
     -d, --delete-key=KEY_INDEX          löscht einen Schlüssel in der Schlüsseldatei (_keys)\n\
     -c, --change-key=KEY_INDEX          Ändern Sie den in der Datenbank festgelegten Schlüssel für einen anderen Schlüssel in der Schlüsseldatei (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 DBA-Passwort eingeben:
+2 Ungültiges Datumsformat, gültiges Format ist tt-mm-jjjj:hh:mm:ss\n
+3 Startdatum (%1$s) muss kleiner sein als Enddatum (%2$s)\n
+4 Bitte versuchen Sie es mit einem Datum vor dem aktuellen (%1$s) oder nachdem die Datenbank erstellt wurde (%2$s)\n
+5 Tabelle (%1$s) existiert nicht in Datenbank\n
+6 Zu viele Transaktionen für Flashback. Bitte verkürzen Sie das Intervall zwischen Startdatum und Enddatum\n
+7 Flashback kann nicht abgerufen werden, da das Schema (%1$s) geändert wurde.\n
+8 Log-Volume wurde entfernt. Bitte versuchen Sie es mit dem späteren Datum\n
+9 Ausgabedatei '%1$s' konnte nicht geöffnet werden\n
+10 Transaktions-ID (%1$d) existiert nicht\n
+11 Bitte setzen Sie 'supplemental_log' in 'conf/cubrid.conf'. Nur die SQL-Protokolle, die nach dem Setzen von „supplemental_log“ ausgeführt werden, können per Flashback gesichert werden.\n
+12 Transaktions-ID sollte in %1$d Sekunden eingegeben werden.\n
+13 Flashback läuft bereits. Flashback kann nicht von zwei Prozessen ausgeführt werden.\n
+60 \
+flashback: Stellt Anweisungen zum Flashback einer bestimmten Transaktion bereit.\n\
+Verwendung: %1$s flashback [OPTION] Datenbankname Klassenname1 [Klassenname2 ...]\n\
+\n\
+gültige Optionen:\n\
+    -o, --output-file=DATEI             Ausgabenachricht an DATEI umleiten; Standard: keine.\n\
+    -u, --user=ID                       gibt den Benutzer an, der die SQL-Anweisung für die Rückblende ausgeführt hat; Standard: ALLE.\n\
+    -p, --dba-password                  Passwort des DBA-Benutzers; wird aufgefordert, wenn nicht angegeben\n\
+    -s, --start-date=DATUM              gibt das Startdatum für die Rückblende an. SQL-Protokolle werden aus DATE extrahiert.\n\
+                                        DATUM wird wie folgt angegeben: tt-mm-jjjj:hh:mm:ss.\n\
+    -e, --end-date=DATUM                Enddatum für die Rückblende angeben. SQL-Protokolle werden bis zum DATE extrahiert.\n\
+                                        wenn start-date nicht angegeben ist, dann wird ((END - 10min) ~ END) auf range gesetzt,\n\
+                                        und sonst, wenn END nicht angegeben ist, dann wird (start ~ (start + 10min)) gesetzt.\n\
+                                        Und weder ein Startdatum noch ein Enddatum ist angegeben,\n\
+                                        Die SQL-Protokolle, die zwischen der (aktuellen Uhrzeit - 10 Minuten) und der aktuellen Uhrzeit\n\
+                                        ausgeführt wurden, werden extrahiert.\n\
+    --detail                            Gibt detaillierte Informationen für jede SQL-Anweisung aus.\n\
+                                        Transaktions-ID, Benutzername und ursprüngliche SQL-Anweisung werden mit der SQL-Anweisung\n\
+                                        zurückgegeben für Rückblende; Standard: gibt nur SQL-Anweisungen für Flashback aus\n\
+    --oldest                            Flashback wird in chronologischer Reihenfolge für SQL-Anweisungen durchgeführt,\n\
+                                        die von der Startzeit bis zur Endzeit ausgeführt werden; Standard: neueste\n
