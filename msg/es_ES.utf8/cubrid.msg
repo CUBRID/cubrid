@@ -1566,6 +1566,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Longitud maxima de un comentario es %1$d bytes.
 128 Número de argumentos no válidos para JSON_OBJECTAGG
 129 El argumento de conteo PARALLEL debe estar entre %1$d y %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Sin memoria.

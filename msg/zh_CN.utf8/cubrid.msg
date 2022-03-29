@@ -1567,6 +1567,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 一个comment的最大长度是 %1$d 字节.
 128 JSON_OBJECTAGG参数个数不匹配.
 129 PARALLEL数必须在 %1$d 和 %2$d 之间.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
