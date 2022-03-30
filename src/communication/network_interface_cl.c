@@ -10575,7 +10575,8 @@ loaddb_update_stats ()
 
 int
 flashback_get_and_show_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
-				FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list)
+				FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list, char **invalid_class,
+				time_t * invalid_time)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
@@ -10622,7 +10623,6 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
     {
       if (da_get (class_list, i, classname) != NO_ERROR)
 	{
-	  /* TODO : er_set() */
 	  free_and_init (request);
 	  return ER_FAILED;
 	}
@@ -10642,7 +10642,23 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
     {
       ptr = or_unpack_int (reply, &area_size);
       ptr = or_unpack_int (ptr, &error_code);
-      if (area_size > 0)
+
+      if (error_code == ER_FLASHBACK_INVALID_CLASS)
+	{
+	  *invalid_class = (char *) calloc (area_size + 1, sizeof (char));
+	  if (*invalid_class == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, area_size);
+	    }
+
+	  memcpy (*invalid_class, area, area_size);
+	}
+      else if (error_code == ER_FLASHBACK_INVALID_TIME)
+	{
+	  or_unpack_int64 (area, invalid_time);
+	}
+      else if (error_code == NO_ERROR)
 	{
 	  ptr = area;
 	  /* area : OID list | summary info list  */
@@ -10682,7 +10698,7 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
 
 int
 flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa, LOG_LSA * end_lsa,
-		       int *num_item, bool forward, char **info_list)
+		       int *num_item, bool forward, char **info_list, int *invalid_class_idx)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
@@ -10732,7 +10748,16 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
     {
       ptr = or_unpack_int (reply, &area_size);
       ptr = or_unpack_int (ptr, &error_code);
-      if (area_size > 0)
+
+      if (error_code == ER_FLASHBACK_SCHEMA_CHANGED)
+	{
+	  OID invalid_classoid;
+
+	  or_unpack_oid (area, &invalid_classoid);
+
+	  *invalid_class_idx = flashback_find_class_index (classlist, num_class, invalid_classoid);
+	}
+      else if (error_code == NO_ERROR)
 	{
 	  /* area : start lsa | end lsa | num item | item list */
 	  ptr = or_unpack_log_lsa (area, start_lsa);

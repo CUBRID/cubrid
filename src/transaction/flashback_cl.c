@@ -97,7 +97,7 @@ flashback_util_get_winsize ()
  * classoid (in)       : classoid to find
  */
 
-static int
+int
 flashback_find_class_index (OID * oidlist, int list_size, OID classoid)
 {
   int class_index = 0;

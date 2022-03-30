@@ -4866,7 +4866,12 @@ flashback (UTIL_FUNCTION_ARG * arg)
   dynamic_array *darray = NULL;
   int i = 0;
   char table_name_buf[SM_MAX_IDENTIFIER_LENGTH];
-  char *table_name;
+  char *table_name = NULL;
+
+  char *invalid_class = NULL;
+  int invalid_class_idx = 0;
+
+  time_t invalid_time = 0;
 
   OID *oid_list = NULL;
 
@@ -4887,8 +4892,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
   int error = NO_ERROR;
 
   int trid = 0;
+
   int num_item = 5;
-  char *loginfo_list;
+  char *loginfo_list = NULL;
 
   FLASHBACK_SUMMARY_INFO_MAP summary_info;
   FLASHBACK_SUMMARY_INFO *summary_entry = NULL;
@@ -4901,24 +4907,22 @@ flashback (UTIL_FUNCTION_ARG * arg)
   POLL_FD input_fd = { STDIN_FILENO, POLLIN | POLLPRI };
   int timeout = 0;
 
+  time_t current_time = time (NULL);
+
   num_tables = utility_get_option_string_table_size (arg_map) - 1;
   if (num_tables < 1)
     {
-      /* TODO : error message will be dealt in other issue. Temporarily used fprintf */
-      fprintf (stderr, "too less arguments, dbname and table list are required\n");
       goto print_flashback_usage;
     }
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
-      fprintf (stderr, "no database name\n");
       goto print_flashback_usage;
     }
 
   if (check_database_name (database_name))
     {
-      fprintf (stderr, "wrong dbname\n");
       goto error_exit;
     }
 
@@ -4935,7 +4939,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
   darray = da_create (num_tables, SM_MAX_IDENTIFIER_LENGTH);
   if (darray == NULL)
     {
-      perror ("calloc");
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
       goto error_exit;
     }
@@ -4958,7 +4961,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
       start_time = parse_date_string_to_time (start_date);
       if (start_time == 0)
 	{
-	  fprintf (stderr, "start-date error : follow  DATE format (DD-MM-YYYY:hh:MM:ss)\n");
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_FORMAT));
 	  goto error_exit;
 	}
     }
@@ -4969,7 +4973,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
       end_time = parse_date_string_to_time (end_date);
       if (end_time == 0)
 	{
-	  fprintf (stderr, "end-date error : follow  DATE format (DD-MM-YYYY:hh:MM:ss)\n");
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_FORMAT));
 	  goto error_exit;
 	}
     }
@@ -4998,7 +5003,24 @@ flashback (UTIL_FUNCTION_ARG * arg)
    * 3. start time, and end time are required to be set within the log volume range (server side check) */
   if (start_time >= end_time)
     {
-      fprintf (stderr, "start time(%lld) is larger than end time(%lld)\n", start_time, end_time);
+      char sdate_buf[20];
+      char edate_buf[20];
+
+      if (start_date == NULL)
+	{
+	  strftime (sdate_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&start_time));
+	  start_date = sdate_buf;
+	}
+
+      if (end_date == NULL)
+	{
+	  strftime (edate_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&end_time));
+	  end_date = edate_buf;
+	}
+
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_RANGE),
+			     start_date, end_date);
       goto error_exit;
     }
 
@@ -5012,7 +5034,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
       outfp = fopen (output_file, "w");
       if (outfp == NULL)
 	{
-	  fprintf (stderr, "can not open output file\n");
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_BAD_OUTPUT));
 	  goto error_exit;
 	}
     }
@@ -5041,8 +5064,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	   */
 
 	  /* get password interactively if interactive mode */
-	  /* TODO : MSGCAT setting will be dealt in other issue, it temporarily uses TDE MSGCAT value */
-	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_DBA_PASSWORD));
+	  passbuf =
+	    getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_DBA_PASSWORD));
 	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
 	    {
 	      passbuf = (char *) NULL;
@@ -5070,7 +5093,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
     {
-      fprintf (stderr, "please set \"supplemental_log\" in conf/cubrid.conf\n");
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NO_SUPPLEMENTAL_LOG));
       goto error_exit;
     }
 
@@ -5081,18 +5105,42 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  error = flashback_get_and_show_summary (darray, user, start_time, end_time, &summary_info, &oid_list);
+  error =
+    flashback_get_and_show_summary (darray, user, start_time, end_time, &summary_info, &oid_list, &invalid_class,
+				    &invalid_time);
   if (error != NO_ERROR)
     {
       /* print error message */
       switch (error)
 	{
 	case ER_FLASHBACK_INVALID_TIME:
-	  break;
+	  {
+	    char db_creation_time[20];
+	    char current_time_buf[20];
+
+	    strftime (db_creation_time, 20, "%d-%m-%Y:%H:%M:%S", localtime (&invalid_time));
+	    strftime (current_time_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
+
+	    PRINT_AND_LOG_ERR_MSG (msgcat_message
+				   (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TIME),
+				   current_time_buf, db_creation_time);
+	    break;
+	  }
 	case ER_FLASHBACK_INVALID_CLASS:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TABLE_NOT_EXIST),
+				 invalid_class);
+	  free_and_init (invalid_class);
+
 	  break;
 	case ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TOO_MANY_TRANSACTION));
 	  break;
+	case ER_FLASHBACK_DUPLICATED_REQUEST:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_DUPLICATED_REQUEST));
+
 	default:
 	  break;
 	}
@@ -5118,7 +5166,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	}
       else
 	{
-	  // TIMEOUT
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TIMEOUT), timeout);
+
 	  goto error_exit;
 	}
 
@@ -5130,6 +5180,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
       FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
       if (summary_entry == NULL)
 	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TRANSACTION),
+				 trid);
 	  /* add message that can not find transaction id */
 	}
 
@@ -5144,14 +5197,25 @@ flashback (UTIL_FUNCTION_ARG * arg)
     {
       error =
 	flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest,
-			       &loginfo_list);
+			       &loginfo_list, &invalid_class_idx);
       if (error != NO_ERROR)
 	{
 	  switch (error)
 	    {
 	    case ER_FLASHBACK_SCHEMA_CHANGED:
-	      break;
+	      {
+		char classname[SM_MAX_IDENTIFIER_LENGTH];
+		da_get (darray, invalid_class_idx, classname);
+
+		PRINT_AND_LOG_ERR_MSG (msgcat_message
+				       (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+					FLASHBACK_MSG_TABLE_SCHEMA_CHANGED), classname);
+		break;
+	      }
 	    case ER_FLASHBACK_LOG_NOT_EXIST:
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+				      FLASHBACK_MSG_LOG_VOLUME_NOT_EXIST));
 	      break;
 	    default:
 	      break;
@@ -5171,8 +5235,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   db_shutdown ();
 
-  need_shutdown = false;
-
   da_destroy (darray);
 
   free_and_init (oid_list);
@@ -5185,6 +5247,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
   return EXIT_SUCCESS;
 
 print_flashback_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_USAGE),
+	   basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 error_exit:
 

@@ -10717,11 +10717,22 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
   int error_code = NO_ERROR;
   time_t ret_time = 0;
 
+  time_t current_time = time (NULL);
 
   /* 1. Check start_time */
-  if (*start_time < log_Gl.hdr.db_creation)
+  if (*start_time < log_Gl.hdr.db_creation || *start_time > current_time)
     {
-      /* TODO : er_set() */
+      char start_date[20];
+      char db_creation_date[20];
+      char cur_date[20];
+
+      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
+      strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
+      strftime (cur_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
+
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date, db_creation_date,
+	      cur_date);
+
       return ER_FLASHBACK_INVALID_TIME;
     }
   else
@@ -10736,8 +10747,16 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 
 	  if (ret_time >= *end_time)
 	    {
+	      char start_date[20];
+	      char db_creation_date[20];
+
+	      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
+	      strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
+
 	      /* out of range : start_time (ret_time) can not be greater than end_time */
-	      /* TODO : er_set() */
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date,
+		      db_creation_date, start_date);
+
 	      return ER_FLASHBACK_INVALID_TIME;
 	    }
 	}
@@ -10757,7 +10776,6 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
   if (!(error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA))
     {
       /* failed to find a log record */
-      /* TODO : er_set() */
       return error_code;
     }
 
@@ -10848,7 +10866,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       status = xlocator_find_class_oid (thread_p, classname, &classoid, NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
 	{
-	  /* TODO : er_set() */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_CLASS, 1, classname);
 	  error_code = ER_FLASHBACK_INVALID_CLASS;
 	  goto error;
 	}
@@ -10932,10 +10950,34 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   return;
 error:
-  ptr = or_pack_int (reply, 0);
-  or_pack_int (ptr, error_code);
 
-  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  if (error_code == ER_FLASHBACK_INVALID_CLASS)
+    {
+      ptr = or_pack_int (reply, strlen (classname));
+      or_pack_int (ptr, error_code);
+
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), classname,
+					 strlen (classname));
+    }
+  else if (error_code == ER_FLASHBACK_INVALID_TIME)
+    {
+      OR_ALIGNED_BUF (OR_INT64_SIZE) area_buf;
+      area = OR_ALIGNED_BUF_START (area_buf);
+
+      ptr = or_pack_int (reply, OR_ALIGNED_BUF_SIZE (area_buf));
+      or_pack_int (ptr, error_code);
+
+      or_pack_int64 (area, log_Gl.hdr.db_creation);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+					 OR_ALIGNED_BUF_SIZE (area_buf));
+    }
+  else
+    {
+      ptr = or_pack_int (reply, 0);
+      or_pack_int (ptr, error_code);
+
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    }
 
   if (error_code != ER_FLASHBACK_DUPLICATED_REQUEST)
     {
@@ -11002,7 +11044,9 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *ptr;
   char *start_ptr;
 
-  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0 };
+  int threshold_to_remove_archive = 0;
+
+  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
@@ -11081,18 +11125,30 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   return;
 error:
-  ptr = or_pack_int (reply, 0);
-  or_pack_int (ptr, error_code);
 
-  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  if (error_code == ER_FLASHBACK_SCHEMA_CHANGED)
+    {
+      OR_ALIGNED_BUF (OR_OID_SIZE) area_buf;
+      area = OR_ALIGNED_BUF_START (area_buf);
+
+      ptr = or_pack_int (reply, OR_ALIGNED_BUF_SIZE (area_buf));
+      or_pack_int (ptr, error_code);
+      or_pack_oid (area, &context.invalid_class);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+					 OR_ALIGNED_BUF_SIZE (area_buf));
+    }
+  else
+    {
+      ptr = or_pack_int (reply, 0);
+      or_pack_int (ptr, error_code);
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    }
 
   flashback_reset ();
 
   return;
-
 css_send_error:
 
   flashback_reset ();
-
   return;
 }

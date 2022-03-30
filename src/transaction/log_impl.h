@@ -967,6 +967,7 @@ typedef struct flashback_loginfo_context
   int forward;
   int num_loginfo;
   int queue_size;
+  OID invalid_class;
   // *INDENT-OFF*
   std::unordered_set<OID> classoid_set;
   std::queue<CDC_LOGINFO_ENTRY *> loginfo_queue;

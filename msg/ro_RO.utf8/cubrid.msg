@@ -1408,7 +1408,14 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 
 1332 Volumul de jurnal activ (%1$s) este prea corect pentru a fi recreat. Dacă eliminați jurnalul activ, ar putea cauza o problemă neașteptată și ireversibilă.
 
-1333 Ultima eroare
+1333 Timp nevalid (%1$s) pentru a începe flashback. Este necesar să fie setat timpul între (%2$s) și (%3$s).
+1334 Nu se poate găsi clasa de flashback (%1$s).
+1335 Prea multe tranzacții pentru flashback. Mai puțin de %1$d tranzacții pot fi flashback.
+1336 Nu se poate suporta flashback pentru această clasă (nume : %1$s , OID : %2$d|%3$d|%4$d). Schema de clasă a fost modificată.
+1337 Înregistrarea jurnalului nu există (lsa : %1$lld|%2$d). Volumul jurnalului de arhivă a fost șters.
+1338 Flashback rulează deja. Flashback nu poate fi rulat de mai mult de un utilizator în același timp.
+
+1339 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

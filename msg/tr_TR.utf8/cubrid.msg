@@ -1408,7 +1408,14 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 
 1332 Etkin günlük hacmi (%1$s) yeniden oluşturulamayacak kadar makul. Etkin günlüğü kaldırırsanız, beklenmeyen ve geri dönüşü olmayan bir soruna neden olabilir.
 
-1333 Son Hata
+1333 Geri dönüşü başlatmak için geçersiz süre (%1$s). Zamanın (%2$s) ile (%3$s) arasında ayarlanması gerekir.
+1334 Geri dönüş yapılacak sınıf bulunamadı (%1$s).
+1335 Geri dönüş için çok fazla işlem var. %1$d'den az işlem flashback olabilir.
+1336 Bu sınıf için geri dönüş desteklenemez (ad : %1$s , OID : %2$d|%3$d|%4$d). Sınıf şeması değiştirildi.
+1337 Günlük kaydı mevcut değil (lsa : %1$lld|%2$d). Arşiv günlüğü birimi silindi.
+1338 Flashback zaten çalışıyor. Flashback, aynı anda birden fazla kullanıcı tarafından çalıştırılamaz.
+
+1339 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

@@ -113,7 +113,7 @@ extern int flashback_initialize (THREAD_ENTRY * thread_p);
 
 extern LOG_PAGEID flashback_min_log_pageid_to_keep ();
 extern bool flashback_is_needed_to_keep_archive ();
-extern bool flashback_check_time_exceed_threshold ();
+extern bool flashback_check_time_exceed_threshold (int *threshold);
 extern bool flashback_is_loginfo_generation_finished (LOG_LSA * start_lsa, LOG_LSA * end_lsa);
 
 extern void flashback_set_min_log_pageid_to_keep (LOG_LSA * lsa);
