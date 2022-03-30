@@ -30,6 +30,7 @@ namespace cubmethod
     : m_thread (thread_p)
     , m_is_oid_included (oid_included)
     , m_is_opened (false)
+    , m_fetch_count (1000)
   {
     reset (query_entry_p);
   }
@@ -237,5 +238,11 @@ namespace cubmethod
   query_cursor::get_is_opened ()
   {
     return m_is_opened;
+  }
+
+  int
+  get_fetch_count ()
+  {
+    return m_fetch_count;
   }
 }

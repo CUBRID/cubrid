@@ -68,6 +68,7 @@ namespace cubmethod
       int get_tuple_value (int index, DB_VALUE &result);
       bool get_is_oid_included ();
       bool get_is_opened ();
+      int get_fetch_count ();
 
     private:
       cubthread::entry *m_thread; /* which thread owns this cursor */
@@ -82,6 +83,8 @@ namespace cubmethod
       // bool is_updatable;		/* Cursor updatable ? */
       bool m_is_oid_included;		/* Cursor has first hidden oid col. */
       bool m_is_opened;
+
+      int m_fetch_count; /* # of rows to fetch */
   };
 }		// namespace cubmethod
 
