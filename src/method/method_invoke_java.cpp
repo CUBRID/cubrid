@@ -387,6 +387,8 @@ namespace cubmethod
 	      std::uint64_t qid = current_result_info.query_id;
 	      bool is_oid_included = current_result_info.include_oid;
 	      query_cursor *cursor = m_group->create_cursor (qid, is_oid_included);
+
+	      assert (cursor != nullptr);
 	    }
 	}
 
