@@ -1875,7 +1875,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 함수 %1$s()에 대해 호환되는 함수 정의를 찾을 수 없습니다.
 305 함수 인자와 함수 정의 %1$s 은 호환되지 않습니다.
 306 dblink - 필수 정보가 누락되었습니다.
-307 dblink - '%1$s'은 지원하지 않는 타입입니다.
+307 dblink - %1$s 타입은 지원하지 않습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

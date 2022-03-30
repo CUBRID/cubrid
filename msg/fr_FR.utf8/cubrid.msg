@@ -1875,7 +1875,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Impossible de trouver une signature compatible pour la fonction %1$s()
 305 La signature %1$s n'est pas compatible avec les arguments de la fonction.
 306 dblink - Les informations requises sont manquantes.
-307 dblink - not supported type '%1$s'.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

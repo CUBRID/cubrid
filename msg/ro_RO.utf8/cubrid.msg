@@ -1875,7 +1875,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Nu s-a găsit semnătură compatibilă pentru funcția %1$s()
 305 Semnătura %1$s nu este compatibilă cu argumentele funcției.
 306 dblink - Informațiile necesare lipsesc.
-307 dblink - not supported type '%1$s'.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.
