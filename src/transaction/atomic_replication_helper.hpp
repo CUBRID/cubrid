@@ -19,6 +19,8 @@
 #ifndef _ATOMIC_REPLICATION_HELPER_HPP_
 #define _ATOMIC_REPLICATION_HELPER_HPP_
 
+#include <map>
+
 #include "log_lsa.hpp"
 #include "log_record.hpp"
 
@@ -28,21 +30,29 @@ namespace cublog
   class atomic_replication_helper
   {
     public:
+      void add_atomic_replication_unit ();
+      void apply_log_redo_on_atomic_replication_sequence ();
+      void unfix_atomic_replication_sequence ();
 
     private:
-
       class atomic_replication_unit
       {
 	public:
+	  void apply_log_redo ();
+	  PAGE_PTR fix_atomic_replication_unit ();
+	  void unfix_atomic_replication_unit ();
 
 	private:
-	  log_lsa record_lsa;
-	  log_rectype record_type;
-	  VPID vpid;
-	  LOG_RCVINDEX record_index;
+	  log_lsa m_record_lsa;
+	  log_rectype m_record_type;
+	  VPID m_vpid;
+	  PAGE_PTR m_page_ptr;
+	  LOG_RCVINDEX m_record_index;
+	  TRANID m_record_tran_id;
       };
 
       //Hashmap
+      std::map<TRANID, atomic_replication_unit> m_atomic_sequences_map;
   };
 }
 
