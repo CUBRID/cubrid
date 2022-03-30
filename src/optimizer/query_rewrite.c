@@ -7218,7 +7218,7 @@ qo_push_limit_to_union (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * limit
 static bool
 qo_check_distinct_union (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  bool result;
+  bool result = false;
 
   switch (node->node_type)
     {
