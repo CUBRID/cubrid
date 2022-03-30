@@ -2397,18 +2397,13 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
   name = db_attribute_name (attribute);
   switch (qualifier)
     {
+    case CLASS_ATTRIBUTE:
+      /*
+       * NOTE: The parser no longer recognizes a CLASS prefix for class
+       * attributes, this will have been encoded in the surrounding
+       * "ADD CLASS ATTRIBUTE" clause
+       */
     case INSTANCE_ATTRIBUTE:
-      {
-	if (strchr (name, ']') != NULL)
-	  {
-	    output_ctx ("       %s%s%s ", PRINT_IDENTIFIER_WITH_QUOTE (name));
-	  }
-	else
-	  {
-	    output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
-	  }
-	break;
-      }				/* case INSTANCE_ATTRIBUTE */
     case SHARED_ATTRIBUTE:
       {
 	if (strchr (name, ']') != NULL)
@@ -2420,24 +2415,7 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
 	    output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
 	  }
 	break;
-      }				/* case SHARED_ATTRIBUTE */
-    case CLASS_ATTRIBUTE:
-      {
-	/*
-	 * NOTE: The parser no longer recognizes a CLASS prefix for class
-	 * attributes, this will have been encoded in the surrounding
-	 * "ADD CLASS ATTRIBUTE" clause
-	 */
-	if (strchr (name, ']') != NULL)
-	  {
-	    output_ctx ("       %s%s%s ", PRINT_IDENTIFIER_WITH_QUOTE (name));
-	  }
-	else
-	  {
-	    output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
-	  }
-	break;
-      }				/* case CLASS_ATTRIBUTE */
+      }
     }
 
   emit_domain_def (output_ctx, db_attribute_domain (attribute));
