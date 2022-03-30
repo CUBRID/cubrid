@@ -158,6 +158,8 @@ namespace cubmethod
 	    // store a new cursor in map
 	    cursor = new (std::nothrow) query_cursor (thread_p, query_entry_p, is_oid_included);
 	    m_cursor_map [query_id] = cursor;
+
+	    assert (cursor != nullptr);
 	  }
       }
 
