@@ -62,4 +62,7 @@ extern int flashback_find_class_index (OID * oidlist, int list_size, OID classoi
 extern int flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INFO_MAP * summary,
 					       dynamic_array * classname_list, OID * oidlist);
 
+extern int flashback_print_loginfo (char *loginfo, int num_item, dynamic_array * classlist, OID * oidlist,
+				    bool is_detail, FILE * outfp);
+
 #endif
