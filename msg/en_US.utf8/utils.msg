@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character '%1$c' in database name '%2$s'\n
@@ -128,6 +129,7 @@ Available admin utility-name:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Available administrator's utilities:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -1239,15 +1242,15 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 1 Enter DBA password:
 2 Invalid date format, valid format is dd-mm-yyyy:hh:mm:ss\n
 3 Start date (%1$s) is required to be smaller than end date (%2$s)\n
-4 Please try with a date before the current (%1$s) or after the database was created (%2$s)\n
+4 Please try with a date before the current (%1$s) and after the database was created (%2$s)\n
 5 Table (%1$s) does not exist in database\n
 6 Too many transactions to flashback. Please shorten the interval between start date and end date\n
 7 Unable to get flashback because schema (%1$s) has been changed.\n
 8 Log volume has been removed. Please try with the later date\n
 9 Couldn't open output file '%1$s'\n
 10 Trasaction ID (%1$d) does not exist\n
-11 Please set 'supplemental_log' in 'conf/cubrid.conf'. Only the SQL logs executed after setting 'supplemental_log' can be flashbacked.\n
-12 Transaction ID should be entered in %1$d seconds.\n
+11 Please set 'supplemental_log' in 'cubrid.conf'. Only the SQL logs executed after setting 'supplemental_log' can be flashbacked.\n
+12 Transaction ID should be entered in %1$d seconds. The timeout can be adjusted through the 'flashback_timeout' setting in 'cubrid.conf'\n
 13 Flashback is already running. Flashback cannot be run by two processes.\n
 60 \
 flashback: Provides statements to flashback a specific transaction.\n\

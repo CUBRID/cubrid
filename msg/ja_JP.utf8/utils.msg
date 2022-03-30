@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 レングスが正しくないか、正しくない文字「%1$c」がデータベース名「%2$s」に入っています。\n
@@ -128,6 +129,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$sはDBMS管理道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
@@ -188,6 +190,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$sはDBMS道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
@@ -1246,8 +1249,8 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 8 ログボリュームが削除されました。後日お試しください\n
 9 出力ファイル'%1$s'を開けませんでした\n
 10 トランザクションID（%1$d）が存在しません\n
-11 「conf/cubrid.conf」に「supplemental_log」を設定してください。フラッシュバックできるのは、「supplemental_log」の設定後に実行されたSQLログのみです。\n
-12 トランザクションIDは%1$d秒で入力する必要があります。\n
+11 「cubrid.conf」に「supplemental_log」を設定してください。フラッシュバックできるのは、「supplemental_log」の設定後に実行されたSQLログのみです。\n
+12 トランザクションIDは%1$d秒で入力する必要があります。タイムアウトは、「cubrid.conf」の「flashback_timeout」設定で調整できます。\n
 13 フラッシュバックはすでに実行されています。フラッシュバックは2つのプロセスで実行できません。\n
 60 \
 flashback：特定のトランザクションをフラッシュバックするステートメントを提供します。\n\

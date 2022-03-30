@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 在数据库名 '%2$s' 中有无效的长度或字符 '%1$c' \n
@@ -128,6 +129,7 @@ cubrid 管理工具，版本 %1$s\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -188,6 +190,7 @@ cubrid 管理工具，版本 %1$s\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -1235,8 +1238,8 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 8 日志卷已被删除。请稍后再试\n
 9 无法打开输出文件 '%1$s'\n
 10 交易 ID (%1$d) 不存在\n
-11 请在“conf/cubrid.conf”中设置“supplemental_log”。只有设置 'supplemental_log' 后执行的 SQL 日志才能被闪回。\n
-12 事务 ID 应在 %1$d 秒内输入。\n
+11 请在“cubrid.conf”中设置“supplemental_log”。只有设置 'supplemental_log' 后执行的 SQL 日志才能被闪回。\n
+12 事务 ID 应在 %1$d 秒内输入。可以通过“cubrid.conf”中的“flashback_timeout”设置来调整超时。\n
 13 闪回已在运行。闪回不能由两个进程运行。\n
 60\
 flashback：提供用于闪回特定事务的语句。\n\

@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Lunghezza non valida o un carattere '%1$c' non valido nel nome del database '%2$s'\n
@@ -128,6 +129,7 @@ Utilità admin disponibile:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s è un tool per DBMS.\n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Utilità amministrazione disponibili:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s è un tool per DBMS.\n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
@@ -1244,8 +1247,8 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 8 Il volume del registro è stato rimosso. Prova con la data successiva\n
 9 Impossibile aprire il file di output '%1$s'\n
 10 L'ID transazione (%1$d) non esiste\n
-11 Impostare 'supplemental_log' in 'conf/cubid.conf'. Solo i log SQL eseguiti dopo aver impostato 'supplemental_log' possono essere sottoposti a flashback.\n
-12 L'ID transazione deve essere inserito tra %1$d secondi.\n
+11 Impostare 'supplemental_log' in 'cubid.conf'. Solo i log SQL eseguiti dopo aver impostato 'supplemental_log' possono essere sottoposti a flashback.\n
+12 L'ID transazione deve essere inserito tra %1$d secondi. Il timeout può essere regolato tramite l'impostazione 'flashback_timeout' in 'cubrid.conf'.\n
 13 Flashback è già in esecuzione. Flashback non può essere eseguito da due processi.\n
 60 \
 flashback: fornisce istruzioni per eseguire il flashback di una transazione specifica.\n\

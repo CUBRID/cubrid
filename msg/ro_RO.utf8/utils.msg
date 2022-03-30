@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Lungime sau caracter invalid '%1$c' în numele bazei de date '%2$s'\n
@@ -128,6 +129,7 @@ Nume de utilitare de administrare disponibile:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s este un utilitar pentru SGDB.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Utilitare de administrare disponibile:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s este un utilitar pentru SGBD.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
@@ -1272,8 +1275,8 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 8 Volumul jurnalului a fost eliminat. Vă rugăm să încercați cu data ulterioară\n
 9 Nu s-a putut deschide fișierul de ieșire „%1$s”\n
 10 ID-ul tranzacției (%1$d) nu există\n
-11 Vă rugăm să setați „supplemental_log” în „conf/cubrid.conf”. Numai jurnalele SQL executate după setarea „supplemental_log” pot fi flashback.\n
-12 ID-ul tranzacției trebuie introdus în %1$d secunde.\n
+11 Vă rugăm să setați „supplemental_log” în „cubrid.conf”. Numai jurnalele SQL executate după setarea „supplemental_log” pot fi flashback.\n
+12 ID-ul tranzacției trebuie introdus în %1$d secunde. Timeout-ul poate fi ajustat prin setarea „flashback_timeout” din „cubrid.conf”.\n
 13 Flashback rulează deja. Flashback nu poate fi rulat de două procese.\n
 60 \
 flashback: furnizează declarații pentru a flashback o anumită tranzacție.\n\

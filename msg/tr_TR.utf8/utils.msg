@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Geçersiz uzunluk veya karakter '%1$c' veritabanı adı '%2$s' \n
@@ -128,6 +129,7 @@ Mevcut yönetici yardımcı programı-adı:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz:http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Mevcut yönetici programları:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz: http://www.cubrid.org\n
@@ -1239,8 +1242,8 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 8 Günlük hacmi kaldırıldı. Lütfen daha sonraki bir tarihle deneyin\n
 9 '%1$s' çıktı dosyası açılamadı\n
 10 İşlem Kimliği (%1$d) mevcut değil\n
-11 Lütfen 'conf/cubrid.conf' içinde 'supplemental_log' ayarlayın. Yalnızca 'supplemental_log' ayarlandıktan sonra yürütülen SQL günlükleri flashback yapılabilir.\n
-12 İşlem Kimliği %1$d saniye içinde girilmelidir.\n
+11 Lütfen 'cubrid.conf' içinde 'supplemental_log' ayarlayın. Yalnızca 'supplemental_log' ayarlandıktan sonra yürütülen SQL günlükleri flashback yapılabilir.\n
+12 İşlem Kimliği %1$d saniye içinde girilmelidir. Zaman aşımı, 'cubrid.conf' içindeki 'flashback_timeout' ayarı ile ayarlanabilir.\n
 13 Flashback zaten çalışıyor. Flashback iki işlem tarafından çalıştırılamaz.\n
 60 \
 flashback: Belirli bir işlemi flashback yapmak için ifadeler sağlar.\n\

@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longueur ou caractère non valide '%1$c' dans le nom de la base de données '%2$s'\n
@@ -128,6 +129,7 @@ Nom d'utilitaires d'administration disponible:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s est un outil de SGBD.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Utilitaires d'administrateur disponibles:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s is a tool for DBMS.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -1255,8 +1258,8 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 8 Le volume du journal a été supprimé. Veuillez essayer avec une date ultérieure\n
 9 Impossible d'ouvrir le fichier de sortie '%1$s'\n
 10 L'ID de transaction (%1$d) n'existe pas\n
-11 Veuillez définir 'supplemental_log' dans 'conf/cubrid.conf'. Seuls les journaux SQL exécutés après la définition de 'supplemental_log' peuvent faire l'objet d'un flashback.\n
-12 L'ID de transaction doit être saisi dans %1$d secondes.\n
+11 Veuillez définir 'supplemental_log' dans 'cubrid.conf'. Seuls les journaux SQL exécutés après la définition de 'supplemental_log' peuvent faire l'objet d'un flashback.\n
+12 L'ID de transaction doit être saisi dans %1$d secondes. Le délai peut être ajusté via le paramètre 'flashback_timeout' dans 'cubrid.conf'.\n
 13 Flashback est déjà en cours d'exécution. Flashback ne peut pas être exécuté par deux processus.\n
 60 \
 flashback : fournit des instructions pour revenir en arrière sur une transaction spécifique.\n\

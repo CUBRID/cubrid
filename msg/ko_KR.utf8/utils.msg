@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -128,6 +129,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -188,6 +190,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -1224,7 +1227,7 @@ operations:\n\
 
 $set 58 MSGCAT_UTIL_SET_FLASHBACK
 1 DBA 비밀번호:
-2 잘못된 날짜 형식입니다. 올바른 형식은 dd-mm-yyyy:hh:mm:ss입니다.\n
+2 잘못된 날짜 형식입니다. 올바른 형식은 dd-mm-yyyy:hh:mm:ss 입니다.\n
 3 시작 날짜(%1$s)는 종료 날짜(%2$s)보다 작아야 합니다.\n
 4 현재 날짜 이전(%1$s) 또는 데이터베이스 생성 이후(%2$s) 날짜로 시도하십시오.\n
 5 테이블(%1$s)이 데이터베이스에 없습니다.\n
@@ -1233,8 +1236,8 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 8 로그 볼륨이 제거되었습니다. 나중 날짜로 시도하십시오.\n
 9 출력 파일 '%1$s'을 열 수 없습니다.\n
 10 트랜잭션 ID(%1$d)가 존재하지 않습니다.\n
-11 'conf/cubrid.conf'에 'supplemental_log'를 설정해 주세요. 'supplemental_log'를 설정한 후 실행된 SQL 로그만 플래시백할 수 있습니다.\n
-12 트랜잭션 ID는 %1$d초 안에 입력해야 합니다.\n
+11 'cubrid.conf'의 'supplemental_log'를 설정해 주세요. 'supplemental_log'를 설정한 후 실행된 SQL 로그만 플래시백할 수 있습니다.\n
+12 트랜잭션 ID는 %1$d초 안에 입력해야 합니다. 'cubrid.conf'의 'flashback_timeout' 설정을 통해 시간 값을 조정할 수 있습니다. \n
 13 플래시백이 이미 실행 중입니다. 플래시백은 두 개 이상의 프로세스에서 실행할 수 없습니다.\n
 60 \
 flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니다.\n\
@@ -1243,7 +1246,7 @@ flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니�
 유효한 옵션:\n\
     -o, --output-file=FILE      출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
     -u, --user=ID               플래시백할 SQL 문을 실행한 사용자를 지정합니다. 기본값: 모두.\n\
-    -p, --dba-password          DBA 사용자의 비밀번호; 지정하지 않으면 메시지가 표시됩니다.\n\
+    -p, --dba-password          DBA 사용자의 비밀번호; 지정되지 않은 경우 프롬프트\n\
     -s, --start-date=DATE       플래시백의 시작 날짜를 지정합니다. DATE 이후에 수행된 SQL로그가 추출됩니다.\n\
                                 DATE는 다음과 같이 지정됩니다. dd-mm-yyyy:hh:mm:ss.\n\
     -e, --end-date=DATE         플래시백의 종료 날짜를 지정합니다. DATE까지 수행된 SQL로그가 추출됩니다.\n\

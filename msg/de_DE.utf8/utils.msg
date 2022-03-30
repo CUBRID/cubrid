@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Ungültige Länge oder Zeichen '%1$c' in Datenbank '%2$s'\n
@@ -128,6 +129,7 @@ Vorhandene Admin-Utilitynamen:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s ist ein Werkzeug für DBMS.\n\
 Für zusätzliche Informationen, http://www.cubrid.org besuchen\n
@@ -188,6 +190,7 @@ Vorhandene Administratorutilities:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s ist ein Werkzeug für DBMS.\n\
 Für zusätzliche Informationen, http://www.cubrid.org, besuchen\n
@@ -1244,8 +1247,8 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 8 Log-Volume wurde entfernt. Bitte versuchen Sie es mit dem späteren Datum\n
 9 Ausgabedatei '%1$s' konnte nicht geöffnet werden\n
 10 Transaktions-ID (%1$d) existiert nicht\n
-11 Bitte setzen Sie 'supplemental_log' in 'conf/cubrid.conf'. Nur die SQL-Protokolle, die nach dem Setzen von „supplemental_log“ ausgeführt werden, können per Flashback gesichert werden.\n
-12 Transaktions-ID sollte in %1$d Sekunden eingegeben werden.\n
+11 Bitte setzen Sie 'supplemental_log' in 'cubrid.conf'. Nur die SQL-Protokolle, die nach dem Setzen von „supplemental_log“ ausgeführt werden, können per Flashback gesichert werden.\n
+12 Transaktions-ID sollte in %1$d Sekunden eingegeben werden. Das Timeout kann über die Einstellung „flashback_timeout“ in „cubrid.conf“ angepasst werden.\n
 13 Flashback läuft bereits. Flashback kann nicht von zwei Prozessen ausgeführt werden.\n
 60 \
 flashback: Stellt Anweisungen zum Flashback einer bestimmten Transaktion bereit.\n\
