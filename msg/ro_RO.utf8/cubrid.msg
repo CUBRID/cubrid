@@ -1403,7 +1403,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
-1330 Error reserved for dblink development.
+1330 Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 Volumul de jurnal activ (%1$s) este prea corect pentru a fi recreat. Dacă eliminați jurnalul activ, ar putea cauza o problemă neașteptată și ireversibilă.

@@ -1403,7 +1403,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
-1330 Error reserved for dblink development.
+1330 Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 Etkin günlük hacmi (%1$s) yeniden oluşturulamayacak kadar makul. Etkin günlüğü kaldırırsanız, beklenmeyen ve geri dönüşü olmayan bir soruna neden olabilir.
@@ -1549,10 +1549,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 103 Dizin ipuçlarının geçersiz kullanımı
 104 Bit dizgesinin uzunluğu en fazla %1$d bittir.
 105 Sözdizim hatası: unexpected
-106 , bekliyor '{'
-107 , bekliyor SELECT veya '('
-108 , bekliyor
-109 beklenmedik
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
 110 IFADESININ SONUNA
 111 Çizgide %1$d, sütununda %2$d önce '%3$c%4$s'\n
 112 Çizgide %1$d, sütununda %2$d önce %3$s\n

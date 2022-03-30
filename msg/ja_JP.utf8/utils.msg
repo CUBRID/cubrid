@@ -978,9 +978,9 @@ applyinfo: CUBRID HA Apply情報を出力。\n\
 \n\
 オプション:\n\
   -r, --remote-host-name      リモートホスト名; リモートノードのアクティブログ情報を出力\n\
-  -a, --applied-info          適用された情報を出力\n\
   -L, --copied-log-path=PATH  コピーしたログブリュームのパス; コピーしたログ情報を出力。\n\
-  -p, --page=ID               ページID; デフォルト : 0\n\
+  -a, --applied-info          適用された情報を出力; -Lオプションが必要です\n\
+  -p, --page=ID               ページID; -Lオプションが必要です; デフォルト : 0\n\
   -v, --verbose               多様な進行情報を出力; デフォルト: 出力しない\n\
   -i, --interval=S            S秒のたびに表示される情報を更新する。\n
 

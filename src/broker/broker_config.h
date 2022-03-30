@@ -116,10 +116,15 @@
 #define CGW_LINK_SERVER_PORT_LEN	 10
 #define CGW_LINK_ODBC_DRIVER_NAME_LEN	 256
 #define CGW_LINK_CONNECT_URL_PROPERTY_LEN	512
-#define CGW_LINK_URL_MAX_LEN	         (CGW_LINK_SERVER_IP_LEN           \
-                                          + CGW_LINK_SERVER_PORT_LEN       \
-                                          + CGW_LINK_ODBC_DRIVER_NAME_LEN  \
-                                          + CGW_LINK_CONNECT_URL_PROPERTY_LEN)     \
+#define CGW_LINK_STRING_FORMAT_LEN 128
+#define CGW_LINK_URL_MAX_LEN	         (CGW_LINK_SERVER_IP_LEN                 \
+                                          + CGW_LINK_SERVER_PORT_LEN             \
+                                          + CGW_LINK_ODBC_DRIVER_NAME_LEN        \
+                                          + CGW_LINK_CONNECT_URL_PROPERTY_LEN    \
+                                          + SRV_CON_DBNAME_SIZE                  \
+                                          + SRV_CON_DBUSER_SIZE                  \
+                                          + SRV_CON_DBPASSWD_SIZE)               \
+                                          + CGW_LINK_STRING_FORMAT_LEN           \
 
 
 enum t_sql_log_mode_value

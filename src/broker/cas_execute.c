@@ -758,11 +758,8 @@ ux_set_default_setting ()
 void
 ux_database_shutdown ()
 {
-#if defined(CAS_FOR_CGW)
-  cgw_database_disconnect ();
-#else
+#if !defined(CAS_FOR_CGW)
   db_shutdown ();
-#endif /* CAS_FOR_CGW */
   cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
 #ifndef LIBCAS_FOR_JSP
   as_info->database_name[0] = '\0';
@@ -776,6 +773,7 @@ ux_database_shutdown ()
   memset (database_passwd, 0, sizeof (database_passwd));
   cas_default_isolation_level = 0;
   cas_default_lock_timeout = -1;
+#endif /* CAS_FOR_CGW */
 }
 
 #if !defined(CAS_FOR_CGW)
@@ -1064,7 +1062,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
       goto prepare_error;
     }
 
-  err_code = cgw_get_handle (&srv_handle->cgw_handle, true);
+  err_code = cgw_get_handle (&srv_handle->cgw_handle);
   if (err_code < 0)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1110,27 +1108,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
       goto prepare_error;
     }
 
-  if (srv_handle->cgw_handle->hstmt == NULL)
-    {
-      err_code = cgw_get_stmt_handle (srv_handle->cgw_handle->hdbc, &srv_handle->cgw_handle->hstmt);
-      if (err_code < 0)
-	{
-	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  goto prepare_error;
-	}
-
-      err_code =
-	cgw_set_stmt_attr (srv_handle->cgw_handle->hstmt, SQL_ATTR_CURSOR_TYPE, (SQLPOINTER) SQL_CURSOR_STATIC,
-			   SQL_IS_INTEGER);
-      if (err_code < 0)
-	{
-	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  goto prepare_error;
-	}
-    }
-
-  err_code = cgw_sql_prepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) sql_stmt);
-
+  err_code = cgw_sql_prepare ((SQLCHAR *) sql_stmt);
   if (err_code < 0)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1273,7 +1251,7 @@ ux_end_tran (int tran_type, bool reset_con_status)
 
 #if defined(CAS_FOR_CGW)
   T_CGW_HANDLE *cgw_handle = NULL;
-  cgw_get_handle (&cgw_handle, false);
+  cgw_get_handle (&cgw_handle);
   if (cgw_handle)
     {
       cgw_endtran (cgw_handle->hdbc, tran_type);
@@ -1353,7 +1331,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
   if (srv_handle->is_prepared == FALSE)
     {
-      err_code = cgw_sql_prepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) srv_handle->sql_stmt);
+      err_code = cgw_sql_prepare ((SQLCHAR *) srv_handle->sql_stmt);
 
       if (err_code < 0)
 	{
@@ -1366,7 +1344,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
   if (num_bind > 0)
     {
-      err_code = cgw_make_bind_value (srv_handle->cgw_handle, num_bind, argc, argv, &bind_data_list, net_buf);
+      err_code = cgw_make_bind_value (srv_handle->cgw_handle, num_bind, argc, argv, &bind_data_list);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1376,7 +1354,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
   if (srv_handle->is_prepared == FALSE)
     {
-      err_code = cgw_sql_prepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) srv_handle->sql_stmt);
+      err_code = cgw_sql_prepare ((SQLCHAR *) srv_handle->sql_stmt);
 
       if (err_code != SQL_SUCCESS && err_code != SQL_SUCCESS_WITH_INFO)
 	{
@@ -1415,6 +1393,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   srv_handle->num_q_result = 1;
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
+  srv_handle->total_tuple_count = INT_MAX;	// ODBC does not provide the number of query results, so set to int_max.
 
   if (do_commit_after_execute (*srv_handle))
     {
@@ -3075,11 +3054,7 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
-#if defined(CAS_FOR_CGW)
-  SQLLEN count;
-#else
   int count;
-#endif
   char *err_str = NULL;
 #if !defined(CAS_FOR_CGW)
   T_QUERY_RESULT *cur_result;
@@ -3091,17 +3066,7 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
       goto cursor_error;
     }
 #if defined(CAS_FOR_CGW)
-  err_code = cgw_get_row_count (srv_handle->cgw_handle->hstmt, &count);
-  if (err_code < 0)
-    {
-      err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
-      goto cursor_error;
-    }
-
-  if (count > INT_MAX)
-    {
-      count = INT_MAX;
-    }
+  count = srv_handle->total_tuple_count;
 #else
   cur_result = (T_QUERY_RESULT *) srv_handle->cur_result;
   if (cur_result == NULL)
@@ -5825,13 +5790,6 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	  break;
 	}
 
-      err_code = cgw_get_row_count (srv_handle->cgw_handle->hstmt, &total_row_count);
-      if (err_code < 0)
-	{
-	  err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
-	  goto fetch_error;
-	}
-
       err_code = cgw_cur_tuple (net_buf, first_col_binding, cursor_pos);
       if (err_code < 0)
 	{
@@ -5859,16 +5817,6 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       net_buf_cp_byte (net_buf, fetch_end_flag);
     }
 
-  if (total_row_count > INT_MAX)
-    {
-      srv_handle->total_tuple_count = INT_MAX;
-    }
-  else
-    {
-      srv_handle->total_tuple_count = (int) total_row_count;
-    }
-  net_buf_overwrite_int (net_buf, srv_handle->total_row_count_msg_offset, srv_handle->total_tuple_count);
-  net_buf_overwrite_int (net_buf, srv_handle->res_tuple_count_msg_offset, srv_handle->total_tuple_count);
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
 
   srv_handle->cursor_pos = cursor_pos;

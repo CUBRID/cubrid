@@ -979,9 +979,9 @@ kullanım: %1$s applyinfo [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -r, --remote-host-name      Uzak ana bilgisayar adı; görüntü uzak düğüm aktif log bilgileri\n\
-  -a, --applied-info 	      uygulamalı bilgilerde görüntü \n\
   -L, --copied-log-path=PATH  Kopyalanan log yoğunlukların path; görüntü kopyalanan log bilgileri \n\
-  -p, --page=ID               sayfa id; varsayılan: 0 \n\
+  -a, --applied-info 	      uygulamalı bilgilerde görüntü; -L seçeneği gereklidir \n\
+  -p, --page=ID               sayfa id; -L seçeneği gereklidir; varsayılan: 0 \n\
   -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı bırakmak\n\
   -i, --interval=S            her S saniye bilgilerini yazdırmak\n
 

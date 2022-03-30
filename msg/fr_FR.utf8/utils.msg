@@ -982,9 +982,9 @@ usage: %1$s applyinfo [OPTION] database-name\n\
 \n\
 options valids:\n\
   -r, --remote-host-name        nom d'hôte distant; affiche les informations du journal actif du noeud distant\n\
-  -a, --applied-info            affiche infomation appliquée\n\
   -L, --copied-log-path=CHEMIN  CHEMIN de volumes du journal copiés; affiche les informations du journal copié\n\
-  -p, --page=ID                 id de page; par défaut : 0\n\
+  -a, --applied-info            affiche infomation appliquée; l'option -L est obligatoire\n\
+  -p, --page=ID                 id de page; l'option -L est obligatoire; par défaut : 0\n\
   -v, --verbose                 active les messages verbeux d'état; par défaut: désactivé\n\
   -i, --interval=S              print information every S secs\n
 

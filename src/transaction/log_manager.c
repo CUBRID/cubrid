@@ -12437,7 +12437,7 @@ error:
           error_code = (e); \
           if (error_code == ER_FLASHBACK_SCHEMA_CHANGED) \
             { \
-              if (heap_get_class_name (thread_p, &(classoid), &(classname)) == NO_ERROR); \
+              if (heap_get_class_name (thread_p, &(classoid), &(classname)) == NO_ERROR) \
                 { \
                   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_SCHEMA_CHANGED, 4, (classname), OID_AS_ARGS (&(classoid))); \
                   free_and_init ((classname)); \

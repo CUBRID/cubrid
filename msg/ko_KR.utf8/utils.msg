@@ -294,7 +294,7 @@ backupdb: 데이터베이스를 백업합니다.\n\
   -t, --thread-count=COUNT     백업을 수행하는 스레드 개수; 기본값: 자동\n\
       --no-compress            백업 볼륨을 압축하지 않습니다; 기본값: 압축\n\
       --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n\
-  -k, --separate-keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다. \n
+  -k, --separate-keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다.\n
 71 \"%1$s\" 와 \"%2$s\" (은)는 함께 사용할 수 없습니다.\n
 
 
@@ -979,9 +979,9 @@ applyinfo: display CUBRID HA 복제 상태 출력\n\
 \n\
 valid options:\n\
   -r, --remote-host-name      원격 호스트 이름; 원격 노드의 활성 로그 정보 출력\n\
-  -a, --applied-info          반영된 정보 출력\n\
   -L, --copied-log-path=PATH  복사된 로그 볼륨의 경로; 복사된 로그 정보 출력\n\
-  -p, --page=ID               페이지 id; 기본값: 0\n\
+  -a, --applied-info          반영된 정보 출력; L옵션이 필요\n\
+  -p, --page=ID               페이지 id; L옵션이 필요; 기본값: 0\n\
   -v, --verbose               상세 상태 정보 출력; 기본값: 사용하지 않음\n\
   -i, --interval=S            매 S 초마다 로그 정보 출력\n
 

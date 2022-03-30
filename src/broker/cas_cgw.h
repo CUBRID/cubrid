@@ -135,22 +135,24 @@ union odbc_bind_info
 
 extern void test_log (char *fmt, ...);
 
-
+extern int cgw_init ();
+extern void cgw_cleanup ();
 extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding);
 extern void cgw_cleanup_binder (T_COL_BINDER * first_col_binding);
 
 extern int cgw_init_odbc_handle (void);
-extern int cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool is_connected);
+extern int cgw_get_handle (T_CGW_HANDLE ** cgw_handle);
 extern int cgw_get_stmt_handle (SQLHDBC hdbc, SQLHSTMT * stmt);
 extern int cgw_get_driver_info (SQLHDBC hdbc, SQLUSMALLINT info_type, void *driver_info, SQLSMALLINT size);
 
 // db connection functions
-extern int cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url);
+extern int cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, char *db_name, char *db_user,
+				 char *db_passwd);
 extern void cgw_database_disconnect (void);
 extern int cgw_is_database_connected (void);
 
 // Prepare funtions
-extern int cgw_sql_prepare (SQLHSTMT hstmt, SQLCHAR * sql_stmt);
+extern int cgw_sql_prepare (SQLCHAR * sql_stmt);
 extern int cgw_get_num_cols (SQLHSTMT hstmt, SQLSMALLINT * num_cols);
 extern int cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_INFO * col_info);
 
@@ -158,12 +160,10 @@ extern int cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T
 extern int cgw_set_commit_mode (SQLHDBC hdbc, bool auto_commit);
 extern int cgw_execute (T_SRV_HANDLE * srv_handle);
 extern int cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_type);
-extern int cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, void **argv, ODBC_BIND_INFO ** ret_val,
-				T_NET_BUF * net_buf);
+extern int cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, void **argv, ODBC_BIND_INFO ** ret_val);
 
 // Resultset funtions
 extern int cgw_cursor_close (SQLHSTMT hstmt);
-extern int cgw_get_row_count (SQLHSTMT hstmt, SQLLEN * row_count);
 extern int cgw_row_data (SQLHSTMT hstmt, int cursor_pos);
 extern int cgw_set_stmt_attr (SQLHSTMT hstmt, SQLINTEGER attr, SQLPOINTER val, SQLINTEGER len);
 extern int cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor_pos);
