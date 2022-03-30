@@ -1252,6 +1252,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 11 「cubrid.conf」に「supplemental_log」を設定してください。フラッシュバックできるのは、「supplemental_log」の設定後に実行されたSQLログのみです。\n
 12 トランザクションIDは%1$d秒で入力する必要があります。タイムアウトは、「cubrid.conf」の「flashback_timeout」設定で調整できます。\n
 13 フラッシュバックはすでに実行されています。フラッシュバックは2つのプロセスで実行できません。\n
+14 フラッシュバックをスタンドアロンモードとして実行することはできません。\n
 60 \
 flashback：特定のトランザクションをフラッシュバックするステートメントを提供します。\n\
 使用法：%1$s flashback [オプション] データベース名class_name1[class_name2...] \n\

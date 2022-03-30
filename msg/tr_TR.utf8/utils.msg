@@ -1245,6 +1245,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 11 Lütfen 'cubrid.conf' içinde 'supplemental_log' ayarlayın. Yalnızca 'supplemental_log' ayarlandıktan sonra yürütülen SQL günlükleri flashback yapılabilir.\n
 12 İşlem Kimliği %1$d saniye içinde girilmelidir. Zaman aşımı, 'cubrid.conf' içindeki 'flashback_timeout' ayarı ile ayarlanabilir.\n
 13 Flashback zaten çalışıyor. Flashback iki işlem tarafından çalıştırılamaz.\n
+14 Flashback bağımsız mod olarak çalıştırılamaz.\n
 60 \
 flashback: Belirli bir işlemi flashback yapmak için ifadeler sağlar.\n\
 kullanım: %1$s flashback [SEÇENEK] veritabanı adı sınıf_adı1 [sınıf_adı2 ...]\n\

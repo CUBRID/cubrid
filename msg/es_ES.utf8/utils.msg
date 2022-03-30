@@ -1251,6 +1251,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 11 Configure 'supplemental_log' en 'cubrid.conf'. Solo los registros de SQL ejecutados después de configurar 'supplemental_log' pueden recuperarse.\n
 12 El ID de transacción debe ingresarse en %1$d segundos. El tiempo de espera se puede ajustar a través de la configuración de 'flashback_timeout' en 'cubrid.conf'.\n
 13 Flashback ya se está ejecutando. Dos procesos no pueden ejecutar Flashback.\n
+14 Flashback no se puede ejecutar como modo independiente.\n
 60 \
 flashback: proporciona declaraciones para retroceder una transacción específica.\n\
 uso: %1$s flashback [OPCIÓN] database-name class_name1 [class_name2 ...]\n\
