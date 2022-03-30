@@ -1566,7 +1566,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 커맨트의 최대 길이는 %1$d 바이트입니다.
 128 JSON_OBJECTAGG 인자의 갯수가 잘못되었습니다.
 129 PARALLEL 인자 값은 %1$d에서 %2$d까지 허용됩니다.
-130 dblink - Server name cannot contain periods.
+130 dblink - 서버명은 점(.)을 포함할 수 없습니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
