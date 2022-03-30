@@ -30,6 +30,7 @@
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
+#include <queue>
 
 #include "config.h"
 #include "error_manager.h"
@@ -38,6 +39,7 @@
 #include "thread_compat.hpp"
 #include "oid.h"
 #include "connection_defs.h"
+#include "log_manager.h"
 
 #define FLASHBACK_MAX_NUM_TRAN_TO_SUMMARY   INT_MAX
 
@@ -55,18 +57,6 @@
         } \
     } \
   while (0)
-
-/* flashback summary information stored in utility side */
-typedef struct flashback_summary_info
-{
-  TRANID trid;
-  LOG_LSA start_lsa;
-  LOG_LSA end_lsa;
-} FLASHBACK_SUMMARY_INFO;
-
-// *INDENT-OFF*
-typedef std::unordered_map<TRANID, FLASHBACK_SUMMARY_INFO *> FLASHBACK_SUMMARY_INFO_MAP;
-// *INDENT-ON*
 
 /* flashback summary information for each transaction generated in server side */
 typedef struct flashback_summary_entry
@@ -106,10 +96,33 @@ typedef struct flashback_summary_context
   // *INDENT-ON*
 } FLASHBACK_SUMMARY_CONTEXT;
 
-extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
-extern void flashback_cleanup (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
+typedef struct flashback_loginfo_context
+{
+  TRANID trid;
+  char *user;
+  LOG_LSA start_lsa;
+  LOG_LSA end_lsa;
+  int num_class;
+  int forward;
+  int num_loginfo;
+  int queue_size;
+  OID invalid_class;
+  // *INDENT-OFF*
+  std::unordered_set<OID> classoid_set;
+  std::queue<CDC_LOGINFO_ENTRY *> loginfo_queue;
+  // *INDENT-ON*
+} FLASHBACK_LOGINFO_CONTEXT;
 
+extern int flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * end_time, LOG_LSA * start_lsa,
+				  LOG_LSA * end_lsa);
+extern char *flashback_pack_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT context, int *num_summary);
+
+extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
+
+extern char *flashback_pack_loginfo (THREAD_ENTRY * thread_p, char *ptr, FLASHBACK_LOGINFO_CONTEXT context);
 extern int flashback_initialize (THREAD_ENTRY * thread_p);
+
+extern int flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context);
 
 extern LOG_PAGEID flashback_min_log_pageid_to_keep ();
 extern bool flashback_is_needed_to_keep_archive ();
