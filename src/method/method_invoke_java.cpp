@@ -562,14 +562,15 @@ namespace cubmethod
 
       query_result_info &current_result_info = info.qresult_info;
       query_cursor *cursor = m_group->get_cursor (current_result_info.query_id);
-      if (cursor == nullptr)
+      if (cursor)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (query_cursor));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  cursor->change_owner (m_group->get_thread_entry ());
+	  return mcon_send_buffer_to_java (m_group->get_socket(), b);
 	}
-      cursor->change_owner (m_group->get_thread_entry ());
-
-      return mcon_send_buffer_to_java (m_group->get_socket(), b);
+      else
+	{
+	  return ER_FAILED;
+	}
     };
 
     error = xs_receive (&thread_ref, get_make_outresult_info);

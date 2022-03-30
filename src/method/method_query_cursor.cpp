@@ -241,7 +241,7 @@ namespace cubmethod
   }
 
   int
-  get_fetch_count ()
+  query_cursor::get_fetch_count ()
   {
     return m_fetch_count;
   }
