@@ -1278,6 +1278,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 11 Vă rugăm să setați „supplemental_log” în „cubrid.conf”. Numai jurnalele SQL executate după setarea „supplemental_log” pot fi flashback.\n
 12 ID-ul tranzacției trebuie introdus în %1$d secunde. Timeout-ul poate fi ajustat prin setarea „flashback_timeout” din „cubrid.conf”.\n
 13 Flashback rulează deja. Flashback nu poate fi rulat de două procese.\n
+14 Flashback nu poate rula ca mod independent.\n
 60 \
 flashback: furnizează declarații pentru a flashback o anumită tranzacție.\n\
 utilizare: %1$s flashback [OPȚIUNE] bază de date nume_clasă1 [nume_clasă2 ...]\n\
