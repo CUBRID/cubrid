@@ -10623,7 +10623,6 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
     {
       if (da_get (class_list, i, classname) != NO_ERROR)
 	{
-	  /* TODO : er_set() */
 	  free_and_init (request);
 	  return ER_FAILED;
 	}
@@ -10646,14 +10645,14 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
 
       if (error_code == ER_FLASHBACK_INVALID_CLASS)
 	{
-	  *invalid_class = strndup (area, area_size);
-
+	  *invalid_class = (char *) calloc (area_size + 1, sizeof (char));
 	  if (*invalid_class == NULL)
 	    {
 	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, area_size);
 	    }
 
+	  memcpy (*invalid_class, area, area_size);
 	}
       else if (error_code == ER_FLASHBACK_INVALID_TIME)
 	{
