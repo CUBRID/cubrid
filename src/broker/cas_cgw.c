@@ -752,7 +752,7 @@ cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       code_set = INTL_CODESET_ASCII;
       break;
     case SQL_INTEGER:
-      if (is_unsigned_type)
+     code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
 	{
 	  code_set = cgw_get_charset ();
 	}
