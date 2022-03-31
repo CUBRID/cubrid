@@ -779,7 +779,7 @@ flashback_print_delete (char **loginfo, int trid, char *user, const char *classn
       goto error;
     }
 
-  sprintf (sql, "insert into [%s] values ( ", classname);
+  sprintf (sql, "insert into [%s] values (", classname);
 
   ptr = or_unpack_int (ptr, &num_change_col);
   ptr = or_unpack_int (ptr, &num_cond_col);
@@ -794,7 +794,7 @@ flashback_print_delete (char **loginfo, int trid, char *user, const char *classn
     {
       /* check SQL length
        * sql + length of ", " */
-      error = flashback_check_and_resize_sql_memory (&sql, strlen (sql) + 4, &max_sql_size);
+      error = flashback_check_and_resize_sql_memory (&sql, strlen (sql) + 3, &max_sql_size);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -807,7 +807,7 @@ flashback_print_delete (char **loginfo, int trid, char *user, const char *classn
 	}
       else
 	{
-	  strcat (sql, " );");
+	  strcat (sql, ");");
 	}
 
       attr = attr->order_link;
@@ -985,7 +985,7 @@ flashback_print_insert (char **loginfo, int trid, char *user, const char *classn
 	  goto error;
 	}
 
-      sprintf (original_sql, "insert into [%s] values ( ", classname);
+      sprintf (original_sql, "insert into [%s] values (", classname);
 
       ptr = or_unpack_int (ptr, &num_change_col);
       for (i = 0; i < num_change_col; i++)
@@ -998,7 +998,7 @@ flashback_print_insert (char **loginfo, int trid, char *user, const char *classn
 	{
 	  /* check SQL length
 	   * cond_sql + length of ", " */
-	  error = flashback_check_and_resize_sql_memory (&original_sql, strlen (original_sql) + 4, &max_original_size);
+	  error = flashback_check_and_resize_sql_memory (&original_sql, strlen (original_sql) + 3, &max_original_size);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
@@ -1011,7 +1011,7 @@ flashback_print_insert (char **loginfo, int trid, char *user, const char *classn
 	    }
 	  else
 	    {
-	      strcat (original_sql, " );");
+	      strcat (original_sql, ");");
 	    }
 
 	  attr = attr->order_link;
