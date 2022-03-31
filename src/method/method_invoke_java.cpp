@@ -206,8 +206,6 @@ namespace cubmethod
   int
   method_invoke_java::receive_error ()
   {
-    int error_code = NO_ERROR;
-
     DB_VALUE error_value, error_msg;
 
     db_make_null (&error_value);
@@ -226,16 +224,13 @@ namespace cubmethod
     value_unpacker.value = &error_msg;
     value_unpacker.unpack (unpacker);
 
-    m_group->set_error_msg (std::string (db_get_string (&error_msg)));
-
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1,
-	    db_get_string (&error_msg));
-    error_code = er_errid ();
+    const char *error_str = db_get_string (&error_msg);
+    m_group->set_error_msg (error_str ? std::string (error_str) : "");
 
     db_value_clear (&error_value);
     db_value_clear (&error_msg);
 
-    return error_code;
+    return ER_FAILED;
   }
 
   int

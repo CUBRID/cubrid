@@ -160,6 +160,11 @@ namespace cubscan
 
 	  m_method_group->reset (false);
 	}
+      else
+	{
+	  std::string error_msg = m_method_group->get_error_msg ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, error_msg.c_str ());
+	}
 
       // clear
       pr_clear_value_vector (m_arg_vector);
