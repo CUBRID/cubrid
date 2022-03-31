@@ -642,7 +642,7 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       data_type = CCI_U_TYPE_NUMERIC;
       break;
     case SQL_INTEGER:
-      if (is_unsigned_type)
+      data_type = (is_unsigned_type) ? CCI_U_TYPE_CHAR : CCI_U_TYPE_INT;
 	{
 	  data_type = CCI_U_TYPE_CHAR;
 	}
