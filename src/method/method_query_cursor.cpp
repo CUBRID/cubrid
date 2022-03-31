@@ -30,7 +30,7 @@ namespace cubmethod
     : m_thread (thread_p)
     , m_is_oid_included (oid_included)
     , m_is_opened (false)
-    , m_fetch_count (1000)
+    , m_fetch_count (1000) // FIXME: change the fixed value, 1000
   {
     reset (query_entry_p);
   }
@@ -164,8 +164,7 @@ namespace cubmethod
 
 		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
 		  {
-		    scan_code = S_ERROR;
-		    break;
+		    return S_ERROR;
 		  }
 	      }
 	  }
@@ -189,7 +188,6 @@ namespace cubmethod
 
     // m_list_id is going to be destoryed on server-side, so that qlist_count has to be updated
     qfile_update_qlist_count (thread_p, m_list_id, 1);
-
   }
 
   std::vector<DB_VALUE>
