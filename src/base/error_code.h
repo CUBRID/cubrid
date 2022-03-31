@@ -1706,11 +1706,8 @@
 #define ER_SM_RENAME_CANT_ALTER_OWNER               -1335
 #define ER_QPROC_CREATE_SERIAL_NOT_OWNER            -1336
 #define ER_TR_CREATE_NOT_ALLOWED                    -1337
-#define ER_SM_MAX_LENGTH_EXCEEDED_IDENTIFIER        -1338
-#define ER_SM_MAX_LENGTH_EXCEEDED_USER              -1339
-#define ER_SM_MAX_LENGTH_EXCEEDED_OBJECT            -1340
 
-#define ER_LAST_ERROR                               -1341
+#define ER_LAST_ERROR                               -1338
 /*
  * CAUTION!
  *

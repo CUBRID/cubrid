@@ -254,12 +254,37 @@ namespace cubload
 	// just set class id to 1 since only one table can be specified as command line argument
 	cubthread::entry &thread_ref = cubthread::get_entry ();
 
-	if (intl_identifier_lower_string_size (m_args.table_name.c_str ()) >= SM_MAX_IDENTIFIER_LENGTH)
-	  {
-	    // This is an error.
-	    m_driver->get_error_handler ().on_error (LOADDB_MSG_EXCEED_MAX_LEN, SM_MAX_IDENTIFIER_LENGTH - 1);
-	    return;
-	  }
+	{
+	  const char *dot = NULL;
+	  const char *class_name = NULL;
+	  int name_size = 0;
+
+	  class_name = m_args.table_name.c_str ();
+	  name_size = intl_identifier_lower_string_size (class_name);
+
+	  dot = strchr (class_name, '.');
+	  if (dot)
+	    {
+	      /* user specified name */
+
+	      /* user name of user specified name */
+	      name_size = STATIC_CAST (int, dot - class_name);
+	      if (name_size >= DB_MAX_USER_LENGTH)
+		{
+		  m_driver->get_error_handler ().on_error (LOADDB_MSG_EXCEED_MAX_USER_LEN, DB_MAX_USER_LENGTH - 1);
+		  return;
+		}
+	
+	      /* class name of user specified name */
+	      name_size = intl_identifier_lower_string_size (dot + 1);
+	    }
+
+	  if (name_size >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
+	    {
+	      m_driver->get_error_handler ().on_error (LOADDB_MSG_EXCEED_MAX_LEN, DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
+	      return;
+	    }
+	}
 
 	thread_ref.m_loaddb_driver = m_driver;
 	m_driver->get_class_installer ().set_class_id (FIRST_CLASS_ID);
@@ -525,6 +550,11 @@ namespace cubload
   session::install_class (cubthread::entry &thread_ref, const batch &batch, bool &is_ignored, std::string &cls_name)
   {
     thread_ref.m_loaddb_driver = m_driver;
+
+    if (m_args.no_user_specified_name)
+      {
+	prm_set_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME, true);
+      }
 
     int error_code = NO_ERROR;
     bool parser_result = invoke_parser (m_driver, batch);

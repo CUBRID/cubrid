@@ -224,7 +224,6 @@ extern bool sm_has_indexes (MOBJ class_);
 extern char *sm_downcase_name (const char *name, char *buf, int buf_size);
 extern char *sm_user_specified_name (const char *name, char *buf, int buf_size);
 extern char *sm_qualifier_name (const char *name, char *buf, int buf_size);
-extern bool sm_check_qualifier_name_size (const char *name);
 extern const char *sm_remove_qualifier_name (const char *name);
 extern MOP sm_find_class (const char *name);
 extern MOP sm_find_class_with_purpose (const char *name, bool for_update);

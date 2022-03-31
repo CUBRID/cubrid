@@ -469,7 +469,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 data file does not contain '%%class' specifier or '--table' option is missing\n
 121 Class %1$s is ignored.\n
-122 \
+122 Maximum length of user name is %1$d bytes.\n
+123 \
 loaddb: Import objects and schemas to the database.\n\
 usage: %1$s loaddb [OPTION] database-name[@host]\n\
 \n\
@@ -571,6 +572,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 \nPass 3\n\n
 45 Heap compact failed...\n
 46 Heap compact succeeded...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: Free unused space in a database.\n\
 usage: %1$s compactdb [OPTION] database-name [class_name1 class_name2 ...]\n\

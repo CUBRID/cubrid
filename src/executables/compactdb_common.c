@@ -56,7 +56,7 @@ static int
 get_num_requested_class (const char *input_filename, int *num_class)
 {
   FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH];
+  char buffer[LINE_MAX];
 
   if (input_filename == NULL || num_class == NULL)
     {
@@ -71,7 +71,7 @@ get_num_requested_class (const char *input_filename, int *num_class)
     }
 
   *num_class = 0;
-  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
+  while (fgets ((char *) buffer, LINE_MAX, input_file) != NULL)
     {
       (*num_class)++;
     }
@@ -167,7 +167,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
   int status = NO_ERROR;
   int i = 0;
   FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH];
+  char buffer[LINE_MAX];
   char **class_names = NULL;
   int num_class = 0;
   int len = 0;
@@ -192,7 +192,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
       return ER_FAILED;
     }
 
-  class_names = (char **) malloc (DB_SIZEOF (char *) * num_class);
+  class_names = (char **) calloc (num_class, DB_SIZEOF (char *));
   if (class_names == NULL)
     {
       if (input_file != nullptr)
@@ -201,14 +201,10 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	}
       return ER_FAILED;
     }
-  for (i = 0; i < num_class; i++)
-    {
-      class_names[i] = NULL;
-    }
 
   for (i = 0; i < num_class; ++i)
     {
-      if (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) == NULL)
+      if (fgets ((char *) buffer, LINE_MAX, input_file) == NULL)
 	{
 	  status = ER_FAILED;
 	  goto end;
@@ -229,6 +225,41 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	  status = ER_FAILED;
 	  goto end;
 	}
+
+      {
+	const char *dot = NULL;
+	int name_size = 0;
+
+	name_size = len;
+
+	dot = strchr (buffer, '.');
+	if (dot)
+	  {
+	    /* user specified name */
+
+	    /* user name of user specified name */
+	    name_size = STATIC_CAST (int, dot - buffer);
+	    if (name_size >= DB_MAX_USER_LENGTH)
+	      {
+		PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
+						       COMPACTDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
+		status = ER_FAILED;
+		goto end;
+	      }
+
+	    /* class name of user specified name */
+	    name_size = intl_identifier_lower_string_size (dot + 1);
+	  }
+
+	if (name_size >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
+	  {
+	    PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
+						   COMPACTDB_MSG_EXCEED_MAX_LEN),
+				   DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
+	    status = ER_FAILED;
+	    goto end;
+	  }
+      }
 
       class_names[i] = (char *) malloc (DB_SIZEOF (char) * (len + 1));
       if (class_names[i] == NULL)

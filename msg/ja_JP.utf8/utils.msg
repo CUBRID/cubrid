@@ -468,7 +468,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 data file does not contain '%%class' specifier or '--table' option is missing\n
 121 Class %1$s is ignored.\n
-122 \
+122 Maximum length of user name is %1$d bytes.\n
+123 \
 loaddb: データベースにオブジェクトやスキーマロード\n\
 使い方: %1$s loaddb [オプション] データベース名[@ホスト]\n\
 \n\
@@ -570,6 +571,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 パス 3\n\n
 45 ヒープコンパクト失敗...\n
 46 ヒープコンパクト成功...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: データベースで使用しない領域を解除。\n\
 使い方: %1$s compactdb [オプション] <データベース名>\n\

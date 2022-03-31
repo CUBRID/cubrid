@@ -1412,11 +1412,8 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1335 RENAME does not allow change of owner.
 1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
 1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
-1338 Identifier name [%1$s] not allowed. It cannot exceed %2$d bytes.
-1339 User name [%1$s] not allowed. It cannot exceed %2$d bytes.
-1340 Object name [%1$s] not allowed. It cannot exceed %2$d bytes.
 
-1341 Son Hata
+1338 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

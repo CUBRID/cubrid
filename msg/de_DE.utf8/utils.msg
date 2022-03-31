@@ -464,11 +464,12 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 115 Eingangsdatei für Fehlerkontrolle während Ladung
 116 Insgesamt %ld Objekt(e) eingefügt, %2$ld Objekt(e) fehlgeschlagen.\n
 117 Laden fehlgeschlagen.\n
-118 Maximale Länge des Klassennamens ist %1$d Bytes.\n
+118 Maximum length of class name is %1$d bytes.\n
 119 Insgesamt %1$8d Objekt(e) überprüft, %2$d Objekt(e) fehlgeschlagen.\n
 120 Die Objektdatei enthält keinen '%% class'-Bezeichner, oder die Option' --table 'fehlt\n
 121 Klasse %1$s wird ignoriert.\n
-122 \
+122 Maximum length of user name is %1$d bytes.\n
+123 \
 loaddb: Import von Objekten und Schemas in die Datenbank.\n\
 Anwendung: %1$s loaddb [OPTION] Datenbanknamen[@host]\n\
 \n\
@@ -570,6 +571,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 \n3. Durchlauf\n\n
 45 Heap Komprimierung fehlgeschlagen...\n
 46 Heap Komprimierung erfolgreich...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: Unbenutzten Speicher in einer Datenbank befreien.\n\
 Anwendung: %1$s compactdb [OPTION] Datenbanknamen [Klassenname1 Klassenname 2 ...]\n\

@@ -464,11 +464,12 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 115 yükleme sırasında bir hata(lar) kontrol etmek için giriş dosyası
 116 Toplam %1$ld nesne (ler) eklenen, %2$ld nesne (ler) başarısız oldu.\n
 117 Başarısız yük.\n
-118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
+118 Maximum length of class name is %1$d bytes.\n
 119 Toplam %1$8d nesne kontrol edildi, %2$d nesne başarısız oldu.\n
 120 Veri dosyası '%%class' belirteci içermiyor ve '--table' seçeneği eksik\n
 121 %1$s sınıfı yoksayılır.\n
-122 \
+122 Maximum length of user name is %1$d bytes.\n
+123 \
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
 kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
 \n\
@@ -570,6 +571,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 \nPass 3\n\n
 45 Öbek kompakt başarısız oldu ...\n
 46 Öbek kompakt başarıldı ...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: Bir veritabanı Serbest kullanılmayan alanı.\n\
 kullanım: %1$s compactdb [SEÇENEK] database-name [class_name1 class_name2 ...]\n\

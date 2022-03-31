@@ -464,11 +464,12 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 115 file di input per il controllo di errori durante il carico
 116 Totale oggetti %1$ld inseriti, %2$ld oggetti non riusciti.\n
 117 Caricamento fallito.\n
-118 La lunghezza massima del nome della classe è %1$d byte.\n
+118 Maximum length of class name is %1$d bytes.\n
 119 Totale %1$8d oggetti controllati, %2$d oggetti non riusciti.\n
 120 il file di dati non contiene l'identificatore '%%class' o l'opzione '--table' mancante\n
 121 La classe %1$s viene ignorata.\n
-122 \
+122 Maximum length of user name is %1$d bytes.\n
+123 \
 loaddb: Importare oggetti e gli schemi al database.\n\
 uso: %1$s loaddb [OPZIONE] nome-database[@host]\n\
 \n\
@@ -570,6 +571,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 \nPass 3\n\n
 45 Heap compact fallito...\n
 46 Heap compact è riuscito...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: Libera lo spazio inutilizzato in un database.\n\
 uso: %1$s compactdb [OPZIONE] nome-database [nome_class1 nome_class2 ...]\n\

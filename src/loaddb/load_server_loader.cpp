@@ -114,6 +114,7 @@ namespace cubload
   LC_FIND_CLASSNAME
   server_class_installer::locate_class (const char *class_name, OID &class_oid)
   {
+#define CATCLS_USER_ATTR_IDX_NAME 7
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
 
     cubthread::entry &thread_ref = cubthread::get_entry ();
@@ -131,13 +132,14 @@ namespace cubload
 	cubthread::entry &thread_ref = cubthread::get_entry ();
 	LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
 	HEAP_CACHE_ATTRINFO attr_info;
-	int attr_idx = 0;
 	HEAP_SCANCACHE scan_cache;
 	SCAN_CODE scan_code = S_SUCCESS;
 	RECDES recdes = RECDES_INITIALIZER;
 	HFID hfid = HFID_INITIALIZER;
 	OID inst_oid = OID_INITIALIZER;
 	HEAP_ATTRVALUE *heap_value = NULL;
+	const char *dot = NULL;
+	const char *class_name_p = NULL;
 	int error = NO_ERROR;
 	int i = 0;
 
@@ -146,64 +148,6 @@ namespace cubload
 	if (error != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();
-	    return LC_CLASSNAME_ERROR;
-	  }
-
-	error = heap_scancache_quick_start_root_hfid (&thread_ref, &scan_cache);
-	if (error != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    heap_attrinfo_end (&thread_ref, &attr_info);
-	    return LC_CLASSNAME_ERROR;
-	  }
-
-	scan_code = heap_get_class_record (&thread_ref, oid_User_class_oid, &recdes, &scan_cache, PEEK);
-	if (scan_code != S_SUCCESS)
-	  {
-	    ASSERT_ERROR ();
-	    heap_scancache_end (&thread_ref, &scan_cache);
-	    heap_attrinfo_end (&thread_ref, &attr_info);
-	    return LC_CLASSNAME_ERROR;
-	  }
-
-	{
-	  char *string = NULL;
-	  int alloced_string = 0;
-
-	  for (i = 0; i < attr_info.num_values; i++)
-	    {
-	      error = or_get_attrname (&recdes, i, &string, &alloced_string);
-	      if (error != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  heap_attrinfo_end (&thread_ref, &attr_info);
-		  break;
-		}
-
-	      if (string != NULL && strcmp ("name", string) == 0)
-		{
-		  attr_idx = i;
-
-		  if (string != NULL && alloced_string == 1)
-		    {
-		      db_private_free_and_init (&thread_ref, string);
-		    }
-
-		  break;
-		}
-
-	      if (string != NULL && alloced_string == 1)
-		{
-		  db_private_free_and_init (&thread_ref, string);
-		}
-	    }
-	}
-
-	error = heap_scancache_end (&thread_ref, &scan_cache);
-	if (error != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    heap_attrinfo_end (&thread_ref, &attr_info);
 	    return LC_CLASSNAME_ERROR;
 	  }
 
@@ -223,6 +167,10 @@ namespace cubload
 	    return LC_CLASSNAME_ERROR;
 	  }
 
+	/* If it is user_specified_name, remove user_name. */
+	dot = strchr (class_name, '.');
+	class_name_p = dot ? dot + 1 : class_name;
+
 	while (true)
 	  {
 	    scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
@@ -239,7 +187,7 @@ namespace cubload
 
 		for (i = 0, heap_value = attr_info.values; i < attr_info.num_values; i++, heap_value++)
 		  {
-		    if (heap_value->attrid == attr_idx)
+		    if (heap_value->attrid == CATCLS_USER_ATTR_IDX_NAME)
 		      {
 			const char *user_name = NULL;
 			char downcase_user_name[DB_MAX_USER_LENGTH] = { '\0' };
@@ -247,7 +195,7 @@ namespace cubload
 
 			user_name = db_get_string (&heap_value->dbvalue);
 			intl_identifier_lower (user_name, downcase_user_name);
-			snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_user_name, class_name);
+			snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_user_name, class_name_p);
 
 			found_again = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
 			if (found_again == LC_CLASSNAME_EXIST)
@@ -279,6 +227,7 @@ namespace cubload
       }
 
     return found;
+#undef CATCLS_USER_ATTR_IDX_NAME
   }
 
   void

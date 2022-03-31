@@ -1411,11 +1411,9 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1334 AUTO_INCREMENT does not allow change of owner.
 1335 RENAME does not allow change of owner.
 1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
-1338 Identifier name [%1$s] not allowed. It cannot exceed %2$d bytes.
-1339 User name [%1$s] not allowed. It cannot exceed %2$d bytes.
-1340 Object name [%1$s] not allowed. It cannot exceed %2$d bytes.
+1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1341 Ultimo error
+1338 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

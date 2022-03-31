@@ -2158,8 +2158,6 @@ sm_check_name (const char *name)
 char *
 sm_downcase_name (const char *name, char *buf, int buf_size)
 {
-#define MAX_PRINT_SIZE 64
-  int name_size = 0;
   int error = NO_ERROR;
 
   if (name == NULL || name[0] == '\0')
@@ -2169,35 +2167,10 @@ sm_downcase_name (const char *name, char *buf, int buf_size)
     }
 
   assert (buf != NULL);
-  assert (buf_size > 0);
-
-  name_size = intl_identifier_lower_string_size (name);
-  if (name_size >= buf_size || name_size >= DB_MAX_IDENTIFIER_LENGTH)
-    {
-      /* exit on error */
-
-      char name_copy[MAX_PRINT_SIZE] = { '\0' };
-      int n_bytes = (buf_size <= DB_MAX_IDENTIFIER_LENGTH) ? buf_size : DB_MAX_IDENTIFIER_LENGTH;
-
-      if (name_size < MAX_PRINT_SIZE)
-	{
-	  memcpy (name_copy, name, name_size);
-	  name_copy[name_size] = '\0';
-	}
-      else
-	{
-	  memcpy (name_copy, name, (MAX_PRINT_SIZE - 4));
-	  memcpy (name_copy + (MAX_PRINT_SIZE - 4), "...", 4);
-	}
-
-      ERROR_SET_ERROR_2ARGS (error, ER_SM_MAX_LENGTH_EXCEEDED_IDENTIFIER, name_copy, n_bytes);
-      return NULL;
-    }
-
+  assert (intl_identifier_lower_string_size (name) < buf_size);
   intl_identifier_lower (name, buf);
 
   return buf;
-#undef MAX_PRINT_SIZE
 }
 
 /*
@@ -2212,6 +2185,7 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
 {
   char user_specified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char current_user_name[SM_MAX_USER_LENGTH] = { '\0' };
+  const char *dot = NULL;
   int error = NO_ERROR;
 
   if (name == NULL || name[0] == '\0')
@@ -2221,23 +2195,22 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
     }
 
   /* If the name is already a user-specified name or a system class name, do not recreate it. */
-  if (strchr (name, '.') || sm_check_system_class_by_name (name))
+  dot = strchr (name, '.');
+  if (dot != NULL)
     {
       /*
        * e.g.   name: user_name.object_name
        *      return: user_name.object_name
-       * 
-       *      or
-       * 
-       *        name: system_class_name
+       */
+      assert (STATIC_CAST (int, dot - name) < DB_MAX_USER_LENGTH);
+      return sm_downcase_name (name, buf, buf_size);
+    }
+  else if (sm_check_system_class_by_name (name))
+    {
+      /*
+       * e.g.   name: system_class_name
        *      return: system_class_name
        */
-      if (sm_check_qualifier_name_size (name) == false)
-	{
-	  ASSERT_ERROR ();
-	  return NULL;
-	}
-
       return sm_downcase_name (name, buf, buf_size);
     }
 
@@ -2248,12 +2221,15 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
+  assert (snprintf (NULL, 0, "%s.%s", current_user_name, name) < buf_size);
+  assert (snprintf (NULL, 0, "%s.%s", current_user_name, name) < SM_MAX_IDENTIFIER_LENGTH);
+
   /*
    * e.g.   name: object_name
    *      return: current_user_name.object_name
    */
-  snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_user_name, name);
 
+  snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_user_name, name);
   return sm_downcase_name (user_specified_name, buf, buf_size);
 }
 
@@ -2288,27 +2264,9 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
     }
 
   name_size = STATIC_CAST (int, dot - name);
-  if (name_size >= buf_size || name_size >= DB_MAX_USER_LENGTH)
-    {
-      /* exit on error */
 
-      char name_copy[DB_MAX_USER_LENGTH] = { '\0' };
-      int n_bytes = (buf_size <= DB_MAX_USER_LENGTH) ? buf_size : DB_MAX_USER_LENGTH;
-
-      if (name_size < DB_MAX_USER_LENGTH)
-	{
-	  memcpy (name_copy, name, name_size);
-	  name_copy[name_size] = '\0';
-	}
-      else
-	{
-	  memcpy (name_copy, name, (DB_MAX_USER_LENGTH - 4));
-	  memcpy (name_copy + (DB_MAX_USER_LENGTH - 4), "...", 4);
-	}
-
-      ERROR_SET_ERROR_2ARGS (error, ER_SM_MAX_LENGTH_EXCEEDED_USER, name_copy, n_bytes);
-      return NULL;
-    }
+  assert (name_size < buf_size);
+  assert (name_size < DB_MAX_USER_LENGTH);
 
   memcpy (buf, name, name_size);
   buf[name_size] = '\0';
@@ -2317,50 +2275,7 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
 }
 
 /*
- * sm_check_qualifier_name_size() - Checks the length of the user name used as a qualifier.
- *   return: true if there is no problem, , false otherwise.
- *   name(in): user-specified name or object name
- */
-bool
-sm_check_qualifier_name_size (const char *name)
-{
-  const char *dot = NULL;
-  int name_size = 0;
-  int error = NO_ERROR;
-
-  if (name == NULL || name[0] == '\0')
-    {
-      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
-      return NULL;
-    }
-
-  /* If the name is not a user-specified name, true is returned. */
-  dot = strchr (name, '.');
-  if (dot == NULL)
-    {
-      return true;
-    }
-
-  name_size = STATIC_CAST (int, dot - name);
-  if (name_size >= DB_MAX_USER_LENGTH)
-    {
-      /* exit on error */
-
-      char name_copy[DB_MAX_USER_LENGTH] = { '\0' };
-      int n_bytes = DB_MAX_USER_LENGTH;
-
-      memcpy (name_copy, name, (DB_MAX_USER_LENGTH - 4));
-      memcpy (name_copy + (DB_MAX_USER_LENGTH - 4), "...", 4);
-
-      ERROR_SET_ERROR_2ARGS (error, ER_SM_MAX_LENGTH_EXCEEDED_USER, name_copy, n_bytes);
-      return false;
-    }
-
-  return true;
-}
-
-/*
- * sm_qualifier_name() - If the name has a qualifier name, remove it.
+ * sm_remove_qualifier_name() - If the name has a qualifier name, remove it.
  *   return: name with qualifier name removed
  *   name(in): user-specified name or object name
  */

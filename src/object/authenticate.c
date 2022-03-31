@@ -8885,6 +8885,9 @@ au_install (void)
     {
       goto exit_on_error;
     }
+  /* If the attribute configuration is changed, the CATCLS_USER_ATTR_IDX_NAME also be changed.
+   *   - CATCLS_USER_ATTR_IDX_NAME is defined in the cubload::server_class_installer::locate_class () function.
+   */
   smt_add_attribute (def, "name", "string", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "id", "integer", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "password", AU_PASSWORD_CLASS_NAME, (DB_DOMAIN *) 0);

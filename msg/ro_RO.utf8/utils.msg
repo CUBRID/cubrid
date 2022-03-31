@@ -476,11 +476,12 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 115 una sau mai multe erori la încărcarea fişierului de intrare de control
 116 Total %ld obiect(e) inserate, %2$ld obiect(e) fără success.\n
 117 Încărcarea a eşuat.\n
-118 Lungimea maximă permisă pentru numele clasei este de %1$d octeţi.\n
+118 Maximum length of class name is %1$d bytes.\n
 119 Total %1$8d obiect(e) verificate, %2$d obiect(e) fără success.\n
 120 Fişierul de date nu conţine specificatorul '%%class' şi opţiunea '--table' lispeşte\n
 121 Clasa %1$s este ignorată.\n
-122 \
+122 Maximum length of user name is %1$d bytes.\n
+123 \
 loaddb: Importă obiecte şi scheme în baza de date.\n\
 utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date[@host]\n\
 \n\
@@ -585,6 +586,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 \nTrecerea 3\n\n
 45 Compactare eşuată a heap-ului...\n
 46 Compactarea heap-ului s-a realizat cu succes...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: Eliberează spaţiul neutilizat dintr-o bază de date.\n\
 utilizare: %1$s compactdb [OPŢIUNI] nume-bază-de-date [nume_clasă1 nume_clasă2 ...]\n\
