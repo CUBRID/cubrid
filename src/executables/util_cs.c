@@ -4000,6 +4000,19 @@ error_exit:
   return EXIT_FAILURE;
 }
 
+static void
+clean_stdin ()
+{
+  int c;
+
+  /* consumes all the values in the input buffer */
+  do
+    {
+      c = getchar ();
+    }
+  while (c != '\n' && c != EOF);
+}
+
 static time_t
 parse_date_string_to_time (char *date_string)
 {
@@ -4083,7 +4096,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
   LOG_LSA start_lsa = LSA_INITIALIZER;
   LOG_LSA end_lsa = LSA_INITIALIZER;
 
-  POLL_FD input_fd = { STDIN_FILENO, POLLIN | POLLPRI };
   int timeout = 0;
 
   time_t current_time = time (NULL);
@@ -4214,7 +4226,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
       if (outfp == NULL)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_BAD_OUTPUT));
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_BAD_OUTPUT),
+				 output_file);
+
 	  goto error_exit;
 	}
     }
@@ -4336,12 +4350,18 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   while (summary_entry == NULL)
     {
+      POLL_FD input_fd = { STDIN_FILENO, POLLIN | POLLPRI, 0 };
+
       printf ("Enter transaction id (press -1 to quit): ");
       fflush (stdout);
 
       if (poll (&input_fd, 1, timeout * 1000))
 	{
-	  scanf ("%d", &trid);
+	  if (!scanf ("%d", &trid))
+	    {
+	      /* When non integer value is input, the input buffer must be flushed. */
+	      clean_stdin ();
+	    }
 	}
       else
 	{
@@ -4362,7 +4382,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TRANSACTION),
 				 trid);
-	  /* add message that can not find transaction id */
 	}
 
       printf ("\n");

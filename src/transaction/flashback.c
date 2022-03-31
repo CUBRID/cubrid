@@ -520,8 +520,9 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 
   time_t current_time = time (NULL);
 
-  /* 1. Check start_time */
-  if (*start_time < log_Gl.hdr.db_creation || *start_time > current_time)
+  /* 1. Check time value statically */
+
+  if (*start_time > current_time || *end_time <= log_Gl.hdr.db_creation)
     {
       char start_date[20];
       char db_creation_date[20];
@@ -536,44 +537,54 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 
       return ER_FLASHBACK_INVALID_TIME;
     }
+
+  if (*start_time < log_Gl.hdr.db_creation)
+    {
+      /* If the start time received from the user is earlier than the db_creation,
+       * set the start time to log_Gl.hdr.db_creation.
+       * Since it was checked above that end_time must be greater than db_creation, even if start_time is set to db_creation,
+       * it can be confirmed that start_time is greater than end_time.
+       */
+
+      *start_time = log_Gl.hdr.db_creation;
+    }
+
+  /* 2. Check if there is log record at start_time */
+
+  ret_time = *start_time;
+
+  error_code = cdc_find_lsa (thread_p, &ret_time, start_lsa);
+  if (error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA)
+    {
+      /* find log record at the time
+       * ret_time : time of the commit record or dummy record that is found to be greater than or equal to the start_time at first */
+
+      if (ret_time >= *end_time)
+	{
+	  char start_date[20];
+	  char db_creation_date[20];
+
+	  strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
+	  strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
+
+	  /* out of range : start_time (ret_time) can not be greater than end_time */
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date,
+		  db_creation_date, start_date);
+
+	  return ER_FLASHBACK_INVALID_TIME;
+	}
+    }
   else
     {
-      ret_time = *start_time;
-
-      error_code = cdc_find_lsa (thread_p, &ret_time, start_lsa);
-      if (error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA)
-	{
-	  /* find log record at the time
-	   * ret_time : time of the commit record or dummy record that is found to be greater than or equal to the start_time at first */
-
-	  if (ret_time >= *end_time)
-	    {
-	      char start_date[20];
-	      char db_creation_date[20];
-
-	      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
-	      strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
-
-	      /* out of range : start_time (ret_time) can not be greater than end_time */
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date,
-		      db_creation_date, start_date);
-
-	      return ER_FLASHBACK_INVALID_TIME;
-	    }
-	}
-      else
-	{
-	  /* failed to find a log at the time due to failure while reading log page or volume (ER_FAILED, ER_LOG_READ) */
-	  return error_code;
-	}
+      /* failed to find a log at the time due to failure while reading log page or volume (ER_FAILED, ER_LOG_READ) */
+      return error_code;
     }
 
   *start_time = ret_time;
 
-  /* 2. If start_time is valid, then get end_lsa */
+  /* 3. If start_time is valid, then get end_lsa with end_time */
 
   error_code = cdc_find_lsa (thread_p, end_time, end_lsa);
-
   if (!(error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA))
     {
       /* failed to find a log record */
