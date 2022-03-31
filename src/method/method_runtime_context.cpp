@@ -62,26 +62,20 @@ namespace cubmethod
     if (group)
       {
 	m_group_map [group->get_id ()] = group;
-	// TODO
       }
     return group;
   }
 
   void
-  runtime_context::push_stack (method_invoke_group *group)
+  runtime_context::push_stack (cubthread::entry *thread_p, method_invoke_group *group)
   {
     m_group_stack.push_back (group->get_id ());
   }
 
   void
-  runtime_context::pop_stack ()
+  runtime_context::pop_stack (cubthread::entry *thread_p)
   {
     m_group_stack.pop_back ();
-
-    if (m_group_stack.empty ())
-      {
-	// TODO
-      }
   }
 
   method_invoke_group *
@@ -99,7 +93,7 @@ namespace cubmethod
 	return nullptr;
       }
 
-    return it->second;;
+    return it->second;
   }
 
   query_cursor *
@@ -203,6 +197,18 @@ namespace cubmethod
   }
 
   void
+  runtime_context::deregister_returning_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
+  {
+    if (query_id == NULL_QUERY_ID)
+      {
+	/* do nothing */
+	return;
+      }
+
+    m_returning_cursors.erase (query_id);
+  }
+
+  void
   runtime_context::destroy_all_groups ()
   {
     for (auto &it : m_group_map)
@@ -226,5 +232,6 @@ namespace cubmethod
 	  }
       }
     m_cursor_map.clear ();
+    m_returning_cursors.clear ();
   }
 } // cubmethod

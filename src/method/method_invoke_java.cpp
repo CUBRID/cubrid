@@ -560,7 +560,7 @@ namespace cubmethod
       make_outresult_info info;
       unpacker.unpack_all (res_code, info);
 
-      query_result_info &current_result_info = info.qresult_info;
+      const query_result_info &current_result_info = info.qresult_info;
       query_cursor *cursor = m_group->get_cursor (current_result_info.query_id);
       if (cursor)
 	{

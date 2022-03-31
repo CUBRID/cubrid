@@ -273,6 +273,7 @@ namespace cubmethod
   void
   method_invoke_group::register_returning_cursor (QUERY_ID query_id)
   {
+    m_rctx->register_returning_cursor (query_id);
     m_cursor_set.erase (query_id);
   }
 
@@ -288,6 +289,10 @@ namespace cubmethod
     for (auto &cursor_it : m_cursor_set)
       {
 	m_rctx->destroy_cursor (m_thread_p, cursor_it);
+
+	// If the cursor is received from the child function and is not returned to the parent function, it will remain in m_cursor_set.
+	// So here trying to find it in the global returning cursor storage and remove it if exists.
+	m_rctx->deregister_returning_cursor (cursor_it);
       }
     m_cursor_set.clear ();
   }

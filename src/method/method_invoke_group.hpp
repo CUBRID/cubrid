@@ -90,8 +90,9 @@ namespace cubmethod
 
       // cursor interface for method_invoke
       query_cursor *create_cursor (QUERY_ID query_id, bool oid_included);
-      void register_returning_cursor (QUERY_ID query_id);
       query_cursor *get_cursor (QUERY_ID query_id);
+      void register_returning_cursor (QUERY_ID query_id);
+      void deregister_returning_cursor (QUERY_ID query_id);
 
       // error
       std::string get_error_msg ();

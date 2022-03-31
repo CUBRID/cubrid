@@ -60,12 +60,17 @@ namespace cubmethod
       query_cursor *create_cursor (cubthread::entry *thread_p, QUERY_ID query_id, bool oid_included = false);
       query_cursor *get_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
       void destroy_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
+
       void register_returning_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
+      void deregister_returning_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
 
       method_invoke_group *create_invoke_group (cubthread::entry *thread_p, const method_sig_list &siglist);
 
-      void push_stack (method_invoke_group *group);
-      void pop_stack ();
+      // Currently these functions are used for debugging purpose.
+      // In the recursive call situation, each time the function is called, a new worker from the thread pool is assigned. With this code, you can easily know the current state.
+      // In the future, these functions will resolve some cases when it is necessary to set an error for all threads participating in a recursive call e.g. interrupt
+      void push_stack (cubthread::entry *thread_p, method_invoke_group *group);
+      void pop_stack (cubthread::entry *thread_p);
       method_invoke_group *top_stack ();
 
     private:
