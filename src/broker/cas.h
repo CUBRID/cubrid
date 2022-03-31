@@ -32,7 +32,7 @@
 
 #include "broker_shm.h"
 #include "cas_protocol.h"
-#include "cas_cci.h"
+#include "broker_cas_cci.h"
 #include "cas_common.h"
 
 #define ERROR_INDICATOR_UNSET	0

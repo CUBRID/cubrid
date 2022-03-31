@@ -303,6 +303,7 @@ typedef enum
   SM_CLASSFLAG_WITHCHECKOPTION = 2,	/* a view with check option */
   SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
   SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
+  SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16	/* reserved flag for supplemental log. */
 } SM_CLASS_FLAG;
 
 /*

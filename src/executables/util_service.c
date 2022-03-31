@@ -1457,10 +1457,12 @@ get_server_names (char **name_buffer)
   /* allocate buffer, it should be freed */
   if (!result.empty ())
     {
-      *name_buffer = (char *) malloc (result.size ());
+      int name_length = result.size ();
+      *name_buffer = (char *) malloc (name_length + 1);
       if (*name_buffer)
 	{
-	  strcpy (*name_buffer, result.c_str ());
+	  strncpy (*name_buffer, result.c_str (), name_length);
+	  (*name_buffer)[name_length] = '\0';
 	}
     }
 
@@ -1744,8 +1746,8 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		      /* run javasp server if DB server is started successfully */
 		      if (status == NO_ERROR)
 			{
-		      (void) process_javasp (command_type, 1, (const char **) &token, false, true,
-					     process_window_service);
+			  (void) process_javasp (command_type, 1, (const char **) &token, false, true,
+						 process_window_service);
 			}
 		    }
 		}
@@ -2446,7 +2448,7 @@ is_javasp_running (const char *server_name)
 
   FILE *input = NULL;
   char buf[PATH_MAX] = { 0 };
-  char cmd[PATH_MAX + PING_CMD_LEN] = { 0 };
+  char cmd[PATH_MAX] = { 0 };
 
   (void) envvar_bindir_file (cmd, PATH_MAX, UTIL_JAVASP_NAME);
 
