@@ -41,6 +41,7 @@
 #include "schema_manager.h"
 #include "authenticate.h"
 #include "utility.h"
+#include "csql.h"
 
 typedef enum
 {
@@ -311,16 +312,17 @@ flashback_check_and_resize_sql_memory (char **sql, int req_size, int *max_sql_si
   return NO_ERROR;
 }
 
-#define IS_QOUTES_NEEDED(type)   (type == DB_TYPE_STRING || \
-                                  type == DB_TYPE_TIME || \
+#define IS_STRING_TYPE(type)     (type == DB_TYPE_STRING || \
+                                  type == DB_TYPE_CHAR)
+
+#define IS_QOUTES_NEEDED(type)   (type == DB_TYPE_TIME || \
                                   type == DB_TYPE_TIMESTAMP || \
                                   type == DB_TYPE_TIMESTAMPTZ || \
                                   type == DB_TYPE_TIMESTAMPLTZ || \
                                   type == DB_TYPE_DATE || \
                                   type == DB_TYPE_DATETIME || \
                                   type == DB_TYPE_DATETIMETZ || \
-                                  type == DB_TYPE_DATETIMELTZ || \
-                                  type == DB_TYPE_CHAR)
+                                  type == DB_TYPE_DATETIMELTZ)
 
 typedef enum
 {
@@ -412,18 +414,49 @@ flashback_process_column_data (char **data, char **sql, int *max_sql_size, DB_TY
     case PACK_STRING:
       ptr = or_unpack_string_nocopy (ptr, &s_data);
 
-      error = flashback_check_and_resize_sql_memory (sql, sql_length + strlen (s_data) + 3, max_sql_size);
-      if (error != NO_ERROR)
+      if (IS_STRING_TYPE (type))
 	{
-	  return error;
-	}
+	  int result_length = 0;
+	  char *result_string = NULL;
 
-      if (IS_QOUTES_NEEDED (type))
+	  result_string = string_to_string (s_data, '\'', '\0', strlen (s_data), &result_length, false, true);
+	  if (result_string == NULL)
+	    {
+	      /* internally stirng_to_string() allocates memory for string */
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
+	  error = flashback_check_and_resize_sql_memory (sql, sql_length + result_length + 1, max_sql_size);
+	  if (error != NO_ERROR)
+	    {
+	      free_and_init (result_string);
+
+	      return error;
+	    }
+
+	  sprintf (*sql + sql_length, "%s", result_string);
+
+	  free_and_init (result_string);
+	}
+      else if (IS_QOUTES_NEEDED (type))
 	{
+	  error = flashback_check_and_resize_sql_memory (sql, sql_length + strlen (s_data) + 3, max_sql_size);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
 	  sprintf (*sql + sql_length, "\'%s\'", s_data);
 	}
       else
 	{
+	  error = flashback_check_and_resize_sql_memory (sql, sql_length + strlen (s_data) + 1, max_sql_size);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
 	  sprintf (*sql + sql_length, "%s", s_data);
 	}
 
@@ -746,7 +779,7 @@ flashback_print_delete (char **loginfo, int trid, char *user, const char *classn
       goto error;
     }
 
-  sprintf (sql, "insert into [%s] values ( ", classname);
+  sprintf (sql, "insert into [%s] values (", classname);
 
   ptr = or_unpack_int (ptr, &num_change_col);
   ptr = or_unpack_int (ptr, &num_cond_col);
@@ -774,7 +807,7 @@ flashback_print_delete (char **loginfo, int trid, char *user, const char *classn
 	}
       else
 	{
-	  strcat (sql, " )");
+	  strcat (sql, ");");
 	}
 
       attr = attr->order_link;
@@ -952,7 +985,7 @@ flashback_print_insert (char **loginfo, int trid, char *user, const char *classn
 	  goto error;
 	}
 
-      sprintf (original_sql, "insert into [%s] values ( ", classname);
+      sprintf (original_sql, "insert into [%s] values (", classname);
 
       ptr = or_unpack_int (ptr, &num_change_col);
       for (i = 0; i < num_change_col; i++)
@@ -978,7 +1011,7 @@ flashback_print_insert (char **loginfo, int trid, char *user, const char *classn
 	    }
 	  else
 	    {
-	      strcat (original_sql, " )");
+	      strcat (original_sql, ");");
 	    }
 
 	  attr = attr->order_link;
