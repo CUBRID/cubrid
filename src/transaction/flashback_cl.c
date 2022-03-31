@@ -41,6 +41,7 @@
 #include "schema_manager.h"
 #include "authenticate.h"
 #include "utility.h"
+#include "csql.h"
 
 typedef enum
 {
@@ -412,18 +413,37 @@ flashback_process_column_data (char **data, char **sql, int *max_sql_size, DB_TY
     case PACK_STRING:
       ptr = or_unpack_string_nocopy (ptr, &s_data);
 
-      error = flashback_check_and_resize_sql_memory (sql, sql_length + strlen (s_data) + 3, max_sql_size);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
       if (IS_QOUTES_NEEDED (type))
 	{
-	  sprintf (*sql + sql_length, "\'%s\'", s_data);
+	  int result_length = 0;
+	  char *result_string = NULL;
+
+	  result_string = string_to_string (s_data, '\'', '\0', strlen (s_data), &result_length, false, true);
+	  if (result_string == NULL)
+	    {
+	      /* internally stirng_to_string() allocates memory for string */
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
+	  error = flashback_check_and_resize_sql_memory (sql, sql_length + result_length + 1, max_sql_size);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  sprintf (*sql + sql_length, "%s", result_string);
+
+	  free_and_init (result_string);
 	}
       else
 	{
+	  error = flashback_check_and_resize_sql_memory (sql, sql_length + strlen (s_data) + 1, max_sql_size);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
 	  sprintf (*sql + sql_length, "%s", s_data);
 	}
 
@@ -774,7 +794,7 @@ flashback_print_delete (char **loginfo, int trid, char *user, const char *classn
 	}
       else
 	{
-	  strcat (sql, " )");
+	  strcat (sql, " );");
 	}
 
       attr = attr->order_link;
@@ -978,7 +998,7 @@ flashback_print_insert (char **loginfo, int trid, char *user, const char *classn
 	    }
 	  else
 	    {
-	      strcat (original_sql, " )");
+	      strcat (original_sql, " );");
 	    }
 
 	  attr = attr->order_link;
