@@ -643,24 +643,10 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       break;
     case SQL_INTEGER:
       data_type = (is_unsigned_type) ? CCI_U_TYPE_CHAR : CCI_U_TYPE_INT;
-	{
-	  data_type = CCI_U_TYPE_CHAR;
-	}
-      else
-	{
-	  data_type = CCI_U_TYPE_INT;
-	}
       break;
     case SQL_TINYINT:
     case SQL_SMALLINT:
-      if (is_unsigned_type)
-	{
-	  data_type = CCI_U_TYPE_CHAR;
-	}
-      else
-	{
-	  data_type = CCI_U_TYPE_SHORT;
-	}
+      data_type = (is_unsigned_type) ? CCI_U_TYPE_CHAR : CCI_U_TYPE_SHORT;
       break;
     case SQL_FLOAT:
     case SQL_REAL:
@@ -709,14 +695,7 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       data_type = CCI_U_TYPE_DATETIME;
       break;
     case SQL_BIGINT:
-      if (is_unsigned_type)
-	{
-	  data_type = CCI_U_TYPE_CHAR;
-	}
-      else
-	{
-	  data_type = CCI_U_TYPE_BIGINT;
-	}
+      data_type = (is_unsigned_type) ? CCI_U_TYPE_CHAR : CCI_U_TYPE_BIGINT;
       break;
 #if (ODBCVER >= 0x0350)
     case SQL_GUID:
@@ -752,25 +731,11 @@ cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       code_set = INTL_CODESET_ASCII;
       break;
     case SQL_INTEGER:
-     code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
-	{
-	  code_set = cgw_get_charset ();
-	}
-      else
-	{
-	  code_set = INTL_CODESET_ASCII;
-	}
+      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
       break;
     case SQL_TINYINT:
     case SQL_SMALLINT:
-      if (is_unsigned_type)
-	{
-	  code_set = cgw_get_charset ();
-	}
-      else
-	{
-	  code_set = INTL_CODESET_ASCII;
-	}
+      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
       break;
     case SQL_FLOAT:
       code_set = INTL_CODESET_ASCII;
@@ -820,14 +785,7 @@ cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       code_set = INTL_CODESET_ASCII;
       break;
     case SQL_BIGINT:
-      if (is_unsigned_type)
-	{
-	  code_set = cgw_get_charset ();
-	}
-      else
-	{
-	  code_set = INTL_CODESET_ASCII;
-	}
+      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
       break;
 #if (ODBCVER >= 0x0350)
     case SQL_GUID:
@@ -2031,43 +1989,15 @@ get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type)
       break;
     case SQL_TINYINT:
       c_type = (is_unsigned_type) ? SQL_C_CHAR : SQL_C_TINYINT;
-	{
-	  c_type = SQL_C_CHAR;
-	}
-      else
-	{
-	  c_type = SQL_C_TINYINT;
-	}
       break;
     case SQL_SMALLINT:
-      if (is_unsigned_type)
-	{
-	  c_type = SQL_C_CHAR;
-	}
-      else
-	{
-	  c_type = SQL_C_SHORT;
-	}
+      c_type = (is_unsigned_type) ? SQL_C_CHAR : SQL_C_SHORT;
       break;
     case SQL_INTEGER:
-      if (is_unsigned_type)
-	{
-	  c_type = SQL_C_CHAR;
-	}
-      else
-	{
-	  c_type = SQL_C_LONG;
-	}
+      c_type = (is_unsigned_type) ? SQL_C_CHAR : SQL_C_LONG;
       break;
     case SQL_BIGINT:
-      if (is_unsigned_type)
-	{
-	  c_type = SQL_C_CHAR;
-	}
-      else
-	{
-	  c_type = SQL_C_SBIGINT;
-	}
+      c_type = (is_unsigned_type) ? SQL_C_CHAR : SQL_C_SBIGINT;
       break;
     case SQL_REAL:
     case SQL_FLOAT:
