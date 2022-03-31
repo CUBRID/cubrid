@@ -139,11 +139,10 @@ namespace cubmethod
       {
 	// found
 	cursor = search->second;
-	if (cursor)
-	  {
-	    cursor->change_owner (thread_p);
-	    return cursor;
-	  }
+	assert (cursor != nullptr);
+
+	cursor->change_owner (thread_p);
+	return cursor;
       }
     else
       {
