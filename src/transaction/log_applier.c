@@ -7124,8 +7124,8 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
  *   page_num: test page number
  */
 int
-la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool check_applied_info,
-		   bool check_copied_info, bool check_replica_info, bool verbose, LOG_LSA * copied_eof_lsa,
+la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool *check_applied_info,
+		   bool *check_copied_info, bool *check_replica_info, bool verbose, LOG_LSA * copied_eof_lsa,
 		   LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa)
 {
   int error = NO_ERROR;
@@ -7145,8 +7145,27 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
 
   /* init la_Info */
   la_init (log_path, 0);
+  memset (active_log_path, 0, PATH_MAX);
+  fileio_make_log_active_name ((char *) active_log_path, la_Info.log_path, database_name);
+  if (!fileio_is_volume_exist ((const char *) active_log_path))
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, active_log_path);
+      error = ER_LOG_MOUNT_FAIL;
+      *check_copied_info = false;
+      printf ("\n *** Copied Active Info. *** \n");
+      goto check_copied_info_end;
+    }
 
-  if (check_applied_info)
+  /* read copied active page */
+  error = la_find_log_pagesize (&la_Info.act_log, la_Info.log_path, database_name, false);
+  if (error != NO_ERROR)
+    {
+      *check_copied_info = false;
+      printf ("\n *** Copied Active Info. *** \n");
+      goto check_copied_info_end;
+    }
+
+  if (*check_applied_info)
     {
       LA_HA_APPLY_INFO ha_apply_info;
       char timebuf[1024];
@@ -7157,13 +7176,14 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
       if ((res <= 0) || (ha_apply_info.creation_time.date == 0 && ha_apply_info.creation_time.time == 0))
 	{
 	  error = res;
-
+          *check_applied_info = false;
+          printf ("\n *** Applied Info. *** \n");
+          er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_AVAILABLE_INFORMATION, 0);
+          printf ("\nERROR : %s\n\n", db_error_string (3));
 	  goto check_applied_info_end;
 	}
-
-      *applied_final_lsa = ha_apply_info.final_lsa;
-
       printf ("\n *** Applied Info. *** \n");
+      *applied_final_lsa = ha_apply_info.final_lsa;
 
       if (verbose)
 	{
@@ -7200,7 +7220,7 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
 	  printf ("%-30s : %s\n", "Start time", timebuf);
 	}
 
-      if (check_replica_info)
+      if (*check_replica_info)
 	{
 	  replica_time_bound_str = prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
 	  db_datetime_to_string2 ((char *) timebuf, 1024, &ha_apply_info.log_record_time);
@@ -7218,42 +7238,28 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
 	      printf ("%-30s : %s\n", "Will apply log records up to", replica_time_bound_str);
 	    }
 	}
-    }
+    } 
 check_applied_info_end:
   if (error != NO_ERROR)
     {
-      printf ("\n%s\n\n", db_error_string (3));
+      *check_applied_info = false;
+      printf ("\nERROR : %s\n\n", db_error_string (3));
     }
   error = NO_ERROR;
 
-  if (check_copied_info)
+  if (*check_copied_info)
     {
       /* check active log file */
-      memset (active_log_path, 0, PATH_MAX);
-      fileio_make_log_active_name ((char *) active_log_path, la_Info.log_path, database_name);
-      if (!fileio_is_volume_exist ((const char *) active_log_path))
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, active_log_path);
-	  error = ER_LOG_MOUNT_FAIL;
-	  goto check_copied_info_end;
-	}
-
-      /* read copied active page */
-      error = la_find_log_pagesize (&la_Info.act_log, la_Info.log_path, database_name, false);
-      if (error != NO_ERROR)
-	{
-	  goto check_copied_info_end;
-	}
-
+      printf ("\n *** Copied Active Info. *** \n");
       *copied_eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
       *copied_append_lsa = la_Info.act_log.log_hdr->append_lsa;
 
-      printf ("\n *** Copied Active Info. *** \n");
       la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
     }
 
-  if (check_copied_info && (page_num > 1))
+  if (*check_copied_info && (page_num >= 0) && (page_num < APPLYINFO_NULL_LOG_PAGEID))
     {
+      printf ("\n *** Copied Log Page Info. *** \n");
       LOG_PAGE *logpage;
 
       /* get last deleted archive number */
@@ -7267,7 +7273,7 @@ check_applied_info_end:
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, la_Info.act_log.db_iopagesize);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto check_copied_info_end;
+	  goto copied_log_page_info_end;
 	}
 
       logpage = (LOG_PAGE *) la_Info.log_data;
@@ -7291,7 +7297,7 @@ check_applied_info_end:
 	      error = tde_decrypt_log_page (logpage, logwr_get_tde_algorithm (logpage), logpage);
 	      if (error != NO_ERROR)
 		{
-		  goto check_copied_info_end;
+		  goto copied_log_page_info_end;
 		}
 	    }
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
@@ -7299,7 +7305,7 @@ check_applied_info_end:
 
       if (error != NO_ERROR)
 	{
-	  goto check_copied_info_end;
+	  goto copied_log_page_info_end;
 	}
       else
 	{
@@ -7318,7 +7324,7 @@ check_applied_info_end:
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Invalid pageid");
 	      error = ER_HA_GENERIC_ERROR;
-	      goto check_copied_info_end;
+	      goto copied_log_page_info_end;
 	    }
 
 	  lsa.pageid = logpage->hdr.logical_pageid;
@@ -7335,15 +7341,16 @@ check_applied_info_end:
 	    }
 	}
       free_and_init (la_Info.log_data);
-    }				/* check_copied_info */
-
-check_copied_info_end:
+    }                     /* check_copied_info */
+copied_log_page_info_end:  	
   if (error != NO_ERROR)
     {
-      printf ("\n%s\n\n", db_error_string (3));
+      printf ("\nERROR : %s\n\n", db_error_string (3));
     }
+  error = NO_ERROR;
 
-  return NO_ERROR;
+check_copied_info_end:
+  return error;
 }
 
 void
