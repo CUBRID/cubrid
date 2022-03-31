@@ -430,6 +430,8 @@ flashback_process_column_data (char **data, char **sql, int *max_sql_size, DB_TY
 	  error = flashback_check_and_resize_sql_memory (sql, sql_length + result_length + 1, max_sql_size);
 	  if (error != NO_ERROR)
 	    {
+	      free_and_init (result_string);
+
 	      return error;
 	    }
 
@@ -792,7 +794,7 @@ flashback_print_delete (char **loginfo, int trid, char *user, const char *classn
     {
       /* check SQL length
        * sql + length of ", " */
-      error = flashback_check_and_resize_sql_memory (&sql, strlen (sql) + 3, &max_sql_size);
+      error = flashback_check_and_resize_sql_memory (&sql, strlen (sql) + 4, &max_sql_size);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -996,7 +998,7 @@ flashback_print_insert (char **loginfo, int trid, char *user, const char *classn
 	{
 	  /* check SQL length
 	   * cond_sql + length of ", " */
-	  error = flashback_check_and_resize_sql_memory (&original_sql, strlen (original_sql) + 3, &max_original_size);
+	  error = flashback_check_and_resize_sql_memory (&original_sql, strlen (original_sql) + 4, &max_original_size);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
