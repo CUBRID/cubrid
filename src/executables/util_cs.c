@@ -4361,6 +4361,8 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	    {
 	      /* When non integer value is input, the input buffer must be flushed. */
 	      clean_stdin ();
+
+	      continue;
 	    }
 	}
       else
