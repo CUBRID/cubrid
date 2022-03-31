@@ -216,7 +216,7 @@ namespace cubmethod
       }
 
     // push to stack
-    m_rctx->push_stack (this);
+    m_rctx->push_stack (m_thread_p, this);
 
     // connect socket for java sp
     bool is_in = m_kind_type.find (METHOD_TYPE_JAVA_SP) != m_kind_type.end ();
@@ -259,7 +259,7 @@ namespace cubmethod
     get_connection_pool ()->retire (m_connection);
     m_connection = nullptr;
 
-    m_rctx->pop_stack ();
+    m_rctx->pop_stack (m_thread_p);
     m_is_running = false;
   }
 
