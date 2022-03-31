@@ -274,7 +274,7 @@ namespace cubload
 		  m_driver->get_error_handler ().on_error (LOADDB_MSG_EXCEED_MAX_USER_LEN, DB_MAX_USER_LENGTH - 1);
 		  return;
 		}
-	
+
 	      /* class name of user specified name */
 	      name_size = intl_identifier_lower_string_size (dot + 1);
 	    }
