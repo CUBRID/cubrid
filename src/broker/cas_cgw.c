@@ -2030,7 +2030,7 @@ get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type)
       c_type = SQL_C_BIT;
       break;
     case SQL_TINYINT:
-      if (is_unsigned_type)
+      c_type = (is_unsigned_type) ? SQL_C_CHAR : SQL_C_TINYINT;
 	{
 	  c_type = SQL_C_CHAR;
 	}
