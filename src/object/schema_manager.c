@@ -2199,7 +2199,7 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   if (dot != NULL)
     {
       assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
-      assert (intl_identifier_lower_string_size (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+      assert (strlen (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
       /*
        * e.g.   name: user_name.object_name
@@ -2207,7 +2207,7 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
        */
       return sm_downcase_name (name, buf, buf_size);
     }
-  assert (intl_identifier_lower_string_size (name) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
   if (sm_check_system_class_by_name (name))
     {
       /*
