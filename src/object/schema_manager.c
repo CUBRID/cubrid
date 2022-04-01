@@ -2198,14 +2198,17 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   dot = strchr (name, '.');
   if (dot != NULL)
     {
+      assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
+      assert (intl_identifier_lower_string_size (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+
       /*
        * e.g.   name: user_name.object_name
        *      return: user_name.object_name
        */
-      assert (STATIC_CAST (int, dot - name) < DB_MAX_USER_LENGTH);
       return sm_downcase_name (name, buf, buf_size);
     }
-  else if (sm_check_system_class_by_name (name))
+  assert (intl_identifier_lower_string_size (name) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+  if (sm_check_system_class_by_name (name))
     {
       /*
        * e.g.   name: system_class_name
@@ -2228,7 +2231,6 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
    * e.g.   name: object_name
    *      return: current_user_name.object_name
    */
-
   snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_user_name, name);
   return sm_downcase_name (user_specified_name, buf, buf_size);
 }
@@ -2266,7 +2268,7 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
   name_size = STATIC_CAST (int, dot - name);
 
   assert (name_size < buf_size);
-  assert (name_size < DB_MAX_USER_LENGTH);
+  assert (name_size < SM_MAX_USER_LENGTH);
 
   memcpy (buf, name, name_size);
   buf[name_size] = '\0';
@@ -3278,7 +3280,6 @@ sm_check_system_class_by_name (const char *name)
   };
   // *INDENT-ON*
 
-  const char *dot = NULL;
   char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = { '\0' };
   int count = 0;
   int i = 0;
@@ -3288,7 +3289,13 @@ sm_check_system_class_by_name (const char *name)
       return false;
     }
 
-  sm_downcase_name (sm_remove_qualifier_name (name), downcase_name, SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+  /* The user-specified name is not a system class name. */
+  if (strchr (name, '.') != NULL)
+    {
+      return false;
+    }
+
+  sm_downcase_name (name, downcase_name, SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
   if (strncmp (downcase_name, ROOTCLASS_NAME, strlen (ROOTCLASS_NAME)) == 0)
     {

@@ -506,6 +506,9 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 47 directorio de salida es demasiado largo.\n
 48 LSA : %1$d %2$d \n
 49 Contrasena:
+50 Maximum length of class name is %1$d bytes.\n
+51 Maximum length of user name is %1$d bytes.\n
+52 Class %1$s not found.\n
 60 \
 unloaddb: Exportar objetos y esquemas de la base de datos.\n\
 uso: %1$s unloaddb [OPTION] database-name\n\

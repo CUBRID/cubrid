@@ -504,6 +504,9 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 47 输出目录过长.\n
 48 LSA : %1$d %2$d \n
 49 密码:
+50 Maximum length of class name is %1$d bytes.\n
+51 Maximum length of user name is %1$d bytes.\n
+52 Class %1$s not found.\n
 60 \
 unloaddb: 从数据库导出对象和结构.\n\
 用法: %1$s unloaddb [选项] 数据库名\n\

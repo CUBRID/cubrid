@@ -10187,8 +10187,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
   char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *user_specified_name = NULL;
-  int name_size = 0;
-  int composed_size = 0;
 
   if (parser == NULL || node == NULL)
     {

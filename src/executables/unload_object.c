@@ -1870,73 +1870,126 @@ ltrim (char *s)
 int
 get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 {
-  int i, j, is_partition = 0, error;
-  int len_clsname = 0;
   FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH];
-  char class_name[DB_MAX_IDENTIFIER_LENGTH];
-  char downcase_class_name[SM_MAX_IDENTIFIER_LENGTH];
-  MOP *sub_partitions = NULL;
-  char scan_format[16];
-  char *trimmed_buf;
+  char buffer[LINE_MAX];
+  int i = 0;			/* index of class_list */
+  int error = NO_ERROR;
 
   if (input_filename == NULL)
     {
-      return 0;
+      return NO_ERROR;
     }
 
   input_file = fopen (input_filename, "r");
   if (input_file == NULL)
     {
       perror (input_filename);
-      return 1;
+      return ER_GENERIC_ERROR;
     }
-  snprintf (scan_format, sizeof (scan_format), "%%%ds\n", (int) (sizeof (buffer) - 1));
-  i = 0;
-  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
+
+  while (fgets ((char *) buffer, LINE_MAX, input_file) != NULL)
     {
-      DB_OBJECT *class_;
+      /* init */
+      DB_OBJECT *class_ = NULL;
+      MOP *sub_partitions = NULL;
+      int is_partition = 0;
+      int j = 0;		/* index of sub_partitions */
+      char *begin = NULL;
+      char *end = NULL;
+      const char *dot = NULL;
+      const char *class_name = NULL;
+      char downcase_class_name[DB_MAX_IDENTIFIER_LENGTH];
+      int name_size = 0;
 
-      /* trim left */
-      trimmed_buf = ltrim (buffer);
-      len_clsname = (int) strlen (trimmed_buf);
-
-      /* get rid of \n at end of line */
-      if (len_clsname > 0 && trimmed_buf[len_clsname - 1] == '\n')
+      /* trim */
+      begin = buffer;
+      while (isspace (STATIC_CAST (unsigned char, *begin)))
 	{
-	  trimmed_buf[len_clsname - 1] = 0;
-	  len_clsname--;
+	  begin++;
 	}
 
-      if (len_clsname >= 1)
+      if (*begin == '\0')
 	{
-	  sscanf ((char *) buffer, scan_format, (char *) class_name);
+	  /* empty string */
+	  continue;
+	}
 
-	  sm_user_specified_name (class_name, downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
+      end = begin + STATIC_CAST (int, strlen (begin)) - 1;
+      while (end > begin && isspace (STATIC_CAST (unsigned char, *end)))
+	{
+	  end--;
+	}
 
-	  class_ = locator_find_class (downcase_class_name);
-	  if (class_ != NULL)
+      end[1] = '\0';
+
+      class_name = begin;
+
+      /* max length check */
+      name_size = intl_identifier_lower_string_size (class_name);
+
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  /* user specified name */
+
+	  /* user name of user specified name */
+	  name_size = STATIC_CAST (int, dot - class_name);
+	  if (name_size >= DB_MAX_USER_LENGTH)
 	    {
-	      class_list[i] = class_;
-	      error = sm_partitioned_class_type (class_, &is_partition, NULL, &sub_partitions);
-	      if (is_partition == 1 && sub_partitions != NULL)
-		{
-		  for (j = 0; sub_partitions[j]; j++)
-		    {
-		      i++;
-		      class_list[i] = sub_partitions[j];
-		    }
-		}
-	      if (sub_partitions != NULL)
-		{
-		  free_and_init (sub_partitions);
-		}
-	      i++;
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
+						     UNLOADDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
+	      fclose (input_file);
+	      return ER_GENERIC_ERROR;
 	    }
+
+	  /* class name of user specified name */
+	  name_size = intl_identifier_lower_string_size (dot + 1);
+	}
+
+      if (name_size >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
+						 UNLOADDB_MSG_EXCEED_MAX_LEN),
+				 DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
+	  fclose (input_file);
+	  return ER_GENERIC_ERROR;
+	}
+
+      sm_user_specified_name (class_name, downcase_class_name, DB_MAX_IDENTIFIER_LENGTH);
+
+      class_ = locator_find_class (downcase_class_name);
+      if (class_ != NULL)
+	{
+	  class_list[i] = class_;
+	  error = sm_partitioned_class_type (class_, &is_partition, NULL, &sub_partitions);
+	  if (error != NO_ERROR)
+	    {
+	      fclose (input_file);
+	      return error;
+	    }
+	  if (is_partition == 1 && sub_partitions != NULL)
+	    {
+	      for (j = 0; sub_partitions[j]; j++)
+		{
+		  i++;
+		  class_list[i] = sub_partitions[j];
+		}
+	    }
+	  if (sub_partitions != NULL)
+	    {
+	      free_and_init (sub_partitions);
+	    }
+	  i++;
+	}
+      else
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
+						 UNLOADDB_MSG_CLASS_NOT_FOUND), downcase_class_name);
+	  /* continue; */
 	}
     }				/* while */
 
   fclose (input_file);
 
-  return 0;
+  return error;
 }

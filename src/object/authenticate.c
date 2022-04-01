@@ -5230,7 +5230,7 @@ au_change_owner (MOP class_mop, MOP owner_mop)
   class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_));
 
   /* unique_name of system class does not contain owner_name. unique_name does not need to be changed. */
-  if (sm_check_system_class_by_name (sm_remove_qualifier_name (class_old_name)))
+  if (sm_check_system_class_by_name (class_old_name))
     {
       error = locator_flush_class (class_mop);
       if (error != NO_ERROR)
