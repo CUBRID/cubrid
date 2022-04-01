@@ -41,6 +41,15 @@
 #include <dlfcn.h>
 #endif /* WINDOWS */
 
+/* 
+* If SIZEOF_LONG_INT is not defined in sqltypes.h, build including unixodbc_conf.h.
+* When building including unixodbc_conf.h, "warning: "PACKAGE_STRING" is displayed.
+* So I added the following code before including sqltypes.h to remove of the build warning.
+*/
+#if !defined (SIZEOF_LONG_INT)
+#define SIZEOF_LONG_INT 8
+#endif
+
 #include <sqltypes.h>
 #include <sql.h>
 #include <sqlext.h>
@@ -51,14 +60,14 @@
 #include "dbtype.h"
 #include "tz_support.h"
 
-
 #define COL_NAME_LEN               (255)
 #define DEFAULT_VALUE_LEN          (255)
 #define ATTR_NAME_LEN              (255)
 #define CLASS_NAME_LEN             (255)
 
 #define DECIMAL_DIGIT_MAX_LEN      (20)	/* 9223372036854775807 (7FFF FFFF FFFF FFFF) */
-#define ODBC_CONNECT_URL_FORMAT    "DRIVER={%s};SERVER=%s;Port=%s;DATABASE=%s;USER=%s;PASSWORD=%s;%s"
+#define MYSQL_CONNECT_URL_FORMAT    "DRIVER={%s};SERVER=%s;Port=%s;DATABASE=%s;USER=%s;PASSWORD=%s;%s"
+#define ORACLE_CONNECT_URL_FORMAT    "DRIVER={%s};DBQ=%s;Server=%s/%s;Uid=%s;Pwd=%s;%s"
 
 typedef struct t_col_binder T_COL_BINDER;
 struct t_col_binder
@@ -75,6 +84,13 @@ typedef enum
   MINUS,
   PLUS
 } SIGN;
+
+typedef enum
+{
+  SUPPORTED_DBMS_ORACLE = 0,
+  SUPPORTED_DBMS_MYSQL,
+  NOT_SUPPORTED_DBMS
+} SUPPORTED_DBMS_TYPE;
 
 typedef struct t_odbc_col_info T_ODBC_COL_INFO;
 struct t_odbc_col_info
@@ -125,10 +141,11 @@ extern void cgw_cleanup_binder (T_COL_BINDER * first_col_binding);
 
 extern int cgw_init_odbc_handle (void);
 extern int cgw_get_handle (T_CGW_HANDLE ** cgw_handle, bool is_connected);
+extern int cgw_get_stmt_handle (SQLHDBC hdbc, SQLHSTMT * stmt);
 extern int cgw_get_driver_info (SQLHDBC hdbc, SQLUSMALLINT info_type, void *driver_info, SQLSMALLINT size);
 
 // db connection functions
-extern int cgw_database_connect (const char *connect_url);
+extern int cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url);
 extern void cgw_database_disconnect (void);
 extern int cgw_is_database_connected (void);
 
@@ -146,10 +163,12 @@ extern int cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, v
 
 // Resultset funtions
 extern int cgw_cursor_close (SQLHSTMT hstmt);
-extern SQLLEN cgw_get_row_count (SQLHSTMT hstmt);
+extern int cgw_get_row_count (SQLHSTMT hstmt, SQLLEN * row_count);
 extern int cgw_row_data (SQLHSTMT hstmt, int cursor_pos);
 extern int cgw_set_stmt_attr (SQLHSTMT hstmt, SQLINTEGER attr, SQLPOINTER val, SQLINTEGER len);
 extern int cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor_pos);
 
 extern int cgw_endtran (SQLHDBC hdbc, int tran_type);
+extern SUPPORTED_DBMS_TYPE cgw_is_supported_dbms (char *dbms);
+extern void cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type);
 #endif /* _CAS_CGW_H_ */

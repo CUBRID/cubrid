@@ -1151,8 +1151,6 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
   DB_TYPE key_type;
   int dummy_diff_column;
   bool dummy_dom_is_desc, dummy_next_dom_is_desc;
-  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
-  static int coerce = (ignore_trailing_space) ? 1 : 3;
 
   if (val1 == NULL || val2 == NULL)
     {
@@ -1181,16 +1179,12 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
       if (key_type == DB_TYPE_MIDXKEY)
 	{
 	  rc =
-	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL, NULL,
-				NULL, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
+	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL,
+				NULL, NULL, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
 	}
       else
 	{
-	  /*
-	   * we need to compare without ignoring trailing space
-	   * corece = 3 enforce"no-ignore trailing space
-	   */
-	  rc = tp_value_compare (val1, val2, coerce, 1);
+	  rc = tp_value_compare (val1, val2, 1, 1);
 	}
     }
 
@@ -1310,19 +1304,13 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
   int n;
   KEY_VAL_RANGE *curp, *nextp;
-  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
-  static int coerce = (ignore_trailing_space) ? 1 : 3;
 
   curp = key_vals;
   nextp = key_vals + 1;
   n = 0;
   while (key_cnt > 1 && n < key_cnt - 1)
     {
-      /*
-       * we need to compare without ignoring trailing space
-       * corece = 3 enforce"no-ignore trailing space
-       */
-      if (tp_value_compare (&curp->key1, &nextp->key1, coerce, 1) == DB_EQ)
+      if (tp_value_compare (&curp->key1, &nextp->key1, 1, 1) == DB_EQ)
 	{
 	  pr_clear_value (&nextp->key1);
 	  pr_clear_value (&nextp->key2);
@@ -7929,6 +7917,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       if (scan_id->scan_stats.covered_index == true)
 	{
 	  fprintf (fp, ", covered: true");
+	}
+
+      if (scan_id->s.isid.need_count_only == true)
+	{
+	  fprintf (fp, ", count_only: true");
 	}
 
       if (scan_id->scan_stats.multi_range_opt == true)

@@ -27,6 +27,9 @@
  * details.
  * The error codes must also be added to compat/dbi_compat.h
  * ER_LAST_ERROR must also be updated.
+ * In case of common,  
+ * cci repository source (src/cci/base_error_code.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
  */
 
 #ifndef _ERROR_CODE_H_
@@ -1634,7 +1637,7 @@
 #define ER_INVALID_SERVER_TYPE_ARGUMENT             -1273
 #define ER_INVALID_SERVER_OPTION                    -1274
 #define ER_PAGE_AHEAD_OF_REPLICATION                -1275
-#define ER_SCALABILITY_DEV_RESERVED_ERROR13         -1276
+#define ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED       -1276
 #define ER_SCALABILITY_DEV_RESERVED_ERROR14         -1277
 #define ER_SCALABILITY_DEV_RESERVED_ERROR15         -1278
 #define ER_SCALABILITY_DEV_RESERVED_ERROR16         -1279
@@ -1686,13 +1689,13 @@
 #define ER_CGW_TYPE_CONVERSION                      -1321
 #define ER_CGW_NOT_SUPPORTED_TYPE                   -1322
 #define ER_CGW_INVALID_STMT_HANDLE                  -1323
-#define ER_CGW_INVALID_SQLHDBC_HANDLE               -1324
+#define ER_CGW_INVALID_DBC_HANDLE                   -1324
 #define ER_CGW_NOT_EXIST_LINK_NAME                  -1325
 #define ER_CGW_INVALID_NUMERIC_VALUE                -1326
 #define ER_CGW_INVALID_PRECISION_VALUE              -1327
 
-#define ER_DBLINK_DEV_RESERVED_ERROR28              -1328
-#define ER_DBLINK_DEV_RESERVED_ERROR29              -1329
+#define ER_CGW_INVALID_DESC_HANDLE                  -1328
+#define ER_CGW_NOT_SUPPORTED_DBMS                   -1329
 #define ER_DBLINK_DEV_RESERVED_ERROR30              -1330
 #define ER_DBLINK_DEV_RESERVED_ERROR31              -1331
 
@@ -1706,6 +1709,9 @@
  * files are updated with matching error strings. See message_catalog.c for
  * details.
  * ER_LAST_ERROR must also be updated.
+ * In case of common,  
+ * cci repository source (src/cci/base_error_code.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
  */
 
 #endif /* _ERROR_CODE_H_ */

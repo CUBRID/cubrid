@@ -450,7 +450,7 @@ pgbuf_fix_if_not_deallocated_with_repl_desync_check (THREAD_ENTRY * thread_p, co
   pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE)
 #endif /* !NDEBUG */
 extern int pgbuf_release_private_lru (THREAD_ENTRY * thread_p, const int private_idx);
-extern int pgbuf_assign_private_lru (THREAD_ENTRY * thread_p, bool is_vacuum, const int id);
+extern int pgbuf_assign_private_lru (THREAD_ENTRY * thread_p);
 extern void pgbuf_adjust_quotas (THREAD_ENTRY * thread_p);
 
 #if defined (SERVER_MODE)

@@ -5773,22 +5773,9 @@ btree_generate_prefix_domain (BTID_INT * btid)
   dbtype = TP_DOMAIN_TYPE (domain);
 
   /* varying domains did not come into use until btree revision level 1 */
-  if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_NCHAR || dbtype == DB_TYPE_BIT)
+  if (dbtype == DB_TYPE_BIT)
     {
-      switch (dbtype)
-	{
-	case DB_TYPE_CHAR:
-	  vartype = DB_TYPE_VARCHAR;
-	  break;
-	case DB_TYPE_NCHAR:
-	  vartype = DB_TYPE_VARNCHAR;
-	  break;
-	case DB_TYPE_BIT:
-	  vartype = DB_TYPE_VARBIT;
-	  break;
-	default:
-	  return NULL;
-	}
+      vartype = DB_TYPE_VARBIT;
 
       var_domain =
 	tp_domain_resolve (vartype, domain->class_mop, domain->precision, domain->scale, domain->setdomain,
@@ -14401,6 +14388,8 @@ btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, const 
   int root_level = 0, depth = 0;
 
   desync_occured = false;
+  // TODO: temporary change to identify problem
+  const int temp_error_code = er_errid ();
   ASSERT_NO_ERROR ();
 
   VPID_SET_NULL (pg_vpid);
@@ -18814,12 +18803,6 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 
       if (are_types_comparable)
 	{
-	  /*
-	   * for do_coercion = 2, we need to process key comparing as char-type
-	   * in case that one of two arguments has varchar-type
-	   * if the other argument has char-type
-	   */
-	  do_coercion = 2;
 	  c = key_domain->type->cmpval (key1, key2, do_coercion, total_order, NULL, key_domain->collation_id);
 	}
       else
@@ -25388,8 +25371,8 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (bts != NULL);
   assert (!VPID_ISNULL (&bts->C_vpid));
   assert (bts->C_page != NULL);
-  /* MRO and covering index optimization are not compatible with bts->need_count_only. */
-  assert (!BTS_NEED_COUNT_ONLY (bts) || (!BTS_IS_INDEX_MRO (bts) && !BTS_IS_INDEX_COVERED (bts)));
+  /* MRO optimization are not compatible with bts->need_count_only. */
+  assert (!BTS_NEED_COUNT_ONLY (bts) || !BTS_IS_INDEX_MRO (bts));
 
   /* Index skip scan optimization has an early out when a new key is found: */
   if (BTS_IS_INDEX_ISS (bts)

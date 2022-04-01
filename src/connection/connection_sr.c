@@ -1244,7 +1244,14 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
   header.request_id = htonl (rid);
   header.transaction_id = htonl (conn->get_tran_index ());
 
-  if (conn->invalidate_snapshot)
+  /**
+   * FIXME!!
+   * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
+   *
+   * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
+   * But The side effects described in CBRD-24157 occurred.
+   */
+  if (true)			// if (conn->invalidate_snapshot)
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
     }

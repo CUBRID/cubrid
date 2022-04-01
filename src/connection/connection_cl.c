@@ -335,11 +335,19 @@ css_send_close_request (CSS_CONN_ENTRY * conn)
       header.type = htonl (CLOSE_TYPE);
       header.transaction_id = htonl (conn->get_tran_index ());
       flags = 0;
-      if (conn->invalidate_snapshot)
+
+  /**
+   * FIXME!!
+   * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
+   *
+   * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
+   * But The side effects described in CBRD-24157 occurred.
+   */
+      if (true)			// if (conn->invalidate_snapshot)
 	{
 	  flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
 	}
-      header.flags = ntohs (flags);
+      header.flags = htons (flags);
       header.db_error = htonl (conn->db_error);
       /* timeout in milli-second in css_net_send() */
       css_net_send (conn, (char *) &header, sizeof (NET_HEADER), -1);

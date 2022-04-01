@@ -32,41 +32,23 @@
 #include "page_buffer.h"
 
 #include "active_tran_server.hpp"
-#include "storage_common.h"
-#include "memory_alloc.h"
 #include "system_parameter.h"
-#include "error_manager.h"
-#include "file_io.h"
-#include "lockfree_circular_queue.hpp"
-#include "log_append.hpp"
 #include "log_lsa_utils.hpp"
-#include "log_manager.h"
-#include "log_impl.h"
 #include "log_volids.hpp"
-#include "transaction_sr.h"
-#include "memory_hash.h"
-#include "critical_section.h"
-#include "perf_monitor.h"
-#include "porting_inline.hpp"
-#include "environment_variable.h"
 #include "thread_daemon.hpp"
-#include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-#include "list_file.h"
-#include "tsc_timer.h"
 #include "query_manager.h"
 #include "xserver_interface.h"
-#include "btree_load.h"
 #include "boot_sr.h"
 #include "double_write_buffer.h"
+#include "tran_page_requests.hpp"
 #include "page_server.hpp"
 #include "passive_tran_server.hpp"
 #include "resource_tracker.hpp"
-#include "tde.h"
 #include "show_scan.h"
-#include "numeric_opfunc.h"
 #include "dbtype.h"
 #include "server_type.hpp"
+#include "vacuum.h"
 #include "vpid_utilities.hpp"
 
 #if defined(SERVER_MODE)
@@ -2370,11 +2352,16 @@ pgbuf_wait_for_replication (THREAD_ENTRY * thread_p, const VPID * optional_vpid_
   assert (tdes != nullptr && !tdes->page_desync_lsa.is_null ());
   pts_ptr->wait_replication_past_target_lsa (tdes->page_desync_lsa);
 
-  const LOG_LSA replication_lsa = pts_ptr->get_replicator_lsa ();
-  er_log_debug (ARG_FILE_LINE,
-		"Page %d|%d is ahead of replication. Page LSA is %lld|%d, replication LSA is %lld|%d.",
-		VPID_AS_ARGS (optional_vpid_for_logging), LSA_AS_ARGS (&tdes->page_desync_lsa),
-		LSA_AS_ARGS (&replication_lsa));
+  // Print the current replication progress to aid in debug scenarios
+  if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    {
+      const LOG_LSA replication_lsa = pts_ptr->get_highest_processed_lsa ();
+      const LOG_LSA lowest_unapplied_lsa = get_passive_tran_server_ptr ()->get_lowest_unapplied_lsa ();
+      er_log_debug (ARG_FILE_LINE,
+		    "Page %d|%d is ahead of replication. Page LSA is %lld|%d. Current replication progress is situated at: lowest unapplied lsa: %lld|%d, highest processed lsa: %lld|%d.",
+		    VPID_AS_ARGS (optional_vpid_for_logging), LSA_AS_ARGS (&tdes->page_desync_lsa),
+		    LSA_AS_ARGS (&lowest_unapplied_lsa), LSA_AS_ARGS (&replication_lsa));
+    }
   tdes->page_desync_lsa.set_null ();
   // clear the errors for next search
   er_clear ();
@@ -2391,14 +2378,15 @@ pgbuf_check_page_ahead_of_replication (THREAD_ENTRY * thread_p, PAGE_PTR page)
   // Compare page LSA to replication LSA. If page is ahead, there may be a desynchronization issue; its LSA must be
   // saved in transaction descriptor and the appropriate error must be set and returned.
   LOG_LSA page_lsa = *pgbuf_get_lsa (page);
-  LOG_LSA repl_lsa = get_passive_tran_server_ptr ()->get_replicator_lsa ();
-  if (page_lsa > repl_lsa)
+  LOG_LSA lowest_unapplied_lsa = get_passive_tran_server_ptr ()->get_lowest_unapplied_lsa ();
+
+  if (page_lsa > lowest_unapplied_lsa)
     {
       LOG_TDES *const tdes = LOG_FIND_CURRENT_TDES (thread_p);
       assert (tdes != nullptr && tdes->page_desync_lsa.is_null ());
       tdes->page_desync_lsa = page_lsa;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_AHEAD_OF_REPLICATION, 6, PGBUF_PAGE_VPID_AS_ARGS (page),
-	      LSA_AS_ARGS (&page_lsa), LSA_AS_ARGS (&repl_lsa));
+	      LSA_AS_ARGS (&page_lsa), LSA_AS_ARGS (&lowest_unapplied_lsa));
       return ER_PAGE_AHEAD_OF_REPLICATION;
     }
   else
@@ -3864,7 +3852,8 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
       /* flush condition check */
       if (!pgbuf_bcb_is_dirty (bufptr)
-	  || (!LSA_ISNULL (&bufptr->oldest_unflush_lsa) && LSA_GT (&bufptr->oldest_unflush_lsa, flush_upto_lsa)))
+	  || (!LSA_ISNULL (&bufptr->oldest_unflush_lsa) && LSA_GT (&bufptr->oldest_unflush_lsa, flush_upto_lsa))
+	  || pgbuf_is_temporary_volume (bufptr->vpid.volid))
 	{
 	  PGBUF_BCB_UNLOCK (bufptr);
 	  continue;
@@ -8177,7 +8166,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
        *      any log entries being applied on both ends
        */
       const LOG_LSA target_repl_lsa = is_passive_transaction_server ()?
-	get_passive_tran_server_ptr ()->get_replicator_lsa () : pgbuf_Pool.get_highest_evicted_lsa ();
+	get_passive_tran_server_ptr ()->get_highest_processed_lsa () : pgbuf_Pool.get_highest_evicted_lsa ();
 
       if (read_from_local)
 	{
@@ -8346,7 +8335,8 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
   pac.pack_int (fetch_mode);
   std::string request_message (buffer.get (), size);
 
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+  const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE);
+  if (perform_logging)
     {
       _er_log_debug (ARG_FILE_LINE, "[READ DATA] Send request for Page to Page Server."
                                     " VPID: %d|%d, target repl LSA: %lld|%d\n",
@@ -8354,17 +8344,32 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
     }
 
   std::string response_message;
-  ts_Gl->send_receive (tran_to_page_request::SEND_DATA_PAGE_FETCH, std::move (request_message), response_message);
+  int error_code = ts_Gl->send_receive (tran_to_page_request::SEND_DATA_PAGE_FETCH,
+                                           std::move (request_message), response_message);
+  // there are two layers of errors to he handled here:
+  //  - client side communication to page server error
+  //  - page server side errors
+
+  // client side communication to page server error
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d \n", error_code);
+	}
+      return error_code;
+    }
 
   const char *message_buf = response_message.c_str ();
-  int error_code = NO_ERROR;
   std::memcpy (&error_code, message_buf, sizeof (error_code));
   message_buf += sizeof (error_code);
 
+  // page server side errors
   // The message is either an error code or the content of the data page
   if (error_code != NO_ERROR)
     {
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+      if (perform_logging)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d \n", error_code);
 	}
@@ -8384,7 +8389,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
       std::memcpy (io_page, message_buf, db_io_page_size ());
       message_buf += db_io_page_size ();
 
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+      if (perform_logging)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, page LSA: %lld|%d \n",
 			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
@@ -13952,13 +13957,12 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_assign_private_lru_id () -
+ * pgbuf_assign_private_lru () -
+ *
  *   return: NO_ERROR
- *   is_vacuum(in): true if client is a vacuum thread
- *   id(in): id of client (vacuum index or session id)
  */
 int
-pgbuf_assign_private_lru (THREAD_ENTRY * thread_p, bool is_vacuum, const int id)
+pgbuf_assign_private_lru (THREAD_ENTRY * thread_p)
 {
   int i;
   int min_activitity;

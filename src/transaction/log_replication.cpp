@@ -113,6 +113,7 @@ namespace cublog
   replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
     : m_bookkeep_mvcc_vacuum_info { is_page_server () }
     , m_redo_lsa { start_redo_lsa }
+    , m_replication_active { true }
     , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_most_recent_trantable_snapshot_lsa { NULL_LSA }
@@ -261,6 +262,11 @@ namespace cublog
 
 	{
 	  std::unique_lock<std::mutex> lock (m_redo_lsa_mutex);
+
+	  // better to be checked as soon as possible during the processing loop
+	  // however, this would need one more mutex lock; therefore, suffice to do it here
+	  assert (m_replication_active);
+
 	  m_redo_lsa = header.forw_lsa;
 	}
 	if (m_parallel_replication_redo != nullptr)
@@ -393,6 +399,11 @@ namespace cublog
       return m_redo_lsa >= log_Gl.append.get_nxio_lsa ();
     });
 
+    // flag ensures the internal invariant that, once the replicator has been waited
+    // to finish work; no further log records are to be processed
+    // flag is checked and set only under redo lsa mutex
+    m_replication_active = false;
+
     // at this moment, ALL data has been dispatched for, either, async replication
     // or has been applied synchronously
     // introduce a fuzzy syncronization point by waiting all fed data to be effectively
@@ -405,6 +416,7 @@ namespace cublog
 
   void replicator::wait_past_target_lsa (const log_lsa &a_target_lsa)
   {
+    // TODO: needs to be refactored to work with the new replicators flavors
     if (m_parallel_replication_redo == nullptr)
       {
 	// sync
@@ -427,10 +439,24 @@ namespace cublog
     return m_most_recent_trantable_snapshot_lsa.load ();
   }
 
-  log_lsa replicator::get_redo_lsa () const
+  log_lsa replicator::get_highest_processed_lsa () const
   {
     std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
     return m_redo_lsa;
+  }
+
+  log_lsa replicator::get_lowest_unapplied_lsa () const
+  {
+    // TODO: needs to be refactored to work with the new replicators flavors
+    if (m_parallel_replication_redo == nullptr)
+      {
+	// sync
+	return get_highest_processed_lsa ();
+      }
+
+    // a different value will return from here when the atomic replicator is added
+    // for now this part should not be reached
+    assert (false);
   }
 
   /*********************************************************************

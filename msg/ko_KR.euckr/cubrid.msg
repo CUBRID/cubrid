@@ -904,7 +904,7 @@ $ LOADDB
 834 to_number() 함수에 주어진 source 문자열 "%1$s"과 format 문자열 "%2$s"이 매칭되지 않습니다.
 835 정의되지 않은 통계 아이템입니다.
 836 페이지(%1$d|%2$d)에 대한 래치 획득 요청이 시간을 초과하였습니다.
-837 데이터베이스 객체(클래스/뷰/트리거/serial 등)을 소유한 사용자는 삭제할 수 없습니다.
+837 데이터베이스 객체(클래스/뷰/트리거/serial/server 등)을 소유한 사용자는 삭제할 수 없습니다.
 838 동시에 %1$d개를 초과하는 인덱스 스캔을 열 수 없습니다.
 839 "%1$s": 알 수 없는 시스템 파라미터 이거나 값이 잘못되었습니다.
 840 시스템 파라미터 "%1$s"를 바꿀 수 없습니다.
@@ -1344,7 +1344,7 @@ $ LOADDB
 1273 Invalid server type '%s', -t or --type should be followed either by 'transaction' or 'page'.
 1274 Invalid server option "%s".
 1275 Page %1d|%2d is ahead of replication. Page LSA is %3lld|%4d, replication LSA is %5lld|%6d.
-1276 Error reserved for scalability development.
+1276 Connected page server cannot be reached anymore.
 1277 Error reserved for scalability development.
 1278 Error reserved for scalability development.
 1279 Error reserved for scalability development.
@@ -1390,7 +1390,7 @@ $ LOADDB
 1316 dblink - 이름이 "%1$s"인 서버가 여러 개 있습니다.
 1317 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다. 
 
-1318 [%1$5.5s] %2$s (%3$d)
+1318 [%1$5.5s][%2$d] %3$s
 1319 매개 변수 바인딩 오류.
 1320 잘못된 ODBC Handle 입니다.
 1321 데이터 형식 변환 오류.
@@ -1401,8 +1401,8 @@ $ LOADDB
 1326 유효하지 않은 Numeric 값입니다.
 1327 "%1$s" 열의 정밀도 값이 잘못되었습니다.
 
-1328 Error reserved for dblink development.
-1329 Error reserved for dblink development.
+1328 잘못된 Descriptor Handle 입니다.
+1329 지원하지 않는 DBMS 입니다.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 

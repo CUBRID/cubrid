@@ -58,7 +58,9 @@ namespace cubcomm
       request_sync_client_server (cubcomm::channel &&a_channel,
 				  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers,
 				  T_OUTGOING_MSG_ID a_outgoing_response_msgid,
-				  T_INCOMING_MSG_ID a_incoming_response_msgid, size_t response_partition_count);
+				  T_INCOMING_MSG_ID a_incoming_response_msgid,
+				  size_t response_partition_count,
+				  send_queue_error_handler &&error_handler);
       ~request_sync_client_server ();
       request_sync_client_server (const request_sync_client_server &) = delete;
       request_sync_client_server (request_sync_client_server &&) = delete;
@@ -66,15 +68,17 @@ namespace cubcomm
       request_sync_client_server &operator = (const request_sync_client_server &) = delete;
       request_sync_client_server &operator = (request_sync_client_server &&) = delete;
 
-    public:
       void start ();
+      void stop_incoming_communication_thread ();
+      void stop_outgoing_communication_thread ();
 
       /* only used by unit tests
        */
       std::string get_underlying_channel_id () const;
 
       void push (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload);
-      void send_recv (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_request_payload, T_PAYLOAD &a_response_payload);
+      css_error_code send_recv (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_request_payload,
+				T_PAYLOAD &a_response_payload);
       void respond (sequenced_payload &&seq_payload);
 
     private:
@@ -90,10 +94,12 @@ namespace cubcomm
       std::unique_ptr<request_sync_send_queue_t> m_queue;
       std::unique_ptr<request_queue_autosend_t> m_queue_autosend;
 
-      T_OUTGOING_MSG_ID m_outgoing_response_msgid;
-      T_INCOMING_MSG_ID m_incoming_response_msgid;
+      const T_OUTGOING_MSG_ID m_outgoing_response_msgid;
+      const T_INCOMING_MSG_ID m_incoming_response_msgid;
+
+      // TODO: sequence number generator and response broker are not needed on transaction server
       response_sequence_number_generator m_rsn_generator;
-      response_broker<T_PAYLOAD> m_response_broker;
+      response_broker<T_PAYLOAD, css_error_code> m_response_broker;
   };
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -137,14 +143,15 @@ namespace cubcomm
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::request_sync_client_server (
 	  cubcomm::channel &&a_channel,
 	  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers,
-	  T_OUTGOING_MSG_ID a_outgoing_response_msgid,
-	  T_INCOMING_MSG_ID a_incoming_response_msgid, size_t response_partition_count)
+	  T_OUTGOING_MSG_ID a_outgoing_response_msgid, T_INCOMING_MSG_ID a_incoming_response_msgid,
+	  size_t response_partition_count,
+	  send_queue_error_handler &&error_handler)
     : m_conn { new request_client_server_t (std::move (a_channel)) }
-  , m_queue { new request_sync_send_queue_t (*m_conn) }
+  , m_queue { new request_sync_send_queue_t (*m_conn, std::move (error_handler)) }
   , m_queue_autosend { new request_queue_autosend_t (*m_queue) }
   , m_outgoing_response_msgid { a_outgoing_response_msgid }
   , m_incoming_response_msgid { a_incoming_response_msgid }
-  , m_response_broker { response_partition_count }
+  , m_response_broker { response_partition_count, NO_ERRORS, ERROR_ON_WRITE }
   {
     assert (a_incoming_request_handlers.size () > 0);
     for (const auto &pair: a_incoming_request_handlers)
@@ -162,15 +169,52 @@ namespace cubcomm
   void
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::start ()
   {
-    m_conn->start_thread ();
+    // first start sending thread, such that it is ready by the time ..
     m_queue_autosend->start_thread ();
+    // .. receive thread starts and receives requests
+    m_conn->start_thread ();
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::stop_incoming_communication_thread ()
+  {
+    // stop receiving thread such that fresh requests are not received anymore
+    m_conn->stop_thread ();
+
+    // if the receiving thread terminated, there will not be any more responses
+    // unblock all waiting client thread - they will receive errors
+    m_response_broker.terminate ();
+
+    // at this point, the page server async responder must be waited for to terminate
+    // processing all async requests
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::stop_outgoing_communication_thread ()
+  {
+    // before this point, the page server async responder must be waited for to terminate
+    // processing all async requests
+
+    m_queue_autosend->stop_thread ();
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::~request_sync_client_server ()
   {
+    // the stop-thread & dtor sequence must work for both usage scenarios:
+    //  - active/passive transaction server
+    //  - page server
+
+    // by now, all processing and threads should have been stopped
+
+    // terminate sending messages
     m_queue_autosend.reset (nullptr);
+
     m_queue.reset (nullptr);
+
+    // terminate receiving messages
     m_conn.reset (nullptr);
   }
 
@@ -190,23 +234,41 @@ namespace cubcomm
 
     sequenced_payload ip (NO_RESPONSE_SEQUENCE_NUMBER, std::move (a_payload));
 
-    m_queue->push (a_outgoing_message_id, std::move (ip));
+    // NOTE: if needed, errors can be handled
+    m_queue->push (a_outgoing_message_id, std::move (ip), nullptr);
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
-  void
+  css_error_code
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::send_recv (
 	  T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_request_payload, T_PAYLOAD &a_response_payload)
   {
     // Get a unique sequence number of response and group with the payload
-    response_sequence_number rsn = m_rsn_generator.get_unique_number ();
+    const response_sequence_number rsn = m_rsn_generator.get_unique_number ();
     sequenced_payload seq_payload (rsn, std::move (a_request_payload));
 
-    // Send the request
-    m_queue->push (a_outgoing_message_id, std::move (seq_payload));
+    send_queue_error_handler error_handler_ftor = [&rsn, this] (
+		css_error_code error_code, bool &abort_further_processing)
+    {
+      abort_further_processing = false;
+      this->m_response_broker.register_error (rsn, std::move (error_code));
+    };
 
-    // Get the answer
-    a_response_payload = m_response_broker.get_response (rsn);
+    // Send the request
+    m_queue->push (a_outgoing_message_id, std::move (seq_payload), std::move (error_handler_ftor));
+    // function is non-blocking, it will just push the message to be sent.
+    // The following broker response getter is the blocking part.
+
+    // check whether actual answer or error
+    css_error_code error_code { NO_ERRORS };
+    std::tie (a_response_payload, error_code) = m_response_broker.get_response (rsn);
+    if (error_code != NO_ERRORS)
+      {
+	// clear payload
+	a_response_payload = T_PAYLOAD ();
+      }
+
+    return error_code;
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -214,7 +276,8 @@ namespace cubcomm
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::respond (
 	  sequenced_payload &&seq_payload)
   {
-    m_queue->push (m_outgoing_response_msgid, std::move (seq_payload));
+    // NOTE: if needed, errors can be handled for respond as well
+    m_queue->push (m_outgoing_response_msgid, std::move (seq_payload), nullptr);
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>

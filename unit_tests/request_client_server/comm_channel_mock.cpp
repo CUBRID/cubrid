@@ -152,12 +152,15 @@ namespace cubcomm
   {
   }
 
-  channel &channel::operator= (channel &&comm)
+  channel::channel (std::string &&channel_name)
+    : m_channel_name { std::move (channel_name) }
   {
-    assert (!is_connection_alive ());
-    this->~channel ();
-    new (this) channel (std::move (comm));
-    return *this;
+  }
+
+  channel::channel (int max_timeout_in_ms, std::string &&channel_name)
+    : m_max_timeout_in_ms (max_timeout_in_ms)
+    , m_channel_name { std::move (channel_name) }
+  {
   }
 
   channel::channel (channel &&comm)
@@ -209,7 +212,7 @@ namespace cubcomm
     return NO_ERRORS;
   }
 
-  bool channel::send_int (int val)
+  css_error_code channel::send_int (int val)
   {
     return send (reinterpret_cast<const char *> (&val), sizeof (int));
   }
@@ -251,12 +254,12 @@ namespace cubcomm
       }
   }
 
-  int channel::get_max_timeout_in_ms ()
+  int channel::get_max_timeout_in_ms () const
   {
     return m_max_timeout_in_ms;
   }
 
-  int channel::wait_for (unsigned short int, unsigned short int &revents)
+  int channel::wait_for (unsigned short int, unsigned short int &revents) const
   {
     std::string chnid = get_channel_id ();
     if (global_sockdirs_initialized.load () == false)

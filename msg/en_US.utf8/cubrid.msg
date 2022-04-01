@@ -904,7 +904,7 @@ $ LOADDB
 834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
 835 Undefined statistics item.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 Cannot drop the user who owns database objects(class/trigger/serial etc). 
+837 Cannot drop the user who owns database objects(class/trigger/serial/server etc).
 838 Cannot open more than %1$d index scans simultaneously.
 839 "%1$s": Unknown system parameter or bad value.
 840 Cannot change system parameter "%1$s".
@@ -1344,7 +1344,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1273 Invalid server type '%s', -t or --type should be followed either by 'transaction' or 'page'.
 1274 Invalid server option "%s".
 1275 Page %1d|%2d is ahead of replication. Page LSA is %3lld|%4d, replication LSA is %5lld|%6d.
-1276 Error reserved for scalability development.
+1276 Connected page server cannot be reached anymore.
 1277 Error reserved for scalability development.
 1278 Error reserved for scalability development.
 1279 Error reserved for scalability development.
@@ -1390,7 +1390,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1316 dblink - Multiple "%1$s" Server found.
 1317 dblink - Not allowed "%1$s" Server.
 
-1318 [%1$5.5s] %2$s (%3$d)
+1318 [%1$5.5s][%2$d] %3$s
 1319 Parameter binding error.
 1320 Invalid ODBC handle.
 1321 Type conversion error.
@@ -1401,8 +1401,8 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1326 Invalid numeric value.
 1327 Invalid precision value of "%1$s" column.
 
-1328 Error reserved for dblink development.
-1329 Error reserved for dblink development.
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 

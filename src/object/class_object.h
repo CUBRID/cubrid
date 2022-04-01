@@ -303,6 +303,7 @@ typedef enum
   SM_CLASSFLAG_WITHCHECKOPTION = 2,	/* a view with check option */
   SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
   SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
+  SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16	/* reserved flag for supplemental log. */
 } SM_CLASS_FLAG;
 
 /*
@@ -985,7 +986,8 @@ extern SM_CLASS_CONSTRAINT *classobj_find_class_index (SM_CLASS * class_, const 
 extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_name (SM_CLASS_CONSTRAINT * cons_list, const char *name);
 extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
 							       DB_CONSTRAINT_TYPE new_cons, const char **att_names,
-							       const int *asc_desc);
+							       const int *asc_desc,
+							       const SM_PREDICATE_INFO * filter_predicate);
 extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_oid);
 extern void classobj_remove_class_constraint_node (SM_CLASS_CONSTRAINT ** constraints, SM_CLASS_CONSTRAINT * node);
 

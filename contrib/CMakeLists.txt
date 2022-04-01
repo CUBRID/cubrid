@@ -93,7 +93,7 @@ if(WIN32)
   install(FILES
     ${CMAKE_SOURCE_DIR}/contrib/windows_scripts/cubrid_env.bat
     DESTINATION ${CUBRID_DATADIR}/windows_scripts/)
-endif(Win32)
+endif(WIN32)
 
 # scripts for installation
 if(UNIX)
@@ -102,3 +102,9 @@ if(UNIX)
     DESTINATION ${CUBRID_DATADIR}/install/)
 endif(UNIX)
 
+# multi-process unloaddb scripts
+if(UNIX)
+  install(PROGRAMS
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/unloaddb.sh
+    DESTINATION ${CUBRID_DATADIR}/scripts/)
+endif(UNIX)

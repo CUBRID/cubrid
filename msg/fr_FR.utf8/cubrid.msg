@@ -904,7 +904,7 @@ $ LOADDB
 834 Il ya quelques incohérences entre la chaîne source "%1$s" et la chaîne de format "%2$s" donnée dans to_number().
 835 Objet de statistique pas defini.
 836 LATCH ON PAGE(%1$d|%2$d) a expiré.
-837 Impossible de supprimer l'utilisateur qui possède des objets de base de données(classe/verrou/serial etc). 
+837 Impossible de supprimer l'utilisateur qui possède des objets de base de données(classe/gâchette/serial/serveur etc).
 838  Impossible d'ouvrir plus de %1$d analyses d'index simultanément.
 839 "%1$s": Paramètre de système inconnu ou mauvaise valeur.
 840 Impossible de modifier le paramètres de système "%1$s".
@@ -1344,7 +1344,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1273 Invalid server type '%s', -t or --type should be followed either by 'transaction' or 'page'.
 1274 Invalid server option "%s".
 1275 Page %1d|%2d is ahead of replication. Page LSA is %3lld|%4d, replication LSA is %5lld|%6d.
-1276 Error reserved for scalability development.
+1276 Connected page server cannot be reached anymore.
 1277 Error reserved for scalability development.
 1278 Error reserved for scalability development.
 1279 Error reserved for scalability development.
@@ -1390,7 +1390,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1316 dblink - Multiple "%1$s" Server found.
 1317 dblink - Not allowed "%1$s" Server.
 
-1318 [%1$5.5s] %2$s (%3$d)
+1318 [%1$5.5s][%2$d] %3$s
 1319 Parameter binding error.
 1320 Invalid ODBC handle.
 1321 Type conversion error.
@@ -1401,8 +1401,8 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1326 Invalid numeric value.
 1327 Invalid precision value of "%1$s" column.
 
-1328 Error reserved for dblink development.
-1329 Error reserved for dblink development.
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 

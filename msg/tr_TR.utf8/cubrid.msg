@@ -904,7 +904,7 @@ $ LOADDB
 834 Kaynak dizesi arasında bazı uyumsuzluklar "%1$s" ve verilen "%2$s" biçim dizesi vardır to_number() .
 835 Tanımlanmamış istatistikler öğesi.
 836 SAYFASINDA LATCH (%1$d|%2$d) ZAMAN AŞIMI.
-837 Veritabanı nesneleri (sınıf / tetik / seri vs) sahibi olan kullanıcılara aittir iptal edemezsiniz.. 
+837 Veritabanı nesneleri (sınıf / tetik / seri / sunucu vb) sahibi olan kullanıcılara aittir iptal edemezsiniz..
 838 Eşzamanlı olarak taranan indeksi %1$d den daha fazla açılamaz .
 839 "%1$s": Bilinmeyen sistem parametresi veya bozuk bir değer.
 840 Sistem parametresi değiştiremezsiniz "%1$s".
@@ -1344,7 +1344,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1273 Invalid server type '%s', -t or --type should be followed either by 'transaction' or 'page'.
 1274 Invalid server option "%s".
 1275 Page %1d|%2d is ahead of replication. Page LSA is %3lld|%4d, replication LSA is %5lld|%6d.
-1276 Error reserved for scalability development.
+1276 Connected page server cannot be reached anymore.
 1277 Error reserved for scalability development.
 1278 Error reserved for scalability development.
 1279 Error reserved for scalability development.
@@ -1390,7 +1390,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1316 dblink - Multiple "%1$s" Server found.
 1317 dblink - Not allowed "%1$s" Server.
 
-1318 [%1$5.5s] %2$s (%3$d)
+1318 [%1$5.5s][%2$d] %3$s
 1319 Parameter binding error.
 1320 Invalid ODBC handle.
 1321 Type conversion error.
@@ -1401,8 +1401,8 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1326 Invalid numeric value.
 1327 Invalid precision value of "%1$s" column.
 
-1328 Error reserved for dblink development.
-1329 Error reserved for dblink development.
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
@@ -1542,10 +1542,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 103 Dizin ipuçlarının geçersiz kullanımı
 104 Bit dizgesinin uzunluğu en fazla %1$d bittir.
 105 Sözdizim hatası: unexpected
-106 , bekliyor '{'
-107 , bekliyor SELECT veya '('
-108 , bekliyor
-109 beklenmedik
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
 110 IFADESININ SONUNA
 111 Çizgide %1$d, sütununda %2$d önce '%3$c%4$s'\n
 112 Çizgide %1$d, sütununda %2$d önce %3$s\n

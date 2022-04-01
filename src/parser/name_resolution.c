@@ -6819,6 +6819,11 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       return ER_FAILED;
     }
 
+  if (hint == PT_HINT_NONE)
+    {
+      return NO_ERROR;
+    }
+
   if (hint & PT_HINT_ORDERED)
     {
       if (pt_resolve_hint_args (parser, ordered, spec_list, REQUIRE_ALL_MATCH) != NO_ERROR)

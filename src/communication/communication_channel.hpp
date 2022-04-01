@@ -51,21 +51,26 @@ namespace cubcomm
 
   class channel
   {
+      constexpr static int INVALID_PORT = -1;
+
     public:
-      channel (int max_timeout_in_ms = -1);
+      channel (int max_timeout_in_ms);
+      channel (std::string &&channel_name);
+      channel (int max_timeout_in_ms, std::string &&channel_name);
       virtual ~channel ();
 
       /* only the move operation is permitted */
-      channel (const channel &comm) = delete;
-      channel &operator= (const channel &comm) = delete;
+      channel (const channel &) = delete;
       channel (channel &&comm);
-      channel &operator= (channel &&comm);
+
+      channel &operator= (const channel &) = delete;
+      channel &operator= (channel &&) = delete;
 
       /* receive/send functions that use the created m_socket */
       css_error_code recv (char *buffer, std::size_t &maxlen_in_recvlen_out);
       css_error_code send (const std::string &message);
       css_error_code send (const char *buffer, std::size_t length);
-      bool send_int (int val);
+      css_error_code send_int (int val);
       css_error_code recv_int (int &received);
 
       /* simple connect */
@@ -77,19 +82,19 @@ namespace cubcomm
       /* this function waits for events such as EPOLLIN, EPOLLOUT,
        * if (revents & EPOLLIN) != 0 it means that we have an "in" event
        */
-      int wait_for (unsigned short int events, unsigned short int &revents);
+      int wait_for (unsigned short int events, unsigned short int &revents) const;
 
       bool is_connection_alive () const;
-      SOCKET get_socket ();
-      int get_port ();
+      SOCKET get_socket () const;
+      int get_port () const;
       void close_connection ();
 
       /* this is the command that the non overridden connect will send */
-      int get_max_timeout_in_ms ();
+      int get_max_timeout_in_ms () const;
 
-      void set_channel_name (const std::string &name)
+      void set_channel_name (std::string &&name)
       {
-	m_channel_name = name;
+	m_channel_name = std::move (name);
       }
 
       std::string get_channel_id () const
@@ -109,7 +114,7 @@ namespace cubcomm
       SOCKET m_socket = INVALID_SOCKET;
       std::string m_channel_name;
       std::string m_hostname;
-      int m_port = -1;
+      int m_port = INVALID_PORT;
   };
 
 

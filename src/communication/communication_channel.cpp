@@ -50,6 +50,17 @@ namespace cubcomm
   {
   }
 
+  channel::channel (std::string &&channel_name)
+    : m_channel_name { std::move (channel_name) }
+  {
+  }
+
+  channel::channel (int max_timeout_in_ms, std::string &&channel_name)
+    : m_max_timeout_in_ms (max_timeout_in_ms)
+    , m_channel_name { std::move (channel_name) }
+  {
+  }
+
   channel::channel (channel &&comm)
     : m_max_timeout_in_ms (comm.m_max_timeout_in_ms)
   {
@@ -61,15 +72,9 @@ namespace cubcomm
 
     m_channel_name = std::move (comm.m_channel_name);
     m_hostname = std::move (comm.m_hostname);
-  }
 
-  channel &channel::operator= (channel &&comm)
-  {
-    assert (!is_connection_alive ());
-    this->~channel ();
-
-    new (this) channel (std::move (comm));
-    return *this;
+    m_port = comm.m_port;
+    comm.m_port = INVALID_PORT;
   }
 
   channel::~channel ()
@@ -112,13 +117,20 @@ namespace cubcomm
     return (css_error_code) rc;
   }
 
-  bool channel::send_int (int val)
+  css_error_code channel::send_int (int val)
   {
     int v = htonl (val);
-    bool ret = (::send (m_socket, reinterpret_cast<const char *> (&v), sizeof (v), 0) == sizeof (v));
-    er_log_chn_debug ("[%s] Send int value = %d %s.\n", get_channel_id ().c_str (), val,
-		      ret ? "successfully" : "failed");
-    return ret;
+    const int sent_byte_count = ::send (m_socket, reinterpret_cast<const char *> (&v), sizeof (v), 0);
+    if (sent_byte_count == sizeof (v))
+      {
+	er_log_chn_debug ("[%s] Success send int value %d\n", get_channel_id ().c_str (), val);
+	return NO_ERRORS;
+      }
+    else
+      {
+	er_log_chn_debug ("[%s] Failed send int value %d\n", get_channel_id ().c_str (), val);
+	return ERROR_ON_WRITE;
+      }
   }
 
   css_error_code channel::recv_int (int &received)
@@ -193,16 +205,16 @@ namespace cubcomm
 	m_type = NO_TYPE;
       }
 
-    m_hostname = "";
-    m_port = -1;
+    m_hostname.clear ();
+    m_port = INVALID_PORT;
   }
 
-  int channel::get_max_timeout_in_ms ()
+  int channel::get_max_timeout_in_ms () const
   {
     return m_max_timeout_in_ms;
   }
 
-  int channel::wait_for (unsigned short int events, unsigned short int &revents)
+  int channel::wait_for (unsigned short int events, unsigned short int &revents) const
   {
     POLL_FD poll_fd = {0, 0, 0};
     int rc = 0;
@@ -231,12 +243,12 @@ namespace cubcomm
     return !IS_INVALID_SOCKET (m_socket);
   }
 
-  SOCKET channel::get_socket ()
+  SOCKET channel::get_socket () const
   {
     return m_socket;
   }
 
-  int channel::get_port ()
+  int channel::get_port () const
   {
     return m_port;
   }

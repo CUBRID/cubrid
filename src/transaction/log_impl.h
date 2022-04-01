@@ -353,15 +353,6 @@ struct log_topops_addresses
 				 * since it is reset during recovery to the last reference postpone address. */
 };
 
-enum log_topops_type
-{
-  LOG_TOPOPS_NORMAL,
-  LOG_TOPOPS_COMPENSATE_TRAN_ABORT,
-  LOG_TOPOPS_COMPENSATE_SYSOP_ABORT,
-  LOG_TOPOPS_POSTPONE
-};
-typedef enum log_topops_type LOG_TOPOPS_TYPE;
-
 typedef struct log_topops_stack LOG_TOPOPS_STACK;
 struct log_topops_stack
 {

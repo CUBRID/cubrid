@@ -31,13 +31,15 @@ class passive_tran_server : public tran_server
     ~passive_tran_server () override;
 
   public:
-    void send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
-					 log_lsa &most_recent_trantable_snapshot_lsa);
+    int send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
+					log_lsa &most_recent_trantable_snapshot_lsa);
     void start_log_replicator (const log_lsa &start_lsa);
     void send_and_receive_stop_log_prior_dispatch ();
 
-    /* read replicator's current progress */
-    log_lsa get_replicator_lsa () const;
+    /* highest processed lsa, to be used for retrieve pages from PS */
+    log_lsa get_highest_processed_lsa () const;
+    /* lowest unapplied lsa, to be used to wait for page sync */
+    log_lsa get_lowest_unapplied_lsa () const;
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
     void wait_replication_past_target_lsa (LOG_LSA lsa);
 

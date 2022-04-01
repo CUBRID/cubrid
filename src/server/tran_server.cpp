@@ -116,16 +116,21 @@ tran_server::parse_page_server_hosts_config (std::string &hosts)
 int
 tran_server::boot (const char *db_name)
 {
-  int error = init_page_server_hosts (db_name);
-  if (error != NO_ERROR)
+  int error_code = init_page_server_hosts (db_name);
+  if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return error;
+      return error_code;
     }
 
   if (uses_remote_storage ())
     {
-      get_boot_info_from_page_server ();
+      error_code = get_boot_info_from_page_server ();
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
     }
 
   on_boot ();
@@ -233,16 +238,23 @@ tran_server::init_page_server_hosts (const char *db_name)
   return exit_code;
 }
 
-void
+int
 tran_server::get_boot_info_from_page_server ()
 {
   std::string response_message;
-  send_receive (tran_to_page_request::GET_BOOT_INFO, std::string (), response_message);
+  const int error_code = send_receive (tran_to_page_request::GET_BOOT_INFO, std::string (), response_message);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   DKNVOLS nvols_perm;
   std::memcpy (&nvols_perm, response_message.c_str (), sizeof (nvols_perm));
 
   disk_set_page_server_perm_volume_count (nvols_perm);
+
+  return NO_ERROR;
 }
 
 int
@@ -269,7 +281,7 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
       return ps_conn_error_lambda ();
     }
 
-  if (!srv_chn.send_int (static_cast<int> (m_conn_type)))
+  if (srv_chn.send_int (static_cast<int> (m_conn_type)) != NO_ERRORS)
     {
       return ps_conn_error_lambda ();
     }
@@ -288,9 +300,19 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
 		srv_chn.get_channel_id ().c_str ());
 
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
+  // TODO: to reduce contention as much as possible, should be equal to the maximum number
+  // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
+
+  cubcomm::send_queue_error_handler no_transaction_handler { nullptr };
+  // Transaction server will use message specific error handlers.
+  // Implementation will assert that an error handler is present if needed.
+
+  // NOTE: only the base class part (cubcomm::server) of a cubcomm::server_server instance is
+  // moved as argument below
   m_page_server_conn_vec.emplace_back (
 	  new page_server_conn_t (std::move (srv_chn), get_request_handlers (), tran_to_page_request::RESPOND,
-				  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE));
+				  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE,
+				  std::move (no_transaction_handler)));
   m_page_server_conn_vec.back ()->start ();
 
   return NO_ERROR;
@@ -339,20 +361,31 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
   m_page_server_conn_vec[0]->push (reqid, std::move (payload));
 }
 
-void
+int
 tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
 {
   assert (is_page_server_connected ());
 
-  m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
+  const css_error_code error_code = m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
+  // NOTE: enhance error handling when:
+  //  - more than one page server will be handled
+  //  - fail-over will be implemented
+
+  if (error_code != NO_ERRORS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+      er_log_debug (ARG_FILE_LINE, "Error during send_recv message to page server. Server cannot be reached.");
+      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+    }
+
+  return NO_ERROR;
 }
 
 tran_server::request_handlers_map_t
 tran_server::get_request_handlers ()
 {
   // Insert handlers specific to all transaction servers here.
-  // For now, there are no such handlers; return an empthy map
-
+  // For now, there are no such handlers; return an empty map.
   std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
   return handlers_map;
 }

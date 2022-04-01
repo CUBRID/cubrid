@@ -53,6 +53,7 @@ last_checking_msg=""
 output_packages=""
 without_cmserver=""
 without_jdbc="false"
+with_cci="true"
 
 function print_check ()
 {
@@ -176,6 +177,13 @@ function build_clean ()
       rm -rf $build_dir/*
     fi
   fi
+
+  if [ -f $source_dir/cubrid-cci/BUILD_NUMBER ]; then
+    if [ -f $source_dir/cubrid-cci/CCI-VERSION-DIST ]; then
+      rm $source_dir/cubrid-cci/CCI-VERSION-DIST
+    fi
+  fi
+
   print_result "OK"
 }
 
@@ -189,10 +197,25 @@ function build_configure ()
   fi
   print_result "OK"
 
+  print_check "Checking CCI directory"
+  if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
+    print_check "CCI source path is not exist. It must be built for dblink"
+    if [ -d $source_dir/.git/modules/cubrid-cci ]; then
+      git submodule deinit -f cubrid-cci
+    fi
+    git submodule init cubrid-cci
+    git submodule update cubrid-cci
+  fi
+  configure_options="$configure_options -DWITH_CCI=true"
+
   print_check "Checking manager server directory"
   if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
     without_cmserver="true"
     print_error "Manager server source path is not exist. It will not be built"
+  else
+    if [ "$with_cci" = "false" ]; then
+      print_error "Manager server source path is exist, but Manager server requires cci header, It will not be built"
+    fi
   fi
 
   print_check "Checking JDBC directory"
@@ -292,6 +315,14 @@ function build_package ()
     without_jdbc="true"
     print_error "JDBC source path is not exist. It will not be packaged"
   fi
+  
+  print_check "Checking CCI directory"
+  if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
+    with_cci="false"
+    print_error "CCI source path is not exist. It will not be packaged"
+  else 
+    with_cci="true"
+  fi
 
   if [ ! -d $output_dir ]; then
     mkdir -p $output_dir
@@ -312,12 +343,25 @@ function build_package ()
 	  archive_cmd="zip -q $build_dir/$package_name -@"
 	fi
 	# add VERSION-DIST instead of VERSION file for full version string
-	(cd $source_dir && echo "$version" > VERSION-DIST && ln -sfT . cubrid-$version &&
-	  (git ls-files -o VERSION-DIST ; git ls-files &&
-	    (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|" && 
-	    ([ "$without_jdbc" = "true" ] || (cd $source_dir/cubrid-jdbc  && git ls-files -o output/VERSION-DIST; git ls-files) | sed -e "/^VERSION$/d" | sed -e "s|^|cubrid-jdbc/|")) | 
-            sed -e "/^VERSION$/d" -e "/^cubrid-jdbc$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
-	    rm cubrid-$version VERSION-DIST)
+  if [ -d $source_dir/.git -a -f $source_dir/VERSION ]; then
+	  (cd $source_dir && echo "$version" > VERSION-DIST && ln -sfT . cubrid-$version &&
+	    (git ls-files -o VERSION-DIST ; git ls-files &&
+	      (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|" &&
+	      ([ "$without_jdbc" = "true" ] || (cd $source_dir/cubrid-jdbc  && git ls-files -o output/VERSION-DIST; git ls-files) | sed -e "/^VERSION$/d" | sed -e "s|^|cubrid-jdbc/|") &&
+	      ([ "$with_cci" = "false" ] || (cd $source_dir/cubrid-cci  && git ls-files -o CCI-VERSION-DIST; git ls-files) | sed -e "/^BUILD_NUMBER$/d" | sed -e "s|^|cubrid-cci/|")) |
+              sed -e "/^VERSION$/d" -e "/^cubrid-jdbc$/d" -e "/^cubrid-cci$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
+	      rm cubrid-$version VERSION-DIST)
+  else
+    #Only handles packaging process when build to packaging file.
+    if [ "$package" = "src" ]; then
+      echo "-- Packaging Source to tar.gz"
+      (cd $source_dir && tar czf $build_dir/$package_name --exclude build_${build_target}_${build_mode} -C ${source_dir%/*} ${source_dir##*/})
+    else
+      echo "-- Packaging Source to ZIP"
+      (cd ${source_dir%/*} && zip --symlinks -rq $build_dir/$package_name ${source_dir##*/} -x \*build_${build_target}_${build_mode}\* && cd $source_dir)
+    fi
+  fi
+
 	if [ $? -eq 0 ]; then
 	  output_packages="$output_packages $package_name"
 	  [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
@@ -331,10 +375,14 @@ function build_package ()
 	fi
 
 	if [ "$package" = "cci" ]; then
-          package_basename="$product_name-CCI-$version-Linux.$build_target"
-        else
-          package_basename="$product_name-$version-Linux.$build_target"
-        fi
+	  if [ "$with_cci" = "true" ]; then
+	    cci_version=$(cat $source_dir/cubrid-cci/CCI-VERSION-DIST)
+            package_basename="$product_name-CCI-$cci_version-Linux.$build_target"
+	  fi
+  else
+    package_basename="$product_name-$version-Linux.$build_target"
+  fi
+  
 	if [ ! "$build_mode" = "release" ]; then
 	  package_basename="$package_basename-$build_mode"
 	fi
@@ -345,8 +393,10 @@ function build_package ()
 	  package_name="$package_basename.sh"
 	  (cd $build_dir && cpack -G STGZ -B $output_dir)
 	elif [ "$package" = "cci" ]; then
-	  package_name="$package_basename.tar.gz"
-	  (cd $build_dir && cpack -G TGZ -D CPACK_COMPONENTS_ALL="CCI" -B $output_dir)
+	  if [ "$with_cci" = "true" ]; then
+	    package_name="$package_basename.tar.gz"
+	    (cd $build_dir && cpack -G TGZ -D CPACK_COMPONENTS_ALL="CCI" -B $output_dir)
+	  fi
 	elif [ "$package" = "rpm" ]; then
 	  package_name="$package_basename.rpm"
 	  (cd $build_dir && cpack -G RPM -B $output_dir)

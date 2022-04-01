@@ -71,7 +71,9 @@ namespace cublog
       /* wait until replication advances past the target lsa; blocking call */
       void wait_past_target_lsa (const log_lsa &a_target_lsa);
       /* return current progress of the replicator; non-blocking call */
-      log_lsa get_redo_lsa () const;
+      log_lsa get_highest_processed_lsa () const;
+      /* return the lowest value lsa that was not applied, the next in line lsa */
+      log_lsa get_lowest_unapplied_lsa () const;
 
       log_lsa get_most_recent_trantable_snapshot_lsa () const;
 
@@ -96,6 +98,7 @@ namespace cublog
       cubthread::daemon *m_daemon = nullptr;
 
       log_lsa m_redo_lsa = NULL_LSA;
+      mutable bool m_replication_active;
       mutable std::mutex m_redo_lsa_mutex;
       mutable std::condition_variable m_redo_lsa_condvar;
       log_rv_redo_context m_redo_context;

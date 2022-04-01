@@ -339,6 +339,7 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_INT,		/* 1 */
@@ -1109,6 +1110,25 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
       goto prepare_error;
     }
 
+  if (srv_handle->cgw_handle->hstmt == NULL)
+    {
+      err_code = cgw_get_stmt_handle (srv_handle->cgw_handle->hdbc, &srv_handle->cgw_handle->hstmt);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto prepare_error;
+	}
+
+      err_code =
+	cgw_set_stmt_attr (srv_handle->cgw_handle->hstmt, SQL_ATTR_CURSOR_TYPE, (SQLPOINTER) SQL_CURSOR_STATIC,
+			   SQL_IS_INTEGER);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto prepare_error;
+	}
+    }
+
   err_code = cgw_sql_prepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) sql_stmt);
 
   if (err_code < 0)
@@ -1329,7 +1349,6 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   int num_bind = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
   char stmt_type;
-  INT64 n;
   ODBC_BIND_INFO *bind_data_list = NULL;
 
   if (srv_handle->is_prepared == FALSE)
@@ -1387,22 +1406,10 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       goto execute_error;
     }
-  n = cgw_get_row_count (srv_handle->cgw_handle->hstmt);
 
   stmt_type = get_stmt_type (srv_handle->sql_stmt);
   srv_handle->stmt_type = stmt_type;
   update_query_execution_count (as_info, stmt_type);
-
-  if (n < 0)
-    {
-      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-      goto execute_error;
-    }
-
-  if (max_row > 0 && stmt_type == CUBRID_STMT_SELECT && *clt_cache_reusable == FALSE)
-    {
-      n = MIN (n, max_row);
-    }
 
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
@@ -1413,7 +1420,6 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
-
 
   if (bind_data_list)
     {
@@ -2593,6 +2599,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
   DB_VALUE val;
   DB_OBJECT *ins_obj_p;
   T_BROKER_VERSION client_version = req_info->client_version;
+  int retried_query_num = 0;
 
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
@@ -2708,6 +2715,18 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
       if (res_count < 0)
 	{
+	  if (res_count == ER_QPROC_INVALID_XASLNODE && retried_query_num != num_query)
+	    {
+	      err_code = recompile_statement (srv_handle);
+	      if (err_code < 0)
+		{
+		  goto exec_db_error;
+		}
+	      session = (DB_SESSION *) srv_handle->session;
+	      retried_query_num = num_query;
+	      num_query--;
+	      continue;
+	    }
 	  goto exec_db_error;
 	}
 
@@ -3056,7 +3075,11 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
+#if defined(CAS_FOR_CGW)
+  SQLLEN count;
+#else
   int count;
+#endif
   char *err_str = NULL;
 #if !defined(CAS_FOR_CGW)
   T_QUERY_RESULT *cur_result;
@@ -3068,11 +3091,16 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
       goto cursor_error;
     }
 #if defined(CAS_FOR_CGW)
-  count = (int) cgw_get_row_count (srv_handle->cgw_handle->hstmt);
-  if (count < 0)
+  err_code = cgw_get_row_count (srv_handle->cgw_handle->hstmt, &count);
+  if (err_code < 0)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
       goto cursor_error;
+    }
+
+  if (count > INT_MAX)
+    {
+      count = INT_MAX;
     }
 #else
   cur_result = (T_QUERY_RESULT *) srv_handle->cur_result;
@@ -3086,7 +3114,7 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
 #endif /* CAS_FOR_CGW */
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
-  net_buf_cp_int (net_buf, count, NULL);	/* result msg */
+  net_buf_cp_int (net_buf, (int) count, NULL);	/* result msg */
 
   return 0;
 
@@ -3208,7 +3236,10 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle)
       return;
     }
 #if defined(CAS_FOR_CGW)
-  cgw_cursor_close (srv_handle->cgw_handle->hstmt);
+  if (cgw_cursor_close (srv_handle->cgw_handle->hstmt) > -1)
+    {
+      srv_handle->cgw_handle->hstmt = NULL;
+    }
 #else
   ux_free_result (srv_handle->q_result[idx].result);
   srv_handle->q_result[idx].result = NULL;
@@ -4409,8 +4440,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  {
 	    intl_char_count ((unsigned char *) value, val_size, lang_get_client_charset (), &val_length);
 	    err_code =
-	      db_make_varchar (&db_val, val_length, value, val_size, lang_get_client_charset (),
-			       lang_get_client_collation ());
+	      db_make_char (&db_val, -1, value, val_size, lang_get_client_charset (), lang_get_client_collation ());
 	    db_string_put_cs_and_collation (&db_val, lang_get_client_charset (), lang_get_client_collation ());
 	    db_val.need_clear = is_composed;
 	  }
@@ -5730,13 +5760,12 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   T_OBJECT tuple_obj;
   int err_code = 0;
   int num_tuple_msg_offset;
-  int num_tuple;
+  int num_tuple = 0;
   int net_buf_size;
   char fetch_end_flag = 0;
-  SQLLEN row_count;
   SQLSMALLINT num_cols;
-  T_COL_BINDER *first_col_binding;
-  int total_tuple_num = 0;
+  T_COL_BINDER *first_col_binding = NULL;
+  SQLLEN total_row_count = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
 
   if (result_set_idx < 0 || result_set_idx > 1)
@@ -5744,38 +5773,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       return ERROR_INFO_SET (CAS_ER_NO_MORE_RESULT_SET, CAS_ERROR_INDICATOR);
     }
 
-  row_count = cgw_get_row_count (srv_handle->cgw_handle->hstmt);
-
-  if (row_count < 0)
-    {
-      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-      goto fetch_error;
-    }
-
-  if (cursor_pos <= row_count)
-    {
-      net_buf_cp_int (net_buf, (int) total_tuple_num, &num_tuple_msg_offset);
-    }
-  else
-    {
-      fetch_end_flag = 1;
-
-      net_buf_cp_int (net_buf, 0, NULL);
-
-      if (check_auto_commit_after_getting_result (srv_handle) == true)
-	{
-	  ux_cursor_close (srv_handle);
-	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
-	}
-
-
-      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
-	{
-	  net_buf_cp_byte (net_buf, fetch_end_flag);
-	}
-
-      return 0;
-    }
+  net_buf_cp_int (net_buf, (int) total_row_count, &num_tuple_msg_offset);
 
   err_code = cgw_get_num_cols (srv_handle->cgw_handle->hstmt, &num_cols);
 
@@ -5827,6 +5825,13 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	  break;
 	}
 
+      err_code = cgw_get_row_count (srv_handle->cgw_handle->hstmt, &total_row_count);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+
       err_code = cgw_cur_tuple (net_buf, first_col_binding, cursor_pos);
       if (err_code < 0)
 	{
@@ -5854,6 +5859,16 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       net_buf_cp_byte (net_buf, fetch_end_flag);
     }
 
+  if (total_row_count > INT_MAX)
+    {
+      srv_handle->total_tuple_count = INT_MAX;
+    }
+  else
+    {
+      srv_handle->total_tuple_count = (int) total_row_count;
+    }
+  net_buf_overwrite_int (net_buf, srv_handle->total_row_count_msg_offset, srv_handle->total_tuple_count);
+  net_buf_overwrite_int (net_buf, srv_handle->res_tuple_count_msg_offset, srv_handle->total_tuple_count);
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
 
   srv_handle->cursor_pos = cursor_pos;
@@ -10457,7 +10472,7 @@ int
 get_tuple_count (T_SRV_HANDLE * srv_handle)
 {
 #if defined(CAS_FOR_CGW)
-  return srv_handle->tuple_count;
+  return srv_handle->total_tuple_count;
 #else
   return srv_handle->q_result->tuple_count;
 #endif /* CAS_FOR_CGW */
@@ -11028,4 +11043,42 @@ do_commit_after_execute (const t_srv_handle & server_handle)
     {
       return true;
     }
+}
+
+static int
+recompile_statement (T_SRV_HANDLE * srv_handle)
+{
+  int err_code = 0;
+  int stmt_id = 0;
+  DB_SESSION *session = NULL;
+
+  session = db_open_buffer (srv_handle->sql_stmt);
+  if (!session)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      return err_code;
+    }
+
+  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      db_session_set_xasl_cache_pinned (session, true, false);
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      return err_code;
+    }
+
+  if (srv_handle->session != NULL)
+    {
+      db_close_session ((DB_SESSION *) srv_handle->session);
+      srv_handle->session = NULL;
+    }
+
+  srv_handle->session = session;
+  srv_handle->q_result->stmt_id = stmt_id;
+
+  return err_code;
 }

@@ -1737,7 +1737,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_UNDO_DATA:
 	    case LOG_DUMMY_HEAD_POSTPONE:
 	    case LOG_POSTPONE:
-	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT_WITH_POSTPONE:
 	    case LOG_SYSOP_START_POSTPONE:
 	    case LOG_SAVEPOINT:
@@ -2783,7 +2782,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  break;
 
 		case LOG_RUN_POSTPONE:
-		case LOG_WILL_COMMIT:
 		case LOG_COMMIT_WITH_POSTPONE:
 		case LOG_COMMIT:
 		case LOG_SYSOP_START_POSTPONE:
@@ -3329,7 +3327,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       supplement = (LOG_REC_SUPPLEMENT *) ((char *) log_pgptr->area + log_lsa.offset);
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SUPPLEMENT), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, supplement->length, &log_lsa, log_pgptr);
-    case LOG_WILL_COMMIT:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
