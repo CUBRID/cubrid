@@ -199,7 +199,6 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
   char **class_names = NULL;
   int num_class = 0;
   int len = 0;
-  char *ptr = NULL;
   const char *dot = NULL;
 
   if (input_filename == NULL || class_list == NULL || num_class_mops == NULL)
