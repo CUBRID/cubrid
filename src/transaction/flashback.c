@@ -767,6 +767,8 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
   int num_loginfo = 0;
   CDC_LOGINFO_ENTRY *log_info_entry = NULL;
 
+  OID classoid;
+
   if (LSA_ISNULL (&context->start_lsa))
     {
       error = flashback_find_start_lsa (thread_p, context);
@@ -853,8 +855,6 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 	  SUPPLEMENT_REC_TYPE rec_type;
 
 	  LOG_LSA undo_lsa, redo_lsa;
-
-	  OID classoid;
 
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
 
@@ -1036,7 +1036,6 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 
 	      if (error != NO_ERROR)
 		{
-		  COPY_OID (&context->invalid_class, &classoid);
 		  goto error;
 		}
 
@@ -1105,6 +1104,11 @@ error:
   if (log_info_entry != NULL)
     {
       db_private_free_and_init (thread_p, log_info_entry);
+    }
+
+  if (error == ER_FLASHBACK_SCHEMA_CHANGED)
+    {
+      COPY_OID (&context->invalid_class, &classoid);
     }
 
   return error;
