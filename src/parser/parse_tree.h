@@ -467,6 +467,17 @@ struct json_t;
 #define PT_IS_EXPR_NODE_WITH_OPERATOR(n, op_type) \
         ( (PT_IS_EXPR_NODE (n)) && ((n)->info.expr.op == (op_type)) )
 
+#define PT_IS_EXPR_NODE_WITH_COMP_OP(n) \
+        ( (PT_IS_EXPR_NODE (n)) && \
+          ((n)->info.expr.op == PT_EQ || \
+           (n)->info.expr.op == PT_GE || \
+           (n)->info.expr.op == PT_GT || \
+           (n)->info.expr.op == PT_LT || \
+           (n)->info.expr.op == PT_LE || \
+           (n)->info.expr.op == PT_GT_INF || \
+           (n)->info.expr.op == PT_LT_INF || \
+           (n)->info.expr.op ==PT_RANGE ))
+
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
 

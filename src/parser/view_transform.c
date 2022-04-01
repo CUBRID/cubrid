@@ -393,6 +393,7 @@ static PT_NODE *mq_replace_virtual_oid_with_real_oid (PARSER_CONTEXT * parser, P
 
 static void mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * query_cache);
 static void mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_query);
+static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -1662,7 +1663,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   PT_NODE *pred, *statement_spec = NULL;
   CHECK_PUSHABLE_INFO cpi;
   bool is_pushable_query, is_outer_joined;
-  bool is_only_spec;
+  bool is_only_spec, is_rownum_only;
 
   /* check nulls */
   if (subquery == NULL)
@@ -1720,7 +1721,8 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
 
   /* determine if class_spec is the only spec in the statement */
-  is_only_spec = ((statement_spec->next == NULL && pred == NULL) ? true : false);
+  is_rownum_only = mq_is_rownum_only_predicate (parser, statement_spec, mainquery);
+  is_only_spec = ((statement_spec->next == NULL && is_rownum_only) ? true : false);
 
   /* do not rewrite vclass_query as a derived table if spec belongs to an insert statement. */
   if (mainquery->node_type == PT_INSERT)
@@ -3769,6 +3771,114 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
   return;
 }
 
+/*
+ * mq_is_rownum_only_predicate () - check if predicates only have rownum
+ *   return: bool
+ *   parser(in):
+ *   spec(in):
+ *   node(in):
+ *
+ * Note:
+ *                arg1            op             arg2
+ *              rownum          '= > <'        no restriction
+ */
+bool
+mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node)
+{
+  PT_NODE *where, *from, *attributes, *query_spec_columns, *col, *attr, *pred;
+  PT_NODE *arg1, *arg2;
+  bool result;
+
+  if (!pt_is_select (node))
+    {
+      return false;
+    }
+
+  if (!PT_SPEC_IS_DERIVED (spec))
+    {
+      return false;
+    }
+
+  if (PT_IS_VALUE_QUERY (spec->info.spec.derived_table))
+    {
+      return false;
+    }
+
+  /* check only spec */
+  from = node->info.query.q.select.from;
+  if (from->next != NULL)
+    {
+      return false;
+    }
+
+  /* get attr_list */
+  attributes = spec->info.spec.as_attr_list;
+  query_spec_columns = spec->info.spec.derived_table->info.query.q.select.list;
+
+  col = query_spec_columns;
+  attr = attributes;
+
+  for (; col && attr; col = col->next, attr = attr->next)
+    {
+      /* set spec_id */
+      attr->info.name.spec_id = spec->info.spec.id;
+    }
+
+  while (col)
+    {
+      if (col->flag.is_hidden_column)
+	{
+	  col = col->next;
+	  continue;
+	}
+      break;
+    }
+
+  if (col != NULL || attr != NULL)
+    {				/* error */
+      return false;
+    }
+
+  where = parser_copy_tree (parser, node->info.query.q.select.where);
+
+  /* substitute attributes for query_spec_columns in statement */
+  where = mq_lambda (parser, where, attributes, query_spec_columns);
+
+  result = true;
+  pred = where;
+  while (pred != NULL)
+    {
+      if (pred->or_next != NULL)
+	{
+	  result = false;
+	  break;
+	}
+      if (!PT_IS_EXPR_NODE_WITH_COMP_OP (pred))
+	{
+	  result = false;
+	  break;
+	}
+
+      arg1 = pred->info.expr.arg1;
+      arg2 = pred->info.expr.arg2;
+
+      /* check rownum and constant */
+      if (!(PT_IS_INSTNUM (arg1) || PT_IS_INSTNUM (arg2)))
+	{
+	  result = false;
+	  break;
+	}
+
+      pred = pred->next;
+    }
+
+  if (where != NULL)
+    {
+      parser_free_tree (parser, where);
+    }
+  return result;
+}
+
 #if 0
 /*
  * mq_copypush_sargable_terms_dblink() -
@@ -3864,7 +3974,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *temp;
   int nullable_cnt;		/* nullable terms count */
   PT_NODE *save_next;
-  bool is_outer_joined;
+  bool is_outer_joined, is_rownum_only;
 
   /* init */
   push_term_list = NULL;
@@ -3892,8 +4002,9 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       return 0;
     }
 
+  is_rownum_only = mq_is_rownum_only_predicate (parser, spec, statement);
   /* check inst num or orderby_num */
-  if (pt_has_inst_in_where_and_select_list (parser, subquery))
+  if (!is_rownum_only && pt_has_inst_in_where_and_select_list (parser, subquery))
     {
       return 0;
     }
