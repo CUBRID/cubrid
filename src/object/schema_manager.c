@@ -2246,7 +2246,7 @@ char *
 sm_qualifier_name (const char *name, char *buf, int buf_size)
 {
   const char *dot = NULL;
-  int name_size = 0;
+  int len = 0;
   int error = NO_ERROR;
 
   if (name == NULL || name[0] == '\0')
@@ -2265,13 +2265,13 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
-  name_size = STATIC_CAST (int, dot - name);
+  len = STATIC_CAST (int, dot - name);
 
-  assert (name_size < buf_size);
-  assert (name_size < SM_MAX_USER_LENGTH);
+  assert (len < buf_size);
+  assert (len < SM_MAX_USER_LENGTH);
 
-  memcpy (buf, name, name_size);
-  buf[name_size] = '\0';
+  memcpy (buf, name, len);
+  buf[len] = '\0';
 
   return buf;
 }
