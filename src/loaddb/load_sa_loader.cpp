@@ -4936,9 +4936,9 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
   if (class_name)
     {
       const char *dot = NULL;
-      int name_size = 0;
+      int len = 0;
 
-      name_size = intl_identifier_lower_string_size (class_name);
+      len = STATIC_CAST (int, strlen (class_name));
 
       dot = strchr (class_name, '.');
       if (dot)
@@ -4946,8 +4946,8 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 	  /* user specified name */
 
 	  /* user name of user specified name */
-	  name_size = STATIC_CAST (int, dot - class_name);
-	  if (name_size >= DB_MAX_USER_LENGTH)
+	  len = STATIC_CAST (int, dot - class_name);
+	  if (len >= DB_MAX_USER_LENGTH)
 	    {
 	      display_error_line (0);
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
@@ -4959,10 +4959,10 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 	    }
 
 	  /* class name of user specified name */
-	  name_size = intl_identifier_lower_string_size (dot + 1);
+	  len = STATIC_CAST (int, strlen (dot + 1));
 	}
 
-      if (name_size >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
+      if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
 	{
 	  display_error_line (0);
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,

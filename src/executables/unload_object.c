@@ -1889,52 +1889,31 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 
   while (fgets ((char *) buffer, LINE_MAX, input_file) != NULL)
     {
-      /* init */
       DB_OBJECT *class_ = NULL;
       MOP *sub_partitions = NULL;
       int is_partition = 0;
       int j = 0;		/* index of sub_partitions */
-      char *begin = NULL;
-      char *end = NULL;
       const char *dot = NULL;
-      const char *class_name = NULL;
       char downcase_class_name[DB_MAX_IDENTIFIER_LENGTH];
-      int name_size = 0;
+      int len = 0;
 
-      /* trim */
-      begin = buffer;
-      while (isspace (STATIC_CAST (unsigned char, *begin)))
-	{
-	  begin++;
-	}
+      trim (buffer);
 
-      if (*begin == '\0')
+      len = STATIC_CAST (int, strlen (buffer));
+      if (len < 1)
 	{
 	  /* empty string */
 	  continue;
 	}
 
-      end = begin + STATIC_CAST (int, strlen (begin)) - 1;
-      while (end > begin && isspace (STATIC_CAST (unsigned char, *end)))
-	{
-	  end--;
-	}
-
-      end[1] = '\0';
-
-      class_name = begin;
-
-      /* max length check */
-      name_size = intl_identifier_lower_string_size (class_name);
-
-      dot = strchr (class_name, '.');
+      dot = strchr (buffer, '.');
       if (dot)
 	{
 	  /* user specified name */
 
 	  /* user name of user specified name */
-	  name_size = STATIC_CAST (int, dot - class_name);
-	  if (name_size >= DB_MAX_USER_LENGTH)
+	  len = STATIC_CAST (int, dot - buffer);
+	  if (len >= DB_MAX_USER_LENGTH)
 	    {
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
 						     UNLOADDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
@@ -1943,10 +1922,10 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 	    }
 
 	  /* class name of user specified name */
-	  name_size = intl_identifier_lower_string_size (dot + 1);
+	  len = STATIC_CAST (int, strlen (dot + 1));
 	}
 
-      if (name_size >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
+      if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
 						 UNLOADDB_MSG_EXCEED_MAX_LEN),
@@ -1955,7 +1934,7 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 	  return ER_GENERIC_ERROR;
 	}
 
-      sm_user_specified_name (class_name, downcase_class_name, DB_MAX_IDENTIFIER_LENGTH);
+      sm_user_specified_name (buffer, downcase_class_name, DB_MAX_IDENTIFIER_LENGTH);
 
       class_ = locator_find_class (downcase_class_name);
       if (class_ != NULL)
@@ -1985,7 +1964,6 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
 						 UNLOADDB_MSG_CLASS_NOT_FOUND), downcase_class_name);
-	  /* continue; */
 	}
     }				/* while */
 

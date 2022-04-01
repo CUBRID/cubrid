@@ -95,6 +95,8 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
   int i;
   char downcase_class_name[SM_MAX_IDENTIFIER_LENGTH];
   DB_OBJECT *class_ = NULL;
+  const char *dot = NULL;
+  int len = 0;
 
   if (class_names == NULL || num_class <= 0 || class_list == NULL || num_class_list == NULL)
     {
@@ -115,8 +117,34 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
 
   for (i = 0; i < num_class; i++)
     {
-      if (class_names[i] == NULL || strlen (class_names[i]) == 0)
+      if (class_names[i] == NULL || (len = STATIC_CAST (int, strlen (class_names[i]))) == 0)
 	{
+	  goto error;
+	}
+
+      dot = strchr (class_names[i], '.');
+      if (dot)
+	{
+	  /* user specified name */
+
+	  /* user name of user specified name */
+	  len = STATIC_CAST (int, dot - class_names[i]);
+	  if (len >= DB_MAX_USER_LENGTH)
+	    {
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
+						     UNLOADDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
+	      goto error;
+	    }
+
+	  /* class name of user specified name */
+	  len = STATIC_CAST (int, strlen (dot + 1));
+	}
+
+      if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
+						 UNLOADDB_MSG_EXCEED_MAX_LEN),
+				 DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
 	  goto error;
 	}
 
@@ -172,6 +200,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
   int num_class = 0;
   int len = 0;
   char *ptr = NULL;
+  const char *dot = NULL;
 
   if (input_filename == NULL || class_list == NULL || num_class_mops == NULL)
     {
@@ -210,15 +239,8 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	  goto end;
 	}
 
-      ptr = strchr (buffer, '\n');
-      if (ptr)
-	{
-	  len = CAST_BUFLEN (ptr - buffer);
-	}
-      else
-	{
-	  len = (int) strlen (buffer);
-	}
+      trim (buffer);
+      len = STATIC_CAST (int, strlen (buffer));
 
       if (len < 1)
 	{
@@ -226,40 +248,33 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	  goto end;
 	}
 
-      {
-	const char *dot = NULL;
-	int name_size = 0;
+      dot = strchr (buffer, '.');
+      if (dot)
+	{
+	  /* user specified name */
 
-	name_size = len;
+	  /* user name of user specified name */
+	  len = STATIC_CAST (int, dot - buffer);
+	  if (len >= DB_MAX_USER_LENGTH)
+	    {
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
+						     COMPACTDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
+	      status = ER_FAILED;
+	      goto end;
+	    }
 
-	dot = strchr (buffer, '.');
-	if (dot)
-	  {
-	    /* user specified name */
+	  /* class name of user specified name */
+	  len = STATIC_CAST (int, strlen (dot + 1));
+	}
 
-	    /* user name of user specified name */
-	    name_size = STATIC_CAST (int, dot - buffer);
-	    if (name_size >= DB_MAX_USER_LENGTH)
-	      {
-		PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
-						       COMPACTDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
-		status = ER_FAILED;
-		goto end;
-	      }
-
-	    /* class name of user specified name */
-	    name_size = intl_identifier_lower_string_size (dot + 1);
-	  }
-
-	if (name_size >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
-	  {
-	    PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
-						   COMPACTDB_MSG_EXCEED_MAX_LEN),
-				   DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
-	    status = ER_FAILED;
-	    goto end;
-	  }
-      }
+      if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
+						 COMPACTDB_MSG_EXCEED_MAX_LEN),
+				 DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
+	  status = ER_FAILED;
+	  goto end;
+	}
 
       class_names[i] = (char *) malloc (DB_SIZEOF (char) * (len + 1));
       if (class_names[i] == NULL)

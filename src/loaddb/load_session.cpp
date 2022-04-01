@@ -257,10 +257,10 @@ namespace cubload
 	{
 	  const char *dot = NULL;
 	  const char *class_name = NULL;
-	  int name_size = 0;
+	  int len = 0;
 
 	  class_name = m_args.table_name.c_str ();
-	  name_size = intl_identifier_lower_string_size (class_name);
+	  len = STATIC_CAST (int, strlen (class_name));
 
 	  dot = strchr (class_name, '.');
 	  if (dot)
@@ -268,18 +268,18 @@ namespace cubload
 	      /* user specified name */
 
 	      /* user name of user specified name */
-	      name_size = STATIC_CAST (int, dot - class_name);
-	      if (name_size >= DB_MAX_USER_LENGTH)
+	      len = STATIC_CAST (int, dot - class_name);
+	      if (len >= DB_MAX_USER_LENGTH)
 		{
 		  m_driver->get_error_handler ().on_error (LOADDB_MSG_EXCEED_MAX_USER_LEN, DB_MAX_USER_LENGTH - 1);
 		  return;
 		}
 
 	      /* class name of user specified name */
-	      name_size = intl_identifier_lower_string_size (dot + 1);
+	      len = STATIC_CAST (int, strlen (dot + 1));
 	    }
 
-	  if (name_size >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
+	  if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
 	    {
 	      m_driver->get_error_handler ().on_error (LOADDB_MSG_EXCEED_MAX_LEN, DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
 	      return;
