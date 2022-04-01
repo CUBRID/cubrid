@@ -3221,7 +3221,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   check_replica_info = (HA_GET_MODE () == HA_MODE_REPLICA);
   pageid = utility_get_option_bigint_value (arg_map, APPLYINFO_PAGE_S);
-  if (((pageid != APPLYINFO_NULL_LOG_PAGEID) && (log_path == NULL)) || (pageid < 0))
+  if (((pageid != APPLYINFO_DEFAULT_LOG_PAGEID) && (log_path == NULL)) || (pageid < 0))
     {
       goto print_applyinfo_usage;
     }
@@ -3248,7 +3248,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	    }
 	}
     }
-  if ((!check_copied_info) && (!check_applied_info) && (!master_node_name) && (pageid == APPLYINFO_NULL_LOG_PAGEID))
+  if ((!check_copied_info) && (!check_applied_info) && (!master_node_name) && (pageid == APPLYINFO_DEFAULT_LOG_PAGEID))
     {
       goto print_applyinfo_usage;
     }
@@ -3279,40 +3279,40 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  db_clear_host_connected ();
 	  if ((check_applied_info != false) && check_database_name (local_database_name))
 	    {
-              printf ("\n *** Applied Info. *** \n");
-              check_applied_info = false;
+	      printf ("\n *** Applied Info. *** \n");
+	      check_applied_info = false;
 	      PRINT_AND_LOG_ERR_MSG ("\nERROR : %s\n", db_error_string (3));
 	    }
 	  if ((check_applied_info != false) && (db_login ("DBA", NULL) != NO_ERROR))
 	    {
-              printf ("\n *** Applied Info. *** \n");
-              check_applied_info = false; 
+	      printf ("\n *** Applied Info. *** \n");
+	      check_applied_info = false;
 	      PRINT_AND_LOG_ERR_MSG ("\nERROR : %s\n", db_error_string (3));
 	    }
 	  if ((check_applied_info != false) && (db_restart (arg->command_name, TRUE, local_database_name) != NO_ERROR))
 	    {
-              printf ("\n *** Applied Info. *** \n");
-              check_applied_info = false; 
+	      printf ("\n *** Applied Info. *** \n");
+	      check_applied_info = false;
 	      PRINT_AND_LOG_ERR_MSG ("\nERROR : %s\n", db_error_string (3));
 	    }
 
 	  if ((check_applied_info != false) && HA_DISABLED ())
 	    {
-              printf ("\n *** Applied Info. *** \n");
-              check_applied_info = false; 
-              printf("\nERROR : ");
-              PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO,
-                                                     APPLYINFO_MSG_NOT_HA_MODE));
+	      printf ("\n *** Applied Info. *** \n");
+	      check_applied_info = false;
+	      printf ("\nERROR : ");
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO,
+						     APPLYINFO_MSG_NOT_HA_MODE));
 	    }
-          error = NO_ERROR;
+	  error = NO_ERROR;
 
-          error = la_log_page_check (local_database_name, log_path, pageid, &check_applied_info, &check_copied_info,
-                                     &check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
-                                     &applied_final_lsa);
-          if(error == NO_ERROR)
-            {
+	  error = la_log_page_check (local_database_name, log_path, pageid, &check_applied_info, &check_copied_info,
+				     &check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
+				     &applied_final_lsa);
+	  if (error == NO_ERROR)
+	    {
 	      (void) db_shutdown ();
-            }
+	    }
 	}
       else if (check_copied_info)
 	{
@@ -3328,13 +3328,13 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("\nERROR : %s\n", db_error_string (3));
-          check_applied_info = false;
+	  check_applied_info = false;
 	  (void) db_shutdown ();
 	}
       error = NO_ERROR;
       if (check_master_info)
 	{
-          printf ("\n ***  Active Info. *** \n");
+	  printf ("\n ***  Active Info. *** \n");
 	  memset (master_database_name, 0x00, CUB_MAXHOSTNAMELEN);
 	  strcpy (master_database_name, database_name);
 	  strcat (master_database_name, "@");
@@ -3371,7 +3371,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("\nERROR : %s\n", db_error_string (3));
-          check_master_info = false;
+	  check_master_info = false;
 	  (void) db_shutdown ();
 	}
       error = NO_ERROR;

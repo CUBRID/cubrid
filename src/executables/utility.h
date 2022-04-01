@@ -1534,7 +1534,7 @@ typedef struct _ha_config
 #define APPLYINFO_VERBOSE_L                     "verbose"
 #define APPLYINFO_INTERVAL_S                    'i'
 #define APPLYINFO_INTERVAL_L                    "interval"
-#define APPLYINFO_NULL_LOG_PAGEID               LOGPAGEID_MAX+1
+#define APPLYINFO_DEFAULT_LOG_PAGEID            LOGPAGEID_MAX+1
 
 /* genlocale option list */
 #define GENLOCALE_INPUT_PATH_S			'i'

@@ -7124,8 +7124,8 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
  *   page_num: test page number
  */
 int
-la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool *check_applied_info,
-		   bool *check_copied_info, bool *check_replica_info, bool verbose, LOG_LSA * copied_eof_lsa,
+la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool * check_applied_info,
+		   bool * check_copied_info, bool * check_replica_info, bool verbose, LOG_LSA * copied_eof_lsa,
 		   LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa)
 {
   int error = NO_ERROR;
@@ -7176,10 +7176,10 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
       if ((res <= 0) || (ha_apply_info.creation_time.date == 0 && ha_apply_info.creation_time.time == 0))
 	{
 	  error = res;
-          *check_applied_info = false;
-          printf ("\n *** Applied Info. *** \n");
-          er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_AVAILABLE_INFORMATION, 0);
-          printf ("\nERROR : %s\n\n", db_error_string (3));
+	  *check_applied_info = false;
+	  printf ("\n *** Applied Info. *** \n");
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_AVAILABLE_INFORMATION, 0);
+	  printf ("\nERROR : %s\n\n", db_error_string (3));
 	  goto check_applied_info_end;
 	}
       printf ("\n *** Applied Info. *** \n");
@@ -7238,7 +7238,7 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
 	      printf ("%-30s : %s\n", "Will apply log records up to", replica_time_bound_str);
 	    }
 	}
-    } 
+    }
 check_applied_info_end:
   if (error != NO_ERROR)
     {
@@ -7257,7 +7257,7 @@ check_applied_info_end:
       la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
     }
 
-  if (*check_copied_info && (page_num >= 0) && (page_num < APPLYINFO_NULL_LOG_PAGEID))
+  if (*check_copied_info && (page_num >= 0) && (page_num < APPLYINFO_DEFAULT_LOG_PAGEID))
     {
       printf ("\n *** Copied Log Page Info. *** \n");
       LOG_PAGE *logpage;
@@ -7341,8 +7341,8 @@ check_applied_info_end:
 	    }
 	}
       free_and_init (la_Info.log_data);
-    }                     /* check_copied_info */
-copied_log_page_info_end:  	
+    }				/* check_copied_info */
+copied_log_page_info_end:
   if (error != NO_ERROR)
     {
       printf ("\nERROR : %s\n\n", db_error_string (3));
