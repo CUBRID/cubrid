@@ -1722,7 +1722,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* determine if class_spec is the only spec in the statement */
   is_rownum_only = mq_is_rownum_only_predicate (parser, statement_spec, mainquery);
-  is_only_spec = ((statement_spec->next == NULL && is_rownum_only) ? true : false);
+  is_only_spec = ((statement_spec->next == NULL && (pred == NULL || is_rownum_only)) ? true : false);
 
   /* do not rewrite vclass_query as a derived table if spec belongs to an insert statement. */
   if (mainquery->node_type == PT_INSERT)
