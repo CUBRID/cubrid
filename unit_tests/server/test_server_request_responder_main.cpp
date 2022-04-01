@@ -101,9 +101,25 @@ struct test_env
   std::atomic<unsigned int> m_rsn_gen = 0;
   test_thread_init_final m_thread_init_final;   // only to initialize/finalize cubthread
   std::array<test_conn, T_CONN_COUNT> m_conns;
-  // responder must be destroyed before connections
+  // responder must be destroyed before connections because responder handles connections in its dtor
   // because responder handles connections in its dtor
   server_request_responder<test_conn> m_rrh;
+
+  test_env ()
+  {
+    for (const auto &conn : m_conns)
+      {
+	m_rrh.register_connection (&conn);
+      }
+  }
+
+  ~test_env ()
+  {
+    for (const auto &conn : m_conns)
+      {
+	m_rrh.wait_connection_to_become_idle (&conn);
+      }
+  }
 
   void simulate_request (size_t conn_index)
   {
@@ -118,6 +134,7 @@ struct test_env
       REQUIRE (a_p == rsn); // input payload is the same
       ++a_p;  // output incremented payload
       ++conn_ref.m_handle_count;
+      std::this_thread::sleep_for (std::chrono::microseconds (1));
     };
 
     m_rrh.async_execute (conn_ref, std::move (sp), std::move (handler));

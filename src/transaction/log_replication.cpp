@@ -416,6 +416,7 @@ namespace cublog
 
   void replicator::wait_past_target_lsa (const log_lsa &a_target_lsa)
   {
+    // TODO: needs to be refactored to work with the new replicators flavors
     if (m_parallel_replication_redo == nullptr)
       {
 	// sync
@@ -438,10 +439,24 @@ namespace cublog
     return m_most_recent_trantable_snapshot_lsa.load ();
   }
 
-  log_lsa replicator::get_redo_lsa () const
+  log_lsa replicator::get_highest_processed_lsa () const
   {
     std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
     return m_redo_lsa;
+  }
+
+  log_lsa replicator::get_lowest_unapplied_lsa () const
+  {
+    // TODO: needs to be refactored to work with the new replicators flavors
+    if (m_parallel_replication_redo == nullptr)
+      {
+	// sync
+	return get_highest_processed_lsa ();
+      }
+
+    // a different value will return from here when the atomic replicator is added
+    // for now this part should not be reached
+    assert (false);
   }
 
   /*********************************************************************

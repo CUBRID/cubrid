@@ -80,10 +80,6 @@
 
 class page_server
 {
-  private:
-    class connection_handler;
-    using connection_handler_uptr_t = std::unique_ptr<connection_handler>;
-
   public:
     page_server () = default;
     page_server (const page_server &) = delete;
@@ -105,11 +101,7 @@ class page_server
     void init_request_responder ();
     void finalize_request_responder ();
 
-  private:
-    void disconnect_active_tran_server ();
-    void disconnect_tran_server_async (connection_handler *conn);
-    bool is_active_tran_server_connected () const;
-
+  private: // types
     class connection_handler
     {
       public:
@@ -173,6 +165,7 @@ class page_server
 	std::mutex m_abnormal_tran_server_disconnect_mtx;
 	bool m_abnormal_tran_server_disconnect;
     };
+    using connection_handler_uptr_t = std::unique_ptr<connection_handler>;
 
     /* helper class with the task of destroying connnection handlers and, by this,
      * also waiting for the receive and transmit threads inside the handlers to terminate
@@ -205,8 +198,14 @@ class page_server
     };
 
     using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;
+
+  private: // functions that depend on private types
+    void disconnect_active_tran_server ();
+    void disconnect_tran_server_async (const connection_handler *conn);
+    bool is_active_tran_server_connected () const;
     responder_t &get_responder ();
 
+  private: // members
     connection_handler_uptr_t m_active_tran_server_conn;
     std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
 

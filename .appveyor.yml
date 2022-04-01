@@ -4,6 +4,7 @@ image:
 environment:
   CMAKE_GENERATOR: "Visual Studio 16 2019"
   BUILD_TYPE: RelWithDebInfo
+  WITH_CCI: true
 
 matrix:
   fast_finish: true
@@ -28,5 +29,5 @@ clone_script:
 
 build_script:
   - cmake -E make_directory build
-  - cmake -E chdir build cmake -G "%CMAKE_GENERATOR%" -A x64 -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DUNIT_TESTS=ON ..
+  - cmake -E chdir build cmake -G "%CMAKE_GENERATOR%" -A x64 -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DUNIT_TESTS=ON -DWITH_CCI=%WITH_CCI% ..
   - cmake --build build --config %BUILD_TYPE%

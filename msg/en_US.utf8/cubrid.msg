@@ -904,7 +904,7 @@ $ LOADDB
 834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
 835 Undefined statistics item.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 Cannot drop the user who owns database objects(class/trigger/serial etc). 
+837 Cannot drop the user who owns database objects(class/trigger/serial/server etc).
 838 Cannot open more than %1$d index scans simultaneously.
 839 "%1$s": Unknown system parameter or bad value.
 840 Cannot change system parameter "%1$s".
@@ -1402,7 +1402,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 

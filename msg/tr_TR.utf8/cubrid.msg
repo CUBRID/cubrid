@@ -904,7 +904,7 @@ $ LOADDB
 834 Kaynak dizesi arasında bazı uyumsuzluklar "%1$s" ve verilen "%2$s" biçim dizesi vardır to_number() .
 835 Tanımlanmamış istatistikler öğesi.
 836 SAYFASINDA LATCH (%1$d|%2$d) ZAMAN AŞIMI.
-837 Veritabanı nesneleri (sınıf / tetik / seri vs) sahibi olan kullanıcılara aittir iptal edemezsiniz.. 
+837 Veritabanı nesneleri (sınıf / tetik / seri / sunucu vb) sahibi olan kullanıcılara aittir iptal edemezsiniz..
 838 Eşzamanlı olarak taranan indeksi %1$d den daha fazla açılamaz .
 839 "%1$s": Bilinmeyen sistem parametresi veya bozuk bir değer.
 840 Sistem parametresi değiştiremezsiniz "%1$s".
@@ -1402,7 +1402,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 
@@ -1542,10 +1542,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 103 Dizin ipuçlarının geçersiz kullanımı
 104 Bit dizgesinin uzunluğu en fazla %1$d bittir.
 105 Sözdizim hatası: unexpected
-106 , bekliyor '{'
-107 , bekliyor SELECT veya '('
-108 , bekliyor
-109 beklenmedik
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
 110 IFADESININ SONUNA
 111 Çizgide %1$d, sütununda %2$d önce '%3$c%4$s'\n
 112 Çizgide %1$d, sütununda %2$d önce %3$s\n
