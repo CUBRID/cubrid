@@ -4658,7 +4658,7 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
    *   The execution of insert statement on the SA-mode also generates this kind of log record.
    *   But, it doesn't create any replication log record. So, we don't need to consider it.
    */
-  if (is_mvcc_class & *rcvindex == RVHF_INSERT && recdes->type != REC_BIGONE)
+  if (is_mvcc_class && *rcvindex == RVHF_INSERT && recdes->type != REC_BIGONE)
     {
       int repid_and_flag_bits = 0;
 
@@ -4669,7 +4669,6 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
 	char mvcc_flag;
 
 	mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
-
 	assert (mvcc_flag == 0);
       }
 #endif
