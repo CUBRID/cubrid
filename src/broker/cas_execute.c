@@ -3201,10 +3201,7 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle)
       return;
     }
 #if defined(CAS_FOR_CGW)
-  if (cgw_cursor_close (srv_handle->cgw_handle->hstmt) > -1)
-    {
-      srv_handle->cgw_handle->hstmt = NULL;
-    }
+  cgw_cursor_close (srv_handle);
 #else
   ux_free_result (srv_handle->q_result[idx].result);
   srv_handle->q_result[idx].result = NULL;
@@ -5738,6 +5735,33 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       return ERROR_INFO_SET (CAS_ER_NO_MORE_RESULT_SET, CAS_ERROR_INDICATOR);
     }
 
+
+  if (srv_handle->is_cursor_open == false)
+    {
+      err_code = cgw_execute (srv_handle);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+    }
+  else if (srv_handle->is_cursor_open && cursor_pos == 1 && srv_handle->cursor_pos > 1)
+    {
+      err_code = cgw_cursor_close (srv_handle);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+
+      err_code = cgw_execute (srv_handle);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+    }
+
   net_buf_cp_int (net_buf, (int) total_row_count, &num_tuple_msg_offset);
 
   err_code = cgw_get_num_cols (srv_handle->cgw_handle->hstmt, &num_cols);
@@ -5782,9 +5806,16 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	{
 	  fetch_end_flag = 1;
 
+	  err_code = cgw_cursor_close (srv_handle);
+	  if (err_code < 0)
+	    {
+	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	      goto fetch_error;
+	    }
+
+
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
-	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 	  break;
@@ -5802,7 +5833,12 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	{
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
-	      ux_cursor_close (srv_handle);
+	      err_code = cgw_cursor_close (srv_handle);
+	      if (err_code < 0)
+		{
+		  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+		  goto fetch_error;
+		}
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 	  break;
