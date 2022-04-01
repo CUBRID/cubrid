@@ -101,8 +101,7 @@ struct test_env
   std::atomic<unsigned int> m_rsn_gen = 0;
   test_thread_init_final m_thread_init_final;   // only to initialize/finalize cubthread
   std::array<test_conn, T_CONN_COUNT> m_conns;
-  // responder must be destroyed before connections
-  // because responder handles connections in its dtor
+  // responder must be destroyed before connections because responder handles connections in its dtor
   server_request_responder<test_conn> m_rrh;
 
   test_env ()
