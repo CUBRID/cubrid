@@ -140,12 +140,15 @@ namespace cubcomm
       request_client () = delete;
       request_client (channel &&chn);
       request_client (const request_client &) = delete;
-      request_client (request_client &&other) = default;
+      request_client (request_client &&other) = delete;
+
+      request_client &operator = (const request_client &) = delete;
+      request_client &operator = (request_client &&) = delete;
 
       template <typename ... PackableArgs>
       css_error_code send (MsgId msgid, const PackableArgs &... args);	//  pack args and send request of type msgid
 
-      const channel &get_channel () const;			// get underlying channel
+      inline const channel &get_channel () const;		// get underlying channel
 
     private:
       channel m_channel;					// requests are sent on this channel
@@ -162,20 +165,20 @@ namespace cubcomm
       request_server () = delete;
       request_server (channel &&chn);
       request_server (const request_server &) = delete;
-      request_server (request_server &&other);
+      request_server (request_server &&) = delete;
       ~request_server ();
+
+      request_server &operator = (const request_server &) = delete;
+      request_server &operator = (request_server &&) = delete;
 
       void start_thread ();	  // start thread that receives and handles requests
       void stop_thread ();	  // stop the thread
 
       void register_request_handler (MsgId msgid, const server_request_handler &handler);	  // register a handler
 
-      const channel &get_channel () const;						  // get underlying channel
+      inline const channel &get_channel () const;						  // get underlying channel
 
-      bool is_thread_started () const;
-
-    protected:
-      channel m_channel;	  // request are received on this channel
+      inline bool is_thread_started () const;
 
     private:
       using request_handlers_container = std::map<MsgId, server_request_handler>;
@@ -187,8 +190,12 @@ namespace cubcomm
       // get request from buffer and call its handler
       void handle_request (std::unique_ptr<char[]> &message_buffer, size_t message_size);
 
+    protected:
+      channel m_channel;	  // request are received on this channel
+
+    private:
       std::thread m_thread;				// thread that loops and handles requests
-      bool m_shutdown = true;					// set to true when thread must stop
+      bool m_shutdown = true;				// set to true when thread must stop
       request_handlers_container m_request_handlers;	// request handler map
   };
 
@@ -202,7 +209,7 @@ namespace cubcomm
 
       request_client_server (channel &&chn);
       request_client_server (const request_client_server &) = delete;
-      request_client_server (request_client_server &&other) = default;
+      request_client_server (request_client_server &&) = delete;
 
       request_client_server &operator= (const request_client_server &) = delete;
       request_client_server &operator= (request_client_server &&) = delete;
@@ -251,17 +258,6 @@ namespace cubcomm
   request_server<MsgId>::request_server (channel &&chn)
     : m_channel (std::move (chn))
   {
-  }
-
-  template <typename MsgId>
-  request_server<MsgId>::request_server (request_server &&other)
-  {
-    // only movable if in idle phase
-    assert (!m_thread.joinable ());
-    assert (!other.m_thread.joinable ());
-
-    m_channel = std::move (other.m_channel);
-    m_request_handlers = std::move (other.m_request_handlers);
   }
 
   template <typename MsgId>

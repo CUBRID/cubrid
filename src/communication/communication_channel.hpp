@@ -51,15 +51,20 @@ namespace cubcomm
 
   class channel
   {
+      constexpr static int INVALID_PORT = -1;
+
     public:
-      channel (int max_timeout_in_ms = -1);
+      channel (int max_timeout_in_ms);
+      channel (std::string &&channel_name);
+      channel (int max_timeout_in_ms, std::string &&channel_name);
       virtual ~channel ();
 
       /* only the move operation is permitted */
-      channel (const channel &comm) = delete;
-      channel &operator= (const channel &comm) = delete;
+      channel (const channel &) = delete;
       channel (channel &&comm);
-      channel &operator= (channel &&comm);
+
+      channel &operator= (const channel &) = delete;
+      channel &operator= (channel &&) = delete;
 
       /* receive/send functions that use the created m_socket */
       css_error_code recv (char *buffer, std::size_t &maxlen_in_recvlen_out);
@@ -87,9 +92,9 @@ namespace cubcomm
       /* this is the command that the non overridden connect will send */
       int get_max_timeout_in_ms () const;
 
-      void set_channel_name (const std::string &name)
+      void set_channel_name (std::string &&name)
       {
-	m_channel_name = name;
+	m_channel_name = std::move (name);
       }
 
       std::string get_channel_id () const
@@ -109,7 +114,7 @@ namespace cubcomm
       SOCKET m_socket = INVALID_SOCKET;
       std::string m_channel_name;
       std::string m_hostname;
-      int m_port = -1;
+      int m_port = INVALID_PORT;
   };
 
 

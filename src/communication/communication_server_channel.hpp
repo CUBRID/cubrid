@@ -44,10 +44,10 @@ namespace cubcomm
       ~server_channel () = default;
 
       server_channel (const server_channel &) = delete;
-      server_channel &operator= (const server_channel &) = delete;
+      server_channel (server_channel &&) = delete;
 
-      server_channel (server_channel &&comm);
-      server_channel &operator= (server_channel &&comm);
+      server_channel &operator= (const server_channel &) = delete;
+      server_channel &operator= (server_channel &&) = delete;
 
       css_error_code connect (const char *hostname, int port, css_command_type cmd_type);
       css_error_code accept (SOCKET socket);
@@ -59,6 +59,6 @@ namespace cubcomm
       cubcomm::server_server m_conn_type;
   };
 
-}; /* cubcomm namepace */
+} /* cubcomm namepace */
 
 #endif /* _COMMUNICATION_SERVER_CHANNEL_HPP_ */
