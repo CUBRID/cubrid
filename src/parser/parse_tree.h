@@ -709,23 +709,31 @@ struct json_t;
 
 #define PT_IS_SPEC_REAL_TABLE(spec_) PT_SPEC_IS_ENTITY(spec_)
 
+/* PT_NAME_INFO */
+#define PT_NAME_ORIGINAL(n)		((n)->info.name.original)
+#define PT_NAME_RESOLVED(n)		((n)->info.name.resolved)
+
 /* PT_SYNONYM_INFO */
-#define PT_SYNONYM_NAME(n)			((n)->info.synonym.synonym_name)
-#define PT_SYNONYM_NAME_ORIGINAL(n)		((n)->info.synonym.synonym_name->info.name.original)
-#define PT_SYNONYM_NAME_RESOLVED(n)		((n)->info.synonym.synonym_name->info.name.resolved)
-#define PT_SYNONYM_OLD_NAME(n)			((n)->info.synonym.old_synonym_name)
-#define PT_SYNONYM_NEW_NAME(n)			((n)->info.synonym.new_synonym_name)
-#define PT_SYNONYM_OWNER_NAME(n)		((n)->info.synonym.synonym_owner_name)
-#define PT_SYNONYM_TARGET_NAME(n)		((n)->info.synonym.target_name)
-#define PT_SYNONYM_TARGET_NAME_ORIGINAL(n)	((n)->info.synonym.target_name->info.name.original)
-#define PT_SYNONYM_TARGET_NAME_RESOLVED(n)	((n)->info.synonym.target_name->info.name.resolved)
-#define PT_SYNONYM_TARGET_OWNER_NAME(n)		((n)->info.synonym.target_owner_name)
-#define PT_SYNONYM_COMMENT(n)			((n)->info.synonym.comment)
-#define PT_SYNONYM_COMMENT_STR(n)		((n)->info.synonym.comment->info.value.data_value.str)
-#define PT_SYNONYM_COMMENT_BYTES(n)		((n)->info.synonym.comment->info.value.data_value.str->bytes)
-#define PT_SYNONYM_ACCESS_MODIFIER(n)		((n)->info.synonym.access_modifier)
-#define PT_SYNONYM_OR_REPLACE(n)		((n)->info.synonym.or_replace)
-#define PT_SYNONYM_IF_EXISTS(n)			((n)->info.synonym.if_exists)
+#define PT_SYNONYM_NAME(n)		((n)->info.synonym.synonym_name)
+#define PT_SYNONYM_OWNER_NAME(n)	((n)->info.synonym.synonym_owner_name)
+#define PT_SYNONYM_OLD_NAME(n)		((n)->info.synonym.old_synonym_name)
+#define PT_SYNONYM_OLD_OWNER_NAME(n)	((n)->info.synonym.old_synonym_owner_name)
+#define PT_SYNONYM_NEW_NAME(n)		((n)->info.synonym.new_synonym_name)
+#define PT_SYNONYM_NEW_OWNER_NAME(n)	((n)->info.synonym.new_synonym_owner_name)
+#define PT_SYNONYM_TARGET_NAME(n)	((n)->info.synonym.target_name)
+#define PT_SYNONYM_TARGET_OWNER_NAME(n)	((n)->info.synonym.target_owner_name)
+#define PT_SYNONYM_COMMENT(n)		((n)->info.synonym.comment)
+#define PT_SYNONYM_COMMENT_STR(n)	((n)->info.synonym.comment->info.value.data_value.str)
+#define PT_SYNONYM_COMMENT_BYTES(n)	((n)->info.synonym.comment->info.value.data_value.str->bytes)
+#define PT_SYNONYM_ACCESS_MODIFIER(n)	((n)->info.synonym.access_modifier)
+#define PT_SYNONYM_OR_REPLACE(n)	((n)->info.synonym.or_replace)
+#define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
+
+#define PT_IS_SYNONYM_NODE(n) \
+	( (n)->node_type == PT_ALTER_SYNONYM  || \
+	  (n)->node_type == PT_CREATE_SYNONYM || \
+	  (n)->node_type == PT_DROP_SYNONYM || \
+	  (n)->node_type == PT_RENAME_SYNONYM )
 
 /*
  Enumerated types of parse tree statements
@@ -3374,15 +3382,17 @@ typedef struct pt_rename_server_info
 struct pt_synonym_info
 {
   PT_NODE *synonym_name;	/* PT_NAME */
-  PT_NODE *old_synonym_name;	/* PT_NAME */
-  PT_NODE *new_synonym_name;	/* PT_NAME */
   PT_NODE *synonym_owner_name;	/* PT_NAME */
+  PT_NODE *old_synonym_name;	/* PT_NAME */
+  PT_NODE *old_synonym_owner_name;	/* PT_NAME */
+  PT_NODE *new_synonym_name;	/* PT_NAME */
+  PT_NODE *new_synonym_owner_name;	/* PT_NAME */
   PT_NODE *target_name;		/* PT_NAME */
   PT_NODE *target_owner_name;	/* PT_NAME */
   PT_MISC_TYPE access_modifier;	/* PT_MISC_TYPE */
   PT_NODE *comment;		/* PT_VALUE */
-  bool or_replace;		/* OR REPLACE clause for create serial */
-  bool if_exists;		/* IF EXISTS clause for drop serial */
+  unsigned or_replace:1;	/* OR REPLACE clause for CREATE SYNONYM */
+  unsigned if_exists:1;		/* IF EXISTS clause for DROP SYNONYM */
 };
 
 /* Info field of the basic NODE

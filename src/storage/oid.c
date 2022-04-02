@@ -63,6 +63,7 @@ static OID oid_Authorization_class = { 0, 0, 0 };
 static OID oid_Authorizations_class = { 0, 0, 0 };
 static OID oid_DB_root_class = { 0, 0, 0 };
 static OID oid_DBServer_class = { 0, 0, 0 };
+
 static OID oid_Synonym_class = OID_INITIALIZER;
 
 static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };

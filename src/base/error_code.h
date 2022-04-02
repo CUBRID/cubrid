@@ -1708,19 +1708,12 @@
 #define ER_QPROC_CREATE_SERIAL_NOT_OWNER            -1336
 #define ER_TR_CREATE_NOT_ALLOWED                    -1337
 
-#define ER_QPROC_CANNOT_USE_CATALOG_NAME            -1400
-#define ER_QPROC_INVALID_PUBLIC_SYNONYM_OWNER       -1401
-#define ER_QPROC_CANNOT_PRIAVTE_SYNONYM_FOR_USER    -1402
-#define ER_QPROC_DB_SYNONYM_CLASS_NOT_FOUND         -1403
-#define ER_QPROC_DB_SYNONYM_VCLASS_NOT_FOUND        -1404
-#define ER_QPROC_PUBLIC_SYNONYM_NOT_FOUND           -1405
-#define ER_QPROC_PRIVATE_SYNONYM_NOT_FOUND          -1406
-#define ER_QPROC_PUBLIC_SYNONYM_ALREADY_EXIST       -1407
-#define ER_QPROC_PRIVATE_SYNONYM_ALREADY_EXIST      -1408
-#define ER_QPROC_CANNOT_UPDATE_SYNONYM              -1409
-#define ER_QPROC_NOT_SUPPORT                        -1410
+#define ER_SYNONYM_PUBLIC_ALREADY_EXIST             -1338
+#define ER_SYNONYM_PUBLIC_NOT_EXIST                 -1339
+#define ER_SYNONYM_ALREADY_EXIST                    -1440
+#define ER_SYNONYM_NOT_EXIST                        -1441
 
-#define ER_LAST_ERROR                               -1500
+#define ER_LAST_ERROR                               -1442
 /*
  * CAUTION!
  *

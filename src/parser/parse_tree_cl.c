@@ -18921,33 +18921,31 @@ pt_print_alter_server (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_WALK (parser, p->info.synonym.synonym_name, arg);
-  PT_APPLY_WALK (parser, p->info.synonym.target_name, arg);
-  PT_APPLY_WALK (parser, p->info.synonym.comment, arg);
+  PT_APPLY_WALK (parser, PT_SYNONYM_NAME (p), arg);
+  PT_APPLY_WALK (parser, PT_SYNONYM_TARGET_NAME (p), arg);
   return p;
 }
 
 static PT_NODE *
 pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_WALK (parser, p->info.synonym.synonym_name, arg);
-  PT_APPLY_WALK (parser, p->info.synonym.target_name, arg);
-  PT_APPLY_WALK (parser, p->info.synonym.comment, arg);
+  PT_APPLY_WALK (parser, PT_SYNONYM_NAME (p), arg);
+  PT_APPLY_WALK (parser, PT_SYNONYM_TARGET_NAME (p), arg);
   return p;
 }
 
 static PT_NODE *
 pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_WALK (parser, p->info.synonym.synonym_name, arg);
+  PT_APPLY_WALK (parser, PT_SYNONYM_NAME (p), arg);
   return p;
 }
 
 static PT_NODE *
 pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_WALK (parser, p->info.synonym.old_synonym_name, arg);
-  PT_APPLY_WALK (parser, p->info.synonym.new_synonym_name, arg);
+  PT_APPLY_WALK (parser, PT_SYNONYM_OLD_NAME (p), arg);
+  PT_APPLY_WALK (parser, PT_SYNONYM_NEW_NAME (p), arg);
   return p;
 }
 

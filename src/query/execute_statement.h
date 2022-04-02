@@ -192,8 +192,6 @@ extern int do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
 
-extern MOP do_get_synonym (const char *name, const char *owner_name, const int is_public);
-
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
 

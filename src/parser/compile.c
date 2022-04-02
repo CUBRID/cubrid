@@ -687,6 +687,7 @@ int
 pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spec, LC_PREFETCH_FLAGS flags)
 {
   MOP synonym_mop = NULL;
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *class_name = NULL;
   int len = 0;
 
@@ -738,6 +739,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
       lcks->allocated_count++;
     }
 
+  /* If it is a synonym name, change it to the target name. */
   class_name = spec->info.spec.entity_name->info.name.original;
   synonym_mop = db_find_synonym (class_name);
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND || er_errid () == ER_LC_UNKNOWN_CLASSNAME)
@@ -749,8 +751,10 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
       class_name = db_get_synonym_target_name (synonym_mop);
     }
 
+  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+
   /* need to lowercase the class name so that the lock manager can find it. */
-  len = (int) strlen (class_name);
+  len = (int) strlen (realname);
   /* parser->lcks_classes[n] will be freed at parser_free_parser() */
   lcks->classes[lcks->num_classes] = (char *) calloc (1, len + 1);
   if (lcks->classes[lcks->num_classes] == NULL)
@@ -759,7 +763,8 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
       return MSGCAT_RUNTIME_OUT_OF_MEMORY;
     }
 
-  sm_downcase_name (class_name, lcks->classes[lcks->num_classes], len + 1);\
+  memcpy (lcks->classes[lcks->num_classes], realname, len + 1);
+  lcks->classes[lcks->num_classes][len] = '\0';
 
   if (spec->info.spec.only_all == PT_ONLY)
     {

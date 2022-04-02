@@ -3182,8 +3182,8 @@ sm_is_system_class (MOP op)
 /*
  * sm_check_system_class_by_name () - Checks whether the class name is
  *    the same as the system class name.
- * return: int
- * name(in): class simple name
+ * return: true if the system class name, false otherwise
+ * name(in): class name
  */
 bool
 sm_check_system_class_by_name (const char *name)

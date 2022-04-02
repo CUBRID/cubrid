@@ -1412,20 +1412,12 @@ $ LOADDB
 1335 RENAME does not allow change of owner.
 1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
 1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+1338 Public synonym "%1$s" already exists.
+1339 Public synonym "%1$s" does not exist.
+1440 Synonym "%1$s" already exists.
+1441 Synonym "%1$s" does not exist.
 
-1400 Cannot use system class/vclass name as synonym name.
-1401 PUBLIC SYNONYM cannot be owned by %1$s.
-1402 Creating private synonym for other user can only be performed by DBA or a DBA group member.
-1403 _db_synonym class not found.
-1404 db_synonym vclass not found.
-1405 Public synonym %1$s.%2$s not found.
-1406 Private synonym %1$s.%2$s not found.
-1407 Public synonym %1$s.%2$s already exist.
-1408 Private synonym %1$s.%2$s already exist.
-1409 Cannot update synonym %1$s.%2$s.
-1410 %1$s is not yet supported.
-
-1500 Letzter Fehler
+1442 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -1583,11 +1575,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Maximale Länge eines Kommentars ist %1$d bytes.
 128 Ungültige Anzahl von Argumenten für JSON_OBJECTAGG.
 129 PARALLEL count-Argument muss zwischen %1$d und %2$d liegen.
-130 Verschiedene Besitzer vor und nach der Umbenennung.\n  Beim Umbenennen kann der Besitzer nicht geändert werden.
-131 Invalid alter synonym.\n  ALTER [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-132 Invalid create synonym.\n  CREATE [OR REPLACE] [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 Invalid drop synonym.\n  DROP [PUBLIC|PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-134 Invalid rename synonym.\n  RENAME [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+130 dblink - Server name cannot contain periods.
+131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.
@@ -1897,6 +1889,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 305 Die Signatur %1$s ist nicht mit Funktionsargumenten kompatibel.
 306 dblink - Erforderliche Informationen fehlen.
 307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+308 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+309 DBA, members of DBA group, and owner can perform %1$s.
+310 Public synonym "%1$s" already exists.
+311 Public synonym "%1$s" does not exist.
+312 Synonym "%1$s" already exists.
+313 Synonym "%1$s" does not exist.
+314 Rename cannot change owner.
+315 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.

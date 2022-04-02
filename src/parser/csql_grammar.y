@@ -3060,7 +3060,7 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE			/* 1 */
 	  opt_or_replace		/* 2 */
-	  	{ push_msg (MSGCAT_SYNTAX_INVALID_CREATE_SYNONYM); }	/* 3 */
+	  	{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_CREATE); }	/* 3 */
 	  opt_access_modifier		/* 4 */
 	  SYNONYM			/* 5 */
 	  synonym_name_without_dot	/* 6 */
@@ -3070,7 +3070,8 @@ create_stmt
 	  	{ pop_msg(); }
 		{{
 
-			PT_NODE *node = parser_new_node(this_parser, PT_CREATE_SYNONYM);
+			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SYNONYM);
+			PT_MISC_TYPE synonym_access_modifier;
 
 			if (node)
 			  {
@@ -3079,9 +3080,11 @@ create_stmt
 			    PT_SYNONYM_NAME (node) = $6;
 			    PT_SYNONYM_TARGET_NAME (node) = $8;
 			    PT_SYNONYM_COMMENT (node) = $9;
-			    if (PT_SYNONYM_NAME_RESOLVED (node))
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
+
+			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
-				PT_SYNONYM_OWNER_NAME (node) = pt_append_string (this_parser, NULL, PT_SYNONYM_NAME_RESOLVED (node));
+				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
 			  }
 
@@ -3907,7 +3910,7 @@ alter_stmt
 
 		DBG_PRINT}}
 	| ALTER				/* 1 */
-		{ push_msg (MSGCAT_SYNTAX_INVALID_ALTER_SYNONYM); }	/* 2 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_ALTER); }	/* 2 */
 	  opt_access_modifier		/* 3 */
 	  SYNONYM			/* 4 */
 	  synonym_name			/* 5 */
@@ -3917,14 +3920,21 @@ alter_stmt
 		{ pop_msg(); }
 		{{
 
-			PT_NODE *node = parser_new_node(this_parser, PT_ALTER_SYNONYM);
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SYNONYM);
+			PT_MISC_TYPE synonym_access_modifier;
 
 			if (node)
 			  {
-			    node->info.synonym.access_modifier = $3;
-			    node->info.synonym.synonym_name = $5;
-			    node->info.synonym.target_name = $7;
-			    node->info.synonym.comment = $8;
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = $3;
+			    PT_SYNONYM_NAME (node) = $5;
+			    PT_SYNONYM_TARGET_NAME (node) = $7;
+			    PT_SYNONYM_COMMENT (node) = $8;
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
+
+			    if (synonym_access_modifier == PT_PUBLIC)
+			      {
+				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
+			      }
 			  }
 
 			$$ = node;
@@ -4024,7 +4034,7 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	| RENAME			/* 1 */
-		{ push_msg (MSGCAT_SYNTAX_INVALID_RENAME_SYNONYM); }	/* 2 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_RENAME); }	/* 2 */
 	  opt_access_modifier		/* 3 */
 	  SYNONYM			/* 4 */
 	  synonym_name			/* 5 */
@@ -4033,16 +4043,19 @@ rename_stmt
 	  	{ pop_msg(); }
 		{{
 
-			PT_NODE *node = parser_new_node(this_parser, PT_RENAME_SYNONYM);
+			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SYNONYM);
+			PT_MISC_TYPE synonym_access_modifier;
 
 			if (node)
 			  {
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $3;
 			    PT_SYNONYM_OLD_NAME (node) = $5;
 			    PT_SYNONYM_NEW_NAME (node) = $7;
-			    if (PT_SYNONYM_NAME_RESOLVED (node))
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
+
+			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
-				PT_SYNONYM_OWNER_NAME (node) = pt_append_string (this_parser, NULL, PT_SYNONYM_NAME_RESOLVED (node));
+				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
 			  }
 
@@ -4369,7 +4382,7 @@ drop_stmt
 
 		DBG_PRINT}}
 	| DROP				/* 1 */
-		{ push_msg (MSGCAT_SYNTAX_INVALID_DROP_SYNONYM); }	/* 2 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_DROP); }	/* 2 */
 	  opt_access_modifier		/* 3 */
 	  SYNONYM			/* 4 */
 	  opt_if_exists			/* 5 */
@@ -4377,16 +4390,20 @@ drop_stmt
 	  	{ pop_msg(); }
 		{{
 
-			PT_NODE *node = parser_new_node(this_parser, PT_DROP_SYNONYM);
+			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SYNONYM);
+			PT_MISC_TYPE synonym_access_modifier;
+			const char *synonym_owner_name = NULL;
 
 			if (node)
 			  {
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $3;
 			    PT_SYNONYM_IF_EXISTS (node) = $5;
 			    PT_SYNONYM_NAME (node) = $6;
-			    if (PT_SYNONYM_NAME_RESOLVED (node))
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
+
+			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
-				PT_SYNONYM_OWNER_NAME (node) = pt_append_string (this_parser, NULL, PT_SYNONYM_NAME_RESOLVED (node));
+				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
 			  }
 

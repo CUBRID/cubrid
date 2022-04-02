@@ -1412,20 +1412,12 @@ $ LOADDB
 1335 RENAME은 소유자 변경을 허용하지 않습니다.
 1336 DBA, DBA 그룹의 구성원 및 소유자가 CREATE SERIAL을 수행할 수 있습니다.
 1337 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TRIGGER를 수행할 수 있습니다.
+1338 공개 동의어 "%1$s"이(가) 이미 존재합니다.
+1339 공개 동의어 "%1$s"이(가) 존재하지 않습니다.
+1340 동의어 "%1$s"이(가) 이미 존재합니다.
+1341 동의어 "%1$s"이(가) 존재하지 않습니다.
 
-1400 Synonym 이름으로 System 테이블/뷰의 이름을 사용할 수 없습니다.
-1401 PUBLIC SYNONYM은 %1$s가 소유할 수 없습니다.
-1402 DBA 또는 DBA 그룹의 멤버 사용자만 다른 사용자의 Private Synonym을 생성할 수 있습니다.
-1403 _db_synonym 시스템 테이블이 존재하지 않습니다.
-1404 db_synonym 시스템 뷰가 존재하지 않습니다.
-1405 Public Synonym %1$s.%2$s이 존재하지 않습니다.
-1406 Private Synonym %1$s.%2$s이 존재하지 않습니다.
-1407 Public Synonym %1$s.%2$s이 이미 존재합니다.
-1408 Private Synonym %1$s.%2$s이 이미 존재합니다.
-1409 Synonym %1$s.%2$s을 변경할 수 없습니다.
-1410 %1$s는 아직 지원하고 있지 않습니다.
-
-1500 마지막 에러
+1442 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1583,11 +1575,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 커맨트의 최대 길이는 %1$d 바이트입니다.
 128 JSON_OBJECTAGG 인자의 갯수가 잘못되었습니다.
 129 PARALLEL 인자 값은 %1$d에서 %2$d까지 허용됩니다.
-130 이름 바꾸기 전과 후의 소유자가 다릅니다.\n  이름 바꾸기는 소유자를 변경할 수 없습니다.
-131 잘못된 형식의 alter synonym 구문입니다.\n  ALTER [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-132 잘못된 형식의 create synonym 구문입니다.\n  CREATE [OR REPLACE] [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PUBLIC|PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-134 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+130 dblink - Server name cannot contain periods.
+131 잘못된 형식의 alter synonym 구문입니다.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+132 잘못된 형식의 create synonym 구문입니다.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+134 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1897,6 +1889,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 305 함수 인자와 함수 정의 %1$s 은 호환되지 않습니다.
 306 dblink - 필수 정보가 누락되었습니다.
 307 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TABLE/VIEW를 수행할 수 있습니다.
+308 잘못된 동의어 이름 "%1$s".\n  시스템 클래스/뷰 이름은 동의어 이름이 될 수 없습니다.
+309 DBA, DBA 그룹의 구성원 및 소유자가 %1$s을(를) 수행할 수 있습니다.
+310 공개 동의어 "%1$s"이(가) 이미 존재합니다.
+311 공개 동의어 "%1$s"이(가) 존재하지 않습니다.
+312 동의어 "%1$s"이(가) 이미 존재합니다.
+313 동의어 "%1$s"이(가) 존재하지 않습니다.
+314 이름 바꾸기는 소유자를 변경할 수 없습니다.
+315 이름 바꾸기는 같은 이름으로 변경할 수 없습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

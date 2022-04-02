@@ -3039,7 +3039,7 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
       break;
 
     case LC_CLASSNAME_DELETED:
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, classname);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, classname);
       break;
 
     case LC_CLASSNAME_ERROR:
