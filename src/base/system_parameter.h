@@ -458,8 +458,9 @@ enum param_id
   PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL,
   PRM_ID_FIRST_LOG_PAGEID,	/* Except for QA or TEST purposes, never use it. */
   PRM_ID_THREAD_CORE_COUNT,
+  PRM_ID_FLASHBACK_TIMEOUT,
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_THREAD_CORE_COUNT
+  PRM_LAST_ID = PRM_ID_FLASHBACK_TIMEOUT
 };
 typedef enum param_id PARAM_ID;
 

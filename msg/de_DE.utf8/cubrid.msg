@@ -1408,7 +1408,14 @@ $ LOADDB
 
 1332 Das aktive Protokollvolumen (%1$s) ist zu normal, um es neu zu erstellen. Wenn Sie das aktive Protokoll entfernen, kann dies zu einem unerwarteten und irreversiblen Problem führen.
 
-1333 Letzter Fehler
+1333 Ungültige Zeit (%1$s) um Flashback zu starten. Die Zeit muss zwischen (%2$s) und (%3$s) eingestellt werden.
+1334 Die Flashback-Klasse kann nicht gefunden werden (%1$s).
+1335 Zu viele Transaktionen für Flashback. Weniger als %1$d Transaktionen können Flashbacks sein.
+1336 Flashback für diese Klasse kann nicht unterstützt werden (Name : %1$s , OID : %2$d|%3$d|%4$d). Das Klassenschema wurde geändert.
+1337 Protokolldatensatz existiert nicht (lsa : %1$lld|%2$d). Das Archivprotokoll-Volume wurde gelöscht.
+1338 Flashback läuft bereits. Flashback kann nicht von mehr als einem Benutzer gleichzeitig ausgeführt werden.
+
+1339 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

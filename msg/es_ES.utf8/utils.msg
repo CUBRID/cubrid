@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longitud o caracter '%1$c' en el nombre de la base de datos '%2$s'\n no valida.
@@ -128,6 +129,7 @@ Nombre de utilidad admin disponible:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Utilidades de administrador disponible:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
@@ -1233,3 +1236,40 @@ OPERACIONES: se debe dar una de las operaciones, y son exclusivas\n\
     -n, --generate-new-key      genera una nueva clave en el archivo de claves (_keys); recuento máximo: 128\n\
     -d, --delete-key=KEY_INDEX  eliminar una clave en el archivo de claves (_keys)\n\
     -c, --change-key=KEY_INDEX  cambia el conjunto de claves en la base de datos por otra clave en el archivo de claves (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 Introduzca la contraseña de DBA:
+2 Formato de fecha no válido, el formato válido es dd-mm-yyyy:hh:mm:ss\n
+3 Se requiere que la fecha de inicio (%1$s) sea menor que la fecha de finalización (%2$s)\n
+4 Intente con una fecha anterior a la actual (%1$s) o posterior a la creación de la base de datos (%2$s)\n
+5 La tabla (%1$s) no existe en la base de datos\n
+6 Demasiadas transacciones para flashback. Reduzca el intervalo entre la fecha de inicio y la fecha de finalización\n
+7 No se pudo obtener flashback porque se cambió el esquema (%1$s).\n
+8 Se ha eliminado el volumen de registro. Intente con la fecha posterior\n
+9 No se pudo abrir el archivo de salida '%1$s'\n
+10 ID de transacción (%1$d) no existe\n
+11 Configure 'supplemental_log' en 'cubrid.conf'. Solo los registros de SQL ejecutados después de configurar 'supplemental_log' pueden recuperarse.\n
+12 El ID de transacción debe ingresarse en %1$d segundos. El tiempo de espera se puede ajustar a través de la configuración de 'flashback_timeout' en 'cubrid.conf'.\n
+13 Flashback ya se está ejecutando. Dos procesos no pueden ejecutar Flashback.\n
+14 Flashback no se puede ejecutar como modo independiente.\n
+60 \
+flashback: proporciona declaraciones para retroceder una transacción específica.\n\
+uso: %1$s flashback [OPCIÓN] database-name class_name1 [class_name2 ...]\n\
+\n\
+opciones válidas:\n\
+    -o, --output-file=ARCHIVO     redirige el mensaje de salida a ARCHIVO; predeterminado: ninguno.\n\
+    -u, --user=ID                 especifica el usuario que ejecutó la instrucción SQL para retroceder; predeterminado: TODO.\n\
+    -p, --dba-password            contraseña del usuario DBA; le preguntará si no especifica\n\
+    -s, --start-date=FECHA        especifica la FECHA de inicio para el flashback. Los registros de SQL se extraen de DATE.\n\
+                                  La FECHA se da de la siguiente manera: dd-mm-yyyy:hh:mm:ss.\n\
+    -e, --end-date=FECHA          especifica la FECHA de finalización para el flashback. Los registros SQL se extraen hasta la FECHA.\n\
+                                  si no se especifica la fecha de inicio, entonces ((END - 10min) ~ END) se establece en rango,\n\
+                                  y de lo contrario, si no se especifica END, entonces se establece (start ~ (start + 10min)).\n\
+                                  Y no se especifica una fecha de inicio ni una fecha de finalización,\n\
+                                  se extraen los registros SQL, ejecutados entre (hora actual - 10 minutos) y la hora actual.\n\
+    --detail                      genera información detallada para cada instrucción SQL.\n\
+                                  El ID de transacción, el nombre de usuario y la declaración SQL original se devolverán con la\n\
+                                  declaración SQL\n\
+                                  para retrospectiva; predeterminado: genera solo sentencias SQL para flashback\n\
+    --oldest                      flashback más antiguo se realiza en orden cronológico para las sentencias SQL ejecutadas desde\n\
+                                  la hora de inicio hasta la hora de finalización; predeterminado: último\n

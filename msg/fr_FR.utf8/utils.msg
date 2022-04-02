@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longueur ou caractère non valide '%1$c' dans le nom de la base de données '%2$s'\n
@@ -128,6 +129,7 @@ Nom d'utilitaires d'administration disponible:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s est un outil de SGBD.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Utilitaires d'administrateur disponibles:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s is a tool for DBMS.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -1243,3 +1246,39 @@ OPÉRATIONS: l'une des opérations doit être donnée, et elles sont exclusives\
     -n, --generate-new-key      génère une nouvelle clé dans le fichier de clé (_keys); nombre maximum: 128\n\
     -d, --delete-key=KEY_INDEX  supprime une clé dans le fichier de clés (_keys)\n\
     -c, --change-key=KEY_INDEX  modifier le jeu de clés de la base de données pour une autre clé dans le fichier de clés (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 Saisissez le mot de passe DBA :
+2 Format de date non valide, le format valide est jj-mm-aaaa:hh:mm:ss\n
+3 La date de début (%1$s) doit être inférieure à la date de fin (%2$s)\n
+4 Veuillez essayer avec une date antérieure à la date actuelle (%1$s) ou postérieure à la création de la base de données (%2$s)\n
+5 La table (%1$s) n'existe pas dans la base de données\n
+6 Trop de transactions pour revenir en arrière. Veuillez raccourcir l'intervalle entre la date de début et la date de fin\n
+7 Impossible d'obtenir le flashback car le schéma (%1$s) a été modifié.\n
+8 Le volume du journal a été supprimé. Veuillez essayer avec une date ultérieure\n
+9 Impossible d'ouvrir le fichier de sortie '%1$s'\n
+10 L'ID de transaction (%1$d) n'existe pas\n
+11 Veuillez définir 'supplemental_log' dans 'cubrid.conf'. Seuls les journaux SQL exécutés après la définition de 'supplemental_log' peuvent faire l'objet d'un flashback.\n
+12 L'ID de transaction doit être saisi dans %1$d secondes. Le délai peut être ajusté via le paramètre 'flashback_timeout' dans 'cubrid.conf'.\n
+13 Flashback est déjà en cours d'exécution. Flashback ne peut pas être exécuté par deux processus.\n
+14 Flashback ne peut pas s'exécuter en mode autonome.\n
+60 \
+flashback : fournit des instructions pour revenir en arrière sur une transaction spécifique.\n\
+utilisation : %1$s flashback [OPTION] nom-base de données nom_classe1 [nom_classe2 ...]\n\
+\n\
+options valides :\n\
+    -o, --output-file=FILE        redirige le message de sortie vers FILE ; par défaut : aucun.\n\
+    -u, --user=ID                 spécifiez l'utilisateur qui a exécuté l'instruction SQL à flashback ; par défaut : TOUT.\n\
+    -p, --dba-password            mot de passe de l'utilisateur DBA ; demandera si vous ne spécifiez pas\n\
+    -s, --start-date=DATE         spécifiez la DATE de début du flashback. Les journaux SQL sont extraits de la DATE.\n\
+                                  La DATE est donnée comme suit : jj-mm-aaaa:hh:mm:ss.\n\
+    -e, --end-date=DATE           spécifiez la DATE de fin du flashback. Les journaux SQL sont extraits jusqu'au DATE.\n\
+                                  si la date de début n'est pas spécifiée, alors ((END - 10min) ~ END) est défini sur la plage,\n\
+                                  et sinon si END n'est pas spécifié, alors (start ~ (start + 10min)) est défini.\n\
+                                  Et ni une date de début ni une date de fin n'est spécifiée,\n\
+                                  les logs SQL, exécutés entre le (heure actuelle - 10min) et l'heure actuelle, sont extraits.\n\
+    --detail                      affiche des informations détaillées pour chaque instruction SQL.\n\
+                                  L'ID de transaction, le nom d'utilisateur et l'instruction SQL d'origine seront renvoyés avec l'instruction SQL\n\
+                                  pour le flash-back ; par défaut : génère uniquement des instructions SQL pour le flashback\n\
+    --oldest                      flashback le plus ancien est exécuté dans l'ordre chronologique pour les instructions SQL exécutées\n\
+                                  de l'heure de début à l'heure de fin ; par défaut : le plus récent\n

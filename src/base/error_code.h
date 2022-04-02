@@ -1701,7 +1701,14 @@
 
 #define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
 
-#define ER_LAST_ERROR                               -1333
+#define ER_FLASHBACK_INVALID_TIME                   -1333
+#define ER_FLASHBACK_INVALID_CLASS                  -1334
+#define ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY -1335
+#define ER_FLASHBACK_SCHEMA_CHANGED                 -1336
+#define ER_FLASHBACK_LOG_NOT_EXIST                  -1337
+#define ER_FLASHBACK_DUPLICATED_REQUEST             -1338
+
+#define ER_LAST_ERROR                               -1339
 /*
  * CAUTION!
  *

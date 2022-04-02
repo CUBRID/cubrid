@@ -1408,7 +1408,14 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 
 1332 Le volume de journal actif (%1$s) est trop sain pour être recréé. Si vous supprimez le journal actif, cela peut provoquer un problème inattendu et irréversible.
 
-1333 Dernière erreur
+1333 Heure invalide (%1$s) pour démarrer le flashback. Le temps doit être défini entre (%2$s) et (%3$s).
+1334 Impossible de trouver la classe à flashback (%1$s).
+1335 Trop de transactions pour revenir en arrière. Moins de %1$d transactions peuvent faire l'objet d'un flashback.
+1336 Impossible de prendre en charge le flashback pour cette classe (nom : %1$s , OID : %2$d|%3$d|%4$d). Le schéma de classe a été modifié.
+1337 L'enregistrement de journal n'existe pas (lsa : %1$lld|%2$d). Le volume du journal d'archivage a été supprimé.
+1338 Flashback est déjà en cours d'exécution. Flashback ne peut pas être exécuté par plus d'un utilisateur à la fois.
+
+1339 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Geçersiz uzunluk veya karakter '%1$c' veritabanı adı '%2$s' \n
@@ -128,6 +129,7 @@ Mevcut yönetici yardımcı programı-adı:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz:http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Mevcut yönetici programları:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz: http://www.cubrid.org\n
@@ -1227,3 +1230,39 @@ geçerli seçenekler:\n\
     -n, --generate-new-key       anahtar dosyasında (_keys) yeni bir anahtar oluşturur; maksimum sayı: 128\n\
     -d, --delete-key=KEY_INDEX   anahtar dosyasındaki (_keys) bir anahtarı sil\n\
     -c, --change-key=KEY_INDEX   anahtar dosyasındaki (_keys) başka bir anahtar için veritabanındaki anahtarı değiştir\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 DBA şifresini girin:
+2 Geçersiz tarih biçimi, geçerli biçim gg-aa-yyyy:ss:dd:ss\n
+3 Başlangıç tarihi (%1$s), bitiş tarihinden (%2$s) küçük olmalıdır\n
+4 Lütfen geçerli tarihten (%1$s) önce veya veritabanı oluşturulduktan sonra (%2$s) bir tarihle deneyin\n
+5 Tablo (%1$s) veritabanında yok\n
+6 Geri dönüş için çok fazla işlem var. Lütfen başlangıç tarihi ile bitiş tarihi arasındaki süreyi kısaltın\n
+7 Şema (%1$s) değiştirildiği için geri dönüş alınamadı.\n
+8 Günlük hacmi kaldırıldı. Lütfen daha sonraki bir tarihle deneyin\n
+9 '%1$s' çıktı dosyası açılamadı\n
+10 İşlem Kimliği (%1$d) mevcut değil\n
+11 Lütfen 'cubrid.conf' içinde 'supplemental_log' ayarlayın. Yalnızca 'supplemental_log' ayarlandıktan sonra yürütülen SQL günlükleri flashback yapılabilir.\n
+12 İşlem Kimliği %1$d saniye içinde girilmelidir. Zaman aşımı, 'cubrid.conf' içindeki 'flashback_timeout' ayarı ile ayarlanabilir.\n
+13 Flashback zaten çalışıyor. Flashback iki işlem tarafından çalıştırılamaz.\n
+14 Flashback bağımsız mod olarak çalıştırılamaz.\n
+60 \
+flashback: Belirli bir işlemi flashback yapmak için ifadeler sağlar.\n\
+kullanım: %1$s flashback [SEÇENEK] veritabanı adı sınıf_adı1 [sınıf_adı2 ...]\n\
+\n\
+geçerli seçenekler:\n\
+    -o, --output-file=FILE      çıktı mesajını DOSYA'ya yönlendirir; varsayılan: yok.\n\
+    -u, --user=ID               flashback için SQL deyimini yürüten kullanıcıyı belirtir; varsayılan: TÜMÜ.\n\
+    -p, --dba-password          DBA kullanıcısının parolası; belirtmezseniz sorar\n\
+    -s, --start-date=DATE       flashback için başlangıç TARİHİNİ belirtir. SQL günlükleri DATE'den alınır.\n\
+                                TARİH şu şekilde verilir: gg-aa-yyyy:ss:dd:ss.\n\
+    -e, --end-date=DATE         flashback için bitiş TARİHİNİ belirtir. SQL günlükleri DATE tarihine kadar ayıklanır.\n\
+                                başlangıç-tarihi belirtilmemişse, ((END - 10dk) ~ END) aralık olarak ayarlanır,\n\
+                                ve END belirtilmezse, (start ~ (start + 10min)) ayarlanır.\n\
+                                Ve ne bir başlangıç ne de bir bitiş tarihi belirtilmemiş,\n\
+                                (geçerli saat - 10dk) ve geçerli saat arasında yürütülen SQL günlükleri çıkarılır.\n\
+    --detail                    her SQL deyimi için ayrıntılı bilgi verir.\n\
+                                İşlem Kimliği, Kullanıcı adı ve orijinal SQL ifadesi, SQL ifadesi ile birlikte döndürülecektir\n\
+                                flashback için; varsayılan: yalnızca flashback için SQL deyimlerini verir\n\
+    --oldest                    flashback, başlangıç zamanından bitiş zamanına kadar yürütülen SQL ifadeleri için kronolojik sırayla\n\
+                                gerçekleştirilir; varsayılan: en son\n
