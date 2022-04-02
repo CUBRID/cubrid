@@ -9329,39 +9329,6 @@ au_is_server_authorized_user (DB_VALUE * owner_val)
   return (au_check_owner (owner_val) == NO_ERROR);
 }
 
-/*
- * au_check_synonym_authorization () - check whether the current user is able to
- *    modify synonym object or not.
- * return: error code
- *    ER_QPROC_CANNOT_UPDATE_SYNONYM
- * synonym_object(in): synonym object pointer
- */
-int
-au_check_synonym_authorization (MOP synonym_object)
-{
-  DB_VALUE creator_val;
-  MOP creator;
-  DB_SET *groups;
-  int ret_val = ER_FAILED;
-
-  assert (synonym_object != NO_ERROR);
-
-  ret_val = db_get (synonym_object, "owner", &creator_val);
-  if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
-    {
-      return ret_val;
-    }
-
-  creator = db_get_object (&creator_val);
-
-  if (au_is_user_group_member (creator, Au_user) || au_is_dba_group_member (Au_user))
-    {
-      return NO_ERROR;
-    }
-
-  return ret_val;
-}
-
 const char *
 au_get_public_user_name (void)
 {

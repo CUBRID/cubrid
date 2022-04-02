@@ -287,7 +287,6 @@ extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VAL
 extern int au_check_serial_authorization (MOP serial_object);
 extern int au_check_server_authorization (MOP server_object);
 extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
-extern int au_check_synonym_authorization (MOP synonym_object);
 extern const char *au_get_public_user_name (void);
 extern const char *au_get_user_class_name (void);
 #if defined(ENABLE_UNUSED_FUNCTION)
