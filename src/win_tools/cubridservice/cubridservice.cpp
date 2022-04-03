@@ -202,7 +202,8 @@ vHandler (DWORD opcode)
     {
 
       db_name = read_string_value_in_registry (HKEY_LOCAL_MACHINE,
-					       "SOFTWARE\\CUBRID\\CUBRID", "CUBRID_DBNAME_FOR_SERVICE");
+					       "SOFTWARE\\CUBRID\\CUBRID",
+					       "CUBRID_DBNAME_FOR_SERVICE");
       if (db_name == NULL)
 	{
 	  WriteLog (sLogFile, "read_string_value_in_registry : error \n");
@@ -270,21 +271,21 @@ vHandler (DWORD opcode)
       }
       break;
     case SERVICE_CONTROL_BROKER_OFF:
-      {
-	args[1] = CUBRID_UTIL_BROKER;
-	args[2] = CUBRID_COMMAND_OFF;
-	args[4] = "--for-windows-service";
-	args[5] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_BROKER;
+      args[2] = CUBRID_COMMAND_OFF;
+      args[4] = "--for-windows-service";
+      args[5] = NULL;
+    }
+    break;
     case SERVICE_CONTROL_GATEWAY_START:
-      {
-	args[1] = CUBRID_UTIL_GATEWAY;
-	args[2] = CUBRID_COMMAND_START;
-	args[3] = "--for-windows-service";
-	args[4] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_GATEWAY;
+      args[2] = CUBRID_COMMAND_START;
+      args[3] = "--for-windows-service";
+      args[4] = NULL;
+    }
+    break;
     case SERVICE_CONTROL_GATEWAY_STOP:
       {
 	args[1] = CUBRID_UTIL_GATEWAY;

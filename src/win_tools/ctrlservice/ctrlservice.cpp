@@ -415,9 +415,9 @@ vctrlService (void)
     }
 
   service_description.lpDescription =
-    "Service to execute master,broker,gateway,database server, manager server and javasp server processes for CUBRID.\r\n"
-    "Service start/stop menu is equal to the command of \"cubrid service start/stop\".\r\n"
-    "If you setup \"startup type\" of this service to \"Disabled\", you can't use \"cubrid service\" command.";
+	  "Service to execute master,broker,gateway,database server, manager server and javasp server processes for CUBRID.\r\n"
+	  "Service start/stop menu is equal to the command of \"cubrid service start/stop\".\r\n"
+	  "If you setup \"startup type\" of this service to \"Disabled\", you can't use \"cubrid service\" command.";
 
 
   if (ChangeServiceConfig2 (scHandle, SERVICE_CONFIG_DESCRIPTION, (LPVOID) & service_description) == 0)
