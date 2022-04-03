@@ -222,8 +222,6 @@ extern void oid_set_partition (const OID * oid);
 extern bool oid_is_partition (const OID * oid);
 extern void oid_get_partition_oid (OID * oid);
 
-extern void oid_get_synonym_oid (OID * oid);
-
 extern bool oid_is_db_class (const OID * oid);
 extern bool oid_is_db_attribute (const OID * oid);
 

@@ -10230,8 +10230,14 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       if (node->node_type == PT_ALTER_SYNONYM || node->node_type == PT_CREATE_SYNONYM)
 	{
 	  PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
-	  PT_SYNONYM_TARGET_OWNER_NAME (node) =
-	    pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
+	  if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
+	    {
+	      PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
+	    }
+	  else
+	    {
+	      PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
+	    }
 	}
       else if (node->node_type == PT_DROP_SYNONYM)
 	{

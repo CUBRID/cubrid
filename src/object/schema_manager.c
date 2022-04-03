@@ -5403,35 +5403,27 @@ sm_find_class_with_purpose (const char *name, bool for_update)
 MOP
 sm_find_synonym (const char *name)
 {
+  DB_OBJECT *synonym_class_obj = NULL;
+  DB_OBJECT *synonym_obj = NULL;
+  DB_VALUE value;
   char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  OID synonym_class_oid = OID_INITIALIZER;
-  MOP synonym_class_mop = NULL;
-  MOP synonym_mop = NULL;
-  DB_VALUE key_val;
   int error = NO_ERROR;
   int save = 0;
 
-  oid_get_synonym_oid (&synonym_class_oid);
-  if (OID_ISNULL (&synonym_class_oid))
-    {
-      /* May be NULL before the catalog class is created. */
-      return NULL;
-    }
-
-  synonym_class_mop = ws_mop (&synonym_class_oid, NULL);
-  if (synonym_class_mop == NULL)
+  synonym_class_obj = sm_find_class (CT_SYNONYM_NAME);
+  if (synonym_class_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       return NULL;
     }
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
-  db_make_string (&key_val, realname);
+  db_make_string (&value, realname);
 
   AU_DISABLE (save);
-  synonym_mop = obj_find_unique (synonym_class_mop, "unique_name", &key_val, AU_FETCH_READ);
+  synonym_obj = obj_find_unique (synonym_class_obj, "unique_name", &value, AU_FETCH_READ);
   AU_ENABLE (save);
-  if (synonym_mop == NULL)
+  if (synonym_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
@@ -5442,7 +5434,7 @@ sm_find_synonym (const char *name)
       return NULL;
     }
 
-  return synonym_mop;
+  return synonym_obj;
 }
 
 /*
