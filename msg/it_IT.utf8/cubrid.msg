@@ -1573,6 +1573,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Lunghezza massima di un commento è %1$d bytes.
 128 Numero di argomenti non valido per JSON_OBJECTAGG.
 129 L'argomento conteggio PARALLELO deve essere compreso tra %1$d e %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.
@@ -1881,6 +1882,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Impossibile trovare una firma compatibile per la funzione %1$s()
 305 Firma %1$s non è compatibile con gli argomenti delle funzioni.
 306 dblink - Mancano le informazioni richieste.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.

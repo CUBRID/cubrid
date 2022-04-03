@@ -1573,6 +1573,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 コメントの最大長は%1$dバイトです。
 128 Invalid number of arguments for JSON_OBJECTAGG
 129 PARALLEL count argument must be between %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。
@@ -1881,6 +1882,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
 306 dblink - Required information is missing.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

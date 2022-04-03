@@ -1573,6 +1573,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Bir yorumun maksimum uzunluğu %1$d byte.
 128 JSON_OBJECTAGG için bağımsız değişken sayısı geçersiz
 129 PARALLEL count argümanı %1$d ve %2$d arasında olmalıdır.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
@@ -1881,6 +1882,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 %1$s() fonksiyonu için uyumlu bir imza bulunamadı
 305 İmza %1$s, argümanları ile uyumlu değildir.
 306 dblink - Gerekli bilgiler eksik.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

@@ -23784,7 +23784,8 @@ dblink_column_definition
 
                         if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
                           {
-                                PT_ERROR (this_parser, node, "not supported type for dblink");
+                                PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (typ));
                           }
 
                         if (typ == PT_TYPE_CHAR && dt)

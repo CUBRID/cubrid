@@ -1573,6 +1573,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Lungimea maximă a comentariilor este %1$d bytes.
 128 Număr invalid de argumente pentru JSON_OBJECTAGG
 129 Valoarea argumentului PARALLEL trebuie sa fie între %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
@@ -1881,6 +1882,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Nu s-a găsit semnătură compatibilă pentru funcția %1$s()
 305 Semnătura %1$s nu este compatibilă cu argumentele funcției.
 306 dblink - Informațiile necesare lipsesc.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

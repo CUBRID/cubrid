@@ -1574,6 +1574,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 一个comment的最大长度是 %1$d 字节.
 128 JSON_OBJECTAGG参数个数不匹配.
 129 PARALLEL数必须在 %1$d 和 %2$d 之间.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
@@ -1882,6 +1883,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 没有找到与 %1$s() 函数兼容的签名.
 305 函数签名 %1$s 与函数参数不匹配.
 306 dblink - 缺少必需的信息.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

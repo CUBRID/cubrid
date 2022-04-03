@@ -1573,6 +1573,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Maximale Länge eines Kommentars ist %1$d bytes.
 128 Ungültige Anzahl von Argumenten für JSON_OBJECTAGG.
 129 PARALLEL count-Argument muss zwischen %1$d und %2$d liegen.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.
@@ -1881,6 +1882,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Konnte keine kompatible Signatur für die Funktion finden %1$s().
 305 Die Signatur %1$s ist nicht mit Funktionsargumenten kompatibel.
 306 dblink - Erforderliche Informationen fehlen.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.
