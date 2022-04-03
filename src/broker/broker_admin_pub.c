@@ -3622,6 +3622,7 @@ static char **
 make_env (char *env_file, int *env_num)
 {
   char **env = NULL;
+  char **new_env = NULL;
   int num, read_num;
   FILE *env_fp;
   char read_buf[BUFSIZ], col1[128], col2[128];
@@ -3646,11 +3647,24 @@ make_env (char *env_file, int *env_num)
 	continue;
 
       if (env == NULL)
-	env = (char **) malloc (sizeof (char *));
+	{
+	  env = (char **) malloc (sizeof (char *));
+	  if (env == NULL)
+	    break;
+	}
       else
-	env = (char **) realloc (env, sizeof (char *) * (num + 1));
-      if (env == NULL)
-	break;
+	{
+	  new_env = (char **) realloc (env, sizeof (char *) * (num + 1));
+	  if (new_env == NULL)
+	    {
+	      for (num--; num >= 0; num--)
+		FREE_MEM (env[num]);
+	      FREE_MEM (env);
+	      env = NULL;
+	      break;
+	    }
+	  env = new_env;
+	}
 
       env[num] = (char *) malloc (strlen (col1) + strlen (col2) + 2);
       if (env[num] == NULL)
