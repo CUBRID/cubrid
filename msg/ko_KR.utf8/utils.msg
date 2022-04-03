@@ -267,7 +267,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     restart     [데이터베이스 이름]\n\
     status      [데이터베이스 이름]\n
 45 cubrid 유틸리티, 버전 %1$s\n\
-사용법: %2$s javasp <명령어> [인자]\n\
+사용법: %2$s gateway <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
     start\n\
