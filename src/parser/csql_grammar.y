@@ -19741,7 +19741,7 @@ path_header
 	;
 
 path_dot
-	: DOT
+	: DOT          { DBG_TRACE_GRAMMAR(path_dot, : DOT); }
 	| RIGHT_ARROW  { DBG_TRACE_GRAMMAR(path_dot, | RIGHT_ARROW); }
 	;
 
@@ -23822,7 +23822,6 @@ pop_msg ()
 extern void csql_yyset_lineno (int line_number);
 int yycolumn = 0;
 int yycolumn_end = 0;
-int dot_flag = 0;
 
 int parser_function_code = PT_EMPTY;
 size_t json_table_column_count = 0;
@@ -24963,7 +24962,6 @@ parser_main (PARSER_CONTEXT * parser)
   yycolumn = yycolumn_end = 1;
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
-  dot_flag = 0;
 
   g_query_string = NULL;
   g_query_string_len = 0;
@@ -25063,7 +25061,6 @@ parse_one_statement (int state)
 
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
-  dot_flag = 0;
 
   g_query_string = NULL;
   g_query_string_len = 0;
