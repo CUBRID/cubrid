@@ -10236,7 +10236,8 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	    }
 	  else
 	    {
-	      PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
+	      PT_SYNONYM_TARGET_OWNER_NAME (node) =
+		pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
 	    }
 	}
       else if (node->node_type == PT_DROP_SYNONYM)
