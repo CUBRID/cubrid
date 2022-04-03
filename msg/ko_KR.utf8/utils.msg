@@ -152,6 +152,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
     javasp\n\
@@ -265,6 +266,18 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     stop        [데이터베이스 이름]\n\
     restart     [데이터베이스 이름]\n\
     status      [데이터베이스 이름]\n
+45 cubrid 유틸리티, 버전 %1$s\n\
+사용법: %2$s javasp <명령어> [인자]\n\
+\n\
+가용한 명령어:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    on          <게이트웨이 이름>\n\
+    off         <게이트웨이 이름>\n\
+    reset       <게이트웨이 이름>\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n

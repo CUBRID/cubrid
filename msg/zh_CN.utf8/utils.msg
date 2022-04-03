@@ -152,6 +152,7 @@ cubrid 管理工具，版本 %1$s\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
     javasp\n\
@@ -265,6 +266,18 @@ cubrid 管理工具，版本 %1$s\n\
     stop        [数据库名]\n\
     restart     [数据库名]\n\
     status      [数据库名]\n
+45 cubrid 应用工具, 版本 %1$s\n\
+用法: %2$s gateway <命令> [参数]\n\
+\n\
+可用命令:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    on          gateway-name\n\
+    off         gateway-name\n\
+    reset       gateway-name\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: 在单机模式下 -t 选项将被忽略.\n
