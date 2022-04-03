@@ -94,7 +94,8 @@ main (int argc, char *argv[])
 {
   SetCUBRIDEnvVar ();
 
-  SERVICE_TABLE_ENTRY stbl[] = {
+  SERVICE_TABLE_ENTRY stbl[] = 
+  {
     {"CUBRIDService", (LPSERVICE_MAIN_FUNCTION) vKingCHStart},
     {NULL, NULL}
   };
@@ -109,7 +110,7 @@ main (int argc, char *argv[])
 }
 
 void
-vKingCHStart (DWORD argc, LPTSTR * argv)
+vKingCHStart (DWORD argc, LPTSTR *argv)
 {
   char *args[5];
   char command[100];
@@ -202,8 +203,8 @@ vHandler (DWORD opcode)
     {
 
       db_name = read_string_value_in_registry (HKEY_LOCAL_MACHINE,
-					       "SOFTWARE\\CUBRID\\CUBRID",
-					       "CUBRID_DBNAME_FOR_SERVICE");
+		"SOFTWARE\\CUBRID\\CUBRID",
+		"CUBRID_DBNAME_FOR_SERVICE");
       if (db_name == NULL)
 	{
 	  WriteLog (sLogFile, "read_string_value_in_registry : error \n");
@@ -226,42 +227,42 @@ vHandler (DWORD opcode)
       vSetStatus (SERVICE_RUNNING);
       return;
     case SERVICE_CONTROL_SERVICE_START:
-      {
-	args[1] = CUBRID_UTIL_SERVICE;
-	args[2] = CUBRID_COMMAND_START;
-	args[3] = "--for-windows-service";
-	args[4] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_SERVICE;
+      args[2] = CUBRID_COMMAND_START;
+      args[3] = "--for-windows-service";
+      args[4] = NULL;
+    }
+    break;
     case SERVICE_CONTROL_SERVICE_STOP:
     case SERVICE_CONTROL_STOP:
-      {
-	SendMessage_Tray (SERVICE_STATUS_STOP);
-	vSetStatus (SERVICE_STOP_PENDING, 0);
+    {
+      SendMessage_Tray (SERVICE_STATUS_STOP);
+      vSetStatus (SERVICE_STOP_PENDING, 0);
 
-	args[1] = CUBRID_UTIL_SERVICE;
-	args[2] = CUBRID_COMMAND_STOP;
-	args[3] = "--for-windows-service";
-	args[4] = NULL;
-      }
-      break;
+      args[1] = CUBRID_UTIL_SERVICE;
+      args[2] = CUBRID_COMMAND_STOP;
+      args[3] = "--for-windows-service";
+      args[4] = NULL;
+    }
+    break;
 
     case SERVICE_CONTROL_BROKER_START:
-      {
-	args[1] = CUBRID_UTIL_BROKER;
-	args[2] = CUBRID_COMMAND_START;
-	args[3] = "--for-windows-service";
-	args[4] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_BROKER;
+      args[2] = CUBRID_COMMAND_START;
+      args[3] = "--for-windows-service";
+      args[4] = NULL;
+    }
+    break;
     case SERVICE_CONTROL_BROKER_STOP:
-      {
-	args[1] = CUBRID_UTIL_BROKER;
-	args[2] = CUBRID_COMMAND_STOP;
-	args[3] = "--for-windows-service";
-	args[4] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_BROKER;
+      args[2] = CUBRID_COMMAND_STOP;
+      args[3] = "--for-windows-service";
+      args[4] = NULL;
+    }
+    break;
     case SERVICE_CONTROL_BROKER_ON:
     {
       args[1] = CUBRID_UTIL_BROKER;
@@ -319,61 +320,61 @@ vHandler (DWORD opcode)
     }
     break;
     case SERVICE_CONTROL_SHARD_STOP:
-      {
-	args[1] = CUBRID_UTIL_SHARD;
-	args[2] = CUBRID_COMMAND_STOP;
-	args[3] = "--for-windows-service";
-	args[4] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_SHARD;
+      args[2] = CUBRID_COMMAND_STOP;
+      args[3] = "--for-windows-service";
+      args[4] = NULL;
+    }
+    break;
     case SERVICE_CONTROL_MANAGER_START:
-      {
-	args[1] = CUBRID_UTIL_MANAGER;
-	args[2] = CUBRID_COMMAND_START;
-	args[3] = "--for-windows-service";
-	args[4] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_MANAGER;
+      args[2] = CUBRID_COMMAND_START;
+      args[3] = "--for-windows-service";
+      args[4] = NULL;
+    }
+    break;
     case SERVICE_CONTROL_MANAGER_STOP:
-      {
-	args[1] = CUBRID_UTIL_MANAGER;
-	args[2] = CUBRID_COMMAND_STOP;
-	args[3] = "--for-windows-service";
-	args[4] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_MANAGER;
+      args[2] = CUBRID_COMMAND_STOP;
+      args[3] = "--for-windows-service";
+      args[4] = NULL;
+    }
+    break;
     case SERVICE_CONTROL_SERVER_START:
-      {
-	args[1] = CUBRID_UTIL_SERVER;
-	args[2] = CUBRID_COMMAND_START;
-	args[4] = "--for-windows-service";
-	args[5] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_SERVER;
+      args[2] = CUBRID_COMMAND_START;
+      args[4] = "--for-windows-service";
+      args[5] = NULL;
+    }
+    break;
     case SERVICE_CONTROL_SERVER_STOP:
-      {
-	args[1] = CUBRID_UTIL_SERVER;
-	args[2] = CUBRID_COMMAND_STOP;
-	args[4] = "--for-windows-service";
-	args[5] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_SERVER;
+      args[2] = CUBRID_COMMAND_STOP;
+      args[4] = "--for-windows-service";
+      args[5] = NULL;
+    }
+    break;
     case SERVICE_CONTROL_JAVASP_START:
-      {
-	args[1] = CUBRID_UTIL_JAVASP;
-	args[2] = CUBRID_COMMAND_START;
-	args[4] = "--for-windows-service";
-	args[5] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_JAVASP;
+      args[2] = CUBRID_COMMAND_START;
+      args[4] = "--for-windows-service";
+      args[5] = NULL;
+    }
+    break;
     case SERVICE_CONTROL_JAVASP_STOP:
-      {
-	args[1] = CUBRID_UTIL_JAVASP;
-	args[2] = CUBRID_COMMAND_STOP;
-	args[4] = "--for-windows-service";
-	args[5] = NULL;
-      }
-      break;
+    {
+      args[1] = CUBRID_UTIL_JAVASP;
+      args[2] = CUBRID_COMMAND_STOP;
+      args[4] = "--for-windows-service";
+      args[5] = NULL;
+    }
+    break;
     default:
       vSetStatus (g_XSS);
       return;
@@ -452,7 +453,9 @@ WriteLog (char *p_logfile, char *p_format, ...)
   va_end (str);
 
   if (p_logfile != NULL)
-    fclose (logfile_fd);
+    {
+      fclose (logfile_fd);
+    }
 }
 
 void
@@ -563,7 +566,9 @@ SetCUBRIDEnvVar ()
 
 #ifdef _DEBUG
   if (debugfd)
-    fclose (debugfd);
+    {
+      fclose (debugfd);
+    }
 #endif
 
   RegCloseKey (hKey);
