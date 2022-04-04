@@ -94,7 +94,7 @@ main (int argc, char *argv[])
 {
   SetCUBRIDEnvVar ();
 
-  SERVICE_TABLE_ENTRY stbl[] = 
+  SERVICE_TABLE_ENTRY stbl[] =
   {
     {"CUBRIDService", (LPSERVICE_MAIN_FUNCTION) vKingCHStart},
     {NULL, NULL}
