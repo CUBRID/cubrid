@@ -20,9 +20,12 @@
 #define _ATOMIC_REPLICATION_HELPER_HPP_
 
 #include <map>
+#include <deque>
 
 #include "log_lsa.hpp"
 #include "log_record.hpp"
+#include "page_buffer.h"
+#include "thread_entry.hpp"
 
 namespace cublog
 {
@@ -30,17 +33,25 @@ namespace cublog
   class atomic_replication_helper
   {
     public:
-      void add_atomic_replication_unit ();
-      void apply_log_redo_on_atomic_replication_sequence ();
-      void unfix_atomic_replication_sequence ();
+      void add_new_atomic_replication_sequence (TRANID tranid);
+      void add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, log_rectype record_type,
+					VPID vpid, LOG_RCVINDEX record_index);
+      void apply_log_redo_on_atomic_replication_sequence (TRANID tranid);
+      void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, PGBUF_WATCHER *pg_watcher, TRANID tranid);
+      bool is_part_of_atomic_replication (TRANID tranid, log_lsa record_lsa);
+      bool is_page_part_of_atomic_replication_sequence (TRANID tranid, VPID vpid);
 
     private:
       class atomic_replication_unit
       {
 	public:
+	  atomic_replication_unit (log_lsa lsa, log_rectype rectype, VPID vpid, LOG_RCVINDEX record_index, TRANID record_tranid);
+
 	  void apply_log_redo ();
-	  PAGE_PTR fix_atomic_replication_unit ();
-	  void unfix_atomic_replication_unit ();
+	  void fix_atomic_replication_unit (THREAD_ENTRY *thread_p, PGBUF_WATCHER *pg_watcher);
+	  void unfix_atomic_replication_unit (THREAD_ENTRY *thread_p, PGBUF_WATCHER *pg_watcher);
+	  log_lsa get_record_lsa ();
+	  VPID get_vpid ();
 
 	private:
 	  log_lsa m_record_lsa;
@@ -48,11 +59,11 @@ namespace cublog
 	  VPID m_vpid;
 	  PAGE_PTR m_page_ptr;
 	  LOG_RCVINDEX m_record_index;
-	  TRANID m_record_tran_id;
+	  TRANID m_record_tranid;
       };
 
       //Hashmap
-      std::map<TRANID, atomic_replication_unit> m_atomic_sequences_map;
+      std::map<TRANID, std::deque<atomic_replication_unit>> m_atomic_sequences_map;
   };
 }
 
