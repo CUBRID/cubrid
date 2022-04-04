@@ -1403,17 +1403,25 @@ $ LOADDB
 
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
-1330 Error reserved for dblink development.
+1330 Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 アクティブなログボリューム（%1$s）が正常すぎて、再作成できません。 アクティブなログを削除すると、予期しない不可逆的な問題が発生する可能性があります。
-1333 Invalid arguments to authorization internal function.
-1334 AUTO_INCREMENT does not allow change of owner.
-1335 RENAME does not allow change of owner.
-1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
-1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1338 ラストエラー
+1333 フラッシュバックを開始するための無効な時間（%1$ss）。 時間は（%2$s）と（%3$s）の間に設定する必要があります。
+1334 フラッシュバックするクラスが見つかりません（%1$s）。
+1335 フラッシュバックするにはトランザクションが多すぎます。 %1$d 未満のトランザクションはフラッシュバックする可能性があります。
+1336 このクラスのフラッシュバックをサポートできません（名前：%1$s、OID：%2$d|%3$d|%4$d）。 クラススキーマが変更されました。
+1337 ログレコードが存在しません（lsa：%1$lld|%2$d）。 アーカイブログボリュームが削除されました。
+1338 フラッシュバックはすでに実行されています。 フラッシュバックは、複数のユーザーが同時に実行することはできません。
+
+1339 Invalid arguments to authorization internal function.
+1340 AUTO_INCREMENT does not allow change of owner.
+1341 RENAME does not allow change of owner.
+1342 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1343 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1344 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1571,6 +1579,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 コメントの最大長は%1$dバイトです。
 128 Invalid number of arguments for JSON_OBJECTAGG
 129 PARALLEL count argument must be between %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。
@@ -1879,7 +1888,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
 306 dblink - Required information is missing.
-307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

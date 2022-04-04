@@ -84,7 +84,7 @@
 #include "elo.h"
 #include "transaction_transient.hpp"
 #include "crypt_opfunc.h"
-
+#include "flashback.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -10696,5 +10696,295 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
+  return;
+}
+
+void
+sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area = NULL;
+  int area_size = 0;
+
+  int error_code = NO_ERROR;
+  char *ptr;
+  char *start_ptr;
+
+  char *num_ptr;		//pointer in which 'number of summary' is located
+  int tmp_num = 0;
+
+  LC_FIND_CLASSNAME status;
+
+  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, };
+
+  time_t start_time = 0;
+  time_t end_time = 0;
+
+  char *classname = NULL;
+
+  error_code = flashback_initialize (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  ptr = or_unpack_int (request, &context.num_class);
+
+  for (int i = 0; i < context.num_class; i++)
+    {
+      OID classoid = OID_INITIALIZER;
+
+      ptr = or_unpack_string_nocopy (ptr, &classname);
+
+      status = xlocator_find_class_oid (thread_p, classname, &classoid, NULL_LOCK);
+      if (status != LC_CLASSNAME_EXIST)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_CLASS, 1, classname);
+	  error_code = ER_FLASHBACK_INVALID_CLASS;
+	  goto error;
+	}
+
+      context.classoids.emplace_back (classoid);
+    }
+
+  ptr = or_unpack_string_nocopy (ptr, &context.user);
+  ptr = or_unpack_int64 (ptr, &start_time);
+  ptr = or_unpack_int64 (ptr, &end_time);
+
+  error_code = flashback_verify_time (thread_p, &start_time, &end_time, &context.start_lsa, &context.end_lsa);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  assert (!LSA_ISNULL (&context.start_lsa));
+
+  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
+
+  /* get summary list */
+  error_code = flashback_make_summary_list (thread_p, &context);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* area : | class oid list | summary start time | summary end time | num summary | summary entry list |
+   * summary entry : | trid | user | start/end time | num insert/update/delete | num class | class oid list |
+   * OR_OID_SIZE * context.num_class means maximum class oid list size per summary entry */
+
+  area_size = OR_OID_SIZE * context.num_class + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE
+    + (OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS + OR_OID_SIZE * context.num_class) * context.num_summary;
+
+  area = (char *) db_private_alloc (thread_p, area_size);
+  if (area == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  /* reply packing : error_code | area size */
+  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, error_code);
+
+  /* area packing : OID list | num summary | summary info list */
+  ptr = area;
+
+  // *INDENT-OFF*
+  for (auto iter : context.classoids)
+    {
+      ptr = or_pack_oid (ptr, &iter);
+    }
+  // *INDENT-ON*
+
+  ptr = or_pack_int64 (ptr, start_time);
+  ptr = or_pack_int64 (ptr, end_time);
+
+  num_ptr = ptr;
+
+  ptr = or_pack_int (ptr, context.num_summary);
+  ptr = flashback_pack_summary_entry (ptr, context, &tmp_num);
+
+  if (context.num_summary != tmp_num)
+    {
+      or_pack_int (num_ptr, tmp_num);
+    }
+
+  error_code =
+    css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+				       area_size);
+
+  db_private_free_and_init (thread_p, area);
+
+  if (error_code != NO_ERROR)
+    {
+      goto css_send_error;
+    }
+
+  return;
+error:
+
+  if (error_code == ER_FLASHBACK_INVALID_CLASS)
+    {
+      ptr = or_pack_int (reply, strlen (classname));
+      or_pack_int (ptr, error_code);
+
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), classname,
+					 strlen (classname));
+    }
+  else if (error_code == ER_FLASHBACK_INVALID_TIME)
+    {
+      OR_ALIGNED_BUF (OR_INT64_SIZE) area_buf;
+      area = OR_ALIGNED_BUF_START (area_buf);
+
+      ptr = or_pack_int (reply, OR_ALIGNED_BUF_SIZE (area_buf));
+      or_pack_int (ptr, error_code);
+
+      or_pack_int64 (area, log_Gl.hdr.db_creation);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+					 OR_ALIGNED_BUF_SIZE (area_buf));
+    }
+  else
+    {
+      ptr = or_pack_int (reply, 0);
+      or_pack_int (ptr, error_code);
+
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    }
+
+  if (error_code != ER_FLASHBACK_DUPLICATED_REQUEST)
+    {
+      /* if flashback variables are reset by duplicated request error,
+       * variables for existing connection (valid connection) can be reset */
+      flashback_reset ();
+    }
+
+  return;
+
+css_send_error:
+  flashback_reset ();
+
+  return;
+}
+
+void
+sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area = NULL;
+  int area_size = 0;
+
+  int error_code = NO_ERROR;
+  char *ptr;
+  char *start_ptr;
+
+  int threshold_to_remove_archive = 0;
+
+  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
+
+  /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
+
+  ptr = or_unpack_int (request, &context.trid);
+  ptr = or_unpack_string_nocopy (ptr, &context.user);
+  ptr = or_unpack_int (ptr, &context.num_class);
+
+  for (int i = 0; i < context.num_class; i++)
+    {
+      OID classoid;
+      ptr = or_unpack_oid (ptr, &classoid);
+      context.classoid_set.emplace (classoid);
+    }
+
+  ptr = or_unpack_log_lsa (ptr, &context.start_lsa);
+  ptr = or_unpack_log_lsa (ptr, &context.end_lsa);
+  ptr = or_unpack_int (ptr, &context.num_loginfo);
+  ptr = or_unpack_int (ptr, &context.forward);
+
+  error_code = flashback_make_loginfo (thread_p, &context);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  area_size = OR_LOG_LSA_ALIGNED_SIZE * 2 + OR_INT_SIZE;
+
+  /* log info entries are chunks of memory that already packed together, and they need to be aligned  
+   * | lsa | lsa | num item | align | log info 1 | align | log info 2 | align | log info 3 | ..
+   * */
+
+  area_size += context.queue_size + context.num_loginfo * MAX_ALIGNMENT;
+
+  area = (char *) db_private_alloc (thread_p, area_size);
+  if (area == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  /* reply packing :  area size | error_code */
+  ptr = or_pack_int (reply, area_size);
+  or_pack_int (ptr, error_code);
+
+  /* area packing : start lsa | end lsa | num item | item list */
+  ptr = or_pack_log_lsa (area, &context.start_lsa);
+  ptr = or_pack_log_lsa (ptr, &context.end_lsa);
+  ptr = or_pack_int (ptr, context.num_loginfo);
+
+  ptr = flashback_pack_loginfo (thread_p, ptr, context);
+
+  error_code =
+    css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+				       area_size);
+
+  db_private_free_and_init (thread_p, area);
+
+  if (error_code != NO_ERROR)
+    {
+      goto css_send_error;
+    }
+
+  if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa))
+    {
+      flashback_reset ();
+    }
+  else
+    {
+      if (context.forward)
+	{
+	  /* start_lsa is increased only if direction is forward */
+	  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
+	}
+    }
+
+  return;
+error:
+
+  if (error_code == ER_FLASHBACK_SCHEMA_CHANGED)
+    {
+      OR_ALIGNED_BUF (OR_OID_SIZE) area_buf;
+      area = OR_ALIGNED_BUF_START (area_buf);
+
+      ptr = or_pack_int (reply, OR_ALIGNED_BUF_SIZE (area_buf));
+      or_pack_int (ptr, error_code);
+      or_pack_oid (area, &context.invalid_class);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+					 OR_ALIGNED_BUF_SIZE (area_buf));
+    }
+  else
+    {
+      ptr = or_pack_int (reply, 0);
+      or_pack_int (ptr, error_code);
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    }
+
+  flashback_reset ();
+
+  return;
+css_send_error:
+
+  flashback_reset ();
   return;
 }

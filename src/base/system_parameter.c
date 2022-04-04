@@ -702,6 +702,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
 
+#define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2391,6 +2393,12 @@ static int prm_thread_core_count_lower = 1;
 static int prm_thread_core_count_upper = 1024;
 int PRM_THREAD_CORE_COUNT = prm_thread_core_count_default;	// this value will be tuned
 static unsigned int prm_thread_core_count_flag = 0;
+
+int PRM_FLASHBACK_TIMEOUT = 0;
+static int prm_flashback_timeout_default = 300;
+static int prm_flashback_timeout_lower = 0;
+static int prm_flashback_timeout_upper = 3600;
+static unsigned int prm_flashback_timeout_flag = 0;
 
 bool PRM_NO_USER_SPECIFIED_NAME = false;
 static const bool prm_no_user_specified_name_default = false;
@@ -6160,6 +6168,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_FLASHBACK_TIMEOUT,
+   PRM_NAME_FLASHBACK_TIMEOUT,
+   (PRM_FOR_CLIENT),
+   PRM_INTEGER,
+   &prm_flashback_timeout_flag,
+   (void *) &prm_flashback_timeout_default,
+   (void *) &PRM_FLASHBACK_TIMEOUT,
+   (void *) &prm_flashback_timeout_upper,
+   (void *) &prm_flashback_timeout_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_NO_USER_SPECIFIED_NAME,
    PRM_NAME_NO_USER_SPECIFIED_NAME,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
@@ -6167,10 +6187,11 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_no_user_specified_name_flag,
    (void *) &prm_no_user_specified_name_default,
    (void *) &PRM_NO_USER_SPECIFIED_NAME,
-   (void *) NULL, (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

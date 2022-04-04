@@ -275,11 +275,11 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
     case DB_TYPE_FLOAT:
-      describe_real (m_buf, db_get_float (value), DB_FLOAT_DECIMAL_PRECISION);
+      m_buf ("%f", (double) db_get_float (value));
       break;
 
     case DB_TYPE_DOUBLE:
-      describe_real (m_buf, db_get_double (value), DB_DOUBLE_DECIMAL_PRECISION);
+      m_buf ("%e", (double) db_get_double (value));
       break;
 
     case DB_TYPE_NUMERIC:
