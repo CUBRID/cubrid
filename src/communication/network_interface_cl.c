@@ -10658,6 +10658,8 @@ cleanup:
 
   return success;
 #endif /* !CS_MODE */
+}
+
 /*
  * flashabck_get_and_show_summary () - client-side function to get and show flashback summary
  *
