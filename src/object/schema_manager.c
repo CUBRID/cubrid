@@ -2185,6 +2185,7 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
 {
   char user_specified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char current_user_name[SM_MAX_USER_LENGTH] = { '\0' };
+  const char *dot = NULL;
   int error = NO_ERROR;
 
   if (name == NULL || name[0] == '\0')
@@ -2193,24 +2194,28 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
-  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
-
   /* If the name is already a user-specified name or a system class name, do not recreate it. */
-  if (strchr (name, '.') || sm_check_system_class_by_name (name))
+  dot = strchr (name, '.');
+  if (dot != NULL)
     {
+      assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
+      assert (strlen (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+
       /*
        * e.g.   name: user_name.object_name
        *      return: user_name.object_name
-       * 
-       *      or
-       * 
-       *        name: system_class_name
+       */
+      return sm_downcase_name (name, buf, buf_size);
+    }
+  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+  if (sm_check_system_class_by_name (name))
+    {
+      /*
+       * e.g.   name: system_class_name
        *      return: system_class_name
        */
       return sm_downcase_name (name, buf, buf_size);
     }
-
-  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
   /* Appends the current username, making it a user-specified name. */
   if (db_get_current_user_name (current_user_name, SM_MAX_USER_LENGTH) == NULL)
@@ -2219,13 +2224,14 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
+  assert (snprintf (NULL, 0, "%s.%s", current_user_name, name) < buf_size);
+  assert (snprintf (NULL, 0, "%s.%s", current_user_name, name) < SM_MAX_IDENTIFIER_LENGTH);
+
   /*
    * e.g.   name: object_name
    *      return: current_user_name.object_name
    */
   snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_user_name, name);
-  assert (user_specified_name[0] != '\0');
-
   return sm_downcase_name (user_specified_name, buf, buf_size);
 }
 
@@ -2249,6 +2255,9 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
+  assert (buf != NULL);
+  assert (buf_size > 0);
+
   /* If the name is not a user-specified name, NULL is returned. */
   dot = strchr (name, '.');
   if (dot == NULL)
@@ -2258,8 +2267,9 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
 
   len = STATIC_CAST (int, dot - name);
 
-  assert (buf != NULL);
-  assert (len > 0 && len < buf_size);
+  assert (len < buf_size);
+  assert (len < SM_MAX_USER_LENGTH);
+
   memcpy (buf, name, len);
   buf[len] = '\0';
 
@@ -2267,7 +2277,7 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
 }
 
 /*
- * sm_qualifier_name() - If the name has a qualifier name, remove it.
+ * sm_remove_qualifier_name() - If the name has a qualifier name, remove it.
  *   return: name with qualifier name removed
  *   name(in): user-specified name or object name
  */
@@ -3182,8 +3192,8 @@ sm_is_system_class (MOP op)
 /*
  * sm_check_system_class_by_name () - Checks whether the class name is
  *    the same as the system class name.
- * return: int
- * name(in): class simple name
+ * return: true if the system class name, false otherwise
+ * name(in): class name
  */
 bool
 sm_check_system_class_by_name (const char *name)
@@ -3270,7 +3280,6 @@ sm_check_system_class_by_name (const char *name)
   };
   // *INDENT-ON*
 
-  const char *dot = NULL;
   char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = { '\0' };
   int count = 0;
   int i = 0;
@@ -3280,9 +3289,13 @@ sm_check_system_class_by_name (const char *name)
       return false;
     }
 
-  assert (intl_identifier_lower_string_size (sm_remove_qualifier_name (name)) <
-	  SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-  intl_identifier_lower (sm_remove_qualifier_name (name), downcase_name);
+  /* The user-specified name is not a system class name. */
+  if (strchr (name, '.') != NULL)
+    {
+      return false;
+    }
+
+  sm_downcase_name (name, downcase_name, SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
   if (strncmp (downcase_name, ROOTCLASS_NAME, strlen (ROOTCLASS_NAME)) == 0)
     {

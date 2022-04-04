@@ -570,6 +570,7 @@ int g_original_buffer_len;
 %type <number> show_type_arg1
 %type <number> show_type_arg1_opt
 %type <number> show_type_arg_named
+%type <number> show_type_id
 %type <number> show_type_id_dot_id
 %type <number> kill_type
 %type <number> procedure_or_function
@@ -7276,6 +7277,17 @@ show_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| SHOW show_type_id OF class_name
+		{{
+			int type = $2;
+			PT_NODE *node, *args = $4;
+
+			node = pt_make_query_showstmt (this_parser, type, args, 0, NULL);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| SHOW show_type_id_dot_id OF class_name DOT identifier
 		{{
 			int type = $2;
@@ -7411,7 +7423,28 @@ show_type_arg1
 		{{
 			$$ = SHOWSTMT_ARCHIVE_LOG_HEADER;
 		}}
-	| HEAP HEADER
+	;
+
+show_type_arg1_opt
+	: LOG HEADER
+		{{
+			$$ = SHOWSTMT_ACTIVE_LOG_HEADER;
+		}}
+	;
+
+show_type_arg_named
+	: SLOTTED PAGE HEADER
+		{{
+			$$ = SHOWSTMT_SLOTTED_PAGE_HEADER;
+		}}
+	| SLOTTED PAGE SLOTS
+		{{
+			$$ = SHOWSTMT_SLOTTED_PAGE_SLOTS;
+		}}
+	;
+
+show_type_id
+	: HEAP HEADER
 		{{
 			$$ = SHOWSTMT_HEAP_HEADER;
 		}}
@@ -7434,24 +7467,6 @@ show_type_arg1
 	| ALL INDEXES CAPACITY
 		{{
 			$$ = SHOWSTMT_ALL_INDEXES_CAPACITY;
-		}}
-	;
-
-show_type_arg1_opt
-	: LOG HEADER
-		{{
-			$$ = SHOWSTMT_ACTIVE_LOG_HEADER;
-		}}
-	;
-
-show_type_arg_named
-	: SLOTTED PAGE HEADER
-		{{
-			$$ = SHOWSTMT_SLOTTED_PAGE_HEADER;
-		}}
-	| SLOTTED PAGE SLOTS
-		{{
-			$$ = SHOWSTMT_SLOTTED_PAGE_SLOTS;
 		}}
 	;
 

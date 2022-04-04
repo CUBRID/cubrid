@@ -1060,17 +1060,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_SCHEMA:
-      if (argument[0] == '\0')
-	{
-	  csql_help_schema (NULL);
-	}
-      else
-	{
-	  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-	  sm_user_specified_name (argument, realname, SM_MAX_IDENTIFIER_LENGTH);
-	  assert (realname[0] != '\0');
-	  csql_help_schema (realname);
-	}
+      csql_help_schema ((argument[0] == '\0') ? NULL : argument);
       if (csql_is_auto_commit_requested (csql_arg))
 	{
 	  if (db_commit_transaction () < 0)
@@ -1086,17 +1076,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_TRIGGER:
-      if (argument[0] == '\0')
-	{
-	  csql_help_trigger (NULL);
-	}
-      else
-	{
-	  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-	  sm_user_specified_name (argument, realname, SM_MAX_IDENTIFIER_LENGTH);
-	  assert (realname[0] != '\0');
-	  csql_help_trigger (realname);
-	}
+      csql_help_trigger ((argument[0] == '\0') ? NULL : argument);
       if (csql_is_auto_commit_requested (csql_arg))
 	{
 	  if (db_commit_transaction () < 0)

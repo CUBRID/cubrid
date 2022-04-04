@@ -464,11 +464,12 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 115 在加载过程中输入文件来控制错误
 116 共插入了 %1$ld 个对象, 其中 %2$ld 个对象插入失败.\n
 117 装载失败.\n
-118 类名的最大长度是 %1$d 字节.\n
+118 Maximum length of class name is %1$d bytes.\n
 119 共检查 %1$8d 个对象, %2$d 个对象失败.\n
 120 数据文件未包含'%%class'说明符或未指定'--table'选项\n
 121 忽略%1$s对象\n
-122 \
+122 Maximum length of user name is %1$d bytes.\n
+123 \
 loaddb: 将对象和结构导入到数据库.\n\
 用法: %1$s loaddb [选项] 数据库名[@主机名]\n\
 \n\
@@ -503,6 +504,9 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 47 输出目录过长.\n
 48 LSA : %1$d %2$d \n
 49 密码:
+50 Maximum length of class name is %1$d bytes.\n
+51 Maximum length of user name is %1$d bytes.\n
+52 Class %1$s not found.\n
 60 \
 unloaddb: 从数据库导出对象和结构.\n\
 用法: %1$s unloaddb [选项] 数据库名\n\
@@ -569,6 +573,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 \n传递 3\n\n
 45 heap压缩失败...\n
 46 heap压缩成功...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: 释放数据库中未使用的空间.\n\
 用法: %1$s compactdb [选项] 数据库名 [类名1 类名2 ...]\n\

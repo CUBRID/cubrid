@@ -4935,11 +4935,39 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
     }
   if (class_name)
     {
-      if (intl_identifier_lower_string_size (class_name) >= SM_MAX_IDENTIFIER_LENGTH)
+      const char *dot = NULL;
+      int len = 0;
+
+      len = STATIC_CAST (int, strlen (class_name));
+
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  /* user specified name */
+
+	  /* user name of user specified name */
+	  len = STATIC_CAST (int, dot - class_name);
+	  if (len >= DB_MAX_USER_LENGTH)
+	    {
+	      display_error_line (0);
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+						     LOADDB_MSG_EXCEED_MAX_USER_LEN),
+				     DB_MAX_USER_LENGTH - 1);
+	      CHECK_CONTEXT_VALIDITY (context, true);
+	      ldr_abort ();
+	      goto error_exit;
+	    }
+
+	  /* class name of user specified name */
+	  len = STATIC_CAST (int, strlen (dot + 1));
+	}
+
+      if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
 	{
 	  display_error_line (0);
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_EXCEED_MAX_LEN),
-		   SM_MAX_IDENTIFIER_LENGTH - 1);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+						 LOADDB_MSG_EXCEED_MAX_LEN),
+				 DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
 	  CHECK_CONTEXT_VALIDITY (context, true);
 	  ldr_abort ();
 	  goto error_exit;
