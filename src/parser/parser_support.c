@@ -6619,7 +6619,7 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 	{
 	  /* replace identifier node with string value node */
 	  pt_set_user_specified_name (parser, arg, NULL, NULL);
-	  intl_identifier_lower (arg->info.name.original, lower_table_name);
+	  sm_user_specified_name (arg->info.name.original, lower_table_name, DB_MAX_IDENTIFIER_LENGTH);
 	  id_string = pt_make_string_value (parser, lower_table_name);
 	  if (id_string == NULL)
 	    {
@@ -10241,7 +10241,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   if (strlen (original_name) >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH)
     {
       PT_ERRORf2 (parser, node,
-		  "Identifier name [%s] not allowed. It cannot exceed %d bytes.",
+		  "Object name [%s] not allowed. It cannot exceed %d bytes.",
 		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
       *continue_walk = PT_STOP_WALK;
       return node;
@@ -10280,7 +10280,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
       resolved_name = current_user_name;
     }
-  else if (strlen (resolved_name) >= DB_MAX_USER_LENGTH)
+  else if (intl_identifier_lower_string_size (resolved_name) >= DB_MAX_USER_LENGTH)
     {
       PT_ERRORf2 (parser, node,
 		  "User name [%s] not allowed. It cannot exceed %d bytes.", resolved_name, DB_MAX_USER_LENGTH);
@@ -10293,6 +10293,8 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   /* In case 1, 2, 3, 5 */
   user_specified_name = pt_append_string (parser, downcase_resolved_name, ".");
   user_specified_name = pt_append_string (parser, user_specified_name, original_name);
+
+  assert (intl_identifier_lower_string_size (user_specified_name) < DB_MAX_IDENTIFIER_LENGTH);
 
   if (PT_IS_NAME_NODE (node))
     {

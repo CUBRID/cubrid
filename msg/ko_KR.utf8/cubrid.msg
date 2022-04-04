@@ -1403,17 +1403,25 @@ $ LOADDB
 
 1328 잘못된 Descriptor Handle 입니다.
 1329 지원하지 않는 DBMS 입니다.
-1330 Error reserved for dblink development.
+1330 환경 핸들을 할당할 수 없습니다.
 1331 Error reserved for dblink development.
 
 1332 액티브 로그 볼륨 (%1$s)에서 문제를 발견할 수 없어 재생성할 수 없습니다. 액티브 로그 볼륨을 제거할 경우에 예측할 수 없는 문제가 발생할 수 있으며, 되돌릴 수 없습니다.
-1333 권한 부여 내부 함수에 잘못된 인자 발생.
-1334 AUTO_INCREMENT는 소유자 변경을 허용하지 않습니다.
-1335 RENAME은 소유자 변경을 허용하지 않습니다.
-1336 DBA, DBA 그룹의 구성원 및 소유자가 CREATE SERIAL을 수행할 수 있습니다.
-1337 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TRIGGER를 수행할 수 있습니다.
 
-1338 마지막 에러
+1333 플래시백을 시작할 시간(%1$s)이 잘못되었습니다. 플래시백 시작 시간을 (%2$s)와 (%3$s) 사이로 설정해야 합니다.
+1334 플래시백 할 클래스를 찾을 수 없습니다(%1$s).
+1335 플래시백 할 트랜잭션이 너무 많습니다. %1$d개 미만의 트랜잭션이 플래시백될 수 있습니다.
+1336 클래스의 스키마가 변경되어 해당 클래스에 대하여 플래시백을 지원할 수 없습니다(클래스 명: %1$s, OID: %2$d|%3$d|%4$d).
+1337 아카이브 로그 볼륨이 삭제되어 해당 로그 레코드가 존재하지 않습니다(lsa : %1$lld|%2$d).
+1338 플래시백이 이미 실행 중입니다. 플래시백은 동시에 두 명 이상의 사용자가 실행할 수 없습니다.
+
+1339 권한 부여 내부 함수에 잘못된 인자 발생.
+1340 AUTO_INCREMENT는 소유자 변경을 허용하지 않습니다.
+1341 RENAME은 소유자 변경을 허용하지 않습니다.
+1342 DBA, DBA 그룹의 구성원 및 소유자가 CREATE SERIAL을 수행할 수 있습니다.
+1343 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TRIGGER를 수행할 수 있습니다.
+
+1344 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1571,11 +1579,12 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 커맨트의 최대 길이는 %1$d 바이트입니다.
 128 JSON_OBJECTAGG 인자의 갯수가 잘못되었습니다.
 129 PARALLEL 인자 값은 %1$d에서 %2$d까지 허용됩니다.
-130 이름 바꾸기 전과 후의 소유자가 다릅니다.\n  이름 바꾸기는 소유자를 변경할 수 없습니다.
-131 잘못된 형식의 alter synonym 구문입니다.\n  ALTER [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-132 잘못된 형식의 create synonym 구문입니다.\n  CREATE [OR REPLACE] [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PUBLIC|PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-134 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+130 dblink - 서버명은 점(.)을 포함할 수 없습니다.
+131 이름 바꾸기 전과 후의 소유자가 다릅니다.\n  이름 바꾸기는 소유자를 변경할 수 없습니다.
+132 잘못된 형식의 alter synonym 구문입니다.\n  ALTER [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 잘못된 형식의 create synonym 구문입니다.\n  CREATE [OR REPLACE] [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+134 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PUBLIC|PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+135 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1884,7 +1893,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 함수 %1$s()에 대해 호환되는 함수 정의를 찾을 수 없습니다.
 305 함수 인자와 함수 정의 %1$s 은 호환되지 않습니다.
 306 dblink - 필수 정보가 누락되었습니다.
-307 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TABLE/VIEW를 수행할 수 있습니다.
+307 dblink - %1$s 타입은 지원하지 않습니다.
+308 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TABLE/VIEW를 수행할 수 있습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

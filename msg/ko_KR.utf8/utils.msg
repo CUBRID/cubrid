@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -128,6 +129,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -188,6 +190,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -291,7 +294,7 @@ backupdb: 데이터베이스를 백업합니다.\n\
   -t, --thread-count=COUNT     백업을 수행하는 스레드 개수; 기본값: 자동\n\
       --no-compress            백업 볼륨을 압축하지 않습니다; 기본값: 압축\n\
       --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n\
-  -k, --separate-keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다. \n
+  -k, --separate-keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다.\n
 71 \"%1$s\" 와 \"%2$s\" (은)는 함께 사용할 수 없습니다.\n
 
 
@@ -468,7 +471,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 119 전체 %1$8d 오브젝트 검사, %2$d 오브젝트 실패.\n
 120 데이터 파일이 '%%class'을 포함하거나 '--table' 옵션이 주어져야 합니다.\n
 121 무시된 테이블 %1$s.\n
-122 \
+122 사용자 이름의 최대 길이는 %1$d 바이트 입니다.\n
+123 \
 loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 사용법: %1$s loaddb [옵션] 데이터베이스 이름[@호스트]\n\
 \n\
@@ -505,6 +509,9 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 47 출력 디렉터리 이름이 너무 깁니다.\n
 48 LSA : %1$d %2$d \n
 49 패스워드:
+50 클래스 이름의 최대 길이는 %1$d 바이트 입니다.\n
+51 사용자 이름의 최대 길이는 %1$d 바이트 입니다.\n
+52 클래스 %1$s를 찾을 수 없습니다.\n
 60 \
 unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
 사용법: %1$s unloaddb [옵션] <데이터베이스 이름>\n\
@@ -570,6 +577,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 Pass 3\n\n
 45 힙 공간 정리에 실패했습니다.\n
 46 힙 공간 정리에 성공했습니다.\n
+47 클래스 이름의 최대 길이는 %1$d 바이트 입니다.\n
+48 사용자 이름의 최대 길이는 %1$d 바이트 입니다.\n
 60 \
 compactdb: 데이터베이스에서 사용되지 않는 영역을 해제.\n\
 사용법: %1$s compactdb [옵션] <데이터베이스 이름> [테이블1 테이블2 ...]\n\
@@ -978,9 +987,9 @@ applyinfo: display CUBRID HA 복제 상태 출력\n\
 \n\
 valid options:\n\
   -r, --remote-host-name      원격 호스트 이름; 원격 노드의 활성 로그 정보 출력\n\
-  -a, --applied-info          반영된 정보 출력\n\
   -L, --copied-log-path=PATH  복사된 로그 볼륨의 경로; 복사된 로그 정보 출력\n\
-  -p, --page=ID               페이지 id; 기본값: 0\n\
+  -a, --applied-info          반영된 정보 출력; L옵션이 필요\n\
+  -p, --page=ID               페이지 id; L옵션이 필요; 기본값: 0\n\
   -v, --verbose               상세 상태 정보 출력; 기본값: 사용하지 않음\n\
   -i, --interval=S            매 S 초마다 로그 정보 출력\n
 
@@ -1223,3 +1232,39 @@ operations:\n\
     -n, --generate-new-key        키 파일 (_keys)에 새로운 키를 추가; 최대 갯수: 128\n\
     -d, --delete-key=KEY_INDEX    키 파일 (_keys)의 한 키를 제거\n\
     -c, --change-key=KEY_INDEX    데이터베이스에 등록된 키를 키 파일 (_keys)에 존재하는 다른 키로 변경\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 DBA 비밀번호:
+2 잘못된 날짜 형식입니다. 올바른 형식은 dd-mm-yyyy:hh:mm:ss 입니다.\n
+3 시작 날짜(%1$s)는 종료 날짜(%2$s)보다 작아야 합니다.\n
+4 현재 날짜 이전(%1$s) 또는 데이터베이스 생성 이후(%2$s) 날짜로 시도하십시오.\n
+5 테이블(%1$s)이 데이터베이스에 없습니다.\n
+6 플래시백할 트랜잭션이 너무 많습니다. 시작 날짜와 종료 날짜 사이의 간격을 줄이십시오.\n
+7 스키마(%1$s)가 변경되었기 때문에 플래시백을 수행할 수 없습니다.\n
+8 로그 볼륨이 제거되었습니다. 나중 날짜로 시도하십시오.\n
+9 출력 파일 '%1$s'을 열 수 없습니다.\n
+10 트랜잭션 ID(%1$d)가 존재하지 않습니다.\n
+11 'cubrid.conf'의 'supplemental_log'를 설정해 주세요. 'supplemental_log'를 설정한 후 실행된 SQL 로그만 플래시백할 수 있습니다.\n
+12 트랜잭션 ID는 %1$d초 안에 입력해야 합니다. 'cubrid.conf'의 'flashback_timeout' 설정을 통해 시간 값을 조정할 수 있습니다. \n
+13 플래시백이 이미 실행 중입니다. 플래시백은 두 개 이상의 프로세스에서 실행할 수 없습니다.\n
+14 플래시백은 독립 모드에서 실행할 수 없습니다.\n
+60 \
+flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니다.\n\
+사용법: %1$s flashback [OPTION] 데이터베이스 이름 class_name1 [class_name2 ...]\n\
+\N\
+유효한 옵션:\n\
+    -o, --output-file=FILE      출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
+    -u, --user=ID               플래시백할 SQL 문을 실행한 사용자를 지정합니다. 기본값: 모두.\n\
+    -p, --dba-password          DBA 사용자의 비밀번호; 지정되지 않은 경우 프롬프트\n\
+    -s, --start-date=DATE       플래시백의 시작 날짜를 지정합니다. DATE 이후에 수행된 SQL로그가 추출됩니다.\n\
+                                DATE는 다음과 같이 지정됩니다. dd-mm-yyyy:hh:mm:ss.\n\
+    -e, --end-date=DATE         플래시백의 종료 날짜를 지정합니다. DATE까지 수행된 SQL로그가 추출됩니다.\n\
+                                시작 날짜를 지정하지 않으면 ((종료 - 10분) ~ 종료) 범위로 설정됩니다.\n\
+                                종료 날짜를 지정되지 않은 경우 (시작 ~ (시작 + 10분)) 범위로 설정됩니다.\n\
+                                시작 날짜와 종료 날짜 모두 지정되지 않은 경우,\n\
+                                (현재 시간 - 10분)과 현재 시간 사이에 실행된 SQL 로그를 추출합니다.\n\
+    --detail                    각 SQL 문에 대한 자세한 정보를 출력합니다.\n\
+                                트랜잭션 ID, 사용자 이름 및 사용자가 수행한 SQL 문, 플래쉬백을 위한 SQL 문이 출력됩니다;\n\
+                                기본값: 플래시백을 위한 SQL 문만 출력\n\
+    --oldest                    시작 시간부터 종료 시간까지 수행된 SQL문에 대하여 시간 순으로 플래시백을 수행합니다;\n\
+                                기본값: 최근에 수행된 SQL문부터 역순으로 플래시백을 수행합니다.\n

@@ -115,7 +115,130 @@ namespace cubload
   server_class_installer::locate_class (const char *class_name, OID &class_oid)
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
-    return xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+    LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
+    LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
+
+    found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+    if (found == LC_CLASSNAME_EXIST)
+      {
+	return found;
+      }
+
+    /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+    if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_UTILITY
+	&& prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+      {
+	found_again = locate_class_for_all_users (class_name, class_oid);
+	if (found_again == LC_CLASSNAME_EXIST)
+	  {
+	    return found_again;
+	  }
+      }
+
+    return found;
+  }
+
+  LC_FIND_CLASSNAME
+  server_class_installer::locate_class_for_all_users (const char *class_name, OID &class_oid)
+  {
+#define CATCLS_USER_ATTR_IDX_NAME 7
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
+    HEAP_CACHE_ATTRINFO attr_info;
+    HEAP_SCANCACHE scan_cache;
+    SCAN_CODE scan_code = S_SUCCESS;
+    RECDES recdes = RECDES_INITIALIZER;
+    HFID hfid = HFID_INITIALIZER;
+    OID inst_oid = OID_INITIALIZER;
+    HEAP_ATTRVALUE *heap_value = NULL;
+    const char *dot = NULL;
+    const char *class_name_p = NULL;
+    int error = NO_ERROR;
+    int i = 0;
+
+    error = heap_attrinfo_start (&thread_ref, oid_User_class_oid, -1, NULL, &attr_info);
+    assert (attr_info.num_values != -1);
+    if (error != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return LC_CLASSNAME_ERROR;
+      }
+
+    error = heap_get_class_info (&thread_ref, oid_User_class_oid, &hfid, NULL, NULL);
+    if (error != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	heap_attrinfo_end (&thread_ref, &attr_info);
+	return LC_CLASSNAME_ERROR;
+      }
+
+    error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, false, NULL);
+    if (error != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	heap_attrinfo_end (&thread_ref, &attr_info);
+	return LC_CLASSNAME_ERROR;
+      }
+
+    /* If it is user_specified_name, remove user_name. */
+    dot = strchr (class_name, '.');
+    class_name_p = dot ? dot + 1 : class_name;
+
+    while (true)
+      {
+	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
+	if (scan_code == S_SUCCESS)
+	  {
+	    error = heap_attrinfo_read_dbvalues (&thread_ref, &inst_oid, &recdes, NULL, &attr_info);
+	    if (error != NO_ERROR)
+	      {
+		ASSERT_ERROR ();
+		heap_scancache_end (&thread_ref, &scan_cache);
+		heap_attrinfo_end (&thread_ref, &attr_info);
+		return LC_CLASSNAME_ERROR;
+	      }
+
+	    for (i = 0, heap_value = attr_info.values; i < attr_info.num_values; i++, heap_value++)
+	      {
+		if (heap_value->attrid == CATCLS_USER_ATTR_IDX_NAME)
+		  {
+		    const char *user_name = NULL;
+		    char downcase_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+		    char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+		    user_name = db_get_string (&heap_value->dbvalue);
+		    intl_identifier_lower (user_name, downcase_user_name);
+		    snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_user_name, class_name_p);
+
+		    found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
+		    if (found == LC_CLASSNAME_EXIST)
+		      {
+			heap_scancache_end (&thread_ref, &scan_cache);
+			heap_attrinfo_end (&thread_ref, &attr_info);
+			return found;
+		      }
+
+		    break;
+		  }
+	      }
+	  }
+	else if (scan_code == S_END)
+	  {
+	    break;
+	  }
+	else
+	  {
+	    ASSERT_ERROR ();
+	    heap_scancache_end (&thread_ref, &scan_cache);
+	    heap_attrinfo_end (&thread_ref, &attr_info);
+	    return LC_CLASSNAME_ERROR;
+	  }
+      }
+
+    heap_scancache_end (&thread_ref, &scan_cache);
+    heap_attrinfo_end (&thread_ref, &attr_info);
+    return LC_CLASSNAME_DELETED;
+#undef CATCLS_USER_ATTR_IDX_NAME
   }
 
   void

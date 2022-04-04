@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 在数据库名 '%2$s' 中有无效的长度或字符 '%1$c' \n
@@ -128,6 +129,7 @@ cubrid 管理工具，版本 %1$s\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -188,6 +190,7 @@ cubrid 管理工具，版本 %1$s\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -464,11 +467,12 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 115 在加载过程中输入文件来控制错误
 116 共插入了 %1$ld 个对象, 其中 %2$ld 个对象插入失败.\n
 117 装载失败.\n
-118 类名的最大长度是 %1$d 字节.\n
+118 Maximum length of class name is %1$d bytes.\n
 119 共检查 %1$8d 个对象, %2$d 个对象失败.\n
 120 数据文件未包含'%%class'说明符或未指定'--table'选项\n
 121 忽略%1$s对象\n
-122 \
+122 Maximum length of user name is %1$d bytes.\n
+123 \
 loaddb: 将对象和结构导入到数据库.\n\
 用法: %1$s loaddb [选项] 数据库名[@主机名]\n\
 \n\
@@ -503,6 +507,9 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 47 输出目录过长.\n
 48 LSA : %1$d %2$d \n
 49 密码:
+50 Maximum length of class name is %1$d bytes.\n
+51 Maximum length of user name is %1$d bytes.\n
+52 Class %1$s not found.\n
 60 \
 unloaddb: 从数据库导出对象和结构.\n\
 用法: %1$s unloaddb [选项] 数据库名\n\
@@ -569,6 +576,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 \n传递 3\n\n
 45 heap压缩失败...\n
 46 heap压缩成功...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: 释放数据库中未使用的空间.\n\
 用法: %1$s compactdb [选项] 数据库名 [类名1 类名2 ...]\n\
@@ -977,9 +986,9 @@ applyinfo: 显示 CUBRID HA 应用信息.\n\
 \n\
 可用选项:\n\
   -r, --remote-host-name      远程主机名; 显示远程节点的活动日志信息 \n\
-  -a, --applied-info 	      显示运用的信息 \n\
   -L, --copied-log-path=PATH  设置复制的日志卷路径; 显示复制的日志信息 \n\
-  -p, --page=ID               页 id; 默认: 0\n\
+  -a, --applied-info 	      显示运用的信息; -L 选项是必需的 \n\
+  -p, --page=ID               页 id; -L 选项是必需的; 默认: 0\n\
   -v, --verbose               显示详细状态信息; 默认 : 关闭\n\
   -i, --interval=S            设置每 S 秒打印一次信息\n
 
@@ -1224,3 +1233,39 @@ tde: 透明数据加密（TDE）管理\n\
     -n, --generate-new-key     在密钥文件（_keys）中生成一个新密钥；最大计数:128\n\
     -d, --delete-key=KEY_INDEX 删除密钥文件（_keys）中的密钥\n\
     -c, --change-key=KEY_INDEX 将数据库中设置的密钥更改为密钥文件（_keys）中的另一个密钥\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 输入 DBA 密码：
+2 日期格式无效，有效格式为 dd-mm-yyyy:hh:mm:ss\n
+3 开始日期 (%1$s) 必须小于结束日期 (%2$s)\n
+4 请尝试使用当前 (%1$s) 之前或数据库创建之后 (%2$s) 的日期\n
+5 表 (%1$s) 在数据库中不存在\n
+6 闪回的事务太多。请缩短开始日期和结束日期之间的间隔\n
+7 无法获得闪回，因为架构 (%1$s) 已更改。\n
+8 日志卷已被删除。请稍后再试\n
+9 无法打开输出文件 '%1$s'\n
+10 交易 ID (%1$d) 不存在\n
+11 请在“cubrid.conf”中设置“supplemental_log”。只有设置 'supplemental_log' 后执行的 SQL 日志才能被闪回。\n
+12 事务 ID 应在 %1$d 秒内输入。可以通过“cubrid.conf”中的“flashback_timeout”设置来调整超时。\n
+13 闪回已在运行。闪回不能由两个进程运行。\n
+14 闪回不能作为独立模式运行。\n
+60\
+flashback：提供用于闪回特定事务的语句。\n\
+用法：%1$s flashback [OPTION] 数据库名称 class_name1 [class_name2 ...]\n\
+\n\
+有效选项：\n\
+    -o, --output-file=FILE      将输出消息重定向到 FILE；默认值：无。\n\
+    -u, --user=ID               指定执行闪回SQL语句的用户；默认值：全部。\n\
+    -p, --dba-password          DBA用户的密码；不指定会提示\n\
+    -s, --start-date=DATE       指定闪回的开始日期。 SQL 日志是从 DATE 中提取的。\n\
+                                DATE 如下所示：dd-mm-yyyy:hh:mm:ss。\n\
+    -e, --end-date=DATE         指定闪回的结束日期。 SQL 日志提取到 DATE。\n\
+                                如果未指定开始日期，则 ((END - 10min) ~ END) 设置为范围，\n\
+                                否则，如果未指定 END，则设置 (start ~ (start + 10min))。\n\
+                                并且既没有指定开始日期也没有指定结束日期，\n\
+                                提取在（当前时间 - 10 分钟）和当前时间之间执行的 SQL 日志。\n\
+    --detail                    输出每条 SQL 语句的详细信息。\n\
+                                事务 ID、用户名和原始 SQL 语句将与 SQL 语句一起返回\n\
+                                用于闪回；默认值：只输出闪回的 SQL 语句\n\
+    --oldest                    对从开始时间到结束时间执行的SQL语句按时间顺序进行闪回；\n\
+                                默认值：最新\n

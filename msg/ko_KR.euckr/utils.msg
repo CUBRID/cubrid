@@ -74,7 +74,8 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
-$       56      tde
+$       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Å©±â°¡ Àß¸øµÇ¾ú°Å³ª, Àß¸øµÈ ¹®ÀÚ '%1$c'ÀÌ(°¡) µ¥ÀÌÅÍº£ÀÌ½º ÀÌ¸§ '%2$s'¿¡ Æ÷ÇÔµÇ¾î ÀÖ½À´Ï´Ù\n
@@ -128,6 +129,7 @@ cubrid °ü¸®ÀÚ À¯Æ¿¸®Æ¼, ¹öÀü %1$s\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s (Àº)´Â DBMS °ü¸® µµ±¸ÀÔ´Ï´Ù.\n\
 Ãß°¡ÀûÀÎ Á¤º¸´Â ´ÙÀ½ »çÀÌÆ®¸¦ ÂüÁ¶ÇÏ¼¼¿ä. http://www.cubrid.org\n
@@ -188,6 +190,7 @@ cubrid °ü¸®ÀÚ À¯Æ¿¸®Æ¼, ¹öÀü %1$s\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s (Àº)´Â DBMS  µµ±¸ÀÔ´Ï´Ù.\n\
 Ãß°¡ÀûÀÎ Á¤º¸´Â ´ÙÀ½ »çÀÌÆ®¸¦ ÂüÁ¶ÇÏ¼¼¿ä. http://www.cubrid.org\n
@@ -468,7 +471,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 119 ÀüÃ¼ %1$8d ¿ÀºêÁ§Æ® °Ë»ç, %2$d ¿ÀºêÁ§Æ® ½ÇÆÐ.\n
 120 µ¥ÀÌÅÍ ÆÄÀÏÀÌ '%%class'À» Æ÷ÇÔÇÏ°Å³ª '--table' ¿É¼ÇÀÌ ÁÖ¾îÁ®¾ß ÇÕ´Ï´Ù.\n
 121 ¹«½ÃµÈ Å×ÀÌºí %1$s.\n
-122 \
+122 »ç¿ëÀÚ ÀÌ¸§ÀÇ ÃÖ´ë ±æÀÌ´Â %1$d ¹ÙÀÌÆ® ÀÔ´Ï´Ù.\n
+123 \
 loaddb: µ¥ÀÌÅÍº£ÀÌ½º¿¡ °´Ã¼ ¹× ½ºÅ°¸¶ ÀûÀç\n\
 »ç¿ë¹ý: %1$s loaddb [¿É¼Ç] µ¥ÀÌÅÍº£ÀÌ½º ÀÌ¸§[@È£½ºÆ®]\n\
 \n\
@@ -505,6 +509,9 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 47 Ãâ·Â µð·ºÅÍ¸® ÀÌ¸§ÀÌ ³Ê¹« ±é´Ï´Ù.\n
 48 LSA : %1$d %2$d \n
 49 ÆÐ½º¿öµå:
+50 Å¬·¡½º ÀÌ¸§ÀÇ ÃÖ´ë ±æÀÌ´Â %1$d ¹ÙÀÌÆ® ÀÔ´Ï´Ù.\n
+51 »ç¿ëÀÚ ÀÌ¸§ÀÇ ÃÖ´ë ±æÀÌ´Â %1$d ¹ÙÀÌÆ® ÀÔ´Ï´Ù.\n
+52 Å¬·¡½º %1$s¸¦ Ã£À» ¼ö ¾ø½À´Ï´Ù.\n
 60 \
 unloaddb: µ¥ÀÌÅÍº£ÀÌ½º¿¡¼­ ½ºÅ°¸¶¿Í °´Ã¼¸¦ ¾ð·Îµå\n\
 »ç¿ë¹ý: %1$s unloaddb [¿É¼Ç] <µ¥ÀÌÅÍº£ÀÌ½º ÀÌ¸§>\n\
@@ -570,6 +577,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 Pass 3\n\n
 45 Èü °ø°£ Á¤¸®¿¡ ½ÇÆÐÇß½À´Ï´Ù.\n
 46 Èü °ø°£ Á¤¸®¿¡ ¼º°øÇß½À´Ï´Ù.\n
+47 Å¬·¡½º ÀÌ¸§ÀÇ ÃÖ´ë ±æÀÌ´Â %1$d ¹ÙÀÌÆ® ÀÔ´Ï´Ù.\n
+48 »ç¿ëÀÚ ÀÌ¸§ÀÇ ÃÖ´ë ±æÀÌ´Â %1$d ¹ÙÀÌÆ® ÀÔ´Ï´Ù.\n
 60 \
 compactdb: µ¥ÀÌÅÍº£ÀÌ½º¿¡¼­ »ç¿ëµÇÁö ¾Ê´Â ¿µ¿ªÀ» ÇØÁ¦.\n\
 »ç¿ë¹ý: %1$s compactdb [¿É¼Ç] <µ¥ÀÌÅÍº£ÀÌ½º ÀÌ¸§> [Å×ÀÌºí1 Å×ÀÌºí2 ...]\n\
@@ -978,9 +987,9 @@ applyinfo: display CUBRID HA º¹Á¦ »óÅÂ Ãâ·Â\n\
 \n\
 valid options:\n\
   -r, --remote-host-name      ¿ø°Ý È£½ºÆ® ÀÌ¸§; ¿ø°Ý ³ëµåÀÇ È°¼º ·Î±× Á¤º¸ Ãâ·Â\n\
-  -a, --applied-info          ¹Ý¿µµÈ Á¤º¸ Ãâ·Â\n\
   -L, --copied-log-path=PATH  º¹»çµÈ ·Î±× º¼·ýÀÇ °æ·Î; º¹»çµÈ ·Î±× Á¤º¸ Ãâ·Â\n\
-  -p, --page=ID               ÆäÀÌÁö id; ±âº»°ª: 0\n\
+  -a, --applied-info          ¹Ý¿µµÈ Á¤º¸ Ãâ·Â; L¿É¼ÇÀÌ ÇÊ¿ä\n\
+  -p, --page=ID               ÆäÀÌÁö id; L¿É¼ÇÀÌ ÇÊ¿ä; ±âº»°ª: 0\n\
   -v, --verbose               »ó¼¼ »óÅÂ Á¤º¸ Ãâ·Â; ±âº»°ª: »ç¿ëÇÏÁö ¾ÊÀ½\n\
   -i, --interval=S            ¸Å S ÃÊ¸¶´Ù ·Î±× Á¤º¸ Ãâ·Â\n
 
@@ -1223,3 +1232,39 @@ operations:\n\
     -n, --generate-new-key        Å° ÆÄÀÏ (_keys)¿¡ »õ·Î¿î Å°¸¦ Ãß°¡; ÃÖ´ë °¹¼ö: 128\n\
     -d, --delete-key=KEY_INDEX    Å° ÆÄÀÏ (_keys)ÀÇ ÇÑ Å°¸¦ Á¦°Å\n\
     -c, --change-key=KEY_INDEX    µ¥ÀÌÅÍº£ÀÌ½º¿¡ µî·ÏµÈ Å°¸¦ Å° ÆÄÀÏ (_keys)¿¡ Á¸ÀçÇÏ´Â ´Ù¸¥ Å°·Î º¯°æ\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 DBA ºñ¹Ð¹øÈ£:
+2 Àß¸øµÈ ³¯Â¥ Çü½ÄÀÔ´Ï´Ù. ¿Ã¹Ù¸¥ Çü½ÄÀº dd-mm-yyyy:hh:mm:ssÀÔ´Ï´Ù.\n
+3 ½ÃÀÛ ³¯Â¥(%1$s)´Â Á¾·á ³¯Â¥(%2$s)º¸´Ù ÀÛ¾Æ¾ß ÇÕ´Ï´Ù.\n
+4 ÇöÀç ³¯Â¥ ÀÌÀü(%1$s) ¶Ç´Â µ¥ÀÌÅÍº£ÀÌ½º »ý¼º ÀÌÈÄ(%2$s) ³¯Â¥·Î ½ÃµµÇÏ½Ê½Ã¿À.\n
+5 Å×ÀÌºí(%1$s)ÀÌ µ¥ÀÌÅÍº£ÀÌ½º¿¡ ¾ø½À´Ï´Ù.\n
+6 ÇÃ·¡½Ã¹éÇÒ Æ®·£Àè¼ÇÀÌ ³Ê¹« ¸¹½À´Ï´Ù. ½ÃÀÛ ³¯Â¥¿Í Á¾·á ³¯Â¥ »çÀÌÀÇ °£°ÝÀ» ÁÙÀÌ½Ê½Ã¿À.\n
+7 ½ºÅ°¸¶(%1$s)°¡ º¯°æµÇ¾ú±â ¶§¹®¿¡ ÇÃ·¡½Ã¹éÀ» ¼öÇàÇÒ ¼ö ¾ø½À´Ï´Ù.\n
+8 ·Î±× º¼·ýÀÌ Á¦°ÅµÇ¾ú½À´Ï´Ù. ³ªÁß ³¯Â¥·Î ½ÃµµÇÏ½Ê½Ã¿À.\n
+9 Ãâ·Â ÆÄÀÏ '%1$s'À» ¿ ¼ö ¾ø½À´Ï´Ù.\nÙ
+10 Æ®·£Àè¼Ç ID(%1$d)°¡ Á¸ÀçÇÏÁö ¾Ê½À´Ï´Ù.\n
+11 'cubrid.conf'ÀÇ 'supplemental_log'¸¦ ¼³Á¤ÇØ ÁÖ¼¼¿ä. 'supplemental_log'¸¦ ¼³Á¤ÇÑ ÈÄ ½ÇÇàµÈ SQL ·Î±×¸¸ ÇÃ·¡½Ã¹éÇÒ ¼ö ÀÖ½À´Ï´Ù.\n
+12 Æ®·£Àè¼Ç ID´Â %1$dÃÊ ¾È¿¡ ÀÔ·ÂÇØ¾ß ÇÕ´Ï´Ù. 'cubrid.conf'ÀÇ 'flashback_timeout' ¼³Á¤À» ÅëÇØ ½Ã°£ °ªÀ» Á¶Á¤ÇÒ ¼ö ÀÖ½À´Ï´Ù. \n
+13 ÇÃ·¡½Ã¹éÀÌ ÀÌ¹Ì ½ÇÇà ÁßÀÔ´Ï´Ù. ÇÃ·¡½Ã¹éÀº µÎ °³ ÀÌ»óÀÇ ÇÁ·Î¼¼½º¿¡¼ ½ÇÇàÇÒ ¼ö ¾ø½À´Ï´Ù.\nÙ
+14 ÇÃ·¡½Ã¹éÀº µ¶¸³ ¸ðµå¿¡¼ ½ÇÇàÇÒ ¼ö ¾ø½À´Ï´Ù.\n
+60 \
+flashback: Æ¯Á¤ Æ®·£Àè¼ÇÀ» ÇÃ·¡½Ã¹éÇÏ´Â ¸í·É¹®À» Á¦°øÇÕ´Ï´Ù.\n\
+»ç¿ë¹ý: %1$s flashback [OPTION] µ¥ÀÌÅÍº£ÀÌ½º ÀÌ¸§ class_name1 [class_name2 ...]\n\
+\N\
+À¯È¿ÇÑ ¿É¼Ç:\n\
+    -o, --output-file=FILE      Ãâ·Â ¸Þ½ÃÁö¸¦ FILE·Î ¸®µð·º¼ÇÇÕ´Ï´Ù. ±âº»°ª: ¾øÀ½.\n\
+    -u, --user=ID               ÇÃ·¡½Ã¹éÇÒ SQL ¹®À» ½ÇÇàÇÑ »ç¿ëÀÚ¸¦ ÁöÁ¤ÇÕ´Ï´Ù. ±âº»°ª: ¸ðµÎ.\n\
+    -p, --dba-password          DBA »ç¿ëÀÚÀÇ ºñ¹Ð¹øÈ£; ÁöÁ¤ÇÏÁö ¾ÊÀ¸¸é ¸Þ½ÃÁö°¡ Ç¥½ÃµË´Ï´Ù.\n\
+    -s, --start-date=DATE       ÇÃ·¡½Ã¹éÀÇ ½ÃÀÛ ³¯Â¥¸¦ ÁöÁ¤ÇÕ´Ï´Ù. DATE ÀÌÈÄ¿¡ ¼öÇàµÈ SQL·Î±×°¡ ÃßÃâµË´Ï´Ù.\n\
+                                DATE´Â ´ÙÀ½°ú °°ÀÌ ÁöÁ¤µË´Ï´Ù. dd-mm-yyyy:hh:mm:ss.\n\
+    -e, --end-date=DATE         ÇÃ·¡½Ã¹éÀÇ Á¾·á ³¯Â¥¸¦ ÁöÁ¤ÇÕ´Ï´Ù. DATE±îÁö ¼öÇàµÈ SQL·Î±×°¡ ÃßÃâµË´Ï´Ù.\n\
+                                ½ÃÀÛ ³¯Â¥¸¦ ÁöÁ¤ÇÏÁö ¾ÊÀ¸¸é ((Á¾·á - 10ºÐ) ~ Á¾·á) ¹üÀ§·Î ¼³Á¤µË´Ï´Ù.\n\
+                                Á¾·á ³¯Â¥¸¦ ÁöÁ¤µÇÁö ¾ÊÀº °æ¿ì (½ÃÀÛ ~ (½ÃÀÛ + 10ºÐ)) ¹üÀ§·Î ¼³Á¤µË´Ï´Ù.\n\
+                                ½ÃÀÛ ³¯Â¥¿Í Á¾·á ³¯Â¥ ¸ðµÎ ÁöÁ¤µÇÁö ¾ÊÀº °æ¿ì,\n\
+                                (ÇöÀç ½Ã°£ - 10ºÐ)°ú ÇöÀç ½Ã°£ »çÀÌ¿¡ ½ÇÇàµÈ SQL ·Î±×¸¦ ÃßÃâÇÕ´Ï´Ù.\n\
+    --detail                    °¢ SQL ¹®¿¡ ´ëÇÑ ÀÚ¼¼ÇÑ Á¤º¸¸¦ Ãâ·ÂÇÕ´Ï´Ù.\n\
+                                Æ®·£Àè¼Ç ID, »ç¿ëÀÚ ÀÌ¸§ ¹× »ç¿ëÀÚ°¡ ¼öÇàÇÑ SQL ¹®, ÇÃ·¡½¬¹éÀ» À§ÇÑ SQL ¹®ÀÌ Ãâ·ÂµË´Ï´Ù;\n\
+                                ±âº»°ª: ÇÃ·¡½Ã¹éÀ» À§ÇÑ SQL ¹®¸¸ Ãâ·Â\n\
+    --oldest                    ½ÃÀÛ ½Ã°£ºÎÅÍ Á¾·á ½Ã°£±îÁö ¼öÇàµÈ SQL¹®¿¡ ´ëÇÏ¿© ½Ã°£ ¼øÀ¸·Î ÇÃ·¡½Ã¹éÀ» ¼öÇàÇÕ´Ï´Ù;\n\
+                                ±âº»°ª: ÃÖ±Ù¿¡ ¼öÇàµÈ SQL¹®ºÎÅÍ ¿ª¼øÀ¸·Î ÇÃ·¡½Ã¹éÀ» ¼öÇàÇÕ´Ï´Ù.\n
