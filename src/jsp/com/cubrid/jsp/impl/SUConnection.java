@@ -36,7 +36,7 @@ import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.DBParameterInfo;
 import com.cubrid.jsp.data.DBType;
-import com.cubrid.jsp.data.DataUtilities;
+import com.cubrid.jsp.data.ErrorInfo;
 import com.cubrid.jsp.data.ExecuteInfo;
 import com.cubrid.jsp.data.FetchInfo;
 import com.cubrid.jsp.data.GetByOIDInfo;
@@ -70,7 +70,8 @@ public class SUConnection {
 
         int responseCode = unpacker.unpackInt();
         if (responseCode != 0) {
-            String errorMsg = unpacker.unpackCString();
+            ErrorInfo errorInfo = new ErrorInfo(unpacker);
+            String errorMsg = errorInfo.errorString;
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
                     CUBRIDServerSideJDBCErrorCode.ER_DBMS, errorMsg, null);
         }

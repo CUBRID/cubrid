@@ -27,8 +27,9 @@
 #include "object_primitive.h"
 #include "object_representation.h"	/* OR_ */
 #include "packer.hpp"
-#include "jsp_sr.h" /* jsp_server_port(), jsp_connect_server() */
 #include "method_connection_sr.hpp"
+#include "method_connection_pool.hpp"
+#include "session.h"
 
 #if defined (SA_MODE)
 #include "query_method.hpp"
@@ -40,9 +41,12 @@ namespace cubmethod
 // Method Group to invoke together
 //////////////////////////////////////////////////////////////////////////
   method_invoke_group::method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list)
-    : m_id ((int64_t) this), m_thread_p (thread_p), m_connection (nullptr)
+    : m_id ((std::uint64_t) this), m_thread_p (thread_p), m_connection (nullptr)
   {
     assert (sig_list.num_methods > 0);
+
+    // init runtime context
+    session_get_method_runtime_context (thread_p, m_rctx);
 
     method_sig_node *sig = sig_list.method_sig;
     while (sig)
@@ -73,6 +77,7 @@ namespace cubmethod
     DB_VALUE v;
     db_make_null (&v);
     m_result_vector.resize (sig_list.num_methods, v);
+    m_is_running = false;
     m_parameter_info = nullptr;
   }
 
@@ -103,7 +108,7 @@ namespace cubmethod
     return m_method_vector.size ();
   }
 
-  int64_t
+  METHOD_GROUP_ID
   method_invoke_group::get_id () const
   {
     return m_id;
@@ -125,6 +130,12 @@ namespace cubmethod
   method_invoke_group::get_data_queue ()
   {
     return m_data_queue;
+  }
+
+  bool
+  method_invoke_group::is_running () const
+  {
+    return m_is_running;
   }
 
   db_parameter_info *
@@ -196,9 +207,16 @@ namespace cubmethod
     return error;
   }
 
-  int method_invoke_group::begin ()
+  void
+  method_invoke_group::begin ()
   {
-    int error = NO_ERROR;
+    if (m_is_running == true)
+      {
+	return;
+      }
+
+    // push to stack
+    m_rctx->push_stack (m_thread_p, this);
 
     // connect socket for java sp
     bool is_in = m_kind_type.find (METHOD_TYPE_JAVA_SP) != m_kind_type.end ();
@@ -210,7 +228,7 @@ namespace cubmethod
 	  }
       }
 
-    return error;
+    m_is_running = true;
   }
 
   int method_invoke_group::reset (bool is_end_query)
@@ -219,28 +237,75 @@ namespace cubmethod
 
     pr_clear_value_vector (m_result_vector);
 
-    for (method_invoke *method: m_method_vector)
-      {
-	method->reset (m_thread_p);
-      }
+    // destroy cursors used in this group
+    destory_all_cursors ();
 
-    if (!is_end_query)
-      {
-	cubmethod::header header (METHOD_REQUEST_END, get_id());
-	error = method_send_data_to_client (m_thread_p, header);
-      }
+    cubmethod::header header (METHOD_REQUEST_END, get_id());
+    error = method_send_data_to_client (m_thread_p, header);
 
     return error;
   }
 
-  int method_invoke_group::end ()
+  void
+  method_invoke_group::end ()
   {
-    int error = NO_ERROR;
+    if (m_is_running == false)
+      {
+	return;
+      }
+
     reset (true);
 
     get_connection_pool ()->retire (m_connection);
     m_connection = nullptr;
 
-    return error;
+    m_rctx->pop_stack (m_thread_p);
+    m_is_running = false;
+  }
+
+  query_cursor *
+  method_invoke_group::create_cursor (QUERY_ID query_id, bool oid_included)
+  {
+    m_cursor_set.insert (query_id);
+    return m_rctx->create_cursor (m_thread_p, query_id, oid_included);
+  }
+
+  void
+  method_invoke_group::register_returning_cursor (QUERY_ID query_id)
+  {
+    m_rctx->register_returning_cursor (m_thread_p, query_id);
+    m_cursor_set.erase (query_id);
+  }
+
+  query_cursor *
+  method_invoke_group::get_cursor (QUERY_ID query_id)
+  {
+    return m_rctx->get_cursor (m_thread_p, query_id);
+  }
+
+  void
+  method_invoke_group::destory_all_cursors ()
+  {
+    for (auto &cursor_it : m_cursor_set)
+      {
+	m_rctx->destroy_cursor (m_thread_p, cursor_it);
+
+	// If the cursor is received from the child function and is not returned to the parent function, the cursor remains in m_cursor_set.
+	// So here trying to find the cursor Id in the global returning cursor storage and remove it if exists.
+	m_rctx->deregister_returning_cursor (m_thread_p, cursor_it);
+      }
+    m_cursor_set.clear ();
+  }
+
+  std::string
+  method_invoke_group::get_error_msg ()
+  {
+    return m_err_msg;
+  }
+
+  void
+  method_invoke_group::set_error_msg (const std::string &msg)
+  {
+    m_err_msg = msg;
   }
 }	// namespace cubmethod

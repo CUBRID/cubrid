@@ -29,6 +29,13 @@ CREATE OR REPLACE FUNCTION testConnectionSP() RETURN STRING AS LANGUAGE JAVA NAM
 
 CREATE OR REPLACE FUNCTION testStatementExecute(q string) RETURN STRING AS LANGUAGE JAVA NAME 'test.SpJDBCTest.testStatementExecute(java.lang.String) return java.lang.String';
 
+/* Error Test */
+CREATE OR REPLACE FUNCTION sp_exception(a STRING) RETURN STRING as language java name 'test.SpErrorTest.testSQLExceptionTest(java.lang.String) return java.lang.String';
+CREATE OR REPLACE FUNCTION sp_exception_thrown(a STRING) RETURN STRING as language java name 'test.SpErrorTest.testSQLExceptionThrownTest(java.lang.String) return java.lang.String';
+CREATE OR REPLACE FUNCTION sp_div_zero(a INT) RETURN INT as language java name 'test.SpErrorTest.testDivideByZeroTest(int) return int';
+CREATE OR REPLACE FUNCTION sp_exception_invalid_query() RETURN INT as language java name 'test.SpErrorTest.testInvalidQueryTest() return int';
+CREATE OR REPLACE FUNCTION sp_exception_unsupported() RETURN INT as language java name 'test.SpErrorTest.testUnsupportedTest() return int';
+
 /* ////////////////////////////////////////////////////////////////////////// */
 /* Unit Test for Stored Procedure Specs */
 /* ////////////////////////////////////////////////////////////////////////// */

@@ -774,7 +774,7 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    m_error_ctx.set_error (stmt_id, NULL, __FILE__, __LINE__);
+	    m_error_ctx.set_error (stmt_id, db_error_string (1), __FILE__, __LINE__);
 	    return ER_FAILED;
 	  }
 	m_is_prepared = false;
@@ -835,7 +835,7 @@ namespace cubmethod
     int stmt_id = db_compile_statement (m_session);
     if (stmt_id < 0)
       {
-	m_error_ctx.set_error (stmt_id, NULL, __FILE__, __LINE__);
+	m_error_ctx.set_error (stmt_id, db_error_string (1), __FILE__, __LINE__);
 	return ER_FAILED;
       }
 

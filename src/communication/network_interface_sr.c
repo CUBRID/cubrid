@@ -84,6 +84,7 @@
 #include "elo.h"
 #include "transaction_transient.hpp"
 #include "method_invoke_group.hpp"
+#include "method_runtime_context.hpp"
 #include "log_manager.h"
 #include "crypt_opfunc.h"
 
@@ -10367,6 +10368,8 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   db_make_null (&ret_value);
   int error_code = xmethod_invoke_fold_constants (thread_p, sig_list, ref_args, ret_value);
 
+  cubmethod::method_invoke_group * top_on_stack = cubmethod::get_rctx (thread_p)->top_stack ();
+
   packing_packer packer;
   cubmem::extensible_block eb;
   if (error_code == NO_ERROR)
@@ -10393,11 +10396,14 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     }
   else
     {
-      assert (er_errid () != NO_ERROR);
-      (void) return_error_to_client (thread_p, rid);
+      if (er_has_error () == false)
+	{
+	  std::string err_msg = top_on_stack->get_error_msg ();
+	  packer.set_buffer_and_pack_all (eb, err_msg);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
+	}
 
-      std::string err_msg (er_msg ());
-      packer.set_buffer_and_pack_all (eb, err_msg);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   char *reply_data = eb.get_ptr ();
@@ -10413,6 +10419,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 				     reply_data_size);
 
   // clear
+  top_on_stack->end ();
   pr_clear_value_vector (args);
   db_value_clear (&ret_value);
 

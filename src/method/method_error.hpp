@@ -25,6 +25,9 @@
 
 #include <string>
 
+#include "packer.hpp"
+#include "packable_object.hpp"
+
 namespace cubmethod
 {
   enum METHOD_CALLBACK_ERROR_CODE
@@ -52,7 +55,7 @@ namespace cubmethod
     METHOD_CALLBACK_ER_NOT_IMPLEMENTED = -10100,
   };
 
-  class error_context
+  class error_context : public cubpacking::packable_object
   {
     public:
       error_context ();
@@ -62,6 +65,10 @@ namespace cubmethod
       std::string get_error_msg ();
 
       void set_error (int number, const char *msg, const char *file, int line);
+
+      void pack (cubpacking::packer &serializator) const override;
+      void unpack (cubpacking::unpacker &deserializator) override;
+      size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     private:
       int err_id;

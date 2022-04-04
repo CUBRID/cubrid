@@ -39,6 +39,7 @@
 
 #include "method_connection_pool.hpp" /* cubmethod::connection */
 #include "method_def.hpp"	/* method_sig_node */
+#include "method_runtime_context.hpp" /* cubmethod::runtime_context */
 #include "method_struct_parameter_info.hpp" /* db_parameter_info */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */
 #include "porting.h" /* SOCKET */
@@ -71,30 +72,50 @@ namespace cubmethod
 
       ~method_invoke_group ();
 
-      int begin ();
+      void begin ();
       int prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int execute (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int reset (bool is_end_query);
-      int end ();
+      void end ();
 
       DB_VALUE &get_return_value (int index);
 
       int get_num_methods () const;
-      int64_t get_id () const;
+      METHOD_GROUP_ID get_id () const;
       SOCKET get_socket () const;
       cubthread::entry *get_thread_entry () const;
       std::queue<cubmem::extensible_block> &get_data_queue ();
+
+      bool is_running () const;
+
+      // cursor interface for method_invoke
+      query_cursor *create_cursor (QUERY_ID query_id, bool oid_included);
+      query_cursor *get_cursor (QUERY_ID query_id);
+      void register_returning_cursor (QUERY_ID query_id);
+      void deregister_returning_cursor (QUERY_ID query_id);
+
+      // error
+      std::string get_error_msg ();
+      void set_error_msg (const std::string &msg);
       db_parameter_info *get_db_parameter_info () const;
 
       void set_db_parameter_info (db_parameter_info *param_info);
 
     private:
-      cubmethod::connection *m_connection;
+      void destory_all_cursors ();
+
+      runtime_context *m_rctx;
+      bool m_is_running;
+
+      connection *m_connection;
       std::queue<cubmem::extensible_block> m_data_queue;
 
-      int64_t m_id;
-      db_parameter_info *m_parameter_info;
+      std::unordered_set <std::uint64_t> m_cursor_set;
+      std::string m_err_msg;
 
+      METHOD_GROUP_ID m_id;
+
+      db_parameter_info *m_parameter_info;
       cubthread::entry *m_thread_p;
       std::set <METHOD_TYPE> m_kind_type;
       std::vector <method_invoke *> m_method_vector;
