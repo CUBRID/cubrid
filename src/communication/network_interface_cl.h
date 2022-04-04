@@ -52,6 +52,8 @@
 #include "load_common.hpp"
 #include "timezone_lib_common.h"
 #include "method_def.hpp"
+#include "dynamic_array.h"
+#include "flashback_cl.h"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -451,5 +453,11 @@ extern int loaddb_update_stats ();
 
 extern int method_invoke_fold_constants (const method_sig_list & sig_list,
 					 std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result);
+extern int flashback_get_and_show_summary (dynamic_array * class_list, const char *user, time_t start_time,
+					   time_t end_time, FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list,
+					   char **invalid_class, time_t * invalid_time);
+extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa,
+				  LOG_LSA * end_lsa, int *num_item, bool forward, char **info_list,
+				  int *invalid_class_idx);
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */

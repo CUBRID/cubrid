@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Lunghezza non valida o un carattere '%1$c' non valido nel nome del database '%2$s'\n
@@ -128,6 +129,7 @@ Utilità admin disponibile:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s è un tool per DBMS.\n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Utilità amministrazione disponibili:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s è un tool per DBMS.\n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
@@ -976,9 +979,9 @@ uso: %1$s applyinfo [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
   -r, --remote-host-name      nome dell'host remoto; visualizzare le informazioni di log attivo del nodo remote \n\
-  -a, --applied-info          visualizzare applied infomation \n\
   -L, --copied-log-path=PATH  path di volumi di registrazione copiate; informazioni del log copiate \n\
-  -p, --page=ID               page id; predefinito : 0\n\
+  -a, --applied-info          visualizzare applied infomation; l'opzione -L è richiesta \n\
+  -p, --page=ID               page id; l'opzione -L è richiesta; predefinito : 0\n\
   -v, --verbose               attivare i messaggi dettagliati di stato; predefinito : non attivo\n\
   -i, --interval=S            print information every S secs\n
 
@@ -1232,3 +1235,39 @@ OPERAZIONI: una delle operazioni deve essere assegnata e sono esclusive\n\
     -n, --generate-new-key     genera una nuova chiave nel file chiave (_keys); conteggio massimo: 128\n\
     -d, --delete-key=KEY_INDEX elimina una chiave nel file della chiave (_keys)\n\
     -c, --change-key=KEY_INDEX cambia il set di chiavi sul database per un'altra chiave nel file di chiavi (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 Immettere la password DBA:
+2 Formato data non valido, il formato valido è gg-mm-aaaa:hh:mm:ss\n
+3 La data di inizio (%1$s) deve essere inferiore alla data di fine (%2$s)\n
+4 Prova con una data precedente a quella corrente (%1$s) o dopo la creazione del database (%2$s)\n
+5 La tabella (%1$s) non esiste nel database\n
+6 Troppe transazioni per il flashback. Riduci l'intervallo tra la data di inizio e la data di fine\n
+7 Impossibile ottenere il flashback perché lo schema (%1$s) è stato modificato.\n
+8 Il volume del registro è stato rimosso. Prova con la data successiva\n
+9 Impossibile aprire il file di output '%1$s'\n
+10 L'ID transazione (%1$d) non esiste\n
+11 Impostare 'supplemental_log' in 'cubid.conf'. Solo i log SQL eseguiti dopo aver impostato 'supplemental_log' possono essere sottoposti a flashback.\n
+12 L'ID transazione deve essere inserito tra %1$d secondi. Il timeout può essere regolato tramite l'impostazione 'flashback_timeout' in 'cubrid.conf'.\n
+13 Flashback è già in esecuzione. Flashback non può essere eseguito da due processi.\n
+14 Flashback non può essere eseguito in modalità standalone.\n
+60 \
+flashback: fornisce istruzioni per eseguire il flashback di una transazione specifica.\n\
+utilizzo: %1$s flashback [OPZIONE] nome-database nome_classe1 [nome_classe2 ...]\n\
+\n\
+opzioni valide:\n\
+    -o, --output-file=FILE       reindirizza il messaggio di output a FILE; predefinito: nessuno.\n\
+    -u, --user=ID                specifica l'utente che ha eseguito l'istruzione SQL per il flashback; predefinito: TUTTI.\n\
+    -p, --dba-password           password dell'utente DBA; verrà richiesto se non specifichi\n\
+    -s, --start-date=DATE        specifica la DATA di inizio per il flashback. I log SQL vengono estratti da DATE.\n\
+                                 La DATA è data come segue: gg-mm-aaaa:hh:mm:ss.\n\
+    -e, --end-date=DATE          specifica la DATA di fine per il flashback. I log SQL vengono estratti fino alla DATA.\n\
+                                 se la data di inizio non è specificata, allora ((END - 10min) ~ END) è impostato su intervallo,\n\
+                                 e altrimenti se END non è specificato, allora (start ~ (inizio + 10min)) è impostato.\n\
+                                 E non viene specificata né una data di inizio né una data di fine,\n\
+                                 vengono estratti i log SQL, eseguiti tra (ora corrente - 10min) e ora corrente.\n\
+    --detail                     restituisce informazioni dettagliate per ciascuna istruzione SQL.\n\
+                                 L'ID transazione, il nome utente e l'istruzione SQL originale verranno restituiti con l'istruzione SQL\n\
+                                 per flashback; default: restituisce solo istruzioni SQL per il flashback\n\
+    --oldest                     flashback viene eseguito in ordine cronologico per le istruzioni SQL eseguite dall'ora di inizio all'ora\n\
+                                 di fine; predefinito: più recente\n

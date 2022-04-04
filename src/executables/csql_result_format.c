@@ -281,8 +281,6 @@ static char *bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_
 static char *set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries,
 			    bool plain_string, CSQL_OUTPUT_TYPE output_type, char column_encolser);
 static char *duplicate_string (const char *string);
-static char *string_to_string (const char *string_value, char string_delimiter, char string_introducer, int length,
-			       int *result_length, bool plain_string, bool change_single_quote);
 static int get_object_print_format (void);
 
 /*
@@ -1229,7 +1227,7 @@ csql_string_to_plain_string (const char *string_value, int length, int *result_l
  *   plain_string(in): refine string for plain output
  *   change_single_quote(in): refine string for query output
  */
-static char *
+char *
 string_to_string (const char *string_value, char string_delimiter, char string_introducer, int length,
 		  int *result_length, bool plain_string, bool change_single_quote)
 {

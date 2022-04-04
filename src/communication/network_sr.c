@@ -940,6 +940,15 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_CDC_END_SESSION];
   req_p->processing_function = scdc_end_session;
   req_p->name = "NET_SERVER_CDC_END_SESSION";
+
+  /* flashback */
+  req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_SUMMARY];
+  req_p->processing_function = sflashback_get_summary;
+  req_p->name = "NET_SERVER_FLASHBACK_GET_SUMMARY";
+
+  req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_LOGINFO];
+  req_p->processing_function = sflashback_get_loginfo;
+  req_p->name = "NET_SERVER_FLASHBACK_GET_LOGINFO";
 }
 
 #if defined(CUBRID_DEBUG)

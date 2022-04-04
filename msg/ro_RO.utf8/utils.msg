@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Lungime sau caracter invalid '%1$c' în numele bazei de date '%2$s'\n
@@ -128,6 +129,7 @@ Nume de utilitare de administrare disponibile:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s este un utilitar pentru SGDB.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Utilitare de administrare disponibile:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s este un utilitar pentru SGBD.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
@@ -993,9 +996,9 @@ utilizare: %1$s applyinfo [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
   -r, --remote-host-name      numele gazdei remote; afişează informaţii despre logul activ al nodului departat \n\
-  -a, --applied-info 	      afişează informaţiile aplicate \n\
   -L, --copied-log-path=CALE  calea către volumele de log copiate; afişează informaţii despre logurile copiate\n\
-  -p, --page=ID               id de pagina; implicit : 0\n\
+  -a, --applied-info 	      afişează informaţiile aplicate; este necesară opțiunea -L \n\
+  -p, --page=ID               id de pagina; este necesară opțiunea -L; implicit : 0\n\
   -v, --verbose               activează mesaje de stare detaliate; implicit : dezactivate\n\
   -i, --interval=S            afişează informaţii la fiecare S secunde\n
 
@@ -1260,3 +1263,39 @@ OPERAȚII: trebuie dată una dintre operațiuni și sunt exclusive\n\
     -n, --generate-new-key       generează o nouă cheie în fișierul cheie (_keys); număr maxim: 128\n\
     -d, --delete-key=KEY_INDEX   șterge o cheie din fișierul cheie (_keys)\n\
     -c, --change-key=KEY_INDEX   schimba setul de chei din baza de date pentru o altă cheie din fișierul de chei (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 Introduceți parola DBA:
+2 Format de dată nevalid, formatul valid este zz-mm-aaaa:hh:mm:ss\n
+3 Data de început (%1$s) trebuie să fie mai mică decât data de încheiere (%2$s)\n
+4 Vă rugăm să încercați cu o dată înainte de data curentă (%1$s) sau după crearea bazei de date (%2$s)\n
+5 Tabelul (%1$s) nu există în baza de date\n
+6 Prea multe tranzacții pentru flashback. Vă rugăm să scurtați intervalul dintre data de început și data de încheiere\n
+7 Nu se poate obține flashback deoarece schema (%1$s) a fost modificată.\n
+8 Volumul jurnalului a fost eliminat. Vă rugăm să încercați cu data ulterioară\n
+9 Nu s-a putut deschide fișierul de ieșire „%1$s”\n
+10 ID-ul tranzacției (%1$d) nu există\n
+11 Vă rugăm să setați „supplemental_log” în „cubrid.conf”. Numai jurnalele SQL executate după setarea „supplemental_log” pot fi flashback.\n
+12 ID-ul tranzacției trebuie introdus în %1$d secunde. Timeout-ul poate fi ajustat prin setarea „flashback_timeout” din „cubrid.conf”.\n
+13 Flashback rulează deja. Flashback nu poate fi rulat de două procese.\n
+14 Flashback nu poate rula ca mod independent.\n
+60 \
+flashback: furnizează declarații pentru a flashback o anumită tranzacție.\n\
+utilizare: %1$s flashback [OPȚIUNE] bază de date nume_clasă1 [nume_clasă2 ...]\n\
+\n\
+opțiuni valide:\n\
+    -o, --output-file=FILE        redirecționează mesajul de ieșire către FILE; implicit: niciunul.\n\
+    -u, --user=ID                 specifică utilizatorul care a executat instrucțiunea SQL pentru flashback; implicit: TOATE.\n\
+    -p, --dba-password            utilizatorului DBA; va solicita dacă nu specificați\n\
+    -s, --start-date=DATE         specifică DATA de începere pentru flashback. Jurnalele SQL sunt extrase din DATA.\n\
+                                  DATA este dată după cum urmează: zz-mm-aaaa:hh:mm:ss.\n\
+    -e, --end-date=DATE           specifică DATA de încheiere pentru flashback. Jurnalele SQL sunt extrase până la DATA.\n\
+                                  dacă nu este specificată data de început, atunci ((END - 10min) ~ END) este setat la interval,\n\
+                                  iar dacă nu este specificat END, atunci (start ~ (start + 10min)) este setat.\n\
+                                  Și nu este specificată nici o dată de început, nici o dată de încheiere,\n\
+                                  jurnalele SQL, executate între (ora curentă - 10min) și ora curentă, sunt extrase.\n\
+    --detail                      afișează informații detaliate pentru fiecare instrucțiune SQL.\n\
+                                  ID-ul tranzacției, numele de utilizator și instrucțiunea SQL originală vor fi returnate cu instrucțiunea SQL\n\
+                                  pentru flashback; implicit: scoate numai instrucțiuni SQL pentru flashback\n\
+    --oldest                      flashback-ul este efectuat în ordine cronologică pentru instrucțiunile SQL executate de la ora de\n\
+                                  început până la ora de sfârșit; implicit: cel mai recent\n

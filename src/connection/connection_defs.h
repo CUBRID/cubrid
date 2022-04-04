@@ -434,6 +434,7 @@ struct css_conn_entry
   bool reset_on_commit;		/* set reset_on_commit when commit/abort */
   bool in_method;		/* this connection is for method callback */
 
+  bool in_flashback;		/* this client is in progress of flashback */
 #if defined(SERVER_MODE)
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;

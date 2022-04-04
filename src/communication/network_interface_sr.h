@@ -244,11 +244,15 @@ extern void ssession_stop_attached_threads (void *session);
 
 extern void smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
-/*for CDC*/
+/* For CDC */
 extern void slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+/* flashback */
+extern void sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

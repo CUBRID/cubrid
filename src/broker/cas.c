@@ -865,7 +865,10 @@ cas_main (void)
 #if defined(CAS_FOR_CGW)
   char odbc_resolved_url[CGW_LINK_URL_MAX_LEN] = { 0, };
   char odbc_connect_url[CGW_LINK_URL_MAX_LEN] = { 0, };
-  SUPPORTED_DBMS_TYPE dbms_type = NOT_SUPPORTED_DBMS;;
+  char tmp_name[SRV_CON_DBNAME_SIZE] = { 0, };
+  char tmp_user[SRV_CON_DBUSER_SIZE] = { 0, };
+  char tmp_passwd[SRV_CON_DBPASSWD_SIZE] = { 0, };
+  SUPPORTED_DBMS_TYPE dbms_type = NOT_SUPPORTED_DBMS;
 #endif
 
 #if defined(CAS_FOR_ORACLE)
@@ -937,7 +940,10 @@ cas_main (void)
   logddl_init ();
 
 #if defined(CAS_FOR_CGW)
-  cgw_init_odbc_handle ();
+  if (cgw_init () < 0)
+    {
+      return -1;
+    }
 #endif /* CAS_FOR_CGW */
 
 #if defined(WINDOWS)
@@ -1241,20 +1247,23 @@ cas_main (void)
 	    dbms_type = cgw_is_supported_dbms (shm_appl->cgw_link_server);
 	    cgw_set_dbms_type (dbms_type);
 
+	    strncpy (tmp_name, db_name, SRV_CON_DBNAME_SIZE);
+	    strncpy (tmp_user, db_user, SRV_CON_DBUSER_SIZE);
+	    strncpy (tmp_passwd, db_passwd, SRV_CON_DBUSER_SIZE);
+
 	    if (dbms_type == SUPPORTED_DBMS_ORACLE)
 	      {
 		snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, ORACLE_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
-			  db_name,
+			  tmp_name,
 			  shm_appl->cgw_link_server_port,
-			  db_name, db_user, db_passwd, shm_appl->cgw_link_connect_url_property);
+			  tmp_name, tmp_user, tmp_passwd, shm_appl->cgw_link_connect_url_property);
 
 		snprintf (odbc_resolved_url, CGW_LINK_URL_MAX_LEN, ORACLE_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
-			  db_name,
+			  tmp_name,
 			  shm_appl->cgw_link_server_port,
-			  db_name, db_user, "********", shm_appl->cgw_link_connect_url_property);
-
+			  tmp_name, tmp_user, "********", shm_appl->cgw_link_connect_url_property);
 	      }
 	    else if (dbms_type == SUPPORTED_DBMS_MYSQL)
 	      {
@@ -1262,13 +1271,13 @@ cas_main (void)
 			  shm_appl->cgw_link_odbc_driver_name,
 			  shm_appl->cgw_link_server_ip,
 			  shm_appl->cgw_link_server_port,
-			  db_name, db_user, db_passwd, shm_appl->cgw_link_connect_url_property);
+			  tmp_name, tmp_user, tmp_passwd, shm_appl->cgw_link_connect_url_property);
 
 		snprintf (odbc_resolved_url, CGW_LINK_URL_MAX_LEN, MYSQL_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
 			  shm_appl->cgw_link_server_ip,
 			  shm_appl->cgw_link_server_port,
-			  db_name, db_user, "********", shm_appl->cgw_link_connect_url_property);
+			  tmp_name, tmp_user, "********", shm_appl->cgw_link_connect_url_property);
 	      }
 	    else
 	      {
@@ -1281,7 +1290,7 @@ cas_main (void)
 		goto finish_cas;
 	      }
 
-	    err_code = cgw_database_connect (dbms_type, odbc_connect_url);
+	    err_code = cgw_database_connect (dbms_type, odbc_connect_url, db_name, db_user, db_passwd);
 #endif /* !CAS_FOR_CGW */
 
 	    if (err_code < 0)
@@ -1630,9 +1639,6 @@ cas_sig_handler (int signo)
   cas_free (true);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
-#if defined (CAS_FOR_CGW)
-  cgw_database_disconnect ();
-#endif
   _exit (0);
 }
 
@@ -1645,11 +1651,6 @@ cas_final (void)
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
   er_final (ER_ALL_FINAL);
-
-#if defined (CAS_FOR_CGW)
-  cgw_database_disconnect ();
-#endif
-
   exit (0);
 }
 
@@ -1674,7 +1675,11 @@ cas_free (bool from_sighandler)
     }
   else
     {
+#if defined(CAS_FOR_CGW)
+      cgw_cleanup ();
+#else
       ux_database_shutdown ();
+#endif /* CAS_FOR_CGW */
     }
 
   if (as_info->cur_statement_pooling && !from_sighandler)

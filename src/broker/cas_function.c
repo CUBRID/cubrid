@@ -2063,9 +2063,6 @@ fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
     {
       logddl_free (true);
     }
-#if defined (CAS_FOR_CGW)
-  cgw_database_disconnect ();
-#endif
   return FN_CLOSE_CONN;
 }
 
