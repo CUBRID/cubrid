@@ -158,7 +158,7 @@ namespace cublog
 
   void atomic_replication_helper::atomic_replication_unit::apply_log_redo ()
   {
-
+    // call log apply function
   }
 
   void atomic_replication_helper::atomic_replication_unit::fix_atomic_replication_unit (THREAD_ENTRY *thread_p,
