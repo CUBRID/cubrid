@@ -1146,15 +1146,17 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 
   # clean and build JDBC
   if(UNIX)
-    add_custom_target(jdbc_build ALL
-    COMMAND sh build.sh clean
-    COMMAND sh build.sh
-    WORKING_DIRECTORY ${JDBC_DIR})
+  add_custom_target (
+      jdbc_build ALL
+      COMMAND bash build.sh clean
+      COMMAND bash build.sh
+      WORKING_DIRECTORY ${JDBC_DIR})
   else(UNIX)
-    add_custom_target(jdbc_build ALL
-    COMMAND cmd \c build.bat clean
-    COMMAND cmd \c build.bat
-    WORKING_DIRECTORY ${JDBC_DIR})
+  add_custom_target (
+      jdbc_build ALL
+      COMMAND cmd /c build.bat clean
+      COMMAND cmd /c build.bat
+      WORKING_DIRECTORY ${JDBC_DIR})
   endif(UNIX)
 
   # dist JDBC
