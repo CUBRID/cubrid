@@ -55,6 +55,7 @@ int64_t est_size = 0;
 char *hash_filename = NULL;
 int debug_flag = 0;
 bool verbose_flag = false;
+bool latest_image_flag = false;
 bool include_references = false;
 
 bool required_class_only = false;
@@ -120,6 +121,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   output_dirname = utility_get_option_string_value (arg_map, UNLOAD_OUTPUT_PATH_S, 0);
   do_schema = utility_get_option_bool_value (arg_map, UNLOAD_SCHEMA_ONLY_S);
   do_objects = utility_get_option_bool_value (arg_map, UNLOAD_DATA_ONLY_S);
+  latest_image_flag = utility_get_option_bool_value (arg_map, UNLOAD_LATEST_IMAGE_S);
   output_prefix = utility_get_option_string_value (arg_map, UNLOAD_OUTPUT_PREFIX_S, 0);
   hash_filename = utility_get_option_string_value (arg_map, UNLOAD_HASH_FILE_S, 0);
   verbose_flag = utility_get_option_bool_value (arg_map, UNLOAD_VERBOSE_S);

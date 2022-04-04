@@ -789,7 +789,8 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
   char *tuple_p;
   OID *current_oid_p;
   QFILE_TUPLE current_tuple;
-  int tupel_count, oid_index = 0, current_tuple_length, i;
+  int tuple_count;
+  int oid_index = 0, current_tuple_length, i;
   DB_TYPE type;
 
   if (cursor_id_p == NULL)
@@ -799,7 +800,7 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
     }
 
   /* set tuple count and point to the first tuple */
-  tupel_count = QFILE_GET_TUPLE_COUNT (cursor_id_p->buffer);
+  tuple_count = QFILE_GET_TUPLE_COUNT (cursor_id_p->buffer);
   current_tuple = cursor_id_p->buffer + QFILE_PAGE_HEADER_SIZE;
   oid_index = 0;
 
@@ -807,7 +808,7 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
    * search through the current buffer to store interesting OIDs
    * in the oid_set area, eliminating duplicates.
    */
-  for (i = 0; i < tupel_count; i++)
+  for (i = 0; i < tuple_count; i++)
     {
       current_tuple_length = QFILE_GET_TUPLE_LENGTH (current_tuple);
 

@@ -756,10 +756,10 @@ qmgr_dump_query_entry (QMGR_QUERY_ENTRY * query_p)
     {
       list_id_p = query_p->list_id;
       fprintf (stdout,
-	       "\t\t{type_list: {%d, %p}, tuple_cnt: %d, page_cnt: %d,\n"
+	       "\t\t{type_list: {%d, %p}, tuple_cnt: %lld, page_cnt: %d,\n"
 	       "\t first_vpid: {%d, %d}, last_vpid: {%d, %d},\n"
 	       "\t last_pgptr: %p, last_offset: %d, lasttpl_len: %d}\n", list_id_p->type_list.type_cnt,
-	       (void *) list_id_p->type_list.domp, list_id_p->tuple_cnt, list_id_p->page_cnt,
+	       (void *) list_id_p->type_list.domp, (long long) list_id_p->tuple_cnt, list_id_p->page_cnt,
 	       list_id_p->first_vpid.pageid, list_id_p->first_vpid.volid, list_id_p->last_vpid.pageid,
 	       list_id_p->last_vpid.volid, list_id_p->last_pgptr, list_id_p->last_offset, list_id_p->lasttpl_len);
     }
@@ -1163,10 +1163,8 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
     }
 
   query_p->includes_tde_class = XASL_IS_FLAGED (xasl_p, XASL_INCLUDES_TDE_CLASS);
-#if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE, "TDE: qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
-#endif /* !NDEBUG */
 
+  tde_er_log ("qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
 
   if (flag & RETURN_GENERATED_KEYS)
     {
@@ -1176,6 +1174,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
   /* execute the query with the value list, if any */
   query_p->list_id = qexec_execute_query (thread_p, xasl_p, dbval_count, dbvals_p, query_p->query_id);
   thread_p->no_logging = false;
+  thread_p->no_supplemental_log = false;
 
   /* Note: qexec_execute_query() returns listid (NOT NULL) even if an error was occurred. We should check the error
    * condition and free listid. */
@@ -1313,6 +1312,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  thread_set_trace_format (thread_p, QUERY_TRACE_JSON);
 	}
     }
+  else
+    {
+      thread_trace_off (thread_p);
+    }
 
   xasl_cache_entry_p = NULL;
   if (xcache_find_xasl_id_for_execute (thread_p, xasl_id_p, &xasl_cache_entry_p, &xclone) != NO_ERROR)
@@ -1343,6 +1346,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   if (IS_TRIGGER_INVOLVED (*flag_p))
     {
       session_set_trigger_state (thread_p, true);
+      thread_p->trigger_involved = true;
     }
 
 #if defined (SERVER_MODE)
@@ -1392,8 +1396,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       if (do_not_cache == false)
 	{
 	  /* lookup the list cache with the parameter values (DB_VALUE array) */
-	  list_cache_entry_p =
-	    qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p->list_ht_no, &params, &cached_result);
+	  list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p, &params, &cached_result);
+
 	  /* If we've got the cached result, return it. */
 	  if (cached_result)
 	    {
@@ -1507,7 +1511,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   /* If it is allowed to cache the query result or if it is required to cache, put the list file id(QFILE_LIST_ID) into
    * the list cache. Provided are the corresponding XASL cache entry to be linked, and the parameters (host variables -
    * DB_VALUES). */
-  if (qmgr_is_allowed_result_cache (*flag_p) && do_not_cache == false)
+  if (qmgr_is_allowed_result_cache (*flag_p) && do_not_cache == false && xasl_cache_entry_p->list_ht_no >= 0)
     {
       /* check once more to ensure that the related XASL entry is still valid */
       if (xcache_can_entry_cache_list (xasl_cache_entry_p))
@@ -1602,6 +1606,7 @@ end:
   if (IS_TRIGGER_INVOLVED (*flag_p))
     {
       session_set_trigger_state (thread_p, false);
+      thread_p->trigger_involved = false;
     }
 
 #if defined (SERVER_MODE)
@@ -1790,10 +1795,15 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 	  thread_set_trace_format (thread_p, QUERY_TRACE_JSON);
 	}
     }
+  else
+    {
+      thread_trace_off (thread_p);
+    }
 
   if (IS_TRIGGER_INVOLVED (*flag_p))
     {
       session_set_trigger_state (thread_p, true);
+      thread_p->trigger_involved = true;
     }
 
   /* Make an query entry */
@@ -1879,6 +1889,7 @@ end:
   if (IS_TRIGGER_INVOLVED (*flag_p))
     {
       session_set_trigger_state (thread_p, false);
+      thread_p->trigger_involved = false;
     }
 
 #if defined (SERVER_MODE)
@@ -2307,7 +2318,7 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
       oid_block_p = tmp_oid_block_p;
       for (i = 0, tmp_oid_p = oid_block_p->oid_array; i < oid_block_p->last_oid_idx; i++, tmp_oid_p++)
 	{
-	  if (oid_compare (class_oid_p, tmp_oid_p) == 0)
+	  if (OID_EQ (class_oid_p, tmp_oid_p))
 	    {
 	      found = true;
 	      break;

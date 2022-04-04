@@ -82,7 +82,9 @@ extern void shf_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 extern void shf_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void stde_is_loaded (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sdblink_get_crypt_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stde_get_mk_file_path (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stde_get_mk_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -185,6 +187,7 @@ extern void srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 extern void srepl_log_get_append_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
 /* external storage supports */
 extern void ses_posix_write_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ses_posix_read_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -238,4 +241,16 @@ extern void sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *re
 extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (void *session);
+
+/* For CDC */
+extern void slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+/* flashback */
+extern void sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

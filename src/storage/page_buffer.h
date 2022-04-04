@@ -170,6 +170,8 @@ typedef enum
   OLD_PAGE_PREVENT_DEALLOC,	/* Fetch existing page and mark its memory buffer, to prevent deallocation. */
   OLD_PAGE_DEALLOCATED,		/* Fetch page that has been deallocated. */
   OLD_PAGE_MAYBE_DEALLOCATED,	/* Fetch page that maybe was deallocated. */
+  RECOVERY_PAGE			/* Fetch page for recovery. The page may be new, or deallocated or normal, everything
+				 * is possible really. */
 } PAGE_FETCH_MODE;
 
 /* public page latch mode */
@@ -442,7 +444,7 @@ extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, con
   pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE)
 #endif /* !NDEBUG */
 extern int pgbuf_release_private_lru (THREAD_ENTRY * thread_p, const int private_idx);
-extern int pgbuf_assign_private_lru (THREAD_ENTRY * thread_p, bool is_vacuum, const int id);
+extern int pgbuf_assign_private_lru (THREAD_ENTRY * thread_p);
 extern void pgbuf_adjust_quotas (THREAD_ENTRY * thread_p);
 
 #if defined (SERVER_MODE)

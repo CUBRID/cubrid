@@ -274,6 +274,11 @@ namespace cubthread
       /* for lock free structures */
       lf_tran_entry *tran_entries[THREAD_TS_COUNT];
 
+      /* for supplemental log */
+      bool no_supplemental_log;
+      bool trigger_involved;
+      bool is_cdc_daemon;
+
 #if !defined(NDEBUG)
       fi_test_item *fi_test_array;
 
@@ -397,6 +402,12 @@ inline void
 thread_trace_on (cubthread::entry *thread_p)
 {
   thread_p->on_trace = true;
+}
+
+inline void
+thread_trace_off (cubthread::entry *thread_p)
+{
+  thread_p->on_trace = false;
 }
 
 inline void

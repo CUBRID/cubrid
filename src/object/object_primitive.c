@@ -5408,7 +5408,6 @@ mr_index_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
 static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  DB_VALUE_COMPARE_RESULT c;
   OID o1, o2;
   int oidc;
 
@@ -5420,9 +5419,7 @@ mr_data_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
    * representation of objects is an OID, this is a valid optimization */
 
   oidc = oid_compare (&o1, &o2);
-  c = MR_CMP_RETURN_CODE (oidc);
-
-  return c;
+  return MR_CMP_RETURN_CODE (oidc);
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -6748,7 +6745,6 @@ mr_index_readval_oid (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 static DB_VALUE_COMPARE_RESULT
 mr_index_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  DB_VALUE_COMPARE_RESULT c;
   OID o1, o2;
   int oidc;
 
@@ -6763,15 +6759,12 @@ mr_index_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   COPYMEM (short, &o2.volid, (char *) mem2 + OR_OID_VOLID);
 
   oidc = oid_compare (&o1, &o2);
-  c = MR_CMP_RETURN_CODE (oidc);
-
-  return c;
+  return MR_CMP_RETURN_CODE (oidc);
 }
 
 static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  DB_VALUE_COMPARE_RESULT c;
   OID o1, o2;
   int oidc;
 
@@ -6781,15 +6774,12 @@ mr_data_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
   OR_GET_OID (mem2, &o2);
 
   oidc = oid_compare (&o1, &o2);
-  c = MR_CMP_RETURN_CODE (oidc);
-
-  return c;
+  return MR_CMP_RETURN_CODE (oidc);
 }
 
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  DB_VALUE_COMPARE_RESULT c;
   OID *oid1, *oid2;
   int oidc;
 
@@ -6802,9 +6792,7 @@ mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
     }
 
   oidc = oid_compare (oid1, oid2);
-  c = MR_CMP_RETURN_CODE (oidc);
-
-  return c;
+  return MR_CMP_RETURN_CODE (oidc);
 }
 
 /*
@@ -11087,8 +11075,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   int size1, size2;
   int strc;
 
-  bool ti = true;
-  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static bool ti = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   DB_TYPE type1 = (DB_TYPE) value1->domain.char_info.type;
   DB_TYPE type2 = (DB_TYPE) value2->domain.char_info.type;
@@ -11142,37 +11129,6 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
     {
       assert (false);
       return DB_UNK;
-    }
-
-  if (!ignore_trailing_space)
-    {
-      int i;
-
-      if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
-	{
-	  for (i = size1; i > 1; i--)
-	    {
-	      if (string1[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size1 = i;
-	}
-
-      if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
-	{
-	  for (i = size2; i > 1; i--)
-	    {
-	      if (string2[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size2 = i;
-	}
-
-      ti = false;
     }
 
   strc = QSTR_COMPARE (collation, string1, size1, string2, size2, ti);
@@ -12027,55 +11983,12 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   size1 = db_get_string_size (value1);
   size2 = db_get_string_size (value2);
 
-  /*
-   * do_coercion = 2:
-   * from btree compare key
-   * we need to process the ignore trailing space
-   */
-  if (do_coercion == 2)
+  if (!ignore_trailing_space)
     {
-      ti = true;
-    }
-  /*
-   * do_coercion = 3:
-   * from eliminate_duplicated_keys and scan_key_compre
-   * we need to process enforcing no-ignore-trailing space.
-   */
-  else if (do_coercion == 3)
-    {
-      ti = false;
-    }
-  else if (!ignore_trailing_space &&
-	   (type1 == DB_TYPE_STRING || type1 == DB_TYPE_VARNCHAR || type2 == DB_TYPE_STRING
-	    || type2 == DB_TYPE_VARNCHAR))
-    {
-      int i;
-
-      if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
+      if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
 	{
-	  for (i = size1; i > 1; i--)
-	    {
-	      if (string1[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size1 = i;
+	  ti = false;
 	}
-
-      if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
-	{
-	  for (i = size2; i > 1; i--)
-	    {
-	      if (string2[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size2 = i;
-	}
-
-      ti = false;
     }
 
   strc = QSTR_CHAR_COMPARE (collation, string1, size1, string2, size2, ti);
@@ -12914,6 +12827,8 @@ mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
 {
   DB_VALUE_COMPARE_RESULT c;
   int mem_length1, mem_length2, strc;
+  bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   if (IS_FLOATING_PRECISION (domain->precision))
     {
@@ -12937,6 +12852,11 @@ mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
   else
     {
       mem_length1 = mem_length2 = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
+    }
+
+  if (!ignore_trailing_space)
+    {
+      ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
     }
 
   strc = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,
@@ -12975,55 +12895,12 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
   size1 = db_get_string_size (value1);
   size2 = db_get_string_size (value2);
 
-  /*
-   * do_coercion = 2:
-   * from btree compare key
-   * we need to process the ignore trailing space
-   */
-  if (do_coercion == 2)
+  if (!ignore_trailing_space)
     {
-      ti = true;
-    }
-  /*
-   * do_coercion = 3:
-   * from eliminate_duplicated_keys and scan_key_compre
-   * we need to process enforcing no-ignore-trailing space.
-   */
-  else if (do_coercion == 3)
-    {
-      ti = false;
-    }
-  else if (!ignore_trailing_space &&
-	   (type1 == DB_TYPE_STRING || type1 == DB_TYPE_VARNCHAR || type2 == DB_TYPE_STRING
-	    || type2 == DB_TYPE_VARNCHAR))
-    {
-      int i;
-
-      if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
+      if (!TP_IS_FIXED_LEN_CHAR_TYPE (type1) || !TP_IS_FIXED_LEN_CHAR_TYPE (type2))
 	{
-	  for (i = size1; i > 1; i--)
-	    {
-	      if (string1[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size1 = i;
+	  ti = false;
 	}
-
-      if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
-	{
-	  for (i = size2; i > 1; i--)
-	    {
-	      if (string2[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size2 = i;
-	}
-
-      ti = false;
     }
 
   strc = QSTR_NCHAR_COMPARE (collation, string1, size1, string2, size2, db_get_string_codeset (value2), ti);
@@ -14141,8 +14018,7 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
   DB_VALUE_COMPARE_RESULT c;
   int strc, size1, size2;
 
-  bool ti = true;
-  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static bool ti = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   DB_TYPE type1 = (DB_TYPE) value1->domain.char_info.type;
   DB_TYPE type2 = (DB_TYPE) value2->domain.char_info.type;
@@ -14172,37 +14048,6 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
   if (size2 < 0)
     {
       size2 = strlen ((char *) string2);
-    }
-
-  if (!ignore_trailing_space)
-    {
-      int i;
-
-      if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
-	{
-	  for (i = size1; i > 1; i--)
-	    {
-	      if (string1[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size1 = i;
-	}
-
-      if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
-	{
-	  for (i = size2; i > 1; i--)
-	    {
-	      if (string2[i - 1] != 0x20)
-		{
-		  break;
-		}
-	    }
-	  size2 = i;
-	}
-
-      ti = false;
     }
 
   strc = QSTR_NCHAR_COMPARE (collation, string1, size1, string2, size2, db_get_string_codeset (value2), ti);

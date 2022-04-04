@@ -44,6 +44,7 @@
 #include "system_parameter.h"
 #include "locator_cl.h"
 #include "transaction_cl.h"
+#include "execute_statement.h"
 
 #include "dbtype.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -4751,7 +4752,7 @@ tr_check_recursivity (OID oid, OID stack[], int stack_size, bool is_statement)
   min = MIN (stack_size, TR_MAX_RECURSION_LEVEL);
   for (i = 0; i < min; i++)
     {
-      if (oid_compare (&oid, &stack[i]) == 0)
+      if (OID_EQ (&oid, &stack[i]))
 	{
 	  /* this is a STATEMENT trigger, we should not go further with the action, but we should allow the call to
 	   * succeed.
@@ -5086,6 +5087,10 @@ tr_execute_activities (TR_STATE * state, DB_TRIGGER_TIME tr_time, DB_OBJECT * cu
   int status;
   bool rejected;
 
+  bool is_trigger_involved = false;
+
+  CDC_TRIGGER_INVOLVED_BACKUP (is_trigger_involved);
+
   for (t = state->triggers, next = NULL; t != NULL && error == NO_ERROR; t = next)
     {
       next = t->next;
@@ -5111,6 +5116,8 @@ tr_execute_activities (TR_STATE * state, DB_TRIGGER_TIME tr_time, DB_OBJECT * cu
 
       /* else the trigger isn't ready yet, leave it on the list */
     }
+
+  CDC_TRIGGER_INVOLVED_RESTORE (is_trigger_involved);
 
   return error;
 }

@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longitud o caracter '%1$c' en el nombre de la base de datos '%2$s'\n no valida.
@@ -128,6 +129,7 @@ Nombre de utilidad admin disponible:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Utilidades de administrador disponible:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
@@ -289,7 +292,7 @@ opciones validas:\n\
   -C, --CS-mode                modo de ejecucion cliente-servidor\n\
       --no-check               no verificar una consistencia de la base de datos; estandar: verificar\n\
   -t, --thread-count=COUNT     numero de hilos; estandar: 0(auto)\n\
-  -z, --compress               comprimir volumenes de respaldo; estandar: descomprimir\n\
+      --no-compress            no comprima los volúmenes de respaldo; predeterminado: compresión\n\
       --sleep-msecs=N          dormir N milisecondas para cada 1M leido estandar: 0\n\
   -k, --separate-keys          el archivo de claves (_keys) para TDE no se incluye en el volumen de respaldo, sino que se divide en un archivo\n
 71 Argumentos incompatibles, \"%1$s\", y \"%2$s\"\n
@@ -521,6 +524,8 @@ opciones validas:\n\
   -d, --data-only             botar solo objetos; estandar: esquema y objetos\n\
       --output-prefix=PREFIEX PREFIJO para archivos de salida; estandar: el nombre de la base de datos\n\
       --hash-file=FILE        ARCHIVO para hash; estandar: generar por tmpnam()\n\
+      --latest-image          al volcar objetos, vuelca la última imagen de los objetos en los volúmenes de datos, sin hacer referencia a los volúmenes de registro (ignorando MVCC)\n\
+                              Podría incluir datos no confirmados y datos eliminados que no se vacían; predeterminado: deshabilitado\n\
   -v, --verbose               habilitar mensajes de estado verbose; estandar: inhabilitado\n\
       --use-delimiter         utilizar '"' donde un identificador empieza y acaba; estandar: no utilizar\n\
   -S, --SA-mode               modo de ejecucion independiente\n\
@@ -624,6 +629,7 @@ opciones validas:\n\
 39 -i(--immediately) opcion debe ser utilizada con la opcion --deact-stop-all.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Ejecute sin la opción --recreate-log o elimine el volumen de registro activo manualmente.\n
 60 \
 emergency_patchlog: Parchar una base de datos en caso de emergencia.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -973,9 +979,9 @@ uso: %1$s applyinfo [OPTION] database-name\n\
 \n\
 opciones validas:\n\
   -r, --remote-host-name      nombre de host remote; mostrar la informacion de registro activa del nodo remote \n\
-  -a, --applied-info          mostrar informacion aplicada \n\
   -L, --copied-log-path=PATH  ruta de los volumenes de registro copiados; mostrar informacion de registro copiado \n\
-  -p, --page=ID               id de pagina; estandar : 0\n\
+  -a, --applied-info          mostrar informacion aplicada; se requiere la opción -L \n\
+  -p, --page=ID               id de pagina; se requiere la opción -L; estandar : 0\n\
   -v, --verbose               habilitar mensajes de estado verbose; estandar : inhabilitar\n\
   -i, --interval=S            imprimir informacion casa S segundos\n
 
@@ -1224,8 +1230,46 @@ uso: %1$s tde OPERACIÓN (-s|-n|-d|-c) [OPCIÓN] database-name\n\
 \n\
 opciones válidas:\n\
     -p, --dba-password=PASS     contraseña del usuario DBA; le preguntará si no especifica\n\
+\n\
 OPERACIONES: se debe dar una de las operaciones, y son exclusivas\n\
     -s, --show-keys             imprime la información de la clave establecida en la base de datos y el archivo de clave (_keys)\n\
     -n, --generate-new-key      genera una nueva clave en el archivo de claves (_keys); recuento máximo: 128\n\
     -d, --delete-key=KEY_INDEX  eliminar una clave en el archivo de claves (_keys)\n\
     -c, --change-key=KEY_INDEX  cambia el conjunto de claves en la base de datos por otra clave en el archivo de claves (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 Introduzca la contraseña de DBA:
+2 Formato de fecha no válido, el formato válido es dd-mm-yyyy:hh:mm:ss\n
+3 Se requiere que la fecha de inicio (%1$s) sea menor que la fecha de finalización (%2$s)\n
+4 Intente con una fecha anterior a la actual (%1$s) o posterior a la creación de la base de datos (%2$s)\n
+5 La tabla (%1$s) no existe en la base de datos\n
+6 Demasiadas transacciones para flashback. Reduzca el intervalo entre la fecha de inicio y la fecha de finalización\n
+7 No se pudo obtener flashback porque se cambió el esquema (%1$s).\n
+8 Se ha eliminado el volumen de registro. Intente con la fecha posterior\n
+9 No se pudo abrir el archivo de salida '%1$s'\n
+10 ID de transacción (%1$d) no existe\n
+11 Configure 'supplemental_log' en 'cubrid.conf'. Solo los registros de SQL ejecutados después de configurar 'supplemental_log' pueden recuperarse.\n
+12 El ID de transacción debe ingresarse en %1$d segundos. El tiempo de espera se puede ajustar a través de la configuración de 'flashback_timeout' en 'cubrid.conf'.\n
+13 Flashback ya se está ejecutando. Dos procesos no pueden ejecutar Flashback.\n
+14 Flashback no se puede ejecutar como modo independiente.\n
+60 \
+flashback: proporciona declaraciones para retroceder una transacción específica.\n\
+uso: %1$s flashback [OPCIÓN] database-name class_name1 [class_name2 ...]\n\
+\n\
+opciones válidas:\n\
+    -o, --output-file=ARCHIVO     redirige el mensaje de salida a ARCHIVO; predeterminado: ninguno.\n\
+    -u, --user=ID                 especifica el usuario que ejecutó la instrucción SQL para retroceder; predeterminado: TODO.\n\
+    -p, --dba-password            contraseña del usuario DBA; le preguntará si no especifica\n\
+    -s, --start-date=FECHA        especifica la FECHA de inicio para el flashback. Los registros de SQL se extraen de DATE.\n\
+                                  La FECHA se da de la siguiente manera: dd-mm-yyyy:hh:mm:ss.\n\
+    -e, --end-date=FECHA          especifica la FECHA de finalización para el flashback. Los registros SQL se extraen hasta la FECHA.\n\
+                                  si no se especifica la fecha de inicio, entonces ((END - 10min) ~ END) se establece en rango,\n\
+                                  y de lo contrario, si no se especifica END, entonces se establece (start ~ (start + 10min)).\n\
+                                  Y no se especifica una fecha de inicio ni una fecha de finalización,\n\
+                                  se extraen los registros SQL, ejecutados entre (hora actual - 10 minutos) y la hora actual.\n\
+    --detail                      genera información detallada para cada instrucción SQL.\n\
+                                  El ID de transacción, el nombre de usuario y la declaración SQL original se devolverán con la\n\
+                                  declaración SQL\n\
+                                  para retrospectiva; predeterminado: genera solo sentencias SQL para flashback\n\
+    --oldest                      flashback más antiguo se realiza en orden cronológico para las sentencias SQL ejecutadas desde\n\
+                                  la hora de inicio hasta la hora de finalización; predeterminado: último\n

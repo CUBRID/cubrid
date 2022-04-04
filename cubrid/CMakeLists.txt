@@ -87,6 +87,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/event_log.c
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fileline_location.cpp
+  ${BASE_DIR}/filesys_temp.cpp
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
@@ -135,6 +136,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/filesys_temp.hpp
   ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_address_marker.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
@@ -206,6 +208,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/method_scan.c
+  ${QUERY_DIR}/dblink_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
@@ -286,6 +289,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/transaction_sr.c
   ${TRANSACTION_DIR}/transaction_transient.cpp
   ${TRANSACTION_DIR}/wait_for_graph.c
+  ${TRANSACTION_DIR}/flashback.c
   )
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
@@ -304,6 +308,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/mvcc_table.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
   ${TRANSACTION_DIR}/transaction_transient.hpp
+  ${TRANSACTION_DIR}/flashback.h
   )
 
 set(STORAGE_SOURCES
@@ -500,9 +505,13 @@ target_include_directories(cubrid PRIVATE ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCL
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubrid LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubrid PUBLIC stdc++fs)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
+# for dblink
+target_link_libraries(cubrid cascci)
+target_link_libraries(cubrid cubridcs)
 
 add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer)
 
@@ -523,6 +532,8 @@ if(AT_LEAST_ONE_UNIT_TEST)
 
   target_link_libraries(cubrid-win-lib PRIVATE
     ws2_32
+    cascci
+    cubridcs
     ${JVM_LIBS}
     ${EP_LIBS}
     )
@@ -567,7 +578,10 @@ install(FILES
   ${BASE_DIR}/error_code.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
-
+install(FILES
+  ${API_DIR}/cubrid_log.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY

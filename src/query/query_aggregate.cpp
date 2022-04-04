@@ -159,7 +159,7 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
       /* This set is made, because if class is empty, aggregate results should return NULL, except count(*) and count */
       if (agg_p->function == PT_COUNT_STAR || agg_p->function == PT_COUNT)
 	{
-	  db_make_int (agg_p->accumulator.value, 0);
+	  db_make_bigint (agg_p->accumulator.value, 0);
 	}
 
       /* create temporary list file to handle distincts */
@@ -357,7 +357,7 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
       if (is_acc_to_acc)
 	{
 	  /* from qdata_aggregate_accumulator_to_accumulator (). value param is number of count */
-	  db_make_int (acc->value, db_get_int (acc->value) + db_get_int (value));
+	  db_make_bigint (acc->value, db_get_bigint (acc->value) + db_get_bigint (value));
 	}
       else
 	{
@@ -365,12 +365,12 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	  if (acc->curr_cnt < 1)
 	    {
 	      /* first value */
-	      db_make_int (acc->value, 1);
+	      db_make_bigint (acc->value, (INT64) 1);
 	    }
 	  else
 	    {
 	      /* increment */
-	      db_make_int (acc->value, db_get_int (acc->value) + 1);
+	      db_make_bigint (acc->value, (INT64) 1 + db_get_bigint (acc->value));
 	    }
 	}
       break;
@@ -962,7 +962,7 @@ int
 qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p, HFID *hfid_p,
 				   OID *super_oid)
 {
-  int oid_count = 0, null_count = 0, key_count = 0;
+  long long oid_count = 0, null_count = 0, key_count = 0;
   int flag_btree_stat_needed = true;
 
   if (!agg_p->flag_agg_optimize)
@@ -999,11 +999,11 @@ qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggregat
     case PT_COUNT:
       if (agg_p->option == Q_ALL)
 	{
-	  db_make_int (agg_p->accumulator.value, oid_count - null_count);
+	  db_make_bigint (agg_p->accumulator.value, oid_count - null_count);
 	}
       else
 	{
-	  db_make_int (agg_p->accumulator.value, key_count);
+	  db_make_bigint (agg_p->accumulator.value, key_count);
 	}
       break;
 
@@ -1219,7 +1219,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       /* set count-star aggregate values */
       if (agg_p->function == PT_COUNT_STAR)
 	{
-	  db_make_int (agg_p->accumulator.value, agg_p->accumulator.curr_cnt);
+	  db_make_bigint (agg_p->accumulator.value, agg_p->accumulator.curr_cnt);
 	}
 
       /* the value of groupby_num() remains unchanged; it will be changed while evaluating groupby_num predicates
@@ -1310,7 +1310,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	      if (agg_p->function == PT_COUNT)
 		{
-		  db_make_int (agg_p->accumulator.value, list_id_p->tuple_cnt);
+		  db_make_bigint (agg_p->accumulator.value, list_id_p->tuple_cnt);
 		}
 	      else
 		{
@@ -2037,7 +2037,7 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
       /* This set is made, because if class is empty, aggregate results should return NULL, except count(*) and count */
       if (agg_p->function == PT_COUNT_STAR || agg_p->function == PT_COUNT)
 	{
-	  db_make_int (value->accumulators[i].value, 0);
+	  db_make_bigint (value->accumulators[i].value, 0);
 	}
     }
 
@@ -2893,7 +2893,7 @@ qdata_aggregate_interpolation (cubthread::entry *thread_p, cubxasl::aggregate_li
 			       QFILE_LIST_SCAN_ID *scan_id)
 {
   int error = NO_ERROR;
-  int tuple_count;
+  INT64 tuple_count;
   double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
   FUNC_TYPE function;
   double cur_group_percentile;

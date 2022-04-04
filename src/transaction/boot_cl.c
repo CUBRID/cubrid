@@ -190,6 +190,7 @@ static int boot_define_collations (MOP class_mop);
 static int boot_add_charsets (MOP class_mop);
 static int boot_define_charsets (MOP class_mop);
 static int boot_define_dual (MOP class_mop);
+static int boot_define_db_server (MOP class_mop);
 static int boot_define_view_class (void);
 static int boot_define_view_super_class (void);
 static int boot_define_view_vclass (void);
@@ -2120,7 +2121,8 @@ boot_define_domain (MOP class_mop)
   SM_TEMPLATE *def;
   char domain_string[32];
   int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "object_of", NULL };
+  const char *index_col_names1[2] = { "object_of", NULL };
+  const char *index_col_names2[2] = { "data_type", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -2193,7 +2195,13 @@ boot_define_domain (MOP class_mop)
     }
 
   /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names1, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names2, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -4014,6 +4022,105 @@ boot_define_dual (MOP class_mop)
 }
 
 /*
+ * boot_define_db_server :
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   class(IN) :
+ */
+static int
+boot_define_db_server (MOP class_mop)
+{
+  SM_TEMPLATE *def;
+  char args_string[64];
+  int error_code = NO_ERROR;
+  const char *index_col_names[3] = { "link_name", "owner", NULL };
+
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
+
+  error_code = smt_add_attribute (def, "link_name", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "host", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "port", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "db_name", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "user_name", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "password", "string", (DB_DOMAIN *) 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "properties", "varchar(2048)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "owner", AU_USER_CLASS_NAME, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = sm_update_class (def, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* add index */
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL, index_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (locator_has_heap (class_mop) == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * catcls_class_install :
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
@@ -4048,7 +4155,8 @@ catcls_class_install (void)
     {CT_HA_APPLY_INFO_NAME, boot_define_ha_apply_info},
     {CT_COLLATION_NAME, boot_define_collations},
     {CT_CHARSET_NAME, boot_define_charsets},
-    {CT_DUAL_NAME, boot_define_dual}
+    {CT_DUAL_NAME, boot_define_dual},
+    {CT_DB_SERVER_NAME, boot_define_db_server}
   };
   // *INDENT-ON*
 
@@ -5445,6 +5553,83 @@ boot_define_view_db_charset (void)
 }
 
 /*
+ * boot_define_view_db_server :
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ */
+static int
+boot_define_view_db_server (void)
+{
+  MOP class_mop;
+  COLUMN columns[] = {
+    {"link_name", "varchar(255)"},
+    {"host", "varchar(255)"},
+    {"port", "integer"},
+    {"db_name", "varchar(255)"},
+    {"user_name", "varchar(255)"},
+    //{"password", "varchar(256)"}
+    {"properties", "varchar(2048)"},
+    {"owner", "varchar(256)"},
+    {"comment", "varchar(1024)"}
+
+  };
+  int num_cols = sizeof (columns) / sizeof (columns[0]);
+  int i;
+  char stmt[2048];
+  int error_code = NO_ERROR;
+
+
+  class_mop = db_create_vclass (CTV_DB_SERVER_NAME);
+  if (class_mop == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      return error_code;
+    }
+
+  for (i = 0; i < num_cols; i++)
+    {
+      error_code = db_add_attribute (class_mop, columns[i].name, columns[i].type, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  sprintf (stmt,
+	   "SELECT [ds].[link_name], [ds].[host], [ds].[port], [ds].[db_name], [ds].[user_name], [ds].[properties],"
+	   "       [ds].[owner].[name], [ds].[comment]"
+	   " FROM [%s] [ds] WHERE CURRENT_USER = 'DBA' "
+	   "  OR {[ds].[owner].[name]} SUBSETEQ (SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "        FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER)"
+	   "  OR {[ds]} SUBSETEQ ( SELECT SUM(SET{[au].[class_of]}) FROM [%s] [au] WHERE {[au].[grantee].[name]} "
+	   "        SUBSETEQ ( SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{}) "
+	   "                   FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "                   WHERE [u].[name] = CURRENT_USER) AND [au].[auth_type] = 'SELECT')", CT_DB_SERVER_NAME,
+	   CT_USER_NAME, CT_CLASSAUTH_NAME, CT_USER_NAME);
+
+  error_code = db_add_query_spec (class_mop, stmt);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * catcls_vclass_install :
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
@@ -5455,29 +5640,29 @@ catcls_vclass_install (void)
   // *INDENT-OFF*
   struct catcls_function
   {
-    const char *name;
     const DEF_FUNCTION function;
   }
   clist[] =
   {
-    {"CTV_CLASS_NAME", boot_define_view_class},
-    {"CTV_SUPER_CLASS_NAME", boot_define_view_super_class},
-    {"CTV_VCLASS_NAME", boot_define_view_vclass},
-    {"CTV_ATTRIBUTE_NAME", boot_define_view_attribute},
-    {"CTV_ATTR_SD_NAME", boot_define_view_attribute_set_domain},
-    {"CTV_METHOD_NAME", boot_define_view_method},
-    {"CTV_METHARG_NAME", boot_define_view_method_argument},
-    {"CTV_METHARG_SD_NAME", boot_define_view_method_argument_set_domain},
-    {"CTV_METHFILE_NAME", boot_define_view_method_file},
-    {"CTV_INDEX_NAME", boot_define_view_index},
-    {"CTV_INDEXKEY_NAME", boot_define_view_index_key},
-    {"CTV_AUTH_NAME", boot_define_view_authorization},
-    {"CTV_TRIGGER_NAME", boot_define_view_trigger},
-    {"CTV_PARTITION_NAME", boot_define_view_partition},
-    {"CTV_STORED_PROC_NAME", boot_define_view_stored_procedure},
-    {"CTV_STORED_PROC_ARGS_NAME", boot_define_view_stored_procedure_arguments},
-    {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation},
-    {"CTV_DB_CHARSET_NAME", boot_define_view_db_charset}
+    {boot_define_view_class},  /* CTV_CLASS_NAME */
+    {boot_define_view_super_class}, /* CTV_SUPER_CLASS_NAME */
+    {boot_define_view_vclass}, /* CTV_VCLASS_NAME */
+    {boot_define_view_attribute}, /* CTV_ATTRIBUTE_NAME */
+    {boot_define_view_attribute_set_domain}, /* CTV_ATTR_SD_NAME */
+    {boot_define_view_method}, /* CTV_METHOD_NAME */
+    {boot_define_view_method_argument}, /* CTV_METHARG_NAME */
+    {boot_define_view_method_argument_set_domain}, /* CTV_METHARG_SD_NAME */
+    {boot_define_view_method_file}, /* CTV_METHFILE_NAME */
+    {boot_define_view_index}, /* CTV_INDEX_NAME */
+    {boot_define_view_index_key}, /* CTV_INDEXKEY_NAME */
+    {boot_define_view_authorization}, /* CTV_AUTH_NAME */
+    {boot_define_view_trigger}, /* CTV_TRIGGER_NAME */
+    {boot_define_view_partition}, /* CTV_PARTITION_NAME */
+    {boot_define_view_stored_procedure}, /* CTV_STORED_PROC_NAME */
+    {boot_define_view_stored_procedure_arguments}, /* CTV_STORED_PROC_ARGS_NAME */
+    {boot_define_view_db_collation}, /* CTV_DB_COLLATION_NAME */
+    {boot_define_view_db_charset}, /* CTV_DB_CHARSET_NAME */
+    {boot_define_view_db_server} /* CTV_DB_SERVER_NAME */
   };
   // *INDENT-ON*
 
@@ -5587,17 +5772,41 @@ boot_destroy_catalog_classes (void)
   int i;
   MOP classmop;
   const char *classes[] = {
-    CT_CLASS_NAME, CT_ATTRIBUTE_NAME, CT_DOMAIN_NAME,
-    CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
-    CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
-    CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
-    CT_PARTITION_NAME, CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME,
-    CTV_CLASS_NAME, CTV_SUPER_CLASS_NAME, CTV_VCLASS_NAME,
-    CTV_ATTRIBUTE_NAME, CTV_ATTR_SD_NAME, CTV_METHOD_NAME,
-    CTV_METHARG_NAME, CTV_METHARG_SD_NAME, CTV_METHFILE_NAME,
-    CTV_INDEX_NAME, CTV_INDEXKEY_NAME, CTV_AUTH_NAME,
-    CTV_TRIGGER_NAME, CTV_PARTITION_NAME, CTV_STORED_PROC_NAME,
-    CTV_STORED_PROC_ARGS_NAME, CT_COLLATION_NAME, NULL
+    CT_CLASS_NAME,
+    CT_ATTRIBUTE_NAME,
+    CT_DOMAIN_NAME,
+    CT_METHOD_NAME,
+    CT_METHSIG_NAME,
+    CT_METHARG_NAME,
+    CT_METHFILE_NAME,
+    CT_QUERYSPEC_NAME,
+    CT_INDEX_NAME,
+    CT_INDEXKEY_NAME,
+    CT_CLASSAUTH_NAME,
+    CT_DATATYPE_NAME,
+    CT_PARTITION_NAME,
+    CT_STORED_PROC_NAME,
+    CT_STORED_PROC_ARGS_NAME,
+    CTV_CLASS_NAME,
+    CTV_SUPER_CLASS_NAME,
+    CTV_VCLASS_NAME,
+    CTV_ATTRIBUTE_NAME,
+    CTV_ATTR_SD_NAME,
+    CTV_METHOD_NAME,
+    CTV_METHARG_NAME,
+    CTV_METHARG_SD_NAME,
+    CTV_METHFILE_NAME,
+    CTV_INDEX_NAME,
+    CTV_INDEXKEY_NAME,
+    CTV_AUTH_NAME,
+    CTV_TRIGGER_NAME,
+    CTV_PARTITION_NAME,
+    CTV_STORED_PROC_NAME,
+    CTV_STORED_PROC_ARGS_NAME,
+    CT_COLLATION_NAME,
+    CT_DB_SERVER_NAME,
+    CTV_DB_SERVER_NAME,
+    NULL
   };
 
   /* check if catalog exists */
@@ -5694,11 +5903,13 @@ boot_get_host_connected (void)
   return boot_Host_connected;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 HA_SERVER_STATE
 boot_get_ha_server_state (void)
 {
   return boot_Server_credential.ha_server_state;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * boot_get_lob_path - return the lob path which is received from the server

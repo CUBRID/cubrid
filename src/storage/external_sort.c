@@ -1482,9 +1482,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   prm_enable_sort_parallel = false;
 #endif
 
-#if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE, "TDE: sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
-#endif /* !NDEBUG */
+  tde_er_log ("sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
 
 #if defined(SERVER_MODE)
   if (prm_enable_sort_parallel == true)

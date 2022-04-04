@@ -904,7 +904,7 @@ $ LOADDB
 834 在给to_number()的源字符串 "%1$s" 和格式字符串之间 "%2$s" 存在一些匹配不一致.
 835 未定义的统计项目.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 无法删除拥有数据库对象(类/触发器/序列 等等)的用户. 
+837 无法删除拥有数据库对象(类/触发器/序列/服务器 等等)的用户.
 838 无法同时打开多于 %1$d index scans.
 839 "%1$s": 未知的系统参数或错误的值.
 840 无法改变系统参数 "%1$s".
@@ -1052,7 +1052,7 @@ $ LOADDB
 982 为事务 %1$d 设置中断.
 983 可重用 OID 类的实例是 non-referable 的. 这项操作在 non-referable 的实例上不被允许.
 984 无法设置 %3$s 为 "%6$s" 在 "[%5$s]" 部分, 当它被设置为 "%4$s" 在 "[%2$s]" section of the configuration file "%1$s".
-985 数据库连接字符串中的主机名应当被指明，当在 "databases.txt" 设定有多个主机时.
+985 数据库连接字符串中的主机名应当被指明，当在 "databases.txt" 设定有多个主机时. ex) csql demodb@localhost
 986 CUBRID heartbeat 函数启动.
 987 CUBRID heartbeat 函数停止.
 988 结点事件: %1$s.
@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 创建溢出键文件. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 创建新的溢出页. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 删除空的溢出页. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 日志恢复已经开始. 已经被应用的日志记录数为: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 日志恢复已经开始.
 1129 日志恢复结束.
 1130 事务被终止, 因为事务锁数超过 %1$d.
 1131 内部错误: 卷 "%2$s" 的页 %1$d 可能被破坏.\n%3$s
@@ -1330,7 +1330,7 @@ $ LOADDB
 1258 在%1$s中找不到数据库上的密钥集。将使用备份卷中的密钥文件。
 1259 将密钥文件从“%1$s”重命名为“%2$s”。
 1260 将密钥文件“%1$s”复制到“%2$s”。
-1261 在还原时找不到密钥（密钥索引：%1$d，创建时间：%2$s）。设置数据库的键（键索引：%3$d）。
+1261 恢复的密钥文件的第一个密钥（密钥索引：%1$d，创建时间：%2$s）已设置。
 1262 密钥文件已满。
 1263 无法对日志页面进行TDE加密（页面ID：%1$lld）。不再尝试加密此页面。
 1264 Error reserved for scalability development.
@@ -1353,8 +1353,70 @@ $ LOADDB
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 由于在 %1$s 上引用了主键，因此无法截断表。 使用 CASCADE 选项重试。
+1285 无法级联截断，因为外键 (%1$s) 的 ON DELETE 操作未设置为 CASCADE。
 
-1284 最后一个错误.
+1286 在提取时找不到日志 lsa。 （输入时间：%1$s）。
+1287 尝试提取日志信息超时。 （已用时间：%1$d 秒，提取超时：%2$d 秒）
+1288 跳过为内部不支持的日志记录生成日志信息。
+1289 跳过为无效交易生成日志信息。 （三：%1$d）
+1290 提取日志信息的日志 lsa (%1$lld|%2$d) 无效。
+1291 无法连接到服务器以提取日志信息。设置“supplemental_log”参数再试一次。
+1292 当时找不到日志 lsa (%1$s)。日志 lsa 调整到时间 (%2$s)。
+1293 生成日志信息时无法获取日志页面。生成日志信息的日志 lsa 指示 NULL。
+1294 日志信息已生成。 （类型：“%1$s”）。
+1295 跳过为无效表生成日志信息。 （class OID ：%1$d|%2$d|%3$d）
+
+1296 日志恢复: 开始分析阶段。
+1297 日志恢复: REDO阶段开始。 重做日志页面: %1$lld，重做日志记录: %2$lld。
+1298 日志恢复: 启动 UNDE 阶段。 要撤消的日志页面: %1$lld，要撤消的事务处理: %2$d。
+1299 日志恢复: %1$s 阶段已完成。
+1300 日志恢复: %1$s 阶段已完成。
+1301 日志恢复：%1$s 进度：(%2$lld/%3$lld)，%4$.2f 百分比，已用时间：%5$.2f (s)，估计剩余时间：%6$.2f (s)。
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 Error reserved for dblink development.
+
+1332 活动日志卷 (%1$s) 过于健全，无法重新创建。 如果删除活动日志，可能会导致意外且不可逆转的问题。
+
+1333 开始闪回的时间无效 (%1$s)。 时间需要设置在 (%2$s) 和 (%3$s) 之间。
+1334 找不到要闪回的类 (%1$s)。
+1335 闪回的事务太多。 少于 %1$d 笔交易可以被闪回。
+1336 无法支持此类的闪回（名称：%1$s，OID：%2$d|%3$d|%4$d）。 类架构已更改。
+1337 日志记录不存在 (lsa : %1$lld|%2$d)。 存档日志卷已被删除。
+1338 闪回已在运行。 Flashback 不能由多个用户同时运行。
+
+1339 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1512,6 +1574,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 一个comment的最大长度是 %1$d 字节.
 128 JSON_OBJECTAGG参数个数不匹配.
 129 PARALLEL数必须在 %1$d 和 %2$d 之间.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
@@ -1819,6 +1882,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 为期待的参数个数 %1$d.
 304 没有找到与 %1$s() 函数兼容的签名.
 305 函数签名 %1$s 与函数参数不匹配.
+306 dblink - 缺少必需的信息.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

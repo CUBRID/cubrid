@@ -1676,6 +1676,7 @@ patchdb (UTIL_FUNCTION_ARG * arg)
   const char *db_name;
   const char *db_locale = NULL;
   bool recreate_log;
+  int error = NO_ERROR;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (db_name == NULL)
@@ -1708,9 +1709,14 @@ patchdb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  if (boot_emergency_patch (db_name, recreate_log, 0, db_locale, NULL) != NO_ERROR)
+  error = boot_emergency_patch (db_name, recreate_log, 0, db_locale, NULL);
+  if (error != NO_ERROR)
     {
       fprintf (stderr, "emergency patch fail:%s\n", db_error_string (3));
+      if (error == ER_LOG_TOO_SANE_TO_RECREATE)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PATCHDB, PATCHDB_RECREATE_FAILURE));
+	}
       er_final (ER_ALL_FINAL);
       goto error_exit;
     }
@@ -3422,7 +3428,7 @@ synccoll_force (void)
     }
 
   AU_DISABLE (au_save);
-  if (db_truncate_class (class_mop) != NO_ERROR)
+  if (db_truncate_class (class_mop, false) != NO_ERROR)
     {
       AU_ENABLE (au_save);
       status = EXIT_FAILURE;

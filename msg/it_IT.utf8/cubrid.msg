@@ -904,7 +904,7 @@ $ LOADDB
 834 Ci sono delle discrepanze tra stringa di origine "%1$s" e la stringa di formato "%2$s" dato nel to_number().
 835 Artocolo non definito di statistiche.
 836 Blocco sulla pagina (%1$d|%2$d) è scaduto.
-837 Impossibile eliminare l'utente che possiede oggetti di database (classe/trigger/seriale etc.)
+837 Impossibile eliminare l'utente che possiede oggetti di database (classe/trigger/seriale/server etc.)
 838 Non è possibile aprire più di %1$d scansioni di index contemporaneamente.
 839 "%1$s": parametro di sistema sconosciuto o valore non valido.
 840 Non è possibile modificare il parametro di sistema "%1$s".
@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Impostare l'interruzione alla transazione %1$d.
 983 Le istanze di una classe OID riutilizzabile non sono riferibili. Questa operazione non è permessa sulle istanze non riferibile.
 984 Impossibile impostare %3$s a "%6$s" nella sezione "[%5$s]" quando è impostato a "%4$s" nella sezione "[%2$s]" del file di configurazione "%1$s".
-985 L'hostname nella stringa di connessione al database deve essere specificato quando multihost è impostato in "databases.txt".
+985 L'hostname nella stringa di connessione al database deve essere specificato quando multihost è impostato in "databases.txt". ex) csql demodb@localhost
 986 Funzionalità di CUBRID heartbeat iniziato.
 987 Funzionalità di CUBRID heartbeat fermato.
 988 Evento del nodo: %1$s.
@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Creare il file chiave di overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. chiave: %5$s%6$s.
 1126 Creare una nuova pagina di overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. chiave: %5$s%6$s.
 1127 Eliminare una pagina di overflow vuota. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Recupero log è avviato. Il numero di record del log da applicare: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 Recupero log è avviato.
 1129 Recupero log è finito.
 1130 Transazione viene interrotta perché numero di lock counts supera il valore %1$d.
 1131 Errore interno: La pagina %1$d di volume "%2$s" potrebbe essere danneggiata.\n%3$s
@@ -1329,7 +1329,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1258 Impossibile trovare la serie di chiavi nel database da%1$s. Verrà utilizzato il file chiave del volume di backup.
 1259 Rinomina il file della chiave da "%1$s" a "%2$s".
 1260 Copia il file chiave "%1$s" in "%2$s".
-1261 Impossibile trovare la chiave al momento del ripristino (indice chiave: %1$d, ora di creazione: %2$s). Imposta la chiave (indice chiave: %3$d) per il database.
+1261 La prima chiave (indice chiave: %1$d, ora di creazione: %2$s) sul file chiave ripristinato è stata impostata.
 1262 Il file della chiave è pieno.
 1263 Impossibile crittografare TDE la pagina di registro (pageid: %1$lld). Non si tenterà più di crittografare questa pagina.
 1264 Error reserved for scalability development.
@@ -1352,8 +1352,70 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 Impossibile troncare la tabella a causa della chiave primaria a cui si fa riferimento su %1$s. Riprova con l'opzione CASCADE.
+1285 Impossibile eseguire il troncamento a catena perché l'azione ON DELETE della chiave esterna (%1$s) non è impostata su CASCADE.
 
-1284 Ultimo errore
+1286 Impossibile trovare il log lsa al momento dell'estrazione. (tempo di immissione: %1$s).
+1287 Timeout durante il tentativo di estrarre le informazioni di registro. (tempo trascorso: %1$d sec, timeout di estrazione: %2$d sec)
+1288 Salta la produzione interna delle informazioni di registro per il record di registro non supportato.
+1289 Salta la produzione delle informazioni di registro per la transazione non valida. (trid: %1$d)
+1290 Lsa di registro non valido (%1$lld|%2$d) per estrarre le informazioni di registro.
+1291 Impossibile connettersi al server per estrarre le informazioni di registro. Riprova impostando il parametro 'supplemental_log'.
+1292 Impossibile trovare il log lsa al momento (%1$s). Log lsa è regolato in base all'ora (%2$s).
+1293 Impossibile ottenere la pagina di registro durante la produzione delle informazioni di registro. Log lsa per generare informazioni di log indica NULL.
+1294 Le informazioni di registro sono state generate. (digita: "%1$s").
+1295 Salta la produzione delle informazioni di registro per la tabella non valida. (classe oid: %1$d|%2$d|%3$d)
+
+1296 Ricupero della scheda: è iniziata la fase ANALYSIS.
+1297 Ricostituzione della scheda: è iniziata la fase REDO. Pagine di log per ripetere: %1$lld, registrazioni di log per ripetere: %2$lld.
+1298 Ricupero della Log: è iniziata la fase UNDO. Pagine di log da annullare: %1$lld, transazioni da annullare: %2$d.
+1299 Ricostituzione di log: fase di recupero del %1$s è in corso di completamento.
+1300 Ricupero di log: fase di recupero del %1$s è terminata.
+1301 Recupero log: %1$s progresso: (%2$lld/%3$lld), %4$.2f percento, tempo trascorso: %5$.2f (s), tempo rimanente stimato: %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 Error reserved for dblink development.
+
+1332 Il volume del registro attivo (%1$s) è troppo sano per essere ricreato. Se rimuovi il registro attivo, potrebbe causare un problema imprevisto e irreversibile.
+
+1333 Tempo non valido (%1$s) per avviare il flashback. È necessario impostare il tempo tra (%2$s) e (%3$s).
+1334 Impossibile trovare la classe per il flashback (%1$s).
+1335 Troppe transazioni per il flashback. Meno di %1$d transazioni possono essere flashback.
+1336 Impossibile supportare il flashback per questa classe (nome : %1$s , OID : %2$d|%3$d|%4$d). Lo schema della classe è stato modificato.
+1337 Il record di registro non esiste (lsa : %1$lld|%2$d). Il volume del registro di archivio è stato eliminato.
+1338 Flashback è già in esecuzione. Flashback non può essere eseguito da più utenti contemporaneamente.
+
+1339 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
@@ -1511,6 +1573,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Lunghezza massima di un commento è %1$d bytes.
 128 Numero di argomenti non valido per JSON_OBJECTAGG.
 129 L'argomento conteggio PARALLELO deve essere compreso tra %1$d e %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.
@@ -1818,6 +1881,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Numero imprevisto di argomenti %1$d.
 304 Impossibile trovare una firma compatibile per la funzione %1$s()
 305 Firma %1$s non è compatibile con gli argomenti delle funzioni.
+306 dblink - Mancano le informazioni richieste.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.

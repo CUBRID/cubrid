@@ -132,7 +132,7 @@ retry:
       assert (false);
       return ER_ES_INVALID_PATH;
     }
-  ret = mkdir (dirbuf, 0755);
+  ret = mkdir (dirbuf, 0744);
 #endif
 
   if (ret < 0 && errno != EEXIST)

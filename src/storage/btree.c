@@ -4581,7 +4581,7 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
 
   fprintf (fp, "==============    R O O T    P A G E   ================\n\n");
   fprintf (fp, " Key_Type: %s\n", pr_type_name (TP_DOMAIN_TYPE (key_type)));
-  fprintf (fp, " Num OIDs: %d, Num NULLs: %d, Num keys: %d\n", root_header->num_oids, root_header->num_nulls,
+  fprintf (fp, " Num OIDs: %lld, Num NULLs: %lld, Num keys: %lld\n", root_header->num_oids, root_header->num_nulls,
 	   root_header->num_keys);
   fprintf (fp, " Topclass_oid: (%d %d %d)\n", root_header->topclass_oid.volid, root_header->topclass_oid.pageid,
 	   root_header->topclass_oid.slotid);
@@ -4602,7 +4602,6 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
   fprintf (fp, "\n");
   fprintf (fp, " OVFID: %d|%d\n", root_header->ovfid.fileid, root_header->ovfid.volid);
   fprintf (fp, " Btree Revision Level: %d\n", root_header->rev_level);
-  fprintf (fp, " Reserved: %d\n", root_header->reverse_reserved);	/* unused */
   fprintf (fp, "\n");
 }
 
@@ -5577,11 +5576,12 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
  */
 BTID *
 xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id,
-		  int unique_pk, int num_oids, int num_nulls, int num_keys)
+		  int unique_pk, long long num_oids, long long num_nulls, long long num_keys)
 {
   BTREE_ROOT_HEADER root_header_info, *root_header = NULL;
   VPID root_vpid;
   PAGE_PTR page_ptr = NULL;
+  int over = 0;
 
   root_header = &root_header_info;
 
@@ -5618,10 +5618,16 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
 
   if (unique_pk)
     {
-      root_header->num_oids = num_oids;
-      root_header->num_nulls = num_nulls;
-      root_header->num_keys = num_keys;
+      root_header->num_oids = num_oids & 0xffffffff;
+      root_header->num_nulls = num_nulls & 0xffffffff;
+      root_header->num_keys = num_keys & 0xffffffff;
       root_header->unique_pk = unique_pk;
+
+      over += root_header->_64.num_oids = num_oids >> 32;
+      over += root_header->_64.num_nulls = num_nulls >> 32;
+      over += root_header->_64.num_keys = num_keys >> 32;
+
+      root_header->_64.over = (over > 0);
 
       assert (BTREE_IS_UNIQUE (root_header->unique_pk));
       assert (BTREE_IS_PRIMARY_KEY (root_header->unique_pk) || !BTREE_IS_PRIMARY_KEY (root_header->unique_pk));
@@ -5638,8 +5644,6 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
 
   VFID_SET_NULL (&(root_header->ovfid));
   root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
-
-  root_header->reverse_reserved = 0;	/* unused */
 
 #if defined (SERVER_MODE)
   root_header->creator_mvccid = logtb_get_current_mvccid (thread_p);
@@ -5756,22 +5760,9 @@ btree_generate_prefix_domain (BTID_INT * btid)
   dbtype = TP_DOMAIN_TYPE (domain);
 
   /* varying domains did not come into use until btree revision level 1 */
-  if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_NCHAR || dbtype == DB_TYPE_BIT)
+  if (dbtype == DB_TYPE_BIT)
     {
-      switch (dbtype)
-	{
-	case DB_TYPE_CHAR:
-	  vartype = DB_TYPE_VARCHAR;
-	  break;
-	case DB_TYPE_NCHAR:
-	  vartype = DB_TYPE_VARNCHAR;
-	  break;
-	case DB_TYPE_BIT:
-	  vartype = DB_TYPE_VARBIT;
-	  break;
-	default:
-	  return NULL;
-	}
+      vartype = DB_TYPE_VARBIT;
 
       var_domain =
 	tp_domain_resolve (vartype, domain->class_mop, domain->precision, domain->scale, domain->setdomain,
@@ -6098,7 +6089,7 @@ xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size)
 static int
 xbtree_test_unique (THREAD_ENTRY * thread_p, BTID * btid)
 {
-  INT32 num_oids, num_nulls, num_keys;
+  long long num_oids, num_nulls, num_keys;
 
   if (logtb_get_global_unique_stats (thread_p, btid, &num_oids, &num_nulls, &num_keys) != NO_ERROR)
     {
@@ -6168,7 +6159,8 @@ xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid)
  * Note: In MVCC the statistics are taken from memory structures. In non-mvcc from B-tree header
  */
 int
-btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, int *oid_cnt, int *null_cnt, int *key_cnt)
+btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, long long *oid_cnt, long long *null_cnt,
+				       long long *key_cnt)
 {
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
 
@@ -6196,7 +6188,8 @@ btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, int
  * the btree is not a unique btree, all the stats will be -1.
  */
 int
-btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, int *oid_cnt, int *null_cnt, int *key_cnt)
+btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, long long *oid_cnt, long long *null_cnt,
+			     long long *key_cnt)
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
@@ -6222,9 +6215,16 @@ btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, int *oid_cnt,
 
   assert ((root_header->unique_pk & (BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY)) != 0);
 
-  *oid_cnt = root_header->num_oids;
-  *null_cnt = root_header->num_nulls;
-  *key_cnt = root_header->num_keys;
+  *oid_cnt = (unsigned int) root_header->num_oids;
+  *null_cnt = (unsigned int) root_header->num_nulls;
+  *key_cnt = (unsigned int) root_header->num_keys;
+
+  if (root_header->_64.over)
+    {
+      *oid_cnt |= (((long long) root_header->_64.num_oids) << 32);
+      *null_cnt |= (((long long) root_header->_64.num_nulls) << 32);
+      *key_cnt |= (((long long) root_header->_64.num_keys) << 32);
+    }
 
   pgbuf_unfix_and_init (thread_p, root);
 
@@ -14089,10 +14089,18 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
 
       if (!only_active_tran || logtb_is_current_active (thread_p))
 	{
+	  int over = 0;
+
 	  /* update header information */
-	  root_header->num_nulls = unique_stat_info->unique_stats.num_nulls;
-	  root_header->num_oids = unique_stat_info->unique_stats.num_oids;
-	  root_header->num_keys = unique_stat_info->unique_stats.num_keys;
+	  root_header->num_nulls = unique_stat_info->unique_stats.num_nulls & 0xffffffff;
+	  root_header->num_oids = unique_stat_info->unique_stats.num_oids & 0xffffffff;
+	  root_header->num_keys = unique_stat_info->unique_stats.num_keys & 0xffffffff;
+
+	  over += root_header->_64.num_nulls = unique_stat_info->unique_stats.num_nulls >> 32;
+	  over += root_header->_64.num_oids = unique_stat_info->unique_stats.num_oids >> 32;
+	  over += root_header->_64.num_keys = unique_stat_info->unique_stats.num_keys >> 32;
+
+	  root_header->_64.over = (over > 0);
 
 	  page_lsa = pgbuf_get_lsa (root);
 	  /* update the page's LSA to the last global unique statistics change that was made at commit, only if it is
@@ -14114,7 +14122,7 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
 			     "Reflect unique statistics to index (%d, %d|%d):"
-			     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", unique_stat_info->btid.root_pageid,
+			     "nulls=%lld, oids=%lld, keys=%lld. LSA=%lld|%d.\n", unique_stat_info->btid.root_pageid,
 			     unique_stat_info->btid.vfid.volid, unique_stat_info->btid.vfid.fileid,
 			     unique_stat_info->unique_stats.num_nulls, unique_stat_info->unique_stats.num_oids,
 			     unique_stat_info->unique_stats.num_keys,
@@ -16922,10 +16930,10 @@ int
 btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  int num_nulls, num_oids, num_keys;
+  long long num_nulls, num_oids, num_keys;
   BTID btid;
 
-  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+  assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
 
   /* unpack the root statistics */
   datap = (char *) recv->data;
@@ -16933,14 +16941,14 @@ btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   OR_GET_BTID (datap, &btid);
   datap += OR_BTID_ALIGNED_SIZE;
 
-  num_keys = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
+  OR_GET_BIGINT (datap, &num_keys);
+  datap += OR_BIGINT_SIZE;
 
-  num_oids = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
+  OR_GET_BIGINT (datap, &num_oids);
+  datap += OR_BIGINT_SIZE;
 
-  num_nulls = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
+  OR_GET_BIGINT (datap, &num_nulls);
+  datap += OR_BIGINT_SIZE;
 
   if (logtb_tran_update_unique_stats (thread_p, &btid, num_keys, num_oids, num_nulls, false) != NO_ERROR)
     {
@@ -16967,8 +16975,9 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
   BTREE_ROOT_HEADER *root_header = NULL;
+  long long num_nulls, num_oids, num_keys;
 
-  if (recv->length < 3 * OR_INT_SIZE)
+  if (recv->length < 3 * OR_BIGINT_SIZE)
     {
       assert (false);
       goto error;
@@ -16979,13 +16988,40 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 
   if (root_header != NULL)
     {
+      int over = 0;
+      long long delta;
+
+      num_nulls = (unsigned int) root_header->num_nulls;
+      num_oids = (unsigned int) root_header->num_oids;
+      num_keys = (unsigned int) root_header->num_keys;
+
+      if (root_header->_64.over)
+	{
+	  num_nulls |= (long long) root_header->_64.num_nulls << 32;
+	  num_oids |= (long long) root_header->_64.num_oids << 32;
+	  num_keys |= (long long) root_header->_64.num_keys << 32;
+	}
+
       /* unpack the root statistics */
       datap = (char *) recv->data;
-      root_header->num_nulls += OR_GET_INT (datap);
-      datap += OR_INT_SIZE;
-      root_header->num_oids += OR_GET_INT (datap);
-      datap += OR_INT_SIZE;
-      root_header->num_keys += OR_GET_INT (datap);
+      OR_GET_BIGINT (datap, &delta);
+      num_nulls += delta;
+      datap += OR_BIGINT_SIZE;
+      OR_GET_BIGINT (datap, &delta);
+      num_oids += delta;
+      datap += OR_BIGINT_SIZE;
+      OR_GET_BIGINT (datap, &delta);
+      num_keys += delta;
+
+      root_header->num_nulls = num_nulls & 0xffffffff;
+      root_header->num_oids = num_oids & 0xffffffff;
+      root_header->num_keys = num_keys & 0xffffffff;
+
+      over += root_header->_64.num_nulls = num_nulls >> 32;
+      over += root_header->_64.num_oids = num_oids >> 32;
+      over += root_header->_64.num_keys = num_keys >> 32;
+
+      root_header->_64.over = (over > 0);
     }
 
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
@@ -18738,12 +18774,6 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 
       if (are_types_comparable)
 	{
-	  /*
-	   * for do_coercion = 2, we need to process key comparing as char-type
-	   * in case that one of two arguments has varchar-type
-	   * if the other argument has char-type
-	   */
-	  do_coercion = 2;
 	  c = key_domain->type->cmpval (key1, key2, do_coercion, total_order, NULL, key_domain->collation_id);
 	}
       else
@@ -20814,7 +20844,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
   char buf[256] = { 0 };
   OR_BUF or_buf;
   TP_DOMAIN *key_type;
-  int num_oids = 0, num_nulls = 0, num_keys = 0;
+  long long num_oids = 0, num_nulls = 0, num_keys = 0;
   bool fetch_unique_stats = false;
   int unique_stats_idx = -1;
   RECDES recdes = RECDES_INITIALIZER;
@@ -20882,13 +20912,19 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
     }
   else
     {
-      db_make_int (out_values[idx], root_header->num_oids);
+      /* the statistics values is always same as initial (-1) 
+       * so, it's not necessary to extend 64 bit */
+      num_oids = root_header->num_oids;
+      num_nulls = root_header->num_oids;
+      num_keys = root_header->num_oids;
+
+      db_make_bigint (out_values[idx], num_oids);
       idx++;
 
-      db_make_int (out_values[idx], root_header->num_nulls);
+      db_make_bigint (out_values[idx], num_nulls);
       idx++;
 
-      db_make_int (out_values[idx], root_header->num_keys);
+      db_make_bigint (out_values[idx], num_keys);
       idx++;
     }
 
@@ -20964,9 +21000,9 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
 	  goto error;
 	}
 
-      db_make_int (out_values[unique_stats_idx], num_oids);
-      db_make_int (out_values[unique_stats_idx + 1], num_nulls);
-      db_make_int (out_values[unique_stats_idx + 2], num_keys);
+      db_make_bigint (out_values[unique_stats_idx], num_oids);
+      db_make_bigint (out_values[unique_stats_idx + 1], num_nulls);
+      db_make_bigint (out_values[unique_stats_idx + 2], num_keys);
     }
 
   (void) heap_scancache_end (thread_p, &scan_cache);
@@ -22356,10 +22392,10 @@ int
 btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  int num_nulls, num_oids, num_keys;
+  long long num_nulls, num_oids, num_keys;
   BTID btid;
 
-  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+  assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
 
   /* unpack the root statistics */
   datap = (char *) recv->data;
@@ -22367,14 +22403,14 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * rec
   OR_GET_BTID (datap, &btid);
   datap += OR_BTID_ALIGNED_SIZE;
 
-  num_nulls = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
+  OR_GET_BIGINT (datap, &num_nulls);
+  datap += OR_BIGINT_SIZE;
 
-  num_oids = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
+  OR_GET_BIGINT (datap, &num_oids);
+  datap += OR_BIGINT_SIZE;
 
-  num_keys = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
+  OR_GET_BIGINT (datap, &num_keys);
+  datap += OR_BIGINT_SIZE;
 
   /* Because this log record is logical, it will be processed even if the B-tree was deleted. If the B-tree was deleted
    * then skip update of unique statistics in global hash. */
@@ -22401,8 +22437,9 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * rec
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "Recover undo unique statistics for index (%d, %d|%d): "
-		     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", btid.root_pageid, btid.vfid.volid, btid.vfid.fileid,
-		     num_nulls, num_oids, num_keys, (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
+		     "nulls=%lld, oids=%lld, keys=%lld. LSA=%lld|%d.\n", btid.root_pageid, btid.vfid.volid,
+		     btid.vfid.fileid, num_nulls, num_oids, num_keys,
+		     (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
 		     (int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.offset);
     }
 
@@ -22425,10 +22462,10 @@ int
 btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  int num_nulls, num_oids, num_keys;
+  long long num_nulls, num_oids, num_keys;
   BTID btid;
 
-  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+  assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
 
   /* unpack the root statistics */
   datap = (char *) recv->data;
@@ -22436,22 +22473,15 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * rec
   OR_GET_BTID (datap, &btid);
   datap += OR_BTID_ALIGNED_SIZE;
 
-  num_nulls = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
+  OR_GET_BIGINT (datap, &num_nulls);
+  datap += OR_BIGINT_SIZE;
 
-  num_oids = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
+  OR_GET_BIGINT (datap, &num_oids);
+  datap += OR_BIGINT_SIZE;
 
-  num_keys = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
+  OR_GET_BIGINT (datap, &num_keys);
+  datap += OR_BIGINT_SIZE;
 
-  /* Because this log record is logical, it will be processed even if the B-tree was deleted. If the B-tree was deleted
-   * then skip update of unique statistics in global hash. */
-  if (disk_is_page_sector_reserved (thread_p, btid.vfid.volid, btid.root_pageid) != DISK_VALID)
-    {
-      /* The B-tree was already deleted */
-      return NO_ERROR;
-    }
   if (logtb_rv_update_global_unique_stats_by_abs (thread_p, &btid, num_oids, num_nulls, num_keys) != NO_ERROR)
     {
       goto error;
@@ -22461,8 +22491,9 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * rec
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "Recover redo unique statistics for index (%d, %d|%d): "
-		     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", btid.root_pageid, btid.vfid.volid, btid.vfid.fileid,
-		     num_nulls, num_oids, num_keys, (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
+		     "nulls=%lld, oids=%lld, keys=%lld. LSA=%lld|%d.\n", btid.root_pageid, btid.vfid.volid,
+		     btid.vfid.fileid, num_nulls, num_oids, num_keys,
+		     (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
 		     (int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.offset);
     }
 
@@ -25145,8 +25176,8 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (bts != NULL);
   assert (!VPID_ISNULL (&bts->C_vpid));
   assert (bts->C_page != NULL);
-  /* MRO and covering index optimization are not compatible with bts->need_count_only. */
-  assert (!BTS_NEED_COUNT_ONLY (bts) || (!BTS_IS_INDEX_MRO (bts) && !BTS_IS_INDEX_COVERED (bts)));
+  /* MRO optimization are not compatible with bts->need_count_only. */
+  assert (!BTS_NEED_COUNT_ONLY (bts) || !BTS_IS_INDEX_MRO (bts));
 
   /* Index skip scan optimization has an early out when a new key is found: */
   if (BTS_IS_INDEX_ISS (bts)
@@ -35274,7 +35305,7 @@ btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid
 					    OID * class_oid)
 {
   int ret = NO_ERROR;
-  int g_num_oids = 0, g_num_nulls = 0, g_num_keys = 0;
+  long long g_num_oids = 0, g_num_nulls = 0, g_num_keys = 0;
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
 
   if (unique_stats == NULL)

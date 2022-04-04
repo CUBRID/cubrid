@@ -484,6 +484,7 @@ namespace cubthread
     // init main entry
     assert (Main_entry_p == NULL);
     Main_entry_p = new entry ();
+    Main_entry_p->type = TT_MASTER;
     Main_entry_p->index = 0;
     Main_entry_p->register_id ();
     Main_entry_p->m_status = entry::status::TS_RUN;

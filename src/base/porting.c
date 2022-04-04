@@ -1244,8 +1244,9 @@ stristr (const char *s, const char *find)
   char c, sc;
   size_t len;
 
-  if ((c = *find++) != '0')
+  if ((c = toupper (*find)) != '\0')
     {
+      find++;
       len = strlen (find);
       do
 	{
@@ -1256,7 +1257,7 @@ stristr (const char *s, const char *find)
 		  return NULL;
 		}
 	    }
-	  while (toupper (sc) != toupper (c));
+	  while (toupper (sc) != c);
 	}
       while (strncasecmp (s, find, len) != 0);
       s--;

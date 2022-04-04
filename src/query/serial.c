@@ -128,7 +128,7 @@ static int xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE
 static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp,
 					    int num_alloc);
 static int serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
-static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
+static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
 					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
 					const OID * serial_oidp, DB_VALUE * key_val);
@@ -470,11 +470,12 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 	}
 
       /* cur_val of db_serial is updated to last_cached_val of entry */
-      error = serial_update_cur_val_of_serial (thread_p, entry);
+      error = serial_update_cur_val_of_serial (thread_p, entry, num_alloc);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
+
     }
 
   /* get next value */
@@ -501,7 +502,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
  *   entry(in)    :
  */
 static int
-serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
+serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc)
 {
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
@@ -582,6 +583,24 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
       goto exit_on_error;
     }
 
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
+    {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      if (tdes)
+	{
+	  if (!tdes->has_supplemental_log)
+	    {
+	      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					    tdes->client.get_db_user ());
+
+	      tdes->has_supplemental_log = true;
+	    }
+	}
+
+      (void) log_append_supplemental_serial (thread_p, db_get_string (&key_val), num_alloc, NULL, &entry->oid);
+    }
+
   pr_clear_value (&key_val);
 
   heap_attrinfo_end (thread_p, attr_info_p);
@@ -632,6 +651,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   SERIAL_CACHE_ENTRY *entry = NULL;
   ATTR_ID attrid;
   OID serial_class_oid;
+
+  bool is_started;
 
   db_make_null (&key_val);
 
@@ -736,6 +757,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   db_make_null (&last_val);
 
+  is_started = db_get_int (&started);
+
   if (db_get_int (&started) == 0)
     {
       /* This is the first time to generate the serial value. */
@@ -809,6 +832,25 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
+    }
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
+    {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      if (tdes)
+	{
+	  if (!tdes->has_supplemental_log)
+	    {
+	      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					    tdes->client.get_db_user ());
+
+	      tdes->has_supplemental_log = true;
+	    }
+	}
+
+      (void) log_append_supplemental_serial (thread_p, db_get_string (&key_val), is_started ? num_alloc : num_alloc + 1,
+					     NULL, serial_oidp);
     }
 
   /* copy result value */

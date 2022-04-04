@@ -6634,8 +6634,7 @@ or_pack_listid (char *ptr, void *listid_ptr)
   OR_PUT_PTR (ptr, listid->tfile_vfid);
   ptr += OR_PTR_SIZE;
 
-  OR_PUT_INT (ptr, listid->tuple_cnt);
-  ptr += OR_INT_SIZE;
+  ptr = or_pack_int64 (ptr, listid->tuple_cnt);
 
   OR_PUT_INT (ptr, listid->page_cnt);
   ptr += OR_INT_SIZE;
@@ -6722,8 +6721,7 @@ or_unpack_listid (char *ptr, void *listid_ptr)
   listid->tfile_vfid = (struct qmgr_temp_file *) OR_GET_PTR (ptr);
   ptr += OR_PTR_SIZE;
 
-  listid->tuple_cnt = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
+  ptr = or_unpack_int64 (ptr, &listid->tuple_cnt);
 
   listid->page_cnt = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
@@ -6763,7 +6761,7 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
   int count, i;
 
   /*
-   * tuple_cnt 4, vfid.fileid 4, vfid.volid 2, attr_list.oid_flg 2,
+   * tuple_cnt 8, vfid.fileid 4, vfid.volid 2, attr_list.oid_flg 2,
    * attr_list.attr_cnt 4, attr_list.attr_id 4 * n
    */
 
@@ -6836,16 +6834,21 @@ or_listid_length (void *listid_ptr)
       return length;
     }
 
-  /* QFILE_LIST_ID 9 fixed item tuple_cnt page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
+  length = OR_PTR_SIZE /* query_id */  + OR_PTR_SIZE;	/* tfile_vfid */
+
+  /* aligned length for tuple_count (INT64, 8) */
+  length = DB_ALIGN (length, MAX_ALIGNMENT);	// aligned offset
+  length += OR_INT64_SIZE;
+
+  /* 8 fixed item page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
    * last_offset lasttpl_len type_list_type_cnt */
-  length = OR_INT_SIZE * 9;
+  length += OR_INT_SIZE * 8;
 
   for (i = 0; i < listid->type_list.type_cnt; i++)
     {
       length += or_packed_domain_size (listid->type_list.domp[i], 0);
     }
 
-  length += OR_PTR_SIZE /* query_id */  + OR_PTR_SIZE;	/* tfile_vfid */
   return length;
 }
 

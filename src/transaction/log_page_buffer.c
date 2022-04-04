@@ -104,6 +104,7 @@
 #include "thread_manager.hpp"
 #include "crypt_opfunc.h"
 #include "object_representation.h"
+#include "flashback.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -351,9 +352,6 @@ static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, 
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
-static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
-					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
-					       LOG_PAGE * log_pgptr);
 static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32);
 static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
 
@@ -827,7 +825,7 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
     }
   else
     {
-      index = logpb_get_log_buffer_index ((int) pageid);
+      index = logpb_get_log_buffer_index (pageid);
       if (index >= 0 && index < log_Pb.num_buffers)
 	{
 	  log_bufptr = &log_Pb.buffers[index];
@@ -1346,7 +1344,11 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   loghdr->avg_nlocks = LOG_ESTIMATE_NOBJ_LOCKS;
   loghdr->npages = npages - 1;	/* Hdr pg is stolen */
   loghdr->db_charset = lang_charset ();
+#if !defined(NDEBUG)
+  loghdr->fpageid = (LOG_PAGEID) prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID);	/* loghdr->fpageid should always be 0 except for QA or TEST purposes. */
+#else
   loghdr->fpageid = 0;
+#endif
   loghdr->append_lsa.pageid = loghdr->fpageid;
   loghdr->append_lsa.offset = 0;
   LSA_COPY (&loghdr->chkpt_lsa, &loghdr->append_lsa);
@@ -1497,7 +1499,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
  *
  * NOTE: Should be used only during boot sequence.
  */
-static int
+int
 logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				    const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
@@ -1904,7 +1906,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       goto exit;
     }
 
-  index = logpb_get_log_buffer_index ((int) pageid);
+  index = logpb_get_log_buffer_index (pageid);
   if (index >= 0 && index < log_Pb.num_buffers)
     {
       log_bufptr = &log_Pb.buffers[index];
@@ -1912,7 +1914,8 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   else
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, pageid);
-      return ER_LOG_PAGE_CORRUPTED;
+      rv = ER_LOG_PAGE_CORRUPTED;
+      goto exit;
     }
 
   if (log_bufptr->pageid == pageid)
@@ -2199,7 +2202,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 	    {
 	      /* This page is tde-ecnrypted page and has not yet decrypted.
 	       * To check consistency, we need to decrypt it */
-	      if (!tde_Cipher.is_loaded)
+	      if (!tde_is_loaded ())
 		{
 		  ptr += LOG_PAGESIZE;
 		  continue;	/* no way to check an encrypted page without tde module */
@@ -2486,7 +2489,12 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
   logpb_log ("started logpb_fetch_start_append_page\n");
 
   /* detect empty log (page and offset of zero) */
+#if !defined(NDEBUG)
+  if ((log_Gl.hdr.append_lsa.pageid == (LOG_PAGEID) prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID))
+      && (log_Gl.hdr.append_lsa.offset == 0))
+#else
   if ((log_Gl.hdr.append_lsa.pageid == 0) && (log_Gl.hdr.append_lsa.offset == 0))
+#endif
     {
       flag = NEW_PAGE;
     }
@@ -2666,10 +2674,11 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
       TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
       logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
       logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
-      logpb_log ("logpb_next_append_page: set tde_algorithm to appending page (%lld), "
-		 "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
-		 tde_get_algorithm_name (tde_algo));
     }
+
+  logpb_log ("logpb_next_append_page: append the new page (%lld), tde_algorithm = %s\n",
+	     (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
+	     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
 
 #if defined(CUBRID_DEBUG)
   {
@@ -2957,13 +2966,15 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
       logpb_flush_all_append_pages (thread_p);
     }
 
-  logpb_log ("logpb_append_next_record: append a record\n"
-	     "log_Gl.hdr.append_lsa.offset = %d, total record size = %d\n",
-	     log_Gl.hdr.append_lsa.offset,
-	     sizeof (LOG_RECORD_HEADER) + node->data_header_length + node->ulength + node->rlength);
-
   /* to tde-encrypt pages which is being created while appending */
   log_Gl.append.appending_page_tde_encrypted = prior_is_tde_encrypted (node);
+
+  logpb_log ("logpb_append_next_record: append a record\n"
+	     "log_Gl.hdr.append_lsa.offset = %d, total record size = %d, TDE-encryption = %d\n",
+	     log_Gl.hdr.append_lsa.offset,
+	     sizeof (LOG_RECORD_HEADER) + node->data_header_length + node->ulength + node->rlength,
+	     log_Gl.append.appending_page_tde_encrypted);
+
 
   logpb_start_append (thread_p, &node->log_header);
 
@@ -2986,6 +2997,8 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
   logpb_end_append (thread_p, &node->log_header);
 
   log_Gl.append.appending_page_tde_encrypted = false;
+
+  logpb_log ("logpb_append_next_record: append a record end.\n");
 
   return NO_ERROR;
 }
@@ -4188,17 +4201,12 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 	  TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
 	  logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
 	  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
-	  logpb_log ("logpb_start_append: set tde_algorithm to existing page (%lld), "
-		     "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
-		     tde_get_algorithm_name (tde_algo));
-	}
-      else
-	{
-	  logpb_log ("logpb_start_append: tde_algorithm already set to existing page (%lld), "
-		     "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
-		     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
 	}
     }
+
+  logpb_log ("logpb_start_append: start append on the page (%lld), tde_algorithm = %s\n",
+	     (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
+	     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
 
   log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
   *log_rec = *header;
@@ -5972,6 +5980,12 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   char *catmsg;
   int deleted_count = 0;
 
+  LOG_PAGEID cdc_first_pageid = NULL_PAGEID;
+  int min_arv_required_for_cdc;
+
+  LOG_PAGEID flashback_first_pageid = NULL_LOG_PAGEID;
+  int min_arv_required_for_flashback;
+
   if (log_max_archives == INT_MAX)
     {
       return 0;			/* none is deleted */
@@ -6058,6 +6072,59 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	    }
 	}
 
+      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+	{
+	  cdc_first_pageid = cdc_min_log_pageid_to_keep ();
+
+	  _er_log_debug (ARG_FILE_LINE, "First log pageid in cdc data is %lld", cdc_first_pageid);
+	  if (cdc_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (cdc_first_pageid))
+	    {
+	      min_arv_required_for_cdc = logpb_get_archive_number (thread_p, cdc_first_pageid);
+
+	      _er_log_debug (ARG_FILE_LINE,
+			     "First archive number used for cdc is %d , for vacuum is %d, last_arv_num_for_syscrashes : %d",
+			     min_arv_required_for_cdc, min_arv_required_for_vacuum,
+			     log_Gl.hdr.last_arv_num_for_syscrashes);
+
+	      if (min_arv_required_for_cdc >= 0)
+		{
+		  last_arv_num_to_delete = MIN (last_arv_num_to_delete, min_arv_required_for_cdc);
+		}
+	      else
+		{
+		  /* Page should be in archive. */
+		  assert (false);
+		}
+	    }
+
+	  /* check flashback */
+	  if (flashback_is_needed_to_keep_archive ())
+	    {
+	      flashback_first_pageid = flashback_min_log_pageid_to_keep ();
+
+	      _er_log_debug (ARG_FILE_LINE, "First log pageid for flashback is %lld", flashback_first_pageid);
+
+	      /* NULL check for flashback_first_pageid is done in flashback_is_needed_to_keep_archive () */
+	      if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
+		{
+		  min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
+
+		  _er_log_debug (ARG_FILE_LINE, "First archive number used for flashback is %d",
+				 min_arv_required_for_flashback);
+
+		  if (min_arv_required_for_flashback >= 0)
+		    {
+		      last_arv_num_to_delete = MIN (last_arv_num_to_delete, min_arv_required_for_flashback);
+		    }
+		  else
+		    {
+		      /* Page should be in archive. */
+		      assert (false);
+		    }
+		}
+	    }
+	}
+
       if (max_count > 0)
 	{
 	  /* check max count for deletion */
@@ -6114,7 +6181,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
  *
  *   info_reason(in):
  *
- * NOTE: Archive that are not needed for system crashes and vacuum are removed.
+ * NOTE: Archive that are not needed for system crashes, vacuum, cdc, and flashback are removed.
  *       That these archives may be needed for media crash recovery.
  *       Therefore, it is important that the user copy these archives
  *       to tape. Check the log information file.
@@ -6130,6 +6197,12 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   int last_deleted_arv_num;
   int min_arv_required_for_vacuum;
   LOG_PAGEID vacuum_first_pageid;
+
+  int min_arv_required_for_cdc;
+  LOG_PAGEID cdc_first_pageid;
+
+  int min_arv_required_for_flashback;
+  LOG_PAGEID flashback_first_pageid;
 
   if (!vacuum_is_safe_to_remove_archives ())
     {
@@ -6190,6 +6263,35 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
       min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
       min_arv_required_for_vacuum--;
       last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_vacuum);
+    }
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      cdc_first_pageid = cdc_min_log_pageid_to_keep ();
+      if (cdc_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (cdc_first_pageid))
+	{
+	  min_arv_required_for_cdc = logpb_get_archive_number (thread_p, cdc_first_pageid);
+	  min_arv_required_for_cdc--;
+	  last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_cdc);
+	}
+
+      /* flashback */
+      if (flashback_is_needed_to_keep_archive ())
+	{
+
+	  flashback_first_pageid = flashback_min_log_pageid_to_keep ();
+
+	  if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
+	    {
+	      min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
+	      min_arv_required_for_flashback--;
+	      last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_flashback);
+
+	      _er_log_debug (ARG_FILE_LINE,
+			     "FLASHBACK : first log pageid is %d, first archive log number is %d, last_deleted_arv_num is %d",
+			     flashback_first_pageid, min_arv_required_for_flashback, last_deleted_arv_num);
+	    }
+	}
     }
 
   if (log_Gl.hdr.last_deleted_arv_num + 1 > last_deleted_arv_num)
@@ -6652,12 +6754,18 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
   return fileio_is_volume_exist (log_Name_active);
 }
 
+/* logpb_checkpoint_trans - checkpoint a transaction if it is valid for checkpointing
+ */
 void
 logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, int &ntrans, int &ntops,
 			LOG_LSA & smallest_lsa)
 {
   LOG_INFO_CHKPT_TRANS *chkpt_entry = &chkpt_entries[ntrans];
-  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->tail_lsa))
+  /* - commit_abort_lsa is filled when either commit or abbort entry is appended to the transaction;
+   *    the last part of the condition has the effect that the actual transaction state is ignored by the
+   *    checkpoint mechanism as long as either the commit or the abort log records have been appended
+   */
+  if (tdes != NULL && tdes->trid != NULL_TRANID && !tdes->tail_lsa.is_null () && tdes->commit_abort_lsa.is_null ())
     {
       chkpt_entry->isloose_end = tdes->isloose_end;
       chkpt_entry->trid = tdes->trid;
@@ -11413,7 +11521,7 @@ logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr)
 void
 logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo)
 {
-  assert (tde_Cipher.is_loaded || tde_algo == TDE_ALGORITHM_NONE);
+  assert (tde_is_loaded () || tde_algo == TDE_ALGORITHM_NONE);
   /* clear encrypted flag */
   log_pgptr->hdr.flags &= ~LOG_HDRPAGE_FLAG_ENCRYPTED_MASK;
 

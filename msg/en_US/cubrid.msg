@@ -904,7 +904,7 @@ $ LOADDB
 834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
 835 Undefined statistics item.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 Cannot drop the user who owns database objects(class/trigger/serial etc). 
+837 Cannot drop the user who owns database objects(class/trigger/serial/server etc).
 838 Cannot open more than %1$d index scans simultaneously.
 839 "%1$s": Unknown system parameter or bad value.
 840 Cannot change system parameter "%1$s".
@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Set interrupt to the transaction %1$d.
 983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
 984 Cannot set %3$s to "%6$s" in the "[%5$s]" section when it is set to "%4$s" in the "[%2$s]" section of the configuration file "%1$s".
-985 The hostname on the database connection string should be specified when multihost is set in "databases.txt".
+985 The hostname on the database connection string should be specified when multihost is set in "databases.txt". ex) csql demodb@localhost
 986 CUBRID heartbeat feature started. 
 987 CUBRID heartbeat feature stopped.
 988 Node event: %1$s.
@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Delete an empty overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 Log recovery is started.
 1129 Log recovery is finished.
 1130 Transaction is aborted because transaction lock counts exceeds %1$d.
 1131 Internal error: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
@@ -1329,9 +1329,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1258 Cannot find the key set on the database from %1$s. The key file from backup volume is going to be used.
 1259 Rename the key file from "%1$s" to "%2$s".
 1260 Copy the key file "%1$s" to "%2$s".
-1261 Cannot find the key at the time to restore (key index: %1$d, created time: %2$s). Set the key (key index: %3$d) for the database.
+1261 The first key (key index: %1$d, created time: %2$s) on the restored key file has been set.
 1262 The key file is full.
 1263 It fails to TDE-encrypt the log page (pageid: %1$lld). It won't be tried to encrypt this page any longer.
+
 1264 Error reserved for scalability development.
 1265 Error reserved for scalability development.
 1266 Error reserved for scalability development.
@@ -1352,8 +1353,70 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 Cannot truncate the table due to the primary key referred to on %1$s. Try again with CASCADE option.
+1285 Cannot cascade truncate because the ON DELETE action of the foreign key (%1$s) is not set to CASCADE.
 
-1284 Last Error
+1286 Cannot find the log lsa at the time to extract. (input time : %1$s).
+1287 Timed out attempting to extract log info. (elapsed time : %1$d sec, extraction timeout : %2$d sec)
+1288 Skip producing log info for unsupported log record internally.
+1289 Skip producing log info for invalid transaction. (trid : %1$d)
+1290 Invalid log lsa (%1$lld|%2$d) to extract log info.
+1291 Cannot connect to server for extracting log info. Try again with setting 'supplemental_log' parameter.
+1292 Cannot find the log lsa at the time (%1$s). Log lsa is adjusted to the time (%2$s).
+1293 Cannot get log page while producing log infos. Log lsa to generate log info indicates NULL.
+1294 Log info has been generated. (type : "%1$s").
+1295 Skip producing log info for invalid table. (class OID : %1$d|%2$d|%3$d)
+
+1296 Log recovery: ANALYSIS Phase is started.
+1297 Log recovery: REDO Phase is started. Log pages to redo: %1$lld, Log records to redo: %2$lld.
+1298 Log recovery: UNDO Phase is started. Log pages to undo: %1$lld, transactions to undo: %2$d.
+1299 Log recovery: %1$s Phase is being finished up.
+1300 Log recovery: %1$s Phase is finished.
+1301 Log recovery: %1$s progress: (%2$lld/%3$lld), %4$.2f percent, elapsed time: %5$.2f (s), estimated remaining time: %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 Error reserved for dblink development.
+
+1332 The active log volume (%1$s) is too sane to recreate. If you remove the active log, it could cause an unexpected and irreversible problem.
+
+1333 Invalid time (%1$s) to start flashback. Time is required to be set between (%2$s) and (%3$s).
+1334 Can not find the class to flashback (%1$s).
+1335 Too many transactions to flashback. Less than %1$d transactions can be flashback.
+1336 Cannot support flashback for this class (name : %1$s , OID : %2$d|%3$d|%4$d). Class schema has been changed.
+1337 Log record does not exist (lsa : %1$lld|%2$d). The archive log volume has been deleted.
+1338 Flashback is already running. Flashback cannot be run by more than one user at the same time.
+
+1339 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1511,6 +1574,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Maximum length of a comment is %1$d bytes.
 128 Invalid number of arguments for JSON_OBJECTAGG
 129 PARALLEL count argument must be between %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1818,6 +1882,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unexpected number of arguments %1$d.
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
+306 dblink - Required information is missing.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

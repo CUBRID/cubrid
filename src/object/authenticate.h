@@ -99,6 +99,7 @@ extern const char *AU_DBA_USER_NAME;
 
 
 int au_disable (void);
+int au_sysadm_disable (void);
 void au_enable (int save);
 MOP au_get_public_user (void);
 MOP au_get_dba_user (void);
@@ -266,6 +267,8 @@ extern void au_describe_user_method (MOP user, DB_VALUE * returnval);
 extern void au_info_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
 extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
 extern int au_check_serial_authorization (MOP serial_object);
+extern int au_check_server_authorization (MOP server_object);
+extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
 extern const char *au_get_public_user_name (void);
 extern const char *au_get_user_class_name (void);
 #if defined(ENABLE_UNUSED_FUNCTION)

@@ -300,6 +300,17 @@ exit:
 }
 
 /*
+ * tde_is_loaded () - Is the TDE module initialized correctly?
+ *
+ * return                 : true or false
+ */
+bool
+tde_is_loaded ()
+{
+  return tde_Cipher.is_loaded;
+}
+
+/*
  * tde_create_keys_file () - Create TDE master key file
  *
  * return                 : Error code
@@ -652,7 +663,7 @@ tde_change_mk (THREAD_ENTRY * thread_p, const int mk_index, const unsigned char 
   TDE_DATA_KEY_SET dks;
   int err = NO_ERROR;
 
-  if (!tde_Cipher.is_loaded)
+  if (!tde_is_loaded ())
     {
       err = ER_TDE_CIPHER_IS_NOT_LOADED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
@@ -901,7 +912,7 @@ tde_encrypt_data_page (const FILEIO_PAGE * iopage_plain, TDE_ALGORITHM tde_algo,
   const unsigned char *data_key;
   int64_t tmp_nonce;
 
-  if (tde_Cipher.is_loaded == false)
+  if (tde_is_loaded () == false)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       return ER_TDE_CIPHER_IS_NOT_LOADED;
@@ -953,7 +964,7 @@ tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, TDE_ALGORITHM tde_algo
   unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH] = { 0, };
   const unsigned char *data_key;
 
-  if (tde_Cipher.is_loaded == false)
+  if (tde_is_loaded () == false)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       return ER_TDE_CIPHER_IS_NOT_LOADED;
@@ -999,7 +1010,7 @@ tde_encrypt_log_page (const LOG_PAGE * logpage_plain, TDE_ALGORITHM tde_algo, LO
   unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH] = { 0, };
   const unsigned char *data_key;
 
-  if (tde_Cipher.is_loaded == false)
+  if (tde_is_loaded () == false)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       return ER_TDE_CIPHER_IS_NOT_LOADED;
@@ -1029,7 +1040,7 @@ tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, TDE_ALGORITHM tde_algo, L
   unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH] = { 0, };
   const unsigned char *data_key;
 
-  if (tde_Cipher.is_loaded == false)
+  if (tde_is_loaded () == false)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       return ER_TDE_CIPHER_IS_NOT_LOADED;
@@ -1216,7 +1227,7 @@ xtde_get_mk_info (THREAD_ENTRY * thread_p, int *mk_index, time_t * created_time,
   TDE_KEYINFO keyinfo;
   int err = NO_ERROR;
 
-  if (!tde_Cipher.is_loaded)
+  if (!tde_is_loaded ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       return ER_TDE_CIPHER_IS_NOT_LOADED;

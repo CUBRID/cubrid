@@ -318,6 +318,11 @@ struct heap_operation_context
 
   bool use_bulk_logging;	// note - currently for bulk insert only
 
+  bool do_supplemental_log;	/* flag for whether do supplemental logging or do not */
+  LOG_LSA supp_undo_lsa;	/* lsa of the log that contains undo or redo image and it is used 
+				 * in supplemental log for INSERT/UPDATE/DELETE */
+  LOG_LSA supp_redo_lsa;
+
   /* Performance stat dump. */
   PERF_UTIME_TRACKER *time_track;
 };
@@ -585,6 +590,8 @@ extern int heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, 
 				FILE_TYPE * ftype_out, char **classname_out);
 extern int heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
 				  FILE_TYPE ftype, const char *classname_in);
+extern int heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
+				    FILE_TYPE * ftype_out, char **classname_out, bool * success);
 extern int heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid);
 
 extern void heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid);

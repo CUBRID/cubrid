@@ -421,6 +421,8 @@ qdump_target_type_string (TARGET_TYPE type)
       return "set";
     case TARGET_METHOD:
       return "method";
+    case TARGET_DBLINK:
+      return "dblink";
     default:
       return "undefined";
     }
@@ -807,7 +809,7 @@ qdump_print_list_id (QFILE_LIST_ID * list_id_p)
       return false;
     }
 
-  fprintf (foutput, ")(tuple_cnt:%d)", list_id_p->tuple_cnt);
+  fprintf (foutput, ")(tuple_cnt:%lld)", (long long) list_id_p->tuple_cnt);
   return true;
 }
 
@@ -2851,6 +2853,10 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
       else if (type == TARGET_CLASS_ATTR)
 	{
 	  json_object_set_new (scan, "access", json_string ("class_attr"));
+	}
+      else if (type == TARGET_DBLINK)
+	{
+	  json_object_set_new (scan, "access", json_string ("dblink"));
 	}
 
       scan_print_stats_json (&spec->s_id, scan);

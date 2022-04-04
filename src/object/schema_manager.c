@@ -29,6 +29,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
+
 #ifdef HPUX
 #include <a.out.h>
 #endif /* HPUX */
@@ -38,6 +39,7 @@
 #include "authenticate.h"
 #include "string_opfunc.h"
 #include "schema_manager.h"
+#include "schema_class_truncator.hpp"
 #include "porting.h"
 #include "chartype.h"
 #if !defined(WINDOWS)
@@ -230,8 +232,6 @@ static const char *method_file_extension = ".o";
 #include <nlist.h>
 #endif /* !WINDOWS */
 
-
-
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 const char TEXT_CONSTRAINT_PREFIX[] = "#text_";
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -412,19 +412,11 @@ static int sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CO
 
 static void sm_reset_descriptors (MOP class_);
 
-static bool sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const class_,
-						   const SM_CLASS_CONSTRAINT * const constraint);
-
 static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * constraint, char *class_name,
 						     SM_ATTRIBUTE * old_atts, SM_ATTRIBUTE * new_atts);
 
-static int sm_truncate_using_delete (MOP class_mop);
 static int sm_save_nested_view_versions (PARSER_CONTEXT * parser, DB_OBJECT * class_object, SM_CLASS * class_);
 static bool sm_is_nested_view_recached (PARSER_CONTEXT * parser);
-
-#if 0
-static int sm_truncate_using_destroy_heap (MOP class_mop);
-#endif
 
 #if defined(CUBRID_DEBUG)
 static void sm_print (MOP classmop);
@@ -2818,17 +2810,41 @@ sm_mark_system_class_for_catalog (void)
   int i;
 
   const char *classes[] = {
-    CT_CLASS_NAME, CT_ATTRIBUTE_NAME, CT_DOMAIN_NAME,
-    CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
-    CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
-    CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
-    CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME, CT_PARTITION_NAME,
-    CTV_CLASS_NAME, CTV_SUPER_CLASS_NAME, CTV_VCLASS_NAME,
-    CTV_ATTRIBUTE_NAME, CTV_ATTR_SD_NAME, CTV_METHOD_NAME,
-    CTV_METHARG_NAME, CTV_METHARG_SD_NAME, CTV_METHFILE_NAME,
-    CTV_INDEX_NAME, CTV_INDEXKEY_NAME, CTV_AUTH_NAME,
-    CTV_TRIGGER_NAME, CTV_STORED_PROC_NAME, CTV_STORED_PROC_ARGS_NAME,
-    CTV_PARTITION_NAME, CT_COLLATION_NAME, NULL
+    CT_CLASS_NAME,
+    CT_ATTRIBUTE_NAME,
+    CT_DOMAIN_NAME,
+    CT_METHOD_NAME,
+    CT_METHSIG_NAME,
+    CT_METHARG_NAME,
+    CT_METHFILE_NAME,
+    CT_QUERYSPEC_NAME,
+    CT_INDEX_NAME,
+    CT_INDEXKEY_NAME,
+    CT_CLASSAUTH_NAME,
+    CT_DATATYPE_NAME,
+    CT_STORED_PROC_NAME,
+    CT_STORED_PROC_ARGS_NAME,
+    CT_PARTITION_NAME,
+    CTV_CLASS_NAME,
+    CTV_SUPER_CLASS_NAME,
+    CTV_VCLASS_NAME,
+    CTV_ATTRIBUTE_NAME,
+    CTV_ATTR_SD_NAME,
+    CTV_METHOD_NAME,
+    CTV_METHARG_NAME,
+    CTV_METHARG_SD_NAME,
+    CTV_METHFILE_NAME,
+    CTV_INDEX_NAME,
+    CTV_INDEXKEY_NAME,
+    CTV_AUTH_NAME,
+    CTV_TRIGGER_NAME,
+    CTV_STORED_PROC_NAME,
+    CTV_STORED_PROC_ARGS_NAME,
+    CTV_PARTITION_NAME,
+    CT_COLLATION_NAME,
+    CT_DB_SERVER_NAME,
+    CTV_DB_SERVER_NAME,
+    NULL
   };
 
   for (i = 0; classes[i] != NULL; i++)
@@ -10179,74 +10195,77 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
   /* need to have macros for this !! */
   index->vfid.volid = boot_User_volid;
 
-  /* Count maximum possible subclasses */
-  max_classes = 1;		/* Start with 1 for the current class */
-  for (sub = subclasses; sub != NULL; sub = sub->next)
+  if (class_->load_index_from_heap)
     {
-      max_classes++;
-    }
-
-  /* Allocate arrays to hold subclass information */
-  attr_ids_size = max_classes * n_attrs * sizeof (int);
-  attr_ids = (int *) malloc (attr_ids_size);
-  if (attr_ids == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, attr_ids_size);
-      goto mem_error;
-    }
-
-  oids = (OID *) malloc (max_classes * sizeof (OID));
-  if (oids == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (OID));
-      goto mem_error;
-    }
-
-  hfids = (HFID *) malloc (max_classes * sizeof (HFID));
-  if (hfids == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (HFID));
-      goto mem_error;
-    }
-
-  /* Enter the base class information into the arrays */
-  n_classes = 0;
-  COPY_OID (&oids[n_classes], WS_OID (classop));
-  for (i = 0; i < n_attrs; i++)
-    {
-      attr_ids[i] = attrs[i]->id;
-    }
-  HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
-  n_classes++;
-
-  /* If we're creating a UNIQUE B-tree or a FOREIGN KEY, we need to collect information from subclasses which
-   * inherit the constraint */
-  if (unique_pk || (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid)))
-    {
-      error = collect_hier_class_info (classop, subclasses, constraint_name, reverse, &n_classes, n_attrs, oids,
-				       attr_ids, hfids);
-      if (error != NO_ERROR)
+      /* Count maximum possible subclasses */
+      max_classes = 1;		/* Start with 1 for the current class */
+      for (sub = subclasses; sub != NULL; sub = sub->next)
 	{
-	  goto gen_error;
+	  max_classes++;
 	}
-    }
 
-  /* Are there any populated classes for this index ? */
-  has_instances = 0;
-  for (i = 0; i < n_classes; i++)
-    {
-      if (!HFID_IS_NULL (&hfids[i]) && heap_has_instance (&hfids[i], &oids[i], false))
+      /* Allocate arrays to hold subclass information */
+      attr_ids_size = max_classes * n_attrs * sizeof (int);
+      attr_ids = (int *) malloc (attr_ids_size);
+      if (attr_ids == NULL)
 	{
-	  /* in case of error and instances exist */
-	  has_instances = 1;
-	  break;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, attr_ids_size);
+	  goto mem_error;
+	}
+
+      oids = (OID *) malloc (max_classes * sizeof (OID));
+      if (oids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (OID));
+	  goto mem_error;
+	}
+
+      hfids = (HFID *) malloc (max_classes * sizeof (HFID));
+      if (hfids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (HFID));
+	  goto mem_error;
+	}
+
+      /* Enter the base class information into the arrays */
+      n_classes = 0;
+      COPY_OID (&oids[n_classes], WS_OID (classop));
+      for (i = 0; i < n_attrs; i++)
+	{
+	  attr_ids[i] = attrs[i]->id;
+	}
+      HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
+      n_classes++;
+
+      /* If we're creating a UNIQUE B-tree or a FOREIGN KEY, we need to collect information from subclasses which
+       * inherit the constraint */
+      if (unique_pk || (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid)))
+	{
+	  error = collect_hier_class_info (classop, subclasses, constraint_name, reverse, &n_classes, n_attrs, oids,
+					   attr_ids, hfids);
+	  if (error != NO_ERROR)
+	    {
+	      goto gen_error;
+	    }
+	}
+
+      /* Are there any populated classes for this index ? */
+      has_instances = 0;
+      for (i = 0; i < n_classes; i++)
+	{
+	  if (!HFID_IS_NULL (&hfids[i]) && heap_has_instance (&hfids[i], &oids[i], false))
+	    {
+	      /* in case of error and instances exist */
+	      has_instances = 1;
+	      break;
+	    }
 	}
     }
 
   /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
    * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
   // TODO: optimize has_instances case
-  if (!has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+  if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
     }
@@ -15006,7 +15025,7 @@ sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char 
  *       only contain OIDs of the class being truncated. It is safe to drop
  *       and recreate the index in this scenario.
  */
-static bool
+bool
 sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const class_,
 				       const SM_CLASS_CONSTRAINT * const constraint)
 {
@@ -15023,7 +15042,20 @@ sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const cla
 
   if (class_->users != NULL)
     {
-      return false;
+      if (class_->partition != NULL)
+	{
+	  /*
+	   * partitioned class
+	   *
+	   * if there is a child class, it can be shared,
+	   * but if partitioned, it can't be shared becuase you can't inherit a partitioning table.
+	   */
+	  return true;
+	}
+      else
+	{
+	  return false;
+	}
     }
 
   assert (class_->inheritance != NULL && class_->users == NULL);
@@ -15494,7 +15526,7 @@ error_exit:
  *   return: error code
  *   class_mop(in): class (or instance) pointer
  */
-static int
+int
 sm_truncate_using_delete (MOP class_mop)
 {
   DB_SESSION *session = NULL;
@@ -15513,7 +15545,8 @@ sm_truncate_using_delete (MOP class_mop)
   /* We will run a DELETE statement with triggers disabled. */
   save_tr_state = tr_set_execution_state (false);
 
-  (void) snprintf (delete_query, sizeof (delete_query), "DELETE /*+ RECOMPILE */ FROM [%s];", class_name);
+  (void) snprintf (delete_query, sizeof (delete_query), "DELETE /*+ RECOMPILE NO_SUPPLEMENTAL_LOG */ FROM [%s];",
+		   class_name);
 
   session = db_open_buffer (delete_query);
   if (session == NULL)
@@ -15558,20 +15591,21 @@ end:
   return error;
 }
 
-#if 0
 /*
  * sm_truncate_using_destroy_heap() -
  *   return: error code
  *   class_mop(in): class (or instance) pointer
  */
-static int
+int
 sm_truncate_using_destroy_heap (MOP class_mop)
 {
   HFID *insts_hfid = NULL;
   SM_CLASS *class_ = NULL;
   int error = NO_ERROR;
   bool reuse_oid = false;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
   OID *oid = NULL;
+  DB_OBJLIST *subs;
 
   oid = ws_oid (class_mop);
   assert (!OID_ISTEMP (oid));
@@ -15585,11 +15619,30 @@ sm_truncate_using_destroy_heap (MOP class_mop)
       return er_errid ();
     }
 
+  error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (partition_type == DB_PARTITIONED_CLASS)
+    {
+      assert (class_->users);
+      for (subs = class_->users; subs; subs = subs->next)
+	{
+	  error = sm_truncate_using_destroy_heap (subs->op);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+
   insts_hfid = sm_ch_heap ((MOBJ) class_);
   assert (!HFID_IS_NULL (insts_hfid));
 
   /* Destroy the heap */
-  error = heap_destroy_newly_created (insts_hfid);
+  error = heap_destroy_newly_created (insts_hfid, oid, true);
   if (error != NO_ERROR)
     {
       return error;
@@ -15616,287 +15669,40 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   return error;
 }
-#endif
 
 /*
  * sm_truncate_class () - truncates a class
  *   return: NO_ERROR on success, non-zero for ERROR
  *   class_mop(in):
+ *   is_cascade(in): whether to cascade TRUNCATE to FK-referring classes
  */
 int
-sm_truncate_class (MOP class_mop)
+sm_truncate_class (MOP class_mop, const bool is_cascade)
 {
-  SM_CLASS *class_ = NULL;
-  SM_CLASS_CONSTRAINT *c = NULL;
   int error = NO_ERROR;
-  SM_CONSTRAINT_INFO *unique_save_info = NULL;
-  SM_CONSTRAINT_INFO *fk_save_info = NULL;
-  SM_CONSTRAINT_INFO *index_save_info = NULL;
-  SM_CONSTRAINT_INFO *saved = NULL;
-  DB_CTMPL *ctmpl = NULL;
-  SM_ATTRIBUTE *att = NULL;
-  bool keep_pk = false;
-  int au_save = 0;
+  cubschema::class_truncator truncator (class_mop);
 
   assert (class_mop != NULL);
 
   error = tran_system_savepoint (SM_TRUNCATE_SAVEPOINT_NAME);
   if (error != NO_ERROR)
     {
-      return error;
+      goto error_exit;
     }
 
-  /* We need to flush everything so that the server logs the inserts that happened before the truncate. We need this in
-   * order to make sure that a rollback takes us into a consistent state. If we can prove that simply discarding the
-   * objects would work correctly we would be able to remove this call. However, it's better to be safe than sorry. */
-  error = sm_flush_and_decache_objects (class_mop, true);
+  error = truncator.truncate (is_cascade);
   if (error != NO_ERROR)
     {
       goto error_exit;
-    }
-
-  error = au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
-  if (error != NO_ERROR || class_ == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      goto error_exit;
-    }
-
-  c = classobj_find_cons_primary_key (class_->constraints);
-  if (c != NULL && classobj_is_pk_referred (class_mop, c->fk_info, false, NULL))
-    {
-      /* We need to perform a normal delete operation because we need to execute the FOREIGN KEY actions on the
-       * referring classes. We also need to keep the PRIMARY KEY constraint in order to correctly perform the FOREIGN
-       * KEY actions. */
-      keep_pk = true;
-    }
-
-  /* collect index information */
-  for (c = class_->constraints; c; c = c->next)
-    {
-      if (!SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
-	{
-	  assert (c->type == SM_CONSTRAINT_NOT_NULL);
-	  continue;
-	}
-
-      if (keep_pk == true && c->type == SM_CONSTRAINT_PRIMARY_KEY)
-	{
-	  /* Do not save PK referred by FK. the PK can't be dropped. */
-	  continue;
-	}
-
-      if (sm_is_possible_to_recreate_constraint (class_mop, class_, c))
-	{
-	  /* All the OIDs in the index should belong to the current class, so it is safe to drop and create the
-	   * constraint again. We save the information required to recreate the constraint. */
-
-	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
-	    {
-	      if (sm_save_constraint_info (&unique_save_info, c) != NO_ERROR)
-		{
-		  goto error_exit;
-		}
-	    }
-	  else if (c->type == SM_CONSTRAINT_FOREIGN_KEY)
-	    {
-	      if (sm_save_constraint_info (&fk_save_info, c) != NO_ERROR)
-		{
-		  goto error_exit;
-		}
-	    }
-	  else
-	    {
-	      if (sm_save_constraint_info (&index_save_info, c) != NO_ERROR)
-		{
-		  goto error_exit;
-		}
-	    }
-	}
-    }
-
-  /* Drop constraints. It's also faster to do this if we truncate by deleting. */
-
-  /* FK must be dropped earlier than PK, because of self referencing case */
-  if (fk_save_info != NULL)
-    {
-      ctmpl = dbt_edit_class (class_mop);
-      if (ctmpl == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  goto error_exit;
-	}
-
-      for (saved = fk_save_info; saved != NULL; saved = saved->next)
-	{
-	  error = dbt_drop_constraint (ctmpl, saved->constraint_type, saved->name, (const char **) saved->att_names, 0);
-	  if (error != NO_ERROR)
-	    {
-	      dbt_abort_class (ctmpl);
-	      goto error_exit;
-	    }
-	}
-
-      if (dbt_finish_class (ctmpl) == NULL)
-	{
-	  dbt_abort_class (ctmpl);
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  goto error_exit;
-	}
-    }
-
-  for (saved = unique_save_info; saved != NULL; saved = saved->next)
-    {
-      error =
-	sm_drop_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, 0, false);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-    }
-
-  for (saved = index_save_info; saved != NULL; saved = saved->next)
-    {
-      error = sm_drop_index (class_mop, saved->name);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-    }
-
-#if 0
-  if (keep_pk == true && log_does_allow_replication () == true)
-    {
-      error = sm_truncate_using_delete (class_mop);
-    }
-  else
-    {
-      error = sm_truncate_using_destroy_heap (class_mop);
-    }
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-#else
-  error = sm_truncate_using_delete (class_mop);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-#endif
-
-  /* Normal index must be created earlier than unique constraint or FK, because of shared btree case. */
-  for (saved = index_save_info; saved != NULL; saved = saved->next)
-    {
-      error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment, saved->index_status);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-    }
-
-  /* PK must be created earlier than FK, because of self referencing case */
-  for (saved = unique_save_info; saved != NULL; saved = saved->next)
-    {
-      error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment, saved->index_status);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-    }
-
-  /* To drop all xasl cache related class, we need to touch class. */
-  ctmpl = dbt_edit_class (class_mop);
-  if (ctmpl == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      goto error_exit;
-    }
-
-  for (saved = fk_save_info; saved != NULL; saved = saved->next)
-    {
-      error = dbt_add_foreign_key (ctmpl, saved->name, (const char **) saved->att_names, saved->ref_cls_name,
-				   (const char **) saved->ref_attrs, saved->fk_delete_action, saved->fk_update_action,
-				   saved->comment);
-
-      if (error != NO_ERROR)
-	{
-	  dbt_abort_class (ctmpl);
-	  goto error_exit;
-	}
-    }
-
-  if (dbt_finish_class (ctmpl) == NULL)
-    {
-      dbt_abort_class (ctmpl);
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      goto error_exit;
-    }
-
-  /* reset auto_increment starting value */
-  for (att = db_get_attributes (class_mop); att != NULL; att = db_attribute_next (att))
-    {
-      if (att->auto_increment != NULL)
-	{
-	  AU_DISABLE (au_save);
-	  error = do_reset_auto_increment_serial (att->auto_increment);
-	  AU_ENABLE (au_save);
-
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	}
-    }
-
-  if (unique_save_info != NULL)
-    {
-      sm_free_constraint_info (&unique_save_info);
-    }
-
-  if (fk_save_info != NULL)
-    {
-      sm_free_constraint_info (&fk_save_info);
-    }
-
-  if (index_save_info != NULL)
-    {
-      sm_free_constraint_info (&index_save_info);
     }
 
   return NO_ERROR;
 
 error_exit:
-
   if (error != ER_LK_UNILATERALLY_ABORTED)
     {
       tran_abort_upto_system_savepoint (SM_TRUNCATE_SAVEPOINT_NAME);
     }
-
-  if (unique_save_info != NULL)
-    {
-      sm_free_constraint_info (&unique_save_info);
-    }
-
-  if (fk_save_info != NULL)
-    {
-      sm_free_constraint_info (&fk_save_info);
-    }
-
-  if (index_save_info != NULL)
-    {
-      sm_free_constraint_info (&index_save_info);
-    }
-
   return error;
 }
 

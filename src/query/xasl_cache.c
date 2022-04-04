@@ -399,8 +399,6 @@ xasl_cache_ent::init_clone_cache ()
 static void *
 xcache_entry_alloc (void)
 {
-  static int xcache_nentries = 0;
-
   XASL_CACHE_ENTRY *xcache_entry = (XASL_CACHE_ENTRY *) malloc (sizeof (XASL_CACHE_ENTRY));
   if (xcache_entry == NULL)
     {
@@ -409,7 +407,7 @@ xcache_entry_alloc (void)
   xcache_entry->init_clone_cache ();
   pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
 
-  xcache_entry->list_ht_no = xcache_nentries++;
+  xcache_entry->list_ht_no = -1;
 
   return xcache_entry;
 }
@@ -1157,8 +1155,10 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 	}
 
       /* need to clear list-cache first */
-      (void) qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
-
+      if (xcache_entry->list_ht_no >= 0)
+	{
+	  (void) qfile_clear_list_cache (thread_p, xcache_entry, true);
+	}
       if (!xcache_Hashmap.erase (thread_p, xcache_entry->xasl_id))
 	{
 	  /* Failure is not expected. */
@@ -1476,6 +1476,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
       (*xcache_entry)->stream = *stream;
       (*xcache_entry)->time_last_rt_check = (INT64) time_stored.tv_sec;
       (*xcache_entry)->time_last_used = time_stored;
+      (*xcache_entry)->list_ht_no = -1;
 
       /* Now that new entry is initialized, we can try to insert it. */
 
@@ -1688,7 +1689,6 @@ error:
 int
 xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
 {
-  int res = NO_ERROR;
   bool finished = false;
   XASL_CACHE_ENTRY *xcache_entry = NULL;
 
@@ -1718,21 +1718,19 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
 	      finished = true;
 	      break;
 	    }
-
-	  num_entries = qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no);
-	  if (num_entries > 0 && xcache_entry_is_related_to_oid (xcache_entry, oid))
+	  if (xcache_entry->list_ht_no < 0)
 	    {
-	      res = qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
-	      if (res != NO_ERROR)
-		{
-		  finished = true;
-		  break;
-		}
+	      continue;
+	    }
+
+	  if (xcache_entry_is_related_to_oid (xcache_entry, oid))
+	    {
+	      (void) qfile_clear_list_cache (thread_p, xcache_entry, false);
 	    }
 	}
     }
 
-  return res;
+  return NO_ERROR;
 }
 
 /*
@@ -1753,6 +1751,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
   int n_delete_xids = 0;
   int xid_index = 0;
   bool finished = false;
+  bool del_mark;
 
   if (!xcache_Enabled)
     {
@@ -1782,16 +1781,17 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	  /* Check invalidation conditions. */
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
-	      if (!QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
+	      del_mark = xcache_entry_mark_deleted (thread_p, xcache_entry);
+	      if (xcache_entry->list_ht_no >= 0)
 		{
-		  /* delete query cache from xcache entry */
+		  /* delete query cache even though del_makr is false */
 		  {
-		    qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
+		    qfile_clear_list_cache (thread_p, xcache_entry, true);
 		  }
 		}
 
 	      /* Mark entry as deleted. */
-	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
+	      if (del_mark)
 		{
 		  /*
 		   * Successfully marked for delete. Save it to delete after the iteration.
@@ -2252,7 +2252,10 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       candidate.xid.cache_flag = XCACHE_ENTRY_CLEANUP;
 
       /* clear list cache entries first */
-      (void) qfile_clear_list_cache (thread_p, candidate.xcache->list_ht_no);
+      if (candidate.xcache->list_ht_no >= 0)
+	{
+	  (void) qfile_clear_list_cache (thread_p, candidate.xcache, true);
+	}
 
       /* Try delete. Would be better to decache the clones here. For simplicity, since is not an usual case,
        * clone decache is postponed - is decached when retired list will be cleared.

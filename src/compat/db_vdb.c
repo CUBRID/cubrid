@@ -4127,7 +4127,7 @@ static bool
 db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   bool has_name_oid = false;
-  int info_hints;
+  PT_HINT_ENUM info_hints;
   PT_NODE *arg1, *arg2;
   bool can_execute_statement_with_commit;
 

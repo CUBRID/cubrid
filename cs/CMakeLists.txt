@@ -94,6 +94,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/fixed_alloc.c
+  ${BASE_DIR}/filesys_temp.cpp
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
@@ -138,6 +139,8 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/filesys.hpp
+  ${BASE_DIR}/filesys_temp.hpp
   ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/mem_block.hpp
@@ -255,6 +258,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_template.c
   ${OBJECT_DIR}/quick_fit.c
+  ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/set_object.c
@@ -278,6 +282,7 @@ set(JSP_SOURCES
 set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/boot_cl.c
   ${TRANSACTION_DIR}/client_credentials.cpp
+  ${TRANSACTION_DIR}/flashback_cl.c
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_cl.c
   ${TRANSACTION_DIR}/lock_table.c
@@ -289,6 +294,7 @@ set(TRANSACTION_SOURCES
   )
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
+  ${TRANSACTION_DIR}/flashback_cl.h
   ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
@@ -337,6 +343,14 @@ set(LOADDB_SOURCES
 set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_common.hpp
   ${LOADDB_DIR}/load_object.h
+  )
+
+set(API_SOURCES
+  ${API_DIR}/cubrid_log.c
+  )
+
+set(API_HEADERS
+  ${API_DIR}/cubrid_log.h
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -418,6 +432,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PROBES_OBJECT}
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
+  ${API_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
@@ -457,6 +472,8 @@ add_library(cubridcs SHARED
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   ${LOADDB_HEADERS}
+  ${API_SOURCES}
+  ${API_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -487,6 +504,7 @@ target_include_directories(cubridcs PRIVATE ${FLEX_INCLUDE_DIRS} ${EP_INCLUDES})
 if(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridcs LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubridcs PUBLIC stdc++fs)
 else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE cas ${EP_LIBS})
 endif(UNIX)

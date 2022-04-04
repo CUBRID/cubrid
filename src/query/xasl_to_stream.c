@@ -168,6 +168,7 @@ static char *xts_process_showstmt_spec_type (char *ptr, const SHOWSTMT_SPEC_TYPE
 static char *xts_process_set_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec);
 static char *xts_process_json_table_column_behavior (char *ptr, const json_table_column_behavior * behavior);
 static char *xts_process_method_spec_type (char *ptr, const METHOD_SPEC_TYPE * method_spec);
+static char *xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec);
 static char *xts_process_rlist_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec);
 static char *xts_process_list_id (char *ptr, const QFILE_LIST_ID * list_id);
 static char *xts_process_val_list (char *ptr, const VAL_LIST * val_list);
@@ -225,6 +226,7 @@ static int xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * ptr);
 static int xts_sizeof_showstmt_spec_type (const SHOWSTMT_SPEC_TYPE * ptr);
 static int xts_sizeof_set_spec_type (const SET_SPEC_TYPE * ptr);
 static int xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * ptr);
+static int xts_sizeof_dblink_spec_type (const DBLINK_SPEC_TYPE * ptr);
 static int xts_sizeof_json_table_column_behavior (const json_table_column_behavior * behavior);
 static int xts_sizeof_list_id (const QFILE_LIST_ID * ptr);
 static int xts_sizeof_val_list (const VAL_LIST * ptr);
@@ -3912,6 +3914,8 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
   /* no_logging */
   ptr = or_pack_int (ptr, update_info->no_logging);
 
+  ptr = or_pack_int (ptr, update_info->no_supplemental_log);
+
   /* num_orderby_keys */
   ptr = or_pack_int (ptr, update_info->num_orderby_keys);
 
@@ -3954,6 +3958,8 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
   ptr = or_pack_int (ptr, delete_info->wait_msecs);
 
   ptr = or_pack_int (ptr, delete_info->no_logging);
+
+  ptr = or_pack_int (ptr, delete_info->no_supplemental_log);
 
   /* mvcc condition reevaluation data */
   ptr = or_pack_int (ptr, delete_info->num_reev_classes);
@@ -4413,6 +4419,10 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 
     case TARGET_JSON_TABLE:
       ptr = xts_process (ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
+      break;
+
+    case TARGET_DBLINK:
+      ptr = xts_process_dblink_spec_type (ptr, &ACCESS_SPEC_DBLINK_SPEC (access_spec));
       break;
 
     default:
@@ -4928,6 +4938,67 @@ xts_process_method_spec_type (char *ptr, const METHOD_SPEC_TYPE * method_spec)
 }
 
 static char *
+xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec)
+{
+  int offset;
+
+  offset = xts_save_regu_variable_list (dblink_spec->dblink_regu_list_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (dblink_spec->dblink_regu_list_rest);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, dblink_spec->host_var_count);
+  if (dblink_spec->host_var_count > 0)
+    {
+      offset = xts_save_int_array (dblink_spec->host_var_index, dblink_spec->host_var_count);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  offset = xts_save_string (dblink_spec->conn_url);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (dblink_spec->conn_user);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (dblink_spec->conn_password);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (dblink_spec->conn_sql);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
+static char *
 xts_process_list_id (char *ptr, const QFILE_LIST_ID * list_id)
 {
   /* is from client to server */
@@ -5207,7 +5278,7 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
     }
   ptr = or_pack_int (ptr, offset);
 
-  ptr = or_pack_int (ptr, aggregate->accumulator.curr_cnt);
+  ptr = or_pack_int64 (ptr, aggregate->accumulator.curr_cnt);
 
   offset = xts_save_aggregate_type (aggregate->next);
   if (offset == ER_FAILED)
@@ -6121,6 +6192,7 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
 	   + PTR_SIZE		/* assignments */
 	   + OR_INT_SIZE	/* wait_msecs */
 	   + OR_INT_SIZE	/* no_logging */
+	   + OR_INT_SIZE	/* no_supplemental_log */
 	   + OR_INT_SIZE	/* num_orderby_keys */
 	   + OR_INT_SIZE	/* num_assign_reev_classes */
 	   + OR_INT_SIZE	/* num_cond_reev_classes */
@@ -6143,6 +6215,7 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
 	   + OR_INT_SIZE	/* num_classes */
 	   + OR_INT_SIZE	/* wait_msecs */
 	   + OR_INT_SIZE	/* no_logging */
+	   + OR_INT_SIZE	/* no_supplemental_log */
 	   + OR_INT_SIZE	/* num_cond_reev_classes */
 	   + PTR_SIZE);		/* mvcc_cond_reev_classes */
 
@@ -6526,6 +6599,15 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
       size += tmp_size;
       break;
 
+    case TARGET_DBLINK:
+      tmp_size = xts_sizeof_dblink_spec_type (&ACCESS_SPEC_DBLINK_SPEC (access_spec));
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
+      break;
+
     case TARGET_JSON_TABLE:
       tmp_size = xts_sizeof (ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       if (tmp_size == ER_FAILED)
@@ -6712,6 +6794,28 @@ xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * method_spec)
   size += (PTR_SIZE		/* method_regu_list */
 	   + PTR_SIZE		/* xasl_node */
 	   + PTR_SIZE);		/* method_sig_list */
+
+  return size;
+}
+
+/*
+ * xts_sizeof_dblink_spec_type () -
+ *   return:
+ *   ptr(in)    :
+ */
+static int
+xts_sizeof_dblink_spec_type (const DBLINK_SPEC_TYPE * dblink_spec)
+{
+  int size = 0;
+
+  size += (PTR_SIZE		/* dblink_regu_list_pred */
+	   + PTR_SIZE		/* dblink_regu_list_rest */
+	   + OR_INT_SIZE	/* host_var_count */
+	   + PTR_SIZE		/* host_var_index */
+	   + PTR_SIZE		/* conn_rul */
+	   + PTR_SIZE		/* conn_user */
+	   + PTR_SIZE		/* conn_password */
+	   + PTR_SIZE);		/* conn_sql */
 
   return size;
 }

@@ -4085,10 +4085,10 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 #if !defined(NDEBUG)
   if (file_get_tde_algorithm_internal (fhead) != TDE_ALGORITHM_NONE)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "TDE: file_destroy(): clear tde bit in pflag in all user pages, VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
-		    VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
-		    tde_get_algorithm_name (file_get_tde_algorithm_internal (fhead)));
+      tde_er_log
+	("file_destroy(): clear tde bit in pflag in all user pages, VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
+	 VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
+	 tde_get_algorithm_name (file_get_tde_algorithm_internal (fhead)));
     }
 #endif /* !NDEBUG */
 
@@ -5358,10 +5358,10 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	TDE_ALGORITHM prev_tde_algo = pgbuf_get_tde_algorithm (page_alloc);
 	if (tde_algo != prev_tde_algo)
 	  {
-	    er_log_debug (ARG_FILE_LINE,
-			  "TDE: file_alloc(): set tde bit in pflag, VFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s, previous tde algorithm of the page = %s\n",
-			  VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_out), tde_get_algorithm_name (tde_algo),
-			  tde_get_algorithm_name (prev_tde_algo));
+	    tde_er_log
+	      ("file_alloc(): set tde bit in pflag, VFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s, previous tde algorithm of the page = %s\n",
+	       VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_out), tde_get_algorithm_name (tde_algo),
+	       tde_get_algorithm_name (prev_tde_algo));
 	  }
       }
 #endif /* NDEBUG */
@@ -5679,7 +5679,7 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
   FILE_HEADER *fhead = NULL;
   int error_code = NO_ERROR;
 
-  if (!tde_Cipher.is_loaded && tde_algo != TDE_ALGORITHM_NONE)
+  if (!tde_is_loaded () && tde_algo != TDE_ALGORITHM_NONE)
     {
       error_code = ER_TDE_CIPHER_IS_NOT_LOADED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
@@ -5762,10 +5762,8 @@ file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo)
       break;
     }
 
-#if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE, "TDE: file_set_tde_algorithm_internal(): VFID = %d|%d, tde_algorithm = %s\n",
-		VFID_AS_ARGS (&fhead->self), tde_get_algorithm_name (tde_algo));
-#endif /* !NDEBUG */
+  tde_er_log ("file_set_tde_algorithm_internal(): VFID = %d|%d, tde_algorithm = %s\n",
+	      VFID_AS_ARGS (&fhead->self), tde_get_algorithm_name (tde_algo));
 }
 
 /*
@@ -5887,11 +5885,8 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
       return NO_ERROR;
     }
 
-#if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE,
-		"TDE: file_apply_tde_algorithm(): VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
-		VFID_AS_ARGS (&fhead->self), fhead->n_page_user, tde_get_algorithm_name (tde_algo));
-#endif /* !NDEBUG */
+  tde_er_log ("file_apply_tde_algorithm(): VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
+	      VFID_AS_ARGS (&fhead->self), fhead->n_page_user, tde_get_algorithm_name (tde_algo));
 
   error_code = file_set_tde_algorithm (thread_p, vfid, tde_algo);
   if (error_code != NO_ERROR)
@@ -9298,7 +9293,7 @@ file_tempcache_put (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
   /* lock temporary cache */
   file_tempcache_lock ();
 
-  if (file_Tempcache->ncached_not_numerable + file_Tempcache->ncached_numerable < file_Tempcache->nfree_entries_max)
+  if (file_Tempcache->ncached_not_numerable + file_Tempcache->ncached_numerable <= file_Tempcache->ncached_max)
     {
       /* cache not full */
       assert ((file_Tempcache->cached_not_numerable == NULL) == (file_Tempcache->ncached_not_numerable == 0));

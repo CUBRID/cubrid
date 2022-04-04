@@ -149,6 +149,8 @@ extern int log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 				     char *redo_rcv_data);
 extern int log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, DKNPAGES log_npages, FILE * outfp);
+extern bool log_is_active_log_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+				    const char *prefix_logname);
 extern PGLENGTH log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				      const char *prefix_logname);
 extern int log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -166,6 +168,15 @@ extern int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LO
 				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
 extern void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 
+extern void log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length,
+					  const void *data);
+extern int log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, OID * classoid,
+					LOG_LSA * undo_lsa, LOG_LSA * redo_lsa);
+
+extern int log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recdes);
+
+extern int log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name, int cached_num,
+					   OID * classoid, const OID * serial_oid);
 /*
  * FOR DEBUGGING
  */
@@ -215,6 +226,46 @@ extern void log_flush_daemon_get_stats (UINT64 * statsp);
 #endif // SERVER_MODE
 
 extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
+
+#if defined (SERVER_MODE)
+extern void cdc_daemons_init ();
+extern void cdc_daemons_destroy ();
+#endif
+
+extern LOG_PAGEID cdc_min_log_pageid_to_keep ();
+
+/* cdc functions */
+extern int cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * input_time, LOG_LSA * start_lsa);
+extern int cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user,
+				  uint64_t * classoids, int num_class);
+extern int cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_length, int *num_log_info);
+extern int cdc_initialize ();
+extern int cdc_finalize ();
+extern int cdc_free_extraction_filter ();
+extern int cdc_cleanup ();
+extern void cdc_cleanup_consumer ();
+extern int cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa);
+extern int cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info);
+
+extern int cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
+extern int cdc_set_extraction_lsa (LOG_LSA * lsa);
+extern void cdc_reinitialize_queue (LOG_LSA * start_lsa);
+
+extern void cdc_pause_producer ();
+extern void cdc_wakeup_producer ();
+extern void cdc_kill_producer ();
+
+extern void cdc_pause_consumer ();
+extern void cdc_wakeup_consumer ();
+
+extern SCAN_CODE cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa,
+				      RECDES * undo_recdes);
+
+extern int cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recdes, LOG_LSA * redo_lsa,
+			   RECDES * redo_recdes, bool is_flashback);
+extern int cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type, OID classoid,
+				 RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry,
+				 bool is_flashback);
 
 //
 // log critical section

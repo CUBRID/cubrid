@@ -4878,6 +4878,11 @@ locator_mflush (MOP mop, void *mf)
       LC_ONEOBJ_SET_HAS_UNIQUE_INDEX (mflush->obj);
     }
 
+  if (WS_IS_TRIGGER_INVOLVED (mop))
+    {
+      LC_ONEOBJ_SET_TRIGGER_INVOLVED (mflush->obj);
+    }
+
   HFID_COPY (&mflush->obj->hfid, hfid);
   COPY_OID (&mflush->obj->class_oid, ws_oid (class_mop));
   COPY_OID (&mflush->obj->oid, oid);
@@ -5738,6 +5743,11 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	}
 
       ws_dirty (class_mop);
+
+      if (locator_flush_class (class_mop) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
   assert (!OID_ISNULL (sm_ch_rep_dir (class_obj)));

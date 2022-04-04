@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Geçersiz uzunluk veya karakter '%1$c' veritabanı adı '%2$s' \n
@@ -128,6 +129,7 @@ Mevcut yönetici yardımcı programı-adı:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz:http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Mevcut yönetici programları:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz: http://www.cubrid.org\n
@@ -289,7 +292,7 @@ geçerli opsiyonlar:\n\
   -C, --CS-mode                istemci-sunucu modunda yürütme\n\
       --no-check               veritabanının tutarlılığını kontrol etmez; varsayılan: kontrol edin\n\
   -t, --thread-count=COUNT     Konu sayısı; Varsayılan olarak: 0 (otomatik)\n\
-  -z, --compress               yedekleme birimleri sıkıştırmak; varsayılan: sıkıştırmayı açma\n\
+      --no-compress            yedekleme birimlerini sıkıştırmayın; varsayılan: sıkıştırma\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
   -k, --separate-keys          TDE için anahtarlar dosyası (_keys) yedekleme birimine dahil değildir, bunun yerine bir dosyaya ayrılmıştır\n
 71 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
@@ -521,6 +524,8 @@ geçerli seçenekler:\n\
   -d, --data-only             dökümü nesneleri yalnızca; varsayılan: şema ve objeler\n\
       --output-prefix=PREFIEX Çıktı dosyaları için PREFIEX; varsayılan: veritabanı adı\n\
       --hash-file=FILE        Karma için FILE varsayılan: tmpnam tarafından oluşturmak ()\n\
+      --latest-image          nesneleri boşaltırken, günlük hacimlerine atıfta bulunmadan (MVCC'yi yok sayarak) veri hacimlerindeki nesnelerin en son görüntüsünü atar\n\
+                              Taahhüt edilmemiş verileri ve vakumlanmayan silinmiş verileri içerebilir; varsayılan: devre dışı\n\
   -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
       --use-delimiter         kullanımı '"' bir tanımlayıcı nereden başlayıp nerede bittiği; varsayılan: kullanmayın\n\
   -S, --SA-mode               stand-alone modu yürütme\n\
@@ -624,6 +629,7 @@ geçerli seçenekler:\n\
 39 -i(--immediately) opsiyon seçeneği --deact-stop-all ile birlikte kullanılmalıdır.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Lütfen --recreate-log seçeneği olmadan çalıştırın veya etkin günlük birimini manuel olarak kaldırın.\n
 60 \
 emergency_patchlog: Patch acil durumlarda bir veritabanı.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -973,9 +979,9 @@ kullanım: %1$s applyinfo [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -r, --remote-host-name      Uzak ana bilgisayar adı; görüntü uzak düğüm aktif log bilgileri\n\
-  -a, --applied-info 	      uygulamalı bilgilerde görüntü \n\
   -L, --copied-log-path=PATH  Kopyalanan log yoğunlukların path; görüntü kopyalanan log bilgileri \n\
-  -p, --page=ID               sayfa id; varsayılan: 0 \n\
+  -a, --applied-info 	      uygulamalı bilgilerde görüntü; -L seçeneği gereklidir \n\
+  -p, --page=ID               sayfa id; -L seçeneği gereklidir; varsayılan: 0 \n\
   -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı bırakmak\n\
   -i, --interval=S            her S saniye bilgilerini yazdırmak\n
 
@@ -1218,8 +1224,45 @@ kullanım: %1$s tde İŞLEM (-s|-n|-d|-c) [SEÇENEK] veritabanı-adı\n\
 \n\
 geçerli seçenekler:\n\
     -p, --dba-password=PASS      DBA kullanıcısının şifresi; belirtmezseniz sorulacak\n\
+\n\
 İŞLEMLER: işlemlerden biri verilmelidir ve bunlar özeldir\n\
     -s, --show-keys              veritabanında ve anahtar dosyasında (_keys) ayarlanan anahtar bilgileri yazdırır\n\
     -n, --generate-new-key       anahtar dosyasında (_keys) yeni bir anahtar oluşturur; maksimum sayı: 128\n\
     -d, --delete-key=KEY_INDEX   anahtar dosyasındaki (_keys) bir anahtarı sil\n\
     -c, --change-key=KEY_INDEX   anahtar dosyasındaki (_keys) başka bir anahtar için veritabanındaki anahtarı değiştir\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 DBA şifresini girin:
+2 Geçersiz tarih biçimi, geçerli biçim gg-aa-yyyy:ss:dd:ss\n
+3 Başlangıç tarihi (%1$s), bitiş tarihinden (%2$s) küçük olmalıdır\n
+4 Lütfen geçerli tarihten (%1$s) önce veya veritabanı oluşturulduktan sonra (%2$s) bir tarihle deneyin\n
+5 Tablo (%1$s) veritabanında yok\n
+6 Geri dönüş için çok fazla işlem var. Lütfen başlangıç tarihi ile bitiş tarihi arasındaki süreyi kısaltın\n
+7 Şema (%1$s) değiştirildiği için geri dönüş alınamadı.\n
+8 Günlük hacmi kaldırıldı. Lütfen daha sonraki bir tarihle deneyin\n
+9 '%1$s' çıktı dosyası açılamadı\n
+10 İşlem Kimliği (%1$d) mevcut değil\n
+11 Lütfen 'cubrid.conf' içinde 'supplemental_log' ayarlayın. Yalnızca 'supplemental_log' ayarlandıktan sonra yürütülen SQL günlükleri flashback yapılabilir.\n
+12 İşlem Kimliği %1$d saniye içinde girilmelidir. Zaman aşımı, 'cubrid.conf' içindeki 'flashback_timeout' ayarı ile ayarlanabilir.\n
+13 Flashback zaten çalışıyor. Flashback iki işlem tarafından çalıştırılamaz.\n
+14 Flashback bağımsız mod olarak çalıştırılamaz.\n
+60 \
+flashback: Belirli bir işlemi flashback yapmak için ifadeler sağlar.\n\
+kullanım: %1$s flashback [SEÇENEK] veritabanı adı sınıf_adı1 [sınıf_adı2 ...]\n\
+\n\
+geçerli seçenekler:\n\
+    -o, --output-file=FILE      çıktı mesajını DOSYA'ya yönlendirir; varsayılan: yok.\n\
+    -u, --user=ID               flashback için SQL deyimini yürüten kullanıcıyı belirtir; varsayılan: TÜMÜ.\n\
+    -p, --dba-password          DBA kullanıcısının parolası; belirtmezseniz sorar\n\
+    -s, --start-date=DATE       flashback için başlangıç TARİHİNİ belirtir. SQL günlükleri DATE'den alınır.\n\
+                                TARİH şu şekilde verilir: gg-aa-yyyy:ss:dd:ss.\n\
+    -e, --end-date=DATE         flashback için bitiş TARİHİNİ belirtir. SQL günlükleri DATE tarihine kadar ayıklanır.\n\
+                                başlangıç-tarihi belirtilmemişse, ((END - 10dk) ~ END) aralık olarak ayarlanır,\n\
+                                ve END belirtilmezse, (start ~ (start + 10min)) ayarlanır.\n\
+                                Ve ne bir başlangıç ne de bir bitiş tarihi belirtilmemiş,\n\
+                                (geçerli saat - 10dk) ve geçerli saat arasında yürütülen SQL günlükleri çıkarılır.\n\
+    --detail                    her SQL deyimi için ayrıntılı bilgi verir.\n\
+                                İşlem Kimliği, Kullanıcı adı ve orijinal SQL ifadesi, SQL ifadesi ile birlikte döndürülecektir\n\
+                                flashback için; varsayılan: yalnızca flashback için SQL deyimlerini verir\n\
+    --oldest                    flashback, başlangıç zamanından bitiş zamanına kadar yürütülen SQL ifadeleri için kronolojik sırayla\n\
+                                gerçekleştirilir; varsayılan: en son\n

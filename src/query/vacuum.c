@@ -1241,7 +1241,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].log_zip_p = NULL;
       vacuum_Workers[i].undo_data_buffer = NULL;
       vacuum_Workers[i].undo_data_buffer_capacity = 0;
-      vacuum_Workers[i].private_lru_index = pgbuf_assign_private_lru (thread_p, true, i);
+      vacuum_Workers[i].private_lru_index = pgbuf_assign_private_lru (thread_p);
       vacuum_Workers[i].heap_objects = NULL;
       vacuum_Workers[i].heap_objects_capacity = 0;
       vacuum_Workers[i].prefetch_log_buffer = NULL;
@@ -1267,6 +1267,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
       /* for debug only */
+      (void) log_Gl.mvcc_table.update_global_oldest_visible ();
+
       return NO_ERROR;
     }
 
@@ -2461,6 +2463,7 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
 {
   int error_code = NO_ERROR;	/* Error code. */
   OID class_oid = OID_INITIALIZER;	/* Class OID. */
+  FILE_DESCRIPTORS file_descriptor;
   FILE_TYPE ftype;
 
   assert (helper != NULL);
@@ -2481,34 +2484,18 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
   assert (!OID_ISNULL (&class_oid));
 
   /* Get HFID for class OID. */
-  error_code = heap_get_class_info (thread_p, &class_oid, &helper->hfid, &ftype, NULL);
-  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+  error_code = file_descriptor_get (thread_p, vfid, &file_descriptor);
+  if (error_code != NO_ERROR)
     {
-      FILE_DESCRIPTORS file_descriptor;
-
-      /* clear expected error */
-      er_clear ();
-      error_code = NO_ERROR;
-
-      error_code = file_descriptor_get (thread_p, vfid, &file_descriptor);
+      assert_release (false);
+    }
+  else
+    {
+      helper->hfid = file_descriptor.heap.hfid;
+      error_code = file_get_type (thread_p, vfid, &ftype);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
-	}
-      else
-	{
-	  helper->hfid = file_descriptor.heap.hfid;
-	  error_code = file_get_type (thread_p, vfid, &ftype);
-	  if (error_code != NO_ERROR)
-	    {
-	      assert_release (false);
-	    }
-	  else
-	    {
-	      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_DROPPED_FILES, "%s",
-				     "vacuuming heap found deleted class oid, however hfid and file type "
-				     "have been successfully loaded from file header. ");
-	    }
 	}
     }
   if (error_code != NO_ERROR)
@@ -5611,7 +5598,14 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 VACUUM_LOG_BLOCKID
 vacuum_get_log_blockid (LOG_PAGEID pageid)
 {
-  return ((pageid == NULL_PAGEID) ? VACUUM_NULL_LOG_BLOCKID : (pageid / vacuum_Data.log_block_npages));
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) || pageid == NULL_PAGEID)
+    {
+      return VACUUM_NULL_LOG_BLOCKID;
+    }
+
+  assert (vacuum_Data.log_block_npages != 0);
+
+  return pageid / vacuum_Data.log_block_npages;
 }
 
 /*
@@ -6737,7 +6731,7 @@ vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VPID_COPY (&page->next_page, (VPID *) rcv->data);
 
   /* Check recovery data is as expected */
-  assert (rcv->length = sizeof (VPID));
+  assert (rcv->length == sizeof (VPID));
 
   vacuum_er_log (VACUUM_ER_LOG_RECOVERY, "Set link for dropped files from page %d|%d to page %d|%d.",
 		 pgbuf_get_vpid_ptr (rcv->pgptr)->pageid, pgbuf_get_vpid_ptr (rcv->pgptr)->volid, page->next_page.volid,
@@ -8092,7 +8086,7 @@ vacuum_data_page::is_empty () const
 bool
 vacuum_data_page::is_index_valid (INT16 index) const
 {
-  return index >= index_unvacuumed || index < index_free;
+  return index >= index_unvacuumed && index < index_free;
 }
 
 INT16

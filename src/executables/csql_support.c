@@ -36,6 +36,8 @@
 #endif /* !WINDOWS */
 #include "porting.h"
 #include "csql.h"
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 #include "memory_alloc.h"
 #include "system_parameter.h"
 #include "ddl_log.h"
@@ -249,84 +251,61 @@ csql_invoke_system (const char *command)
 int
 csql_invoke_system_editor (void)
 {
-  char *cmd = NULL;
-  char *fname = (char *) NULL;	/* pointer to temp file name */
-  FILE *fp = (FILE *) NULL;	/* pointer to stream */
-
   if (!iq_output_device_is_a_tty ())
     {
       csql_Error_code = CSQL_ERR_CANT_EDIT;
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
     }
 
-  /* create a temp file and open it */
-  fname = tempnam (NULL, NULL);
-
-  if (fname == NULL)
+  /* create an unique file in tmp folder and open it for writing */
+  auto[filename, fileptr] = filesys::open_temp_file ("csql_");
+  if (fileptr == NULL)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
     }
-
-  fp = fopen (fname, "w");
-  if (fp == NULL)
-    {
-      csql_Error_code = CSQL_ERR_OS_ERROR;
-      goto error;
-    }
+  filesys::auto_delete_file file_del (filename.c_str ());	//deletes file at scope end
+  filesys::auto_close_file file (fileptr);	//closes file at scope end (before the above file deleter); forget about fp from now on
 
   /* write the content of editor to the temp file */
-  if (csql_edit_write_file (fp) == CSQL_FAILURE)
+  if (csql_edit_write_file (file.get ()) == CSQL_FAILURE)
     {
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
     }
-
-  fclose (fp);
-  fp = (FILE *) NULL;
 
   /* invoke the system editor */
-  cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd + 1 + strlen (fname)));
+  char *cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd + 1 + filename.size ()));
   if (cmd == NULL)
     {
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
     }
-  sprintf (cmd, "%s %s", csql_Editor_cmd, fname);
+  fclose (file.release ());	//on Windows needs to be closed before being able to save from Notepad
+  sprintf (cmd, "%s %s", csql_Editor_cmd, filename.c_str ());
   csql_invoke_system (cmd);
 
   /* initialize editor buffer */
   csql_edit_contents_clear ();
 
-  fp = fopen (fname, "r");
-  if (fp == NULL)
+  file.reset (fopen (filename.c_str (), "r"));
+  if (!file)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
     }
 
   /* read the temp file into editor */
-  if (csql_edit_read_file (fp) == CSQL_FAILURE)
+  if (csql_edit_read_file (file.get ()) == CSQL_FAILURE)
     {
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
     }
-
-  fclose (fp);
-  unlink (fname);
-  free (fname);
 
   return CSQL_SUCCESS;
-
-error:
-  if (fp != NULL)
-    {
-      fclose (fp);
-    }
-  if (fname != NULL)
-    {
-      unlink (fname);
-      free (fname);
-    }
-  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-  return CSQL_FAILURE;
 }
 
 /*

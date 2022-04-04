@@ -58,6 +58,7 @@
 #endif
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "session.h"
 
 enum net_req_act
 {
@@ -439,7 +440,16 @@ net_server_init (void)
   req_p->processing_function = sfile_apply_tde_to_class_files;
   req_p->name = "NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES";
 
+  /* dblink */
+  req_p = &net_Requests[NET_SERVER_DBLINK_GET_CRYPT_KEY];
+  req_p->processing_function = sdblink_get_crypt_keys;
+  req_p->name = "NET_SERVER_DBLINK_GET_CRYPT_KEY";
+
   /* tde */
+  req_p = &net_Requests[NET_SERVER_TDE_IS_LOADED];
+  req_p->processing_function = stde_is_loaded;
+  req_p->name = "NET_SERVER_TDE_IS_LOADED";
+
   req_p = &net_Requests[NET_SERVER_TDE_GET_DATA_KEYS];
   req_p->processing_function = stde_get_data_keys;
   req_p->name = "NET_SERVER_TDE_GET_DATA_KEYS";
@@ -901,6 +911,39 @@ net_server_init (void)
   req_p->processing_function = svacuum_dump;
   req_p->name = "NET_SERVER_VACUUM_DUMP";
 
+  req_p = &net_Requests[NET_SERVER_SUPPLEMENT_STMT];
+  req_p->processing_function = slog_supplement_statement;
+  req_p->name = "NET_SERVER_SUPPLEMENT_STMT";
+
+  /* for CDC */
+  req_p = &net_Requests[NET_SERVER_CDC_START_SESSION];
+  req_p->processing_function = scdc_start_session;
+  req_p->name = "NET_SERVER_CDC_START_SESSION";
+
+  req_p = &net_Requests[NET_SERVER_CDC_FIND_LSA];
+  req_p->processing_function = scdc_find_lsa;
+  req_p->name = "NET_SERVER_CDC_FIND_LSA";
+
+  req_p = &net_Requests[NET_SERVER_CDC_GET_LOGINFO_METADATA];
+  req_p->processing_function = scdc_get_loginfo_metadata;
+  req_p->name = "NET_SERVER_CDC_GET_LOGINFO_METADATA";
+
+  req_p = &net_Requests[NET_SERVER_CDC_GET_LOGINFO];
+  req_p->processing_function = scdc_get_loginfo;
+  req_p->name = "NET_SERVER_CDC_GET_LOGINFO";
+
+  req_p = &net_Requests[NET_SERVER_CDC_END_SESSION];
+  req_p->processing_function = scdc_end_session;
+  req_p->name = "NET_SERVER_CDC_END_SESSION";
+
+  /* flashback */
+  req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_SUMMARY];
+  req_p->processing_function = sflashback_get_summary;
+  req_p->name = "NET_SERVER_FLASHBACK_GET_SUMMARY";
+
+  req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_LOGINFO];
+  req_p->processing_function = sflashback_get_loginfo;
+  req_p->name = "NET_SERVER_FLASHBACK_GET_LOGINFO";
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1274,6 +1317,7 @@ loop:
   if (tran_index != NULL_TRAN_INDEX)
     {
       (void) xboot_unregister_client (thread_p, tran_index);
+      session_remove_query_entry_all (thread_p);
     }
   css_free_conn (conn_p);
 

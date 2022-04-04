@@ -83,7 +83,8 @@
 #include "xasl_cache.h"
 #include "elo.h"
 #include "transaction_transient.hpp"
-
+#include "crypt_opfunc.h"
+#include "flashback.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -2174,6 +2175,77 @@ slog_drop_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
+void
+slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int success = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr, *start_ptr;
+
+  int ddl_type;
+  int obj_type;
+  OID classoid;
+  OID oid;
+  char *stmt_text;
+
+  char *supplemental_data;
+  int data_len;
+  LOG_TDES *tdes;
+
+  /* CAS and Server are able to have different parameter value, when broker restarted with changed parameter value */
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
+    {
+      ptr = or_unpack_int (request, &ddl_type);
+      ptr = or_unpack_int (ptr, &obj_type);
+
+      ptr = or_unpack_oid (ptr, &classoid);
+      ptr = or_unpack_oid (ptr, &oid);
+
+      or_unpack_string_nocopy (ptr, &stmt_text);
+
+      /* ddl_type | obj_type | class OID | OID | stmt_text len | stmt_text */
+      data_len =
+	OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_OID_SIZE + OR_INT_SIZE + or_packed_string_length (stmt_text, NULL);
+
+      supplemental_data = (char *) malloc (data_len + MAX_ALIGNMENT);
+      if (supplemental_data == NULL)
+	{
+	  success = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      ptr = start_ptr = supplemental_data;
+
+      ptr = or_pack_int (ptr, ddl_type);
+      ptr = or_pack_int (ptr, obj_type);
+      ptr = or_pack_oid (ptr, &classoid);
+      ptr = or_pack_oid (ptr, &oid);
+      ptr = or_pack_int (ptr, strlen (stmt_text));
+      ptr = or_pack_string (ptr, stmt_text);
+
+      data_len = ptr - start_ptr;
+
+      tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      if (!tdes->has_supplemental_log)
+	{
+	  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					tdes->client.get_db_user ());
+	  tdes->has_supplemental_log = true;
+	}
+
+      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
+
+      free_and_init (supplemental_data);
+    }
+
+end:
+  (void) or_pack_int (reply, success);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
 /*
  * sacl_reload -
  *
@@ -2445,14 +2517,16 @@ shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   int error;
   HFID hfid;
   OID class_oid;
+  int force;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_oid (ptr, &class_oid);
+  ptr = or_unpack_int (ptr, &force);
 
-  error = xheap_destroy_newly_created (thread_p, &hfid, &class_oid);
+  error = xheap_destroy_newly_created (thread_p, &hfid, &class_oid, (bool) force);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -2540,6 +2614,51 @@ sfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, unsigned int rid, char 
 }
 
 void
+sdblink_get_crypt_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int area_size = -1;
+  char *reply, *area, *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  int err = NO_ERROR;
+  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH];
+  int length = dblink_get_encrypt_key (crypt_key, sizeof (crypt_key));
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (length < 0)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      area = NULL;
+      area_size = 0;
+      err = length;
+    }
+  else
+    {
+      area_size = OR_INT_SIZE + or_packed_stream_length (length);
+      area = (char *) db_private_alloc (thread_p, area_size);
+      if (area == NULL)
+	{
+	  (void) return_error_to_client (thread_p, rid);
+	  area_size = 0;
+	}
+      else
+	{
+	  ptr = or_pack_int (area, length);
+	  ptr = or_pack_stream (ptr, (char *) crypt_key, length);
+	}
+    }
+
+  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, err);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+
+  if (area != NULL)
+    {
+      db_private_free_and_init (thread_p, area);
+    }
+}
+
+void
 stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int area_size = -1;
@@ -2549,7 +2668,7 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  if (!tde_Cipher.is_loaded)
+  if (!tde_is_loaded ())
     {
       (void) return_error_to_client (thread_p, rid);
       area = NULL;
@@ -2582,6 +2701,28 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     {
       db_private_free_and_init (thread_p, area);
     }
+}
+
+/*
+ * stde_is_loaded -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+stde_is_loaded (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_int (reply, tde_is_loaded ());
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -8019,6 +8160,8 @@ slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   return;
 }
 
+
+
 /*
  * sboot_compact_db -
  *
@@ -10222,4 +10365,626 @@ void
 ssession_stop_attached_threads (void *session)
 {
   session_stop_attached_threads (session);
+}
+
+static bool
+cdc_check_client_connection ()
+{
+  if (css_check_conn (&cdc_Gl.conn) == NO_ERROR)
+    {
+      /* existing connection is alive */
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
+void
+scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int error_code;
+  int max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class;
+  uint64_t *extraction_classoids = NULL;
+  char **extraction_user = NULL;
+
+  char *dummy_user = NULL;
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
+    {
+      error_code = ER_CDC_NOT_AVAILABLE;
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
+      goto error;
+    }
+
+  /* scdc_start_session more than once without scdc_end_session */
+  if (cdc_Gl.conn.fd != -1)
+    {
+      if (thread_p->conn_entry->fd != cdc_Gl.conn.fd)
+	{
+	  /* check if existing connection is alive */
+	  if (cdc_check_client_connection ())
+	    {
+	      cdc_log ("%s : More than two clients attempt to connect", __func__);
+
+	      error_code = ER_CDC_NOT_AVAILABLE;
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
+	      goto error;
+	    }
+	}
+
+      /* if existing session is dead, then pause loginfo producer thread (cdc). */
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
+	}
+
+      LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
+    }
+
+  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
+  cdc_Gl.conn.status = thread_p->conn_entry->status;
+
+  ptr = or_unpack_int (request, &max_log_item);
+  ptr = or_unpack_int (ptr, &extraction_timeout);
+  ptr = or_unpack_int (ptr, &all_in_cond);
+  ptr = or_unpack_int (ptr, &num_extraction_user);
+
+  if (num_extraction_user > 0)
+    {
+      extraction_user = (char **) malloc (sizeof (char *) * num_extraction_user);
+      if (extraction_user == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * num_extraction_user);
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      for (int i = 0; i < num_extraction_user; i++)
+	{
+	  ptr = or_unpack_string_nocopy (ptr, &dummy_user);
+
+	  extraction_user[i] = strdup (dummy_user);
+	  if (extraction_user[i] == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (dummy_user));
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &num_extraction_class);
+
+  if (num_extraction_class > 0)
+    {
+      extraction_classoids = (UINT64 *) malloc (sizeof (UINT64) * num_extraction_class);
+      if (extraction_classoids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (UINT64) * num_extraction_class);
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      for (int i = 0; i < num_extraction_class; i++)
+	{
+	  ptr = or_unpack_int64 (ptr, (INT64 *) & extraction_classoids[i]);
+	}
+    }
+
+  cdc_log
+    ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
+     __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
+
+  error_code =
+    cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
+			   extraction_classoids, num_extraction_class);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  or_pack_int (reply, error_code);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
+
+error:
+
+  if (extraction_user != NULL)
+    {
+      for (int i = 0; i < num_extraction_user; i++)
+	{
+	  if (extraction_user[i] != NULL)
+	    {
+	      free_and_init (extraction_user[i]);
+	    }
+	}
+
+      free_and_init (extraction_user);
+    }
+
+  if (extraction_classoids != NULL)
+    {
+      free_and_init (extraction_classoids);
+    }
+
+  or_pack_int (reply, error_code);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
+}
+
+void
+scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE + OR_INT64_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  LOG_LSA start_lsa;
+  time_t input_time;
+  int error_code;
+
+  ptr = or_unpack_int64 (request, &input_time);
+  //if scdc_find_lsa() is called more than once, it should pause running cdc_loginfo_producer_execute() thread 
+
+  cdc_log ("%s : input time (%lld)", __func__, input_time);
+
+  error_code = cdc_find_lsa (thread_p, &input_time, &start_lsa);
+  if (error_code == NO_ERROR || error_code == ER_CDC_ADJUSTED_LSA)
+    {
+      // check producer is sleep, and if not 
+      // make producer sleep, and producer request consumer to be sleep 
+      // if request is set to consumer to be sleep, go into spinlock 
+      // checks request is set to none, then if it is none, 
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
+	}
+
+      cdc_set_extraction_lsa (&start_lsa);
+
+      cdc_reinitialize_queue (&start_lsa);
+
+      cdc_wakeup_producer ();
+
+      ptr = or_pack_int (reply, error_code);
+      ptr = or_pack_log_lsa (ptr, &start_lsa);
+      or_pack_int64 (ptr, input_time);
+
+      cdc_log ("%s : reply contains start lsa (%lld|%d), output time (%lld)", __func__, LSA_AS_ARGS (&start_lsa),
+	       input_time);
+
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+      return;
+    }
+  else
+    {
+      goto error;
+    }
+
+error:
+
+  or_pack_int (reply, error_code);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  LOG_LSA start_lsa;
+  LOG_LSA next_lsa;
+
+  int total_length;
+  char *log_info_list;
+  int error_code = NO_ERROR;
+  int num_log_info;
+
+  int rc;
+
+  or_unpack_log_lsa (request, &start_lsa);
+
+  cdc_log ("%s : request from client contains start_lsa (%lld|%d)", __func__, LSA_AS_ARGS (&start_lsa));
+
+  if (LSA_ISNULL (&cdc_Gl.consumer.next_lsa))
+    {
+      /* if server is restarted while cdc is running, and client immediately calls extraction without scdc_find_lsa() */
+
+      error_code = cdc_validate_lsa (thread_p, &start_lsa);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      cdc_set_extraction_lsa (&start_lsa);
+
+      cdc_reinitialize_queue (&start_lsa);
+
+      cdc_wakeup_producer ();
+    }
+
+  if (LSA_EQ (&cdc_Gl.consumer.next_lsa, &start_lsa))
+    {
+      error_code = cdc_make_loginfo (thread_p, &start_lsa);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      error_code = cdc_get_loginfo_metadata (&next_lsa, &total_length, &num_log_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+  else if (LSA_EQ (&cdc_Gl.consumer.start_lsa, &start_lsa))
+    {
+      /* Send again; only the case, where cdc client re-request loginfo metadata requested last time due to a problem like shutdown, will be dealt. */
+      error_code = cdc_get_loginfo_metadata (&next_lsa, &total_length, &num_log_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+  else
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "requested extract lsa is (%lld | %d) is not in a range of previously requested lsa (%lld | %d) and next lsa to extract (%lld | %d)",
+		     LSA_AS_ARGS (&start_lsa), LSA_AS_ARGS (&cdc_Gl.consumer.start_lsa),
+		     LSA_AS_ARGS (&cdc_Gl.consumer.next_lsa));
+
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_LOG_LSA, 1, LSA_AS_ARGS (&start_lsa));
+      error_code = ER_CDC_INVALID_LOG_LSA;
+      goto error;
+    }
+
+  ptr = or_pack_int (reply, error_code);
+
+  ptr = or_pack_log_lsa (ptr, &next_lsa);
+  ptr = or_pack_int (ptr, num_log_info);
+  ptr = or_pack_int (ptr, total_length);
+
+  cdc_log ("%s : reply contains next lsa (%lld|%d), num log info (%d), total length (%d)", __func__,
+	   LSA_AS_ARGS (&next_lsa), num_log_info, total_length);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  return;
+
+error:
+
+  or_pack_int (reply, error_code);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  cdc_log ("%s : size of log info is %d", __func__, cdc_Gl.consumer.log_info_size);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, cdc_Gl.consumer.log_info, cdc_Gl.consumer.log_info_size);
+
+  return;
+}
+
+void
+scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error_code;
+
+  error_code = cdc_cleanup ();
+
+  cdc_log ("%s : clean up for cdc thread has done.", __func__);
+
+  cdc_Gl.conn.fd = -1;
+  cdc_Gl.conn.status = CONN_CLOSED;
+
+  or_pack_int (reply, error_code);
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
+}
+
+void
+sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area = NULL;
+  int area_size = 0;
+
+  int error_code = NO_ERROR;
+  char *ptr;
+  char *start_ptr;
+
+  char *num_ptr;		//pointer in which 'number of summary' is located
+  int tmp_num = 0;
+
+  LC_FIND_CLASSNAME status;
+
+  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, };
+
+  time_t start_time = 0;
+  time_t end_time = 0;
+
+  char *classname = NULL;
+
+  error_code = flashback_initialize (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  ptr = or_unpack_int (request, &context.num_class);
+
+  for (int i = 0; i < context.num_class; i++)
+    {
+      OID classoid = OID_INITIALIZER;
+
+      ptr = or_unpack_string_nocopy (ptr, &classname);
+
+      status = xlocator_find_class_oid (thread_p, classname, &classoid, NULL_LOCK);
+      if (status != LC_CLASSNAME_EXIST)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_CLASS, 1, classname);
+	  error_code = ER_FLASHBACK_INVALID_CLASS;
+	  goto error;
+	}
+
+      context.classoids.emplace_back (classoid);
+    }
+
+  ptr = or_unpack_string_nocopy (ptr, &context.user);
+  ptr = or_unpack_int64 (ptr, &start_time);
+  ptr = or_unpack_int64 (ptr, &end_time);
+
+  error_code = flashback_verify_time (thread_p, &start_time, &end_time, &context.start_lsa, &context.end_lsa);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  assert (!LSA_ISNULL (&context.start_lsa));
+
+  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
+
+  /* get summary list */
+  error_code = flashback_make_summary_list (thread_p, &context);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* area : | class oid list | summary start time | summary end time | num summary | summary entry list |
+   * summary entry : | trid | user | start/end time | num insert/update/delete | num class | class oid list |
+   * OR_OID_SIZE * context.num_class means maximum class oid list size per summary entry */
+
+  area_size = OR_OID_SIZE * context.num_class + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE
+    + (OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS + OR_OID_SIZE * context.num_class) * context.num_summary;
+
+  area = (char *) db_private_alloc (thread_p, area_size);
+  if (area == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  /* reply packing : error_code | area size */
+  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, error_code);
+
+  /* area packing : OID list | num summary | summary info list */
+  ptr = area;
+
+  // *INDENT-OFF*
+  for (auto iter : context.classoids)
+    {
+      ptr = or_pack_oid (ptr, &iter);
+    }
+  // *INDENT-ON*
+
+  ptr = or_pack_int64 (ptr, start_time);
+  ptr = or_pack_int64 (ptr, end_time);
+
+  num_ptr = ptr;
+
+  ptr = or_pack_int (ptr, context.num_summary);
+  ptr = flashback_pack_summary_entry (ptr, context, &tmp_num);
+
+  if (context.num_summary != tmp_num)
+    {
+      or_pack_int (num_ptr, tmp_num);
+    }
+
+  error_code =
+    css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+				       area_size);
+
+  db_private_free_and_init (thread_p, area);
+
+  if (error_code != NO_ERROR)
+    {
+      goto css_send_error;
+    }
+
+  return;
+error:
+
+  if (error_code == ER_FLASHBACK_INVALID_CLASS)
+    {
+      ptr = or_pack_int (reply, strlen (classname));
+      or_pack_int (ptr, error_code);
+
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), classname,
+					 strlen (classname));
+    }
+  else if (error_code == ER_FLASHBACK_INVALID_TIME)
+    {
+      OR_ALIGNED_BUF (OR_INT64_SIZE) area_buf;
+      area = OR_ALIGNED_BUF_START (area_buf);
+
+      ptr = or_pack_int (reply, OR_ALIGNED_BUF_SIZE (area_buf));
+      or_pack_int (ptr, error_code);
+
+      or_pack_int64 (area, log_Gl.hdr.db_creation);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+					 OR_ALIGNED_BUF_SIZE (area_buf));
+    }
+  else
+    {
+      ptr = or_pack_int (reply, 0);
+      or_pack_int (ptr, error_code);
+
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    }
+
+  if (error_code != ER_FLASHBACK_DUPLICATED_REQUEST)
+    {
+      /* if flashback variables are reset by duplicated request error,
+       * variables for existing connection (valid connection) can be reset */
+      flashback_reset ();
+    }
+
+  return;
+
+css_send_error:
+  flashback_reset ();
+
+  return;
+}
+
+void
+sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area = NULL;
+  int area_size = 0;
+
+  int error_code = NO_ERROR;
+  char *ptr;
+  char *start_ptr;
+
+  int threshold_to_remove_archive = 0;
+
+  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
+
+  /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
+
+  ptr = or_unpack_int (request, &context.trid);
+  ptr = or_unpack_string_nocopy (ptr, &context.user);
+  ptr = or_unpack_int (ptr, &context.num_class);
+
+  for (int i = 0; i < context.num_class; i++)
+    {
+      OID classoid;
+      ptr = or_unpack_oid (ptr, &classoid);
+      context.classoid_set.emplace (classoid);
+    }
+
+  ptr = or_unpack_log_lsa (ptr, &context.start_lsa);
+  ptr = or_unpack_log_lsa (ptr, &context.end_lsa);
+  ptr = or_unpack_int (ptr, &context.num_loginfo);
+  ptr = or_unpack_int (ptr, &context.forward);
+
+  error_code = flashback_make_loginfo (thread_p, &context);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  area_size = OR_LOG_LSA_ALIGNED_SIZE * 2 + OR_INT_SIZE;
+
+  /* log info entries are chunks of memory that already packed together, and they need to be aligned  
+   * | lsa | lsa | num item | align | log info 1 | align | log info 2 | align | log info 3 | ..
+   * */
+
+  area_size += context.queue_size + context.num_loginfo * MAX_ALIGNMENT;
+
+  area = (char *) db_private_alloc (thread_p, area_size);
+  if (area == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  /* reply packing :  area size | error_code */
+  ptr = or_pack_int (reply, area_size);
+  or_pack_int (ptr, error_code);
+
+  /* area packing : start lsa | end lsa | num item | item list */
+  ptr = or_pack_log_lsa (area, &context.start_lsa);
+  ptr = or_pack_log_lsa (ptr, &context.end_lsa);
+  ptr = or_pack_int (ptr, context.num_loginfo);
+
+  ptr = flashback_pack_loginfo (thread_p, ptr, context);
+
+  error_code =
+    css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+				       area_size);
+
+  db_private_free_and_init (thread_p, area);
+
+  if (error_code != NO_ERROR)
+    {
+      goto css_send_error;
+    }
+
+  if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa))
+    {
+      flashback_reset ();
+    }
+  else
+    {
+      if (context.forward)
+	{
+	  /* start_lsa is increased only if direction is forward */
+	  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
+	}
+    }
+
+  return;
+error:
+
+  if (error_code == ER_FLASHBACK_SCHEMA_CHANGED)
+    {
+      OR_ALIGNED_BUF (OR_OID_SIZE) area_buf;
+      area = OR_ALIGNED_BUF_START (area_buf);
+
+      ptr = or_pack_int (reply, OR_ALIGNED_BUF_SIZE (area_buf));
+      or_pack_int (ptr, error_code);
+      or_pack_oid (area, &context.invalid_class);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
+					 OR_ALIGNED_BUF_SIZE (area_buf));
+    }
+  else
+    {
+      ptr = or_pack_int (reply, 0);
+      or_pack_int (ptr, error_code);
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    }
+
+  flashback_reset ();
+
+  return;
+css_send_error:
+
+  flashback_reset ();
+  return;
 }

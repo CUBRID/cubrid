@@ -53,8 +53,8 @@ enum log_rectype
   LOG_CLIENT_USER_POSTPONE_DATA = 11,	/* Obsolete */
   LOG_RUN_NEXT_CLIENT_UNDO = 12,	/* Obsolete */
   LOG_RUN_NEXT_CLIENT_POSTPONE = 13,	/* Obsolete */
+  LOG_WILL_COMMIT = 14,		/* Obsolete */
 #endif
-  LOG_WILL_COMMIT = 14,		/* Transaction will be committed */
   LOG_COMMIT_WITH_POSTPONE = 15,	/* Committing server postpone operations */
 #if 0
   LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS = 16,	/* Obsolete */
@@ -132,6 +132,10 @@ enum log_rectype
 
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
+
+  LOG_SUPPLEMENTAL_INFO,        /* used for supplemental logs to support CDC interface.
+                                 * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
+                                 * or undo images that never retrieved from the log. */
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
@@ -401,6 +405,29 @@ typedef struct log_rec_2pc_particp_ack LOG_REC_2PC_PARTICP_ACK;
 struct log_rec_2pc_particp_ack
 {
   int particp_index;		/* Index of the acknowledging participant */
+};
+
+typedef enum supplement_rec_type
+{
+  LOG_SUPPLEMENT_TRAN_USER,
+  LOG_SUPPLEMENT_UNDO_RECORD, /*Contains undo raw record that can not be retrieved from the logs */
+  LOG_SUPPLEMENT_DDL,
+  /* Contains lsa of logs which contain undo, redo raw record (UPDATE, DELETE, INSERT)
+   * | LOG_REC_HEADER | SUPPLEMENT_REC_TYPE | LENGTH | CLASS OID |  UNDO LSA (sizeof LOG_LSA) | REDO LSA | */
+  LOG_SUPPLEMENT_INSERT,
+  LOG_SUPPLEMENT_UPDATE,
+  LOG_SUPPLEMENT_DELETE,
+  LOG_SUPPLEMENT_TRIGGER_INSERT, /* INSERT, UPDATE, DELETE logs appended by a trigger action */
+  LOG_SUPPLEMENT_TRIGGER_UPDATE,
+  LOG_SUPPLEMENT_TRIGGER_DELETE,
+  LOG_SUPPLEMENT_LARGER_REC_TYPE,
+} SUPPLEMENT_REC_TYPE;
+
+typedef struct log_rec_supplement LOG_REC_SUPPLEMENT;
+struct log_rec_supplement
+{
+  SUPPLEMENT_REC_TYPE rec_type;
+  int length;
 };
 
 #define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \

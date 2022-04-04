@@ -34,6 +34,21 @@
 #include "cas_db_inc.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+#if defined(CAS_FOR_CGW)
+/* 
+* If SIZEOF_LONG_INT is not defined in sqltypes.h, build including unixodbc_conf.h.
+* When building including unixodbc_conf.h, "warning: "PACKAGE_STRING" is displayed.
+* So I added the following code before including sqltypes.h to remove of the build warning.
+*/
+#if !defined (SIZEOF_LONG_INT)
+#define SIZEOF_LONG_INT 8
+#endif
+
+#include <sqltypes.h>
+#include <sql.h>
+#include <sqlext.h>
+#endif /* CAS_FOR_CGW */
+
 #define SRV_HANDLE_QUERY_SEQ_NUM(SRV_HANDLE)    \
         ((SRV_HANDLE) ? (SRV_HANDLE)->query_seq_num : 0)
 
@@ -146,6 +161,16 @@ struct t_query_result
 #endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 };
 
+#if defined (CAS_FOR_CGW)
+typedef struct t_cgw_handle T_CGW_HANDLE;
+struct t_cgw_handle
+{
+  SQLHENV henv;
+  SQLHDBC hdbc;
+  SQLHSTMT hstmt;
+};
+#endif /* CAS_FOR_CGW */
+
 typedef struct t_srv_handle T_SRV_HANDLE;
 struct t_srv_handle
 {
@@ -199,6 +224,12 @@ struct t_srv_handle
 #if defined(CAS_FOR_MYSQL)
   bool has_mysql_last_insert_id;
 #endif				/* CAS_FOR_MYSQL */
+#if defined (CAS_FOR_CGW)
+  T_CGW_HANDLE *cgw_handle;
+  int total_tuple_count;
+  int stmt_type;
+  bool is_cursor_open;
+#endif				/* CAS_FOR_CGW */
 };
 
 extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num);
@@ -213,6 +244,8 @@ extern void hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void hm_srv_handle_set_pooled (void);
 #endif
+
+extern void hm_set_current_srv_handle (int h_id);
 
 extern int hm_srv_handle_get_current_count (void);
 extern void hm_srv_handle_unset_prepare_flag_all (void);

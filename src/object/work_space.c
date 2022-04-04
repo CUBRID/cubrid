@@ -54,6 +54,7 @@
 #include "server_interface.h"
 #include "view_transform.h"
 #include "dbtype.h"
+#include "execute_statement.h"
 
 extern unsigned int db_on_server;
 
@@ -261,6 +262,8 @@ ws_make_mop (const OID * oid)
       /* Initialize mvcc snapshot version to be sure it doesn't match with current mvcc snapshot version. */
       op->mvcc_snapshot_version = ws_get_mvcc_snapshot_version () - 1;
 
+      op->trigger_involved = 0;
+
       /* this is NULL only for the Null_object hack */
       if (oid != NULL)
 	{
@@ -443,6 +446,10 @@ ws_insert_mop_on_hash_link (MOP mop, int slot)
   for (p = ws_Mop_table[slot].head; p != NULL; prev = p, p = p->hash_link)
     {
       c = oid_compare (WS_OID (mop), WS_OID (p));
+      if (c > 0)
+	{
+	  continue;
+	}
 
       if (c == 0)
 	{
@@ -474,8 +481,7 @@ ws_insert_mop_on_hash_link (MOP mop, int slot)
 
 	  break;
 	}
-
-      if (c < 0)
+      else			/* if (c < 0) */
 	{
 	  break;
 	}
@@ -584,13 +590,9 @@ ws_mop_if_exists (OID * oid)
 	  for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
 	    {
 	      c = oid_compare (oid, WS_OID (mop));
-	      if (c == 0)
+	      if (c <= 0)
 		{
-		  return mop;
-		}
-	      else if (c < 0)
-		{
-		  return NULL;
+		  return (c == 0) ? mop : NULL;
 		}
 	    }
 	}
@@ -652,7 +654,11 @@ ws_mop (const OID * oid, MOP class_mop)
 	  for (mop = ws_Mop_table[slot].head; mop != NULL; prev = mop, mop = mop->hash_link)
 	    {
 	      c = oid_compare (oid, WS_OID (mop));
-	      if (c == 0)
+	      if (c > 0)
+		{
+		  continue;
+		}
+	      else if (c == 0)
 		{
 		  if (mop->decached)
 		    {
@@ -684,7 +690,7 @@ ws_mop (const OID * oid, MOP class_mop)
 		    }
 		  return mop;
 		}
-	      else if (c < 0)
+	      else		/* if (c < 0) */
 		{
 		  /* find the node which is greater than I */
 		  break;
@@ -1632,6 +1638,12 @@ ws_dirty (MOP op)
     }
 
   WS_SET_DIRTY (op);
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      WS_SET_TRIGGER_INVOLVED (op);
+    }
+
   /*
    * add_class_object makes sure each class' dirty list (even an empty one)
    * is always terminated by the magical Null_object. Therefore, this test
@@ -2511,8 +2523,10 @@ ws_clear_internal (bool clear_vmop_keys)
 
 	  mop->lock = NULL_LOCK;
 	  mop->deleted = 0;
+	  mop->commit_link = NULL;
 	}
     }
+
   ws_Commit_mops = NULL;
   ws_filter_dirty ();
 }
@@ -2850,11 +2864,14 @@ ws_identifier_with_check (MOP mop, const bool check_non_referable)
 	{
 	  goto end;
 	}
-      class_mop = is_class > 0 ? mop : ws_class_mop (mop);
-      if (sm_is_reuse_oid_class (class_mop))
+      else if (is_class == 0)
 	{
-	  /* should not return the oid of a non-referable instance */
-	  goto end;
+	  class_mop = ws_class_mop (mop);
+	  if (sm_is_reuse_oid_class (class_mop))
+	    {
+	      /* should not return the oid of a non-referable instance */
+	      goto end;
+	    }
 	}
     }
 
@@ -5065,6 +5082,12 @@ bool
 ws_is_same_object (MOP mop1, MOP mop2)
 {
   return (mop1 == mop2);
+}
+
+bool
+ws_is_trigger_involved ()
+{
+  return cdc_Trigger_involved;
 }
 
 /*

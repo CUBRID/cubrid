@@ -61,6 +61,7 @@ extern "C"
     HIDDEN_CLASSOID_NAME
   } VIEW_HANDLING;
 
+  extern void csql_yyset_lineno (int line_number);
   extern size_t json_table_column_count;
 
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
@@ -187,6 +188,8 @@ extern "C"
   extern bool pt_is_keyword (const char *s);
   extern bool pt_is_const_expr_node (PT_NODE * node);
 
+  extern FUNCTION_MAP *pt_find_function_name (const char *name);
+
   extern PT_NODE *pt_add_row_oid (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern PT_NODE *pt_add_row_oid_name (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern PT_NODE *pt_add_column_oid (PARSER_CONTEXT * parser, PT_NODE * stmt);
@@ -289,8 +292,8 @@ extern "C"
 
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern int pt_identifier_or_keyword (const char *text);
-#endif				/* ENABLE_UNUSED_FUNCTION */
   extern KEYWORD_RECORD *pt_get_keyword_rec (int *rec_count);
+#endif				/* ENABLE_UNUSED_FUNCTION */
   extern int pt_type_generic_func (PARSER_CONTEXT * parser, PT_NODE * node);
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern void pt_string_to_data_type (PARSER_CONTEXT * parser, const char *s, PT_NODE * node);
@@ -422,6 +425,7 @@ extern "C"
   extern bool pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern bool pt_is_analytic_function (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern bool pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node);
+  extern bool pt_is_json_function (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PT_NODE *pt_find_spec (PARSER_CONTEXT * parser, const PT_NODE * from, const PT_NODE * name);
   extern PT_NODE *pt_find_spec_in_statement (PARSER_CONTEXT * parser, const PT_NODE * stmt, const PT_NODE * name);
   extern PT_NODE *pt_find_aggregate_names (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -430,12 +434,18 @@ extern "C"
   extern PT_NODE *pt_find_aggregate_functions_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						    int *continue_walk);
   extern PT_NODE *pt_is_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+  extern PT_NODE *pt_is_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+  extern PT_NODE *pt_is_order_sensitive_agg_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
+						  int *continue_walk);
   extern PT_NODE *pt_has_non_idx_sarg_coll_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_analytic_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_inst_or_orderby_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						  int *continue_walk);
+  extern PT_NODE *pt_is_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+  extern PT_NODE *pt_is_inst_or_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_inst_or_orderby_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						       int *continue_walk);
+  extern PT_NODE *pt_is_inst_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_pseudocolumn_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_add_table_name_to_from_list (PARSER_CONTEXT * parser, PT_NODE * select, const char *table_name,
 						  const char *table_alias, const DB_AUTH auth_bypass);
@@ -520,7 +530,14 @@ extern "C"
 
   extern bool pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
+  extern bool pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_define_vars (PARSER_CONTEXT * parser, PT_NODE * stmt);
+  extern PT_NODE *pt_is_define_vars (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern void pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node);
   extern void pt_set_expected_domain (PT_NODE * node, TP_DOMAIN * domain);
@@ -649,6 +666,9 @@ extern "C"
   extern void pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
 								DB_DEFAULT_EXPR * default_expr);
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
+  extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);
+  extern int pt_remake_dblink_password (const char *passwd, DB_VALUE * outval, bool is_external);
 #ifdef __cplusplus
 }
 #endif

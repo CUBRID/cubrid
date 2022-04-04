@@ -174,6 +174,7 @@ const char *AU_DBA_USER_NAME = "DBA";
          strcmp(name, CT_AUTHORIZATION_NAME) == 0 || \
          strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
 	 strcmp(name, CT_CHARSET_NAME) == 0 || \
+         strcmp(name, CT_DB_SERVER_NAME) == 0 || \
 	 strcmp(name, CT_DUAL_NAME) == 0)
 
 enum fetch_by
@@ -307,6 +308,7 @@ MOP Au_root = NULL;
  * use the AU_DISABLE, AU_ENABLE macros instead.
  */
 int Au_disable = 1;
+bool Au_sysadm = false;
 
 /*
  * Au_ignore_passwords
@@ -3392,7 +3394,7 @@ au_drop_user (MOP user)
      * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
      */
-    "_db_class", "db_trigger", "db_serial", NULL
+    "_db_class", "db_trigger", "db_serial", "_db_server", NULL
   };
   char query_buf[1024];
 
@@ -3457,7 +3459,7 @@ au_drop_user (MOP user)
 	  goto error;
 	}
 
-      db_make_int (&value, 0);
+      db_make_bigint (&value, 0);
       error = db_query_get_tuple_value (result, 0, &value);
       if (error != NO_ERROR)
 	{
@@ -3466,7 +3468,7 @@ au_drop_user (MOP user)
 	  goto error;
 	}
 
-      if (db_get_int (&value) > 0)
+      if (db_get_bigint (&value) > 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_USER_HAS_DATABASE_OBJECTS, 0);
 	  db_query_end (result);
@@ -5860,7 +5862,7 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
    * Callers generally check Au_disable already to avoid the function call.
    * Check it again to be safe, at this point, it isn't going to add anything.
    */
-  if (Au_disable)
+  if (Au_disable && (!Au_sysadm || !(sm_class->flags & SM_CLASSFLAG_SYSTEM)))
     {
       return NO_ERROR;
     }
@@ -6150,7 +6152,7 @@ au_fetch_class_internal (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, 
 	}
     }
 
-  if (Au_disable || !(error = check_authorization (classmop, class_, type)))
+  if ((Au_disable && type != DB_AUTH_ALTER) || !(error = check_authorization (classmop, class_, type)))
     {
       if (class_ptr != NULL)
 	{
@@ -7596,7 +7598,11 @@ class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth)
 		   */
 		  if ((user->available_auth & authbits) == authbits)
 		    {
-		      issue_grant_statement (output_ctx, auth, grant, authbits);
+		      if (!ws_is_same_object (auth->users->obj, grant->user->obj))
+			{
+			  issue_grant_statement (output_ctx, auth, grant, authbits);
+			}
+
 		      /* turn on grant bits in the granted user */
 		      grant->user->available_auth |= authbits;
 		      /* turn off the pending grant bits in granting user */
@@ -8624,6 +8630,19 @@ au_disable (void)
 }
 
 /*
+ * au_sysadm_disable - set Au_disable for sysadm
+ *   return: original Au_disable value
+ */
+int
+au_sysadm_disable (void)
+{
+  int save = Au_disable;
+  Au_disable = 1;
+  Au_sysadm = true;
+  return save;
+}
+
+/*
  * au_enable - restore Au_disable
  *   return:
  *   save(in): original Au_disable value
@@ -8632,6 +8651,7 @@ void
 au_enable (int save)
 {
   Au_disable = save;
+  Au_sysadm = false;
 }
 
 /*
@@ -8654,6 +8674,31 @@ au_get_dba_user (void)
   return Au_dba_user;
 }
 
+static int
+au_check_owner (DB_VALUE * creator_val)
+{
+  MOP creator;
+  DB_SET *groups;
+  int ret_val = ER_FAILED;
+
+  creator = db_get_object (creator_val);
+
+  if (ws_is_same_object (creator, Au_user) || au_is_dba_group_member (Au_user))
+    {
+      ret_val = NO_ERROR;
+    }
+  else if (au_get_set (Au_user, "groups", &groups) == NO_ERROR)
+    {
+      if (set_ismember (groups, creator_val))
+	{
+	  ret_val = NO_ERROR;
+	}
+      set_free (groups);
+    }
+
+  return ret_val;
+}
+
 /*
  * au_check_serial_authorization - check whether the current user is able to
  *                                 modify serial object or not
@@ -8664,42 +8709,52 @@ int
 au_check_serial_authorization (MOP serial_object)
 {
   DB_VALUE creator_val;
-  MOP creator;
-  DB_SET *groups;
   int ret_val;
 
   ret_val = db_get (serial_object, "owner", &creator_val);
-
   if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
     {
       return ret_val;
     }
 
-  creator = db_get_object (&creator_val);
-
-  ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;
-
-  if (ws_is_same_object (creator, Au_user) || au_is_dba_group_member (Au_user))
-    {
-      ret_val = NO_ERROR;
-    }
-  else if (au_get_set (Au_user, "groups", &groups) == NO_ERROR)
-    {
-      if (set_ismember (groups, &creator_val))
-	{
-	  ret_val = NO_ERROR;
-	}
-      set_free (groups);
-    }
-
+  ret_val = au_check_owner (&creator_val);
   if (ret_val != NO_ERROR)
     {
+      ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ret_val, 0);
     }
 
   pr_clear_value (&creator_val);
-
   return ret_val;
+}
+
+int
+au_check_server_authorization (MOP server_object)
+{
+  DB_VALUE creator_val;
+  int ret_val;
+
+  ret_val = db_get (server_object, "owner", &creator_val);
+  if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
+    {
+      return ret_val;
+    }
+
+  ret_val = au_check_owner (&creator_val);
+  if (ret_val != NO_ERROR)
+    {
+      ret_val = ER_DBLINK_CANNOT_UPDATE_SERVER;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ret_val, 0);
+    }
+
+  pr_clear_value (&creator_val);
+  return ret_val;
+}
+
+bool
+au_is_server_authorized_user (DB_VALUE * owner_val)
+{
+  return (au_check_owner (owner_val) == NO_ERROR);
 }
 
 const char *

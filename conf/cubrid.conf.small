@@ -8,7 +8,7 @@ COMMENT_THIS_LINE = TO_USE_THIS_CONFIGURATION
 [service]
 
 # The list of processes to be started automatically by 'cubrid service start' command
-# Any combinations are available with server, broker, manager, heartbeat and javasp.
+# Any combinations are available with server, broker, manager and heartbeat.
 service=server,broker,manager
 
 # The list of database servers in all by 'cubrid service start' command.

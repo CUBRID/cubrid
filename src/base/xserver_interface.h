@@ -130,7 +130,8 @@ extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 
 extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool reuse_oid);
 extern int xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid);
-extern int xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid);
+extern int xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
+					const bool force = false);
 
 extern int xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid);
 
@@ -169,7 +170,7 @@ extern bool logtb_has_updated (THREAD_ENTRY * thread_p);
 
 
 extern BTID *xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id,
-			       int unique_pk, int num_oids, int num_nulls, int num_keys);
+			       int unique_pk, long long num_oids, long long num_nulls, long long num_keys);
 extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
 				OID * class_oids, int n_classes, int n_attrs, int *attr_ids, int *attrs_prefix_length,
 				HFID * hfids, int unique_pk, int not_null_flag, OID * fk_refcls_oid,

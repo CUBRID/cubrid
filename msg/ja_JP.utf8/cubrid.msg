@@ -904,7 +904,7 @@ $ LOADDB
 834 to_number()ファンクションに使ったストリング「%1$s」とフォマットストリング「%2$s」マッチングしません。
 835 定義されていない通計アイテムです。
 836 ページ(%1$d|%2$d)に対するラッチ獲得リクエストがタイムアウトされました。
-837 データベースオブジェクト(クラス/ビュー/トリガー/シリアルなど)を持っているユーザーは削除できません。
+837 データベースオブジェクト(クラス/ビュー/トリガー/シリアル/サーバーなど)を持っているユーザーは削除できません。
 838 同時に%1$d個を超えるインデックススキャンが開けません。
 839 「%1$s」: わからないシステムパラメーター、または正しくないバリューです。
 840 システムパラメーター「%1$s」が変えられません。
@@ -1052,7 +1052,7 @@ $ LOADDB
 982 トランザクション「%1$d」にインターラプト設定。
 983 当テーブルに許可しない作業がトライされました。REUSE_OIDオプションが定義されているテーブルのレコードがレファレンスできません。
 984 設定ファイル「%1$s」の「[%2$s]」セクションで「%3$s」が「%4$s」設定されていると「[%5$s]」セクションで「%6$s」設定できません。
-985 "databases.txt"にマルチホストが設定された場合、データベースコネクトストリングにホスト名を指定する必要があります。
+985 "databases.txt"にマルチホストが設定された場合、データベースコネクトストリングにホスト名を指定する必要があります。 ex) csql demodb@localhost
 986 CUBRID heartbeat機能をスタートします。
 987 CUBRID heartbeat機能をストップします。
 988 ノードイベント: %1$s。
@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 オーバーフローキーファイルを生成します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
 1126 新しいオーバーフローページを生成します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
 1127 空きオーバーフローページを削除します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
-1128 ログリカバリー作業が始まりました。適用されるログレコード数：%1$lld。ログページ：%2$lld ~ %3$lld。
+1128 ログリカバリー作業が始まりました。
 1129 ログリカバリー作業が終わりました。
 1130 トランザクションのロックカウントが「%1$d」を超えたので、トランザクションがキャンセルされました。
 1131 インターナルエラー：ボリューム「%2$s」のページ「%1$d」が壊れています。\n%3$s
@@ -1329,7 +1329,7 @@ $ LOADDB
 1258 %1$sからデータベースに設定されたキーが見つかりません。バックアップボリュームのキーファイルが使用されます。
 1259 キーファイルの名前を「%1$s」から「%2$s」に変更します。
 1260 キーファイル「%1$s」を「%2$s」にコピーします。
-1261 復元時にキーが見つかりません（キーインデックス：%1$d、作成時間：%2$s）。データベースのキー（キーインデックス：%3$d）を設定します。
+1261 復元されたキーファイルの最初のキー（キーインデックス：%1$d、作成時間：%2$s）が設定されました。
 1262 キーファイルがいっぱいです。
 1263 ログページのTDE暗号化に失敗しました（ページID：%1$lld）。このページの暗号化はこれ以上試行されません。
 1264 Error reserved for scalability development.
@@ -1352,8 +1352,70 @@ $ LOADDB
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 %1$s sで参照されている主キーが原因で、テーブルを切り捨てることができません。 CASCADEオプションを使用して再試行してください。
+1285 外部キー（%1$s）のON DELETEアクションがCASCADEに設定されていないため、切り捨てをカスケードできません。
 
-1284 ラストエラー
+1286 抽出時にログlsaが見つかりません。 （入力時間：%1$s）。
+1287 ログ情報を抽出しようとしてタイムアウトしました。 （経過時間：%1$d秒、抽出タイムアウト：%2$d秒）
+1288 サポートされていないログレコードのログ情報の内部生成をスキップします。
+1289 無効なトランザクションのログ情報の生成をスキップします。（trid：%1$d）
+1290 ログ情報を抽出するための無効なログlsa（%1$lld|%2$d）。
+1291 ログ情報を抽出するためにサーバーに接続できません。 'supplemental_log'パラメーターを設定して再試行してください。
+1292 その時点でログlsaが見つかりません（%1$s）。 Log lsaは時間（%2$s）に調整されます。
+1293 ログ情報の生成中にログページを取得できません。ログ情報を生成するためのログlsaは、NULLを示します。
+1294 ログ情報が生成されました。 （タイプ： "%1$s"）。
+1295 無効なテーブルのログ情報の生成をスキップします。 （class OID：%1$d|%2$d|%3$d）
+
+1296 ログリカバリ: 分析フェーズが開始されます。
+1297 ログ回復: REDOフェーズが開始されました。 再実行するログページ: %1$lld、再実行するログレコード: %2$lld。
+1298 ログリカバリ: UNDOフェーズが開始されました。 元に戻すページ: %1$lld、元に戻すトランザクション: %2$d。
+1299 ログ復旧: %1$sフェーズが終了しています。
+1300 ログの回復: %1$sフェーズが終了しました。
+1301 ログの回復：%1$sの進行状況：（%2$lld/%3$lld）、%4$.2fパーセント、経過時間：%5$.2f（s）、推定残り時間：%6$.2f （s）。
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 Error reserved for dblink development.
+
+1332 アクティブなログボリューム（%1$s）が正常すぎて、再作成できません。 アクティブなログを削除すると、予期しない不可逆的な問題が発生する可能性があります。
+
+1333 フラッシュバックを開始するための無効な時間（%1$ss）。 時間は（%2$s）と（%3$s）の間に設定する必要があります。
+1334 フラッシュバックするクラスが見つかりません（%1$s）。
+1335 フラッシュバックするにはトランザクションが多すぎます。 %1$d 未満のトランザクションはフラッシュバックする可能性があります。
+1336 このクラスのフラッシュバックをサポートできません（名前：%1$s、OID：%2$d|%3$d|%4$d）。 クラススキーマが変更されました。
+1337 ログレコードが存在しません（lsa：%1$lld|%2$d）。 アーカイブログボリュームが削除されました。
+1338 フラッシュバックはすでに実行されています。 フラッシュバックは、複数のユーザーが同時に実行することはできません。
+
+1339 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1511,6 +1573,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 コメントの最大長は%1$dバイトです。
 128 Invalid number of arguments for JSON_OBJECTAGG
 129 PARALLEL count argument must be between %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。
@@ -1818,6 +1881,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unexpected number of arguments %1$d.
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
+306 dblink - Required information is missing.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

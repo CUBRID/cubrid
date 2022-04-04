@@ -40,21 +40,6 @@
 
 #define OVERFLOW_ALLOCVPID_ARRAY_SIZE 64
 
-typedef struct overflow_first_part OVERFLOW_FIRST_PART;
-struct overflow_first_part
-{
-  VPID next_vpid;
-  int length;
-  char data[1];			/* Really more than one */
-};
-
-typedef struct overflow_rest_part OVERFLOW_REST_PART;
-struct overflow_rest_part
-{
-  VPID next_vpid;
-  char data[1];			/* Really more than one */
-};
-
 typedef enum
 {
   OVERFLOW_DO_DELETE,

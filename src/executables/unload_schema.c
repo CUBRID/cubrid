@@ -168,6 +168,7 @@ static int emit_stored_procedure (print_output & output_ctx);
 static int emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 			    char *output_filename_p, const size_t filename_size);
+static int export_server (print_output & output_ctx);
 /*
  * CLASS DEPENDENCY ORDERING
  *
@@ -915,6 +916,11 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
       err_count++;
     }
 
+  if (export_server (schema_output_ctx) < 0)
+    {
+      err_count++;
+    }
+
   return err_count;
 }
 
@@ -1213,10 +1219,6 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  found = true;
 	}
 
-      if (found)
-	{
-	  (void) output_ctx ("\n");
-	}
       if (is_partitioned)
 	{
 	  emit_partition_info (output_ctx, cl->op);
@@ -1286,10 +1288,10 @@ static bool
 has_vclass_domains (DB_OBJECT * vclass)
 {
   /*
-   * this doesn't seem to be enough, always return 1 so we make two full passes
-   * on the query specs of all vclasses
+   * Previously, it force two full passes on the query specs of all vclasses,
+   * Now, force one pass
    */
-  return 1;
+  return 0;
 }
 
 
@@ -1828,7 +1830,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	      old_attribute_name = "";
 	    }
 
-	  output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (name));
+	  output_ctx ("\nALTER %s %s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (name));
 	  if (db_attribute_is_shared (a))
 	    {
 	      emit_attribute_def (output_ctx, a, SHARED_ATTRIBUTE);
@@ -1852,7 +1854,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
     }
   else
     {
-      output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (name));
+      output_ctx ("\n\nALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (name));
       for (a = first_attribute; a != NULL; a = db_attribute_next (a))
 	{
 	  if (db_attribute_class (a) == class_)
@@ -1988,7 +1990,6 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	}
     }
 
-  output_ctx ("\n");
   if (unique_flag)
     {
       emit_unique_def (output_ctx, class_, class_type);
@@ -2477,7 +2478,7 @@ emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *clas
       return;
     }
 
-  output_ctx ("\nALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (class_name));
+  output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (class_name));
 
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
@@ -3462,6 +3463,142 @@ emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes)
 
   return NO_ERROR;
 }
+
+static int
+export_server (print_output & output_ctx)
+{
+  int error = NO_ERROR;
+  int i;
+  DB_QUERY_RESULT *query_result;
+  DB_QUERY_ERROR query_error;
+#define SERVER_VALUE_INDEX_MAX   (10)
+  DB_VALUE values[SERVER_VALUE_INDEX_MAX];
+  DB_VALUE passwd_val;
+  char *srv_name, *owner_name, *str;
+  const char *attr_names[SERVER_VALUE_INDEX_MAX] = {
+    "link_name", "host", "port", "db_name", "user_name", "password", "properties", "comment", "owner_name", "owner_obj"
+  };
+
+  const char *query =
+    "SELECT [link_name], [host], [port], [db_name], [user_name], [password], [properties], [comment],"
+    "[owner].[name] [owner_name], [owner] [owner_obj] FROM [_db_server] WHERE [link_name] IS NOT NULL";
+
+  PARSER_CONTEXT *parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      fprintf (stderr, "Failed to parser_create_parser().\n");
+      return ER_FAILED;
+    }
+
+  db_make_null (&passwd_val);
+  for (i = 0; i < SERVER_VALUE_INDEX_MAX; i++)
+    {
+      db_make_null (&values[i]);
+    }
+
+  int au_save;
+  AU_DISABLE (au_save);
+
+  error = db_compile_and_execute_local (query, &query_result, &query_error);
+  if (error <= 0)
+    {
+      goto err;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      goto err;
+    }
+
+  do
+    {
+      for (i = 0; i < SERVER_VALUE_INDEX_MAX; i++)
+	{
+	  error = db_query_get_tuple_value_by_name (query_result, (char *) attr_names[i], &values[i]);
+	  if (error != NO_ERROR)
+	    {
+	      goto err;
+	    }
+	}
+
+      if (au_is_server_authorized_user (values + (SERVER_VALUE_INDEX_MAX - 1)))
+	{
+	  srv_name = (char *) db_get_string (values + 0);
+	  str = (char *) db_get_string (values + 5);
+	  error = pt_remake_dblink_password (str, &passwd_val, true);
+	  if (error != NO_ERROR)
+	    {			// TODO: error handling       
+	      if (er_errid_if_has_error () != NO_ERROR)
+		{
+		  fprintf (stderr, "Failed to re-encryption password for %s. error=%d(%s)\n",
+			   srv_name, error, (char *) er_msg ());
+		}
+	      else
+		{
+		  fprintf (stderr, "Failed to re-encryption password for %s. error=%d\n", srv_name, error);
+		}
+	    }
+	  else
+	    {
+	      owner_name = (char *) db_get_string (values + 8);
+	      output_ctx ("CREATE SERVER [%s].[%s] (", owner_name, srv_name);
+	      output_ctx ("\n\t HOST= '%s'", (char *) db_get_string (values + 1));
+	      output_ctx (",\n\t PORT= %d", db_get_int (values + 2));
+	      output_ctx (",\n\t DBNAME= %s", (char *) db_get_string (values + 3));
+	      output_ctx (",\n\t USER= %s", (char *) db_get_string (values + 4));
+	      output_ctx (",\n\t PASSWORD= '%s'", (char *) db_get_string (&passwd_val));
+
+	      str = (char *) db_get_string (values + 6);
+	      if (str)
+		{
+		  output_ctx (",\n\t PROPERTIES= '%s'", str);
+		}
+
+	      str = (char *) db_get_string (values + 7);
+	      if (str)
+		{
+		  output_ctx (",\n\t COMMENT= '%s'", str);
+		}
+	      output_ctx (" );\n");
+	    }
+
+	  db_value_clear (&passwd_val);
+	  db_make_null (&passwd_val);
+	}
+
+      for (i = 0; i < SERVER_VALUE_INDEX_MAX; i++)
+	{
+	  db_value_clear (&values[i]);
+	  db_make_null (&values[i]);
+	}
+    }
+  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
+
+  error = NO_ERROR;
+
+err:
+  parser_free_parser (parser);
+  db_query_end (query_result);
+
+  db_value_clear (&passwd_val);
+  if (error != NO_ERROR)
+    {
+      if (er_has_error ())
+	{
+	  fprintf (stderr, "Failed: %s\n", er_msg ());
+	}
+
+      for (i = 0; i < SERVER_VALUE_INDEX_MAX; i++)
+	{
+	  db_value_clear (&values[i]);
+	}
+    }
+
+  AU_ENABLE (au_save);
+  return error;
+}
+
 
 int
 create_filename_schema (const char *output_dirname, const char *output_prefix,

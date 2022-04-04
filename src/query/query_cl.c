@@ -36,6 +36,7 @@
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
 #include "xasl.h"
+#include "execute_statement.h"
 
 /*
  * prepare_query () - Prepares a query for later (and repetitive)
@@ -116,6 +117,11 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const
       return NO_ERROR;
     }
 
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      cdc_Trigger_involved = false;
+    }
+
   query_timeout = tran_get_query_timeout ();
   /* send XASL file id and host variables to the server and get QFILE_LIST_ID */
   *list_idp =
@@ -161,6 +167,16 @@ prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, i
       *result = NULL;
 
       return NO_ERROR;
+    }
+
+  if (do_Trigger_involved && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      cdc_Trigger_involved = true;
+      flag |= TRIGGER_IS_INVOLVED;
+    }
+  else
+    {
+      cdc_Trigger_involved = false;
     }
 
   query_timeout = tran_get_query_timeout ();

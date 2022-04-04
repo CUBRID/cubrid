@@ -904,7 +904,7 @@ $ LOADDB
 834 Es gibt einige Diskrepanzen zwischen Quell-String "%1$s" und Format-String "%2$s" in to_number() angegeben.
 835 Undefiniertes Statistikelement.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 Der Benutzer, der Datenbankobjekte besitzt, kann nicht gelöscht werden (Klasse/Trigger/Serial usw.). 
+837 Der Benutzer, der Datenbankobjekte besitzt, kann nicht gelöscht werden (Klasse/Trigger/Serial/Server usw.).
 838 Es können nicht mehr als %1$d Index Scans gleichzeitig geöffnet werden.
 839 "%1$s": Unbekannter System-Parameter oder falscher Wert.
 840 System-Parameter "%1$s" kann nicht geändert werden.
@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Set-Interrupt auf Transaktion %1$d.
 983 Instanzen der wiederverwendbaren OID-Klasse sind nicht beziehbar. Diese Operation ist auf nicht beziehbaren Instanzen nicht erlaubt.
 984 %3$s kann nicht auf "%6$s" in "[%5$s]" Sektion gesetzt, wenn es auf "%4$s" in "[%2$s]" Sektion der Konfigurationsdatei "%1$s" gesetzt ist.
-985 Der Hostname muss in dem Datenbank-Verbindungsstring angegeben werden, wenn Multihost in „databases.txt“ eingestellt ist.
+985 Der Hostname muss in dem Datenbank-Verbindungsstring angegeben werden, wenn Multihost in „databases.txt“ eingestellt ist. ex) csql demodb@localhost
 986 CUBRID Heartbeat-Funktion gestartet. 
 987 CUBRID Heartbeat-Funktion ist beendet.
 988 Knotenereignis: %1$s.
@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Erstellung der Überlauf Schlüsseldatei. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Erstellung einer neuen Überlaufseite. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Eine leere Überlaufseite wird gelöscht. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log-Wiederherstellung gestartet. Anzahl der anzuwendenden Log-Einträge: %1$lld. Log Seite: %2$lld ~ %3$lld.
+1128 Log-Wiederherstellung gestartet.
 1129 Log-Wiederherstellung beendet.
 1130 Transaktion wird abgebrochen, weil die Anzahl der Transaktionssperre %1$d überschreitet.
 1131 Interner Fehler: Die Seite %1$d des Volumen "%2$s" könnte beschädigt sein.\n%3$s
@@ -1329,7 +1329,7 @@ $ LOADDB
 1258 Der in der Datenbank festgelegte Schlüssel von %1$s kann nicht gefunden werden. Die Schlüsseldatei vom Sicherungsvolume wird verwendet.
 1259 Benennen Sie die Schlüsseldatei von "%1$s" in "%2$s" um.
 1260 Kopieren Sie die Schlüsseldatei "%1$s" nach "%2$s".
-1261 Der Schlüssel kann zum Zeitpunkt der Wiederherstellung nicht gefunden werden (Schlüsselindex: %1$d, Erstellungszeit: %2$s). Legen Sie den Schlüssel (Schlüsselindex: %3$d) für die Datenbank fest.
+1261 Der erste Schlüssel (Schlüsselindex: %1$d, Erstellungszeit: %2$s) der wiederhergestellten Schlüsseldatei wurde gesetzt.
 1262 Die Schlüsseldatei ist voll.
 1263 Die Protokollseite kann nicht mit TDE verschlüsselt werden (Seiten-ID: %1$lld). Es wird nicht mehr versucht, diese Seite zu verschlüsseln.
 1264 Error reserved for scalability development.
@@ -1352,8 +1352,70 @@ $ LOADDB
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 Die Tabelle kann aufgrund des Primärschlüssels, auf den in %1$s verwiesen wird, nicht abgeschnitten werden. Versuchen Sie es erneut mit der Option CASCADE.
+1285 Abschneiden in Kaskade nicht möglich, da die Aktion ON DELETE des Fremdschlüssels (%1$s) nicht auf CASCADE gesetzt ist.
 
-1284 Letzter Fehler
+1286 Das Protokoll lsa kann zum Zeitpunkt des Extrahierens nicht gefunden werden. (Eingabezeit: %1$s).
+1287 Zeitüberschreitung beim Versuch, Protokollinformationen zu extrahieren. (verstrichene Zeit: %1$d Sek., Extraktionszeitlimit: %2$d Sek.)
+1288 Überspringe die interne Erzeugung von Protokollinformationen für nicht unterstützte Protokolldatensätze.
+1289 Überspringe die Erstellung von Protokollinformationen für eine ungültige Transaktion. (trid : %1$d)
+1290 Ungültige Log-lsa (%1$lld|%2$d) zum Extrahieren von Log-Informationen.
+1291 Es kann keine Verbindung zum Server zum Extrahieren von Protokollinformationen hergestellt werden. Versuchen Sie es erneut mit der Einstellung des Parameters 'supplemental_log'.
+1292 Das Protokoll lsa kann derzeit nicht gefunden werden (%1$s). Log lsa wird an die Zeit (%2$s) angepasst.
+1293 Log-Seite kann nicht abgerufen werden, während Log-Infos erstellt werden. Log lsa zum Generieren von Log-Informationen zeigt NULL an.
+1294 Protokollinformationen wurden generiert. (Typ: "%1$s").
+1295 Überspringe die Erzeugung von Protokollinformationen für eine ungültige Tabelle. (class OID : %1$d|%2$d|%3$d)
+
+1296 Log-Rückgewinnung: Die ANALYSIS-Phase ist gestartet.
+1297 Log-Rückgewinnung: REDO Phase ist gestartet. Log Seiten zu wiederholen: %1$lld, Log-Aufzeichnungen zu wiederholen: %2$lld.
+1298 Log-Rückgewinnung: UNDO Phase ist gestartet. Log Seiten, die rückgängig gemacht werden sollen: %1$lld, Transaktionen, die rückgängig gemacht werden: %2$d.
+1299 Log Wiederherstellung: %1$s Phase ist fertig.
+1300 Log Wiederherstellung: %1$s Phase ist beendet.
+1301 Log Wiederherstellung: %1$s Fortschritt: (%2$lld/%3$lld), %4$.2f Prozent, verstrichene Zeit: %5$.2f (s), geschätzte Restzeit: %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 Error reserved for dblink development.
+
+1332 Das aktive Protokollvolumen (%1$s) ist zu normal, um es neu zu erstellen. Wenn Sie das aktive Protokoll entfernen, kann dies zu einem unerwarteten und irreversiblen Problem führen.
+
+1333 Ungültige Zeit (%1$s) um Flashback zu starten. Die Zeit muss zwischen (%2$s) und (%3$s) eingestellt werden.
+1334 Die Flashback-Klasse kann nicht gefunden werden (%1$s).
+1335 Zu viele Transaktionen für Flashback. Weniger als %1$d Transaktionen können Flashbacks sein.
+1336 Flashback für diese Klasse kann nicht unterstützt werden (Name : %1$s , OID : %2$d|%3$d|%4$d). Das Klassenschema wurde geändert.
+1337 Protokolldatensatz existiert nicht (lsa : %1$lld|%2$d). Das Archivprotokoll-Volume wurde gelöscht.
+1338 Flashback läuft bereits. Flashback kann nicht von mehr als einem Benutzer gleichzeitig ausgeführt werden.
+
+1339 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -1511,6 +1573,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Maximale Länge eines Kommentars ist %1$d bytes.
 128 Ungültige Anzahl von Argumenten für JSON_OBJECTAGG.
 129 PARALLEL count-Argument muss zwischen %1$d und %2$d liegen.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.
@@ -1818,6 +1881,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unerwartete Anzahl von Argumenten %1$d.
 304 Konnte keine kompatible Signatur für die Funktion finden %1$s().
 305 Die Signatur %1$s ist nicht mit Funktionsargumenten kompatibel.
+306 dblink - Erforderliche Informationen fehlen.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.

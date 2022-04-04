@@ -7,6 +7,8 @@ EXPORTS
     cas_default_isolation_level
     cas_default_lock_timeout
     cas_send_result_flag
+    cas_procedure_handle_add
+    cas_procedure_handle_free
     cfg_find_db
     cfg_free_directory
     char_isdigit
@@ -472,6 +474,7 @@ EXPORTS
     tz_create_session_tzid_for_timestamp
     tz_create_timestamptz
     tz_utc_datetimetz_to_local
+    set_plan_include_hint
 ;
 ; utility functions
 ;
@@ -953,6 +956,21 @@ EXPORTS
   mht_1strhash
   mht_compare_strings_are_equal
   mht_rem
+;
+; cubrid_log.h
+;
+  cubrid_log_set_connection_timeout
+  cubrid_log_set_extraction_timeout
+  cubrid_log_set_tracelog
+  cubrid_log_set_max_log_item
+  cubrid_log_set_all_in_cond
+  cubrid_log_set_extraction_table
+  cubrid_log_set_extraction_user
+  cubrid_log_connect_server
+  cubrid_log_find_lsa
+  cubrid_log_extract
+  cubrid_log_clear_log_item
+  cubrid_log_finalize
 ;
 ; other
 ;

@@ -904,7 +904,7 @@ $ LOADDB
 834 Il ya quelques incohérences entre la chaîne source "%1$s" et la chaîne de format "%2$s" donnée dans to_number().
 835 Objet de statistique pas defini.
 836 LATCH ON PAGE(%1$d|%2$d) a expiré.
-837 Impossible de supprimer l'utilisateur qui possède des objets de base de données(classe/verrou/serial etc). 
+837 Impossible de supprimer l'utilisateur qui possède des objets de base de données(classe/gâchette/serial/serveur etc).
 838  Impossible d'ouvrir plus de %1$d analyses d'index simultanément.
 839 "%1$s": Paramètre de système inconnu ou mauvaise valeur.
 840 Impossible de modifier le paramètres de système "%1$s".
@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Interruption de la transaction %1$d.
 983 Instances d'une classe OID réutilisable ne sont pas attribuables. Cette opération est interdite sur les non-attribuables instances.
 984 Impossible de configurer %3$s à "%6$s" dans la section "[%5$s]" quand il est configuré sur "%4$s" dans la section "[%2$s]" du fichier de configuration "%1$s".
-985 Le nom d'hôte sur la chaîne de connexion de base de données doit être spécifié lors de multihôte est configuré dans "databases.txt".
+985 Le nom d'hôte sur la chaîne de connexion de base de données doit être spécifié lors de multihôte est configuré dans "databases.txt". ex) csql demodb@localhost
 986 Fonction heartbeat du CUBRID commencée.
 987 Fonction heartbeat du CUBRID arrêtée.
 988 Événement de noeud: %1$s.
@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Création du fichier de clé de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
 1126 Création d'une nouvelle page de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
 1127 Suppression d'une page de débordement vide. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
-1128 Reprise du journal est démarré. Le nombre d'enregistrements de journal à appliquer: %1$lld. Page du jurnal: %2$lld ~ %3$lld.
+1128 Reprise du journal est démarré.
 1129 Reprise du journal est finie.
 1130 Transaction est abandonnée parce que nombre de verrous de la transaction dépasse %1$d.
 1131 Erreur interne: La page %1$d du volume "%2$s" peut être corrompue.\n%3$s
@@ -1329,7 +1329,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1258 Impossible de trouver le jeu de clés sur la base de données à partir de%1$s. Le fichier clé du volume de sauvegarde va être utilisé.
 1259 Renommez le fichier de clé de «%1$s» en «%2$s».
 1260 Copiez le fichier de clé "%1$s" dans "%2$s".
-1261 Impossible de trouver la clé au moment de la restauration (index de clé: %1$d, heure de création: %2$s). Définissez la clé (index de clé: %3$d) pour la base de données.
+1261 La première clé (index de clé : %1$d, heure de création : %2$s) sur le fichier de clé restauré a été définie.
 1262 Le fichier clé est plein.
 1263 Le chiffrement TDE de la page de journal échoue (pageid: %1$lld). Il ne sera plus essayé de crypter cette page.
 1264 Error reserved for scalability development.
@@ -1352,8 +1352,70 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 Impossible de tronquer la table en raison de la clé primaire référencée sur %1$s. Essayez à nouveau avec l'option CASCADE.
+1285 Impossible de tronquer en cascade car l'action ON DELETE de la clé étrangère (%1$s) n'est pas définie sur CASCADE.
 
-1284 Dernière erreur
+1286 Impossible de trouver le journal lsa au moment de l'extraction. (temps d'entrée : %1$s).
+1287 Délai expiré lors de la tentative d'extraction des informations du journal. (temps écoulé : %1$d s, délai d'extraction : %2$d s)
+1288 Ignorer la production d'informations de journal pour un enregistrement de journal non pris en charge en interne.
+1289 Ignorer la production d'informations de journal pour une transaction non valide. (trid : %1$d)
+1290 Lsa du journal non valide (%1$lld|%2$d) pour extraire les informations du journal.
+1291 Impossible de se connecter au serveur pour extraire les informations du journal. Réessayez en définissant le paramètre 'supplemental_log'.
+1292 Impossible de trouver le journal lsa à ce moment (%1$s). Log lsa est ajusté à l'heure (%2$s).
+1293 Impossible d'obtenir la page de journal lors de la production d'informations de journal. Log lsa pour générer les informations de journal indique NULL.
+1294 Les informations du journal ont été générées. (tapez : "%1$s").
+1295 Ignorer la production d'informations de journal pour une table non valide. (class OID : %1$d|%2$d|%3$d)
+
+1296 Récupération des billes : la phase d'ANALYSE commence.
+1297 Récupération des logs : la phase REDO est lancée. Pages de log à refaire : %1$lld, enregistrements de log à refaire : %2$lld.
+1298 Récupération des logs : la phase de la DEOD est lancée. Pages de journal à défaire : %1$lld, transactions à défaire : %2$d.
+1299 Récupération des logs : %1$s La phase est en cours d'achèvement.
+1300 Récupération des billes : %1$s La phase est terminée.
+1301 Récupération du journal : %1$s progrès : (%2$lld/%3$lld), %4$.2f pourcent, temps écoulé : %5$.2f (s), temps restant estimé : %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 Error reserved for dblink development.
+
+1332 Le volume de journal actif (%1$s) est trop sain pour être recréé. Si vous supprimez le journal actif, cela peut provoquer un problème inattendu et irréversible.
+
+1333 Heure invalide (%1$s) pour démarrer le flashback. Le temps doit être défini entre (%2$s) et (%3$s).
+1334 Impossible de trouver la classe à flashback (%1$s).
+1335 Trop de transactions pour revenir en arrière. Moins de %1$d transactions peuvent faire l'objet d'un flashback.
+1336 Impossible de prendre en charge le flashback pour cette classe (nom : %1$s , OID : %2$d|%3$d|%4$d). Le schéma de classe a été modifié.
+1337 L'enregistrement de journal n'existe pas (lsa : %1$lld|%2$d). Le volume du journal d'archivage a été supprimé.
+1338 Flashback est déjà en cours d'exécution. Flashback ne peut pas être exécuté par plus d'un utilisateur à la fois.
+
+1339 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1511,6 +1573,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 La dimension maximale d'un commentaire est %1$d octets.
 128 Nombre d'arguments non valide pour JSON_OBJECTAGG
 129 L'argument de compte PARALLELE doit être compris entre %1$d et %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Mémoire épuisée.
@@ -1818,6 +1881,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Nombre d'arguments inattendu %1$d.
 304 Impossible de trouver une signature compatible pour la fonction %1$s()
 305 La signature %1$s n'est pas compatible avec les arguments de la fonction.
+306 dblink - Les informations requises sont manquantes.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

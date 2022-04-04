@@ -1356,6 +1356,11 @@ logddl_is_ddl_type (int node_type)
     case PT_RENAME_TRIGGER:
     case PT_UPDATE_STATS:
     case PT_TRUNCATE:
+      /* TODO: check it  */
+    case PT_CREATE_SERVER:
+    case PT_DROP_SERVER:
+    case PT_RENAME_SERVER:
+    case PT_ALTER_SERVER:
       return true;
     default:
       break;

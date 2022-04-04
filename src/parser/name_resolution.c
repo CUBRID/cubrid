@@ -135,6 +135,10 @@ static PT_NODE *pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * par
 							    const char *json_table_alias);
 static PT_NODE *pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_node, void *args,
 					      int *continue_walk);
+static PT_NODE *pt_dblink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * dblink_column, void *args,
+						int *continue_walk);
+static PT_NODE *pt_get_all_dblink_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * dblink_cols,
+							      const char *dblink_table_alias);
 static PT_NODE *pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * derived_table);
 static void pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * attr);
 static PT_NODE *pt_unwhacked_spec (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * spec);
@@ -237,6 +241,7 @@ static PT_NODE *pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_M
 static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
 				    PT_NODE * derived_table, PT_NODE * parent_spec);
 static PT_NODE *pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
@@ -717,6 +722,11 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	    }
 	  level++;
 	}
+      if (node && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+	{
+	  /* An error is meaningful only when it cannot be found in all scopes. */
+	  er_clear ();
+	}
     }
   else
     {
@@ -992,6 +1002,20 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      table->info.json_table_info.tree =
 		parser_walk_tree (parser, table->info.json_table_info.tree, pt_bind_name_to_spec, spec, NULL, NULL);
 	    }
+	  else if (table->node_type == PT_DBLINK_TABLE)
+	    {
+	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
+	      if (table->info.dblink_table.is_name)
+		{
+		  if (pt_resolve_dblink_server_name (parser, table) != NO_ERROR)
+		    {
+		      return;
+		    }
+		}
+
+	      table->info.dblink_table.cols =
+		parser_walk_tree (parser, table->info.dblink_table.cols, pt_bind_name_to_spec, spec, NULL, NULL);
+	    }
 	  else
 	    {
 	      table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
@@ -1104,6 +1128,7 @@ pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 PT_NODE *
 pt_set_is_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  bool do_not_replace_orderby = (bool *) arg ? *((bool *) arg) : false;
   if (!node)
     {
       return node;
@@ -1114,6 +1139,11 @@ pt_set_is_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       /* Reset query id # */
       node->info.query.id = (UINTPTR) node;
       node->info.query.is_view_spec = 1;
+
+      if (do_not_replace_orderby)
+	{
+	  node->flag.do_not_replace_orderby = 1;
+	}
     }
 
   return node;
@@ -4447,6 +4477,38 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
   return sorted_attrs[0];
 }
 
+static PT_NODE *
+pt_dblink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * dblink_column, void *args, int *continue_walk)
+{
+  PT_NODE **attribs = (PT_NODE **) args;
+
+  if (dblink_column->node_type == PT_ATTR_DEF)
+    {
+      PT_NODE *next_attr = dblink_column->info.attr_def.attr_name;
+      next_attr->type_enum = dblink_column->type_enum;
+
+      if (dblink_column->data_type != NULL)
+	{
+	  next_attr->data_type = parser_copy_tree (parser, dblink_column->data_type);
+	}
+      *attribs = parser_append_node (next_attr, *attribs);
+    }
+  return dblink_column;
+}
+
+static PT_NODE *
+pt_get_all_dblink_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * dblink_cols,
+					      const char *dblink_table_alias)
+{
+  PT_NODE *attribs = NULL;
+
+  parser_walk_tree (parser, dblink_cols, pt_dblink_table_gather_attribs, &attribs, NULL, NULL);
+  if (attribs == NULL)
+    assert (false);
+
+  return attribs;
+}
+
 /*
  * pt_get_all_showstmt_attributes_and_types () -
  *   return:  show list attributes list if all OK, NULL otherwise.
@@ -6755,6 +6817,11 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
     default:
       PT_INTERNAL_ERROR (parser, "Invalid statement in hints resolving");
       return ER_FAILED;
+    }
+
+  if (hint == PT_HINT_NONE)
+    {
+      return NO_ERROR;
     }
 
   if (hint & PT_HINT_ORDERED)
@@ -9968,6 +10035,13 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 								 derived_alias->info.name.original);
       break;
 
+    case PT_DERIVED_DBLINK_TABLE:
+      assert (derived_table->node_type == PT_DBLINK_TABLE);
+
+      as_attr_list = pt_get_all_dblink_table_attributes_and_types (parser, derived_table->info.dblink_table.cols,
+								   derived_alias->info.name.original);
+      break;
+
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
       assert (derived_table_type == PT_IS_CSELECT);
@@ -10116,6 +10190,10 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
       // nothing to do? Types already set during pt_json_table_gather_attribs ()
       return;
 
+    case PT_DERIVED_DBLINK_TABLE:
+      // nothing to do? Types already set during pt_dblink_table_gather_attribs ()
+      return;
+
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
       assert (derived_table_type == PT_IS_CSELECT);
@@ -10172,4 +10250,88 @@ pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   node->info.name.resolved = spec->info.spec.range_var->info.name.original;
   node->info.name.meta_class = PT_NORMAL;	// so far, only normals are used.
   return node;
+}
+
+static int
+pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *val[3];
+  DB_VALUE values[3];
+  PT_DBLINK_INFO *dblink_table = &node->info.dblink_table;
+  int i, error;
+
+  assert (dblink_table->conn && dblink_table->conn->node_type == PT_NAME);
+
+  db_make_null (&(values[0]));
+  db_make_null (&(values[1]));
+  db_make_null (&(values[2]));
+  error = get_dblink_info_from_dbserver (parser, node, values);
+  if (error != NO_ERROR)
+    {
+      // TODO: error handling         
+      if (er_errid_if_has_error () != NO_ERROR)
+	{
+	  PT_ERROR (parser, node, (char *) er_msg ());
+	}
+      else if (!pt_has_error (parser))
+	{
+	  if (dblink_table->owner_name)
+	    {
+	      PT_ERRORf3 (parser, node, "Failed to obtain server information for [%s].[%s]. error=%d",
+			  dblink_table->owner_name->info.name.original, dblink_table->conn->info.name.original, error);
+	    }
+	  else
+	    {
+	      PT_ERRORf2 (parser, node, "Failed to obtain server information for [%s]. error=%d",
+			  dblink_table->conn->info.name.original, error);
+	    }
+	}
+
+      pr_clear_value (&(values[0]));
+      pr_clear_value (&(values[1]));
+      pr_clear_value (&(values[2]));
+      return error;
+    }
+
+  for (i = 0; i < 3; i++)
+    {
+      val[i] = parser_new_node (parser, PT_VALUE);
+      if (val[i] == NULL)
+	{
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERROR (parser, node, "allocation error");
+	    }
+
+	  while (--i >= 0)
+	    {
+	      parser_free_node (parser, val[i]);
+	    }
+
+	  return ER_FAILED;
+	}
+
+      val[i]->type_enum = PT_TYPE_CHAR;
+      val[i]->info.value.string_type = ' ';
+    }
+
+  dblink_table->url = val[0];
+  dblink_table->user = val[1];
+  dblink_table->pwd = val[2];
+
+  char *url, *username, *password;
+
+  url = (char *) db_get_string (&(values[0]));
+  username = (char *) db_get_string (&(values[1]));
+  password = (char *) db_get_string (&(values[2]));
+
+  dblink_table->url->info.value.data_value.str = pt_append_nulstring (parser, NULL, url);
+  dblink_table->user->info.value.data_value.str = pt_append_nulstring (parser, NULL, username);
+  dblink_table->pwd->info.value.data_value.str = pt_append_nulstring (parser, NULL, (password ? password : ""));
+
+  pr_clear_value (&(values[0]));
+  pr_clear_value (&(values[1]));
+  pr_clear_value (&(values[2]));
+
+  return NO_ERROR;
 }

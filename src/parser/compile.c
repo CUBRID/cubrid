@@ -790,7 +790,7 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
   /* Temporary disable count optimization. To enable it just restore the condition and also remove deactivation in
    * qexec_evaluate_aggregates_optimize */
-  if (false /* node->node_type == PT_SELECT */ )
+  if (node->node_type == PT_SELECT)
     {
       /* count optimization */
       PT_NODE *list = node->info.query.q.select.list;

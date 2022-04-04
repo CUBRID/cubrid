@@ -427,7 +427,7 @@ struct qfile_list_id
 {
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;	/* data type of each column */
   SORT_LIST *sort_list;		/* sort info of each column */
-  int tuple_cnt;		/* total number of tuples in the file */
+  INT64 tuple_cnt;		/* total number of tuples in the file */
   int page_cnt;			/* total number of pages in the list file */
   VPID first_vpid;		/* first real page identifier */
   VPID last_vpid;		/* last real page identifier */

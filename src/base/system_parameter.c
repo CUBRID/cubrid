@@ -86,6 +86,7 @@
 #include "fault_injection.h"
 #include "tde.h"
 #if defined (SERVER_MODE)
+#include "thread_worker_pool.hpp"	// for cubthread::system_core_count
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 
@@ -681,6 +682,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ENABLE_NEW_LFHASH "new_lfhash"
 #define PRM_NAME_HEAP_INFO_CACHE_LOGGING "heap_info_cache_logging"
 #define PRM_NAME_TDE_DEFAULT_ALGORITHM "tde_default_algorithm"
+#define PRM_NAME_ER_LOG_TDE "er_log_tde"
 
 #define PRM_NAME_GENERAL_RESERVE_01 "general_reserve_01"
 
@@ -691,6 +693,16 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_DDL_AUDIT_LOG "ddl_audit_log"
 #define PRM_NAME_DDL_AUDIT_LOG_SIZE "ddl_audit_log_size"
+
+#define PRM_NAME_SUPPLEMENTAL_LOG "supplemental_log"
+#define PRM_NAME_CDC_LOGGING_DEBUG "cdc_logging_debug"
+
+#define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
+#define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
+
+#define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
+
+#define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -1894,8 +1906,8 @@ bool PRM_OPTIMIZER_ENABLE_MERGE_JOIN = false;
 static bool prm_optimizer_enable_merge_join_default = false;
 static unsigned int prm_optimizer_enable_merge_join_flag = 0;
 
-UINT64 PRM_MAX_HASH_LIST_SCAN_SIZE = 4 * 1024 * 1024;	/* 4 MB */
-static UINT64 prm_max_hash_list_scan_size_default = 4 * 1024 * 1024;	/* 4 MB */
+UINT64 PRM_MAX_HASH_LIST_SCAN_SIZE = 8 * 1024 * 1024;	/* 8 MB */
+static UINT64 prm_max_hash_list_scan_size_default = 8 * 1024 * 1024;	/* 8 MB */
 static UINT64 prm_max_hash_list_scan_size_lower = 0;	/* 0 */
 static UINT64 prm_max_hash_list_scan_size_upper = 128 * 1024 * 1024;	/* 128 MB */
 static unsigned int prm_max_hash_list_scan_size_flag = 0;
@@ -2294,6 +2306,10 @@ int PRM_TDE_DEFAULT_ALGORITHM = TDE_ALGORITHM_AES;
 static int prm_tde_default_algorithm = TDE_ALGORITHM_AES;
 static unsigned int prm_tde_default_algorithm_flag = 0;
 
+int PRM_ER_LOG_TDE = false;
+static int prm_er_log_tde_default = false;
+static unsigned int prm_er_log_tde_flag = 0;
+
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
 static unsigned int prm_java_stored_procedure_flag = 0;
@@ -2343,6 +2359,44 @@ static UINT64 prm_ddl_audit_log_size_default = 10485760ULL;	/* 10M */
 static UINT64 prm_ddl_audit_log_size_lower = 10485760ULL;	/* 10M */
 static UINT64 prm_ddl_audit_log_size_upper = 2147483648ULL;	/* 2G */
 static unsigned int prm_ddl_audit_log_size_flag = 0;
+
+int PRM_SUPPLEMENTAL_LOG = 0;
+static int prm_supplemental_log_default = 0;
+static int prm_supplemental_log_lower = 0;
+static int prm_supplemental_log_upper = 2;
+static unsigned int prm_supplemental_log_flag = 0;
+
+bool PRM_CDC_LOGGING_DEBUG = false;
+static bool prm_cdc_logging_debug_default = false;
+static unsigned int prm_cdc_logging_debug_flag = 0;
+
+int PRM_RECOVERY_PROGRESS_LOGGING_INTERVAL = 0;
+static int prm_recovery_progress_logging_interval_default = 0;
+static int prm_recovery_progress_logging_interval_lower = 0;
+static int prm_recovery_progress_logging_interval_upper = 3600;
+static unsigned int prm_recovery_progress_logging_interval_flag = 0;
+
+UINT64 PRM_FIRST_LOG_PAGEID = 0LL;
+static UINT64 prm_first_log_pageid_default = 0LL;
+static UINT64 prm_first_log_pageid_lower = 0LL;
+static UINT64 prm_first_log_pageid_upper = LOGPAGEID_MAX;
+static unsigned int prm_first_log_pageid_flag = 0;
+
+#if defined (SERVER_MODE)
+static int prm_thread_core_count_default = (int) cubthread::system_core_count ();
+#else
+static int prm_thread_core_count_default = 1;
+#endif
+static int prm_thread_core_count_lower = 1;
+static int prm_thread_core_count_upper = 1024;
+int PRM_THREAD_CORE_COUNT = prm_thread_core_count_default;	// this value will be tuned
+static unsigned int prm_thread_core_count_flag = 0;
+
+int PRM_FLASHBACK_TIMEOUT = 0;
+static int prm_flashback_timeout_default = 300;
+static int prm_flashback_timeout_lower = 0;
+static int prm_flashback_timeout_upper = 3600;
+static unsigned int prm_flashback_timeout_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -4490,7 +4544,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_READ_ONLY_MODE,
    PRM_NAME_READ_ONLY_MODE,
-   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_read_only_mode_flag,
    (void *) &prm_read_only_mode_default,
@@ -5167,7 +5221,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ER_LOG_VACUUM,
    PRM_NAME_ER_LOG_VACUUM,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    &prm_er_log_vacuum_flag,
    (void *) &prm_er_log_vacuum_default,
@@ -5915,6 +5969,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ER_LOG_TDE,
+   PRM_NAME_ER_LOG_TDE,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_er_log_tde_flag,
+   (void *) &prm_er_log_tde_default,
+   (void *) &PRM_ER_LOG_TDE,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),
@@ -6036,7 +6102,78 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ddl_audit_log_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_SUPPLEMENTAL_LOG,
+   PRM_NAME_SUPPLEMENTAL_LOG,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER),
+   PRM_INTEGER,
+   &prm_supplemental_log_flag,
+   (void *) &prm_supplemental_log_default,
+   (void *) &PRM_SUPPLEMENTAL_LOG,
+   (void *) &prm_supplemental_log_upper,
+   (void *) &prm_supplemental_log_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CDC_LOGGING_DEBUG,
+   PRM_NAME_CDC_LOGGING_DEBUG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_cdc_logging_debug_flag,
+   (void *) &prm_cdc_logging_debug_default,
+   (void *) &PRM_CDC_LOGGING_DEBUG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_recovery_progress_logging_interval_flag,
+   (void *) &prm_recovery_progress_logging_interval_default,
+   (void *) &PRM_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   (void *) &prm_recovery_progress_logging_interval_upper,
+   (void *) &prm_recovery_progress_logging_interval_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_FIRST_LOG_PAGEID,	/* Except for QA or TEST purposes, never use it. */
+   PRM_NAME_FIRST_LOG_PAGEID,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BIGINT,
+   &prm_first_log_pageid_flag,
+   (void *) &prm_first_log_pageid_default,
+   (void *) &PRM_FIRST_LOG_PAGEID,
+   (void *) &prm_first_log_pageid_upper,
+   (void *) &prm_first_log_pageid_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_CORE_COUNT,
+   PRM_NAME_THREAD_CORE_COUNT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_thread_core_count_flag,
+   (void *) &prm_thread_core_count_default,
+   (void *) &PRM_THREAD_CORE_COUNT,
+   (void *) &prm_thread_core_count_upper,
+   (void *) &prm_thread_core_count_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_FLASHBACK_TIMEOUT,
+   PRM_NAME_FLASHBACK_TIMEOUT,
+   (PRM_FOR_CLIENT),
+   PRM_INTEGER,
+   &prm_flashback_timeout_flag,
+   (void *) &prm_flashback_timeout_default,
+   (void *) &PRM_FLASHBACK_TIMEOUT,
+   (void *) &prm_flashback_timeout_upper,
+   (void *) &prm_flashback_timeout_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
@@ -10393,6 +10530,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *fault_injection_test_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
+  SYSPRM_PARAM *thread_core_count_prm;
 
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
@@ -10407,6 +10545,7 @@ prm_tune_parameters (void)
   query_cache_size_in_pages_prm = prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES, NULL);
   test_mode_prm = prm_find (PRM_NAME_TEST_MODE, NULL);
   tz_leap_second_support_prm = prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
+  thread_core_count_prm = prm_find (PRM_NAME_THREAD_CORE_COUNT, NULL);
 
   /* disable AOUT list until we fix CBRD-20741 */
   if (pb_aout_ratio_prm != NULL)
@@ -10451,6 +10590,17 @@ prm_tune_parameters (void)
 	  sprintf (newval, "%d", max_clients);
 	  (void) prm_set (max_clients_prm, newval, false);
 	}
+
+#if defined (SERVER_MODE)
+      int safe_core_count = (css_get_max_workers () / 3);
+      int system_cpu_count = cubthread::system_core_count ();
+      int core_upper_limit = MIN (safe_core_count, system_cpu_count);
+      if (PRM_GET_INT (thread_core_count_prm->value) > core_upper_limit)
+	{
+	  sprintf (newval, "%d", core_upper_limit);
+	  (void) prm_set (thread_core_count_prm, newval, false);
+	}
+#endif
     }
 
   /* check Plan Cache and Query Cache parameters */

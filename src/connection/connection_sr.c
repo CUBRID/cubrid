@@ -24,6 +24,10 @@
 
 #include "config.h"
 
+#if defined (WINDOWS)
+#include <io.h>
+#endif
+#include <filesystem>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,6 +62,8 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "connection_globals.h"
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
@@ -288,6 +294,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->client_id = err;
   conn->db_error = 0;
   conn->in_transaction = false;
+  conn->in_flashback = false;
   conn->reset_on_commit = false;
   conn->stop_talk = false;
   conn->ignore_repl_delay = false;
@@ -366,6 +373,7 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
     {
       conn->status = CONN_CLOSED;
       conn->stop_talk = false;
+      conn->in_flashback = false;
       conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
 
       if (conn->version_string)
@@ -1079,7 +1087,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
   int server_port_id;
   int connection_protocol;
 #if !defined(WINDOWS)
-  char *pname;
+  std::string pname;
   int datagram_fd, socket_fd;
 #endif
 
@@ -1157,38 +1165,35 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #else /* WINDOWS */
       /* send the "pathname" for the datagram */
       /* be sure to open the datagram first.  */
+      pname = std::filesystem::temp_directory_path ();
+      pname += "/cubrid_tcp_setup_server" + std::to_string (getpid ());
+      (void) unlink (pname.c_str ());	// make sure file is deleted
 
-      //on newer systems (e.g. fedora 25) the following line of code
-      //produces this warning: the use of `tempnam' is dangerous, better use `mkstemp'
-
-      pname = tempnam (NULL, "cubrid");
-      if (pname)
+      if (!css_tcp_setup_server_datagram (pname.c_str (), &socket_fd))
 	{
-	  if (css_tcp_setup_server_datagram (pname, &socket_fd)
-	      && (css_send_data (conn, rid, pname, strlen (pname) + 1) == NO_ERRORS)
-	      && (css_tcp_listen_server_datagram (socket_fd, &datagram_fd)))
-	    {
-	      (void) unlink (pname);
-	      /* don't use free_and_init on pname since it came from tempnam() */
-	      free (pname);
-	      css_free_conn (conn);
-	      return (css_make_conn (datagram_fd));
-	    }
-	  else
-	    {
-	      /* don't use free_and_init on pname since it came from tempnam() */
-	      free (pname);
-	      er_set_with_oserror (ER_ERROR_SEVERITY,
-				   ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-	      goto fail_end;
-	    }
-	}
-      else
-	{
-	  /* Could not create the temporary file */
+	  (void) unlink (pname.c_str ());
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
 	  goto fail_end;
 	}
+      if (css_send_data (conn, rid, pname.c_str (), pname.length () + 1) != NO_ERRORS)
+	{
+	  (void) unlink (pname.c_str ());
+	  close (socket_fd);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  goto fail_end;
+	}
+      if (!css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
+	{
+	  (void) unlink (pname.c_str ());
+	  close (socket_fd);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  goto fail_end;
+	}
+      // success
+      (void) unlink (pname.c_str ());
+      css_free_conn (conn);
+      close (socket_fd);
+      return (css_make_conn (datagram_fd));
 #endif /* WINDOWS */
     }
 
@@ -1421,7 +1426,14 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
   header.request_id = htonl (rid);
   header.transaction_id = htonl (conn->get_tran_index ());
 
-  if (conn->invalidate_snapshot)
+  /**
+   * FIXME!!
+   * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
+   *
+   * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
+   * But The side effects described in CBRD-24157 occurred.
+   */
+  if (true)			// if (conn->invalidate_snapshot)
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
     }
@@ -1499,7 +1511,7 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
   conn->db_error = (int) ntohl (local_header->db_error);
 
   flags = ntohs (local_header->flags);
-  conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
 
   return rc;
 }
@@ -2158,7 +2170,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
   transaction_id = ntohl (header->transaction_id);
   db_error = (int) ntohl (header->db_error);
   flags = ntohs (header->flags);
-  invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
 
   r = rmutex_lock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);

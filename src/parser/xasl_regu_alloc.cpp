@@ -198,6 +198,8 @@ regu_spec_target_init (access_spec_node &spec, TARGET_TYPE type)
       ACCESS_SPEC_JSON_TABLE_ROOT_NODE (&spec) = NULL;
       ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT (&spec) = 0;
       break;
+    case TARGET_DBLINK:
+      break;
     default:
       // do nothing
       break;

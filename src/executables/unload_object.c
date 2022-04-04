@@ -126,6 +126,7 @@ static const char *prohibited_classes[] = {
   CT_COLLATION_NAME,
   CT_CHARSET_NAME,
   CT_DUAL_NAME,
+  CT_DB_SERVER_NAME,
   /* catalog vclasses */
   CTV_CLASS_NAME,
   CTV_SUPER_CLASS_NAME,
@@ -145,6 +146,7 @@ static const char *prohibited_classes[] = {
   CTV_PARTITION_NAME,
   CTV_DB_COLLATION_NAME,
   CTV_DB_CHARSET_NAME,
+  CTV_DB_SERVER_NAME,
   NULL
 };
 
@@ -594,7 +596,8 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 #endif /* CUBRID_DEBUG */
   for (i = 0; i < class_table->num; i++)
     {
-      if (WS_IS_DELETED (class_table->mops[i]) || class_table->mops[i] == sm_Root_class_mop)
+      if (WS_IS_DELETED (class_table->mops[i]) || class_table->mops[i] == sm_Root_class_mop
+	  || db_is_vclass (class_table->mops[i]))
 	{
 	  continue;
 	}
@@ -1056,6 +1059,7 @@ process_class (int cl_no)
   time_t start = 0;
 #endif
   int total;
+  LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
 
   /*
    * Only process classes that were requested or classes that were
@@ -1276,7 +1280,7 @@ process_class (int cl_no)
   while (nobjects != nfetched)
     {
       if (locator_fetch_all
-	  (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area) == NO_ERROR)
+	  (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {

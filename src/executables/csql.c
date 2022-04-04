@@ -46,6 +46,8 @@
 
 #include "authenticate.h"
 #include "csql.h"
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 #include "system_parameter.h"
 #include "message_catalog.h"
 #include "porting.h"
@@ -1020,7 +1022,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
-	      au_disable ();
+	      au_sysadm_disable ();
 	    }
 	  csql_Database_connected = true;
 
@@ -1609,64 +1611,41 @@ error:
 static void
 csql_print_buffer (void)
 {
-  char *cmd = NULL;
-  char *fname = (char *) NULL;	/* pointer to temp file name */
-  FILE *fp = (FILE *) NULL;	/* pointer to stream */
+  /* create an unique file in tmp folder and open it */
+  auto[filename, fileptr] = filesys::open_temp_file ("csql_");
 
-  /* create a temp file and open it */
-
-  fname = tmpnam ((char *) NULL);
-  if (fname == NULL)
+  if (!fileptr)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return;
     }
-
-  fp = fopen (fname, "w");
-  if (fp == NULL)
-    {
-      csql_Error_code = CSQL_ERR_OS_ERROR;
-      goto error;
-    }
+  filesys::auto_delete_file file_del (filename.c_str ());	//deletes file at scope end
+  filesys::auto_close_file file (fileptr);	//closes file at scope end (before the above file deleter); forget about fp from now on
 
   /* write the content of editor to the temp file */
-  if (csql_edit_write_file (fp) == CSQL_FAILURE)
+  if (csql_edit_write_file (file.get ()) == CSQL_FAILURE)
     {
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return;
     }
-
-  fclose (fp);
-  fp = (FILE *) NULL;
+  fflush (file.get ());
 
   /* invoke the print command */
-  cmd = csql_get_tmp_buf (1 + strlen (csql_Print_cmd) + 3 + strlen (fname));
+  char *cmd = csql_get_tmp_buf (1 + strlen (csql_Print_cmd) + 3 + filename.size ());
   if (cmd == NULL)
     {
-      goto error;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return;
     }
   /*
    * Parenthesize the print command and supply its input through stdin,
    * just in case it's a pipe or something odd.
    */
-  sprintf (cmd, "(%s) <%s", csql_Print_cmd, fname);
+  sprintf (cmd, "(%s) <%s", csql_Print_cmd, filename.c_str ());
   csql_invoke_system (cmd);
 
-  unlink (fname);
-
   csql_display_msg (csql_get_message (CSQL_STAT_EDITOR_PRINTED_TEXT));
-
-  return;
-
-error:
-  if (fp != NULL)
-    {
-      fclose (fp);
-    }
-  if (fname != NULL)
-    {
-      unlink (fname);
-    }
-  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
 }
 
 /*
@@ -1765,6 +1744,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   er_clear ();
   db_set_interrupt (0);
 
+  if (csql_Is_interactive)
+    {
+      csql_yyset_lineno (1);
+    }
+
   if (type == FILE_INPUT)
     {				/* FILE * input */
       if (!(session = db_open_file ((FILE *) stream)))
@@ -1842,7 +1826,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   /* execute the statements one-by-one */
   for (num_stmts = 0; num_stmts < total; num_stmts++)
     {
-      TSC_TICKS start_tick, end_tick;
+      TSC_TICKS start_tick, end_tick, start_commit_tick, end_commit_tick;
       TSCTIMEVAL elapsed_time;
 
       int stmt_id;
@@ -2077,6 +2061,10 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (csql_is_auto_commit_requested (csql_arg) && stmt_type != CUBRID_STMT_COMMIT_WORK
 	  && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	{
+	  if (csql_Is_time_on)
+	    {
+	      tsc_getticks (&start_commit_tick);
+	    }
 	  db_error = db_commit_transaction ();
 	  if (db_error < 0)
 	    {
@@ -2109,6 +2097,14 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  else
 	    {
 	      strncat (stmt_msg, csql_get_message (CSQL_STAT_COMMITTED_TEXT), LINE_BUFFER_SIZE - 1);
+	      if (csql_Is_time_on)
+		{
+		  char time[100];
+		  tsc_getticks (&end_commit_tick);
+		  tsc_elapsed_time_usec (&elapsed_time, end_commit_tick, start_commit_tick);
+		  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
+		  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);
+		}
 	    }
 	}
 
@@ -2887,7 +2883,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_disable ();
+      au_sysadm_disable ();
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */

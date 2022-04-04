@@ -904,7 +904,7 @@ $ LOADDB
 834 Există disconcordanţe între şirul de caractere sursă "%1$s" şi şirul de formatare "%2$s" date în to_number().
 835 Element de statistică necunoscut.
 836 Latch-ul pe pagina(%1$d|%2$d) a expirat.
-837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale etc) nu poate fi şters.
+837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale/server etc) nu poate fi şters.
 838 Nu se pot deschide simultan mai mult de %1$d indecşi.
 839 "%1$s": Parametru de sistem necunoscut sau valoare invalidă.
 840 Parametrul de sistem "%1$s" nu poate fi schimbat.
@@ -1052,7 +1052,7 @@ $ LOADDB
 982 Comandă de întrerupere trimisă către tranzacţia %1$d.
 983 Instanţele unei clase OID reutilizabile nu pot fi referenţiate. Această operaţie nu este permisă pentru instanţe nereferenţiabile.
 984 Nu se poate seta %3$s la "%6$s" în secţiunea "[%5$s]" când este setat la "%4$s" în secţiunea "[%2$s]" a fişierului de configurare "%1$s".
-985 Numele de gazdă din stringul de conexiune la baza de date trebuie specificat atunci când opţiunea de gazde multiple este setată în "databases.txt".
+985 Numele de gazdă din stringul de conexiune la baza de date trebuie specificat atunci când opţiunea de gazde multiple este setată în "databases.txt". ex) csql demodb@localhost
 986 Modulul CUBRID Heartbeat a pornit.
 987 Modulul CUBRID Heartbeat a fost oprit.
 988 Eveniment la nod: %1$s.
@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Crearea unui fişier de chei de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
 1126 Crearea unei pagini noi de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
 1127 Ştergerea unei pagini goale de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
-1128 Restaurarea logului a început. Numărul de înregistrări din log ce trebuie aplicate: %1$lld. Pagina de log: %2$lld ~ %3$lld.
+1128 Restaurarea logului a început.
 1129 Restaurarea logului s-a finalizat.
 1130 Tranzacţia a fost abandonată deoarece numărul de lock-uri asociate tranzacţiei depăşeşte %1$d.
 1131 Eroare internă: Pagina %1$d din volumul "%2$s" ar putea fi coruptă.\n%3$s
@@ -1329,7 +1329,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1258 Nu se poate găsi setul de chei în baza de date de la%1$s. Fișierul cheie din volumul de rezervă va fi utilizat.
 1259 Redenumiți fișierul cheie din „%1$s” în „%2$s”.
 1260 Copiați fișierul cheie „%1$s” în „%2$s”.
-1261 Nu se poate găsi cheia în momentul restaurării (index cheie: %1$d, timp creat: %2$s). Setați cheia (index cheie: %3$d) pentru baza de date.
+1261 Prima cheie (indexul cheii: %1$d, ora creată: %2$s) din fișierul cheie restaurat a fost setată.
 1262 Fișierul cheie este plin.
 1263 Nu criptează TDE pagina jurnalului (pageid: %1$lld). Nu va mai fi încercat să criptați această pagină.
 1264 Error reserved for scalability development.
@@ -1352,8 +1352,70 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 Nu se poate tăia tabelul din cauza cheii principale menționate în %1$s. Încercați din nou cu opțiunea CASCADE.
+1285 Nu se poate trunchia în cascadă deoarece acțiunea ON DELETE a cheii externe (%1$s) nu este setată la CASCADE.
 
-1284 Ultima eroare
+1286 Nu se poate găsi jurnalul lsa la momentul extragerii. (timp de introducere: %1$s).
+1287 Timpul expirat încercarea de a extrage informațiile de jurnal. (timp scurs: %1$d sec, expirare extragere: %2$d sec)
+1288 Omiteți producerea informațiilor de jurnal pentru înregistrarea de jurnal neacceptată intern.
+1289 Omiteți producerea informațiilor de jurnal pentru tranzacție nevalidă. (trid: %1$d)
+1290 Lsa de jurnal nevalid (%1$lld|%2$d) pentru a extrage informațiile de jurnal.
+1291 Nu se poate conecta la server pentru extragerea informațiilor de jurnal. Încercați din nou cu setarea parametrului „supplemental_log”.
+1292 Nu se poate găsi jurnalul lsa la momentul respectiv (%1$s). Lsa jurnal este ajustată la timp (%2$s).
+1293 Nu se poate obține pagina de jurnal în timp ce se produc informații de jurnal. Log lsa pentru a genera informații de jurnal indică NULL.
+1294 Informațiile de jurnal au fost generate. (tip: „%1$s”).
+1295 Omiteți producerea informațiilor de jurnal pentru un tabel nevalid. (class OID : %1$d|%2$d|%3$d)
+
+1296 Recuperarea logului: Faza de analiză este pornită.
+1297 Recuperarea jurnalului: Faza redo este pornită. Jurnal Pagini la Redo: %1$lld, înregistrări jurnal la redo: %2$lld.
+1298 Recuperarea jurnalului: Faza de anulare este pornită. Jurnal Pagini pentru a anula: %1$lld, tranzacții pentru a anula: %2$d.
+1299 Recuperarea jurnalului: %1$S este terminat.
+1300 Recuperarea jurnalului: %1$S este terminată.
+1301 Recuperare jurnal: %1$s progres: (%2$lld/%3$lld), %4$.2f procent, timp scurs: %5$.2f (s), timp rămas estimat: %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 Error reserved for dblink development.
+
+1332 Volumul de jurnal activ (%1$s) este prea corect pentru a fi recreat. Dacă eliminați jurnalul activ, ar putea cauza o problemă neașteptată și ireversibilă.
+
+1333 Timp nevalid (%1$s) pentru a începe flashback. Este necesar să fie setat timpul între (%2$s) și (%3$s).
+1334 Nu se poate găsi clasa de flashback (%1$s).
+1335 Prea multe tranzacții pentru flashback. Mai puțin de %1$d tranzacții pot fi flashback.
+1336 Nu se poate suporta flashback pentru această clasă (nume : %1$s , OID : %2$d|%3$d|%4$d). Schema de clasă a fost modificată.
+1337 Înregistrarea jurnalului nu există (lsa : %1$lld|%2$d). Volumul jurnalului de arhivă a fost șters.
+1338 Flashback rulează deja. Flashback nu poate fi rulat de mai mult de un utilizator în același timp.
+
+1339 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1511,6 +1573,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Lungimea maximă a comentariilor este %1$d bytes.
 128 Număr invalid de argumente pentru JSON_OBJECTAGG
 129 Valoarea argumentului PARALLEL trebuie sa fie între %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
@@ -1818,6 +1881,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 %1$d număr invalid de argumente.
 304 Nu s-a găsit semnătură compatibilă pentru funcția %1$s()
 305 Semnătura %1$s nu este compatibilă cu argumentele funcției.
+306 dblink - Informațiile necesare lipsesc.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

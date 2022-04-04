@@ -49,6 +49,8 @@
 #include "parse_tree.h"
 #include "load_common.hpp"
 #include "timezone_lib_common.h"
+#include "dynamic_array.h"
+#include "flashback_cl.h"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -119,12 +121,14 @@ extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_destroy (const HFID * hfid);
 #endif
-extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid);
+extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const bool force = false);
 extern int heap_reclaim_addresses (const HFID * hfid);
 extern int file_apply_tde_to_class_files (const OID * class_oid);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern int tde_get_data_keys ();
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+extern int dblink_get_cipher_master_key ();
+extern int tde_is_loaded (int *is_loaded);
 extern int tde_get_mk_file_path (char *mk_path);
 extern int tde_get_mk_info (int *mk_index, time_t * created_time, time_t * set_time);
 extern int tde_change_mk_on_server (int mk_index);
@@ -290,6 +294,7 @@ extern int repl_set_info (REPL_INFO * repl_info);
 
 extern int logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr);
 
+extern int log_supplement_statement (int ddl_type, int objtype, OID * classoid, OID * objoid, const char *stmt_text);
 
 extern bool histo_is_supported (void);
 extern int histo_start (bool for_all_trans);
@@ -439,4 +444,12 @@ extern int loaddb_fetch_status (load_status & status);
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
 extern int loaddb_update_stats ();
+
+extern int flashback_get_and_show_summary (dynamic_array * class_list, const char *user, time_t start_time,
+					   time_t end_time, FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list,
+					   char **invalid_class, time_t * invalid_time);
+extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa,
+				  LOG_LSA * end_lsa, int *num_item, bool forward, char **info_list,
+				  int *invalid_class_idx);
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */

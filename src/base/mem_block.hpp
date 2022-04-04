@@ -306,8 +306,7 @@ namespace cubmem
   extensible_block::extensible_block (extensible_block &&b)
     : extensible_block { *b.m_allocator }
   {
-    b.m_block.dim = 0;
-    b.m_block.ptr = NULL;
+    m_block = std::move (b.m_block);
   }
 
   extensible_block::extensible_block (const block_allocator &alloc)
@@ -411,6 +410,8 @@ namespace cubmem
     if (m_use_stack)
       {
 	m_ext_block.extend_to (m_stack.SIZE + additional_bytes);
+	// copy data from m_stack to m_ext_block at first extension
+	memcpy (m_ext_block.get_ptr (), m_stack.get_ptr (), m_stack.SIZE);
       }
     else
       {
@@ -428,7 +429,12 @@ namespace cubmem
 	return;
       }
     m_ext_block.extend_to (total_bytes);
-    m_use_stack = false;
+    if (m_use_stack)
+      {
+	// copy data from m_stack to m_ext_block at first extension
+	memcpy (m_ext_block.get_ptr (), m_stack.get_ptr (), m_stack.SIZE);
+	m_use_stack = false;
+      }
   }
 
   template <size_t S>

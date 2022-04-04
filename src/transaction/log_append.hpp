@@ -34,6 +34,7 @@
 #include "object_representation_constants.h"
 #include "recovery.h"
 #include "storage_common.h"
+#include "log_compress.h"
 
 #include <atomic>
 #include <mutex>
@@ -160,9 +161,14 @@ int prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex);
 bool prior_is_tde_encrypted (const log_prior_node *node);
 void log_append_init_zip ();
 void log_append_final_zip ();
+extern LOG_ZIP *log_append_get_zip_undo (THREAD_ENTRY *thread_p);
+extern LOG_ZIP *log_append_get_zip_redo (THREAD_ENTRY *thread_p);
 
 // todo - move to header of log page buffer
 size_t logpb_get_memsize ();
+
+extern bool log_Zip_support;
+extern int log_Zip_min_size_to_compress;
 
 //////////////////////////////////////////////////////////////////////////
 //

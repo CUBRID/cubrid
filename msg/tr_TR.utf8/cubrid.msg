@@ -904,7 +904,7 @@ $ LOADDB
 834 Kaynak dizesi arasında bazı uyumsuzluklar "%1$s" ve verilen "%2$s" biçim dizesi vardır to_number() .
 835 Tanımlanmamış istatistikler öğesi.
 836 SAYFASINDA LATCH (%1$d|%2$d) ZAMAN AŞIMI.
-837 Veritabanı nesneleri (sınıf / tetik / seri vs) sahibi olan kullanıcılara aittir iptal edemezsiniz.. 
+837 Veritabanı nesneleri (sınıf / tetik / seri / sunucu vb) sahibi olan kullanıcılara aittir iptal edemezsiniz..
 838 Eşzamanlı olarak taranan indeksi %1$d den daha fazla açılamaz .
 839 "%1$s": Bilinmeyen sistem parametresi veya bozuk bir değer.
 840 Sistem parametresi değiştiremezsiniz "%1$s".
@@ -1052,7 +1052,7 @@ $ LOADDB
 982 İşlem %1$d ile kesme ayarlayın.
 983 Yeniden kullanılabilir bir OID sınıfının örnekleri olmayan başvurulabilir . Bu işleme olmayan başvurulabilir örnekler üzerinde izin verilmez.
 984 Bu yapılandırma dosyası "%1$s" "[%2$s]" bölümünde "%4$s" ayarlanır "[%5$s]" bölümde "%6$s"'ye %3$s ayarlayamazsınız.
-985 Multi ana bilgisayar "databases.txt" olarak ayarlandığında veritabanı bağlantısının dizesinde ana bilgisayar adı belirtilmelidir.
+985 Multi ana bilgisayar "databases.txt" olarak ayarlandığında veritabanı bağlantısının dizesinde ana bilgisayar adı belirtilmelidir. ex) csql demodb@localhost
 986 CUBRID sinyal özelliği başladı.
 987 CUBRID sinyal özelliği durdu.
 988 Düğüm olayı: %1$s.
@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Taşma anahtar dosyası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Yeni bir taşma sayfası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Boş bir taşma sayfayı sil. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Oturum kurtarma başlatılır. Uygulanacak günlük kayıt sayısı: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 Oturum kurtarma başlatılır.
 1129 Oturum kurtarma bitti.
 1130 İşlem kilit sayıları %1$d aştığı için işlem iptal edilir.
 1131 Dahili hata: Sayfa %1$d hacmi "%2$s"de bozulabilir.\n%3$s
@@ -1329,7 +1329,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1258 %1$s veritabanında anahtar kümesi bulunamıyor. Yedekleme birimindeki anahtar dosya kullanılacaktır.
 1259 "%1$s" anahtar dosyasını "%2$s" olarak yeniden adlandırın.
 1260 "%1$s" anahtar dosyasını "%2$s" klasörüne kopyalayın.
-1261 Geri yükleme sırasında anahtar bulunamıyor (anahtar dizini: %1$d, oluşturma zamanı: %2$s). Veritabanı için anahtarı (anahtar dizini: %3$d) ayarlayın.
+1261 Geri yüklenen yedek anahtar dosyasındaki ilk anahtar (anahtar dizini: %1$d, oluşturma zamanı: %2$s) ayarlandı.
 1262 Anahtar dosyası dolu.
 1263 Günlük sayfasını TDE şifreleyemiyor (pageid: %1$lld). Artık bu sayfayı şifrelemeye çalışılmayacak.
 1264 Error reserved for scalability development.
@@ -1352,8 +1352,70 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
+1284 %1$s üzerinde başvurulan birincil anahtar nedeniyle tablo kesilemiyor. CASCADE seçeneği ile tekrar deneyiniz.
+1285 Yabancı anahtarın ON DELETE eylemi (%1$s) CASCADE olarak ayarlanmadığından kademeli kesilemiyor.
 
-1284 Son Hata
+1286 Ayıklanacak zamanda log lsa bulunamıyor. (giriş zamanı: %1$s).
+1287 Günlük bilgisi çıkarılmaya çalışılırken zaman aşımına uğradı. (geçen süre: %1$d saniye, çıkarma zaman aşımı: %2$d saniye)
+1288 Dahili olarak desteklenmeyen günlük kaydı için günlük bilgisi oluşturmayı atlayın.
+1289 Geçersiz işlem için günlük bilgisi oluşturmayı atlayın. (üçlü : %1$d)
+1290 Günlük bilgilerini çıkarmak için geçersiz günlük lsa (%1$lld|%2$d).
+1291 Günlük bilgilerini çıkarmak için sunucuya bağlanılamıyor. 'supplemental_log' parametresini ayarlayarak tekrar deneyin.
+1292 O zaman (%1$s) günlük lsa bulunamıyor. Günlük lsa, zamana (%2$s) göre ayarlanır.
+1293 Günlük bilgileri üretilirken günlük sayfası alınamıyor. Günlük bilgisi oluşturmak için log lsa, NULL'u gösterir.
+1294 Günlük bilgisi oluşturuldu. (yazın: "%1$s").
+1295 Geçersiz tablo için günlük bilgisi oluşturmayı atlayın. (sınıf OID : %1$d|%2$d|%3$d)
+
+1296 Günlük kurtarma: ANALİZ Aşaması başlatıldı.
+1297 Günlük kurtarma: REDO Aşaması başlatıldı. Yeniden yapılacak günlük sayfaları: %1$lld, Yeniden yapılacak günlük kayıtları: %2$lld.
+1298 Günlük kurtarma: GERİ AL Aşaması başlatıldı. Geri alınacak günlük sayfaları: %1$lld, geri alınacak işlemler: %2$d.
+1299 Günlük kurtarma: %1$s Aşama tamamlanıyor.
+1300 Günlük kurtarma: %1$s Aşama tamamlandı.
+1301 Günlük kurtarma: %1$s ilerleme: (%2$lld/%3$lld), %4$.2f, geçen süre: %5$.2f (s), tahmini kalan süre: %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - unsupported type.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 Not supported data type.
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 Error reserved for dblink development.
+
+1332 Etkin günlük hacmi (%1$s) yeniden oluşturulamayacak kadar makul. Etkin günlüğü kaldırırsanız, beklenmeyen ve geri dönüşü olmayan bir soruna neden olabilir.
+
+1333 Geri dönüşü başlatmak için geçersiz süre (%1$s). Zamanın (%2$s) ile (%3$s) arasında ayarlanması gerekir.
+1334 Geri dönüş yapılacak sınıf bulunamadı (%1$s).
+1335 Geri dönüş için çok fazla işlem var. %1$d'den az işlem flashback olabilir.
+1336 Bu sınıf için geri dönüş desteklenemez (ad : %1$s , OID : %2$d|%3$d|%4$d). Sınıf şeması değiştirildi.
+1337 Günlük kaydı mevcut değil (lsa : %1$lld|%2$d). Arşiv günlüğü birimi silindi.
+1338 Flashback zaten çalışıyor. Flashback, aynı anda birden fazla kullanıcı tarafından çalıştırılamaz.
+
+1339 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1487,10 +1549,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 103 Dizin ipuçlarının geçersiz kullanımı
 104 Bit dizgesinin uzunluğu en fazla %1$d bittir.
 105 Sözdizim hatası: unexpected
-106 , bekliyor '{'
-107 , bekliyor SELECT veya '('
-108 , bekliyor
-109 beklenmedik
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
 110 IFADESININ SONUNA
 111 Çizgide %1$d, sütununda %2$d önce '%3$c%4$s'\n
 112 Çizgide %1$d, sütununda %2$d önce %3$s\n
@@ -1511,6 +1573,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Bir yorumun maksimum uzunluğu %1$d byte.
 128 JSON_OBJECTAGG için bağımsız değişken sayısı geçersiz
 129 PARALLEL count argümanı %1$d ve %2$d arasında olmalıdır.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
@@ -1818,6 +1881,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Beklenmeyen argüman sayısı %1$d.
 304 %1$s() fonksiyonu için uyumlu bir imza bulunamadı
 305 İmza %1$s, argümanları ile uyumlu değildir.
+306 dblink - Gerekli bilgiler eksik.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

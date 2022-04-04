@@ -58,7 +58,10 @@
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
 #include "tde.h"
+#include "lockfree_circular_queue.hpp"
 
+#include <unordered_set>
+#include <queue>
 #include <assert.h>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
@@ -274,6 +277,69 @@ extern int db_Disable_modifications;
 
 #define MAX_NUM_EXEC_QUERY_HISTORY                      100
 
+/*CDC defines*/
+
+#define CDC_GET_TEMP_LOGPAGE(thread_p, process_lsa, log_page_p) \
+  do \
+    { \
+      if (cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p->hdr.logical_pageid \
+          != (process_lsa)->pageid) \
+      { \
+        if (logpb_fetch_page ((thread_p), (process_lsa), LOG_CS_FORCE_USE, (log_page_p)) \
+            != NO_ERROR) \
+        { \
+          goto error; \
+        } \
+         memcpy (cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p, (log_page_p), IO_MAX_PAGE_SIZE); \
+      } \
+      else \
+      { \
+        (log_page_p) = cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p ;\
+      } \
+    } \
+  while (0)
+
+#define CDC_CHECK_TEMP_LOGPAGE(process_lsa, tmpbuf_index, log_page_p) \
+  do \
+    { \
+      if (((process_lsa)->pageid % 2) != *(tmpbuf_index)) \
+      { \
+	  *(tmpbuf_index) = (*(tmpbuf_index) + 1) % 2; \
+	  memcpy (cdc_Gl.producer.temp_logbuf[*(tmpbuf_index)].log_page_p, (log_page_p), IO_MAX_PAGE_SIZE); \
+      } \
+    } \
+  while (0)
+
+#define CDC_UPDATE_TEMP_LOGPAGE(thread_p, process_lsa, log_page_p) \
+  do \
+    { \
+      if (cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p->hdr.logical_pageid \
+          == (process_lsa)->pageid) \
+      { \
+        if (logpb_fetch_page ((thread_p), (process_lsa), LOG_CS_FORCE_USE, (log_page_p)) \
+            != NO_ERROR) \
+        { \
+          goto error; \
+        } \
+         memcpy (cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p, (log_page_p), IO_MAX_PAGE_SIZE); \
+      } \
+    } \
+  while (0)
+
+#define CDC_MAKE_SUPPLEMENT_DATA(supplement_data, recdes) \
+  do \
+    { \
+      memcpy ((supplement_data), &(recdes).type, sizeof ((recdes).type)); \
+      memcpy ((supplement_data) + sizeof((recdes).type), (recdes).data, (recdes).length); \
+    } \
+  while (0)
+
+#define cdc_log(...) if (cdc_Logging) _er_log_debug (ARG_FILE_LINE, "CDC: " __VA_ARGS__)
+
+#define MAX_CDC_LOGINFO_QUEUE_ENTRY  2048
+#define MAX_CDC_LOGINFO_QUEUE_SIZE   32 * 1024 * 1024	/*32 MB */
+#define MAX_CDC_TRAN_USER_TABLE       4000
+
 enum log_flush
 { LOG_DONT_NEED_FLUSH, LOG_NEED_FLUSH };
 typedef enum log_flush LOG_FLUSH;
@@ -334,15 +400,6 @@ struct log_topops_addresses
 				 * since it is reset during recovery to the last reference postpone address. */
 };
 
-enum log_topops_type
-{
-  LOG_TOPOPS_NORMAL,
-  LOG_TOPOPS_COMPENSATE_TRAN_ABORT,
-  LOG_TOPOPS_COMPENSATE_SYSOP_ABORT,
-  LOG_TOPOPS_POSTPONE
-};
-typedef enum log_topops_type LOG_TOPOPS_TYPE;
-
 typedef struct log_topops_stack LOG_TOPOPS_STACK;
 struct log_topops_stack
 {
@@ -362,9 +419,9 @@ typedef enum tran_abort_reason TRAN_ABORT_REASON;
 typedef struct log_unique_stats LOG_UNIQUE_STATS;
 struct log_unique_stats
 {
-  int num_nulls;		/* number of nulls */
-  int num_keys;			/* number of keys */
-  int num_oids;			/* number of oids */
+  long long num_nulls;		/* number of nulls */
+  long long num_keys;		/* number of keys */
+  long long num_oids;		/* number of oids */
 };
 
 typedef struct log_tran_btid_unique_stats LOG_TRAN_BTID_UNIQUE_STATS;
@@ -478,6 +535,8 @@ struct log_tdes
   LOG_LSA savept_lsa;		/* Address of last savepoint */
   LOG_LSA topop_lsa;		/* Address of last top operation */
   LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
+  LOG_LSA commit_abort_lsa;	/* Address of the commit/abort operation. Used by checkpoint to decide whether to
+				 * consider or not a transaction as concluded. */
   int client_id;		/* unique client id */
   int gtrid;			/* Global transaction identifier; used only if this transaction is a participant to a
 				 * global transaction and it is prepared to commit. */
@@ -541,6 +600,8 @@ struct log_tdes
   LOG_RCV_TDES rcv;
 
   log_postpone_cache m_log_postpone_cache;
+
+  bool has_supplemental_log;	/* Checks if supplemental log has been appended within the transaction */
 
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
@@ -759,6 +820,143 @@ typedef struct log_logging_stat
   unsigned long async_commit_request_count;
 } LOG_LOGGING_STAT;
 
+/* For CDC interface */
+
+typedef enum cdc_producer_state
+{
+  CDC_PRODUCER_STATE_WAIT,
+  CDC_PRODUCER_STATE_RUN,
+  CDC_PRODUCER_STATE_DEAD
+} CDC_PRODUCER_STATE;
+
+typedef enum cdc_consumer_request
+{
+  CDC_REQUEST_CONSUMER_TO_WAIT,
+  CDC_REQUEST_CONSUMER_TO_RUN,
+  CDC_REQUEST_CONSUMER_NONE
+} CDC_CONSUMER_REQUEST;
+
+typedef enum cdc_producer_request
+{
+  CDC_REQUEST_PRODUCER_TO_WAIT,
+  CDC_REQUEST_PRODUCER_TO_BE_DEAD,
+  CDC_REQUEST_PRODUCER_NONE
+} CDC_PRODUCER_REQUEST;
+
+typedef struct cdc_loginfo_entry
+{
+  LOG_LSA next_lsa;
+  int length;
+  char *log_info;
+} CDC_LOGINFO_ENTRY;
+
+typedef struct cdc_temp_logbuf
+{
+  LOG_PAGE *log_page_p;
+  char log_page[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+} CDC_TEMP_LOGBUF;
+
+typedef struct cdc_producer
+{
+  LOG_LSA next_extraction_lsa;
+
+  /* configuration */
+  int all_in_cond;
+
+  int num_extraction_user;
+  char **extraction_user;
+
+  int num_extraction_class;
+  UINT64 *extraction_classoids;
+
+  volatile CDC_PRODUCER_STATE state;
+  volatile CDC_PRODUCER_REQUEST request;
+
+  int produced_queue_size;
+
+  pthread_mutex_t lock;
+  pthread_cond_t wait_cond;
+
+  CDC_TEMP_LOGBUF temp_logbuf[2];
+
+/* *INDENT-OFF* */
+  std::unordered_map <TRANID, char *> tran_user; /*to clear when log producer ends suddenly */
+  std::unordered_map<TRANID, int > tran_ignore;
+  /* *INDENT-ON* */
+} CDC_PRODUCER;
+
+typedef struct cdc_consumer
+{
+  int extraction_timeout;
+  int max_log_item;
+
+  char *log_info;		/* log info list. it is used as buffer to send to client */
+  int log_info_size;		/* total length of data in log_info */
+  int log_info_buf_size;	/* size of buffer for log_info */
+  int num_log_info;		/* how many log info is stored in log_infos (log info list) */
+
+  int consumed_queue_size;
+
+  volatile CDC_CONSUMER_REQUEST request;
+
+  LOG_LSA start_lsa;		/* first LSA of log info that should be sent */
+  LOG_LSA next_lsa;		/* next LSA to be sent to client */
+
+} CDC_CONSUMER;
+
+typedef struct cdc_global
+{
+  css_conn_entry conn;
+
+  CDC_PRODUCER producer;
+  CDC_CONSUMER consumer;
+
+  /* *INDENT-OFF* */
+  lockfree::circular_queue<CDC_LOGINFO_ENTRY *> *loginfo_queue;
+  /* *INDENT-ON* */
+
+  LOG_LSA first_loginfo_queue_lsa;
+  LOG_LSA last_loginfo_queue_lsa;
+
+  bool is_queue_reinitialized;
+
+} CDC_GLOBAL;
+
+/* will be moved to new file for CDC */
+typedef struct ovf_page_list
+{
+  char *rec_type;
+  char *data;
+  int length;
+  struct ovf_page_list *next;
+} OVF_PAGE_LIST;
+
+typedef enum cdc_dataitem_type
+{
+  CDC_DDL = 0,
+  CDC_DML,
+  CDC_DCL,
+  CDC_TIMER
+} CDC_DATAITEM_TYPE;
+
+typedef enum cdc_dcl_type
+{
+  CDC_COMMIT = 0,
+  CDC_ABORT
+} CDC_DCL_TYPE;
+
+typedef enum cdc_dml_type
+{
+  CDC_INSERT = 0,
+  CDC_UPDATE,
+  CDC_DELETE,
+  CDC_TRIGGER_INSERT,
+  CDC_TRIGGER_UPDATE,
+  CDC_TRIGGER_DELETE
+} CDC_DML_TYPE;
+
+/*Data structure for CDC interface end */
+
 // todo - move to manager
 enum log_cs_access_mode
 { LOG_CS_FORCE_USE, LOG_CS_SAFE_READER };
@@ -787,6 +985,10 @@ extern char log_Name_bkupinfo[];
 extern char log_Name_volinfo[];
 extern char log_Name_bg_archive[];
 extern char log_Name_removed_archive[];
+
+/*CDC global variables */
+extern CDC_GLOBAL cdc_Gl;
+extern bool cdc_Logging;
 
 /* logging */
 #if defined (SA_MODE)
@@ -821,6 +1023,9 @@ extern int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid
 extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages,
 					    bool decrypt_needed, LOG_PAGE * log_pgptr);
 extern int logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAGEID logical_pageid);
+extern int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
+					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
+					       LOG_PAGE * log_pgptr);
 extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log_header,
 					      const char *db_fullname, const char *logpath,
 					      const char *prefix_logname, PGLENGTH * io_page_size,
@@ -982,7 +1187,8 @@ extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_largest_lsa (THREAD_ENTRY * thread_p);
 #endif
 extern int logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p);
-extern void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
+extern void logtb_rv_read_only_map_undo_tdes (THREAD_ENTRY * thread_p,
+					      const std::function < void (const log_tdes &) > map_func);
 extern void logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern void logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p, LOG_PAGEID * smallest,
 							  LOG_PAGEID * largest);
@@ -1014,8 +1220,8 @@ extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool 
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 extern LOG_TRAN_CLASS_COS *logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid, bool create);
-extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
-					   int n_nulls, bool write_to_log);
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys,
+					   long long n_oids, long long n_nulls, bool write_to_log);
 
 // *INDENT-OFF*
 extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const btree_unique_stats &ustats,
@@ -1024,8 +1230,8 @@ extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const multi_
                                            bool write_to_log);
 // *INDENT-ON*
 
-extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
-						int n_nulls);
+extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys,
+						long long n_oids, long long n_nulls);
 extern LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool create);
 extern int logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p, const char **classes,
 						   LC_PREFETCH_FLAGS * flags, int n_classes);
@@ -1034,12 +1240,12 @@ extern int logtb_find_log_records_count (int tran_index);
 
 extern int logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p);
 extern void logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p);
-extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oids, int *num_nulls,
-					  int *num_keys);
-extern int logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, int num_oids,
-						       int num_nulls, int num_keys);
-extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, int oid_delta,
-						      int null_delta, int key_delta, bool log);
+extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, long long *num_oids,
+					  long long *num_nulls, long long *num_keys);
+extern int logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, long long num_oids,
+						       long long num_nulls, long long num_keys);
+extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, long long oid_delta,
+						      long long null_delta, long long key_delta, bool log);
 extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid);
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p);
 extern int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
@@ -1086,6 +1292,7 @@ extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
+extern int logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
