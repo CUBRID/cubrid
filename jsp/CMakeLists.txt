@@ -25,7 +25,7 @@ endif(NOT ANT)
 
 add_custom_target(jsp_build ALL)
 
-if (EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
+if (TARGET jdbc_build)
   set(JDBC_VERSION_FILE ${JDBC_DIR}/output/VERSION-DIST)
   file(STRINGS ${JDBC_VERSION_FILE} JDBC_VERSION_STR)
 
@@ -36,7 +36,7 @@ if (EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
     COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIST} ${CMAKE_BINARY_DIR}/jsp/lib/cubrid-jdbc-${JDBC_VERSION_STR}.jar
     MAIN_DEPENDENCY ${JDBC_DIST}
   )
-endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
+endif(TARGET jdbc_build)
 
 # download ivy
 message("Download ivy ...")
