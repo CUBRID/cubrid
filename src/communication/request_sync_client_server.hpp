@@ -68,8 +68,9 @@ namespace cubcomm
       request_sync_client_server &operator = (const request_sync_client_server &) = delete;
       request_sync_client_server &operator = (request_sync_client_server &&) = delete;
 
-    public:
       void start ();
+      void stop_incoming_communication_thread ();
+      void stop_outgoing_communication_thread ();
 
       /* only used by unit tests
        */
@@ -95,6 +96,8 @@ namespace cubcomm
 
       const T_OUTGOING_MSG_ID m_outgoing_response_msgid;
       const T_INCOMING_MSG_ID m_incoming_response_msgid;
+
+      // TODO: sequence number generator and response broker are not needed on transaction server
       response_sequence_number_generator m_rsn_generator;
       response_broker<T_PAYLOAD, css_error_code> m_response_broker;
   };
@@ -166,13 +169,46 @@ namespace cubcomm
   void
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::start ()
   {
-    m_conn->start_thread ();
+    // first start sending thread, such that it is ready by the time ..
     m_queue_autosend->start_thread ();
+    // .. receive thread starts and receives requests
+    m_conn->start_thread ();
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::stop_incoming_communication_thread ()
+  {
+    // stop receiving thread such that fresh requests are not received anymore
+    m_conn->stop_thread ();
+
+    // if the receiving thread terminated, there will not be any more responses
+    // unblock all waiting client thread - they will receive errors
+    m_response_broker.terminate ();
+
+    // at this point, the page server async responder must be waited for to terminate
+    // processing all async requests
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::stop_outgoing_communication_thread ()
+  {
+    // before this point, the page server async responder must be waited for to terminate
+    // processing all async requests
+
+    m_queue_autosend->stop_thread ();
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::~request_sync_client_server ()
   {
+    // the stop-thread & dtor sequence must work for both usage scenarios:
+    //  - active/passive transaction server
+    //  - page server
+
+    // by now, all processing and threads should have been stopped
+
     // terminate sending messages
     m_queue_autosend.reset (nullptr);
 
@@ -180,10 +216,6 @@ namespace cubcomm
 
     // terminate receiving messages
     m_conn.reset (nullptr);
-
-    // after autosender and received threads are terminated, there can be no more responses/errors
-    // registered on the broker
-    m_response_broker.terminate ();
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>

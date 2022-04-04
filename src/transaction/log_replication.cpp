@@ -448,17 +448,15 @@ namespace cublog
   log_lsa replicator::get_lowest_unapplied_lsa () const
   {
     // TODO: needs to be refactored to work with the new replicators flavors
-    // for now it should not be called
-    assert (false);
-
     if (m_parallel_replication_redo == nullptr)
       {
-	//sync
-	std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
-	return m_redo_lsa;
+	// sync
+	return get_highest_processed_lsa ();
       }
-    //async
-    return m_parallel_replication_redo->get_min_unapplied_log_lsa ();
+
+    // a different value will return from here when the atomic replicator is added
+    // for now this part should not be reached
+    assert (false);
   }
 
   /*********************************************************************

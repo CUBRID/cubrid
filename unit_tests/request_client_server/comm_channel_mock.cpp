@@ -152,12 +152,15 @@ namespace cubcomm
   {
   }
 
-  channel &channel::operator= (channel &&comm)
+  channel::channel (std::string &&channel_name)
+    : m_channel_name { std::move (channel_name) }
   {
-    assert (!is_connection_alive ());
-    this->~channel ();
-    new (this) channel (std::move (comm));
-    return *this;
+  }
+
+  channel::channel (int max_timeout_in_ms, std::string &&channel_name)
+    : m_max_timeout_in_ms (max_timeout_in_ms)
+    , m_channel_name { std::move (channel_name) }
+  {
   }
 
   channel::channel (channel &&comm)

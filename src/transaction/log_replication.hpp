@@ -72,6 +72,7 @@ namespace cublog
       void wait_past_target_lsa (const log_lsa &a_target_lsa);
       /* return current progress of the replicator; non-blocking call */
       log_lsa get_highest_processed_lsa () const;
+      /* return the lowest value lsa that was not applied, the next in line lsa */
       log_lsa get_lowest_unapplied_lsa () const;
 
       log_lsa get_most_recent_trantable_snapshot_lsa () const;

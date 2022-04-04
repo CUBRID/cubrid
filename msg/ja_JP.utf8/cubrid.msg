@@ -904,7 +904,7 @@ $ LOADDB
 834 to_number()ファンクションに使ったストリング「%1$s」とフォマットストリング「%2$s」マッチングしません。
 835 定義されていない通計アイテムです。
 836 ページ(%1$d|%2$d)に対するラッチ獲得リクエストがタイムアウトされました。
-837 データベースオブジェクト(クラス/ビュー/トリガー/シリアルなど)を持っているユーザーは削除できません。
+837 データベースオブジェクト(クラス/ビュー/トリガー/シリアル/サーバーなど)を持っているユーザーは削除できません。
 838 同時に%1$d個を超えるインデックススキャンが開けません。
 839 「%1$s」: わからないシステムパラメーター、または正しくないバリューです。
 840 システムパラメーター「%1$s」が変えられません。
@@ -1402,7 +1402,7 @@ $ LOADDB
 1327 Invalid precision value of "%1$s" column.
 
 1328 Invalid Descriptor handle.
-1329 Error reserved for dblink development.
+1329 Not supported dbms.
 1330 Error reserved for dblink development.
 1331 Error reserved for dblink development.
 

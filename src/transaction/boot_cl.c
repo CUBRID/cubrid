@@ -2279,7 +2279,8 @@ boot_define_domain (MOP class_mop)
   SM_TEMPLATE *def;
   char domain_string[32];
   int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "object_of", NULL };
+  const char *index_col_names1[2] = { "object_of", NULL };
+  const char *index_col_names2[2] = { "data_type", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -2352,7 +2353,13 @@ boot_define_domain (MOP class_mop)
     }
 
   /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names1, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names2, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
