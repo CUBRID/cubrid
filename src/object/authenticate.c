@@ -5231,7 +5231,7 @@ au_change_owner (MOP class_mop, MOP owner_mop)
   class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_));
 
   /* unique_name of system class does not contain owner_name. unique_name does not need to be changed. */
-  if (sm_check_system_class_by_name (sm_remove_qualifier_name (class_old_name)))
+  if (sm_check_system_class_by_name (class_old_name))
     {
       error = locator_flush_class (class_mop);
       if (error != NO_ERROR)
@@ -5932,7 +5932,6 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigg
   MOP trigger_mop = NULL;
   MOP owner_mop = NULL;
   const char *trigger_name = NULL;
-  char user_specified_trigger_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
   const char *owner_name = NULL;
   int error = NO_ERROR;
 
@@ -5957,8 +5956,7 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigg
       return;
     }
 
-  sm_user_specified_name (trigger_name, user_specified_trigger_name, DB_MAX_SERIAL_NAME_LENGTH);
-  trigger_mop = tr_find_trigger (user_specified_trigger_name);
+  trigger_mop = tr_find_trigger (trigger_name);
   if (trigger_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -8888,6 +8886,9 @@ au_install (void)
     {
       goto exit_on_error;
     }
+  /* If the attribute configuration is changed, the CATCLS_USER_ATTR_IDX_NAME also be changed.
+   *   - CATCLS_USER_ATTR_IDX_NAME is defined in the cubload::server_class_installer::locate_class () function.
+   */
   smt_add_attribute (def, "name", "string", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "id", "integer", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "password", AU_PASSWORD_CLASS_NAME, (DB_DOMAIN *) 0);

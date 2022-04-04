@@ -1403,21 +1403,30 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
-1330 Error reserved for dblink development.
+1330 Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 Volumul de jurnal activ (%1$s) este prea corect pentru a fi recreat. Dacă eliminați jurnalul activ, ar putea cauza o problemă neașteptată și ireversibilă.
-1333 Invalid arguments to authorization internal function.
-1334 AUTO_INCREMENT does not allow change of owner.
-1335 RENAME does not allow change of owner.
-1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
-1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
-1338 Public synonym "%1$s" already exists.
-1339 Public synonym "%1$s" does not exist.
-1440 Synonym "%1$s" already exists.
-1441 Synonym "%1$s" does not exist.
 
-1442 Ultima eroare
+1333 Timp nevalid (%1$s) pentru a începe flashback. Este necesar să fie setat timpul între (%2$s) și (%3$s).
+1334 Nu se poate găsi clasa de flashback (%1$s).
+1335 Prea multe tranzacții pentru flashback. Mai puțin de %1$d tranzacții pot fi flashback.
+1336 Nu se poate suporta flashback pentru această clasă (nume : %1$s , OID : %2$d|%3$d|%4$d). Schema de clasă a fost modificată.
+1337 Înregistrarea jurnalului nu există (lsa : %1$lld|%2$d). Volumul jurnalului de arhivă a fost șters.
+1338 Flashback rulează deja. Flashback nu poate fi rulat de mai mult de un utilizator în același timp.
+
+1339 Invalid arguments to authorization internal function.
+1340 AUTO_INCREMENT does not allow change of owner.
+1341 RENAME does not allow change of owner.
+1342 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1343 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1344 Public synonym "%1$s" already exists.
+1345 Public synonym "%1$s" does not exist.
+1346 Synonym "%1$s" already exists.
+1347 Synonym "%1$s" does not exist.
+
+1348 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1888,15 +1897,16 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Nu s-a găsit semnătură compatibilă pentru funcția %1$s()
 305 Semnătura %1$s nu este compatibilă cu argumentele funcției.
 306 dblink - Informațiile necesare lipsesc.
-307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
-308 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
-309 DBA, members of DBA group, and owner can perform %1$s.
-310 Public synonym "%1$s" already exists.
-311 Public synonym "%1$s" does not exist.
-312 Synonym "%1$s" already exists.
-313 Synonym "%1$s" does not exist.
-314 Rename cannot change owner.
-315 Rename cannot be changed to the same name.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

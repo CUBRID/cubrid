@@ -10560,3 +10560,228 @@ loaddb_update_stats ()
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
+
+/*
+ * flashabck_get_and_show_summary () - client-side function to get and show flashback summary
+ *
+ * return           : error code
+ * class_list (in)  : class name list to flashback
+ * user (in)        : transaction user to flashback
+ * start_time (in)  : flashback sql logs are extracted from 'start_time'
+ * end_time (in)    : flashback sql logs are extracted until 'end_time'
+ * summary (out)    : summary information retrieved from server
+ * oid_list (out)   : class oid list that is extracted with 'class_list'
+ */
+
+int
+flashback_get_and_show_summary (dynamic_array * class_list, const char *user, time_t start_time, time_t end_time,
+				FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list, char **invalid_class,
+				time_t * invalid_time)
+{
+#if defined(CS_MODE)
+  int error_code = ER_FAILED;
+
+  int request_size = 0;
+  char *request = NULL, *ptr, *start_ptr;
+  int num_class = 0;
+
+  int num_summary = 0;
+
+  char classname[SM_MAX_IDENTIFIER_LENGTH];
+
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area;
+  int area_size;
+
+  num_class = da_size (class_list);
+
+  /* request : num class | class name list | user | start_time | end_time */
+  request_size = OR_INT_SIZE + or_packed_string_length (user, NULL) + OR_INT64_SIZE + OR_INT64_SIZE;
+
+  for (int i = 0; i < num_class; i++)
+    {
+      if (da_get (class_list, i, classname) != NO_ERROR)
+	{
+	  /* TODO : er_set() */
+	  return ER_FAILED;
+	}
+      request_size += or_packed_string_length (classname, NULL);
+    }
+
+  request = (char *) malloc (request_size + MAX_ALIGNMENT);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = start_ptr = PTR_ALIGN (request, MAX_ALIGNMENT);
+
+  ptr = or_pack_int (ptr, num_class);
+  for (int i = 0; i < num_class; i++)
+    {
+      if (da_get (class_list, i, classname) != NO_ERROR)
+	{
+	  free_and_init (request);
+	  return ER_FAILED;
+	}
+      ptr = or_pack_string (ptr, classname);
+    }
+  ptr = or_pack_string (ptr, user);
+  ptr = or_pack_int64 (ptr, start_time);
+  ptr = or_pack_int64 (ptr, end_time);
+
+  request_size = ptr - start_ptr;
+
+  error_code =
+    net_client_request2 (NET_SERVER_FLASHBACK_GET_SUMMARY, start_ptr, request_size, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+
+  if (error_code == NO_ERROR)
+    {
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error_code);
+
+      if (error_code == ER_FLASHBACK_INVALID_CLASS)
+	{
+	  *invalid_class = (char *) calloc (area_size + 1, sizeof (char));
+	  if (*invalid_class == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, area_size);
+	    }
+
+	  memcpy (*invalid_class, area, area_size);
+	}
+      else if (error_code == ER_FLASHBACK_INVALID_TIME)
+	{
+	  or_unpack_int64 (area, invalid_time);
+	}
+      else if (error_code == NO_ERROR)
+	{
+	  ptr = area;
+	  /* area : OID list | summary info list  */
+	  for (int i = 0; i < num_class; i++)
+	    {
+	      ptr = or_unpack_oid (ptr, &(*oid_list)[i]);
+	    }
+
+	  /* get summary info */
+	  error_code = flashback_unpack_and_print_summary (&ptr, summary, class_list, *oid_list);
+	}
+
+      free_and_init (area);
+    }
+
+  free_and_init (request);
+
+  return error_code;
+#endif // CS_MODE
+  return ER_NOT_IN_STANDALONE;
+}
+
+/*
+ * flashback_get_loginfo () - client-side function to get flashback log info
+ *
+ * return             : error code
+ * trid (in)          : specifies transactions to flashback
+ * user (in)          : specifies transaction user
+ * classlist (in)     : specifies classes to flashback
+ * num_class (in)     : number of class in classlist
+ * start_lsa (in/out) : start lsa to extract log record
+ * end_lsa (in/out)   : end lsa to extract log record
+ * num_info (in/out)  : number of log info to extract, and number of log info that is extracted
+ * forward (in)       : direction of traversing log records
+ * info_list (out)    : log info list
+ */
+
+int
+flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa, LOG_LSA * end_lsa,
+		       int *num_item, bool forward, char **info_list, int *invalid_class_idx)
+{
+#if defined(CS_MODE)
+  int error_code = ER_FAILED;
+  int request_size = 0;
+  char *request = NULL, *ptr, *start_ptr;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area;
+  int area_size;
+
+  /* request with : tranid, user, num class, classlist, start_lsa, end_lsa, num_item, forward/backward */
+
+  request_size =
+    OR_INT_SIZE + or_packed_string_length (user,
+					   NULL) + OR_INT_SIZE + OR_OID_SIZE * num_class + OR_LOG_LSA_ALIGNED_SIZE * 2 +
+    OR_INT_SIZE + OR_INT_SIZE;
+
+  request = (char *) malloc (request_size + MAX_ALIGNMENT);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = start_ptr = PTR_ALIGN (request, MAX_ALIGNMENT);
+
+  ptr = or_pack_int (ptr, trid);
+  ptr = or_pack_string (ptr, user);
+  ptr = or_pack_int (ptr, num_class);
+  for (int i = 0; i < num_class; i++)
+    {
+      ptr = or_pack_oid (ptr, &classlist[i]);
+    }
+  ptr = or_pack_log_lsa (ptr, start_lsa);
+  ptr = or_pack_log_lsa (ptr, end_lsa);
+  ptr = or_pack_int (ptr, *num_item);
+  ptr = or_pack_int (ptr, (int) forward);
+
+  request_size = ptr - start_ptr;
+
+  error_code =
+    net_client_request2 (NET_SERVER_FLASHBACK_GET_LOGINFO, start_ptr, request_size, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+
+  if (error_code == NO_ERROR)
+    {
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error_code);
+
+      if (error_code == ER_FLASHBACK_SCHEMA_CHANGED)
+	{
+	  OID invalid_classoid;
+
+	  or_unpack_oid (area, &invalid_classoid);
+
+	  *invalid_class_idx = flashback_find_class_index (classlist, num_class, invalid_classoid);
+	}
+      else if (error_code == NO_ERROR)
+	{
+	  /* area : start lsa | end lsa | num item | item list */
+	  ptr = or_unpack_log_lsa (area, start_lsa);
+	  ptr = or_unpack_log_lsa (ptr, end_lsa);
+	  ptr = or_unpack_int (ptr, num_item);
+
+	  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
+	  *info_list = (char *) malloc (area_size - (ptr - area));
+	  if (*info_list == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, area_size - (ptr - area));
+	    }
+
+	  memcpy (*info_list, ptr, area_size - (ptr - area));
+	}
+
+      free_and_init (area);
+    }
+
+  free_and_init (request);
+
+  return error_code;
+#endif // CS_MODE
+  return ER_NOT_IN_STANDALONE;
+}

@@ -60,6 +60,8 @@
 #include "tde.h"
 #include "lockfree_circular_queue.hpp"
 
+#include <unordered_set>
+#include <queue>
 #include <assert.h>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
@@ -321,6 +323,14 @@ extern int db_Disable_modifications;
         } \
          memcpy (cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p, (log_page_p), IO_MAX_PAGE_SIZE); \
       } \
+    } \
+  while (0)
+
+#define CDC_MAKE_SUPPLEMENT_DATA(supplement_data, recdes) \
+  do \
+    { \
+      memcpy ((supplement_data), &(recdes).type, sizeof ((recdes).type)); \
+      memcpy ((supplement_data) + sizeof((recdes).type), (recdes).data, (recdes).length); \
     } \
   while (0)
 

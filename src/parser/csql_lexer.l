@@ -47,7 +47,6 @@ static void begin_token (char *token);
 
 extern int yycolumn;
 extern int yycolumn_end;
-extern int dot_flag;
 
 int str_identifier = '\0';
 
@@ -86,6 +85,7 @@ int yybuffer_pos;
 %x QUOTED_ISO_STRING
 %x QUOTED_BINARY_STRING
 %x QUOTED_UTF8_STRING
+%x POST_DOT_OR_RIGHT_ARROW_STRING
 
 
 
@@ -1157,104 +1157,67 @@ _[uU][tT][fF]8[']		{
 						         }
 
 "."[ \t\r\n]*([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* {
-								int i = 0;
-								int len = 0;
-								if (dot_flag == 0)
-								  {
-								    yybuffer_pos -= csql_yyleng;
-								    yyless(0);
-								    dot_flag = 1;
-								    return DOT;
-								  }
-								else
-								  {
-								    begin_token(yytext);
-								    dot_flag = 0;
-								    len = strlen(yytext);
-								    if (len >= 254)
-								      {
-								        yytext[254] = 0;
-								      }
-
-								    for (i = 1; i < len - 1 && IS_BLANK_CHAR (yytext[i]); i++)
-								    ;
-
-								    csql_yylval.cptr = pt_makename(&yytext[i]);
-
-								    /* Distinguish some special words/tokens from normal identifiers (IdName).
-								     * Because these special words (companioned with DOT/RIGHT_ARROW) are
-								     * reserved for special use purpose in some clauses' context.
-								     */
-								    if (strcasecmp (csql_yylval.cptr, "NONE") == 0)
-								      {
-								        return NONE;
-								      }
-								    else if (strcasecmp (csql_yylval.cptr, "IDENTITY") == 0)
-								      {
-								        return IDENTITY;
-								      }
-								    else if (strcasecmp (csql_yylval.cptr, "OBJECT") == 0)
-								      {
-								        return OBJECT;
-								      }
-
-								    return IdName;
-								  }
-								}
+							    yybuffer_pos -= (csql_yyleng - 1);
+							    yyless(1);
+                                                            DBG_PRINT_TOKEN(yytext);
+                                                            BEGIN(POST_DOT_OR_RIGHT_ARROW_STRING);
+							    return DOT;
+							}
 
 "->"[ \t\r\n]*([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* {
-								int i = 0;
-								int len = 0;
-								if (dot_flag == 0)
-								  {
-								    yybuffer_pos -= csql_yyleng;
-								    yyless(0);
-								    dot_flag = 1;
-								    return RIGHT_ARROW;
-								  }
-								else
-								  {
-								    begin_token(yytext);
-								    dot_flag = 0;
-								    len = strlen(yytext);
-								    if (len >= 254)
-								      {
-								        yytext[254] = 0;
-								      }
+                                                           yybuffer_pos -= (csql_yyleng - 2);
+							   yyless(2);
+                                                           DBG_PRINT_TOKEN(yytext);
+                                                           BEGIN(POST_DOT_OR_RIGHT_ARROW_STRING);
+							   return RIGHT_ARROW;
+							}
 
-								    for (i = 2; i < len - 1 && IS_BLANK_CHAR (yytext[i]); i++)
-								    ;
+<POST_DOT_OR_RIGHT_ARROW_STRING>[ \t\r\n]*([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* {
+				        int i = 0;
+				        int len = 0;
+				      	  
+                                        BEGIN(INITIAL);
+                                        begin_token(yytext);
+                                        len = strlen(yytext);
+                                        if (len >= 254)
+                                          {
+                                             yytext[254] = 0;
+                                          }
 
-								    csql_yylval.cptr = pt_makename(&yytext[i]);
+                                        for (i = 0; i < len - 1 && IS_BLANK_CHAR (yytext[i]); i++)
+                                           ;
 
-								    /* Distinguish some special words/tokens from normal identifiers (IdName).
-								     * Because these special words (companioned with DOT/RIGHT_ARROW) are
-								     * reserved for special use purpose in some clauses' context.
-								     */
-								    if (strcasecmp (csql_yylval.cptr, "NONE") == 0)
-								      {
-								        return NONE;
-								      }
-								    else if (strcasecmp (csql_yylval.cptr, "IDENTITY") == 0)
-								      {
-								        return IDENTITY;
-								      }
-								    else if (strcasecmp (csql_yylval.cptr, "OBJECT") == 0)
-								      {
-								        return OBJECT;
-								      }
+                                        csql_yylval.cptr = pt_makename(&yytext[i]);
 
-								    return IdName;
-								  }
-								}
+                                        /* Distinguish some special words/tokens from normal identifiers (IdName).
+                                         * Because these special words (companioned with DOT/RIGHT_ARROW) are
+                                         * reserved for special use purpose in some clauses' context.
+                                         */
+                                        if (strcasecmp (csql_yylval.cptr, "NONE") == 0)
+                                          {
+                                             return NONE;
+                                          }
+                                        else if (strcasecmp (csql_yylval.cptr, "IDENTITY") == 0)
+                                          {
+                                             return IDENTITY;
+                                          }
+                                        else if (strcasecmp (csql_yylval.cptr, "OBJECT") == 0)
+                                          {
+                                             return OBJECT;
+                                          }
+
+                                        return IdName;
+				}
 
 0b[0-1]+			{
 					csql_yylval.cptr = pt_append_string(this_parser, NULL, yytext + 2);
+                                        DBG_PRINT_TOKEN(yytext);
 					return BIT_STRING;
 				}
 
 0x[0-9a-fA-F]+			{
-					csql_yylval.cptr = pt_append_string(this_parser, NULL, yytext + 2);
+					csql_yylval.cptr = pt_append_string(this_parser, NULL, yytext + 2);                                        
+                                        DBG_PRINT_TOKEN(yytext);
 					return HEX_STRING;
 				}
 
@@ -1302,51 +1265,61 @@ _[uU][tT][fF]8[']		{
 
 <QUOTED_EUCKR_STRING>[']	{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("_euckr'", csql_yylval.cptr, "'");
 					return EUCKR_STRING;
 				}
 
 <QUOTED_ISO_STRING>[']		{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("_iso88591'", csql_yylval.cptr, "'");
 					return ISO_STRING;
 				}
 
 <QUOTED_BINARY_STRING>[']	{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("_binary'", csql_yylval.cptr, "'");
 					return BINARY_STRING;
 				}
 
 <QUOTED_UTF8_STRING>[']		{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("_utf8'", csql_yylval.cptr, "'");
 					return UTF8_STRING;
 				}
 
 <QUOTED_NCHAR_STRING>[']	{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("n'", csql_yylval.cptr, "'");
 					return NCHAR_STRING;
 				}
 
 <QUOTED_BIT_STRING>[']		{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("b'", csql_yylval.cptr, "'");
 					return BIT_STRING;
 				}
 
 <QUOTED_HEX_STRING>[']		{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("x'", csql_yylval.cptr, "'");
 					return HEX_STRING;
 				}
 
 <QUOTED_CHAR_STRING>[']		{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("'", csql_yylval.cptr, "'");
 					return CHAR_STRING;
 				}
 
 <DOUBLY_QUOTED_CHAR_STRING>["]	{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("\"", csql_yylval.cptr, "\"");
 					return CHAR_STRING;
 				}
 
 <DELIMITED_ID_NAME>["]		{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("\"", csql_yylval.cptr, "\"");
 					if (strlen(csql_yylval.cptr) >= 254)
 					  {
 					    csql_yylval.cptr[254] = 0;
@@ -1356,6 +1329,7 @@ _[uU][tT][fF]8[']		{
 
 <BRACKET_ID_NAME>"]"		{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("[", csql_yylval.cptr, "]");
 					if (strlen(csql_yylval.cptr) >= 254)
 					  {
 					    csql_yylval.cptr[254] = 0;
@@ -1365,6 +1339,7 @@ _[uU][tT][fF]8[']		{
 
 <BACKTICK_ID_NAME>"`"		{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("`", csql_yylval.cptr, "`");
 					if (strlen(csql_yylval.cptr) >= 254)
 					  {
 					    csql_yylval.cptr[254] = 0;
@@ -1380,12 +1355,14 @@ _[uU][tT][fF]8[']		{
 
 <QUOTED_NCHAR_STRING,QUOTED_BIT_STRING,QUOTED_HEX_STRING,QUOTED_CHAR_STRING,DOUBLY_QUOTED_CHAR_STRING,QUOTED_EUCKR_STRING,QUOTED_ISO_STRING,QUOTED_BINARY_STRING,QUOTED_UTF8_STRING><<EOF>>	{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("?", csql_yylval.cptr, "<EOF>");
 					csql_yyerror("unterminated string");
 					return UNTERMINATED_STRING;
 				}
 
 <DELIMITED_ID_NAME,BRACKET_ID_NAME,BACKTICK_ID_NAME><<EOF>>	{
 					BEGIN(INITIAL);
+                                        DBG_PRINT_STRING("?", csql_yylval.cptr, "<EOF>");
 					csql_yyerror("unterminated identifier");
 					return UNTERMINATED_IDENTIFIER;
 				}
@@ -1680,7 +1657,8 @@ csql_yyerror (const char *s)
 
 	  if (after_token)
 	    {
-	      msg_size += strlen (after_token);
+              msg_size += strlen (after_token);
+              // There is no need to reset the length as we will replace "$end" with "';'".              
 	    }
 
 	  msg = (char *) csql_yyalloc (msg_size);
@@ -1714,7 +1692,24 @@ csql_yyerror (const char *s)
 
 	  if (after_token)
 	    {
-	      strcat (msg, after_token);
+              char* end_ptr = strstr (after_token, "$end");
+
+              if (!end_ptr)
+               {
+                 strcat (msg, after_token);
+               }
+              else
+               {
+                 *end_ptr = '\0';
+                 strcat (msg, after_token);
+                 *end_ptr = '$';
+                 end_ptr += 4; /* strlen("$end") */
+                 strcat (msg, "';'");
+                 if(*end_ptr)
+                   {
+                     strcat (msg, end_ptr);
+                   }
+               } 
 	    }
 	}
       else
@@ -1767,6 +1762,8 @@ end:
     {
       csql_yyfree (buffer);
     }
+
+  BEGIN(INITIAL);
 }
 
 int
@@ -2060,4 +2057,5 @@ begin_token (char *token)
   csql_yylloc.first_column = yycolumn;
   csql_yylloc.last_line = yylineno;
   csql_yylloc.last_column = yycolumn_end;
+  DBG_PRINT_TOKEN(token);
 }

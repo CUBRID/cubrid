@@ -1697,23 +1697,30 @@
 
 #define ER_CGW_INVALID_DESC_HANDLE                  -1328
 #define ER_CGW_NOT_SUPPORTED_DBMS                   -1329
-#define ER_DBLINK_DEV_RESERVED_ERROR30              -1330
+#define ER_CGW_NOT_ALLOCATE_ENV_HANDLE              -1330
 #define ER_DBLINK_DEV_RESERVED_ERROR31              -1331
 
 #define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
 
-#define ER_AU_INVALID_ARGUMENTS                     -1333
-#define ER_AU_CANT_ALTER_OWNER_OF_AUTO_INCREMENT    -1334
-#define ER_SM_RENAME_CANT_ALTER_OWNER               -1335
-#define ER_QPROC_CREATE_SERIAL_NOT_OWNER            -1336
-#define ER_TR_CREATE_NOT_ALLOWED                    -1337
+#define ER_FLASHBACK_INVALID_TIME                   -1333
+#define ER_FLASHBACK_INVALID_CLASS                  -1334
+#define ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY -1335
+#define ER_FLASHBACK_SCHEMA_CHANGED                 -1336
+#define ER_FLASHBACK_LOG_NOT_EXIST                  -1337
+#define ER_FLASHBACK_DUPLICATED_REQUEST             -1338
 
-#define ER_SYNONYM_PUBLIC_ALREADY_EXIST             -1338
-#define ER_SYNONYM_PUBLIC_NOT_EXIST                 -1339
-#define ER_SYNONYM_ALREADY_EXIST                    -1440
-#define ER_SYNONYM_NOT_EXIST                        -1441
+#define ER_AU_INVALID_ARGUMENTS                     -1339
+#define ER_AU_CANT_ALTER_OWNER_OF_AUTO_INCREMENT    -1340
+#define ER_SM_RENAME_CANT_ALTER_OWNER               -1341
+#define ER_QPROC_CREATE_SERIAL_NOT_OWNER            -1342
+#define ER_TR_CREATE_NOT_ALLOWED                    -1343
 
-#define ER_LAST_ERROR                               -1442
+#define ER_SYNONYM_PUBLIC_ALREADY_EXIST             -1344
+#define ER_SYNONYM_PUBLIC_NOT_EXIST                 -1345
+#define ER_SYNONYM_ALREADY_EXIST                    -1346
+#define ER_SYNONYM_NOT_EXIST                        -1347
+
+#define ER_LAST_ERROR                               -1348
 /*
  * CAUTION!
  *

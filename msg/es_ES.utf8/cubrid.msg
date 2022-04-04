@@ -1403,21 +1403,30 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
-1330 Error reserved for dblink development.
+1330 Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 El volumen de registro activo (%1$s) está demasiado sano para volver a crearlo. Si elimina el registro activo, podría causar un problema inesperado e irreversible.
-1333 Invalid arguments to authorization internal function.
-1334 AUTO_INCREMENT does not allow change of owner.
-1335 RENAME does not allow change of owner.
-1336 DBA, members of DBA group, and owner can perform CREATE SERIAL.
-1337 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
-1338 Public synonym "%1$s" already exists.
-1339 Public synonym "%1$s" does not exist.
-1440 Synonym "%1$s" already exists.
-1441 Synonym "%1$s" does not exist.
 
-1442 Ultimo error
+1333 Hora no válida (%1$s) para iniciar flashback. Es necesario establecer el tiempo entre (%2$s) y (%3$s).
+1334 No se puede encontrar la clase para flashback (%1$s).
+1335 Demasiadas transacciones para retroceder. Menos de %1$d transacciones pueden ser flashback.
+1336 No se puede admitir flashback para esta clase (nombre: %1$s, OID: %2$d|%3$d|%4$d). Se ha cambiado el esquema de clase.
+1337 El registro de registro no existe (lsa: %1$lld|%2$d). El volumen de registro de archivo se ha eliminado.
+1338 Flashback ya se está ejecutando. Flashback no puede ser ejecutado por más de un usuario al mismo tiempo.
+
+1339 Invalid arguments to authorization internal function.
+1340 AUTO_INCREMENT does not allow change of owner.
+1341 RENAME does not allow change of owner.
+1342 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1343 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1344 Public synonym "%1$s" already exists.
+1345 Public synonym "%1$s" does not exist.
+1346 Synonym "%1$s" already exists.
+1347 Synonym "%1$s" does not exist.
+
+1348 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
@@ -1888,15 +1897,16 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 No se pudo encontrar la signatura compatible para la función %1$s()
 305 Signatura %1$s no es compatible con argumentos de función.
 306 dblink - Falta la información requerida.
-307 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
-308 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
-309 DBA, members of DBA group, and owner can perform %1$s.
-310 Public synonym "%1$s" already exists.
-311 Public synonym "%1$s" does not exist.
-312 Synonym "%1$s" already exists.
-313 Synonym "%1$s" does not exist.
-314 Rename cannot change owner.
-315 Rename cannot be changed to the same name.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.
