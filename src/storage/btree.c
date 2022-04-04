@@ -25502,7 +25502,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   if (!bts->is_key_partially_processed)
     {
-      /* Before processing leaf record objects and there is an overflow page, fix the overflow page first to
+      /* Before processing leaf record objects and if there is an overflow page, fix the overflow page first to
        * ensure that at least one overflow page can be fixed without desync issues.
        * If desync occurs, early out.
        * This ensures that the happy path logic of this function - process the leaf records and the first overflow page
@@ -25533,7 +25533,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  // first overflow page might have been fixed
 	  if (!VPID_ISNULL (&overflow_vpid))
 	    {
-	      pgbuf_unfix (thread_p, overflow_page);
+	      pgbuf_unfix_and_init (thread_p, overflow_page);
 	    }
 	  return error_code;
 	}
@@ -25542,7 +25542,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  /* Early out. */
 	  if (!VPID_ISNULL (&overflow_vpid))
 	    {
-	      pgbuf_unfix (thread_p, overflow_page);
+	      pgbuf_unfix_and_init (thread_p, overflow_page);
 	    }
 	  return NO_ERROR;
 	}
@@ -25578,6 +25578,18 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (overflow_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
+	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      // if this would be the first iteration, the first overflow page should have already been
+	      // fixed and checked (in the section before while loop)
+	      assert (!VPID_ISNULL (&last_visible_overflow));
+
+	      // save state; upon next entry/retry will directly fix the overflow page and reach here
+	      bts->O_vpid = last_visible_overflow;
+	      bts->is_key_partially_processed = true;
+	      // TODO: these are useless as - due to handling in btree_range_scan_handle_error and
+	      // btree_range_scan_handle_page_ahead_repl_error - the scan will be restarted
+	    }
 	  if (prev_overflow_page != NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, prev_overflow_page);
