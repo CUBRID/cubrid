@@ -170,4 +170,5 @@ ALTER CLASS [game] ADD CONSTRAINT [fk_game_event_code] FOREIGN KEY(event_code) R
 
 ALTER CLASS [game] ADD CONSTRAINT [fk_game_athlete_code] FOREIGN KEY(athlete_code) REFERENCES athlete ON DELETE RESTRICT ON UPDATE RESTRICT ;
 
+
 COMMIT WORK;
