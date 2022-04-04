@@ -21,10 +21,6 @@ install(FILES
   ${CMAKE_SOURCE_DIR}/demo/demodb_schema
   DESTINATION ${CUBRID_DEMODIR}) 
 
-install(DIRECTORY 
-  ${CMAKE_SOURCE_DIR}/demo/test
-  DESTINATION ${CUBRID_DEMODIR})
-
 if(UNIX)
   set(DEMODB_SCRIPT make_cubrid_demo.sh)
 else(UNIX)
