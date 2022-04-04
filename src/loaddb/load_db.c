@@ -1154,9 +1154,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->compare_storage_order = utility_get_option_bool_value (arg_map, LOAD_COMPARE_STORAGE_ORDER_S);
   args->table_name = table_name ? table_name : empty;
   args->ignore_class_file = ignore_class_file ? ignore_class_file : empty;
-  /* set to true for testing. When the test is complete, the option should be checked. (by youngjinj) */
-  // args->no_user_specified_name = utility_get_option_bool_value (arg_map, LOAD_NO_USER_SPECIFIED_NAME_S);
-  args->no_user_specified_name = true;
+  args->no_user_specified_name = utility_get_option_bool_value (arg_map, LOAD_NO_USER_SPECIFIED_NAME_S);
 }
 
 static void
