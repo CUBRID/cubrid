@@ -3304,8 +3304,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO,
 						     APPLYINFO_MSG_NOT_HA_MODE));
 	    }
-	  error = NO_ERROR;
-
+	  if (check_applied_info == false)
+            {
+	      (void) db_shutdown ();
+            }
 	  error = la_log_page_check (local_database_name, log_path, pageid, &check_applied_info, &check_copied_info,
 				     &check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
 				     &applied_final_lsa);
