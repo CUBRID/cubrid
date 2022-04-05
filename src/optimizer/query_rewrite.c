@@ -3334,7 +3334,7 @@ qo_reduce_outer_joined_tables (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   MOP cls;
   SM_CLASS_CONSTRAINT *consp;
   SM_ATTRIBUTE *attrp;
-  PT_NODE *point_list, *point, *where, *col, *tmp_spec, *prev_spec, *pred, *prev_pred, *next_pred;
+  PT_NODE *point_list = NULL, *point, *where, *col, *tmp_spec, *prev_spec, *pred, *prev_pred, *next_pred;
   PT_NODE *next_spec;
   SPEC_CNT_INFO info;
   bool all_unique_col_match = false;
