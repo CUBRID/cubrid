@@ -1242,7 +1242,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 事务 ID 应在 %1$d 秒内输入。可以通过“cubrid.conf”中的“flashback_timeout”设置来调整超时。\n
 13 闪回已在运行。闪回不能由两个进程运行。\n
 14 闪回不能作为独立模式运行。\n
-60\
+60 \
 flashback：提供用于闪回特定事务的语句。\n\
 用法：%1$s flashback [OPTION] 数据库名称 class_name1 [class_name2 ...]\n\
 \n\
