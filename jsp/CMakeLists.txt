@@ -25,18 +25,17 @@ endif(NOT ANT)
 
 add_custom_target(jsp_build ALL)
 
-if (TARGET jdbc_build)
-  set(JDBC_VERSION_FILE ${JDBC_DIR}/output/VERSION-DIST)
-  file(STRINGS ${JDBC_VERSION_FILE} JDBC_VERSION_STR)
+if (EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
+  set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
+  set(JSP_LIB_DIR ${CMAKE_BINARY_DIR}/jsp/lib)
 
-  set(JDBC_DIST ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar)
-
-  add_custom_command(TARGET jsp_build PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E echo "copying ${JDBC_DIST}/cubrid-jdbc-${JDBC_VERSION_STR}.jar"
-    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIST} ${CMAKE_BINARY_DIR}/jsp/lib/cubrid-jdbc-${JDBC_VERSION_STR}.jar
-    MAIN_DEPENDENCY ${JDBC_DIST}
+  add_custom_command(TARGET jsp_build
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${JSP_LIB_DIR}
+    COMMAND ${CMAKE_COMMAND} -DJDBC_DIR=${JDBC_DIR} -DJSP_LIB_DIR=${JSP_LIB_DIR} -P ${CMAKE_SOURCE_DIR}/jsp/cmake/copy_submodule_jdbc.cmake
   )
-endif(TARGET jdbc_build)
+
+  add_dependencies(jsp_build jdbc_build)
+endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 
 # download ivy
 message("Download ivy ...")
@@ -46,7 +45,7 @@ set(IVY_DIR "${CMAKE_BINARY_DIR}/jsp/external")
 set(IVY_FILENAME "${IVY_DIR}/ivy.jar")
 file(DOWNLOAD ${IVY_URL} ${IVY_FILENAME})
 
-add_custom_command(TARGET jsp_build POST_BUILD
+add_custom_command(TARGET jsp_build
   COMMAND ${CMAKE_COMMAND} -E echo "copying ivy.xml to ${CMAKE_BINARY_DIR}/jsp/ivy.xml"
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivy.xml ${CMAKE_BINARY_DIR}/jsp/ivy.xml
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivysettings.xml ${CMAKE_BINARY_DIR}/jsp/ivysettings.xml
