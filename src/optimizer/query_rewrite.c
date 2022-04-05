@@ -7222,9 +7222,6 @@ qo_check_distinct_union (PARSER_CONTEXT * parser, PT_NODE * node)
 
   switch (node->node_type)
     {
-    case PT_SELECT:
-      break;
-
     case PT_UNION:
       if (node->info.query.all_distinct == PT_DISTINCT)
 	{
@@ -7393,7 +7390,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
 	      /* order by, union check */
 	      if (node->info.query.order_by == NULL && !qo_check_distinct_union (parser, node)
-		  && !node->info.query.q.select.hint & PT_HINT_NO_PUSH_PRED)
+		  && !(node->info.query.q.select.hint & PT_HINT_NO_PUSH_PRED))
 		{
 		  node = qo_push_limit_to_union (parser, node, limit_node);
 		}
