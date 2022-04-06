@@ -111,7 +111,7 @@ typedef struct leaf_rec LEAF_REC;
 struct leaf_rec
 {
   VPID ovfl;			/* Overflow page pointer, for overflow OIDs */
-  short key_len;
+  short key_len;		/* Leaf key length. If -1, key overflows */
 };
 
 /* BTID_INT structure from btree_load.h */
@@ -771,7 +771,7 @@ extern SCAN_CODE btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid,
 
 extern int xbtree_get_key_type (THREAD_ENTRY * thread_p, BTID btid, TP_DOMAIN ** key_type);
 
-extern int btree_leaf_get_first_object (BTID_INT * btid, RECDES * recp, OID * oidp, OID * class_oid,
+extern int btree_leaf_get_first_object (const BTID_INT * btid, RECDES * recp, OID * oidp, OID * class_oid,
 					BTREE_MVCC_INFO * mvcc_info);
 extern void btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid, OID * oidp,
 					    OID * class_oidp, BTREE_MVCC_INFO * mvcc_info, int *key_offset,
