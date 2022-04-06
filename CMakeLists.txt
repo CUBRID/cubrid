@@ -1183,10 +1183,9 @@ include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
 list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
 
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
-message("Build JDBC Driver from cubird-jdbc submodule")
+  message("Build JDBC Driver from cubird-jdbc submodule")
 
   set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
-
   add_subdirectory(cubrid-jdbc)
 
   # dist JDBC
