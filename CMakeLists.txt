@@ -508,7 +508,6 @@ set(EXECUTABLES_DIR          ${CMAKE_SOURCE_DIR}/src/executables)
 set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
 set(JSP_DIR                  ${CMAKE_SOURCE_DIR}/src/jsp)
 set(LOADDB_DIR               ${CMAKE_SOURCE_DIR}/src/loaddb)
-set(METHOD_DIR               ${CMAKE_SOURCE_DIR}/src/method)
 set(MONITOR_DIR              ${CMAKE_SOURCE_DIR}/src/monitor)
 set(OBJECT_DIR               ${CMAKE_SOURCE_DIR}/src/object)
 set(ODBC_DIR                 ${CMAKE_SOURCE_DIR}/src/odbc)
@@ -538,7 +537,6 @@ include_directories(
   src/heaplayers
   src/jsp
   src/loaddb
-  src/method
   src/monitor
   src/object
   src/optimizer
