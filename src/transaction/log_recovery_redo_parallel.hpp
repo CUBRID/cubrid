@@ -90,8 +90,6 @@ namespace cublog
 
       void wait_past_target_lsa (const log_lsa &a_target_lsa);
 
-      log_lsa get_min_unapplied_log_lsa ();
-
     private:
       void do_init_worker_pool (std::size_t a_task_count);
       void do_init_tasks (std::size_t a_task_count, bool a_do_monitor_unapplied_log_lsa,
@@ -156,7 +154,6 @@ namespace cublog
 	  /* blocking call
 	   */
 	  void wait_past_target_log_lsa (const log_lsa &a_target_lsa);
-	  log_lsa get_calculated_lsa ();
 
 	private:
 	  log_lsa calculate ();
