@@ -6597,7 +6597,6 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
   int i;
   PT_NODE *arg, *id_string;
   PT_NODE *prev = NULL, *head = NULL;
-  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
 
   if (arg_info_count == 0)
     {
@@ -6619,8 +6618,7 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 	{
 	  /* replace identifier node with string value node */
 	  pt_set_user_specified_name (parser, arg, NULL, NULL);
-	  sm_user_specified_name (arg->info.name.original, lower_table_name, DB_MAX_IDENTIFIER_LENGTH);
-	  id_string = pt_make_string_value (parser, lower_table_name);
+	  id_string = pt_make_string_value (parser, arg->info.name.original);
 	  if (id_string == NULL)
 	    {
 	      goto error;

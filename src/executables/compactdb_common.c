@@ -198,7 +198,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
   char buffer[LINE_MAX];
   char **class_names = NULL;
   int num_class = 0;
-  int len = 0;
+  int len = 0, sub_len = 0;
   const char *dot = NULL;
 
   if (input_filename == NULL || class_list == NULL || num_class_mops == NULL)
@@ -240,6 +240,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 
       trim (buffer);
       len = STATIC_CAST (int, strlen (buffer));
+      sub_len = len;
 
       if (len < 1)
 	{
@@ -253,8 +254,8 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	  /* user specified name */
 
 	  /* user name of user specified name */
-	  len = STATIC_CAST (int, dot - buffer);
-	  if (len >= DB_MAX_USER_LENGTH)
+	  sub_len = STATIC_CAST (int, dot - buffer);
+	  if (sub_len >= DB_MAX_USER_LENGTH)
 	    {
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
 						     COMPACTDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
@@ -263,10 +264,10 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	    }
 
 	  /* class name of user specified name */
-	  len = STATIC_CAST (int, strlen (dot + 1));
+	  sub_len = STATIC_CAST (int, strlen (dot + 1));
 	}
 
-      if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
+      if (sub_len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
 						 COMPACTDB_MSG_EXCEED_MAX_LEN),
