@@ -412,7 +412,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE_DEBUG "java_stored_procedure_debug"
 
-#define PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_01 "java_stored_procedure_reserve_01"
+#define PRM_NAME_JAVA_STORED_PROCEDURE_UDS "java_stored_procedure_uds"
 
 #define PRM_NAME_ALLOW_TRUNCATED_STRING "allow_truncated_string"
 
@@ -2330,9 +2330,9 @@ static int prm_java_stored_procedure_debug_upper = 65535;
 static int prm_java_stored_procedure_debug_lower = -1;
 static unsigned int prm_java_stored_procedure_debug_flag = 0;
 
-bool PRM_JAVA_STORED_PROCEDURE_RESERVE_01 = false;
-static bool prm_java_stored_procedure_reserve_01_default = false;
-static unsigned int prm_java_stored_procedure_reserve_01_flag = 0;
+bool PRM_JAVA_STORED_PROCEDURE_UDS = true;
+static bool prm_java_stored_procedure_uds_default = true;
+static unsigned int prm_java_stored_procedure_uds_flag = 0;
 
 bool PRM_ALLOW_TRUNCATED_STRING = false;
 static bool prm_allow_truncated_string_default = false;
@@ -6025,13 +6025,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_JAVA_STORED_PROCEDURE_RESERVE_01,
-   PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_01,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
+  {PRM_ID_JAVA_STORED_PROCEDURE_UDS,
+   PRM_NAME_JAVA_STORED_PROCEDURE_UDS,
+   (PRM_FOR_SERVER),
    PRM_BOOLEAN,
-   &prm_java_stored_procedure_reserve_01_flag,
-   (void *) &prm_java_stored_procedure_reserve_01_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE_RESERVE_01,
+   &prm_java_stored_procedure_uds_flag,
+   (void *) &prm_java_stored_procedure_uds_default,
+   (void *) &PRM_JAVA_STORED_PROCEDURE_UDS,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

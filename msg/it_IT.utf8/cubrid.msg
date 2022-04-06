@@ -1415,7 +1415,10 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1337 Il record di registro non esiste (lsa : %1$lld|%2$d). Il volume del registro di archivio è stato eliminato.
 1338 Flashback è già in esecuzione. Flashback non può essere eseguito da più utenti contemporaneamente.
 
-1339 Ultimo errore
+1339 Tipo di argomento non supportato della procedura memorizzata: %1$s
+1340 Tipo di restituzione di stored procedure non supportato: %1$s
+
+1341 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

@@ -1708,7 +1708,10 @@
 #define ER_FLASHBACK_LOG_NOT_EXIST                  -1337
 #define ER_FLASHBACK_DUPLICATED_REQUEST             -1338
 
-#define ER_LAST_ERROR                               -1339
+#define ER_SP_NOT_SUPPORTED_ARG_TYPE                -1339
+#define ER_SP_NOT_SUPPORTED_RETURN_TYPE             -1340
+
+#define ER_LAST_ERROR                               -1341
 /*
  * CAUTION!
  *

@@ -1415,7 +1415,10 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1337 Günlük kaydı mevcut değil (lsa : %1$lld|%2$d). Arşiv günlüğü birimi silindi.
 1338 Flashback zaten çalışıyor. Flashback, aynı anda birden fazla kullanıcı tarafından çalıştırılamaz.
 
-1339 Son Hata
+1339 Desteklenmeyen bağımsız değişken türü saklı yordam: %1$s
+1340 Desteklenmeyen saklı yordam dönüş türü: %1$s
+
+1341 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

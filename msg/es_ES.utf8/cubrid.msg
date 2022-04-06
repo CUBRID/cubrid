@@ -1415,7 +1415,10 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1337 El registro de registro no existe (lsa: %1$lld|%2$d). El volumen de registro de archivo se ha eliminado.
 1338 Flashback ya se está ejecutando. Flashback no puede ser ejecutado por más de un usuario al mismo tiempo.
 
-1339 Ultimo error
+1339 Tipo de argumento no admitido de procedimiento almacenado: %1$s
+1340 Tipo de devolución no admitido de procedimiento almacenado: %1$s
+
+1341 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

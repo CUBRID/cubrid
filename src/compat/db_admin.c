@@ -100,6 +100,7 @@ struct db_host_status_list
 
 char db_Database_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 char db_Program_name[PATH_MAX];
+char db_Client_ip_addr[16] = { 0 };
 
 static char *db_Preferred_hosts = NULL;
 static int db_Connect_order = DB_CONNECT_ORDER_SEQ;
@@ -505,6 +506,22 @@ db_set_client_type (int client_type)
     }
 }
 
+char *
+db_get_client_ip_addr (void)
+{
+  return db_Client_ip_addr;
+}
+
+void
+db_set_client_ip_addr (const char *ip_addr)
+{
+  if (ip_addr)
+    {
+      memcpy (db_Client_ip_addr, ip_addr, 15);
+      db_Client_ip_addr[15] = '\0';
+    }
+}
+
 void
 db_set_preferred_hosts (const char *hosts)
 {
@@ -891,6 +908,7 @@ db_restart (const char *program, int print_version, const char *volume)
       client_credential.process_id = -1;
       client_credential.preferred_hosts = db_Preferred_hosts;
       client_credential.connect_order = db_Connect_order;
+      client_credential.client_ip_addr = db_Client_ip_addr;
 
       error = boot_restart_client (&client_credential);
       if (error != NO_ERROR)

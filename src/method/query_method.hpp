@@ -25,33 +25,22 @@
 #define _QUERY_METHOD_H_
 
 #ident "$Id$"
+
+#include <vector>
+
 #include "dbtype_def.h"
+#include "packer.hpp"
 
 // forward def
 struct method_sig_list;
 struct qfile_list_id;
+struct method_sig_node;
 
-#define VACOMM_BUFFER_SIZE 4096
-
-typedef struct vacomm_buffer VACOMM_BUFFER;
-struct vacomm_buffer
-{
-  char *host;			/* server machine name */
-  char *server_name;		/* server name */
-  int rc;			/* trans request ID */
-  int num_vals;			/* number of values */
-  char *area;			/* buffer + header */
-  char *buffer;			/* buffer */
-  int cur_pos;			/* current position */
-  int size;			/* size of buffer */
-  int action;			/* client action */
-};
-
-extern int method_send_error_to_server (unsigned int rc, char *host, char *server_name);
-
-extern int method_invoke_for_server (unsigned int rc, char *host, char *server_name, qfile_list_id * list_id,
-				     method_sig_list * method_sig_list);
-
-void method_sig_list_freemem (method_sig_list * meth_sig_list);
+#if defined(CS_MODE)
+extern int method_dispatch (unsigned int rc, char *methoddata, int methoddata_size);
+extern int method_error (unsigned int rc, int error_id);
+#else
+extern int method_dispatch (packing_unpacker &unpacker);
+#endif
 
 #endif /* _QUERY_METHOD_H_ */
