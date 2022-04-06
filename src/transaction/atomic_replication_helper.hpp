@@ -33,24 +33,23 @@ namespace cublog
   class atomic_replication_helper
   {
     public:
-      void add_new_atomic_replication_sequence (TRANID tranid);
-      void add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, log_rectype record_type,
-					VPID vpid, LOG_RCVINDEX record_index);
-      void apply_log_redo_on_atomic_replication_sequence (TRANID tranid);
+      void add_atomic_replication_unit (THREAD_ENTRY *thread_p, PGBUF_WATCHER *watcher, TRANID tranid, log_lsa record_lsa,
+					log_rectype record_type, VPID vpid);
       void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, PGBUF_WATCHER *pg_watcher, TRANID tranid);
-      bool is_part_of_atomic_replication (TRANID tranid, log_lsa record_lsa);
-      bool is_page_part_of_atomic_replication_sequence (TRANID tranid, VPID vpid);
+      bool is_part_of_atomic_replication (TRANID tranid) const;
+#if !defined (NDEBUG)
+      bool is_page_part_of_atomic_replication_sequence (TRANID tranid, VPID vpid) const;
+#endif
 
     private:
       class atomic_replication_unit
       {
 	public:
-	  atomic_replication_unit (log_lsa lsa, log_rectype rectype, VPID vpid, LOG_RCVINDEX record_index, TRANID record_tranid);
+	  atomic_replication_unit (log_lsa lsa, log_rectype rectype, VPID vpid, TRANID record_tranid);
 
 	  void apply_log_redo ();
-	  void fix_atomic_replication_unit (THREAD_ENTRY *thread_p, PGBUF_WATCHER *pg_watcher);
-	  void unfix_atomic_replication_unit (THREAD_ENTRY *thread_p, PGBUF_WATCHER *pg_watcher);
-	  log_lsa get_record_lsa ();
+	  void fix_page (THREAD_ENTRY *thread_p, PGBUF_WATCHER *pg_watcher);
+	  void unfix_page (THREAD_ENTRY *thread_p, PGBUF_WATCHER *pg_watcher);
 	  VPID get_vpid ();
 
 	private:
@@ -58,7 +57,6 @@ namespace cublog
 	  log_rectype m_record_type;
 	  VPID m_vpid;
 	  PAGE_PTR m_page_ptr;
-	  LOG_RCVINDEX m_record_index;
 	  TRANID m_record_tranid;
       };
 

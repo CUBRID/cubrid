@@ -34,6 +34,8 @@
 #include "transaction_global.hpp"
 #include "util_func.h"
 
+#include "atomic_replication_helper.hpp"
+
 #include <cassert>
 #include <chrono>
 #include <functional>
@@ -198,6 +200,37 @@ namespace cublog
 	(void) m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa);
 
 	const log_rec_header header = m_redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
+
+	atomic_replication_helper helper;
+	PGBUF_WATCHER *pgbuf_watcher = NULL;
+
+	switch (header.type)
+	  {
+	  case LOG_START_ATOMIC_REPL:
+	    if (helper.is_part_of_atomic_replication (header.trid))
+	      {
+		// nested atomic replication
+	      }
+	    // how to get vpid in this context?
+//	    helper.add_atomic_replication_unit (thread_entry, header.trid, m_redo_lsa, header.type);
+	    break;
+	  case LOG_END_ATOMIC_REPL:
+	    if (helper.is_part_of_atomic_replication (header.trid))
+	      {
+		helper.unfix_atomic_replication_sequence (&thread_entry, pgbuf_watcher, header.trid);
+	      }
+	    else
+	      {
+		// error ending unexisting atomic replication sequence
+	      }
+	    break;
+	  default:
+	    if (helper.is_part_of_atomic_replication (header.trid))
+	      {
+//	    helper.add_atomic_replication_unit (thread_entry, header.trid, m_redo_lsa, header.type)
+	      }
+	    break;
+	  }
 
 	switch (header.type)
 	  {
