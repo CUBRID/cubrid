@@ -18337,9 +18337,9 @@ generic_function_id
 
 			PT_NODE *node = $1;
 
-			if (node->node_type == PT_METHOD_CALL)
+			if (node && node->node_type == PT_METHOD_CALL)
 			  {
-			    if (node && !node->info.method_call.on_call_target)
+			    if (!node->info.method_call.on_call_target)
 			      {
 				const char *callee;
 				PT_NODE *name = node->info.method_call.method_name;
@@ -19741,7 +19741,7 @@ path_header
 	;
 
 path_dot
-	: DOT
+	: DOT          { DBG_TRACE_GRAMMAR(path_dot, : DOT); }
 	| RIGHT_ARROW  { DBG_TRACE_GRAMMAR(path_dot, | RIGHT_ARROW); }
 	;
 
@@ -23784,7 +23784,8 @@ dblink_column_definition
 
                         if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
                           {
-                                PT_ERROR (this_parser, node, "not supported type for dblink");
+                                PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (typ));
                           }
 
                         if (typ == PT_TYPE_CHAR && dt)
@@ -23821,7 +23822,6 @@ pop_msg ()
 extern void csql_yyset_lineno (int line_number);
 int yycolumn = 0;
 int yycolumn_end = 0;
-int dot_flag = 0;
 
 int parser_function_code = PT_EMPTY;
 size_t json_table_column_count = 0;
@@ -24962,7 +24962,6 @@ parser_main (PARSER_CONTEXT * parser)
   yycolumn = yycolumn_end = 1;
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
-  dot_flag = 0;
 
   g_query_string = NULL;
   g_query_string_len = 0;
@@ -25062,7 +25061,6 @@ parse_one_statement (int state)
 
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
-  dot_flag = 0;
 
   g_query_string = NULL;
   g_query_string_len = 0;

@@ -1696,12 +1696,22 @@
 
 #define ER_CGW_INVALID_DESC_HANDLE                  -1328
 #define ER_CGW_NOT_SUPPORTED_DBMS                   -1329
-#define ER_DBLINK_DEV_RESERVED_ERROR30              -1330
+#define ER_CGW_NOT_ALLOCATE_ENV_HANDLE              -1330
 #define ER_DBLINK_DEV_RESERVED_ERROR31              -1331
 
 #define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
 
-#define ER_LAST_ERROR                               -1333
+#define ER_FLASHBACK_INVALID_TIME                   -1333
+#define ER_FLASHBACK_INVALID_CLASS                  -1334
+#define ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY -1335
+#define ER_FLASHBACK_SCHEMA_CHANGED                 -1336
+#define ER_FLASHBACK_LOG_NOT_EXIST                  -1337
+#define ER_FLASHBACK_DUPLICATED_REQUEST             -1338
+
+#define ER_SP_NOT_SUPPORTED_ARG_TYPE                -1339
+#define ER_SP_NOT_SUPPORTED_RETURN_TYPE             -1340
+
+#define ER_LAST_ERROR                               -1341
 /*
  * CAUTION!
  *

@@ -43,7 +43,6 @@
 #include "cas.h"
 #include "cas_common.h"
 #include "cas_handle.h"
-#include "cas_handle_procedure.hpp"
 #include "cas_log.h"
 
 #define SRV_HANDLE_ALLOC_SIZE		256
@@ -62,7 +61,6 @@ static int current_handle_count = 0;
 /* implemented in transaction_cl.c */
 extern bool tran_is_in_libcas (void);
 
-static cas_procedure_handle_table procedure_handle_table;
 static int current_handle_id = -1;	/* it is used for javasp */
 
 int
@@ -135,6 +133,9 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
 
 #if defined (CAS_FOR_CGW)
   srv_handle->cgw_handle = NULL;
+  srv_handle->total_tuple_count = 0;
+  srv_handle->stmt_type = CUBRID_STMT_NONE;
+  srv_handle->is_cursor_open = false;
 #endif /* CAS_FOR_CGW */
 
   *new_handle = srv_handle;
@@ -147,9 +148,6 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
 #if !defined(LIBCAS_FOR_JSP)
   current_handle_count++;
 #endif
-
-  /* register handler id created from server-side JDBC */
-  cas_procedure_handle_add (procedure_handle_table, current_handle_id, new_handle_id);
 
   return new_handle_id;
 }
@@ -181,7 +179,6 @@ hm_srv_handle_free (int h_id)
       return;
     }
 
-  cas_procedure_handle_free (procedure_handle_table, current_handle_id, h_id);
   srv_handle_content_free (srv_handle);
   srv_handle_rm_tmp_file (h_id, srv_handle);
 

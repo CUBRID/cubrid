@@ -75,6 +75,7 @@ $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
 $       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character '%1$c' in database name '%2$s'\n
@@ -128,6 +129,7 @@ Available admin utility-name:\n\
     restoreslave\n\
     vacuumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -188,6 +190,7 @@ Available administrator's utilities:\n\
     vacuumdb\n\
     checksumdb\n\
     tde\n\
+    flashback\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -982,9 +985,9 @@ usage: %1$s applyinfo [OPTION] database-name\n\
 \n\
 valid options:\n\
   -r, --remote-host-name      remote host name; display remote node's active log information \n\
-  -a, --applied-info 	      display applied information \n\
   -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
-  -p, --page=ID               page id; default : 0\n\
+  -a, --applied-info          display applied information; the -L option is required \n\
+  -p, --page=ID               page id; the -L option is required; default : 0\n\
   -v, --verbose               enable verbose status messages; default : disable\n\
   -i, --interval=S            print information every S secs\n
 
@@ -1238,3 +1241,39 @@ OPERATIONs: one of the operations must be given, and they are exclusive \n\
     -n, --generate-new-key        generate a new key in the key file (_keys); max count: 128\n\
     -d, --delete-key=KEY_INDEX    delete a key in the key file (_keys)\n\
     -c, --change-key=KEY_INDEX    change the key set on the database for another key in the key file (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 Enter DBA password:
+2 Invalid date format, valid format is dd-mm-yyyy:hh:mm:ss\n
+3 Start date (%1$s) is required to be smaller than end date (%2$s)\n
+4 Please try with a date before the current (%1$s) and after the database was created (%2$s)\n
+5 Table (%1$s) does not exist in database\n
+6 Too many transactions to flashback. Please shorten the interval between start date and end date\n
+7 Unable to get flashback because schema (%1$s) has been changed.\n
+8 Log volume has been removed. Please try with the later date\n
+9 Couldn't open output file '%1$s'\n
+10 Trasaction ID (%1$d) does not exist\n
+11 Please set 'supplemental_log' in 'cubrid.conf'. Only the SQL logs executed after setting 'supplemental_log' can be flashbacked.\n
+12 Transaction ID should be entered in %1$d seconds. The timeout can be adjusted through the 'flashback_timeout' setting in 'cubrid.conf'.\n
+13 Flashback is already running. Flashback cannot be run by two processes.\n
+14 Flashback cannot run as standalone mode.\n
+60 \
+flashback: Provides statements to flashback a specific transaction.\n\
+usage: %1$s flashback [OPTION] database-name class_name1 [class_name2 ...]\n\
+\n\
+valid options:\n\
+    -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
+    -u, --user=ID                 specify the user who executed the SQL statement to flashback; default: ALL.\n\
+    -p, --dba-password            password of the DBA user; will prompt if don't specify\n\
+    -s, --start-date=DATE         specify starting DATE for flashback. SQL logs are extracted from the DATE.\n\
+                                  DATE is given as follows: dd-mm-yyyy:hh:mm:ss.\n\
+    -e, --end-date=DATE           specify end DATE for the flashback. SQL logs are extracted up to the DATE.\n\
+                                  if start-date is not specified, then ((END - 10min) ~ END) is set to range,\n\
+                                  and else if END is not specified, then (start ~ (start + 10min)) is set.\n\
+                                  And neither a start date nor an end date is specified,\n\
+                                  the SQL logs, executed between the (current time - 10min) and current time, are extracted.\n\
+    --detail                      output a detailed information for each SQL statement.\n\
+                                  Transaction ID, User name, and original SQL statement will be returned with SQL statement\n\
+                                  for flashback; default: outputs only SQL statements for flashback\n\
+    --oldest                      flashback is performed in chronological order for SQL statements executed from start time to end time;\n\
+                                  default: latest\n

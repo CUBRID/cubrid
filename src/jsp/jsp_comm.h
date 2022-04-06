@@ -39,6 +39,7 @@
 
 #include "porting.h"
 
+/* It should be sync with the same request code in ExecuteThread.java */
 typedef enum
 {
   SP_CODE_INVOKE = 0x01,
@@ -46,6 +47,8 @@ typedef enum
   SP_CODE_ERROR = 0x04,
   SP_CODE_INTERNAL_JDBC = 0x08,
   SP_CODE_DESTROY = 0x10,
+  // SP_CODE_END = 0x20,
+  SP_CODE_PREPARE_ARGS = 0x40,
 
   SP_CODE_UTIL_PING = 0xDE,
   SP_CODE_UTIL_STATUS = 0xEE,
@@ -68,11 +71,12 @@ struct javasp_status_info
 extern "C"
 {
 #endif
-
-  SOCKET jsp_connect_server (int server_port);
-  void jsp_disconnect_server (const SOCKET sockfd);
+  SOCKET jsp_connect_server (const char *db_name, int server_port);
+  void jsp_disconnect_server (SOCKET & sockfd);
   int jsp_writen (SOCKET fd, const void *vptr, int n);
   int jsp_readn (SOCKET fd, void *vptr, int n);
+
+  int jsp_ping (SOCKET fd);
 
 #if defined(WINDOWS)
   extern int windows_socket_startup (FARPROC hook);

@@ -249,6 +249,8 @@ extern "C"
   extern const char *db_get_type_name (DB_TYPE type_id);
   extern DB_TYPE db_type_from_string (const char *name);
   extern int db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val);
+  extern char *db_get_client_ip_addr (void);
+  extern void db_set_client_ip_addr (const char *ip_addr);
 
   extern void db_clear_host_status (void);
   extern void db_set_host_status (char *hostname, int status);

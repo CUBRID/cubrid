@@ -1019,7 +1019,7 @@ extern "C"
   typedef DB_CHAR DB_NCHAR;
   typedef DB_CHAR DB_BIT;
 
-  typedef int DB_RESULTSET;
+  typedef uint64_t DB_RESULTSET;
 
   /* Structure for an ENUMERATION element */
   typedef struct db_enum_element DB_ENUM_ELEMENT;

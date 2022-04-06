@@ -49,11 +49,14 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+#include <vector>
+
 // forward definitions
 struct compile_context;
 struct xasl_cache_ent;
 struct xasl_stream;
 struct xasl_node_header;
+struct method_sig_list;
 
 extern int xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 				    bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
@@ -288,4 +291,8 @@ extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *
 extern int xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock);
 extern bool xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated);
 extern int xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
+
+// *INDENT-OFF*
+extern int xmethod_invoke_fold_constants (THREAD_ENTRY * thread_p, const method_sig_list &sig_list, std::vector<std::reference_wrapper<DB_VALUE>> &args, DB_VALUE &result);
+// *INDENT-ON*
 #endif /* _XSERVER_INTERFACE_H_ */

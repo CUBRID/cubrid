@@ -973,6 +973,12 @@ css_reestablish_connection_to_master (void)
   return 0;
 }
 
+static void
+css_push_method_server_task (cubthread::entry & thread_ref, CSS_CONN_ENTRY & conn)
+{
+  (void) css_internal_request_handler (thread_ref, conn);
+}
+
 /*
  * css_connection_handler_thread () - Accept/process request from one client
  *   return:
@@ -1104,11 +1110,24 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	    }
 	  else
 	    {
+
 	      /* if new command request has arrived, make new job and add it to job queue */
 	      if (type == COMMAND_TYPE)
 		{
-		  // push new task
-		  css_push_server_task (*conn);
+		  if (conn->in_method == false)
+		    {
+		      // push new task
+		      css_push_server_task (*conn);
+		    }
+		  else
+		    {
+		      // push new task for method
+		      // *INDENT-OFF*
+		      cubthread::entry_callable_task * task =
+		        new cubthread::entry_callable_task (std::bind (css_push_method_server_task, std::placeholders::_1, std::ref (*conn)));
+		      css_push_external_task (conn, task);
+		      // *INDENT-ON*
+		    }
 		}
 	    }
 	}
@@ -2812,6 +2831,8 @@ css_server_external_task::execute (context_type &thread_ref)
       assert (thread_ref.private_lru_index == -1);
     }
 
+  thread_ref.m_status = cubthread::entry::status::TS_RUN;
+
   // TODO: We lock tran_index_lock because external task expects it to be locked.
   //       However, I am not convinced we really need this
   pthread_mutex_lock (&thread_ref.tran_index_lock);
@@ -2819,6 +2840,7 @@ css_server_external_task::execute (context_type &thread_ref)
   m_task->execute (thread_ref);
 
   thread_ref.conn_entry = NULL;
+  thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
 
 void

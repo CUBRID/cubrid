@@ -68,6 +68,7 @@ extern const char *boot_get_lob_path (void);
 #endif /* CS_MODE */
 
 extern char *boot_get_host_name (void);
+extern char *boot_get_ip (void);
 
 #if defined(SA_MODE)
 extern int boot_build_catalog_classes (const char *dbname);

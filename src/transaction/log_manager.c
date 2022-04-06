@@ -101,6 +101,7 @@
 #include "overflow_file.h"
 #include "dbtype.h"
 #include "cnv.h"
+#include "flashback.h"
 
 #if !defined(SERVER_MODE)
 
@@ -337,13 +338,7 @@ static int cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page
 				    LOG_LSA lsa, LOG_RCVINDEX rcvindex, bool is_redo);
 static int cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * process_lsa, int *length,
 				     char **data, LOG_RCVINDEX rcvindex, bool is_redo);
-static int cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recdes, LOG_LSA * redo_lsa,
-			   RECDES * redo_recdes);
-static SCAN_CODE cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa,
-				      RECDES * undo_recdes);
 static int cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id);
-static int cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type, OID classoid,
-				 RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry);
 static int cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOGINFO_ENTRY * ddl_entry);
 static int cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LOGINFO_ENTRY * dcl_entry);
 static int cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY * timer_entry);
@@ -11298,7 +11293,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	    memcpy (&redo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
-	    if (cdc_get_recdes (thread_p, NULL, NULL, &redo_lsa, &redo_recdes) != NO_ERROR)
+	    if (cdc_get_recdes (thread_p, NULL, NULL, &redo_lsa, &redo_recdes, false) != NO_ERROR)
 	      {
 		goto error;
 	      }
@@ -11306,7 +11301,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    error =
 	      cdc_make_dml_loginfo (thread_p, trid, tran_user,
 				    rec_type == LOG_SUPPLEMENT_INSERT ? CDC_INSERT : CDC_TRIGGER_INSERT, classoid, NULL,
-				    &redo_recdes, log_info_entry);
+				    &redo_recdes, log_info_entry, false);
 
 	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
 	      {
@@ -11329,7 +11324,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 	    memcpy (&redo_lsa, supplement_data + sizeof (OID) + sizeof (LOG_LSA), sizeof (LOG_LSA));
 
-	    if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes) != NO_ERROR)
+	    if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes, false) != NO_ERROR)
 	      {
 		goto error;
 	      }
@@ -11347,14 +11342,14 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 		error =
 		  cdc_make_dml_loginfo (thread_p, trid, tran_user, CDC_TRIGGER_INSERT, classoid, NULL, &redo_recdes,
-					log_info_entry);
+					log_info_entry, false);
 	      }
 	    else
 	      {
 		error =
 		  cdc_make_dml_loginfo (thread_p, trid, tran_user,
 					rec_type == LOG_SUPPLEMENT_UPDATE ? CDC_UPDATE : CDC_TRIGGER_UPDATE, classoid,
-					&undo_recdes, &redo_recdes, log_info_entry);
+					&undo_recdes, &redo_recdes, log_info_entry, false);
 	      }
 
 	    if (error == ER_CDC_IGNORE_LOG_INFO || error == ER_CDC_IGNORE_LOG_INFO_INTERNAL)
@@ -11382,7 +11377,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	    memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
-	    if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, NULL, NULL) != NO_ERROR)
+	    if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, NULL, NULL, false) != NO_ERROR)
 	      {
 		goto error;
 	      }
@@ -11390,7 +11385,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    error =
 	      cdc_make_dml_loginfo (thread_p, trid, tran_user,
 				    rec_type == LOG_SUPPLEMENT_DELETE ? CDC_DELETE : CDC_TRIGGER_DELETE, classoid,
-				    &undo_recdes, NULL, log_info_entry);
+				    &undo_recdes, NULL, log_info_entry, false);
 
 	    if (error != ER_CDC_LOGINFO_ENTRY_GENERATED)
 	      {
@@ -11633,7 +11628,7 @@ cdc_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * ls
   return NO_ERROR;
 }
 
-static SCAN_CODE
+SCAN_CODE
 cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa, RECDES * undo_recdes)
 {
   SCAN_CODE scan_code = S_SUCCESS;
@@ -11684,9 +11679,9 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
   return scan_code;
 }
 
-static int
+int
 cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recdes, LOG_LSA * redo_lsa,
-		RECDES * redo_recdes)
+		RECDES * redo_recdes, bool is_flashback)
 {
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
   int tmpbuf_index;
@@ -11730,7 +11725,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
   if (undo_lsa != NULL)
     {
       tmpbuf_index = undo_lsa->pageid % 2;
-      if (cdc_Gl.producer.temp_logbuf[tmpbuf_index].log_page_p->hdr.logical_pageid == undo_lsa->pageid)
+      if (cdc_Gl.producer.temp_logbuf[tmpbuf_index].log_page_p->hdr.logical_pageid == undo_lsa->pageid && !is_flashback)
 	{
 	  memcpy (log_page_p, cdc_Gl.producer.temp_logbuf[tmpbuf_index].log_page_p, IO_MAX_PAGE_SIZE);
 	}
@@ -11901,7 +11896,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	}
       else
 	{
-	  if (cdc_Gl.producer.temp_logbuf[tmpbuf_index].log_page_p->hdr.logical_pageid == redo_lsa->pageid)
+	  if (cdc_Gl.producer.temp_logbuf[tmpbuf_index].log_page_p->hdr.logical_pageid == redo_lsa->pageid
+	      && !is_flashback)
 	    {
 	      memcpy (log_page_p, cdc_Gl.producer.temp_logbuf[tmpbuf_index].log_page_p, IO_MAX_PAGE_SIZE);
 	    }
@@ -12931,9 +12927,30 @@ error:
   return error_code;
 }
 
-static int
+#define FLASHBACK_ERROR_HANDLING(is_flashback, e, classoid, classname)\
+  do \
+    { \
+      if (is_flashback) \
+        { \
+          error_code = (e); \
+          if (error_code == ER_FLASHBACK_SCHEMA_CHANGED) \
+            { \
+              if (heap_get_class_name (thread_p, &(classoid), &(classname)) == NO_ERROR) \
+                { \
+                  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_SCHEMA_CHANGED, 4, (classname), OID_AS_ARGS (&(classoid))); \
+                  free_and_init ((classname)); \
+                } \
+            } \
+          \
+          goto exit; \
+        } \
+    } \
+  while (0)
+
+int
 cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type,
-		      OID classoid, RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry)
+		      OID classoid, RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry,
+		      bool is_flashback)
 {
   /*this is for constructing dml data item */
   int has_pk = 0;
@@ -12979,6 +12996,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   char *loginfo_buf = NULL;
   OID partitioned_classoid = OID_INITIALIZER;
 
+  char *classname = NULL;
+
   /* when partition class oid input, it is required to be changed to partitioned class oid  */
 
   if ((error_code = partition_find_root_class_oid (thread_p, &classoid, &partitioned_classoid)) == NO_ERROR)
@@ -12991,9 +13010,13 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   else
     {
       /* can not get class schema of classoid due to drop */
+
+      /* if schema is changed, flashback error handling first then cdc error handling */
+      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
+
       error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
       cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
-      goto error;
+      goto exit;
     }
 
   cdc_log ("cdc_make_dml_loginfo : started with trid:%d, transaction user:%s, class oid:(%d|%d|%d), dml type:%d", trid,
@@ -13001,10 +13024,12 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   if ((error_code = heap_attrinfo_start (thread_p, &classoid, -1, NULL, &attr_info)) != NO_ERROR)
     {
+      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
+
       error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
       cdc_log ("cdc_make_dml_loginfo : failed to find class representation ");
 
-      goto error;
+      goto exit;
     }
   else
     {
@@ -13015,7 +13040,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
     {
       if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, &attr_info)) != NO_ERROR)
 	{
-	  goto error;
+	  goto exit;
 	}
 
       old_values = (DB_VALUE *) malloc (sizeof (DB_VALUE) * attr_info.num_values);
@@ -13024,7 +13049,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (DB_VALUE) * attr_info.num_values);
-	  goto error;
+	  goto exit;
 	}
 
       for (i = 0; i < attr_info.num_values; i++)
@@ -13032,10 +13057,12 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  heap_value = &attr_info.values[i];
 	  if (heap_value->read_attrepr == NULL)
 	    {
+	      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
+
 	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
 	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
 
-	      goto error;
+	      goto exit;
 	    }
 
 	  oldval_deforder = heap_value->read_attrepr->def_order;
@@ -13049,7 +13076,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
     {
       if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, NULL, &attr_info)) != NO_ERROR)
 	{
-	  goto error;
+	  goto exit;
 	}
 
       new_values = (DB_VALUE *) malloc (sizeof (DB_VALUE) * attr_info.num_values);
@@ -13059,7 +13086,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (DB_VALUE) * attr_info.num_values);
 
-	  goto error;
+	  goto exit;
 	}
 
       for (i = 0; i < attr_info.num_values; i++)
@@ -13067,10 +13094,12 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  heap_value = &attr_info.values[i];
 	  if (heap_value->read_attrepr == NULL)
 	    {
+	      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
+
 	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
 	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
 
-	      goto error;
+	      goto exit;
 	    }
 
 	  newval_deforder = heap_value->read_attrepr->def_order;
@@ -13080,7 +13109,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       record_length += redo_recdes->length;
     }
 
-  if ((cdc_Gl.producer.all_in_cond == 0) && dml_type != CDC_INSERT)
+  if ((cdc_Gl.producer.all_in_cond == 0) && dml_type != CDC_INSERT && !is_flashback)
     {
       if (redo_recdes != NULL)
 	{
@@ -13096,7 +13125,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       if (has_pk < 0)
 	{
 	  error_code = ER_FAILED;
-	  goto error;
+	  goto exit;
 	}
     }
 
@@ -13105,7 +13134,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, record_length * 5 + MAX_ALIGNMENT);
-      goto error;
+      goto exit;
     }
 
   changed_col_idx = (int *) malloc (sizeof (int) * attr_info.num_values);
@@ -13113,7 +13142,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, attr_info.num_values);
-      goto error;
+      goto exit;
     }
 
   ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
@@ -13141,7 +13170,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	{
 	  if ((error_code = cdc_put_value_to_loginfo (&new_values[i], &ptr)) != NO_ERROR)
 	    {
-	      goto error;
+	      goto exit;
 	    }
 	}
 
@@ -13152,38 +13181,61 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       /*update */
       ptr = or_pack_int (ptr, dml_type);
       ptr = or_pack_int64 (ptr, b_classoid);
-      for (i = 0; i < attr_info.num_values; i++)
+
+      if (!is_flashback)
 	{
-	  if (cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i]) > 0)
+	  for (i = 0; i < attr_info.num_values; i++)
 	    {
-	      changed_col_idx[cnt++] = i;	//TODO: replace i with def_order to reduce memory alloc and copy 
+	      if (cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i]) > 0)
+		{
+		  changed_col_idx[cnt++] = i;	//TODO: replace i with def_order to reduce memory alloc and copy 
+		}
+	    }
+
+	  if (cnt == 0)
+	    {
+	      /* This is due to update log record appended by trigger savepoint.
+	       * It is not sure why update log is appended by trigger savepoint */
+
+	      error_code = ER_CDC_IGNORE_LOG_INFO_INTERNAL;
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO_INTERNAL, 0);
+	      goto exit;
+	    }
+
+	  num_change_col = cnt;
+	  ptr = or_pack_int (ptr, num_change_col);
+	  for (i = 0; i < num_change_col; i++)
+	    {
+	      ptr = or_pack_int (ptr, changed_col_idx[i]);
+	    }
+
+	  for (i = 0; i < num_change_col; i++)
+	    {
+	      if (cdc_put_value_to_loginfo (&new_values[changed_col_idx[i]], &ptr) != NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		  goto exit;
+		}
 	    }
 	}
-
-      if (cnt == 0)
+      else
 	{
-	  /* This is due to update log record appended by trigger savepoint.
-	   * It is not sure why update log is appended by trigger savepoint */
+	  ptr = or_pack_int (ptr, attr_info.num_values);
 
-	  error_code = ER_CDC_IGNORE_LOG_INFO_INTERNAL;
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_IGNORE_LOG_INFO_INTERNAL, 0);
-	  goto error;
-	}
-
-      num_change_col = cnt;
-      ptr = or_pack_int (ptr, num_change_col);
-      for (i = 0; i < num_change_col; i++)
-	{
-	  ptr = or_pack_int (ptr, changed_col_idx[i]);
-	}
-
-      for (i = 0; i < num_change_col; i++)
-	{
-	  if (cdc_put_value_to_loginfo (&new_values[changed_col_idx[i]], &ptr) != NO_ERROR)
+	  for (i = 0; i < attr_info.num_values; i++)
 	    {
-	      error_code = ER_FAILED;
-	      goto error;
+	      ptr = or_pack_int (ptr, i);
 	    }
+
+	  for (i = 0; i < attr_info.num_values; i++)
+	    {
+	      if (cdc_put_value_to_loginfo (&new_values[i], &ptr) != NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		  goto exit;
+		}
+	    }
+
 	}
 
       if (has_pk == 1)
@@ -13202,7 +13254,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	      if (cdc_put_value_to_loginfo (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
 		{
 		  error_code = ER_FAILED;
-		  goto error;
+		  goto exit;
 		}
 	    }
 	}
@@ -13221,7 +13273,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	      if (cdc_put_value_to_loginfo (&old_values[i], &ptr) != NO_ERROR)
 		{
 		  error_code = ER_FAILED;
-		  goto error;
+		  goto exit;
 		}
 	    }
 	}
@@ -13247,7 +13299,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	      if (cdc_put_value_to_loginfo (&old_values[cond_col_idx[i]], &ptr) != NO_ERROR)
 		{
 		  error_code = ER_FAILED;
-		  goto error;
+		  goto exit;
 		}
 	    }
 	}
@@ -13265,7 +13317,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	      if (cdc_put_value_to_loginfo (&old_values[i], &ptr) != NO_ERROR)
 		{
 		  error_code = ER_FAILED;
-		  goto error;
+		  goto exit;
 		}
 	    }
 	}
@@ -13282,16 +13334,18 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       cdc_log ("cdc_make_dml_loginfo : failed to allocate memory for log info in dml log entry");
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, dml_entry->length);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto error;
+      goto exit;
     }
 
   memcpy (dml_entry->log_info, start_ptr, dml_entry->length);
+
+  FLASHBACK_ERROR_HANDLING (is_flashback, NO_ERROR, classoid, classname);
 
   error_code = ER_CDC_LOGINFO_ENTRY_GENERATED;
 
   cdc_log ("cdc_make_dml_loginfo : success to generated dml log info. length:%d", dml_entry->length);
 
-error:
+exit:
 
   if (loginfo_buf != NULL)
     {

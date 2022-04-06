@@ -349,5 +349,11 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 bool
 prm_get_bool_value (PARAM_ID id)
 {
+  // affirmative for debug parameters used in the context of this test
+  if (id == PRM_ID_ER_LOG_PRIOR_TRANSFER)
+    {
+      return true;
+    }
+  assert (false);
   return false;
 }

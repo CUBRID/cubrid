@@ -1404,12 +1404,22 @@ $ LOADDB
 
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
-1330 Error reserved for dblink development.
+1330 Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 活动日志卷 (%1$s) 过于健全，无法重新创建。 如果删除活动日志，可能会导致意外且不可逆转的问题。
 
-1331 最后一个错误.
+1333 开始闪回的时间无效 (%1$s)。 时间需要设置在 (%2$s) 和 (%3$s) 之间。
+1334 找不到要闪回的类 (%1$s)。
+1335 闪回的事务太多。 少于 %1$d 笔交易可以被闪回。
+1336 无法支持此类的闪回（名称：%1$s，OID：%2$d|%3$d|%4$d）。 类架构已更改。
+1337 日志记录不存在 (lsa : %1$lld|%2$d)。 存档日志卷已被删除。
+1338 闪回已在运行。 Flashback 不能由多个用户同时运行。
+
+1339 不支持的存储过程的参数类型: %1$s
+1340 不支持的存储过程的返回类型: %1$s
+
+1341 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1567,6 +1577,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 一个comment的最大长度是 %1$d 字节.
 128 JSON_OBJECTAGG参数个数不匹配.
 129 PARALLEL数必须在 %1$d 和 %2$d 之间.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
@@ -1875,6 +1886,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 没有找到与 %1$s() 函数兼容的签名.
 305 函数签名 %1$s 与函数参数不匹配.
 306 dblink - 缺少必需的信息.
+307 dblink - not supported type %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
