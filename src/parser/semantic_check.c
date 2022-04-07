@@ -8914,6 +8914,15 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return;
 	}
     }
+  else
+    {
+      /* Check if class exists by name. */
+      if (db_find_class (name) != NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, name);
+	  return;
+	}
+    }
 
   /* target_owner_name */
   owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
@@ -9070,6 +9079,15 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_ALREADY_EXIST, new_name);
+    }
+  else
+    {
+      /* Check if class exists by name. */
+      if (db_find_class (new_name) != NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, new_name);
+	  return;
+	}
     }
 }
 

@@ -17919,6 +17919,15 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 	  goto end;
 	}
     }
+  else
+    {
+      /* Check if class exists by name. */
+      if (db_find_class (synonym_name) != NULL)
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_LC_CLASSNAME_EXIST, synonym_name);
+	  goto end;
+	}
+    }
 
   obj_tmpl = dbt_create_object (class_obj);
   if (obj_tmpl == NULL)
@@ -18215,6 +18224,15 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
     {
       ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_ALREADY_EXIST, new_synonym_name);
       goto end;
+    }
+  else
+    {
+      /* Check if class exists by name. */
+      if (db_find_class (new_synonym_name) != NULL)
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_LC_CLASSNAME_EXIST, new_synonym_name);
+	  goto end;
+	}
     }
 
   obj_tmpl = dbt_edit_object (instance_obj);
