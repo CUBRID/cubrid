@@ -1880,8 +1880,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      assert (!PT_SPEC_IS_DERIVED (spec) || !PT_SPEC_IS_CTE (spec));
 			      flat = spec->info.spec.flat_entity_list;
 
-			      if (pt_str_compare (attr->info.name.original, flat->info.name.resolved, CASE_INSENSITIVE)
-				  == 0)
+			      if (pt_user_specified_name_compare (attr->info.name.original, flat->info.name.resolved) ==
+				  0)
 				{
 				  /* find spec set attr's spec_id */
 				  attr->info.name.spec_id = flat->info.name.spec_id;
@@ -1893,8 +1893,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      /* derived table or cte */
 			      assert (PT_SPEC_IS_DERIVED (spec) || PT_SPEC_IS_CTE (spec));
 			      range_var = spec->info.spec.range_var;
-			      if (pt_str_compare (attr->info.name.original, range_var->info.name.original,
-						  CASE_INSENSITIVE) == 0)
+			      if (pt_user_specified_name_compare
+				  (attr->info.name.original, range_var->info.name.original) == 0)
 				{
 				  break;
 				}
@@ -3837,8 +3837,18 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
       q = p->next;		/* q = next spec */
       while (q)
 	{			/* check that p->range != q->range to the end of list */
-	  if (!pt_str_compare (p->info.spec.range_var->info.name.original, q->info.spec.range_var->info.name.original,
-			       CASE_INSENSITIVE))
+	  /*
+	   * Case of comparing names after dot(.).
+	   * 1. When comparing owner_name.class_name and alias_name.
+	   *    In Oracle and PostgreSQL, only table_name excluding schema_name or owner_name is compared
+	   *    with alias_name. In order to operate the same as other DBMSs, only class_name except owner_name
+	   *    should be compared with alias_name. An error should occur in the case below.
+	   *    e.g. select t1.c1 from u1.t1, t2 t1;
+	   *      - exposed_name of "t1"    : "u1.t1"
+	   *      - exposed_name of "t2 t1" : "t1"
+	   */
+	  if (!pt_user_specified_name_compare
+	      (p->info.spec.range_var->info.name.original, q->info.spec.range_var->info.name.original))
 	    {
 	      PT_MISC_TYPE p_type = p->info.spec.range_var->info.name.meta_class;
 	      PT_MISC_TYPE q_type = q->info.spec.range_var->info.name.meta_class;
@@ -3927,7 +3937,7 @@ pt_check_unique_names (PARSER_CONTEXT * parser, const PT_NODE * p)
 	      q = q->next;
 	      continue;
 	    }
-	  if (!pt_str_compare (p_name, q_name, CASE_INSENSITIVE))
+	  if (!pt_user_specified_name_compare (p_name, q_name))
 	    {
 	      PT_ERRORmf (parser, q, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_CLASS_OR_ALIAS, q_name);
 	      return 0;
@@ -5544,8 +5554,8 @@ pt_is_correlation_name (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * nam)
 
       if (specs->info.spec.range_var
 	  && ((nam->info.name.meta_class != PT_META_CLASS) || (specs->info.spec.meta_class == PT_META_CLASS))
-	  && pt_str_compare (nam->info.name.original, specs->info.spec.range_var->info.name.original,
-			     CASE_INSENSITIVE) == 0)
+	  && (pt_user_specified_name_compare (nam->info.name.original, specs->info.spec.range_var->info.name.original)
+	      == 0))
 	{
 	  if (!owner)
 	    {
@@ -5558,8 +5568,7 @@ pt_is_correlation_name (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * nam)
 	      entity_name = specs->info.spec.entity_name;
 	      if (entity_name && entity_name->node_type == PT_NAME && entity_name->info.name.resolved
 		  /* actual class ownership test is done for spec no need to repeat that here. */
-		  && (pt_str_compare (entity_name->info.name.resolved, owner->info.name.original, CASE_INSENSITIVE) ==
-		      0))
+		  && (pt_user_specified_name_compare (entity_name->info.name.resolved, owner->info.name.original) == 0))
 		{
 		  return specs;
 		}
@@ -5666,7 +5675,7 @@ pt_is_on_list (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * list)
 	  return NULL;		/* this is an error */
 	}
 
-      if (pt_str_compare (p->info.name.original, list->info.name.original, CASE_INSENSITIVE) == 0)
+      if (pt_user_specified_name_compare (p->info.name.original, list->info.name.original) == 0)
 	{
 	  return (PT_NODE *) list;	/* found a match */
 	}
@@ -5958,6 +5967,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
   PT_NODE *temp, *temp1, *temp2, *name;
   DB_OBJECT *db;		/* a temp for class object */
   const char *class_name = NULL;	/* a temp to extract name from class */
+  const char *obj_class_name = NULL;
   PT_NODE *e_node;
   DB_AUTH type;
   AU_FETCHMODE fetchmode;
@@ -6013,6 +6023,11 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 
 	  if (au_fetch_class (classop, &class_, fetchmode, type) == NO_ERROR)
 	    {
+	      if (intl_identifier_casecmp (class_name, class_->header.ch_name))
+		{
+		  name->info.name.original = pt_append_string (parser, NULL, class_->header.ch_name);
+		}
+
 	      if (class_->partition != NULL)
 		{
 		  if (class_->partition->pname == NULL)
@@ -6740,7 +6755,7 @@ pt_resolve_hint_args (PARSER_CONTEXT * parser, PT_NODE ** arg_list, PT_NODE * sp
 	    }
 
 	  if ((range = spec->info.spec.range_var)
-	      && !pt_str_compare (range->info.name.original, arg->info.name.original, CASE_INSENSITIVE))
+	      && (pt_user_specified_name_compare (range->info.name.original, arg->info.name.original) == 0))
 	    {
 	      /* found match */
 	      arg->info.name.spec_id = spec->info.spec.id;
@@ -7019,7 +7034,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 	  range = spec->info.spec.range_var;
 	  entity = spec->info.spec.entity_name;
 	  if (range && entity
-	      && !pt_str_compare (range->info.name.original, index->info.name.resolved, CASE_INSENSITIVE))
+	      && (pt_user_specified_name_compare (range->info.name.original, index->info.name.resolved) == 0))
 	    {
 	      classop = db_find_class (entity->info.name.original);
 	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
@@ -7169,6 +7184,82 @@ pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag)
     {
       return intl_identifier_cmp (p, q);
     }
+}
+
+int
+pt_user_specified_name_compare (const char *p, const char *q)
+{
+  const char *dot_p = NULL;
+  const char *dot_q = NULL;
+  const char *original_p = NULL;
+  const char *original_q = NULL;
+
+  if (!p && !q)
+    {
+      return 0;
+    }
+
+  if (!p || !q)
+    {
+      return 1;
+    }
+
+  if (p[0] == '.' || q[0] == '.')
+    {
+      return 1;
+    }
+
+  dot_p = strchr (p, '.');
+  dot_q = strchr (q, '.');
+
+  if ((dot_p == NULL && dot_q != NULL) || (dot_p != NULL && dot_q == NULL))
+    {
+      /*
+       * In the case below, only after dot(.) is compared.
+       *
+       * e.g. p : user_name.object_name -> object_name
+       *      q : object_name           -> object_name
+       *
+       *      or
+       * 
+       *      p : object_name           -> object_name
+       *      q : user_name.object_name -> object_name
+       */
+      original_p = dot_p ? (dot_p + 1) : p;
+      original_q = dot_q ? (dot_q + 1) : q;
+
+      /*
+       * e.g. original_p : object_name.          -> NULL
+       *      original_q : user_name.object_name -> object_name
+       *
+       *      or
+       * 
+       *      original_p : user_name.object_name -> object_name
+       *      original_q : object_name.          -> NULL
+       */
+      if (original_p[0] == '\0' || original_q[0] == '\0')
+	{
+	  return 1;
+	}
+    }
+  else
+    {
+      /*
+       * In the case below, compare all.
+       *
+       * e.g. p : user_name.object_name
+       *      q : user_name.object_name
+       *
+       *      or
+       * 
+       *      p : object_name
+       *      q : object_name
+       */
+      original_p = p;
+      original_q = q;
+    }
+
+  return intl_identifier_casecmp (original_p, original_q);
 }
 
 /*
@@ -8241,7 +8332,9 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       PT_NODE *cte_name = cte->info.cte.name;
       assert (cte_name != NULL);
 
-      if (pt_name_equal (parser, cte_name, node->info.spec.entity_name))
+      if (pt_name_equal (parser, cte_name, node->info.spec.entity_name)
+	  || pt_user_specified_name_compare (cte_name->info.name.original,
+					     node->info.spec.entity_name->info.name.original) == 0)
 	{
 	  node->info.spec.cte_name = node->info.spec.entity_name;
 	  node->info.spec.entity_name = NULL;
@@ -9335,29 +9428,54 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
 }
 
 DB_OBJECT *
-pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
+pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  char *serial_name, *t;
-  DB_OBJECT *serial_class_mop, *serial_mop;
+  DB_OBJECT *serial_class_obj = NULL;
+  DB_OBJECT *serial_obj = NULL;
   DB_IDENTIFIER serial_obj_id;
+  const char *serial_name = NULL;
+  const char *serial_unique_name = NULL;
+  const char *owner_name = NULL;
 
-  if (serial_name_node == NULL || serial_name_node->node_type != PT_NAME)
+  if (node == NULL)
     {
       return NULL;
     }
 
-  serial_name = (char *) serial_name_node->info.name.original;
-  t = strchr (serial_name, '.');	/* FIXME */
-  serial_name = (t != NULL) ? (t + 1) : serial_name;
-
-  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
-  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
-  if (serial_mop == NULL)
+  if (PT_IS_DOT_NODE (node))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
+      assert (PT_IS_NAME_NODE (node->info.dot.arg1));
+      assert (PT_IS_NAME_NODE (node->info.dot.arg2));
+
+      owner_name = node->info.dot.arg1->info.name.original;
+      serial_name = node->info.dot.arg2->info.name.original;
+    }
+  else
+    {
+      assert (PT_IS_NAME_NODE (node));
+
+      serial_name = node->info.name.original;
     }
 
-  return serial_mop;
+  if (serial_name == NULL || serial_name[0] == '\0')
+    {
+      return NULL;
+    }
+
+  if (owner_name && owner_name[0] != '\0')
+    {
+      serial_unique_name = pt_append_string (parser, owner_name, ".");
+    }
+  serial_unique_name = pt_append_string (parser, NULL, serial_name);
+
+  serial_class_obj = sm_find_class (CT_SERIAL_NAME);
+  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class_obj, serial_unique_name);
+  if (serial_obj == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_unique_name);
+    }
+
+  return serial_obj;
 }
 
 /*
@@ -9991,6 +10109,7 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 				   PT_NODE * derived_alias)
 {
   PT_NODE *as_attr_list = NULL, *select_list;
+  unsigned int save_custom;
   int i, id;
 
   switch (derived_table_type)
@@ -10048,7 +10167,10 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 	      else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
 		{
 		  PARSER_VARCHAR *alias;
+		  save_custom = parser->custom_print;
+		  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
 		  alias = pt_print_bytes (parser, att);
+		  parser->custom_print = save_custom;
 		  col = pt_name (parser, (const char *) alias->bytes);
 		}
 	      else

@@ -1418,7 +1418,13 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1339 Desteklenmeyen bağımsız değişken türü saklı yordam: %1$s
 1340 Desteklenmeyen saklı yordam dönüş türü: %1$s
 
-1341 Son Hata
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1886,6 +1892,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 305 İmza %1$s, argümanları ile uyumlu değildir.
 306 dblink - Gerekli bilgiler eksik.
 307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

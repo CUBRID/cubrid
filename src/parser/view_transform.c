@@ -4731,7 +4731,7 @@ mq_check_delete (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
       for (search = table->next; search; search = search->next)
 	{
 	  /* check if search is duplicate of table */
-	  if (!pt_str_compare (table->info.name.resolved, search->info.name.resolved, CASE_INSENSITIVE)
+	  if (!pt_user_specified_name_compare (table->info.name.resolved, search->info.name.resolved)
 	      && table->info.name.spec_id == search->info.name.spec_id)
 	    {
 	      /* same class found twice in table_list */
@@ -5819,9 +5819,18 @@ mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
 	  search_node = using_index;
 	  while (search_node != NULL)
 	    {
+	      /*
+	       * Case of comparing names after dot(.).
+	       * 1. When comparing owner_name.class_name and class_name.
+	       *    class_name used in index_name must be in from. So, only class_name should be compared,
+	       *    not owner_name.
+	       *    e.g. select c1 from t1 use index (i1) where c1 >= 0 using index t1.none;
+	       *      - resolved_name of "use index (i1)"      : "u1.t1"
+	       *      - resolved_name of "using index t1.none" : "t1"
+	       */
 	      if (search_node->info.name.original != NULL && search_node->info.name.resolved != NULL
 		  && (search_node->etc == (void *) PT_IDX_HINT_USE || search_node->etc == (void *) PT_IDX_HINT_FORCE)
-		  && !intl_identifier_casecmp (node->info.name.resolved, search_node->info.name.resolved))
+		  && !pt_user_specified_name_compare (node->info.name.resolved, search_node->info.name.resolved))
 		{
 		  /* class_name.idx_name and class_name.none found in USE INDEX and/or USING INDEX clauses */
 		  PT_ERRORmf2 (parser, using_index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INDEX_HINT_CONFLICT,
@@ -10663,7 +10672,7 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 		  for (class_spec = lambda_arg->spec_frames->extra_specs; class_spec; class_spec = class_spec->next)
 		    {
 		      entity = class_spec->info.spec.entity_name;
-		      if (!intl_identifier_casecmp (entity->info.name.original, result->info.name.resolved))
+		      if (!pt_user_specified_name_compare (entity->info.name.original, result->info.name.resolved))
 			{
 			  break;	/* found */
 			}

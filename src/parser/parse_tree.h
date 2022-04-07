@@ -802,7 +802,12 @@ enum pt_custom_print
 
   PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21),
 
-  PT_PRINT_NO_HOST_VAR_INDEX = (0x1 << 22)
+  PT_PRINT_NO_HOST_VAR_INDEX = (0x1 << 22),
+
+  /* Both PT_PRINT_NO_SPECIFIED_USER_NAME and PT_PRINT_NO_CURRENT_USER_NAME can be set.
+   * Check PT_PRINT_NO_SPECIFIED_USER_NAME before PT_PRINT_NO_CURRENT_USER_NAME to set implicit priority. */
+  PT_PRINT_NO_SPECIFIED_USER_NAME = (0x1 << 23),
+  PT_PRINT_NO_CURRENT_USER_NAME = (0x1 << 24)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -2592,6 +2597,7 @@ struct pt_name_info
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from derived spec */
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
+#define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))

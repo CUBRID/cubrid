@@ -1418,7 +1418,13 @@ $ LOADDB
 1339 Stored Procedure에서 지원하지 않는 인수 타입입니다: %1$s
 1340 Stored Procedure에서 지원하지 않는 결과 타입입니다: %1$s
 
-1341 마지막 에러
+1341 권한 부여 내부 함수에 잘못된 인자 발생.
+1342 AUTO_INCREMENT는 소유자 변경을 허용하지 않습니다.
+1343 RENAME은 소유자 변경을 허용하지 않습니다.
+1344 DBA, DBA 그룹의 구성원 및 소유자가 CREATE SERIAL을 수행할 수 있습니다.
+1345 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TRIGGER를 수행할 수 있습니다.
+
+1346 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1886,6 +1892,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 305 함수 인자와 함수 정의 %1$s 은 호환되지 않습니다.
 306 dblink - 필수 정보가 누락되었습니다.
 307 dblink - %1$s 타입은 지원하지 않습니다.
+308 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TABLE/VIEW를 수행할 수 있습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

@@ -1418,7 +1418,13 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1339 Tipo de argumento no admitido de procedimiento almacenado: %1$s
 1340 Tipo de devolución no admitido de procedimiento almacenado: %1$s
 
-1341 Ultimo error
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
@@ -1886,6 +1892,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 305 Signatura %1$s no es compatible con argumentos de función.
 306 dblink - Falta la información requerida.
 307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.
