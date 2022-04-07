@@ -310,8 +310,6 @@ static short constraint_dbtype_to_castype (int db_const_type);
 static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args, int is_first_out);
 static void prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info);
 static int fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
-static int create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result, DB_QUERY_TYPE * column_info,
-						unsigned int query_seq_num);
 #define check_class_chn(s) 0
 static int get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id);
 static bool has_stmt_result_set (char stmt_type);
@@ -5433,10 +5431,10 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
     case DB_TYPE_RESULTSET:
       {
-	int h_id;
+	DB_BIGINT query_id;
 
-	h_id = db_get_resultset (val);
-	add_res_data_int (net_buf, h_id, ext_col_type, &data_size);
+	query_id = db_get_resultset (val);
+	add_res_data_bigint (net_buf, query_id, ext_col_type, &data_size);
       }
       break;
 
@@ -9702,50 +9700,55 @@ error:
   return err_code;
 }
 
-extern void *jsp_get_db_result_set (int h_id);
-extern void jsp_srv_handle_free (int h_id);
-
-static int
-ux_use_sp_out (int srv_h_id)
+int
+ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * result, int stmt_type, int num_column,
+					       DB_QUERY_TYPE * column_info, bool is_holdable)
 {
-  T_SRV_HANDLE *srv_handle;
-  T_QUERY_RESULT *q_result;
-  DB_QUERY_TYPE *column_info;
-  int new_handle_id = 0;
+  int srv_h_id;
+  int err_code = 0;
+  T_SRV_HANDLE *srv_handle = NULL;
+  T_QUERY_RESULT *q_result = NULL;
 
-  srv_handle = (T_SRV_HANDLE *) jsp_get_db_result_set (srv_h_id);
-  if (srv_handle == NULL || srv_handle->cur_result == NULL)
+  srv_h_id = hm_new_srv_handle (&srv_handle, -1);
+  if (srv_h_id < 0)
     {
-      jsp_srv_handle_free (srv_h_id);
-      return CAS_ER_SRV_HANDLE;
+      err_code = srv_h_id;
+      goto error;
     }
+  srv_handle->schema_type = -1;
 
-  q_result = (T_QUERY_RESULT *) srv_handle->cur_result;
-  if (srv_handle->session != NULL && q_result->stmt_id >= 0)
+  q_result = (T_QUERY_RESULT *) malloc (sizeof (T_QUERY_RESULT));
+  if (q_result == NULL)
     {
-      column_info = db_get_query_type_list ((DB_SESSION *) srv_handle->session, q_result->stmt_id);
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      goto error;
     }
-  else
+  hm_qresult_clear (q_result);
+  srv_handle->q_result = q_result;
+
+  q_result->result = result;
+  q_result->tuple_count = db_query_tuple_count ((DB_QUERY_RESULT *) result);
+  q_result->stmt_type = stmt_type;
+  q_result->col_updatable = FALSE;
+  q_result->include_oid = FALSE;
+  q_result->num_column = num_column;
+  q_result->column_info = column_info;
+  q_result->is_holdable = is_holdable;
+
+  srv_handle->cur_result = (void *) srv_handle->q_result;
+  srv_handle->cur_result_index = 1;
+  srv_handle->num_q_result = 1;
+  srv_handle->has_result_set = true;
+  srv_handle->max_row = q_result->tuple_count;
+
+  return srv_h_id;
+
+error:
+  if (srv_handle)
     {
-      column_info = NULL;
+      hm_srv_handle_free (srv_h_id);
     }
-
-  if (q_result->result != NULL && column_info != NULL)
-    {
-      new_handle_id = create_srv_handle_with_query_result (q_result, column_info, srv_handle->query_seq_num);
-      if (new_handle_id > 0)
-	{
-	  q_result->copied = TRUE;
-	}
-      else
-	{
-	  FREE_MEM (column_info);
-	}
-    }
-
-  jsp_srv_handle_free (srv_h_id);
-
-  return new_handle_id;
+  return err_code;
 }
 
 int
@@ -10062,8 +10065,10 @@ ux_get_generated_keys_error:
   return err_code;
 }
 
+extern int method_make_out_rs (DB_BIGINT query_id);
+
 int
-ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
@@ -10074,7 +10079,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   int new_handle_id = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
 
-  new_handle_id = ux_use_sp_out (srv_h_id);
+  new_handle_id = method_make_out_rs (query_id);
   srv_handle = hm_find_srv_handle (new_handle_id);
 
   if (srv_handle == NULL || srv_handle->cur_result == NULL)

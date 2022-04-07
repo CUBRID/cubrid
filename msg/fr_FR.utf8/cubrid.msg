@@ -1415,13 +1415,16 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1337 L'enregistrement de journal n'existe pas (lsa : %1$lld|%2$d). Le volume du journal d'archivage a été supprimé.
 1338 Flashback est déjà en cours d'exécution. Flashback ne peut pas être exécuté par plus d'un utilisateur à la fois.
 
-1339 Invalid arguments to authorization internal function.
-1340 AUTO_INCREMENT does not allow change of owner.
-1341 RENAME does not allow change of owner.
-1342 DBA, members of DBA group, and owner can perform CREATE SERIAL.
-1343 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+1339 Type d'argument de procédure stockée non pris en charge: %1$s
+1340 Type de retour de procédure stockée non pris en charge: %1$s
 
-1344 Dernière erreur
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

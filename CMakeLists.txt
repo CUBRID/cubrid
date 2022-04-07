@@ -508,6 +508,7 @@ set(EXECUTABLES_DIR          ${CMAKE_SOURCE_DIR}/src/executables)
 set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
 set(JSP_DIR                  ${CMAKE_SOURCE_DIR}/src/jsp)
 set(LOADDB_DIR               ${CMAKE_SOURCE_DIR}/src/loaddb)
+set(METHOD_DIR               ${CMAKE_SOURCE_DIR}/src/method)
 set(MONITOR_DIR              ${CMAKE_SOURCE_DIR}/src/monitor)
 set(OBJECT_DIR               ${CMAKE_SOURCE_DIR}/src/object)
 set(ODBC_DIR                 ${CMAKE_SOURCE_DIR}/src/odbc)
@@ -537,6 +538,7 @@ include_directories(
   src/heaplayers
   src/jsp
   src/loaddb
+  src/method
   src/monitor
   src/object
   src/optimizer
@@ -1186,22 +1188,7 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   message("Build JDBC Driver from cubird-jdbc submodule")
 
   set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
-  set(JDBC_SOURCE ${JDBC_DIR}/src)
-
-  # clean and build JDBC
-  if(UNIX)
-    execute_process(COMMAND bash build.sh clean
-      WORKING_DIRECTORY ${JDBC_DIR})
-    execute_process(COMMAND bash build.sh
-      WORKING_DIRECTORY ${JDBC_DIR})
-  else(UNIX)
-    execute_process(COMMAND cmd /c build.bat clean
-      WORKING_DIRECTORY ${JDBC_DIR}
-    )
-    execute_process(COMMAND cmd /c build.bat
-      WORKING_DIRECTORY ${JDBC_DIR}
-    )
-  endif(UNIX)
+  add_subdirectory(cubrid-jdbc)
 
   # dist JDBC
   if(USE_CUBRID_ENV)

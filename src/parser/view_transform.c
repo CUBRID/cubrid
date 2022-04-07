@@ -3212,7 +3212,7 @@ mq_class_meth_corr_subq_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void
   if (node->node_type == PT_METHOD_CALL)
     {
       /* found class method */
-      if (node->info.method_call.class_or_inst == PT_IS_CLASS_MTHD)
+      if (node->info.method_call.method_type == PT_IS_CLASS_MTHD)
 	{
 	  *found = true;
 	}

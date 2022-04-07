@@ -1958,7 +1958,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	      csql_Num_failures += 1;
 
 	      free_attr_spec (&attr_spec);
-	      jsp_send_destroy_request_all ();
 	      if (logddl_get_jsp_mode () == false)
 		{
 		  logddl_write_end ();
@@ -2178,7 +2177,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   return csql_Num_failures;
 
 error:
-  jsp_send_destroy_request_all ();
   display_error (session, stmt_start_line_no);
   logddl_set_err_code (db_error_code ());
   if (do_abort_transaction)
@@ -2723,7 +2721,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   int client_type;
   int avail_size;
   char *p = NULL;
-  unsigned char ip_addr[16] = { "0" };
+  unsigned char ip_addr[16] = { 0 };
 
   /* Establish a globaly accessible longjmp environment so we can terminate on severe errors without calling exit(). */
   csql_exit_init ();
@@ -2873,6 +2871,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   if (get_host_ip (ip_addr) == 0)
     {
       logddl_set_ip ((char *) ip_addr);
+      db_set_client_ip_addr ((char *) ip_addr);
     }
   logddl_set_pid (getpid ());
 

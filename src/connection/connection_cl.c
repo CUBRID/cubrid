@@ -151,6 +151,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->error_queue = NULL;
   conn->set_tran_index (NULL_TRAN_INDEX);
   conn->invalidate_snapshot = 1;
+  conn->in_method = false;
   conn->db_error = 0;
   conn->cnxn = NULL;
 }
@@ -345,6 +346,12 @@ css_send_close_request (CSS_CONN_ENTRY * conn)
 	{
 	  flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
 	}
+
+      if (conn->in_method)
+	{
+	  flags |= NET_HEADER_FLAG_METHOD_MODE;
+	}
+
       header.flags = htons (flags);
       header.db_error = htonl (conn->db_error);
       /* timeout in milli-second in css_net_send() */
@@ -390,6 +397,7 @@ css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header)
   conn->set_tran_index (ntohl (local_header->transaction_id));
   flags = ntohs (local_header->flags);
   conn->invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->in_method = flags & NET_HEADER_FLAG_METHOD_MODE ? true : false;
   conn->db_error = (int) ntohl (local_header->db_error);
 
   return rc;
@@ -1350,6 +1358,7 @@ css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
   *rc = data_q_entry_p->rc;
   conn->set_tran_index (data_q_entry_p->transaction_id);
   conn->invalidate_snapshot = data_q_entry_p->invalidate_snapshot;
+  conn->in_method = data_q_entry_p->in_method;
   conn->db_error = data_q_entry_p->db_error;
   css_queue_remove_header_entry_ptr (&conn->data_queue, data_q_entry_p);
 
@@ -1453,6 +1462,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
   *buffer_size = ntohl (buffer->buffer_size);
   conn->set_tran_index (request_q_entry_p->transaction_id);
   conn->invalidate_snapshot = request_q_entry_p->invalidate_snapshot;
+  conn->in_method = request_q_entry_p->in_method;
   conn->db_error = request_q_entry_p->db_error;
 
   /* This will remove both the entry and the buffer */

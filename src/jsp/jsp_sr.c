@@ -539,7 +539,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
   jclass cls, string_cls;
   JNIEnv *env_p = NULL;
   jmethodID mid;
-  jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot, jstr_port;
+  jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot, jstr_port, jstr_envtmp;
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
   JavaVMOption *options;
@@ -551,6 +551,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
   char debug_jdwp[] = "-agentlib:jdwp=transport=dt_socket,server=y,address=%d,suspend=n";
   char disable_sig_handle[] = "-Xrs";
   const char *envroot;
+  const char *envtmp;
   char jsp_file_path[PATH_MAX];
   char port_str[6] = { 0 };
   char *loc_p, *locale;
@@ -563,6 +564,11 @@ jsp_start_server (const char *db_name, const char *path, int port)
       }
 
     envroot = envvar_root ();
+    envtmp = envvar_get ("TMP");
+    if (envtmp == NULL || envtmp[0] == '\0')
+      {
+	envtmp = "/tmp";
+      }
 
     snprintf (classpath, sizeof (classpath) - 1, "-Djava.class.path=%s",
 	      envvar_javadir_file (jsp_file_path, PATH_MAX, "jspserver.jar"));
@@ -694,6 +700,14 @@ jsp_start_server (const char *db_name, const char *path, int port)
 	goto error;
       }
 
+    jstr_envtmp = JVM_NewStringUTF (env_p, envtmp);
+    if (jstr_envtmp == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		"Failed to construct a new 'java.lang.String object' by NewStringUTF()");
+	goto error;
+      }
+
     sprintf (port_str, "%d", port);
     jstr_port = JVM_NewStringUTF (env_p, port_str);
     if (jstr_port == NULL)
@@ -710,7 +724,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
 	goto error;
       }
 
-    args = JVM_NewObjectArray (env_p, 5, string_cls, NULL);
+    args = JVM_NewObjectArray (env_p, 6, string_cls, NULL);
     if (args == NULL)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
@@ -722,7 +736,8 @@ jsp_start_server (const char *db_name, const char *path, int port)
     JVM_SetObjectArrayElement (env_p, args, 1, jstr_path);
     JVM_SetObjectArrayElement (env_p, args, 2, jstr_version);
     JVM_SetObjectArrayElement (env_p, args, 3, jstr_envroot);
-    JVM_SetObjectArrayElement (env_p, args, 4, jstr_port);
+    JVM_SetObjectArrayElement (env_p, args, 4, jstr_envtmp);
+    JVM_SetObjectArrayElement (env_p, args, 5, jstr_port);
 
     sp_port = JVM_CallStaticIntMethod (env_p, cls, mid, args);
     if (JVM_ExceptionOccurred (env_p) || sp_port == -1)
