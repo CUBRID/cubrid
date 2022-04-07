@@ -37,13 +37,19 @@ import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 
 public class DataUtilities {
+    public static final int CHAR_BYTES = (Byte.SIZE / 8);
+    public static final int SHORT_BYTES = (Short.SIZE / 8);
+    public static final int INT_BYTES = (Integer.SIZE / 8);
+    public static final int LONG_BYTES = (Long.SIZE / 8);
+    public static final int FLOAT_BYTES = (Float.SIZE / 8);
+    public static final int DOUBLE_BYTES = (Double.SIZE / 8);
 
-    public static final int CHAR_ALIGNMENT = Byte.BYTES;
-    public static final int SHORT_ALIGNMENT = Short.BYTES;
-    public static final int INT_ALIGNMENT = Integer.BYTES;
-    public static final int LONG_ALIGNMENT = Long.BYTES;
-    public static final int FLOAT_ALIGNMENT = Float.BYTES;
-    public static final int DOUBLE_ALIGNMENT = Double.BYTES;
+    public static final int CHAR_ALIGNMENT = CHAR_BYTES;
+    public static final int SHORT_ALIGNMENT = SHORT_BYTES;
+    public static final int INT_ALIGNMENT = INT_BYTES;
+    public static final int LONG_ALIGNMENT = LONG_BYTES;
+    public static final int FLOAT_ALIGNMENT = FLOAT_BYTES;
+    public static final int DOUBLE_ALIGNMENT = DOUBLE_BYTES;
     public static final int MAX_ALIGNMENT = DOUBLE_ALIGNMENT;
 
     public static final int MAX_SMALL_STRING_SIZE = 255;
