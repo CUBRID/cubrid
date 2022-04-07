@@ -1415,13 +1415,16 @@ $ LOADDB
 1337 ログレコードが存在しません（lsa：%1$lld|%2$d）。 アーカイブログボリュームが削除されました。
 1338 フラッシュバックはすでに実行されています。 フラッシュバックは、複数のユーザーが同時に実行することはできません。
 
-1339 Invalid arguments to authorization internal function.
-1340 AUTO_INCREMENT does not allow change of owner.
-1341 RENAME does not allow change of owner.
-1342 DBA, members of DBA group, and owner can perform CREATE SERIAL.
-1343 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+1339 サポートされていない引数タイプのストアドプロシージャ: %1$s
+1340 サポートされていない戻りタイプのストアドプロシージャ: %1$s
 
-1344 ラストエラー
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

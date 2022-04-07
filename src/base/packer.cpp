@@ -83,6 +83,11 @@ namespace cubpacking
     set_buffer (storage, amount);
   }
 
+  unpacker::unpacker (const cubmem::block &blk)
+  {
+    set_buffer (blk.ptr, blk.dim);
+  }
+
   void
   unpacker::set_buffer (const char *storage, const size_t amount)
   {
@@ -402,16 +407,14 @@ namespace cubpacking
   void
   packer::pack_db_value (const db_value &value)
   {
-    char *old_ptr;
-
     size_t value_size = or_packed_value_size (&value, 1, 1, 0);
 
     align (MAX_ALIGNMENT);
     check_range (m_ptr, m_end_ptr, value_size);
-    old_ptr = m_ptr;
 
-    m_ptr = or_pack_value (m_ptr, (db_value *) &value);
-    assert (old_ptr + value_size == m_ptr);
+    OR_BUF orbuf;
+    delegate_to_or_buf (value_size, orbuf);
+    or_put_value (&orbuf, (db_value *) &value, 1, 1, 0);
 
     check_range (m_ptr, m_end_ptr, 0);
   }
@@ -811,6 +814,29 @@ namespace cubpacking
     return unpack_oid (oid);
   }
 
+  void unpacker::peek_unpack_block_length (int &value)
+  {
+    return peek_unpack_int (value);
+  }
+
+  size_t
+  packer::get_packed_size_overloaded (const cubmem::block &blk, size_t curr_offset)
+  {
+    return get_packed_buffer_size (blk.ptr, blk.dim, curr_offset);
+  }
+
+  void
+  packer::pack_overloaded (const cubmem::block &blk)
+  {
+    pack_buffer_with_length (blk.ptr, blk.dim);
+  }
+
+  void
+  unpacker::unpack_overloaded (cubmem::block &blk)
+  {
+    return unpack_buffer_with_length (blk.ptr, blk.dim);
+  }
+
   const char *
   unpacker::get_curr_ptr (void)
   {
@@ -922,8 +948,8 @@ namespace cubpacking
   packer::delegate_to_or_buf (const size_t size, or_buf &buf)
   {
     check_range (m_ptr, m_end_ptr, size);
-    m_ptr += size;
     OR_BUF_INIT (buf, m_ptr, size);
+    m_ptr += size;
   }
 
   const char *
@@ -966,9 +992,9 @@ namespace cubpacking
   unpacker::delegate_to_or_buf (const size_t size, or_buf &buf)
   {
     check_range (m_ptr, m_end_ptr, size);
-    m_ptr += size;
     // promise you won't write on it!
     OR_BUF_INIT (buf, const_cast <char *> (m_ptr), size);
+    m_ptr += size;
   }
 
 } /* namespace cubpacking */

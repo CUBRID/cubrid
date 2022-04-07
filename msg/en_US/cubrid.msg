@@ -1416,13 +1416,16 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1337 Log record does not exist (lsa : %1$lld|%2$d). The archive log volume has been deleted.
 1338 Flashback is already running. Flashback cannot be run by more than one user at the same time.
 
-1339 Invalid arguments to authorization internal function.
-1340 AUTO_INCREMENT does not allow change of owner.
-1341 RENAME does not allow change of owner.
-1342 DBA, members of DBA group, and owner can perform CREATE SERIAL.
-1343 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+1339 Unsupported argument type of stored procedure: %1$s
+1340 Unsupported return type of stored procedure: %1$s
 
-1344 Last Error
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

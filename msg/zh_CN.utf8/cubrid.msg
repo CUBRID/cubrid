@@ -1416,13 +1416,16 @@ $ LOADDB
 1337 日志记录不存在 (lsa : %1$lld|%2$d)。 存档日志卷已被删除。
 1338 闪回已在运行。 Flashback 不能由多个用户同时运行。
 
-1339 Invalid arguments to authorization internal function.
-1340 AUTO_INCREMENT does not allow change of owner.
-1341 RENAME does not allow change of owner.
-1342 DBA, members of DBA group, and owner can perform CREATE SERIAL.
-1343 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+1339 不支持的存储过程的参数类型: %1$s
+1340 不支持的存储过程的返回类型: %1$s
 
-1344 最后一个错误.
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

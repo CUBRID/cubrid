@@ -18758,9 +18758,9 @@ generic_function_id
 
 			PT_NODE *node = $1;
 
-			if (node->node_type == PT_METHOD_CALL)
+			if (node && node->node_type == PT_METHOD_CALL)
 			  {
-			    if (node && !node->info.method_call.on_call_target)
+			    if (!node->info.method_call.on_call_target)
 			      {
 				const char *callee;
 				PT_NODE *name = node->info.method_call.method_name;
