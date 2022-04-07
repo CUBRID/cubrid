@@ -188,7 +188,7 @@ cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, ch
 
   strncpy (connected_db_name, db_name, sizeof (connected_db_name) - 1);
   strncpy (connected_db_user, db_user, sizeof (connected_db_user) - 1);
-  strncpy (connected_db_passwd, db_user, sizeof (connected_db_passwd) - 1);
+  strncpy (connected_db_passwd, db_passwd, sizeof (connected_db_passwd) - 1);
 
   return NO_ERROR;
 
@@ -2093,7 +2093,7 @@ cgw_link_server_info (SQLHDBC hdbc)
       cas_log_write_and_end (0, false, "Link Server Info.");
 
       cgw_get_driver_info (hdbc, SQL_DBMS_NAME, dbms_name, sizeof (dbms_name));
-      cas_log_write_and_end (0, false, "DBMS Nmae : %s", dbms_name);
+      cas_log_write_and_end (0, false, "DBMS Name : %s", dbms_name);
 
       cgw_get_driver_info (hdbc, SQL_DBMS_VER, dbms_ver, sizeof (dbms_ver));
       cas_log_write_and_end (0, false, "DBMS Version : %s", dbms_ver);
