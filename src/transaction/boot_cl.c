@@ -4099,9 +4099,10 @@ static int
 boot_define_synonym (MOP class_mop)
 {
   SM_TEMPLATE *def;
+  DB_VALUE default_value;
   int error_code = NO_ERROR;
   const char *primary_key_col_names[] = { "unique_name", NULL };
-  const char *index_col_names[] = { "name", "owner", "is_public", NULL };
+  const char *index1_col_names[] = { "name", "owner", "is_public", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -4124,6 +4125,14 @@ boot_define_synonym (MOP class_mop)
     }
 
   error_code = smt_add_attribute (def, "is_public", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  db_make_int (&default_value, 0);
+
+  error_code = smt_set_attribute_default (def, "is_public", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -4161,6 +4170,30 @@ boot_define_synonym (MOP class_mop)
 
   /* add constraints */
   error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL, primary_key_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index1_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "name", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "owner", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "is_public", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5771,15 +5804,36 @@ boot_define_view_synonym (void)
 	}
     }
 
-  sprintf (stmt, "SELECT [s].[name], CAST([s].[owner].[name] AS VARCHAR(255)), "
-	   "CASE WHEN [s].[is_public] = 1 THEN 'YES' ELSE 'NO' END, "
-	   "[s].[target_name], CAST([s].[target_owner].[name] AS VARCHAR(255)), [s].[comment] "
-	   "FROM [%s] [s] "
-	   "WHERE CURRENT_USER IN (SELECT 'DBA' UNION ALL "
-	   "SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) "
-	   "OR [s].[owner].[name] IN (SELECT CURRENT_USER UNION ALL "
-	   "SELECT [t].[g].[name] FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) "
-	   "OR [s].[is_public] = 1 ", CT_SYNONYM_NAME, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
+  // *INDENT-OFF*
+  sprintf (stmt,
+	"SELECT "
+	  "[s].[name] AS [synonym_name], "
+	  "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [synonym_owner_name], "
+	  "CASE WHEN [s].[is_public] = 1 THEN 'YES' ELSE 'NO' END AS [is_public_synonym], "
+	  "[s].[target_name] AS [target_name], "
+	  "CAST ([s].[target_owner].[name] AS VARCHAR(255)) AS [target_owner_name], "
+	  "[s].[comment] AS [comment] "
+	"FROM "
+	  /* CT_SYNONYM_NAME */
+	  "[%s] [s] "
+	"WHERE "
+	  "CURRENT_USER = 'DBA' "
+	  "OR [s].[is_public] = 1 "
+	  "OR ( "
+	      "[s].[is_public] = 0 "
+	      "AND {[s].[owner].[name]} SUBSETEQ ( "
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] [u], TABLE([groups]) AS [t]([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER "
+		") "
+	    ") ",
+	CT_SYNONYM_NAME,
+	AU_USER_CLASS_NAME);
+  // *INDENT-ON*
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
