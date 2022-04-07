@@ -50,6 +50,17 @@ namespace cubcomm
   {
   }
 
+  channel::channel (std::string &&channel_name)
+    : m_channel_name { std::move (channel_name) }
+  {
+  }
+
+  channel::channel (int max_timeout_in_ms, std::string &&channel_name)
+    : m_max_timeout_in_ms (max_timeout_in_ms)
+    , m_channel_name { std::move (channel_name) }
+  {
+  }
+
   channel::channel (channel &&comm)
     : m_max_timeout_in_ms (comm.m_max_timeout_in_ms)
   {
@@ -61,15 +72,9 @@ namespace cubcomm
 
     m_channel_name = std::move (comm.m_channel_name);
     m_hostname = std::move (comm.m_hostname);
-  }
 
-  channel &channel::operator= (channel &&comm)
-  {
-    assert (!is_connection_alive ());
-    this->~channel ();
-
-    new (this) channel (std::move (comm));
-    return *this;
+    m_port = comm.m_port;
+    comm.m_port = INVALID_PORT;
   }
 
   channel::~channel ()
@@ -200,8 +205,8 @@ namespace cubcomm
 	m_type = NO_TYPE;
       }
 
-    m_hostname = "";
-    m_port = -1;
+    m_hostname.clear ();
+    m_port = INVALID_PORT;
   }
 
   int channel::get_max_timeout_in_ms () const

@@ -101,6 +101,7 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, tran
   RESPONSE_PARTITIONING_SIZE,
   std::bind (&page_server::connection_handler::abnormal_tran_server_disconnect,
 	     std::ref (*this), std::placeholders::_1, std::placeholders::_2)));
+  m_ps.get_responder ().register_connection (m_conn.get ());
 
   assert (m_conn != nullptr);
   m_conn->start ();
@@ -109,6 +110,13 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, tran
 page_server::connection_handler::~connection_handler ()
 {
   assert (!m_prior_sender_sink_hook_func);
+
+  m_conn->stop_incoming_communication_thread ();
+
+  // wait async responder to finish processing in-flight requests
+  m_ps.get_responder ().wait_connection_to_become_idle (m_conn.get ());
+
+  m_conn->stop_outgoing_communication_thread ();
 }
 
 std::string
@@ -398,7 +406,7 @@ page_server::disconnect_active_tran_server ()
 }
 
 void
-page_server::disconnect_tran_server_async (connection_handler *conn)
+page_server::disconnect_tran_server_async (const connection_handler *conn)
 {
   assert (conn != nullptr);
   if (conn == m_active_tran_server_conn.get ())

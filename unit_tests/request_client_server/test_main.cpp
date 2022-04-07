@@ -69,10 +69,6 @@ using test_request_client = cubcomm::request_client<reqids>;
 using test_request_server = cubcomm::request_server<reqids>;
 using test_handler_register_function = std::function<void (test_request_server &)>;
 
-// Create a request_client for this test
-static test_request_client create_request_client ();
-// Create a request_server for this test. Different functions can be registered by passing different handler_register
-static test_request_server create_request_server (const test_handler_register_function &handler_register);
 // Set a mock socket between a client and a server
 static void mock_socket_between_client_and_server (const test_request_client &cl, const test_request_server &sr,
     mock_socket_direction &sockdir);
@@ -81,10 +77,12 @@ static void handler_register_mock_check_expected_id (test_request_server &req_sr
 // Environment for testing a client and server
 class test_client_and_server_env
 {
+    static constexpr int MAX_TIMEOUT_IN_MS = 10;
+
   public:
     // ctor/dtor:
     // construct test server with custom handler functions
-    test_client_and_server_env (test_handler_register_function &hreg);
+    test_client_and_server_env (test_handler_register_function &handler_register);
     ~test_client_and_server_env ();
 
     // get references to client/server
@@ -128,8 +126,8 @@ enum class reqids_2_to_1
 using test_request_client_server_type_one = cubcomm::request_client_server<reqids_1_to_2, reqids_2_to_1>;
 using test_request_client_server_type_two = cubcomm::request_client_server<reqids_2_to_1, reqids_1_to_2>;
 
-static test_request_client_server_type_one create_request_client_server_one ();
-static test_request_client_server_type_two create_request_client_server_two ();
+static void register_request_handlers_request_client_server_one (test_request_client_server_type_one &req_cl_sr);
+static void register_request_handlers_request_client_server_two (test_request_client_server_type_two &req_cl_sr);
 static void mock_socket_between_two_client_servers (const test_request_client_server_type_one &clsr1,
     const test_request_client_server_type_two &clsr2,
     mock_socket_direction &sockdir_1_to_2,
@@ -890,31 +888,6 @@ handler_register_mock_check_expected_out_of_order_id_and_op_count (test_request_
   req_sr.register_request_handler (reqids::_1, reqh1);
 }
 
-test_request_client
-create_request_client ()
-{
-  const int max_timeout_in_ms = 10;
-  cubcomm::channel chncl{ max_timeout_in_ms };
-  chncl.set_channel_name ("client");
-
-  test_request_client req_cl (std::move (chncl));
-
-  return std::move (req_cl);
-}
-
-test_request_server
-create_request_server (const test_handler_register_function &handler_register)
-{
-  cubcomm::channel chnsr;
-  chnsr.set_channel_name ("server");
-
-  test_request_server req_sr (std::move (chnsr));
-
-  handler_register (req_sr);
-
-  return req_sr;
-}
-
 void
 handler_register_mock_check_expected_id (test_request_server &req_sr)
 {
@@ -937,11 +910,12 @@ mock_socket_between_client_and_server (const test_request_client &cl, const test
   add_socket_direction (cl.get_channel ().get_channel_id (), sr.get_channel ().get_channel_id (), sockdir, true);
 }
 
-test_client_and_server_env::test_client_and_server_env (test_handler_register_function &hreg)
-  : m_client (create_request_client ())
-  , m_server (create_request_server (hreg))
+test_client_and_server_env::test_client_and_server_env (test_handler_register_function &handler_register)
+  : m_client { cubcomm::channel { MAX_TIMEOUT_IN_MS, "client" } }
+  , m_server { cubcomm::channel { "server" } }
   , m_sockdir ()
 {
+  handler_register (m_server);
   mock_socket_between_client_and_server (m_client, m_server, m_sockdir);
   init_globals ();
 }
@@ -970,14 +944,9 @@ test_client_and_server_env::wait_for_all_messages ()
   m_sockdir.wait_for_all_messages ();
 }
 
-test_request_client_server_type_one
-create_request_client_server_one ()
+void
+register_request_handlers_request_client_server_one (test_request_client_server_type_one &req_cl_sr)
 {
-  cubcomm::channel chn;
-  chn.set_channel_name ("client_server_one");
-
-  test_request_client_server_type_one req_clsr = (std::move (chn));
-
   // handles reqids_2_to_1
   test_request_client_server_type_one::server_request_handler reqh0 = [] (cubpacking::unpacker &upk)
   {
@@ -991,21 +960,14 @@ create_request_client_server_one ()
   {
     mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_2> (upk);
   };
-  req_clsr.register_request_handler (reqids_2_to_1::_0, reqh0);
-  req_clsr.register_request_handler (reqids_2_to_1::_1, reqh1);
-  req_clsr.register_request_handler (reqids_2_to_1::_2, reqh2);
-
-  return req_clsr;
+  req_cl_sr.register_request_handler (reqids_2_to_1::_0, reqh0);
+  req_cl_sr.register_request_handler (reqids_2_to_1::_1, reqh1);
+  req_cl_sr.register_request_handler (reqids_2_to_1::_2, reqh2);
 }
 
-test_request_client_server_type_two
-create_request_client_server_two ()
+void
+register_request_handlers_request_client_server_two (test_request_client_server_type_two &req_cl_sr)
 {
-  cubcomm::channel chn;
-  chn.set_channel_name ("client_server_two");
-
-  test_request_client_server_type_two req_clsr = (std::move (chn));
-
   // handles reqids_1_to_2
   test_request_client_server_type_two::server_request_handler reqh0 = [] (cubpacking::unpacker &upk)
   {
@@ -1015,10 +977,8 @@ create_request_client_server_two ()
   {
     mock_check_expected_id<reqids_1_to_2, reqids_1_to_2::_1> (upk);
   };
-  req_clsr.register_request_handler (reqids_1_to_2::_0, reqh0);
-  req_clsr.register_request_handler (reqids_1_to_2::_1, reqh1);
-
-  return req_clsr;
+  req_cl_sr.register_request_handler (reqids_1_to_2::_0, reqh0);
+  req_cl_sr.register_request_handler (reqids_1_to_2::_1, reqh1);
 }
 
 void
@@ -1034,11 +994,13 @@ mock_socket_between_two_client_servers (const test_request_client_server_type_on
 
 
 test_two_client_server_env::test_two_client_server_env ()
-  : m_first_cs (create_request_client_server_one ())
-  , m_second_cs (create_request_client_server_two ())
+  : m_first_cs { ::cubcomm::channel { "client_server_one" } }
+  , m_second_cs { ::cubcomm::channel { "client_server_two" } }
   , m_sockdir_one_two ()
   , m_sockdir_two_one ()
 {
+  register_request_handlers_request_client_server_one (m_first_cs);
+  register_request_handlers_request_client_server_two (m_second_cs);
   mock_socket_between_two_client_servers (m_first_cs, m_second_cs, m_sockdir_one_two, m_sockdir_two_one);
   init_globals ();
 }

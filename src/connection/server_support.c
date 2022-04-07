@@ -2638,6 +2638,9 @@ css_process_server_server_connect (SOCKET master_fd)
     }
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;	// 1000 milliseconds = 1 second
   cubcomm::server_channel chn (CHANNEL_POLL_TIMEOUT);
+  // NOTE: only the base class part (cubcomm::server) of a cubcomm::server_server instance is
+  // moved as argument below
+
   chn.accept (slave_fd);
   cubcomm::server_server conn_type = chn.get_conn_type ();	//read an integer to determine connection type
   switch (conn_type)
