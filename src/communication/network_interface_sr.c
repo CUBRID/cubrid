@@ -83,6 +83,9 @@
 #include "xasl_cache.h"
 #include "elo.h"
 #include "transaction_transient.hpp"
+#include "method_invoke_group.hpp"
+#include "method_runtime_context.hpp"
+#include "log_manager.h"
 #include "crypt_opfunc.h"
 #include "flashback.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -6599,39 +6602,6 @@ xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, 
 }
 
 /*
- * xs_send_action_to_client -
- *
- * return:
- *
- *   action(in):
- *
- * NOTE:
- */
-int
-xs_send_action_to_client (THREAD_ENTRY * thread_p, VACOMM_BUFFER_CLIENT_ACTION action)
-{
-  unsigned int rid;
-  bool continue_checking = true;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  if (logtb_is_interrupted (thread_p, false, &continue_checking))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-      return ER_FAILED;
-    }
-
-  rid = css_get_comm_request_id (thread_p);
-  (void) or_pack_int (reply, (int) action);
-  if (css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_INT_SIZE))
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * slocator_assign_oid_batch -
  *
  * return:
@@ -10379,6 +10349,81 @@ cdc_check_client_connection ()
     {
       return false;
     }
+}
+
+void
+smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  /* 1) unpack arguments */
+  method_sig_list sig_list;
+  std::vector < DB_VALUE > args;
+  unpacker.unpack_all (sig_list, args);
+
+  std::vector < std::reference_wrapper < DB_VALUE >> ref_args (args.begin (), args.end ());
+
+  /* 2) invoke method */
+  DB_VALUE ret_value;
+  db_make_null (&ret_value);
+  int error_code = xmethod_invoke_fold_constants (thread_p, sig_list, ref_args, ret_value);
+
+  cubmethod::method_invoke_group * top_on_stack = cubmethod::get_rctx (thread_p)->top_stack ();
+
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  if (error_code == NO_ERROR)
+    {
+      /* 3) make out arguments */
+
+      // *INDENT-OFF*
+      std::vector<std::reference_wrapper<DB_VALUE>> out_args;
+      // *INDENT-ON*
+      method_sig_node *sig = sig_list.method_sig;
+      for (int i = 0; i < sig->num_method_args; i++)
+	{
+	  if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
+	    {
+	      continue;
+	    }
+
+	  int pos = sig->method_arg_pos[i];
+	  out_args.push_back (std::ref (args[pos]));
+	}
+
+      /* 4) pack */
+      packer.set_buffer_and_pack_all (eb, ret_value, out_args);
+    }
+  else
+    {
+      if (er_has_error () == false)
+	{
+	  std::string err_msg = top_on_stack->get_error_msg ();
+	  packer.set_buffer_and_pack_all (eb, err_msg);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
+	}
+
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  char *reply_data = eb.get_ptr ();
+  int reply_data_size = (int) packer.get_current_size ();
+
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = or_pack_int (reply, (int) END_CALLBACK);
+  ptr = or_pack_int (ptr, reply_data_size);
+  ptr = or_pack_int (ptr, error_code);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
+				     reply_data_size);
+
+  // clear
+  top_on_stack->end ();
+  pr_clear_value_vector (args);
+  db_value_clear (&ret_value);
+
+  sig_list.freemem ();
 }
 
 void

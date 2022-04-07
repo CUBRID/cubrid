@@ -2423,9 +2423,6 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
       goto error;
     }
 
-  /* is can be null */
-  method_sig->class_name = stx_restore_string (thread_p, ptr);
-
   ptr = or_unpack_int (ptr, (int *) &method_sig->method_type);
   ptr = or_unpack_int (ptr, &method_sig->num_method_args);
 
@@ -2440,6 +2437,37 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
   for (n = 0; n < num_args; n++)
     {
       ptr = or_unpack_int (ptr, &(method_sig->method_arg_pos[n]));
+    }
+
+  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
+    {
+      method_sig->arg_info.arg_mode = (int *) stx_alloc_struct (thread_p, sizeof (int) * method_sig->num_method_args);
+      if (method_sig->arg_info.arg_mode == NULL)
+	{
+	  goto error;
+	}
+
+      method_sig->arg_info.arg_type = (int *) stx_alloc_struct (thread_p, sizeof (int) * method_sig->num_method_args);
+      if (method_sig->arg_info.arg_type == NULL)
+	{
+	  goto error;
+	}
+
+      for (n = 0; n < method_sig->num_method_args; n++)
+	{
+	  ptr = or_unpack_int (ptr, &method_sig->arg_info.arg_mode[n]);
+	}
+      for (n = 0; n < method_sig->num_method_args; n++)
+	{
+	  ptr = or_unpack_int (ptr, &method_sig->arg_info.arg_type[n]);
+	}
+
+      ptr = or_unpack_int (ptr, &method_sig->arg_info.result_type);
+    }
+  else				/* method */
+    {
+      /* is can be null */
+      method_sig->class_name = stx_restore_string (thread_p, ptr);
     }
 
   ptr = or_unpack_int (ptr, &offset);

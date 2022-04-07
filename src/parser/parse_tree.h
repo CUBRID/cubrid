@@ -709,6 +709,24 @@ struct json_t;
 
 #define PT_IS_SPEC_REAL_TABLE(spec_) PT_SPEC_IS_ENTITY(spec_)
 
+#define PT_IS_METHOD(n) \
+        ( (n) && (n)->node_type == PT_METHOD_CALL && \
+          ( (n)->info.method_call.method_type == PT_IS_CLASS_MTHD || \
+            (n)->info.method_call.method_type == PT_IS_INST_MTHD) )
+
+#define PT_IS_CLASS_METHOD(n) \
+        ( (n) && (n)->node_type == PT_METHOD_CALL && \
+          (n)->info.method_call.method_type == PT_IS_CLASS_MTHD )
+
+#define PT_IS_INSTANCE_METHOD(n) \
+        ( (n) && (n)->node_type == PT_METHOD_CALL && \
+          (n)->info.method_call.method_type == PT_IS_INST_MTHD )
+
+#define PT_IS_JAVA_SP(n) \
+        ( (n) && (n)->node_type == PT_METHOD_CALL && \
+          ( (n)->info.method_call.method_type == PT_SP_PROCEDURE || \
+            (n)->info.method_call.method_type == PT_SP_FUNCTION) )
+
 /* PT_NAME_INFO */
 #define PT_NAME_ORIGINAL(n)		((n)->info.name.original)
 #define PT_NAME_RESOLVED(n)		((n)->info.name.resolved)
@@ -730,7 +748,7 @@ struct json_t;
 #define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
 
 #define PT_IS_SYNONYM_NODE(n) \
-	( (n)->node_type == PT_ALTER_SYNONYM  || \
+	( (n)->node_type == PT_ALTER_SYNONYM || \
 	  (n)->node_type == PT_CREATE_SYNONYM || \
 	  (n)->node_type == PT_DROP_SYNONYM || \
 	  (n)->node_type == PT_RENAME_SYNONYM )
@@ -2412,7 +2430,7 @@ struct pt_method_call_info
   PT_NODE *on_call_target;	/* PT_NAME */
   PT_NODE *to_return_var;	/* PT_NAME */
   PT_MISC_TYPE call_or_expr;	/* PT_IS_CALL_STMT or PT_IS_MTHD_EXPR */
-  PT_MISC_TYPE class_or_inst;	/* PT_IS_CLASS_MTHD or PT_IS_INST_MTHD */
+  PT_MISC_TYPE method_type;	/* PT_IS_CLASS_MTHD, PT_IS_INST_MTHD, PT_SP_PROCEDURE, PT_SP_FUNCTION */
   UINTPTR method_id;		/* unique identifier so when copying we know if two methods are copies of the same
 				 * original method call. */
 };
@@ -3488,6 +3506,7 @@ union pt_statement_info
   PT_STORED_PROC_INFO sp;
   PT_STORED_PROC_PARAM_INFO sp_param;
   PT_SPEC_INFO spec;
+  PT_SYNONYM_INFO synonym;
   PT_TABLE_OPTION_INFO table_option;
   PT_TIMEOUT_INFO timeout;
   PT_TRIGGER_ACTION_INFO trigger_action;
@@ -3504,7 +3523,6 @@ union pt_statement_info
   PT_TRACE_INFO trace;
   PT_KILLSTMT_INFO killstmt;
   PT_WITH_CLAUSE_INFO with_clause;
-  PT_SYNONYM_INFO synonym;
 };
 
 /*

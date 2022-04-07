@@ -33,6 +33,7 @@ if "%JAVA_HOME%" == "" echo "ERROR: JAVA_HOME variable is not set" & GOTO :EOF
 rem clear ERRORLEVEL
 
 set SCRIPT_DIR=%~dp0
+set ANT_OPTS=-Dhttps.protocols=TLSv1.1,TLSv1.2
 
 rem set default value
 set VERSION=0

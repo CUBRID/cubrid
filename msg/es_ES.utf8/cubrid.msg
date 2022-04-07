@@ -1415,18 +1415,21 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1337 El registro de registro no existe (lsa: %1$lld|%2$d). El volumen de registro de archivo se ha eliminado.
 1338 Flashback ya se está ejecutando. Flashback no puede ser ejecutado por más de un usuario al mismo tiempo.
 
-1339 Invalid arguments to authorization internal function.
-1340 AUTO_INCREMENT does not allow change of owner.
-1341 RENAME does not allow change of owner.
-1342 DBA, members of DBA group, and owner can perform CREATE SERIAL.
-1343 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+1339 Tipo de argumento no admitido de procedimiento almacenado: %1$s
+1340 Tipo de devolución no admitido de procedimiento almacenado: %1$s
 
-1344 Public synonym "%1$s" already exists.
-1345 Public synonym "%1$s" does not exist.
-1346 Synonym "%1$s" already exists.
-1347 Synonym "%1$s" does not exist.
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1348 Ultimo error
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+
+1350 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

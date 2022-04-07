@@ -7,8 +7,6 @@ EXPORTS
     cas_default_isolation_level
     cas_default_lock_timeout
     cas_send_result_flag
-    cas_procedure_handle_add
-    cas_procedure_handle_free
     cfg_find_db
     cfg_free_directory
     char_isdigit
@@ -343,6 +341,7 @@ EXPORTS
     db_set_system_parameters
     db_set_preferred_hosts
     db_set_connect_order
+    db_set_client_ip_addr
     db_shutdown
     db_string_free
     db_synchronize_cache
@@ -409,10 +408,7 @@ EXPORTS
     ini_getuint_max
     ini_parser_free
     ini_parser_load
-    jsp_get_db_result_set
-    jsp_send_destroy_request_all
     jsp_set_prepare_call
-    jsp_srv_handle_free
     jsp_unset_prepare_call
     msgcat_final
     msgcat_message
@@ -956,6 +952,12 @@ EXPORTS
   mht_1strhash
   mht_compare_strings_are_equal
   mht_rem
+
+;
+; method
+;
+  method_make_out_rs
+
 ;
 ; cubrid_log.h
 ;

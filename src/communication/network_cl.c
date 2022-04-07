@@ -34,6 +34,8 @@
 #include <sys/resource.h>
 #endif /* !WINDDOWS */
 
+#include <vector>
+
 #include "network.h"
 #include "network_interface_cl.h"
 #include "chartype.h"
@@ -45,7 +47,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "boot_cl.h"
-#include "query_method.h"
+#include "query_method.hpp"
 #include "method_def.hpp"
 #include "release_string.h"
 #include "log_comm.h"
@@ -56,6 +58,8 @@
 #include "perf_monitor.h"
 #include "log_writer.h"
 #include "object_representation.h"
+
+#include "packer.hpp"
 
 /*
  * To check for errors from the comm system. Note that if we get any error
@@ -954,6 +958,17 @@ net_client_get_server_host (void)
 }
 
 /*
+ * net_client_get_server_name () - the name of the current sever
+ *
+ * return: string
+ */
+char *
+net_client_get_server_name (void)
+{
+  return net_Server_name;
+}
+
+/*
  * net_client_request_internal -
  *
  * return: error status
@@ -1840,8 +1855,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	      {
 		char *methoddata;
 		int methoddata_size;
-		QFILE_LIST_ID *method_call_list_id = (QFILE_LIST_ID *) 0;
-		METHOD_SIG_LIST *method_call_sig_list = (METHOD_SIG_LIST *) 0;
 
 		er_clear ();
 		error = NO_ERROR;
@@ -1871,18 +1884,14 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			  }
 #endif /* CS_MODE */
 			error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
-			ptr = or_unpack_unbound_listid (methoddata, (void **) &method_call_list_id);
-			method_call_list_id->last_pgptr = NULL;
-			ptr = or_unpack_method_sig_list (ptr, (void **) &method_call_sig_list);
 
-			COMPARE_AND_FREE_BUFFER (methoddata, reply);
-			free_and_init (methoddata);
+			if (error == NO_ERROR)
+			  {
+			    COMPARE_AND_FREE_BUFFER (methoddata, reply);
+			    error = method_dispatch (rc, methoddata, methoddata_size);
+			    free_and_init (methoddata);
+			  }
 
-			error =
-			  method_invoke_for_server (rc, net_Server_host, net_Server_name, method_call_list_id,
-						    method_call_sig_list);
-			cursor_free_self_list_id (method_call_list_id);
-			method_sig_list_freemem (method_call_sig_list);
 			if (error != NO_ERROR)
 			  {
 			    assert (er_errid () != NO_ERROR);
@@ -1892,10 +1901,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				error = ER_NET_SERVER_DATA_RECEIVE;
 				er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			      }
-			  }
-			else
-			  {
-			    error = NO_ERROR;
 			  }
 #if defined(CS_MODE)
 			if (need_to_reset == true)
@@ -1909,15 +1914,19 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		else
 		  {
 		    error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
-
 		    net_consume_expected_packets (rc, 1);
 		  }
 
 		if (error != NO_ERROR)
 		  {
 		    return_error_to_server (net_Server_host, rc);
-		    method_send_error_to_server (rc, net_Server_host, net_Server_name);
+#if defined(CS_MODE)
+		    // NOTE: To avoid error -495, method_error should be called after return_error_to_server()
+		    method_error (rc, error);
+#endif
 		  }
+
+		/* expecting another reply */
 		css_queue_receive_data_buffer (rc, replybuf, replysize);
 	      }
 	      break;
@@ -2218,6 +2227,185 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	}
 #endif /* HISTO */
     }
+  return error;
+}
+
+int
+net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+				    char **replydata_ptr, int *replydatasize_ptr)
+{
+  unsigned int rc;
+  int error;
+  QUERY_SERVER_REQUEST server_request;
+  int server_request_num;
+  char *reply = NULL, *ptr = NULL, *replydata = NULL;
+  int size, replydata_size = 0;
+
+  error = NO_ERROR;
+  *replydata_ptr = NULL;
+  *replydatasize_ptr = 0;
+
+  if (net_Server_name[0] == '\0')
+    {
+      error = ER_NET_SERVER_CRASHED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+  else
+    {
+      rc = css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, NULL, 0, NULL, 0,
+					  replybuf, replysize);
+      if (rc == 0)
+	{
+	  return set_server_error (css_Errno);
+	}
+    }
+
+  do
+    {
+      error = css_receive_data_from_server (rc, &reply, &size);
+      if (error != NO_ERROR || reply == NULL)
+	{
+	  COMPARE_AND_FREE_BUFFER (replybuf, reply);
+	  return set_server_error (error);
+	}
+
+      ptr = or_unpack_int (reply, &server_request_num);
+      server_request = (QUERY_SERVER_REQUEST) server_request_num;
+      switch (server_request)
+	{
+	case METHOD_CALL:
+	  {
+	    char *methoddata;
+	    int methoddata_size;
+
+	    er_clear ();
+	    error = NO_ERROR;
+
+	    /* here we assume that the first integer in the reply is the length of the following data block */
+	    or_unpack_int (ptr, &methoddata_size);
+	    COMPARE_AND_FREE_BUFFER (replybuf, reply);
+
+	    methoddata = (char *) malloc (methoddata_size);
+	    if (methoddata != NULL)
+	      {
+		css_queue_receive_data_buffer (rc, methoddata, methoddata_size);
+		error = css_receive_data_from_server (rc, &reply, &size);
+		if (error != NO_ERROR)
+		  {
+		    COMPARE_AND_FREE_BUFFER (methoddata, reply);
+		    free_and_init (methoddata);
+		    return set_server_error (error);
+		  }
+		else
+		  {
+#if defined(CS_MODE)
+		    bool need_to_reset = false;
+		    if (method_request_id == 0)
+		      {
+			method_request_id = CSS_RID_FROM_EID (rc);
+			need_to_reset = true;
+		      }
+#endif /* CS_MODE */
+		    error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
+
+		    if (error == NO_ERROR)
+		      {
+			COMPARE_AND_FREE_BUFFER (methoddata, reply);
+			error = method_dispatch (rc, methoddata, methoddata_size);
+			free_and_init (methoddata);
+		      }
+
+		    if (error != NO_ERROR)
+		      {
+			assert (er_errid () != NO_ERROR);
+			error = er_errid ();
+			if (error == NO_ERROR)
+			  {
+			    error = ER_NET_SERVER_DATA_RECEIVE;
+			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+			  }
+		      }
+#if defined(CS_MODE)
+		    if (need_to_reset == true)
+		      {
+			method_request_id = 0;
+			need_to_reset = false;
+		      }
+#endif /* CS_MODE */
+		  }
+	      }
+	    else
+	      {
+		error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
+		net_consume_expected_packets (rc, 1);
+	      }
+
+	    if (error != NO_ERROR)
+	      {
+		return_error_to_server (net_Server_host, rc);
+#if defined(CS_MODE)
+		// NOTE: To avoid error -495, method_error should be called after return_error_to_server()
+		method_error (rc, error);
+#endif
+	      }
+
+	    /* expecting another reply */
+	    css_queue_receive_data_buffer (rc, replybuf, replysize);
+	  }
+	  break;
+	case END_CALLBACK:	/* get result */
+	  {
+	    ptr = or_unpack_int (ptr, &replydata_size);
+	    COMPARE_AND_FREE_BUFFER (replybuf, reply);
+
+	    if (replydata_size < 0)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
+		return ER_NET_SERVER_CRASHED;
+	      }
+	    else if (replydata_size > 0)
+	      {
+		replydata = (char *) malloc (replydata_size);
+		if (replydata == NULL)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) replydata_size);
+		    return ER_OUT_OF_VIRTUAL_MEMORY;
+		  }
+
+		css_queue_receive_data_buffer (rc, replydata, replydata_size);
+		error = css_receive_data_from_server (rc, &reply, &size);
+		if (error != NO_ERROR)
+		  {
+		    COMPARE_AND_FREE_BUFFER (replydata, reply);
+		    free_and_init (replydata);
+		    return set_server_error (error);
+		  }
+		else
+		  {
+		    error = COMPARE_SIZE_AND_BUFFER (&replydata_size, size, &replydata, reply);
+		  }
+		*replydata_ptr = replydata;
+		*replydatasize_ptr = replydata_size;
+	      }
+	    else
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
+		return ER_NET_SERVER_DATA_RECEIVE;
+	      }
+	    ptr = or_unpack_int (ptr, &error);
+	  }
+	  break;
+
+	default:
+	  error = ER_NET_SERVER_DATA_RECEIVE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  server_request = END_CALLBACK;
+	  break;
+	}
+    }
+  while (server_request != END_CALLBACK);
+
   return error;
 }
 

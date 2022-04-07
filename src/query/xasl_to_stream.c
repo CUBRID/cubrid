@@ -5580,19 +5580,35 @@ xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_string (method_sig->class_name);	/* is can be null */
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
   ptr = or_pack_int (ptr, method_sig->method_type);
   ptr = or_pack_int (ptr, method_sig->num_method_args);
 
   for (n = 0; n < method_sig->num_method_args + 1; n++)
     {
       ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
+    }
+
+  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
+    {
+      for (n = 0; n < method_sig->num_method_args; n++)
+	{
+	  ptr = or_pack_int (ptr, method_sig->arg_info.arg_mode[n]);
+	}
+      for (n = 0; n < method_sig->num_method_args; n++)
+	{
+	  ptr = or_pack_int (ptr, method_sig->arg_info.arg_type[n]);
+	}
+
+      ptr = or_pack_int (ptr, method_sig->arg_info.result_type);
+    }
+  else
+    {
+      offset = xts_save_string (method_sig->class_name);	/* is can be null */
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
     }
 
   offset = xts_save_method_sig (method_sig->next, count - 1);
@@ -7322,11 +7338,21 @@ xts_sizeof_method_sig (const METHOD_SIG * method_sig)
   int size = 0;
 
   size += (PTR_SIZE		/* method_name */
-	   + PTR_SIZE		/* class_name */
 	   + OR_INT_SIZE	/* method_type */
 	   + OR_INT_SIZE	/* num_method_args */
 	   + (OR_INT_SIZE * (method_sig->num_method_args + 1))	/* method_arg_pos */
 	   + PTR_SIZE);		/* next */
+
+  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
+    {
+      size += ((method_sig->num_method_args * OR_INT_SIZE)	/* arg_mode */
+	       + (method_sig->num_method_args * OR_INT_SIZE)	/* arg_type */
+	       + (OR_INT_SIZE));	/* result type */
+    }
+  else
+    {
+      size += PTR_SIZE;		/* class_name */
+    }
 
   return size;
 }
