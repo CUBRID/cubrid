@@ -1727,7 +1727,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* check if orderby_for set to PT_EXPR_INFO_ROWNUM_ONLY */
   orderby_for = subquery->info.query.orderby_for;
-  is_orderby_for = (orderby_for != NULL && orderby_for->node_type == PT_EXPR && !PT_EXPR_INFO_IS_FLAGED (orderby_for, PT_EXPR_INFO_ROWNUM_ONLY));
+  is_orderby_for = orderby_for && (order_by || (orderby_for->node_type == PT_EXPR && !PT_EXPR_INFO_IS_FLAGED (orderby_for, PT_EXPR_INFO_ROWNUM_ONLY)));
 
   /* do not rewrite vclass_query as a derived table if spec belongs to an insert statement. */
   if (mainquery->node_type == PT_INSERT)
@@ -3867,7 +3867,7 @@ bool
 mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by)
 {
   PT_NODE *where, *from, *attributes, *query_spec_columns, *col, *attr, *pred;
-  PT_NODE *arg1, *arg2, *sub_where, *sub_sel_list, *sub_order_by;
+  PT_NODE *arg1, *arg2, *sub_where, *sub_sel_list, *sub_order_by, *save_next;
   bool result;
 
   if (!pt_is_select (node))
@@ -3898,6 +3898,23 @@ mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
       return false;
     }
 
+  /* check if select list of mainquery has expr of instnum */
+  col = node->info.query.q.select.list;
+  while (col)
+    {
+      /* cut off next */
+      save_next = col->next;
+      col->next = NULL;
+
+      if (!PT_IS_INSTNUM (col) && pt_has_inst_num (parser, col))
+	{
+	  col->next = save_next;
+	  return false;
+	}
+      col->next = save_next;
+      col = col->next;
+    }
+  
   /* subquery check */
   if (!pt_is_select (spec->info.spec.derived_table))
     {
