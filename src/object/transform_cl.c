@@ -3700,6 +3700,7 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
   /* 0: NAME */
   put_string (buf, sm_ch_name ((MOBJ) class_));
+
   put_string (buf, class_->loader_commands);
 
   put_substructure_set (buf, (DB_LIST *) class_->representations, representation_to_disk_lwriter,
