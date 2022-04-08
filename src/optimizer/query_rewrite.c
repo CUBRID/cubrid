@@ -3334,7 +3334,7 @@ qo_reduce_outer_joined_tables (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   MOP cls;
   SM_CLASS_CONSTRAINT *consp;
   SM_ATTRIBUTE *attrp;
-  PT_NODE *point_list, *point, *where, *col, *tmp_spec, *prev_spec, *pred, *prev_pred, *next_pred;
+  PT_NODE *point_list = NULL, *point, *where, *col, *tmp_spec, *prev_spec, *pred, *prev_pred, *next_pred;
   PT_NODE *next_spec;
   SPEC_CNT_INFO info;
   bool all_unique_col_match = false;
@@ -7222,9 +7222,6 @@ qo_check_distinct_union (PARSER_CONTEXT * parser, PT_NODE * node)
 
   switch (node->node_type)
     {
-    case PT_SELECT:
-      break;
-
     case PT_UNION:
       if (node->info.query.all_distinct == PT_DISTINCT)
 	{
@@ -7393,7 +7390,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
 	      /* order by, union check */
 	      if (node->info.query.order_by == NULL && !qo_check_distinct_union (parser, node)
-		  && !node->info.query.q.select.hint & PT_HINT_NO_PUSH_PRED)
+		  && !(node->info.query.q.select.hint & PT_HINT_NO_PUSH_PRED))
 		{
 		  node = qo_push_limit_to_union (parser, node, limit_node);
 		}

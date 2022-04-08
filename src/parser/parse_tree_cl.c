@@ -639,6 +639,25 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
 	}
     }
 
+  /* change inst_num() to orderby_num() */
+  if (PT_IS_INSTNUM (tree_or_name) && PT_IS_INSTNUM (lambda_name))
+    {
+	  /* found match */
+	  /* replace 'tree_or_name' node with 'lambda_arg->tree' */
+	  next = tree_or_name->next;
+	  result = parser_copy_tree_list (parser, lambda_arg->tree);
+	  parser_free_node (parser, tree_or_name);
+	  for (temp = result; temp->next; temp = temp->next)
+	    {
+	      ;
+	    }
+	  temp->next = next;
+
+	  lambda_arg->replace_num++;
+
+	  return result;
+    }
+
   if (name_node->node_type != PT_NAME || lambda_name->node_type != PT_NAME)
     {
       return tree_or_name;
@@ -1052,6 +1071,17 @@ pt_lambda_with_arg (PARSER_CONTEXT * parser, PT_NODE * tree_with_names, PT_NODE 
 	    {
 	      /* change orderby_num() to groupby_num() */
 	      /* change orderby_num() to inst_num() */
+	      arg_ok = true;
+	    }
+	}
+    }
+  else if (name_node->node_type == PT_EXPR && name_node->info.expr.op == PT_INST_NUM)
+    {
+      /* change inst_num() to orderby_num() */
+      if (corresponding_tree)
+	{
+	  if (corresponding_tree->node_type == PT_EXPR && corresponding_tree->info.expr.op == PT_ORDERBY_NUM)
+	    {
 	      arg_ok = true;
 	    }
 	}
@@ -3106,7 +3136,7 @@ parser_append_node (PT_NODE * node, PT_NODE * list)
 /*
  * parser_append_previous_node() -
  *   return:
- *   node(in/out):
+ *   node(in):
  *   list(in):
  */
 PT_NODE *
