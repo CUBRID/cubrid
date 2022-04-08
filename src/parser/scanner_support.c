@@ -1167,7 +1167,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 	}
       write_hint_2_logfile ();
     }
-#endif    
+#endif
 }
 
 #if defined(ENABLE_WRITE_HINT_LOG)
