@@ -65,8 +65,6 @@
 #include "cas_cgw.h"
 #endif
 
-extern void set_plan_include_hint (bool is_include);
-
 static FN_RETURN fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 				      int *ret_srv_h_id);
 static FN_RETURN fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
@@ -1930,7 +1928,6 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
       cas_log_query_info_init (srv_h_id, TRUE);
       srv_handle->query_info_flag = TRUE;
 
-      set_plan_include_hint (true);
       session = db_open_buffer (sql_stmt);
       if (!session)
 	{
@@ -1972,7 +1969,6 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
   ux_get_query_info (srv_h_id, info_type, net_buf);
 
 end:
-  set_plan_include_hint (false);
   if (sql_stmt != NULL)
     {
       reset_optimization_level_as_saved ();

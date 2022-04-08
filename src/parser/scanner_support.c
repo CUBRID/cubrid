@@ -58,10 +58,16 @@ extern "C"
 extern int yycolumn_end;
 
 
+#if defined(SA_MODE) && !defined(NDEBUG)
+
+#define ENABLE_WRITE_HINT_LOG
+#define HINT_GREP_STR           (char*)"[HINT] "
 /* matching hint information to output*/
 struct st_hint_msg
 {
+  int stmt_no;
   bool is_print;
+
   int m_alloc;
   int m_used;
   char *msg_ptr;
@@ -70,6 +76,7 @@ struct st_hint_msg
 public:
     st_hint_msg ()
   {
+    stmt_no = -1;
     is_print = false;
     m_alloc = sizeof (msg_buf);
     m_used = 0;
@@ -87,7 +94,6 @@ public:
 	m_alloc = sizeof (msg_buf);
       }
     msg_buf[0] = 0x00;
-    is_print = false;
   }
 
   void check_buffer (int size)
@@ -118,46 +124,85 @@ public:
       }
   }
 
-  void addstring (char *str)
+  void add_fmt_string (const char *fmt, ...)
   {
-    check_buffer (snprintf (NULL, 0, "%s", str));
-    m_used += sprintf (msg_ptr + m_used, "%s", str);
+    va_list ap;
+
+    va_start (ap, fmt);
+    int count = vsnprintf (NULL, 0, fmt, ap);
+    va_end (ap);
+
+    if (count > 0)
+      {
+	check_buffer (count);
+
+	va_start (ap, fmt);
+	m_used += vsprintf (msg_ptr + m_used, fmt, ap);
+	va_end (ap);
+      }
   }
-  void addstring (const char *fmt, char *str)
+
+  void add_hint_string (char *hint_str)
   {
-    check_buffer (snprintf (NULL, 0, fmt, str));
-    m_used += sprintf (msg_ptr + m_used, fmt, str);
+    char *ps = hint_str;
+    char *p;
+    bool is_first = true;
+
+    while (*ps)
+      {
+	while (char_isspace (*ps))
+	  {
+	    ps++;
+	  }
+
+	for (p = ps; *p; p++)
+	  {
+	    if (*p == '\n')
+	      {
+		*p = '\0';	// cut
+		if (is_first)
+		  {
+		    add_fmt_string ((const char *) "%-10s %6s %s\n", HINT_GREP_STR, "Input)", ps);
+		    is_first = false;
+		  }
+		else
+		  {
+		    add_fmt_string ((const char *) "%-10s %6s %s\n", HINT_GREP_STR, " ", ps);
+		  }
+		*p = '\n';	// recover
+		ps = p + 1;
+		break;
+	      }
+	  }
+
+	if (*p == '\0')
+	  {
+	    if (is_first)
+	      {
+		add_fmt_string ((const char *) "%-10s %6s %s\n", HINT_GREP_STR, "Input)", ps);
+	      }
+	    else
+	      {
+		add_fmt_string ((const char *) "%-10s %6s %s\n", HINT_GREP_STR, " ", ps);
+	      }
+
+	    return;
+	  }
+      }
   }
-  void addstring (const char *fmt, char *str1, char *str2)
-  {
-    check_buffer (snprintf (NULL, 0, fmt, str1, str2));
-    m_used += sprintf (msg_ptr + m_used, fmt, str1, str2);
-  }
-};
+};				// struct st_hint_msg
+
+static void write_hint_2_logfile ();
+static void print_hit_hint_string (PT_HINT * hint_table);
 
 static struct st_hint_msg s_hint_msg;
-static void print_hit_hint_string (PT_HINT * hint_table);
-static bool plan_include_hint = false;
+#define ADD_HINT_STRING(...) s_hint_msg.add_fmt_string (__VA_ARGS__)
 
-void
-set_plan_include_hint (bool is_include)
-{
-  plan_include_hint = is_include;
-}
+#else
 
-void
-print_hint_dump (FILE * output)
-{
-  if (s_hint_msg.msg_ptr && *s_hint_msg.msg_ptr)
-    {
-      fputs ("\nQuery hints:\n", output);
+#define ADD_HINT_STRING(...)
 
-      s_hint_msg.msg_ptr[s_hint_msg.m_used] = '\0';
-      fprintf (output, "%s", s_hint_msg.msg_ptr);
-    }
-
-  s_hint_msg.reset ();
-}
+#endif //#if defined(SA_MODE) && !defined(NDEBUG)
 
 #define HINT_LEAD_CHAR_SIZE (129)
 static u_char hint_table_lead_offset[HINT_LEAD_CHAR_SIZE] = { 0, };
@@ -247,7 +292,10 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 {
   static int was_initialized = 0;
 
-  s_hint_msg.reset ();
+#if defined(ENABLE_WRITE_HINT_LOG)
+  s_hint_msg.stmt_no = -1;
+#endif
+
   if (was_initialized)
     {
       return;
@@ -322,10 +370,9 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 {
   int i;
 
-  if (s_hint_msg.is_print)
-    {
-      s_hint_msg.addstring ((char *) "    Hit) ");
-    }
+#if defined(ENABLE_WRITE_HINT_LOG)
+  bool first_hit = true;
+#endif
 
   /* read hint info */
   for (i = 0; hint_table[i].tokens; i++)
@@ -335,10 +382,17 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	  continue;
 	}
 
+#if defined(ENABLE_WRITE_HINT_LOG)
       if (s_hint_msg.is_print)
 	{
+	  if (first_hit)
+	    {
+	      ADD_HINT_STRING ((char *) "%-10s Hit) ", HINT_GREP_STR);
+	      first_hit = false;
+	    }
 	  print_hit_hint_string (hint_table + i);
 	}
+#endif
 
       switch (hint_table[i].hint)
 	{
@@ -721,10 +775,13 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	}
     }				/* for (i = ... ) */
 
+#if defined(ENABLE_WRITE_HINT_LOG)
   if (s_hint_msg.is_print)
     {
-      s_hint_msg.addstring ((char *) "\n");
+      ADD_HINT_STRING ((char *) "\n");
+      write_hint_2_logfile ();
     }
+#endif
 }
 
 
@@ -1027,15 +1084,24 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
   bool start_flag = true;
   unsigned char *h_str = (unsigned char *) text + 1;	// skip '+'
 
+#if defined(ENABLE_WRITE_HINT_LOG)
+  s_hint_msg.reset ();
   s_hint_msg.is_print = false;
+#endif
+
   if (*h_str == '+')
     {
       h_str++;
-      if (plan_include_hint)
+#if defined(ENABLE_WRITE_HINT_LOG)
+      s_hint_msg.is_print = true;
+
+      if (s_hint_msg.stmt_no != this_parser->statement_number)
 	{
-	  s_hint_msg.is_print = true;
-	  s_hint_msg.addstring ((const char *) "    Input) %s\n", (char *) h_str);
+	  s_hint_msg.stmt_no = this_parser->statement_number;
+	  ADD_HINT_STRING ((char *) "%-10s ========================================\n", HINT_GREP_STR);
 	}
+      s_hint_msg.add_hint_string ((char *) h_str);
+#endif
     }
 
   // reset hit info.
@@ -1091,8 +1157,20 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 	    }
 	}
     }
+
+#if defined(ENABLE_WRITE_HINT_LOG)
+  if (s_hint_msg.is_print)
+    {
+      if (*result_hint == PT_HINT_NONE)
+	{
+	  ADD_HINT_STRING ((char *) "%-10s Hit) \n", HINT_GREP_STR);
+	}
+      write_hint_2_logfile ();
+    }
+#endif    
 }
 
+#if defined(ENABLE_WRITE_HINT_LOG)
 static void
 print_hit_hint_string (PT_HINT * hint_table)
 {
@@ -1100,11 +1178,11 @@ print_hit_hint_string (PT_HINT * hint_table)
 
   if (hint_table->arg_list == NULL)
     {
-      s_hint_msg.addstring ((const char *) " %s ", (char *) hint_table->tokens);
+      ADD_HINT_STRING ((const char *) " %s ", (char *) hint_table->tokens);
       return;
     }
 
-  s_hint_msg.addstring ((const char *) " %s(", (char *) hint_table->tokens);
+  ADD_HINT_STRING ((const char *) " %s(", (char *) hint_table->tokens);
 
   px = hint_table->arg_list;
   do
@@ -1113,18 +1191,18 @@ print_hit_hint_string (PT_HINT * hint_table)
 	{
 	  if (px->info.name.resolved)
 	    {
-	      s_hint_msg.addstring ((const char *) "[%s].[%s]", (char *) px->info.name.resolved,
-				    (char *) px->info.name.original);
+	      ADD_HINT_STRING ((const char *) "[%s].[%s]", (char *) px->info.name.resolved,
+			       (char *) px->info.name.original);
 	    }
 	  else
 	    {
-	      s_hint_msg.addstring ((const char *) "[%s]", (char *) px->info.name.original);
+	      ADD_HINT_STRING ((const char *) "[%s]", (char *) px->info.name.original);
 	    }
 	}
       else if (px->node_type == PT_VALUE)
 	{
 	  assert (px->type_enum == PT_TYPE_NULL);
-	  s_hint_msg.addstring (" ");
+	  ADD_HINT_STRING (" ");
 	}
       else
 	{
@@ -1134,14 +1212,25 @@ print_hit_hint_string (PT_HINT * hint_table)
       px = px->next;
       if (px)
 	{
-	  s_hint_msg.addstring (", ");
+	  ADD_HINT_STRING (", ");
 	}
 
     }
   while (px);
-  s_hint_msg.addstring (")");
+  ADD_HINT_STRING (")");
 }
 
+static void
+write_hint_2_logfile ()
+{
+  if (s_hint_msg.msg_ptr && *s_hint_msg.msg_ptr)
+    {
+      s_hint_msg.msg_ptr[s_hint_msg.m_used] = '\0';
+      er_log_debug (ARG_FILE_LINE, "%s \n", s_hint_msg.msg_ptr);
+      s_hint_msg.reset ();
+    }
+}
+#endif // #if defined(ENABLE_WRITE_HINT_LOG)
 
 /*
  * pt_check_ipv4 () - Checks the validity of the ip address
