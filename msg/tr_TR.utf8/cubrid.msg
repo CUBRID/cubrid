@@ -1403,12 +1403,28 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
-1330 Error reserved for dblink development.
+1330 Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 Etkin günlük hacmi (%1$s) yeniden oluşturulamayacak kadar makul. Etkin günlüğü kaldırırsanız, beklenmeyen ve geri dönüşü olmayan bir soruna neden olabilir.
 
-1333 Son Hata
+1333 Geri dönüşü başlatmak için geçersiz süre (%1$s). Zamanın (%2$s) ile (%3$s) arasında ayarlanması gerekir.
+1334 Geri dönüş yapılacak sınıf bulunamadı (%1$s).
+1335 Geri dönüş için çok fazla işlem var. %1$d'den az işlem flashback olabilir.
+1336 Bu sınıf için geri dönüş desteklenemez (ad : %1$s , OID : %2$d|%3$d|%4$d). Sınıf şeması değiştirildi.
+1337 Günlük kaydı mevcut değil (lsa : %1$lld|%2$d). Arşiv günlüğü birimi silindi.
+1338 Flashback zaten çalışıyor. Flashback, aynı anda birden fazla kullanıcı tarafından çalıştırılamaz.
+
+1339 Desteklenmeyen bağımsız değişken türü saklı yordam: %1$s
+1340 Desteklenmeyen saklı yordam dönüş türü: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1566,6 +1582,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Bir yorumun maksimum uzunluğu %1$d byte.
 128 JSON_OBJECTAGG için bağımsız değişken sayısı geçersiz
 129 PARALLEL count argümanı %1$d ve %2$d arasında olmalıdır.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
@@ -1874,6 +1891,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 %1$s() fonksiyonu için uyumlu bir imza bulunamadı
 305 İmza %1$s, argümanları ile uyumlu değildir.
 306 dblink - Gerekli bilgiler eksik.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

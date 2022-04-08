@@ -8197,7 +8197,7 @@ qo_node_fprint (QO_NODE * node, FILE * f)
 {
   if (QO_NODE_NAME (node))
     {
-      fprintf (f, "%s", QO_NODE_NAME (node));
+      fprintf (f, "%s", pt_get_name_without_current_user_name (QO_NODE_NAME (node)));
     }
   fprintf (f, " node[%d]", QO_NODE_IDX (node));
 }

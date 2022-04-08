@@ -367,6 +367,7 @@ typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
 #define CSS_RID_FROM_EID(eid)           ((unsigned short) LOW16BITS(eid))
 #define CSS_ENTRYID_FROM_EID(eid)       ((unsigned short) HIGH16BITS(eid))
 
+#define NET_HEADER_FLAG_METHOD_MODE         0x4000
 #define NET_HEADER_FLAG_INVALIDATE_SNAPSHOT 0x8000
 
 /*
@@ -407,6 +408,7 @@ struct css_queue_entry
   int transaction_id;
   int invalidate_snapshot;
   int db_error;
+  bool in_method;
 
 #if !defined(SERVER_MODE)
   char lock;
@@ -430,7 +432,9 @@ struct css_conn_entry
   int db_error;
   bool in_transaction;		/* this client is in-transaction or out-of- */
   bool reset_on_commit;		/* set reset_on_commit when commit/abort */
+  bool in_method;		/* this connection is for method callback */
 
+  bool in_flashback;		/* this client is in progress of flashback */
 #if defined(SERVER_MODE)
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;

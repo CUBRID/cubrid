@@ -596,10 +596,10 @@ ini_parser_load (const char *ininame)
       return NULL;
     }
 
-  memset (line, 0, INI_BUFSIZ);
-  memset (section, 0, INI_BUFSIZ);
-  memset (key, 0, INI_BUFSIZ);
-  memset (val, 0, INI_BUFSIZ);
+  memset (line, 0, INI_BUFSIZ + 1);
+  memset (section, 0, INI_BUFSIZ + 1);
+  memset (key, 0, INI_BUFSIZ + 1);
+  memset (val, 0, INI_BUFSIZ + 1);
   last = 0;
 
   while (fgets (line + last, INI_BUFSIZ - last, in) != NULL)
@@ -888,7 +888,7 @@ ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def, int *lin
   int val;
 
   str = ini_getstr (ini, sec, key, INI_INVALID_KEY, lineno);
-  if (str == INI_INVALID_KEY)
+  if (str == INI_INVALID_KEY || str == NULL)
     {
       return def;
     }
@@ -996,7 +996,7 @@ ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def, int *lin
   int val;
 
   str = ini_getstr (ini, sec, key, INI_INVALID_KEY, lineno);
-  if (str == INI_INVALID_KEY)
+  if (str == INI_INVALID_KEY || str == NULL)
     {
       return def;
     }
@@ -1022,7 +1022,7 @@ ini_getfloat (INI_TABLE * ini, const char *sec, const char *key, float def, int 
   const char *str;
 
   str = ini_getstr (ini, sec, key, INI_INVALID_KEY, lineno);
-  if (str == INI_INVALID_KEY)
+  if (str == INI_INVALID_KEY || str == NULL)
     {
       return def;
     }

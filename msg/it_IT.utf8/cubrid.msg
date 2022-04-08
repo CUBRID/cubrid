@@ -1403,12 +1403,28 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
-1330 Error reserved for dblink development.
+1330 Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 Il volume del registro attivo (%1$s) è troppo sano per essere ricreato. Se rimuovi il registro attivo, potrebbe causare un problema imprevisto e irreversibile.
 
-1333 Ultimo errore
+1333 Tempo non valido (%1$s) per avviare il flashback. È necessario impostare il tempo tra (%2$s) e (%3$s).
+1334 Impossibile trovare la classe per il flashback (%1$s).
+1335 Troppe transazioni per il flashback. Meno di %1$d transazioni possono essere flashback.
+1336 Impossibile supportare il flashback per questa classe (nome : %1$s , OID : %2$d|%3$d|%4$d). Lo schema della classe è stato modificato.
+1337 Il record di registro non esiste (lsa : %1$lld|%2$d). Il volume del registro di archivio è stato eliminato.
+1338 Flashback è già in esecuzione. Flashback non può essere eseguito da più utenti contemporaneamente.
+
+1339 Tipo di argomento non supportato della procedura memorizzata: %1$s
+1340 Tipo di restituzione di stored procedure non supportato: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
@@ -1566,6 +1582,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Lunghezza massima di un commento è %1$d bytes.
 128 Numero di argomenti non valido per JSON_OBJECTAGG.
 129 L'argomento conteggio PARALLELO deve essere compreso tra %1$d e %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.
@@ -1874,6 +1891,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Impossibile trovare una firma compatibile per la funzione %1$s()
 305 Firma %1$s non è compatibile con gli argomenti delle funzioni.
 306 dblink - Mancano le informazioni richieste.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.

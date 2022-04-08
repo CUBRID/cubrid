@@ -76,20 +76,16 @@ extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statem
 extern int jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int jsp_check_param_type_supported (PT_NODE * node);
+extern int jsp_check_return_type_supported (DB_TYPE type);
+
 extern int jsp_is_exist_stored_procedure (const char *name);
 extern int jsp_get_return_type (const char *name);
-extern void jsp_init (void);
-extern void jsp_close_connection (void);
+extern int jsp_get_sp_type (const char *name);
 extern MOP jsp_find_stored_procedure (const char *name);
 
 extern void jsp_set_prepare_call (void);
 extern void jsp_unset_prepare_call (void);
-extern int jsp_call_from_server (DB_VALUE * returnval, DB_VALUE ** argarray, const char *name, const int arg_cnt);
-
-extern void *jsp_get_db_result_set (int h_id);
-extern void jsp_srv_handle_free (int h_id);
-
-extern int jsp_send_destroy_request_all ();
-extern int jsp_send_destroy_request (const SOCKET sockfd);
+extern bool jsp_is_prepare_call (void);
 
 #endif /* _JSP_CL_H_ */

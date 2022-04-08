@@ -720,6 +720,24 @@ struct json_t;
 
 #define PT_IS_SPEC_REAL_TABLE(spec_) PT_SPEC_IS_ENTITY(spec_)
 
+#define PT_IS_METHOD(n) \
+        ( (n) && (n)->node_type == PT_METHOD_CALL && \
+          ( (n)->info.method_call.method_type == PT_IS_CLASS_MTHD || \
+            (n)->info.method_call.method_type == PT_IS_INST_MTHD) )
+
+#define PT_IS_CLASS_METHOD(n) \
+        ( (n) && (n)->node_type == PT_METHOD_CALL && \
+          (n)->info.method_call.method_type == PT_IS_CLASS_MTHD )
+
+#define PT_IS_INSTANCE_METHOD(n) \
+        ( (n) && (n)->node_type == PT_METHOD_CALL && \
+          (n)->info.method_call.method_type == PT_IS_INST_MTHD )
+
+#define PT_IS_JAVA_SP(n) \
+        ( (n) && (n)->node_type == PT_METHOD_CALL && \
+          ( (n)->info.method_call.method_type == PT_SP_PROCEDURE || \
+            (n)->info.method_call.method_type == PT_SP_FUNCTION) )
+
 /*
  Enumerated types of parse tree statements
   WARNING ------ WARNING ----- WARNING
@@ -795,7 +813,12 @@ enum pt_custom_print
 
   PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21),
 
-  PT_PRINT_NO_HOST_VAR_INDEX = (0x1 << 22)
+  PT_PRINT_NO_HOST_VAR_INDEX = (0x1 << 22),
+
+  /* Both PT_PRINT_NO_SPECIFIED_USER_NAME and PT_PRINT_NO_CURRENT_USER_NAME can be set.
+   * Check PT_PRINT_NO_SPECIFIED_USER_NAME before PT_PRINT_NO_CURRENT_USER_NAME to set implicit priority. */
+  PT_PRINT_NO_SPECIFIED_USER_NAME = (0x1 << 23),
+  PT_PRINT_NO_CURRENT_USER_NAME = (0x1 << 24)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -2381,7 +2404,7 @@ struct pt_method_call_info
   PT_NODE *on_call_target;	/* PT_NAME */
   PT_NODE *to_return_var;	/* PT_NAME */
   PT_MISC_TYPE call_or_expr;	/* PT_IS_CALL_STMT or PT_IS_MTHD_EXPR */
-  PT_MISC_TYPE class_or_inst;	/* PT_IS_CLASS_MTHD or PT_IS_INST_MTHD */
+  PT_MISC_TYPE method_type;	/* PT_IS_CLASS_MTHD, PT_IS_INST_MTHD, PT_SP_PROCEDURE, PT_SP_FUNCTION */
   UINTPTR method_id;		/* unique identifier so when copying we know if two methods are copies of the same
 				 * original method call. */
 };
@@ -2586,6 +2609,7 @@ struct pt_name_info
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from derived spec */
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
+#define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
