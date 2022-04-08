@@ -2175,4 +2175,19 @@ $set 16 MSGCAT_SET_LOG
 22 DELETE POSTPONED: Archives %1$d %2$s to \n \
         %3$d %4$s \n \
         are no longer needed unless a restore from current backup occurs.\n
-23 
+23 A newer backup has released archives previously marked DELETE POSTPONED.\n
+24 COMMENT: Log archive %1$s is not DELETE POSTPONED any longer due to more recent\n \
+     backup and therefore is not needed unless a database media crash occurs.\n
+25 COMMENT: Log archives from %1$s to %2$s are not DELETE POSTPONED any longer due to\n \
+   more recent backup and therefore are not needed unless a database media\n \
+   crash occurs.\n
+26 데이터베이스를 복구하는 도중에 에러가 발생하였습니다\n\
+     Backup Volume: %1$s\n\
+          Unit Num: %2$d\n\
+   Database Volume: %3$s\n\
+    Database Volid: %4$d\n\
+** 경고: 에러 없이 데이터베이스가 복구되기 전까지는 데이터베이스를 사용하지 마시오. 
+27 입력 오류, %1$d와 %2$d 사이의 값을 선택하시오.\n
+28 복구 시점(%1$s)은 반드시 백업 시점(%2$s) 이후로 지정해야 합니다. \n
+29 COMMENT: 보관 로그 %1$s는 로그 페이지 %2$lld 이전까지만 포함되어 HA 유틸리티에서 더 이상 사용되지 않습니다.
+30 보관 로그의 개수가 허용 최대치를 초과했습니다.
