@@ -3574,15 +3574,10 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
   /* compute the variable offsets relative to the end of the header (beginning of variable table) */
   offset = tf_Metaclass_class.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
 
-  /* unique_name */
+  /* name */
   or_put_offset (buf, offset);
 
   offset += string_disk_size (sm_ch_name ((MOBJ) class_));
-
-  /* class_name */
-  or_put_offset (buf, offset);
-
-  offset += string_disk_size (sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)));
 
   or_put_offset (buf, offset);
 
@@ -3705,7 +3700,6 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
   /* 0: NAME */
   put_string (buf, sm_ch_name ((MOBJ) class_));
-  put_string (buf, sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)));
   put_string (buf, class_->loader_commands);
 
   put_substructure_set (buf, (DB_LIST *) class_->representations, representation_to_disk_lwriter,
@@ -3821,7 +3815,6 @@ tf_class_size (MOBJ classobj)
   size += tf_Metaclass_class.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
 
   size += string_disk_size (sm_ch_name ((MOBJ) class_));
-  size += string_disk_size (sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)));
   size += string_disk_size (class_->loader_commands);
 
   size += substructure_set_size ((DB_LIST *) class_->representations, (LSIZER) representation_size);
@@ -4046,25 +4039,20 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   class_->tde_algorithm = or_get_int (buf, &rc);
 
   /* variable 0 */
-  class_->header.ch_name = get_string (buf, vars[ORC_UNIQUE_NAME_INDEX].length);
+  class_->header.ch_name = get_string (buf, vars[ORC_NAME_INDEX].length);
 
   /* variable 1 */
-  /* Since unique_name includes class_name, only unique_name is stored in SM_CLASS.
-   * The code below is needed to move the buf location. */
-  get_string (buf, vars[ORC_NAME_INDEX].length);
-
-  /* variable 2 */
   class_->loader_commands = get_string (buf, vars[ORC_LOADER_COMMANDS_INDEX].length);
 
   /* REPRESENTATIONS */
-  /* variable 3 */
+  /* variable 2 */
   class_->representations =
     (SM_REPRESENTATION *) get_substructure_set (buf, (LREADER) disk_to_representation,
 						vars[ORC_REPRESENTATIONS_INDEX].length);
 
-  /* variable 4 */
+  /* variable 3 */
   class_->users = get_object_set (buf, vars[ORC_SUBCLASSES_INDEX].length);
-  /* variable 5 */
+  /* variable 4 */
   class_->inheritance = get_object_set (buf, vars[ORC_SUPERCLASSES_INDEX].length);
 
   class_->attributes = (SM_ATTRIBUTE *) classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE), class_->att_count);
@@ -4103,19 +4091,19 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
     }
   classobj_initialize_methods (class_->class_methods);
 
-  /* variable 6 */
+  /* variable 5 */
   install_substructure_set (buf, (DB_LIST *) class_->attributes, (VREADER) disk_to_attribute,
 			    vars[ORC_ATTRIBUTES_INDEX].length);
-  /* variable 7 */
+  /* variable 6 */
   install_substructure_set (buf, (DB_LIST *) class_->shared, (VREADER) disk_to_attribute,
 			    vars[ORC_SHARED_ATTRS_INDEX].length);
-  /* variable 8 */
+  /* variable 7 */
   install_substructure_set (buf, (DB_LIST *) class_->class_attributes, (VREADER) disk_to_attribute,
 			    vars[ORC_CLASS_ATTRS_INDEX].length);
 
-  /* variable 9 */
+  /* variable 8 */
   install_substructure_set (buf, (DB_LIST *) class_->methods, (VREADER) disk_to_method, vars[ORC_METHODS_INDEX].length);
-  /* variable 10 */
+  /* variable 9 */
   install_substructure_set (buf, (DB_LIST *) class_->class_methods, (VREADER) disk_to_method,
 			    vars[ORC_CLASS_METHODS_INDEX].length);
 
@@ -4129,32 +4117,32 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   tag_component_namespace ((SM_COMPONENT *) class_->methods, ID_METHOD);
   tag_component_namespace ((SM_COMPONENT *) class_->class_methods, ID_CLASS_METHOD);
 
-  /* variable 11 */
+  /* variable 10 */
   class_->method_files =
     (SM_METHOD_FILE *) get_substructure_set (buf, (LREADER) disk_to_methfile, vars[ORC_METHOD_FILES_INDEX].length);
 
-  /* variable 12 */
+  /* variable 11 */
   class_->resolutions =
     (SM_RESOLUTION *) get_substructure_set (buf, (LREADER) disk_to_resolution, vars[ORC_RESOLUTIONS_INDEX].length);
 
-  /* variable 13 */
+  /* variable 12 */
   class_->query_spec =
     (SM_QUERY_SPEC *) get_substructure_set (buf, (LREADER) disk_to_query_spec, vars[ORC_QUERY_SPEC_INDEX].length);
 
-  /* variable 14 */
+  /* variable 13 */
   triggers = get_object_set (buf, vars[ORC_TRIGGERS_INDEX].length);
   if (triggers != NULL)
     {
       class_->triggers = tr_make_schema_cache (TR_CACHE_CLASS, triggers);
     }
 
-  /* variable 15 */
+  /* variable 14 */
   class_->properties = get_property_list (buf, vars[ORC_PROPERTIES_INDEX].length);
 
-  /* variable 16 */
+  /* variable 15 */
   class_->comment = get_string (buf, vars[ORC_COMMENT_INDEX].length);
 
-  /* variable 17 */
+  /* variable 16 */
   class_->partition =
     (SM_PARTITION *) get_substructure_set (buf, (LREADER) disk_to_partition_info, vars[ORC_PARTITION_INDEX].length);
 
