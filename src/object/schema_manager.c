@@ -5350,27 +5350,7 @@ sm_class_constraints (MOP classop)
 MOP
 sm_find_class (const char *name)
 {
-  char realname[SM_MAX_IDENTIFIER_LENGTH];
-  MOP class_mop = NULL;
-  MOP synonym_mop = NULL;
-  const char *target_name = NULL;
-
-  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
-
-  class_mop = locator_find_class (realname);
-  if (class_mop)
-    {
-      return class_mop;
-    }
-
-  synonym_mop = sm_find_synonym (realname);
-  if (synonym_mop)
-    {
-      target_name = sm_get_synonym_target_name (synonym_mop);
-      class_mop = locator_find_class (target_name);
-    }
-
-  return class_mop;
+  return sm_find_class_with_purpose (name, false);
 }
 
 /*

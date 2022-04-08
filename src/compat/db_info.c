@@ -132,14 +132,7 @@ end:
 DB_OBJECT *
 db_find_class (const char *name)
 {
-  DB_OBJECT *retval;
-
-  CHECK_CONNECT_NULL ();
-  CHECK_1ARG_NULL (name);
-
-  retval = sm_find_class (name);
-
-  return retval;
+  return db_find_class_with_purpose (name, false);
 }
 
 /*
