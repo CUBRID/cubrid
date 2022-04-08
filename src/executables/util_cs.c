@@ -3156,6 +3156,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   int error = NO_ERROR;
   INT64 pageid = 0;
   int interval;
+  int argv_index = 0;
+  bool pageid_flag = false;
   float process_rate = 0.0f;
   char *replica_time_bound_str;
   /* log lsa to calculate the estimated delay */
@@ -3202,13 +3204,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   check_applied_info = utility_get_option_bool_value (arg_map, APPLYINFO_APPLIED_INFO_S);
   log_path = utility_get_option_string_value (arg_map, APPLYINFO_COPIED_LOG_PATH_S, 0);
-  if (log_path != NULL)
-    {
-      if (realpath (log_path, log_path_buf) != NULL)
-	{
-	  log_path = log_path_buf;
-	}
-    }
+
   if (log_path != NULL)
     {
       check_copied_info = true;
@@ -3221,7 +3217,17 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   check_replica_info = (HA_GET_MODE () == HA_MODE_REPLICA);
   pageid = utility_get_option_bigint_value (arg_map, APPLYINFO_PAGE_S);
-  if (((pageid != APPLYINFO_DEFAULT_LOG_PAGEID) && (log_path == NULL)) || (pageid < 0))
+  while (arg->argv[argv_index] != NULL)
+    {
+      if (!strcmp (arg->argv[argv_index], "-p"))
+	{
+	  pageid_flag = true;
+	  break;
+	}
+      argv_index++;
+    }
+
+  if (log_path == NULL)
     {
       goto print_applyinfo_usage;
     }
@@ -3248,7 +3254,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	    }
 	}
     }
-  if ((!check_copied_info) && (!check_applied_info) && (!master_node_name) && (pageid == APPLYINFO_DEFAULT_LOG_PAGEID))
+  if (!check_copied_info && !check_master_info)
     {
       goto print_applyinfo_usage;
     }
@@ -3277,7 +3283,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  strcat (local_database_name, "@localhost");
 
 	  db_clear_host_connected ();
-	  if ((check_applied_info != false) && check_database_name (local_database_name))
+	  if (check_database_name (local_database_name))
 	    {
 	      printf ("\n *** Applied Info. *** \n");
 	      check_applied_info = false;
@@ -3308,9 +3314,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	    {
 	      (void) db_shutdown ();
 	    }
-	  error = la_log_page_check (local_database_name, log_path, pageid, &check_applied_info, &check_copied_info,
-				     &check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
-				     &applied_final_lsa);
+	  error =
+	    la_log_page_check (local_database_name, log_path, pageid, pageid_flag, &check_applied_info,
+			       &check_copied_info, &check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
+			       &applied_final_lsa);
 	  if (error == NO_ERROR)
 	    {
 	      (void) db_shutdown ();
@@ -3322,9 +3329,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  strcpy (local_database_name, database_name);
 	  strcat (local_database_name, "@localhost");
 
-	  error = la_log_page_check (local_database_name, log_path, pageid, &check_applied_info, &check_copied_info,
-				     &check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
-				     &applied_final_lsa);
+	  error =
+	    la_log_page_check (local_database_name, log_path, pageid, pageid_flag, &check_applied_info,
+			       &check_copied_info, &check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
+			       &applied_final_lsa);
 	}
 
       if (error != NO_ERROR)

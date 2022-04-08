@@ -29,6 +29,7 @@
 #include "error_code.h"
 #include "util_support.h"
 #include "file_io.h"
+#include "log_lsa.hpp"
 
 static UTIL_ARG_MAP ua_Create_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
@@ -661,7 +662,7 @@ static GETOPT_LONG ua_Applylog_Option[] = {
 static UTIL_ARG_MAP ua_ApplyInfo_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {APPLYINFO_COPIED_LOG_PATH_S, {ARG_STRING}, {0}},
-  {APPLYINFO_PAGE_S, {ARG_BIGINT}, {(void *) (APPLYINFO_DEFAULT_LOG_PAGEID)}},
+  {APPLYINFO_PAGE_S, {ARG_BIGINT}, {(void *) NULL_LOG_PAGEID}},
   {APPLYINFO_REMOTE_NAME_S, {ARG_STRING}, {0}},
   {APPLYINFO_APPLIED_INFO_S, {ARG_BOOLEAN}, {0}},
   {APPLYINFO_VERBOSE_S, {ARG_BOOLEAN}, {0}},

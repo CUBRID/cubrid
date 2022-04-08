@@ -7124,14 +7124,15 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
  *   page_num: test page number
  */
 int
-la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool * check_applied_info,
-		   bool * check_copied_info, bool * check_replica_info, bool verbose, LOG_LSA * copied_eof_lsa,
-		   LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa)
+la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool pageid_flag,
+		   bool * check_applied_info, bool * check_copied_info, bool * check_replica_info, bool verbose,
+		   LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa)
 {
   int error = NO_ERROR;
   int res;
   char *atchar;
   char active_log_path[PATH_MAX];
+  char log_path_buf[PATH_MAX];
   char *replica_time_bound_str;
 
   assert (database_name != NULL);
@@ -7141,6 +7142,13 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
   if (atchar)
     {
       *atchar = '\0';
+    }
+  if (log_path != NULL)
+    {
+      if (realpath (log_path, log_path_buf) != NULL)
+	{
+	  log_path = log_path_buf;
+	}
     }
 
   /* init la_Info */
@@ -7175,12 +7183,20 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
       res = la_get_ha_apply_info (log_path, database_name, &ha_apply_info);
       if ((res <= 0) || (ha_apply_info.creation_time.date == 0 && ha_apply_info.creation_time.time == 0))
 	{
-	  error = res;
-	  *check_applied_info = false;
 	  printf ("\n *** Applied Info. *** \n");
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_AVAILABLE_INFORMATION, 0);
-	  printf ("\nERROR : %s\n\n", db_error_string (3));
-	  goto check_applied_info_end;
+	  if ((res < 0) && (ha_apply_info.creation_time.date != 0 || ha_apply_info.creation_time.time != 0))
+	    {
+	      error = res;
+	      goto check_applied_info_end;
+	    }
+	  else
+	    {
+	      error = res;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_AVAILABLE_INFORMATION, 0);
+	      *check_applied_info = false;
+	      printf ("\nERROR : %s\n\n", db_error_string (3));
+	      goto check_applied_info_end;
+	    }
 	}
       printf ("\n *** Applied Info. *** \n");
       *applied_final_lsa = ha_apply_info.final_lsa;
@@ -7257,7 +7273,7 @@ check_applied_info_end:
       la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
     }
 
-  if (*check_copied_info && (page_num >= 0) && (page_num < APPLYINFO_DEFAULT_LOG_PAGEID))
+  if (*check_copied_info && pageid_flag && page_num >= 0)
     {
       printf ("\n *** Copied Log Page Info. *** \n");
       LOG_PAGE *logpage;
@@ -7278,7 +7294,7 @@ check_applied_info_end:
 
       logpage = (LOG_PAGE *) la_Info.log_data;
 
-      if (LA_LOG_IS_IN_ARCHIVE (page_num))
+      if (LA_LOG_IS_IN_ARCHIVE (page_num) && page_num >= 0)
 	{
 	  /* read from the archive log file */
 	  printf ("\n *** Copied Archive Info. *** \n");
@@ -7341,6 +7357,12 @@ check_applied_info_end:
 	    }
 	}
       free_and_init (la_Info.log_data);
+    }
+  else if (*check_copied_info && pageid_flag && page_num < 0)
+    {
+      printf ("\n *** Copied Log Page Info. *** \n");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Invalid pageid");
+      error = ER_HA_GENERIC_ERROR;
     }				/* check_copied_info */
 copied_log_page_info_end:
   if (error != NO_ERROR)
