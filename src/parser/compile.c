@@ -764,7 +764,6 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
     }
 
   memcpy (lcks->classes[lcks->num_classes], realname, len + 1);
-  lcks->classes[lcks->num_classes][len] = '\0';
 
   if (spec->info.spec.only_all == PT_ONLY)
     {

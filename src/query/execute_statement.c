@@ -19404,7 +19404,7 @@ do_find_synonym_by_query (const char *name, char *buf, int buf_size)
 
   assert (buf != NULL);
 
-  query = "SELECT LOWER ([target_owner].[name] || '.' || [target_name]) FROM [%s] WHERE [unique_name] = '%s'";
+  query = "SELECT [target_unique_name] FROM [%s] WHERE [unique_name] = '%s'";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SYNONYM_NAME, name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SYNONYM_NAME, name);
 
