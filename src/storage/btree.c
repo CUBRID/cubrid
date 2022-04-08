@@ -25530,7 +25530,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  // first overflow page might have been fixed
+	  // unfix first overflow page; it might have been fixed
 	  if (!VPID_ISNULL (&overflow_vpid))
 	    {
 	      pgbuf_unfix_and_init (thread_p, overflow_page);
@@ -25540,6 +25540,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (stop || bts->end_one_iteration || bts->end_scan || bts->is_interrupted)
 	{
 	  /* Early out. */
+	  // unfix first overflow page; it might have been fixed
 	  if (!VPID_ISNULL (&overflow_vpid))
 	    {
 	      pgbuf_unfix_and_init (thread_p, overflow_page);
@@ -25568,13 +25569,16 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   while (!VPID_ISNULL (&overflow_vpid))
     {
       /* Fix next overflow page. */
-      if (!pgbuf_is_page_fixed_by_thread (thread_p, &overflow_vpid))
+      /* When first entering here after having processed objects in leaf, the page will have been already fixed. On
+       * subsequent iterations, it will not have already been fixed. */
+      if (overflow_page == nullptr)
 	{
 	  PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
 	  overflow_page = pgbuf_fix_old_and_check_repl_desync (thread_p, overflow_vpid, PGBUF_LATCH_READ,
 							       PGBUF_UNCONDITIONAL_LATCH);
 	  btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
 	}
+
       if (overflow_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
