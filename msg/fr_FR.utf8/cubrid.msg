@@ -1418,7 +1418,13 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1339 Type d'argument de procédure stockée non pris en charge: %1$s
 1340 Type de retour de procédure stockée non pris en charge: %1$s
 
-1341 Dernière erreur
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1886,6 +1892,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 305 La signature %1$s n'est pas compatible avec les arguments de la fonction.
 306 dblink - Les informations requises sont manquantes.
 307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

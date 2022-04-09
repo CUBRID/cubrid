@@ -580,7 +580,7 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 	  continue;
 	}
 
-      sm_downcase_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
+      sm_user_specified_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
       cls_mop = locator_find_class (name);
 
       obj = (MOBJ *) & cls_sm;

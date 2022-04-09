@@ -1711,7 +1711,13 @@
 #define ER_SP_NOT_SUPPORTED_ARG_TYPE                -1339
 #define ER_SP_NOT_SUPPORTED_RETURN_TYPE             -1340
 
-#define ER_LAST_ERROR                               -1341
+#define ER_AU_INVALID_ARGUMENTS                     -1341
+#define ER_AU_CANT_ALTER_OWNER_OF_AUTO_INCREMENT    -1342
+#define ER_SM_RENAME_CANT_ALTER_OWNER               -1343
+#define ER_QPROC_CREATE_SERIAL_NOT_OWNER            -1344
+#define ER_TR_CREATE_NOT_ALLOWED                    -1345
+
+#define ER_LAST_ERROR                               -1346
 /*
  * CAUTION!
  *

@@ -44,6 +44,7 @@
 #include "partition.h"
 #include "db_json.hpp"
 #include "object_primitive.h"
+#include "db_client_type.hpp"
 
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
@@ -1322,20 +1323,21 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 static DB_OBJECT *
 pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
 {
-  const char *usr;
+  const char *user_name = NULL;
   DB_OBJECT *result;
 
   assert (parser != NULL);
 
-  if (!cls_ref || cls_ref->node_type != PT_NAME || (usr = cls_ref->info.name.resolved) == NULL || usr[0] == '\0')
+  user_name = pt_get_qualifier_name (parser, cls_ref);
+  if (user_name == NULL || user_name[0] == '\0')
     {
       return NULL;
     }
 
-  result = db_find_user (usr);
+  result = db_find_user (user_name);
   if (!result)
     {
-      PT_ERRORmf (parser, cls_ref, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, usr);
+      PT_ERRORmf (parser, cls_ref, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, user_name);
     }
 
   return result;
@@ -1355,6 +1357,12 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
   if ((result = pt_check_user_exists (parser, cls_ref)) == NULL || (cls = cls_ref->info.name.db_object) == NULL)
     {
       return NULL;
+    }
+
+  /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+    {
+      return result;
     }
 
   owner = db_get_owner (cls);
@@ -1633,7 +1641,7 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
 	  PT_NODE *const name = i_attr->info.attr_def.attr_name;
 
 	  if (pt_str_compare (resolv_attr->info.name.original, name->info.name.original, CASE_INSENSITIVE) == 0
-	      && pt_str_compare (resolv_class->info.name.original, name->info.name.resolved, CASE_INSENSITIVE) == 0)
+	      && pt_user_specified_name_compare (resolv_class->info.name.original, name->info.name.resolved) == 0)
 	    {
 	      name->info.name.original = new_name->info.name.original;
 	    }
@@ -1664,7 +1672,7 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
 	    }
 	  else
 	    {
-	      if (pt_str_compare (resolv_class->info.name.original, name->info.name.resolved, CASE_INSENSITIVE) == 0)
+	      if (pt_user_specified_name_compare (resolv_class->info.name.original, name->info.name.resolved) == 0)
 		{
 		  /* i_attr is a keeper. keep the user-specified inherited attribute */
 		  t_attr = i_attr;
@@ -7067,7 +7075,7 @@ pt_attr_refers_to_self (PARSER_CONTEXT * parser, PT_NODE * attr, const char *sel
   for (type = attr->data_type->info.data_type.entity; type && type->node_type == PT_NAME; type = type->next)
     {
       /* self is a string because in the create case, self does not exist yet */
-      if (!intl_identifier_casecmp (self, type->info.name.original))
+      if (!pt_user_specified_name_compare (self, type->info.name.original))
 	{
 	  return true;
 	}
@@ -8193,6 +8201,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
   DB_OBJECT *db_obj, *existing_entity;
+  const char *owner_name = NULL;
   int found, partition_status = DB_NOT_PARTITIONED_CLASS;
   int collation_id, charset;
   bool found_reuse_oid_option = false, reuse_oid = false;
@@ -8359,6 +8368,14 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
+  /* check if the class can be created with the specified owner. */
+  owner_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
+  if (!ws_is_same_object (db_find_user (owner_name), Au_user) && !au_is_dba_group_member (Au_user))
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CREATE_TABLE_VIEW_NOT_OWNER);
+      return;
+    }
+
   /* check name doesn't already exist as a class */
   name = node->info.create_entity.entity_name;
   existing_entity = pt_find_class (parser, name, false);
@@ -8468,7 +8485,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  for (parent = node->info.create_entity.supclass_list; parent && !found; parent = parent->next)
 	    {
-	      found = !pt_str_compare (resolv_class->info.name.original, parent->info.name.original, CASE_INSENSITIVE);
+	      found = !pt_user_specified_name_compare (resolv_class->info.name.original, parent->info.name.original);
 	    }
 
 	  if (!found)
@@ -13081,13 +13098,21 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
   n = p->node_type;
   switch (n)
     {
-      /* if a name, the original and resolved fields must match */
+      /* 
+       * if a name, the original and resolved fields must match
+       *
+       * In order to distinguish User Schema, the original, resolved name may contain a user name
+       * with a dot(.) as a separator. It is not necessary to attach a user name to its own table,
+       * but the user name currently connected internally is attached. So, when comparing original and resolved names,
+       * we need to compare names after dot(.). 
+       * 
+       */
     case PT_NAME:
-      if (pt_str_compare (p->info.name.original, q->info.name.original, CASE_INSENSITIVE))
+      if (pt_user_specified_name_compare (p->info.name.original, q->info.name.original))
 	{
 	  return 1;
 	}
-      if (pt_str_compare (p->info.name.resolved, q->info.name.resolved, CASE_INSENSITIVE))
+      if (pt_user_specified_name_compare (p->info.name.resolved, q->info.name.resolved))
 	{
 	  return 1;
 	}

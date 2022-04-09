@@ -1418,7 +1418,13 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1339 Tipo di argomento non supportato della procedura memorizzata: %1$s
 1340 Tipo di restituzione di stored procedure non supportato: %1$s
 
-1341 Ultimo errore
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
@@ -1886,6 +1892,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 305 Firma %1$s non è compatibile con gli argomenti delle funzioni.
 306 dblink - Mancano le informazioni richieste.
 307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.

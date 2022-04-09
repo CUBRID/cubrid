@@ -185,6 +185,7 @@ namespace cubload
     , ignore_class_file ()
     , ignore_classes ()
     , m_ignored_errors ()
+    , no_user_specified_name (false)
   {
     //
   }
@@ -223,6 +224,8 @@ namespace cubload
       {
 	serializator.pack_int (error);
       }
+
+    serializator.pack_bool (no_user_specified_name);
   }
 
   void
@@ -267,6 +270,8 @@ namespace cubload
       {
 	deserializator.unpack_int (m_ignored_errors[i]);
       }
+
+    deserializator.unpack_bool (no_user_specified_name);
   }
 
   size_t
@@ -304,6 +309,8 @@ namespace cubload
       {
 	size += serializator.get_packed_int_size (size);
       }
+
+    size += serializator.get_packed_bool_size (size); // no_user_specified_name
 
     return size;
   }
@@ -751,8 +758,8 @@ namespace cubload
   }
 
   int
-  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id, int64_t line_offset,
-		int64_t &rows)
+  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id,
+		int64_t line_offset, int64_t &rows)
   {
     if (batch_content.empty ())
       {
