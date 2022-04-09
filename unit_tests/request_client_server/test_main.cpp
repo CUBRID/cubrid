@@ -534,14 +534,14 @@ TEST_CASE ("Test out-of-order request_queue_autosend", "")
 
   constexpr int total_op_count = 1000;
 
-  std::thread t1 ([&rssq]
+  std::thread t1 ([&rssq, total_op_count]
   {
     for (int op_count = 0; op_count < total_op_count; ++op_count)
       {
 	push_rssq_message_id_and_op (rssq, reqids::_0, op_count);
       }
   });
-  std::thread t2 ([&rssq]
+  std::thread t2 ([&rssq, total_op_count]
   {
     for (int op_count = 0; op_count < total_op_count; ++op_count)
       {
