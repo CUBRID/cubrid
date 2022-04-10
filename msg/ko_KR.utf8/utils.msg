@@ -1256,7 +1256,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 60 \
 flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니다.\n\
 사용법: %1$s flashback [OPTION] 데이터베이스 이름 class_name1 [class_name2 ...]\n\
-\N\
+\n\
 유효한 옵션:\n\
     -o, --output-file=FILE      출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
     -u, --user=ID               플래시백할 SQL 문을 실행한 사용자를 지정합니다. 기본값: 모두.\n\
