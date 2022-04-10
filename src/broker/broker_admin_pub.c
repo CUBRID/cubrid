@@ -256,7 +256,11 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
   if (br_num <= 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      strcpy (admin_err_msg, "Cannot start CUBRID Gateway. (number of gateway is 0)");
+#else
       strcpy (admin_err_msg, "Cannot start CUBRID Broker. (number of broker is 0)");
+#endif
       return -1;
     }
   chdir ("..");
