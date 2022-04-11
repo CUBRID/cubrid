@@ -7195,13 +7195,41 @@ qo_move_on_clause_of_explicit_join_to_where_clause (PARSER_CONTEXT * parser, PT_
 static PT_NODE *
 qo_push_limit_to_union (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * limit)
 {
+  PT_NODE *save_next, *add_limit;
+
   switch (node->node_type)
     {
     case PT_SELECT:
-      if (!pt_has_inst_in_where_and_select_list (parser, node))
+      if (!pt_has_inst_in_where_and_select_list (parser, node) && node->info.query.limit == NULL)
 	{
+	  /* case of limit 10,10 */
+	  if (limit->next)
+	    {
+	      /* change 'limit 10,10' to 'limit 10 + 10' */
+	      /* generate 'limit 10 + 10' */
+	      if (!(add_limit = parser_new_node (parser, PT_EXPR)))
+		{
+		  PT_ERRORm (parser, add_limit, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  return NULL;
+		}
+	      /* cut off limit->next */
+	      save_next = limit->next;
+	      limit->next = NULL;
+
+	      add_limit->type_enum = PT_TYPE_INTEGER;
+	      add_limit->info.expr.op = PT_PLUS;
+	      add_limit->info.expr.arg1 = parser_copy_tree (parser, save_next);
+	      add_limit->info.expr.arg2 = parser_copy_tree (parser, limit);
+	      limit->next = save_next;
+
+	      node->info.query.limit = add_limit;
+	    }
+	  else
+	    {
+	      node->info.query.limit = parser_copy_tree (parser, limit);
+	    }
+
 	  node->info.query.flag.rewrite_limit = 1;
-	  node->info.query.limit = limit;
 	  return node;
 	}
       break;
@@ -7398,13 +7426,12 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	      single_tuple_bak = node->info.query.flag.single_tuple;
 	      node->info.query.flag.single_tuple = false;
 
-	      /* order by, union check */
-	      /* temporarily disable
+	      /* push limit to union */
 	      if (node->info.query.order_by == NULL && !qo_check_distinct_union (parser, node)
 		  && !(node->info.query.q.select.hint & PT_HINT_NO_PUSH_PRED))
 		{
 		  node = qo_push_limit_to_union (parser, node, limit_node);
-		} */
+		}
 	      derived = mq_rewrite_query_as_derived (parser, node);
 	      if (derived != NULL)
 		{
