@@ -20,10 +20,11 @@
 #define _ATOMIC_REPLICATION_HELPER_HPP_
 
 #include <map>
-#include <deque>
+#include <vector>
 
 #include "log_lsa.hpp"
 #include "log_record.hpp"
+#include "log_recovery_redo.hpp"
 #include "page_buffer.h"
 #include "thread_entry.hpp"
 
@@ -33,9 +34,20 @@ namespace cublog
   class atomic_replication_helper
   {
     public:
-      void add_atomic_replication_unit (THREAD_ENTRY *thread_p, PGBUF_WATCHER *watcher, TRANID tranid, log_lsa record_lsa,
-					log_rectype record_type, VPID vpid);
-      void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, PGBUF_WATCHER *pg_watcher, TRANID tranid);
+      atomic_replication_helper () = default;
+
+      atomic_replication_helper (const atomic_replication_helper &) = delete;
+      atomic_replication_helper (atomic_replication_helper &&) = delete;
+
+      ~atomic_replication_helper () = default;
+
+      atomic_replication_helper &operator= (const atomic_replication_helper &) = delete;
+      atomic_replication_helper &operator= (atomic_replication_helper &&) = delete;
+
+      template <typename T>
+      void add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, log_rectype record_type,
+					VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info);
+      void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
       bool is_part_of_atomic_replication (TRANID tranid) const;
 #if !defined (NDEBUG)
       bool is_page_part_of_atomic_replication_sequence (TRANID tranid, VPID vpid) const;
@@ -45,23 +57,33 @@ namespace cublog
       class atomic_replication_unit
       {
 	public:
-	  atomic_replication_unit (log_lsa lsa, log_rectype rectype, VPID vpid, TRANID record_tranid);
+	  atomic_replication_unit () = delete;
+	  atomic_replication_unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
 
-	  void apply_log_redo ();
-	  void fix_page (THREAD_ENTRY *thread_p, PGBUF_WATCHER *pg_watcher);
-	  void unfix_page (THREAD_ENTRY *thread_p, PGBUF_WATCHER *pg_watcher);
-	  VPID get_vpid ();
+	  atomic_replication_unit (const atomic_replication_unit &) = delete;
+	  atomic_replication_unit (atomic_replication_unit &&) = delete;
 
+	  ~atomic_replication_unit () = default;
+
+	  atomic_replication_unit &operator= (const atomic_replication_unit &) = delete;
+	  atomic_replication_unit &operator= (atomic_replication_unit &&) = delete;
+
+	  template <typename T>
+	  void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
+			       const log_rv_redo_rec_info<T> &record_info);
+	  void fix_page (THREAD_ENTRY *thread_p);
+	  void unfix_page (THREAD_ENTRY *thread_p);
+
+	  VPID m_vpid;
 	private:
 	  log_lsa m_record_lsa;
-	  log_rectype m_record_type;
-	  VPID m_vpid;
 	  PAGE_PTR m_page_ptr;
-	  TRANID m_record_tranid;
+	  PGBUF_WATCHER m_watcher;
+	  LOG_RCVINDEX m_record_index;
       };
 
       //Hashmap
-      std::map<TRANID, std::deque<atomic_replication_unit>> m_atomic_sequences_map;
+      std::map<TRANID, std::vector<atomic_replication_unit>> m_atomic_sequences_map;
   };
 }
 
