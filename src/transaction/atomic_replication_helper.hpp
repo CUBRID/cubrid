@@ -45,7 +45,7 @@ namespace cublog
       atomic_replication_helper &operator= (atomic_replication_helper &&) = delete;
 
       template <typename T>
-      void add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, log_rectype record_type,
+      void add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, LOG_RCVINDEX rcvindex,
 					VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info);
       void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
       bool is_part_of_atomic_replication (TRANID tranid) const;

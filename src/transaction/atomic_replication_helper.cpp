@@ -31,7 +31,7 @@ namespace cublog
 
   template <typename T>
   void atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
-      log_rectype record_type, VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info)
+      LOG_RCVINDEX rcvindex, VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info)
   {
     auto sequence = m_atomic_sequences_map.find (tranid);
     if (sequence == m_atomic_sequences_map.end ())
@@ -49,7 +49,7 @@ namespace cublog
       }
 #endif
 
-    atomic_replication_unit atomic_unit (record_lsa, record_type, vpid, tranid);
+    atomic_replication_unit atomic_unit (record_lsa, vpid, rcvindex);
     atomic_unit.fix_page (thread_p);
     sequence->second.emplace_back (atomic_unit);
 
