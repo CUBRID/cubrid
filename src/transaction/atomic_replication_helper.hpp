@@ -82,7 +82,6 @@ namespace cublog
 	  LOG_RCVINDEX m_record_index;
       };
 
-      //Hashmap
       std::map<TRANID, std::vector<atomic_replication_unit>> m_atomic_sequences_map;
   };
 }

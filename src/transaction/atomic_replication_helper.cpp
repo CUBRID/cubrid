@@ -41,7 +41,7 @@ namespace cublog
       }
 
 #if !defined (NDEBUG)
-    if (vpid.pageid != vpid_Null_vpid.pageid && vpid.volid != vpid_Null_vpid.volid
+    if (vpid.pageid != NULL_PAGEID && vpid.volid != NULL_VOLID
 	&& is_page_part_of_atomic_replication_sequence (tranid, vpid))
       {
 	// page is already part of atomic replication
