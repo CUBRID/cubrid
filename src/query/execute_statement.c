@@ -15654,6 +15654,22 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.statement_type = CUBRID_STMT_ALTER_SERVER;
       break;
 
+    case PT_ALTER_SYNONYM:
+      repl_stmt.statement_type = CUBRID_STMT_ALTER_SYNONYM;
+      break;
+
+    case PT_CREATE_SYNONYM:
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_SYNONYM;
+      break;
+
+    case PT_DROP_SYNONYM:
+      repl_stmt.statement_type = CUBRID_STMT_DROP_SYNONYM;
+      break;
+
+    case PT_RENAME_SYNONYM:
+      repl_stmt.statement_type = CUBRID_STMT_RENAME_SYNONYM;
+      break;
+
     case PT_CREATE_USER:
       repl_stmt.statement_type = CUBRID_STMT_CREATE_USER;
       break;
