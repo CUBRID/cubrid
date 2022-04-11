@@ -1391,19 +1391,19 @@ $ LOADDB
 1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s][%2$d] %3$s
-1319 Parameter binding error.
-1320 Invalid ODBC handle.
-1321 Type conversion error.
-1322 Not supported data type.
-1323 Invalid Statement handle.
-1324 Invalid db connection handle.
-1325 Link server connection url do not exist.
-1326 Invalid numeric value.
-1327 Invalid precision value of "%1$s" column.
+1319 dblink - Parameter binding error.
+1320 dblink - Invalid ODBC handle.
+1321 dblink - Type conversion error.
+1322 dblink - not supported type %1$s(%2$d).
+1323 dblink - Invalid Statement handle.
+1324 dblink - Invalid db connection handle.
+1325 dblink - Link server connection url do not exist.
+1326 dblink - Invalid numeric value.
+1327 dblink - Invalid precision value of "%1$s" column.
 
-1328 Invalid Descriptor handle.
-1329 Not supported dbms.
-1330 Unable to allocate an environment handle.
+1328 dblink - Invalid Descriptor handle.
+1329 dblink - Not supported dbms.
+1330 dblink - Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 アクティブなログボリューム（%1$s）が正常すぎて、再作成できません。 アクティブなログを削除すると、予期しない不可逆的な問題が発生する可能性があります。

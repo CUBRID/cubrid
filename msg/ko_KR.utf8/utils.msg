@@ -152,6 +152,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
     javasp\n\
@@ -265,6 +266,18 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     stop        [데이터베이스 이름]\n\
     restart     [데이터베이스 이름]\n\
     status      [데이터베이스 이름]\n
+45 cubrid 유틸리티, 버전 %1$s\n\
+사용법: %2$s gateway <명령어> [인자]\n\
+\n\
+가용한 명령어:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    on          <게이트웨이 이름>\n\
+    off         <게이트웨이 이름>\n\
+    reset       <게이트웨이 이름>\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n
@@ -1243,7 +1256,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 60 \
 flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니다.\n\
 사용법: %1$s flashback [OPTION] 데이터베이스 이름 class_name1 [class_name2 ...]\n\
-\N\
+\n\
 유효한 옵션:\n\
     -o, --output-file=FILE      출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
     -u, --user=ID               플래시백할 SQL 문을 실행한 사용자를 지정합니다. 기본값: 모두.\n\
