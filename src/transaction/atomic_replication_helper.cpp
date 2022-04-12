@@ -121,6 +121,7 @@ namespace cublog
     , m_page_ptr { nullptr }
   {
     assert (lsa != NULL_LSA);
+    // using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
     PGBUF_INIT_WATCHER (&m_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
   }
 
