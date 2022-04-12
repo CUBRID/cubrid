@@ -14137,47 +14137,59 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
     }
   else
     {
-      LOG_ARCHIVE_CS_ENTER (thread_p);
-      aligned_hdr_pgbuf = PTR_ALIGN (hdr_pgbuf, MAX_ALIGNMENT);
-
-      hdr_pgptr = (LOG_PAGE *) aligned_hdr_pgbuf;
-
-      fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, arv_num);
-
-      if (fileio_is_volume_exist (arv_name) == true)
+      if (log_Gl.archive.vdes != NULL_VOLDES && log_Gl.archive.hdr.arv_num == arv_num)
 	{
-	  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false);
-	  if (vdes != NULL_VOLDES)
+	  /* if target archive log volume is currenty mounted, then use that */
+	  process_lsa.pageid = log_Gl.archive.hdr.fpageid;
+	  process_lsa.offset = 0;
+	}
+      else
+	{
+	  LOG_ARCHIVE_CS_ENTER (thread_p);
+
+	  aligned_hdr_pgbuf = PTR_ALIGN (hdr_pgbuf, MAX_ALIGNMENT);
+
+	  hdr_pgptr = (LOG_PAGE *) aligned_hdr_pgbuf;
+
+	  fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, arv_num);
+
+	  if (fileio_is_volume_exist (arv_name) == true)
 	    {
-	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, IO_MAX_PAGE_SIZE) == NULL)
+	      vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false);
+	      if (vdes != NULL_VOLDES)
 		{
+		  if (fileio_read (thread_p, vdes, hdr_pgptr, 0, IO_MAX_PAGE_SIZE) == NULL)
+		    {
+		      fileio_dismount (thread_p, vdes);
+
+		      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, 0LL, 0LL, arv_name);
+
+		      LOG_ARCHIVE_CS_EXIT (thread_p);
+
+		      LOG_CS_EXIT (thread_p);
+
+		      return ER_LOG_READ;
+		    }
+
+		  arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
+		  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
+		    {
+		      fileio_dismount (thread_p, vdes);
+
+		      LOG_ARCHIVE_CS_EXIT (thread_p);
+		      LOG_CS_EXIT (thread_p);
+
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1, arv_name);
+		      return ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
+		    }
+
+		  process_lsa.pageid = arv_hdr->fpageid;
+		  process_lsa.offset = 0;
+
 		  fileio_dismount (thread_p, vdes);
 
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, 0LL, 0LL, arv_name);
-
 		  LOG_ARCHIVE_CS_EXIT (thread_p);
-
-		  LOG_CS_EXIT (thread_p);
-
-		  return ER_LOG_READ;
 		}
-
-	      arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
-	      if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
-		{
-		  fileio_dismount (thread_p, vdes);
-		  LOG_ARCHIVE_CS_EXIT (thread_p);
-		  LOG_CS_EXIT (thread_p);
-
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1, arv_name);
-		  return ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
-		}
-
-	      process_lsa.pageid = arv_hdr->fpageid;
-	      process_lsa.offset = 0;
-
-	      fileio_dismount (thread_p, vdes);
-	      LOG_ARCHIVE_CS_EXIT (thread_p);
 	    }
 	}
     }
@@ -14189,11 +14201,8 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
       return error_code;
     }
 
-  if (arv_num == -1)
-    {
-      process_lsa.pageid = log_pgptr->hdr.logical_pageid;
-      process_lsa.offset = log_pgptr->hdr.offset;
-    }
+  process_lsa.pageid = log_pgptr->hdr.logical_pageid;
+  process_lsa.offset = log_pgptr->hdr.offset;
 
   while (!LSA_ISNULL (&process_lsa))
     {
