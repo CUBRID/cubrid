@@ -78,6 +78,8 @@ static int cgw_count_number_of_digits (int num_bits);
 
 static SQLSMALLINT get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type);
 static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars, SQLLEN precision, SQLLEN scale);
+static char *cgw_datatype_to_string (SQLLEN type);
+static char *cgw_utype_to_string (int type);
 static INTL_CODESET client_charset = INTL_CODESET_UTF8;
 
 
@@ -188,7 +190,7 @@ cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, ch
 
   strncpy (connected_db_name, db_name, sizeof (connected_db_name) - 1);
   strncpy (connected_db_user, db_user, sizeof (connected_db_user) - 1);
-  strncpy (connected_db_passwd, db_user, sizeof (connected_db_passwd) - 1);
+  strncpy (connected_db_passwd, db_passwd, sizeof (connected_db_passwd) - 1);
 
   return NO_ERROR;
 
@@ -979,7 +981,8 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 2,
+		  cgw_datatype_to_string (col_data_type), col_data_type);
 	  goto ODBC_ERROR;
 	}
     }
@@ -1504,7 +1507,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
     case CCI_U_TYPE_TIMESTAMPLTZ:
     default:
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 0);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 2, cgw_utype_to_string (type), type);
 	return ER_CGW_NOT_SUPPORTED_TYPE;
       }
     }
@@ -2093,7 +2096,7 @@ cgw_link_server_info (SQLHDBC hdbc)
       cas_log_write_and_end (0, false, "Link Server Info.");
 
       cgw_get_driver_info (hdbc, SQL_DBMS_NAME, dbms_name, sizeof (dbms_name));
-      cas_log_write_and_end (0, false, "DBMS Nmae : %s", dbms_name);
+      cas_log_write_and_end (0, false, "DBMS Name : %s", dbms_name);
 
       cgw_get_driver_info (hdbc, SQL_DBMS_VER, dbms_ver, sizeof (dbms_ver));
       cas_log_write_and_end (0, false, "DBMS Version : %s", dbms_ver);
@@ -2215,4 +2218,173 @@ void
 cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type)
 {
   curr_dbms_type = dbms_type;
+}
+
+static char *
+cgw_datatype_to_string (SQLLEN type)
+{
+  switch (type)
+    {
+    case SQL_UNKNOWN_TYPE:
+      return "SQL_UNKNOWN_TYPE";
+      break;
+    case SQL_CHAR:
+      return "SQL_CHAR";
+      break;
+    case SQL_NUMERIC:
+      return "SQL_NUMERIC";
+      break;
+    case SQL_DECIMAL:
+      return "SQL_DECIMAL";
+      break;
+    case SQL_INTEGER:
+      return "SQL_INTEGER";
+      break;
+    case SQL_SMALLINT:
+      return "SQL_SMALLINT";
+      break;
+    case SQL_FLOAT:
+      return "SQL_FLOAT";
+      break;
+    case SQL_REAL:
+      return "SQL_REAL";
+      break;
+    case SQL_DOUBLE:
+      return "SQL_DOUBLE";
+      break;
+#if (ODBCVER >= 0x0300)
+    case SQL_DATETIME:
+      return "SQL_DATETIME";
+      break;
+#else
+    case SQL_DATE:
+      return "SQL_DATE";
+      break;
+#endif
+    case SQL_VARCHAR:
+      return "SQL_VARCHAR";
+      break;
+#if (ODBCVER >= 0x0300)
+    case SQL_TYPE_DATE:
+      return "SQL_TYPE_DATE";
+      break;
+    case SQL_TYPE_TIME:
+      return "SQL_TYPE_TIME";
+      break;
+    case SQL_TYPE_TIMESTAMP:
+      return "SQL_TYPE_TIMESTAMP";
+      break;
+#endif
+
+#if (ODBCVER >= 0x0300)
+    case SQL_INTERVAL:
+      return "SQL_INTERVAL";
+      break;
+#else
+    case SQL_TIME:
+      return "SQL_TIME";
+      break;
+#endif
+    case SQL_TIMESTAMP:
+      return "SQL_TIMESTAMP";
+      break;
+    case SQL_LONGVARCHAR:
+      return "SQL_LONGVARCHAR";
+      break;
+    case SQL_BINARY:
+      return "SQL_BINARY";
+      break;
+    case SQL_VARBINARY:
+      return "SQL_VARBINARY";
+      break;
+    case SQL_LONGVARBINARY:
+      return "SQL_LONGVARBINARY";
+      break;
+    case SQL_BIGINT:
+      return "SQL_BIGINT";
+      break;
+    case SQL_TINYINT:
+      return "SQL_TINYINT";
+      break;
+    case SQL_BIT:
+      return "SQL_BIT";
+      break;
+#if (ODBCVER >= 0x0350)
+    case SQL_GUID:
+      return "SQL_GUID";
+      break;
+#endif
+    default:
+      return "";
+    }
+}
+
+static char *
+cgw_utype_to_string (int type)
+{
+  switch (type)
+    {
+    case CCI_U_TYPE_CHAR:
+      return "char";
+    case CCI_U_TYPE_STRING:
+      return "char";
+    case CCI_U_TYPE_NCHAR:
+      return "nchar";
+    case CCI_U_TYPE_VARNCHAR:
+      return "nchar varying";
+    case CCI_U_TYPE_NUMERIC:
+      return "numeric";
+    case CCI_U_TYPE_BIGINT:
+      return "bigint";
+    case CCI_U_TYPE_INT:
+      return "integer";
+    case CCI_U_TYPE_SHORT:
+      return "smallint";
+    case CCI_U_TYPE_FLOAT:
+      return "float";
+    case CCI_U_TYPE_DOUBLE:
+      return "double";
+    case CCI_U_TYPE_DATE:
+      return "date";
+    case CCI_U_TYPE_TIME:
+      return "time";
+    case CCI_U_TYPE_TIMESTAMP:
+      return "timestamp";
+    case CCI_U_TYPE_DATETIME:
+      return "datetime";
+    case CCI_U_TYPE_NULL:
+      return "null";
+    case CCI_U_TYPE_BIT:
+      return "bit";
+    case CCI_U_TYPE_VARBIT:
+      return "bit varying";
+    case CCI_U_TYPE_MONETARY:
+      return "monetary";
+    case CCI_U_TYPE_SET:
+      return "set";
+    case CCI_U_TYPE_MULTISET:
+      return "multiset";
+    case CCI_U_TYPE_SEQUENCE:
+      return "sequence";
+    case CCI_U_TYPE_OBJECT:
+      return "object";
+    case CCI_U_TYPE_BLOB:
+      return "blob";
+    case CCI_U_TYPE_CLOB:
+      return "clob";
+    case CCI_U_TYPE_JSON:
+      return "json";
+    case CCI_U_TYPE_ENUM:
+      return "enum";
+    case CCI_U_TYPE_DATETIMELTZ:
+      return "datetimeltz";
+    case CCI_U_TYPE_DATETIMETZ:
+      return "datetimetz";
+    case CCI_U_TYPE_TIMESTAMPTZ:
+      return "timestamptz";
+    case CCI_U_TYPE_TIMESTAMPLTZ:
+      return "timestampltz";
+    default:
+      return "";
+    }
 }

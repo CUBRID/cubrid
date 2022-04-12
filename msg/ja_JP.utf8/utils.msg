@@ -152,6 +152,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\	
     manager\n\
     heartbeat\n\
     javasp\n\
@@ -265,6 +266,18 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     stop        [データベース名]\n\
     restart     [データベース名]\n\
     status      [データベース名]\n
+45 cubridユーティリティー、バージョン %1$s\n\
+使い方: %2$s gateway <コマンド> [パラメーター]\n\
+\n\
+正しいコマンド:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    on          <ゲートウェイ名>\n\
+    off         <ゲートウェイ名>\n\
+    reset       <ゲートウェイ名>\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: -tオプションは独立実行モードでは無視されます。\n
