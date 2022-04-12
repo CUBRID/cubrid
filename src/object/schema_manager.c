@@ -2796,6 +2796,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
 
   /* We need to go ahead and copy the string since prepare_rename uses the address of the string in the hash table. */
   class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_));
+  assert (class_old_name != NULL);
 
   /* make sure this gets into the server table with no capitalization */
   sm_user_specified_name (new_name, buf, SM_MAX_IDENTIFIER_LENGTH);
@@ -2809,18 +2810,20 @@ sm_rename_class (MOP class_mop, const char *new_name)
   obj = locator_prepare_rename_class (class_mop, class_old_name, class_new_name);
   if (obj == NULL)
     {
+      db_private_free_and_init (NULL, class_new_name);
       ASSERT_ERROR_AND_SET (error);
-      goto end;
+      return error;
     }
 
   class_->header.ch_name = class_new_name;
-
   error = sm_flush_objects (class_mop);
   if (obj == NULL)
     {
+      db_private_free_and_init (NULL, class_new_name);
       ASSERT_ERROR_AND_SET (error);
-      goto end;
+      return error;
     }
+  db_private_free_and_init (NULL, class_old_name);
 
   /* rename related auto_increment serial obj name */
   for (att = class_->attributes; att; att = (SM_ATTRIBUTE *) att->header.next)
@@ -2831,14 +2834,14 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      goto end;
+	      return error;
 	    }
 
 	  class_name_of_serial = db_get_string (&value);
 	  if (class_name_of_serial == NULL)
 	    {
 	      ERROR_SET_ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
-	      goto end;
+	      return error;
 	    }
 
 	  if (pt_user_specified_name_compare (class_old_name, class_name_of_serial) == 0)
@@ -2847,7 +2850,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	      if (error != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
-		  goto end;
+		  return error;
 		}
 	    }
 
@@ -2867,21 +2870,8 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	      tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
 	    }
 
-	  goto end;
+	  return error;
 	}
-    }
-
-  if (class_old_name)
-    {
-      db_private_free_and_init (NULL, class_old_name);
-    }
-
-  class_new_name = NULL;
-
-end:
-  if (class_new_name)
-    {
-      db_private_free_and_init (NULL, class_new_name);
     }
 
   return error;
