@@ -2816,6 +2816,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
     }
 
   class_->header.ch_name = class_new_name;
+
   error = sm_flush_objects (class_mop);
   if (obj == NULL)
     {
@@ -2823,7 +2824,6 @@ sm_rename_class (MOP class_mop, const char *new_name)
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
-  db_private_free_and_init (NULL, class_old_name);
 
   /* rename related auto_increment serial obj name */
   for (att = class_->attributes; att; att = (SM_ATTRIBUTE *) att->header.next)
@@ -2849,6 +2849,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	      error = do_update_auto_increment_serial_on_rename (att->auto_increment, class_new_name, att->header.name);
 	      if (error != NO_ERROR)
 		{
+		  db_private_free_and_init (NULL, class_old_name);
 		  ASSERT_ERROR ();
 		  return error;
 		}
@@ -2857,6 +2858,8 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	  db_value_clear (&value);
 	}
     }
+
+  db_private_free_and_init (NULL, class_old_name);
 
   if (is_partition == DB_PARTITIONED_CLASS)
     {
