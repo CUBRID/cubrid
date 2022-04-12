@@ -44,6 +44,7 @@ struct clientids : public cubpacking::packable_object
     std::string program_name;
     std::string login_name;
     std::string host_name;
+    std::string client_ip_addr;
     int process_id;
 
     clientids ();
@@ -54,9 +55,10 @@ struct clientids : public cubpacking::packable_object
     const char *get_program_name () const;
     const char *get_login_name () const;
     const char *get_host_name () const;
+    const char *get_client_ip_addr () const;
 
     void set_ids (db_client_type type, const char *client_info, const char *db_user, const char *program_name,
-		  const char *login_name, const char *host_name, int process_id);
+		  const char *login_name, const char *host_name, const char *client_ip_addr, int process_id);
     void set_ids (const clientids &other);
     void set_user (const char *db_user);
 
@@ -76,6 +78,7 @@ struct clientids : public cubpacking::packable_object
     void set_program_name (const char *program_name);
     void set_login_name (const char *login_name);
     void set_host_name (const char *host_name);
+    void set_client_ip_addr (const char *client_ip_addr);
 };
 
 typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;

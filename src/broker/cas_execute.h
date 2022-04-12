@@ -177,7 +177,9 @@ extern int ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_si
 #if !defined(CAS_FOR_MYSQL)
 extern void ux_call_info_cp_param_mode (T_SRV_HANDLE * srv_handle, char *param_mode, int num_param);
 
-extern int ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * result, int stmt_type, int num_column,
+							  DB_QUERY_TYPE * column_info, bool is_holdable);
 #endif /* !CAS_FOR_MYSQL */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)

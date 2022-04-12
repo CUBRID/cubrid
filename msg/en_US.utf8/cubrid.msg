@@ -1415,7 +1415,16 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1337 Log record does not exist (lsa : %1$lld|%2$d). The archive log volume has been deleted.
 1338 Flashback is already running. Flashback cannot be run by more than one user at the same time.
 
-1339 Last Error
+1339 Unsupported argument type of stored procedure: %1$s
+1340 Unsupported return type of stored procedure: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1573,6 +1582,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Maximum length of a comment is %1$d bytes.
 128 Invalid number of arguments for JSON_OBJECTAGG
 129 PARALLEL count argument must be between %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1881,6 +1891,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
 306 dblink - Required information is missing.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

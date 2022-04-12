@@ -22,8 +22,7 @@ set(LIBCAS_SOURCES
   ${BROKER_DIR}/cas_net_buf.c 
   ${BROKER_DIR}/cas_function.c 
   ${BROKER_DIR}/cas_execute.c 
-  ${BROKER_DIR}/cas_handle.c 
-  ${BROKER_DIR}/cas_handle_procedure.cpp 
+  ${BROKER_DIR}/cas_handle.c
   ${BROKER_DIR}/cas_util.c 
   ${BROKER_DIR}/cas_str_like.c 
   ${BROKER_DIR}/cas_xa.c 
@@ -35,9 +34,6 @@ set(LIBCAS_SOURCES
   ${BROKER_DIR}/cas_error.c 
   ${BROKER_DIR}/cas_meta.c
   ${BROKER_DIR}/cas_ssl.c
-  )
-set(LIBCAS_HEADERS
-  ${BROKER_DIR}/cas_handle_procedure.hpp
   )
 
 if(WIN32)

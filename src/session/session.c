@@ -133,6 +133,7 @@ struct session_state
   int private_lru_index;
 
   load_session *load_session_p;
+  method_runtime_context *method_rctx_p;
 
   // *INDENT-OFF*
   session_state ();
@@ -310,6 +311,7 @@ session_state_init (void *st)
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
+  session_p->method_rctx_p = NULL;
 
   return NO_ERROR;
 }
@@ -3169,6 +3171,28 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
   return NO_ERROR;
 }
 
+int
+session_get_method_runtime_context (THREAD_ENTRY * thread_p,
+				    REFPTR (method_runtime_context, method_runtime_context_ref_ptr))
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (state_p->method_rctx_p == NULL)
+    {
+      state_p->method_rctx_p = new method_runtime_context ();
+    }
+
+  method_runtime_context_ref_ptr = state_p->method_rctx_p;
+
+  return NO_ERROR;
+}
+
 /* 
  * session_stop_attached_threads - stops extra attached threads (not connection worker thread)
  *                                 associated with the session
@@ -3190,6 +3214,12 @@ session_stop_attached_threads (void *session_arg)
 
       delete session->load_session_p;
       session->load_session_p = NULL;
+    }
+
+  if (session->method_rctx_p != NULL)
+    {
+      delete session->method_rctx_p;
+      session->method_rctx_p = NULL;
     }
 #endif
 }

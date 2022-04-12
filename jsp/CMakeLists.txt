@@ -23,14 +23,18 @@ if(NOT ANT)
   message(FATAL_ERROR "The ANT was not found. check PATH or install ant to build JDBC")
 endif(NOT ANT)
 
-if(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
-  set(JDBC_VERSION_FILE ${JDBC_DIR}/output/VERSION-DIST)
-  file(STRINGS ${JDBC_VERSION_FILE} JDBC_VERSION_STR)
+add_custom_target(jsp_build ALL)
 
-  set(JDBC_DIST ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar)
-  execute_process(
-    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIST} ${CMAKE_BINARY_DIR}/jsp/lib/cubrid-jdbc-${JDBC_VERSION_STR}.jar
+if (EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
+  set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
+  set(JSP_LIB_DIR ${CMAKE_BINARY_DIR}/jsp/lib)
+
+  add_custom_command(TARGET jsp_build
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${JSP_LIB_DIR}
+    COMMAND ${CMAKE_COMMAND} -DJDBC_DIR=${JDBC_DIR} -DJSP_LIB_DIR=${JSP_LIB_DIR} -P ${CMAKE_SOURCE_DIR}/jsp/cmake/copy_submodule_jdbc.cmake
   )
+
+  add_dependencies(jsp_build jdbc_build)
 endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 
 # download ivy
@@ -41,7 +45,7 @@ set(IVY_DIR "${CMAKE_BINARY_DIR}/jsp/external")
 set(IVY_FILENAME "${IVY_DIR}/ivy.jar")
 file(DOWNLOAD ${IVY_URL} ${IVY_FILENAME})
 
-add_custom_target(jsp_build ALL
+add_custom_command(TARGET jsp_build
   COMMAND ${CMAKE_COMMAND} -E echo "copying ivy.xml to ${CMAKE_BINARY_DIR}/jsp/ivy.xml"
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivy.xml ${CMAKE_BINARY_DIR}/jsp/ivy.xml
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivysettings.xml ${CMAKE_BINARY_DIR}/jsp/ivysettings.xml

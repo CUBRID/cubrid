@@ -86,11 +86,11 @@ int tm_Tran_latest_query_status;
  *
  * 0 means "unlimited", and negative value means "do not calculate timeout".
  *
- * tm_Is_libcas indicates fn_xxx functions called by libcas_main(i.e, JSP).
+ * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (Java SP)
  */
 static UINT64 tm_Query_begin = 0;
 static int tm_Query_timeout = 0;
-static bool tm_Is_libcas = false;
+static int tm_libcas_depth = 0;
 
 /* this is a local list of user-defined savepoints.  It may be updated upon
  * the following calls:
@@ -1314,7 +1314,7 @@ tran_get_query_timeout (void)
 void
 tran_begin_libcas_function (void)
 {
-  tm_Is_libcas = true;
+  tm_libcas_depth++;
 }
 
 /*
@@ -1324,7 +1324,8 @@ tran_begin_libcas_function (void)
 void
 tran_end_libcas_function (void)
 {
-  tm_Is_libcas = false;
+  tm_libcas_depth--;
+  assert (tm_libcas_depth >= 0);
 }
 
 /*
@@ -1334,7 +1335,17 @@ tran_end_libcas_function (void)
 bool
 tran_is_in_libcas (void)
 {
-  return tm_Is_libcas;
+  return tm_libcas_depth > 0;
+}
+
+/*
+ * tran_get_libcas_depth() -
+ *   return: int
+ */
+int
+tran_get_libcas_depth (void)
+{
+  return tm_libcas_depth;
 }
 
 /*

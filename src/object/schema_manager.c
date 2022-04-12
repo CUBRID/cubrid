@@ -2150,22 +2150,154 @@ sm_check_name (const char *name)
  *    This is necessarily largely because the eh_ module on the server does not
  *    offer a mode for case insensitive string comparison.
  *    Is there a system function that does this? I couldn't find one
- *   return: none
- *   name(in): class name
+ *   return: output buffer pointer or NULL on error
+ *   name(in): object name
  *   buf(out): output buffer
- *   maxlen(in): maximum buffer length
+ *   buf_size(in): maximum buffer length
  */
-
-void
-sm_downcase_name (const char *name, char *buf, int maxlen)
+char *
+sm_downcase_name (const char *name, char *buf, int buf_size)
 {
-  int name_size;
+  int error = NO_ERROR;
 
-  name_size = intl_identifier_lower_string_size (name);
-  /* the sizes of lower and upper version of an identifier are checked when entering the system */
-  assert (name_size < maxlen);
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      return NULL;
+    }
 
+  assert (buf != NULL);
+  assert (intl_identifier_lower_string_size (name) < buf_size);
   intl_identifier_lower (name, buf);
+
+  return buf;
+}
+
+/*
+ * sm_user_specified_name() - Make the name a user-specified name.
+ *   return: output buffer pointer or NULL on error
+ *   name(in): user-specified name or object name
+ *   buf(out): output buffer
+ *   buf_size(in): output buffer length
+ */
+char *
+sm_user_specified_name (const char *name, char *buf, int buf_size)
+{
+  char user_specified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char current_user_name[SM_MAX_USER_LENGTH] = { '\0' };
+  const char *dot = NULL;
+  int error = NO_ERROR;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      return NULL;
+    }
+
+  /* If the name is already a user-specified name or a system class name, do not recreate it. */
+  dot = strchr (name, '.');
+  if (dot != NULL)
+    {
+      assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
+      assert (strlen (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+
+      /*
+       * e.g.   name: user_name.object_name
+       *      return: user_name.object_name
+       */
+      return sm_downcase_name (name, buf, buf_size);
+    }
+  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+  if (sm_check_system_class_by_name (name))
+    {
+      /*
+       * e.g.   name: system_class_name
+       *      return: system_class_name
+       */
+      return sm_downcase_name (name, buf, buf_size);
+    }
+
+  /* Appends the current username, making it a user-specified name. */
+  if (db_get_current_user_name (current_user_name, SM_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+  assert (snprintf (NULL, 0, "%s.%s", current_user_name, name) < buf_size);
+  assert (snprintf (NULL, 0, "%s.%s", current_user_name, name) < SM_MAX_IDENTIFIER_LENGTH);
+
+  /*
+   * e.g.   name: object_name
+   *      return: current_user_name.object_name
+   */
+  snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_user_name, name);
+  return sm_downcase_name (user_specified_name, buf, buf_size);
+}
+
+/*
+ * sm_qualifier_name() - If the name is a user-specified name, get the user name.
+ *   return: output buffer pointer or NULL on error
+ *   name(in): user-specified name or object name
+ *   buf(out): output buffer
+ *   buf_size(in): output buffer length
+ */
+char *
+sm_qualifier_name (const char *name, char *buf, int buf_size)
+{
+  const char *dot = NULL;
+  int len = 0;
+  int error = NO_ERROR;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      return NULL;
+    }
+
+  assert (buf != NULL);
+  assert (buf_size > 0);
+
+  /* If the name is not a user-specified name, NULL is returned. */
+  dot = strchr (name, '.');
+  if (dot == NULL)
+    {
+      return NULL;
+    }
+
+  len = STATIC_CAST (int, dot - name);
+
+  assert (len < buf_size);
+  assert (len < SM_MAX_USER_LENGTH);
+
+  memcpy (buf, name, len);
+  buf[len] = '\0';
+
+  return buf;
+}
+
+/*
+ * sm_remove_qualifier_name() - If the name has a qualifier name, remove it.
+ *   return: name with qualifier name removed
+ *   name(in): user-specified name or object name
+ */
+const char *
+sm_remove_qualifier_name (const char *name)
+{
+  const char *dot = NULL;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      return NULL;
+    }
+
+  dot = strchr (name, '.');
+
+  /* There must be only one dot(.) because dot(.) cannot be used in identifier names
+   * even if the exception rule is used. */
+  assert (dot == NULL || strchr (dot + 1, '.') == NULL);
+
+  return dot ? (dot + 1) : name;
 }
 
 /*
@@ -2618,113 +2750,138 @@ sm_get_all_objects (DB_OBJECT * op)
  */
 
 int
-sm_rename_class (MOP op, const char *new_name)
+sm_rename_class (MOP class_mop, const char *new_name)
 {
-  int error;
-  SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
-  const char *current, *newname;
-  char realname[SM_MAX_IDENTIFIER_LENGTH];
+  SM_CLASS *class_ = NULL;
+  SM_ATTRIBUTE *att = NULL;
+  MOBJ obj = NULL;
+  DB_VALUE value;
+  char *class_old_name = NULL;
+  char *class_new_name = NULL;
+  const char *class_name_of_serial = NULL;
+  char buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int is_partition = 0;
-/*  TR_STATE *trstate; */
+  bool has_savepoint = false;
+  int error = NO_ERROR;
 
-  /* make sure this gets into the server table with no capitalization */
-  sm_downcase_name (new_name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  db_make_null (&value);
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-  if (sm_has_text_domain (db_get_attributes (op), 1))
-    {
-      /* prevent to rename class */
-      ERROR1 (error, ER_REGU_NOT_IMPLEMENTED, rel_major_release_string ());
-      return error;
-    }
-#endif /* ENABLE_UNUSED_FUNCTION */
+  er_clear ();
 
-  error = sm_partitioned_class_type (op, &is_partition, NULL, NULL);
+  error = sm_partitioned_class_type (class_mop, &is_partition, NULL, NULL);
   if (is_partition == DB_PARTITIONED_CLASS)
     {
       error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  return error;
 	}
+
+      has_savepoint = true;
     }
 
-  if (!sm_check_name (realname))
+  if (new_name == NULL || new_name[0] == '\0')
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      ERROR_SET_WARNING_1ARG (error, ER_SM_INVALID_NAME, new_name);
+      return error;
     }
-  else if ((error = au_fetch_class (op, &class_, AU_FETCH_UPDATE, AU_ALTER)) == NO_ERROR)
+
+  error = au_fetch_class (class_mop, &class_, AU_FETCH_UPDATE, AU_ALTER);
+  if (error != NO_ERROR)
     {
-      /* We need to go ahead and copy the string since prepare_rename uses the address of the string in the hash table. */
-      current = sm_ch_name ((MOBJ) class_);
-      newname = ws_copy_string (realname);
-      if (newname == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
+      ASSERT_ERROR ();
+      return error;
+    }
 
-      if (locator_prepare_rename_class (op, current, newname) == NULL)
-	{
-	  ws_free_string (newname);
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
-      else
-	{
-	  class_->header.ch_name = newname;
-	  error = sm_flush_objects (op);
+  /* We need to go ahead and copy the string since prepare_rename uses the address of the string in the hash table. */
+  class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_));
 
-	  if (error == NO_ERROR)
+  /* make sure this gets into the server table with no capitalization */
+  sm_user_specified_name (new_name, buf, SM_MAX_IDENTIFIER_LENGTH);
+  class_new_name = db_private_strdup (NULL, buf);
+  if (class_new_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  obj = locator_prepare_rename_class (class_mop, class_old_name, class_new_name);
+  if (obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  class_->header.ch_name = class_new_name;
+
+  error = sm_flush_objects (class_mop);
+  if (obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  /* rename related auto_increment serial obj name */
+  for (att = class_->attributes; att; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (att->auto_increment != NULL)
+	{
+	  error = db_get (att->auto_increment, SERIAL_ATTR_CLASS_NAME, &value);
+	  if (error != NO_ERROR)
 	    {
-	      /* rename related auto_increment serial obj name */
-	      for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+	      ASSERT_ERROR ();
+	      goto end;
+	    }
+
+	  class_name_of_serial = db_get_string (&value);
+	  if (class_name_of_serial == NULL)
+	    {
+	      ERROR_SET_ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
+	      goto end;
+	    }
+
+	  if (pt_user_specified_name_compare (class_old_name, class_name_of_serial) == 0)
+	    {
+	      error = do_update_auto_increment_serial_on_rename (att->auto_increment, class_new_name, att->header.name);
+	      if (error != NO_ERROR)
 		{
-		  if (att->auto_increment != NULL)
-		    {
-		      DB_VALUE name_val;
-		      const char *class_name;
-
-		      if (db_get (att->auto_increment, "class_name", &name_val) != NO_ERROR)
-			{
-			  break;
-			}
-
-		      class_name = db_get_string (&name_val);
-		      if (class_name != NULL && (strcmp (current, class_name) == 0))
-			{
-			  int save;
-			  AU_DISABLE (save);
-			  error =
-			    do_update_auto_increment_serial_on_rename (att->auto_increment, newname, att->header.name);
-			  AU_ENABLE (save);
-			}
-		      db_value_clear (&name_val);
-
-		      if (error != NO_ERROR)
-			{
-			  break;
-			}
-		    }
+		  ASSERT_ERROR ();
+		  goto end;
 		}
 	    }
-	  ws_free_string (current);
+
+	  db_value_clear (&value);
 	}
     }
 
   if (is_partition == DB_PARTITIONED_CLASS)
     {
-      if (error == NO_ERROR)
+      error = do_rename_partition (class_mop, class_new_name);
+      if (error != NO_ERROR)
 	{
-	  error = do_rename_partition (op, realname);
-	}
+	  ASSERT_ERROR ();
 
-      if (error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
-	{
-	  (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
+	  if (error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
+	    }
+
+	  goto end;
 	}
+    }
+
+  if (class_old_name)
+    {
+      db_private_free_and_init (NULL, class_old_name);
+    }
+
+  class_new_name = NULL;
+
+end:
+  if (class_new_name)
+    {
+      db_private_free_and_init (NULL, class_new_name);
     }
 
   return error;
@@ -3030,6 +3187,141 @@ int
 sm_is_system_class (MOP op)
 {
   return sm_get_class_flag (op, SM_CLASSFLAG_SYSTEM);
+}
+
+/*
+ * sm_check_system_class_by_name () - Checks whether the class name is
+ *    the same as the system class name.
+ * return: true if the system class name, false otherwise
+ * name(in): class name
+ */
+bool
+sm_check_system_class_by_name (const char *name)
+{
+  // *INDENT-OFF*
+  static
+  struct system_class_list
+  {
+    const char *name;
+    int len;
+  }
+  system_classes[] =
+  {
+    /* 
+     * authorization classes
+     *
+     * AU_ROOT_CLASS_NAME     = CT_ROOT_NAME
+     * AU_OLD_ROOT_CLASS_NAME = CT_AUTHORIZATIONS_NAME
+     * AU_USER_CLASS_NAME     = CT_USER_NAME
+     * AU_PASSWORD_CLASS_NAME = CT_PASSWORD_NAME
+     * AU_AUTH_CLASS_NAME     = CT_AUTHORIZATION_NAME
+     * AU_GRANT_CLASS_NAME
+     */
+    {AU_ROOT_CLASS_NAME, strlen (AU_ROOT_CLASS_NAME)},		// "db_root"
+    {AU_USER_CLASS_NAME, strlen (AU_USER_CLASS_NAME)},		// "db_user"
+    {AU_PASSWORD_CLASS_NAME, strlen (AU_PASSWORD_CLASS_NAME)},	// "db_password"
+    {AU_AUTH_CLASS_NAME, strlen (AU_AUTH_CLASS_NAME)},		// "db_authorization"
+    {AU_OLD_ROOT_CLASS_NAME, strlen (AU_OLD_ROOT_CLASS_NAME)},	// "db_authorizations"
+
+    /* currently, not implemented */
+    {AU_GRANT_CLASS_NAME, strlen (AU_GRANT_CLASS_NAME)},	// "db_grant"
+
+    /* 
+     * catalog classes
+     */
+    {CT_CLASS_NAME, strlen (CT_CLASS_NAME)},			// "_db_class"
+    {CT_ATTRIBUTE_NAME, strlen (CT_ATTRIBUTE_NAME)}, 		// "_db_attribute"
+    {CT_DOMAIN_NAME, strlen (CT_DOMAIN_NAME)},			// "_db_domain"
+    {CT_METHOD_NAME, strlen (CT_METHOD_NAME)},			// "_db_method"
+    {CT_METHSIG_NAME, strlen (CT_METHSIG_NAME)},		// "_db_meth_sig"
+    {CT_METHARG_NAME, strlen (CT_METHARG_NAME)},		// "_db_meth_arg"
+    {CT_METHFILE_NAME, strlen (CT_METHFILE_NAME)},		// "_db_meth_file"
+    {CT_QUERYSPEC_NAME, strlen (CT_QUERYSPEC_NAME)},		// "_db_query_spec"
+    {CT_INDEX_NAME, strlen (CT_INDEX_NAME)},			// "_db_index"
+    {CT_INDEXKEY_NAME, strlen (CT_INDEXKEY_NAME)},		// "_db_index_key"
+    {CT_DATATYPE_NAME, strlen (CT_DATATYPE_NAME)},		// "_db_data_type"
+    {CT_CLASSAUTH_NAME, strlen (CT_CLASSAUTH_NAME)},		// "_db_auth"
+    {CT_PARTITION_NAME, strlen (CT_PARTITION_NAME)},		// "_db_partition"
+    {CT_STORED_PROC_NAME, strlen (CT_STORED_PROC_NAME)},	// "_db_stored_procedure"
+    {CT_STORED_PROC_ARGS_NAME, strlen (CT_STORED_PROC_ARGS_NAME)},	// "_db_stored_procedure_args"
+    {CT_SERIAL_NAME, strlen (CT_SERIAL_NAME)},			// "db_serial"
+    {CT_HA_APPLY_INFO_NAME, strlen (CT_HA_APPLY_INFO_NAME)},	// "db_ha_apply_info"
+    {CT_COLLATION_NAME, strlen (CT_COLLATION_NAME)},		// "_db_collation"
+    {CT_CHARSET_NAME, strlen (CT_CHARSET_NAME)},		// "_db_charset"
+    {CT_DB_SERVER_NAME, strlen (CT_DB_SERVER_NAME)},		// "_db_server"
+
+    {CT_TRIGGER_NAME, strlen (CT_TRIGGER_NAME)},		// "db_trigger"
+
+    /* currently, not implemented */
+    {CT_RESOLUTION_NAME, strlen (CT_RESOLUTION_NAME)},		// "_db_resolution"
+
+    /*
+     * catalog vclasses
+     */
+    {CTV_CLASS_NAME, strlen (CTV_CLASS_NAME)},			// "db_class"
+    {CTV_SUPER_CLASS_NAME, strlen (CTV_SUPER_CLASS_NAME)},	// "db_direct_super_class"
+    {CTV_VCLASS_NAME, strlen (CTV_VCLASS_NAME)},		// "db_vclass"
+    {CTV_ATTRIBUTE_NAME, strlen (CTV_ATTRIBUTE_NAME)},		// "db_attribute"
+    {CTV_ATTR_SD_NAME, strlen (CTV_ATTR_SD_NAME)},		// "db_attr_setdomain_elm"
+    {CTV_METHOD_NAME, strlen (CTV_METHOD_NAME)},		// "db_method"
+    {CTV_METHARG_NAME, strlen (CTV_METHARG_NAME)},		// "db_meth_arg"
+    {CTV_METHARG_SD_NAME, strlen (CTV_METHARG_SD_NAME)},	// "db_meth_arg_setdomain_elm"
+    {CTV_METHFILE_NAME, strlen (CTV_METHFILE_NAME)},		// "db_meth_file"
+    {CTV_INDEX_NAME, strlen (CTV_INDEX_NAME)},			// "db_index"
+    {CTV_INDEXKEY_NAME, strlen (CTV_INDEXKEY_NAME)},		// "db_index_key"
+    {CTV_AUTH_NAME, strlen (CTV_AUTH_NAME)},			// "db_auth"
+    {CTV_TRIGGER_NAME, strlen (CTV_TRIGGER_NAME)},		// "db_trig"
+    {CTV_PARTITION_NAME, strlen (CTV_PARTITION_NAME)},		// "db_partition"
+    {CTV_STORED_PROC_NAME, strlen (CTV_STORED_PROC_NAME)},	// "db_stored_procedure"
+    {CTV_STORED_PROC_ARGS_NAME, strlen (CTV_STORED_PROC_ARGS_NAME)},	// "db_stored_procedure_args"
+    {CTV_DB_COLLATION_NAME, strlen (CTV_DB_COLLATION_NAME)},	// "db_collation"
+    {CTV_DB_CHARSET_NAME, strlen (CTV_DB_CHARSET_NAME)},	// "db_charset"
+    {CTV_DB_SERVER_NAME, strlen (CTV_DB_SERVER_NAME)}		// "db_server"
+  };
+  // *INDENT-ON*
+
+  char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = { '\0' };
+  int count = 0;
+  int i = 0;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      return false;
+    }
+
+  /* The user-specified name is not a system class name. */
+  if (strchr (name, '.') != NULL)
+    {
+      return false;
+    }
+
+  sm_downcase_name (name, downcase_name, SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+
+  if (strncmp (downcase_name, ROOTCLASS_NAME, strlen (ROOTCLASS_NAME)) == 0)
+    {
+      return true;
+    }
+
+  if (strncmp (downcase_name, CT_DUAL_NAME, strlen (CT_DUAL_NAME)) == 0)
+    {
+      return true;
+    }
+
+  if (strncmp (downcase_name, "_db_", 4) != 0 && strncmp (downcase_name, "db_", 3) != 0)
+    {
+      return false;
+    }
+
+  count = sizeof (system_classes) / sizeof (system_classes[0]);
+  for (i = 0; i < count; i++)
+    {
+      if (strncmp (downcase_name, system_classes[i].name, system_classes[i].len) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -5057,7 +5349,7 @@ sm_find_class (const char *name)
 {
   char realname[SM_MAX_IDENTIFIER_LENGTH];
 
-  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
   return (locator_find_class (realname));
 }
@@ -5076,7 +5368,7 @@ sm_find_class_with_purpose (const char *name, bool for_update)
 {
   char realname[SM_MAX_IDENTIFIER_LENGTH];
 
-  sm_downcase_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
   return (locator_find_class_with_purpose (realname, for_update));
 }
@@ -12618,6 +12910,8 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   SM_CLASS *class_;
   DB_OBJLIST *cursupers, *oldsupers, *newsupers, *cursubs, *newsubs;
   SM_TEMPLATE *flat;
+  char owner_name[SM_MAX_USER_LENGTH] = { '\0' };
+  MOP owner = NULL;
 
   sm_bump_local_schema_version ();
   class_ = NULL;
@@ -12771,7 +13065,10 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	    }
 	  else
 	    {
-	      class_->owner = Au_user;	/* remember the owner id */
+	      /* Whether a user other than the current user can be set as the owner should be checked
+	       * in the pt_check_create_entity() function. */
+	      sm_qualifier_name (template_->name, owner_name, SM_MAX_USER_LENGTH);
+	      class_->owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
 	    }
 
 	  /* NOTE: Garbage collection can occur in the following function as a result of the allocation of the class
@@ -13154,11 +13451,12 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	  DB_VALUE name_val;
 	  const char *class_name;
 
-	  error = db_get (att->auto_increment, "class_name", &name_val);
+	  error = db_get (att->auto_increment, SERIAL_ATTR_CLASS_NAME, &name_val);
 	  if (error == NO_ERROR)
 	    {
 	      class_name = db_get_string (&name_val);
-	      if (class_name != NULL && (strcmp (sm_ch_name ((MOBJ) class_), class_name) == 0))
+	      if (class_name != NULL
+		  && (strcmp (sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)), class_name) == 0))
 		{
 		  int save;
 		  OID *oidp, serial_obj_id;
@@ -14105,6 +14403,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 #define MAX_ATTR_IN_AUTO_GEN_NAME 30
   const char **ptr;
   char *name = NULL;
+  const char *class_name_only = sm_remove_qualifier_name (class_name);
   int name_length = 0;
   bool do_desc;
   int error = NO_ERROR;
@@ -14157,7 +14456,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
        *  Count the number of characters that we'll need for the name
        */
       name_length = strlen (prefix);
-      name_length += strlen (class_name);	/* class name */
+      name_length += strlen (class_name_only);	/* class name */
 
       for (ptr = att_names; *ptr != NULL; ptr++)
 	{
@@ -14205,7 +14504,8 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (name_length + 1));
 	      goto exit;
 	    }
-	  strcpy (name_all, class_name);
+	  strcpy (name_all, class_name_only);
+
 	  for (ptr = att_names, i = 0; i < n_attrs; ptr++, i++)
 	    {
 	      strcat (name_all, *ptr);
@@ -14230,15 +14530,16 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  att_name_prefix_size = size_class_and_attrs / (n_attrs + 1);
 	  class_name_prefix_size = att_name_prefix_size;
 
-	  if (strlen (class_name) < class_name_prefix_size)
+	  if (strlen (class_name_only) < class_name_prefix_size)
 	    {
-	      class_name_prefix_size = strlen (class_name);
+	      class_name_prefix_size = strlen (class_name_only);
 	    }
 	  else
 	    {
 	      char class_name_trunc[DB_MAX_IDENTIFIER_LENGTH];
 
-	      strncpy (class_name_trunc, class_name, class_name_prefix_size);
+	      strncpy (class_name_trunc, class_name_only, class_name_prefix_size);
+
 	      class_name_trunc[class_name_prefix_size] = '\0';
 
 	      /* make sure last character is not truncated */
@@ -14267,7 +14568,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  strcpy (name, prefix);
 
 	  /* Class name */
-	  strncat (name, class_name, class_name_prefix_size);
+	  strncat (name, class_name_only, class_name_prefix_size);
 
 	  /* separated list of attribute names */
 	  k = 0;

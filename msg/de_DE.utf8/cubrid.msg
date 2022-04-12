@@ -1415,7 +1415,16 @@ $ LOADDB
 1337 Protokolldatensatz existiert nicht (lsa : %1$lld|%2$d). Das Archivprotokoll-Volume wurde gelöscht.
 1338 Flashback läuft bereits. Flashback kann nicht von mehr als einem Benutzer gleichzeitig ausgeführt werden.
 
-1339 Letzter Fehler
+1339 Nicht unterstützter Argumenttyp der gespeicherten Prozedur: %1$s
+1340 Nicht unterstützter Rückgabetyp der gespeicherten Prozedur: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -1573,6 +1582,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Maximale Länge eines Kommentars ist %1$d bytes.
 128 Ungültige Anzahl von Argumenten für JSON_OBJECTAGG.
 129 PARALLEL count-Argument muss zwischen %1$d und %2$d liegen.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.
@@ -1881,6 +1891,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Konnte keine kompatible Signatur für die Funktion finden %1$s().
 305 Die Signatur %1$s ist nicht mit Funktionsargumenten kompatibel.
 306 dblink - Erforderliche Informationen fehlen.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.

@@ -1416,7 +1416,16 @@ $ LOADDB
 1337 日志记录不存在 (lsa : %1$lld|%2$d)。 存档日志卷已被删除。
 1338 闪回已在运行。 Flashback 不能由多个用户同时运行。
 
-1339 最后一个错误.
+1339 不支持的存储过程的参数类型: %1$s
+1340 不支持的存储过程的返回类型: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1574,6 +1583,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 一个comment的最大长度是 %1$d 字节.
 128 JSON_OBJECTAGG参数个数不匹配.
 129 PARALLEL数必须在 %1$d 和 %2$d 之间.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
@@ -1882,6 +1892,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 没有找到与 %1$s() 函数兼容的签名.
 305 函数签名 %1$s 与函数参数不匹配.
 306 dblink - 缺少必需的信息.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
