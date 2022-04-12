@@ -8535,6 +8535,11 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
   bitset_init (&order_nodes, env);
   bitset_init (&QO_ENV_SORT_LIMIT_NODES (env), env);
 
+  if (pt_has_error (QO_ENV_PARSER (env)))
+    {
+      goto error;
+    }
+
   query = QO_ENV_PT_TREE (env);
   if (!PT_IS_SELECT (query))
     {
@@ -8706,6 +8711,14 @@ sort_limit_possible:
   return;
 
 abandon_stop_limit:
+  /* remove error which is occured in this function */
+  if (pt_has_error (QO_ENV_PARSER (env)))
+    {
+      pt_reset_error (QO_ENV_PARSER (env));
+      (QO_ENV_PARSER (env))->flag.has_internal_error = 0;
+    }
+
+error:
   bitset_delset (&order_nodes);
   bitset_delset (&QO_ENV_SORT_LIMIT_NODES (env));
   env->use_sort_limit = QO_SL_INVALID;

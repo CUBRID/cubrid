@@ -7216,7 +7216,7 @@ qo_push_limit_to_union (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * limit
 	      save_next = limit->next;
 	      limit->next = NULL;
 
-	      add_limit->type_enum = PT_TYPE_INTEGER;
+	      add_limit->type_enum = limit->type_enum;
 	      add_limit->info.expr.op = PT_PLUS;
 	      add_limit->info.expr.arg1 = parser_copy_tree (parser, save_next);
 	      add_limit->info.expr.arg2 = parser_copy_tree (parser, limit);
