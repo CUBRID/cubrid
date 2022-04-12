@@ -222,6 +222,13 @@ namespace cublog
     // which should help to only allocate/reserve once
     jobs_vec.reserve (PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE);
 
+#if defined(NDEBUG)
+    if (prm_get_bool_value (PRM_ID_RECOVERY_PARALLEL_TASK_DEBUG))
+      {
+	er_log_debug (ARG_FILE_LINE, "[PARALLEL RECOVERY] Call to parallel execute with task index: %d. ", m_task_idx);
+      }
+#endif
+
     for ( ; ; )
       {
 	bool adding_finished { false };
