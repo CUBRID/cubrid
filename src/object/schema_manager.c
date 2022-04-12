@@ -2755,20 +2755,29 @@ sm_rename_class (MOP class_mop, const char *new_name)
   SM_CLASS *class_ = NULL;
   SM_ATTRIBUTE *att = NULL;
   MOBJ obj = NULL;
-  DB_VALUE value;
   char *class_old_name = NULL;
   char *class_new_name = NULL;
-  const char *class_name_of_serial = NULL;
   char buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int is_partition = 0;
-  bool has_savepoint = false;
+  bool need_free_old_name = false;
+  bool need_free_new_name = false;
   int error = NO_ERROR;
-
-  db_make_null (&value);
 
   er_clear ();
 
+  if (new_name == NULL || new_name[0] == '\0')
+    {
+      ERROR_SET_WARNING_1ARG (error, ER_SM_INVALID_NAME, new_name);
+      return error;
+    }
+
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
   if (is_partition == DB_PARTITIONED_CLASS)
     {
       error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
@@ -2777,14 +2786,6 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	  ASSERT_ERROR ();
 	  return error;
 	}
-
-      has_savepoint = true;
-    }
-
-  if (new_name == NULL || new_name[0] == '\0')
-    {
-      ERROR_SET_WARNING_1ARG (error, ER_SM_INVALID_NAME, new_name);
-      return error;
     }
 
   error = au_fetch_class (class_mop, &class_, AU_FETCH_UPDATE, AU_ALTER);
@@ -2807,22 +2808,25 @@ sm_rename_class (MOP class_mop, const char *new_name)
       return error;
     }
 
+  need_free_new_name = true;
+
   obj = locator_prepare_rename_class (class_mop, class_old_name, class_new_name);
   if (obj == NULL)
     {
-      db_private_free_and_init (NULL, class_new_name);
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   class_->header.ch_name = class_new_name;
 
+  need_free_old_name = true;
+  need_free_new_name = false;
+
   error = sm_flush_objects (class_mop);
-  if (obj == NULL)
+  if (error != NO_ERROR)
     {
-      db_private_free_and_init (NULL, class_new_name);
-      ASSERT_ERROR_AND_SET (error);
-      return error;
+      ASSERT_ERROR ();
+      goto end;
     }
 
   /* rename related auto_increment serial obj name */
@@ -2830,18 +2834,21 @@ sm_rename_class (MOP class_mop, const char *new_name)
     {
       if (att->auto_increment != NULL)
 	{
+	  DB_VALUE value;
+	  const char *class_name_of_serial = NULL;
+
 	  error = db_get (att->auto_increment, SERIAL_ATTR_CLASS_NAME, &value);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      return error;
+	      goto end;
 	    }
 
 	  class_name_of_serial = db_get_string (&value);
 	  if (class_name_of_serial == NULL)
 	    {
 	      ERROR_SET_ERROR (error, ER_OBJ_INVALID_ARGUMENTS);
-	      return error;
+	      goto end;
 	    }
 
 	  if (pt_user_specified_name_compare (class_old_name, class_name_of_serial) == 0)
@@ -2849,17 +2856,14 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	      error = do_update_auto_increment_serial_on_rename (att->auto_increment, class_new_name, att->header.name);
 	      if (error != NO_ERROR)
 		{
-		  db_private_free_and_init (NULL, class_old_name);
 		  ASSERT_ERROR ();
-		  return error;
+		  goto end;
 		}
 	    }
 
 	  db_value_clear (&value);
 	}
     }
-
-  db_private_free_and_init (NULL, class_old_name);
 
   if (is_partition == DB_PARTITIONED_CLASS)
     {
@@ -2873,8 +2877,19 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	      tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
 	    }
 
-	  return error;
+	  goto end;
 	}
+    }
+
+end:
+  if (need_free_old_name && class_old_name != NULL)
+    {
+      db_private_free_and_init (NULL, class_old_name);
+    }
+
+  if (need_free_new_name && class_new_name != NULL)
+    {
+      db_private_free_and_init (NULL, class_new_name);
     }
 
   return error;
