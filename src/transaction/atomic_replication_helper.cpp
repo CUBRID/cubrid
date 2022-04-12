@@ -33,21 +33,19 @@ namespace cublog
   void atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
       LOG_RCVINDEX rcvindex, VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info)
   {
+#if !defined (NDEBUG)
+    if (!VPID_ISNULL (&vpid) && is_page_part_of_atomic_replication_sequence (vpid))
+      {
+	// page is already part of atomic replication
+	return;
+      }
+#endif
     auto sequence = m_atomic_sequences_map.find (tranid);
     if (sequence == m_atomic_sequences_map.end ())
       {
 	std::vector<atomic_replication_unit> new_sequence;
 	sequence = m_atomic_sequences_map.insert ({tranid, new_sequence});
       }
-
-#if !defined (NDEBUG)
-    if (vpid.pageid != NULL_PAGEID && vpid.volid != NULL_VOLID
-	&& is_page_part_of_atomic_replication_sequence (tranid, vpid))
-      {
-	// page is already part of atomic replication
-	return;
-      }
-#endif
 
     atomic_replication_unit atomic_unit (record_lsa, vpid, rcvindex);
     atomic_unit.fix_page (thread_p);
@@ -57,20 +55,25 @@ namespace cublog
   }
 
 #if !defined (NDEBUG)
-  bool atomic_replication_helper::is_page_part_of_atomic_replication_sequence (TRANID tranid, VPID vpid) const
+  bool atomic_replication_helper::is_page_part_of_atomic_replication_sequence (VPID vpid) const
   {
-    auto sequence = m_atomic_sequences_map.find (tranid);
-    if (sequence == m_atomic_sequences_map.end ())
+    bool found_vpid = false;
+    for (auto const &sequence : m_atomic_sequences_map)
       {
-	return false;
-      }
-
-    for (size_t i = 0; i < sequence->second.size (); i++)
-      {
-	const VPID element_vpid = sequence->second[i].m_vpid;
-	if (element_vpid.pageid == vpid.pageid && element_vpid.volid == vpid.volid)
+	for (size_t i = 0; i < sequence->second.size (); i++)
 	  {
-	    return true;
+	    const VPID element_vpid = sequence->second[i].m_vpid;
+	    if (element_vpid.pageid == vpid.pageid && element_vpid.volid == vpid.volid)
+	      {
+		if (found_vpid)
+		  {
+		    return true;
+		  }
+		else
+		  {
+		    found_vpid = true;
+		  }
+	      }
 	  }
       }
 
@@ -94,6 +97,7 @@ namespace cublog
     auto sequence = m_atomic_sequences_map.find (tranid);
     if (sequence == m_atomic_sequences_map.end ())
       {
+	assert (false);
 	return;
       }
 
@@ -114,10 +118,15 @@ namespace cublog
     : m_record_lsa { lsa }
     , m_vpid { vpid }
     , m_record_index { rcvindex }
+    , m_page_ptr { nullptr }
   {
     assert (lsa != NULL_LSA);
     PGBUF_INIT_WATCHER (&m_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
-    m_page_ptr == nullptr;
+  }
+
+  atomic_replication_helper::atomic_replication_unit::~atomic_replication_unit ()
+  {
+    PGBUF_CLEAR_WATCHER (&m_watcher);
   }
 
   template <typename T>

@@ -30,7 +30,9 @@
 
 namespace cublog
 {
-
+  /*
+   * Atomic replication helper class that holds all atomic logs mapped by the transaction id
+   */
   class atomic_replication_helper
   {
     public:
@@ -50,10 +52,13 @@ namespace cublog
       void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
       bool is_part_of_atomic_replication (TRANID tranid) const;
 #if !defined (NDEBUG)
-      bool is_page_part_of_atomic_replication_sequence (TRANID tranid, VPID vpid) const;
+      bool is_page_part_of_atomic_replication_sequence (VPID vpid) const;
 #endif
 
     private:
+      /*
+       * Atomic replication unit holds the log record information necessary for recovery redo
+       */
       class atomic_replication_unit
       {
 	public:
@@ -63,7 +68,7 @@ namespace cublog
 	  atomic_replication_unit (const atomic_replication_unit &) = delete;
 	  atomic_replication_unit (atomic_replication_unit &&) = delete;
 
-	  ~atomic_replication_unit () = default;
+	  ~atomic_replication_unit ();
 
 	  atomic_replication_unit &operator= (const atomic_replication_unit &) = delete;
 	  atomic_replication_unit &operator= (atomic_replication_unit &&) = delete;
