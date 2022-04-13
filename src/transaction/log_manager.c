@@ -14137,6 +14137,8 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
     }
   else
     {
+      LOG_ARCHIVE_CS_ENTER (thread_p);
+
       if (log_Gl.archive.vdes != NULL_VOLDES && log_Gl.archive.hdr.arv_num == arv_num)
 	{
 	  /* if target archive log volume is currenty mounted, then use that */
@@ -14145,8 +14147,6 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	}
       else
 	{
-	  LOG_ARCHIVE_CS_ENTER (thread_p);
-
 	  aligned_hdr_pgbuf = PTR_ALIGN (hdr_pgbuf, MAX_ALIGNMENT);
 
 	  hdr_pgptr = (LOG_PAGE *) aligned_hdr_pgbuf;
@@ -14188,10 +14188,11 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
 		  fileio_dismount (thread_p, vdes);
 
-		  LOG_ARCHIVE_CS_EXIT (thread_p);
 		}
 	    }
 	}
+
+      LOG_ARCHIVE_CS_EXIT (thread_p);
     }
 
   LOG_CS_EXIT (thread_p);
