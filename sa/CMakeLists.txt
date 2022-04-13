@@ -245,7 +245,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
-  ${QUERY_DIR}/method_scan.c
   ${QUERY_DIR}/dblink_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
@@ -320,6 +319,30 @@ set(JSP_SOURCES
   ${JSP_DIR}/jsp_sr.c
   )
 
+set(METHOD_SOURCES
+  ${METHOD_DIR}/method_callback.cpp
+  ${METHOD_DIR}/method_connection_cl.cpp
+  ${METHOD_DIR}/method_connection_sr.cpp
+  ${METHOD_DIR}/method_connection_pool.cpp
+  ${METHOD_DIR}/method_def.cpp
+  ${METHOD_DIR}/method_error.cpp
+  ${METHOD_DIR}/method_scan.cpp
+  ${METHOD_DIR}/method_invoke_builtin.cpp
+  ${METHOD_DIR}/method_invoke_java.cpp
+  ${METHOD_DIR}/method_struct_parameter_info.cpp
+  ${METHOD_DIR}/method_struct_invoke.cpp
+  ${METHOD_DIR}/method_struct_value.cpp
+  ${METHOD_DIR}/method_struct_query.cpp
+  ${METHOD_DIR}/method_struct_oid_info.cpp
+  ${METHOD_DIR}/method_invoke_group.cpp
+  ${METHOD_DIR}/method_runtime_context.cpp
+  ${METHOD_DIR}/method_query_util.cpp
+  ${METHOD_DIR}/method_query_handler.cpp
+  ${METHOD_DIR}/method_query_cursor.cpp
+  ${METHOD_DIR}/method_oid_handler.cpp
+  ${METHOD_DIR}/query_method.cpp
+  )
+
 set(THREAD_SOURCES
   ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_entry.cpp
@@ -339,6 +362,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/boot_cl.c
   ${TRANSACTION_DIR}/boot_sr.c
   ${TRANSACTION_DIR}/client_credentials.cpp
+  ${TRANSACTION_DIR}/flashback.c
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_cl.c
   ${TRANSACTION_DIR}/locator_sr.c
@@ -369,6 +393,7 @@ set(TRANSACTION_SOURCES
   )
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
+  ${TRANSACTION_DIR}/flashback.h
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp
@@ -531,6 +556,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
+  ${METHOD_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
@@ -566,6 +592,7 @@ add_library(cubridsa SHARED
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
+  ${METHOD_SOURCES}
   ${MONITOR_HEADERS}
   ${MONITOR_SOURCES}
   ${OBJECT_HEADERS}

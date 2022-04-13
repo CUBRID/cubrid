@@ -231,7 +231,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
-  ${QUERY_DIR}/query_method.c
   ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -279,9 +278,29 @@ set(JSP_SOURCES
   ${JSP_DIR}/jsp_file.c
   )
 
+set(METHOD_SOURCES
+  ${METHOD_DIR}/method_connection_cl.cpp
+  ${METHOD_DIR}/method_callback.cpp
+  ${METHOD_DIR}/method_def.cpp
+  ${METHOD_DIR}/method_error.cpp
+  ${METHOD_DIR}/method_oid_handler.cpp
+  ${METHOD_DIR}/method_query_handler.cpp
+  ${METHOD_DIR}/method_query_result.cpp
+  ${METHOD_DIR}/method_query_util.cpp
+  ${METHOD_DIR}/method_struct_parameter_info.cpp
+  ${METHOD_DIR}/method_struct_invoke.cpp
+  ${METHOD_DIR}/method_struct_value.cpp
+  ${METHOD_DIR}/method_struct_oid_info.cpp
+  ${METHOD_DIR}/method_struct_query.cpp
+  ${METHOD_DIR}/method_struct_schema_info.cpp
+  ${METHOD_DIR}/method_schema_info.cpp
+  ${METHOD_DIR}/query_method.cpp
+  )
+
 set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/boot_cl.c
   ${TRANSACTION_DIR}/client_credentials.cpp
+  ${TRANSACTION_DIR}/flashback_cl.c
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_cl.c
   ${TRANSACTION_DIR}/lock_table.c
@@ -293,6 +312,7 @@ set(TRANSACTION_SOURCES
   )
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
+  ${TRANSACTION_DIR}/flashback_cl.h
   ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
@@ -424,6 +444,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
+  ${METHOD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
@@ -463,6 +484,7 @@ add_library(cubridcs SHARED
   ${QUERY_HEADERS}
   ${QUERY_SOURCES}
   ${JSP_SOURCES}
+  ${METHOD_SOURCES}
   ${TRANSACTION_HEADERS}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}

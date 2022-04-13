@@ -1391,24 +1391,40 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s][%2$d] %3$s
-1319 Parameter binding error.
-1320 Invalid ODBC handle.
-1321 Type conversion error.
-1322 Not supported data type.
-1323 Invalid Statement handle.
-1324 Invalid db connection handle.
-1325 Link server connection url do not exist.
-1326 Invalid numeric value.
-1327 Invalid precision value of "%1$s" column.
+1319 dblink - Parameter binding error.
+1320 dblink - Invalid ODBC handle.
+1321 dblink - Type conversion error.
+1322 dblink - not supported type %1$s(%2$d).
+1323 dblink - Invalid Statement handle.
+1324 dblink - Invalid db connection handle.
+1325 dblink - Link server connection url do not exist.
+1326 dblink - Invalid numeric value.
+1327 dblink - Invalid precision value of "%1$s" column.
 
-1328 Invalid Descriptor handle.
-1329 Not supported dbms.
-1330 Error reserved for dblink development.
+1328 dblink - Invalid Descriptor handle.
+1329 dblink - Not supported dbms.
+1330 dblink - Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 Volumul de jurnal activ (%1$s) este prea corect pentru a fi recreat. Dacă eliminați jurnalul activ, ar putea cauza o problemă neașteptată și ireversibilă.
 
-1333 Ultima eroare
+1333 Timp nevalid (%1$s) pentru a începe flashback. Este necesar să fie setat timpul între (%2$s) și (%3$s).
+1334 Nu se poate găsi clasa de flashback (%1$s).
+1335 Prea multe tranzacții pentru flashback. Mai puțin de %1$d tranzacții pot fi flashback.
+1336 Nu se poate suporta flashback pentru această clasă (nume : %1$s , OID : %2$d|%3$d|%4$d). Schema de clasă a fost modificată.
+1337 Înregistrarea jurnalului nu există (lsa : %1$lld|%2$d). Volumul jurnalului de arhivă a fost șters.
+1338 Flashback rulează deja. Flashback nu poate fi rulat de mai mult de un utilizator în același timp.
+
+1339 Tipul de argument neacceptat al procedurii stocate: %1$s
+1340 Tipul de returnare neacceptat al procedurii stocate: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1566,6 +1582,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 Lungimea maximă a comentariilor este %1$d bytes.
 128 Număr invalid de argumente pentru JSON_OBJECTAGG
 129 Valoarea argumentului PARALLEL trebuie sa fie între %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
@@ -1874,6 +1891,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Nu s-a găsit semnătură compatibilă pentru funcția %1$s()
 305 Semnătura %1$s nu este compatibilă cu argumentele funcției.
 306 dblink - Informațiile necesare lipsesc.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

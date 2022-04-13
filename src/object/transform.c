@@ -291,6 +291,7 @@ static CT_ATTR ct_class_atts[] = {
   {"owner", NULL_ATTRID, DB_TYPE_OBJECT},
   {"collation_id", NULL_ATTRID, DB_TYPE_INTEGER},
   {"tde_algorithm", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"unique_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"class_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"sub_classes", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"super_classes", NULL_ATTRID, DB_TYPE_SEQUENCE},

@@ -65,8 +65,6 @@
 #include "cas_cgw.h"
 #endif
 
-extern void set_plan_include_hint (bool is_include);
-
 static FN_RETURN fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 				      int *ret_srv_h_id);
 static FN_RETURN fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
@@ -83,7 +81,6 @@ static void bind_value_log (struct timeval *log_time, int start, int argc, void 
 #if !defined(CAS_FOR_CGW)
 void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
 #endif /* CAS_FOR_CGW */
-extern int jsp_send_destroy_request_all ();
 
 /* functions implemented in transaction_cl.c */
 extern void tran_set_query_timeout (int);
@@ -788,12 +785,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif
 
 #endif /* !LIBCAS_FOR_JSP */
-
-/* destroy JDBC resources in stored procedure */
-  if (req_info->driver_info[DRIVER_INFO_CLIENT_TYPE] != CAS_CLIENT_SERVER_SIDE_JDBC)
-    {
-      jsp_send_destroy_request_all ();
-    }
 
   return FN_KEEP_CONN;
 }
@@ -1937,7 +1928,6 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
       cas_log_query_info_init (srv_h_id, TRUE);
       srv_handle->query_info_flag = TRUE;
 
-      set_plan_include_hint (true);
       session = db_open_buffer (sql_stmt);
       if (!session)
 	{
@@ -1979,7 +1969,6 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
   ux_get_query_info (srv_h_id, info_type, net_buf);
 
 end:
-  set_plan_include_hint (false);
   if (sql_stmt != NULL)
     {
       reset_optimization_level_as_saved ();
@@ -2070,9 +2059,6 @@ fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
     {
       logddl_free (true);
     }
-#if defined (CAS_FOR_CGW)
-  cgw_database_disconnect ();
-#endif
   return FN_CLOSE_CONN;
 }
 
@@ -2110,8 +2096,6 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
 FN_RETURN
 fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  int srv_h_id;
-
   if (argc < 1)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
@@ -2119,8 +2103,16 @@ fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
       return FN_KEEP_CONN;
     }
 
-  net_arg_get_int (&srv_h_id, argv[0]);
-  ux_make_out_rs (srv_h_id, net_buf, req_info);
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V11))
+    {
+      DB_BIGINT query_id;
+      net_arg_get_bigint (&query_id, argv[0]);
+      ux_make_out_rs (query_id, net_buf, req_info);
+    }
+  else
+    {
+      fn_not_supported (sock_fd, argc, argv, net_buf, req_info);
+    }
 
   return FN_KEEP_CONN;
 }

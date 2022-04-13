@@ -167,8 +167,12 @@ static int pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_copy_data_type_entity (PARSER_CONTEXT * parser, PT_NODE * data_type);
 static PT_NODE *pt_insert_conjunct (PARSER_CONTEXT * parser, PT_NODE * path_dot, PT_NODE * prev_entity);
 static PT_NODE *pt_lookup_entity (PARSER_CONTEXT * parser, PT_NODE * path_entities, PT_NODE * expr);
+
 static bool pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
+static PT_NODE *pt_resolve_method (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
+static PT_NODE *pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
+
 static PT_NODE *pt_find_entity_in_scopes (PARSER_CONTEXT * parser, SCOPES * scopes, UINTPTR spec_id);
 static PT_NODE *pt_find_outer_entity_in_scopes (PARSER_CONTEXT * parser, SCOPES * scopes, UINTPTR spec_id,
 						short *scope_location);
@@ -1876,8 +1880,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      assert (!PT_SPEC_IS_DERIVED (spec) || !PT_SPEC_IS_CTE (spec));
 			      flat = spec->info.spec.flat_entity_list;
 
-			      if (pt_str_compare (attr->info.name.original, flat->info.name.resolved, CASE_INSENSITIVE)
-				  == 0)
+			      if (pt_user_specified_name_compare (attr->info.name.original, flat->info.name.resolved) ==
+				  0)
 				{
 				  /* find spec set attr's spec_id */
 				  attr->info.name.spec_id = flat->info.name.spec_id;
@@ -1889,8 +1893,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      /* derived table or cte */
 			      assert (PT_SPEC_IS_DERIVED (spec) || PT_SPEC_IS_CTE (spec));
 			      range_var = spec->info.spec.range_var;
-			      if (pt_str_compare (attr->info.name.original, range_var->info.name.original,
-						  CASE_INSENSITIVE) == 0)
+			      if (pt_user_specified_name_compare
+				  (attr->info.name.original, range_var->info.name.original) == 0)
 				{
 				  break;
 				}
@@ -2904,7 +2908,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       if (!node->info.method_call.on_call_target
 	  && jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
 	{
-	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) node->info.method_call.method_name;
+	  PT_NODE *method_name = node->info.method_call.method_name;
+	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) method_name;
+	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name->info.name.original);
 	  node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
 	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 	  /* don't revisit leaves */
@@ -3037,16 +3043,24 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
     case PT_FUNCTION:
       if (node->info.function.function_type == PT_GENERIC)
 	{
+	  const char *generic_name = node->info.function.generic_name;
 	  node->info.function.function_type = pt_find_function_type (node->info.function.generic_name);
 
 	  if (node->info.function.function_type == PT_GENERIC)
 	    {
 	      /*
 	       * It may be a method call since they are parsed as
-	       * nodes PT_FUNCTION.  If so, pt_make_method_call() will
+	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
 	       * translate it into a method_call.
 	       */
-	      node1 = pt_make_method_call (parser, node, bind_arg);
+	      if (jsp_is_exist_stored_procedure (generic_name))
+		{
+		  node1 = pt_resolve_stored_procedure (parser, node, bind_arg);
+		}
+	      else
+		{
+		  node1 = pt_resolve_method (parser, node, bind_arg);
+		}
 
 	      if (node1->node_type == PT_METHOD_CALL)
 		{
@@ -3823,8 +3837,18 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
       q = p->next;		/* q = next spec */
       while (q)
 	{			/* check that p->range != q->range to the end of list */
-	  if (!pt_str_compare (p->info.spec.range_var->info.name.original, q->info.spec.range_var->info.name.original,
-			       CASE_INSENSITIVE))
+	  /*
+	   * Case of comparing names after dot(.).
+	   * 1. When comparing owner_name.class_name and alias_name.
+	   *    In Oracle and PostgreSQL, only table_name excluding schema_name or owner_name is compared
+	   *    with alias_name. In order to operate the same as other DBMSs, only class_name except owner_name
+	   *    should be compared with alias_name. An error should occur in the case below.
+	   *    e.g. select t1.c1 from u1.t1, t2 t1;
+	   *      - exposed_name of "t1"    : "u1.t1"
+	   *      - exposed_name of "t2 t1" : "t1"
+	   */
+	  if (!pt_user_specified_name_compare
+	      (p->info.spec.range_var->info.name.original, q->info.spec.range_var->info.name.original))
 	    {
 	      PT_MISC_TYPE p_type = p->info.spec.range_var->info.name.meta_class;
 	      PT_MISC_TYPE q_type = q->info.spec.range_var->info.name.meta_class;
@@ -3913,7 +3937,7 @@ pt_check_unique_names (PARSER_CONTEXT * parser, const PT_NODE * p)
 	      q = q->next;
 	      continue;
 	    }
-	  if (!pt_str_compare (p_name, q_name, CASE_INSENSITIVE))
+	  if (!pt_user_specified_name_compare (p_name, q_name))
 	    {
 	      PT_ERRORmf (parser, q, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_CLASS_OR_ALIAS, q_name);
 	      return 0;
@@ -5530,8 +5554,8 @@ pt_is_correlation_name (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * nam)
 
       if (specs->info.spec.range_var
 	  && ((nam->info.name.meta_class != PT_META_CLASS) || (specs->info.spec.meta_class == PT_META_CLASS))
-	  && pt_str_compare (nam->info.name.original, specs->info.spec.range_var->info.name.original,
-			     CASE_INSENSITIVE) == 0)
+	  && (pt_user_specified_name_compare (nam->info.name.original, specs->info.spec.range_var->info.name.original)
+	      == 0))
 	{
 	  if (!owner)
 	    {
@@ -5544,8 +5568,7 @@ pt_is_correlation_name (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * nam)
 	      entity_name = specs->info.spec.entity_name;
 	      if (entity_name && entity_name->node_type == PT_NAME && entity_name->info.name.resolved
 		  /* actual class ownership test is done for spec no need to repeat that here. */
-		  && (pt_str_compare (entity_name->info.name.resolved, owner->info.name.original, CASE_INSENSITIVE) ==
-		      0))
+		  && (pt_user_specified_name_compare (entity_name->info.name.resolved, owner->info.name.original) == 0))
 		{
 		  return specs;
 		}
@@ -5652,7 +5675,7 @@ pt_is_on_list (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * list)
 	  return NULL;		/* this is an error */
 	}
 
-      if (pt_str_compare (p->info.name.original, list->info.name.original, CASE_INSENSITIVE) == 0)
+      if (pt_user_specified_name_compare (p->info.name.original, list->info.name.original) == 0)
 	{
 	  return (PT_NODE *) list;	/* found a match */
 	}
@@ -5944,6 +5967,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
   PT_NODE *temp, *temp1, *temp2, *name;
   DB_OBJECT *db;		/* a temp for class object */
   const char *class_name = NULL;	/* a temp to extract name from class */
+  const char *obj_class_name = NULL;
   PT_NODE *e_node;
   DB_AUTH type;
   AU_FETCHMODE fetchmode;
@@ -5999,6 +6023,11 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 
 	  if (au_fetch_class (classop, &class_, fetchmode, type) == NO_ERROR)
 	    {
+	      if (intl_identifier_casecmp (class_name, class_->header.ch_name))
+		{
+		  name->info.name.original = pt_append_string (parser, NULL, class_->header.ch_name);
+		}
+
 	      if (class_->partition != NULL)
 		{
 		  if (class_->partition->pname == NULL)
@@ -6726,7 +6755,7 @@ pt_resolve_hint_args (PARSER_CONTEXT * parser, PT_NODE ** arg_list, PT_NODE * sp
 	    }
 
 	  if ((range = spec->info.spec.range_var)
-	      && !pt_str_compare (range->info.name.original, arg->info.name.original, CASE_INSENSITIVE))
+	      && (pt_user_specified_name_compare (range->info.name.original, arg->info.name.original) == 0))
 	    {
 	      /* found match */
 	      arg->info.name.spec_id = spec->info.spec.id;
@@ -7005,7 +7034,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 	  range = spec->info.spec.range_var;
 	  entity = spec->info.spec.entity_name;
 	  if (range && entity
-	      && !pt_str_compare (range->info.name.original, index->info.name.resolved, CASE_INSENSITIVE))
+	      && (pt_user_specified_name_compare (range->info.name.original, index->info.name.resolved) == 0))
 	    {
 	      classop = db_find_class (entity->info.name.original);
 	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
@@ -7155,6 +7184,82 @@ pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag)
     {
       return intl_identifier_cmp (p, q);
     }
+}
+
+int
+pt_user_specified_name_compare (const char *p, const char *q)
+{
+  const char *dot_p = NULL;
+  const char *dot_q = NULL;
+  const char *original_p = NULL;
+  const char *original_q = NULL;
+
+  if (!p && !q)
+    {
+      return 0;
+    }
+
+  if (!p || !q)
+    {
+      return 1;
+    }
+
+  if (p[0] == '.' || q[0] == '.')
+    {
+      return 1;
+    }
+
+  dot_p = strchr (p, '.');
+  dot_q = strchr (q, '.');
+
+  if ((dot_p == NULL && dot_q != NULL) || (dot_p != NULL && dot_q == NULL))
+    {
+      /*
+       * In the case below, only after dot(.) is compared.
+       *
+       * e.g. p : user_name.object_name -> object_name
+       *      q : object_name           -> object_name
+       *
+       *      or
+       * 
+       *      p : object_name           -> object_name
+       *      q : user_name.object_name -> object_name
+       */
+      original_p = dot_p ? (dot_p + 1) : p;
+      original_q = dot_q ? (dot_q + 1) : q;
+
+      /*
+       * e.g. original_p : object_name.          -> NULL
+       *      original_q : user_name.object_name -> object_name
+       *
+       *      or
+       * 
+       *      original_p : user_name.object_name -> object_name
+       *      original_q : object_name.          -> NULL
+       */
+      if (original_p[0] == '\0' || original_q[0] == '\0')
+	{
+	  return 1;
+	}
+    }
+  else
+    {
+      /*
+       * In the case below, compare all.
+       *
+       * e.g. p : user_name.object_name
+       *      q : user_name.object_name
+       *
+       *      or
+       * 
+       *      p : object_name
+       *      q : object_name
+       */
+      original_p = p;
+      original_q = q;
+    }
+
+  return intl_identifier_casecmp (original_p, original_q);
 }
 
 /*
@@ -8227,7 +8332,9 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       PT_NODE *cte_name = cte->info.cte.name;
       assert (cte_name != NULL);
 
-      if (pt_name_equal (parser, cte_name, node->info.spec.entity_name))
+      if (pt_name_equal (parser, cte_name, node->info.spec.entity_name)
+	  || pt_user_specified_name_compare (cte_name->info.name.original,
+					     node->info.spec.entity_name->info.name.original) == 0)
 	{
 	  node->info.spec.cte_name = node->info.spec.entity_name;
 	  node->info.spec.entity_name = NULL;
@@ -8954,11 +9061,11 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  return false;		/* not a method */
 	}
-      node->info.method_call.class_or_inst = PT_IS_CLASS_MTHD;
+      node->info.method_call.method_type = PT_IS_CLASS_MTHD;
     }
   else
     {
-      node->info.method_call.class_or_inst = PT_IS_INST_MTHD;
+      node->info.method_call.method_type = PT_IS_INST_MTHD;
     }
 
   /* look up the domain of the method's return type */
@@ -9000,19 +9107,16 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 
 /*
- * pt_make_method_call () - determines if the function call is really a
- *     method call and if so, creates a PT_METHOD_CALL to replace the node
- *     resolves the method call
+ * pt_make_method_call () - creates a PT_METHOD_CALL node and initilaizes from PT_FUNCTION node
  *   return:
  *   parser(in):
- *   node(in): an PT_FUNCTION node that may really be a method call
+ *   f_node(in): an PT_FUNCTION node that may really be a method call
  *   bind_arg(in):
  */
 static PT_NODE *
-pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
+pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * f_node, PT_BIND_NAMES_ARG * bind_arg)
 {
   PT_NODE *new_node;
-  int error = NO_ERROR;
 
   /* initialize the new node with the corresponding fields from the PT_FUNCTION node. */
   new_node = parser_new_node (parser, PT_METHOD_CALL);
@@ -9029,108 +9133,137 @@ pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG 
       return NULL;
     }
 
-  PT_NODE_COPY_NUMBER_OUTERLINK (new_node, node);
+  PT_NODE_COPY_NUMBER_OUTERLINK (new_node, f_node);
 
-  new_node->info.method_call.method_name->info.name.original = node->info.function.generic_name;
-
-  new_node->info.method_call.arg_list = parser_copy_tree_list (parser, node->info.function.arg_list);
-
+  new_node->info.method_call.method_name->info.name.original = f_node->info.function.generic_name;
+  new_node->info.method_call.method_name->info.name.spec_id = (UINTPTR) new_node->info.method_call.method_name;
+  new_node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
+  new_node->info.method_call.arg_list = parser_copy_tree_list (parser, f_node->info.function.arg_list);
   new_node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
+  new_node->info.method_call.on_call_target = NULL;
 
-  if (jsp_is_exist_stored_procedure (new_node->info.method_call.method_name->info.name.original))
+  return new_node;
+}				/* pt_make_method_call */
+
+/*
+ * pt_resolve_method () - creates and resolves the PT_METHOD_CALL node for method
+ *   return:
+ *   parser(in):
+ *   node(in): an PT_FUNCTION node that may really be a method call
+ *   bind_arg(in):
+ */
+static PT_NODE *
+pt_resolve_method (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
+{
+  PT_NODE *new_node = pt_make_method_call (parser, node, bind_arg);
+  if (new_node == NULL)
     {
-      TP_DOMAIN *d = NULL;
+      return NULL;
+    }
 
-      new_node->info.method_call.method_name->info.name.spec_id = (UINTPTR) new_node->info.method_call.method_name;
+  if (new_node->info.method_call.arg_list == NULL)
+    {
+      return node;		/* return the function since it is not a method */
+    }
 
-      new_node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
+  /* The first argument (which must be present), is the target of the method.  Move it to the on_call_target. */
+  new_node->info.method_call.on_call_target = new_node->info.method_call.arg_list;
+  new_node->info.method_call.arg_list = new_node->info.method_call.arg_list->next;
+  new_node->info.method_call.on_call_target->next = NULL;
 
-      parser_walk_leaves (parser, new_node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+  /* bind the names in the method arguments and target, their scope will be the same as the method node's scope */
+  parser_walk_leaves (parser, new_node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
-      /* returns either error or DB_TYPE... */
-      error = jsp_get_return_type (new_node->info.method_call.method_name->info.name.original);
-      if (error < 0)
-	{
-	  PT_INTERNAL_ERROR (parser, "jsp_get_return_type");
-	  return NULL;
-	}
-      new_node->type_enum = pt_db_to_type_enum ((DB_TYPE) error);
-
-      d = pt_type_enum_to_db_domain (new_node->type_enum);
-      d = tp_domain_cache (d);
-      new_node->data_type = pt_domain_to_data_type (parser, d);
-
-      new_node->info.method_call.method_id = (UINTPTR) new_node;
-
-      return new_node;
+  /* find the type of the method here */
+  if (!pt_resolve_method_type (parser, new_node))
+    {
+      parser_free_node (parser, new_node->info.method_call.method_name);
+      parser_free_node (parser, new_node);
+      return node;		/* not a method call */
     }
   else
     {
-      /* The first argument (which must be present), is the target of the method.  Move it to the on_call_target. */
-      if (!new_node->info.method_call.arg_list)
+      /* if scopes is NULL we assume this came from an evaluate call and we treat it like a call statement, that
+       * is, we don't resolve method name. */
+      if (bind_arg->scopes == NULL)
 	{
-	  return node;		/* return the function since it is not a method */
+	  return new_node;
 	}
-      new_node->info.method_call.on_call_target = new_node->info.method_call.arg_list;
-      new_node->info.method_call.arg_list = new_node->info.method_call.arg_list->next;
-      new_node->info.method_call.on_call_target->next = NULL;
-
-      /* make method name look resolved */
-      new_node->info.method_call.method_name->info.name.spec_id = (UINTPTR) new_node->info.method_call.method_name;
-      new_node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
-
-      /* bind the names in the method arguments and target, their scope will be the same as the method node's scope */
-      parser_walk_leaves (parser, new_node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-
-      /* find the type of the method here */
-      if (!pt_resolve_method_type (parser, new_node))
+      /* resolve method name to entity where expansion will take place */
+      if ((new_node->info.method_call.on_call_target->node_type == PT_NAME)
+	  && (new_node->info.method_call.on_call_target->info.name.meta_class != PT_PARAMETER))
 	{
-	  return node;		/* not a method call */
-	}
-      else
-	{
-	  /* if scopes is NULL we assume this came from an evaluate call and we treat it like a call statement, that
-	   * is, we don't resolve method name. */
-	  if (bind_arg->scopes == NULL)
+	  PT_NODE *entity, *spec;
+	  entity = NULL;	/* init */
+	  if (PT_IS_CLASS_METHOD (node))
 	    {
-	      return new_node;
-	    }
-	  /* resolve method name to entity where expansion will take place */
-	  if ((new_node->info.method_call.on_call_target->node_type == PT_NAME)
-	      && (new_node->info.method_call.on_call_target->info.name.meta_class != PT_PARAMETER))
-	    {
-	      PT_NODE *entity, *spec;
-	      entity = NULL;	/* init */
-	      if (new_node->info.method_call.class_or_inst == PT_IS_CLASS_MTHD)
+	      for (spec = bind_arg->spec_frames->extra_specs; spec != NULL; spec = spec->next)
 		{
-		  for (spec = bind_arg->spec_frames->extra_specs; spec != NULL; spec = spec->next)
+		  if (spec->node_type == PT_SPEC
+		      && (spec->info.spec.id == new_node->info.method_call.on_call_target->info.name.spec_id))
 		    {
-		      if (spec->node_type == PT_SPEC
-			  && (spec->info.spec.id == new_node->info.method_call.on_call_target->info.name.spec_id))
-			{
-			  entity = spec;
-			  break;
-			}
+		      entity = spec;
+		      break;
 		    }
 		}
-	      else
-		{
-		  entity =
-		    pt_find_entity_in_scopes (parser, bind_arg->scopes,
-					      new_node->info.method_call.on_call_target->info.name.spec_id);
-		}
-	      /* no entity found will be caught as an error later.  Probably an unresolvable target. */
-	      if (entity)
-		{
-		  new_node->info.method_call.method_name->info.name.spec_id = entity->info.spec.id;
-		}
 	    }
-
-	  return new_node;	/* it is a method call */
+	  else
+	    {
+	      entity =
+		pt_find_entity_in_scopes (parser, bind_arg->scopes,
+					  new_node->info.method_call.on_call_target->info.name.spec_id);
+	    }
+	  /* no entity found will be caught as an error later.  Probably an unresolvable target. */
+	  if (entity)
+	    {
+	      new_node->info.method_call.method_name->info.name.spec_id = entity->info.spec.id;
+	    }
 	}
-    }
-}				/* pt_make_method_call */
 
+      new_node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
+      return new_node;		/* it is a method call */
+    }
+}				/* pt_resolve_method */
+
+/*
+ * pt_resolve_stored_procedure () - creates and resolves the PT_METHOD_CALL node for java sp
+ *   return:
+ *   parser(in):
+ *   node(in): an PT_FUNCTION node that may really be a method call
+ *   bind_arg(in):
+ */
+static PT_NODE *
+pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
+{
+  PT_NODE *new_node = pt_make_method_call (parser, node, bind_arg);
+  if (new_node == NULL)
+    {
+      return NULL;
+    }
+
+  parser_walk_leaves (parser, new_node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+  /* returns either error or DB_TYPE... */
+  const char *sp_name = new_node->info.method_call.method_name->info.name.original;
+  int return_type = jsp_get_return_type (sp_name);
+  if (return_type < 0)
+    {
+      PT_INTERNAL_ERROR (parser, "jsp_get_return_type");
+      return NULL;
+    }
+
+  new_node->type_enum = pt_db_to_type_enum ((DB_TYPE) return_type);
+  TP_DOMAIN *d = pt_type_enum_to_db_domain (new_node->type_enum);
+  d = tp_domain_cache (d);
+  new_node->data_type = pt_domain_to_data_type (parser, d);
+
+  new_node->info.method_call.method_id = (UINTPTR) new_node;
+
+  int sp_type_misc = jsp_get_sp_type (sp_name);
+  new_node->info.method_call.method_type = (PT_MISC_TYPE) sp_type_misc;
+
+  return new_node;
+}				/* pt_resolve_stored_procedure */
 
 /*
  * pt_find_entity_in_scopes () - looks up an entity spec in a scope list
@@ -9295,29 +9428,54 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
 }
 
 DB_OBJECT *
-pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
+pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  char *serial_name, *t;
-  DB_OBJECT *serial_class_mop, *serial_mop;
+  DB_OBJECT *serial_class_obj = NULL;
+  DB_OBJECT *serial_obj = NULL;
   DB_IDENTIFIER serial_obj_id;
+  const char *serial_name = NULL;
+  const char *serial_unique_name = NULL;
+  const char *owner_name = NULL;
 
-  if (serial_name_node == NULL || serial_name_node->node_type != PT_NAME)
+  if (node == NULL)
     {
       return NULL;
     }
 
-  serial_name = (char *) serial_name_node->info.name.original;
-  t = strchr (serial_name, '.');	/* FIXME */
-  serial_name = (t != NULL) ? (t + 1) : serial_name;
-
-  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
-  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
-  if (serial_mop == NULL)
+  if (PT_IS_DOT_NODE (node))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
+      assert (PT_IS_NAME_NODE (node->info.dot.arg1));
+      assert (PT_IS_NAME_NODE (node->info.dot.arg2));
+
+      owner_name = node->info.dot.arg1->info.name.original;
+      serial_name = node->info.dot.arg2->info.name.original;
+    }
+  else
+    {
+      assert (PT_IS_NAME_NODE (node));
+
+      serial_name = node->info.name.original;
     }
 
-  return serial_mop;
+  if (serial_name == NULL || serial_name[0] == '\0')
+    {
+      return NULL;
+    }
+
+  if (owner_name && owner_name[0] != '\0')
+    {
+      serial_unique_name = pt_append_string (parser, owner_name, ".");
+    }
+  serial_unique_name = pt_append_string (parser, NULL, serial_name);
+
+  serial_class_obj = sm_find_class (CT_SERIAL_NAME);
+  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class_obj, serial_unique_name);
+  if (serial_obj == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_unique_name);
+    }
+
+  return serial_obj;
 }
 
 /*
@@ -9951,6 +10109,7 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 				   PT_NODE * derived_alias)
 {
   PT_NODE *as_attr_list = NULL, *select_list;
+  unsigned int save_custom;
   int i, id;
 
   switch (derived_table_type)
@@ -10008,7 +10167,10 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 	      else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
 		{
 		  PARSER_VARCHAR *alias;
+		  save_custom = parser->custom_print;
+		  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
 		  alias = pt_print_bytes (parser, att);
+		  parser->custom_print = save_custom;
 		  col = pt_name (parser, (const char *) alias->bytes);
 		}
 	      else

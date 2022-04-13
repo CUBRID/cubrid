@@ -89,6 +89,7 @@ typedef enum
   MSGCAT_UTIL_SET_VACUUMDB = 55,
   MSGCAT_UTIL_SET_CHECKSUMDB = 56,
   MSGCAT_UTIL_SET_TDE = 57,
+  MSGCAT_UTIL_SET_FLASHBACK = 58,
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -420,7 +421,9 @@ typedef enum
   COMPACTDB_MSG_RECLAIM_ERROR = 43,
   COMPACTDB_MSG_PASS3 = 44,
   COMPACTDB_MSG_HEAP_COMPACT_FAILED = 45,
-  COMPACTDB_MSG_HEAP_COMPACT_SUCCEEDED = 46
+  COMPACTDB_MSG_HEAP_COMPACT_SUCCEEDED = 46,
+  COMPACTDB_MSG_EXCEED_MAX_LEN = 47,
+  COMPACTDB_MSG_EXCEED_MAX_USER_LEN = 48
 } MSGCAT_COMPACTDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_UNLOADDB */
@@ -432,7 +435,10 @@ typedef enum
   UNLOADDB_MSG_OBJECTS_FAILED = 46,
   UNLOADDB_MSG_INVALID_DIR_NAME = 47,
   UNLOADDB_MSG_LOG_LSA = 48,
-  UNLOADDB_MSG_PASSWORD_PROMPT = 49
+  UNLOADDB_MSG_PASSWORD_PROMPT = 49,
+  UNLOADDB_MSG_EXCEED_MAX_LEN = 50,
+  UNLOADDB_MSG_EXCEED_MAX_USER_LEN = 51,
+  UNLOADDB_MSG_CLASS_NOT_FOUND = 52
 } MSGCAT_UNLOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_LOADDB */
@@ -492,8 +498,9 @@ typedef enum
   LOADDB_MSG_OBJECTS_SYNTAX_CHECKED = 119,
   LOADDB_MSG_TABLE_IS_MISSING = 120,
   LOADDB_MSG_IGNORED_CLASS = 121,
+  LOADDB_MSG_EXCEED_MAX_USER_LEN = 122,
 
-  LOADDB_MSG_USAGE = 122
+  LOADDB_MSG_USAGE = 123
 } MSGCAT_LOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_MIGDB */
@@ -704,6 +711,26 @@ typedef enum
   TDE_MSG_USAGE = 60
 } MSGCAT_TDE_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_FLASHBACK */
+typedef enum
+{
+  FLASHBACK_MSG_DBA_PASSWORD = 1,
+  FLASHBACK_MSG_INVALID_DATE_FORMAT = 2,
+  FLASHBACK_MSG_INVALID_DATE_RANGE = 3,
+  FLASHBACK_MSG_INVALID_TIME = 4,
+  FLASHBACK_MSG_TABLE_NOT_EXIST = 5,
+  FLASHBACK_MSG_TOO_MANY_TRANSACTION = 6,
+  FLASHBACK_MSG_TABLE_SCHEMA_CHANGED = 7,
+  FLASHBACK_MSG_LOG_VOLUME_NOT_EXIST = 8,
+  FLASHBACK_MSG_BAD_OUTPUT = 9,
+  FLASHBACK_MSG_INVALID_TRANSACTION = 10,
+  FLASHBACK_MSG_NO_SUPPLEMENTAL_LOG = 11,
+  FLASHBACK_MSG_TIMEOUT = 12,
+  FLASHBACK_MSG_DUPLICATED_REQUEST = 13,
+  FLASHBACK_MSG_NOT_IN_STANDALONE = 14,
+  FLASHBACK_MSG_USAGE = 60
+} MSGCAT_FLASHBACK_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -750,6 +777,7 @@ typedef enum
   VACUUMDB,
   CHECKSUMDB,
   TDE,
+  FLASHBACK,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -827,7 +855,9 @@ typedef struct _ha_config
 #define UTIL_COMMDB_NAME        "cub_commdb" UTIL_EXE_EXT
 #define UTIL_CUBRID_NAME        "cub_server" UTIL_EXE_EXT
 #define UTIL_BROKER_NAME        "cubrid_broker" UTIL_EXE_EXT
+#define UTIL_GATEWAY_NAME       "cubrid_gateway" UTIL_EXE_EXT
 #define UTIL_MONITOR_NAME       "broker_monitor" UTIL_EXE_EXT
+#define UTIL_GATEWAY_MONITOR_NAME       "gateway_monitor" UTIL_EXE_EXT
 #define UTIL_TESTER_NAME        "broker_tester" UTIL_EXE_EXT
 #define UTIL_CUB_MANAGER_NAME   "cub_manager" UTIL_EXE_EXT
 #define UTIL_ADMIN_NAME         "cub_admin" UTIL_EXE_EXT
@@ -848,6 +878,7 @@ typedef struct _ha_config
 #define PRINT_MASTER_NAME       "cubrid master"
 #define PRINT_SERVER_NAME       "cubrid server"
 #define PRINT_BROKER_NAME       "cubrid broker"
+#define PRINT_GATEWAY_NAME      "cubrid gateway"
 #define PRINT_MANAGER_NAME      "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
 #define PRINT_JAVASP_NAME       "cubrid javasp"
@@ -855,6 +886,7 @@ typedef struct _ha_config
 
 #define PRINT_CMD_SERVICE       "service"
 #define PRINT_CMD_BROKER        "broker"
+#define PRINT_CMD_GATEWAY       "gateway"
 #define PRINT_CMD_MANAGER       "manager"
 #define PRINT_CMD_SERVER        "server"
 #define PRINT_CMD_JAVASP        "javasp"
@@ -908,6 +940,7 @@ typedef struct _ha_config
 #define MASK_SERVER             0x02
 #define MASK_BROKER             0x04
 #define MASK_MANAGER            0x08
+#define MASK_GATEWAY            0x10
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
 #define MASK_JAVASP             0x80
@@ -956,6 +989,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_VACUUMDB			"vacuumdb"
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
 #define UTIL_OPTION_TDE			        "tde"
+#define UTIL_OPTION_FLASHBACK                   "flashback"
 
 #define HIDDEN_CS_MODE_S                        15000
 
@@ -1276,6 +1310,8 @@ typedef struct _ha_config
 #define LOAD_COMPARE_STORAGE_ORDER_L            "compare-storage-order"
 #define LOAD_CS_FORCE_LOAD_S                    11824
 #define LOAD_CS_FORCE_LOAD_L                    "force-load"
+#define LOAD_NO_USER_SPECIFIED_NAME_S           11825
+#define LOAD_NO_USER_SPECIFIED_NAME_L           "no-user-specified-name"
 
 /* unloaddb option list */
 #define UNLOAD_INPUT_CLASS_FILE_S               'i'
@@ -1626,6 +1662,22 @@ typedef struct _ha_config
 #define TDE_DBA_PASSWORD_S    'p'
 #define TDE_DBA_PASSWORD_L    "dba-password"
 
+/* flashback option list */
+#define FLASHBACK_OUTPUT_S          'o'
+#define FLASHBACK_OUTPUT_L          "output"
+#define FLASHBACK_USER_S            'u'
+#define FLASHBACK_USER_L            "user"
+#define FLASHBACK_DBA_PASSWORD_S    'p'
+#define FLASHBACK_DBA_PASSWORD_L    "dba-password"
+#define FLASHBACK_START_DATE_S      's'
+#define FLASHBACK_START_DATE_L      "start-date"
+#define FLASHBACK_END_DATE_S        'e'
+#define FLASHBACK_END_DATE_L        "end-date"
+#define FLASHBACK_DETAIL_S          14101
+#define FLASHBACK_DETAIL_L          "detail"
+#define FLASHBACK_OLDEST_S          14102
+#define FLASHBACK_OLDEST_L          "oldest"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1759,6 +1811,7 @@ extern "C"
   extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int tde (UTIL_FUNCTION_ARG * arg_map);
+  extern int flashback (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);
