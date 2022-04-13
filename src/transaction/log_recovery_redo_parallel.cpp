@@ -222,11 +222,8 @@ namespace cublog
     // which should help to only allocate/reserve once
     jobs_vec.reserve (PARALLEL_REDO_JOB_VECTOR_RESERVE_SIZE);
 
-#if defined(NDEBUG)
-    if (prm_get_bool_value (PRM_ID_RECOVERY_PARALLEL_TASK_DEBUG))
-      {
-	er_log_debug (ARG_FILE_LINE, "[PARALLEL RECOVERY] Call to parallel execute with task index: %d. ", m_task_idx);
-      }
+#if !defined(NDEBUG)
+    int task_execute_counter = 0;
 #endif
 
     for ( ; ; )
@@ -250,6 +247,9 @@ namespace cublog
 		  {
 		    set_unapplied_log_lsa_from_execute_func (job->get_log_lsa ());
 		  }
+#if !defined(NDEBUG)
+		task_execute_counter++;
+#endif
 		job->execute (thread_entry, m_redo_context);
 		m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_EXECUTE);
 		job->retire (m_task_idx);
@@ -266,6 +266,15 @@ namespace cublog
     assert (jobs_vec.empty ());
 
     m_task_state_bookkeeping.set_inactive (m_task_idx);
+
+#if !defined(NDEBUG)
+    if (prm_get_bool_value (PRM_ID_RECOVERY_PARALLEL_TASK_DEBUG))
+      {
+	er_log_debug (ARG_FILE_LINE,
+		      "[PARALLEL RECOVERY] Call to parallel execute with task index: %d. Total execute counter: %d", m_task_idx,
+		      task_execute_counter);
+      }
+#endif
   }
 
   void
