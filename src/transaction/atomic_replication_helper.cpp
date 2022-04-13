@@ -160,6 +160,7 @@ namespace cublog
       case RVHF_MVCC_DELETE_MODIFY_HOME:
       case RVHF_UPDATE:
       case RVHF_MVCC_UPDATE_OVERFLOW:
+      case RVHF_INSERT_NEWHOME:
 	if (pgbuf_ordered_fix (thread_p, &m_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &m_watcher) != NO_ERROR)
 	  {
 	    er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Unnable to apply ordered fix on page %d|%d.",
@@ -167,6 +168,10 @@ namespace cublog
 	    assert (false);
 	    return;
 	  }
+	break;
+      case RVHF_UPDATE_NOTIFY_VACUUM:
+	er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Unnable to fix RVHF_UPDATE_NOTIFY_VACUUM.");
+	assert (false);
 	break;
       default:
 	m_page_ptr = pgbuf_fix (thread_p, &m_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -193,6 +198,7 @@ namespace cublog
       case RVHF_MVCC_DELETE_MODIFY_HOME:
       case RVHF_UPDATE:
       case RVHF_MVCC_UPDATE_OVERFLOW:
+      case RVHF_INSERT_NEWHOME:
 	pgbuf_ordered_unfix (thread_p, &m_watcher);
 	break;
       default:
