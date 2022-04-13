@@ -26,6 +26,7 @@
 #include "dbtype_def.h"
 #include "mem_block.hpp"
 
+#include <functional>
 #include <vector>
 #include <string>
 #include <utility>
@@ -104,6 +105,18 @@ namespace cubpacking
       size_t get_packed_size_overloaded (const packable_object &po, size_t curr_offset);
       void pack_overloaded (const packable_object &po);
 
+      template <typename T>
+      size_t get_packed_size_overloaded (const std::reference_wrapper<T> wrapper, const size_t curr_offset);
+
+      template <typename T>
+      void pack_overloaded (const std::reference_wrapper<T> &wrapper);
+
+      template <typename T>
+      size_t get_packed_size_overloaded (const std::vector<T> container, const size_t curr_offset);
+
+      template <typename T>
+      void pack_overloaded (const std::vector<T> &container);
+
       size_t get_packed_oid_size (const size_t curr_offset);
       void pack_oid (const OID &oid);
       size_t get_packed_size_overloaded (const OID &oid, size_t curr_offset);
@@ -123,6 +136,9 @@ namespace cubpacking
 
       std::size_t get_packed_buffer_size (const char *stream, const std::size_t length, const std::size_t curr_offset) const;
       void pack_buffer_with_length (const char *stream, const std::size_t length);
+
+      void pack_overloaded (const cubmem::block &blk);
+      size_t get_packed_size_overloaded (const cubmem::block &blk, size_t curr_offset);
 
       // template function to pack object as int type
       template <typename T>
@@ -183,6 +199,8 @@ namespace cubpacking
     public:
       unpacker () = default;
       unpacker (const char *storage, const size_t amount);
+      unpacker (const cubmem::block &blk);
+
       void set_buffer (const char *storage, const size_t amount);
 
       void unpack_int (int &value);
@@ -217,6 +235,9 @@ namespace cubpacking
       void peek_unpack_buffer_length (int &value);
       void unpack_buffer_with_length (char *stream, const std::size_t max_length);
 
+      void peek_unpack_block_length (int &value);
+      void unpack_overloaded (cubmem::block &blk);
+
       void unpack_oid (OID &oid);
       void unpack_overloaded (OID &oid);
 
@@ -235,6 +256,9 @@ namespace cubpacking
       // template function to unpack object from int type to T type
       template <typename T>
       void unpack_from_int (T &t);
+
+      template <typename T>
+      void unpack_overloaded (std::vector<T> &container);
 
       // template functions to unpack object in bulk
       // note - it requires implementations of unpack_overloaded for all types
@@ -282,6 +306,46 @@ namespace cubpacking
   packer::pack_to_int (const T &t)
   {
     pack_int ((int) t);
+  }
+
+  template <typename T>
+  void
+  packer::pack_overloaded (const std::reference_wrapper<T> &wrapper)
+  {
+    pack_overloaded (wrapper.get ());
+  }
+
+  template <typename T>
+  size_t
+  packer::get_packed_size_overloaded (const std::reference_wrapper<T> wrapper, size_t curr_offset)
+  {
+    return get_packed_size_overloaded (wrapper.get (), curr_offset);
+  }
+
+  template <typename T>
+  size_t
+  packer::get_packed_size_overloaded (const std::vector<T> container, const size_t curr_offset)
+  {
+    size_t size = get_packed_bigint_size (curr_offset);
+
+    for (const T &t: container)
+      {
+	size += get_packed_size_overloaded (t, size);
+      }
+
+    return size;
+  }
+
+  template <typename T>
+  void
+  packer::pack_overloaded (const std::vector<T> &container)
+  {
+    const size_t count = container.size ();
+    pack_bigint (count);
+    for (const T &t : container)
+      {
+	pack_overloaded (t);
+      }
   }
 
   template <typename ... Args>
@@ -390,6 +454,23 @@ namespace cubpacking
     int int_val;
     unpack_int (int_val);
     t = (T) int_val;
+  }
+
+  template <typename T>
+  void
+  unpacker::unpack_overloaded (std::vector<T> &container)
+  {
+    int64_t count;
+    unpack_bigint (count);
+
+    if (count > 0)
+      {
+	container.resize (count);
+	for (int i = 0; i < count; i++)
+	  {
+	    unpack_overloaded (container[i]);
+	  }
+      }
   }
 
   template <typename ... Args>

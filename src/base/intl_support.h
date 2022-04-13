@@ -256,7 +256,9 @@ extern "C"
   extern int intl_identifier_casecmp (const char *str1, const char *str2);
   extern int intl_identifier_ncasecmp (const char *str1, const char *str2, const int len);
   extern int intl_identifier_cmp (const char *str1, const char *str2);
+#if defined(ENABLE_UNUSED_FUNCTION)
   extern int intl_identifier_namecmp (const char *str1, const char *str2);
+#endif
   extern int intl_identifier_lower_string_size (const char *src);
   extern int intl_identifier_lower (const char *src, char *dst);
   extern int intl_identifier_upper_string_size (const char *src);

@@ -129,6 +129,7 @@ static const char *EVAL_PREFIX = "EVALUATE ( ";
 static const char *EVAL_SUFFIX = " ) ";
 
 const char *TR_CLASS_NAME = "db_trigger";
+const char *TR_ATT_UNIQUE_NAME = "unique_name";
 const char *TR_ATT_NAME = "name";
 const char *TR_ATT_OWNER = "owner";
 const char *TR_ATT_EVENT = "event";
@@ -1032,6 +1033,12 @@ trigger_to_object (TR_TRIGGER * trigger)
     }
 
   db_make_string (&value, trigger->name);
+  if (dbt_put_internal (obt_p, TR_ATT_UNIQUE_NAME, &value) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_string (&value, sm_remove_qualifier_name (trigger->name));
   if (dbt_put_internal (obt_p, TR_ATT_NAME, &value) != NO_ERROR)
     {
       goto error;
@@ -1221,7 +1228,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
     }
 
   /* NAME */
-  if (db_get (object, TR_ATT_NAME, &value))
+  if (db_get (object, TR_ATT_UNIQUE_NAME, &value))
     {
       goto error;
     }
@@ -3922,8 +3929,11 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
   TR_TRIGGER *trigger;
   DB_OBJECT *object;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  MOP owner = NULL;
   bool tr_object_map_added = false;
   bool has_savepoint = false;
+  int error = NO_ERROR;
 
   object = NULL;
 
@@ -3933,8 +3943,21 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       return NULL;
     }
 
+  if (sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+  owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+
+  if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
+    {
+      ERROR_SET_ERROR (error, ER_TR_CREATE_NOT_ALLOWED);
+      goto error;
+    }
+
   /* Initialize a trigger */
-  trigger->owner = Au_user;
+  trigger->owner = owner;
   trigger->status = status;
   trigger->priority = priority;
   trigger->event = event;
@@ -4218,16 +4241,38 @@ tr_find_trigger (const char *name)
 {
   DB_OBJECT *object;
   TR_TRIGGER *trigger;
+  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int save;
 
   object = NULL;
   AU_DISABLE (save);
 
-  if (trigger_table_find (name, &object) == NO_ERROR)
+  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+
+  if (trigger_table_find (realname, &object) == NO_ERROR)
     {
       if (object == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_NOT_FOUND, 1, name);
+	  /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+	  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY
+	      && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+	    {
+	      char other_trigger_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+	      do_find_trigger_by_query (realname, other_trigger_name, DB_MAX_IDENTIFIER_LENGTH);
+	      if (other_trigger_name[0] != '\0')
+		{
+		  if (trigger_table_find (other_trigger_name, &object) != NO_ERROR)
+		    {
+		      goto end;
+		    }
+		}
+	    }
+	}
+
+      if (object == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_NOT_FOUND, 1, realname);
 	}
       else
 	{
@@ -4240,13 +4285,14 @@ tr_find_trigger (const char *name)
 	    {
 	      if (!check_authorization (trigger, 0))
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_SELECT_FAILURE, 1, name);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_SELECT_FAILURE, 1, realname);
 		  object = NULL;
 		}
 	    }
 	}
     }
 
+end:
   AU_ENABLE (save);
   return object;
 }
@@ -6784,98 +6830,128 @@ tr_dump_all_triggers (FILE * fp, bool quoted_id_flag)
  *    call_from_api(in): call from api
  */
 int
-tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api)
+tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api, bool deferred_flush)
 {
-  int error = NO_ERROR;
-  TR_TRIGGER *trigger;
+  TR_TRIGGER *trigger = NULL;
   DB_VALUE value;
-  char *newname, *oldname;
-  char *tr_name = NULL;
-  int save;
+  char *new_name = NULL;
+  char *old_name = NULL;
   bool has_savepoint = false;
+  bool is_abort = false;
+  int save = 0;
+  int error = NO_ERROR;
 
-  /* Do we need to disable authorization just for check_authorization ? */
-  AU_DISABLE (save);
+  if (trigger_object == NULL || name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
 
   trigger = tr_map_trigger (trigger_object, true);
   if (trigger == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-    }
-  else
-    {
-      tr_name = strdup (trigger->name);
+      return error;
     }
 
-  if (trigger == NULL)
+  AU_DISABLE (save);
+
+  if (!check_authorization (trigger, true))
     {
-      ;
+      ERROR_SET_ERROR_1ARG (error, ER_TR_TRIGGER_ALTER_FAILURE, trigger->name);
+      goto end;
     }
-  else if (!check_authorization (trigger, true))
+
+  old_name = trigger->name;
+  new_name = tr_process_name (name);
+  if (new_name == NULL)
     {
-      error = ER_TR_TRIGGER_ALTER_FAILURE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, trigger->name);
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
-  else
+
+  /* don't change owner if same. */
+  if (intl_identifier_casecmp (trigger->name, new_name) == 0)
     {
-      newname = tr_process_name (name);
-      if (newname == NULL)
+      goto end;
+    }
+
+  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+    {
+      /* protect against multiple flushes to server */
+      error = tran_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
+      if (error != NO_ERROR)
 	{
-	  ASSERT_ERROR_AND_SET (error);
+	  ASSERT_ERROR ();
+	  goto end;
 	}
-      else
+
+      has_savepoint = true;
+    }
+
+  error = trigger_table_rename (trigger_object, new_name);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* might need to abort the transaction here */
+  db_make_string (&value, new_name);
+  error = db_put_internal (trigger_object, TR_ATT_UNIQUE_NAME, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      is_abort = true;
+      goto end;
+    }
+  pr_clear_value (&value);
+
+  db_make_string (&value, sm_remove_qualifier_name (new_name));
+  error = db_put_internal (trigger_object, TR_ATT_NAME, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      is_abort = true;
+      goto end;
+    }
+  pr_clear_value (&value);
+
+  if (!deferred_flush)
+    {
+      error = locator_flush_instance (trigger_object);
+      if (error != NO_ERROR)
 	{
-	  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
-	    {
-	      /* protect against multiple flushes to server */
-	      error = tran_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
-	      if (error == NO_ERROR)
-		{
-		  has_savepoint = true;
-		}
-	    }
+	  ASSERT_ERROR ();
+	  is_abort = true;
+	  goto end;
+	}
+    }
 
-	  if (error == NO_ERROR)
-	    {
-	      error = trigger_table_rename (trigger_object, newname);
-	    }
+  if (old_name)
+    {
+      free_and_init (old_name);
+    }
 
-	  /* might need to abort the transaction here */
-	  if (error == NO_ERROR)
-	    {
-	      oldname = trigger->name;
-	      trigger->name = newname;
-	      db_make_string (&value, newname);
-	      newname = NULL;
-	      error = db_put_internal (trigger_object, TR_ATT_NAME, &value);
-	      if (error == NO_ERROR)
-		{
-		  error = locator_flush_instance (trigger_object);
-		}
+  trigger->name = new_name;
 
-	      if (error != NO_ERROR)
-		{
-		  /*
-		   * hmm, couldn't set the new name, put the old one back,
-		   * we might need to abort the transaction here ?
-		   */
-		  ASSERT_ERROR ();
-		  newname = trigger->name;
-		  trigger->name = oldname;
-		  /* if we can't do this, the transaction better abort */
-		  (void) trigger_table_rename (trigger_object, oldname);
-		  oldname = NULL;
-		}
-	      if (oldname != NULL)
-		{
-		  free_and_init (oldname);
-		}
-	    }
+end:
+  if (is_abort && error != NO_ERROR)
+    {
+      /* 
+       * Archive old comments:
+       * 1. hmm, couldn't set the new name, put the old one back,
+       *    we might need to abort the transaction here ?
+       * 2. if we can't do this, the transaction better abort
+       */
+      if (trigger_table_rename (trigger_object, old_name) != NO_ERROR)
+	{
+	  assert (false);
+	}
 
-	  if (newname != NULL)
-	    {
-	      free_and_init (newname);
-	    }
+      if (new_name)
+	{
+	  free_and_init (new_name);
 	}
     }
 
@@ -6883,12 +6959,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 
   if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
-    }
-
-  if (tr_name)
-    {
-      free_and_init (tr_name);
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
     }
 
   return error;
@@ -7297,7 +7368,12 @@ define_trigger_classes (void)
       goto tmp_error;
     }
 
-  if (dbt_add_attribute (tmp, TR_ATT_OWNER, "db_user", NULL))
+  if (dbt_add_attribute (tmp, TR_ATT_UNIQUE_NAME, "string", NULL))
+    {
+      goto tmp_error;
+    }
+
+  if (dbt_add_attribute (tmp, TR_ATT_OWNER, AU_USER_CLASS_NAME, NULL))
     {
       goto tmp_error;
     }

@@ -481,6 +481,7 @@ static UTIL_ARG_MAP ua_Load_Option_Map[] = {
   {LOAD_TABLE_NAME_S, {ARG_STRING}, {0}},
   {LOAD_COMPARE_STORAGE_ORDER_S, {ARG_BOOLEAN}, {0}},
   {LOAD_CS_FORCE_LOAD_S, {ARG_BOOLEAN}, {0}},
+  {LOAD_NO_USER_SPECIFIED_NAME_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
 };
 
@@ -506,6 +507,7 @@ static GETOPT_LONG ua_Load_Option[] = {
   {LOAD_TABLE_NAME_L, 1, 0, LOAD_TABLE_NAME_S},
   {LOAD_COMPARE_STORAGE_ORDER_L, 0, 0, LOAD_COMPARE_STORAGE_ORDER_S},
   {LOAD_CS_FORCE_LOAD_L, 0, 0, LOAD_CS_FORCE_LOAD_S},
+  {LOAD_NO_USER_SPECIFIED_NAME_L, 0, 0, LOAD_NO_USER_SPECIFIED_NAME_S},
   {0, 0, 0, 0}
 };
 
@@ -871,6 +873,29 @@ static GETOPT_LONG ua_Tde_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Flashback_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {FLASHBACK_OUTPUT_S, {ARG_STRING}, {0}},
+  {FLASHBACK_USER_S, {ARG_STRING}, {(void *) ""}},
+  {FLASHBACK_DBA_PASSWORD_S, {ARG_STRING}, {(void *) ""}},
+  {FLASHBACK_START_DATE_S, {ARG_STRING}, {0}},
+  {FLASHBACK_END_DATE_S, {ARG_STRING}, {0}},
+  {FLASHBACK_DETAIL_S, {ARG_BOOLEAN}, {0}},
+  {FLASHBACK_OLDEST_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Flashback_Option[] = {
+  {FLASHBACK_OUTPUT_L, 1, 0, FLASHBACK_OUTPUT_S},
+  {FLASHBACK_USER_L, 1, 0, FLASHBACK_USER_S},
+  {FLASHBACK_DBA_PASSWORD_L, 1, 0, FLASHBACK_DBA_PASSWORD_S},
+  {FLASHBACK_START_DATE_L, 1, 0, FLASHBACK_START_DATE_S},
+  {FLASHBACK_END_DATE_L, 1, 0, FLASHBACK_END_DATE_S},
+  {FLASHBACK_DETAIL_L, 0, 0, FLASHBACK_DETAIL_S},
+  {FLASHBACK_OLDEST_L, 0, 0, FLASHBACK_OLDEST_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_MAP ua_Utility_Map[] = {
   {CREATEDB, SA_ONLY, 2, UTIL_OPTION_CREATEDB, "createdb", ua_Create_Option, ua_Create_Option_Map},
   {RENAMEDB, SA_ONLY, 2, UTIL_OPTION_RENAMEDB, "renamedb", ua_Rename_Option, ua_Rename_Option_Map},
@@ -912,6 +937,7 @@ static UTIL_MAP ua_Utility_Map[] = {
   {VACUUMDB, SA_CS, 1, UTIL_OPTION_VACUUMDB, "vacuumdb", ua_Vacuum_Option, ua_Vacuum_Option_Map},
   {CHECKSUMDB, CS_ONLY, 1, UTIL_OPTION_CHECKSUMDB, "checksumdb", ua_Checksum_Option, ua_Checksum_Option_Map},
   {TDE, SA_CS, 1, UTIL_OPTION_TDE, "tde", ua_Tde_Option, ua_Tde_Option_Map},
+  {FLASHBACK, CS_ONLY, 2, UTIL_OPTION_FLASHBACK, "flashback", ua_Flashback_Option, ua_Flashback_Option_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 

@@ -231,6 +231,13 @@ or_unpack_value (const char *buf, DB_VALUE *value)
   return nullptr;
 }
 
+int
+or_put_value (OR_BUF *, DB_VALUE *, int, int, int)
+{
+  assert (false);
+  return 0;
+}
+
 // checkpoint_info
 void
 cublog::checkpoint_info::pack (cubpacking::packer &serializer) const

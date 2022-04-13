@@ -33,11 +33,11 @@
 #if !defined(WINDOWS)
 #include <stdio.h>
 #include <unistd.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#else
+#include <winsock2.h>
 #endif /* !WINDOWS */
-
-#if defined(SOLARIS)
-#include <netdb.h>		/* for MAXHOSTNAMELEN */
-#endif /* SOLARIS */
 
 #include <assert.h>
 
@@ -156,6 +156,7 @@ VOLID boot_User_volid = 0;	/* todo: boot_User_volid looks deprecated */
 char boot_Host_connected[CUB_MAXHOSTNAMELEN] = "";
 #endif /* CS_MODE */
 char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";
+char boot_Ip_address[16] = { 0 };
 
 static char boot_Volume_label[PATH_MAX] = " ";
 static bool boot_Is_client_all_final = true;
@@ -1100,7 +1101,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       client_credential->host_name = boot_get_host_name ();
     }
+
   client_credential->process_id = getpid ();
+
+  if (client_credential->client_ip_addr.empty ())
+    {
+      client_credential->client_ip_addr = boot_get_ip ();
+    }
 
   /*
    * Initialize the dynamic loader. Don't care about failures. If dynamic
@@ -1421,8 +1428,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   tr_init ();			/* initialize trigger manager */
 
-  jsp_init ();
-
   /* TODO: how about to call es_init() only for normal client? */
   if (boot_Server_credential.lob_path[0] != '\0')
     {
@@ -1597,7 +1602,6 @@ boot_shutdown_client (bool is_er_final)
 	}
 
       boot_client_all_finalize (is_er_final);
-      jsp_close_connection ();
     }
 
   return NO_ERROR;
@@ -1960,7 +1964,8 @@ boot_define_class (MOP class_mop)
   SM_TEMPLATE *def;
   char domain_string[32];
   int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "class_name", NULL };
+  const char *index1_col_names[2] = { "unique_name", NULL };
+  const char *index2_col_names[3] = { "class_name", "owner", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
 
@@ -1970,6 +1975,14 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
+  /* unique name */
+  error_code = smt_add_attribute (def, "unique_name", "varchar(255)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* class name */
   error_code = smt_add_attribute (def, "class_name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
     {
@@ -2128,8 +2141,51 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
+  /* 
+   *  Define the index name so that it always has the same name as the macro variable (CATCLS_INDEX_NAME)
+   *  in src/storage/catalog_class.c.
+   * 
+   *  _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
+   *  in src/storage/btree.c, it becomes assert (false) in the code below.
+   * 
+   *    CREATE TABLE t1 (c1 INT);
+   *    RENAME CLASS t1 AS t2;
+   * 
+   *    assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
+   *            || log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
+   * 
+   *  All others should be false, and !BTREE_IS_UNIQUE (btid_int->unique_pk) should be true. However,
+   *  if there is a primary key or a unique index, !BTREE_IS_UNIQUE (btid_int->unique_pk) also becomes false,
+   *  and all are false. In the btree_key_insert_new_key function, analysis should be added to the operation
+   *  of the primary key and unique index.
+   * 
+   *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
+   */
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, "i__db_class_unique_name", index1_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index2_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "class_of", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "unique_name", 0, 1);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "class_name", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3400,9 +3456,16 @@ boot_define_serial (MOP class_mop)
   unsigned char num[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   DB_VALUE default_value;
   int error_code = NO_ERROR;
-  const char *index_col_names[] = { "name", NULL };
+  const char *index1_col_names[] = { "unique_name", NULL };
+  const char *index2_col_names[] = { "name", "owner", NULL };
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
+
+  error_code = smt_add_attribute (def, "unique_name", "string", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   error_code = smt_add_attribute (def, "name", "string", NULL);
   if (error_code != NO_ERROR)
@@ -3520,7 +3583,20 @@ boot_define_serial (MOP class_mop)
     }
 
   /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL, index_col_names, 0);
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, "u_db_serial_unique_name", index1_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* add index */
+  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, NULL, index2_col_names, 0);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_constrain_non_null (class_mop, "name", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5320,6 +5396,8 @@ boot_define_view_trigger (void)
 	}
     }
 
+  /* Why? {[c]} SUBSETEQ (SELECT SUM(SET{[au].[class_of]}) FROM ... */
+  /* {[c]} -> {[t].[target_class]} ? */
   sprintf (stmt,
 	   "SELECT CAST([t].[name] AS VARCHAR(255)), [c].[class_name], CAST([t].[target_attribute] AS VARCHAR(255)),"
 	   " CASE [t].[target_class_attribute] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
@@ -6103,6 +6181,24 @@ boot_get_host_name (void)
     }
 
   return boot_Host_name;
+}
+
+char *
+boot_get_ip (void)
+{
+  struct hostent *hp = NULL;
+  if (boot_Host_name[0] == '\0')
+    {
+      boot_get_host_name ();
+    }
+
+  if ((hp = gethostbyname (boot_Host_name)) != NULL)
+    {
+      char *ip = inet_ntoa (*(struct in_addr *) *hp->h_addr_list);
+      memcpy (boot_Ip_address, ip, 15);
+    }
+
+  return boot_Ip_address;
 }
 
 #if defined(CS_MODE)

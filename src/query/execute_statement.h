@@ -138,7 +138,7 @@ extern void do_print_on_method (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * 
 extern void dbmeth_class_name (DB_OBJECT * self, DB_VALUE * result);
 extern void dbmeth_print (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * msg);
 
-extern int do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement);
+extern int do_rename (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_scope (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -189,5 +189,9 @@ extern int do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
+
+extern int do_find_class_by_query (const char *name, char *buf, int buf_size);
+extern int do_find_serial_by_query (const char *name, char *buf, int buf_size);
+extern int do_find_trigger_by_query (const char *name, char *buf, int buf_size);
 
 #endif /* _EXECUTE_STATEMENT_H_ */

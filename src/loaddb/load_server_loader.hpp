@@ -63,6 +63,7 @@ namespace cubload
       class_id m_clsid;
 
       LC_FIND_CLASSNAME locate_class (const char *class_name, OID &class_oid);
+      LC_FIND_CLASSNAME locate_class_for_all_users (const char *class_name, OID &class_oid);
       void register_class_with_attributes (const char *class_name, class_command_spec_type *cmd_spec);
       void get_class_attributes (heap_cache_attrinfo &attrinfo, attribute_type attr_type, or_attribute *&or_attributes,
 				 int *n_attributes);

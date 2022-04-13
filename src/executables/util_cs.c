@@ -59,6 +59,8 @@
 #include "xasl.h"
 #include "log_volids.hpp"
 #include "tde.h"
+#include "flashback_cl.h"
+#include "connection_support.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -72,6 +74,10 @@
 	    ((VOL_PURPOSE == DB_PERMANENT_DATA_PURPOSE) ? "PERMANENT DATA"	\
 	    : (VOL_PURPOSE == DB_TEMPORARY_DATA_PURPOSE) ? "TEMPORARY DATA"     \
 	    : "UNKNOWN")
+
+#if defined(WINDOWS)
+#define STDIN_FILENO  _fileno (stdin)
+#endif
 
 typedef enum
 {
@@ -574,7 +580,7 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 	  continue;
 	}
 
-      sm_downcase_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
+      sm_user_specified_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
       cls_mop = locator_find_class (name);
 
       obj = (MOBJ *) & cls_sm;
@@ -4007,4 +4013,486 @@ print_tde_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 error_exit:
   return EXIT_FAILURE;
+}
+
+static void
+clean_stdin ()
+{
+  int c;
+
+  /* consumes all the values in the input buffer */
+  do
+    {
+      c = getchar ();
+    }
+  while (c != '\n' && c != EOF);
+}
+
+static time_t
+parse_date_string_to_time (char *date_string)
+{
+  assert (date_string != NULL);
+
+  time_t result = 0;
+  struct tm time_data = { };
+
+  if (sscanf
+      (date_string, "%d-%d-%d:%d:%d:%d", &time_data.tm_mday, &time_data.tm_mon, &time_data.tm_year, &time_data.tm_hour,
+       &time_data.tm_min, &time_data.tm_sec) != 6)
+    {
+      return 0;
+    }
+
+  if (time_data.tm_mday < 1 || time_data.tm_mday > 31
+      || time_data.tm_mon < 1 || time_data.tm_mon > 12
+      || time_data.tm_year < 1900
+      || time_data.tm_hour < 0 || time_data.tm_hour > 23
+      || time_data.tm_min < 0 || time_data.tm_min > 59 || time_data.tm_sec < 0 || time_data.tm_sec > 59)
+    {
+      return 0;
+    }
+
+  time_data.tm_mon -= 1;
+  time_data.tm_year -= 1900;
+  time_data.tm_isdst = -1;
+
+  result = mktime (&time_data);
+
+  return result < 0 ? 0 : result;
+}
+
+int
+flashback (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+
+  const char *database_name = NULL;
+  int num_tables = 0;
+  dynamic_array *darray = NULL;
+  int i = 0;
+  char table_name_buf[SM_MAX_IDENTIFIER_LENGTH];
+  char *table_name = NULL;
+
+  char *invalid_class = NULL;
+  int invalid_class_idx = 0;
+
+  time_t invalid_time = 0;
+
+  OID *oid_list = NULL;
+
+  const char *output_file = NULL;
+  FILE *outfp = NULL;
+  char *user = NULL;
+  const char *dba_password = NULL;
+
+  char *start_date = NULL;
+  char *end_date = NULL;
+  time_t start_time = 0;
+  time_t end_time = 0;
+
+  bool is_detail = false;
+  bool is_oldest = false;
+
+  char *passbuf = NULL;
+  int error = NO_ERROR;
+
+  int trid = 0;
+
+  int num_item = 5;
+  char *loginfo_list = NULL;
+
+  FLASHBACK_SUMMARY_INFO_MAP summary_info;
+  FLASHBACK_SUMMARY_INFO *summary_entry = NULL;
+
+  bool need_shutdown = false;
+
+  LOG_LSA start_lsa = LSA_INITIALIZER;
+  LOG_LSA end_lsa = LSA_INITIALIZER;
+
+  int timeout = 0;
+
+  time_t current_time = time (NULL);
+
+  num_tables = utility_get_option_string_table_size (arg_map) - 1;
+  if (num_tables < 1)
+    {
+      goto print_flashback_usage;
+    }
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_flashback_usage;
+    }
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  output_file = utility_get_option_string_value (arg_map, FLASHBACK_OUTPUT_S, 0);
+  user = utility_get_option_string_value (arg_map, FLASHBACK_USER_S, 0);
+  dba_password = utility_get_option_string_value (arg_map, FLASHBACK_DBA_PASSWORD_S, 0);
+  start_date = utility_get_option_string_value (arg_map, FLASHBACK_START_DATE_S, 0);
+  end_date = utility_get_option_string_value (arg_map, FLASHBACK_END_DATE_S, 0);
+  is_detail = utility_get_option_bool_value (arg_map, FLASHBACK_DETAIL_S);
+  is_oldest = utility_get_option_bool_value (arg_map, FLASHBACK_OLDEST_S);
+
+  /* create table list */
+  /* class existence and classoid will be found at server side. if is checked at utility side, it needs addtional access to the server through locator */
+  darray = da_create (num_tables, SM_MAX_IDENTIFIER_LENGTH);
+  if (darray == NULL)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+      goto error_exit;
+    }
+
+  for (i = 0; i < num_tables; i++)
+    {
+      table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
+
+      strncpy_bufsize (table_name_buf, table_name);
+      if (da_add (darray, table_name_buf) != NO_ERROR)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	  goto error_exit;
+	}
+    }
+
+  /* start date check */
+  if (start_date != NULL && strlen (start_date) > 0)
+    {
+      start_time = parse_date_string_to_time (start_date);
+      if (start_time == 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_FORMAT));
+	  goto error_exit;
+	}
+    }
+
+  /* end date check */
+  if (end_date != NULL && strlen (end_date) > 0)
+    {
+      end_time = parse_date_string_to_time (end_date);
+      if (end_time == 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_FORMAT));
+	  goto error_exit;
+	}
+    }
+
+  /* start time and end time setting.
+   * 1. 10 minutes before end time, if only end time is specified
+   * 2. 10 minutes after start time, if only start time is specified
+   * 3. if no time is specified, then get current execution time for end time */
+
+  if (start_time == 0 && end_time != 0)
+    {
+      start_time = end_time - 600;
+    }
+  else if (start_time != 0 && end_time == 0)
+    {
+      end_time = start_time + 600;
+    }
+  else if (start_time == 0 && end_time == 0)
+    {
+      end_time = time (NULL);
+      start_time = end_time - 600;
+    }
+
+  /* 1. start time < end time
+   * 2. start time is required to be set after db_creation time (server side check)
+   * 3. start time, and end time are required to be set within the log volume range (server side check) */
+  if (start_time >= end_time)
+    {
+      char sdate_buf[20];
+      char edate_buf[20];
+
+      if (start_date == NULL)
+	{
+	  strftime (sdate_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&start_time));
+	  start_date = sdate_buf;
+	}
+
+      if (end_date == NULL)
+	{
+	  strftime (edate_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&end_time));
+	  end_date = edate_buf;
+	}
+
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_RANGE),
+			     start_date, end_date);
+      goto error_exit;
+    }
+
+  /* output file check */
+  if (output_file == NULL)
+    {
+      outfp = stdout;
+    }
+  else
+    {
+      outfp = fopen (output_file, "w");
+      if (outfp == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_BAD_OUTPUT),
+				 output_file);
+
+	  goto error_exit;
+	}
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (db_login ("DBA", dba_password) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  /* first try to restart with the password given (possibly none) */
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error)
+    {
+      if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
+	{
+	  /*
+	   * prompt for a valid password and try again, need a reusable
+	   * password prompter so we can use getpass() on platforms that
+	   * support it.
+	   */
+
+	  /* get password interactively if interactive mode */
+	  passbuf =
+	    getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_DBA_PASSWORD));
+	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+	    {
+	      passbuf = (char *) NULL;
+	    }
+	  dba_password = passbuf;
+	  if (db_login ("DBA", dba_password) != NO_ERROR)
+	    {
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      goto error_exit;
+	    }
+	  else
+	    {
+	      error = db_restart (arg->command_name, TRUE, database_name);
+	    }
+	}
+
+      if (error)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+    }
+
+  need_shutdown = true;
+
+  if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NO_SUPPLEMENTAL_LOG));
+      goto error_exit;
+    }
+
+  oid_list = (OID *) malloc (sizeof (OID) * num_tables);
+  if (oid_list == NULL)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+      goto error_exit;
+    }
+
+  error =
+    flashback_get_and_show_summary (darray, user, start_time, end_time, &summary_info, &oid_list, &invalid_class,
+				    &invalid_time);
+  if (error != NO_ERROR)
+    {
+      /* print error message */
+      switch (error)
+	{
+	case ER_FLASHBACK_INVALID_TIME:
+	  {
+	    char db_creation_time[20];
+	    char current_time_buf[20];
+
+	    strftime (db_creation_time, 20, "%d-%m-%Y:%H:%M:%S", localtime (&invalid_time));
+	    strftime (current_time_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
+
+	    PRINT_AND_LOG_ERR_MSG (msgcat_message
+				   (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TIME),
+				   current_time_buf, db_creation_time);
+	    break;
+	  }
+	case ER_FLASHBACK_INVALID_CLASS:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TABLE_NOT_EXIST),
+				 invalid_class);
+	  free_and_init (invalid_class);
+
+	  break;
+	case ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TOO_MANY_TRANSACTION));
+	  break;
+	case ER_FLASHBACK_DUPLICATED_REQUEST:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_DUPLICATED_REQUEST));
+
+	default:
+	  break;
+	}
+
+      goto error_exit;
+    }
+
+  if (summary_info.empty ())
+    {
+      goto error_exit;
+    }
+
+  timeout = prm_get_integer_value (PRM_ID_FLASHBACK_TIMEOUT);
+
+  while (summary_entry == NULL)
+    {
+      POLL_FD input_fd = { STDIN_FILENO, POLLIN | POLLPRI, 0 };
+
+      printf ("Enter transaction id (press -1 to quit): ");
+      fflush (stdout);
+
+      if (poll (&input_fd, 1, timeout * 1000))
+	{
+	  if (scanf ("%d", &trid) != 1)
+	    {
+	      /* When non integer value is input, the input buffer must be flushed. */
+	      clean_stdin ();
+
+	      continue;
+	    }
+	}
+      else
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TIMEOUT), timeout);
+
+	  goto error_exit;
+	}
+
+      if (trid == -1)
+	{
+	  goto error_exit;
+	}
+
+      FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
+      if (summary_entry == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TRANSACTION),
+				 trid);
+	}
+
+      printf ("\n");
+    }
+
+  start_lsa = summary_entry->start_lsa;
+  end_lsa = summary_entry->end_lsa;
+  user = summary_entry->user;
+
+  do
+    {
+      error =
+	flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest,
+			       &loginfo_list, &invalid_class_idx);
+      if (error != NO_ERROR)
+	{
+	  switch (error)
+	    {
+	    case ER_FLASHBACK_SCHEMA_CHANGED:
+	      {
+		char classname[SM_MAX_IDENTIFIER_LENGTH];
+		da_get (darray, invalid_class_idx, classname);
+
+		PRINT_AND_LOG_ERR_MSG (msgcat_message
+				       (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+					FLASHBACK_MSG_TABLE_SCHEMA_CHANGED), classname);
+		break;
+	      }
+	    case ER_FLASHBACK_LOG_NOT_EXIST:
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+				      FLASHBACK_MSG_LOG_VOLUME_NOT_EXIST));
+	      break;
+	    default:
+	      break;
+	    }
+
+	  goto error_exit;
+	}
+
+      error = flashback_print_loginfo (loginfo_list, num_item, darray, oid_list, is_detail, outfp);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+    }
+  while (!LSA_ISNULL (&start_lsa) && !LSA_ISNULL (&end_lsa) && LSA_LT (&start_lsa, &end_lsa));
+
+  db_shutdown ();
+
+  da_destroy (darray);
+
+  free_and_init (oid_list);
+
+  if (loginfo_list != NULL)
+    {
+      free_and_init (loginfo_list);
+    }
+
+  return EXIT_SUCCESS;
+
+print_flashback_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+error_exit:
+
+  if (need_shutdown)
+    {
+      db_shutdown ();
+    }
+
+  if (darray != NULL)
+    {
+      da_destroy (darray);
+    }
+
+  if (oid_list != NULL)
+    {
+      free_and_init (oid_list);
+    }
+
+  if (loginfo_list != NULL)
+    {
+      free_and_init (loginfo_list);
+    }
+
+  return EXIT_FAILURE;
+
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
+
 }

@@ -365,6 +365,8 @@ extern "C"
   extern int csql_set_column_width_info (const char *column_name, int column_width);
   extern int csql_get_column_width (const char *column_name);
 
+  extern char *string_to_string (const char *string_value, char string_delimiter, char string_introducer, int length,
+				 int *result_length, bool plain_string, bool change_single_quote);
 
 #ifdef __cplusplus
 }

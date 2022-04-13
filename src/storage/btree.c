@@ -42,6 +42,7 @@
 #include "transform.h"
 #include "partition_sr.h"
 #include "passive_tran_server.hpp"
+#include "page_buffer.h"
 #include "porting_inline.hpp"
 #include "query_executor.h"
 #include "query_opfunc.h"
@@ -25065,6 +25066,8 @@ btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_sc
   tdes->page_desync_lsa.set_null ();
   er_clear ();
 
+  btree_log_if_enabled ("Btree scan force restart from root requested. Page desync LSA = %lld|%d",
+			LSA_AS_ARGS (&tdes->page_desync_lsa));
   bts.force_restart_from_root = true;
 
   // If there are objects selected, end this iteration and maybe replication will catch-up in the meantime.
@@ -25223,14 +25226,34 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  error_code = key_func (thread_p, bts);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR ();
-	      goto exit_on_error;
+	      error_code = btree_range_scan_handle_error (thread_p, *bts, error_code);
+	      /* if, at this point a page desync occured while applying functions and traversing btree pages
+	       * a force restart from root should have been requested - handled below */
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit_on_error;
+		}
 	    }
 	  if (bts->is_interrupted || bts->end_one_iteration || bts->end_scan)
 	    {
 	      /* Interrupt key processing loop. */
 	      break;
 	    }
+	  if (bts->force_restart_from_root)
+	    {
+	      /* Couldn't advance (most likely because of page desync on PTS). Restart from root. */
+	      btree_log_if_enabled ("Notification: internal key function caused range scan to be interrupted"
+				    " (hint: page desync in PTS).\n");
+	      if (bts->C_page != nullptr)
+		{
+		  pgbuf_unfix_and_init (thread_p, bts->C_page);
+		}
+	      assert (bts->O_page == nullptr);
+	      assert (bts->P_page == nullptr);
+	      break;
+	    }
+
 	  /* Current key must be consumed. Find a new valid key. */
 	  assert (bts->key_status == BTS_KEY_IS_CONSUMED);
 	  error_code = btree_range_scan_advance_over_filtered_keys (thread_p, bts);
@@ -25497,6 +25520,27 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   if (!bts->is_key_partially_processed)
     {
+      /* Before processing leaf record objects and if there is an overflow page, fix the overflow page first to
+       * ensure that at least one overflow page can be fixed without desync issues.
+       * If desync occurs, early out.
+       * This ensures that the happy path logic of this function - process the leaf records and the first overflow page
+       * records - is maintained. */
+      VPID_COPY (&overflow_vpid, &bts->leaf_rec_info.ovfl);
+      if (!VPID_ISNULL (&overflow_vpid))
+	{
+	  /* Process overflow objects. */
+	  /* Start processing overflow with first one. */
+	  overflow_page = pgbuf_fix_old_and_check_repl_desync (thread_p, overflow_vpid, PGBUF_LATCH_READ,
+							       PGBUF_UNCONDITIONAL_LATCH);
+	  if (overflow_page == nullptr)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      bts->end_one_iteration = true;
+	      return NO_ERROR;
+	    }
+	  // otherwise, page was fixed without desync issues; keep it fixed and fall through
+	}
+
       /* Start processing key with leaf record objects. */
       error_code =
 	btree_record_process_objects (thread_p, &bts->btid_int, BTREE_LEAF_NODE, &bts->key_record, bts->offset, &stop,
@@ -25504,17 +25548,24 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  // unfix first overflow page; it might have been fixed
+	  if (!VPID_ISNULL (&overflow_vpid))
+	    {
+	      pgbuf_unfix_and_init (thread_p, overflow_page);
+	    }
 	  return error_code;
 	}
       if (stop || bts->end_one_iteration || bts->end_scan || bts->is_interrupted)
 	{
 	  /* Early out. */
+	  // unfix first overflow page; it might have been fixed
+	  if (!VPID_ISNULL (&overflow_vpid))
+	    {
+	      pgbuf_unfix_and_init (thread_p, overflow_page);
+	    }
 	  return NO_ERROR;
 	}
-      /* Process overflow objects. */
-      /* Start processing overflow with first one. */
-      VPID_COPY (&overflow_vpid, &bts->leaf_rec_info.ovfl);
-      /* Fall through. */
+      /* Fall through to overflow objects processing if present. */
     }
   else
     {
@@ -25536,13 +25587,31 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   while (!VPID_ISNULL (&overflow_vpid))
     {
       /* Fix next overflow page. */
-      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-      overflow_page = pgbuf_fix_old_and_check_repl_desync (thread_p, overflow_vpid, PGBUF_LATCH_READ,
-							   PGBUF_UNCONDITIONAL_LATCH);
-      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+      /* When first entering here after having processed objects in leaf, the page will have been already fixed. On
+       * subsequent iterations, it will not have already been fixed. */
+      if (overflow_page == nullptr)
+	{
+	  PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+	  overflow_page = pgbuf_fix_old_and_check_repl_desync (thread_p, overflow_vpid, PGBUF_LATCH_READ,
+							       PGBUF_UNCONDITIONAL_LATCH);
+	  btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+	}
+
       if (overflow_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
+	  if (er_errid () == ER_PAGE_AHEAD_OF_REPLICATION)
+	    {
+	      // if this would be the first iteration, the first overflow page should have already been
+	      // fixed and checked (in the section before while loop)
+	      assert (!VPID_ISNULL (&last_visible_overflow));
+
+	      // save state; upon next entry/retry will directly fix the overflow page and reach here
+	      bts->O_vpid = last_visible_overflow;
+	      bts->is_key_partially_processed = true;
+	      // TODO: these are useless as - due to handling in btree_range_scan_handle_error and
+	      // btree_range_scan_handle_page_ahead_repl_error - the scan will be restarted
+	    }
 	  if (prev_overflow_page != NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, prev_overflow_page);

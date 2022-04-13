@@ -2788,6 +2788,8 @@ intl_identifier_cmp (const char *str1, const char *str2)
   return strcmp (str1, str2);
 }
 
+
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * intl_identifier_namecmp() - compares two identifier string
  *   return: 0 if the identifiers are the "same",
@@ -2826,6 +2828,7 @@ intl_identifier_namecmp (const char *str1, const char *str2)
   return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) cp1, (unsigned char *) cp2, str1_size,
 					 str2_size);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * intl_identifier_lower_string_size() - determine the size required for holding

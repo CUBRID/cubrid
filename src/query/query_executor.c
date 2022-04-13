@@ -1940,6 +1940,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	case S_SHOWSTMT_SCAN:
 	  break;
 	case S_METHOD_SCAN:
+	  p->s_id.s.msid.clear (is_final);
 	  break;
 	case S_VALUES_SCAN:
 	  break;

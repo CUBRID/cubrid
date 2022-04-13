@@ -534,14 +534,14 @@ TEST_CASE ("Test out-of-order request_queue_autosend", "")
 
   constexpr int total_op_count = 1000;
 
-  std::thread t1 ([&rssq]
+  std::thread t1 ([&rssq, total_op_count]
   {
     for (int op_count = 0; op_count < total_op_count; ++op_count)
       {
 	push_rssq_message_id_and_op (rssq, reqids::_0, op_count);
       }
   });
-  std::thread t2 ([&rssq]
+  std::thread t2 ([&rssq, total_op_count]
   {
     for (int op_count = 0; op_count < total_op_count; ++op_count)
       {
@@ -1279,23 +1279,39 @@ er_set (int, const char *, const int, int, int, ...)
 bool
 prm_get_bool_value (PARAM_ID prmid)
 {
+  // affirmative for debug parameters used in the context of this test
+  if (prmid == PRM_ID_ER_LOG_COMM_REQUEST)
+    {
+      return true;
+    }
+  assert (false);
   return false;
 }
 
 int
 or_packed_value_size (const DB_VALUE *, int, int, int )
 {
+  assert (false);
   return 0;
 }
 
 char *
 or_pack_value (char *, DB_VALUE *)
 {
+  assert (false);
   return nullptr;
 }
 
 char *
 or_unpack_value (const char *, DB_VALUE *)
 {
+  assert (false);
   return nullptr;
+}
+
+int
+or_put_value (OR_BUF *, DB_VALUE *, int, int, int)
+{
+  assert (false);
+  return 0;
 }

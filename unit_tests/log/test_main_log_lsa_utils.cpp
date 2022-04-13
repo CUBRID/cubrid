@@ -69,3 +69,10 @@ or_unpack_value (const char *buf, DB_VALUE *value)
   assert (false);
   return nullptr;
 }
+
+int
+or_put_value (OR_BUF *, DB_VALUE *, int, int, int)
+{
+  assert (false);
+  return 0;
+}
