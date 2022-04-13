@@ -1056,7 +1056,7 @@ btree_perf_unique_lock_time (THREAD_ENTRY * thread_p, PERF_UTIME_TRACKER * track
   while (false)
 
 /* Save debug info for redo and possible undo. Expected rv_undo_pptr is a
- * char** argument (that can be NULL).
+ * char*& argument (that can be NULL).
  */
 #define BTREE_RV_UNDOREDO_SET_DEBUG_INFO(addr, rv_redo_ptr, rv_undo_ptr, btid_int, id) \
   do \
@@ -1417,7 +1417,7 @@ static void btree_record_object_set_mvcc_flags (char *data, short mvcc_flags);
 static void btree_record_object_clear_mvcc_flags (char *rec_data, short mvcc_flags);
 static INLINE short btree_record_object_get_mvcc_flags (char *data) __attribute__ ((ALWAYS_INLINE));
 static INLINE bool btree_record_object_is_flagged (char *data, short mvcc_flag) __attribute__ ((ALWAYS_INLINE));
-static void btree_leaf_record_handle_first_overflow (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid_int,
+static void btree_leaf_record_handle_first_overflow (THREAD_ENTRY * thread_p, RECDES * recp, const BTID_INT * btid_int,
 						     char **rv_undo_data_ptr, char **rv_redo_data_ptr);
 static int btree_record_get_num_oids (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, RECDES * rec, int offset,
 				      BTREE_NODE_TYPE node_type);
@@ -1459,10 +1459,10 @@ static int btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_
 						  BTREE_DELETE_HELPER * delete_helper, PAGE_PTR leaf_page,
 						  BTREE_SEARCH_KEY_HELPER * search_key, RECDES * leaf_rec,
 						  VPID * ovfl_vpid);
-static int btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
+static int btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, const BTID_INT * btid_int,
 					BTREE_DELETE_HELPER * delete_helper, PAGE_PTR leaf_page, RECDES * leaf_record,
 					BTREE_SEARCH_KEY_HELPER * search_key, VPID * next_ovfl_vpid);
-static int btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
+static int btree_modify_overflow_link (THREAD_ENTRY * thread_p, const BTID_INT * btid_int,
 				       BTREE_DELETE_HELPER * delete_helper, PAGE_PTR ovfl_page, VPID * next_ovfl_vpid);
 
 static DISK_ISVALID btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid, bool repair,
@@ -1653,11 +1653,11 @@ static int btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, B
 						      RECDES * leaf_record, BTREE_SEARCH_KEY_HELPER * search_key,
 						      OID * last_oid, OID * last_class_oid,
 						      BTREE_MVCC_INFO * last_mvcc_info, int offset_to_last_object);
-static int btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
+static int btree_record_remove_object (THREAD_ENTRY * thread_p, const BTID_INT * btid_int,
 				       BTREE_DELETE_HELPER * delete_helper, PAGE_PTR page, RECDES * record,
 				       BTREE_SEARCH_KEY_HELPER * search_key, BTREE_NODE_TYPE node_type,
 				       int offset_to_object, LOG_DATA_ADDR * addr);
-static void btree_record_remove_object_internal (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
+static void btree_record_remove_object_internal (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, RECDES * record,
 						 BTREE_NODE_TYPE node_type, int offset_to_object, char **rv_undo_data,
 						 char **rv_redo_data, int *displacement);
 static int btree_key_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT * btid_int,
@@ -1665,7 +1665,7 @@ static int btree_key_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTI
 				    LEAF_REC * leaf_info, int offset_after_key, BTREE_SEARCH_KEY_HELPER * search_key,
 				    PAGE_PTR * overflow_page, PAGE_PTR prev_page, BTREE_NODE_TYPE node_type,
 				    int offset_to_object);
-static int btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT * btid_int,
+static int btree_overflow_remove_object (THREAD_ENTRY * thread_p, const DB_VALUE * key, const BTID_INT * btid_int,
 					 BTREE_DELETE_HELPER * delete_helper, PAGE_PTR * overflow_page,
 					 PAGE_PTR prev_page, PAGE_PTR leaf_page, RECDES * leaf_record,
 					 BTREE_SEARCH_KEY_HELPER * search_key, int offset_to_object);
@@ -1736,7 +1736,8 @@ STATIC_INLINE void btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT
 STATIC_INLINE const char *btree_purpose_to_string (BTREE_OP_PURPOSE purpose) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *btree_op_type_to_string (int op_type) __attribute__ ((ALWAYS_INLINE));
 
-static bool btree_is_class_oid_packed (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first);
+static bool btree_is_class_oid_packed (const BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type,
+				       bool is_first);
 static bool btree_is_fixed_size (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first);
 static bool btree_is_insert_data_purpose (BTREE_OP_PURPOSE purpose);
 static bool btree_is_insert_object_purpose (BTREE_OP_PURPOSE purpose);
@@ -2305,7 +2306,7 @@ btree_leaf_get_vpid_for_overflow_oids (RECDES * rec, VPID * ovfl_vpid)
  * rv_redo_data_ptr (in)  : If not null, outputs redo recovery data for changes made.
  */
 void
-btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
+btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, RECDES * leaf_record,
 					VPID * new_overflow_vpid, char **rv_undo_data_ptr, char **rv_redo_data_ptr)
 {
   char *ovf_link_ptr = NULL;
@@ -3001,7 +3002,7 @@ btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT
  * rv_redo_data_ptr (out) : If not null, outputs redo recovery data for the changes made to record.
  */
 static void
-btree_leaf_record_handle_first_overflow (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid_int,
+btree_leaf_record_handle_first_overflow (THREAD_ENTRY * thread_p, RECDES * recp, const BTID_INT * btid_int,
 					 char **rv_undo_data_ptr, char **rv_redo_data_ptr)
 {
   int old_mvcc_flags;
@@ -9466,7 +9467,7 @@ exit_on_error:
  * next_ovfl_vpid (in)	    : New link to first overflow page.
  */
 static int
-btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_DELETE_HELPER * delete_helper,
+btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, BTREE_DELETE_HELPER * delete_helper,
 			     PAGE_PTR leaf_page, RECDES * leaf_record, BTREE_SEARCH_KEY_HELPER * search_key,
 			     VPID * next_ovfl_vpid)
 {
@@ -9542,7 +9543,7 @@ btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE
  * next_ovfl_vpid (in)	    : New link to next overflow.
  */
 static int
-btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_DELETE_HELPER * delete_helper,
+btree_modify_overflow_link (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, BTREE_DELETE_HELPER * delete_helper,
 			    PAGE_PTR ovfl_page, VPID * next_ovfl_vpid)
 {
   LOG_DATA_ADDR ovf_addr;
@@ -21899,7 +21900,7 @@ btree_compare_btids (void *mem_btid1, void *mem_btid2)
  *			  and if node type is leaf and if key doesn't have overflow pages).
  */
 int
-btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
+btree_check_valid_record (THREAD_ENTRY * thread_p, const BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
 			  DB_VALUE * key)
 {
 #define BTREE_CHECK_VALID_PRINT_REC_MAX_LENGTH 1024
@@ -31309,7 +31310,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_REDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, btid_int,
 				    BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
 #endif /* !NDEBUG */
-      LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
+      //LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
       /* Remove record from leaf. */
       btree_record_remove_object_internal (thread_p, btid_int, &leaf_record, BTREE_LEAF_NODE, offset_to_second_object,
@@ -31318,20 +31319,21 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   else
     {
       /* Leaf and overflow OID's page are going to be changed. A system operation and undo logging is required. */
-      log_sysop_start (thread_p);
+      assert (!delete_helper->is_system_op_started);
+      log_sysop_start_atomic (thread_p);
       delete_helper->is_system_op_started = true;
 
-      error_code =
-	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
-				      &leaf_record, search_key, offset_to_second_object);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  goto exit;
-	}
+//      error_code =
+//      btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
+//                                    &leaf_record, search_key, offset_to_second_object);
+//      if (error_code != NO_ERROR)
+//      {
+//        assert_release (false);
+//        goto exit;
+//      }
 
+      // redo data ptr already set
       rv_undo_data_ptr = rv_undo_data;
-      rv_redo_data_ptr = rv_redo_data;
 
 #if !defined (NDEBUG)
       /* Leaf may have been logged if object was removed from overflow page. Reset logging structures for new logging.
@@ -31340,8 +31342,9 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_UNDOREDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, rv_undo_data_ptr, btid_int,
 					BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
 #endif /* !NDEBUG */
-      LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
+      //LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
     }
+  LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
   /* Replace inserted object with second visible object. */
   btree_leaf_change_first_object (thread_p, &leaf_record, btid_int, &delete_helper->second_object_info.oid,
@@ -31365,6 +31368,16 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
       log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &delete_helper->leaf_addr, rv_undo_data_length,
 				rv_redo_data_length, rv_undo_data, rv_redo_data);
+
+      /* Update overflow OID page */
+      error_code =
+	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
+				      &leaf_record, search_key, offset_to_second_object);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  goto exit;
+	}
     }
   else
     {
@@ -31508,7 +31521,7 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, BTID_INT * b
  * addr (in)		    : Leaf or overflow log address.
  */
 static int
-btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_DELETE_HELPER * delete_helper,
+btree_record_remove_object (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, BTREE_DELETE_HELPER * delete_helper,
 			    PAGE_PTR page, RECDES * record, BTREE_SEARCH_KEY_HELPER * search_key,
 			    BTREE_NODE_TYPE node_type, int offset_to_object, LOG_DATA_ADDR * addr)
 {
@@ -31601,7 +31614,7 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
  * displacement (out)	 : Output displacement of the rest of the record.
  */
 static void
-btree_record_remove_object_internal (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
+btree_record_remove_object_internal (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, RECDES * record,
 				     BTREE_NODE_TYPE node_type, int offset_to_object, char **rv_undo_data,
 				     char **rv_redo_data, int *displacement)
 {
@@ -31715,13 +31728,13 @@ btree_key_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT * bti
  * offset_to_object (in)    : Offset to object being removed.
  */
 static int
-btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT * btid_int,
+btree_overflow_remove_object (THREAD_ENTRY * thread_p, const DB_VALUE * key, const BTID_INT * btid_int,
 			      BTREE_DELETE_HELPER * delete_helper, PAGE_PTR * overflow_page, PAGE_PTR prev_page,
 			      PAGE_PTR leaf_page, RECDES * leaf_record, BTREE_SEARCH_KEY_HELPER * search_key,
 			      int offset_to_object)
 {
   int error_code = NO_ERROR;	/* Error code. */
-  OID *notification_class_oid;
+  const OID *notification_class_oid;
   RECDES overflow_record;	/* Overflow record. */
   /* Buffer to copy overflow record data. */
   char overflow_record_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -31834,7 +31847,10 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
       /* End system operation. */
       if (delete_helper->is_system_op_started && !save_system_op_started)
 	{
+	  // only end sysop if started in current function
 	  btree_delete_sysop_end (thread_p, delete_helper);
+	  // TODO: restore is_system_op_started?
+	  // TODO: if not reset, will lead to another sysop end being added in calling function
 	}
     }
   else
@@ -31865,7 +31881,10 @@ error:
       assert (delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT
 	      && delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
 	      && delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
+      // only end sysop if started in current function
       btree_delete_sysop_end (thread_p, delete_helper);
+      // TODO: restore is_system_op_started?
+      // TODO: if not reset, will lead to another sysop end being added in calling function
     }
   assert_release (error_code != NO_ERROR);
   return error_code;
@@ -35083,7 +35102,7 @@ btree_online_index_change_state (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
 // is_first (in)  : is object first in record?
 //
 static bool
-btree_is_class_oid_packed (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first)
+btree_is_class_oid_packed (const BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first)
 {
   // class oid is packed if:
   // 1. index is unique and

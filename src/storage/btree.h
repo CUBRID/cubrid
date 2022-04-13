@@ -801,8 +801,8 @@ extern void btree_rv_read_keybuf_nocopy (THREAD_ENTRY * thread_p, char *datap, i
 extern void btree_rv_read_keybuf_two_objects (THREAD_ENTRY * thread_p, char *datap, int data_size, BTID_INT * btid_int,
 					      BTREE_OBJECT_INFO * first_version, BTREE_OBJECT_INFO * second_version,
 					      OR_BUF * key_buf);
-extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
-				     DB_VALUE * key);
+extern int btree_check_valid_record (THREAD_ENTRY * thread_p, const BTID_INT * btid, RECDES * recp,
+				     BTREE_NODE_TYPE node_type, DB_VALUE * key);
 extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OID * oid, DB_VALUE * keyval,
 				    int n_attrs, OID * pk_cls_oid, BTID * pk_btid, const char *fk_name);
 
@@ -821,9 +821,9 @@ extern int btree_rv_redo_record_modify (THREAD_ENTRY * thread_p, const LOG_RCV *
 extern int btree_rv_undo_record_modify (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern int btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
 
-extern void btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
-						    VPID * new_overflow_vpid, char **rv_undo_data_ptr,
-						    char **rv_redo_data_ptr);
+extern void btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, const BTID_INT * btid_int,
+						    RECDES * leaf_record, VPID * new_overflow_vpid,
+						    char **rv_undo_data_ptr, char **rv_redo_data_ptr);
 
 extern int btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 
